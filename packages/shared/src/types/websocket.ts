@@ -58,6 +58,11 @@ export interface FeedbackMappedEvent {
   taskIds: string[];
 }
 
+export interface PlanUpdatedEvent {
+  type: 'plan.updated';
+  planId: string;
+}
+
 /** All server-to-client WebSocket event types */
 export type ServerEvent =
   | TaskUpdatedEvent
@@ -66,7 +71,8 @@ export type ServerEvent =
   | PrdUpdatedEvent
   | BuildStatusEvent
   | HilRequestEvent
-  | FeedbackMappedEvent;
+  | FeedbackMappedEvent
+  | PlanUpdatedEvent;
 
 // ─── Client → Server Events ───
 

@@ -34,6 +34,24 @@ Valid section keys: executive_summary, problem_statement, user_personas, goals_a
 
 You can include multiple PRD_UPDATE blocks in a single response. Only include updates when you have substantive content to add or modify.`;
 
+const PLAN_REFINEMENT_SYSTEM_PROMPT = `You are an AI planning assistant for OpenSprint. You help users refine individual feature Plans through conversation.
+
+Your role is to:
+1. Answer questions about the Plan
+2. Suggest improvements to acceptance criteria, technical approach, or scope
+3. Identify gaps, edge cases, or dependencies
+4. Propose refinements based on the user's feedback
+
+When the user asks you to update the Plan and you have a concrete revision, output it using this format:
+
+[PLAN_UPDATE]
+<full markdown content of the revised Plan>
+[/PLAN_UPDATE]
+
+The Plan must follow the structure: Feature Title, Overview, Acceptance Criteria, Technical Approach, Dependencies, Data Model Changes, API Specification, UI/UX Requirements, Edge Cases, Testing Strategy, Estimated Complexity.
+
+Only include a PLAN_UPDATE block when you are making substantive changes to the Plan. For questions, suggestions, or discussion, respond in natural language without a PLAN_UPDATE block.`;
+
 export class ChatService {
   private projectService = new ProjectService();
   private prdService = new PrdService();
@@ -129,14 +147,50 @@ export class ChatService {
       .trim();
   }
 
+  /** Parse Plan update from agent response (PRD §7.2.4 plan sidebar chat) */
+  private parsePlanUpdate(content: string): string | null {
+    const match = content.match(/\[PLAN_UPDATE\]([\s\S]*?)\[\/PLAN_UPDATE\]/);
+    return match ? match[1].trim() : null;
+  }
+
+  /** Strip Plan update block from response for display */
+  private stripPlanUpdate(content: string): string {
+    return content
+      .replace(/\[PLAN_UPDATE\][\s\S]*?\[\/PLAN_UPDATE\]/g, '')
+      .trim();
+  }
+
+  /** Get plan markdown content for plan context (avoids PlanService circular dep) */
+  private async getPlanContent(projectId: string, planId: string): Promise<string> {
+    const project = await this.projectService.getProject(projectId);
+    const planPath = path.join(project.repoPath, OPENSPRINT_PATHS.plans, `${planId}.md`);
+    try {
+      return await fs.readFile(planPath, 'utf-8');
+    } catch {
+      return '';
+    }
+  }
+
+  /** Write plan markdown (avoids PlanService circular dep) */
+  private async writePlanContent(projectId: string, planId: string, content: string): Promise<void> {
+    const project = await this.projectService.getProject(projectId);
+    const plansDir = path.join(project.repoPath, OPENSPRINT_PATHS.plans);
+    await fs.mkdir(plansDir, { recursive: true });
+    const planPath = path.join(plansDir, `${planId}.md`);
+    await fs.writeFile(planPath, content);
+  }
+
   /** Send a message to the planning agent */
   async sendMessage(projectId: string, body: ChatRequest): Promise<ChatResponse> {
     const context = body.context ?? 'design';
+    const isPlanContext = context.startsWith('plan:');
+    const planId = isPlanContext ? context.slice(5) : null;
+
     const conversation = await this.getOrCreateConversation(projectId, context);
 
     // Build prompt for agent; add PRD section context if user clicked to focus (PRD §7.1.5)
     let agentPrompt = body.message;
-    if (body.prdSectionFocus) {
+    if (!isPlanContext && body.prdSectionFocus) {
       const prd = await this.prdService.getPrd(projectId);
       const section = prd.sections[body.prdSectionFocus as keyof typeof prd.sections];
       const sectionLabel = body.prdSectionFocus
@@ -162,8 +216,19 @@ export class ChatService {
     const settings = await this.projectService.getSettings(projectId);
     const agentConfig = settings.planningAgent;
 
-    // Build context
-    const prdContext = await this.buildPrdContext(projectId);
+    // Build system prompt and context based on design vs plan
+    let systemPrompt: string;
+    if (isPlanContext && planId) {
+      const planContent = await this.getPlanContent(projectId, planId);
+      const planContext = planContent
+        ? `## Current Plan (${planId})\n\n${planContent}`
+        : `## Plan ${planId}\n\n(Plan file is empty or not found.)`;
+      const prdContext = await this.buildPrdContext(projectId);
+      systemPrompt = `${PLAN_REFINEMENT_SYSTEM_PROMPT}\n\n${planContext}\n\n---\n\n## PRD Reference\n\n${prdContext}`;
+    } else {
+      const prdContext = await this.buildPrdContext(projectId);
+      systemPrompt = DESIGN_SYSTEM_PROMPT + '\n\n' + prdContext;
+    }
 
     // Assemble conversation history for agent
     const history = conversation.messages.slice(0, -1).map((m) => ({
@@ -174,12 +239,11 @@ export class ChatService {
     let responseContent: string;
 
     try {
-      console.log('[chat] Invoking agent', { type: agentConfig.type, model: agentConfig.model ?? 'default', historyLen: history.length, promptLen: agentPrompt.length });
-      // Invoke the planning agent
+      console.log('[chat] Invoking agent', { type: agentConfig.type, model: agentConfig.model ?? 'default', context, historyLen: history.length, promptLen: agentPrompt.length });
       const response = await this.agentClient.invoke({
         config: agentConfig,
         prompt: agentPrompt,
-        systemPrompt: DESIGN_SYSTEM_PROMPT + '\n\n' + prdContext,
+        systemPrompt,
         conversationHistory: history,
         cwd: (await this.projectService.getProject(projectId)).repoPath,
       });
@@ -187,7 +251,6 @@ export class ChatService {
       console.log('[chat] Agent returned', { contentLen: response.content?.length ?? 0 });
       responseContent = response.content;
     } catch (error) {
-      // If agent invocation fails, provide a graceful fallback with actionable guidance
       const msg = error instanceof Error ? error.message : String(error);
       console.error('Agent invocation failed:', error);
       responseContent =
@@ -196,31 +259,38 @@ export class ChatService {
         '**What to try:** Open Project Settings → Agent Config. Ensure your API key is set, the CLI is installed, and the model is valid.';
     }
 
-    // Parse any PRD updates from the response
-    const prdUpdates = this.parsePrdUpdates(responseContent);
-    const displayContent = this.stripPrdUpdates(responseContent) || responseContent;
-
-    // Apply PRD updates if present
+    let displayContent: string;
     const prdChanges: ChatResponse['prdChanges'] = [];
-    if (prdUpdates.length > 0) {
-      const changes = await this.prdService.updateSections(projectId, prdUpdates, 'design');
-      for (const change of changes) {
-        prdChanges.push({
-          section: change.section,
-          previousVersion: change.previousVersion,
-          newVersion: change.newVersion,
-        });
 
-        // Broadcast PRD update via WebSocket
-        broadcastToProject(projectId, {
-          type: 'prd.updated',
-          section: change.section,
-          version: change.newVersion,
-        });
+    if (isPlanContext && planId) {
+      // Plan context: parse PLAN_UPDATE, apply, strip from display
+      const planUpdate = this.parsePlanUpdate(responseContent);
+      displayContent = this.stripPlanUpdate(responseContent).trim() || responseContent;
+      if (planUpdate) {
+        await this.writePlanContent(projectId, planId, planUpdate);
+        broadcastToProject(projectId, { type: 'plan.updated', planId });
+      }
+    } else {
+      // Design context: parse PRD updates, apply, strip from display
+      const prdUpdates = this.parsePrdUpdates(responseContent);
+      displayContent = this.stripPrdUpdates(responseContent) || responseContent;
+      if (prdUpdates.length > 0) {
+        const changes = await this.prdService.updateSections(projectId, prdUpdates, 'design');
+        for (const change of changes) {
+          prdChanges.push({
+            section: change.section,
+            previousVersion: change.previousVersion,
+            newVersion: change.newVersion,
+          });
+          broadcastToProject(projectId, {
+            type: 'prd.updated',
+            section: change.section,
+            version: change.newVersion,
+          });
+        }
       }
     }
 
-    // Add assistant message
     const assistantMessage: ConversationMessage = {
       role: 'assistant',
       content: displayContent,
