@@ -644,7 +644,12 @@ export function ProjectSetup() {
           ) : (
             <button
               onClick={() => setStep(STEPS[currentStepIndex + 1]?.key ?? "confirm")}
-              disabled={step === "basics" && (!name.trim() || !repoPath.trim())}
+              disabled={
+                (step === "repository" && !repoPath.trim()) ||
+                (step === "agents" &&
+                  ((planningAgentType === "custom" && !planningCliCommand.trim()) ||
+                    (codingAgentType === "custom" && !codingCliCommand.trim())))
+              }
               className="btn-primary disabled:opacity-50"
             >
               Next

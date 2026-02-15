@@ -15,8 +15,7 @@
     "sourceMap": true,
     "noEmit": true
   },
+  "exclude": ["src/**/*.test.tsx", "src/**/*.test.ts", "src/test"],
   "include": ["src/**/*"],
-  "references": [
-    { "path": "./tsconfig.node.json" }
-  ]
+  "references": [{ "path": "./tsconfig.node.json" }]
 }
