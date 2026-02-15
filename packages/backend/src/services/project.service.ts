@@ -12,6 +12,7 @@ import type {
 } from "@opensprint/shared";
 import { OPENSPRINT_DIR, OPENSPRINT_PATHS, DEFAULT_HIL_CONFIG } from "@opensprint/shared";
 import { BeadsService } from "./beads.service.js";
+import { ensureEasConfig } from "./eas-config.js";
 import { AppError } from "../middleware/error-handler.js";
 
 const execAsync = promisify(exec);
@@ -179,6 +180,11 @@ export class ProjectService {
     };
     const settingsPath = path.join(repoPath, OPENSPRINT_PATHS.settings);
     await this.writeJson(settingsPath, settings);
+
+    // Create eas.json for Expo projects (PRD §6.4)
+    if (input.deployment?.mode === 'expo') {
+      await ensureEasConfig(repoPath);
+    }
 
     // Add to global index
     const index = await this.loadIndex();

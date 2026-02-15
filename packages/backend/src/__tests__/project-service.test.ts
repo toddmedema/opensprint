@@ -122,6 +122,28 @@ describe("ProjectService", () => {
     ).rejects.toMatchObject({ code: "INVALID_INPUT", message: "Repository path is required" });
   });
 
+  it("should create eas.json when deployment mode is expo", async () => {
+    const repoPath = path.join(tempDir, "expo-project");
+
+    const project = await projectService.createProject({
+      name: "Expo Project",
+      description: "",
+      repoPath,
+      planningAgent: { type: "claude", model: null, cliCommand: null },
+      codingAgent: { type: "claude", model: null, cliCommand: null },
+      deployment: { mode: "expo", expoConfig: { channel: "preview" } },
+      hilConfig: DEFAULT_HIL_CONFIG,
+    });
+
+    const easPath = path.join(repoPath, "eas.json");
+    const easRaw = await fs.readFile(easPath, "utf-8");
+    const eas = JSON.parse(easRaw);
+    expect(eas.build).toBeDefined();
+    expect(eas.build.preview).toBeDefined();
+    expect(eas.build.preview.channel).toBe("preview");
+    expect(eas.build.production).toBeDefined();
+  });
+
   it("should save testFramework when provided", async () => {
     const repoPath = path.join(tempDir, "jest-project");
 

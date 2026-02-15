@@ -2,6 +2,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import type { DeploymentConfig } from '@opensprint/shared';
 import { ProjectService } from './project.service.js';
+import { ensureEasConfig } from './eas-config.js';
 
 const execAsync = promisify(exec);
 
@@ -55,16 +56,29 @@ export class DeploymentService {
   }
 
   /**
+   * Ensure eas.json exists for EAS Build and OTA updates (PRD §6.4).
+   */
+  async ensureEasConfig(repoPath: string): Promise<void> {
+    return ensureEasConfig(repoPath);
+  }
+
+  /**
    * Deploy using Expo.dev / EAS.
+   * OTA update to preview channel for Validate phase (PRD §6.4).
    */
   private async deployExpo(
     repoPath: string,
     config: DeploymentConfig,
   ): Promise<DeploymentResult> {
     try {
-      // Run EAS Update for preview deployment
+      await ensureEasConfig(repoPath);
+
+      const channel = config.expoConfig?.channel ?? 'preview';
+      const message = `OpenSprint preview ${new Date().toISOString().slice(0, 19)}`;
+
+      // Run EAS Update for OTA preview deployment
       const { stdout } = await execAsync(
-        'npx eas-cli update --auto --non-interactive --json',
+        `npx eas-cli update --channel ${channel} --message "${message}" --non-interactive --json`,
         {
           cwd: repoPath,
           timeout: 600000, // 10 min timeout
@@ -77,7 +91,7 @@ export class DeploymentService {
         const output = JSON.parse(stdout);
         return {
           success: true,
-          url: output.url || output.link,
+          url: output.url || output.link || output.permalink,
           timestamp: new Date().toISOString(),
         };
       } catch {

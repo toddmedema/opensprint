@@ -108,6 +108,7 @@ export function ProjectSetup() {
         codingAgent: { type: codingAgentType, model: codingModel || null, cliCommand: null },
         deployment: {
           mode: deploymentMode,
+          expoConfig: deploymentMode === "expo" ? { channel: "preview" } : undefined,
           customCommand: deploymentMode === "custom" && customDeployCommand.trim() ? customDeployCommand.trim() : undefined,
           webhookUrl: deploymentMode === "custom" && customDeployWebhook.trim() ? customDeployWebhook.trim() : undefined,
         },

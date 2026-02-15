@@ -110,6 +110,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
           },
           deployment: {
             mode: deployment.mode,
+            expoConfig: deployment.mode === "expo" ? { channel: deployment.expoConfig?.channel ?? "preview" } : undefined,
             customCommand: deployment.customCommand ?? undefined,
             webhookUrl: deployment.webhookUrl ?? undefined,
           },
@@ -434,7 +435,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                           name="deployment"
                           value="expo"
                           checked={deployment.mode === "expo"}
-                          onChange={() => updateDeployment({ mode: "expo" })}
+                          onChange={() => updateDeployment({ mode: "expo", expoConfig: { channel: "preview" } })}
                           className="mt-0.5"
                         />
                         <div>
