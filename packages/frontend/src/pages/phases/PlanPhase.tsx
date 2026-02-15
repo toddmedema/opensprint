@@ -245,6 +245,9 @@ export function PlanPhase({ projectId }: PlanPhaseProps) {
                   <span>{plan.taskCount} tasks</span>
                   <span>{plan.completedTaskCount} completed</span>
                   <span className="capitalize">{plan.metadata.complexity} complexity</span>
+                  {plan.dependencyCount > 0 && (
+                    <span>{plan.dependencyCount} deps</span>
+                  )}
                 </div>
 
                 {plan.status === "planning" && (

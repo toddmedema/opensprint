@@ -215,6 +215,7 @@ export function BuildPhase({ projectId }: BuildPhaseProps) {
   }, [registerEventHandler, handleWsEvent]);
 
   useEffect(() => {
+    setError(null);
     Promise.all([
       api.tasks.list(projectId),
       api.plans.list(projectId),
@@ -223,7 +224,9 @@ export function BuildPhase({ projectId }: BuildPhaseProps) {
         setTasks((tasksData as TaskCard[]) ?? []);
         setPlans((plansData as Plan[]) ?? []);
       })
-      .catch(console.error)
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Failed to load tasks");
+      })
       .finally(() => setLoading(false));
 
     api.build.status(projectId).then((data: unknown) => {
