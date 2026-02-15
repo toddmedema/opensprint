@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import { api } from "../../api/client";
 import { useProjectWebSocket } from "../../contexts/ProjectWebSocketContext";
-import type { ServerEvent, KanbanColumn, AgentSession, Task } from "@opensprint/shared";
+import type { ServerEvent, KanbanColumn, AgentSession, Task, Plan } from "@opensprint/shared";
 import { KANBAN_COLUMNS, PRIORITY_LABELS } from "@opensprint/shared";
 
 interface BuildPhaseProps {
@@ -113,8 +113,17 @@ function ArchivedSessionView({ sessions }: { sessions: AgentSession[] }) {
   );
 }
 
+/** Extract epic title from plan content (first # heading) or planId */
+function getEpicTitleFromPlan(plan: Plan): string {
+  const firstLine = plan.content.split("\n")[0] ?? "";
+  const heading = firstLine.replace(/^#+\s*/, "").trim();
+  if (heading) return heading;
+  return plan.metadata.planId.replace(/-/g, " ");
+}
+
 export function BuildPhase({ projectId }: BuildPhaseProps) {
   const [tasks, setTasks] = useState<TaskCard[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [orchestratorRunning, setOrchestratorRunning] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
@@ -191,9 +200,14 @@ export function BuildPhase({ projectId }: BuildPhaseProps) {
   }, [registerEventHandler, handleWsEvent]);
 
   useEffect(() => {
-    api.tasks
-      .list(projectId)
-      .then((data) => setTasks(data as TaskCard[]))
+    Promise.all([
+      api.tasks.list(projectId),
+      api.plans.list(projectId),
+    ])
+      .then(([tasksData, plansData]) => {
+        setTasks((tasksData as TaskCard[]) ?? []);
+        setPlans((plansData as Plan[]) ?? []);
+      })
       .catch(console.error)
       .finally(() => setLoading(false));
 
@@ -249,16 +263,68 @@ export function BuildPhase({ projectId }: BuildPhaseProps) {
     }
   };
 
-  const tasksByColumn = KANBAN_COLUMNS.reduce(
-    (acc, col) => {
-      acc[col] = tasks.filter((t) => t.kanbanColumn === col);
-      return acc;
-    },
-    {} as Record<KanbanColumn, TaskCard[]>,
+  /** Implementation tasks only (exclude epics and gating tasks) */
+  const implTasks = useMemo(
+    () =>
+      tasks.filter((t) => {
+        const task = t as TaskCard & { type?: string };
+        const isEpic = task.type === "epic";
+        const isGating = /\.0$/.test(t.id);
+        return !isEpic && !isGating;
+      }),
+    [tasks],
   );
 
-  const totalTasks = tasks.length;
-  const doneTasks = tasksByColumn.done.length;
+  /** Swimlanes grouped by Plan epic (PRD §7.3.4) */
+  const swimlanes = useMemo(() => {
+    const epicIdToTitle = new Map<string, string>();
+    plans.forEach((p) => {
+      epicIdToTitle.set(p.metadata.beadEpicId, getEpicTitleFromPlan(p));
+    });
+
+    const byEpic = new Map<string | null, TaskCard[]>();
+    for (const t of implTasks) {
+      const key = t.epicId ?? null;
+      if (!byEpic.has(key)) byEpic.set(key, []);
+      byEpic.get(key)!.push(t);
+    }
+
+    const result: { epicId: string; epicTitle: string; tasks: TaskCard[] }[] = [];
+    // Epics with plans first (in plan order)
+    for (const plan of plans) {
+      const epicId = plan.metadata.beadEpicId;
+      if (!epicId) continue;
+      const laneTasks = byEpic.get(epicId) ?? [];
+      if (laneTasks.length > 0) {
+        result.push({
+          epicId,
+          epicTitle: epicIdToTitle.get(epicId) ?? epicId,
+          tasks: laneTasks,
+        });
+      }
+    }
+    // Epics without plans (e.g. feedback-created tasks under beads epic)
+    const seenEpics = new Set(result.map((r) => r.epicId));
+    for (const [epicId, laneTasks] of byEpic) {
+      if (epicId && !seenEpics.has(epicId) && laneTasks.length > 0) {
+        result.push({
+          epicId,
+          epicTitle: epicId,
+          tasks: laneTasks,
+        });
+        seenEpics.add(epicId);
+      }
+    }
+    // Unassigned tasks (no epic)
+    const unassigned = byEpic.get(null) ?? [];
+    if (unassigned.length > 0) {
+      result.push({ epicId: "", epicTitle: "Other", tasks: unassigned });
+    }
+    return result;
+  }, [implTasks, plans]);
+
+  const totalTasks = implTasks.length;
+  const doneTasks = implTasks.filter((t) => t.kanbanColumn === "done").length;
   const progress = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
   return (
@@ -303,51 +369,75 @@ export function BuildPhase({ projectId }: BuildPhaseProps) {
         </div>
       </div>
 
-      {/* Kanban Board */}
-      <div className="flex-1 overflow-x-auto p-6">
+      {/* Kanban Board — swimlanes by Plan epic (PRD §7.3.4) */}
+      <div className="flex-1 overflow-auto p-6">
         {loading ? (
           <div className="text-center py-10 text-gray-400">Loading tasks...</div>
-        ) : tasks.length === 0 ? (
+        ) : implTasks.length === 0 ? (
           <div className="text-center py-10 text-gray-500">No tasks yet. Ship a Plan to start generating tasks.</div>
         ) : (
-          <div className="flex gap-4 min-w-max">
-            {KANBAN_COLUMNS.map((col) => (
-              <div key={col} className="kanban-column">
-                {/* Column header */}
-                <div className="flex items-center gap-2 mb-2">
-                  <div className={`w-2.5 h-2.5 rounded-full ${columnColors[col]}`} />
-                  <h3 className="text-sm font-semibold text-gray-700">{columnLabels[col]}</h3>
-                  <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
-                    {tasksByColumn[col].length}
-                  </span>
-                </div>
-
-                {/* Task cards */}
-                <div className="space-y-2">
-                  {tasksByColumn[col].map((task) => (
-                    <div key={task.id} className="kanban-card" onClick={() => setSelectedTask(task.id)}>
-                      <p className="text-sm font-medium text-gray-900 mb-2">{task.title}</p>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-gray-400 font-mono">{task.id}</span>
-                        <span className="text-xs text-gray-500">{PRIORITY_LABELS[task.priority] ?? "Medium"}</span>
-                      </div>
-                      {task.assignee && <div className="mt-2 text-xs text-brand-600">{task.assignee}</div>}
-                      {task.testResults && task.testResults.total > 0 && (
-                        <div
-                          className={`mt-2 text-xs font-medium ${
-                            task.testResults.failed > 0 ? "text-red-600" : "text-green-600"
-                          }`}
-                        >
-                          {task.testResults.passed} passed
-                          {task.testResults.failed > 0 && `, ${task.testResults.failed} failed`}
-                          {task.testResults.skipped > 0 && `, ${task.testResults.skipped} skipped`}
+          <div className="space-y-6">
+            {swimlanes.map((lane) => {
+              const laneTasksByCol = KANBAN_COLUMNS.reduce(
+                (acc, col) => {
+                  acc[col] = lane.tasks.filter((t) => t.kanbanColumn === col);
+                  return acc;
+                },
+                {} as Record<KanbanColumn, TaskCard[]>,
+              );
+              return (
+                <div key={lane.epicId || "other"} className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
+                    <h3 className="text-sm font-semibold text-gray-700">{lane.epicTitle}</h3>
+                    <p className="text-xs text-gray-500">
+                      {lane.tasks.filter((t) => t.kanbanColumn === "done").length}/{lane.tasks.length} done
+                    </p>
+                  </div>
+                  <div className="flex gap-4 p-4 min-w-max overflow-x-auto">
+                    {KANBAN_COLUMNS.map((col) => (
+                      <div key={col} className="kanban-column flex-shrink-0 w-56">
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className={`w-2.5 h-2.5 rounded-full ${columnColors[col]}`} />
+                          <span className="text-xs font-semibold text-gray-600">{columnLabels[col]}</span>
+                          <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
+                            {laneTasksByCol[col].length}
+                          </span>
                         </div>
-                      )}
-                    </div>
-                  ))}
+                        <div className="space-y-2">
+                          {laneTasksByCol[col].map((task) => (
+                            <div
+                              key={task.id}
+                              className="kanban-card cursor-pointer"
+                              onClick={() => setSelectedTask(task.id)}
+                            >
+                              <p className="text-sm font-medium text-gray-900 mb-2">{task.title}</p>
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs text-gray-400 font-mono truncate" title={task.id}>
+                                  {task.id}
+                                </span>
+                                <span className="text-xs text-gray-500">{PRIORITY_LABELS[task.priority] ?? "Medium"}</span>
+                              </div>
+                              {task.assignee && <div className="mt-2 text-xs text-brand-600">{task.assignee}</div>}
+                              {task.testResults && task.testResults.total > 0 && (
+                                <div
+                                  className={`mt-2 text-xs font-medium ${
+                                    task.testResults.failed > 0 ? "text-red-600" : "text-green-600"
+                                  }`}
+                                >
+                                  {task.testResults.passed} passed
+                                  {task.testResults.failed > 0 ? `, ${task.testResults.failed} failed` : ""}
+                                  {task.testResults.skipped > 0 ? `, ${task.testResults.skipped} skipped` : ""}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
