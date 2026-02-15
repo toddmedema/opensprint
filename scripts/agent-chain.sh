@@ -38,32 +38,15 @@ bd update "$TASK_ID" --claim 2>/dev/null || true
 git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
 git checkout -b "opensprint/${TASK_ID}" 2>/dev/null || git checkout "opensprint/${TASK_ID}" 2>/dev/null || true
 
-PROMPT="Complete exactly ONE bd task and nothing else.
-
-TASK ID: $TASK_ID
-TITLE: $TASK_TITLE
-DESCRIPTION: $TASK_DESC
-
-Follow AGENTS.md. Do this task only. When done:
-1. bd update $TASK_ID --status done
-2. git add -A && git commit -m \"Complete $TASK_ID: $TASK_TITLE\"
-3. bd sync
-4. git pull --rebase && git push
-5. Run: ./scripts/agent-chain.sh
-
-If ./scripts/agent-chain.sh reports no more open tasks, you are done. Otherwise it will start the next agent."
-
+# 4. Prepare task directory and spawn coding agent (context assembly + output streaming)
 if command -v agent &>/dev/null; then
-  echo "🤖 Starting agent for $TASK_ID..."
-  agent -p --force --output-format stream-json "$PROMPT"
+  echo "🤖 Starting agent for $TASK_ID (task dir + stream)..."
+  npm run run-task -w packages/backend -- "$TASK_ID"
   # Agent runs ./scripts/agent-chain.sh when done to continue the chain
 else
   echo "⚠️  Cursor CLI (agent) not installed. Install with:"
   echo "   curl https://cursor.com/install -fsSL | bash"
   echo ""
-  echo "Or paste this prompt into Cursor Composer to run manually:"
-  echo "---"
-  echo "$PROMPT"
-  echo "---"
+  echo "Or run manually: npm run run-task -w packages/backend -- $TASK_ID"
   exit 1
 fi
