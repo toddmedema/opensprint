@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
 import { api } from "../../api/client";
 import { useProjectWebSocket } from "../../contexts/ProjectWebSocketContext";
-import type { ServerEvent, KanbanColumn, AgentSession } from "@opensprint/shared";
+import type { ServerEvent, KanbanColumn, AgentSession, Task } from "@opensprint/shared";
 import { KANBAN_COLUMNS, PRIORITY_LABELS } from "@opensprint/shared";
 
 interface BuildPhaseProps {
@@ -124,6 +125,8 @@ export function BuildPhase({ projectId }: BuildPhaseProps) {
   } | null>(null);
   const [archivedSessions, setArchivedSessions] = useState<AgentSession[]>([]);
   const [archivedLoading, setArchivedLoading] = useState(false);
+  const [taskDetail, setTaskDetail] = useState<Task | null>(null);
+  const [taskDetailLoading, setTaskDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleWsEvent = useCallback(
@@ -161,11 +164,24 @@ export function BuildPhase({ projectId }: BuildPhaseProps) {
     [projectId, selectedTask],
   );
 
-  // Clear completion state and archived sessions when switching tasks
+  // Clear completion state, archived sessions, and task detail when switching tasks
   useEffect(() => {
     setCompletionState(null);
     setArchivedSessions([]);
+    setTaskDetail(null);
   }, [selectedTask]);
+
+  // Fetch full task specification when a task is selected (PRD §7.3.4)
+  useEffect(() => {
+    if (selectedTask) {
+      setTaskDetailLoading(true);
+      api.tasks
+        .get(projectId, selectedTask)
+        .then((data) => setTaskDetail(data as Task))
+        .catch(() => setTaskDetail(null))
+        .finally(() => setTaskDetailLoading(false));
+    }
+  }, [projectId, selectedTask]);
 
   const { connected, subscribeToAgent, unsubscribeFromAgent, registerEventHandler } =
     useProjectWebSocket();
@@ -336,53 +352,95 @@ export function BuildPhase({ projectId }: BuildPhaseProps) {
         )}
       </div>
 
-      {/* Task Detail Panel — live output or archived artifacts (PRD §7.3.4) */}
+      {/* Task Detail Panel — full spec, live output, or completed artifacts (PRD §7.3.4) */}
       {selectedTask && (
-        <div className="h-64 border-t border-gray-200 bg-gray-900 text-green-400 overflow-y-auto flex flex-col">
+        <div className="h-80 border-t border-gray-200 bg-gray-900 text-gray-100 overflow-hidden flex flex-col">
           <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700 shrink-0">
-            <span className="text-xs font-mono">
-              {isDoneTask ? "Completed work artifacts" : "Agent Output"} — {selectedTask}
-            </span>
+            <span className="text-xs font-mono text-gray-400">{selectedTask}</span>
             <button onClick={() => setSelectedTask(null)} className="text-gray-500 hover:text-gray-300 text-xs">
               Close
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto">
-            {isDoneTask ? (
-              archivedLoading ? (
-                <div className="p-4 text-gray-400 text-sm">Loading archived sessions...</div>
-              ) : archivedSessions.length === 0 ? (
-                <div className="p-4 text-gray-400 text-sm">No archived sessions for this task.</div>
-              ) : (
-                <ArchivedSessionView sessions={archivedSessions} />
-              )
-            ) : (
-              <>
-                <pre className="p-4 text-xs font-mono whitespace-pre-wrap">
-                  {agentOutput.length > 0 ? agentOutput.join("") : "Waiting for agent output..."}
-                </pre>
-                {completionState && (
-                  <div className="px-4 pb-4 border-t border-gray-700 pt-3 mt-2">
-                    <div
-                      className={`text-sm font-medium ${
-                        completionState.status === "approved" ? "text-green-400" : "text-amber-400"
-                      }`}
-                    >
-                      Agent completed: {completionState.status}
-                    </div>
-                    {completionState.testResults && completionState.testResults.total > 0 && (
-                      <div className="text-xs text-gray-400 mt-1">
-                        {completionState.testResults.passed} passed
-                        {completionState.testResults.failed > 0 &&
-                          `, ${completionState.testResults.failed} failed`}
-                        {completionState.testResults.skipped > 0 &&
-                          `, ${completionState.testResults.skipped} skipped`}
-                      </div>
+          <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
+            {/* Full task specification (PRD §7.3.4) */}
+            <div className="shrink-0 border-b border-gray-700 bg-gray-800/50">
+              {taskDetailLoading ? (
+                <div className="p-4 text-gray-400 text-sm">Loading task spec...</div>
+              ) : taskDetail ? (
+                <div className="p-4 space-y-3">
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="font-semibold text-white">{taskDetail.title}</span>
+                    <span className="text-gray-500">·</span>
+                    <span className="text-gray-400">{taskDetail.type}</span>
+                    <span className="text-gray-500">·</span>
+                    <span className="text-gray-400">{PRIORITY_LABELS[taskDetail.priority] ?? "Medium"}</span>
+                    <span className="text-gray-500">·</span>
+                    <span className="text-gray-400">{columnLabels[taskDetail.kanbanColumn]}</span>
+                    {taskDetail.assignee && (
+                      <>
+                        <span className="text-gray-500">·</span>
+                        <span className="text-brand-400">{taskDetail.assignee}</span>
+                      </>
                     )}
                   </div>
+                  {taskDetail.description && (
+                    <div className="prose prose-invert prose-sm max-w-none text-gray-300">
+                      <ReactMarkdown>{taskDetail.description}</ReactMarkdown>
+                    </div>
+                  )}
+                  {taskDetail.dependencies.length > 0 && (
+                    <div className="text-xs text-gray-500">
+                      Depends on: {taskDetail.dependencies.map((d) => d.targetId).join(", ")}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="p-4 text-gray-500 text-sm">Could not load task details.</div>
+              )}
+            </div>
+            {/* Live agent output or completed artifacts */}
+            <div className="flex-1 min-h-0 flex flex-col text-green-400">
+              <div className="px-4 py-2 border-b border-gray-700 text-xs text-gray-400 shrink-0">
+                {isDoneTask ? "Completed work artifacts" : "Live agent output"}
+              </div>
+              <div className="flex-1 overflow-y-auto min-h-0">
+                {isDoneTask ? (
+                  archivedLoading ? (
+                    <div className="p-4 text-gray-400 text-sm">Loading archived sessions...</div>
+                  ) : archivedSessions.length === 0 ? (
+                    <div className="p-4 text-gray-400 text-sm">No archived sessions for this task.</div>
+                  ) : (
+                    <ArchivedSessionView sessions={archivedSessions} />
+                  )
+                ) : (
+                  <>
+                    <pre className="p-4 text-xs font-mono whitespace-pre-wrap">
+                      {agentOutput.length > 0 ? agentOutput.join("") : "Waiting for agent output..."}
+                    </pre>
+                    {completionState && (
+                      <div className="px-4 pb-4 border-t border-gray-700 pt-3 mt-2">
+                        <div
+                          className={`text-sm font-medium ${
+                            completionState.status === "approved" ? "text-green-400" : "text-amber-400"
+                          }`}
+                        >
+                          Agent completed: {completionState.status}
+                        </div>
+                        {completionState.testResults && completionState.testResults.total > 0 && (
+                          <div className="text-xs text-gray-400 mt-1">
+                            {completionState.testResults.passed} passed
+                            {completionState.testResults.failed > 0 &&
+                              `, ${completionState.testResults.failed} failed`}
+                            {completionState.testResults.skipped > 0 &&
+                              `, ${completionState.testResults.skipped} skipped`}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
-              </>
-            )}
+              </div>
+            </div>
           </div>
         </div>
       )}
