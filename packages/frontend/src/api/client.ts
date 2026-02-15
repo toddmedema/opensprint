@@ -1,4 +1,4 @@
-import type { ApiResult } from "@opensprint/shared";
+import type { ApiResult, Project } from "@opensprint/shared";
 
 const BASE_URL = "/api/v1";
 
@@ -50,7 +50,7 @@ export const api = {
       }),
   },
   projects: {
-    list: () => request<unknown[]>("/projects"),
+    list: () => request<Project[]>("/projects"),
     get: (id: string) => request<unknown>(`/projects/${id}`),
     create: (data: unknown) =>
       request<unknown>("/projects", {
