@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Agent Chain: Complete one bd task, commit, then kick off the next agent.
+# Orchestrator loop: bd ready -> bd update --claim -> create branch -> spawn agent.
 # Run: ./scripts/agent-chain.sh
 # Requires: Cursor CLI (agent) - install: curl https://cursor.com/install -fsSL | bash
 # Output: stream-json for real-time progress (tool calls, messages). Pipe through jq for readability.
@@ -7,10 +8,18 @@
 set -e
 cd "$(dirname "$0")/.."
 
-NEXT_TASK=$(bd list --status open --json --sort priority 2>/dev/null | jq -r 'if type == "array" and length > 0 then .[0] else empty end' 2>/dev/null)
+# 1. Get next ready task (dependency-aware, priority-sorted)
+READY_JSON=$(bd ready --json 2>/dev/null || echo "[]")
+# Filter out Plan approval gate (user closes via Ship it!) and epics (containers, not work items)
+NEXT_TASK=$(echo "$READY_JSON" | jq '
+  if type == "array" then
+    [.[] | select((.title // "") != "Plan approval gate") | select((.issue_type // .type // "") != "epic")]
+    | if length > 0 then .[0] else empty end
+  else empty end
+' 2>/dev/null)
 
 if [[ -z "$NEXT_TASK" || "$NEXT_TASK" == "null" ]]; then
-  echo "✅ No open bd tasks. Agent chain complete."
+  echo "✅ No ready bd tasks. Agent chain complete."
   exit 0
 fi
 
@@ -22,8 +31,12 @@ TASK_PRIORITY=$(echo "$NEXT_TASK" | jq -r '.priority // 2')
 echo "📋 Next task: $TASK_ID - $TASK_TITLE"
 echo ""
 
-# Mark in progress
-bd update "$TASK_ID" --status in_progress 2>/dev/null || true
+# 2. Claim the task (atomic: assignee + in_progress)
+bd update "$TASK_ID" --claim 2>/dev/null || true
+
+# 3. Create task branch (git checkout -b opensprint/<task-id>)
+git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
+git checkout -b "opensprint/${TASK_ID}" 2>/dev/null || git checkout "opensprint/${TASK_ID}" 2>/dev/null || true
 
 PROMPT="Complete exactly ONE bd task and nothing else.
 
