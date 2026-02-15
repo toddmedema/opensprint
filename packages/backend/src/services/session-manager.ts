@@ -41,6 +41,7 @@ export class SessionManager {
       status: AgentSessionStatus;
       outputLog: string;
       gitDiff?: string;
+      summary?: string;
       testResults?: TestResults;
       failureReason?: string;
       startedAt: string;
@@ -59,6 +60,7 @@ export class SessionManager {
       gitDiff: params.gitDiff ?? null,
       testResults: params.testResults ?? null,
       failureReason: params.failureReason ?? null,
+      summary: params.summary,
     };
 
     return session;

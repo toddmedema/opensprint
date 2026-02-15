@@ -39,6 +39,8 @@ export interface AgentSession {
   gitDiff: string | null;
   testResults: TestResults | null;
   failureReason: string | null;
+  /** Coding agent summary (for approved sessions); used for dependency context propagation (PRD §7.3.2) */
+  summary?: string;
 }
 
 /** Test execution results */

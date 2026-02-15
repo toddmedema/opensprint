@@ -113,7 +113,8 @@ export class ContextAssembler {
   }
 
   /**
-   * Collect dependency outputs from completed tasks.
+   * Collect diffs/summaries from completed dependency tasks for context assembly (PRD §7.3.2).
+   * Only uses approved sessions (tasks that reached Done); skips gating tasks and failed attempts.
    * Sessions are stored at .opensprint/sessions/<task-id>-<attempt>/session.json
    */
   async collectDependencyOutputs(
@@ -135,16 +136,23 @@ export class ContextAssembler {
             return attemptB - attemptA;
           });
 
-        const latestDir = sessionDirs[0];
-        if (latestDir) {
-          const sessionPath = path.join(sessionsDir, latestDir, 'session.json');
+        // Find the latest approved session (completed task output)
+        for (const dir of sessionDirs) {
+          const sessionPath = path.join(sessionsDir, dir, 'session.json');
           const raw = await fs.readFile(sessionPath, 'utf-8');
-          const session = JSON.parse(raw) as { gitDiff?: string; outputLog?: string };
-          outputs.push({
-            taskId: depId,
-            diff: session.gitDiff || '',
-            summary: `Task ${depId} completed.`,
-          });
+          const session = JSON.parse(raw) as {
+            gitDiff?: string;
+            summary?: string;
+            status?: string;
+          };
+          if (session.status === 'approved') {
+            outputs.push({
+              taskId: depId,
+              diff: session.gitDiff || '',
+              summary: session.summary || `Task ${depId} completed.`,
+            });
+            break;
+          }
         }
       } catch {
         // Skip if we can't read dependency output

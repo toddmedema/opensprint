@@ -41,6 +41,7 @@ interface OrchestratorState {
   startedAt: string;
   attempt: number;
   lastCodingDiff: string;
+  lastCodingSummary: string;
   lastTestResults: TestResults | null;
 }
 
@@ -70,6 +71,7 @@ export class OrchestratorService {
         startedAt: '',
         attempt: 1,
         lastCodingDiff: '',
+        lastCodingSummary: '',
         lastTestResults: null,
       });
     }
@@ -349,6 +351,7 @@ export class OrchestratorService {
 
     if (result && result.status === 'success') {
       state.lastCodingDiff = await this.branchManager.getDiff(repoPath, branchName);
+      state.lastCodingSummary = result.summary ?? '';
 
       const settings = await this.projectService.getSettings(projectId);
       const testCommand = getTestCommandForFramework(settings.testFramework) || undefined;
@@ -502,7 +505,7 @@ export class OrchestratorService {
       // Close the task in beads
       await this.beads.close(repoPath, task.id, result.summary || 'Implemented and reviewed');
 
-      // Archive session (include coding diff and test results for Build tab display)
+      // Archive session (include coding diff, summary, and test results for Build tab display and dependency context)
       const session = await this.sessionManager.createSession(repoPath, {
         taskId: task.id,
         attempt: state.attempt,
@@ -512,6 +515,7 @@ export class OrchestratorService {
         status: 'approved',
         outputLog: state.outputLog.join(''),
         gitDiff: state.lastCodingDiff,
+        summary: state.lastCodingSummary || undefined,
         testResults: state.lastTestResults ?? undefined,
         startedAt: state.startedAt,
       });
