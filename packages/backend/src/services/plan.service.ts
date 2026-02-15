@@ -90,9 +90,65 @@ export class PlanService {
     }
   }
 
+  /** Build dependency edges between plans (from beads + markdown). */
+  private async buildDependencyEdges(plans: Plan[], repoPath: string): Promise<PlanDependencyEdge[]> {
+    const edges: PlanDependencyEdge[] = [];
+    const epicToPlan = new Map(plans.map((p) => [p.metadata.beadEpicId, p.metadata.planId]));
+    const seenEdges = new Set<string>();
+
+    const addEdge = (fromPlanId: string, toPlanId: string) => {
+      if (fromPlanId === toPlanId) return;
+      const key = `${fromPlanId}->${toPlanId}`;
+      if (seenEdges.has(key)) return;
+      seenEdges.add(key);
+      edges.push({ from: fromPlanId, to: toPlanId, type: 'blocks' });
+    };
+
+    const getEpicId = (id: string): string => {
+      const m = id.match(/^(.+)\.(\d+)$/);
+      return m ? m[1] : id;
+    };
+
+    try {
+      const allIssues = await this.beads.listAll(repoPath);
+      for (const issue of allIssues) {
+        const deps = (issue.dependencies as Array<{ depends_on_id: string; type: string }>) ?? [];
+        const blockers = deps.filter((d) => d.type === 'blocks').map((d) => d.depends_on_id);
+        const myEpicId = getEpicId(issue.id);
+        const toPlanId = epicToPlan.get(myEpicId);
+        if (!toPlanId) continue;
+        for (const blockerId of blockers) {
+          const blockerEpicId = getEpicId(blockerId);
+          const fromPlanId = epicToPlan.get(blockerEpicId);
+          if (fromPlanId && blockerEpicId !== myEpicId) {
+            addEdge(fromPlanId, toPlanId);
+          }
+        }
+      }
+    } catch {
+      // Beads may not be available
+    }
+
+    for (const plan of plans) {
+      const depsSection = plan.content.match(/## Dependencies[\s\S]*?(?=##|$)/i);
+      if (!depsSection) continue;
+      const text = depsSection[0].toLowerCase();
+      for (const other of plans) {
+        if (other.metadata.planId === plan.metadata.planId) continue;
+        const slug = other.metadata.planId.replace(/-/g, '[\\s-]*');
+        if (new RegExp(slug, 'i').test(text)) {
+          addEdge(other.metadata.planId, plan.metadata.planId);
+        }
+      }
+    }
+
+    return edges;
+  }
+
   /** List all Plans for a project */
   async listPlans(projectId: string): Promise<Plan[]> {
     const plansDir = await this.getPlansDir(projectId);
+    const repoPath = await this.getRepoPath(projectId);
     const plans: Plan[] = [];
 
     try {
@@ -110,6 +166,11 @@ export class PlanService {
       }
     } catch {
       // No plans directory yet
+    }
+
+    const edges = await this.buildDependencyEdges(plans, repoPath);
+    for (const plan of plans) {
+      plan.dependencyCount = edges.filter((e) => e.to === plan.metadata.planId).length;
     }
 
     return plans;
@@ -338,60 +399,8 @@ export class PlanService {
   /** Get the dependency graph for all Plans */
   async getDependencyGraph(projectId: string): Promise<PlanDependencyGraph> {
     const plans = await this.listPlans(projectId);
-    const edges: PlanDependencyEdge[] = [];
-    const epicToPlan = new Map(plans.map((p) => [p.metadata.beadEpicId, p.metadata.planId]));
-    const seenEdges = new Set<string>();
-
-    const addEdge = (fromPlanId: string, toPlanId: string) => {
-      if (fromPlanId === toPlanId) return;
-      const key = `${fromPlanId}->${toPlanId}`;
-      if (seenEdges.has(key)) return;
-      seenEdges.add(key);
-      edges.push({ from: fromPlanId, to: toPlanId, type: 'blocks' });
-    };
-
-    /** Epic ID from issue ID: x.y.z -> x.y when z is numeric, else self */
-    const getEpicId = (id: string): string => {
-      const m = id.match(/^(.+)\.(\d+)$/);
-      return m ? m[1] : id;
-    };
-
-    // 1. Build edges from beads: task in epic B has blocker in epic A → Plan A blocks Plan B
     const repoPath = await this.getRepoPath(projectId);
-    try {
-      const allIssues = await this.beads.listAll(repoPath);
-      for (const issue of allIssues) {
-        const deps = (issue.dependencies as Array<{ depends_on_id: string; type: string }>) ?? [];
-        const blockers = deps.filter((d) => d.type === 'blocks').map((d) => d.depends_on_id);
-        const myEpicId = getEpicId(issue.id);
-        const toPlanId = epicToPlan.get(myEpicId);
-        if (!toPlanId) continue;
-        for (const blockerId of blockers) {
-          const blockerEpicId = getEpicId(blockerId);
-          const fromPlanId = epicToPlan.get(blockerEpicId);
-          if (fromPlanId && blockerEpicId !== myEpicId) {
-            addEdge(fromPlanId, toPlanId);
-          }
-        }
-      }
-    } catch {
-      // If beads is not available, continue with markdown parsing
-    }
-
-    // 2. Parse Plan markdown for "## Dependencies" section referencing other plans
-    for (const plan of plans) {
-      const depsSection = plan.content.match(/## Dependencies[\s\S]*?(?=##|$)/i);
-      if (!depsSection) continue;
-      const text = depsSection[0].toLowerCase();
-      for (const other of plans) {
-        if (other.metadata.planId === plan.metadata.planId) continue;
-        const slug = other.metadata.planId.replace(/-/g, '[\\s-]*');
-        if (new RegExp(slug, 'i').test(text)) {
-          addEdge(other.metadata.planId, plan.metadata.planId);
-        }
-      }
-    }
-
+    const edges = await this.buildDependencyEdges(plans, repoPath);
     return { plans, edges };
   }
 
