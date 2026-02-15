@@ -164,6 +164,48 @@ describe("ProjectService", () => {
     expect(settings.testFramework).toBe("jest");
   });
 
+  it("should normalize invalid deployment mode to custom", async () => {
+    const repoPath = path.join(tempDir, "invalid-deployment");
+
+    await projectService.createProject({
+      name: "Invalid Deployment",
+      description: "",
+      repoPath,
+      planningAgent: { type: "claude", model: null, cliCommand: null },
+      codingAgent: { type: "claude", model: null, cliCommand: null },
+      deployment: { mode: "invalid" as "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+    });
+
+    const settingsPath = path.join(repoPath, ".opensprint", "settings.json");
+    const settingsRaw = await fs.readFile(settingsPath, "utf-8");
+    const settings = JSON.parse(settingsRaw);
+    expect(settings.deployment).toBeDefined();
+    expect(settings.deployment.mode).toBe("custom");
+  });
+
+  it("should merge partial hilConfig with defaults", async () => {
+    const repoPath = path.join(tempDir, "partial-hil");
+
+    await projectService.createProject({
+      name: "Partial HIL",
+      description: "",
+      repoPath,
+      planningAgent: { type: "claude", model: null, cliCommand: null },
+      codingAgent: { type: "claude", model: null, cliCommand: null },
+      deployment: { mode: "custom" },
+      hilConfig: { scopeChanges: "automated" } as typeof DEFAULT_HIL_CONFIG,
+    });
+
+    const settingsPath = path.join(repoPath, ".opensprint", "settings.json");
+    const settingsRaw = await fs.readFile(settingsPath, "utf-8");
+    const settings = JSON.parse(settingsRaw);
+    expect(settings.hilConfig.scopeChanges).toBe("automated");
+    expect(settings.hilConfig.architectureDecisions).toBe("requires_approval");
+    expect(settings.hilConfig.dependencyModifications).toBe("automated");
+    expect(settings.hilConfig.testFailuresAndRetries).toBe("automated");
+  });
+
   it("should reject path that already has .opensprint", async () => {
     const repoPath = path.join(tempDir, "existing");
     await fs.mkdir(path.join(repoPath, ".opensprint"), { recursive: true });

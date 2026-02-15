@@ -10,12 +10,44 @@ import type {
   ProjectIndexEntry,
   ProjectSettings,
 } from "@opensprint/shared";
-import { OPENSPRINT_DIR, OPENSPRINT_PATHS, DEFAULT_HIL_CONFIG } from "@opensprint/shared";
+import {
+  OPENSPRINT_DIR,
+  OPENSPRINT_PATHS,
+  DEFAULT_HIL_CONFIG,
+  DEFAULT_DEPLOYMENT_CONFIG,
+} from "@opensprint/shared";
+import type { DeploymentConfig, HilConfig } from "@opensprint/shared";
 import { BeadsService } from "./beads.service.js";
 import { ensureEasConfig } from "./eas-config.js";
 import { AppError } from "../middleware/error-handler.js";
 
 const execAsync = promisify(exec);
+
+const VALID_DEPLOYMENT_MODES = ['expo', 'custom'] as const;
+
+/** Normalize deployment config: ensure valid mode, merge with defaults (PRD §6.4) */
+function normalizeDeployment(input: CreateProjectRequest['deployment']): DeploymentConfig {
+  const mode = input?.mode && VALID_DEPLOYMENT_MODES.includes(input.mode as 'expo' | 'custom')
+    ? (input.mode as 'expo' | 'custom')
+    : 'custom';
+  return {
+    ...DEFAULT_DEPLOYMENT_CONFIG,
+    ...input,
+    mode,
+    expoConfig: mode === 'expo' ? { channel: input?.expoConfig?.channel ?? 'preview' } : undefined,
+    customCommand: mode === 'custom' ? input?.customCommand : undefined,
+    webhookUrl: mode === 'custom' ? input?.webhookUrl : undefined,
+  };
+}
+
+/** Normalize HIL config: merge partial input with defaults (PRD §6.5) */
+function normalizeHilConfig(input: CreateProjectRequest['hilConfig']): HilConfig {
+  if (!input) return DEFAULT_HIL_CONFIG;
+  return {
+    ...DEFAULT_HIL_CONFIG,
+    ...input,
+  };
+}
 
 function getProjectIndexPaths(): { dir: string; file: string } {
   const dir = path.join(process.env.HOME ?? process.env.USERPROFILE ?? "/tmp", ".opensprint");
@@ -170,19 +202,21 @@ export class ProjectService {
       changeLog: [],
     });
 
-    // Write settings
+    // Write settings (deployment and HIL normalized per PRD §6.4, §6.5)
+    const deployment = normalizeDeployment(input.deployment);
+    const hilConfig = normalizeHilConfig(input.hilConfig);
     const settings: ProjectSettings = {
       planningAgent: input.planningAgent,
       codingAgent: input.codingAgent,
-      deployment: input.deployment,
-      hilConfig: input.hilConfig ?? DEFAULT_HIL_CONFIG,
+      deployment,
+      hilConfig,
       testFramework: input.testFramework ?? null,
     };
     const settingsPath = path.join(repoPath, OPENSPRINT_PATHS.settings);
     await this.writeJson(settingsPath, settings);
 
     // Create eas.json for Expo projects (PRD §6.4)
-    if (input.deployment?.mode === 'expo') {
+    if (deployment.mode === 'expo') {
       await ensureEasConfig(repoPath);
     }
 

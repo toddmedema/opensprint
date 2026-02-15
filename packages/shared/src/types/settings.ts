@@ -29,6 +29,11 @@ export interface DeploymentConfig {
 
 export type DeploymentConfigInput = DeploymentConfig;
 
+/** Default deployment configuration (PRD §6.4) */
+export const DEFAULT_DEPLOYMENT_CONFIG: DeploymentConfig = {
+  mode: 'custom',
+};
+
 /** HIL notification mode for each category */
 export type HilNotificationMode = 'automated' | 'notify_and_proceed' | 'requires_approval';
 
