@@ -1,21 +1,21 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { v4 as uuid } from 'uuid';
-import type { FeedbackItem, FeedbackSubmitRequest, FeedbackCategory, PrdSectionKey } from '@opensprint/shared';
+import type { FeedbackItem, FeedbackSubmitRequest, FeedbackCategory } from '@opensprint/shared';
 import { OPENSPRINT_PATHS } from '@opensprint/shared';
 import { ProjectService } from './project.service.js';
 import { AgentClient } from './agent-client.js';
-import { PrdService } from './prd.service.js';
 import { BeadsService } from './beads.service.js';
 import { HilService } from './hil-service.js';
 import { ChatService } from './chat.service.js';
+import { PlanService } from './plan.service.js';
 import { broadcastToProject } from '../websocket/index.js';
 
 const FEEDBACK_CATEGORIZATION_PROMPT = `You are an AI assistant that categorizes user feedback about a software product.
 
 Given the user's feedback text, determine:
 1. The category: "bug" (something broken), "feature" (new capability request), "ux" (usability improvement), or "scope" (fundamental change to requirements)
-2. Which feature/plan it relates to (if identifiable)
+2. Which feature/plan it relates to (if identifiable) — use the planId from the available plans list
 3. A suggested title for a task to address it
 
 Respond in JSON format:
@@ -29,10 +29,10 @@ Respond in JSON format:
 export class FeedbackService {
   private projectService = new ProjectService();
   private agentClient = new AgentClient();
-  private prdService = new PrdService();
   private beads = new BeadsService();
   private hilService = new HilService();
   private chatService = new ChatService();
+  private planService = new PlanService();
 
   /** Resolve plan ID (e.g. "user-auth") to bead epic ID for discovered-from dependency */
   private async resolvePlanIdToBeadEpicId(
@@ -113,15 +113,31 @@ export class FeedbackService {
     return item;
   }
 
+  /** Build plan context for AI mapping (planId, title from first heading) */
+  private async getPlanContextForCategorization(projectId: string): Promise<string> {
+    try {
+      const plans = await this.planService.listPlans(projectId);
+      if (plans.length === 0) return 'No plans exist yet. Use mappedPlanId: null.';
+      const lines = plans.map((p) => {
+        const title = p.content.split('\n')[0]?.replace(/^#+\s*/, '').trim() || p.metadata.planId;
+        return `- ${p.metadata.planId}: ${title}`;
+      });
+      return `Available plans (use planId for mappedPlanId):\n${lines.join('\n')}`;
+    } catch {
+      return 'No plans available. Use mappedPlanId: null.';
+    }
+  }
+
   /** AI categorization and task creation */
   private async categorizeFeedback(projectId: string, item: FeedbackItem): Promise<void> {
     const settings = await this.projectService.getSettings(projectId);
     const project = await this.projectService.getProject(projectId);
+    const planContext = await this.getPlanContextForCategorization(projectId);
 
     try {
       const response = await this.agentClient.invoke({
         config: settings.planningAgent,
-        prompt: `Categorize this feedback:\n\n"${item.text}"`,
+        prompt: `${planContext}\n\nCategorize this feedback:\n\n"${item.text}"`,
         systemPrompt: FEEDBACK_CATEGORIZATION_PROMPT,
         cwd: project.repoPath,
       });
@@ -156,27 +172,30 @@ export class FeedbackService {
           }
         }
 
-        // Create a beads task from the feedback
-        const taskResult = await this.beads.create(project.repoPath, parsed.suggestedTitle || item.text.slice(0, 80), {
-          type: item.category === 'bug' ? 'bug' : 'task',
-          description: parsed.suggestedDescription || item.text,
-          priority: item.category === 'bug' ? 1 : 2,
-        });
+        // Resolve plan ID to bead epic ID for parent-child and discovered-from (PRD §7.4.2, §14)
+        const beadEpicId = item.mappedPlanId
+          ? await this.resolvePlanIdToBeadEpicId(project.repoPath, item.mappedPlanId)
+          : null;
 
-        if (item.mappedPlanId) {
-          // Resolve plan ID to bead epic ID for discovered-from dependency (PRD §14)
-          const beadEpicId = await this.resolvePlanIdToBeadEpicId(
+        // Create a beads task from the feedback — as child of epic when mapped (PRD §7.4.2)
+        const taskResult = await this.beads.create(
+          project.repoPath,
+          parsed.suggestedTitle || item.text.slice(0, 80),
+          {
+            type: item.category === 'bug' ? 'bug' : 'task',
+            description: parsed.suggestedDescription || item.text,
+            priority: item.category === 'bug' ? 1 : 2,
+            parentId: beadEpicId ?? undefined,
+          },
+        );
+
+        if (beadEpicId) {
+          await this.beads.addDependency(
             project.repoPath,
-            item.mappedPlanId,
+            taskResult.id,
+            beadEpicId,
+            'discovered-from',
           );
-          if (beadEpicId) {
-            await this.beads.addDependency(
-              project.repoPath,
-              taskResult.id,
-              beadEpicId,
-              'discovered-from',
-            );
-          }
         }
 
         item.createdTaskIds = [taskResult.id];

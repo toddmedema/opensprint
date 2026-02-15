@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { api } from "../../api/client";
-import type { FeedbackItem } from "@opensprint/shared";
+import { useProjectWebSocket } from "../../contexts/ProjectWebSocketContext";
+import type { FeedbackItem, FeedbackMappedEvent } from "@opensprint/shared";
 
 interface ValidatePhaseProps {
   projectId: string;
@@ -25,6 +26,7 @@ export function ValidatePhase({ projectId }: ValidatePhaseProps) {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { registerEventHandler } = useProjectWebSocket();
 
   useEffect(() => {
     api.feedback
@@ -33,6 +35,27 @@ export function ValidatePhase({ projectId }: ValidatePhaseProps) {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [projectId]);
+
+  useEffect(() => {
+    const handleFeedbackMapped = (event: FeedbackMappedEvent) => {
+      setFeedback((prev) =>
+        prev.map((item) =>
+          item.id === event.feedbackId
+            ? {
+                ...item,
+                mappedPlanId: event.planId || item.mappedPlanId,
+                createdTaskIds: event.taskIds,
+                status: "mapped" as const,
+              }
+            : item,
+        ),
+      );
+    };
+    const unregister = registerEventHandler((e) => {
+      if (e.type === "feedback.mapped") handleFeedbackMapped(e);
+    });
+    return unregister;
+  }, [registerEventHandler]);
 
   const handleSubmit = async () => {
     if (!input.trim() || submitting) return;
