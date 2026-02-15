@@ -1,15 +1,15 @@
 /** Available PRD sections */
 export type PrdSectionKey =
-  | 'executive_summary'
-  | 'problem_statement'
-  | 'user_personas'
-  | 'goals_and_metrics'
-  | 'feature_list'
-  | 'technical_architecture'
-  | 'data_model'
-  | 'api_contracts'
-  | 'non_functional_requirements'
-  | 'open_questions';
+  | "executive_summary"
+  | "problem_statement"
+  | "user_personas"
+  | "goals_and_metrics"
+  | "feature_list"
+  | "technical_architecture"
+  | "data_model"
+  | "api_contracts"
+  | "non_functional_requirements"
+  | "open_questions";
 
 /** A single section of the PRD */
 export interface PrdSection {
@@ -22,7 +22,7 @@ export interface PrdSection {
 export interface PrdChangeLogEntry {
   section: PrdSectionKey;
   version: number;
-  source: 'design' | 'plan' | 'build' | 'validate';
+  source: "design" | "plan" | "build" | "validate";
   timestamp: string;
   diff: string;
 }

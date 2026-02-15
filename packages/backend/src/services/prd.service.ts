@@ -1,21 +1,21 @@
-import fs from 'fs/promises';
-import path from 'path';
-import type { Prd, PrdSection, PrdChangeLogEntry, PrdSectionKey } from '@opensprint/shared';
-import { OPENSPRINT_PATHS } from '@opensprint/shared';
-import { ProjectService } from './project.service.js';
-import { AppError } from '../middleware/error-handler.js';
+import fs from "fs/promises";
+import path from "path";
+import type { Prd, PrdSection, PrdChangeLogEntry, PrdSectionKey } from "@opensprint/shared";
+import { OPENSPRINT_PATHS } from "@opensprint/shared";
+import { ProjectService } from "./project.service.js";
+import { AppError } from "../middleware/error-handler.js";
 
 const PRD_SECTION_KEYS: PrdSectionKey[] = [
-  'executive_summary',
-  'problem_statement',
-  'user_personas',
-  'goals_and_metrics',
-  'feature_list',
-  'technical_architecture',
-  'data_model',
-  'api_contracts',
-  'non_functional_requirements',
-  'open_questions',
+  "executive_summary",
+  "problem_statement",
+  "user_personas",
+  "goals_and_metrics",
+  "feature_list",
+  "technical_architecture",
+  "data_model",
+  "api_contracts",
+  "non_functional_requirements",
+  "open_questions",
 ];
 
 export class PrdService {
@@ -31,17 +31,17 @@ export class PrdService {
   private async loadPrd(projectId: string): Promise<Prd> {
     const prdPath = await this.getPrdPath(projectId);
     try {
-      const data = await fs.readFile(prdPath, 'utf-8');
+      const data = await fs.readFile(prdPath, "utf-8");
       return JSON.parse(data) as Prd;
     } catch {
-      throw new AppError(404, 'PRD_NOT_FOUND', 'PRD not found for this project');
+      throw new AppError(404, "PRD_NOT_FOUND", "PRD not found for this project");
     }
   }
 
   /** Save the PRD to disk (atomic write) */
   private async savePrd(projectId: string, prd: Prd): Promise<void> {
     const prdPath = await this.getPrdPath(projectId);
-    const tmpPath = prdPath + '.tmp';
+    const tmpPath = prdPath + ".tmp";
     await fs.writeFile(tmpPath, JSON.stringify(prd, null, 2));
     await fs.rename(tmpPath, prdPath);
   }
@@ -51,22 +51,22 @@ export class PrdService {
     if (!PRD_SECTION_KEYS.includes(key as PrdSectionKey)) {
       throw new AppError(
         400,
-        'INVALID_SECTION',
-        `Invalid PRD section key '${key}'. Valid keys: ${PRD_SECTION_KEYS.join(', ')}`,
+        "INVALID_SECTION",
+        `Invalid PRD section key '${key}'. Valid keys: ${PRD_SECTION_KEYS.join(", ")}`,
       );
     }
   }
 
   /** Compute a simple diff summary */
   private computeDiff(oldContent: string, newContent: string): string {
-    if (!oldContent && newContent) return '[Initial content added]';
-    if (oldContent && !newContent) return '[Content removed]';
-    if (oldContent === newContent) return '[No changes]';
-    const oldLines = oldContent.split('\n').length;
-    const newLines = newContent.split('\n').length;
+    if (!oldContent && newContent) return "[Initial content added]";
+    if (oldContent && !newContent) return "[Content removed]";
+    if (oldContent === newContent) return "[No changes]";
+    const oldLines = oldContent.split("\n").length;
+    const newLines = newContent.split("\n").length;
     const lineDelta = newLines - oldLines;
     const charDelta = newContent.length - oldContent.length;
-    return `[${lineDelta >= 0 ? '+' : ''}${lineDelta} lines, ${charDelta >= 0 ? '+' : ''}${charDelta} chars]`;
+    return `[${lineDelta >= 0 ? "+" : ""}${lineDelta} lines, ${charDelta >= 0 ? "+" : ""}${charDelta} chars]`;
   }
 
   /** Get the full PRD */
@@ -80,7 +80,7 @@ export class PrdService {
     const prd = await this.loadPrd(projectId);
     const section = prd.sections[sectionKey as PrdSectionKey];
     if (!section) {
-      throw new AppError(404, 'SECTION_NOT_FOUND', `PRD section '${sectionKey}' not found`);
+      throw new AppError(404, "SECTION_NOT_FOUND", `PRD section '${sectionKey}' not found`);
     }
     return section;
   }
@@ -90,7 +90,7 @@ export class PrdService {
     projectId: string,
     sectionKey: string,
     content: string,
-    source: PrdChangeLogEntry['source'] = 'design',
+    source: PrdChangeLogEntry["source"] = "design",
   ): Promise<{ section: PrdSection; previousVersion: number; newVersion: number }> {
     this.validateSectionKey(sectionKey);
     const prd = await this.loadPrd(projectId);
@@ -100,7 +100,7 @@ export class PrdService {
     const existing = prd.sections[key];
     const previousVersion = existing ? existing.version : 0;
     const newVersion = previousVersion + 1;
-    const diff = this.computeDiff(existing?.content ?? '', content);
+    const diff = this.computeDiff(existing?.content ?? "", content);
 
     const updatedSection: PrdSection = {
       content,
@@ -128,7 +128,7 @@ export class PrdService {
   async updateSections(
     projectId: string,
     updates: Array<{ section: PrdSectionKey; content: string }>,
-    source: PrdChangeLogEntry['source'] = 'design',
+    source: PrdChangeLogEntry["source"] = "design",
   ): Promise<Array<{ section: string; previousVersion: number; newVersion: number }>> {
     const prd = await this.loadPrd(projectId);
     const changes: Array<{ section: string; previousVersion: number; newVersion: number }> = [];

@@ -4,11 +4,13 @@ import type { Plan, PlanMetadata, PlanDependencyGraph, PlanDependencyEdge } from
 import { OPENSPRINT_PATHS } from '@opensprint/shared';
 import { ProjectService } from './project.service.js';
 import { BeadsService, type BeadsIssue } from './beads.service.js';
+import { ChatService } from './chat.service.js';
 import { AppError } from '../middleware/error-handler.js';
 
 export class PlanService {
   private projectService = new ProjectService();
   private beads = new BeadsService();
+  private chatService = new ChatService();
 
   /** Get the plans directory for a project */
   private async getPlansDir(projectId: string): Promise<string> {
@@ -233,6 +235,14 @@ export class PlanService {
       path.join(plansDir, `${planId}.meta.json`),
       plan.metadata,
     );
+
+    // Living PRD sync: invoke planning agent to review Plan vs PRD and update affected sections (PRD §15.1)
+    try {
+      await this.chatService.syncPrdFromPlanShip(projectId, planId, plan.content);
+    } catch (err) {
+      console.error('[plan] PRD sync on ship failed:', err);
+      // Ship succeeds even if PRD sync fails; user can manually update PRD
+    }
 
     return { ...plan, status: 'shipped' };
   }

@@ -231,4 +231,51 @@ export class ChatService {
   async getHistory(projectId: string, context: string): Promise<Conversation> {
     return this.getOrCreateConversation(projectId, context);
   }
+
+  /**
+   * When a Plan is shipped, invoke the planning agent to review the Plan against the PRD
+   * and update any affected sections. PRD §15.1 Living PRD Synchronization.
+   */
+  async syncPrdFromPlanShip(projectId: string, planId: string, planContent: string): Promise<void> {
+    const settings = await this.projectService.getSettings(projectId);
+    const agentConfig = settings.planningAgent;
+    const prdContext = await this.buildPrdContext(projectId);
+    const repoPath = (await this.projectService.getProject(projectId)).repoPath;
+
+    const systemPrompt = `You are a PRD synchronization assistant for OpenSprint. A Plan has just been shipped.
+
+Your task: Review the shipped Plan against the current PRD. Update any PRD sections that should reflect the Plan's decisions, scope, technical approach, or acceptance criteria. The PRD is the living document; it should stay aligned with what is being built.
+
+Output updates using this format:
+[PRD_UPDATE:section_key]
+<markdown content for the section>
+[/PRD_UPDATE]
+
+Valid section keys: executive_summary, problem_statement, user_personas, goals_and_metrics, feature_list, technical_architecture, data_model, api_contracts, non_functional_requirements, open_questions
+
+Only output PRD_UPDATE blocks for sections that need changes. If no updates are needed, respond briefly without any PRD_UPDATE blocks.`;
+
+    const prompt = `Review this shipped Plan (${planId}) and update the PRD as needed.\n\n## Shipped Plan\n\n${planContent}`;
+
+    const fullContext = `${systemPrompt}\n\n## Current PRD\n\n${prdContext}`;
+
+    const response = await this.agentClient.invoke({
+      config: agentConfig,
+      prompt,
+      systemPrompt: fullContext,
+      cwd: repoPath,
+    });
+
+    const prdUpdates = this.parsePrdUpdates(response.content);
+    if (prdUpdates.length === 0) return;
+
+    const changes = await this.prdService.updateSections(projectId, prdUpdates, 'plan');
+    for (const change of changes) {
+      broadcastToProject(projectId, {
+        type: 'prd.updated',
+        section: change.section,
+        version: change.newVersion,
+      });
+    }
+  }
 }
