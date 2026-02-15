@@ -172,4 +172,86 @@ User authentication.
     const outputs = await assembler.collectDependencyOutputs(repoPath, ['bd-a3f8.1']);
     expect(outputs).toHaveLength(0);
   });
+
+  it('should buildContext given taskId: Plan from epic, PRD sections, dependency diffs', async () => {
+    // Setup PRD
+    const prdDir = path.join(repoPath, path.dirname(OPENSPRINT_PATHS.prd));
+    await fs.mkdir(prdDir, { recursive: true });
+    await fs.writeFile(
+      path.join(repoPath, OPENSPRINT_PATHS.prd),
+      JSON.stringify({
+        sections: {
+          executive_summary: { content: '## Summary\n\nTest product.' },
+        },
+      }),
+    );
+
+    // Setup plan
+    const plansDir = path.join(repoPath, OPENSPRINT_PATHS.plans);
+    await fs.mkdir(plansDir, { recursive: true });
+    const planContent = '# Auth Plan\n\nUser authentication.';
+    await fs.writeFile(path.join(plansDir, 'auth.md'), planContent);
+
+    // Setup dependency session (branch merged, so we use archived session)
+    const sessionsDir = path.join(repoPath, OPENSPRINT_PATHS.sessions);
+    await fs.mkdir(path.join(sessionsDir, 'bd-a3f8.1-1'), { recursive: true });
+    await fs.writeFile(
+      path.join(sessionsDir, 'bd-a3f8.1-1', 'session.json'),
+      JSON.stringify({
+        status: 'approved',
+        gitDiff: 'diff from dep task',
+        summary: 'Implemented login endpoint',
+      }),
+    );
+
+    const mockBeads = {
+      show: async (_repoPath: string, id: string) => {
+        if (id === 'bd-a3f8.2') {
+          return {
+            id: 'bd-a3f8.2',
+            title: 'Implement JWT validation',
+            description: 'Add JWT validation middleware',
+            dependencies: [{ type: 'blocks', depends_on_id: 'bd-a3f8.1' }],
+          };
+        }
+        if (id === 'bd-a3f8') {
+          return {
+            id: 'bd-a3f8',
+            description: '.opensprint/plans/auth.md',
+          };
+        }
+        throw new Error(`Unknown id: ${id}`);
+      },
+      getParentId: (taskId: string) => {
+        const lastDot = taskId.lastIndexOf('.');
+        if (lastDot <= 0) return null;
+        return taskId.slice(0, lastDot);
+      },
+      getBlockers: async () => ['bd-a3f8.1'],
+    };
+
+    const mockBranchManager = {
+      getDiff: async () => {
+        throw new Error('Branch merged'); // Simulate branch no longer exists
+      },
+    };
+
+    const context = await assembler.buildContext(
+      repoPath,
+      'bd-a3f8.2',
+      mockBeads as any,
+      mockBranchManager as any,
+    );
+
+    expect(context.taskId).toBe('bd-a3f8.2');
+    expect(context.title).toBe('Implement JWT validation');
+    expect(context.description).toBe('Add JWT validation middleware');
+    expect(context.planContent).toContain('Auth Plan');
+    expect(context.planContent).toContain('User authentication');
+    expect(context.prdExcerpt).toContain('Test product.');
+    expect(context.dependencyOutputs).toHaveLength(1);
+    expect(context.dependencyOutputs[0].taskId).toBe('bd-a3f8.1');
+    expect(context.dependencyOutputs[0].diff).toBe('diff from dep task');
+    expect(context.dependencyOutputs[0].summary).toBe('Implemented login endpoint');
+  });
 });

@@ -143,30 +143,6 @@ export class OrchestratorService {
     return this.getState(projectId).status;
   }
 
-  /** Resolve plan content for a task from its parent epic. task.description is the task spec, not a path. */
-  private async getPlanContentForTask(repoPath: string, task: BeadsIssue): Promise<string> {
-    const parentId = this.beads.getParentId(task.id);
-    if (parentId) {
-      try {
-        const parent = await this.beads.show(repoPath, parentId);
-        const desc = parent.description as string;
-        if (desc?.startsWith('.opensprint/plans/')) {
-          const planId = path.basename(desc, '.md');
-          return this.contextAssembler.readPlanContent(repoPath, planId);
-        }
-      } catch {
-        // Parent might not exist
-      }
-    }
-    return '';
-  }
-
-  /** Get IDs of tasks that block this one (must complete before this task) */
-  private async getBlockingDependencyIds(repoPath: string, taskId: string): Promise<string[]> {
-    const blockers = await this.beads.getBlockers(repoPath, taskId);
-    return blockers;
-  }
-
   // ─── Main Orchestrator Loop ───
 
   private async runLoop(projectId: string): Promise<void> {
@@ -263,12 +239,12 @@ export class OrchestratorService {
         await this.branchManager.createBranch(repoPath, branchName);
       }
 
-      // Assemble context
-      const prdExcerpt = await this.contextAssembler.extractPrdExcerpt(repoPath);
-      const planContent = await this.getPlanContentForTask(repoPath, task);
-      const dependencyOutputs = await this.contextAssembler.collectDependencyOutputs(
+      // Assemble context via ContextBuilder (given taskId)
+      const context = await this.contextAssembler.buildContext(
         repoPath,
-        await this.getBlockingDependencyIds(repoPath, task.id),
+        task.id,
+        this.beads,
+        this.branchManager,
       );
 
       const config: ActiveTaskConfig = {
@@ -285,14 +261,7 @@ export class OrchestratorService {
         reviewFeedback: retryContext?.reviewFeedback ?? null,
       };
 
-      await this.contextAssembler.assembleTaskDirectory(repoPath, task.id, config, {
-        taskId: task.id,
-        title: task.title,
-        description: task.description || '',
-        planContent,
-        prdExcerpt,
-        dependencyOutputs,
-      });
+      await this.contextAssembler.assembleTaskDirectory(repoPath, task.id, config, context);
 
       state.startedAt = new Date().toISOString();
       state.outputLog = [];
@@ -433,17 +402,14 @@ export class OrchestratorService {
         JSON.stringify(config, null, 2),
       );
 
-      // Generate review prompt (resolve plan from parent epic, same as coding phase)
-      const prdExcerpt = await this.contextAssembler.extractPrdExcerpt(repoPath);
-      const planContent = await this.getPlanContentForTask(repoPath, task);
-      await this.contextAssembler.assembleTaskDirectory(repoPath, task.id, config, {
-        taskId: task.id,
-        title: task.title,
-        description: task.description || '',
-        planContent,
-        prdExcerpt,
-        dependencyOutputs: [],
-      });
+      // Generate review prompt (ContextBuilder assembles plan, PRD; deps not needed for review)
+      const context = await this.contextAssembler.buildContext(
+        repoPath,
+        task.id,
+        this.beads,
+        this.branchManager,
+      );
+      await this.contextAssembler.assembleTaskDirectory(repoPath, task.id, config, context);
 
       state.startedAt = new Date().toISOString();
       state.outputLog = [];

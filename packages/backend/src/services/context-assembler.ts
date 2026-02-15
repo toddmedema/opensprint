@@ -3,8 +3,9 @@ import path from 'path';
 import { OPENSPRINT_PATHS } from '@opensprint/shared';
 import type { ActiveTaskConfig } from '@opensprint/shared';
 import { BranchManager } from './branch-manager.js';
+import type { BeadsService } from './beads.service.js';
 
-interface TaskContext {
+export interface TaskContext {
   taskId: string;
   title: string;
   description: string;
@@ -110,6 +111,94 @@ export class ContextAssembler {
     } catch {
       return '# Plan\n\nNo plan content available.';
     }
+  }
+
+  /**
+   * Build full context for a task given only taskId (ContextBuilder per feature decomposition).
+   * - Gets Plan path from epic description, reads Plan markdown
+   * - Extracts relevant PRD sections
+   * - For each dependency task: gets git diff (main...branch) if branch exists, else uses archived session
+   */
+  async buildContext(
+    repoPath: string,
+    taskId: string,
+    beads: BeadsService,
+    branchManager: BranchManager,
+  ): Promise<TaskContext> {
+    const task = await beads.show(repoPath, taskId);
+    const title = task.title ?? '';
+    const description = (task.description as string) ?? '';
+
+    // Get Plan path from epic (parent's description)
+    let planContent = '# Plan\n\nNo plan content available.';
+    const parentId = beads.getParentId(taskId);
+    if (parentId) {
+      try {
+        const parent = await beads.show(repoPath, parentId);
+        const desc = parent.description as string;
+        if (desc?.startsWith('.opensprint/plans/')) {
+          const planId = path.basename(desc, '.md');
+          planContent = await this.readPlanContent(repoPath, planId);
+        }
+      } catch {
+        // Parent might not exist
+      }
+    }
+
+    const prdExcerpt = await this.extractPrdExcerpt(repoPath);
+    const dependencyTaskIds = await beads.getBlockers(repoPath, taskId);
+    const dependencyOutputs = await this.collectDependencyOutputsWithGitDiff(
+      repoPath,
+      dependencyTaskIds,
+      branchManager,
+    );
+
+    return {
+      taskId,
+      title,
+      description,
+      planContent,
+      prdExcerpt,
+      dependencyOutputs,
+    };
+  }
+
+  /**
+   * Collect diffs/summaries from dependency tasks.
+   * For each dep: try git diff main...branch first; if branch doesn't exist (merged/deleted), use archived session.
+   */
+  private async collectDependencyOutputsWithGitDiff(
+    repoPath: string,
+    dependencyTaskIds: string[],
+    branchManager: BranchManager,
+  ): Promise<Array<{ taskId: string; diff: string; summary: string }>> {
+    const outputs: Array<{ taskId: string; diff: string; summary: string }> = [];
+
+    for (const depId of dependencyTaskIds) {
+      const branchName = `opensprint/${depId}`;
+      let diff = '';
+      let summary = `Task ${depId} completed.`;
+
+      // Try git diff first (branch exists if dep is in progress or in review)
+      try {
+        diff = await branchManager.getDiff(repoPath, branchName);
+      } catch {
+        // Branch merged/deleted — fall back to archived session
+      }
+
+      // If no diff from git, use session archive
+      if (!diff) {
+        const fromSession = await this.collectDependencyOutputs(repoPath, [depId]);
+        if (fromSession.length > 0) {
+          diff = fromSession[0].diff;
+          summary = fromSession[0].summary;
+        }
+      }
+
+      outputs.push({ taskId: depId, diff, summary });
+    }
+
+    return outputs;
   }
 
   /**
