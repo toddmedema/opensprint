@@ -7,15 +7,26 @@ const execAsync = promisify(exec);
 const DEFAULT_TIMEOUT_MS = 30000;
 const MAX_BUFFER_BYTES = 2 * 1024 * 1024; // 2MB for large list output
 
+/**
+ * Raw shape returned by `bd list --json` / `bd show --json`.
+ * Field names use snake_case to match the beads CLI output.
+ */
 export interface BeadsIssue {
   id: string;
   title: string;
-  description: string;
-  type: string;
+  description?: string;
+  issue_type: string;
   status: string;
   priority: number;
-  assignee: string | null;
-  labels: string[];
+  assignee?: string | null;
+  owner?: string | null;
+  labels?: string[];
+  created_at: string;
+  updated_at: string;
+  created_by?: string;
+  dependency_count?: number;
+  dependent_count?: number;
+  comment_count?: number;
   [key: string]: unknown;
 }
 

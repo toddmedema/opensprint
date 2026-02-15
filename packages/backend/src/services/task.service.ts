@@ -51,7 +51,7 @@ export class TaskService {
     return nonEpicReady.map((issue) => this.beadsIssueToTask(issue, readyIds, idToIssue));
   }
 
-  /** Get a single task (wraps bd show --json) */
+  /** Get a single task with full details (wraps bd show --json) */
   async getTask(projectId: string, taskId: string): Promise<Task> {
     const project = await this.projectService.getProject(projectId);
     const [issue, allIssues, readyIssues] = await Promise.all([
