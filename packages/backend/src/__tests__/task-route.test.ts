@@ -107,4 +107,71 @@ describe("Tasks REST - task-to-kanban-column mapping", () => {
     expect(taskAFinal.kanbanColumn).toBe("done");
     expect(taskBFinal.kanbanColumn).toBe("ready");
   });
+
+  it("POST /tasks/:taskId/prepare creates .opensprint/active/<task-id>/ with prompt, config, context", {
+    timeout: 20000,
+  }, async () => {
+    const app = createApp();
+
+    // Create plan with tasks
+    const planRes = await request(app)
+      .post(`${API_PREFIX}/projects/${projectId}/plans`)
+      .send({
+        title: "Prepare Test Feature",
+        content: `# Prepare Test
+
+## Overview
+Test task directory creation.
+
+## Acceptance Criteria
+- Task directory created
+- prompt.md contains task spec
+
+## Technical Approach
+- Use ContextAssembler
+`,
+        complexity: "low",
+        tasks: [{ title: "Task X", description: "Implement X", priority: 0, dependsOn: [] }],
+      });
+
+    expect(planRes.status).toBe(201);
+    const plan = planRes.body.data;
+    const gateTaskId = plan.metadata.gateTaskId;
+    const project = await projectService.getProject(projectId);
+    await beads.close(project.repoPath, gateTaskId, "Plan shipped");
+
+    const tasksRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/tasks`);
+    const tasks = tasksRes.body.data ?? [];
+    const taskX = tasks.find((t: { title: string }) => t.title === "Task X");
+    expect(taskX).toBeDefined();
+
+    const prepareRes = await request(app)
+      .post(`${API_PREFIX}/projects/${projectId}/build/tasks/${taskX.id}/prepare`)
+      .set("Content-Type", "application/json")
+      .send({ createBranch: false });
+
+    expect(prepareRes.status).toBe(201);
+    const { taskDir } = prepareRes.body.data;
+    expect(taskDir).toContain(".opensprint/active");
+    expect(taskDir).toContain(taskX.id);
+
+    const promptPath = path.join(taskDir, "prompt.md");
+    const configPath = path.join(taskDir, "config.json");
+    const prdPath = path.join(taskDir, "context", "prd_excerpt.md");
+    const planPath = path.join(taskDir, "context", "plan.md");
+
+    const prompt = await fs.readFile(promptPath, "utf-8");
+    expect(prompt).toContain("# Task: Task X");
+    expect(prompt).toContain("Implement X");
+    expect(prompt).toContain("context/plan.md");
+    expect(prompt).toContain("context/prd_excerpt.md");
+
+    const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
+    expect(config.taskId).toBe(taskX.id);
+    expect(config.phase).toBe("coding");
+    expect(config.branch).toContain(taskX.id);
+
+    await fs.access(prdPath);
+    await fs.access(planPath);
+  });
 });
