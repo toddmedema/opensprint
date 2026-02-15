@@ -32,7 +32,12 @@ export class PrdService {
     const prdPath = await this.getPrdPath(projectId);
     try {
       const data = await fs.readFile(prdPath, "utf-8");
-      return JSON.parse(data) as Prd;
+      const parsed = JSON.parse(data) as Prd;
+      // Ensure changeLog exists for backward compatibility with older PRD files
+      if (!Array.isArray(parsed.changeLog)) {
+        parsed.changeLog = [];
+      }
+      return parsed;
     } catch {
       throw new AppError(404, "PRD_NOT_FOUND", "PRD not found for this project");
     }

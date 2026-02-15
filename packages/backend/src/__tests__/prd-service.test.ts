@@ -66,7 +66,7 @@ describe("PrdService", () => {
     await expect(prdService.getSection("test-project", "invalid_key")).rejects.toThrow("Invalid PRD section key");
   });
 
-  it("should update a section with versioning", async () => {
+  it("should update a section with versioning and append to change log with diff", async () => {
     const result = await prdService.updateSection(
       "test-project",
       "executive_summary",
@@ -78,16 +78,19 @@ describe("PrdService", () => {
     expect(result.newVersion).toBe(2);
     expect(result.section.content).toBe("Updated summary content");
 
-    // Verify persisted
+    // Verify persisted and change log entry has diff
     const prd = await prdService.getPrd("test-project");
     expect(prd.version).toBe(2);
     expect(prd.sections.executive_summary.version).toBe(2);
     expect(prd.changeLog).toHaveLength(1);
     expect(prd.changeLog[0].section).toBe("executive_summary");
     expect(prd.changeLog[0].source).toBe("design");
+    expect(prd.changeLog[0].version).toBe(2);
+    expect(prd.changeLog[0].timestamp).toBeDefined();
+    expect(prd.changeLog[0].diff).toMatch(/lines|chars|Initial content|Content removed|No changes/);
   });
 
-  it("should update multiple sections at once", async () => {
+  it("should update multiple sections at once and append each to change log with diff", async () => {
     const changes = await prdService.updateSections(
       "test-project",
       [
@@ -103,6 +106,26 @@ describe("PrdService", () => {
 
     const prd = await prdService.getPrd("test-project");
     expect(prd.changeLog).toHaveLength(2);
+    expect(prd.changeLog[0].diff).toBeDefined();
+    expect(prd.changeLog[1].diff).toBeDefined();
+  });
+
+  it("should handle PRD without changeLog (backward compatibility)", async () => {
+    const prdWithoutChangeLog = { ...mockPrd };
+    delete (prdWithoutChangeLog as { changeLog?: unknown }).changeLog;
+    await fs.writeFile(prdPath, JSON.stringify(prdWithoutChangeLog, null, 2));
+
+    const result = await prdService.updateSection(
+      "test-project",
+      "executive_summary",
+      "Migrated content",
+      "design",
+    );
+    expect(result.newVersion).toBe(2);
+
+    const prd = await prdService.getPrd("test-project");
+    expect(prd.changeLog).toHaveLength(1);
+    expect(prd.changeLog[0].section).toBe("executive_summary");
   });
 
   it("should get change history", async () => {
