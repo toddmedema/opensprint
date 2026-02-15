@@ -3,14 +3,20 @@ import { useNavigate } from "react-router-dom";
 import { Layout } from "../components/layout/Layout";
 import { FolderBrowser } from "../components/FolderBrowser";
 import { ModelSelect } from "../components/ModelSelect";
+import {
+  ProjectMetadataStep,
+  isValidProjectMetadata,
+  type ProjectMetadataState,
+} from "../components/ProjectSetupWizard";
 import type { AgentType, DeploymentMode, HilNotificationMode } from "@opensprint/shared";
 import { DEFAULT_HIL_CONFIG, TEST_FRAMEWORKS } from "@opensprint/shared";
 import { api } from "../api/client";
 
-type Step = "basics" | "agents" | "deployment" | "testing" | "hil" | "confirm";
+type Step = "basics" | "repository" | "agents" | "deployment" | "testing" | "hil" | "confirm";
 
 const STEPS: { key: Step; label: string }[] = [
   { key: "basics", label: "Project Info" },
+  { key: "repository", label: "Repository" },
   { key: "agents", label: "Agent Config" },
   { key: "deployment", label: "Deployment" },
   { key: "testing", label: "Testing" },
@@ -23,9 +29,9 @@ export function ProjectSetup() {
   const [step, setStep] = useState<Step>("basics");
   const [creating, setCreating] = useState(false);
 
-  // Form state
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  // Wizard state — step 1: project metadata
+  const [metadata, setMetadata] = useState<ProjectMetadataState>({ name: "", description: "" });
+  const [metadataError, setMetadataError] = useState<string | null>(null);
   const [repoPath, setRepoPath] = useState("");
   const [planningAgentType, setPlanningAgentType] = useState<AgentType>("claude");
   const [planningModel, setPlanningModel] = useState("");
@@ -103,8 +109,8 @@ export function ProjectSetup() {
     setCreateError(null);
     try {
       const project = await api.projects.create({
-        name,
-        description,
+        name: metadata.name.trim(),
+        description: metadata.description.trim(),
         repoPath,
         planningAgent: {
           type: planningAgentType,
@@ -161,26 +167,18 @@ export function ProjectSetup() {
         {/* Step Content */}
         <div className="card p-6">
           {step === "basics" && (
+            <ProjectMetadataStep
+              value={metadata}
+              onChange={(v) => {
+                setMetadata(v);
+                setMetadataError(null);
+              }}
+              error={metadataError}
+            />
+          )}
+
+          {step === "repository" && (
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Project Name</label>
-                <input
-                  type="text"
-                  className="input"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="My Awesome App"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                <textarea
-                  className="input min-h-[80px]"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="A brief description of what you're building"
-                />
-              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Repository Path</label>
                 <div className="flex gap-2">
@@ -542,7 +540,7 @@ export function ProjectSetup() {
               <dl className="space-y-3 text-sm">
                 <div className="flex justify-between">
                   <dt className="text-gray-500">Name</dt>
-                  <dd className="font-medium">{name}</dd>
+                  <dd className="font-medium">{metadata.name}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-gray-500">Repository</dt>
@@ -608,7 +606,10 @@ export function ProjectSetup() {
         {/* Navigation */}
         <div className="flex justify-between mt-6">
           <button
-            onClick={() => setStep(STEPS[currentStepIndex - 1]?.key ?? "basics")}
+            onClick={() => {
+              setMetadataError(null);
+              setStep(STEPS[currentStepIndex - 1]?.key ?? "basics");
+            }}
             disabled={currentStepIndex === 0}
             className="btn-secondary disabled:opacity-50"
           >
@@ -625,6 +626,20 @@ export function ProjectSetup() {
               className="btn-primary disabled:opacity-50"
             >
               {creating ? "Creating..." : "Create Project"}
+            </button>
+          ) : step === "basics" ? (
+            <button
+              onClick={() => {
+                if (isValidProjectMetadata(metadata)) {
+                  setMetadataError(null);
+                  setStep("repository");
+                } else {
+                  setMetadataError("Project name is required");
+                }
+              }}
+              className="btn-primary"
+            >
+              Next
             </button>
           ) : (
             <button onClick={() => setStep(STEPS[currentStepIndex + 1]?.key ?? "confirm")} className="btn-primary">

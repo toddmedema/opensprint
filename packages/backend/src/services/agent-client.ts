@@ -142,6 +142,13 @@ export class AgentClient {
         throw new Error(`Unsupported agent type: ${config.type}`);
     }
 
+    console.log('[agent] Spawning agent subprocess', {
+      type: config.type,
+      command,
+      taskFilePath,
+      cwd,
+    });
+
     const child = spawn(command, args, {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],

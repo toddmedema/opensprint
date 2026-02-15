@@ -180,4 +180,94 @@ describe("ProjectService", () => {
       }),
     ).rejects.toMatchObject({ code: "ALREADY_OPENSPRINT_PROJECT" });
   });
+
+  it("should reject invalid planningAgent schema", async () => {
+    const repoPath = path.join(tempDir, "invalid-planning");
+
+    await expect(
+      projectService.createProject({
+        name: "Test",
+        description: "",
+        repoPath,
+        planningAgent: { type: "invalid" as "claude", model: null, cliCommand: null },
+        codingAgent: { type: "claude", model: null, cliCommand: null },
+        deployment: { mode: "custom" },
+        hilConfig: DEFAULT_HIL_CONFIG,
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_AGENT_CONFIG" });
+  });
+
+  it("should reject invalid codingAgent schema", async () => {
+    const repoPath = path.join(tempDir, "invalid-coding");
+
+    await expect(
+      projectService.createProject({
+        name: "Test",
+        description: "",
+        repoPath,
+        planningAgent: { type: "claude", model: null, cliCommand: null },
+        codingAgent: { type: "cursor", model: 123 as unknown as string, cliCommand: null },
+        deployment: { mode: "custom" },
+        hilConfig: DEFAULT_HIL_CONFIG,
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_AGENT_CONFIG" });
+  });
+
+  it("should accept cursor agent with model", async () => {
+    const repoPath = path.join(tempDir, "cursor-project");
+
+    const project = await projectService.createProject({
+      name: "Cursor Project",
+      description: "",
+      repoPath,
+      planningAgent: { type: "cursor", model: "composer-1.5", cliCommand: null },
+      codingAgent: { type: "cursor", model: "composer-1.5", cliCommand: null },
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+    });
+
+    expect(project.id).toBeDefined();
+    const settings = await projectService.getSettings(project.id);
+    expect(settings.planningAgent.type).toBe("cursor");
+    expect(settings.planningAgent.model).toBe("composer-1.5");
+    expect(settings.codingAgent.type).toBe("cursor");
+  });
+
+  it("should accept custom agent with cliCommand", async () => {
+    const repoPath = path.join(tempDir, "custom-agent");
+
+    const project = await projectService.createProject({
+      name: "Custom Agent",
+      description: "",
+      repoPath,
+      planningAgent: { type: "custom", model: null, cliCommand: "/usr/bin/my-agent" },
+      codingAgent: { type: "custom", model: null, cliCommand: "/usr/bin/my-agent" },
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+    });
+
+    expect(project.id).toBeDefined();
+    const settings = await projectService.getSettings(project.id);
+    expect(settings.planningAgent.type).toBe("custom");
+    expect(settings.planningAgent.cliCommand).toBe("/usr/bin/my-agent");
+  });
+
+  it("should reject invalid agent config in updateSettings", async () => {
+    const repoPath = path.join(tempDir, "update-settings");
+    const project = await projectService.createProject({
+      name: "Test",
+      description: "",
+      repoPath,
+      planningAgent: { type: "claude", model: null, cliCommand: null },
+      codingAgent: { type: "claude", model: null, cliCommand: null },
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+    });
+
+    await expect(
+      projectService.updateSettings(project.id, {
+        planningAgent: { type: "invalid" as "claude", model: null, cliCommand: null },
+      }),
+    ).rejects.toMatchObject({ code: "INVALID_AGENT_CONFIG" });
+  });
 });

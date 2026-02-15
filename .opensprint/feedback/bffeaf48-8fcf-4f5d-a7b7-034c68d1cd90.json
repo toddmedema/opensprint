@@ -1,0 +1,11 @@
+{
+  "id": "bffeaf48-8fcf-4f5d-a7b7-034c68d1cd90",
+  "text": "When submitting feedback, the server log says the agent completed, but the front end didn't update the state from pending to mapped until I refreshed the page. Maybe there's a bug with the websockets?",
+  "category": "bug",
+  "mappedPlanId": "project-setup-wizard",
+  "createdTaskIds": [
+    "opensprint.dev-jd5"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-15T18:45:35.395Z"
+}
