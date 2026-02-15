@@ -32,6 +32,21 @@ export class FeedbackService {
   private beads = new BeadsService();
   private hilService = new HilService();
 
+  /** Resolve plan ID (e.g. "user-auth") to bead epic ID for discovered-from dependency */
+  private async resolvePlanIdToBeadEpicId(
+    repoPath: string,
+    planId: string,
+  ): Promise<string | null> {
+    try {
+      const metaPath = path.join(repoPath, OPENSPRINT_PATHS.plans, `${planId}.meta.json`);
+      const data = await fs.readFile(metaPath, 'utf-8');
+      const meta = JSON.parse(data) as { beadEpicId?: string };
+      return meta.beadEpicId && meta.beadEpicId.trim() ? meta.beadEpicId : null;
+    } catch {
+      return null;
+    }
+  }
+
   /** Get feedback directory for a project */
   private async getFeedbackDir(projectId: string): Promise<string> {
     const project = await this.projectService.getProject(projectId);
@@ -139,13 +154,19 @@ export class FeedbackService {
         });
 
         if (item.mappedPlanId) {
-          // Link to the plan's epic via discovered-from dependency
-          await this.beads.addDependency(
+          // Resolve plan ID to bead epic ID for discovered-from dependency (PRD §14)
+          const beadEpicId = await this.resolvePlanIdToBeadEpicId(
             project.repoPath,
-            taskResult.id,
             item.mappedPlanId,
-            'discovered-from',
           );
+          if (beadEpicId) {
+            await this.beads.addDependency(
+              project.repoPath,
+              taskResult.id,
+              beadEpicId,
+              'discovered-from',
+            );
+          }
         }
 
         item.createdTaskIds = [taskResult.id];
