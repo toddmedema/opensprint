@@ -1,0 +1,9 @@
+{
+  "id": "21151e5d-f82e-425c-9c7b-e498d3e60108",
+  "text": "Bug: Navigating to the different tabs (plan, build and validate) is not updating the URL slug",
+  "category": "bug",
+  "mappedPlanId": "project-index-and-core-infrastructure",
+  "createdTaskIds": [],
+  "status": "mapped",
+  "createdAt": "2026-02-15T18:38:58.213Z"
+}

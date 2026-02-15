@@ -11,7 +11,10 @@ type ProjectParams = { projectId: string };
 // POST /projects/:projectId/build/start — Start the build orchestrator
 buildRouter.post('/start', async (req: Request<ProjectParams>, res, next) => {
   try {
-    const status = await orchestratorService.start(req.params.projectId);
+    const { projectId } = req.params;
+    console.log('[build] POST /start received', { projectId });
+    const status = await orchestratorService.start(projectId);
+    console.log('[build] Orchestrator started', { projectId, running: status.running });
     const body: ApiResponse<OrchestratorStatus> = { data: status };
     res.json(body);
   } catch (err) {

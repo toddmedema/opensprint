@@ -195,14 +195,8 @@ export class FeedbackService {
           },
         );
 
-        if (beadEpicId) {
-          await this.beads.addDependency(
-            project.repoPath,
-            taskResult.id,
-            beadEpicId,
-            'discovered-from',
-          );
-        }
+        // Skip addDependency when parentId was used: beads creates parent-child automatically,
+        // and adding discovered-from between the same pair would be rejected as redundant.
 
         item.createdTaskIds = [taskResult.id];
         item.status = 'mapped';

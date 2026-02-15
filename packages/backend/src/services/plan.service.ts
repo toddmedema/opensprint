@@ -293,10 +293,11 @@ export class PlanService {
       const taskIdMap = new Map<string, string>(); // title -> beads id
 
       for (const task of body.tasks) {
+        const priority = Math.min(4, Math.max(0, task.priority ?? 2));
         const taskResult = await this.beads.create(repoPath, task.title, {
           type: 'task',
           description: task.description,
-          priority: task.priority as any,
+          priority,
           parentId: epicId,
         });
         taskIdMap.set(task.title, taskResult.id);
@@ -560,7 +561,7 @@ export class PlanService {
         tasks: (spec.tasks ?? []).map((t) => ({
           title: t.title || 'Untitled task',
           description: t.description || '',
-          priority: t.priority ?? 2,
+          priority: Math.min(4, Math.max(0, t.priority ?? 2)),
           dependsOn: t.dependsOn ?? [],
         })),
       });

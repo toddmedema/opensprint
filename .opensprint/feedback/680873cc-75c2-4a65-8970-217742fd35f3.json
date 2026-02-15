@@ -1,0 +1,11 @@
+{
+  "id": "680873cc-75c2-4a65-8970-217742fd35f3",
+  "text": "Users should also be able to attach multiple images to feedback: by pasting an image into the input, dragging the files into the feeedback box, or with an image icon button to the left of the \"submit feedback\" button (with secondary styling)",
+  "category": "feature",
+  "mappedPlanId": null,
+  "createdTaskIds": [
+    "opensprint.dev-m4z"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-15T18:46:44.196Z"
+}

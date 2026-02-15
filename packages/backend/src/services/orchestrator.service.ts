@@ -95,9 +95,11 @@ export class OrchestratorService {
     const state = this.getState(projectId);
 
     if (state.status.running) {
+      console.log('[orchestrator] Already running for project', projectId);
       return state.status;
     }
 
+    console.log('[orchestrator] Starting build loop for project', projectId);
     state.status.running = true;
 
     // Broadcast status
@@ -189,6 +191,7 @@ export class OrchestratorService {
       state.status.queueDepth = readyTasks.length;
 
       if (readyTasks.length === 0) {
+        console.log('[orchestrator] No ready tasks, polling again in 5s', { projectId });
         // No tasks available, poll again in 5 seconds
         state.loopTimer = setTimeout(() => this.runLoop(projectId), 5000);
         broadcastToProject(projectId, {
@@ -202,6 +205,7 @@ export class OrchestratorService {
 
       // 2. Pick the highest-priority task
       const task = readyTasks[0];
+      console.log('[orchestrator] Picking task', { projectId, taskId: task.id, title: task.title });
 
       // 3. Assign the task
       await this.beads.update(repoPath, task.id, {

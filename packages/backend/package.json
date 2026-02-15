@@ -23,7 +23,8 @@
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.3",
     "uuid": "^11.0.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",

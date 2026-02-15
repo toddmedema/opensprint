@@ -6,8 +6,6 @@ import { v4 as uuid } from "uuid";
 import type {
   Project,
   CreateProjectRequest,
-  ProjectIndex,
-  ProjectIndexEntry,
   ProjectSettings,
 } from "@opensprint/shared";
 import {
@@ -20,6 +18,8 @@ import type { DeploymentConfig, HilConfig } from "@opensprint/shared";
 import { BeadsService } from "./beads.service.js";
 import { ensureEasConfig } from "./eas-config.js";
 import { AppError } from "../middleware/error-handler.js";
+import * as projectIndex from "./project-index.js";
+import { parseAgentConfig } from "../schemas/agent-config.js";
 
 const execAsync = promisify(exec);
 
@@ -49,33 +49,8 @@ function normalizeHilConfig(input: CreateProjectRequest['hilConfig']): HilConfig
   };
 }
 
-function getProjectIndexPaths(): { dir: string; file: string } {
-  const dir = path.join(process.env.HOME ?? process.env.USERPROFILE ?? "/tmp", ".opensprint");
-  return { dir, file: path.join(dir, "projects.json") };
-}
-
 export class ProjectService {
   private beads = new BeadsService();
-
-  /** Load the global project index */
-  private async loadIndex(): Promise<ProjectIndex> {
-    const { file } = getProjectIndexPaths();
-    try {
-      const data = await fs.readFile(file, "utf-8");
-      return JSON.parse(data) as ProjectIndex;
-    } catch {
-      return { projects: [] };
-    }
-  }
-
-  /** Save the global project index (atomic write) */
-  private async saveIndex(index: ProjectIndex): Promise<void> {
-    const { dir, file } = getProjectIndexPaths();
-    await fs.mkdir(dir, { recursive: true });
-    const tmpPath = file + ".tmp";
-    await fs.writeFile(tmpPath, JSON.stringify(index, null, 2));
-    await fs.rename(tmpPath, file);
-  }
 
   /** Atomic JSON write */
   private async writeJson(filePath: string, data: unknown): Promise<void> {
@@ -104,10 +79,10 @@ export class ProjectService {
 
   /** List all projects */
   async listProjects(): Promise<Project[]> {
-    const index = await this.loadIndex();
+    const entries = await projectIndex.getProjects();
     const projects: Project[] = [];
 
-    for (const entry of index.projects) {
+    for (const entry of entries) {
       try {
         const settingsPath = path.join(entry.repoPath, OPENSPRINT_PATHS.settings);
         const stat = await fs.stat(settingsPath);
@@ -140,6 +115,17 @@ export class ProjectService {
     }
     if (!repoPath) {
       throw new AppError(400, "INVALID_INPUT", "Repository path is required");
+    }
+
+    // Validate agent config schema
+    let planningAgent: { type: "claude" | "cursor" | "custom"; model: string | null; cliCommand: string | null };
+    let codingAgent: { type: "claude" | "cursor" | "custom"; model: string | null; cliCommand: string | null };
+    try {
+      planningAgent = parseAgentConfig(input.planningAgent, "planningAgent");
+      codingAgent = parseAgentConfig(input.codingAgent, "codingAgent");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Invalid agent configuration";
+      throw new AppError(400, "INVALID_AGENT_CONFIG", msg);
     }
 
     const id = uuid();
@@ -206,8 +192,8 @@ export class ProjectService {
     const deployment = normalizeDeployment(input.deployment);
     const hilConfig = normalizeHilConfig(input.hilConfig);
     const settings: ProjectSettings = {
-      planningAgent: input.planningAgent,
-      codingAgent: input.codingAgent,
+      planningAgent,
+      codingAgent,
       deployment,
       hilConfig,
       testFramework: input.testFramework ?? null,
@@ -221,15 +207,13 @@ export class ProjectService {
     }
 
     // Add to global index
-    const index = await this.loadIndex();
-    index.projects.push({
+    await projectIndex.addProject({
       id,
       name,
       description: input.description ?? "",
       repoPath,
       createdAt: now,
     });
-    await this.saveIndex(index);
 
     return {
       id,
@@ -244,8 +228,8 @@ export class ProjectService {
 
   /** Get a single project by ID */
   async getProject(id: string): Promise<Project> {
-    const index = await this.loadIndex();
-    const entry = index.projects.find((p) => p.id === id);
+    const entries = await projectIndex.getProjects();
+    const entry = entries.find((p) => p.id === id);
     if (!entry) {
       throw new AppError(404, "PROJECT_NOT_FOUND", `Project ${id} not found`);
     }
@@ -282,13 +266,10 @@ export class ProjectService {
 
     // Update global index if name or description changed
     if (updates.name !== undefined || updates.description !== undefined) {
-      const index = await this.loadIndex();
-      const entry = index.projects.find((p) => p.id === id);
-      if (entry) {
-        if (updates.name !== undefined) entry.name = updates.name;
-        if (updates.description !== undefined) entry.description = updates.description;
-        await this.saveIndex(index);
-      }
+      const indexUpdates: { name?: string; description?: string } = {};
+      if (updates.name !== undefined) indexUpdates.name = updates.name;
+      if (updates.description !== undefined) indexUpdates.description = updates.description;
+      await projectIndex.updateProject(id, indexUpdates);
     }
 
     return updated;
@@ -310,7 +291,28 @@ export class ProjectService {
   async updateSettings(projectId: string, updates: Partial<ProjectSettings>): Promise<ProjectSettings> {
     const repoPath = await this.getRepoPath(projectId);
     const current = await this.getSettings(projectId);
-    const updated = { ...current, ...updates };
+
+    // Validate agent config if provided
+    let planningAgent = updates.planningAgent ?? current.planningAgent;
+    let codingAgent = updates.codingAgent ?? current.codingAgent;
+    if (updates.planningAgent !== undefined) {
+      try {
+        planningAgent = parseAgentConfig(updates.planningAgent, "planningAgent");
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Invalid planning agent configuration";
+        throw new AppError(400, "INVALID_AGENT_CONFIG", msg);
+      }
+    }
+    if (updates.codingAgent !== undefined) {
+      try {
+        codingAgent = parseAgentConfig(updates.codingAgent, "codingAgent");
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Invalid coding agent configuration";
+        throw new AppError(400, "INVALID_AGENT_CONFIG", msg);
+      }
+    }
+
+    const updated = { ...current, ...updates, planningAgent, codingAgent };
     const settingsPath = path.join(repoPath, OPENSPRINT_PATHS.settings);
     await this.writeJson(settingsPath, updated);
     return updated;
@@ -318,8 +320,6 @@ export class ProjectService {
 
   /** Delete a project from the index (does not delete repo) */
   async deleteProject(id: string): Promise<void> {
-    const index = await this.loadIndex();
-    index.projects = index.projects.filter((p) => p.id !== id);
-    await this.saveIndex(index);
+    await projectIndex.removeProject(id);
   }
 }
