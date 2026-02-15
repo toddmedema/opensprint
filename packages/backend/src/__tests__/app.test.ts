@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import request from 'supertest';
 import { createApp } from '../app.js';
+import { API_PREFIX } from '@opensprint/shared';
 
 describe('App', () => {
   it('should create an Express app', () => {
@@ -10,16 +12,27 @@ describe('App', () => {
     expect(typeof app.use).toBe('function');
   });
 
-  it('should respond to health check', async () => {
+  it('should respond to health check at /health', async () => {
     const app = createApp();
+    const res = await request(app).get('/health');
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: 'ok' });
+    expect(res.body.timestamp).toBeDefined();
+  });
 
-    // Create a mock request/response for testing
-    const mockReq = {
-      method: 'GET',
-      url: '/health',
-    };
+  it('should serve API under /api/v1 prefix', async () => {
+    const app = createApp();
+    const res = await request(app).get(`${API_PREFIX}/projects`);
+    expect(res.status).toBe(200);
+  });
 
-    // Basic structural test
-    expect(app).toBeDefined();
+  it('should parse JSON request bodies', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post(`${API_PREFIX}/auth/login`)
+      .set('Content-Type', 'application/json')
+      .send({ email: 'test@test.com', password: 'pass' });
+    expect(res.status).toBe(401);
+    expect(res.body).toBeDefined();
   });
 });
