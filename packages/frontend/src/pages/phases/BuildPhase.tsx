@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "../../api/client";
 import { useWebSocket } from "../../hooks/useWebSocket";
-import type { ServerEvent, KanbanColumn } from "@opensprint/shared";
+import type { ServerEvent, KanbanColumn, AgentSession } from "@opensprint/shared";
 import { KANBAN_COLUMNS, PRIORITY_LABELS } from "@opensprint/shared";
 
 interface BuildPhaseProps {
@@ -36,6 +36,82 @@ const columnColors: Record<KanbanColumn, string> = {
   done: "bg-green-400",
 };
 
+function ArchivedSessionView({ sessions }: { sessions: AgentSession[] }) {
+  const [activeTab, setActiveTab] = useState<"output" | "diff">("output");
+  const [selectedIdx, setSelectedIdx] = useState(sessions.length - 1);
+  useEffect(() => {
+    setSelectedIdx(Math.max(0, sessions.length - 1));
+  }, [sessions]);
+  const safeIdx = Math.min(selectedIdx, Math.max(0, sessions.length - 1));
+  const session = sessions[safeIdx];
+  if (!session) return null;
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Session summary and selector */}
+      <div className="px-4 py-2 border-b border-gray-700 flex items-center gap-4 text-xs flex-wrap">
+        {sessions.length > 1 ? (
+          <select
+            value={safeIdx}
+            onChange={(e) => setSelectedIdx(Number(e.target.value))}
+            className="bg-gray-800 text-green-400 border border-gray-600 rounded px-2 py-1"
+          >
+            {sessions.map((s, i) => (
+              <option key={s.attempt} value={i}>
+                Attempt {s.attempt} ({s.status})
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="text-gray-400">
+            Attempt {session.attempt} · {session.status} · {session.agentType}
+          </span>
+        )}
+        {session.testResults && session.testResults.total > 0 && (
+          <span className="text-green-400">
+            {session.testResults.passed} passed
+            {session.testResults.failed > 0 && `, ${session.testResults.failed} failed`}
+          </span>
+        )}
+        {session.failureReason && (
+          <span className="text-amber-400 truncate max-w-[200px]" title={session.failureReason}>
+            {session.failureReason}
+          </span>
+        )}
+      </div>
+      {/* Tabs */}
+      <div className="flex gap-2 px-4 py-2 border-b border-gray-700 shrink-0">
+        <button
+          type="button"
+          onClick={() => setActiveTab("output")}
+          className={`text-xs font-medium ${
+            activeTab === "output" ? "text-green-400" : "text-gray-500 hover:text-gray-300"
+          }`}
+        >
+          Output log
+        </button>
+        {session.gitDiff && (
+          <button
+            type="button"
+            onClick={() => setActiveTab("diff")}
+            className={`text-xs font-medium ${
+              activeTab === "diff" ? "text-green-400" : "text-gray-500 hover:text-gray-300"
+            }`}
+          >
+            Git diff
+          </button>
+        )}
+      </div>
+      {/* Content */}
+      <pre className="flex-1 p-4 text-xs font-mono whitespace-pre-wrap overflow-y-auto">
+        {activeTab === "output"
+          ? session.outputLog || "(no output)"
+          : session.gitDiff || "(no diff)"}
+      </pre>
+    </div>
+  );
+}
+
 export function BuildPhase({ projectId }: BuildPhaseProps) {
   const [tasks, setTasks] = useState<TaskCard[]>([]);
   const [orchestratorRunning, setOrchestratorRunning] = useState(false);
@@ -46,6 +122,8 @@ export function BuildPhase({ projectId }: BuildPhaseProps) {
     status: string;
     testResults: { passed: number; failed: number; skipped: number; total: number } | null;
   } | null>(null);
+  const [archivedSessions, setArchivedSessions] = useState<AgentSession[]>([]);
+  const [archivedLoading, setArchivedLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleWsEvent = useCallback(
@@ -83,9 +161,10 @@ export function BuildPhase({ projectId }: BuildPhaseProps) {
     [projectId, selectedTask],
   );
 
-  // Clear completion state when switching tasks
+  // Clear completion state and archived sessions when switching tasks
   useEffect(() => {
     setCompletionState(null);
+    setArchivedSessions([]);
   }, [selectedTask]);
 
   const { connected, subscribeToAgent, unsubscribeFromAgent } = useWebSocket({
@@ -106,14 +185,29 @@ export function BuildPhase({ projectId }: BuildPhaseProps) {
     });
   }, [projectId]);
 
-  // Subscribe to agent output when a task is selected
+  const selectedTaskData = selectedTask ? tasks.find((t) => t.id === selectedTask) : null;
+  const isDoneTask = selectedTaskData?.kanbanColumn === "done";
+
+  // Fetch archived sessions when a done task is selected (PRD §7.3.4)
   useEffect(() => {
-    if (selectedTask) {
+    if (selectedTask && isDoneTask) {
+      setArchivedLoading(true);
+      api.tasks
+        .sessions(projectId, selectedTask)
+        .then((data) => setArchivedSessions((data as AgentSession[]) ?? []))
+        .catch(() => setArchivedSessions([]))
+        .finally(() => setArchivedLoading(false));
+    }
+  }, [projectId, selectedTask, isDoneTask]);
+
+  // Subscribe to agent output when a task is selected (only for in-progress/in-review)
+  useEffect(() => {
+    if (selectedTask && !isDoneTask) {
       setAgentOutput([]);
       subscribeToAgent(selectedTask);
       return () => unsubscribeFromAgent(selectedTask);
     }
-  }, [selectedTask, subscribeToAgent, unsubscribeFromAgent]);
+  }, [selectedTask, isDoneTask, subscribeToAgent, unsubscribeFromAgent]);
 
   const handleStartBuild = async () => {
     setError(null);
@@ -240,36 +334,54 @@ export function BuildPhase({ projectId }: BuildPhaseProps) {
         )}
       </div>
 
-      {/* Agent Output Panel */}
+      {/* Task Detail Panel — live output or archived artifacts (PRD §7.3.4) */}
       {selectedTask && (
-        <div className="h-64 border-t border-gray-200 bg-gray-900 text-green-400 overflow-y-auto">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700">
-            <span className="text-xs font-mono">Agent Output — {selectedTask}</span>
+        <div className="h-64 border-t border-gray-200 bg-gray-900 text-green-400 overflow-y-auto flex flex-col">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700 shrink-0">
+            <span className="text-xs font-mono">
+              {isDoneTask ? "Completed work artifacts" : "Agent Output"} — {selectedTask}
+            </span>
             <button onClick={() => setSelectedTask(null)} className="text-gray-500 hover:text-gray-300 text-xs">
               Close
             </button>
           </div>
-          <pre className="p-4 text-xs font-mono whitespace-pre-wrap">
-            {agentOutput.length > 0 ? agentOutput.join("") : "Waiting for agent output..."}
-          </pre>
-          {completionState && (
-            <div className="px-4 pb-4 border-t border-gray-700 pt-3 mt-2">
-              <div
-                className={`text-sm font-medium ${
-                  completionState.status === "approved" ? "text-green-400" : "text-amber-400"
-                }`}
-              >
-                Agent completed: {completionState.status}
-              </div>
-              {completionState.testResults && completionState.testResults.total > 0 && (
-                <div className="text-xs text-gray-400 mt-1">
-                  {completionState.testResults.passed} passed
-                  {completionState.testResults.failed > 0 && `, ${completionState.testResults.failed} failed`}
-                  {completionState.testResults.skipped > 0 && `, ${completionState.testResults.skipped} skipped`}
-                </div>
-              )}
-            </div>
-          )}
+          <div className="flex-1 overflow-y-auto">
+            {isDoneTask ? (
+              archivedLoading ? (
+                <div className="p-4 text-gray-400 text-sm">Loading archived sessions...</div>
+              ) : archivedSessions.length === 0 ? (
+                <div className="p-4 text-gray-400 text-sm">No archived sessions for this task.</div>
+              ) : (
+                <ArchivedSessionView sessions={archivedSessions} />
+              )
+            ) : (
+              <>
+                <pre className="p-4 text-xs font-mono whitespace-pre-wrap">
+                  {agentOutput.length > 0 ? agentOutput.join("") : "Waiting for agent output..."}
+                </pre>
+                {completionState && (
+                  <div className="px-4 pb-4 border-t border-gray-700 pt-3 mt-2">
+                    <div
+                      className={`text-sm font-medium ${
+                        completionState.status === "approved" ? "text-green-400" : "text-amber-400"
+                      }`}
+                    >
+                      Agent completed: {completionState.status}
+                    </div>
+                    {completionState.testResults && completionState.testResults.total > 0 && (
+                      <div className="text-xs text-gray-400 mt-1">
+                        {completionState.testResults.passed} passed
+                        {completionState.testResults.failed > 0 &&
+                          `, ${completionState.testResults.failed} failed`}
+                        {completionState.testResults.skipped > 0 &&
+                          `, ${completionState.testResults.skipped} skipped`}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>
