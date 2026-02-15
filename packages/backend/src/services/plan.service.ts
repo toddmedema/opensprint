@@ -115,6 +115,96 @@ export class PlanService {
     return plans;
   }
 
+  /** Build dependency edges from beads and plan markdown (reads files directly to avoid recursion) */
+  private async buildDependencyEdges(projectId: string): Promise<PlanDependencyEdge[]> {
+    const plansDir = await this.getPlansDir(projectId);
+    const repoPath = await this.getRepoPath(projectId);
+    const edges: PlanDependencyEdge[] = [];
+    const seenEdges = new Set<string>();
+
+    const addEdge = (fromPlanId: string, toPlanId: string) => {
+      if (fromPlanId === toPlanId) return;
+      const key = `${fromPlanId}->${toPlanId}`;
+      if (seenEdges.has(key)) return;
+      seenEdges.add(key);
+      edges.push({ from: fromPlanId, to: toPlanId, type: 'blocks' });
+    };
+
+    /** Epic ID from issue ID: x.y.z -> x.y when z is numeric, else self */
+    const getEpicId = (id: string): string => {
+      const m = id.match(/^(.+)\.(\d+)$/);
+      return m ? m[1] : id;
+    };
+
+    // Load plan metadata and content from files (avoids getPlan recursion)
+    const planInfos: Array<{ planId: string; beadEpicId: string; content: string }> = [];
+    try {
+      const files = await fs.readdir(plansDir);
+      for (const file of files) {
+        if (!file.endsWith('.md')) continue;
+        const planId = file.replace('.md', '');
+        const mdPath = path.join(plansDir, file);
+        const metaPath = path.join(plansDir, `${planId}.meta.json`);
+        let beadEpicId = '';
+        try {
+          const metaData = await fs.readFile(metaPath, 'utf-8');
+          const meta = JSON.parse(metaData) as PlanMetadata;
+          beadEpicId = meta.beadEpicId ?? '';
+        } catch {
+          // No metadata
+        }
+        let content = '';
+        try {
+          content = await fs.readFile(mdPath, 'utf-8');
+        } catch {
+          // Skip broken plans
+        }
+        planInfos.push({ planId, beadEpicId, content });
+      }
+    } catch {
+      return [];
+    }
+
+    const epicToPlan = new Map(planInfos.filter((p) => p.beadEpicId).map((p) => [p.beadEpicId, p.planId]));
+
+    // 1. Build edges from beads
+    try {
+      const allIssues = await this.beads.listAll(repoPath);
+      for (const issue of allIssues) {
+        const deps = (issue.dependencies as Array<{ depends_on_id: string; type: string }>) ?? [];
+        const blockers = deps.filter((d) => d.type === 'blocks').map((d) => d.depends_on_id);
+        const myEpicId = getEpicId(issue.id);
+        const toPlanId = epicToPlan.get(myEpicId);
+        if (!toPlanId) continue;
+        for (const blockerId of blockers) {
+          const blockerEpicId = getEpicId(blockerId);
+          const fromPlanId = epicToPlan.get(blockerEpicId);
+          if (fromPlanId && blockerEpicId !== myEpicId) {
+            addEdge(fromPlanId, toPlanId);
+          }
+        }
+      }
+    } catch {
+      // Beads may not be available
+    }
+
+    // 2. Parse Plan markdown for "## Dependencies" section
+    for (const plan of planInfos) {
+      const depsSection = plan.content.match(/## Dependencies[\s\S]*?(?=##|$)/i);
+      if (!depsSection) continue;
+      const text = depsSection[0].toLowerCase();
+      for (const other of planInfos) {
+        if (other.planId === plan.planId) continue;
+        const slug = other.planId.replace(/-/g, '[\\s-]*');
+        if (new RegExp(slug, 'i').test(text)) {
+          addEdge(other.planId, plan.planId);
+        }
+      }
+    }
+
+    return edges;
+  }
+
   /** Get a single Plan by ID */
   async getPlan(projectId: string, planId: string): Promise<Plan> {
     const plansDir = await this.getPlansDir(projectId);
@@ -153,13 +243,16 @@ export class PlanService {
       status = total > 0 && completed === total ? 'complete' : 'shipped';
     }
 
+    const edges = await this.buildDependencyEdges(projectId);
+    const dependencyCount = edges.filter((e) => e.to === planId).length;
+
     return {
       metadata,
       content,
       status,
       taskCount: total,
       completedTaskCount: completed,
-      dependencyCount: 0, // Will be computed from dependency graph
+      dependencyCount,
     };
   }
 
