@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { errorHandler } from "./middleware/error-handler.js";
+import { authRouter } from "./routes/auth.js";
 import { projectsRouter } from "./routes/projects.js";
 import { prdRouter } from "./routes/prd.js";
 import { plansRouter } from "./routes/plans.js";
@@ -25,6 +26,7 @@ export function createApp() {
   });
 
   // API routes
+  app.use(`${API_PREFIX}/auth`, authRouter);
   app.use(`${API_PREFIX}/models`, modelsRouter);
   app.use(`${API_PREFIX}/env`, envRouter);
   app.use(`${API_PREFIX}/projects`, projectsRouter);
