@@ -14,7 +14,14 @@ import { AgentClient } from './agent-client.js';
 import { BranchManager } from './branch-manager.js';
 import { ContextAssembler } from './context-assembler.js';
 import { SessionManager } from './session-manager.js';
+import { TestRunner } from './test-runner.js';
 import { broadcastToProject } from '../websocket/index.js';
+
+interface RetryContext {
+  previousFailure?: string;
+  reviewFeedback?: string;
+  useExistingBranch?: boolean;
+}
 
 interface OrchestratorState {
   status: OrchestratorStatus;
@@ -25,6 +32,7 @@ interface OrchestratorState {
   outputLog: string[];
   startedAt: string;
   attempt: number;
+  lastCodingDiff: string;
 }
 
 /**
@@ -39,6 +47,7 @@ export class OrchestratorService {
   private branchManager = new BranchManager();
   private contextAssembler = new ContextAssembler();
   private sessionManager = new SessionManager();
+  private testRunner = new TestRunner();
 
   private getState(projectId: string): OrchestratorState {
     if (!this.state.has(projectId)) {
@@ -51,6 +60,7 @@ export class OrchestratorService {
         outputLog: [],
         startedAt: '',
         attempt: 1,
+        lastCodingDiff: '',
       });
     }
     return this.state.get(projectId)!;
@@ -121,6 +131,34 @@ export class OrchestratorService {
     return this.getState(projectId).status;
   }
 
+  /** Resolve plan content for a task (from parent epic or task description) */
+  private async getPlanContentForTask(repoPath: string, task: BeadsIssue): Promise<string> {
+    if (task.description?.startsWith('.opensprint/plans/')) {
+      const planId = path.basename(task.description, '.md');
+      return this.contextAssembler.readPlanContent(repoPath, planId);
+    }
+    const parentId = this.beads.getParentId(task.id);
+    if (parentId) {
+      try {
+        const parent = await this.beads.show(repoPath, parentId);
+        const desc = parent.description as string;
+        if (desc?.startsWith('.opensprint/plans/')) {
+          const planId = path.basename(desc, '.md');
+          return this.contextAssembler.readPlanContent(repoPath, planId);
+        }
+      } catch {
+        // Parent might not exist
+      }
+    }
+    return task.description || '';
+  }
+
+  /** Get IDs of tasks that block this one (must complete before this task) */
+  private async getBlockingDependencyIds(repoPath: string, taskId: string): Promise<string[]> {
+    const blockers = await this.beads.getBlockers(repoPath, taskId);
+    return blockers;
+  }
+
   // ─── Main Orchestrator Loop ───
 
   private async runLoop(projectId: string): Promise<void> {
@@ -175,7 +213,7 @@ export class OrchestratorService {
       });
 
       // 4. Execute the coding phase
-      await this.executeCodingPhase(projectId, repoPath, task);
+      await this.executeCodingPhase(projectId, repoPath, task, undefined);
 
     } catch (error) {
       console.error(`Orchestrator loop error for project ${projectId}:`, error);
@@ -191,23 +229,27 @@ export class OrchestratorService {
     projectId: string,
     repoPath: string,
     task: BeadsIssue,
+    retryContext?: RetryContext,
   ): Promise<void> {
     const state = this.getState(projectId);
     const settings = await this.projectService.getSettings(projectId);
     const branchName = `opensprint/${task.id}`;
 
     try {
-      // Create task branch
-      await this.branchManager.createBranch(repoPath, branchName);
+      // Create or checkout task branch (use existing when retrying after review rejection)
+      if (retryContext?.useExistingBranch) {
+        await this.branchManager.createOrCheckoutBranch(repoPath, branchName);
+      } else {
+        await this.branchManager.createBranch(repoPath, branchName);
+      }
 
       // Assemble context
       const prdExcerpt = await this.contextAssembler.extractPrdExcerpt(repoPath);
-      const planContent = task.description?.startsWith('.opensprint/plans/')
-        ? await this.contextAssembler.readPlanContent(
-            repoPath,
-            path.basename(task.description, '.md'),
-          )
-        : task.description || '';
+      const planContent = await this.getPlanContentForTask(repoPath, task);
+      const dependencyOutputs = await this.contextAssembler.collectDependencyOutputs(
+        repoPath,
+        await this.getBlockingDependencyIds(repoPath, task.id),
+      );
 
       const config: ActiveTaskConfig = {
         taskId: task.id,
@@ -216,8 +258,8 @@ export class OrchestratorService {
         testCommand: settings.testFramework ? `npm test` : 'echo "No test command configured"',
         attempt: state.attempt,
         phase: 'coding',
-        previousFailure: null,
-        reviewFeedback: null,
+        previousFailure: retryContext?.previousFailure ?? null,
+        reviewFeedback: retryContext?.reviewFeedback ?? null,
       };
 
       await this.contextAssembler.assembleTaskDirectory(repoPath, task.id, config, {
@@ -226,7 +268,7 @@ export class OrchestratorService {
         description: task.description || '',
         planContent,
         prdExcerpt,
-        dependencyOutputs: [],
+        dependencyOutputs,
       });
 
       state.startedAt = new Date().toISOString();
@@ -293,17 +335,21 @@ export class OrchestratorService {
     const result = await this.sessionManager.readResult(repoPath, task.id) as CodingAgentResult | null;
 
     if (result && result.status === 'success') {
-      // Archive the coding session
-      const session = await this.sessionManager.createSession(repoPath, {
-        taskId: task.id,
-        attempt: state.attempt,
-        agentType: (await this.projectService.getSettings(projectId)).codingAgent.type,
-        agentModel: (await this.projectService.getSettings(projectId)).codingAgent.model || '',
-        gitBranch: branchName,
-        status: 'success',
-        outputLog: state.outputLog.join(''),
-        startedAt: state.startedAt,
-      });
+      state.lastCodingDiff = await this.branchManager.getDiff(repoPath, branchName);
+
+      const settings = await this.projectService.getSettings(projectId);
+      const testCommand = settings.testFramework ? 'npm test' : undefined;
+      const testResults = await this.testRunner.runTests(repoPath, testCommand);
+      if (testResults.failed > 0) {
+        await this.handleTaskFailure(
+          projectId,
+          repoPath,
+          task,
+          branchName,
+          `Tests failed: ${testResults.failed} failed, ${testResults.passed} passed`,
+        );
+        return;
+      }
 
       // Move to review phase
       state.status.currentPhase = 'review';
@@ -436,7 +482,7 @@ export class OrchestratorService {
       // Close the task in beads
       await this.beads.close(repoPath, task.id, result.summary || 'Implemented and reviewed');
 
-      // Archive session
+      // Archive session (include coding diff for dependency context)
       const session = await this.sessionManager.createSession(repoPath, {
         taskId: task.id,
         attempt: state.attempt,
@@ -445,6 +491,7 @@ export class OrchestratorService {
         gitBranch: branchName,
         status: 'approved',
         outputLog: state.outputLog.join(''),
+        gitDiff: state.lastCodingDiff,
         startedAt: state.startedAt,
       });
       await this.sessionManager.archiveSession(repoPath, task.id, state.attempt, session);
@@ -497,9 +544,15 @@ export class OrchestratorService {
         });
         await this.sessionManager.archiveSession(repoPath, task.id, state.attempt - 1, session);
 
-        // Re-execute coding phase with review feedback
-        // (The context assembler will include the feedback in the prompt)
-        await this.executeCodingPhase(projectId, repoPath, task);
+        const reviewFeedback = [
+          result.summary,
+          ...(result.issues ?? []),
+        ].filter(Boolean).join('\n');
+
+        await this.executeCodingPhase(projectId, repoPath, task, {
+          reviewFeedback,
+          useExistingBranch: true,
+        });
       } else {
         // Retry limit reached — escalate
         await this.handleTaskFailure(
@@ -536,16 +589,6 @@ export class OrchestratorService {
     // Revert changes and return to main
     await this.branchManager.revertAndReturnToMain(repoPath, branchName);
 
-    // Return task to open (Ready queue)
-    try {
-      await this.beads.update(repoPath, task.id, {
-        status: 'open',
-        assignee: '',
-      });
-    } catch {
-      // Task might already be in the right state
-    }
-
     // Archive failure session
     const session = await this.sessionManager.createSession(repoPath, {
       taskId: task.id,
@@ -560,27 +603,47 @@ export class OrchestratorService {
     });
     await this.sessionManager.archiveSession(repoPath, task.id, state.attempt, session);
 
-    state.status.totalFailed += 1;
-    state.status.currentTask = null;
-    state.status.currentPhase = null;
+    const retryLimit = DEFAULT_RETRY_LIMIT;
+    const canRetry = state.attempt <= retryLimit;
 
-    broadcastToProject(projectId, {
-      type: 'task.updated',
-      taskId: task.id,
-      status: 'open',
-      assignee: null,
-    });
+    if (canRetry) {
+      state.attempt += 1;
+      console.log(`Coding failed for ${task.id}, retrying (attempt ${state.attempt})`);
+      await this.executeCodingPhase(projectId, repoPath, task, {
+        previousFailure: reason,
+      });
+    } else {
+      // Retry limit reached — return task to Ready queue
+      try {
+        await this.beads.update(repoPath, task.id, {
+          status: 'open',
+          assignee: '',
+        });
+      } catch {
+        // Task might already be in the right state
+      }
 
-    broadcastToProject(projectId, {
-      type: 'agent.completed',
-      taskId: task.id,
-      status: 'failed',
-      testResults: null,
-    });
+      state.status.totalFailed += 1;
+      state.status.currentTask = null;
+      state.status.currentPhase = null;
 
-    // Continue the loop
-    if (state.status.running) {
-      state.loopTimer = setTimeout(() => this.runLoop(projectId), 2000);
+      broadcastToProject(projectId, {
+        type: 'task.updated',
+        taskId: task.id,
+        status: 'open',
+        assignee: null,
+      });
+
+      broadcastToProject(projectId, {
+        type: 'agent.completed',
+        taskId: task.id,
+        status: 'failed',
+        testResults: null,
+      });
+
+      if (state.status.running) {
+        state.loopTimer = setTimeout(() => this.runLoop(projectId), 2000);
+      }
     }
   }
 }

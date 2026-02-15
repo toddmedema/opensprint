@@ -20,6 +20,19 @@ export class BranchManager {
   }
 
   /**
+   * Create branch if it does not exist, otherwise checkout existing branch.
+   * Used when retrying after review rejection (branch already has coding agent's work).
+   */
+  async createOrCheckoutBranch(repoPath: string, branchName: string): Promise<void> {
+    try {
+      await execAsync(`git rev-parse --verify ${branchName}`, { cwd: repoPath });
+      await this.checkout(repoPath, branchName);
+    } catch {
+      await this.createBranch(repoPath, branchName);
+    }
+  }
+
+  /**
    * Switch to a branch.
    */
   async checkout(repoPath: string, branchName: string): Promise<void> {

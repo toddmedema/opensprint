@@ -143,6 +143,24 @@ export class BeadsService {
     return this.parseJson(stdout);
   }
 
+  /** Get IDs of issues that block this one (this task depends on them) */
+  async getBlockers(repoPath: string, id: string): Promise<string[]> {
+    try {
+      const issue = await this.show(repoPath, id);
+      const deps = (issue.dependencies as Array<{ issue_id: string; depends_on_id: string; type: string }>) ?? [];
+      return deps.filter((d) => d.type === "blocks").map((d) => d.depends_on_id);
+    } catch {
+      return [];
+    }
+  }
+
+  /** Derive parent ID from task ID (e.g. bd-a3f8.1 -> bd-a3f8, opensprint.dev-nl2 -> opensprint.dev) */
+  getParentId(taskId: string): string | null {
+    const lastDot = taskId.lastIndexOf(".");
+    if (lastDot <= 0) return null;
+    return taskId.slice(0, lastDot);
+  }
+
   /** Add a dependency between issues */
   async addDependency(repoPath: string, childId: string, parentId: string, type?: string): Promise<void> {
     let cmd = `dep add ${childId} ${parentId} --json`;

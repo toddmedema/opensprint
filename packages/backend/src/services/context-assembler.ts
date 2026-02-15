@@ -114,6 +114,7 @@ export class ContextAssembler {
 
   /**
    * Collect dependency outputs from completed tasks.
+   * Sessions are stored at .opensprint/sessions/<task-id>-<attempt>/session.json
    */
   async collectDependencyOutputs(
     repoPath: string,
@@ -123,18 +124,26 @@ export class ContextAssembler {
 
     for (const depId of dependencyTaskIds) {
       try {
-        // Look for archived sessions
         const sessionsDir = path.join(repoPath, OPENSPRINT_PATHS.sessions);
-        const files = await fs.readdir(sessionsDir);
-        const sessionFile = files.find((f) => f.startsWith(depId + '-') && f.endsWith('.json'));
+        const entries = await fs.readdir(sessionsDir, { withFileTypes: true });
+        const sessionDirs = entries
+          .filter((e) => e.isDirectory() && e.name.startsWith(depId + '-'))
+          .map((e) => e.name)
+          .sort((a, b) => {
+            const attemptA = parseInt(a.slice((depId + '-').length) || '0', 10);
+            const attemptB = parseInt(b.slice((depId + '-').length) || '0', 10);
+            return attemptB - attemptA;
+          });
 
-        if (sessionFile) {
-          const raw = await fs.readFile(path.join(sessionsDir, sessionFile), 'utf-8');
-          const session = JSON.parse(raw);
+        const latestDir = sessionDirs[0];
+        if (latestDir) {
+          const sessionPath = path.join(sessionsDir, latestDir, 'session.json');
+          const raw = await fs.readFile(sessionPath, 'utf-8');
+          const session = JSON.parse(raw) as { gitDiff?: string; outputLog?: string };
           outputs.push({
             taskId: depId,
             diff: session.gitDiff || '',
-            summary: session.summary || `Task ${depId} completed.`,
+            summary: `Task ${depId} completed.`,
           });
         }
       } catch {
