@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Project, ProjectPhase } from '@opensprint/shared';
 import { api } from '../../api/client';
+import { ActiveAgentsList } from '../ActiveAgentsList';
 
 interface NavbarProps {
   project?: Project | null;
@@ -125,13 +126,16 @@ export function Navbar({ project, currentPhase, onPhaseChange }: NavbarProps) {
           </div>
         )}
 
-        {/* Right: Settings / Status */}
+        {/* Right: Active agents + Status */}
         <div className="flex items-center gap-3">
           {project && (
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <div className="w-2 h-2 rounded-full bg-green-500" />
-              <span>Online</span>
-            </div>
+            <>
+              <ActiveAgentsList projectId={project.id} />
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <div className="w-2 h-2 rounded-full bg-green-500" />
+                <span>Online</span>
+              </div>
+            </>
           )}
         </div>
       </div>

@@ -81,6 +81,14 @@ export interface ReviewAgentResult {
 /** Union type for agent results */
 export type AgentResult = CodingAgentResult | ReviewAgentResult;
 
+/** Active agent (from GET /projects/:id/agents/active) */
+export interface ActiveAgent {
+  id: string;
+  phase: string;
+  label: string;
+  startedAt: string;
+}
+
 /** Build orchestrator status */
 export interface OrchestratorStatus {
   running: boolean;

@@ -161,6 +161,12 @@ export const api = {
       ),
   },
 
+  // ─── Agents ───
+  agents: {
+    active: (projectId: string) =>
+      request<import("@opensprint/shared").ActiveAgent[]>(`/projects/${projectId}/agents/active`),
+  },
+
   // ─── Chat ───
   chat: {
     send: (projectId: string, message: string, context?: string, prdSectionFocus?: string) =>
