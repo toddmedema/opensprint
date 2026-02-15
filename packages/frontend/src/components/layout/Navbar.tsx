@@ -56,26 +56,25 @@ export function Navbar({ project, currentPhase, onPhaseChange }: NavbarProps) {
             <span className="font-semibold text-lg text-gray-900">OpenSprint</span>
           </Link>
 
-          {project && (
-            <div className="relative flex items-center" ref={dropdownRef}>
-              <span className="text-gray-300">/</span>
-              <button
-                type="button"
-                onClick={() => setDropdownOpen((o) => !o)}
-                className="ml-1 inline-flex items-center gap-1 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors rounded px-2 py-1 hover:bg-gray-100"
-                aria-expanded={dropdownOpen}
-                aria-haspopup="listbox"
+          <div className="relative flex items-center" ref={dropdownRef}>
+            <span className="text-gray-300">/</span>
+            <button
+              type="button"
+              onClick={() => setDropdownOpen((o) => !o)}
+              className="ml-1 inline-flex items-center gap-1 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors rounded px-2 py-1 hover:bg-gray-100"
+              aria-expanded={dropdownOpen}
+              aria-haspopup="listbox"
+            >
+              {project ? project.name : 'All Projects'}
+              <svg
+                className={`w-4 h-4 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
               >
-                {project.name}
-                <svg
-                  className={`w-4 h-4 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`}
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
               {dropdownOpen && (
                 <div
                   className="absolute left-0 top-full mt-1 min-w-[200px] max-h-[280px] overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50"
@@ -86,13 +85,13 @@ export function Navbar({ project, currentPhase, onPhaseChange }: NavbarProps) {
                       key={p.id}
                       type="button"
                       role="option"
-                      aria-selected={p.id === project.id}
+                      aria-selected={p.id === project?.id}
                       onClick={() => {
                         setDropdownOpen(false);
                         navigate(`/projects/${p.id}`);
                       }}
                       className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${
-                        p.id === project.id ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-700'
+                        p.id === project?.id ? 'bg-brand-50 text-brand-700 font-medium' : 'text-gray-700'
                       }`}
                     >
                       {p.name}
@@ -101,10 +100,21 @@ export function Navbar({ project, currentPhase, onPhaseChange }: NavbarProps) {
                   {projects.length === 0 && (
                     <div className="px-4 py-3 text-sm text-gray-500">No projects</div>
                   )}
+                  <div className="border-t border-gray-100 mt-1 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        navigate('/projects/new');
+                      }}
+                      className="w-full text-left px-4 py-2 text-sm text-brand-600 hover:bg-brand-50 font-medium"
+                    >
+                      + Create New Project
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
-          )}
         </div>
 
         {/* Center: Phase Tabs */}
