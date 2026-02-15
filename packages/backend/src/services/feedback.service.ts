@@ -8,6 +8,7 @@ import { AgentClient } from './agent-client.js';
 import { PrdService } from './prd.service.js';
 import { BeadsService } from './beads.service.js';
 import { HilService } from './hil-service.js';
+import { ChatService } from './chat.service.js';
 import { broadcastToProject } from '../websocket/index.js';
 
 const FEEDBACK_CATEGORIZATION_PROMPT = `You are an AI assistant that categorizes user feedback about a software product.
@@ -31,6 +32,7 @@ export class FeedbackService {
   private prdService = new PrdService();
   private beads = new BeadsService();
   private hilService = new HilService();
+  private chatService = new ChatService();
 
   /** Resolve plan ID (e.g. "user-auth") to bead epic ID for discovered-from dependency */
   private async resolvePlanIdToBeadEpicId(
@@ -131,7 +133,7 @@ export class FeedbackService {
         item.category = parsed.category as FeedbackCategory;
         item.mappedPlanId = parsed.mappedPlanId || null;
 
-        // Handle scope changes with HIL
+        // Handle scope changes with HIL (PRD §7.4.2, §15.1)
         if (item.category === 'scope') {
           const { approved } = await this.hilService.evaluateDecision(
             projectId,
@@ -143,6 +145,14 @@ export class FeedbackService {
             item.status = 'mapped';
             await this.saveFeedback(projectId, item);
             return;
+          }
+
+          // After HIL approval, invoke the planning agent to update the PRD
+          try {
+            await this.chatService.syncPrdFromScopeChangeFeedback(projectId, item.text);
+          } catch (err) {
+            console.error('[feedback] PRD sync on scope-change approval failed:', err);
+            // Continue with task creation; PRD can be updated manually
           }
         }
 

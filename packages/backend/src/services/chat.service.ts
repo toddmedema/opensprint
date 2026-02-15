@@ -316,4 +316,52 @@ Only output PRD_UPDATE blocks for sections that need changes. If no updates are 
       });
     }
   }
+
+  /**
+   * When Validate feedback is categorized as a scope change and the user approves via HIL,
+   * invoke the planning agent to review the feedback against the PRD and update affected
+   * sections. PRD §7.4.2, §15.1 Living PRD Synchronization.
+   */
+  async syncPrdFromScopeChangeFeedback(projectId: string, feedbackText: string): Promise<void> {
+    const settings = await this.projectService.getSettings(projectId);
+    const agentConfig = settings.planningAgent;
+    const prdContext = await this.buildPrdContext(projectId);
+    const repoPath = (await this.projectService.getProject(projectId)).repoPath;
+
+    const systemPrompt = `You are a PRD synchronization assistant for OpenSprint. A user has submitted validation feedback that was categorized as a scope change and approved for PRD updates.
+
+Your task: Review the feedback against the current PRD. Determine if updates are necessary. If so, produce targeted section updates that incorporate the scope change. The PRD is the living document; it should reflect the approved scope change.
+
+Output updates using this format:
+[PRD_UPDATE:section_key]
+<markdown content for the section>
+[/PRD_UPDATE]
+
+Valid section keys: executive_summary, problem_statement, user_personas, goals_and_metrics, feature_list, technical_architecture, data_model, api_contracts, non_functional_requirements, open_questions
+
+Only output PRD_UPDATE blocks for sections that need changes. If no updates are needed, respond briefly without any PRD_UPDATE blocks.`;
+
+    const prompt = `Review this scope-change feedback and update the PRD as needed.\n\n## Feedback\n\n"${feedbackText}"`;
+
+    const fullContext = `${systemPrompt}\n\n## Current PRD\n\n${prdContext}`;
+
+    const response = await this.agentClient.invoke({
+      config: agentConfig,
+      prompt,
+      systemPrompt: fullContext,
+      cwd: repoPath,
+    });
+
+    const prdUpdates = this.parsePrdUpdates(response.content);
+    if (prdUpdates.length === 0) return;
+
+    const changes = await this.prdService.updateSections(projectId, prdUpdates, 'validate');
+    for (const change of changes) {
+      broadcastToProject(projectId, {
+        type: 'prd.updated',
+        section: change.section,
+        version: change.newVersion,
+      });
+    }
+  }
 }
