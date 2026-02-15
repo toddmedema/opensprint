@@ -3,8 +3,15 @@
 @tailwind utilities;
 
 @layer base {
+  html[data-theme="light"],
+  html:not([data-theme]) {
+    @apply bg-gray-50 text-gray-900;
+  }
+  html[data-theme="dark"] {
+    @apply bg-gray-900 text-gray-100;
+  }
   body {
-    @apply text-gray-900 antialiased;
+    @apply antialiased;
   }
 }
 
