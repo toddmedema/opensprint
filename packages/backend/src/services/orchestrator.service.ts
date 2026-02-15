@@ -16,7 +16,7 @@ import {
 } from '@opensprint/shared';
 import { BeadsService, type BeadsIssue } from './beads.service.js';
 import { ProjectService } from './project.service.js';
-import { AgentClient } from './agent-client.js';
+import { agentService } from './agent.service.js';
 import { deploymentService } from './deployment-service.js';
 import { hilService } from './hil-service.js';
 import { BranchManager } from './branch-manager.js';
@@ -53,7 +53,6 @@ export class OrchestratorService {
   private state = new Map<string, OrchestratorState>();
   private beads = new BeadsService();
   private projectService = new ProjectService();
-  private agentClient = new AgentClient();
   private branchManager = new BranchManager();
   private contextAssembler = new ContextAssembler();
   private sessionManager = new SessionManager();
@@ -301,29 +300,29 @@ export class OrchestratorService {
       const taskDir = this.sessionManager.getActiveDir(repoPath, task.id);
       const promptPath = path.join(taskDir, 'prompt.md');
 
-      state.activeProcess = this.agentClient.spawnWithTaskFile(
-        settings.codingAgent,
+      state.activeProcess = agentService.invokeCodingAgent(
         promptPath,
-        repoPath,
-        // onOutput
-        (chunk: string) => {
-          state.outputLog.push(chunk);
-          state.lastOutputTime = Date.now();
-          broadcastToProject(projectId, {
-            type: 'agent.output',
-            taskId: task.id,
-            chunk,
-          } as any);
-        },
-        // onExit
-        async (code: number | null) => {
-          state.activeProcess = null;
-          if (state.inactivityTimer) {
-            clearInterval(state.inactivityTimer);
-            state.inactivityTimer = null;
-          }
+        settings.codingAgent,
+        {
+          cwd: repoPath,
+          onOutput: (chunk: string) => {
+            state.outputLog.push(chunk);
+            state.lastOutputTime = Date.now();
+            broadcastToProject(projectId, {
+              type: 'agent.output',
+              taskId: task.id,
+              chunk,
+            } as any);
+          },
+          onExit: async (code: number | null) => {
+            state.activeProcess = null;
+            if (state.inactivityTimer) {
+              clearInterval(state.inactivityTimer);
+              state.inactivityTimer = null;
+            }
 
-          await this.handleCodingComplete(projectId, repoPath, task, branchName, code);
+            await this.handleCodingComplete(projectId, repoPath, task, branchName, code);
+          },
         },
       );
 
@@ -443,27 +442,29 @@ export class OrchestratorService {
 
       const promptPath = path.join(taskDir, 'prompt.md');
 
-      state.activeProcess = this.agentClient.spawnWithTaskFile(
-        settings.codingAgent, // Use same agent for review in v1
+      state.activeProcess = agentService.invokeCodingAgent(
         promptPath,
-        repoPath,
-        (chunk: string) => {
-          state.outputLog.push(chunk);
-          state.lastOutputTime = Date.now();
-          broadcastToProject(projectId, {
-            type: 'agent.output',
-            taskId: task.id,
-            chunk,
-          } as any);
-        },
-        async (code: number | null) => {
-          state.activeProcess = null;
-          if (state.inactivityTimer) {
-            clearInterval(state.inactivityTimer);
-            state.inactivityTimer = null;
-          }
+        settings.codingAgent, // Use same agent for review in v1
+        {
+          cwd: repoPath,
+          onOutput: (chunk: string) => {
+            state.outputLog.push(chunk);
+            state.lastOutputTime = Date.now();
+            broadcastToProject(projectId, {
+              type: 'agent.output',
+              taskId: task.id,
+              chunk,
+            } as any);
+          },
+          onExit: async (code: number | null) => {
+            state.activeProcess = null;
+            if (state.inactivityTimer) {
+              clearInterval(state.inactivityTimer);
+              state.inactivityTimer = null;
+            }
 
-          await this.handleReviewComplete(projectId, repoPath, task, branchName, code);
+            await this.handleReviewComplete(projectId, repoPath, task, branchName, code);
+          },
         },
       );
 

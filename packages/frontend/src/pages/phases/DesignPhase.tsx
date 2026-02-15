@@ -322,7 +322,11 @@ export function DesignPhase({ projectId }: DesignPhaseProps) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
-              placeholder="Describe your product vision..."
+              placeholder={
+                focusedSection
+                  ? `Focusing on ${formatSectionKey(focusedSection)} — describe changes or ask questions...`
+                  : "Describe your product vision..."
+              }
               disabled={sending}
             />
             <button

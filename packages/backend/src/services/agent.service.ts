@@ -1,0 +1,169 @@
+import Anthropic from '@anthropic-ai/sdk';
+import type { AgentConfig } from '@opensprint/shared';
+import { AgentClient } from './agent-client.js';
+
+/** Message for planning agent (user or assistant) */
+export interface PlanningMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/** Options for invokePlanningAgent */
+export interface InvokePlanningAgentOptions {
+  /** Agent configuration (model from config) */
+  config: AgentConfig;
+  /** Conversation messages in order */
+  messages: PlanningMessage[];
+  /** Optional system prompt */
+  systemPrompt?: string;
+  /** Callback for streaming text chunks */
+  onChunk?: (chunk: string) => void;
+}
+
+/** Response from planning agent */
+export interface PlanningAgentResponse {
+  content: string;
+}
+
+/** Options for invokeCodingAgent (file-based prompt) */
+export interface InvokeCodingAgentOptions {
+  /** Working directory for the agent (typically repo path) */
+  cwd: string;
+  /** Callback for streaming output chunks */
+  onOutput: (chunk: string) => void;
+  /** Callback when agent process exits */
+  onExit: (code: number | null) => void;
+}
+
+/** Return type for invokeCodingAgent — handle with kill() to terminate */
+export interface CodingAgentHandle {
+  kill: () => void;
+}
+
+/**
+ * AgentService — unified interface for planning and coding agents.
+ * invokePlanningAgent uses Claude API when config.type is 'claude';
+ * falls back to AgentClient (CLI) for cursor/custom.
+ * invokeCodingAgent spawns the coding agent with a file-based prompt.
+ */
+export class AgentService {
+  private anthropic: Anthropic | null = null;
+  private agentClient = new AgentClient();
+
+  private getAnthropic(): Anthropic {
+    if (!this.anthropic) {
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey?.trim()) {
+        throw new Error(
+          'ANTHROPIC_API_KEY is not set. Add it to your .env file or Project Settings. Get a key from https://console.anthropic.com/',
+        );
+      }
+      this.anthropic = new Anthropic({ apiKey });
+    }
+    return this.anthropic;
+  }
+
+  /**
+   * Invoke the planning agent with messages.
+   * Returns full response; optionally streams via onChunk.
+   * Claude: uses @anthropic-ai/sdk API. Cursor/custom: delegates to AgentClient (CLI).
+   */
+  async invokePlanningAgent(options: InvokePlanningAgentOptions): Promise<PlanningAgentResponse> {
+    const { config, messages, systemPrompt, onChunk } = options;
+
+    if (config.type === 'claude') {
+      return this.invokeClaudePlanningAgent(options);
+    }
+
+    // Cursor and custom: use AgentClient (CLI-based)
+    const lastUser = messages.filter((m) => m.role === 'user').pop();
+    const prompt = lastUser?.content ?? '';
+    const conversationHistory = messages.slice(0, -1).map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+
+    const response = await this.agentClient.invoke({
+      config,
+      prompt,
+      systemPrompt,
+      conversationHistory,
+      onChunk,
+    });
+
+    return { content: response.content };
+  }
+
+  /**
+   * Invoke the coding agent with a file-based prompt.
+   * Spawns the agent as a subprocess and streams output.
+   * Returns a handle with kill() to terminate the process.
+   */
+  invokeCodingAgent(
+    promptPath: string,
+    config: AgentConfig,
+    options: InvokeCodingAgentOptions,
+  ): CodingAgentHandle {
+    return this.agentClient.spawnWithTaskFile(
+      config,
+      promptPath,
+      options.cwd,
+      options.onOutput,
+      options.onExit,
+    );
+  }
+
+  /**
+   * Claude API integration using @anthropic-ai/sdk.
+   * Supports streaming via onChunk.
+   */
+  private async invokeClaudePlanningAgent(
+    options: InvokePlanningAgentOptions,
+  ): Promise<PlanningAgentResponse> {
+    const { config, messages, systemPrompt, onChunk } = options;
+
+    const model = config.model ?? 'claude-sonnet-4-20250514';
+    const client = this.getAnthropic();
+
+    // Convert to Anthropic message format (role + content)
+    const anthropicMessages = messages.map((m) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }));
+
+    if (onChunk) {
+      // Streaming path
+      const stream = client.messages.stream({
+        model,
+        max_tokens: 8192,
+        system: systemPrompt ?? undefined,
+        messages: anthropicMessages,
+      });
+
+      let fullContent = '';
+      stream.on('text', (text) => {
+        fullContent += text;
+        onChunk(text);
+      });
+
+      const finalMessage = await stream.finalMessage();
+      const textBlock = finalMessage.content.find((b) => b.type === 'text');
+      const content = textBlock && 'text' in textBlock ? textBlock.text : fullContent;
+      return { content };
+    }
+
+    // Non-streaming path
+    const response = await client.messages.create({
+      model,
+      max_tokens: 8192,
+      system: systemPrompt ?? undefined,
+      messages: anthropicMessages,
+    });
+
+    const textBlock = response.content.find((b) => b.type === 'text');
+    const content = textBlock && 'text' in textBlock ? textBlock.text : '';
+    return { content };
+  }
+}
+
+export const agentService = new AgentService();

@@ -3,7 +3,7 @@ import type { OrchestratorStatus, AgentPhase, ActiveTaskConfig } from '@openspri
 import { DEFAULT_RETRY_LIMIT, AGENT_INACTIVITY_TIMEOUT_MS, getTestCommandForFramework } from '@opensprint/shared';
 import { BeadsService, type BeadsIssue } from './beads.service.js';
 import { ProjectService } from './project.service.js';
-import { AgentClient } from './agent-client.js';
+import { agentService } from './agent.service.js';
 import { BranchManager } from './branch-manager.js';
 import { ContextAssembler } from './context-assembler.js';
 import { SessionManager } from './session-manager.js';
@@ -39,7 +39,6 @@ export class ConcurrentOrchestrator {
   private state = new Map<string, ConcurrentState>();
   private beads = new BeadsService();
   private projectService = new ProjectService();
-  private agentClient = new AgentClient();
   private branchManager = new BranchManager();
   private contextAssembler = new ContextAssembler();
   private sessionManager = new SessionManager();
@@ -264,30 +263,32 @@ export class ConcurrentOrchestrator {
 
       const promptPath = `${taskDir}/prompt.md`;
 
-      slot.process = this.agentClient.spawnWithTaskFile(
-        settings.codingAgent,
+      slot.process = agentService.invokeCodingAgent(
         promptPath,
-        repoPath,
-        (chunk: string) => {
-          slot.outputLog.push(chunk);
-          slot.lastOutputTime = Date.now();
-          broadcastToProject(projectId, {
-            type: 'agent.output',
-            taskId: task.id,
-            chunk,
-          } as any);
-        },
-        async (_code: number | null) => {
-          slot.process = null;
-          state.activeSlots.delete(task.id);
-          state.totalCompleted += 1;
+        settings.codingAgent,
+        {
+          cwd: repoPath,
+          onOutput: (chunk: string) => {
+            slot.outputLog.push(chunk);
+            slot.lastOutputTime = Date.now();
+            broadcastToProject(projectId, {
+              type: 'agent.output',
+              taskId: task.id,
+              chunk,
+            } as any);
+          },
+          onExit: async (_code: number | null) => {
+            slot.process = null;
+            state.activeSlots.delete(task.id);
+            state.totalCompleted += 1;
 
-          broadcastToProject(projectId, {
-            type: 'agent.completed',
-            taskId: task.id,
-            status: 'success',
-            testResults: null,
-          });
+            broadcastToProject(projectId, {
+              type: 'agent.completed',
+              taskId: task.id,
+              status: 'success',
+              testResults: null,
+            });
+          },
         },
       );
 
