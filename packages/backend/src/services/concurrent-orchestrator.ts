@@ -1,3 +1,4 @@
+import path from 'path';
 import type { OrchestratorStatus, AgentPhase, ActiveTaskConfig } from '@opensprint/shared';
 import { DEFAULT_RETRY_LIMIT, AGENT_INACTIVITY_TIMEOUT_MS } from '@opensprint/shared';
 import { BeadsService, type BeadsIssue } from './beads.service.js';
@@ -159,6 +160,24 @@ export class ConcurrentOrchestrator {
     }
   }
 
+  /** Resolve plan content for a task from its parent epic. task.description is the task spec, not a path. */
+  private async getPlanContentForTask(repoPath: string, task: BeadsIssue): Promise<string> {
+    const parentId = this.beads.getParentId(task.id);
+    if (parentId) {
+      try {
+        const parent = await this.beads.show(repoPath, parentId);
+        const desc = parent.description as string;
+        if (desc?.startsWith('.opensprint/plans/')) {
+          const planId = path.basename(desc, '.md');
+          return this.contextAssembler.readPlanContent(repoPath, planId);
+        }
+      } catch {
+        // Parent might not exist
+      }
+    }
+    return '';
+  }
+
   private async assignTask(
     projectId: string,
     repoPath: string,
@@ -179,6 +198,9 @@ export class ConcurrentOrchestrator {
       // Create branch
       await this.branchManager.createBranch(repoPath, branchName);
 
+      // Resolve plan content from parent epic (task.description is spec, not path)
+      const planContent = await this.getPlanContentForTask(repoPath, task);
+
       // Use conductor agent for context summarization (v2.0 feature)
       const prdExcerpt = await this.contextAssembler.extractPrdExcerpt(repoPath);
       const optimizedContext = await this.conductorAgent.summarizeContext(
@@ -186,7 +208,7 @@ export class ConcurrentOrchestrator {
         repoPath,
         task.title,
         task.description || '',
-        '',
+        planContent,
         prdExcerpt,
         [],
       );

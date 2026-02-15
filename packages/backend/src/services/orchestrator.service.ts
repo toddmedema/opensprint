@@ -135,12 +135,8 @@ export class OrchestratorService {
     return this.getState(projectId).status;
   }
 
-  /** Resolve plan content for a task (from parent epic or task description) */
+  /** Resolve plan content for a task from its parent epic. task.description is the task spec, not a path. */
   private async getPlanContentForTask(repoPath: string, task: BeadsIssue): Promise<string> {
-    if (task.description?.startsWith('.opensprint/plans/')) {
-      const planId = path.basename(task.description, '.md');
-      return this.contextAssembler.readPlanContent(repoPath, planId);
-    }
     const parentId = this.beads.getParentId(task.id);
     if (parentId) {
       try {
@@ -154,7 +150,7 @@ export class OrchestratorService {
         // Parent might not exist
       }
     }
-    return task.description || '';
+    return '';
   }
 
   /** Get IDs of tasks that block this one (must complete before this task) */
@@ -407,13 +403,14 @@ export class OrchestratorService {
         JSON.stringify(config, null, 2),
       );
 
-      // Generate review prompt
+      // Generate review prompt (resolve plan from parent epic, same as coding phase)
       const prdExcerpt = await this.contextAssembler.extractPrdExcerpt(repoPath);
+      const planContent = await this.getPlanContentForTask(repoPath, task);
       await this.contextAssembler.assembleTaskDirectory(repoPath, task.id, config, {
         taskId: task.id,
         title: task.title,
         description: task.description || '',
-        planContent: '',
+        planContent,
         prdExcerpt,
         dependencyOutputs: [],
       });
