@@ -43,6 +43,10 @@ function formatTimestamp(ts: string): string {
   return d.toLocaleDateString();
 }
 
+const RESIZE_STORAGE_KEY = "opensprint.design.chatPct";
+const MIN_CHAT_PCT = 20;
+const MAX_CHAT_PCT = 80;
+
 const PRD_SECTION_ORDER = [
   "executive_summary",
   "problem_statement",
@@ -87,6 +91,65 @@ export function DesignPhase({ projectId }: DesignPhaseProps) {
   const [savingSection, setSavingSection] = useState<string | null>(null);
   const [focusedSection, setFocusedSection] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Resizable split: chatPct = percent of width for chat (20–80)
+  const [chatPct, setChatPct] = useState(() => {
+    try {
+      const stored = localStorage.getItem(RESIZE_STORAGE_KEY);
+      if (stored != null) {
+        const n = Number(stored);
+        if (n >= MIN_CHAT_PCT && n <= MAX_CHAT_PCT) return n;
+      }
+    } catch {
+      /* ignore */
+    }
+    return 50;
+  });
+
+  const isResizingRef = useRef(false);
+  const startXRef = useRef(0);
+  const startPctRef = useRef(50);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizingRef.current = true;
+    startXRef.current = e.clientX;
+    startPctRef.current = chatPct;
+  }, [chatPct]);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isResizingRef.current) return;
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const width = rect.width;
+      const deltaX = e.clientX - startXRef.current;
+      const deltaPct = (deltaX / width) * 100;
+      let next = startPctRef.current + deltaPct;
+      next = Math.max(MIN_CHAT_PCT, Math.min(MAX_CHAT_PCT, next));
+      setChatPct(next);
+    };
+    const onUp = () => {
+      isResizingRef.current = false;
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  // Persist chatPct to localStorage when it changes (during drag)
+  useEffect(() => {
+    try {
+      localStorage.setItem(RESIZE_STORAGE_KEY, String(chatPct));
+    } catch {
+      /* ignore */
+    }
+  }, [chatPct]);
 
   const refetchPrd = useCallback(async () => {
     const data = await api.prd.get(projectId);
@@ -199,9 +262,12 @@ export function DesignPhase({ projectId }: DesignPhaseProps) {
   };
 
   return (
-    <div className="flex h-full">
+    <div ref={containerRef} className="flex h-full">
       {/* Left: Chat Pane */}
-      <div className="flex-1 flex flex-col border-r border-gray-200">
+      <div
+        className="flex flex-col border-r border-gray-200 shrink-0 overflow-hidden"
+        style={{ flexBasis: `${chatPct}%`, minWidth: 0 }}
+      >
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {messages.length === 0 && (
@@ -270,8 +336,21 @@ export function DesignPhase({ projectId }: DesignPhaseProps) {
         </div>
       </div>
 
+      {/* Resize handle */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-valuenow={chatPct}
+        aria-valuemin={MIN_CHAT_PCT}
+        aria-valuemax={MAX_CHAT_PCT}
+        tabIndex={0}
+        onMouseDown={handleResizeStart}
+        className="w-1.5 flex-shrink-0 cursor-col-resize bg-gray-200 hover:bg-brand-400 active:bg-brand-500 transition-colors select-none shrink-0"
+        title="Drag to resize"
+      />
+
       {/* Right: Live PRD + Change History */}
-      <div className="w-[480px] overflow-y-auto p-6 bg-gray-50 flex flex-col">
+      <div className="flex-1 min-w-0 overflow-y-auto p-6 bg-gray-50 flex flex-col">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Living PRD</h2>
 
         {Object.keys(prdContent).length === 0 ? (
