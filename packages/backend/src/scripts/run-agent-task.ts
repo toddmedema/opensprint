@@ -136,7 +136,7 @@ If ./scripts/agent-chain.sh reports no more open tasks, you are done. Otherwise 
       },
       (code: number | null) => {
         agentDone = true;
-        resolve(code ?? 0);
+        resolve(code ?? 1);
       },
     );
 

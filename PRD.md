@@ -88,7 +88,7 @@ OpenSprint is designed to run entirely offline. The web frontend and backend API
 | Web Frontend        | React + TypeScript                    | User interface for all four phases; real-time agent monitoring; project management                                                                                                                                                                                      |
 | Backend API         | Node.js + TypeScript                  | Project state management, WebSocket relay, PRD versioning, agent orchestration                                                                                                                                                                                          |
 | Agent CLI           | Pluggable (Claude, Cursor, Custom)    | Executes development tasks: code generation, testing, debugging                                                                                                                                                                                                         |
-| Orchestration Layer | Node.js (custom)                      | Agent lifecycle management (spawn, monitor, timeout), context assembly, retry logic, code review triggering. Delegates task prioritization and readiness to beads                                                                                                       |
+| Orchestration Layer | Node.js (custom)                      | Agent lifecycle management (spawn, monitor, timeout), context assembly, retry logic, code review triggering. Owns all critical git operations (branch, commit, merge). Delegates task prioritization and readiness to beads. See Section 5.5 (trust boundary).                                                                       |
 | Beads               | Git-based issue tracker (CLI: `bd`)   | Issue storage, dependency tracking (blocks/related/parent-child/discovered-from), ready-work detection and prioritization via `bd ready`, agent assignment via `assignee` field, hierarchical epic/task IDs, provenance via audit trail, JSONL-backed distributed state |
 | Version Control     | Git                                   | Code repository management, branch-per-task strategy                                                                                                                                                                                                                    |
 | Test Runner         | Configurable (Jest, Playwright, etc.) | Automated test execution and coverage reporting                                                                                                                                                                                                                         |
@@ -120,7 +120,23 @@ OpenSprint is designed to run entirely offline. The web frontend and backend API
 - Two-agent review cycle: coding agent implements, review agent validates (see Section 7.3.2)
 - Retry and failure handling: reverting failed attempts, adding failure context to bead comments, re-queuing tasks
 
-### 5.5 Data Flow
+### 5.5 Orchestrator Trust Boundary
+
+**Agents cannot be trusted to execute specific steps.** LLMs are non-deterministic and may omit, misinterpret, or fail to execute instructions. Any operation that affects project state, version control, or workflow progression must be performed by the orchestrator in code — never delegated to agent prompts.
+
+**Critical operations (orchestrator-only):**
+
+| Operation | Why Orchestrator Must Own It |
+|-----------|-----------------------------|
+| Branch creation and checkout | Agent might not create the branch, might check out the wrong branch, or might leave the repo in an inconsistent state |
+| Committing changes | Agent might forget to commit, commit with wrong message, commit partial changes, or commit to the wrong branch |
+| Merging to main | Agent might merge incorrectly, merge the wrong branch, or leave merge conflicts unresolved |
+| Triggering the next agent | Agent has no mechanism to invoke the orchestrator; workflow progression is entirely orchestrator-driven |
+| Beads state transitions | `bd update`, `bd close`, `bd dep add` — all must be invoked by the orchestrator based on agent *output*, not agent *actions* |
+
+**Agent responsibilities:** Agents produce *outputs* — code files, `result.json`, and reasoning. The orchestrator reads these outputs and performs the corresponding critical operations. For example: when the review agent writes `result.json` with `status: "approved"`, the orchestrator performs the merge, updates beads, and triggers the next task — the agent never touches git or beads directly for these steps.
+
+### 5.6 Data Flow
 
 The data flows through the system in a unidirectional pipeline with feedback loops. User input in Design creates or updates the PRD. The PRD is decomposed in Plan into feature-level Plan markdown files, each representing an epic. In Build, Plan markdowns are further broken into individual tasks mapped to beads for dependency tracking. Agent CLIs pick up tasks, execute them, and report results back through the system. In Validate, user feedback is mapped back to the relevant Plan epic and Build tasks, creating new tickets as needed. Any changes at any phase propagate upstream to update the living PRD, ensuring the document always reflects the current state of the project.
 
@@ -743,11 +759,11 @@ You are implementing a task as part of a larger feature. Review the provided con
 
 ## Instructions
 
-1. Work on branch `<branch>` (already checked out).
+1. Work on branch `<branch>` (already checked out by the orchestrator).
 2. Implement the task according to the acceptance criteria.
 3. Write comprehensive tests (unit, and integration where applicable).
 4. Run `<test_command>` and ensure all tests pass.
-5. Commit your changes with a descriptive message.
+5. Do NOT commit — the orchestrator will commit your changes after you exit.
 6. Write your completion summary to `.opensprint/active/<task-id>/result.json`.
 
 ## Previous Attempt (if retry)
@@ -778,8 +794,8 @@ Review the implementation of this task against its specification and acceptance 
 
 ## Implementation
 
-The coding agent has committed changes on branch `<branch>`.
-Run `git diff main...<branch>` to review the changes.
+The coding agent has produced changes on branch `<branch>`. The orchestrator has already committed them before invoking you.
+Run `git diff main...<branch>` to review the committed changes.
 
 ## Instructions
 
@@ -788,8 +804,8 @@ Run `git diff main...<branch>` to review the changes.
 3. Verify tests exist and cover the ticket scope (not just happy paths).
 4. Run `<test_command>` and confirm all tests pass.
 5. Check code quality: no obvious bugs, reasonable error handling, consistent style.
-6. If approving: merge the branch to main (`git checkout main && git merge <branch>`) and write your result to `.opensprint/active/<task-id>/result.json` with status "approved".
-7. If rejecting: do NOT merge. Write your result to `.opensprint/active/<task-id>/result.json` with status "rejected" and provide specific, actionable feedback.
+6. If approving: write your result to `.opensprint/active/<task-id>/result.json` with status "approved". Do NOT merge — the orchestrator will merge after you exit.
+7. If rejecting: write your result to `.opensprint/active/<task-id>/result.json` with status "rejected" and provide specific, actionable feedback.
 ```
 
 ### 12.4 Invocation
@@ -850,14 +866,14 @@ If the agent does not produce a `result.json` (crash/timeout), the orchestrator 
 
 ### 12.6 Completion Detection & Flow
 
-**Branch management:** The orchestrator creates the task branch (`git checkout -b opensprint/<task-id>` from main) before invoking the coding agent. The coding agent works on this branch. The review agent merges the branch to main upon approval.
+**Branch management:** The orchestrator creates the task branch (`git checkout -b opensprint/<task-id>` from main) before invoking the coding agent. The coding agent works on this branch and produces file changes; the orchestrator commits them. The review agent produces only `result.json`; the orchestrator performs the merge upon approval (see Section 5.5).
 
 **Coding phase:**
 
 1. The orchestrator creates the task branch and sets up the task directory.
 2. The coding agent CLI process is invoked and runs on the task branch.
 3. When the process exits, the orchestrator checks for `result.json`.
-4. If `status` is `success`, the orchestrator runs the test command as a sanity check.
+4. If `status` is `success`, the orchestrator commits all changes on the task branch (agent does not commit), then runs the test command as a sanity check.
 5. If tests pass, the task moves to In Review and the review agent is triggered (still on the task branch).
 6. If tests fail or `status` is `failed`, the error handling flow (Section 9.1) is triggered.
 
@@ -865,7 +881,7 @@ If the agent does not produce a `result.json` (crash/timeout), the orchestrator 
 
 1. The review agent CLI process is invoked. It reviews the diff via `git diff main...<branch>`.
 2. When the process exits, the orchestrator checks for `result.json`.
-3. If `status` is `approved`, the review agent will have already merged the branch to main. The orchestrator verifies the merge, then marks the task Done in beads and deletes the task branch.
+3. If `status` is `approved`, the orchestrator merges the task branch to main, marks the task Done in beads, and deletes the task branch. The review agent never performs the merge.
 4. If `status` is `rejected`, the rejection feedback is added as a comment on the bead issue, and a new coding agent is triggered on the same branch with the feedback included in the prompt.
 
 **Archival:** After a task reaches Done (or exhausts retries), the task directory is moved to `.opensprint/sessions/<task-id>-<attempt>/` for archival.
@@ -909,10 +925,10 @@ The orchestrator starts its loop (triggered by `POST /projects/:id/build/start`)
 6. Monitors for 5-minute inactivity timeout.
 
 **6. Coding Agent Completes**
-The coding agent implements the feature, writes tests, commits to the branch, and writes `result.json` with `status: success`. The orchestrator runs the test command as a sanity check. Tests pass.
+The coding agent implements the feature, writes tests, and writes `result.json` with `status: success` (it does not commit). The orchestrator commits the changes to the task branch, runs the test command as a sanity check, and tests pass.
 
 **7. Review Agent Triggered**
-The orchestrator updates `config.json` to `phase: "review"` and generates a review prompt. The review agent is spawned, reviews `git diff main...opensprint/bd-a3f8.1`, verifies tests cover the acceptance criteria, and approves. It merges the branch to main and writes `result.json` with `status: approved`. The orchestrator verifies the merge, marks the task Done: `bd close bd-a3f8.1 --reason "Implemented and reviewed"`, deletes the branch, and archives the session to `.opensprint/sessions/bd-a3f8.1-1/`.
+The orchestrator updates `config.json` to `phase: "review"` and generates a review prompt. The review agent is spawned, reviews `git diff main...opensprint/bd-a3f8.1`, verifies tests cover the acceptance criteria, and approves by writing `result.json` with `status: approved` (it does not merge). The orchestrator performs the merge to main, marks the task Done: `bd close bd-a3f8.1 --reason "Implemented and reviewed"`, deletes the branch, and archives the session to `.opensprint/sessions/bd-a3f8.1-1/`.
 
 **8. Next Task**
 The orchestrator loops back to step 5.1. If `bd-a3f8.2` was blocked on `bd-a3f8.1`, it now appears in `bd ready` since its dependency is closed. The orchestrator picks it up, and its context includes the diff from `bd-a3f8.1`.
@@ -954,7 +970,7 @@ The living PRD is the backbone of OpenSprint. Changes propagate to the PRD at tw
 
 ### 15.2 Agent Orchestration
 
-The agent orchestration layer manages the lifecycle of agent instances. All agents — planning, coding, and review — are invoked through the same mechanism: the user-configured agent API or CLI for that mode (see Section 6.3). The orchestrator runs a single agent at a time (v1), handling: task selection via `bd ready`, agent assignment via beads' `assignee` field, context assembly (gathering PRD sections, Plan markdowns, and outputs from dependency tasks into the task directory), the two-agent coding/review cycle, branch creation and cleanup, 5-minute inactivity timeout monitoring, and retry logic for failed tasks.
+The agent orchestration layer manages the lifecycle of agent instances. All agents — planning, coding, and review — are invoked through the same mechanism: the user-configured agent API or CLI for that mode (see Section 6.3). The orchestrator runs a single agent at a time (v1), handling: task selection via `bd ready`, agent assignment via beads' `assignee` field, context assembly (gathering PRD sections, Plan markdowns, and outputs from dependency tasks into the task directory), the two-agent coding/review cycle, **all critical git operations** (branch creation, commit, merge, branch deletion — see Section 5.5), 5-minute inactivity timeout monitoring, and retry logic for failed tasks.
 
 ### 15.3 Work Provenance (Beads)
 
@@ -989,6 +1005,7 @@ Every piece of work in OpenSprint is traceable. The beads system captures: which
 - Custom agent support requires the agent to accept a file path argument pointing to the task prompt and produce a `result.json` file on completion.
 - OpenSprint must be fully functional without an internet connection; all core features (Design, Plan, Build, Validate) must work offline when paired with a local agent.
 - V1 runs a single agent at a time to eliminate merge conflict concerns. Concurrent agent execution is a v2 feature.
+- Critical operations (branch create/checkout, commit, merge, beads state transitions, next-agent trigger) must be performed by the orchestrator in code. Agents cannot be trusted to execute these steps reliably (see Section 5.5).
 
 ### 17.2 Assumptions
 
@@ -1049,8 +1066,9 @@ Every piece of work in OpenSprint is traceable. The beads system captures: which
 | Theme preference storage               | `localStorage` (frontend-only), key `opensprint.theme`                                                | Theme is purely UI; no backend needed; keeps preference local to browser                         |
 | Conversation history                   | Stored per phase/context at `.opensprint/conversations/<id>.json`                                     | Preserves Design and Plan chat context; enables conversation resumption                          |
 | Review agent diff access               | Review agent uses `git diff main...<branch>`                                                          | No need to copy files; git provides authoritative diff natively                                  |
-| Branch strategy                        | Orchestrator creates branch before coding agent; review agent merges to main on approval              | Centralizes branch lifecycle in orchestrator; merge is natural final step of approval            |
+| Branch strategy                        | Orchestrator creates branch, commits after coding agent, merges after review approval                 | Agents cannot be trusted to execute git operations; orchestrator owns all critical steps (5.5)    |
 | PRD upstream propagation               | Planning agent invoked at Plan ship and scope-change feedback to review and update PRD                | Explicit trigger points; uses same agent system as all other invocations                         |
+| Orchestrator trust boundary            | All critical ops (branch, commit, merge, beads, next-agent) performed by orchestrator in code          | Agents cannot be trusted to execute specific steps; they produce outputs, orchestrator acts       |
 
 ---
 
