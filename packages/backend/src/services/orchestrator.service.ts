@@ -361,9 +361,6 @@ export class OrchestratorService {
    * then starts the loop and the 5-minute watchdog (PRDv2 §5.8).
    */
   async ensureRunning(projectId: string): Promise<OrchestratorStatus> {
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/7b4dbb83-aede-4af0-b5cc-f2f84134fedd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'orchestrator.service.ts:ensureRunning',message:'ensureRunning called',data:{projectId},timestamp:Date.now(),hypothesisId:'H1,H5'})}).catch(()=>{});
-    // #endregion
     await this.projectService.getProject(projectId);
     const state = this.getState(projectId);
     const repoPath = await this.projectService.getRepoPath(projectId);
@@ -378,9 +375,6 @@ export class OrchestratorService {
     try {
       orphanResult = await orphanRecoveryService.recoverOrphanedTasks(repoPath, excludeTaskId);
     } catch (err) {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/7b4dbb83-aede-4af0-b5cc-f2f84134fedd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'orchestrator.service.ts:ensureRunning:orphanRecovery',message:'orphanRecovery THREW',data:{error:String(err)},timestamp:Date.now(),hypothesisId:'H5'})}).catch(()=>{});
-      // #endregion
       console.error("[orchestrator] Orphan recovery failed:", err);
       orphanResult = { recovered: [] };
     }
@@ -409,10 +403,6 @@ export class OrchestratorService {
       console.log("[orchestrator] Watchdog started (5m interval) for project", projectId);
     }
 
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/7b4dbb83-aede-4af0-b5cc-f2f84134fedd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'orchestrator.service.ts:ensureRunning:end',message:'ensureRunning completed, about to nudge',data:{loopActive:state.loopActive,hasWatchdog:!!state.watchdogTimer,hasActiveProcess:!!state.activeProcess,hasLoopTimer:!!state.loopTimer},timestamp:Date.now(),hypothesisId:'H1,H3'})}).catch(()=>{});
-    // #endregion
-
     // Kick off the loop if idle (recovery may have left it active for PID-alive monitoring)
     if (!state.loopActive) {
       this.nudge(projectId);
@@ -428,10 +418,6 @@ export class OrchestratorService {
    */
   nudge(projectId: string): void {
     const state = this.getState(projectId);
-
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/7b4dbb83-aede-4af0-b5cc-f2f84134fedd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'orchestrator.service.ts:nudge',message:'nudge called',data:{projectId,loopActive:state.loopActive,hasLoopTimer:!!state.loopTimer,hasActiveProcess:!!state.activeProcess},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
-    // #endregion
 
     // Don't start a second loop if one is already active, has an agent running, or is scheduled
     if (state.loopActive || state.loopTimer || state.activeProcess) {
@@ -477,10 +463,6 @@ export class OrchestratorService {
     state.loopActive = true;
     state.loopTimer = null;
 
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/7b4dbb83-aede-4af0-b5cc-f2f84134fedd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'orchestrator.service.ts:runLoop:start',message:'runLoop started',data:{projectId},timestamp:Date.now(),hypothesisId:'H2,H4'})}).catch(()=>{});
-    // #endregion
-
     try {
       const repoPath = await this.projectService.getRepoPath(projectId);
 
@@ -495,10 +477,6 @@ export class OrchestratorService {
       readyTasks = readyTasks.filter((t) => !this.beads.hasLabel(t, "blocked"));
 
       state.status.queueDepth = readyTasks.length;
-
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/7b4dbb83-aede-4af0-b5cc-f2f84134fedd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'orchestrator.service.ts:runLoop:afterFilter',message:'ready tasks after filtering',data:{readyCount:readyTasks.length,taskIds:readyTasks.slice(0,5).map(t=>t.id)},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-      // #endregion
 
       if (readyTasks.length === 0) {
         console.log("[orchestrator] No ready tasks, going idle", { projectId });
@@ -526,9 +504,6 @@ export class OrchestratorService {
         });
       }
       if (!task) {
-        // #region agent log
-        fetch('http://127.0.0.1:7244/ingest/7b4dbb83-aede-4af0-b5cc-f2f84134fedd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'orchestrator.service.ts:runLoop:noTaskAllBlockersOpen',message:'all tasks had unclosed blockers',data:{readyCount:readyTasks.length,checkedTaskIds:readyTasks.map(t=>t.id)},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-        // #endregion
         console.log("[orchestrator] No task with all blockers closed, going idle", {
           projectId,
         });
@@ -588,9 +563,6 @@ export class OrchestratorService {
       // 5. Execute the coding phase (creates worktree, no checkout in main WT)
       await this.executeCodingPhase(projectId, repoPath, task, undefined);
     } catch (error) {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/7b4dbb83-aede-4af0-b5cc-f2f84134fedd',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'orchestrator.service.ts:runLoop:catch',message:'runLoop caught error',data:{error:String(error),stack:(error as Error).stack?.slice(0,500)},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
-      // #endregion
       console.error(`Orchestrator loop error for project ${projectId}:`, error);
       // Retry loop after delay
       state.loopActive = false;
