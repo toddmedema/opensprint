@@ -19,10 +19,15 @@ const mockBuildStatus = vi.fn().mockResolvedValue({
   queueDepth: 0,
 });
 
+const mockAgentsActive = vi.fn().mockResolvedValue([]);
+
 vi.mock("../../api/client", () => ({
   api: {
     build: {
       status: (...args: unknown[]) => mockBuildStatus(...args),
+    },
+    agents: {
+      active: (...args: unknown[]) => mockAgentsActive(...args),
     },
   },
 }));
@@ -49,5 +54,6 @@ describe("AgentDashboard", () => {
     render(<AgentDashboard projectId="proj-1" />);
 
     expect(mockBuildStatus).toHaveBeenCalledWith("proj-1");
+    expect(mockAgentsActive).toHaveBeenCalledWith("proj-1");
   });
 });

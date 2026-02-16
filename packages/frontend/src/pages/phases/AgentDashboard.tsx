@@ -33,6 +33,35 @@ export function AgentDashboard({ projectId }: AgentDashboardProps) {
   const [currentTask, setCurrentTask] = useState<string | null>(null);
   const [stats, setStats] = useState({ totalCompleted: 0, totalFailed: 0, queueDepth: 0 });
 
+  const loadStatus = useCallback(() => {
+    api.build.status(projectId).then((data: unknown) => {
+      const status = data as {
+        currentTask: string | null;
+        totalCompleted: number;
+        totalFailed: number;
+        queueDepth: number;
+      };
+      setCurrentTask(status?.currentTask ?? null);
+      setStats({
+        totalCompleted: status?.totalCompleted ?? 0,
+        totalFailed: status?.totalFailed ?? 0,
+        queueDepth: status?.queueDepth ?? 0,
+      });
+    });
+    api.agents.active(projectId).then((data) => {
+      const list = Array.isArray(data) ? data : [];
+      setAgents(
+        list.map((a) => ({
+          taskId: a.id,
+          phase: a.phase,
+          branchName: a.branchName ?? a.label,
+          startedAt: a.startedAt,
+          outputLength: 0,
+        })),
+      );
+    }).catch(() => setAgents([]));
+  }, [projectId]);
+
   const handleWsEvent = useCallback(
     (event: ServerEvent) => {
       switch (event.type) {
@@ -51,7 +80,7 @@ export function AgentDashboard({ projectId }: AgentDashboardProps) {
           break;
       }
     },
-    [selectedAgent],
+    [selectedAgent, loadStatus],
   );
 
   const { subscribeToAgent, unsubscribeFromAgent } = useWebSocket({
@@ -59,28 +88,11 @@ export function AgentDashboard({ projectId }: AgentDashboardProps) {
     onEvent: handleWsEvent,
   });
 
-  const loadStatus = () => {
-    api.build.status(projectId).then((data: unknown) => {
-      const status = data as {
-        currentTask: string | null;
-        totalCompleted: number;
-        totalFailed: number;
-        queueDepth: number;
-      };
-      setCurrentTask(status?.currentTask ?? null);
-      setStats({
-        totalCompleted: status?.totalCompleted ?? 0,
-        totalFailed: status?.totalFailed ?? 0,
-        queueDepth: status?.queueDepth ?? 0,
-      });
-    });
-  };
-
   useEffect(() => {
     loadStatus();
     const interval = setInterval(loadStatus, 5000);
     return () => clearInterval(interval);
-  }, [projectId]);
+  }, [loadStatus]);
 
   useEffect(() => {
     if (selectedAgent) {

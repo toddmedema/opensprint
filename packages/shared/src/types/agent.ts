@@ -87,6 +87,8 @@ export interface ActiveAgent {
   phase: string;
   label: string;
   startedAt: string;
+  /** Branch name (Build phase only) */
+  branchName?: string;
 }
 
 /** Build orchestrator status (always-on per PRDv2 §5.7) */
