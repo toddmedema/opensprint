@@ -180,8 +180,33 @@ export class OrchestratorService {
         return;
       }
 
-      // 2. Pick the highest-priority task
-      const task = readyTasks[0];
+      // 2. Pick the highest-priority task (pre-flight: verify all blockers are closed)
+      let task: BeadsIssue | null = null;
+      for (const t of readyTasks) {
+        const allClosed = await this.beads.areAllBlockersClosed(repoPath, t.id);
+        if (allClosed) {
+          task = t;
+          break;
+        }
+        console.log('[orchestrator] Skipping task (blockers not all closed)', {
+          projectId,
+          taskId: t.id,
+          title: t.title,
+        });
+      }
+      if (!task) {
+        console.log('[orchestrator] No task with all blockers closed, polling again in 5s', {
+          projectId,
+        });
+        state.loopTimer = setTimeout(() => this.runLoop(projectId), 5000);
+        broadcastToProject(projectId, {
+          type: 'build.status',
+          running: true,
+          currentTask: null,
+          queueDepth: 0,
+        });
+        return;
+      }
       console.log('[orchestrator] Picking task', { projectId, taskId: task.id, title: task.title });
 
       // 3. Assign the task

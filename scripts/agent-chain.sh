@@ -11,15 +11,21 @@ cd "$(dirname "$0")/.."
 # 1. Get next ready task (dependency-aware, priority-sorted)
 READY_JSON=$(bd ready --json 2>/dev/null || echo "[]")
 # Filter out Plan approval gate (user closes via Ship it!) and epics (containers, not work items)
-NEXT_TASK=$(echo "$READY_JSON" | jq '
-  if type == "array" then
-    [.[] | select((.title // "") != "Plan approval gate") | select((.issue_type // .type // "") != "epic")]
-    | if length > 0 then .[0] else empty end
-  else empty end
-' 2>/dev/null)
+READY_TASKS=$(echo "$READY_JSON" | jq 'if type == "array" then [.[] | select((.title // "") != "Plan approval gate") | select((.issue_type // .type // "") != "epic")] else [] end' 2>/dev/null)
+
+# Find first task with all blockers closed (bd ready may return in_progress blockers as resolved)
+NEXT_TASK=""
+for task in $(echo "$READY_TASKS" | jq -c '.[]' 2>/dev/null); do
+  TID=$(echo "$task" | jq -r '.id')
+  if npm run check-blockers -w packages/backend -- "$TID" 2>/dev/null; then
+    NEXT_TASK="$task"
+    break
+  fi
+  echo "⏭️  Skipping $TID: not all blockers closed"
+done
 
 if [[ -z "$NEXT_TASK" || "$NEXT_TASK" == "null" ]]; then
-  echo "✅ No ready bd tasks. Agent chain complete."
+  echo "✅ No ready bd tasks (all have unresolved blockers). Agent chain complete."
   exit 0
 fi
 
@@ -41,8 +47,19 @@ git checkout -b "opensprint/${TASK_ID}" 2>/dev/null || git checkout "opensprint/
 # 4. Prepare task directory and spawn coding agent (context assembly + output streaming)
 if command -v agent &>/dev/null; then
   echo "🤖 Starting agent for $TASK_ID (task dir + stream)..."
+  set +e
   npm run run-task -w packages/backend -- "$TASK_ID"
-  # Agent runs ./scripts/agent-chain.sh when done to continue the chain
+  EXIT_CODE=$?
+  set -e
+
+  # Exit codes 143 (SIGTERM) and 130 (SIGINT) are expected when the agent
+  # finishes — the CLI may signal its process group during cleanup.
+  # Treat them as success if the agent completed its work.
+  if [ $EXIT_CODE -ne 0 ] && [ $EXIT_CODE -ne 143 ] && [ $EXIT_CODE -ne 130 ]; then
+    echo "❌ Agent failed with exit code $EXIT_CODE"
+    exit $EXIT_CODE
+  fi
+  echo "✅ Agent finished for $TASK_ID"
 else
   echo "⚠️  Cursor CLI (agent) not installed. Install with:"
   echo "   curl https://cursor.com/install -fsSL | bash"

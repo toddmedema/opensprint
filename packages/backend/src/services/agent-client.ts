@@ -123,7 +123,7 @@ export class AgentClient {
           throw new Error(`Could not read task file: ${taskFilePath}. ${msg}`);
         }
         command = 'agent';
-        args = ['--print', '--workspace', cwd, '--trust'];
+        args = ['--print', '--output-format', 'stream-json', '--stream-partial-output', '--workspace', cwd, '--trust'];
         if (config.model) {
           args.push('--model', config.model);
         }
@@ -151,8 +151,9 @@ export class AgentClient {
 
     const child = spawn(command, args, {
       cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env },
+      detached: true,
     });
 
     child.stdout.on('data', (data: Buffer) => {
@@ -180,10 +181,21 @@ export class AgentClient {
 
     return {
       kill: () => {
-        child.kill('SIGTERM');
+        try {
+          // Kill the entire process group (negative PID) since agent is detached
+          process.kill(-child.pid!, 'SIGTERM');
+        } catch {
+          child.kill('SIGTERM');
+        }
         setTimeout(() => {
-          if (!child.killed) {
-            child.kill('SIGKILL');
+          try {
+            if (!child.killed) {
+              process.kill(-child.pid!, 'SIGKILL');
+            }
+          } catch {
+            if (!child.killed) {
+              child.kill('SIGKILL');
+            }
           }
         }, 5000);
       },

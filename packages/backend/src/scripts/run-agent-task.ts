@@ -9,11 +9,18 @@
 
 import path from 'path';
 import fs from 'fs/promises';
+import { config as loadEnv } from 'dotenv';
 import { BeadsService, type BeadsIssue } from '../services/beads.service.js';
 import { ContextAssembler } from '../services/context-assembler.js';
 import { AgentClient } from '../services/agent-client.js';
 import { OPENSPRINT_PATHS, getTestCommandForFramework } from '@opensprint/shared';
 import type { AgentConfig, ProjectSettings } from '@opensprint/shared';
+
+// Load .env from monorepo root — override: true so the user's .env key wins
+// over the Cursor IDE's internal CURSOR_API_KEY (which can't auth the CLI agent)
+loadEnv({ path: path.resolve(process.cwd(), '.env'), override: true });
+loadEnv({ path: path.resolve(process.cwd(), '../.env'), override: true });
+loadEnv({ path: path.resolve(process.cwd(), '../../.env'), override: true });
 
 const taskId = process.argv[2];
 if (!taskId) {
@@ -118,6 +125,8 @@ If ./scripts/agent-chain.sh reports no more open tasks, you are done. Otherwise 
   await fs.writeFile(promptPath, existingPrompt + chainInstructions);
 
   return new Promise((resolve) => {
+    let agentDone = false;
+
     const proc = agentClient.spawnWithTaskFile(
       codingAgent,
       promptPath,
@@ -126,15 +135,18 @@ If ./scripts/agent-chain.sh reports no more open tasks, you are done. Otherwise 
         process.stdout.write(chunk);
       },
       (code: number | null) => {
-        resolve(code ?? 1);
+        agentDone = true;
+        resolve(code ?? 0);
       },
     );
 
     process.on('SIGINT', () => {
+      if (agentDone) return; // Agent already finished — ignore stray signal
       proc.kill();
       resolve(130);
     });
     process.on('SIGTERM', () => {
+      if (agentDone) return; // Agent already finished — ignore stray signal
       proc.kill();
       resolve(143);
     });

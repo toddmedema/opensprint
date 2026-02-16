@@ -3,9 +3,13 @@ import { BeadsService } from '../services/beads.service.js';
 
 // Control mock stdout per test (closure reads current value at call time)
 let mockStdout = '{}';
+let mockExecImpl: (cmd: string) => Promise<{ stdout: string; stderr: string }> = async () => ({
+  stdout: mockStdout,
+  stderr: '',
+});
 
 vi.mock('util', () => ({
-  promisify: () => async () => ({ stdout: mockStdout, stderr: '' }),
+  promisify: () => (cmd: string, _opts?: unknown) => mockExecImpl(cmd),
 }));
 
 describe('BeadsService', () => {
@@ -15,6 +19,7 @@ describe('BeadsService', () => {
   beforeEach(() => {
     beads = new BeadsService();
     mockStdout = '{}';
+    mockExecImpl = async () => ({ stdout: mockStdout, stderr: '' });
   });
 
   it('should be instantiable', () => {
@@ -34,27 +39,29 @@ describe('BeadsService', () => {
     expect(typeof beads.sync).toBe('function');
     expect(typeof beads.depTree).toBe('function');
     expect(typeof beads.runBd).toBe('function');
+    expect(typeof beads.getBlockers).toBe('function');
+    expect(typeof beads.areAllBlockersClosed).toBe('function');
   });
 
   it('runBd should return parsed JSON from bd output', async () => {
     const json = { id: 'test-1', title: 'Test', status: 'open' };
-    mockExecResolve = { stdout: JSON.stringify(json), stderr: '' };
+    mockStdout = JSON.stringify(json);
 
     const result = await beads.runBd(repoPath, 'show', ['test-1', '--json']);
     expect(result).toEqual(json);
   });
 
   it('runBd should return null for empty output', async () => {
-    mockExecResolve = { stdout: '\n  \n', stderr: '' };
+    mockStdout = '\n  \n';
 
     const result = await beads.runBd(repoPath, 'close', ['x', '--reason', 'done', '--json']);
     expect(result).toBeNull();
   });
 
   it('runBd should throw on exec error', async () => {
-    mockExecReject = Object.assign(new Error('bd not found'), {
-      stderr: 'bd: command not found',
-    });
+    mockExecImpl = async () => {
+      throw Object.assign(new Error('bd not found'), { stderr: 'bd: command not found' });
+    };
 
     await expect(beads.runBd(repoPath, 'list', ['--json'])).rejects.toThrow(/Beads command failed/);
   });
@@ -172,6 +179,116 @@ describe('BeadsService', () => {
       mockStdout = '[]';
       const result = await beads.ready('/repo');
       expect(result).toEqual([]);
+    });
+
+    it('should filter out tasks whose blockers are not closed', async () => {
+      mockExecImpl = async (cmd: string) => {
+        if (cmd.includes('ready')) {
+          return {
+            stdout: JSON.stringify([
+              { id: 'task-1', title: 'Blocker', priority: 0 },
+              { id: 'task-2', title: 'Blocked', priority: 1 },
+            ]),
+            stderr: '',
+          };
+        }
+        if (cmd.includes('list --all')) {
+          return {
+            stdout: JSON.stringify([
+              { id: 'task-1', status: 'in_progress' },
+              { id: 'task-2', status: 'open' },
+            ]),
+            stderr: '',
+          };
+        }
+        if (cmd.includes('show task-1')) {
+          return {
+            stdout: JSON.stringify({ id: 'task-1', dependencies: [] }),
+            stderr: '',
+          };
+        }
+        if (cmd.includes('show task-2')) {
+          return {
+            stdout: JSON.stringify({
+              id: 'task-2',
+              dependencies: [{ type: 'blocks', depends_on_id: 'task-1' }],
+            }),
+            stderr: '',
+          };
+        }
+        return { stdout: '{}', stderr: '' };
+      };
+      const result = await beads.ready('/repo');
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('task-1');
+    });
+  });
+
+  describe('areAllBlockersClosed', () => {
+    it('should return true when task has no blockers', async () => {
+      mockExecImpl = async (cmd: string) => {
+        if (cmd.includes('show t1')) {
+          return { stdout: JSON.stringify({ id: 't1', dependencies: [] }), stderr: '' };
+        }
+        if (cmd.includes('list --all')) {
+          return { stdout: JSON.stringify([{ id: 't1', status: 'open' }]), stderr: '' };
+        }
+        return { stdout: '{}', stderr: '' };
+      };
+      const result = await beads.areAllBlockersClosed('/repo', 't1');
+      expect(result).toBe(true);
+    });
+
+    it('should return true when all blockers are closed', async () => {
+      mockExecImpl = async (cmd: string) => {
+        if (cmd.includes('show t1')) {
+          return {
+            stdout: JSON.stringify({
+              id: 't1',
+              dependencies: [{ type: 'blocks', depends_on_id: 'b1' }],
+            }),
+            stderr: '',
+          };
+        }
+        if (cmd.includes('show b1')) {
+          return { stdout: JSON.stringify({ id: 'b1', status: 'closed' }), stderr: '' };
+        }
+        if (cmd.includes('list --all')) {
+          return {
+            stdout: JSON.stringify([{ id: 't1', status: 'open' }, { id: 'b1', status: 'closed' }]),
+            stderr: '',
+          };
+        }
+        return { stdout: '{}', stderr: '' };
+      };
+      const result = await beads.areAllBlockersClosed('/repo', 't1');
+      expect(result).toBe(true);
+    });
+
+    it('should return false when a blocker is in_progress', async () => {
+      mockExecImpl = async (cmd: string) => {
+        if (cmd.includes('show t1')) {
+          return {
+            stdout: JSON.stringify({
+              id: 't1',
+              dependencies: [{ type: 'blocks', depends_on_id: 'b1' }],
+            }),
+            stderr: '',
+          };
+        }
+        if (cmd.includes('show b1')) {
+          return { stdout: JSON.stringify({ id: 'b1', status: 'in_progress' }), stderr: '' };
+        }
+        if (cmd.includes('list --all')) {
+          return {
+            stdout: JSON.stringify([{ id: 't1', status: 'open' }, { id: 'b1', status: 'in_progress' }]),
+            stderr: '',
+          };
+        }
+        return { stdout: '{}', stderr: '' };
+      };
+      const result = await beads.areAllBlockersClosed('/repo', 't1');
+      expect(result).toBe(false);
     });
   });
 

@@ -144,8 +144,17 @@ export class ConcurrentOrchestrator {
         const activeTasks = new Set(state.activeSlots.keys());
         const availableTasks = readyTasks.filter((t: BeadsIssue) => !activeTasks.has(t.id));
 
+        // Pre-flight: only assign tasks whose blocks dependencies are all closed
+        const withClosedBlockers: BeadsIssue[] = [];
+        for (const task of availableTasks) {
+          const allClosed = await this.beads.areAllBlockersClosed(repoPath, task.id);
+          if (allClosed) {
+            withClosedBlockers.push(task);
+          }
+        }
+
         // Assign tasks to available slots
-        const toAssign = availableTasks.slice(0, availableSlots);
+        const toAssign = withClosedBlockers.slice(0, availableSlots);
         for (const task of toAssign) {
           await this.assignTask(projectId, repoPath, task);
         }

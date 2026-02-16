@@ -191,10 +191,30 @@ export class BeadsService {
     return result;
   }
 
-  /** Get ready tasks (priority-sorted, all deps resolved) */
+  /**
+   * Get ready tasks (priority-sorted, all blocks deps resolved).
+   * bd ready may return tasks whose blockers are in_progress; we only consider
+   * a blocks dependency resolved when the blocker status is closed.
+   */
   async ready(repoPath: string): Promise<BeadsIssue[]> {
     const stdout = await this.exec(repoPath, "ready --json");
-    return this.parseJsonArray(stdout);
+    const rawTasks = this.parseJsonArray(stdout);
+    if (rawTasks.length === 0) return [];
+
+    const allIssues = await this.listAll(repoPath);
+    const idToStatus = new Map(allIssues.map((i) => [i.id, i.status]));
+
+    const filtered: BeadsIssue[] = [];
+    for (const task of rawTasks) {
+      const blockers = await this.getBlockers(repoPath, task.id);
+      const allBlockersClosed =
+        blockers.length === 0 ||
+        blockers.every((bid) => idToStatus.get(bid) === "closed");
+      if (allBlockersClosed) {
+        filtered.push(task);
+      }
+    }
+    return filtered;
   }
 
   /** List all issues (open + in_progress by default) */
@@ -216,6 +236,18 @@ export class BeadsService {
     const first = arr[0];
     if (first) return first;
     throw new Error(`Issue ${id} not found`);
+  }
+
+  /**
+   * Check whether all blocks dependencies for a task are closed.
+   * Used as a pre-flight guard before claiming a task.
+   */
+  async areAllBlockersClosed(repoPath: string, taskId: string): Promise<boolean> {
+    const blockers = await this.getBlockers(repoPath, taskId);
+    if (blockers.length === 0) return true;
+    const allIssues = await this.listAll(repoPath);
+    const idToStatus = new Map(allIssues.map((i) => [i.id, i.status]));
+    return blockers.every((bid) => idToStatus.get(bid) === "closed");
   }
 
   /** Get IDs of issues that block this one (this task depends on them) */

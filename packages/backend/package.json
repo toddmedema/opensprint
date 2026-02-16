@@ -6,6 +6,7 @@
   "main": "./dist/index.js",
   "scripts": {
     "run-task": "tsx src/scripts/run-agent-task.ts",
+    "check-blockers": "tsx src/scripts/check-blockers-closed.ts",
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
