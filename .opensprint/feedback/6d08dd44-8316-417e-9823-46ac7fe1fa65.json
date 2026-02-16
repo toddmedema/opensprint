@@ -1,0 +1,11 @@
+{
+  "id": "6d08dd44-8316-417e-9823-46ac7fe1fa65",
+  "text": "When providing feedback in Validate mode, do not show a type (e.g. bug, feature, UX) at all until it has been mapped. Right now it shows \"Bug\" and then the type changes once it's mapped. This means we can also eliminate showing \"Mapped\" - the new display should be JUST \"pending\" -> \"Feature/Ux/Bug\" and not have two chips.",
+  "category": "ux",
+  "mappedPlanId": "validate-phase-feedback-submission-and-mapping",
+  "createdTaskIds": [
+    "opensprint.dev-srl.7"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-15T23:29:12.126Z"
+}

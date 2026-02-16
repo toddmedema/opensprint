@@ -1,0 +1,11 @@
+{
+  "id": "e5552860-8384-4816-a5e9-0e9dbe461970",
+  "text": "When a user in Plan clicks \"Decompose from PRD\" - after the Plan is created, kick off a second agent to review the plan against the code and capabilities that already exist in the repository and mark any beads tasks, epics, and plans that are already implemented as done",
+  "category": "feature",
+  "mappedPlanId": "plan-phase-feature-decomposition",
+  "createdTaskIds": [
+    "opensprint.dev-vwf.9"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-15T23:27:41.287Z"
+}

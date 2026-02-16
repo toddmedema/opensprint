@@ -25,9 +25,7 @@ export class TaskService {
       this.beads.ready(project.repoPath),
     ]);
     // Exclude epics from ready — they are containers, not work items
-    const readyIds = new Set(
-      readyIssues.filter((i) => (i.issue_type ?? i.type) !== 'epic').map((i) => i.id),
-    );
+    const readyIds = new Set(readyIssues.filter((i) => (i.issue_type ?? i.type) !== "epic").map((i) => i.id));
     const idToIssue = new Map(allIssues.map((i) => [i.id, i]));
 
     const tasks = allIssues.map((issue) => this.beadsIssueToTask(issue, readyIds, idToIssue));
@@ -51,7 +49,7 @@ export class TaskService {
       this.beads.ready(project.repoPath),
       this.beads.listAll(project.repoPath),
     ]);
-    const nonEpicReady = readyIssues.filter((i) => (i.issue_type ?? i.type) !== 'epic');
+    const nonEpicReady = readyIssues.filter((i) => (i.issue_type ?? i.type) !== "epic");
     const readyIds = new Set(nonEpicReady.map((i) => i.id));
     const idToIssue = new Map(allIssues.map((i) => [i.id, i]));
     return nonEpicReady.map((issue) => this.beadsIssueToTask(issue, readyIds, idToIssue));
@@ -65,18 +63,30 @@ export class TaskService {
       this.beads.listAll(project.repoPath),
       this.beads.ready(project.repoPath),
     ]);
-    const readyIds = new Set(
-      readyIssues.filter((i) => (i.issue_type ?? i.type) !== 'epic').map((i) => i.id),
-    );
+    const readyIds = new Set(readyIssues.filter((i) => (i.issue_type ?? i.type) !== "epic").map((i) => i.id));
     const idToIssue = new Map(allIssues.map((i) => [i.id, i]));
     return this.beadsIssueToTask(issue, readyIds, idToIssue);
+  }
+
+  /**
+   * Normalize beads dependency format. bd list uses { depends_on_id, type }; bd show uses { id, dependency_type }.
+   */
+  private normalizeDependency(d: Record<string, unknown>): { targetId: string; type: string } | null {
+    const targetId = (d.depends_on_id ?? d.id) as string | undefined;
+    const type = (d.type ?? d.dependency_type) as string | undefined;
+    if (!targetId || !type) return null;
+    return { targetId, type };
   }
 
   /** Transform beads issue to Task with computed kanbanColumn */
   private beadsIssueToTask(issue: BeadsIssue, readyIds: Set<string>, idToIssue: Map<string, BeadsIssue>): Task {
     const id = issue.id ?? "";
     const kanbanColumn = this.computeKanbanColumn(issue, readyIds, idToIssue);
-    const deps = (issue.dependencies as Array<{ depends_on_id: string; type: string }>) ?? [];
+    const rawDeps = (issue.dependencies as Array<Record<string, unknown>>) ?? [];
+    const dependencies = rawDeps
+      .map((d) => this.normalizeDependency(d))
+      .filter((x): x is { targetId: string; type: string } => x != null)
+      .map(({ targetId, type }) => ({ targetId, type: type as TaskDependency["type"] }));
     const epicId = this.extractEpicId(issue.id);
 
     return {
@@ -88,7 +98,7 @@ export class TaskService {
       priority: Math.min(4, Math.max(0, (issue.priority as number) ?? 1)) as 0 | 1 | 2 | 3 | 4,
       assignee: (issue.assignee as string) ?? null,
       labels: (issue.labels as string[]) ?? [],
-      dependencies: deps.map((d) => ({ targetId: d.depends_on_id, type: d.type as TaskDependency["type"] })),
+      dependencies,
       epicId,
       kanbanColumn,
       createdAt: (issue.created_at as string) ?? "",
@@ -107,14 +117,16 @@ export class TaskService {
     if (status === "in_progress" && issue.assignee) return "in_progress";
 
     // status === 'open'
-    const deps = (issue.dependencies as Array<{ depends_on_id: string; type: string }>) ?? [];
-    const blocksDeps = deps.filter((d) => d.type === "blocks");
+    const rawDeps = (issue.dependencies as Array<Record<string, unknown>>) ?? [];
+    const blocksDeps = rawDeps
+      .map((d) => this.normalizeDependency(d))
+      .filter((x): x is { targetId: string; type: string } => x != null && x.type === "blocks");
 
     for (const d of blocksDeps) {
-      const depIssue = idToIssue.get(d.depends_on_id);
+      const depIssue = idToIssue.get(d.targetId);
       if (!depIssue || (depIssue.status as string) !== "open") continue;
       // Gate: .0 convention or "Plan approval gate" (beads may use .1 for first child)
-      const isGate = /\.0$/.test(d.depends_on_id) || depIssue.title === "Plan approval gate";
+      const isGate = /\.0$/.test(d.targetId) || depIssue.title === "Plan approval gate";
       if (isGate) return "planning";
       return "backlog";
     }
@@ -188,10 +200,7 @@ export class TaskService {
     if (epicId) {
       const allIssues = await this.beads.listAll(project.repoPath);
       const implTasks = allIssues.filter(
-        (i) =>
-          i.id.startsWith(epicId + ".") &&
-          !i.id.endsWith(".0") &&
-          (i.issue_type ?? i.type) !== "epic",
+        (i) => i.id.startsWith(epicId + ".") && !i.id.endsWith(".0") && (i.issue_type ?? i.type) !== "epic",
       );
       const allClosed = implTasks.every((i) => (i.status as string) === "closed");
 

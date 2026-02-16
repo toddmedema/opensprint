@@ -39,6 +39,26 @@ const columnColors: Record<KanbanColumn, string> = {
   done: "bg-green-400",
 };
 
+function StatusIcon({ col, size = "sm", title }: { col: KanbanColumn; size?: "sm" | "xs"; title?: string }) {
+  const dim = size === "sm" ? "w-2.5 h-2.5" : "w-2 h-2";
+  if (col === "done") {
+    return (
+      <span className="inline-flex" title={title}>
+        <svg
+          className={`${dim} shrink-0 text-green-500`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2.5}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      </span>
+    );
+  }
+  return <span className={`${dim} rounded-full shrink-0 ${columnColors[col]}`} title={title} />;
+}
+
 function ArchivedSessionView({ sessions }: { sessions: AgentSession[] }) {
   const [activeTab, setActiveTab] = useState<"output" | "diff">("output");
   const [selectedIdx, setSelectedIdx] = useState(sessions.length - 1);
@@ -107,9 +127,7 @@ function ArchivedSessionView({ sessions }: { sessions: AgentSession[] }) {
       </div>
       {/* Content */}
       <pre className="flex-1 p-4 text-xs font-mono whitespace-pre-wrap overflow-y-auto">
-        {activeTab === "output"
-          ? session.outputLog || "(no output)"
-          : session.gitDiff || "(no diff)"}
+        {activeTab === "output" ? session.outputLog || "(no output)" : session.gitDiff || "(no diff)"}
       </pre>
     </div>
   );
@@ -218,8 +236,7 @@ export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: 
     }
   }, [projectId, selectedTask]);
 
-  const { connected, subscribeToAgent, unsubscribeFromAgent, registerEventHandler } =
-    useProjectWebSocket();
+  const { connected, subscribeToAgent, unsubscribeFromAgent, registerEventHandler } = useProjectWebSocket();
 
   useEffect(() => {
     return registerEventHandler(handleWsEvent);
@@ -298,10 +315,7 @@ export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: 
     setError(null);
     try {
       await api.tasks.markComplete(projectId, selectedTask);
-      const [tasksData, plansData] = await Promise.all([
-        api.tasks.list(projectId),
-        api.plans.list(projectId),
-      ]);
+      const [tasksData, plansData] = await Promise.all([api.tasks.list(projectId), api.plans.list(projectId)]);
       setTasks((tasksData as TaskCard[]) ?? []);
       setPlans((plansData as Plan[]) ?? []);
     } catch (err) {
@@ -338,8 +352,7 @@ export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: 
       byEpic.get(key)!.push(t);
     }
 
-    const allDone = (tasks: TaskCard[]) =>
-      tasks.length > 0 && tasks.every((t) => t.kanbanColumn === "done");
+    const allDone = (tasks: TaskCard[]) => tasks.length > 0 && tasks.every((t) => t.kanbanColumn === "done");
 
     const result: { epicId: string; epicTitle: string; tasks: TaskCard[] }[] = [];
     // Epics with plans first (in plan order)
@@ -400,9 +413,7 @@ export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: 
             </p>
           </div>
           <div className="flex items-center gap-3">
-            {awaitingApproval && (
-              <span className="text-sm font-medium text-amber-600">Awaiting approval…</span>
-            )}
+            {awaitingApproval && <span className="text-sm font-medium text-amber-600">Awaiting approval…</span>}
             {orchestratorRunning ? (
               <button onClick={handlePauseBuild} className="btn-secondary text-sm" disabled={awaitingApproval}>
                 Pause Build
@@ -452,7 +463,7 @@ export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: 
                     {KANBAN_COLUMNS.map((col) => (
                       <div key={col} className="kanban-column flex-shrink-0 w-56">
                         <div className="flex items-center gap-2 mb-2">
-                          <div className={`w-2.5 h-2.5 rounded-full ${columnColors[col]}`} />
+                          <StatusIcon col={col} size="sm" title={columnLabels[col]} />
                           <span className="text-xs font-semibold text-gray-600">{columnLabels[col]}</span>
                           <span className="text-xs text-gray-400 bg-gray-100 rounded-full px-2 py-0.5">
                             {laneTasksByCol[col].length}
@@ -470,7 +481,9 @@ export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: 
                                 <span className="text-xs text-gray-400 font-mono truncate" title={task.id}>
                                   {task.id}
                                 </span>
-                                <span className="text-xs text-gray-500">{PRIORITY_LABELS[task.priority] ?? "Medium"}</span>
+                                <span className="text-xs text-gray-500">
+                                  {PRIORITY_LABELS[task.priority] ?? "Medium"}
+                                </span>
                               </div>
                               {task.assignee && <div className="mt-2 text-xs text-brand-600">{task.assignee}</div>}
                               {task.testResults && task.testResults.total > 0 && (
@@ -545,9 +558,31 @@ export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: 
                       <ReactMarkdown>{taskDetail.description}</ReactMarkdown>
                     </div>
                   )}
-                  {taskDetail.dependencies.length > 0 && (
-                    <div className="text-xs text-gray-500">
-                      Depends on: {taskDetail.dependencies.map((d) => d.targetId).join(", ")}
+                  {taskDetail.dependencies.filter((d) => d.targetId).length > 0 && (
+                    <div className="text-xs">
+                      <span className="text-gray-500">Depends on:</span>
+                      <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-1.5">
+                        {taskDetail.dependencies
+                          .filter((d) => d.targetId)
+                          .map((d) => {
+                            const depTask = tasks.find((t) => t.id === d.targetId);
+                            const label = depTask?.title ?? d.targetId;
+                            const col = depTask?.kanbanColumn ?? "backlog";
+                            return (
+                              <button
+                                key={d.targetId}
+                                type="button"
+                                onClick={() => setSelectedTask(d.targetId)}
+                                className="inline-flex items-center gap-1.5 text-left hover:underline text-brand-400 hover:text-brand-300 transition-colors"
+                              >
+                                <StatusIcon col={col} size="xs" title={columnLabels[col]} />
+                                <span className="truncate max-w-[200px]" title={label}>
+                                  {label}
+                                </span>
+                              </button>
+                            );
+                          })}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -586,8 +621,7 @@ export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: 
                         {completionState.testResults && completionState.testResults.total > 0 && (
                           <div className="text-xs text-gray-400 mt-1">
                             {completionState.testResults.passed} passed
-                            {completionState.testResults.failed > 0 &&
-                              `, ${completionState.testResults.failed} failed`}
+                            {completionState.testResults.failed > 0 && `, ${completionState.testResults.failed} failed`}
                             {completionState.testResults.skipped > 0 &&
                               `, ${completionState.testResults.skipped} skipped`}
                           </div>

@@ -2,6 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme CSS variables — light/dark */
+:root,
+html[data-theme="light"],
+html:not([data-theme]) {
+  --color-bg: #f9fafb;
+  --color-bg-elevated: #ffffff;
+  --color-text: #111827;
+  --color-text-muted: #6b7280;
+  --color-surface: #ffffff;
+  --color-border: #e5e7eb;
+  --color-border-subtle: #f3f4f6;
+  --color-ring: #d1d5db;
+  --color-input-bg: #ffffff;
+  --color-input-text: #111827;
+  --color-input-placeholder: #9ca3af;
+}
+
+html[data-theme="dark"] {
+  --color-bg: #111827;
+  --color-bg-elevated: #1f2937;
+  --color-text: #f3f4f6;
+  --color-text-muted: #9ca3af;
+  --color-surface: #1f2937;
+  --color-border: #374151;
+  --color-border-subtle: #1f2937;
+  --color-ring: #4b5563;
+  --color-input-bg: #1f2937;
+  --color-input-text: #f3f4f6;
+  --color-input-placeholder: #6b7280;
+}
+
 @layer base {
   html[data-theme="light"],
   html:not([data-theme]) {
