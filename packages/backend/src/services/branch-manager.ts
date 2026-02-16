@@ -108,6 +108,27 @@ export class BranchManager {
   }
 
   /**
+   * Check for uncommitted changes and create a WIP commit if any exist.
+   * Used when agent is terminated (SIGTERM, inactivity timeout) to preserve partial work.
+   */
+  async commitWip(repoPath: string, taskId: string): Promise<boolean> {
+    try {
+      const { stdout } = await execAsync('git status --porcelain', {
+        cwd: repoPath,
+        timeout: 5000,
+      });
+      if (!stdout.trim()) return false;
+
+      await this.git(repoPath, 'add -A');
+      await this.git(repoPath, `commit -m "WIP: ${taskId}"`);
+      return true;
+    } catch (error) {
+      console.warn(`[branch-manager] commitWip failed for ${taskId}:`, error);
+      return false;
+    }
+  }
+
+  /**
    * Get a summary of files changed between main and a branch.
    */
   async getChangedFiles(repoPath: string, branchName: string): Promise<string[]> {

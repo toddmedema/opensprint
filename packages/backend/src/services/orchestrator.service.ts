@@ -327,11 +327,12 @@ export class OrchestratorService {
       );
 
       // Start inactivity monitoring
-      state.inactivityTimer = setInterval(() => {
+      state.inactivityTimer = setInterval(async () => {
         const elapsed = Date.now() - state.lastOutputTime;
         if (elapsed > AGENT_INACTIVITY_TIMEOUT_MS) {
           console.warn(`Agent timeout for task ${task.id}: ${elapsed}ms of inactivity`);
           if (state.activeProcess) {
+            await this.branchManager.commitWip(repoPath, task.id);
             state.activeProcess.kill();
           }
         }
@@ -476,10 +477,12 @@ export class OrchestratorService {
       );
 
       // Start inactivity monitoring
-      state.inactivityTimer = setInterval(() => {
+      state.inactivityTimer = setInterval(async () => {
         const elapsed = Date.now() - state.lastOutputTime;
         if (elapsed > AGENT_INACTIVITY_TIMEOUT_MS) {
+          console.warn(`Agent timeout for task ${task.id}: ${elapsed}ms of inactivity`);
           if (state.activeProcess) {
+            await this.branchManager.commitWip(repoPath, task.id);
             state.activeProcess.kill();
           }
         }

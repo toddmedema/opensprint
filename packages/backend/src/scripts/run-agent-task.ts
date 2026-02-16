@@ -13,6 +13,7 @@ import { config as loadEnv } from 'dotenv';
 import { BeadsService, type BeadsIssue } from '../services/beads.service.js';
 import { ContextAssembler } from '../services/context-assembler.js';
 import { AgentClient } from '../services/agent-client.js';
+import { BranchManager } from '../services/branch-manager.js';
 import { OPENSPRINT_PATHS, getTestCommandForFramework } from '@opensprint/shared';
 import type { AgentConfig, ProjectSettings } from '@opensprint/shared';
 
@@ -70,6 +71,7 @@ async function getPlanContentForTask(beads: BeadsService, task: BeadsIssue): Pro
 const beads = new BeadsService();
 const contextAssembler = new ContextAssembler();
 const agentClient = new AgentClient();
+const branchManager = new BranchManager();
 
 async function main(): Promise<number> {
   const settings = await loadSettings();
@@ -126,6 +128,7 @@ If ./scripts/agent-chain.sh reports no more open tasks, you are done. Otherwise 
 
   return new Promise((resolve) => {
     let agentDone = false;
+    let sigtermHandling = false; // Prevent onExit from resolving when we're doing WIP commit
 
     const proc = agentClient.spawnWithTaskFile(
       codingAgent,
@@ -135,6 +138,7 @@ If ./scripts/agent-chain.sh reports no more open tasks, you are done. Otherwise 
         process.stdout.write(chunk);
       },
       (code: number | null) => {
+        if (sigtermHandling) return; // SIGTERM handler will resolve after WIP commit
         agentDone = true;
         resolve(code ?? 1);
       },
@@ -147,8 +151,15 @@ If ./scripts/agent-chain.sh reports no more open tasks, you are done. Otherwise 
     });
     process.on('SIGTERM', () => {
       if (agentDone) return; // Agent already finished — ignore stray signal
-      proc.kill();
-      resolve(143);
+      sigtermHandling = true;
+      proc.kill(); // Stop agent first so it stops writing
+      (async () => {
+        try {
+          await branchManager.commitWip(repoPath, taskId);
+        } finally {
+          resolve(143);
+        }
+      })();
     });
   });
 }
