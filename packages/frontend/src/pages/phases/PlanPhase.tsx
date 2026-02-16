@@ -1,138 +1,112 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { api } from "../../api/client";
-import { useWebSocket } from "../../hooks/useWebSocket";
-import type { Plan, PlanDependencyGraph } from "@opensprint/shared";
+import type { Plan } from "@opensprint/shared";
+import { useAppDispatch, useAppSelector } from "../../store";
+import {
+  fetchPlans,
+  shipPlan,
+  reshipPlan,
+  fetchPlanChat,
+  sendPlanMessage,
+  fetchSinglePlan,
+  setSelectedPlanId,
+  addPlanLocally,
+  setPlanError,
+} from "../../store/slices/planSlice";
 import { AddPlanModal } from "../../components/AddPlanModal";
 import { DependencyGraph } from "../../components/DependencyGraph";
-
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-  timestamp: string;
-}
 
 interface PlanPhaseProps {
   projectId: string;
 }
 
 export function PlanPhase({ projectId }: PlanPhaseProps) {
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [dependencyGraph, setDependencyGraph] = useState<PlanDependencyGraph | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
-  const [loading, setLoading] = useState(true);
+  const dispatch = useAppDispatch();
+
+  /* ── Redux state ── */
+  const plans = useAppSelector((s) => s.plan.plans);
+  const dependencyGraph = useAppSelector((s) => s.plan.dependencyGraph);
+  const selectedPlanId = useAppSelector((s) => s.plan.selectedPlanId);
+  const chatMessages = useAppSelector((s) => s.plan.chatMessages);
+  const loading = useAppSelector((s) => s.plan.loading);
+  const error = useAppSelector((s) => s.plan.error);
+
+  /* ── Local UI state (preserved by mount-all) ── */
   const [showAddPlanModal, setShowAddPlanModal] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [chatMessages, setChatMessages] = useState<Message[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatSending, setChatSending] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const refreshPlans = useCallback(async (): Promise<Plan[]> => {
-    const [listData, depsData] = await Promise.all([
-      api.plans.list(projectId),
-      api.plans.dependencies(projectId).catch(() => null),
-    ]);
-    const planList = listData as Plan[];
-    setPlans(planList);
-    setDependencyGraph(depsData as PlanDependencyGraph | null);
-    return planList;
-  }, [projectId]);
+  const selectedPlan = plans.find((p) => p.metadata.planId === selectedPlanId) ?? null;
+  const planContext = selectedPlan ? `plan:${selectedPlan.metadata.planId}` : null;
+  const currentChatMessages = planContext ? (chatMessages[planContext] ?? []) : [];
 
+  // Fetch chat history when a plan is selected
   useEffect(() => {
-    refreshPlans()
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [refreshPlans]);
+    if (planContext) {
+      dispatch(fetchPlanChat({ projectId, context: planContext }));
+      setChatError(null);
+    }
+  }, [planContext, projectId, dispatch]);
+
+  // Auto-scroll chat messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [currentChatMessages]);
 
   const handleShip = async (planId: string) => {
-    setError(null);
-    try {
-      await api.plans.ship(projectId, planId);
-      await refreshPlans();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to start build";
-      setError(msg);
+    dispatch(setPlanError(null));
+    const result = await dispatch(shipPlan({ projectId, planId }));
+    if (shipPlan.fulfilled.match(result)) {
+      dispatch(fetchPlans(projectId));
     }
   };
 
   const handleReship = async (planId: string) => {
-    setError(null);
-    try {
-      await api.plans.reship(projectId, planId);
-      await refreshPlans();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to rebuild plan";
-      setError(msg);
+    dispatch(setPlanError(null));
+    const result = await dispatch(reshipPlan({ projectId, planId }));
+    if (reshipPlan.fulfilled.match(result)) {
+      dispatch(fetchPlans(projectId));
     }
   };
 
   const handlePlanCreated = (plan: Plan) => {
-    setPlans((prev) => [...prev, plan]);
+    dispatch(addPlanLocally(plan));
   };
 
-  const planContext = selectedPlan ? `plan:${selectedPlan.metadata.planId}` : null;
-
-  const refetchChatHistory = useCallback(async () => {
-    if (!planContext) return;
-    const conv = (await api.chat.history(projectId, planContext)) as { messages?: Message[] };
-    setChatMessages(conv?.messages ?? []);
-  }, [projectId, planContext]);
-
-  useEffect(() => {
-    if (selectedPlan) {
-      refetchChatHistory();
-      setChatError(null);
-    } else {
-      setChatMessages([]);
-    }
-  }, [selectedPlan, refetchChatHistory]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages]);
-
-  useWebSocket({
-    projectId,
-    onEvent: (event) => {
-      if (event.type === "plan.updated" && selectedPlan && event.planId === selectedPlan.metadata.planId) {
-        refreshPlans().then((planList) => {
-          const updated = planList.find((p) => p.metadata.planId === selectedPlan.metadata.planId);
-          if (updated) setSelectedPlan(updated);
-        });
-      }
+  const handleSelectPlan = useCallback(
+    (plan: Plan) => {
+      dispatch(setSelectedPlanId(plan.metadata.planId));
     },
-  });
+    [dispatch],
+  );
+
+  const handleClosePlan = useCallback(() => {
+    dispatch(setSelectedPlanId(null));
+  }, [dispatch]);
 
   const handleSendChat = async () => {
     if (!chatInput.trim() || !planContext || chatSending) return;
 
-    const userMessage: Message = {
-      role: "user",
-      content: chatInput.trim(),
-      timestamp: new Date().toISOString(),
-    };
-    setChatMessages((prev) => [...prev, userMessage]);
+    const text = chatInput.trim();
     setChatInput("");
     setChatSending(true);
     setChatError(null);
 
-    try {
-      const response = (await api.chat.send(projectId, userMessage.content, planContext)) as { message: string };
-      setChatMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: response.message, timestamp: new Date().toISOString() },
-      ]);
-      await refreshPlans();
-      const updated = await api.plans.get(projectId, selectedPlan!.metadata.planId);
-      setSelectedPlan(updated as Plan);
-    } catch (err) {
-      setChatError(err instanceof Error ? err.message : "Failed to send message. Please try again.");
-    } finally {
-      setChatSending(false);
+    const result = await dispatch(
+      sendPlanMessage({ projectId, message: text, context: planContext }),
+    );
+
+    if (sendPlanMessage.fulfilled.match(result)) {
+      dispatch(fetchPlans(projectId));
+      dispatch(fetchSinglePlan({ projectId, planId: selectedPlan!.metadata.planId }));
+    } else if (sendPlanMessage.rejected.match(result)) {
+      setChatError(result.error.message ?? "Failed to send message. Please try again.");
     }
+
+    setChatSending(false);
   };
 
   const statusColors: Record<string, string> = {
@@ -146,7 +120,7 @@ export function PlanPhase({ projectId }: PlanPhaseProps) {
       {error && (
         <div className="mx-4 mt-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex justify-between items-center">
           <span>{error}</span>
-          <button type="button" onClick={() => setError(null)} className="text-red-500 hover:text-red-700 underline">
+          <button type="button" onClick={() => dispatch(setPlanError(null))} className="text-red-500 hover:text-red-700 underline">
             Dismiss
           </button>
         </div>
@@ -156,7 +130,7 @@ export function PlanPhase({ projectId }: PlanPhaseProps) {
         {/* Dependency Graph */}
         <div className="card p-6 mb-6">
           <h3 className="text-sm font-semibold text-gray-900 mb-3">Dependency Graph</h3>
-          <DependencyGraph graph={dependencyGraph} onPlanClick={setSelectedPlan} />
+          <DependencyGraph graph={dependencyGraph} onPlanClick={handleSelectPlan} />
         </div>
 
         {/* Plan Cards */}
@@ -185,7 +159,7 @@ export function PlanPhase({ projectId }: PlanPhaseProps) {
               <div
                 key={plan.metadata.planId}
                 className="card p-5 cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => setSelectedPlan(plan)}
+                onClick={() => handleSelectPlan(plan)}
               >
                 <div className="flex items-start justify-between mb-3">
                   <h3 className="font-semibold text-gray-900">{plan.metadata.planId.replace(/-/g, " ")}</h3>
@@ -237,12 +211,12 @@ export function PlanPhase({ projectId }: PlanPhaseProps) {
         <AddPlanModal projectId={projectId} onClose={() => setShowAddPlanModal(false)} onCreated={handlePlanCreated} />
       )}
 
-      {/* Sidebar: Plan Detail + Chat (PRD §7.2.4) */}
+      {/* Sidebar: Plan Detail + Chat */}
       {selectedPlan && (
         <div className="w-[420px] border-l border-gray-200 flex flex-col bg-gray-50">
           <div className="flex items-center justify-between p-4 border-b border-gray-200 shrink-0">
             <h3 className="font-semibold text-gray-900">{selectedPlan.metadata.planId.replace(/-/g, " ")}</h3>
-            <button onClick={() => setSelectedPlan(null)} className="text-gray-400 hover:text-gray-600">
+            <button onClick={handleClosePlan} className="text-gray-400 hover:text-gray-600">
               Close
             </button>
           </div>
@@ -280,13 +254,13 @@ export function PlanPhase({ projectId }: PlanPhaseProps) {
             <div className="p-4">
               <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Refine with AI</h4>
               <div className="space-y-3">
-                {chatMessages.length === 0 && (
+                {currentChatMessages.length === 0 && (
                   <p className="text-sm text-gray-500">
                     Chat with the planning agent to refine this plan. Ask questions, suggest changes, or request
                     updates.
                   </p>
                 )}
-                {chatMessages.map((msg, i) => (
+                {currentChatMessages.map((msg, i) => (
                   <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                     <div
                       className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${

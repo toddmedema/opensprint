@@ -1,28 +1,24 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { api } from "../../api/client";
-import { useWebSocket } from "../../hooks/useWebSocket";
+import { useAppDispatch, useAppSelector } from "../../store";
+import {
+  sendDreamMessage,
+  savePrdSection,
+  uploadPrdFile,
+  addUserMessage,
+  setDreamError,
+  fetchPrd,
+  fetchPrdHistory,
+  fetchDreamChat,
+} from "../../store/slices/dreamSlice";
+import { decomposePlans } from "../../store/slices/planSlice";
 
 /* ── Types ──────────────────────────────────────────────── */
 
 interface DreamPhaseProps {
   projectId: string;
   onNavigateToPlan?: () => void;
-}
-
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-  timestamp: string;
-}
-
-interface PrdChangeLogEntry {
-  section: string;
-  version: number;
-  source: "dream" | "plan" | "build" | "verify";
-  timestamp: string;
-  diff: string;
 }
 
 interface SelectionInfo {
@@ -85,17 +81,6 @@ function formatTimestamp(ts: string): string {
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
   return d.toLocaleDateString();
-}
-
-function parsePrdSections(prd: unknown): Record<string, string> {
-  const data = prd as { sections?: Record<string, { content: string }> };
-  const content: Record<string, string> = {};
-  if (data?.sections) {
-    for (const [key, section] of Object.entries(data.sections)) {
-      content[key] = section.content;
-    }
-  }
-  return content;
 }
 
 function getOrderedSections(prdContent: Record<string, string>): string[] {
@@ -221,35 +206,29 @@ function CommentIcon({ className }: { className?: string }) {
 /* ── Main Component ─────────────────────────────────────── */
 
 export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
-  /* ── State ── */
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [prdContent, setPrdContent] = useState<Record<string, string>>({});
-  const [prdHistory, setPrdHistory] = useState<PrdChangeLogEntry[]>([]);
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [planningIt, setPlanningIt] = useState(false);
+  const dispatch = useAppDispatch();
 
-  // Initial prompt state
+  /* ── Redux state ── */
+  const messages = useAppSelector((s) => s.dream.messages);
+  const prdContent = useAppSelector((s) => s.dream.prdContent);
+  const prdHistory = useAppSelector((s) => s.dream.prdHistory);
+  const sending = useAppSelector((s) => s.dream.sendingChat);
+  const savingSection = useAppSelector((s) => s.dream.savingSection);
+  const error = useAppSelector((s) => s.dream.error);
+
+  /* ── Local UI state (preserved by mount-all) ── */
   const [initialInput, setInitialInput] = useState("");
-
-  // Chat bubble state
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState("");
-
-  // Inline commenting / selection
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [selectionContext, setSelectionContext] = useState<{
     text: string;
     section: string;
   } | null>(null);
-
-  // PRD editing
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
-  const [savingSection, setSavingSection] = useState<string | null>(null);
-
-  // History
   const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [planningIt, setPlanningIt] = useState(false);
 
   /* ── Refs ── */
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -260,41 +239,6 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
 
   /* ── Derived ── */
   const hasPrdContent = Object.keys(prdContent).length > 0;
-
-  /* ── Data fetching ── */
-  const refetchPrd = useCallback(async () => {
-    const data = await api.prd.get(projectId);
-    setPrdContent(parsePrdSections(data));
-  }, [projectId]);
-
-  const refetchHistory = useCallback(async () => {
-    const data = await api.prd.getHistory(projectId);
-    setPrdHistory((data as PrdChangeLogEntry[]) ?? []);
-  }, [projectId]);
-
-  const refetchConversation = useCallback(async () => {
-    const data = await api.chat.history(projectId, "dream");
-    const conv = data as { messages?: Message[] };
-    if (conv?.messages) {
-      setMessages(conv.messages);
-    }
-  }, [projectId]);
-
-  useWebSocket({
-    projectId,
-    onEvent: (event) => {
-      if (event.type === "prd.updated") {
-        refetchPrd();
-        refetchHistory();
-      }
-    },
-  });
-
-  useEffect(() => {
-    refetchConversation();
-    refetchPrd();
-    refetchHistory();
-  }, [projectId, refetchPrd, refetchHistory, refetchConversation]);
 
   // Auto-scroll chat messages
   useEffect(() => {
@@ -389,172 +333,79 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
 
   /* ── Handlers ── */
 
-  const handleInitialSubmit = async () => {
+  const handleInitialSubmit = useCallback(async () => {
     if (!initialInput.trim() || sending) return;
     const text = initialInput.trim();
     setInitialInput("");
-    setSending(true);
-    setError(null);
 
-    const userMessage: Message = {
-      role: "user",
-      content: text,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, userMessage]);
-
-    try {
-      const response = (await api.chat.send(projectId, text, "dream")) as {
-        message: string;
-        prdChanges?: {
-          section: string;
-          previousVersion: number;
-          newVersion: number;
-        }[];
-      };
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: response.message,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
-      if (response.prdChanges?.length) {
-        await refetchPrd();
-        await refetchHistory();
-      }
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Failed to generate PRD";
-      setError(msg);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setSending(true);
-    setError(null);
-
-    try {
-      let text: string;
-      const ext = file.name.split(".").pop()?.toLowerCase();
-
-      if (ext === "md") {
-        text = await file.text();
-      } else if (ext === "docx" || ext === "pdf") {
-        const result = await api.prd.upload(projectId, file);
-        const uploadResult = result as { text?: string; message?: string };
-        if (uploadResult.text) {
-          text = uploadResult.text;
-        } else {
-          await refetchPrd();
-          await refetchHistory();
-          await refetchConversation();
-          return;
-        }
-      } else {
-        setError("Unsupported file type. Please use .md, .docx, or .pdf");
-        return;
-      }
-
-      const prompt = `Here's my existing product requirements document. Please analyze it and generate a structured PRD from it:\n\n${text}`;
-
-      const userMessage: Message = {
+    dispatch(
+      addUserMessage({
         role: "user",
-        content: `[Uploaded: ${file.name}]`,
+        content: text,
         timestamp: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, userMessage]);
+      }),
+    );
 
-      const response = (await api.chat.send(projectId, prompt, "dream")) as {
-        message: string;
-        prdChanges?: {
-          section: string;
-          previousVersion: number;
-          newVersion: number;
-        }[];
-      };
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: response.message,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
-      if (response.prdChanges?.length) {
-        await refetchPrd();
-        await refetchHistory();
-      }
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Failed to process uploaded file";
-      setError(msg);
-    } finally {
-      setSending(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+    const result = await dispatch(sendDreamMessage({ projectId, message: text }));
+    if (sendDreamMessage.fulfilled.match(result) && result.payload.prdChanges?.length) {
+      dispatch(fetchPrd(projectId));
+      dispatch(fetchPrdHistory(projectId));
     }
-  };
+  }, [initialInput, sending, projectId, dispatch]);
 
-  const handleChatSend = async () => {
+  const handleFileUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      dispatch(
+        addUserMessage({
+          role: "user",
+          content: `[Uploaded: ${file.name}]`,
+          timestamp: new Date().toISOString(),
+        }),
+      );
+
+      const result = await dispatch(uploadPrdFile({ projectId, file }));
+      if (uploadPrdFile.fulfilled.match(result)) {
+        dispatch(fetchPrd(projectId));
+        dispatch(fetchPrdHistory(projectId));
+        dispatch(fetchDreamChat(projectId));
+      }
+
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    },
+    [projectId, dispatch],
+  );
+
+  const handleChatSend = useCallback(async () => {
     const text = chatInput.trim();
     if (!text || sending) return;
 
     setChatInput("");
-    setSending(true);
-    setError(null);
 
-    const userMessage: Message = {
-      role: "user",
-      content: selectionContext
-        ? `Regarding "${selectionContext.text}":\n${text}`
-        : text,
-      timestamp: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, userMessage]);
-
+    const fullMessage = selectionContext
+      ? `Regarding "${selectionContext.text}":\n${text}`
+      : text;
     const prdFocus = selectionContext?.section ?? undefined;
     setSelectionContext(null);
 
-    try {
-      const response = (await api.chat.send(
-        projectId,
-        userMessage.content,
-        "dream",
-        prdFocus,
-      )) as {
-        message: string;
-        prdChanges?: {
-          section: string;
-          previousVersion: number;
-          newVersion: number;
-        }[];
-      };
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: response.message,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
-      if (response.prdChanges?.length) {
-        await refetchPrd();
-        await refetchHistory();
-      }
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Failed to send message";
-      setError(msg);
-    } finally {
-      setSending(false);
+    dispatch(
+      addUserMessage({
+        role: "user",
+        content: fullMessage,
+        timestamp: new Date().toISOString(),
+      }),
+    );
+
+    const result = await dispatch(
+      sendDreamMessage({ projectId, message: fullMessage, prdSectionFocus: prdFocus }),
+    );
+    if (sendDreamMessage.fulfilled.match(result) && result.payload.prdChanges?.length) {
+      dispatch(fetchPrd(projectId));
+      dispatch(fetchPrdHistory(projectId));
     }
-  };
+  }, [chatInput, sending, selectionContext, projectId, dispatch]);
 
   const handleDiscuss = () => {
     if (!selection) return;
@@ -580,37 +431,25 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
 
   const handleSaveEdit = async () => {
     if (!editingSection || savingSection) return;
-    setSavingSection(editingSection);
-    try {
-      await api.prd.updateSection(projectId, editingSection, editDraft);
-      await refetchPrd();
-      await refetchHistory();
-      await refetchConversation();
+    const result = await dispatch(
+      savePrdSection({ projectId, section: editingSection, content: editDraft }),
+    );
+    if (savePrdSection.fulfilled.match(result)) {
+      dispatch(fetchPrd(projectId));
+      dispatch(fetchPrdHistory(projectId));
+      dispatch(fetchDreamChat(projectId));
       setEditingSection(null);
       setEditDraft("");
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to save PRD section",
-      );
-    } finally {
-      setSavingSection(null);
     }
   };
 
   const handlePlanIt = async () => {
-    setError(null);
+    dispatch(setDreamError(null));
     setPlanningIt(true);
-    try {
-      await api.plans.decompose(projectId);
+    const result = await dispatch(decomposePlans(projectId));
+    setPlanningIt(false);
+    if (decomposePlans.fulfilled.match(result)) {
       onNavigateToPlan?.();
-    } catch (err) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : "Failed to decompose PRD into plans";
-      setError(msg);
-    } finally {
-      setPlanningIt(false);
     }
   };
 
@@ -719,7 +558,7 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
             {error}
             <button
               type="button"
-              onClick={() => setError(null)}
+              onClick={() => dispatch(setDreamError(null))}
               className="ml-2 text-red-500 hover:text-red-700 underline"
             >
               Dismiss
@@ -1010,7 +849,7 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
               {error}
               <button
                 type="button"
-                onClick={() => setError(null)}
+                onClick={() => dispatch(setDreamError(null))}
                 className="ml-1 underline"
               >
                 Dismiss

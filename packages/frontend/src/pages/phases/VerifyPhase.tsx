@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
-import { api } from "../../api/client";
-import { useProjectWebSocket } from "../../contexts/ProjectWebSocketContext";
-import type { FeedbackItem, FeedbackMappedEvent } from "@opensprint/shared";
+import { useState } from "react";
+import type { FeedbackItem } from "@opensprint/shared";
+import { useAppDispatch, useAppSelector } from "../../store";
+import { submitFeedback, setVerifyError } from "../../store/slices/verifySlice";
 
 interface VerifyPhaseProps {
   projectId: string;
@@ -22,46 +22,23 @@ const statusColors: Record<string, string> = {
 };
 
 export function VerifyPhase({ projectId, onNavigateToBuildTask }: VerifyPhaseProps) {
-  const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
+  const dispatch = useAppDispatch();
+
+  /* ── Redux state ── */
+  const feedback = useAppSelector((s) => s.verify.feedback);
+  const loading = useAppSelector((s) => s.verify.loading);
+  const submitting = useAppSelector((s) => s.verify.submitting);
+  const error = useAppSelector((s) => s.verify.error);
+
+  /* ── Local UI state (preserved by mount-all) ── */
   const [input, setInput] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const { registerEventHandler } = useProjectWebSocket();
-
-  useEffect(() => {
-    api.feedback
-      .list(projectId)
-      .then((data) => setFeedback(data as FeedbackItem[]))
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, [projectId]);
-
-  useEffect(() => {
-    const handleFeedbackMapped = (_event: FeedbackMappedEvent) => {
-      // Refetch from server to ensure frontend reflects server state in real-time
-      api.feedback.list(projectId).then((data) => setFeedback(data as FeedbackItem[]));
-    };
-    const unregister = registerEventHandler((e) => {
-      if (e.type === "feedback.mapped") handleFeedbackMapped(e);
-    });
-    return unregister;
-  }, [projectId, registerEventHandler]);
 
   const handleSubmit = async () => {
     if (!input.trim() || submitting) return;
-
-    setSubmitting(true);
-    setError(null);
-    try {
-      const item = await api.feedback.submit(projectId, input.trim());
-      setFeedback((prev) => [item as FeedbackItem, ...prev]);
+    const text = input.trim();
+    const result = await dispatch(submitFeedback({ projectId, text }));
+    if (submitFeedback.fulfilled.match(result)) {
       setInput("");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to submit feedback";
-      setError(msg);
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -71,7 +48,7 @@ export function VerifyPhase({ projectId, onNavigateToBuildTask }: VerifyPhasePro
         {error && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex justify-between items-center">
             <span>{error}</span>
-            <button type="button" onClick={() => setError(null)} className="text-red-500 hover:text-red-700 underline">
+            <button type="button" onClick={() => dispatch(setVerifyError(null))} className="text-red-500 hover:text-red-700 underline">
               Dismiss
             </button>
           </div>
@@ -122,7 +99,7 @@ export function VerifyPhase({ projectId, onNavigateToBuildTask }: VerifyPhasePro
           </div>
         ) : (
           <div className="space-y-3">
-            {feedback.map((item) => (
+            {feedback.map((item: FeedbackItem) => (
               <div key={item.id} className="card p-4">
                 <div className="flex items-start justify-between mb-2">
                   <p className="text-sm text-gray-900 flex-1">{item.text}</p>

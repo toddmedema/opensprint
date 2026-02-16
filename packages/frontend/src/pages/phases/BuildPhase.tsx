@@ -1,14 +1,21 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
-import { api } from "../../api/client";
-import { useProjectWebSocket } from "../../contexts/ProjectWebSocketContext";
-import type { ServerEvent, KanbanColumn, AgentSession, Task, Plan } from "@opensprint/shared";
+import type { KanbanColumn, AgentSession, Plan } from "@opensprint/shared";
 import { KANBAN_COLUMNS, PRIORITY_LABELS } from "@opensprint/shared";
+import { useAppDispatch, useAppSelector } from "../../store";
+import {
+  fetchTaskDetail,
+  fetchArchivedSessions,
+  startBuild,
+  pauseBuild,
+  markTaskComplete,
+  setSelectedTaskId,
+  setBuildError,
+} from "../../store/slices/buildSlice";
+import { wsSend } from "../../store/middleware/websocketMiddleware";
 
 interface BuildPhaseProps {
   projectId: string;
-  initialTaskId?: string | null;
-  onInitialTaskConsumed?: () => void;
 }
 
 interface TaskCard {
@@ -133,7 +140,6 @@ function ArchivedSessionView({ sessions }: { sessions: AgentSession[] }) {
   );
 }
 
-/** Extract epic title from plan content (first # heading) or planId */
 function getEpicTitleFromPlan(plan: Plan): string {
   const firstLine = plan.content.split("\n")[0] ?? "";
   const heading = firstLine.replace(/^#+\s*/, "").trim();
@@ -141,189 +147,68 @@ function getEpicTitleFromPlan(plan: Plan): string {
   return plan.metadata.planId.replace(/-/g, " ");
 }
 
-export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: BuildPhaseProps) {
-  const [tasks, setTasks] = useState<TaskCard[]>([]);
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [orchestratorRunning, setOrchestratorRunning] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [selectedTask, setSelectedTask] = useState<string | null>(null);
-  const [agentOutput, setAgentOutput] = useState<string[]>([]);
-  const [completionState, setCompletionState] = useState<{
-    status: string;
-    testResults: { passed: number; failed: number; skipped: number; total: number } | null;
-  } | null>(null);
-  const [archivedSessions, setArchivedSessions] = useState<AgentSession[]>([]);
-  const [archivedLoading, setArchivedLoading] = useState(false);
-  const [taskDetail, setTaskDetail] = useState<Task | null>(null);
-  const [taskDetailLoading, setTaskDetailLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [awaitingApproval, setAwaitingApproval] = useState(false);
-  const [markCompleteLoading, setMarkCompleteLoading] = useState(false);
+export function BuildPhase({ projectId }: BuildPhaseProps) {
+  const dispatch = useAppDispatch();
 
-  const handleWsEvent = useCallback(
-    (event: ServerEvent) => {
-      switch (event.type) {
-        case "task.updated":
-          api.tasks.list(projectId).then((data) => setTasks(data as TaskCard[]));
-          break;
-        case "agent.started":
-          // Refresh task list and build status in real-time
-          api.tasks.list(projectId).then((data) => setTasks(data as TaskCard[]));
-          api.build.status(projectId).then((data: unknown) => {
-            const status = data as { running: boolean };
-            setOrchestratorRunning(status?.running ?? false);
-          });
-          break;
-        case "agent.completed":
-          // Refresh task list and build status (PRD §11.2)
-          api.tasks.list(projectId).then((data) => setTasks(data as TaskCard[]));
-          api.build.status(projectId).then((data: unknown) => {
-            const status = data as { running: boolean };
-            setOrchestratorRunning(status?.running ?? false);
-          });
-          // Show completion state when viewing the completed task
-          if (event.taskId === selectedTask) {
-            setCompletionState({
-              status: event.status,
-              testResults: event.testResults,
-            });
-          }
-          break;
-        case "agent.output":
-          if (event.taskId === selectedTask) {
-            setCompletionState(null); // Agent running again (e.g. retry)
-            setAgentOutput((prev) => [...prev, event.chunk]);
-          }
-          break;
-        case "build.status":
-          setOrchestratorRunning(event.running);
-          if ("awaitingApproval" in event) {
-            setAwaitingApproval(Boolean(event.awaitingApproval));
-          }
-          break;
-        case "build.awaiting_approval":
-          setAwaitingApproval(event.awaiting);
-          break;
-      }
-    },
-    [projectId, selectedTask],
-  );
-
-  // Apply initial task selection when navigating from Verify (e.g. clicking an issue ID)
-  useEffect(() => {
-    if (initialTaskId) {
-      setSelectedTask(initialTaskId);
-      onInitialTaskConsumed?.();
-    }
-  }, [initialTaskId, onInitialTaskConsumed]);
-
-  // Clear completion state, archived sessions, and task detail when switching tasks
-  useEffect(() => {
-    setCompletionState(null);
-    setArchivedSessions([]);
-    setTaskDetail(null);
-  }, [selectedTask]);
-
-  // Fetch full task specification when a task is selected (PRD §7.3.4)
-  useEffect(() => {
-    if (selectedTask) {
-      setTaskDetailLoading(true);
-      api.tasks
-        .get(projectId, selectedTask)
-        .then((data) => setTaskDetail(data as Task))
-        .catch(() => setTaskDetail(null))
-        .finally(() => setTaskDetailLoading(false));
-    }
-  }, [projectId, selectedTask]);
-
-  const { connected, subscribeToAgent, unsubscribeFromAgent, registerEventHandler } = useProjectWebSocket();
-
-  useEffect(() => {
-    return registerEventHandler(handleWsEvent);
-  }, [registerEventHandler, handleWsEvent]);
-
-  useEffect(() => {
-    setError(null);
-    Promise.all([api.tasks.list(projectId), api.plans.list(projectId)])
-      .then(([tasksData, plansData]) => {
-        setTasks((tasksData as TaskCard[]) ?? []);
-        setPlans((plansData as Plan[]) ?? []);
-      })
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : "Failed to load tasks");
-      })
-      .finally(() => setLoading(false));
-
-    api.build.status(projectId).then((data: unknown) => {
-      const status = data as { running: boolean };
-      setOrchestratorRunning(status?.running ?? false);
-    });
-  }, [projectId]);
+  /* ── Redux state ── */
+  const tasks = useAppSelector((s) => s.build.tasks) as TaskCard[];
+  const plans = useAppSelector((s) => s.build.plans);
+  const orchestratorRunning = useAppSelector((s) => s.build.orchestratorRunning);
+  const awaitingApproval = useAppSelector((s) => s.build.awaitingApproval);
+  const selectedTask = useAppSelector((s) => s.build.selectedTaskId);
+  const taskDetail = useAppSelector((s) => s.build.taskDetail);
+  const taskDetailLoading = useAppSelector((s) => s.build.taskDetailLoading);
+  const agentOutput = useAppSelector((s) => s.build.agentOutput);
+  const completionState = useAppSelector((s) => s.build.completionState);
+  const archivedSessions = useAppSelector((s) => s.build.archivedSessions);
+  const archivedLoading = useAppSelector((s) => s.build.archivedLoading);
+  const markCompleteLoading = useAppSelector((s) => s.build.markCompleteLoading);
+  const loading = useAppSelector((s) => s.build.loading);
+  const error = useAppSelector((s) => s.build.error);
+  const connected = useAppSelector((s) => s.websocket.connected);
 
   const selectedTaskData = selectedTask ? tasks.find((t) => t.id === selectedTask) : null;
   const isDoneTask = selectedTaskData?.kanbanColumn === "done";
 
-  // Fetch archived sessions when a done task is selected (PRD §7.3.4)
+  // Fetch full task specification when a task is selected
+  useEffect(() => {
+    if (selectedTask) {
+      dispatch(fetchTaskDetail({ projectId, taskId: selectedTask }));
+    }
+  }, [projectId, selectedTask, dispatch]);
+
+  // Fetch archived sessions when a done task is selected
   useEffect(() => {
     if (selectedTask && isDoneTask) {
-      setArchivedLoading(true);
-      api.tasks
-        .sessions(projectId, selectedTask)
-        .then((data) => setArchivedSessions((data as AgentSession[]) ?? []))
-        .catch(() => setArchivedSessions([]))
-        .finally(() => setArchivedLoading(false));
+      dispatch(fetchArchivedSessions({ projectId, taskId: selectedTask }));
     }
-  }, [projectId, selectedTask, isDoneTask]);
+  }, [projectId, selectedTask, isDoneTask, dispatch]);
 
   // Subscribe to agent output when a task is selected (only for in-progress/in-review)
   useEffect(() => {
     if (selectedTask && !isDoneTask) {
-      setAgentOutput([]);
-      subscribeToAgent(selectedTask);
-      return () => unsubscribeFromAgent(selectedTask);
+      dispatch(wsSend({ type: "agent.subscribe", taskId: selectedTask }));
+      return () => {
+        dispatch(wsSend({ type: "agent.unsubscribe", taskId: selectedTask }));
+      };
     }
-  }, [selectedTask, isDoneTask, subscribeToAgent, unsubscribeFromAgent]);
+  }, [selectedTask, isDoneTask, dispatch]);
 
   const handleStartBuild = async () => {
-    setError(null);
-    try {
-      await api.build.start(projectId);
-      setOrchestratorRunning(true);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to start build";
-      setError(msg);
-    }
+    dispatch(setBuildError(null));
+    dispatch(startBuild(projectId));
   };
 
   const handlePauseBuild = async () => {
-    setError(null);
-    try {
-      await api.build.pause(projectId);
-      setOrchestratorRunning(false);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to pause build";
-      setError(msg);
-    }
+    dispatch(setBuildError(null));
+    dispatch(pauseBuild(projectId));
   };
 
   const handleMarkComplete = async () => {
     if (!selectedTask || isDoneTask) return;
-    setMarkCompleteLoading(true);
-    setError(null);
-    try {
-      await api.tasks.markComplete(projectId, selectedTask);
-      const [tasksData, plansData] = await Promise.all([api.tasks.list(projectId), api.plans.list(projectId)]);
-      setTasks((tasksData as TaskCard[]) ?? []);
-      setPlans((plansData as Plan[]) ?? []);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to mark complete";
-      setError(msg);
-    } finally {
-      setMarkCompleteLoading(false);
-    }
+    dispatch(markTaskComplete({ projectId, taskId: selectedTask }));
   };
 
-  /** Implementation tasks only (exclude epics and gating tasks) */
   const implTasks = useMemo(
     () =>
       tasks.filter((t) => {
@@ -335,7 +220,6 @@ export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: 
     [tasks],
   );
 
-  /** Swimlanes grouped by Plan epic (PRD §7.3.4). Hide epics where all tasks are done. */
   const swimlanes = useMemo(() => {
     const epicIdToTitle = new Map<string, string>();
     plans.forEach((p) => {
@@ -352,7 +236,6 @@ export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: 
     const allDone = (tasks: TaskCard[]) => tasks.length > 0 && tasks.every((t) => t.kanbanColumn === "done");
 
     const result: { epicId: string; epicTitle: string; tasks: TaskCard[] }[] = [];
-    // Epics with plans first (in plan order)
     for (const plan of plans) {
       const epicId = plan.metadata.beadEpicId;
       if (!epicId) continue;
@@ -365,7 +248,6 @@ export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: 
         });
       }
     }
-    // Epics without plans (e.g. feedback-created tasks under beads epic)
     const seenEpics = new Set(result.map((r) => r.epicId));
     for (const [epicId, laneTasks] of byEpic) {
       if (epicId && !seenEpics.has(epicId) && laneTasks.length > 0 && !allDone(laneTasks)) {
@@ -377,7 +259,6 @@ export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: 
         seenEpics.add(epicId);
       }
     }
-    // Unassigned tasks (no epic)
     const unassigned = byEpic.get(null) ?? [];
     if (unassigned.length > 0 && !allDone(unassigned)) {
       result.push({ epicId: "", epicTitle: "Other", tasks: unassigned });
@@ -394,7 +275,7 @@ export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: 
       {error && (
         <div className="mx-4 mt-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex justify-between items-center">
           <span>{error}</span>
-          <button type="button" onClick={() => setError(null)} className="text-red-500 hover:text-red-700 underline">
+          <button type="button" onClick={() => dispatch(setBuildError(null))} className="text-red-500 hover:text-red-700 underline">
             Dismiss
           </button>
         </div>
@@ -432,7 +313,7 @@ export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: 
         </div>
       </div>
 
-      {/* Kanban Board — swimlanes by Plan epic (PRD §7.3.4) */}
+      {/* Kanban Board */}
       <div className="flex-1 overflow-auto p-6">
         {loading ? (
           <div className="text-center py-10 text-gray-400">Loading tasks...</div>
@@ -471,7 +352,7 @@ export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: 
                             <div
                               key={task.id}
                               className="kanban-card cursor-pointer"
-                              onClick={() => setSelectedTask(task.id)}
+                              onClick={() => dispatch(setSelectedTaskId(task.id))}
                             >
                               <p className="text-sm font-medium text-gray-900 mb-2">{task.title}</p>
                               <div className="flex items-center justify-between">
@@ -507,7 +388,7 @@ export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: 
         )}
       </div>
 
-      {/* Task Detail Panel — full spec, live output, or completed artifacts (PRD §7.3.4) */}
+      {/* Task Detail Panel */}
       {selectedTask && (
         <div className="h-80 border-t border-gray-200 bg-gray-900 text-gray-100 overflow-hidden flex flex-col">
           <div className="flex items-center justify-between px-4 py-2 border-b border-gray-700 shrink-0">
@@ -523,13 +404,13 @@ export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: 
                   {markCompleteLoading ? "Marking…" : "Mark as complete"}
                 </button>
               )}
-              <button onClick={() => setSelectedTask(null)} className="text-gray-500 hover:text-gray-300 text-xs">
+              <button onClick={() => dispatch(setSelectedTaskId(null))} className="text-gray-500 hover:text-gray-300 text-xs">
                 Close
               </button>
             </div>
           </div>
           <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
-            {/* Full task specification (PRD §7.3.4) */}
+            {/* Full task specification */}
             <div className="shrink-0 border-b border-gray-700 bg-gray-800/50">
               {taskDetailLoading ? (
                 <div className="p-4 text-gray-400 text-sm">Loading task spec...</div>
@@ -569,7 +450,7 @@ export function BuildPhase({ projectId, initialTaskId, onInitialTaskConsumed }: 
                               <button
                                 key={d.targetId}
                                 type="button"
-                                onClick={() => setSelectedTask(d.targetId)}
+                                onClick={() => dispatch(setSelectedTaskId(d.targetId))}
                                 className="inline-flex items-center gap-1.5 text-left hover:underline text-brand-400 hover:text-brand-300 transition-colors"
                               >
                                 <StatusIcon col={col} size="xs" title={columnLabels[col]} />

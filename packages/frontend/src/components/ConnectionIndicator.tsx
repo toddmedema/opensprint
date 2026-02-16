@@ -1,11 +1,11 @@
-import { useProjectWebSocket } from '../contexts/ProjectWebSocketContext';
+import { useAppSelector } from '../store';
 
 /**
  * Shows connection status only when offline. Hidden when server is online and
  * websockets are connected.
  */
 export function ConnectionIndicator() {
-  const { connected } = useProjectWebSocket();
+  const connected = useAppSelector((s) => s.websocket.connected);
 
   if (connected) {
     return null;
