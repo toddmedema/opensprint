@@ -218,6 +218,20 @@ export class BeadsService {
     return this.parseJsonArray(stdout);
   }
 
+  /**
+   * List in_progress tasks that have an agent assignee (agent-N).
+   * Used by orphan recovery to find tasks abandoned when an agent process died.
+   */
+  async listInProgressWithAgentAssignee(repoPath: string): Promise<BeadsIssue[]> {
+    const all = await this.list(repoPath);
+    return all.filter(
+      (t) =>
+        t.status === "in_progress" &&
+        typeof t.assignee === "string" &&
+        /^agent-\d+$/.test(t.assignee),
+    );
+  }
+
   /** Show full details of an issue (bd show returns a JSON array) */
   async show(repoPath: string, id: string): Promise<BeadsIssue> {
     const stdout = await this.exec(repoPath, `show ${id} --json`);
