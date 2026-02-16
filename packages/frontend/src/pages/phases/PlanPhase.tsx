@@ -219,19 +219,22 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                     {shippingPlanId === plan.metadata.planId ? "Building…" : "Build It!"}
                   </button>
                 )}
-                {plan.status === "complete" && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleReship(plan.metadata.planId);
-                    }}
-                    disabled={!!reshippingPlanId}
-                    className="btn-secondary text-xs w-full disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {reshippingPlanId === plan.metadata.planId ? "Rebuilding…" : "Rebuild"}
-                  </button>
-                )}
+                {plan.status === "complete" &&
+                  plan.metadata.shippedAt &&
+                  plan.lastModified &&
+                  plan.lastModified > plan.metadata.shippedAt && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleReship(plan.metadata.planId);
+                      }}
+                      disabled={!!reshippingPlanId}
+                      className="btn-secondary text-xs w-full disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {reshippingPlanId === plan.metadata.planId ? "Rebuilding…" : "Rebuild"}
+                    </button>
+                  )}
               </div>
             ))}
           </div>

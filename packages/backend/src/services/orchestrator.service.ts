@@ -313,13 +313,17 @@ export class OrchestratorService {
       });
 
       // Start inactivity monitoring
-      state.inactivityTimer = setInterval(async () => {
+      state.inactivityTimer = setInterval(() => {
         const elapsed = Date.now() - state.lastOutputTime;
         if (elapsed > AGENT_INACTIVITY_TIMEOUT_MS) {
           console.warn(`Agent timeout for task ${task.id}: ${elapsed}ms of inactivity`);
           if (state.activeProcess) {
-            await this.branchManager.commitWip(repoPath, task.id);
-            state.activeProcess.kill();
+            this.branchManager.commitWip(repoPath, task.id)
+              .then(() => state.activeProcess?.kill())
+              .catch((err) => {
+                console.error(`[orchestrator] Inactivity handler failed for ${task.id}:`, err);
+                state.activeProcess?.kill();
+              });
           }
         }
       }, 30000); // Check every 30 seconds
@@ -369,6 +373,9 @@ export class OrchestratorService {
       }
 
       state.lastTestResults = testResults;
+
+      // Commit any uncommitted changes before review (PRD §12.3: orchestrator commits before invoking review agent)
+      await this.branchManager.commitWip(repoPath, task.id);
 
       // Move to review phase (coding-to-review transition)
       state.status.currentPhase = "review";
@@ -462,13 +469,17 @@ export class OrchestratorService {
       );
 
       // Start inactivity monitoring
-      state.inactivityTimer = setInterval(async () => {
+      state.inactivityTimer = setInterval(() => {
         const elapsed = Date.now() - state.lastOutputTime;
         if (elapsed > AGENT_INACTIVITY_TIMEOUT_MS) {
           console.warn(`Agent timeout for task ${task.id}: ${elapsed}ms of inactivity`);
           if (state.activeProcess) {
-            await this.branchManager.commitWip(repoPath, task.id);
-            state.activeProcess.kill();
+            this.branchManager.commitWip(repoPath, task.id)
+              .then(() => state.activeProcess?.kill())
+              .catch((err) => {
+                console.error(`[orchestrator] Inactivity handler failed for ${task.id}:`, err);
+                state.activeProcess?.kill();
+              });
           }
         }
       }, 30000);

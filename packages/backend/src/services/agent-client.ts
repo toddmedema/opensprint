@@ -100,7 +100,7 @@ export class AgentClient {
     taskFilePath: string,
     cwd: string,
     onOutput: (chunk: string) => void,
-    onExit: (code: number | null) => void,
+    onExit: (code: number | null) => void | Promise<void>,
   ): { kill: () => void } {
     let command: string;
     let args: string[];
@@ -165,7 +165,9 @@ export class AgentClient {
     });
 
     child.on('close', (code) => {
-      onExit(code);
+      Promise.resolve(onExit(code)).catch((err) => {
+        console.error('[agent-client] onExit callback failed:', err);
+      });
     });
 
     child.on('error', (err: NodeJS.ErrnoException) => {
@@ -176,7 +178,9 @@ export class AgentClient {
             ? 'claude CLI not found. Install from https://docs.anthropic.com/cli'
             : err.message;
       onOutput(`[Agent error: ${friendly}]\n`);
-      onExit(1);
+      Promise.resolve(onExit(1)).catch((exitErr) => {
+        console.error('[agent-client] onExit callback failed:', exitErr);
+      });
     });
 
     return {

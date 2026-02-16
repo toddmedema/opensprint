@@ -104,6 +104,15 @@ describe("PRD REST API", () => {
     expect(res.body.data.updatedAt).toBeDefined();
   });
 
+  it("GET /projects/:id/prd/:section should return 404 when project not found", async () => {
+    const res = await request(app).get(
+      `${API_PREFIX}/projects/nonexistent-id/prd/executive_summary`
+    );
+
+    expect(res.status).toBe(404);
+    expect(res.body.error?.code).toBe("PROJECT_NOT_FOUND");
+  });
+
   it("GET /projects/:id/prd/:section should return 400 for invalid section key", async () => {
     const res = await request(app).get(
       `${API_PREFIX}/projects/${projectId}/prd/invalid_section`
@@ -142,6 +151,15 @@ describe("PRD REST API", () => {
       `${API_PREFIX}/projects/${projectId}/prd/history`
     );
     expect(historyRes.body.data[0].source).toBe("plan");
+  });
+
+  it("PUT /projects/:id/prd/:section should return 404 when project not found", async () => {
+    const res = await request(app)
+      .put(`${API_PREFIX}/projects/nonexistent-id/prd/executive_summary`)
+      .send({ content: "Some content" });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error?.code).toBe("PROJECT_NOT_FOUND");
   });
 
   it("PUT /projects/:id/prd/:section should return 400 for invalid section key", async () => {

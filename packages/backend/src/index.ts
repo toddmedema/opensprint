@@ -76,7 +76,9 @@ async function logOrchestratorStatus(): Promise<void> {
 server.listen(port, () => {
   console.log(`OpenSprint backend listening on http://localhost:${port}`);
   console.log(`WebSocket server ready on ws://localhost:${port}/ws`);
-  logOrchestratorStatus();
+  logOrchestratorStatus().catch((err) => {
+    console.error("[orchestrator] Status logging failed:", err);
+  });
 });
 
 // Graceful shutdown
@@ -95,3 +97,13 @@ const shutdown = () => {
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
+
+// Safety net: prevent unhandled rejections from crashing the server
+process.on("unhandledRejection", (reason) => {
+  console.error("[FATAL] Unhandled promise rejection:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught exception:", err);
+  shutdown();
+});
