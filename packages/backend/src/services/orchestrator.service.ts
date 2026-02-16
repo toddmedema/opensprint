@@ -711,12 +711,11 @@ export class OrchestratorService {
 
       const promptPath = path.join(taskDir, "prompt.md");
 
-      state.activeProcess = agentService.invokeCodingAgent(
+      state.activeProcess = agentService.invokeReviewAgent(
         promptPath,
         settings.codingAgent, // Use same agent for review in v1
         {
           cwd: repoPath,
-          agentRole: 'code reviewer',
           onOutput: (chunk: string) => {
             state.outputLog.push(chunk);
             state.lastOutputTime = Date.now();
