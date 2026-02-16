@@ -287,7 +287,7 @@ export class ContextAssembler {
     }
 
     prompt += `## Instructions\n\n`;
-    prompt += `1. Work on branch \`${config.branch}\` (already checked out).\n`;
+    prompt += `1. Work on branch \`${config.branch}\` (already checked out in this worktree).\n`;
     prompt += `2. Implement the task according to the acceptance criteria.\n`;
     prompt += `3. Write comprehensive tests (unit, and integration where applicable).\n`;
     prompt += `4. Run \`${config.testCommand}\` and ensure all tests pass.\n`;

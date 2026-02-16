@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Agent Chain: Complete one bd task, commit, then kick off the next agent.
-# Orchestrator loop: bd ready -> bd update --claim -> create branch -> spawn agent.
+# Uses git worktrees so agents never modify the main working tree.
 # Run: ./scripts/agent-chain.sh
 # Requires: Cursor CLI (agent) - install: curl https://cursor.com/install -fsSL | bash
 # Output: stream-json for real-time progress (tool calls, messages). Pipe through jq for readability.
 
 set -e
-cd "$(dirname "$0")/.."
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO_ROOT"
 
 # 0. Pre-flight: recover orphaned tasks (in_progress + agent assignee but no active process)
 npm run recover-orphans -w packages/backend 2>/dev/null || true
@@ -37,6 +38,8 @@ TASK_ID=$(echo "$NEXT_TASK" | jq -r '.id')
 TASK_TITLE=$(echo "$NEXT_TASK" | jq -r '.title')
 TASK_DESC=$(echo "$NEXT_TASK" | jq -r '.description // ""')
 TASK_PRIORITY=$(echo "$NEXT_TASK" | jq -r '.priority // 2')
+BRANCH_NAME="opensprint/${TASK_ID}"
+WORKTREE="/tmp/opensprint-worktrees/${TASK_ID}"
 
 echo "📋 Next task: $TASK_ID - $TASK_TITLE"
 echo ""
@@ -44,43 +47,59 @@ echo ""
 # 2. Claim the task (atomic: assignee + in_progress)
 bd update "$TASK_ID" --claim 2>/dev/null || true
 
-# 3. Create task branch (git checkout -b opensprint/<task-id>)
-git checkout main 2>/dev/null || git checkout master 2>/dev/null || true
-git checkout -b "opensprint/${TASK_ID}" 2>/dev/null || git checkout "opensprint/${TASK_ID}" 2>/dev/null || true
+# 3. Create worktree (main working tree stays on main, no checkout)
+#    Create branch from main if it doesn't exist
+git branch "$BRANCH_NAME" main 2>/dev/null || true
+#    Clean up stale worktree if exists
+git worktree remove "$WORKTREE" --force 2>/dev/null || rm -rf "$WORKTREE" 2>/dev/null || true
+git worktree prune 2>/dev/null || true
+#    Create fresh worktree
+mkdir -p "$(dirname "$WORKTREE")"
+git worktree add "$WORKTREE" "$BRANCH_NAME"
 
-# 4. Prepare task directory and spawn coding agent (context assembly + output streaming)
+# 4. Prepare task directory and spawn coding agent in worktree
 if command -v agent &>/dev/null; then
-  echo "🤖 Starting agent for $TASK_ID (task dir + stream)..."
+  echo "🤖 Starting agent for $TASK_ID in worktree $WORKTREE..."
   set +e
-  npm run run-task -w packages/backend -- "$TASK_ID"
+  (cd "$WORKTREE" && npm run run-task -w packages/backend -- "$TASK_ID")
   EXIT_CODE=$?
   set -e
 
   # Exit codes 143 (SIGTERM) and 130 (SIGINT) are expected when the agent
   # finishes — the CLI may signal its process group during cleanup.
-  # Treat them as success if the agent completed its work.
   if [ $EXIT_CODE -ne 0 ] && [ $EXIT_CODE -ne 143 ] && [ $EXIT_CODE -ne 130 ]; then
     echo "❌ Agent failed with exit code $EXIT_CODE"
+    # Clean up worktree on failure
+    git worktree remove "$WORKTREE" --force 2>/dev/null || true
+    git branch -D "$BRANCH_NAME" 2>/dev/null || true
     exit $EXIT_CODE
   fi
   echo "✅ Agent finished for $TASK_ID"
 
-  # 5. Post-agent: commit, close task, push, and continue chain.
-  #    The agent may or may not have done these itself — this is the safety net.
+  # 5. Post-agent: commit in worktree, merge to main, clean up.
 
-  # Commit any uncommitted work the agent left behind
-  if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet HEAD 2>/dev/null; then
+  # Commit any uncommitted work the agent left behind (in worktree)
+  if ! git -C "$WORKTREE" diff --quiet HEAD 2>/dev/null || ! git -C "$WORKTREE" diff --cached --quiet HEAD 2>/dev/null; then
     echo "📦 Committing agent's uncommitted changes..."
-    git add -A
-    git commit -m "Complete $TASK_ID: $TASK_TITLE" || true
+    git -C "$WORKTREE" add -A
+    git -C "$WORKTREE" commit -m "Complete $TASK_ID: $TASK_TITLE" || true
   fi
+
+  # Merge to main (from the main working tree, which is always on main)
+  echo "🔀 Merging $BRANCH_NAME to main..."
+  cd "$REPO_ROOT"
+  git merge "$BRANCH_NAME" || true
 
   # Mark the task done (idempotent — no-op if agent already did it)
   bd update "$TASK_ID" --status done 2>/dev/null || true
 
   # Sync beads and push
   bd sync 2>/dev/null || true
-  git push -u origin "opensprint/${TASK_ID}" 2>/dev/null || true
+  git push origin main 2>/dev/null || true
+
+  # Clean up worktree and branch
+  git worktree remove "$WORKTREE" --force 2>/dev/null || true
+  git branch -d "$BRANCH_NAME" 2>/dev/null || true
 
   # 6. Continue the chain — exec replaces this process to avoid deep recursion
   echo ""
@@ -91,5 +110,7 @@ else
   echo "   curl https://cursor.com/install -fsSL | bash"
   echo ""
   echo "Or run manually: npm run run-task -w packages/backend -- $TASK_ID"
+  # Clean up worktree on bail
+  git worktree remove "$WORKTREE" --force 2>/dev/null || true
   exit 1
 fi

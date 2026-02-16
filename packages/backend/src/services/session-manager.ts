@@ -68,14 +68,23 @@ export class SessionManager {
 
   /**
    * Archive the active task directory to sessions.
+   *
+   * @param repoPath - Main repository path (session archive is always written here)
+   * @param taskId - Task identifier
+   * @param attempt - Attempt number
+   * @param session - Session data
+   * @param worktreePath - Optional worktree path where the agent wrote active files.
+   *                       If provided, active files are read from the worktree instead of repoPath.
    */
   async archiveSession(
     repoPath: string,
     taskId: string,
     attempt: number,
     session: AgentSession,
+    worktreePath?: string,
   ): Promise<void> {
-    const activeDir = this.getActiveDir(repoPath, taskId);
+    // Active files live in the worktree (if provided), archive goes to main repo
+    const activeDirSource = this.getActiveDir(worktreePath ?? repoPath, taskId);
     const sessionDir = path.join(
       repoPath,
       OPENSPRINT_PATHS.sessions,
@@ -91,9 +100,9 @@ export class SessionManager {
 
     // Copy active directory contents to session archive
     try {
-      const files = await fs.readdir(activeDir);
+      const files = await fs.readdir(activeDirSource);
       for (const file of files) {
-        const srcPath = path.join(activeDir, file);
+        const srcPath = path.join(activeDirSource, file);
         const destPath = path.join(sessionDir, file);
         const stat = await fs.stat(srcPath);
         if (stat.isFile()) {
@@ -104,11 +113,21 @@ export class SessionManager {
       // Active directory might not exist
     }
 
-    // Clean up active directory
+    // Clean up active directory in the worktree (if it was there)
     try {
-      await fs.rm(activeDir, { recursive: true, force: true });
+      await fs.rm(activeDirSource, { recursive: true, force: true });
     } catch {
       // Ignore cleanup errors
+    }
+
+    // Also clean up in main repo if different from worktree
+    if (worktreePath) {
+      try {
+        const mainActiveDir = this.getActiveDir(repoPath, taskId);
+        await fs.rm(mainActiveDir, { recursive: true, force: true });
+      } catch {
+        // Ignore cleanup errors
+      }
     }
   }
 

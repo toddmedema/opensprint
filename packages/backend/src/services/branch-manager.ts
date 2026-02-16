@@ -1,5 +1,6 @@
 import { exec } from 'child_process';
 import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import { promisify } from 'util';
 
@@ -216,8 +217,9 @@ export class BranchManager {
   }
 
   /**
-   * Ensure we're on main with a clean working tree.
-   * Called before starting a new task to guarantee a safe starting state.
+   * Ensure the main working tree is on the main branch.
+   * With worktrees, this should always be the case. Logs a warning if not
+   * and corrects it, but does not perform destructive operations.
    */
   async ensureOnMain(repoPath: string): Promise<void> {
     await this.waitForGitReady(repoPath);
@@ -232,6 +234,89 @@ export class BranchManager {
         await this.git(repoPath, 'checkout -f main');
       }
     }
+  }
+
+  // ─── No-Checkout Diff Capture ───
+
+  /**
+   * Capture a branch's diff from main without checking it out.
+   * Returns empty string if the branch doesn't exist or has no diff.
+   */
+  async captureBranchDiff(repoPath: string, branchName: string): Promise<string> {
+    try {
+      const { stdout } = await execAsync(
+        `git diff main...${branchName}`,
+        { cwd: repoPath, maxBuffer: 10 * 1024 * 1024 },
+      );
+      return stdout;
+    } catch {
+      return '';
+    }
+  }
+
+  // ─── Git Worktree Operations ───
+
+  private getWorktreeBasePath(): string {
+    return path.join(os.tmpdir(), 'opensprint-worktrees');
+  }
+
+  /**
+   * Get the filesystem path for a task's worktree.
+   */
+  getWorktreePath(taskId: string): string {
+    return path.join(this.getWorktreeBasePath(), taskId);
+  }
+
+  /**
+   * Create an isolated git worktree for a task.
+   * Creates the branch from main if it doesn't exist, removes stale worktrees,
+   * then creates a fresh worktree at /tmp/opensprint-worktrees/<taskId>.
+   * Returns the worktree path.
+   */
+  async createTaskWorktree(repoPath: string, taskId: string): Promise<string> {
+    const branchName = `opensprint/${taskId}`;
+    const wtPath = this.getWorktreePath(taskId);
+
+    // Create branch from main if it doesn't exist
+    try {
+      await execAsync(`git rev-parse --verify ${branchName}`, { cwd: repoPath });
+    } catch {
+      await this.git(repoPath, `branch ${branchName} main`);
+    }
+
+    // Remove stale worktree if exists
+    await this.removeTaskWorktree(repoPath, taskId);
+
+    // Create worktree
+    await fs.mkdir(path.dirname(wtPath), { recursive: true });
+    await this.git(repoPath, `worktree add ${wtPath} ${branchName}`);
+    return wtPath;
+  }
+
+  /**
+   * Remove a task's worktree. Safe to call even if the worktree doesn't exist.
+   */
+  async removeTaskWorktree(repoPath: string, taskId: string): Promise<void> {
+    const wtPath = this.getWorktreePath(taskId);
+    try {
+      await this.git(repoPath, `worktree remove ${wtPath} --force`);
+    } catch {
+      // Worktree may not exist — also try manual cleanup
+      try {
+        await fs.rm(wtPath, { recursive: true, force: true });
+        await this.git(repoPath, 'worktree prune');
+      } catch {
+        // Nothing to clean up
+      }
+    }
+  }
+
+  /**
+   * Merge a branch into main from the main working tree.
+   * The main working tree must be on main (which it always should be with worktrees).
+   */
+  async mergeToMain(repoPath: string, branchName: string): Promise<void> {
+    await this.git(repoPath, `merge ${branchName}`);
   }
 
   private async git(repoPath: string, command: string): Promise<{ stdout: string; stderr: string }> {

@@ -12,15 +12,17 @@ const execAsync = promisify(exec);
 let mockListInProgress: { id: string; status: string; assignee: string }[] = [];
 let mockUpdateCalls: Array<{ id: string; status: string; assignee: string }> = [];
 
-vi.mock('../services/beads.service.js', () => ({
-  BeadsService: vi.fn().mockImplementation(() => ({
-    listInProgressWithAgentAssignee: vi.fn().mockImplementation(() => Promise.resolve(mockListInProgress)),
-    update: vi.fn().mockImplementation(async (_repo: string, id: string, opts: { status?: string; assignee?: string }) => {
-      mockUpdateCalls.push({ id, status: opts.status ?? '', assignee: opts.assignee ?? '' });
-      return { id, status: opts.status ?? 'open', assignee: opts.assignee ?? '' };
-    }),
-  })),
-}));
+vi.mock('../services/beads.service.js', () => {
+  return {
+    BeadsService: class MockBeadsService {
+      listInProgressWithAgentAssignee = vi.fn().mockImplementation(() => Promise.resolve(mockListInProgress));
+      update = vi.fn().mockImplementation(async (_repo: string, id: string, opts: { status?: string; assignee?: string }) => {
+        mockUpdateCalls.push({ id, status: opts.status ?? '', assignee: opts.assignee ?? '' });
+        return { id, status: opts.status ?? 'open', assignee: opts.assignee ?? '' };
+      });
+    },
+  };
+});
 
 describe('OrphanRecoveryService', () => {
   let service: OrphanRecoveryService;
@@ -37,19 +39,24 @@ describe('OrphanRecoveryService', () => {
     await execAsync('git config user.name "Test"', { cwd: repoPath });
     await fs.mkdir(path.join(repoPath, '.beads'), { recursive: true });
     await fs.writeFile(path.join(repoPath, '.beads', 'issues.jsonl'), '[]');
+    // Need an initial commit for worktree operations
+    await fs.writeFile(path.join(repoPath, 'README.md'), 'test');
+    await execAsync('git add -A && git commit -m "init"', { cwd: repoPath });
     mockListInProgress = [];
     mockUpdateCalls = [];
   });
 
   afterEach(async () => {
     try {
+      // Clean up any worktrees
+      await execAsync('git worktree prune', { cwd: repoPath }).catch(() => {});
       await fs.rm(repoPath, { recursive: true, force: true });
     } catch {
       // ignore
     }
   });
 
-  it('should recover orphaned tasks and reset to open', async () => {
+  it('should recover orphaned tasks and reset to open without checkout', async () => {
     mockListInProgress = [
       { id: 'task-orphan-1', status: 'in_progress', assignee: 'agent-1' },
     ];
@@ -63,6 +70,10 @@ describe('OrphanRecoveryService', () => {
       status: 'open',
       assignee: '',
     });
+
+    // Verify we're still on main (no checkout occurred)
+    const { stdout } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath });
+    expect(stdout.trim()).toBe('main');
   });
 
   it('should exclude task when excludeTaskId is provided', async () => {
@@ -87,16 +98,36 @@ describe('OrphanRecoveryService', () => {
     expect(mockUpdateCalls).toHaveLength(0);
   });
 
-  it('should commit WIP on task branch when branch exists and has uncommitted changes', async () => {
-    mockListInProgress = [{ id: 'task-wip', status: 'in_progress', assignee: 'agent-1' }];
-    await execAsync('git checkout -b opensprint/task-wip', { cwd: repoPath });
-    await fs.writeFile(path.join(repoPath, 'newfile'), 'partial work');
+  it('should clean up stale worktrees during recovery', async () => {
+    const taskId = 'task-wt';
+    const wtPath = path.join(os.tmpdir(), 'opensprint-worktrees', taskId);
+
+    // Create a branch and worktree to simulate an abandoned agent
+    await execAsync(`git branch opensprint/${taskId} main`, { cwd: repoPath });
+    await fs.mkdir(path.dirname(wtPath), { recursive: true });
+    await execAsync(`git worktree add ${wtPath} opensprint/${taskId}`, { cwd: repoPath });
+
+    mockListInProgress = [{ id: taskId, status: 'in_progress', assignee: 'agent-1' }];
 
     const { recovered } = await service.recoverOrphanedTasks(repoPath);
 
-    expect(recovered).toContain('task-wip');
-    const { stdout } = await execAsync('git log -1 --oneline', { cwd: repoPath });
-    expect(stdout).toContain('WIP: task-wip');
+    expect(recovered).toContain(taskId);
+
+    // Verify worktree was cleaned up
+    try {
+      await fs.access(wtPath);
+      // If we get here, the directory still exists — fail
+      expect.fail('Worktree directory should have been removed');
+    } catch {
+      // Expected: worktree directory removed
+    }
+
+    // Verify we're still on main
+    const { stdout } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: repoPath });
+    expect(stdout.trim()).toBe('main');
+
+    // Clean up
+    await execAsync(`git branch -D opensprint/${taskId}`, { cwd: repoPath }).catch(() => {});
   });
 
   it('should log warning when recovering orphaned tasks', async () => {

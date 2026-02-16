@@ -4,8 +4,11 @@ import { BranchManager } from "./branch-manager.js";
 /**
  * Orphan recovery: detect and retry abandoned IN_PROGRESS tasks.
  * When an agent is killed, its task remains in_progress with no active process.
- * This service finds such tasks, commits any uncommitted work as WIP, and resets
- * them to open so they re-enter the ready queue.
+ * This service resets them to open so they re-enter the ready queue.
+ *
+ * IMPORTANT: This service never checks out branches. The task branch is preserved
+ * on disk (and on the remote if it was pushed). When the task is retried, the
+ * worktree-based agent flow will pick up the existing branch.
  */
 export class OrphanRecoveryService {
   private beads = new BeadsService();
@@ -13,7 +16,8 @@ export class OrphanRecoveryService {
 
   /**
    * Recover orphaned tasks: in_progress + agent assignee but no active process.
-   * For each: commit WIP on task branch if uncommitted changes exist, then reset to open.
+   * Resets each task to open without any git checkout operations.
+   * The branch is preserved for the next agent attempt.
    *
    * @param repoPath - Path to the project repository (with .beads)
    * @param excludeTaskId - Optional task ID to exclude (e.g. current task being recovered by crash recovery)
@@ -51,25 +55,15 @@ export class OrphanRecoveryService {
   }
 
   private async recoverOne(repoPath: string, task: BeadsIssue): Promise<void> {
-    const branchName = `opensprint/${task.id}`;
-
-    await this.branchManager.waitForGitReady(repoPath);
-
+    // Clean up any stale worktree for this task (safe no-op if none exists)
     try {
-      await this.branchManager.checkout(repoPath, branchName);
-      await this.branchManager.commitWip(repoPath, task.id);
+      await this.branchManager.removeTaskWorktree(repoPath, task.id);
     } catch {
-      // Branch may not exist (task was claimed but branch never created)
-      // or checkout may fail — proceed to reset status anyway
-    } finally {
-      // Return to main so we don't leave repo on a task branch
-      try {
-        await this.branchManager.ensureOnMain(repoPath);
-      } catch {
-        // Best effort
-      }
+      // Worktree may not exist
     }
 
+    // Reset task status to open — no git checkout needed.
+    // The branch is preserved for the next attempt.
     await this.beads.update(repoPath, task.id, {
       status: "open",
       assignee: "",
