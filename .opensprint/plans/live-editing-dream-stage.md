@@ -1,0 +1,7 @@
+In the Dream stage, the user should not have to click Edit and Save to edit sections of the document. It should be like Google Docs, where they can edit the text directly inline (preserving the markdown styling - perhaps it's markdown behind the scenes, but a WYSIWYG-type editor on the frontend, where e.g. the user can press ctrl+b to bold something and it just appears as bold, but in the backend it's stored as the markdown with the *'s)
+
+We'll handle change management like we do in the planning phase: If the PRD has not been moved to the Plan phase yet, no action needed, their changes will simply be applied when they click "Plan it" for the first time. 
+
+Once Plan It has been clicked once, any further changes to the PRD make the button "Replan it". This will ask an AI agent to review the changes to the PRD since the last plan, and create/update existing plans as necessary. If we aren't already, I believe this means we'll need to store versioned copies of the PRD so that the agent can do their diff. I think it's ok if we store the current working version of the PRD, as well as a version for each "Plan it" action/version.
+
+If the plan has already been generated and there are no new changes, the button does not need to be shown.

@@ -61,15 +61,3 @@ export interface FeedbackSubmitRequest {
 export interface PlanShipRequest {
   planId: string;
 }
-
-/** Login request */
-export interface LoginRequest {
-  email: string;
-  password: string;
-}
-
-/** Login response */
-export interface LoginResponse {
-  token: string;
-  expiresAt: string;
-}

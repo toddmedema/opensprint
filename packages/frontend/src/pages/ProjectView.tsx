@@ -1,12 +1,19 @@
 import { useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, Navigate } from "react-router-dom";
 import type { ProjectPhase } from "@opensprint/shared";
+import { phaseFromSlug, getProjectPhasePath, isValidPhaseSlug, VALID_PHASES } from "../lib/phaseRouting";
 import { useAppDispatch, useAppSelector } from "../store";
 import { fetchProject, resetProject } from "../store/slices/projectSlice";
 import { resetWebsocket, clearHilRequest, clearHilNotification } from "../store/slices/websocketSlice";
 import { fetchDreamChat, fetchPrd, fetchPrdHistory, resetDream } from "../store/slices/dreamSlice";
 import { fetchPlans, resetPlan } from "../store/slices/planSlice";
-import { fetchTasks, fetchBuildPlans, fetchBuildStatus, resetBuild, setSelectedTaskId } from "../store/slices/buildSlice";
+import {
+  fetchTasks,
+  fetchBuildPlans,
+  fetchBuildStatus,
+  resetBuild,
+  setSelectedTaskId,
+} from "../store/slices/buildSlice";
 import { fetchFeedback, resetVerify } from "../store/slices/verifySlice";
 import { wsConnect, wsDisconnect } from "../store/middleware/websocketMiddleware";
 import { wsSend } from "../store/middleware/websocketMiddleware";
@@ -16,13 +23,6 @@ import { DreamPhase } from "./phases/DreamPhase";
 import { PlanPhase } from "./phases/PlanPhase";
 import { BuildPhase } from "./phases/BuildPhase";
 import { VerifyPhase } from "./phases/VerifyPhase";
-
-const VALID_PHASES: ProjectPhase[] = ["dream", "plan", "build", "verify"];
-
-function phaseFromSlug(slug: string | undefined): ProjectPhase {
-  if (slug && VALID_PHASES.includes(slug as ProjectPhase)) return slug as ProjectPhase;
-  return "dream";
-}
 
 const CATEGORY_LABELS: Record<string, string> = {
   scopeChanges: "Scope Changes",
@@ -35,6 +35,8 @@ export function ProjectView() {
   const { projectId, phase: phaseSlug } = useParams<{ projectId: string; phase?: string }>();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
+  const redirectTo = projectId && !isValidPhaseSlug(phaseSlug) ? getProjectPhasePath(projectId, "dream") : null;
+
   const currentPhase = phaseFromSlug(phaseSlug);
 
   const project = useAppSelector((s) => s.project.data);
@@ -45,7 +47,7 @@ export function ProjectView() {
 
   // Upfront data loading for ALL phases on mount
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || redirectTo) return;
 
     dispatch(wsConnect({ projectId }));
     dispatch(fetchProject(projectId));
@@ -67,19 +69,19 @@ export function ProjectView() {
       dispatch(resetBuild());
       dispatch(resetVerify());
     };
-  }, [projectId, dispatch]);
+  }, [projectId, redirectTo, dispatch]);
 
   if (!projectId) return null;
+  if (redirectTo) return <Navigate to={redirectTo} replace />;
 
   const handlePhaseChange = (phase: ProjectPhase) => {
     if (phase !== "build") dispatch(setSelectedTaskId(null));
-    const path = phase === "dream" ? `/projects/${projectId}` : `/projects/${projectId}/${phase}`;
-    navigate(path);
+    navigate(getProjectPhasePath(projectId, phase));
   };
 
   const handleNavigateToBuildTask = (taskId: string) => {
     dispatch(setSelectedTaskId(taskId));
-    navigate(`/projects/${projectId}/build`);
+    navigate(getProjectPhasePath(projectId, "build"));
   };
 
   const handleRespondToHil = (requestId: string, approved: boolean, notes?: string) => {

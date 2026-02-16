@@ -165,8 +165,6 @@ export function BuildPhase({ projectId }: BuildPhaseProps) {
   const markCompleteLoading = useAppSelector((s) => s.build.markCompleteLoading);
   const loading = useAppSelector((s) => s.build.loading);
   const error = useAppSelector((s) => s.build.error);
-  const connected = useAppSelector((s) => s.websocket.connected);
-
   const selectedTaskData = selectedTask ? tasks.find((t) => t.id === selectedTask) : null;
   const isDoneTask = selectedTaskData?.kanbanColumn === "done";
 
@@ -287,7 +285,6 @@ export function BuildPhase({ projectId }: BuildPhaseProps) {
             <h2 className="text-lg font-semibold text-gray-900">Build</h2>
             <p className="text-sm text-gray-500">
               {doneTasks}/{totalTasks} tasks completed
-              {connected && <span className="ml-2 text-green-500">Connected</span>}
             </p>
           </div>
           <div className="flex items-center gap-3">

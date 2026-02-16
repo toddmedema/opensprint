@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Layout } from "./layout/Layout";
 import { api } from "../api/client";
+import { getProjectPhasePath } from "../lib/phaseRouting";
 import type { Project } from "@opensprint/shared";
 
 const PHASE_LABELS: Record<string, string> = {
@@ -16,7 +17,7 @@ function ProjectCard({ project }: { project: Project }) {
   const progress = project.progressPercent ?? 0;
 
   return (
-    <Link to={`/projects/${project.id}`} className="card p-5 hover:shadow-md transition-shadow group block">
+    <Link to={getProjectPhasePath(project.id, project.currentPhase)} className="card p-5 hover:shadow-md transition-shadow group block">
       <h3 className="font-semibold text-gray-900 group-hover:text-brand-600 transition-colors">{project.name}</h3>
       {project.description && <p className="mt-1 text-sm text-gray-500 line-clamp-2">{project.description}</p>}
       <div className="mt-3 flex items-center justify-between">

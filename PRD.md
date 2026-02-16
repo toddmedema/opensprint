@@ -257,7 +257,9 @@ The living PRD is stored as a structured JSON file within the project's git repo
 
 #### 7.1.5 User Interface
 
-The Dream tab presents a split-pane interface. The left pane is a chat window where the user converses with the planning agent. The right pane displays the live PRD document, updating in real-time as the conversation progresses. Users can click on any section of the PRD to focus the conversation on that area, or edit the PRD directly with changes reflected back into the conversation context.
+The Dream tab presents a split-pane interface. The left pane is a chat window where the user converses with the planning agent. The right pane displays the live PRD document, updating in real-time as the conversation progresses. Users can click on any section of the PRD to focus the conversation on that area.
+
+**Inline editing:** PRD sections support direct inline editing — no Edit/Save flow. The experience is Google Docs–style: users edit text directly in place. The frontend uses a WYSIWYG-style editor (e.g., Ctrl+B for bold renders as bold on screen) while the backend stores content as markdown. Changes are reflected back into the conversation context automatically.
 
 ---
 
@@ -274,6 +276,7 @@ The Plan phase breaks the high-level PRD into discrete, implementable features. 
 - **Dependency graph visualization:** A visual graph shows how features relate to each other, highlighting critical paths and potential bottlenecks. This helps the user understand implementation order before committing to the Build phase.
 - **Suggested implementation order:** The AI recommends a build sequence based on dependency analysis, risk assessment, and foundational priority — building the riskiest and most foundational pieces first.
 - **Upstream propagation:** Any changes made to Plans (additions, modifications, scope changes) are automatically reflected back in the living PRD. When a Plan is approved for build, the orchestrator invokes the planning agent to review the Plan against the current PRD and update any affected sections. The agent receives the full PRD and the approved Plan as context and produces targeted section updates with change log entries.
+- **"Plan it" / "Replan it" transition:** Before any plan has been generated, the Plan tab shows a "Plan it" button. When clicked, the planning agent analyzes the PRD and creates the initial feature breakdown. If the user subsequently edits the PRD in the Dream phase and returns to Plan, the button becomes "Replan it" — the planning agent reviews the changes to the PRD since the last plan (using versioned snapshots for diffing) and creates or updates plans as necessary. If the plan has already been generated and there are no new PRD changes, the button is not shown.
 - **"Build It!" transition:** Plans and their decomposed tasks exist in a Planning state — all implementation tasks have a `blocks` dependency on a gating task (`bd-a3f8.0 "Plan approval gate"`), so they do not appear in `bd ready`. Each Plan card in the Plan view has a "Build It!" button that closes the gating task, allowing child tasks to become eligible for `bd ready` based on their own inter-task dependencies. This prevents agents from working on features that are still being refined.
 - **Rebuild behavior:** A Plan can only be rebuilt once ALL tasks in its existing epic are Done (or if no work has been started yet, in which case all existing sub-tasks are simply deleted). The "Rebuild" button is disabled if any tasks are currently In Progress or In Review. When clicked, the system generates new tasks representing the delta between the updated Plan and the completed work. The AI reasons about this as it would any new feature, but with the context of what has already been built.
 
@@ -475,6 +478,8 @@ Stored as `.opensprint/prd.json` in the project repo. Each section's content is 
   ]
 }
 ```
+
+**PRD snapshots for Replan it:** The system stores versioned copies of the PRD to support the "Replan it" flow. The current working version lives in `prd.json`. Each time the user clicks "Plan it" or "Replan it", a snapshot is saved (e.g., at `.opensprint/prd_snapshots/<plan-version>.json` or equivalent). The planning agent receives the diff between the last snapshot and the current PRD when "Replan it" is triggered.
 
 #### Conversation
 
@@ -896,10 +901,10 @@ This section traces a complete journey from project creation to verified feature
 The user clicks "Create New Project" on the home screen. The setup wizard collects the project name, agent configuration (e.g., Claude Opus for planning, Claude Sonnet for coding), deployment mode, and HIL preferences. OpenSprint creates a git repo, runs `bd init` to set up beads, creates the `.opensprint/` directory structure, and adds an entry to `~/.opensprint/projects.json`. The user lands in the Dream tab.
 
 **2. Dream Phase — PRD Creation**
-The user describes their product vision in the chat pane. The planning agent (invoked via the configured API) responds conversationally — asking clarifying questions, suggesting architecture, and challenging assumptions. As the conversation progresses, the planning agent generates and updates sections of `.opensprint/prd.json`. Each section is stored as markdown content. The right pane renders the PRD live. The conversation is stored in `.opensprint/conversations/<id>.json`.
+The user describes their product vision in the chat pane. The planning agent (invoked via the configured API) responds conversationally — asking clarifying questions, suggesting architecture, and challenging assumptions. As the conversation progresses, the planning agent generates and updates sections of `.opensprint/prd.json`. Each section is stored as markdown content. The right pane renders the PRD live with inline WYSIWYG editing — the user can edit any section directly without an Edit/Save flow. The conversation is stored in `.opensprint/conversations/<id>.json`.
 
 **3. Plan Phase — Feature Decomposition**
-The user switches to the Plan tab. The planning agent analyzes the PRD and suggests a breakdown into features. For each accepted feature, OpenSprint:
+The user switches to the Plan tab. If no plan exists yet, they click "Plan it" to trigger the planning agent. If they have edited the PRD since the last plan, they see "Replan it" instead; the agent receives the diff since the last snapshot and creates or updates plans. If the plan is current and unchanged, no button is shown. The planning agent analyzes the PRD and suggests a breakdown into features. For each accepted feature, OpenSprint:
 
 - Creates a Plan markdown file at `.opensprint/plans/<plan-id>.md`
 - Creates a beads epic: `bd create "Feature Name" -t epic` → returns `bd-a3f8`
@@ -967,6 +972,8 @@ All beads interactions use the `bd` CLI with `--json` flags, invoked via `child_
 ### 15.1 Living PRD Synchronization
 
 The living PRD is the backbone of OpenSprint. Changes propagate to the PRD at two trigger points: (1) when a Plan is approved for build, the planning agent reviews the Plan against the PRD and updates affected sections; (2) when Verify feedback is categorized as a scope change, the planning agent reviews the feedback and proposes PRD updates (subject to HIL approval). Both invocations use the same agent calling system as all other agent interactions. All PRD changes are recorded in the `change_log` with source attribution (which phase triggered the change) and full diff history. Users can view any historical version of the PRD in the Dream tab.
+
+**PRD-to-Plan flow:** When the user edits the PRD in Dream and triggers "Plan it" (first time) or "Replan it" (after plans exist), the system stores a PRD snapshot for that plan version. On "Replan it", the planning agent receives the diff between the last snapshot and the current PRD, enabling it to create or update plans based on what changed.
 
 ### 15.2 Agent Orchestration
 
@@ -1069,6 +1076,8 @@ Every piece of work in OpenSprint is traceable. The beads system captures: which
 | Branch strategy                        | Orchestrator creates branch, commits after coding agent, merges after review approval                 | Agents cannot be trusted to execute git operations; orchestrator owns all critical steps (5.5)   |
 | PRD upstream propagation               | Planning agent invoked at Plan ship and scope-change feedback to review and update PRD                | Explicit trigger points; uses same agent system as all other invocations                         |
 | Orchestrator trust boundary            | All critical ops (branch, commit, merge, beads, next-agent) performed by orchestrator in code         | Agents cannot be trusted to execute specific steps; they produce outputs, orchestrator acts      |
+| Dream PRD editing UX                   | Inline WYSIWYG editing (Google Docs–style); markdown stored in backend; no Edit/Save flow             | Reduces friction; users edit directly in place                                                  |
+| Plan it / Replan it                    | "Plan it" for first plan; "Replan it" when PRD changed after plan exists; button hidden if no changes | Mirrors Build It!/Rebuild pattern; versioned PRD snapshots enable agent diff for Replan it        |
 
 ---
 

@@ -133,7 +133,7 @@ export function ProjectSetup() {
         hilConfig,
         testFramework: testFramework === "none" ? null : testFramework,
       });
-      navigate(`/projects/${(project as { id: string }).id}`);
+      navigate(`/projects/${(project as { id: string }).id}/dream`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to create project";
       setCreateError(msg);

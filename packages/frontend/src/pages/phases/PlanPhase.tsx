@@ -30,6 +30,8 @@ export function PlanPhase({ projectId }: PlanPhaseProps) {
   const selectedPlanId = useAppSelector((s) => s.plan.selectedPlanId);
   const chatMessages = useAppSelector((s) => s.plan.chatMessages);
   const loading = useAppSelector((s) => s.plan.loading);
+  const shippingPlanId = useAppSelector((s) => s.plan.shippingPlanId);
+  const reshippingPlanId = useAppSelector((s) => s.plan.reshippingPlanId);
   const error = useAppSelector((s) => s.plan.error);
 
   /* ── Local UI state (preserved by mount-all) ── */
@@ -181,24 +183,28 @@ export function PlanPhase({ projectId }: PlanPhaseProps) {
 
                 {plan.status === "planning" && (
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleShip(plan.metadata.planId);
                     }}
-                    className="btn-primary text-xs w-full"
+                    disabled={!!shippingPlanId}
+                    className="btn-primary text-xs w-full disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    Build It!
+                    {shippingPlanId === plan.metadata.planId ? "Building…" : "Build It!"}
                   </button>
                 )}
                 {plan.status === "complete" && (
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleReship(plan.metadata.planId);
                     }}
-                    className="btn-secondary text-xs w-full"
+                    disabled={!!reshippingPlanId}
+                    className="btn-secondary text-xs w-full disabled:opacity-60 disabled:cursor-not-allowed"
                   >
-                    Rebuild
+                    {reshippingPlanId === plan.metadata.planId ? "Rebuilding…" : "Rebuild"}
                   </button>
                 )}
               </div>

@@ -139,10 +139,9 @@ export const api = {
     session: (projectId: string, taskId: string, attempt: number) =>
       request<unknown>(`/projects/${projectId}/tasks/${taskId}/sessions/${attempt}`),
     markComplete: (projectId: string, taskId: string) =>
-      request<{ taskClosed: boolean; epicClosed?: boolean }>(
-        `/projects/${projectId}/tasks/${taskId}/complete`,
-        { method: "POST" },
-      ),
+      request<{ taskClosed: boolean; epicClosed?: boolean }>(`/projects/${projectId}/tasks/${taskId}/complete`, {
+        method: "POST",
+      }),
   },
 
   // ─── Build ───
@@ -187,15 +186,6 @@ export const api = {
   agents: {
     active: (projectId: string) =>
       request<import("@opensprint/shared").ActiveAgent[]>(`/projects/${projectId}/agents/active`),
-  },
-
-  // ─── Auth ───
-  auth: {
-    login: (email: string, password: string) =>
-      request<import("@opensprint/shared").LoginResponse>("/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-      }),
   },
 
   // ─── Chat ───

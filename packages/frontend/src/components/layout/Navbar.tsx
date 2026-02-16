@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { Project, ProjectPhase } from "@opensprint/shared";
+import { getProjectPhasePath } from "../../lib/phaseRouting";
 import { api } from "../../api/client";
 import { ActiveAgentsList } from "../ActiveAgentsList";
 import { ConnectionIndicator } from "../ConnectionIndicator";
@@ -89,7 +90,7 @@ export function Navbar({ project, currentPhase, onPhaseChange }: NavbarProps) {
                     aria-selected={p.id === project?.id}
                     onClick={() => {
                       setDropdownOpen(false);
-                      navigate(`/projects/${p.id}`);
+                      navigate(getProjectPhasePath(p.id, currentPhase ?? "dream"));
                     }}
                     className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${
                       p.id === project?.id ? "bg-brand-50 text-brand-700 font-medium" : "text-gray-700"
@@ -131,7 +132,7 @@ export function Navbar({ project, currentPhase, onPhaseChange }: NavbarProps) {
           </div>
         )}
 
-        {/* Right: Active agents + Status + Sign in */}
+        {/* Right: Active agents + Status */}
         <div className="flex items-center gap-3">
           {project && (
             <>
@@ -139,9 +140,6 @@ export function Navbar({ project, currentPhase, onPhaseChange }: NavbarProps) {
               <ConnectionIndicator />
             </>
           )}
-          <Link to="/login" className="text-sm font-medium text-gray-600 hover:text-gray-900">
-            Sign in
-          </Link>
         </div>
       </div>
     </nav>

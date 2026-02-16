@@ -15,6 +15,10 @@ export interface PlanState {
   chatMessages: Record<string, Message[]>;
   loading: boolean;
   decomposing: boolean;
+  /** Plan ID currently being shipped (Build It!) — for loading state */
+  shippingPlanId: string | null;
+  /** Plan ID currently being reshipped (Rebuild) — for loading state */
+  reshippingPlanId: string | null;
   error: string | null;
 }
 
@@ -25,6 +29,8 @@ const initialState: PlanState = {
   chatMessages: {},
   loading: false,
   decomposing: false,
+  shippingPlanId: null,
+  reshippingPlanId: null,
   error: null,
 };
 
@@ -126,10 +132,26 @@ const planSlice = createSlice({
         state.error = action.error.message ?? "Failed to decompose PRD";
       })
       // shipPlan / reshipPlan
+      .addCase(shipPlan.pending, (state, action) => {
+        state.shippingPlanId = action.meta.arg.planId;
+        state.error = null;
+      })
+      .addCase(shipPlan.fulfilled, (state) => {
+        state.shippingPlanId = null;
+      })
       .addCase(shipPlan.rejected, (state, action) => {
+        state.shippingPlanId = null;
         state.error = action.error.message ?? "Failed to start build";
       })
+      .addCase(reshipPlan.pending, (state, action) => {
+        state.reshippingPlanId = action.meta.arg.planId;
+        state.error = null;
+      })
+      .addCase(reshipPlan.fulfilled, (state) => {
+        state.reshippingPlanId = null;
+      })
       .addCase(reshipPlan.rejected, (state, action) => {
+        state.reshippingPlanId = null;
         state.error = action.error.message ?? "Failed to rebuild plan";
       })
       // fetchPlanChat

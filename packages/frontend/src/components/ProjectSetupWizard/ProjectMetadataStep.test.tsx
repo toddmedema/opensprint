@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { ProjectMetadataStep, isValidProjectMetadata } from "./ProjectMetadataStep";
 
 describe("ProjectMetadataStep", () => {
@@ -34,12 +35,20 @@ describe("ProjectMetadataStep", () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
 
-    render(
-      <ProjectMetadataStep
-        value={{ name: "", description: "" }}
-        onChange={onChange}
-      />
-    );
+    function Harness() {
+      const [value, setValue] = useState({ name: "", description: "" });
+      return (
+        <ProjectMetadataStep
+          value={value}
+          onChange={(next) => {
+            onChange(next);
+            setValue(next);
+          }}
+        />
+      );
+    }
+
+    render(<Harness />);
 
     await user.type(screen.getByLabelText(/project name/i), "Test");
     expect(onChange).toHaveBeenCalled();

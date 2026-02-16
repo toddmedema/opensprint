@@ -16,7 +16,7 @@ Today each phase component is mounted/unmounted when the user switches tabs. Thi
 ## Requirements
 
 1. The current phase must still be captured in the URL (e.g. `/projects/:projectId/build`), and loading the URL directly must render the correct phase.
-2. Other pages (Home, Login, ProjectSetup) remain unaffected — the SPA behavior is scoped to within a single project.
+2. Other pages (Home, ProjectSetup) remain unaffected — the SPA behavior is scoped to within a single project.
 3. Once in the project SPA, all context, WebSocket connections, and data are loaded on page load and remembered as you switch phases. There should never be a flash of unloaded content.
 
 ## Architecture
@@ -34,7 +34,7 @@ main.tsx
     └── ThemeProvider
         └── BrowserRouter
             └── App (Routes)
-                ├── Home, Login, ProjectSetup (unchanged)
+                ├── Home, ProjectSetup (unchanged)
                 └── ProjectView
                     ├── on mount: dispatch fetchAllProjectData() + wsConnect()
                     ├── Layout + Navbar
