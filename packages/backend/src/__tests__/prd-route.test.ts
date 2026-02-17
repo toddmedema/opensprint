@@ -188,4 +188,36 @@ describe("PRD REST API", () => {
     expect(res.status).toBe(200);
     expect(res.body.data.section.content).toBe("");
   });
+
+  it("POST /projects/:id/prd/upload should extract text from .md file for empty-state onboarding", async () => {
+    const mdContent = "# My Product PRD\n\n## Overview\n\nA task management app.";
+    const buffer = Buffer.from(mdContent, "utf-8");
+
+    const res = await request(app)
+      .post(`${API_PREFIX}/projects/${projectId}/prd/upload`)
+      .attach("file", buffer, "spec.md");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toBeDefined();
+    expect(res.body.data.text).toBe(mdContent);
+    expect(res.body.data.filename).toBe("spec.md");
+  });
+
+  it("POST /projects/:id/prd/upload should return 400 when no file provided", async () => {
+    const res = await request(app).post(`${API_PREFIX}/projects/${projectId}/prd/upload`);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error?.message).toContain("No file");
+  });
+
+  it("POST /projects/:id/prd/upload should return 400 for unsupported file type", async () => {
+    const buffer = Buffer.from("content", "utf-8");
+
+    const res = await request(app)
+      .post(`${API_PREFIX}/projects/${projectId}/prd/upload`)
+      .attach("file", buffer, "document.txt");
+
+    expect(res.status).toBe(400);
+    expect(res.body.error?.message).toContain("Unsupported");
+  });
 });

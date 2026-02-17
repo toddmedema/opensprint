@@ -36,6 +36,7 @@ export function PrdUploadButton({ onUpload, disabled }: PrdUploadButtonProps) {
         accept={ACCEPTED_FILE_TYPES}
         onChange={handleChange}
         className="hidden"
+        data-testid="prd-upload-input"
       />
     </>
   );

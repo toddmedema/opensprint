@@ -118,11 +118,18 @@ describe("DreamPhase with designSlice", () => {
     mockGetPlanStatus.mockResolvedValue({ hasPlanningRun: false, prdChangedSinceLastRun: false, action: "plan" });
   });
 
-  describe("initial prompt view (no PRD)", () => {
-    it("renders initial prompt when prdContent is empty", () => {
+  describe("initial prompt view (no PRD) — empty-state onboarding", () => {
+    it("renders central prompt when prdContent is empty", () => {
       renderDreamPhase();
       expect(screen.getByText("What do you want to build?")).toBeInTheDocument();
+      expect(screen.getByText(/Describe your app idea and AI will generate/)).toBeInTheDocument();
       expect(screen.getByRole("textbox")).toBeInTheDocument();
+    });
+
+    it("renders file upload button in empty state", () => {
+      renderDreamPhase();
+      expect(screen.getByText("Upload existing PRD")).toBeInTheDocument();
+      expect(screen.getByText(/.md, .docx, .pdf/)).toBeInTheDocument();
     });
 
     it("dispatches sendDesignMessage when user submits initial idea", async () => {
@@ -136,6 +143,107 @@ describe("DreamPhase with designSlice", () => {
 
       await waitFor(() => {
         expect(mockChatSend).toHaveBeenCalledWith("proj-1", "A todo app", "dream", undefined);
+      });
+    });
+
+    it("submits on Enter key (without Shift)", async () => {
+      const user = userEvent.setup();
+      renderDreamPhase();
+      const textarea = screen.getByRole("textbox");
+      await user.type(textarea, "A fitness app");
+      await user.keyboard("{Enter}");
+
+      await waitFor(() => {
+        expect(mockChatSend).toHaveBeenCalledWith("proj-1", "A fitness app", "dream", undefined);
+      });
+    });
+
+    it("shows Generating your PRD overlay when sending", async () => {
+      let resolveSend: (value: { message: string; prdChanges?: unknown[] }) => void;
+      mockChatSend.mockImplementation(
+        () =>
+          new Promise((r) => {
+            resolveSend = r;
+          }),
+      );
+
+      const user = userEvent.setup();
+      renderDreamPhase();
+      const textarea = screen.getByRole("textbox");
+      await user.type(textarea, "A todo app");
+      await user.click(screen.getByTitle("Dream it"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Generating your PRD...")).toBeInTheDocument();
+        expect(screen.getByText(/This may take a moment/)).toBeInTheDocument();
+      });
+
+      resolveSend!({ message: "Here is your PRD" });
+    });
+
+    it("dispatches uploadPrdFile and fetchPrd when user uploads .md file", async () => {
+      mockChatSend.mockResolvedValue({ message: "Parsed your PRD", prdChanges: [] });
+      mockPrdGet.mockResolvedValue({
+        sections: { executive_summary: { content: "Summary", version: 1 } },
+      });
+
+      const user = userEvent.setup();
+      renderDreamPhase();
+
+      const file = new File(["# My PRD\n\nContent here"], "spec.md", { type: "text/markdown" });
+      const fileInput = screen.getByTestId("prd-upload-input");
+
+      await user.upload(fileInput, file);
+
+      await waitFor(() => {
+        expect(mockChatSend).toHaveBeenCalledWith(
+          "proj-1",
+          expect.stringContaining("Here's my existing product requirements document"),
+          "dream",
+          undefined,
+        );
+      });
+
+      await waitFor(() => {
+        expect(mockPrdGet).toHaveBeenCalledWith("proj-1");
+      });
+    });
+
+    it("disables submit and upload when sending", async () => {
+      let resolveSend: (value: { message: string }) => void;
+      mockChatSend.mockImplementation(
+        () =>
+          new Promise((r) => {
+            resolveSend = r;
+          }),
+      );
+
+      const user = userEvent.setup();
+      renderDreamPhase();
+      const textarea = screen.getByRole("textbox");
+      await user.type(textarea, "A todo app");
+      await user.click(screen.getByTitle("Dream it"));
+
+      await waitFor(() => {
+        expect(screen.getByTitle("Dream it")).toBeDisabled();
+        expect(screen.getByText("Upload existing PRD").closest("button")).toBeDisabled();
+      });
+
+      resolveSend!({ message: "Done" });
+    });
+
+    it("displays error and Dismiss when sendDesignMessage fails", async () => {
+      mockChatSend.mockRejectedValue(new Error("Agent unavailable"));
+
+      const user = userEvent.setup();
+      renderDreamPhase();
+      const textarea = screen.getByRole("textbox");
+      await user.type(textarea, "A todo app");
+      await user.click(screen.getByTitle("Dream it"));
+
+      await waitFor(() => {
+        expect(screen.getByText("Agent unavailable")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /Dismiss/i })).toBeInTheDocument();
       });
     });
   });

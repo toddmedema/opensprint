@@ -128,6 +128,45 @@ Let me know if you'd like to refine this further.`;
     );
   });
 
+  it("POST /chat empty-state: first message generates AI initial PRD with multiple sections", async () => {
+    const agentResponse = `I've created an initial PRD for your todo app.
+
+[PRD_UPDATE:executive_summary]
+A task management app that helps users organize and track their work.
+[/PRD_UPDATE]
+
+[PRD_UPDATE:problem_statement]
+Users struggle to keep track of tasks across multiple projects.
+[/PRD_UPDATE]
+
+[PRD_UPDATE:feature_list]
+- Task creation and editing
+- Project organization
+- Due date reminders
+[/PRD_UPDATE]
+
+Let me know if you'd like to expand any section.`;
+
+    mockInvokePlanningAgent.mockResolvedValue({ content: agentResponse });
+
+    const res = await request(app)
+      .post(`${API_PREFIX}/projects/${projectId}/chat`)
+      .send({ message: "I want to build a todo app", context: "dream" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.prdChanges).toHaveLength(3);
+    const sections = res.body.data.prdChanges.map((c: { section: string }) => c.section);
+    expect(sections).toContain("executive_summary");
+    expect(sections).toContain("problem_statement");
+    expect(sections).toContain("feature_list");
+
+    const execRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/prd/executive_summary`);
+    expect(execRes.body.data.content).toContain("task management app");
+
+    const problemRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/prd/problem_statement`);
+    expect(problemRes.body.data.content).toContain("keep track of tasks");
+  });
+
   it("POST /chat should handle multiple PRD_UPDATE blocks in one response", async () => {
     const agentResponse = `I've updated two sections for you.
 
