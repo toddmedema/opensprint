@@ -12,6 +12,7 @@ import { ChatService } from './chat.service.js';
 import { PlanService } from './plan.service.js';
 import { PrdService } from './prd.service.js';
 import { BeadsService, type BeadsIssue } from './beads.service.js';
+import { activeAgentsService } from './active-agents.service.js';
 import { broadcastToProject } from '../websocket/index.js';
 import { writeJsonAtomic } from '../utils/file-utils.js';
 
@@ -154,6 +155,17 @@ export class FeedbackService {
 
   /** AI categorization, mapping, and bead task creation */
   private async categorizeFeedback(projectId: string, item: FeedbackItem): Promise<void> {
+    const agentId = `feedback-categorize-${projectId}-${item.id}-${Date.now()}`;
+    activeAgentsService.register(agentId, projectId, 'validate', 'Feedback categorization', new Date().toISOString());
+
+    try {
+      await this.categorizeFeedbackImpl(projectId, item);
+    } finally {
+      activeAgentsService.unregister(agentId);
+    }
+  }
+
+  private async categorizeFeedbackImpl(projectId: string, item: FeedbackItem): Promise<void> {
     const settings = await this.projectService.getSettings(projectId);
     const project = await this.projectService.getProject(projectId);
     const [prdContext, planContext] = await Promise.all([

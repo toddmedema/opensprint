@@ -17,6 +17,16 @@ vi.mock("../services/hil-service.js", () => ({
   hilService: { evaluateDecision: vi.fn().mockResolvedValue({ approved: false }) },
 }));
 
+const mockRegister = vi.fn();
+const mockUnregister = vi.fn();
+vi.mock("../services/active-agents.service.js", () => ({
+  activeAgentsService: {
+    register: (...args: unknown[]) => mockRegister(...args),
+    unregister: (...args: unknown[]) => mockUnregister(...args),
+    list: vi.fn().mockReturnValue([]),
+  },
+}));
+
 vi.mock("../websocket/index.js", () => ({
   broadcastToProject: vi.fn(),
 }));
@@ -326,5 +336,42 @@ describe("FeedbackService", () => {
     const feedbackSourceCall = createCalls[0];
     expect(feedbackSourceCall[1]).toMatch(/^Feedback: /);
     expect(feedbackSourceCall[2]).toMatchObject({ type: "chore", priority: 4 });
+  });
+
+  describe("Validate phase agent registry", () => {
+    it("should register and unregister Feedback categorization agent on success", async () => {
+      mockInvoke.mockResolvedValue({
+        content: JSON.stringify({
+          category: "feature",
+          mappedPlanId: null,
+          task_titles: ["Add feature"],
+        }),
+      });
+
+      const item = await feedbackService.submitFeedback(projectId, { text: "Add feature" });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(mockRegister).toHaveBeenCalledTimes(1);
+      expect(mockRegister).toHaveBeenCalledWith(
+        expect.stringMatching(/^feedback-categorize-.*-/),
+        projectId,
+        "validate",
+        "Feedback categorization",
+        expect.any(String),
+      );
+      expect(mockUnregister).toHaveBeenCalledTimes(1);
+      expect(mockUnregister).toHaveBeenCalledWith(mockRegister.mock.calls[0][0]);
+    });
+
+    it("should unregister even when agent invocation throws", async () => {
+      mockInvoke.mockRejectedValue(new Error("Agent timeout"));
+
+      await feedbackService.submitFeedback(projectId, { text: "Random feedback" });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(mockRegister).toHaveBeenCalledTimes(1);
+      expect(mockUnregister).toHaveBeenCalledTimes(1);
+      expect(mockUnregister).toHaveBeenCalledWith(mockRegister.mock.calls[0][0]);
+    });
   });
 });
