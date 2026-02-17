@@ -19,6 +19,11 @@ import { hilService } from "./hil-service.js";
 import { activeAgentsService } from "./active-agents.service.js";
 import { broadcastToProject } from "../websocket/index.js";
 import { writeJsonAtomic } from "../utils/file-utils.js";
+import {
+  buildHarmonizerPromptBuildIt,
+  buildHarmonizerPromptScopeChange,
+  parseHarmonizerResult,
+} from "./harmonizer.service.js";
 
 const ARCHITECTURE_SECTIONS = ["technical_architecture", "data_model", "api_contracts"] as const;
 
@@ -359,51 +364,37 @@ export class ChatService {
   }
 
   /**
-   * When a Plan is approved for build, invoke the planning agent to review the Plan against the PRD
-   * and update any affected sections. PRD §15.1 Living PRD Synchronization.
+   * When a Plan is approved for build (Execute!), invoke the Harmonizer to review the Plan against the PRD
+   * and update any affected sections. PRD §12.3.3, §15.1 Living PRD Synchronization.
+   * Trigger: build_it.
    */
   async syncPrdFromPlanShip(projectId: string, planId: string, planContent: string): Promise<void> {
     const settings = await this.projectService.getSettings(projectId);
     const agentConfig = settings.planningAgent;
     const prdContext = await this.buildPrdContext(projectId);
 
-    const systemPrompt = `You are a PRD synchronization assistant for OpenSprint. A Plan has just been approved for build.
+    const prompt = buildHarmonizerPromptBuildIt(planId, planContent);
+    const systemPrompt = `You are the Harmonizer agent for OpenSprint (PRD §12.3.3). Review shipped Plans against the PRD and propose section updates.\n\n## Current PRD\n\n${prdContext}`;
 
-Your task: Review the approved Plan against the current PRD. Update any PRD sections that should reflect the Plan's decisions, scope, technical approach, or acceptance criteria. The PRD is the living document; it should stay aligned with what is being built.
-
-Output updates using this format:
-[PRD_UPDATE:section_key]
-<markdown content for the section>
-[/PRD_UPDATE]
-
-Valid section keys: executive_summary, problem_statement, user_personas, goals_and_metrics, feature_list, technical_architecture, data_model, api_contracts, non_functional_requirements, open_questions
-
-Do NOT include a top-level section header (e.g. "## 1. Executive Summary") in the content — the UI already displays the section title. Start with the body content directly.
-
-Only output PRD_UPDATE blocks for sections that need changes. If no updates are needed, respond briefly without any PRD_UPDATE blocks.`;
-
-    const prompt = `Review this approved Plan (${planId}) and update the PRD as needed.\n\n## Approved Plan\n\n${planContent}`;
-
-    const fullContext = `${systemPrompt}\n\n## Current PRD\n\n${prdContext}`;
-
-    const agentId = `plan-ship-prd-${projectId}-${planId}-${Date.now()}`;
-    activeAgentsService.register(agentId, projectId, "plan", "harmonizer", "Ship-it PRD update", new Date().toISOString());
+    const agentId = `harmonizer-build-it-${projectId}-${planId}-${Date.now()}`;
+    activeAgentsService.register(agentId, projectId, "plan", "harmonizer", "Execute! PRD sync", new Date().toISOString());
 
     let response;
     try {
       response = await agentService.invokePlanningAgent({
         config: agentConfig,
         messages: [{ role: "user", content: prompt }],
-        systemPrompt: fullContext,
+        systemPrompt,
       });
     } finally {
       activeAgentsService.unregister(agentId);
     }
 
-    const prdUpdates = this.parsePrdUpdates(response.content);
-    if (prdUpdates.length === 0) return;
+    const legacyUpdates = this.parsePrdUpdates(response.content);
+    const result = parseHarmonizerResult(response.content, legacyUpdates);
+    if (!result || result.status === "no_changes_needed" || result.prdUpdates.length === 0) return;
 
-    const filtered = await this.filterArchitectureUpdatesWithHil(projectId, prdUpdates, `Plan "${planId}" updates`);
+    const filtered = await this.filterArchitectureUpdatesWithHil(projectId, result.prdUpdates, `Plan "${planId}" updates`);
     if (filtered.length === 0) return;
 
     const changes = await this.prdService.updateSections(projectId, filtered, "plan");
@@ -417,46 +408,40 @@ Only output PRD_UPDATE blocks for sections that need changes. If no updates are 
   }
 
   /**
-   * When Verify feedback is categorized as a scope change and the user approves via HIL,
-   * invoke the planning agent to review the feedback against the PRD and update affected
-   * sections. PRD §7.4.2, §15.1 Living PRD Synchronization.
+   * When Ensure feedback is categorized as a scope change and the user approves via HIL,
+   * invoke the Harmonizer to review the feedback against the PRD and update affected
+   * sections. PRD §7.4.2, §12.3.3, §15.1 Living PRD Synchronization.
+   * Trigger: scope_change.
    */
   async syncPrdFromScopeChangeFeedback(projectId: string, feedbackText: string): Promise<void> {
     const settings = await this.projectService.getSettings(projectId);
     const agentConfig = settings.planningAgent;
     const prdContext = await this.buildPrdContext(projectId);
 
-    const systemPrompt = `You are a PRD synchronization assistant for OpenSprint. A user has submitted validation feedback that was categorized as a scope change and approved for PRD updates.
+    const prompt = buildHarmonizerPromptScopeChange(feedbackText);
+    const systemPrompt = `You are the Harmonizer agent for OpenSprint (PRD §12.3.3). Review scope-change feedback against the PRD and propose section updates.\n\n## Current PRD\n\n${prdContext}`;
 
-Your task: Review the feedback against the current PRD. Determine if updates are necessary. If so, produce targeted section updates that incorporate the scope change. The PRD is the living document; it should reflect the approved scope change.
+    const agentId = `harmonizer-scope-change-${projectId}-${Date.now()}`;
+    activeAgentsService.register(agentId, projectId, "plan", "harmonizer", "Scope-change PRD sync", new Date().toISOString());
 
-Output updates using this format:
-[PRD_UPDATE:section_key]
-<markdown content for the section>
-[/PRD_UPDATE]
+    let response;
+    try {
+      response = await agentService.invokePlanningAgent({
+        config: agentConfig,
+        messages: [{ role: "user", content: prompt }],
+        systemPrompt,
+      });
+    } finally {
+      activeAgentsService.unregister(agentId);
+    }
 
-Valid section keys: executive_summary, problem_statement, user_personas, goals_and_metrics, feature_list, technical_architecture, data_model, api_contracts, non_functional_requirements, open_questions
-
-Do NOT include a top-level section header (e.g. "## 1. Executive Summary") in the content — the UI already displays the section title. Start with the body content directly.
-
-Only output PRD_UPDATE blocks for sections that need changes. If no updates are needed, respond briefly without any PRD_UPDATE blocks.`;
-
-    const prompt = `Review this scope-change feedback and update the PRD as needed.\n\n## Feedback\n\n"${feedbackText}"`;
-
-    const fullContext = `${systemPrompt}\n\n## Current PRD\n\n${prdContext}`;
-
-    const response = await agentService.invokePlanningAgent({
-      config: agentConfig,
-      messages: [{ role: "user", content: prompt }],
-      systemPrompt: fullContext,
-    });
-
-    const prdUpdates = this.parsePrdUpdates(response.content);
-    if (prdUpdates.length === 0) return;
+    const legacyUpdates = this.parsePrdUpdates(response.content);
+    const result = parseHarmonizerResult(response.content, legacyUpdates);
+    if (!result || result.status === "no_changes_needed" || result.prdUpdates.length === 0) return;
 
     const filtered = await this.filterArchitectureUpdatesWithHil(
       projectId,
-      prdUpdates,
+      result.prdUpdates,
       `Scope change feedback: "${feedbackText.slice(0, 80)}${feedbackText.length > 80 ? "…" : ""}"`,
     );
     if (filtered.length === 0) return;

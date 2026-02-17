@@ -95,14 +95,30 @@ describe("ChatService - Plan phase agent registry", () => {
 
       expect(mockRegister).toHaveBeenCalledTimes(1);
       expect(mockRegister).toHaveBeenCalledWith(
-        expect.stringMatching(/^plan-ship-prd-.*auth-plan.*-/),
+        expect.stringMatching(/^harmonizer-build-it-.*auth-plan.*-/),
         projectId,
         "plan",
-        "Ship-it PRD update",
+        "harmonizer",
+        "Execute! PRD sync",
         expect.any(String),
       );
       expect(mockUnregister).toHaveBeenCalledTimes(1);
       expect(mockUnregister).toHaveBeenCalledWith(mockRegister.mock.calls[0][0]);
+    });
+
+    it("should do nothing when agent returns no_changes_needed", async () => {
+      mockInvokePlanningAgent.mockResolvedValue({
+        content: '{"status":"no_changes_needed"}',
+      });
+
+      const prdPath = path.join(repoPath, OPENSPRINT_PATHS.prd);
+      const prdBefore = JSON.parse(await fs.readFile(prdPath, "utf-8"));
+
+      await chatService.syncPrdFromPlanShip(projectId, "auth-plan", "# Auth Plan\n\nContent.");
+
+      const prdAfter = JSON.parse(await fs.readFile(prdPath, "utf-8"));
+      expect(prdAfter).toEqual(prdBefore);
+      expect(mockBroadcast).not.toHaveBeenCalled();
     });
 
     it("should unregister even when agent invocation throws", async () => {
@@ -146,6 +162,21 @@ describe("ChatService - Plan phase agent registry", () => {
 
       const prdAfter = JSON.parse(await fs.readFile(prdPath, "utf-8"));
       expect(prdAfter).toEqual(prdBefore);
+    });
+
+    it("should do nothing when agent returns no_changes_needed JSON", async () => {
+      mockInvokePlanningAgent.mockResolvedValue({
+        content: '{"status":"no_changes_needed"}',
+      });
+
+      const prdPath = path.join(repoPath, OPENSPRINT_PATHS.prd);
+      const prdBefore = JSON.parse(await fs.readFile(prdPath, "utf-8"));
+
+      await chatService.syncPrdFromScopeChangeFeedback(projectId, "Minor feedback");
+
+      const prdAfter = JSON.parse(await fs.readFile(prdPath, "utf-8"));
+      expect(prdAfter).toEqual(prdBefore);
+      expect(mockBroadcast).not.toHaveBeenCalled();
     });
 
     it("should apply PRD updates and broadcast when agent returns non-architecture updates", async () => {

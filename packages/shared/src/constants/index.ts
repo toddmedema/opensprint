@@ -31,6 +31,12 @@ export const BACKOFF_FAILURE_THRESHOLD = 3;
 /** Maximum beads priority value; tasks at this level get blocked on next demotion (PRDv2 §9.1) */
 export const MAX_PRIORITY_BEFORE_BLOCK = 4;
 
+/** Summarizer: invoke when task has more than this many dependencies (PRD §7.3.2, §12.3.5) */
+export const SUMMARIZER_DEPENDENCY_THRESHOLD = 2;
+
+/** Summarizer: invoke when Plan exceeds this many words (PRD §7.3.2, §12.3.5) */
+export const SUMMARIZER_PLAN_WORD_THRESHOLD = 2000;
+
 /** Default API port */
 export const DEFAULT_API_PORT = 3100;
 

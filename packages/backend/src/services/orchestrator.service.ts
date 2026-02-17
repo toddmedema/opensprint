@@ -25,6 +25,12 @@ import { deploymentService } from "./deployment-service.js";
 import { BranchManager } from "./branch-manager.js";
 import { ContextAssembler } from "./context-assembler.js";
 import { SessionManager } from "./session-manager.js";
+import {
+  shouldInvokeSummarizer,
+  buildSummarizerPrompt,
+  countWords,
+} from "./summarizer.service.js";
+import type { TaskContext } from "./context-assembler.js";
 import { TestRunner } from "./test-runner.js";
 import { orphanRecoveryService } from "./orphan-recovery.service.js";
 import { heartbeatService } from "./heartbeat.service.js";
@@ -722,12 +728,65 @@ export class OrchestratorService {
       await this.preflightCheck(repoPath, wtPath, task.id);
 
       // Context assembly: read from main repo (PRD, plans, deps), write prompt to worktree
-      const context = await this.contextAssembler.buildContext(
+      let context: TaskContext = await this.contextAssembler.buildContext(
         repoPath,
         task.id,
         this.beads,
         this.branchManager
       );
+
+      // Summarizer: condense context when thresholds exceeded (PRD §7.3.2, §12.3.5)
+      if (shouldInvokeSummarizer(context)) {
+        const depCount = context.dependencyOutputs.length;
+        const planWordCount = countWords(context.planContent);
+        const summarizerPrompt = buildSummarizerPrompt(
+          task.id,
+          context,
+          depCount,
+          planWordCount
+        );
+        const systemPrompt = `You are the Summarizer agent for OpenSprint (PRD §12.3.5). Condense context into a focused summary when it exceeds size thresholds.`;
+
+        const summarizerId = `summarizer-${projectId}-${task.id}-${Date.now()}`;
+        activeAgentsService.register(
+          summarizerId,
+          projectId,
+          "execute",
+          "summarizer",
+          "Context condensation",
+          new Date().toISOString()
+        );
+
+        try {
+          const summarizerResponse = await agentService.invokePlanningAgent({
+            config: settings.planningAgent,
+            messages: [{ role: "user", content: summarizerPrompt }],
+            systemPrompt,
+          });
+
+          const jsonMatch = summarizerResponse.content.match(/\{[\s\S]*"status"[\s\S]*\}/);
+          if (jsonMatch) {
+            try {
+              const parsed = JSON.parse(jsonMatch[0]) as { status: string; summary?: string };
+              if (parsed.status === "success" && parsed.summary?.trim()) {
+                context = {
+                  ...context,
+                  planContent: parsed.summary.trim(),
+                  prdExcerpt: "Context condensed by Summarizer (thresholds exceeded). See plan.md for full context.",
+                  dependencyOutputs: [],
+                };
+                console.log(`[orchestrator] Summarizer condensed context for task ${task.id}`);
+              }
+            } catch {
+              // Fall through: use raw context if Summarizer output unparseable
+            }
+          }
+        } catch (err) {
+          console.warn(`[orchestrator] Summarizer failed for ${task.id}, using raw context:`, err instanceof Error ? err.message : err);
+        } finally {
+          activeAgentsService.unregister(summarizerId);
+        }
+      }
 
       const config: ActiveTaskConfig = {
         invocation_id: task.id,
