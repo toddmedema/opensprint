@@ -30,5 +30,6 @@
       "model": "claude-4.6-opus-high-thinking",
       "cliCommand": null
     }
-  }
+  },
+  "reviewMode": "always"
 }

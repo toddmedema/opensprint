@@ -1,0 +1,15 @@
+{
+  "id": "e3641a37-3d2d-4af7-a886-6d2d7d9c8dd7",
+  "text": "Please update feedback IDs to be shorter when they are created. They only need to be 8 alphanumeric characters long. Any more is not necessary from a randomness perspective, and just clogs up the UI.",
+  "category": "ux",
+  "mappedPlanId": "verify-phase-feedback-submission-and-mapping",
+  "createdTaskIds": [
+    "opensprint.dev-srl.18"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-17T08:29:26.835Z",
+  "taskTitles": [
+    "Shorten feedback IDs to 8 alphanumeric characters"
+  ],
+  "feedbackSourceBeadId": "opensprint.dev-gpl"
+}
