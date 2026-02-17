@@ -105,4 +105,35 @@ describe("PrdSectionEditor", () => {
       expect(screen.getByText("Updated from API")).toBeInTheDocument();
     });
   });
+
+  it("does not overwrite content when section has focus (WebSocket conflict avoidance)", async () => {
+    const { rerender, container } = render(
+      <PrdSectionEditor
+        sectionKey="overview"
+        markdown="Original"
+        onSave={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Original")).toBeInTheDocument();
+    });
+
+    const editor = container.querySelector("[contenteditable]") as HTMLElement;
+    editor.focus();
+    expect(document.activeElement).toBe(editor);
+
+    rerender(
+      <PrdSectionEditor
+        sectionKey="overview"
+        markdown="Overwritten by WebSocket"
+        onSave={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(editor.textContent).toContain("Original");
+      expect(editor.textContent).not.toContain("Overwritten by WebSocket");
+    });
+  });
 });

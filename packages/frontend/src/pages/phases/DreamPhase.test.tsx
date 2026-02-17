@@ -78,7 +78,7 @@ function createStore(preloadedState?: {
         prdContent: preloadedState?.design?.prdContent ?? {},
         prdHistory: preloadedState?.design?.prdHistory ?? [],
         sendingChat: false,
-        savingSection: null,
+        savingSections: [],
         error: null,
       },
       plan: {

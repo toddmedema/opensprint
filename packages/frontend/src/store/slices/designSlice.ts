@@ -14,7 +14,8 @@ export interface DesignState {
   prdContent: Record<string, string>;
   prdHistory: PrdChangeLogEntry[];
   sendingChat: boolean;
-  savingSection: string | null;
+  /** Sections currently being saved (allows concurrent multi-section edits) */
+  savingSections: string[];
   error: string | null;
 }
 
@@ -23,7 +24,7 @@ const initialState: DesignState = {
   prdContent: {},
   prdHistory: [],
   sendingChat: false,
-  savingSection: null,
+  savingSections: [],
   error: null,
 };
 
@@ -134,13 +135,16 @@ const designSlice = createSlice({
       })
       // savePrdSection
       .addCase(savePrdSection.pending, (state, action) => {
-        state.savingSection = action.meta.arg.section;
+        const section = action.meta.arg.section;
+        if (!state.savingSections.includes(section)) {
+          state.savingSections.push(section);
+        }
       })
-      .addCase(savePrdSection.fulfilled, (state) => {
-        state.savingSection = null;
+      .addCase(savePrdSection.fulfilled, (state, action) => {
+        state.savingSections = state.savingSections.filter((s) => s !== action.meta.arg.section);
       })
       .addCase(savePrdSection.rejected, (state, action) => {
-        state.savingSection = null;
+        state.savingSections = state.savingSections.filter((s) => s !== action.meta.arg.section);
         state.error = action.error.message ?? "Failed to save PRD section";
       })
       // uploadPrdFile

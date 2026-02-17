@@ -4,14 +4,14 @@ import { PrdSectionEditor } from "./PrdSectionEditor";
 
 export interface PrdViewerProps {
   prdContent: Record<string, string>;
-  savingSection: string | null;
+  savingSections: string[];
   onSectionChange: (section: string, markdown: string) => void;
   containerRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export function PrdViewer({
   prdContent,
-  savingSection,
+  savingSections,
   onSectionChange,
   containerRef,
 }: PrdViewerProps) {
@@ -30,7 +30,7 @@ export function PrdViewer({
               <h2 className="text-lg font-semibold text-gray-800">
                 {formatSectionKey(sectionKey)}
               </h2>
-              {savingSection === sectionKey && (
+              {savingSections.includes(sectionKey) && (
                 <span className="text-xs text-gray-500">Saving...</span>
               )}
             </div>
@@ -40,7 +40,7 @@ export function PrdViewer({
               sectionKey={sectionKey}
               markdown={prdContent[sectionKey] ?? ""}
               onSave={onSectionChange}
-              disabled={savingSection === sectionKey}
+              disabled={savingSections.includes(sectionKey)}
             />
 
             {/* Divider */}

@@ -54,7 +54,7 @@ describe("designSlice", () => {
       expect(state.prdContent).toEqual({});
       expect(state.prdHistory).toEqual([]);
       expect(state.sendingChat).toBe(false);
-      expect(state.savingSection).toBeNull();
+      expect(state.savingSections).toEqual([]);
       expect(state.error).toBeNull();
     });
   });
@@ -73,7 +73,7 @@ describe("designSlice", () => {
       expect(state.prdContent).toEqual({});
       expect(state.prdHistory).toEqual([]);
       expect(state.sendingChat).toBe(false);
-      expect(state.savingSection).toBeNull();
+      expect(state.savingSections).toEqual([]);
       expect(state.error).toBeNull();
     });
 
@@ -243,7 +243,7 @@ describe("designSlice", () => {
   });
 
   describe("savePrdSection thunk", () => {
-    it("sets savingSection on pending", async () => {
+    it("sets savingSections on pending", async () => {
       let resolveApi: () => void;
       const apiPromise = new Promise<void>((r) => {
         resolveApi = r;
@@ -254,24 +254,24 @@ describe("designSlice", () => {
         savePrdSection({ projectId: "proj-1", section: "overview", content: "New content" }),
       );
 
-      expect(store.getState().design.savingSection).toBe("overview");
+      expect(store.getState().design.savingSections).toContain("overview");
 
       resolveApi!();
       await dispatchPromise;
     });
 
-    it("clears savingSection on fulfilled", async () => {
+    it("clears savingSections on fulfilled", async () => {
       vi.mocked(api.prd.updateSection).mockResolvedValue(undefined);
       const store = createStore();
       await store.dispatch(
         savePrdSection({ projectId: "proj-1", section: "goals", content: "Updated goals" }),
       );
 
-      expect(store.getState().design.savingSection).toBeNull();
+      expect(store.getState().design.savingSections).toEqual([]);
       expect(api.prd.updateSection).toHaveBeenCalledWith("proj-1", "goals", "Updated goals");
     });
 
-    it("clears savingSection and sets error on rejected", async () => {
+    it("clears savingSections and sets error on rejected", async () => {
       vi.mocked(api.prd.updateSection).mockRejectedValue(new Error("Save failed"));
       const store = createStore();
       await store.dispatch(
@@ -279,7 +279,7 @@ describe("designSlice", () => {
       );
 
       const state = store.getState().design;
-      expect(state.savingSection).toBeNull();
+      expect(state.savingSections).toEqual([]);
       expect(state.error).toBe("Save failed");
     });
 
@@ -291,6 +291,33 @@ describe("designSlice", () => {
       );
 
       expect(store.getState().design.error).toBe("Failed to save PRD section");
+    });
+
+    it("allows concurrent saves for different sections", async () => {
+      let resolveA: () => void;
+      let resolveB: () => void;
+      const promiseA = new Promise<void>((r) => {
+        resolveA = r;
+      });
+      const promiseB = new Promise<void>((r) => {
+        resolveB = r;
+      });
+      vi.mocked(api.prd.updateSection)
+        .mockImplementationOnce(() => promiseA as never)
+        .mockImplementationOnce(() => promiseB as never);
+      const store = createStore();
+
+      store.dispatch(savePrdSection({ projectId: "proj-1", section: "overview", content: "A" }));
+      store.dispatch(savePrdSection({ projectId: "proj-1", section: "goals", content: "B" }));
+
+      expect(store.getState().design.savingSections).toContain("overview");
+      expect(store.getState().design.savingSections).toContain("goals");
+
+      resolveA!();
+      resolveB!();
+      await Promise.all([promiseA, promiseB]);
+
+      expect(store.getState().design.savingSections).toEqual([]);
     });
   });
 

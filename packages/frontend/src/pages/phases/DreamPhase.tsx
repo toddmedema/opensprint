@@ -72,7 +72,7 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
   const prdContent = useAppSelector((s) => s.design.prdContent);
   const prdHistory = useAppSelector((s) => s.design.prdHistory);
   const sending = useAppSelector((s) => s.design.sendingChat);
-  const savingSection = useAppSelector((s) => s.design.savingSection);
+  const savingSections = useAppSelector((s) => s.design.savingSections);
   const error = useAppSelector((s) => s.design.error);
   const planStatus = useAppSelector((s) => s.plan.planStatus);
   const decomposing = useAppSelector((s) => s.plan.decomposing);
@@ -275,7 +275,7 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
 
   const handleSectionChange = useCallback(
     async (section: string, content: string) => {
-      if (savingSection) return;
+      if (savingSections.includes(section)) return;
       const result = await dispatch(
         savePrdSection({ projectId, section, content }),
       );
@@ -286,7 +286,7 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
         dispatch(fetchPlanStatus(projectId));
       }
     },
-    [projectId, savingSection, dispatch],
+    [projectId, savingSections, dispatch],
   );
 
   const handlePlanIt = async () => {
@@ -439,7 +439,7 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
 
           <PrdViewer
             prdContent={prdContent}
-            savingSection={savingSection}
+            savingSections={savingSections}
             onSectionChange={handleSectionChange}
             containerRef={prdContainerRef}
           />

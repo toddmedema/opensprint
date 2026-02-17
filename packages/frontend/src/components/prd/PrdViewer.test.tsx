@@ -36,7 +36,7 @@ describe("PrdViewer", () => {
     render(
       <PrdViewer
         prdContent={prdContent}
-        savingSection={null}
+        savingSections={[]}
         onSectionChange={vi.fn()}
       />,
     );
@@ -50,7 +50,7 @@ describe("PrdViewer", () => {
     render(
       <PrdViewer
         prdContent={{ overview: "Content" }}
-        savingSection="overview"
+        savingSections={["overview"]}
         onSectionChange={vi.fn()}
       />,
     );
@@ -64,7 +64,7 @@ describe("PrdViewer", () => {
     render(
       <PrdViewer
         prdContent={{ overview: "Original" }}
-        savingSection={null}
+        savingSections={[]}
         onSectionChange={onSectionChange}
       />,
     );
