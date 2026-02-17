@@ -200,10 +200,13 @@ export function BuildPhase({ projectId, onNavigateToPlan }: BuildPhaseProps) {
   }, [implTasks, plans]);
 
   const totalTasks = implTasks.length;
-  const doneTasks = implTasks.filter((t) => t.kanbanColumn === "done").length;
+  const readyTasks = implTasks.filter((t) =>
+    ["planning", "backlog", "ready"].includes(t.kanbanColumn),
+  ).length;
   const inProgressTasks = implTasks.filter(
     (t) => t.kanbanColumn === "in_progress" || t.kanbanColumn === "in_review",
   ).length;
+  const doneTasks = implTasks.filter((t) => t.kanbanColumn === "done").length;
   const progress = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
 
   return (
@@ -222,7 +225,7 @@ export function BuildPhase({ projectId, onNavigateToPlan }: BuildPhaseProps) {
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Build</h2>
               <p className="text-sm text-gray-500">
-                {doneTasks}/{totalTasks} tasks completed · {inProgressTasks} in progress
+                Ready: {readyTasks} · In Progress: {inProgressTasks} · Done: {doneTasks} · Total: {totalTasks}
               </p>
             </div>
             <div className="flex items-center gap-3">

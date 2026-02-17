@@ -88,7 +88,7 @@ describe("BuildPhase top bar", () => {
     vi.clearAllMocks();
   });
 
-  it("shows total task count and done count in top bar", () => {
+  it("shows task count per stage (Ready, In Progress, Done) and total in top bar", () => {
     const tasks = [
       { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "done", priority: 0, assignee: null },
       { id: "epic-1.2", title: "Task B", epicId: "epic-1", kanbanColumn: "ready", priority: 1, assignee: null },
@@ -100,7 +100,7 @@ describe("BuildPhase top bar", () => {
       </Provider>,
     );
 
-    expect(screen.getByText("1/2 tasks completed · 0 in progress")).toBeInTheDocument();
+    expect(screen.getByText("Ready: 1 · In Progress: 0 · Done: 1 · Total: 2")).toBeInTheDocument();
   });
 
   it("shows in-progress task count when tasks are in progress or in review", () => {
@@ -116,10 +116,10 @@ describe("BuildPhase top bar", () => {
       </Provider>,
     );
 
-    expect(screen.getByText("1/3 tasks completed · 2 in progress")).toBeInTheDocument();
+    expect(screen.getByText("Ready: 0 · In Progress: 2 · Done: 1 · Total: 3")).toBeInTheDocument();
   });
 
-  it("shows 0 in progress when no tasks are in progress or in review", () => {
+  it("shows ready count when tasks are in backlog or ready", () => {
     const tasks = [
       { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "backlog", priority: 0, assignee: null },
       { id: "epic-1.2", title: "Task B", epicId: "epic-1", kanbanColumn: "ready", priority: 1, assignee: null },
@@ -131,7 +131,22 @@ describe("BuildPhase top bar", () => {
       </Provider>,
     );
 
-    expect(screen.getByText("0/2 tasks completed · 0 in progress")).toBeInTheDocument();
+    expect(screen.getByText("Ready: 2 · In Progress: 0 · Done: 0 · Total: 2")).toBeInTheDocument();
+  });
+
+  it("counts planning and backlog as Ready", () => {
+    const tasks = [
+      { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "planning", priority: 0, assignee: null },
+      { id: "epic-1.2", title: "Task B", epicId: "epic-1", kanbanColumn: "backlog", priority: 1, assignee: null },
+    ];
+    const store = createStore(tasks);
+    render(
+      <Provider store={store}>
+        <BuildPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    expect(screen.getByText("Ready: 2 · In Progress: 0 · Done: 0 · Total: 2")).toBeInTheDocument();
   });
 
   it("does not render play or pause buttons in the header", () => {
