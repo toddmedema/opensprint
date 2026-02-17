@@ -5,6 +5,7 @@ export const OPENSPRINT_DIR = ".opensprint";
 export const OPENSPRINT_PATHS = {
   prd: `${OPENSPRINT_DIR}/prd.json`,
   plans: `${OPENSPRINT_DIR}/plans`,
+  planningRuns: `${OPENSPRINT_DIR}/planning-runs`,
   conversations: `${OPENSPRINT_DIR}/conversations`,
   sessions: `${OPENSPRINT_DIR}/sessions`,
   feedback: `${OPENSPRINT_DIR}/feedback`,

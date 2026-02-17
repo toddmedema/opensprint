@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect, useCallback, useState } from "react";
 import { markdownToHtml, htmlToMarkdown } from "../../lib/markdownUtils";
 
 const DEBOUNCE_MS = 800;
@@ -28,6 +28,7 @@ export function PrdSectionEditor({
   const lastMarkdownRef = useRef(markdown);
   const isInternalUpdateRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [focused, setFocused] = useState(false);
 
   const flushDebounce = useCallback(() => {
     if (debounceRef.current) {
@@ -59,11 +60,13 @@ export function PrdSectionEditor({
     scheduleSave(html);
   }, [disabled, scheduleSave]);
 
-  // Sync markdown from props (initial + external updates e.g. after API save)
+  // Sync markdown from props (initial + external updates e.g. after API save).
+  // When user has focus, skip sync to avoid WebSocket conflict overwriting in-progress edits.
   useEffect(() => {
     const el = elRef.current;
     if (!el) return;
     if (markdown === lastMarkdownRef.current) return;
+    if (focused) return; // Don't overwrite user's edits when PRD updated via WebSocket
     lastMarkdownRef.current = markdown;
     const content = markdown.trim() ? markdown : "_No content yet_";
     markdownToHtml(content).then((html) => {
@@ -73,7 +76,7 @@ export function PrdSectionEditor({
       isInternalUpdateRef.current = false;
     });
     return flushDebounce;
-  }, [sectionKey, markdown, flushDebounce]);
+  }, [sectionKey, markdown, flushDebounce, focused]);
 
   return (
     <div
@@ -81,6 +84,8 @@ export function PrdSectionEditor({
       contentEditable={!disabled}
       suppressContentEditableWarning
       onInput={handleInput}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
       data-prd-section={sectionKey}
       className="prose prose-gray max-w-none prose-headings:text-gray-800 prose-p:text-gray-700 prose-li:text-gray-700 prose-td:text-gray-700 prose-th:text-gray-700 prose-a:text-brand-600 selection:bg-brand-100 min-h-[120px] p-4 rounded-lg border border-transparent hover:border-gray-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition-colors empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400"
       data-placeholder="Start typing..."

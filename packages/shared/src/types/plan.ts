@@ -84,3 +84,13 @@ export interface SuggestedPlan {
 export interface SuggestPlansResponse {
   plans: SuggestedPlan[];
 }
+
+/** Plan status CTA action for Dream phase (PRD §7.1.5) */
+export type PlanStatusAction = "plan" | "replan" | "none";
+
+/** Response from GET /projects/:id/plan-status */
+export interface PlanStatusResponse {
+  hasPlanningRun: boolean;
+  prdChangedSinceLastRun: boolean;
+  action: PlanStatusAction;
+}

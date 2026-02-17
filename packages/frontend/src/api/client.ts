@@ -10,6 +10,7 @@ import type {
   PrdUploadResult,
   Plan,
   PlanDependencyGraph,
+  PlanStatusResponse,
   CreatePlanRequest,
   UpdatePlanRequest,
   SuggestPlansResponse,
@@ -75,6 +76,7 @@ export const api = {
   projects: {
     list: () => request<Project[]>("/projects"),
     get: (id: string) => request<Project>(`/projects/${id}`),
+    getPlanStatus: (id: string) => request<PlanStatusResponse>(`/projects/${id}/plan-status`),
     create: (data: CreateProjectRequest) =>
       request<Project>("/projects", {
         method: "POST",

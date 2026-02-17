@@ -36,6 +36,8 @@ vi.mock("../../components/prd/PrdSectionEditor", () => ({
   ),
 }));
 
+const mockGetPlanStatus = vi.fn();
+
 vi.mock("../../api/client", () => ({
   api: {
     chat: {
@@ -51,13 +53,19 @@ vi.mock("../../api/client", () => ({
     plans: {
       decompose: (...args: unknown[]) => mockPlansDecompose(...args),
     },
+    projects: {
+      getPlanStatus: (...args: unknown[]) => mockGetPlanStatus(...args),
+    },
   },
 }));
 
-function createStore(preloadedDesign?: {
-  messages?: { role: "user" | "assistant"; content: string; timestamp: string }[];
-  prdContent?: Record<string, string>;
-  prdHistory?: unknown[];
+function createStore(preloadedState?: {
+  design?: {
+    messages?: { role: "user" | "assistant"; content: string; timestamp: string }[];
+    prdContent?: Record<string, string>;
+    prdHistory?: unknown[];
+  };
+  plan?: { planStatus?: { action: "plan" | "replan" | "none" } };
 }) {
   return configureStore({
     reducer: {
@@ -66,11 +74,24 @@ function createStore(preloadedDesign?: {
     },
     preloadedState: {
       design: {
-        messages: preloadedDesign?.messages ?? [],
-        prdContent: preloadedDesign?.prdContent ?? {},
-        prdHistory: preloadedDesign?.prdHistory ?? [],
+        messages: preloadedState?.design?.messages ?? [],
+        prdContent: preloadedState?.design?.prdContent ?? {},
+        prdHistory: preloadedState?.design?.prdHistory ?? [],
         sendingChat: false,
         savingSection: null,
+        error: null,
+      },
+      plan: {
+        plans: [],
+        dependencyGraph: null,
+        selectedPlanId: null,
+        chatMessages: {},
+        loading: false,
+        decomposing: false,
+        planStatus: preloadedState?.plan?.planStatus ?? null,
+        shippingPlanId: null,
+        reshippingPlanId: null,
+        archivingPlanId: null,
         error: null,
       },
     },
@@ -94,6 +115,7 @@ describe("DreamPhase with designSlice", () => {
     mockPrdGetHistory.mockResolvedValue([]);
     mockPrdUpdateSection.mockResolvedValue(undefined);
     mockPlansDecompose.mockResolvedValue({ created: 2, plans: [] });
+    mockGetPlanStatus.mockResolvedValue({ hasPlanningRun: false, prdChangedSinceLastRun: false, action: "plan" });
   });
 
   describe("initial prompt view (no PRD)", () => {
@@ -121,9 +143,11 @@ describe("DreamPhase with designSlice", () => {
   describe("PRD document view", () => {
     it("renders PRD sections when prdContent exists", () => {
       const store = createStore({
-        prdContent: {
-          executive_summary: "Summary text",
-          goals_and_metrics: "Goals text",
+        design: {
+          prdContent: {
+            executive_summary: "Summary text",
+            goals_and_metrics: "Goals text",
+          },
         },
       });
       renderDreamPhase(store);
@@ -138,7 +162,7 @@ describe("DreamPhase with designSlice", () => {
     it("dispatches savePrdSection when user edits section (debounced autosave)", async () => {
       const user = userEvent.setup();
       const store = createStore({
-        prdContent: { overview: "Original content" },
+        design: { prdContent: { overview: "Original content" } },
       });
       renderDreamPhase(store);
 
@@ -158,17 +182,65 @@ describe("DreamPhase with designSlice", () => {
     it("uses design slice state for messages when chat is open", async () => {
       const user = userEvent.setup();
       const store = createStore({
-        prdContent: { overview: "Content" },
-        messages: [
-          { role: "user", content: "Hello", timestamp: "2025-01-01" },
-          { role: "assistant", content: "Hi there!", timestamp: "2025-01-01" },
-        ],
+        design: {
+          prdContent: { overview: "Content" },
+          messages: [
+            { role: "user", content: "Hello", timestamp: "2025-01-01" },
+            { role: "assistant", content: "Hi there!", timestamp: "2025-01-01" },
+          ],
+        },
       });
       renderDreamPhase(store);
 
       await user.click(screen.getByTitle("Chat with AI"));
       expect(screen.getByText("Hello")).toBeInTheDocument();
       expect(screen.getByText("Hi there!")).toBeInTheDocument();
+    });
+
+    it("shows Plan it when planStatus.action is plan", async () => {
+      const store = createStore({
+        design: { prdContent: { overview: "Content" } },
+        plan: { planStatus: { hasPlanningRun: false, prdChangedSinceLastRun: false, action: "plan" } },
+      });
+      renderDreamPhase(store);
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /Plan it/i })).toBeInTheDocument();
+      });
+      expect(screen.queryByRole("button", { name: /Replan it/i })).not.toBeInTheDocument();
+    });
+
+    it("shows Replan it when planStatus.action is replan", async () => {
+      const store = createStore({
+        design: { prdContent: { overview: "Content" } },
+        plan: { planStatus: { hasPlanningRun: true, prdChangedSinceLastRun: true, action: "replan" } },
+      });
+      renderDreamPhase(store);
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: /Replan it/i })).toBeInTheDocument();
+      });
+      expect(screen.queryByRole("button", { name: /Plan it/i })).not.toBeInTheDocument();
+    });
+
+    it("hides CTA button when planStatus.action is none", async () => {
+      const store = createStore({
+        design: { prdContent: { overview: "Content" } },
+        plan: { planStatus: { hasPlanningRun: true, prdChangedSinceLastRun: false, action: "none" } },
+      });
+      renderDreamPhase(store);
+      await waitFor(() => {
+        expect(screen.queryByRole("button", { name: /Plan it/i })).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /Replan it/i })).not.toBeInTheDocument();
+      });
+    });
+
+    it("fetches plan-status on Dream load when PRD exists", async () => {
+      const store = createStore({
+        design: { prdContent: { overview: "Content" } },
+      });
+      renderDreamPhase(store);
+      await waitFor(() => {
+        expect(mockGetPlanStatus).toHaveBeenCalledWith("proj-1");
+      });
     });
   });
 });

@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk, type PayloadAction } from "@reduxjs/toolkit";
-import type { Plan, PlanDependencyGraph } from "@opensprint/shared";
+import type { Plan, PlanDependencyGraph, PlanStatusResponse } from "@opensprint/shared";
 import { api } from "../../api/client";
 
 interface Message {
@@ -15,6 +15,8 @@ export interface PlanState {
   chatMessages: Record<string, Message[]>;
   loading: boolean;
   decomposing: boolean;
+  /** Plan status for Dream CTA (plan/replan/none) */
+  planStatus: PlanStatusResponse | null;
   /** Plan ID currently being shipped (Build It!) — for loading state */
   shippingPlanId: string | null;
   /** Plan ID currently being reshipped (Rebuild) — for loading state */
@@ -31,11 +33,19 @@ const initialState: PlanState = {
   chatMessages: {},
   loading: false,
   decomposing: false,
+  planStatus: null,
   shippingPlanId: null,
   reshippingPlanId: null,
   archivingPlanId: null,
   error: null,
 };
+
+export const fetchPlanStatus = createAsyncThunk(
+  "plan/fetchPlanStatus",
+  async (projectId: string): Promise<PlanStatusResponse> => {
+    return api.projects.getPlanStatus(projectId);
+  },
+);
 
 export const fetchPlans = createAsyncThunk("plan/fetchPlans", async (projectId: string) => {
   const graph = await api.plans.list(projectId);
@@ -119,6 +129,10 @@ const planSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+      // fetchPlanStatus
+      .addCase(fetchPlanStatus.fulfilled, (state, action) => {
+        state.planStatus = action.payload;
+      })
       // fetchPlans
       .addCase(fetchPlans.pending, (state) => {
         state.loading = true;

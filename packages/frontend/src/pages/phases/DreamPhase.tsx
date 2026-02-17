@@ -10,7 +10,7 @@ import {
   fetchPrdHistory,
   fetchDesignChat,
 } from "../../store/slices/designSlice";
-import { decomposePlans } from "../../store/slices/planSlice";
+import { decomposePlans, fetchPlanStatus } from "../../store/slices/planSlice";
 import {
   PrdViewer,
   PrdChatPanel,
@@ -74,6 +74,8 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
   const sending = useAppSelector((s) => s.design.sendingChat);
   const savingSection = useAppSelector((s) => s.design.savingSection);
   const error = useAppSelector((s) => s.design.error);
+  const planStatus = useAppSelector((s) => s.plan.planStatus);
+  const decomposing = useAppSelector((s) => s.plan.decomposing);
 
   /* ── Local UI state (preserved by mount-all) ── */
   const [initialInput, setInitialInput] = useState("");
@@ -94,6 +96,12 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
 
   /* ── Derived ── */
   const hasPrdContent = Object.keys(prdContent).length > 0;
+
+  /* ── Fetch plan-status on Dream load and after PRD saves (PRD §7.1.5) ── */
+  useEffect(() => {
+    if (!hasPrdContent) return;
+    void dispatch(fetchPlanStatus(projectId));
+  }, [projectId, hasPrdContent, dispatch]);
 
   /* ── Typewriter placeholder effect ── */
   useEffect(() => {
@@ -200,6 +208,7 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
     if (sendDesignMessage.fulfilled.match(result) && result.payload.prdChanges?.length) {
       dispatch(fetchPrd(projectId));
       dispatch(fetchPrdHistory(projectId));
+      dispatch(fetchPlanStatus(projectId));
     }
   }, [initialInput, sending, projectId, dispatch]);
 
@@ -218,6 +227,7 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
         dispatch(fetchPrd(projectId));
         dispatch(fetchPrdHistory(projectId));
         dispatch(fetchDesignChat(projectId));
+        dispatch(fetchPlanStatus(projectId));
       }
     },
     [projectId, dispatch],
@@ -245,6 +255,7 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
       if (sendDesignMessage.fulfilled.match(result) && result.payload.prdChanges?.length) {
         dispatch(fetchPrd(projectId));
         dispatch(fetchPrdHistory(projectId));
+        dispatch(fetchPlanStatus(projectId));
       }
     },
     [selectionContext, projectId, dispatch],
@@ -272,6 +283,7 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
         dispatch(fetchPrd(projectId));
         dispatch(fetchPrdHistory(projectId));
         dispatch(fetchDesignChat(projectId));
+        dispatch(fetchPlanStatus(projectId));
       }
     },
     [projectId, savingSection, dispatch],
@@ -283,6 +295,7 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
     const result = await dispatch(decomposePlans(projectId));
     setPlanningIt(false);
     if (decomposePlans.fulfilled.match(result)) {
+      dispatch(fetchPlanStatus(projectId));
       onNavigateToPlan?.();
     }
   };
@@ -390,14 +403,37 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
               Product Requirements Document
             </h1>
             <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handlePlanIt}
-                disabled={planningIt}
-                className="btn-primary text-sm disabled:opacity-50"
-              >
-                {planningIt ? "Planning..." : "Plan it"}
-              </button>
+              {planStatus?.action === "plan" && (
+                <button
+                  type="button"
+                  onClick={handlePlanIt}
+                  disabled={planningIt || decomposing}
+                  className="btn-primary text-sm disabled:opacity-50"
+                >
+                  {planningIt || decomposing ? "Planning..." : "Plan it"}
+                </button>
+              )}
+              {planStatus?.action === "replan" && (
+                <button
+                  type="button"
+                  onClick={handlePlanIt}
+                  disabled={planningIt || decomposing}
+                  className="btn-primary text-sm disabled:opacity-50"
+                >
+                  {planningIt || decomposing ? "Replanning..." : "Replan it"}
+                </button>
+              )}
+              {planStatus?.action === "none" && null}
+              {!planStatus && hasPrdContent && (
+                <button
+                  type="button"
+                  onClick={handlePlanIt}
+                  disabled={planningIt || decomposing}
+                  className="btn-primary text-sm disabled:opacity-50"
+                >
+                  {planningIt || decomposing ? "Planning..." : "Plan it"}
+                </button>
+              )}
             </div>
           </div>
 

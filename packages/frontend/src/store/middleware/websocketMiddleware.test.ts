@@ -64,6 +64,7 @@ vi.mock("../../api/client", () => ({
     prd: { get: vi.fn().mockResolvedValue({}), getHistory: vi.fn().mockResolvedValue([]) },
     chat: { history: vi.fn().mockResolvedValue({ messages: [] }) },
     plans: { list: vi.fn().mockResolvedValue({ plans: [], edges: [] }), get: vi.fn().mockResolvedValue({}) },
+    projects: { getPlanStatus: vi.fn().mockResolvedValue({ hasPlanningRun: false, prdChangedSinceLastRun: false, action: "plan" }) },
     tasks: { list: vi.fn().mockResolvedValue([]) },
     feedback: { list: vi.fn().mockResolvedValue([]) },
   },
@@ -216,7 +217,7 @@ describe("websocketMiddleware", () => {
   });
 
   describe("ServerEvent handling", () => {
-    it("dispatches to design slice on prd.updated (fetchPrd, fetchPrdHistory, fetchDesignChat)", async () => {
+    it("dispatches to design and plan slices on prd.updated (fetchPrd, fetchPrdHistory, fetchDesignChat, fetchPlanStatus)", async () => {
       const store = createStore();
       store.dispatch(wsConnect({ projectId: "proj-1" }));
       wsInstance!.simulateOpen();
@@ -230,6 +231,11 @@ describe("websocketMiddleware", () => {
       vi.mocked(api.chat.history).mockResolvedValue({
         messages: [{ role: "assistant", content: "Done", timestamp: "2025-01-01" }],
       });
+      vi.mocked(api.projects.getPlanStatus).mockResolvedValue({
+        hasPlanningRun: false,
+        prdChangedSinceLastRun: false,
+        action: "plan",
+      });
 
       wsInstance!.simulateMessage({ type: "prd.updated", section: "overview", version: 2 });
 
@@ -237,12 +243,18 @@ describe("websocketMiddleware", () => {
         expect(api.prd.get).toHaveBeenCalledWith("proj-1");
         expect(api.prd.getHistory).toHaveBeenCalledWith("proj-1");
         expect(api.chat.history).toHaveBeenCalledWith("proj-1", "dream");
+        expect(api.projects.getPlanStatus).toHaveBeenCalledWith("proj-1");
       });
 
       await vi.waitFor(() => {
         expect(store.getState().design.prdContent).toEqual({ overview: "Updated" });
         expect(store.getState().design.prdHistory).toHaveLength(1);
         expect(store.getState().design.messages).toHaveLength(1);
+        expect(store.getState().plan.planStatus).toEqual({
+          hasPlanningRun: false,
+          prdChangedSinceLastRun: false,
+          action: "plan",
+        });
       });
     });
 

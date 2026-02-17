@@ -3,6 +3,7 @@ import { createAction } from "@reduxjs/toolkit";
 import type { ServerEvent, ClientEvent } from "@opensprint/shared";
 import { setConnected, setHilRequest, setHilNotification } from "../slices/websocketSlice";
 import { fetchPrd, fetchPrdHistory, fetchDesignChat } from "../slices/designSlice";
+import { fetchPlanStatus } from "../slices/planSlice";
 import { fetchPlans, fetchSinglePlan } from "../slices/planSlice";
 import {
   fetchTasks,
@@ -115,6 +116,7 @@ export const websocketMiddleware: Middleware = (storeApi) => {
         d(fetchPrd(projectId));
         d(fetchPrdHistory(projectId));
         d(fetchDesignChat(projectId));
+        d(fetchPlanStatus(projectId));
         break;
 
       case "plan.updated":

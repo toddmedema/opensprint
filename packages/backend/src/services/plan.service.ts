@@ -8,6 +8,8 @@ import type {
   PlanDependencyEdge,
   SuggestedPlan,
   PlanComplexity,
+  PlanStatusResponse,
+  Prd,
 } from "@opensprint/shared";
 import { OPENSPRINT_PATHS, getEpicId } from "@opensprint/shared";
 import { ProjectService } from "./project.service.js";
@@ -130,6 +132,12 @@ export class PlanService {
   private async getPlansDir(projectId: string): Promise<string> {
     const project = await this.projectService.getProject(projectId);
     return path.join(project.repoPath, OPENSPRINT_PATHS.plans);
+  }
+
+  /** Get the planning-runs directory for a project */
+  private async getPlanningRunsDir(projectId: string): Promise<string> {
+    const project = await this.projectService.getProject(projectId);
+    return path.join(project.repoPath, OPENSPRINT_PATHS.planningRuns);
   }
 
   /** Get repo path for a project */
@@ -703,6 +711,72 @@ export class PlanService {
     return this.listPlansWithDependencyGraph(projectId);
   }
 
+  /** Get plan status for Dream CTA (plan/replan/none). PRD §7.1.5 */
+  async getPlanStatus(projectId: string): Promise<PlanStatusResponse> {
+    const latestRun = await this.getLatestPlanningRun(projectId);
+    if (!latestRun) {
+      return { hasPlanningRun: false, prdChangedSinceLastRun: false, action: "plan" };
+    }
+    const currentPrd = await this.prdService.getPrd(projectId);
+    const prdChanged = !this.prdsEqual(currentPrd, latestRun.prd_snapshot);
+    if (!prdChanged) {
+      return { hasPlanningRun: true, prdChangedSinceLastRun: false, action: "none" };
+    }
+    return { hasPlanningRun: true, prdChangedSinceLastRun: true, action: "replan" };
+  }
+
+  /** Get the latest planning run (most recent by created_at) */
+  private async getLatestPlanningRun(
+    projectId: string,
+  ): Promise<{ id: string; created_at: string; prd_snapshot: Prd; plans_created: string[] } | null> {
+    const runsDir = await this.getPlanningRunsDir(projectId);
+    try {
+      const files = await fs.readdir(runsDir);
+      const jsonFiles = files.filter((f) => f.endsWith(".json"));
+      if (jsonFiles.length === 0) return null;
+      let latest: { id: string; created_at: string; prd_snapshot: Prd; plans_created: string[] } | null = null;
+      for (const file of jsonFiles) {
+        const data = await fs.readFile(path.join(runsDir, file), "utf-8");
+        const run = JSON.parse(data) as { id: string; created_at: string; prd_snapshot: Prd; plans_created: string[] };
+        if (!latest || run.created_at > latest.created_at) latest = run;
+      }
+      return latest;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Compare two PRDs by section content (ignoring changeLog) */
+  private prdsEqual(a: Prd, b: Prd): boolean {
+    const keys = new Set([...Object.keys(a.sections ?? {}), ...Object.keys(b.sections ?? {})]);
+    for (const key of keys) {
+      const ac = (a.sections as Record<string, { content?: string }>)?.[key]?.content ?? "";
+      const bc = (b.sections as Record<string, { content?: string }>)?.[key]?.content ?? "";
+      if (ac !== bc) return false;
+    }
+    return true;
+  }
+
+  /** Create a planning run with PRD snapshot. Called after decompose or replan. */
+  async createPlanningRun(
+    projectId: string,
+    plansCreated: Plan[],
+  ): Promise<{ id: string; created_at: string }> {
+    const prd = await this.prdService.getPrd(projectId);
+    const runId = crypto.randomUUID();
+    const created_at = new Date().toISOString();
+    const run = {
+      id: runId,
+      created_at,
+      prd_snapshot: { ...prd },
+      plans_created: plansCreated.map((p) => p.metadata.planId),
+    };
+    const runsDir = await this.getPlanningRunsDir(projectId);
+    await fs.mkdir(runsDir, { recursive: true });
+    await writeJsonAtomic(path.join(runsDir, `${runId}.json`), run);
+    return { id: runId, created_at };
+  }
+
   /**
    * Archive a plan: close all ready/open tasks to done. Tasks in progress remain unchanged.
    */
@@ -1042,6 +1116,9 @@ export class PlanService {
       console.error("[plan] Auto-review after decompose failed:", err);
       // Decompose succeeded; auto-review is best-effort
     }
+
+    // Create planning run with PRD snapshot (PRD §5.6, §7.2.2)
+    await this.createPlanningRun(projectId, created);
 
     return { created: created.length, plans: created };
   }

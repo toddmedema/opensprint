@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { configureStore } from "@reduxjs/toolkit";
 import planReducer, {
   fetchPlans,
+  fetchPlanStatus,
   decomposePlans,
   shipPlan,
   reshipPlan,
@@ -27,6 +28,9 @@ vi.mock("../../api/client", () => ({
       reship: vi.fn(),
       archive: vi.fn(),
       get: vi.fn(),
+    },
+    projects: {
+      getPlanStatus: vi.fn(),
     },
     chat: {
       history: vi.fn(),
@@ -83,7 +87,18 @@ describe("planSlice", () => {
       expect(state.chatMessages).toEqual({});
       expect(state.loading).toBe(false);
       expect(state.decomposing).toBe(false);
+      expect(state.planStatus).toBeNull();
       expect(state.error).toBeNull();
+    });
+  });
+
+  describe("fetchPlanStatus thunk", () => {
+    it("stores plan status on fulfilled", async () => {
+      const status = { hasPlanningRun: true, prdChangedSinceLastRun: true, action: "replan" as const };
+      vi.mocked(api.projects.getPlanStatus).mockResolvedValue(status);
+      const store = createStore();
+      await store.dispatch(fetchPlanStatus("proj-1"));
+      expect(store.getState().plan.planStatus).toEqual(status);
     });
   });
 

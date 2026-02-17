@@ -52,4 +52,26 @@ describe("markdownUtils", () => {
       expect(md).toContain("world");
     });
   });
+
+  describe("round-trip markdown", () => {
+    it("preserves content through markdown -> html -> markdown cycle", async () => {
+      const original = "**Bold** and *italic* with `code`";
+      const html = await markdownToHtml(original);
+      const roundTripped = htmlToMarkdown(html);
+      expect(roundTripped).toContain("**");
+      expect(roundTripped).toContain("Bold");
+      expect(roundTripped).toContain("*");
+      expect(roundTripped).toContain("italic");
+      expect(roundTripped).toContain("code");
+    });
+
+    it("preserves lists through round-trip", async () => {
+      const original = "- item 1\n- item 2\n- item 3";
+      const html = await markdownToHtml(original);
+      const roundTripped = htmlToMarkdown(html);
+      expect(roundTripped).toContain("item 1");
+      expect(roundTripped).toContain("item 2");
+      expect(roundTripped).toContain("item 3");
+    });
+  });
 });

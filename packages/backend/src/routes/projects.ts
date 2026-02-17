@@ -1,11 +1,15 @@
-import { Router } from "express";
+import { Router, Request } from "express";
 import { ProjectService } from "../services/project.service.js";
+import { PlanService } from "../services/plan.service.js";
 import { orchestratorService } from "../services/orchestrator.service.js";
 import type { CreateProjectRequest, ApiResponse, Project } from "@opensprint/shared";
 
 const projectService = new ProjectService();
+const planService = new PlanService();
 
 export const projectsRouter = Router();
+
+type ProjectParams = { id: string };
 
 // GET /projects — List all projects
 projectsRouter.get("/", async (_req, res, next) => {
@@ -25,6 +29,16 @@ projectsRouter.post("/", async (req, res, next) => {
     const project = await projectService.createProject(request);
     const body: ApiResponse<Project> = { data: project };
     res.status(201).json(body);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /projects/:id/plan-status — Plan it / Replan it CTA visibility (PRD §7.1.5)
+projectsRouter.get("/:id/plan-status", async (req: Request<ProjectParams>, res, next) => {
+  try {
+    const status = await planService.getPlanStatus(req.params.id);
+    res.json({ data: status });
   } catch (err) {
     next(err);
   }

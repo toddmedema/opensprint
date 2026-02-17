@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PrdSectionEditor } from "./PrdSectionEditor";
 
@@ -79,5 +79,38 @@ describe("PrdSectionEditor", () => {
 
     const editable = document.querySelector("[contenteditable=true]");
     expect(editable).toBeNull();
+  });
+
+  it("does not overwrite content when focused and markdown prop changes (WebSocket conflict)", async () => {
+    const { rerender } = render(
+      <PrdSectionEditor
+        sectionKey="overview"
+        markdown="Original"
+        onSave={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Original")).toBeInTheDocument();
+    });
+
+    const editor = document.querySelector("[contenteditable]") as HTMLElement;
+    expect(editor).toBeTruthy();
+    fireEvent.focus(editor);
+    editor.innerHTML = "<p>User editing in progress</p>";
+    fireEvent.input(editor);
+
+    rerender(
+      <PrdSectionEditor
+        sectionKey="overview"
+        markdown="External update from WebSocket"
+        onSave={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("User editing in progress")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("External update from WebSocket")).not.toBeInTheDocument();
   });
 });
