@@ -123,6 +123,22 @@ describe("PrdChatPanel", () => {
     expect(sidebar).toHaveClass("pt-3");
   });
 
+  it("keeps expand toggle pinned with min-h-0 and shrink-0 when collapsed", () => {
+    const { container } = render(
+      <PrdChatPanel
+        {...defaultProps}
+        variant="inline"
+        collapsed={true}
+        onCollapsedChange={vi.fn()}
+      />,
+    );
+
+    const sidebar = container.querySelector('[data-testid="prd-chat-sidebar"]');
+    expect(sidebar).toHaveClass("min-h-0");
+    const expandBtn = screen.getByRole("button", { name: "Expand Discuss sidebar" });
+    expect(expandBtn).toHaveClass("shrink-0");
+  });
+
   it("pins header with collapse toggle to top when expanded (sticky top-0)", () => {
     render(
       <PrdChatPanel
@@ -137,6 +153,20 @@ describe("PrdChatPanel", () => {
     expect(header).toHaveClass("sticky");
     expect(header).toHaveClass("top-0");
     expect(screen.getByRole("button", { name: "Collapse Discuss sidebar" })).toBeInTheDocument();
+  });
+
+  it("expanded inline sidebar has min-h-0 for proper flex containment", () => {
+    const { container } = render(
+      <PrdChatPanel
+        {...defaultProps}
+        variant="inline"
+        collapsed={false}
+        onCollapsedChange={vi.fn()}
+      />,
+    );
+
+    const sidebar = container.querySelector('[data-testid="prd-chat-sidebar"]');
+    expect(sidebar).toHaveClass("min-h-0");
   });
 
   it("calls onCollapsedChange(false) when expand button is clicked in collapsed state", async () => {

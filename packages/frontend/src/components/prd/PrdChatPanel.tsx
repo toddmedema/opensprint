@@ -70,13 +70,13 @@ export function PrdChatPanel({
   if (isCollapsed) {
     return (
       <div
-        className="flex flex-col h-full w-12 min-w-[48px] border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 shrink-0 overflow-hidden items-center justify-start pt-3"
+        className="flex flex-col h-full min-h-0 w-12 min-w-[48px] border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 shrink-0 overflow-hidden items-center justify-start pt-3"
         data-testid="prd-chat-sidebar"
       >
         <button
           type="button"
           onClick={() => onCollapsedChange?.(false)}
-          className="flex flex-col items-center gap-1 p-2 text-gray-600 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          className="flex flex-col items-center gap-1 p-2 shrink-0 text-gray-600 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
           title="Expand Discuss"
           aria-label="Expand Discuss sidebar"
         >
@@ -107,16 +107,16 @@ export function PrdChatPanel({
   }
 
   const containerClass = isInline
-    ? "flex flex-col h-full w-[380px] min-w-[320px] border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 shrink-0 overflow-hidden"
+    ? "flex flex-col h-full min-h-0 w-[380px] min-w-[320px] border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 shrink-0 overflow-hidden"
     : "fixed bottom-6 right-6 w-96 h-[520px] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col z-40 overflow-hidden animate-slide-up-fade";
 
   const headerTitle = isInline ? "Discuss" : "Chat with AI";
 
   return (
     <div className={containerClass} data-testid={isInline ? "prd-chat-sidebar" : undefined}>
-      {/* Chat header — sticky in inline mode so toggle stays pinned when container scrolls */}
+      {/* Chat header — sticky in inline mode so toggle stays pinned to top when container scrolls */}
       <div
-        className={`flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shrink-0 ${isInline ? "sticky top-0 z-10" : ""}`}
+        className={`flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shrink-0 ${isInline ? "sticky top-0 z-10 bg-gray-50 dark:bg-gray-800" : ""}`}
         data-testid={isInline ? "prd-chat-header" : undefined}
       >
         <div className="flex items-center gap-2">
