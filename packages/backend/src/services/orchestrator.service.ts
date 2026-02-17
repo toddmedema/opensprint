@@ -96,6 +96,21 @@ function isPidAlive(pid: number): boolean {
   }
 }
 
+/** Format review rejection result into actionable feedback for the coding agent retry prompt. Exported for testing. */
+export function formatReviewFeedback(result: ReviewAgentResult): string {
+  const parts: string[] = [result.summary];
+  if (result.issues && result.issues.length > 0) {
+    parts.push("\n\nIssues to address:");
+    for (const issue of result.issues) {
+      parts.push(`\n- ${issue}`);
+    }
+  }
+  if (result.notes?.trim()) {
+    parts.push(`\n\nNotes: ${result.notes.trim()}`);
+  }
+  return parts.join("");
+}
+
 interface OrchestratorState {
   status: OrchestratorStatus;
   /** True when the orchestrator loop is actively running (internal tracking, not exposed) */
@@ -955,8 +970,9 @@ export class OrchestratorService {
     if (result && result.status === "approved") {
       await this.performMergeAndComplete(projectId, repoPath, task, branchName);
     } else if (result && result.status === "rejected") {
-      // Review rejected — treat as a failure for progressive backoff (PRDv2 §9.1)
+      // Review rejected — add feedback to bead, trigger coding retry with feedback in prompt (PRD §7.3.2)
       const reason = `Review rejected: ${result.issues?.join("; ") || result.summary}`;
+      const reviewFeedback = formatReviewFeedback(result);
 
       // Archive rejection session before handling failure
       const session = await this.sessionManager.createSession(repoPath, {
@@ -972,7 +988,16 @@ export class OrchestratorService {
       });
       await this.sessionManager.archiveSession(repoPath, task.id, state.attempt, session, wtPath);
 
-      await this.handleTaskFailure(projectId, repoPath, task, branchName, reason, null, "review_rejection");
+      await this.handleTaskFailure(
+        projectId,
+        repoPath,
+        task,
+        branchName,
+        reason,
+        null,
+        "review_rejection",
+        reviewFeedback,
+      );
     } else {
       const failureType: FailureType = exitCode === 143 || exitCode === 137 ? "agent_crash" : "no_result";
       await this.handleTaskFailure(
@@ -1112,6 +1137,7 @@ export class OrchestratorService {
     reason: string,
     testResults?: TestResults | null,
     failureType: FailureType = "coding_failure",
+    reviewFeedback?: string,
   ): Promise<void> {
     const state = this.getState(projectId);
     const cumulativeAttempts = state.attempt;
@@ -1143,9 +1169,13 @@ export class OrchestratorService {
     });
     await this.sessionManager.archiveSession(repoPath, task.id, cumulativeAttempts, session);
 
-    // Add failure comment for audit trail
+    // Add failure comment for audit trail (PRD §7.3.2: rejection feedback as bead comment)
+    const commentText =
+      failureType === "review_rejection" && reviewFeedback
+        ? `Review rejected (attempt ${cumulativeAttempts}):\n\n${reviewFeedback.slice(0, 2000)}`
+        : `Attempt ${cumulativeAttempts} failed [${failureType}]: ${reason.slice(0, 500)}`;
     await this.beads
-      .comment(repoPath, task.id, `Attempt ${cumulativeAttempts} failed [${failureType}]: ${reason.slice(0, 500)}`)
+      .comment(repoPath, task.id, commentText)
       .catch((err) => console.warn("[orchestrator] Failed to add failure comment:", err));
 
     // Infrastructure failures get free retries (up to MAX_INFRA_RETRIES)
@@ -1165,6 +1195,7 @@ export class OrchestratorService {
       await this.persistState(projectId, repoPath);
       await this.executeCodingPhase(projectId, repoPath, task, {
         previousFailure: reason,
+        reviewFeedback,
         useExistingBranch: true,
         previousDiff,
         previousTestOutput: state.lastTestOutput || undefined,
@@ -1197,6 +1228,7 @@ export class OrchestratorService {
 
       await this.executeCodingPhase(projectId, repoPath, task, {
         previousFailure: reason,
+        reviewFeedback,
         useExistingBranch: true,
         previousDiff,
         previousTestOutput: state.lastTestOutput || undefined,
