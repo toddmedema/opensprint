@@ -32,6 +32,20 @@ tasksRouter.get('/ready', async (req: Request<ProjectParams>, res, next) => {
   }
 });
 
+// POST /projects/:projectId/tasks/:taskId/unblock — Unblock task (set beads status to open)
+tasksRouter.post('/:taskId/unblock', async (req: Request<TaskParams>, res, next) => {
+  try {
+    const resetAttempts = req.body?.resetAttempts === true;
+    const result = await taskService.unblock(req.params.projectId, req.params.taskId, {
+      resetAttempts,
+    });
+    const body: ApiResponse<{ taskUnblocked: boolean }> = { data: result };
+    res.json(body);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /projects/:projectId/tasks/:taskId/done — Manually mark task done (and epic if last)
 tasksRouter.post('/:taskId/done', async (req: Request<TaskParams>, res, next) => {
   try {

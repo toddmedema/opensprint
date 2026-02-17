@@ -51,6 +51,7 @@ export const KANBAN_COLUMNS = [
   "in_progress",
   "in_review",
   "done",
+  "blocked",
 ] as const;
 
 /** Plan status display order (planning → building → complete) */

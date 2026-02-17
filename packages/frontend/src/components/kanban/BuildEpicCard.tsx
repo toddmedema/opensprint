@@ -9,9 +9,10 @@ export interface BuildEpicCardProps {
   epicTitle: string;
   tasks: Task[];
   onTaskSelect: (taskId: string) => void;
+  onUnblock?: (taskId: string) => void;
 }
 
-export function BuildEpicCard({ epicId, epicTitle, tasks, onTaskSelect }: BuildEpicCardProps) {
+export function BuildEpicCard({ epicId, epicTitle, tasks, onTaskSelect, onUnblock }: BuildEpicCardProps) {
   const [expanded, setExpanded] = useState(false);
   const doneCount = tasks.filter((t) => t.kanbanColumn === "done").length;
   const totalCount = tasks.length;
@@ -56,26 +57,42 @@ export function BuildEpicCard({ epicId, epicTitle, tasks, onTaskSelect }: BuildE
           <ul className="divide-y divide-gray-50">
             {visibleTasks.map((task) => (
               <li key={task.id}>
-                <button
-                  type="button"
-                  onClick={() => onTaskSelect(task.id)}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-brand-50/50 transition-colors text-sm"
-                >
-                  <span
-                    className={`shrink-0 w-2 h-2 rounded-full ${
-                      task.kanbanColumn === "done"
-                        ? "bg-emerald-500"
-                        : task.kanbanColumn === "in_progress" || task.kanbanColumn === "in_review"
-                          ? "bg-blue-500"
-                          : "bg-gray-300"
-                    }`}
-                  />
-                  <span className="flex-1 min-w-0 truncate font-medium text-gray-900" title={task.title}>
-                    {task.title}
-                  </span>
-                  <TaskStatusBadge column={task.kanbanColumn} size="xs" title={COLUMN_LABELS[task.kanbanColumn]} />
-                  <span className="text-xs text-gray-500 shrink-0">{COLUMN_LABELS[task.kanbanColumn]}</span>
-                </button>
+                <div className="flex items-center gap-2 px-4 py-2.5 group">
+                  <button
+                    type="button"
+                    onClick={() => onTaskSelect(task.id)}
+                    className="flex-1 flex items-center gap-3 text-left hover:bg-brand-50/50 transition-colors text-sm min-w-0"
+                  >
+                    <span
+                      className={`shrink-0 w-2 h-2 rounded-full ${
+                        task.kanbanColumn === "done"
+                          ? "bg-emerald-500"
+                          : task.kanbanColumn === "blocked"
+                            ? "bg-red-500"
+                            : task.kanbanColumn === "in_progress" || task.kanbanColumn === "in_review"
+                              ? "bg-blue-500"
+                              : "bg-gray-300"
+                      }`}
+                    />
+                    <span className="flex-1 min-w-0 truncate font-medium text-gray-900" title={task.title}>
+                      {task.title}
+                    </span>
+                    <TaskStatusBadge column={task.kanbanColumn} size="xs" title={COLUMN_LABELS[task.kanbanColumn]} />
+                    <span className="text-xs text-gray-500 shrink-0">{COLUMN_LABELS[task.kanbanColumn]}</span>
+                  </button>
+                  {task.kanbanColumn === "blocked" && onUnblock && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onUnblock(task.id);
+                      }}
+                      className="shrink-0 text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors"
+                    >
+                      Unblock
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

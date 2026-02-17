@@ -5,7 +5,7 @@ export type TaskType = "bug" | "feature" | "task" | "epic" | "chore";
 export type BeadsStatus = "open" | "in_progress" | "closed";
 
 /** Display status on the kanban board */
-export type KanbanColumn = "planning" | "backlog" | "ready" | "in_progress" | "in_review" | "done";
+export type KanbanColumn = "planning" | "backlog" | "ready" | "in_progress" | "in_review" | "done" | "blocked";
 
 /** Beads priority (0 = highest, 4 = lowest) */
 export type TaskPriority = 0 | 1 | 2 | 3 | 4;

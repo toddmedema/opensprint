@@ -6,7 +6,7 @@ import { KanbanBoard } from "./KanbanBoard";
 const createMockTask = (overrides: Partial<{
   id: string;
   title: string;
-  kanbanColumn: "planning" | "backlog" | "ready" | "in_progress" | "in_review" | "done";
+  kanbanColumn: "planning" | "backlog" | "ready" | "in_progress" | "in_review" | "done" | "blocked";
 }> = {}) => ({
   id: "epic-1.1",
   title: "Implement login",

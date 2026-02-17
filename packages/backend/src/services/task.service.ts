@@ -116,6 +116,7 @@ export class TaskService {
     const status = (issue.status as string) ?? "open";
 
     if (status === "closed") return "done";
+    if (status === "blocked") return "blocked";
     if (status === "in_progress" && issue.assignee) return "in_progress";
 
     // status === 'open'
@@ -178,6 +179,44 @@ export class TaskService {
       });
     }
     return session;
+  }
+
+  /**
+   * Unblock a task (PRD §7.3.2, §9.1).
+   * Sets beads status back to open. Optionally resets attempts label.
+   */
+  async unblock(
+    projectId: string,
+    taskId: string,
+    options?: { resetAttempts?: boolean },
+  ): Promise<{ taskUnblocked: boolean }> {
+    const project = await this.projectService.getProject(projectId);
+    const issue = await this.beads.show(project.repoPath, taskId);
+    const status = (issue.status as string) ?? "open";
+
+    if (status !== "blocked") {
+      return { taskUnblocked: false };
+    }
+
+    await this.beads.update(project.repoPath, taskId, { status: "open" });
+
+    if (options?.resetAttempts) {
+      const labels = (issue.labels ?? []) as string[];
+      const attemptsLabel = labels.find((l) => /^attempts:\d+$/.test(l));
+      if (attemptsLabel) {
+        await this.beads.removeLabel(project.repoPath, taskId, attemptsLabel);
+      }
+    }
+
+    await this.beads.sync(project.repoPath);
+    broadcastToProject(projectId, {
+      type: "task.updated",
+      taskId,
+      status: "open",
+      assignee: null,
+    });
+
+    return { taskUnblocked: true };
   }
 
   /** Manually mark a task as done. If it was the last task in its epic, closes the epic too. */

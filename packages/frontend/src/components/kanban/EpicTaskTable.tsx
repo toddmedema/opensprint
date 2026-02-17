@@ -6,9 +6,10 @@ import type { Swimlane } from "./KanbanBoard";
 export interface EpicTaskTableProps {
   swimlanes: Swimlane[];
   onTaskSelect: (taskId: string) => void;
+  onUnblock?: (taskId: string) => void;
 }
 
-export function EpicTaskTable({ swimlanes, onTaskSelect }: EpicTaskTableProps) {
+export function EpicTaskTable({ swimlanes, onTaskSelect, onUnblock }: EpicTaskTableProps) {
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
       {/* Single header row */}
@@ -52,6 +53,7 @@ export function EpicTaskTable({ swimlanes, onTaskSelect }: EpicTaskTableProps) {
                     key={task.id}
                     task={task}
                     onClick={() => onTaskSelect(task.id)}
+                    onUnblock={task.kanbanColumn === "blocked" ? onUnblock : undefined}
                   />
                 ))}
               </div>
@@ -63,7 +65,15 @@ export function EpicTaskTable({ swimlanes, onTaskSelect }: EpicTaskTableProps) {
   );
 }
 
-function EpicTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
+function EpicTaskRow({
+  task,
+  onClick,
+  onUnblock,
+}: {
+  task: Task;
+  onClick: () => void;
+  onUnblock?: (taskId: string) => void;
+}) {
   return (
     <div
       role="button"
@@ -88,6 +98,18 @@ function EpicTaskRow({ task, onClick }: { task: Task; onClick: () => void }) {
       <div className="flex items-center justify-end gap-1.5">
         <TaskStatusBadge column={task.kanbanColumn} size="xs" title={COLUMN_LABELS[task.kanbanColumn]} />
         <span className="text-xs text-gray-500">{COLUMN_LABELS[task.kanbanColumn]}</span>
+        {task.kanbanColumn === "blocked" && onUnblock && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onUnblock(task.id);
+            }}
+            className="text-xs font-medium text-red-600 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors shrink-0"
+          >
+            Unblock
+          </button>
+        )}
       </div>
       <div className="text-right text-xs text-gray-500">
         {PRIORITY_LABELS[task.priority] ?? "Medium"}

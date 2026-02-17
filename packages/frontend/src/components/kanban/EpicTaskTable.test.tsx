@@ -7,7 +7,7 @@ const createMockTask = (
   overrides: Partial<{
     id: string;
     title: string;
-    kanbanColumn: "planning" | "backlog" | "ready" | "in_progress" | "in_review" | "done";
+    kanbanColumn: "planning" | "backlog" | "ready" | "in_progress" | "in_review" | "done" | "blocked";
     priority: number;
     assignee: string | null;
   }> = {},
@@ -109,6 +109,29 @@ describe("EpicTaskTable", () => {
 
     expect(screen.getByText("Empty Epic")).toBeInTheDocument();
     expect(screen.getByText("(0/0 done)")).toBeInTheDocument();
+  });
+
+  it("shows Unblock button for blocked tasks when onUnblock is provided", async () => {
+    const user = userEvent.setup();
+    const onTaskSelect = vi.fn();
+    const onUnblock = vi.fn();
+    const swimlanes = [
+      {
+        epicId: "epic-1",
+        epicTitle: "Auth",
+        tasks: [createMockTask({ id: "epic-1.1", title: "Blocked Task", kanbanColumn: "blocked" })],
+      },
+    ];
+    render(
+      <EpicTaskTable swimlanes={swimlanes} onTaskSelect={onTaskSelect} onUnblock={onUnblock} />,
+    );
+
+    expect(screen.getByText("Blocked")).toBeInTheDocument();
+    const unblockBtn = screen.getByRole("button", { name: "Unblock" });
+    expect(unblockBtn).toBeInTheDocument();
+
+    await user.click(unblockBtn);
+    expect(onUnblock).toHaveBeenCalledWith("epic-1.1");
   });
 
   it("shows assignee when present", () => {

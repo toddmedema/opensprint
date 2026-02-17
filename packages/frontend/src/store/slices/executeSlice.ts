@@ -33,6 +33,7 @@ export interface ExecuteState {
   archivedSessions: AgentSession[];
   archivedLoading: boolean;
   markDoneLoading: boolean;
+  unblockLoading: boolean;
   statusLoading: boolean;
   loading: boolean;
   error: string | null;
@@ -53,6 +54,7 @@ const initialState: ExecuteState = {
   archivedSessions: [],
   archivedLoading: false,
   markDoneLoading: false,
+  unblockLoading: false,
   statusLoading: false,
   loading: false,
   error: null,
@@ -102,6 +104,22 @@ export const markTaskDone = createAsyncThunk(
     ]);
     dispatch(setPlansAndGraph({ plans: plansGraph.plans, dependencyGraph: plansGraph }));
     return { tasks: tasksData ?? [] };
+  },
+);
+
+export const unblockTask = createAsyncThunk(
+  "execute/unblockTask",
+  async (
+    { projectId, taskId, resetAttempts }: { projectId: string; taskId: string; resetAttempts?: boolean },
+    { dispatch },
+  ) => {
+    await api.tasks.unblock(projectId, taskId, { resetAttempts });
+    const [tasksData, plansGraph] = await Promise.all([
+      api.tasks.list(projectId),
+      api.plans.list(projectId),
+    ]);
+    dispatch(setPlansAndGraph({ plans: plansGraph.plans, dependencyGraph: plansGraph }));
+    return { tasks: tasksData ?? [], taskId };
   },
 );
 
@@ -164,6 +182,9 @@ const executeSlice = createSlice({
         if (action.payload.assignee !== undefined) {
           task.assignee = action.payload.assignee;
         }
+      }
+      if (state.taskDetail?.id === action.payload.taskId && action.payload.status !== undefined) {
+        state.taskDetail.kanbanColumn = mapStatusToKanban(action.payload.status);
       }
     },
     setTasks(state, action: PayloadAction<Task[]>) {
@@ -263,6 +284,23 @@ const executeSlice = createSlice({
       .addCase(markTaskDone.rejected, (state, action) => {
         state.markDoneLoading = false;
         state.error = action.error.message ?? "Failed to mark done";
+      })
+      // unblockTask
+      .addCase(unblockTask.pending, (state) => {
+        state.unblockLoading = true;
+        state.error = null;
+      })
+      .addCase(unblockTask.fulfilled, (state, action) => {
+        state.tasks = action.payload.tasks;
+        state.taskDetail =
+          state.taskDetail?.id === action.payload.taskId
+            ? action.payload.tasks.find((t) => t.id === action.payload.taskId) ?? state.taskDetail
+            : state.taskDetail;
+        state.unblockLoading = false;
+      })
+      .addCase(unblockTask.rejected, (state, action) => {
+        state.unblockLoading = false;
+        state.error = action.error.message ?? "Failed to unblock";
       });
   },
 });
@@ -275,6 +313,8 @@ function mapStatusToKanban(status: string): KanbanColumn {
       return "in_progress";
     case "closed":
       return "done";
+    case "blocked":
+      return "blocked";
     default:
       return "backlog";
   }

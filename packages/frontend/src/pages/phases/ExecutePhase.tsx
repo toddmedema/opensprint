@@ -8,6 +8,7 @@ import {
   fetchTaskDetail,
   fetchArchivedSessions,
   markTaskDone,
+  unblockTask,
   setSelectedTaskId,
   setExecuteError,
 } from "../../store/slices/executeSlice";
@@ -113,6 +114,7 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
   const archivedSessions = useAppSelector((s) => s.execute.archivedSessions);
   const archivedLoading = useAppSelector((s) => s.execute.archivedLoading);
   const markDoneLoading = useAppSelector((s) => s.execute.markDoneLoading);
+  const unblockLoading = useAppSelector((s) => s.execute.unblockLoading);
   const loading = useAppSelector((s) => s.execute.loading);
   const error = useAppSelector((s) => s.execute.error);
   const selectedTaskData = selectedTask ? tasks.find((t) => t.id === selectedTask) : null;
@@ -148,6 +150,12 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
   const handleMarkDone = async () => {
     if (!selectedTask || isDoneTask) return;
     dispatch(markTaskDone({ projectId, taskId: selectedTask }));
+  };
+
+  const isBlockedTask = selectedTaskData?.kanbanColumn === "blocked";
+  const handleUnblock = async () => {
+    if (!selectedTask || !isBlockedTask) return;
+    dispatch(unblockTask({ projectId, taskId: selectedTask }));
   };
 
   const implTasks = useMemo(
@@ -209,7 +217,7 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
   const totalTasks = implTasks.length;
   const readyTasks = implTasks.filter((t) => t.kanbanColumn === "ready").length;
   const blockedTasks = implTasks.filter((t) =>
-    ["planning", "backlog"].includes(t.kanbanColumn),
+    ["planning", "backlog", "blocked"].includes(t.kanbanColumn),
   ).length;
   const inProgressTasks = implTasks.filter(
     (t) => t.kanbanColumn === "in_progress" || t.kanbanColumn === "in_review",
@@ -262,6 +270,7 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
                   epicTitle={lane.epicTitle}
                   tasks={lane.tasks}
                   onTaskSelect={(taskId) => dispatch(setSelectedTaskId(taskId))}
+                  onUnblock={(taskId) => dispatch(unblockTask({ projectId, taskId }))}
                 />
               ))}
             </div>
@@ -307,7 +316,17 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
               })()}
               </div>
               <div className="flex items-center gap-2 shrink-0">
-              {!isDoneTask && (
+              {isBlockedTask && (
+                <button
+                  type="button"
+                  onClick={handleUnblock}
+                  disabled={unblockLoading}
+                  className="text-xs py-1.5 px-3 font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {unblockLoading ? "Unblocking…" : "Unblock"}
+                </button>
+              )}
+              {!isDoneTask && !isBlockedTask && (
                 <button
                   type="button"
                   onClick={handleMarkDone}

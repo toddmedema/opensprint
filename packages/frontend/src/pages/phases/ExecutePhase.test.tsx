@@ -10,6 +10,8 @@ import executeReducer from "../../store/slices/executeSlice";
 const mockGet = vi.fn().mockResolvedValue({});
 const mockMarkDone = vi.fn().mockResolvedValue(undefined);
 
+const mockUnblock = vi.fn().mockResolvedValue({ taskUnblocked: true });
+
 vi.mock("../../api/client", () => ({
   api: {
     tasks: {
@@ -17,6 +19,10 @@ vi.mock("../../api/client", () => ({
       get: (...args: unknown[]) => mockGet(...args),
       sessions: vi.fn().mockResolvedValue([]),
       markDone: (...args: unknown[]) => mockMarkDone(...args),
+      unblock: (...args: unknown[]) => mockUnblock(...args),
+    },
+    plans: {
+      list: vi.fn().mockResolvedValue({ plans: [], dependencyGraph: null }),
     },
     execute: {
       status: vi.fn().mockResolvedValue({}),
@@ -79,6 +85,7 @@ function createStore(
         archivedSessions: [],
         archivedLoading: false,
         markDoneLoading: false,
+        unblockLoading: false,
         statusLoading: false,
         loading: false,
         error: null,
@@ -139,10 +146,11 @@ describe("ExecutePhase top bar", () => {
     expect(screen.getByText("Ready: 1 · Blocked: 1 · In Progress: 0 · Done: 0 · Total: 2")).toBeInTheDocument();
   });
 
-  it("counts planning and backlog as Blocked", () => {
+  it("counts planning, backlog, and blocked as Blocked", () => {
     const tasks = [
       { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "planning", priority: 0, assignee: null },
       { id: "epic-1.2", title: "Task B", epicId: "epic-1", kanbanColumn: "backlog", priority: 1, assignee: null },
+      { id: "epic-1.3", title: "Task C", epicId: "epic-1", kanbanColumn: "blocked", priority: 2, assignee: null },
     ];
     const store = createStore(tasks);
     render(
@@ -151,7 +159,7 @@ describe("ExecutePhase top bar", () => {
       </Provider>,
     );
 
-    expect(screen.getByText("Ready: 0 · Blocked: 2 · In Progress: 0 · Done: 0 · Total: 2")).toBeInTheDocument();
+    expect(screen.getByText("Ready: 0 · Blocked: 3 · In Progress: 0 · Done: 0 · Total: 3")).toBeInTheDocument();
   });
 
   it("does not render play or pause buttons in the header", () => {
@@ -237,6 +245,30 @@ describe("ExecutePhase Redux integration", () => {
 
     await vi.waitFor(() => {
       expect(mockMarkDone).toHaveBeenCalledWith("proj-1", "epic-1.1");
+    });
+  });
+
+  it("shows Unblock button for blocked tasks and dispatches unblockTask when clicked", async () => {
+    const user = userEvent.setup();
+    mockGet.mockResolvedValue({ id: "epic-1.1", title: "Blocked Task", kanbanColumn: "blocked" });
+    const tasks = [
+      { id: "epic-1.1", title: "Blocked Task", epicId: "epic-1", kanbanColumn: "blocked", priority: 0, assignee: null },
+    ];
+    const store = createStore(tasks, { selectedTaskId: "epic-1.1" });
+    render(
+      <Provider store={store}>
+        <ExecutePhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    const unblockBtn = await screen.findByRole("button", { name: /unblock/i });
+    expect(unblockBtn).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /mark done/i })).not.toBeInTheDocument();
+
+    await user.click(unblockBtn);
+
+    await vi.waitFor(() => {
+      expect(mockUnblock).toHaveBeenCalledWith("proj-1", "epic-1.1", expect.anything());
     });
   });
 

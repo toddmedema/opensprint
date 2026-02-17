@@ -28,6 +28,7 @@ vi.mock("../../api/client", () => ({
       get: vi.fn(),
       sessions: vi.fn(),
       markDone: vi.fn(),
+      unblock: vi.fn(),
     },
     plans: { list: vi.fn() },
     execute: {
@@ -198,6 +199,14 @@ describe("executeSlice", () => {
       const task = store.getState().execute.tasks[0];
       expect(task.kanbanColumn).toBe("in_progress");
       expect(task.assignee).toBe("agent-1");
+    });
+
+    it("taskUpdated maps blocked status to kanbanColumn blocked", () => {
+      const store = createStore();
+      store.dispatch(setTasks([mockTask]));
+      store.dispatch(taskUpdated({ taskId: "task-1", status: "blocked" }));
+      const task = store.getState().execute.tasks[0];
+      expect(task.kanbanColumn).toBe("blocked");
     });
 
     it("setTasks replaces tasks", () => {

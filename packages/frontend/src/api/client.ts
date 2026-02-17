@@ -184,6 +184,11 @@ export const api = {
       request<{ taskClosed: boolean; epicClosed?: boolean }>(`/projects/${projectId}/tasks/${taskId}/done`, {
         method: "POST",
       }),
+    unblock: (projectId: string, taskId: string, options?: { resetAttempts?: boolean }) =>
+      request<{ taskUnblocked: boolean }>(`/projects/${projectId}/tasks/${taskId}/unblock`, {
+        method: "POST",
+        body: JSON.stringify(options ?? {}),
+      }),
   },
 
   // ─── Execute ───

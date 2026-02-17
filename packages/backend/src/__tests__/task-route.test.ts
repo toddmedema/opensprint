@@ -236,4 +236,47 @@ Test review prompt generation.
     const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
     expect(config.phase).toBe("review");
   });
+
+  it("POST /tasks/:taskId/unblock sets beads status to open", { timeout: 20000 }, async () => {
+    const app = createApp();
+
+    const planRes = await request(app)
+      .post(`${API_PREFIX}/projects/${projectId}/plans`)
+      .send({
+        title: "Unblock Test Feature",
+        content: "# Unblock Test\n\n## Overview\n\nTest unblock.",
+        complexity: "low",
+        tasks: [{ title: "Task Z", description: "Implement Z", priority: 0, dependsOn: [] }],
+      });
+
+    expect(planRes.status).toBe(201);
+    const plan = planRes.body.data;
+    const gateTaskId = plan.metadata.gateTaskId;
+    const project = await projectService.getProject(projectId);
+    await beads.close(project.repoPath, gateTaskId, "Plan approved");
+
+    const tasksRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/tasks`);
+    const tasks = tasksRes.body.data ?? [];
+    const taskZ = tasks.find((t: { title: string }) => t.title === "Task Z");
+    expect(taskZ).toBeDefined();
+
+    await beads.update(project.repoPath, taskZ.id, { status: "blocked" });
+    await beads.sync(project.repoPath);
+
+    const tasksBlockedRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/tasks`);
+    const taskBlocked = (tasksBlockedRes.body.data ?? []).find((t: { id: string }) => t.id === taskZ.id);
+    expect(taskBlocked.kanbanColumn).toBe("blocked");
+
+    const unblockRes = await request(app)
+      .post(`${API_PREFIX}/projects/${projectId}/tasks/${taskZ.id}/unblock`)
+      .set("Content-Type", "application/json")
+      .send({});
+
+    expect(unblockRes.status).toBe(200);
+    expect(unblockRes.body.data.taskUnblocked).toBe(true);
+
+    const tasksAfterRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/tasks`);
+    const taskAfter = (tasksAfterRes.body.data ?? []).find((t: { id: string }) => t.id === taskZ.id);
+    expect(taskAfter.kanbanColumn).not.toBe("blocked");
+  });
 });

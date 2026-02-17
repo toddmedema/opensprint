@@ -7,7 +7,7 @@ const createMockTask = (
   overrides: Partial<{
     id: string;
     title: string;
-    kanbanColumn: "planning" | "backlog" | "ready" | "in_progress" | "in_review" | "done";
+    kanbanColumn: "planning" | "backlog" | "ready" | "in_progress" | "in_review" | "done" | "blocked";
     priority: number;
     assignee: string | null;
   }> = {},
@@ -142,6 +142,47 @@ describe("BuildEpicCard", () => {
 
     expect(screen.getByText("Task 4")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /more/ })).not.toBeInTheDocument();
+  });
+
+  it("shows Unblock button for blocked tasks when onUnblock is provided", async () => {
+    const user = userEvent.setup();
+    const onTaskSelect = vi.fn();
+    const onUnblock = vi.fn();
+    const tasks = [
+      createMockTask({ id: "epic-1.1", title: "Blocked Task", kanbanColumn: "blocked" }),
+    ];
+    render(
+      <BuildEpicCard
+        epicId="epic-1"
+        epicTitle="Auth"
+        tasks={tasks}
+        onTaskSelect={onTaskSelect}
+        onUnblock={onUnblock}
+      />,
+    );
+
+    expect(screen.getByText("Blocked")).toBeInTheDocument();
+    const unblockBtn = screen.getByRole("button", { name: "Unblock" });
+    expect(unblockBtn).toBeInTheDocument();
+
+    await user.click(unblockBtn);
+    expect(onUnblock).toHaveBeenCalledWith("epic-1.1");
+  });
+
+  it("does not show Unblock button for blocked tasks when onUnblock is not provided", () => {
+    const tasks = [
+      createMockTask({ id: "epic-1.1", title: "Blocked Task", kanbanColumn: "blocked" }),
+    ];
+    render(
+      <BuildEpicCard
+        epicId="epic-1"
+        epicTitle="Auth"
+        tasks={tasks}
+        onTaskSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Unblock" })).not.toBeInTheDocument();
   });
 
   it("handles epic with no tasks", () => {

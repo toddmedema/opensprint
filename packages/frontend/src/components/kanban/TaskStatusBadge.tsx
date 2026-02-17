@@ -7,6 +7,7 @@ export const COLUMN_LABELS: Record<KanbanColumn, string> = {
   in_progress: "In Progress",
   in_review: "In Review",
   done: "Done",
+  blocked: "Blocked",
 };
 
 const columnColors: Record<KanbanColumn, string> = {
@@ -16,6 +17,7 @@ const columnColors: Record<KanbanColumn, string> = {
   in_progress: "bg-purple-400",
   in_review: "bg-orange-400",
   done: "bg-green-400",
+  blocked: "bg-red-500",
 };
 
 export interface TaskStatusBadgeProps {
@@ -39,6 +41,21 @@ export function TaskStatusBadge({ column, size = "sm", title }: TaskStatusBadgeP
           strokeWidth={2.5}
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      </span>
+    );
+  }
+  if (column === "blocked") {
+    return (
+      <span className="inline-flex" title={label}>
+        <svg
+          className={`${dim} shrink-0 text-red-500`}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
         </svg>
       </span>
     );
