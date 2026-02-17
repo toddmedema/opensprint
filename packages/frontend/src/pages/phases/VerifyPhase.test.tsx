@@ -218,7 +218,7 @@ describe("VerifyPhase feedback input", () => {
     });
   });
 
-  it("displays feedback list from Redux store", () => {
+  it("displays feedback list from Redux store (mapped feedback only)", () => {
     const storeWithFeedback = configureStore({
       reducer: {
         project: projectReducer,
@@ -244,9 +244,9 @@ describe("VerifyPhase feedback input", () => {
               id: "fb-1",
               text: "Login button is broken",
               category: "bug",
-              mappedPlanId: null,
+              mappedPlanId: "plan-1",
               createdTaskIds: [],
-              status: "pending",
+              status: "mapped",
               createdAt: new Date().toISOString(),
             },
           ],
@@ -349,7 +349,7 @@ describe("VerifyPhase feedback input", () => {
     });
   });
 
-  it("suppresses category display when feedback status is pending", () => {
+  it("does not show feedback cards when status is pending", () => {
     const storeWithFeedback = configureStore({
       reducer: {
         project: projectReducer,
@@ -394,13 +394,13 @@ describe("VerifyPhase feedback input", () => {
       </Provider>,
     );
 
-    // Category is suppressed when pending — no category chip, no spinner
-    expect(screen.queryByText("Bug")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Categorizing feedback")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Retry/i })).toBeInTheDocument();
+    // Pending feedback is not shown — feed appears empty
+    expect(screen.getByText(/Feedback History \(0\)/)).toBeInTheDocument();
+    expect(screen.queryByText("Login button is broken")).not.toBeInTheDocument();
+    expect(screen.getByText(/No feedback submitted yet/)).toBeInTheDocument();
   });
 
-  it("shows category chip for mapped feedback and suppresses category for pending in mixed list", () => {
+  it("shows only mapped feedback and hides pending in mixed list", () => {
     const storeWithFeedback = configureStore({
       reducer: {
         project: projectReducer,
@@ -454,10 +454,12 @@ describe("VerifyPhase feedback input", () => {
       </Provider>,
     );
 
-    // Pending: category suppressed (no Bug chip)
-    expect(screen.queryByText("Bug")).not.toBeInTheDocument();
-    // Mapped: category shown
+    // Pending: not shown at all
+    expect(screen.queryByText("Pending feedback")).not.toBeInTheDocument();
+    // Mapped: shown with category
+    expect(screen.getByText("Mapped feedback")).toBeInTheDocument();
     expect(screen.getByText("Feature")).toBeInTheDocument();
+    expect(screen.getByText(/Feedback History \(1\)/)).toBeInTheDocument();
   });
 
   it("shows category chip (Bug/Feature/UX/Scope) for mapped feedback", () => {
@@ -671,9 +673,9 @@ describe("VerifyPhase feedback input", () => {
               id: "fb-with-img",
               text: "Screenshot of bug",
               category: "bug",
-              mappedPlanId: null,
+              mappedPlanId: "plan-1",
               createdTaskIds: [],
-              status: "pending",
+              status: "mapped",
               createdAt: new Date().toISOString(),
               images: [
                 "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",

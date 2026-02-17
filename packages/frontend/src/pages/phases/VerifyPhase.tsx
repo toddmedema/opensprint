@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import type { FeedbackItem } from "@opensprint/shared";
 import { useAppDispatch, useAppSelector } from "../../store";
-import { submitFeedback, recategorizeFeedback, setValidateError } from "../../store/slices/validateSlice";
+import { submitFeedback, setValidateError } from "../../store/slices/validateSlice";
 
 const MAX_IMAGES = 5;
 const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
@@ -32,7 +32,7 @@ const categoryColors: Record<string, string> = {
   scope: "bg-yellow-50 text-yellow-700",
 };
 
-/** Display label for feedback type chip (Bug/Feature/UX/Scope). Only shown when status is not pending. */
+/** Display label for feedback type chip (Bug/Feature/UX/Scope). */
 function getFeedbackTypeLabel(item: FeedbackItem): string {
   return item.category === "ux" ? "UX" : item.category.charAt(0).toUpperCase() + item.category.slice(1);
 }
@@ -42,6 +42,10 @@ export function VerifyPhase({ projectId, onNavigateToBuildTask }: VerifyPhasePro
 
   /* ── Redux state ── */
   const feedback = useAppSelector((s) => s.validate.feedback);
+  const displayedFeedback = useMemo(
+    () => feedback.filter((item) => item.status !== "pending"),
+    [feedback],
+  );
   const loading = useAppSelector((s) => s.validate.loading);
   const submitting = useAppSelector((s) => s.validate.submitting);
   const error = useAppSelector((s) => s.validate.error);
@@ -231,40 +235,28 @@ export function VerifyPhase({ projectId, onNavigateToBuildTask }: VerifyPhasePro
         </div>
 
         {/* Feedback Feed */}
-        <h3 className="text-sm font-semibold text-gray-900 mb-4">Feedback History ({feedback.length})</h3>
+        <h3 className="text-sm font-semibold text-gray-900 mb-4">Feedback History ({displayedFeedback.length})</h3>
 
         {loading ? (
           <div className="text-center py-10 text-gray-400">Loading feedback...</div>
-        ) : feedback.length === 0 ? (
+        ) : displayedFeedback.length === 0 ? (
           <div className="text-center py-10 text-gray-400 text-sm">
             No feedback submitted yet. Test your app and report findings above.
           </div>
         ) : (
           <div className="space-y-3">
-            {feedback.map((item: FeedbackItem) => (
+            {displayedFeedback.map((item: FeedbackItem) => (
               <div key={item.id} className="card p-4">
                 <div className="flex items-start justify-between mb-2">
                   <p className="text-sm text-gray-900 flex-1">{item.text}</p>
                   <div className="flex items-center gap-2 ml-4 flex-shrink-0">
-                    {item.status !== "pending" && (
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                          categoryColors[item.category] ?? "bg-gray-100 text-gray-600"
-                        }`}
-                      >
-                        {getFeedbackTypeLabel(item)}
-                      </span>
-                    )}
-                    {item.status === "pending" && (
-                      <button
-                        type="button"
-                        onClick={() => dispatch(recategorizeFeedback({ projectId, feedbackId: item.id }))}
-                        className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors"
-                        title="Re-trigger AI categorization"
-                      >
-                        Retry
-                      </button>
-                    )}
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                        categoryColors[item.category] ?? "bg-gray-100 text-gray-600"
+                      }`}
+                    >
+                      {getFeedbackTypeLabel(item)}
+                    </span>
                   </div>
                 </div>
 
