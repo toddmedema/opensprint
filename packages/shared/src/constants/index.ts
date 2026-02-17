@@ -22,8 +22,8 @@ export const HEARTBEAT_INTERVAL_MS = 10_000;
 /** Heartbeat considered stale after 2 minutes of no updates */
 export const HEARTBEAT_STALE_MS = 2 * 60 * 1000;
 
-/** Agent timeout in milliseconds (5 minutes of inactivity) */
-export const AGENT_INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
+/** Agent timeout in milliseconds (10 minutes of inactivity) */
+export const AGENT_INACTIVITY_TIMEOUT_MS = 10 * 60 * 1000;
 
 /** Number of consecutive failures before priority demotion (PRDv2 §9.1) */
 export const BACKOFF_FAILURE_THRESHOLD = 3;
@@ -44,7 +44,14 @@ export const DEFAULT_API_PORT = 3100;
 export const API_PREFIX = "/api/v1";
 
 /** Kanban columns in display order */
-export const KANBAN_COLUMNS = ["planning", "backlog", "ready", "in_progress", "in_review", "done"] as const;
+export const KANBAN_COLUMNS = [
+  "planning",
+  "backlog",
+  "ready",
+  "in_progress",
+  "in_review",
+  "done",
+] as const;
 
 /** Plan status display order (planning → building → complete) */
 export const PLAN_STATUS_ORDER: Record<"planning" | "building" | "complete", number> = {

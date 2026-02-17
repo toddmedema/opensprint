@@ -27,11 +27,7 @@ import { BranchManager } from "./branch-manager.js";
 import { gitCommitQueue } from "./git-commit-queue.service.js";
 import { ContextAssembler } from "./context-assembler.js";
 import { SessionManager } from "./session-manager.js";
-import {
-  shouldInvokeSummarizer,
-  buildSummarizerPrompt,
-  countWords,
-} from "./summarizer.service.js";
+import { shouldInvokeSummarizer, buildSummarizerPrompt, countWords } from "./summarizer.service.js";
 import type { TaskContext } from "./context-assembler.js";
 import { TestRunner } from "./test-runner.js";
 import { orphanRecoveryService } from "./orphan-recovery.service.js";
@@ -94,6 +90,8 @@ interface PersistedOrchestratorState {
   attempt: number;
   startedAt: string | null;
   lastTransition: string;
+  /** Epoch ms of last agent output — used to enforce inactivity timeout across restarts */
+  lastOutputTimestamp: number | null;
   queueDepth: number;
   totalDone: number;
   totalFailed: number;
@@ -233,6 +231,7 @@ export class OrchestratorService {
       attempt: state.attempt,
       startedAt: state.startedAt || null,
       lastTransition: new Date().toISOString(),
+      lastOutputTimestamp: state.lastOutputTime || null,
       queueDepth: state.status.queueDepth,
       totalDone: state.status.totalDone,
       totalFailed: state.status.totalFailed,
@@ -306,9 +305,75 @@ export class OrchestratorService {
       pid,
     });
 
-    // Scenario 2: PID is still alive — monitor and wait for exit
+    // Scenario 2: PID is still alive — check inactivity timeout, then monitor
     if (pid && isPidAlive(pid)) {
-      console.log(`[orchestrator] Recovery: agent PID ${pid} still alive, resuming monitoring`);
+      // Determine last known output time: prefer heartbeat file (updated every 10s),
+      // fall back to persisted state, then current time as last resort.
+      const wtPath = persisted.worktreePath;
+      let lastOutput = Date.now();
+      let lastOutputSource = "now (fallback)";
+
+      if (wtPath) {
+        const hb = await heartbeatService.readHeartbeat(wtPath, taskId);
+        if (hb && hb.lastOutputTimestamp > 0) {
+          lastOutput = hb.lastOutputTimestamp;
+          lastOutputSource = "heartbeat file";
+        } else if (persisted.lastOutputTimestamp && persisted.lastOutputTimestamp > 0) {
+          lastOutput = persisted.lastOutputTimestamp;
+          lastOutputSource = "persisted state";
+        }
+      } else if (persisted.lastOutputTimestamp && persisted.lastOutputTimestamp > 0) {
+        lastOutput = persisted.lastOutputTimestamp;
+        lastOutputSource = "persisted state";
+      }
+
+      const inactiveMs = Date.now() - lastOutput;
+      console.log(`[orchestrator] Recovery: agent PID ${pid} still alive`, {
+        lastOutputSource,
+        inactiveForSec: Math.round(inactiveMs / 1000),
+        timeoutSec: Math.round(AGENT_INACTIVITY_TIMEOUT_MS / 1000),
+      });
+
+      // If the agent has already exceeded the inactivity timeout, kill it immediately
+      if (inactiveMs > AGENT_INACTIVITY_TIMEOUT_MS) {
+        console.warn(
+          `[orchestrator] Recovery: agent PID ${pid} exceeded inactivity timeout ` +
+            `(${Math.round(inactiveMs / 1000)}s > ${Math.round(AGENT_INACTIVITY_TIMEOUT_MS / 1000)}s), killing`
+        );
+        try {
+          process.kill(-pid, "SIGTERM");
+        } catch {
+          try {
+            process.kill(pid, "SIGTERM");
+          } catch {
+            /* already dead */
+          }
+        }
+        setTimeout(() => {
+          try {
+            process.kill(-pid, "SIGKILL");
+          } catch {
+            /* ignore */
+          }
+          try {
+            process.kill(pid, "SIGKILL");
+          } catch {
+            /* ignore */
+          }
+        }, 5000);
+
+        await this.performCrashRecovery(
+          projectId,
+          repoPath,
+          taskId,
+          branchName,
+          persisted.worktreePath
+        );
+        return;
+      }
+
+      // Agent is still within timeout window — resume monitoring with inactivity enforcement
+      console.log(`[orchestrator] Recovery: resuming monitoring for PID ${pid}`);
 
       state.status.currentTask = taskId;
       state.status.currentPhase = persisted.currentPhase;
@@ -317,10 +382,69 @@ export class OrchestratorService {
       state.activeWorktreePath = persisted.worktreePath ?? null;
       state.attempt = persisted.attempt;
       state.startedAt = persisted.startedAt ?? new Date().toISOString();
+      state.lastOutputTime = lastOutput;
       state.loopActive = true;
 
-      // Poll until the process exits, then handle the result
+      // Combined poll: check both PID death and inactivity timeout
       const pollTimer = setInterval(async () => {
+        // Check inactivity timeout (using heartbeat for freshest timestamp)
+        let currentLastOutput = state.lastOutputTime;
+        if (wtPath) {
+          const hb = await heartbeatService.readHeartbeat(wtPath, taskId);
+          if (hb && hb.lastOutputTimestamp > currentLastOutput) {
+            currentLastOutput = hb.lastOutputTimestamp;
+            state.lastOutputTime = currentLastOutput;
+          }
+        }
+
+        const elapsed = Date.now() - currentLastOutput;
+        if (elapsed > AGENT_INACTIVITY_TIMEOUT_MS && isPidAlive(pid)) {
+          clearInterval(pollTimer);
+          console.warn(
+            `[orchestrator] Recovery: agent timeout for ${taskId} ` +
+              `(${Math.round(elapsed / 1000)}s of inactivity), killing PID ${pid}`
+          );
+          state.killedDueToTimeout = true;
+          try {
+            process.kill(-pid, "SIGTERM");
+          } catch {
+            try {
+              process.kill(pid, "SIGTERM");
+            } catch {
+              /* already dead */
+            }
+          }
+          setTimeout(async () => {
+            try {
+              process.kill(-pid, "SIGKILL");
+            } catch {
+              /* ignore */
+            }
+            try {
+              process.kill(pid, "SIGKILL");
+            } catch {
+              /* ignore */
+            }
+            try {
+              const task = await this.beads.show(repoPath, taskId);
+              await this.handleTaskFailure(
+                projectId,
+                repoPath,
+                task,
+                branchName,
+                `Agent killed after ${Math.round(elapsed / 1000)}s of inactivity (recovery timeout)`,
+                null,
+                "timeout"
+              );
+            } catch (err) {
+              console.error("[orchestrator] Recovery: timeout handler failed:", err);
+              await this.performCrashRecovery(projectId, repoPath, taskId, branchName, wtPath);
+            }
+          }, 5000);
+          return;
+        }
+
+        // Check PID death
         if (isPidAlive(pid)) return;
         clearInterval(pollTimer);
 
@@ -766,12 +890,7 @@ export class OrchestratorService {
       if (shouldInvokeSummarizer(context)) {
         const depCount = context.dependencyOutputs.length;
         const planWordCount = countWords(context.planContent);
-        const summarizerPrompt = buildSummarizerPrompt(
-          task.id,
-          context,
-          depCount,
-          planWordCount
-        );
+        const summarizerPrompt = buildSummarizerPrompt(task.id, context, depCount, planWordCount);
         const systemPrompt = `You are the Summarizer agent for OpenSprint (PRD §12.3.5). Condense context into a focused summary when it exceeds size thresholds.`;
 
         const summarizerId = `summarizer-${projectId}-${task.id}-${Date.now()}`;
@@ -799,7 +918,8 @@ export class OrchestratorService {
                 context = {
                   ...context,
                   planContent: parsed.summary.trim(),
-                  prdExcerpt: "Context condensed by Summarizer (thresholds exceeded). See plan.md for full context.",
+                  prdExcerpt:
+                    "Context condensed by Summarizer (thresholds exceeded). See plan.md for full context.",
                   dependencyOutputs: [],
                 };
                 console.log(`[orchestrator] Summarizer condensed context for task ${task.id}`);
@@ -809,7 +929,10 @@ export class OrchestratorService {
             }
           }
         } catch (err) {
-          console.warn(`[orchestrator] Summarizer failed for ${task.id}, using raw context:`, err instanceof Error ? err.message : err);
+          console.warn(
+            `[orchestrator] Summarizer failed for ${task.id}, using raw context:`,
+            err instanceof Error ? err.message : err
+          );
         } finally {
           activeAgentsService.unregister(summarizerId);
         }

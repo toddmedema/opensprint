@@ -230,7 +230,7 @@ export class ProjectService {
     const detected = await detectTestFramework(repoPath);
     const testFramework = input.testFramework ?? detected?.framework ?? null;
     const testCommand =
-      detected?.testCommand ?? getTestCommandForFramework(testFramework) || null;
+      (detected?.testCommand ?? getTestCommandForFramework(testFramework)) || null;
     const settings: ProjectSettings = {
       planningAgent,
       codingAgent,
