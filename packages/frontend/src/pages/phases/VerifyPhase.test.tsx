@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
-import { VerifyPhase } from "./VerifyPhase";
+import { VerifyPhase, FEEDBACK_COLLAPSED_KEY_PREFIX } from "./VerifyPhase";
 import projectReducer from "../../store/slices/projectSlice";
 import verifyReducer from "../../store/slices/verifySlice";
 import buildReducer from "../../store/slices/buildSlice";
@@ -1912,5 +1912,210 @@ describe("VerifyPhase feedback input", () => {
     // Unknown task shows backlog icon (default)
     expect(screen.getByText("opensprint.dev-new.1")).toBeInTheDocument();
     expect(screen.getByTitle("Backlog")).toBeInTheDocument();
+  });
+});
+
+describe("VerifyPhase feedback collapsed state persistence", () => {
+  const storage: Record<string, string> = {};
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.keys(storage).forEach((k) => delete storage[k]);
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => storage[key] ?? null,
+      setItem: (key: string, value: string) => {
+        storage[key] = value;
+      },
+      removeItem: (key: string) => {
+        delete storage[key];
+      },
+      clear: () => {
+        Object.keys(storage).forEach((k) => delete storage[k]);
+      },
+      length: 0,
+      key: () => null,
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("persists feedback collapsed state to localStorage when user collapses", async () => {
+    const storeWithReplies = configureStore({
+      reducer: {
+        project: projectReducer,
+        verify: verifyReducer,
+        build: buildReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "verify",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        verify: {
+          feedback: [
+            {
+              id: "fb-parent",
+              text: "Parent",
+              category: "bug",
+              mappedPlanId: null,
+              createdTaskIds: [],
+              status: "mapped",
+              parent_id: null,
+              depth: 0,
+              createdAt: "2026-01-01T10:00:00Z",
+            },
+            {
+              id: "fb-child",
+              text: "Child",
+              category: "bug",
+              mappedPlanId: null,
+              createdTaskIds: [],
+              status: "mapped",
+              parent_id: "fb-parent",
+              depth: 1,
+              createdAt: "2026-01-01T11:00:00Z",
+            },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+        build: {
+          tasks: [],
+          plans: [],
+          orchestratorRunning: false,
+          awaitingApproval: false,
+          selectedTaskId: null,
+          taskDetail: null,
+          taskDetailLoading: false,
+          agentOutput: [],
+          completionState: null,
+          archivedSessions: [],
+          archivedLoading: false,
+          markDoneLoading: false,
+          statusLoading: false,
+          loading: false,
+          error: null,
+        },
+      },
+    });
+
+    const user = userEvent.setup();
+    render(
+      <Provider store={storeWithReplies}>
+        <VerifyPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    // Initially child is visible
+    expect(screen.getByText("Child")).toBeInTheDocument();
+
+    // Click Collapse
+    await user.click(screen.getByRole("button", { name: /Collapse \(1 reply\)/i }));
+
+    // Child is hidden
+    expect(screen.queryByText("Child")).not.toBeInTheDocument();
+
+    // localStorage has the collapsed id
+    const key = `${FEEDBACK_COLLAPSED_KEY_PREFIX}-proj-1`;
+    expect(storage[key]).toBeDefined();
+    const parsed = JSON.parse(storage[key]) as string[];
+    expect(parsed).toContain("fb-parent");
+  });
+
+  it("restores feedback collapsed state from localStorage on mount", async () => {
+    const key = `${FEEDBACK_COLLAPSED_KEY_PREFIX}-proj-1`;
+    storage[key] = JSON.stringify(["fb-parent"]);
+
+    const storeWithReplies = configureStore({
+      reducer: {
+        project: projectReducer,
+        verify: verifyReducer,
+        build: buildReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "verify",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        verify: {
+          feedback: [
+            {
+              id: "fb-parent",
+              text: "Parent",
+              category: "bug",
+              mappedPlanId: null,
+              createdTaskIds: [],
+              status: "mapped",
+              parent_id: null,
+              depth: 0,
+              createdAt: "2026-01-01T10:00:00Z",
+            },
+            {
+              id: "fb-child",
+              text: "Child",
+              category: "bug",
+              mappedPlanId: null,
+              createdTaskIds: [],
+              status: "mapped",
+              parent_id: "fb-parent",
+              depth: 1,
+              createdAt: "2026-01-01T11:00:00Z",
+            },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+        build: {
+          tasks: [],
+          plans: [],
+          orchestratorRunning: false,
+          awaitingApproval: false,
+          selectedTaskId: null,
+          taskDetail: null,
+          taskDetailLoading: false,
+          agentOutput: [],
+          completionState: null,
+          archivedSessions: [],
+          archivedLoading: false,
+          markDoneLoading: false,
+          statusLoading: false,
+          loading: false,
+          error: null,
+        },
+      },
+    });
+
+    render(
+      <Provider store={storeWithReplies}>
+        <VerifyPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    // Parent is visible, child is collapsed (hidden)
+    expect(screen.getByText("Parent")).toBeInTheDocument();
+    expect(screen.queryByText("Child")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Expand \(1 reply\)/i })).toBeInTheDocument();
   });
 });

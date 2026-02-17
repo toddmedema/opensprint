@@ -28,6 +28,34 @@ const MAX_IMAGES = 5;
 const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
 const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"];
 
+export const FEEDBACK_COLLAPSED_KEY_PREFIX = "opensprint-verify-feedback-collapsed";
+
+function getFeedbackCollapsedKey(projectId: string): string {
+  return `${FEEDBACK_COLLAPSED_KEY_PREFIX}-${projectId}`;
+}
+
+function loadFeedbackCollapsedIds(projectId: string): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const stored = localStorage.getItem(getFeedbackCollapsedKey(projectId));
+    if (!stored) return new Set();
+    const parsed = JSON.parse(stored) as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((x): x is string => typeof x === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveFeedbackCollapsedIds(projectId: string, ids: Set<string>): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(getFeedbackCollapsedKey(projectId), JSON.stringify([...ids]));
+  } catch {
+    // ignore
+  }
+}
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -317,7 +345,7 @@ export function VerifyPhase({ projectId, onNavigateToBuildTask }: VerifyPhasePro
   const [images, setImages] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
-  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => loadFeedbackCollapsedIds(projectId));
 
   const addImagesFromFiles = useCallback(async (files: FileList | File[]) => {
     const fileArray = Array.from(files).filter(isImageFile);
@@ -400,14 +428,18 @@ export function VerifyPhase({ projectId, onNavigateToBuildTask }: VerifyPhasePro
     [dispatch, projectId, submitting],
   );
 
-  const handleToggleCollapse = useCallback((id: string) => {
-    setCollapsedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+  const handleToggleCollapse = useCallback(
+    (id: string) => {
+      setCollapsedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        saveFeedbackCollapsedIds(projectId, next);
+        return next;
+      });
+    },
+    [projectId],
+  );
 
   const feedbackTree = useMemo(() => buildFeedbackTree(feedback), [feedback]);
 
