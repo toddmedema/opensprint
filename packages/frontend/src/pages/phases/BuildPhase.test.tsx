@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
 import { BuildPhase } from "./BuildPhase";
 import projectReducer from "../../store/slices/projectSlice";
 import planReducer from "../../store/slices/planSlice";
 import buildReducer from "../../store/slices/buildSlice";
+
+const mockNudge = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("../../api/client", () => ({
   api: {
@@ -14,6 +17,9 @@ vi.mock("../../api/client", () => ({
       get: vi.fn().mockResolvedValue({}),
       sessions: vi.fn().mockResolvedValue([]),
       markComplete: vi.fn().mockResolvedValue(undefined),
+    },
+    build: {
+      nudge: (...args: unknown[]) => mockNudge(...args),
     },
   },
 }));
@@ -119,5 +125,59 @@ describe("BuildPhase top bar", () => {
     );
 
     expect(screen.getByText("0/2 tasks completed · 0 in progress")).toBeInTheDocument();
+  });
+});
+
+describe("BuildPhase build controls", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders play and pause icon buttons in the header", () => {
+    const tasks = [
+      { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "ready", priority: 0, assignee: null },
+    ];
+    const store = createStore(tasks);
+    render(
+      <Provider store={store}>
+        <BuildPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    expect(screen.getByRole("button", { name: /pick up next task/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /pause/i })).toBeInTheDocument();
+  });
+
+  it("calls build nudge API when play button is clicked", async () => {
+    const user = userEvent.setup();
+    const tasks = [
+      { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "ready", priority: 0, assignee: null },
+    ];
+    const store = createStore(tasks);
+    render(
+      <Provider store={store}>
+        <BuildPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    const playButton = screen.getByRole("button", { name: /pick up next task/i });
+    await user.click(playButton);
+
+    expect(mockNudge).toHaveBeenCalledWith("proj-1");
+  });
+
+  it("pause button is disabled", () => {
+    const tasks = [
+      { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "ready", priority: 0, assignee: null },
+    ];
+    const store = createStore(tasks);
+    render(
+      <Provider store={store}>
+        <BuildPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    const pauseButton = screen.getByRole("button", { name: /pause/i });
+    expect(pauseButton).toBeDisabled();
   });
 });
