@@ -730,6 +730,8 @@ export class OrchestratorService {
       );
 
       const config: ActiveTaskConfig = {
+        invocation_id: task.id,
+        agent_role: "coder",
         taskId: task.id,
         repoPath: wtPath,
         branch: branchName,
@@ -757,6 +759,7 @@ export class OrchestratorService {
         task.id,
         projectId,
         "coding",
+        "coder",
         state.activeTaskTitle ?? task.id,
         state.startedAt,
         branchName
@@ -997,6 +1000,8 @@ export class OrchestratorService {
     try {
       // Update config for review phase (written to worktree)
       const config: ActiveTaskConfig = {
+        invocation_id: task.id,
+        agent_role: "reviewer",
         taskId: task.id,
         repoPath: wtPath,
         branch: branchName,
@@ -1030,6 +1035,7 @@ export class OrchestratorService {
         task.id,
         projectId,
         "review",
+        "reviewer",
         state.activeTaskTitle ?? task.id,
         state.startedAt,
         branchName

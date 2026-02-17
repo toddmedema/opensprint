@@ -370,8 +370,8 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                     </>
                   )}
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Planning Agent</h3>
-                    <p className="text-xs text-gray-500 mb-3">Used for Dream conversations and Plan decomposition</p>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Planning Agent Slot</h3>
+                    <p className="text-xs text-gray-500 mb-3">Used by Dreamer, Planner, Harmonizer, Analyst, Summarizer, Auditor, Delta Planner</p>
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -421,8 +421,8 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                   </div>
                   <hr />
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Coding Agent</h3>
-                    <p className="text-xs text-gray-500 mb-3">Used for Build phase implementation and review</p>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Coding Agent Slot</h3>
+                    <p className="text-xs text-gray-500 mb-3">Used by Coder and Reviewer for Execute phase implementation and review</p>
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div>

@@ -1,19 +1,20 @@
-import type { ActiveAgent } from "@opensprint/shared";
+import type { ActiveAgent, AgentRole } from "@opensprint/shared";
 
 /** Internal entry stored in the registry (includes projectId for filtering) */
 export interface ActiveAgentEntry {
   id: string;
   projectId: string;
   phase: string;
+  role: AgentRole;
   label: string;
   startedAt: string;
-  /** Branch name (Build phase only) */
+  /** Branch name (Execute phase only) */
   branchName?: string;
 }
 
 /**
  * Central registry for in-flight agent invocations.
- * Used by all phases (Dream, Plan, Build, Verify) to track active agents.
+ * Used by all phases (Spec, Plan, Execute, Ensure, Deploy) to track active agents.
  */
 export class ActiveAgentsService {
   private agents = new Map<string, ActiveAgentEntry>();
@@ -23,14 +24,16 @@ export class ActiveAgentsService {
    * @param id - Unique agent/task identifier
    * @param projectId - Project the agent is running for
    * @param phase - Phase (e.g. "spec", "plan", "execute", "ensure", "deploy" or "coding", "review")
+   * @param role - Named agent role (e.g. coder, reviewer)
    * @param label - Human-readable label (e.g. task title)
    * @param startedAt - ISO timestamp when the agent started
-   * @param branchName - Optional branch name (Build phase)
+   * @param branchName - Optional branch name (Execute phase)
    */
   register(
     id: string,
     projectId: string,
     phase: string,
+    role: AgentRole,
     label: string,
     startedAt: string,
     branchName?: string,
@@ -39,6 +42,7 @@ export class ActiveAgentsService {
       id,
       projectId,
       phase,
+      role,
       label,
       startedAt,
       branchName,
@@ -66,6 +70,7 @@ export class ActiveAgentsService {
     return entries.map((e) => ({
       id: e.id,
       phase: e.phase,
+      role: e.role,
       label: e.label,
       startedAt: e.startedAt,
       ...(e.branchName != null && { branchName: e.branchName }),

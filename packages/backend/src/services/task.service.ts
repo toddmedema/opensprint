@@ -258,6 +258,8 @@ export class TaskService {
     const dependencyOutputs = await this.contextAssembler.collectDependencyOutputs(repoPath, blockerIds);
 
     const config = {
+      invocation_id: taskId,
+      agent_role: (phase === "review" ? "reviewer" : "coder") as "reviewer" | "coder",
       taskId,
       repoPath,
       branch: branchName,

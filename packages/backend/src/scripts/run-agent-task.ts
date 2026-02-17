@@ -74,6 +74,8 @@ async function main(): Promise<number> {
 
   const testCommand = getTestCommandForFramework(settings.testFramework) || 'echo "No tests"';
   const config = {
+    invocation_id: taskId,
+    agent_role: 'coder' as const,
     taskId,
     repoPath,
     branch: branchName,

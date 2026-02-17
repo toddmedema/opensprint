@@ -73,7 +73,7 @@ describe("ActiveAgentsList", () => {
     vi.setSystemTime(new Date("2026-02-16T12:00:00.000Z"));
     const startedAt = "2026-02-16T12:00:00.000Z";
     mockAgentsActive.mockResolvedValue([
-      { id: "task-1", phase: "execute", label: "Task 1", startedAt },
+      { id: "task-1", phase: "coding", role: "coder", label: "Task 1", startedAt },
     ]);
 
     renderActiveAgentsList();
@@ -92,7 +92,7 @@ describe("ActiveAgentsList", () => {
 
     expect(screen.getByText("2m 34s")).toBeInTheDocument();
     expect(screen.getByText("Task 1")).toBeInTheDocument();
-    expect(screen.getByText(/Execute/)).toBeInTheDocument();
+    expect(screen.getByText(/Coder/)).toBeInTheDocument();
 
     vi.useRealTimers();
   });

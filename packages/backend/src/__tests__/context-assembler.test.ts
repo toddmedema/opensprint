@@ -57,6 +57,8 @@ User authentication.
     await fs.writeFile(path.join(plansDir, 'auth.md'), planContent);
 
     const config = {
+      invocation_id: 'bd-a3f8.1',
+      agent_role: 'coder' as const,
       taskId: 'bd-a3f8.1',
       repoPath,
       branch: 'opensprint/bd-a3f8.1',
@@ -84,6 +86,8 @@ User authentication.
     const depsDir = path.join(contextDir, 'deps');
 
     const configJson = JSON.parse(await fs.readFile(path.join(taskDir, 'config.json'), 'utf-8'));
+    expect(configJson.invocation_id).toBe('bd-a3f8.1');
+    expect(configJson.agent_role).toBe('coder');
     expect(configJson.taskId).toBe('bd-a3f8.1');
     expect(configJson.phase).toBe('coding');
 
@@ -146,6 +150,8 @@ User authentication.
     await fs.writeFile(path.join(plansDir, 'auth.md'), planContent);
 
     const config = {
+      invocation_id: 'bd-a3f8.1',
+      agent_role: 'coder' as const,
       taskId: 'bd-a3f8.1',
       repoPath,
       branch: 'opensprint/bd-a3f8.1',
@@ -400,6 +406,8 @@ User authentication.
     await fs.writeFile(path.join(plansDir, 'auth.md'), planContent);
 
     const config = {
+      invocation_id: 'bd-a3f8.2',
+      agent_role: 'reviewer' as const,
       taskId: 'bd-a3f8.2',
       repoPath,
       branch: 'opensprint/bd-a3f8.2',

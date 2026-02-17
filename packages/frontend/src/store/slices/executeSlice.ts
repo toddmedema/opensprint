@@ -14,6 +14,10 @@ export interface ExecuteState {
   plans: Plan[];
   orchestratorRunning: boolean;
   awaitingApproval: boolean;
+  /** Task ID currently being worked on by orchestrator */
+  currentTaskId: string | null;
+  /** Sub-phase: coding or review */
+  currentPhase: "coding" | "review" | null;
   selectedTaskId: string | null;
   taskDetail: Task | null;
   taskDetailLoading: boolean;
@@ -35,6 +39,8 @@ const initialState: ExecuteState = {
   plans: [],
   orchestratorRunning: false,
   awaitingApproval: false,
+  currentTaskId: null,
+  currentPhase: null,
   selectedTaskId: null,
   taskDetail: null,
   taskDetailLoading: false,
@@ -158,6 +164,13 @@ const executeSlice = createSlice({
     setExecuteError(state, action: PayloadAction<string | null>) {
       state.error = action.payload;
     },
+    setCurrentTaskAndPhase(
+      state,
+      action: PayloadAction<{ currentTaskId: string | null; currentPhase: "coding" | "review" | null }>,
+    ) {
+      state.currentTaskId = action.payload.currentTaskId;
+      state.currentPhase = action.payload.currentPhase;
+    },
     resetExecute() {
       return initialState;
     },
@@ -198,6 +211,8 @@ const executeSlice = createSlice({
       .addCase(fetchExecuteStatus.fulfilled, (state, action) => {
         state.orchestratorRunning = action.payload.currentTask !== null || action.payload.queueDepth > 0;
         state.awaitingApproval = action.payload.awaitingApproval ?? false;
+        state.currentTaskId = action.payload.currentTask ?? null;
+        state.currentPhase = action.payload.currentPhase ?? null;
         state.statusLoading = false;
       })
       .addCase(fetchExecuteStatus.rejected, (state, action) => {
@@ -262,6 +277,7 @@ export const {
   appendAgentOutput,
   setOrchestratorRunning,
   setAwaitingApproval,
+  setCurrentTaskAndPhase,
   setCompletionState,
   taskUpdated,
   setTasks,

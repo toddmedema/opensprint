@@ -65,6 +65,7 @@ describe("Agents API", () => {
         "task-123",
         projectId,
         "coding",
+        "coder",
         "Implement login",
         "2026-02-16T10:00:00.000Z",
         "opensprint/task-123",
@@ -79,6 +80,7 @@ describe("Agents API", () => {
       expect(res.body.data[0]).toEqual({
         id: "task-123",
         phase: "coding",
+        role: "coder",
         label: "Implement login",
         startedAt: "2026-02-16T10:00:00.000Z",
         branchName: "opensprint/task-123",

@@ -1,7 +1,40 @@
 /** Supported agent backends */
 export type AgentType = 'claude' | 'cursor' | 'custom';
 
-/** Agent execution phase */
+/** Named agent roles (PRD §6.3, §12). Planning slot: dreamer–delta_planner. Coding slot: coder, reviewer. */
+export type AgentRole =
+  | 'dreamer'
+  | 'planner'
+  | 'harmonizer'
+  | 'analyst'
+  | 'summarizer'
+  | 'auditor'
+  | 'delta_planner'
+  | 'coder'
+  | 'reviewer';
+
+/** Agent slot: Planning (concurrent) or Coding (single-agent per project) */
+export type AgentSlot = 'planning' | 'coding';
+
+/** Map role to slot */
+export function getSlotForRole(role: AgentRole): AgentSlot {
+  return role === 'coder' || role === 'reviewer' ? 'coding' : 'planning';
+}
+
+/** Human-readable display label for each role */
+export const AGENT_ROLE_LABELS: Record<AgentRole, string> = {
+  dreamer: 'Dreamer',
+  planner: 'Planner',
+  harmonizer: 'Harmonizer',
+  analyst: 'Analyst',
+  summarizer: 'Summarizer',
+  auditor: 'Auditor',
+  delta_planner: 'Delta Planner',
+  coder: 'Coder',
+  reviewer: 'Reviewer',
+};
+
+/** Agent execution phase (coding vs review sub-phase within Execute) */
 export type AgentPhase = 'coding' | 'review';
 
 /** Agent session status */
@@ -15,6 +48,10 @@ export type AgentSessionStatus =
 
 /** Configuration for an active task directory (.opensprint/active/<task-id>/config.json) */
 export interface ActiveTaskConfig {
+  /** Unique invocation ID (PRD §12.2) */
+  invocation_id: string;
+  /** Named agent role (PRD §12.2) */
+  agent_role: AgentRole;
   taskId: string;
   repoPath: string;
   branch: string;
@@ -91,9 +128,11 @@ export type AgentResult = CodingAgentResult | ReviewAgentResult;
 export interface ActiveAgent {
   id: string;
   phase: string;
+  /** Named agent role (e.g. coder, reviewer) */
+  role: AgentRole;
   label: string;
   startedAt: string;
-  /** Branch name (Build phase only) */
+  /** Branch name (Execute phase only) */
   branchName?: string;
 }
 

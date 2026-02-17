@@ -254,7 +254,7 @@ export class ChatService {
         : `design-chat-${projectId}-${conversation.id}-${Date.now()}`;
     const phase = isPlanContext ? "plan" : "design";
     const label = isPlanContext ? "Plan chat" : "Design chat";
-    activeAgentsService.register(agentId, projectId, phase, label, new Date().toISOString());
+    activeAgentsService.register(agentId, projectId, phase, "dreamer", label, new Date().toISOString());
 
     try {
       console.log("[chat] Invoking planning agent", {
@@ -387,7 +387,7 @@ Only output PRD_UPDATE blocks for sections that need changes. If no updates are 
     const fullContext = `${systemPrompt}\n\n## Current PRD\n\n${prdContext}`;
 
     const agentId = `plan-ship-prd-${projectId}-${planId}-${Date.now()}`;
-    activeAgentsService.register(agentId, projectId, "plan", "Ship-it PRD update", new Date().toISOString());
+    activeAgentsService.register(agentId, projectId, "plan", "harmonizer", "Ship-it PRD update", new Date().toISOString());
 
     let response;
     try {

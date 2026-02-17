@@ -156,7 +156,7 @@ export class PlanService {
     const prompt = `Evaluate the implementation complexity of this feature plan.\n\n## Title\n${title}\n\n## Content\n${content}`;
 
     const agentId = `plan-complexity-${projectId}-${Date.now()}`;
-    activeAgentsService.register(agentId, projectId, "plan", "Complexity evaluation", new Date().toISOString());
+    activeAgentsService.register(agentId, projectId, "plan", "planner", "Complexity evaluation", new Date().toISOString());
 
     let response;
     try {
@@ -541,7 +541,7 @@ export class PlanService {
     const prompt = `Break down the following feature plan into implementation tasks.\n\n## Feature Plan\n\n${plan.content}\n\n## PRD Context\n\n${prdContext}`;
 
     const agentId = `plan-task-gen-${projectId}-${Date.now()}`;
-    activeAgentsService.register(agentId, projectId, "plan", "Task generation", new Date().toISOString());
+    activeAgentsService.register(agentId, projectId, "plan", "planner", "Task generation", new Date().toISOString());
 
     let response;
     try {
@@ -924,7 +924,7 @@ export class PlanService {
       const prompt = `Review the following plans and tasks against the codebase. Identify which tasks are already implemented.\n\n## Created plans and tasks\n\n${planSummary}\n\n${codebaseContext}`;
 
       const agentId = `plan-auto-review-${projectId}-${Date.now()}`;
-      activeAgentsService.register(agentId, projectId, "plan", "Plan auto-review", new Date().toISOString());
+      activeAgentsService.register(agentId, projectId, "plan", "planner", "Plan auto-review", new Date().toISOString());
 
       let response;
       try {
@@ -1009,7 +1009,7 @@ export class PlanService {
     const prompt = `Analyze the PRD below and produce a feature decomposition. Output valid JSON with a "plans" array. Each plan has: title, content (full markdown), complexity (low|medium|high|very_high), and tasks array. Each task has: title, description, priority (0-4), dependsOn (array of task titles it depends on).`;
 
     const agentId = `plan-suggest-${projectId}-${Date.now()}`;
-    activeAgentsService.register(agentId, projectId, "plan", "Feature decomposition (suggest)", new Date().toISOString());
+    activeAgentsService.register(agentId, projectId, "plan", "planner", "Feature decomposition (suggest)", new Date().toISOString());
 
     let response;
     try {
@@ -1073,7 +1073,7 @@ export class PlanService {
     const prompt = `Analyze the PRD below and produce a feature decomposition. Output valid JSON with a "plans" array. Each plan has: title, content (full markdown), complexity (low|medium|high|very_high), and tasks array. Each task has: title, description, priority (0-4), dependsOn (array of task titles it depends on).`;
 
     const agentId = `plan-decompose-${projectId}-${Date.now()}`;
-    activeAgentsService.register(agentId, projectId, "plan", "Feature decomposition", new Date().toISOString());
+    activeAgentsService.register(agentId, projectId, "plan", "planner", "Feature decomposition", new Date().toISOString());
 
     let response;
     try {

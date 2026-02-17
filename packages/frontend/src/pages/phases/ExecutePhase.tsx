@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { AgentSession, Plan, Task } from "@opensprint/shared";
-import { PRIORITY_LABELS } from "@opensprint/shared";
+import { PRIORITY_LABELS, AGENT_ROLE_LABELS } from "@opensprint/shared";
 import { useAppDispatch, useAppSelector } from "../../store";
 import {
   fetchTaskDetail,
@@ -117,6 +117,12 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
   const error = useAppSelector((s) => s.execute.error);
   const selectedTaskData = selectedTask ? tasks.find((t) => t.id === selectedTask) : null;
   const isDoneTask = selectedTaskData?.kanbanColumn === "done";
+  const currentTaskId = useAppSelector((s) => s.execute.currentTaskId);
+  const currentPhase = useAppSelector((s) => s.execute.currentPhase);
+  const activeRoleLabel =
+    selectedTask && selectedTask === currentTaskId && currentPhase
+      ? AGENT_ROLE_LABELS[currentPhase === "coding" ? "coder" : "reviewer"]
+      : null;
 
   useEffect(() => {
     if (selectedTask) {
@@ -316,6 +322,11 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
 
             <div className="flex-1 overflow-y-auto min-h-0">
               <div className="p-4 border-b border-gray-200">
+              {activeRoleLabel && (
+                <div className="mb-3 px-3 py-1.5 rounded-md bg-amber-50 border border-amber-200 text-xs font-medium text-amber-800">
+                  Active: {activeRoleLabel}
+                </div>
+              )}
               <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Task</h4>
               {taskDetailLoading ? (
                 <div className="text-sm text-gray-500">Loading task spec...</div>

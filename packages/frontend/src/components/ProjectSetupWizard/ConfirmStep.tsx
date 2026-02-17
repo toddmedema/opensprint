@@ -63,11 +63,11 @@ export function ConfirmStep({
           <dd className="font-mono text-xs">{repoPath}</dd>
         </div>
         <div className="flex justify-between">
-          <dt className="text-gray-500">Planning Agent</dt>
+          <dt className="text-gray-500">Planning Agent Slot</dt>
           <dd className="font-medium capitalize">{planningLabel}</dd>
         </div>
         <div className="flex justify-between">
-          <dt className="text-gray-500">Coding Agent</dt>
+          <dt className="text-gray-500">Coding Agent Slot</dt>
           <dd className="font-medium capitalize">{codingLabel}</dd>
         </div>
         <div className="flex justify-between">

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import type { ActiveAgent } from "@opensprint/shared";
+import { AGENT_ROLE_LABELS } from "@opensprint/shared";
 import { api } from "../api/client";
 import { getProjectPhasePath } from "../lib/phaseRouting";
 import { formatUptime } from "../lib/formatting";
@@ -90,6 +91,11 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
     return m[phase] ?? phase;
   };
 
+  const roleLabel = (agent: ActiveAgent) =>
+    agent.role && agent.role in AGENT_ROLE_LABELS
+      ? AGENT_ROLE_LABELS[agent.role as keyof typeof AGENT_ROLE_LABELS]
+      : phaseLabel(agent.phase);
+
   const dropdownContent =
     open && dropdownRect ? (
       <div
@@ -119,7 +125,7 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
                 >
                   <div className="font-medium text-gray-900">{agent.label || agent.id}</div>
                   <div className="text-gray-500 mt-0.5">
-                    {phaseLabel(agent.phase)} &middot;{" "}
+                    {roleLabel(agent)} &middot;{" "}
                     <span className="text-gray-400 tabular-nums">{formatUptime(agent.startedAt, now)}</span>
                   </div>
                 </button>

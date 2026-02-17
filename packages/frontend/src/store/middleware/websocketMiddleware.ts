@@ -10,6 +10,7 @@ import {
   appendAgentOutput,
   setOrchestratorRunning,
   setAwaitingApproval,
+  setCurrentTaskAndPhase,
   setCompletionState,
   taskUpdated,
 } from "../slices/executeSlice";
@@ -162,6 +163,12 @@ export const websocketMiddleware: Middleware = (storeApi) => {
         if ("awaitingApproval" in event) {
           d(setAwaitingApproval(Boolean(event.awaitingApproval)));
         }
+        d(
+          setCurrentTaskAndPhase({
+            currentTaskId: event.currentTask ?? null,
+            currentPhase: event.currentPhase ?? null,
+          }),
+        );
         break;
       }
 
