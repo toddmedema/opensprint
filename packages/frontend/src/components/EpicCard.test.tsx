@@ -82,7 +82,7 @@ describe("EpicCard", () => {
       />,
     );
 
-    expect(screen.getByText("auth feature")).toBeInTheDocument();
+    expect(screen.getByText("Auth Feature")).toBeInTheDocument();
     expect(screen.getByText("building")).toBeInTheDocument();
   });
 
@@ -120,7 +120,7 @@ describe("EpicCard", () => {
       />,
     );
 
-    expect(screen.getByText("1/3 done")).toBeInTheDocument();
+    expect(screen.getByText(/1\/3/)).toBeInTheDocument();
   });
 
   it("renders nested subtasks with status indicators", () => {
@@ -156,7 +156,7 @@ describe("EpicCard", () => {
       />,
     );
 
-    await user.click(screen.getByText("auth feature"));
+    await user.click(screen.getByText("Auth Feature"));
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
@@ -252,6 +252,40 @@ describe("EpicCard", () => {
     expect(onReship).toHaveBeenCalledTimes(1);
   });
 
+  it("renders Progress label and percentage when tasks exist", () => {
+    render(
+      <EpicCard
+        plan={basePlan}
+        tasks={[]}
+        shippingPlanId={null}
+        reshippingPlanId={null}
+        onSelect={vi.fn()}
+        onShip={vi.fn()}
+        onReship={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Progress")).toBeInTheDocument();
+    expect(screen.getByText(/33%/)).toBeInTheDocument();
+  });
+
+  it("formats plan title with capitalized words", () => {
+    const plan: Plan = { ...basePlan, metadata: { ...basePlan.metadata, planId: "my-cool-feature" } };
+    render(
+      <EpicCard
+        plan={plan}
+        tasks={[]}
+        shippingPlanId={null}
+        reshippingPlanId={null}
+        onSelect={vi.fn()}
+        onShip={vi.fn()}
+        onReship={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("My Cool Feature")).toBeInTheDocument();
+  });
+
   it("handles zero task count without error", () => {
     const plan: Plan = { ...basePlan, taskCount: 0, doneTaskCount: 0 };
     render(
@@ -266,7 +300,7 @@ describe("EpicCard", () => {
       />,
     );
 
-    expect(screen.getByText("auth feature")).toBeInTheDocument();
-    expect(screen.getByText("0/0 done")).toBeInTheDocument();
+    expect(screen.getByText("Auth Feature")).toBeInTheDocument();
+    expect(screen.getByText(/0\/0/)).toBeInTheDocument();
   });
 });

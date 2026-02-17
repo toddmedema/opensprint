@@ -167,7 +167,7 @@ describe("PlanPhase Redux integration", () => {
       </Provider>,
     );
 
-    expect(screen.getByText(/archive-test-feature/i)).toBeInTheDocument();
+    expect(screen.getByText("Archive Test Feature")).toBeInTheDocument();
     expect(screen.getByText(/archive test/i)).toBeInTheDocument();
   });
 
