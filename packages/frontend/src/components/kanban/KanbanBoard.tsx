@@ -33,7 +33,7 @@ export function KanbanBoard({ swimlanes, onTaskSelect }: KanbanBoardProps) {
                 {lane.tasks.filter((t) => t.kanbanColumn === "done").length}/{lane.tasks.length} done
               </p>
             </div>
-            <div className="flex gap-4 p-4 min-w-max overflow-x-auto">
+            <div className="flex gap-4 p-4 overflow-x-auto min-w-0" data-testid="kanban-columns-scroll">
               {KANBAN_COLUMNS.map((col) => (
                 <div key={col} className="kanban-column flex-shrink-0 w-56">
                   <div className="flex items-center gap-2 mb-2">
