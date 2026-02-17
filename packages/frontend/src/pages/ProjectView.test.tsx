@@ -9,7 +9,7 @@ import websocketReducer from "../store/slices/websocketSlice";
 import dreamReducer from "../store/slices/dreamSlice";
 import planReducer from "../store/slices/planSlice";
 import buildReducer from "../store/slices/buildSlice";
-import verifyReducer from "../store/slices/verifySlice";
+import validateReducer from "../store/slices/validateSlice";
 
 // Mock websocket middleware to prevent connection attempts
 vi.mock("../store/middleware/websocketMiddleware", () => ({
@@ -46,7 +46,7 @@ function createStore() {
       dream: dreamReducer,
       plan: planReducer,
       build: buildReducer,
-      verify: verifyReducer,
+      validate: validateReducer,
     },
     preloadedState: {
       project: {

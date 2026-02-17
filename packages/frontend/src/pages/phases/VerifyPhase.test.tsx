@@ -5,7 +5,7 @@ import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
 import { VerifyPhase } from "./VerifyPhase";
 import projectReducer from "../../store/slices/projectSlice";
-import verifyReducer from "../../store/slices/verifySlice";
+import validateReducer from "../../store/slices/validateSlice";
 
 const mockFeedbackList = vi.fn().mockResolvedValue([]);
 const mockFeedbackSubmit = vi.fn().mockResolvedValue({
@@ -31,7 +31,7 @@ function createStore() {
   return configureStore({
     reducer: {
       project: projectReducer,
-      verify: verifyReducer,
+      validate: validateReducer,
     },
     preloadedState: {
       project: {
@@ -47,7 +47,7 @@ function createStore() {
         loading: false,
         error: null,
       },
-      verify: {
+      validate: {
         feedback: [],
         loading: false,
         submitting: false,
@@ -222,7 +222,7 @@ describe("VerifyPhase feedback input", () => {
     const storeWithFeedback = configureStore({
       reducer: {
         project: projectReducer,
-        verify: verifyReducer,
+        validate: validateReducer,
       },
       preloadedState: {
         project: {
@@ -238,7 +238,7 @@ describe("VerifyPhase feedback input", () => {
           loading: false,
           error: null,
         },
-        verify: {
+        validate: {
           feedback: [
             {
               id: "fb-with-img",

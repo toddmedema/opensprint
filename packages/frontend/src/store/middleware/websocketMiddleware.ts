@@ -12,7 +12,7 @@ import {
   setCompletionState,
   taskUpdated,
 } from "../slices/buildSlice";
-import { fetchFeedback } from "../slices/verifySlice";
+import { fetchFeedback } from "../slices/validateSlice";
 
 type StoreDispatch = ThunkDispatch<unknown, unknown, UnknownAction>;
 

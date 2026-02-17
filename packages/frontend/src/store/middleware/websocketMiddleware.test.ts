@@ -12,7 +12,7 @@ import dreamReducer from "../slices/dreamSlice";
 import designReducer from "../slices/designSlice";
 import planReducer from "../slices/planSlice";
 import buildReducer from "../slices/buildSlice";
-import verifyReducer from "../slices/verifySlice";
+import validateReducer from "../slices/validateSlice";
 
 /** Mock WebSocket that allows controlling open/close/message events */
 class MockWebSocket {
@@ -102,7 +102,7 @@ describe("websocketMiddleware", () => {
         design: designReducer,
         plan: planReducer,
         build: buildReducer,
-        verify: verifyReducer,
+        validate: validateReducer,
       },
       middleware: (getDefaultMiddleware) =>
         getDefaultMiddleware({
