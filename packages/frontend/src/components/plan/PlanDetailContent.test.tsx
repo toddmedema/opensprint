@@ -141,11 +141,21 @@ describe("PlanDetailContent", () => {
     });
   });
 
-  it("renders title input with theme-aware styling for light/dark mode", () => {
+  it("renders title input with dark font for readability", () => {
     render(<PlanDetailContent plan={mockPlan} onContentSave={onContentSave} />);
     const titleInput = screen.getByRole("textbox", { name: /title/i });
     expect(titleInput.className).toMatch(/text-gray-900/);
-    expect(titleInput.className).toMatch(/dark:text-gray-100/);
+  });
+
+  it("renders headerActions in header row when provided", () => {
+    render(
+      <PlanDetailContent
+        plan={mockPlan}
+        onContentSave={onContentSave}
+        headerActions={<button type="button">Archive</button>}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /archive/i })).toBeInTheDocument();
   });
 
   it("renders plan markdown editor with light mode styles only", () => {
@@ -157,5 +167,12 @@ describe("PlanDetailContent", () => {
     expect(editorContainer.className).toMatch(/bg-white/);
     expect(editorContainer.className).toMatch(/border-gray-200/);
     expect(editorContainer.className).not.toMatch(/dark:/);
+  });
+
+  it("renders header with title aligned to top and no HR (border-b)", () => {
+    const { container } = render(<PlanDetailContent plan={mockPlan} onContentSave={onContentSave} />);
+    const headerRow = container.querySelector(".flex.items-start");
+    expect(headerRow).toBeInTheDocument();
+    expect(headerRow).not.toHaveClass("border-b");
   });
 });

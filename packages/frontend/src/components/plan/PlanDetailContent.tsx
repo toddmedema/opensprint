@@ -10,6 +10,8 @@ export interface PlanDetailContentProps {
   plan: Plan;
   onContentSave: (content: string) => void;
   saving?: boolean;
+  /** Optional actions to render in the header row next to the title (e.g. archive, close buttons) */
+  headerActions?: React.ReactNode;
 }
 
 /**
@@ -21,6 +23,7 @@ export function PlanDetailContent({
   plan,
   onContentSave,
   saving = false,
+  headerActions,
 }: PlanDetailContentProps) {
   const { title, body } = parsePlanContent(plan.content ?? "");
   const displayTitle = title || formatPlanIdAsTitle(plan.metadata.planId);
@@ -90,26 +93,31 @@ export function PlanDetailContent({
   const bodyMarkdown = body || "_No content yet_";
 
   return (
-    <div className="p-4 border-b border-gray-200 dark:border-gray-600">
-      <div className="space-y-3">
-        {/* Inline editable title — theme-aware for readable text in light/dark mode */}
-        <input
-          type="text"
-          value={titleValue}
-          onChange={handleTitleChange}
-          onBlur={handleTitleBlur}
-          onKeyDown={handleTitleKeyDown}
-          disabled={saving}
-          className="w-full font-semibold text-gray-900 dark:text-gray-100 bg-transparent border border-transparent rounded px-2 py-1 -ml-2 hover:border-gray-200 dark:hover:border-gray-600 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition-colors disabled:opacity-50"
-          placeholder="Title"
-          aria-label="Title"
-        />
-        {saving && (
-          <span className="text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
-            Saving...
-          </span>
-        )}
-        {/* Inline editable markdown body — light mode styles only */}
+    <div className="shrink-0">
+      {/* Header row: title aligned to top, dark font, no HR */}
+      <div className="flex items-start justify-between gap-4 p-4">
+        <div className="min-w-0 flex-1 space-y-1">
+          <input
+            type="text"
+            value={titleValue}
+            onChange={handleTitleChange}
+            onBlur={handleTitleBlur}
+            onKeyDown={handleTitleKeyDown}
+            disabled={saving}
+            className="w-full font-semibold text-gray-900 bg-transparent border border-transparent rounded px-2 py-1 -ml-2 hover:border-gray-200 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition-colors disabled:opacity-50"
+            placeholder="Title"
+            aria-label="Title"
+          />
+          {saving && (
+            <span className="text-xs text-gray-500" aria-live="polite">
+              Saving...
+            </span>
+          )}
+        </div>
+        {headerActions && <div className="shrink-0 flex items-center gap-2">{headerActions}</div>}
+      </div>
+      {/* Inline editable markdown body — light mode styles only */}
+      <div className="px-4 pb-4">
         <div
           data-testid="plan-markdown-editor"
           className="prose prose-sm max-w-none bg-white p-4 rounded-lg border border-gray-200 text-gray-900 text-xs"
