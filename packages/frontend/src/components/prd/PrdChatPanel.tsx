@@ -25,6 +25,8 @@ export interface PrdChatPanelProps {
   onClearSelectionContext: () => void;
   onSend: (message: string) => void;
   inputRef?: React.RefObject<HTMLInputElement | null>;
+  /** "floating" = overlay panel with toggle button; "inline" = always-visible sidebar in split-pane */
+  variant?: "floating" | "inline";
 }
 
 export function PrdChatPanel({
@@ -38,11 +40,13 @@ export function PrdChatPanel({
   onClearSelectionContext,
   onSend,
   inputRef: externalInputRef,
+  variant = "floating",
 }: PrdChatPanelProps) {
   const [chatInput, setChatInput] = useState("");
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const internalInputRef = useRef<HTMLInputElement>(null);
   const inputRef = externalInputRef ?? internalInputRef;
+  const isInline = variant === "inline";
 
   useEffect(() => {
     chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -55,7 +59,8 @@ export function PrdChatPanel({
     onSend(text);
   };
 
-  if (!open) {
+  // In inline mode, always show chat; in floating mode, show toggle when closed
+  if (!open && !isInline) {
     return (
       <button
         type="button"
@@ -73,23 +78,29 @@ export function PrdChatPanel({
     );
   }
 
+  const containerClass = isInline
+    ? "flex flex-col h-full w-[380px] min-w-[320px] border-r border-gray-200 bg-gray-50/50 shrink-0 overflow-hidden"
+    : "fixed bottom-6 right-6 w-96 h-[520px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col z-40 overflow-hidden animate-slide-up-fade";
+
   return (
-    <div className="fixed bottom-6 right-6 w-96 h-[520px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col z-40 overflow-hidden animate-slide-up-fade">
+    <div className={containerClass} data-testid={isInline ? "prd-chat-sidebar" : undefined}>
       {/* Chat header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50/80 shrink-0">
         <div className="flex items-center gap-2">
           <SparklesIcon className="w-4 h-4 text-brand-500" />
           <span className="text-sm font-semibold text-gray-800">Chat with AI</span>
         </div>
-        <CloseButton
-          onClick={() => {
-            onOpenChange(false);
-            onClearSelectionContext();
-          }}
-          ariaLabel="Close chat panel"
-          className="p-1.5 rounded-full hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors"
-          size="w-4 h-4"
-        />
+        {!isInline && (
+          <CloseButton
+            onClick={() => {
+              onOpenChange(false);
+              onClearSelectionContext();
+            }}
+            ariaLabel="Close chat panel"
+            className="p-1.5 rounded-full hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors"
+            size="w-4 h-4"
+          />
+        )}
       </div>
 
       {/* Messages */}

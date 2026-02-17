@@ -52,4 +52,11 @@ describe("PrdChatPanel", () => {
     const clearBtn = screen.getByRole("button", { name: "Clear selection" });
     expect(clearBtn).toBeInTheDocument();
   });
+
+  it("renders as inline sidebar without close button when variant is inline", () => {
+    render(<PrdChatPanel {...defaultProps} variant="inline" />);
+
+    expect(screen.getByTestId("prd-chat-sidebar")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Close chat panel" })).not.toBeInTheDocument();
+  });
 });

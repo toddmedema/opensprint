@@ -179,8 +179,7 @@ describe("DreamPhase with designSlice", () => {
       });
     });
 
-    it("uses design slice state for messages when chat is open", async () => {
-      const user = userEvent.setup();
+    it("displays chat and messages in split-pane when PRD exists", () => {
       const store = createStore({
         design: {
           prdContent: { overview: "Content" },
@@ -192,7 +191,8 @@ describe("DreamPhase with designSlice", () => {
       });
       renderDreamPhase(store);
 
-      await user.click(screen.getByTitle("Chat with AI"));
+      // Chat is always visible in split-pane (left pane)
+      expect(screen.getByTestId("prd-chat-sidebar")).toBeInTheDocument();
       expect(screen.getByText("Hello")).toBeInTheDocument();
       expect(screen.getByText("Hi there!")).toBeInTheDocument();
     });

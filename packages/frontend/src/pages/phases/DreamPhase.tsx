@@ -79,8 +79,6 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
 
   /* ── Local UI state (preserved by mount-all) ── */
   const [initialInput, setInitialInput] = useState("");
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatInput, setChatInput] = useState("");
   const [selection, setSelection] = useState<SelectionInfo | null>(null);
   const [selectionContext, setSelectionContext] = useState<{
     text: string;
@@ -268,7 +266,6 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
       section: selection.sectionKey,
     });
     setSelection(null);
-    setChatOpen(true);
     window.getSelection()?.removeAllRanges();
     setTimeout(() => chatInputRef.current?.focus(), 100);
   };
@@ -393,10 +390,27 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
   }
 
   /* ══════════════════════════════════════════════════════════
-   *  RENDER: PRD Document View (PRD exists)
+   *  RENDER: Split-pane (PRD exists) — left: chat, right: PRD (PRD §7.1.5)
    * ══════════════════════════════════════════════════════════ */
   return (
-    <div className="h-full overflow-y-auto relative bg-white">
+    <div className="h-full flex overflow-hidden bg-white">
+      {/* Left pane: chat window */}
+      <PrdChatPanel
+        open={true}
+        onOpenChange={() => {}}
+        messages={messages}
+        sending={sending}
+        error={error}
+        onDismissError={() => dispatch(setDesignError(null))}
+        selectionContext={selectionContext}
+        onClearSelectionContext={() => setSelectionContext(null)}
+        onSend={handleChatSend}
+        inputRef={chatInputRef}
+        variant="inline"
+      />
+
+      {/* Right pane: live PRD document */}
+      <div className="flex-1 min-w-0 overflow-y-auto">
       <div className="max-w-4xl mx-auto px-6 py-8 pb-24">
           <div className="flex items-center justify-between mb-8 sticky top-0 bg-white/90 backdrop-blur-sm py-3 -mx-6 px-6 z-20 border-b border-transparent">
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
@@ -450,6 +464,7 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
             onToggle={() => setHistoryExpanded(!historyExpanded)}
           />
         </div>
+      </div>
 
       {selection && (
         <div
@@ -470,19 +485,6 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
           </button>
         </div>
       )}
-
-      <PrdChatPanel
-        open={chatOpen}
-        onOpenChange={setChatOpen}
-        messages={messages}
-        sending={sending}
-        error={error}
-        onDismissError={() => dispatch(setDesignError(null))}
-        selectionContext={selectionContext}
-        onClearSelectionContext={() => setSelectionContext(null)}
-        onSend={handleChatSend}
-        inputRef={chatInputRef}
-      />
     </div>
   );
 }
