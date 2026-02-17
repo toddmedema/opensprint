@@ -373,6 +373,54 @@ describe("VerifyPhase feedback input", () => {
     expect(screen.getByText("Pending feedback text")).toBeInTheDocument();
   });
 
+  it("shows fallback when feedback item has no text", () => {
+    const storeWithFeedback = configureStore({
+      reducer: {
+        project: projectReducer,
+        verify: verifyReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "verify",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        verify: {
+          feedback: [
+            {
+              id: "fb-empty",
+              text: undefined as unknown as string,
+              category: "bug",
+              mappedPlanId: null,
+              createdTaskIds: [],
+              status: "mapped",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+      },
+    });
+
+    render(
+      <Provider store={storeWithFeedback}>
+        <VerifyPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    expect(screen.getByText("(No feedback text)")).toBeInTheDocument();
+  });
+
   it("shows category chip for feedback in list", () => {
     const storeWithFeedback = configureStore({
       reducer: {
