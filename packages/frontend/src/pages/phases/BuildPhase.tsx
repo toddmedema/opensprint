@@ -17,6 +17,8 @@ import { wsSend } from "../../store/middleware/websocketMiddleware";
 
 interface BuildPhaseProps {
   projectId: string;
+  /** Called when user clicks plan link in task detail; navigates to Plan phase and selects the plan */
+  onNavigateToPlan?: (planId: string) => void;
 }
 
 interface TaskCard {
@@ -201,7 +203,7 @@ function getEpicTitleFromPlan(plan: Plan): string {
   return plan.metadata.planId.replace(/-/g, " ");
 }
 
-export function BuildPhase({ projectId }: BuildPhaseProps) {
+export function BuildPhase({ projectId, onNavigateToPlan }: BuildPhaseProps) {
   const dispatch = useAppDispatch();
 
   /* ── Redux state ── */
@@ -430,9 +432,26 @@ export function BuildPhase({ projectId }: BuildPhaseProps) {
       {selectedTask && (
         <div className="w-[420px] border-l border-gray-200 flex flex-col bg-gray-50 shrink-0">
           <div className="flex items-center justify-between p-4 border-b border-gray-200 shrink-0">
-            <h3 className="font-semibold text-gray-900 truncate pr-2">
-              {taskDetailLoading ? "Loading…" : taskDetail?.title ?? selectedTask}
-            </h3>
+            <div className="min-w-0 flex-1 pr-2">
+              <h3 className="font-semibold text-gray-900 truncate">
+                {taskDetailLoading ? "Loading…" : taskDetail?.title ?? selectedTask}
+              </h3>
+              {taskDetail?.epicId && !taskDetailLoading && (() => {
+                const plan = plans.find((p) => p.metadata.beadEpicId === taskDetail.epicId);
+                if (!plan || !onNavigateToPlan) return null;
+                const planTitle = getEpicTitleFromPlan(plan);
+                return (
+                  <button
+                    type="button"
+                    onClick={() => onNavigateToPlan(plan.metadata.planId)}
+                    className="mt-1 text-xs text-brand-600 hover:text-brand-700 hover:underline truncate block text-left"
+                    title={`View plan: ${planTitle}`}
+                  >
+                    View plan: {planTitle}
+                  </button>
+                );
+              })()}
+            </div>
             <div className="flex items-center gap-2 shrink-0">
               {!isDoneTask && (
                 <button

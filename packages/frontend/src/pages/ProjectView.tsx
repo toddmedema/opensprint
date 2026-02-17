@@ -6,7 +6,7 @@ import { useAppDispatch, useAppSelector } from "../store";
 import { fetchProject, resetProject } from "../store/slices/projectSlice";
 import { resetWebsocket, clearHilRequest, clearHilNotification } from "../store/slices/websocketSlice";
 import { fetchDesignChat, fetchPrd, fetchPrdHistory, resetDesign } from "../store/slices/designSlice";
-import { fetchPlans, resetPlan } from "../store/slices/planSlice";
+import { fetchPlans, resetPlan, setSelectedPlanId } from "../store/slices/planSlice";
 import { fetchTasks, fetchBuildStatus, resetBuild, setSelectedTaskId } from "../store/slices/buildSlice";
 import { fetchFeedback, resetValidate } from "../store/slices/validateSlice";
 import { wsConnect, wsDisconnect, wsSend } from "../store/middleware/websocketMiddleware";
@@ -77,6 +77,11 @@ export function ProjectView() {
     navigate(getProjectPhasePath(projectId, "build"));
   };
 
+  const handleNavigateToPlan = (planId: string) => {
+    dispatch(setSelectedPlanId(planId));
+    navigate(getProjectPhasePath(projectId, "plan"));
+  };
+
   const handleRespondToHil = (requestId: string, approved: boolean, notes?: string) => {
     dispatch(wsSend({ type: "hil.respond", requestId, approved, notes }));
     dispatch(clearHilRequest());
@@ -137,7 +142,7 @@ export function ProjectView() {
               <DreamPhase projectId={projectId} onNavigateToPlan={() => handlePhaseChange("plan")} />
             )}
             {phase === "plan" && <PlanPhase projectId={projectId} onNavigateToBuildTask={handleNavigateToBuildTask} />}
-            {phase === "build" && <BuildPhase projectId={projectId} />}
+            {phase === "build" && <BuildPhase projectId={projectId} onNavigateToPlan={handleNavigateToPlan} />}
             {phase === "verify" && (
               <VerifyPhase projectId={projectId} onNavigateToBuildTask={handleNavigateToBuildTask} />
             )}

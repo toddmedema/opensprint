@@ -255,3 +255,153 @@ describe("BuildPhase Redux integration", () => {
     });
   });
 });
+
+describe("BuildPhase task detail plan link", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shows plan link when task has epicId and matching plan exists", async () => {
+    const taskDetail = {
+      id: "epic-1.1",
+      title: "Task A",
+      epicId: "epic-1",
+      kanbanColumn: "in_progress" as const,
+      priority: 0,
+      assignee: "agent",
+      description: "",
+      type: "task" as const,
+      status: "in_progress" as const,
+      labels: [],
+      dependencies: [],
+      createdAt: "",
+      updatedAt: "",
+    };
+    mockGet.mockResolvedValue(taskDetail);
+    const tasks = [
+      { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "in_progress", priority: 0, assignee: "agent" },
+    ];
+    const onNavigateToPlan = vi.fn();
+    const store = createStore(tasks, { selectedTaskId: "epic-1.1" });
+    render(
+      <Provider store={store}>
+        <BuildPhase projectId="proj-1" onNavigateToPlan={onNavigateToPlan} />
+      </Provider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
+    });
+
+    const planLink = await screen.findByRole("button", { name: /view plan: build test/i });
+    expect(planLink).toBeInTheDocument();
+  });
+
+  it("does not show plan link when onNavigateToPlan is not provided", async () => {
+    const taskDetail = {
+      id: "epic-1.1",
+      title: "Task A",
+      epicId: "epic-1",
+      kanbanColumn: "in_progress" as const,
+      priority: 0,
+      assignee: "agent",
+      description: "",
+      type: "task" as const,
+      status: "in_progress" as const,
+      labels: [],
+      dependencies: [],
+      createdAt: "",
+      updatedAt: "",
+    };
+    mockGet.mockResolvedValue(taskDetail);
+    const tasks = [
+      { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "in_progress", priority: 0, assignee: "agent" },
+    ];
+    const store = createStore(tasks, { selectedTaskId: "epic-1.1" });
+    render(
+      <Provider store={store}>
+        <BuildPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
+    });
+
+    expect(screen.queryByRole("button", { name: /view plan:/i })).not.toBeInTheDocument();
+  });
+
+  it("does not show plan link when task has no epicId", async () => {
+    const taskDetail = {
+      id: "other-1",
+      title: "Orphan Task",
+      epicId: null,
+      kanbanColumn: "ready" as const,
+      priority: 0,
+      assignee: null,
+      description: "",
+      type: "task" as const,
+      status: "open" as const,
+      labels: [],
+      dependencies: [],
+      createdAt: "",
+      updatedAt: "",
+    };
+    mockGet.mockResolvedValue(taskDetail);
+    const tasks = [
+      { id: "other-1", title: "Orphan Task", epicId: null, kanbanColumn: "ready", priority: 0, assignee: null },
+    ];
+    const onNavigateToPlan = vi.fn();
+    const store = createStore(tasks, { selectedTaskId: "other-1" });
+    render(
+      <Provider store={store}>
+        <BuildPhase projectId="proj-1" onNavigateToPlan={onNavigateToPlan} />
+      </Provider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith("proj-1", "other-1");
+    });
+
+    expect(screen.queryByRole("button", { name: /view plan:/i })).not.toBeInTheDocument();
+  });
+
+  it("calls onNavigateToPlan with planId when plan link is clicked", async () => {
+    const user = userEvent.setup();
+    const taskDetail = {
+      id: "epic-1.1",
+      title: "Task A",
+      epicId: "epic-1",
+      kanbanColumn: "in_progress" as const,
+      priority: 0,
+      assignee: "agent",
+      description: "",
+      type: "task" as const,
+      status: "in_progress" as const,
+      labels: [],
+      dependencies: [],
+      createdAt: "",
+      updatedAt: "",
+    };
+    mockGet.mockResolvedValue(taskDetail);
+    const tasks = [
+      { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "in_progress", priority: 0, assignee: "agent" },
+    ];
+    const onNavigateToPlan = vi.fn();
+    const store = createStore(tasks, { selectedTaskId: "epic-1.1" });
+    render(
+      <Provider store={store}>
+        <BuildPhase projectId="proj-1" onNavigateToPlan={onNavigateToPlan} />
+      </Provider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
+    });
+
+    const planLink = await screen.findByRole("button", { name: /view plan: build test/i });
+    await user.click(planLink);
+
+    expect(onNavigateToPlan).toHaveBeenCalledWith("build-test-feature");
+  });
+});
