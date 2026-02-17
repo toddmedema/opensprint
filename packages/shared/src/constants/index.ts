@@ -12,6 +12,7 @@ export const OPENSPRINT_PATHS = {
   active: `${OPENSPRINT_DIR}/active`,
   settings: `${OPENSPRINT_DIR}/settings.json`,
   orchestratorState: `${OPENSPRINT_DIR}/orchestrator-state.json`,
+  deployments: `${OPENSPRINT_DIR}/deployments`,
   heartbeat: "heartbeat.json",
 } as const;
 

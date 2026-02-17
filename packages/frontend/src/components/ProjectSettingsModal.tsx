@@ -117,6 +117,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
               deployment.mode === "expo" ? { channel: deployment.expoConfig?.channel ?? "preview" } : undefined,
             customCommand: deployment.customCommand ?? undefined,
             webhookUrl: deployment.webhookUrl ?? undefined,
+            rollbackCommand: deployment.rollbackCommand ?? undefined,
           },
           hilConfig,
           reviewMode: settings?.reviewMode ?? DEFAULT_REVIEW_MODE,
@@ -665,6 +666,19 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                         />
                         <p className="mt-1 text-xs text-gray-500">
                           HTTP POST sent after each task completion (GitHub Actions, Vercel, etc.)
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Rollback command</label>
+                        <input
+                          type="text"
+                          className="input w-full font-mono text-sm"
+                          placeholder="e.g. ./rollback.sh or vercel rollback"
+                          value={deployment.rollbackCommand ?? ""}
+                          onChange={(e) => updateDeployment({ rollbackCommand: e.target.value || undefined })}
+                        />
+                        <p className="mt-1 text-xs text-gray-500">
+                          Shell command for rolling back to a previous deployment (Deploy phase)
                         </p>
                       </div>
                     </div>

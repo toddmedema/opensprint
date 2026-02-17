@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate, useLocation, Navigate } from "react-router-dom";
 import type { ProjectPhase } from "@opensprint/shared";
 import {
@@ -21,6 +21,7 @@ import {
   setAwaitingApproval,
 } from "../store/slices/executeSlice";
 import { fetchFeedback, resetEnsure } from "../store/slices/ensureSlice";
+import { fetchDeployStatus, fetchDeployHistory, resetDeploy } from "../store/slices/deploySlice";
 import { wsConnect, wsDisconnect, wsSend } from "../store/middleware/websocketMiddleware";
 import { Layout } from "../components/layout/Layout";
 import { HilApprovalModal } from "../components/HilApprovalModal";
@@ -48,6 +49,7 @@ export function ProjectView() {
   const selectedPlanId = useAppSelector((s) => s.plan.selectedPlanId);
   const selectedTaskId = useAppSelector((s) => s.execute.selectedTaskId);
 
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const project = useAppSelector((s) => s.project.data);
   const projectLoading = useAppSelector((s) => s.project.loading);
   const projectError = useAppSelector((s) => s.project.error);
@@ -67,6 +69,8 @@ export function ProjectView() {
     dispatch(fetchTasks(projectId));
     dispatch(fetchExecuteStatus(projectId));
     dispatch(fetchFeedback(projectId));
+    dispatch(fetchDeployStatus(projectId));
+    dispatch(fetchDeployHistory(projectId));
 
     return () => {
       dispatch(wsDisconnect());
@@ -76,6 +80,7 @@ export function ProjectView() {
       dispatch(resetPlan());
       dispatch(resetExecute());
       dispatch(resetEnsure());
+      dispatch(resetDeploy());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, redirectTo]);
@@ -172,6 +177,8 @@ export function ProjectView() {
         currentPhase={currentPhase}
         onPhaseChange={handlePhaseChange}
         onProjectSaved={handleProjectSaved}
+        settingsOpen={settingsOpen}
+        onSettingsOpenChange={setSettingsOpen}
       >
         {/* Mount ALL phases simultaneously, toggle visibility with CSS.
             Active phase uses flex container with flex-1 min-h-0 to establish bounded height
@@ -191,7 +198,9 @@ export function ProjectView() {
             {phase === "ensure" && (
               <EnsurePhase projectId={projectId} onNavigateToBuildTask={handleNavigateToBuildTask} />
             )}
-            {phase === "deploy" && <DeployPhase projectId={projectId} />}
+            {phase === "deploy" && (
+              <DeployPhase projectId={projectId} onOpenSettings={() => setSettingsOpen(true)} />
+            )}
           </div>
         ))}
       </Layout>

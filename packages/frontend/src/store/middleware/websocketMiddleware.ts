@@ -14,6 +14,13 @@ import {
   taskUpdated,
 } from "../slices/executeSlice";
 import { fetchFeedback } from "../slices/ensureSlice";
+import {
+  appendDeployOutput,
+  deployStarted,
+  deployCompleted,
+  fetchDeployStatus,
+  fetchDeployHistory,
+} from "../slices/deploySlice";
 
 type StoreDispatch = ThunkDispatch<unknown, unknown, UnknownAction>;
 
@@ -160,6 +167,20 @@ export const websocketMiddleware: Middleware = (storeApi) => {
 
       case "feedback.mapped":
         d(fetchFeedback(projectId));
+        break;
+
+      case "deploy.started":
+        d(deployStarted({ deployId: event.deployId }));
+        break;
+
+      case "deploy.output":
+        d(appendDeployOutput({ deployId: event.deployId, chunk: event.chunk }));
+        break;
+
+      case "deploy.completed":
+        d(deployCompleted({ deployId: event.deployId, success: event.success }));
+        d(fetchDeployStatus(projectId));
+        d(fetchDeployHistory(projectId));
         break;
     }
   }

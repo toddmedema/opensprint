@@ -12,6 +12,9 @@ interface NavbarProps {
   currentPhase?: ProjectPhase;
   onPhaseChange?: (phase: ProjectPhase) => void;
   onProjectSaved?: () => void;
+  /** When provided, settings modal is controlled by parent */
+  settingsOpen?: boolean;
+  onSettingsOpenChange?: (open: boolean) => void;
 }
 
 const phases: { key: ProjectPhase; label: string }[] = [
@@ -22,11 +25,20 @@ const phases: { key: ProjectPhase; label: string }[] = [
   { key: "deploy", label: "Deploy" },
 ];
 
-export function Navbar({ project, currentPhase, onPhaseChange, onProjectSaved }: NavbarProps) {
+export function Navbar({
+  project,
+  currentPhase,
+  onPhaseChange,
+  onProjectSaved,
+  settingsOpen: controlledSettingsOpen,
+  onSettingsOpenChange,
+}: NavbarProps) {
   const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [internalSettingsOpen, setInternalSettingsOpen] = useState(false);
+  const settingsOpen = controlledSettingsOpen ?? internalSettingsOpen;
+  const setSettingsOpen = onSettingsOpenChange ?? setInternalSettingsOpen;
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

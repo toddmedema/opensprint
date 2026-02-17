@@ -29,6 +29,8 @@ export interface DeploymentConfig {
   customCommand?: string;
   /** Webhook URL to POST after Build completion (custom mode) */
   webhookUrl?: string;
+  /** Shell command for rollback (custom mode) */
+  rollbackCommand?: string;
 }
 
 export type DeploymentConfigInput = DeploymentConfig;

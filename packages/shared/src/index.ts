@@ -7,6 +7,7 @@ export * from './types/agent.js';
 export * from './types/conversation.js';
 export * from './types/feedback.js';
 export * from './types/settings.js';
+export * from './types/deploy.js';
 
 // API types
 export * from './types/api.js';

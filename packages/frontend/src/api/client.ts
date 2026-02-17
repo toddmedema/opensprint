@@ -22,6 +22,8 @@ import type {
   ChatResponse,
   Conversation,
   ActiveAgent,
+  DeploymentRecord,
+  DeploymentConfig,
 } from "@opensprint/shared";
 
 const BASE_URL = "/api/v1";
@@ -181,6 +183,31 @@ export const api = {
   // ─── Execute ───
   execute: {
     status: (projectId: string) => request<OrchestratorStatus>(`/projects/${projectId}/execute/status`),
+  },
+
+  // ─── Deploy ───
+  deploy: {
+    deploy: (projectId: string) =>
+      request<{ deployId: string }>(`/projects/${projectId}/deploy`, {
+        method: "POST",
+      }),
+    status: (projectId: string) =>
+      request<{ activeDeployId: string | null; currentDeploy: DeploymentRecord | null }>(
+        `/projects/${projectId}/deploy/status`,
+      ),
+    history: (projectId: string, limit?: number) =>
+      request<DeploymentRecord[]>(
+        `/projects/${projectId}/deploy/history${limit ? `?limit=${limit}` : ""}`,
+      ),
+    rollback: (projectId: string, deployId: string) =>
+      request<{ deployId: string }>(`/projects/${projectId}/deploy/${deployId}/rollback`, {
+        method: "POST",
+      }),
+    updateSettings: (projectId: string, deployment: Partial<DeploymentConfig>) =>
+      request<ProjectSettings>(`/projects/${projectId}/deploy/settings`, {
+        method: "PUT",
+        body: JSON.stringify(deployment),
+      }),
   },
 
   // ─── Feedback ───
