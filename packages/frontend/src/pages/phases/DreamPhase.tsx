@@ -3,15 +3,15 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAppDispatch, useAppSelector } from "../../store";
 import {
-  sendDreamMessage,
+  sendDesignMessage,
   savePrdSection,
   uploadPrdFile,
   addUserMessage,
-  setDreamError,
+  setDesignError,
   fetchPrd,
   fetchPrdHistory,
-  fetchDreamChat,
-} from "../../store/slices/dreamSlice";
+  fetchDesignChat,
+} from "../../store/slices/designSlice";
 import { decomposePlans } from "../../store/slices/planSlice";
 
 /* ── Types ──────────────────────────────────────────────── */
@@ -209,12 +209,12 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
   const dispatch = useAppDispatch();
 
   /* ── Redux state ── */
-  const messages = useAppSelector((s) => s.dream.messages);
-  const prdContent = useAppSelector((s) => s.dream.prdContent);
-  const prdHistory = useAppSelector((s) => s.dream.prdHistory);
-  const sending = useAppSelector((s) => s.dream.sendingChat);
-  const savingSection = useAppSelector((s) => s.dream.savingSection);
-  const error = useAppSelector((s) => s.dream.error);
+  const messages = useAppSelector((s) => s.design.messages);
+  const prdContent = useAppSelector((s) => s.design.prdContent);
+  const prdHistory = useAppSelector((s) => s.design.prdHistory);
+  const sending = useAppSelector((s) => s.design.sendingChat);
+  const savingSection = useAppSelector((s) => s.design.savingSection);
+  const error = useAppSelector((s) => s.design.error);
 
   /* ── Local UI state (preserved by mount-all) ── */
   const [initialInput, setInitialInput] = useState("");
@@ -346,8 +346,8 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
       }),
     );
 
-    const result = await dispatch(sendDreamMessage({ projectId, message: text }));
-    if (sendDreamMessage.fulfilled.match(result) && result.payload.prdChanges?.length) {
+    const result = await dispatch(sendDesignMessage({ projectId, message: text }));
+    if (sendDesignMessage.fulfilled.match(result) && result.payload.prdChanges?.length) {
       dispatch(fetchPrd(projectId));
       dispatch(fetchPrdHistory(projectId));
     }
@@ -370,7 +370,7 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
       if (uploadPrdFile.fulfilled.match(result)) {
         dispatch(fetchPrd(projectId));
         dispatch(fetchPrdHistory(projectId));
-        dispatch(fetchDreamChat(projectId));
+        dispatch(fetchDesignChat(projectId));
       }
 
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -399,9 +399,9 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
     );
 
     const result = await dispatch(
-      sendDreamMessage({ projectId, message: fullMessage, prdSectionFocus: prdFocus }),
+      sendDesignMessage({ projectId, message: fullMessage, prdSectionFocus: prdFocus }),
     );
-    if (sendDreamMessage.fulfilled.match(result) && result.payload.prdChanges?.length) {
+    if (sendDesignMessage.fulfilled.match(result) && result.payload.prdChanges?.length) {
       dispatch(fetchPrd(projectId));
       dispatch(fetchPrdHistory(projectId));
     }
@@ -437,14 +437,14 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
     if (savePrdSection.fulfilled.match(result)) {
       dispatch(fetchPrd(projectId));
       dispatch(fetchPrdHistory(projectId));
-      dispatch(fetchDreamChat(projectId));
+      dispatch(fetchDesignChat(projectId));
       setEditingSection(null);
       setEditDraft("");
     }
   };
 
   const handlePlanIt = async () => {
-    dispatch(setDreamError(null));
+    dispatch(setDesignError(null));
     setPlanningIt(true);
     const result = await dispatch(decomposePlans(projectId));
     setPlanningIt(false);
@@ -558,7 +558,7 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
             {error}
             <button
               type="button"
-              onClick={() => dispatch(setDreamError(null))}
+              onClick={() => dispatch(setDesignError(null))}
               className="ml-2 text-red-500 hover:text-red-700 underline"
             >
               Dismiss
@@ -849,7 +849,7 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
               {error}
               <button
                 type="button"
-                onClick={() => dispatch(setDreamError(null))}
+                onClick={() => dispatch(setDesignError(null))}
                 className="ml-1 underline"
               >
                 Dismiss

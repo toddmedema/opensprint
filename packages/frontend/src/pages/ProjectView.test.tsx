@@ -6,7 +6,7 @@ import { configureStore } from "@reduxjs/toolkit";
 import { ProjectView } from "./ProjectView";
 import projectReducer from "../store/slices/projectSlice";
 import websocketReducer from "../store/slices/websocketSlice";
-import dreamReducer from "../store/slices/dreamSlice";
+import designReducer from "../store/slices/designSlice";
 import planReducer from "../store/slices/planSlice";
 import buildReducer from "../store/slices/buildSlice";
 import validateReducer from "../store/slices/validateSlice";
@@ -45,7 +45,7 @@ function createStore() {
     reducer: {
       project: projectReducer,
       websocket: websocketReducer,
-      dream: dreamReducer,
+      design: designReducer,
       plan: planReducer,
       build: buildReducer,
       validate: validateReducer,

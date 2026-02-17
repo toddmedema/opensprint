@@ -5,7 +5,7 @@ import { phaseFromSlug, getProjectPhasePath, isValidPhaseSlug, VALID_PHASES } fr
 import { useAppDispatch, useAppSelector } from "../store";
 import { fetchProject, resetProject } from "../store/slices/projectSlice";
 import { resetWebsocket, clearHilRequest, clearHilNotification } from "../store/slices/websocketSlice";
-import { fetchDreamChat, fetchPrd, fetchPrdHistory, resetDream } from "../store/slices/dreamSlice";
+import { fetchDesignChat, fetchPrd, fetchPrdHistory, resetDesign } from "../store/slices/designSlice";
 import { fetchPlans, resetPlan } from "../store/slices/planSlice";
 import { fetchTasks, fetchBuildStatus, resetBuild, setSelectedTaskId } from "../store/slices/buildSlice";
 import { fetchFeedback, resetValidate } from "../store/slices/validateSlice";
@@ -44,7 +44,7 @@ export function ProjectView() {
 
     dispatch(wsConnect({ projectId }));
     dispatch(fetchProject(projectId));
-    dispatch(fetchDreamChat(projectId));
+    dispatch(fetchDesignChat(projectId));
     dispatch(fetchPrd(projectId));
     dispatch(fetchPrdHistory(projectId));
     dispatch(fetchPlans(projectId));
@@ -56,7 +56,7 @@ export function ProjectView() {
       dispatch(wsDisconnect());
       dispatch(resetProject());
       dispatch(resetWebsocket());
-      dispatch(resetDream());
+      dispatch(resetDesign());
       dispatch(resetPlan());
       dispatch(resetBuild());
       dispatch(resetValidate());

@@ -79,6 +79,37 @@ export const savePrdSection = createAsyncThunk(
   },
 );
 
+export const uploadPrdFile = createAsyncThunk(
+  "design/uploadPrdFile",
+  async ({ projectId, file }: { projectId: string; file: File }) => {
+    const ext = file.name.split(".").pop()?.toLowerCase();
+
+    if (ext === "md") {
+      const text = await file.text();
+      const prompt = `Here's my existing product requirements document. Please analyze it and generate a structured PRD from it:\n\n${text}`;
+      const response = (await api.chat.send(projectId, prompt, "dream")) as {
+        message: string;
+        prdChanges?: { section: string; previousVersion: number; newVersion: number }[];
+      };
+      return { response, fileName: file.name };
+    } else if (ext === "docx" || ext === "pdf") {
+      const result = await api.prd.upload(projectId, file);
+      const uploadResult = result as { text?: string; message?: string };
+      if (uploadResult.text) {
+        const prompt = `Here's my existing product requirements document. Please analyze it and generate a structured PRD from it:\n\n${uploadResult.text}`;
+        const response = (await api.chat.send(projectId, prompt, "dream")) as {
+          message: string;
+          prdChanges?: { section: string; previousVersion: number; newVersion: number }[];
+        };
+        return { response, fileName: file.name };
+      }
+      return { response: null, fileName: file.name };
+    }
+
+    throw new Error("Unsupported file type. Please use .md, .docx, or .pdf");
+  },
+);
+
 const designSlice = createSlice({
   name: "design",
   initialState,
@@ -140,6 +171,25 @@ const designSlice = createSlice({
       .addCase(savePrdSection.rejected, (state, action) => {
         state.savingSection = null;
         state.error = action.error.message ?? "Failed to save PRD section";
+      })
+      // uploadPrdFile
+      .addCase(uploadPrdFile.pending, (state) => {
+        state.sendingChat = true;
+        state.error = null;
+      })
+      .addCase(uploadPrdFile.fulfilled, (state, action) => {
+        state.sendingChat = false;
+        if (action.payload.response) {
+          state.messages.push({
+            role: "assistant",
+            content: action.payload.response.message,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      })
+      .addCase(uploadPrdFile.rejected, (state, action) => {
+        state.sendingChat = false;
+        state.error = action.error.message ?? "Failed to process uploaded file";
       });
   },
 });

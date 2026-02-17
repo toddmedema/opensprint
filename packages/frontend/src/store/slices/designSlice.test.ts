@@ -6,6 +6,7 @@ import designReducer, {
   fetchPrdHistory,
   sendDesignMessage,
   savePrdSection,
+  uploadPrdFile,
   addUserMessage,
   setDesignError,
   setPrdContent,
@@ -24,6 +25,7 @@ vi.mock("../../api/client", () => ({
       get: vi.fn(),
       getHistory: vi.fn(),
       updateSection: vi.fn(),
+      upload: vi.fn(),
     },
   },
 }));
@@ -37,6 +39,7 @@ describe("designSlice", () => {
     vi.mocked(api.prd.get).mockReset();
     vi.mocked(api.prd.getHistory).mockReset();
     vi.mocked(api.prd.updateSection).mockReset();
+    vi.mocked(api.prd.upload).mockReset();
   });
 
   function createStore() {
@@ -288,6 +291,52 @@ describe("designSlice", () => {
       );
 
       expect(store.getState().design.error).toBe("Failed to save PRD section");
+    });
+  });
+
+  describe("uploadPrdFile thunk", () => {
+    it("sends .md file content via chat and appends assistant message on fulfilled", async () => {
+      const file = new File(["# My PRD\n\nContent"], "doc.md", { type: "text/markdown" });
+      vi.mocked(api.chat.send).mockResolvedValue({ message: "Parsed your PRD" });
+      const store = createStore();
+      await store.dispatch(uploadPrdFile({ projectId: "proj-1", file }));
+
+      expect(api.chat.send).toHaveBeenCalledWith(
+        "proj-1",
+        expect.stringContaining("# My PRD"),
+        "dream",
+        undefined,
+      );
+      const state = store.getState().design;
+      expect(state.sendingChat).toBe(false);
+      expect(state.messages).toHaveLength(1);
+      expect(state.messages[0].role).toBe("assistant");
+      expect(state.messages[0].content).toBe("Parsed your PRD");
+    });
+
+    it("sets sendingChat true on pending", async () => {
+      const file = new File(["content"], "doc.md", { type: "text/markdown" });
+      let resolveApi: (v: { message: string }) => void;
+      const apiPromise = new Promise<{ message: string }>((r) => {
+        resolveApi = r;
+      });
+      vi.mocked(api.chat.send).mockReturnValue(apiPromise as never);
+      const store = createStore();
+      const dispatchPromise = store.dispatch(uploadPrdFile({ projectId: "proj-1", file }));
+
+      expect(store.getState().design.sendingChat).toBe(true);
+      resolveApi!({ message: "ok" });
+      await dispatchPromise;
+    });
+
+    it("sets error on rejected", async () => {
+      const file = new File(["content"], "doc.md", { type: "text/markdown" });
+      vi.mocked(api.chat.send).mockRejectedValue(new Error("Upload failed"));
+      const store = createStore();
+      await store.dispatch(uploadPrdFile({ projectId: "proj-1", file }));
+
+      expect(store.getState().design.sendingChat).toBe(false);
+      expect(store.getState().design.error).toBe("Upload failed");
     });
   });
 });
