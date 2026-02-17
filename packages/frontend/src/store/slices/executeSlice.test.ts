@@ -131,14 +131,35 @@ describe("executeSlice", () => {
       expect(store.getState().execute.completionState).toBeNull();
     });
 
-    it("appendAgentOutput appends chunk for selected task only", () => {
+    it("appendAgentOutput appends filtered chunk for selected task only", () => {
       const store = createStore();
       store.dispatch(setSelectedTaskId("task-1"));
-      store.dispatch(appendAgentOutput({ taskId: "task-1", chunk: "Hello " }));
-      store.dispatch(appendAgentOutput({ taskId: "task-1", chunk: "world" }));
-      expect(store.getState().execute.agentOutput).toEqual(["Hello ", "world"]);
+      // Plain text with newlines passes through; JSON metadata is filtered
+      store.dispatch(appendAgentOutput({ taskId: "task-1", chunk: "Hello \n" }));
+      store.dispatch(appendAgentOutput({ taskId: "task-1", chunk: "world\n" }));
+      expect(store.getState().execute.agentOutput).toEqual(["Hello \n", "world\n"]);
       store.dispatch(appendAgentOutput({ taskId: "task-2", chunk: "ignored" }));
-      expect(store.getState().execute.agentOutput).toEqual(["Hello ", "world"]);
+      expect(store.getState().execute.agentOutput).toEqual(["Hello \n", "world\n"]);
+    });
+
+    it("appendAgentOutput filters JSON metadata and shows only message content", () => {
+      const store = createStore();
+      store.dispatch(setSelectedTaskId("task-1"));
+      // Cursor stream-json: metadata events are hidden, text events are shown
+      store.dispatch(
+        appendAgentOutput({
+          taskId: "task-1",
+          chunk: '{"type":"tool_use","name":"edit","input":{}}\n',
+        }),
+      );
+      expect(store.getState().execute.agentOutput).toEqual([]);
+      store.dispatch(
+        appendAgentOutput({
+          taskId: "task-1",
+          chunk: '{"type":"text","text":"Creating file..."}\n',
+        }),
+      );
+      expect(store.getState().execute.agentOutput).toEqual(["Creating file..."]);
     });
 
     it("setOrchestratorRunning sets orchestrator state", () => {

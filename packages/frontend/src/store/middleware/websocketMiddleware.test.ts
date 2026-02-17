@@ -301,10 +301,10 @@ describe("websocketMiddleware", () => {
       const { setSelectedTaskId } = await import("../slices/executeSlice");
       store.dispatch(setSelectedTaskId("task-1"));
 
-      wsInstance!.simulateMessage({ type: "agent.output", taskId: "task-1", chunk: "Hello world" });
+      wsInstance!.simulateMessage({ type: "agent.output", taskId: "task-1", chunk: "Hello world\n" });
 
       await vi.waitFor(() => {
-        expect(store.getState().execute.agentOutput).toContain("Hello world");
+        expect(store.getState().execute.agentOutput.join("")).toContain("Hello world");
       });
     });
 
