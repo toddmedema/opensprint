@@ -11,6 +11,7 @@ import executeReducer from "../../store/slices/executeSlice";
 const mockArchive = vi.fn().mockResolvedValue(undefined);
 const mockExecute = vi.fn().mockResolvedValue(undefined);
 const mockReExecute = vi.fn().mockResolvedValue(undefined);
+const mockGetCrossEpicDependencies = vi.fn().mockResolvedValue({ prerequisitePlanIds: [] });
 const mockPlansUpdate = vi.fn().mockResolvedValue({
   metadata: {
     planId: "archive-test-feature",
@@ -72,6 +73,7 @@ vi.mock("../../api/client", () => ({
       create: (...args: unknown[]) => mockPlansCreate(...args),
       update: (...args: unknown[]) => mockPlansUpdate(...args),
       archive: (...args: unknown[]) => mockArchive(...args),
+      getCrossEpicDependencies: (...args: unknown[]) => mockGetCrossEpicDependencies(...args),
       execute: (...args: unknown[]) => mockExecute(...args),
       reExecute: (...args: unknown[]) => mockReExecute(...args),
     },
@@ -482,7 +484,8 @@ describe("PlanPhase executePlan thunk", () => {
     Element.prototype.scrollIntoView = vi.fn();
   });
 
-  it("dispatches executePlan thunk when Execute! is clicked", async () => {
+  it("dispatches executePlan thunk when Execute! is clicked (no cross-epic deps)", async () => {
+    mockGetCrossEpicDependencies.mockResolvedValue({ prerequisitePlanIds: [] });
     const plans = [
       {
         ...basePlan,
@@ -501,7 +504,48 @@ describe("PlanPhase executePlan thunk", () => {
     const executeButton = screen.getByRole("button", { name: /execute!/i });
     await user.click(executeButton);
 
-    expect(mockExecute).toHaveBeenCalledWith("proj-1", "archive-test-feature");
+    await waitFor(() => {
+      expect(mockGetCrossEpicDependencies).toHaveBeenCalledWith("proj-1", "archive-test-feature");
+      expect(mockExecute).toHaveBeenCalledWith("proj-1", "archive-test-feature");
+    });
+  });
+
+  it("shows cross-epic modal and passes prerequisites when user confirms", async () => {
+    mockGetCrossEpicDependencies.mockResolvedValue({
+      prerequisitePlanIds: ["user-auth", "feature-base"],
+    });
+    const plans = [
+      {
+        ...basePlan,
+        status: "planning" as const,
+        metadata: { ...basePlan.metadata },
+      },
+    ];
+    const store = createStore(plans);
+    const user = userEvent.setup();
+    render(
+      <Provider store={store}>
+        <PlanPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    const executeButton = screen.getByRole("button", { name: /execute!/i });
+    await user.click(executeButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Cross-epic dependencies/)).toBeInTheDocument();
+      expect(screen.getByText(/User Auth, Feature Base/)).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Proceed/ }));
+
+    await waitFor(() => {
+      expect(mockExecute).toHaveBeenCalledWith(
+        "proj-1",
+        "archive-test-feature",
+        ["user-auth", "feature-base"],
+      );
+    });
   });
 });
 

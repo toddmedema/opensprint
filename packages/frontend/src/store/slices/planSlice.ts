@@ -61,8 +61,16 @@ export const decomposePlans = createAsyncThunk("plan/decompose", async (projectI
 
 export const executePlan = createAsyncThunk(
   "plan/execute",
-  async ({ projectId, planId }: { projectId: string; planId: string }) => {
-    await api.plans.execute(projectId, planId);
+  async ({
+    projectId,
+    planId,
+    prerequisitePlanIds,
+  }: {
+    projectId: string;
+    planId: string;
+    prerequisitePlanIds?: string[];
+  }) => {
+    await api.plans.execute(projectId, planId, prerequisitePlanIds);
   },
 );
 

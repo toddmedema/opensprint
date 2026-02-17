@@ -105,3 +105,9 @@ export interface PlanStatusResponse {
   prdChangedSinceLastRun: boolean;
   action: PlanStatusAction;
 }
+
+/** Response from GET /projects/:id/plans/:planId/cross-epic-dependencies */
+export interface CrossEpicDependenciesResponse {
+  /** Plan IDs that must be executed first (in dependency order) */
+  prerequisitePlanIds: string[];
+}

@@ -275,6 +275,24 @@ describe("planSlice", () => {
       expect(api.plans.execute).toHaveBeenCalledWith("proj-1", "plan-123");
     });
 
+    it("passes prerequisitePlanIds when provided", async () => {
+      vi.mocked(api.plans.execute).mockResolvedValue(undefined);
+      const store = createStore();
+      await store.dispatch(
+        executePlan({
+          projectId: "proj-1",
+          planId: "plan-123",
+          prerequisitePlanIds: ["user-auth", "feature-base"],
+        }),
+      );
+
+      expect(api.plans.execute).toHaveBeenCalledWith(
+        "proj-1",
+        "plan-123",
+        ["user-auth", "feature-base"],
+      );
+    });
+
     it("clears executingPlanId and sets error on rejected", async () => {
       vi.mocked(api.plans.execute).mockRejectedValue(new Error("Execute failed"));
       const store = createStore();

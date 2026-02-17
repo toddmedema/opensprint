@@ -1,7 +1,13 @@
 import { Router, Request } from "express";
 import { PlanService } from "../services/plan.service.js";
 import { orchestratorService } from "../services/orchestrator.service.js";
-import type { ApiResponse, Plan, PlanDependencyGraph, SuggestPlansResponse } from "@opensprint/shared";
+import type {
+  ApiResponse,
+  Plan,
+  PlanDependencyGraph,
+  SuggestPlansResponse,
+  CrossEpicDependenciesResponse,
+} from "@opensprint/shared";
 
 const planService = new PlanService();
 
@@ -65,6 +71,17 @@ plansRouter.get("/dependencies", async (req: Request<ProjectParams>, res, next) 
   }
 });
 
+// GET /projects/:projectId/plans/:planId/cross-epic-dependencies — Prerequisites still in Planning
+plansRouter.get("/:planId/cross-epic-dependencies", async (req: Request<PlanParams>, res, next) => {
+  try {
+    const result = await planService.getCrossEpicDependencies(req.params.projectId, req.params.planId);
+    const body: ApiResponse<CrossEpicDependenciesResponse> = { data: result };
+    res.json(body);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /projects/:projectId/plans/:planId — Get Plan details
 plansRouter.get("/:planId", async (req: Request<PlanParams>, res, next) => {
   try {
@@ -88,9 +105,18 @@ plansRouter.put("/:planId", async (req: Request<PlanParams>, res, next) => {
 });
 
 // POST /projects/:projectId/plans/:planId/execute — Execute! (approve Plan for execution)
-plansRouter.post("/:planId/execute", async (req: Request<PlanParams>, res, next) => {
+// Optional body: { prerequisitePlanIds?: string[] } — auto-queue these plans first in dependency order
+plansRouter.post("/:planId/execute", async (req: Request<PlanParams & { body?: { prerequisitePlanIds?: string[] } }>, res, next) => {
   try {
-    const plan = await planService.shipPlan(req.params.projectId, req.params.planId);
+    const prerequisitePlanIds = req.body?.prerequisitePlanIds ?? [];
+    const plan =
+      prerequisitePlanIds.length > 0
+        ? await planService.shipPlanWithPrerequisites(
+            req.params.projectId,
+            req.params.planId,
+            prerequisitePlanIds,
+          )
+        : await planService.shipPlan(req.params.projectId, req.params.planId);
     // Nudge orchestrator to pick up newly-available tasks (PRDv2 §5.7 event-driven dispatch)
     orchestratorService.nudge(req.params.projectId);
     const body: ApiResponse<Plan> = { data: plan };

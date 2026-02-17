@@ -534,6 +534,113 @@ describe("Plan REST endpoints - task decomposition", () => {
     });
   });
 
+  describe("GET /projects/:id/plans/:planId/cross-epic-dependencies", () => {
+    it("returns prerequisite plan IDs when plan depends on others still in planning", { timeout: 15000 }, async () => {
+      const app = createApp();
+      // Create plan A (user-auth) - prerequisite
+      const planABody = {
+        title: "User Auth",
+        content: "# User Auth\n\n## Overview\n\nAuth.\n\n## Dependencies\n\nNone.",
+        complexity: "low",
+        tasks: [{ title: "Auth task", description: "Implement auth", priority: 0, dependsOn: [] }],
+      };
+      const createARes = await request(app).post(`${API_PREFIX}/projects/${projectId}/plans`).send(planABody);
+      expect(createARes.status).toBe(201);
+      const planAId = createARes.body.data.metadata.planId;
+      expect(planAId).toBe("user-auth");
+
+      // Create plan B (feature-x) that depends on user-auth via markdown
+      const planBBody = {
+        title: "Feature X",
+        content: `# Feature X
+
+## Overview
+
+Feature that depends on auth.
+
+## Dependencies
+
+- user-auth
+`,
+        complexity: "medium",
+        tasks: [{ title: "Feature task", description: "Implement feature", priority: 0, dependsOn: [] }],
+      };
+      const createBRes = await request(app).post(`${API_PREFIX}/projects/${projectId}/plans`).send(planBBody);
+      expect(createBRes.status).toBe(201);
+      const planBId = createBRes.body.data.metadata.planId;
+      expect(planBId).toBe("feature-x");
+
+      // Both plans in planning state (neither shipped)
+      const depsRes = await request(app).get(
+        `${API_PREFIX}/projects/${projectId}/plans/${planBId}/cross-epic-dependencies`,
+      );
+      expect(depsRes.status).toBe(200);
+      expect(depsRes.body.data.prerequisitePlanIds).toEqual(["user-auth"]);
+    });
+
+    it("returns empty array when plan has no cross-epic dependencies", async () => {
+      const app = createApp();
+      const planBody = {
+        title: "Standalone Plan",
+        content: "# Standalone\n\n## Dependencies\n\nNone.",
+        complexity: "low",
+      };
+      const createRes = await request(app).post(`${API_PREFIX}/projects/${projectId}/plans`).send(planBody);
+      expect(createRes.status).toBe(201);
+      const planId = createRes.body.data.metadata.planId;
+
+      const depsRes = await request(app).get(
+        `${API_PREFIX}/projects/${projectId}/plans/${planId}/cross-epic-dependencies`,
+      );
+      expect(depsRes.status).toBe(200);
+      expect(depsRes.body.data.prerequisitePlanIds).toEqual([]);
+    });
+  });
+
+  describe("POST /projects/:id/plans/:planId/execute with prerequisitePlanIds", () => {
+    it("executes prerequisites first then requested plan", { timeout: 20000 }, async () => {
+      const app = createApp();
+      // Create plan A (user-auth)
+      const planABody = {
+        title: "User Auth",
+        content: "# User Auth\n\n## Dependencies\n\nNone.",
+        complexity: "low",
+        tasks: [{ title: "Auth task", description: "Auth", priority: 0, dependsOn: [] }],
+      };
+      const createARes = await request(app).post(`${API_PREFIX}/projects/${projectId}/plans`).send(planABody);
+      expect(createARes.status).toBe(201);
+      const planAId = createARes.body.data.metadata.planId;
+
+      // Create plan B that depends on user-auth
+      const planBBody = {
+        title: "Feature X",
+        content: "# Feature X\n\n## Dependencies\n\n- user-auth",
+        complexity: "medium",
+        tasks: [{ title: "Feature task", description: "Feature", priority: 0, dependsOn: [] }],
+      };
+      const createBRes = await request(app).post(`${API_PREFIX}/projects/${projectId}/plans`).send(planBBody);
+      expect(createBRes.status).toBe(201);
+      const planBId = createBRes.body.data.metadata.planId;
+
+      // Execute B with A as prerequisite
+      const executeRes = await request(app)
+        .post(`${API_PREFIX}/projects/${projectId}/plans/${planBId}/execute`)
+        .send({ prerequisitePlanIds: [planAId] });
+      expect(executeRes.status).toBe(200);
+
+      const project = await projectService.getProject(projectId);
+      const plansDir = path.join(project.repoPath, OPENSPRINT_PATHS.plans);
+      const planAMeta = JSON.parse(
+        await fs.readFile(path.join(plansDir, `${planAId}.meta.json`), "utf-8"),
+      );
+      const planBMeta = JSON.parse(
+        await fs.readFile(path.join(plansDir, `${planBId}.meta.json`), "utf-8"),
+      );
+      expect(planAMeta.shippedAt).toBeTruthy();
+      expect(planBMeta.shippedAt).toBeTruthy();
+    });
+  });
+
   it("POST /projects/:id/plans/:planId/archive returns 400 when plan has no epic", async () => {
     const app = createApp();
     const planBody = {

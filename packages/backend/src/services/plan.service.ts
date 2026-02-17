@@ -10,6 +10,7 @@ import type {
   PlanComplexity,
   PlanStatusResponse,
   Prd,
+  CrossEpicDependenciesResponse,
 } from "@opensprint/shared";
 import { OPENSPRINT_PATHS, getEpicId } from "@opensprint/shared";
 import { ProjectService } from "./project.service.js";
@@ -709,6 +710,70 @@ export class PlanService {
   /** Get the dependency graph for all Plans */
   async getDependencyGraph(projectId: string): Promise<PlanDependencyGraph> {
     return this.listPlansWithDependencyGraph(projectId);
+  }
+
+  /**
+   * Get cross-epic dependencies: plans that must be executed first (still in Planning state).
+   * Returns prerequisite plan IDs in topological order for execution.
+   */
+  async getCrossEpicDependencies(projectId: string, planId: string): Promise<CrossEpicDependenciesResponse> {
+    const { plans, edges } = await this.listPlansWithDependencyGraph(projectId);
+    const planById = new Map(plans.map((p) => [p.metadata.planId, p]));
+    const targetPlan = planById.get(planId);
+    if (!targetPlan) {
+      return { prerequisitePlanIds: [] };
+    }
+
+    // Edges: (from, to) means "from blocks to" — so "to" depends on "from"
+    // Collect all prerequisites (plans that block us) that are still in planning
+    const inPlanning = new Set(plans.filter((p) => p.status === "planning").map((p) => p.metadata.planId));
+    const directPrereqs = new Set<string>();
+    for (const edge of edges) {
+      if (edge.to === planId && inPlanning.has(edge.from)) {
+        directPrereqs.add(edge.from);
+      }
+    }
+
+    // Transitive closure: include prerequisites of prerequisites
+    const allPrereqs = new Set<string>();
+    const visit = (p: string) => {
+      if (allPrereqs.has(p)) return;
+      allPrereqs.add(p);
+      for (const e of edges) {
+        if (e.to === p && inPlanning.has(e.from)) visit(e.from);
+      }
+    };
+    for (const p of directPrereqs) visit(p);
+
+    // Topological sort: for each prereq, all its dependencies must come first
+    const sorted: string[] = [];
+    const visited = new Set<string>();
+    const visitSort = (p: string) => {
+      if (visited.has(p)) return;
+      visited.add(p);
+      for (const e of edges) {
+        if (e.to === p && allPrereqs.has(e.from)) visitSort(e.from);
+      }
+      sorted.push(p);
+    };
+    for (const p of allPrereqs) visitSort(p);
+
+    return { prerequisitePlanIds: sorted };
+  }
+
+  /**
+   * Execute a plan and its prerequisites in dependency order.
+   * Prerequisites must be in topological order (as returned by getCrossEpicDependencies).
+   */
+  async shipPlanWithPrerequisites(
+    projectId: string,
+    planId: string,
+    prerequisitePlanIds: string[],
+  ): Promise<Plan> {
+    for (const prereqId of prerequisitePlanIds) {
+      await this.shipPlan(projectId, prereqId);
+    }
+    return this.shipPlan(projectId, planId);
   }
 
   /** Get plan status for Dream CTA (plan/replan/none). PRD §7.1.5 */

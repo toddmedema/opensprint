@@ -15,8 +15,10 @@ import {
   addPlanLocally,
   setPlanError,
 } from "../../store/slices/planSlice";
+import { api } from "../../api/client";
 import { AddPlanModal } from "../../components/AddPlanModal";
 import { CloseButton } from "../../components/CloseButton";
+import { CrossEpicConfirmModal } from "../../components/CrossEpicConfirmModal";
 import { DependencyGraph } from "../../components/DependencyGraph";
 import { PlanDetailContent } from "../../components/plan/PlanDetailContent";
 import { EpicCard } from "../../components/EpicCard";
@@ -68,6 +70,10 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
 
   /* ── Local UI state (preserved by mount-all) ── */
   const [showAddPlanModal, setShowAddPlanModal] = useState(false);
+  const [crossEpicModal, setCrossEpicModal] = useState<{
+    planId: string;
+    prerequisitePlanIds: string[];
+  } | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | PlanStatus>("all");
   const [chatInput, setChatInput] = useState("");
   const [chatSending, setChatSending] = useState(false);
@@ -143,7 +149,29 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
 
   const handleShip = async (planId: string) => {
     dispatch(setPlanError(null));
+    try {
+      const deps = await api.plans.getCrossEpicDependencies(projectId, planId);
+      if (deps.prerequisitePlanIds.length > 0) {
+        setCrossEpicModal({ planId, prerequisitePlanIds: deps.prerequisitePlanIds });
+        return;
+      }
+    } catch (err) {
+      console.warn("[PlanPhase] Cross-epic deps check failed, proceeding:", err);
+    }
     const result = await dispatch(executePlan({ projectId, planId }));
+    if (executePlan.fulfilled.match(result)) {
+      dispatch(fetchPlans(projectId));
+    }
+  };
+
+  const handleCrossEpicConfirm = async () => {
+    if (!crossEpicModal) return;
+    const { planId, prerequisitePlanIds } = crossEpicModal;
+    setCrossEpicModal(null);
+    dispatch(setPlanError(null));
+    const result = await dispatch(
+      executePlan({ projectId, planId, prerequisitePlanIds }),
+    );
     if (executePlan.fulfilled.match(result)) {
       dispatch(fetchPlans(projectId));
     }
@@ -316,6 +344,16 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
 
       {showAddPlanModal && (
         <AddPlanModal projectId={projectId} onClose={() => setShowAddPlanModal(false)} onCreated={handlePlanCreated} />
+      )}
+
+      {crossEpicModal && (
+        <CrossEpicConfirmModal
+          planId={crossEpicModal.planId}
+          prerequisitePlanIds={crossEpicModal.prerequisitePlanIds}
+          onConfirm={handleCrossEpicConfirm}
+          onCancel={() => setCrossEpicModal(null)}
+          confirming={executingPlanId === crossEpicModal.planId}
+        />
       )}
 
       {/* Sidebar: Plan Detail + Chat */}

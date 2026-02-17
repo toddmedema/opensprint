@@ -14,6 +14,7 @@ import type {
   CreatePlanRequest,
   UpdatePlanRequest,
   SuggestPlansResponse,
+  CrossEpicDependenciesResponse,
   Task,
   AgentSession,
   OrchestratorStatus,
@@ -150,9 +151,14 @@ export const api = {
         method: "PUT",
         body: JSON.stringify(data),
       }),
-    execute: (projectId: string, planId: string) =>
+    getCrossEpicDependencies: (projectId: string, planId: string) =>
+      request<CrossEpicDependenciesResponse>(`/projects/${projectId}/plans/${planId}/cross-epic-dependencies`),
+    execute: (projectId: string, planId: string, prerequisitePlanIds?: string[]) =>
       request<Plan>(`/projects/${projectId}/plans/${planId}/execute`, {
         method: "POST",
+        body: JSON.stringify(
+          prerequisitePlanIds?.length ? { prerequisitePlanIds } : {},
+        ),
       }),
     reExecute: (projectId: string, planId: string) =>
       request<Plan>(`/projects/${projectId}/plans/${planId}/re-execute`, {
