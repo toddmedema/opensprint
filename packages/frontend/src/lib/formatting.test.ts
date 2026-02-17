@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { formatSectionKey, formatTimestamp } from "./formatting";
+import { formatSectionKey, formatTimestamp, formatUptime } from "./formatting";
 
 describe("formatting", () => {
   describe("formatSectionKey", () => {
@@ -60,6 +60,30 @@ describe("formatting", () => {
       expect(result).toMatch(/\d/);
       expect(typeof result).toBe("string");
       expect(result.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("formatUptime", () => {
+    const mockNow = new Date("2026-02-16T12:02:34.000Z");
+
+    it("formats seconds only", () => {
+      const startedAt = new Date("2026-02-16T12:02:20.000Z").toISOString();
+      expect(formatUptime(startedAt, mockNow)).toBe("14s");
+    });
+
+    it("formats minutes and seconds", () => {
+      const startedAt = new Date("2026-02-16T12:00:20.000Z").toISOString();
+      expect(formatUptime(startedAt, mockNow)).toBe("2m 14s");
+    });
+
+    it("formats hours, minutes and seconds", () => {
+      const startedAt = new Date("2026-02-16T10:55:20.000Z").toISOString();
+      expect(formatUptime(startedAt, mockNow)).toBe("1h 7m 14s");
+    });
+
+    it("returns 0s for future or same timestamp", () => {
+      const startedAt = new Date("2026-02-16T12:02:35.000Z").toISOString();
+      expect(formatUptime(startedAt, mockNow)).toBe("0s");
     });
   });
 });

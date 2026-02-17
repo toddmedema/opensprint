@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
 import { MemoryRouter } from "react-router-dom";
@@ -66,5 +66,34 @@ describe("ActiveAgentsList", () => {
     const dropdown = screen.getByRole("listbox");
     expect(dropdown.parentElement).toBe(document.body);
     expect(Number(dropdown.style.zIndex)).toBeGreaterThanOrEqual(9999);
+  });
+
+  it("shows live uptime for each agent when dropdown is open", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-16T12:00:00.000Z"));
+    const startedAt = "2026-02-16T12:00:00.000Z";
+    mockAgentsActive.mockResolvedValue([
+      { id: "task-1", phase: "build", label: "Task 1", startedAt },
+    ]);
+
+    renderActiveAgentsList();
+    await vi.runAllTimersAsync();
+
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.click(screen.getByTitle("Active agents"));
+
+    // Initially uptime is 0s
+    expect(screen.getByText("0s")).toBeInTheDocument();
+
+    // Advance 2m 34s — uptime tick fires every second, so "now" updates
+    await act(async () => {
+      vi.advanceTimersByTime(154_000);
+    });
+
+    expect(screen.getByText("2m 34s")).toBeInTheDocument();
+    expect(screen.getByText("Task 1")).toBeInTheDocument();
+    expect(screen.getByText(/Build/)).toBeInTheDocument();
+
+    vi.useRealTimers();
   });
 });

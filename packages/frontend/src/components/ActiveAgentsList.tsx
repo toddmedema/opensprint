@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import type { ActiveAgent } from "@opensprint/shared";
 import { api } from "../api/client";
 import { getProjectPhasePath } from "../lib/phaseRouting";
+import { formatUptime } from "../lib/formatting";
 import { useAppDispatch } from "../store";
 import { setSelectedTaskId } from "../store/slices/buildSlice";
 
@@ -16,10 +17,13 @@ interface ActiveAgentsListProps {
   projectId: string;
 }
 
+const UPTIME_TICK_MS = 1000;
+
 export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
   const [agents, setAgents] = useState<ActiveAgent[]>([]);
   const [open, setOpen] = useState(false);
   const [dropdownRect, setDropdownRect] = useState<DOMRect | null>(null);
+  const [now, setNow] = useState(() => new Date());
   const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -46,6 +50,13 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
     } else {
       setDropdownRect(null);
     }
+  }, [open]);
+
+  // Live uptime tick: update every second when dropdown is open
+  useEffect(() => {
+    if (!open) return;
+    const interval = setInterval(() => setNow(new Date()), UPTIME_TICK_MS);
+    return () => clearInterval(interval);
   }, [open]);
 
   useEffect(() => {
@@ -107,7 +118,8 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
                 >
                   <div className="font-medium text-gray-900">{agent.label || agent.id}</div>
                   <div className="text-gray-500 mt-0.5">
-                    {phaseLabel(agent.phase)} &middot; <span className="text-gray-400">{agent.id}</span>
+                    {phaseLabel(agent.phase)} &middot;{" "}
+                    <span className="text-gray-400 tabular-nums">{formatUptime(agent.startedAt, now)}</span>
                   </div>
                 </button>
               </li>
