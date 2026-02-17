@@ -162,6 +162,7 @@ describe("BuildEpicCard", () => {
     );
 
     expect(screen.getByText("Blocked")).toBeInTheDocument();
+    expect(screen.getByTestId("task-blocked")).toBeInTheDocument();
     const unblockBtn = screen.getByRole("button", { name: "Unblock" });
     expect(unblockBtn).toBeInTheDocument();
 

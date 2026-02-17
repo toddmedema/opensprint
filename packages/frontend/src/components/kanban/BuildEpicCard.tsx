@@ -56,7 +56,7 @@ export function BuildEpicCard({ epicId, epicTitle, tasks, onTaskSelect, onUnbloc
         <div className="border-t border-gray-100">
           <ul className="divide-y divide-gray-50">
             {visibleTasks.map((task) => (
-              <li key={task.id}>
+              <li key={task.id} data-testid={task.kanbanColumn === "blocked" ? "task-blocked" : undefined}>
                 <div className="flex items-center gap-2 px-4 py-2.5 group">
                   <button
                     type="button"

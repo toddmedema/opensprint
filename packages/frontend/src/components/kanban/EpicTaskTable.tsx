@@ -79,6 +79,7 @@ function EpicTaskRow({
       role="button"
       tabIndex={0}
       onClick={onClick}
+      data-testid={task.kanbanColumn === "blocked" ? "task-blocked" : undefined}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();

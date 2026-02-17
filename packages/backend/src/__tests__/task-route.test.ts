@@ -279,4 +279,39 @@ Test review prompt generation.
     const taskAfter = (tasksAfterRes.body.data ?? []).find((t: { id: string }) => t.id === taskZ.id);
     expect(taskAfter.kanbanColumn).not.toBe("blocked");
   });
+
+  it("POST /tasks/:taskId/unblock accepts resetAttempts option", { timeout: 20000 }, async () => {
+    const app = createApp();
+
+    const planRes = await request(app)
+      .post(`${API_PREFIX}/projects/${projectId}/plans`)
+      .send({
+        title: "Unblock Reset Test",
+        content: "# Unblock Reset\n\n## Overview\n\nTest resetAttempts.",
+        complexity: "low",
+        tasks: [{ title: "Task W", description: "Implement W", priority: 0, dependsOn: [] }],
+      });
+
+    expect(planRes.status).toBe(201);
+    const plan = planRes.body.data;
+    const gateTaskId = plan.metadata.gateTaskId;
+    const project = await projectService.getProject(projectId);
+    await beads.close(project.repoPath, gateTaskId, "Plan approved");
+
+    const tasksRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/tasks`);
+    const tasks = tasksRes.body.data ?? [];
+    const taskW = tasks.find((t: { title: string }) => t.title === "Task W");
+    expect(taskW).toBeDefined();
+
+    await beads.update(project.repoPath, taskW.id, { status: "blocked" });
+    await beads.sync(project.repoPath);
+
+    const unblockRes = await request(app)
+      .post(`${API_PREFIX}/projects/${projectId}/tasks/${taskW.id}/unblock`)
+      .set("Content-Type", "application/json")
+      .send({ resetAttempts: true });
+
+    expect(unblockRes.status).toBe(200);
+    expect(unblockRes.body.data.taskUnblocked).toBe(true);
+  });
 });
