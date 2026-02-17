@@ -1084,6 +1084,77 @@ describe("VerifyPhase feedback input", () => {
     // Task status icons: Done (checkmark) for first task, In Progress for second
     expect(screen.getByTitle("Done")).toBeInTheDocument();
     expect(screen.getByTitle("In Progress")).toBeInTheDocument();
+
+    // Task status labels are visible as part of the feedback container
+    expect(screen.getByText("Done")).toBeInTheDocument();
+    expect(screen.getByText("In Progress")).toBeInTheDocument();
+  });
+
+  it("shows Backlog status for tasks not yet in build tasks", () => {
+    const storeWithUnmappedTask = configureStore({
+      reducer: {
+        project: projectReducer,
+        verify: verifyReducer,
+        build: buildReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "verify",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        verify: {
+          feedback: [
+            {
+              id: "fb-1",
+              text: "New feature request",
+              category: "feature",
+              mappedPlanId: "plan-1",
+              createdTaskIds: ["opensprint.dev-new.1"],
+              status: "mapped",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+        build: {
+          tasks: [],
+          plans: [],
+          orchestratorRunning: false,
+          awaitingApproval: false,
+          selectedTaskId: null,
+          taskDetail: null,
+          taskDetailLoading: false,
+          agentOutput: [],
+          completionState: null,
+          archivedSessions: [],
+          archivedLoading: false,
+          markDoneLoading: false,
+          statusLoading: false,
+          loading: false,
+          error: null,
+        },
+      },
+    });
+
+    render(
+      <Provider store={storeWithUnmappedTask}>
+        <VerifyPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    expect(screen.getByText("opensprint.dev-new.1")).toBeInTheDocument();
+    expect(screen.getByText("Backlog")).toBeInTheDocument();
   });
 
   it("shows reply button on each feedback card", () => {

@@ -2,7 +2,7 @@ import { useState, useRef, useCallback, useMemo } from "react";
 import type { FeedbackItem, KanbanColumn } from "@opensprint/shared";
 import { useAppDispatch, useAppSelector } from "../../store";
 import { submitFeedback, setVerifyError } from "../../store/slices/verifySlice";
-import { TaskStatusBadge } from "../../components/kanban";
+import { TaskStatusBadge, COLUMN_LABELS } from "../../components/kanban";
 
 /** Reply icon (message turn / corner up-right) */
 function ReplyIcon({ className }: { className?: string }) {
@@ -172,23 +172,30 @@ function FeedbackCard({
           <div className="mt-1 flex gap-1 flex-wrap">
             {item.createdTaskIds.map((taskId) => {
               const column = getTaskColumn(taskId);
+              const statusLabel = COLUMN_LABELS[column];
               return onNavigateToBuildTask ? (
                 <button
                   key={taskId}
                   type="button"
                   onClick={() => onNavigateToBuildTask(taskId)}
-                  className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-brand-600 hover:bg-brand-50 hover:text-brand-700 underline transition-colors"
-                  title={`Go to ${taskId} on Build tab`}
+                  className="inline-flex items-center gap-1.5 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-brand-600 hover:bg-brand-50 hover:text-brand-700 underline transition-colors"
+                  title={`Go to ${taskId} on Build tab (${statusLabel})`}
                 >
                   <TaskStatusBadge column={column} size="xs" />
+                  <span className="text-gray-500 font-sans font-normal no-underline" aria-label={`Status: ${statusLabel}`}>
+                    {statusLabel}
+                  </span>
                   {taskId}
                 </button>
               ) : (
                 <span
                   key={taskId}
-                  className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-gray-600"
+                  className="inline-flex items-center gap-1.5 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-gray-600"
                 >
                   <TaskStatusBadge column={column} size="xs" />
+                  <span className="text-gray-500 font-sans font-normal" aria-label={`Status: ${statusLabel}`}>
+                    {statusLabel}
+                  </span>
                   {taskId}
                 </span>
               );
