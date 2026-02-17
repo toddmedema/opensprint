@@ -1,7 +1,13 @@
 import { useEffect } from "react";
-import { useParams, useNavigate, Navigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation, Navigate } from "react-router-dom";
 import type { ProjectPhase } from "@opensprint/shared";
-import { phaseFromSlug, getProjectPhasePath, isValidPhaseSlug, VALID_PHASES } from "../lib/phaseRouting";
+import {
+  phaseFromSlug,
+  getProjectPhasePath,
+  isValidPhaseSlug,
+  parseDetailParams,
+  VALID_PHASES,
+} from "../lib/phaseRouting";
 import { useAppDispatch, useAppSelector } from "../store";
 import { fetchProject, resetProject } from "../store/slices/projectSlice";
 import { resetWebsocket, clearHilRequest, clearHilNotification } from "../store/slices/websocketSlice";
@@ -27,10 +33,13 @@ const CATEGORY_LABELS: Record<string, string> = {
 export function ProjectView() {
   const { projectId, phase: phaseSlug } = useParams<{ projectId: string; phase?: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useAppDispatch();
   const redirectTo = projectId && !isValidPhaseSlug(phaseSlug) ? getProjectPhasePath(projectId, "dream") : null;
 
   const currentPhase = phaseFromSlug(phaseSlug);
+  const selectedPlanId = useAppSelector((s) => s.plan.selectedPlanId);
+  const selectedTaskId = useAppSelector((s) => s.build.selectedTaskId);
 
   const project = useAppSelector((s) => s.project.data);
   const projectLoading = useAppSelector((s) => s.project.loading);
@@ -67,6 +76,25 @@ export function ProjectView() {
   if (!projectId) return null;
   if (redirectTo) return <Navigate to={redirectTo} replace />;
 
+  // Sync URL search params → Redux on load / when URL changes (deep link support)
+  useEffect(() => {
+    const { plan, task } = parseDetailParams(location.search);
+    if (plan && currentPhase === "plan") dispatch(setSelectedPlanId(plan));
+    if (task && currentPhase === "build") dispatch(setSelectedTaskId(task));
+  }, [location.search, currentPhase, dispatch]);
+
+  // Sync Redux selection → URL when user selects plan/task (shareable links)
+  useEffect(() => {
+    const path = getProjectPhasePath(projectId, currentPhase, {
+      plan: currentPhase === "plan" ? selectedPlanId ?? undefined : undefined,
+      task: currentPhase === "build" ? selectedTaskId ?? undefined : undefined,
+    });
+    const currentPath = location.pathname + location.search;
+    if (path !== currentPath) {
+      navigate(path, { replace: true });
+    }
+  }, [projectId, currentPhase, selectedPlanId, selectedTaskId, location.pathname, location.search, navigate]);
+
   const handlePhaseChange = (phase: ProjectPhase) => {
     if (phase !== "build") dispatch(setSelectedTaskId(null));
     navigate(getProjectPhasePath(projectId, phase));
@@ -74,12 +102,12 @@ export function ProjectView() {
 
   const handleNavigateToBuildTask = (taskId: string) => {
     dispatch(setSelectedTaskId(taskId));
-    navigate(getProjectPhasePath(projectId, "build"));
+    navigate(getProjectPhasePath(projectId, "build", { task: taskId }));
   };
 
   const handleNavigateToPlan = (planId: string) => {
     dispatch(setSelectedPlanId(planId));
-    navigate(getProjectPhasePath(projectId, "plan"));
+    navigate(getProjectPhasePath(projectId, "plan", { plan: planId }));
   };
 
   const handleRespondToHil = (requestId: string, approved: boolean, notes?: string) => {

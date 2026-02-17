@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { phaseFromSlug, isValidPhaseSlug, getProjectPhasePath, VALID_PHASES } from "./phaseRouting";
+import {
+  phaseFromSlug,
+  isValidPhaseSlug,
+  getProjectPhasePath,
+  parseDetailParams,
+  VALID_PHASES,
+  PLAN_PARAM,
+  TASK_PARAM,
+} from "./phaseRouting";
 
 describe("phaseRouting", () => {
   describe("phaseFromSlug", () => {
@@ -54,6 +62,68 @@ describe("phaseRouting", () => {
     it("handles different project IDs", () => {
       expect(getProjectPhasePath("abc", "dream")).toBe("/projects/abc/dream");
       expect(getProjectPhasePath("uuid-xyz-789", "build")).toBe("/projects/uuid-xyz-789/build");
+    });
+
+    it("appends plan param for Plan phase deep linking", () => {
+      expect(getProjectPhasePath("proj-1", "plan", { plan: "opensprint.dev-abc" })).toBe(
+        "/projects/proj-1/plan?plan=opensprint.dev-abc",
+      );
+    });
+
+    it("appends task param for Build phase deep linking", () => {
+      expect(getProjectPhasePath("proj-1", "build", { task: "opensprint.dev-abc.1" })).toBe(
+        "/projects/proj-1/build?task=opensprint.dev-abc.1",
+      );
+    });
+
+    it("appends both plan and task when provided", () => {
+      const path = getProjectPhasePath("proj-1", "build", {
+        plan: "opensprint.dev-abc",
+        task: "opensprint.dev-abc.1",
+      });
+      expect(path).toContain("/projects/proj-1/build?");
+      expect(path).toContain("plan=opensprint.dev-abc");
+      expect(path).toContain("task=opensprint.dev-abc.1");
+    });
+
+    it("ignores null/empty options", () => {
+      expect(getProjectPhasePath("proj-1", "plan", { plan: null })).toBe("/projects/proj-1/plan");
+      expect(getProjectPhasePath("proj-1", "plan", { plan: "" })).toBe("/projects/proj-1/plan");
+    });
+  });
+
+  describe("parseDetailParams", () => {
+    it("returns null for both when search is empty", () => {
+      expect(parseDetailParams("")).toEqual({ plan: null, task: null });
+      expect(parseDetailParams("?")).toEqual({ plan: null, task: null });
+    });
+
+    it("parses plan param", () => {
+      expect(parseDetailParams("?plan=opensprint.dev-xyz")).toEqual({
+        plan: "opensprint.dev-xyz",
+        task: null,
+      });
+    });
+
+    it("parses task param", () => {
+      expect(parseDetailParams("?task=opensprint.dev-xyz.1")).toEqual({
+        plan: null,
+        task: "opensprint.dev-xyz.1",
+      });
+    });
+
+    it("parses both params", () => {
+      expect(parseDetailParams("?plan=opensprint.dev-abc&task=opensprint.dev-abc.1")).toEqual({
+        plan: "opensprint.dev-abc",
+        task: "opensprint.dev-abc.1",
+      });
+    });
+  });
+
+  describe("PLAN_PARAM and TASK_PARAM", () => {
+    it("exports correct param names", () => {
+      expect(PLAN_PARAM).toBe("plan");
+      expect(TASK_PARAM).toBe("task");
     });
   });
 

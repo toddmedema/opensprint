@@ -34,10 +34,10 @@ vi.mock("../api/client", () => ({
   },
 }));
 
-// Location capture for redirect assertion
+// Location capture for redirect assertion (pathname + search for deep link tests)
 function LocationDisplay() {
   const location = useLocation();
-  return <div data-testid="location">{location.pathname}</div>;
+  return <div data-testid="location">{location.pathname + location.search}</div>;
 }
 
 function createStore() {
@@ -68,8 +68,7 @@ function createStore() {
   });
 }
 
-function renderWithRouter(initialPath: string) {
-  const store = createStore();
+function renderWithRouter(initialPath: string, store = createStore()) {
   return render(
     <Provider store={store}>
       <MemoryRouter initialEntries={[initialPath]}>
@@ -164,5 +163,81 @@ describe("ProjectView upfront loading and mount-all", () => {
     expect(screen.getByTestId("phase-plan")).toBeInTheDocument();
     expect(screen.getByTestId("phase-build")).toBeInTheDocument();
     expect(screen.getByTestId("phase-verify")).toBeInTheDocument();
+  });
+});
+
+describe("ProjectView URL deep linking for Plan and Build detail panes", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("dispatches setSelectedPlanId when loading plan phase with plan param", async () => {
+    const store = createStore();
+    renderWithRouter("/projects/proj-1/plan?plan=opensprint.dev-abc", store);
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Project")).toBeInTheDocument();
+    });
+
+    const state = store.getState();
+    expect(state.plan.selectedPlanId).toBe("opensprint.dev-abc");
+  });
+
+  it("dispatches setSelectedTaskId when loading build phase with task param", async () => {
+    const store = createStore();
+    renderWithRouter("/projects/proj-1/build?task=opensprint.dev-xyz.1", store);
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Project")).toBeInTheDocument();
+    });
+
+    const state = store.getState();
+    expect(state.build.selectedTaskId).toBe("opensprint.dev-xyz.1");
+  });
+
+  it("syncs selected plan to URL when on plan phase", async () => {
+    const store = configureStore({
+      reducer: {
+        project: projectReducer,
+        websocket: websocketReducer,
+        design: designReducer,
+        plan: planReducer,
+        build: buildReducer,
+        validate: validateReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "plan",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        plan: {
+          selectedPlanId: "opensprint.dev-abc",
+          plans: [],
+          dependencyGraph: null,
+          chatMessages: {},
+          loading: false,
+          decomposing: false,
+          shippingPlanId: null,
+          reshippingPlanId: null,
+          archivingPlanId: null,
+          error: null,
+        },
+      },
+    });
+    renderWithRouter("/projects/proj-1/plan", store);
+
+    await waitFor(() => {
+      const loc = screen.getByTestId("location").textContent;
+      expect(loc).toContain("plan=opensprint.dev-abc");
+    });
   });
 });

@@ -17,9 +17,41 @@ export function isValidPhaseSlug(slug: string | undefined): slug is ProjectPhase
   return !!slug && VALID_PHASES.includes(slug as ProjectPhase);
 }
 
+/** Query param keys for deep linking to Plan/Build detail panes */
+export const PLAN_PARAM = "plan";
+export const TASK_PARAM = "task";
+
+export interface PhasePathOptions {
+  /** Plan ID to deep link to (Plan phase detail pane) */
+  plan?: string | null;
+  /** Task ID to deep link to (Build phase detail pane) */
+  task?: string | null;
+}
+
 /**
  * Builds the project phase path. Always includes the phase in the URL for shareable links.
+ * Optionally appends plan or task query params for deep linking to detail panes.
  */
-export function getProjectPhasePath(projectId: string, phase: ProjectPhase): string {
-  return `/projects/${projectId}/${phase}`;
+export function getProjectPhasePath(
+  projectId: string,
+  phase: ProjectPhase,
+  options?: PhasePathOptions,
+): string {
+  const base = `/projects/${projectId}/${phase}`;
+  const params = new URLSearchParams();
+  if (options?.plan) params.set(PLAN_PARAM, options.plan);
+  if (options?.task) params.set(TASK_PARAM, options.task);
+  const query = params.toString();
+  return query ? `${base}?${query}` : base;
+}
+
+/**
+ * Parses plan and task IDs from URL search params.
+ */
+export function parseDetailParams(search: string): { plan: string | null; task: string | null } {
+  const params = new URLSearchParams(search);
+  return {
+    plan: params.get(PLAN_PARAM),
+    task: params.get(TASK_PARAM),
+  };
 }
