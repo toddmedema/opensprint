@@ -15,7 +15,7 @@ const basePlan: Plan = {
   content: "# Auth Feature\n\nContent.",
   status: "building",
   taskCount: 3,
-  completedTaskCount: 1,
+  doneTaskCount: 1,
   dependencyCount: 0,
 };
 
@@ -100,7 +100,7 @@ describe("EpicCard", () => {
     );
 
     const progressbar = screen.getByRole("progressbar", {
-      name: "1 of 3 tasks completed",
+      name: "1 of 3 tasks done",
     });
     expect(progressbar).toBeInTheDocument();
     expect(progressbar).toHaveAttribute("aria-valuenow", "1");
@@ -200,8 +200,8 @@ describe("EpicCard", () => {
   it("shows Rebuild button when plan is complete and modified after ship", () => {
     const plan: Plan = {
       ...basePlan,
-      status: "complete",
-      completedTaskCount: 3,
+      status: "done",
+      doneTaskCount: 3,
       metadata: {
         ...basePlan.metadata,
         shippedAt: "2026-02-16T08:00:00.000Z",
@@ -228,8 +228,8 @@ describe("EpicCard", () => {
     const user = userEvent.setup();
     const plan: Plan = {
       ...basePlan,
-      status: "complete",
-      completedTaskCount: 3,
+      status: "done",
+      doneTaskCount: 3,
       metadata: {
         ...basePlan.metadata,
         shippedAt: "2026-02-16T08:00:00.000Z",
@@ -253,7 +253,7 @@ describe("EpicCard", () => {
   });
 
   it("handles zero task count without error", () => {
-    const plan: Plan = { ...basePlan, taskCount: 0, completedTaskCount: 0 };
+    const plan: Plan = { ...basePlan, taskCount: 0, doneTaskCount: 0 };
     render(
       <EpicCard
         plan={plan}

@@ -2,7 +2,7 @@
 export type PlanComplexity = "low" | "medium" | "high" | "very_high";
 
 /** Plan status derived from beads epic state */
-export type PlanStatus = "planning" | "building" | "complete";
+export type PlanStatus = "planning" | "building" | "done";
 
 /** A UI/UX mockup attached to a Plan (ASCII wireframe or text description) */
 export interface PlanMockup {
@@ -29,7 +29,7 @@ export interface Plan {
   content: string;
   status: PlanStatus;
   taskCount: number;
-  completedTaskCount: number;
+  doneTaskCount: number;
   dependencyCount: number;
   /** ISO date string of plan markdown file mtime */
   lastModified?: string;

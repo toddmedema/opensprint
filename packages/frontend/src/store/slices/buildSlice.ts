@@ -24,7 +24,7 @@ export interface BuildState {
   } | null;
   archivedSessions: AgentSession[];
   archivedLoading: boolean;
-  markCompleteLoading: boolean;
+  markDoneLoading: boolean;
   statusLoading: boolean;
   loading: boolean;
   error: string | null;
@@ -42,7 +42,7 @@ const initialState: BuildState = {
   completionState: null,
   archivedSessions: [],
   archivedLoading: false,
-  markCompleteLoading: false,
+  markDoneLoading: false,
   statusLoading: false,
   loading: false,
   error: null,
@@ -82,10 +82,10 @@ export const fetchArchivedSessions = createAsyncThunk(
   },
 );
 
-export const markTaskComplete = createAsyncThunk(
-  "build/markTaskComplete",
+export const markTaskDone = createAsyncThunk(
+  "build/markTaskDone",
   async ({ projectId, taskId }: { projectId: string; taskId: string }, { dispatch }) => {
-    await api.tasks.markComplete(projectId, taskId);
+    await api.tasks.markDone(projectId, taskId);
     const [tasksData, plansGraph] = await Promise.all([
       api.tasks.list(projectId),
       api.plans.list(projectId),
@@ -228,18 +228,18 @@ const buildSlice = createSlice({
         state.archivedSessions = [];
         state.archivedLoading = false;
       })
-      // markTaskComplete
-      .addCase(markTaskComplete.pending, (state) => {
-        state.markCompleteLoading = true;
+      // markTaskDone
+      .addCase(markTaskDone.pending, (state) => {
+        state.markDoneLoading = true;
         state.error = null;
       })
-      .addCase(markTaskComplete.fulfilled, (state, action) => {
+      .addCase(markTaskDone.fulfilled, (state, action) => {
         state.tasks = action.payload.tasks;
-        state.markCompleteLoading = false;
+        state.markDoneLoading = false;
       })
-      .addCase(markTaskComplete.rejected, (state, action) => {
-        state.markCompleteLoading = false;
-        state.error = action.error.message ?? "Failed to mark complete";
+      .addCase(markTaskDone.rejected, (state, action) => {
+        state.markDoneLoading = false;
+        state.error = action.error.message ?? "Failed to mark done";
       });
   },
 });

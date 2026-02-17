@@ -102,7 +102,7 @@ export interface OrchestratorStatus {
   currentTask: string | null;
   currentPhase: AgentPhase | null;
   queueDepth: number;
-  totalCompleted: number;
+  totalDone: number;
   totalFailed: number;
   /** True when paused waiting for HIL approval (PRD §6.5) */
   awaitingApproval?: boolean;

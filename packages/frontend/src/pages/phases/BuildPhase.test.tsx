@@ -8,7 +8,7 @@ import projectReducer from "../../store/slices/projectSlice";
 import planReducer from "../../store/slices/planSlice";
 import buildReducer from "../../store/slices/buildSlice";
 const mockGet = vi.fn().mockResolvedValue({});
-const mockMarkComplete = vi.fn().mockResolvedValue(undefined);
+const mockMarkDone = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("../../api/client", () => ({
   api: {
@@ -16,7 +16,7 @@ vi.mock("../../api/client", () => ({
       list: vi.fn().mockResolvedValue([]),
       get: (...args: unknown[]) => mockGet(...args),
       sessions: vi.fn().mockResolvedValue([]),
-      markComplete: (...args: unknown[]) => mockMarkComplete(...args),
+      markDone: (...args: unknown[]) => mockMarkDone(...args),
     },
     build: {
       status: vi.fn().mockResolvedValue({}),
@@ -34,7 +34,7 @@ const basePlan = {
   content: "# Build Test\n\nContent.",
   status: "building" as const,
   taskCount: 3,
-  completedTaskCount: 0,
+  doneTaskCount: 0,
   dependencyCount: 0,
 };
 
@@ -73,7 +73,7 @@ function createStore(
         completionState: null,
         archivedSessions: [],
         archivedLoading: false,
-        markCompleteLoading: false,
+        markDoneLoading: false,
         statusLoading: false,
         loading: false,
         error: null,
@@ -215,7 +215,7 @@ describe("BuildPhase Redux integration", () => {
     });
   });
 
-  it("dispatches markTaskComplete when Mark complete button is clicked", async () => {
+  it("dispatches markTaskDone when Mark done button is clicked", async () => {
     const user = userEvent.setup();
     const tasks = [
       { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "in_progress", priority: 0, assignee: "agent" },
@@ -227,11 +227,11 @@ describe("BuildPhase Redux integration", () => {
       </Provider>,
     );
 
-    const markCompleteBtn = await screen.findByRole("button", { name: /mark complete/i });
-    await user.click(markCompleteBtn);
+    const markDoneBtn = await screen.findByRole("button", { name: /mark done/i });
+    await user.click(markDoneBtn);
 
     await vi.waitFor(() => {
-      expect(mockMarkComplete).toHaveBeenCalledWith("proj-1", "epic-1.1");
+      expect(mockMarkDone).toHaveBeenCalledWith("proj-1", "epic-1.1");
     });
   });
 

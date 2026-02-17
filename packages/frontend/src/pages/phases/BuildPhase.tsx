@@ -7,7 +7,7 @@ import { useAppDispatch, useAppSelector } from "../../store";
 import {
   fetchTaskDetail,
   fetchArchivedSessions,
-  markTaskComplete,
+  markTaskDone,
   setSelectedTaskId,
   setBuildError,
 } from "../../store/slices/buildSlice";
@@ -112,7 +112,7 @@ export function BuildPhase({ projectId, onNavigateToPlan }: BuildPhaseProps) {
   const completionState = useAppSelector((s) => s.build.completionState);
   const archivedSessions = useAppSelector((s) => s.build.archivedSessions);
   const archivedLoading = useAppSelector((s) => s.build.archivedLoading);
-  const markCompleteLoading = useAppSelector((s) => s.build.markCompleteLoading);
+  const markDoneLoading = useAppSelector((s) => s.build.markDoneLoading);
   const loading = useAppSelector((s) => s.build.loading);
   const error = useAppSelector((s) => s.build.error);
   const selectedTaskData = selectedTask ? tasks.find((t) => t.id === selectedTask) : null;
@@ -139,9 +139,9 @@ export function BuildPhase({ projectId, onNavigateToPlan }: BuildPhaseProps) {
     }
   }, [selectedTask, isDoneTask, dispatch]);
 
-  const handleMarkComplete = async () => {
+  const handleMarkDone = async () => {
     if (!selectedTask || isDoneTask) return;
-    dispatch(markTaskComplete({ projectId, taskId: selectedTask }));
+    dispatch(markTaskDone({ projectId, taskId: selectedTask }));
   };
 
   const implTasks = useMemo(
@@ -296,11 +296,11 @@ export function BuildPhase({ projectId, onNavigateToPlan }: BuildPhaseProps) {
               {!isDoneTask && (
                 <button
                   type="button"
-                  onClick={handleMarkComplete}
-                  disabled={markCompleteLoading}
+                  onClick={handleMarkDone}
+                  disabled={markDoneLoading}
                   className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {markCompleteLoading ? "Marking…" : "Mark complete"}
+                  {markDoneLoading ? "Marking…" : "Mark done"}
                 </button>
               )}
               <CloseButton onClick={() => dispatch(setSelectedTaskId(null))} ariaLabel="Close task detail" />
@@ -369,7 +369,7 @@ export function BuildPhase({ projectId, onNavigateToPlan }: BuildPhaseProps) {
 
               <div className="p-4">
               <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
-                {isDoneTask ? "Completed work artifacts" : "Live agent output"}
+                {isDoneTask ? "Done work artifacts" : "Live agent output"}
               </h4>
               <div className="bg-gray-900 rounded-lg border border-gray-700 overflow-hidden min-h-[200px]">
                 {isDoneTask ? (
@@ -392,7 +392,7 @@ export function BuildPhase({ projectId, onNavigateToPlan }: BuildPhaseProps) {
                             completionState.status === "approved" ? "text-green-400" : "text-amber-400"
                           }`}
                         >
-                          Agent completed: {completionState.status}
+                          Agent done: {completionState.status}
                         </div>
                         {completionState.testResults && completionState.testResults.total > 0 && (
                           <div className="text-xs text-gray-400 mt-1">

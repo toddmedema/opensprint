@@ -14,7 +14,7 @@ export interface EpicCardProps {
 const statusColors: Record<string, string> = {
   planning: "bg-yellow-50 text-yellow-700",
   building: "bg-blue-50 text-blue-700",
-  complete: "bg-green-50 text-green-700",
+  done: "bg-green-50 text-green-700",
 };
 
 export function EpicCard({
@@ -26,7 +26,7 @@ export function EpicCard({
   onShip,
   onReship,
 }: EpicCardProps) {
-  const progress = plan.taskCount > 0 ? (plan.completedTaskCount / plan.taskCount) * 100 : 0;
+  const progress = plan.taskCount > 0 ? (plan.doneTaskCount / plan.taskCount) * 100 : 0;
 
   return (
     <div
@@ -61,15 +61,15 @@ export function EpicCard({
             className="bg-brand-600 h-1.5 rounded-full transition-all duration-300"
             style={{ width: `${progress}%` }}
             role="progressbar"
-            aria-valuenow={plan.completedTaskCount}
+            aria-valuenow={plan.doneTaskCount}
             aria-valuemin={0}
             aria-valuemax={plan.taskCount}
-            aria-label={`${plan.completedTaskCount} of ${plan.taskCount} tasks completed`}
+            aria-label={`${plan.doneTaskCount} of ${plan.taskCount} tasks done`}
           />
         </div>
         <p className="text-xs text-gray-500 mt-0.5">
-          {plan.completedTaskCount}/{plan.taskCount} done
-          {plan.completedTaskCount > 0 && plan.completedTaskCount < plan.taskCount && (
+          {plan.doneTaskCount}/{plan.taskCount} done
+          {plan.doneTaskCount > 0 && plan.doneTaskCount < plan.taskCount && (
             <span className="ml-1">· {plan.metadata.complexity}</span>
           )}
         </p>
@@ -112,7 +112,7 @@ export function EpicCard({
           {shippingPlanId === plan.metadata.planId ? "Building…" : "Build It!"}
         </button>
       )}
-      {plan.status === "complete" &&
+      {plan.status === "done" &&
         plan.metadata.shippedAt &&
         plan.lastModified &&
         plan.lastModified > plan.metadata.shippedAt && (

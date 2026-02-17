@@ -200,7 +200,7 @@ export function DependencyGraph({ graph, onPlanClick }: DependencyGraphProps) {
     const statusColors: Record<string, { fill: string; stroke: string }> = {
       planning: { fill: "#fef3c7", stroke: "#f59e0b" },
       building: { fill: "#dbeafe", stroke: "#3b82f6" },
-      complete: { fill: "#d1fae5", stroke: "#10b981" },
+      done: { fill: "#d1fae5", stroke: "#10b981" },
     };
 
     node

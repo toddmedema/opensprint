@@ -231,7 +231,7 @@ describe("OrchestratorService", () => {
         currentTask: null,
         currentPhase: null,
         queueDepth: 0,
-        totalCompleted: 0,
+        totalDone: 0,
         totalFailed: 0,
       });
       expect(mockGetProject).toHaveBeenCalledWith(projectId);
@@ -338,7 +338,7 @@ describe("OrchestratorService", () => {
         startedAt: new Date().toISOString(),
         lastTransition: new Date().toISOString(),
         queueDepth: 0,
-        totalCompleted: 0,
+        totalDone: 0,
         totalFailed: 0,
       };
 
@@ -401,7 +401,7 @@ describe("OrchestratorService", () => {
         startedAt: new Date().toISOString(),
         lastTransition: new Date().toISOString(),
         queueDepth: 0,
-        totalCompleted: 0,
+        totalDone: 0,
         totalFailed: 0,
       };
 
@@ -445,7 +445,7 @@ describe("OrchestratorService", () => {
         startedAt: null,
         lastTransition: new Date().toISOString(),
         queueDepth: 0,
-        totalCompleted: 5,
+        totalDone: 5,
         totalFailed: 1,
       };
 
@@ -535,7 +535,7 @@ describe("OrchestratorService", () => {
       expect(mockBroadcastToProject).toHaveBeenCalledWith(
         projectId,
         expect.objectContaining({
-          type: "agent.completed",
+          type: "agent.done",
           taskId: "task-complete-1",
           status: "approved",
         }),
@@ -652,7 +652,7 @@ describe("OrchestratorService", () => {
       expect(mockBroadcastToProject).toHaveBeenCalledWith(
         projectId,
         expect.objectContaining({
-          type: "agent.completed",
+          type: "agent.done",
           taskId: "task-review-approve",
           status: "approved",
         }),

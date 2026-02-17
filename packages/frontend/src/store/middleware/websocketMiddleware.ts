@@ -131,7 +131,7 @@ export const websocketMiddleware: Middleware = (storeApi) => {
         d(fetchTasks(projectId));
         break;
 
-      case "agent.completed":
+      case "agent.done":
         d(fetchTasks(projectId));
         d(
           setCompletionState({

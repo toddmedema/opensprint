@@ -32,10 +32,10 @@ tasksRouter.get('/ready', async (req: Request<ProjectParams>, res, next) => {
   }
 });
 
-// POST /projects/:projectId/tasks/:taskId/complete — Manually mark task complete (and epic if last)
-tasksRouter.post('/:taskId/complete', async (req: Request<TaskParams>, res, next) => {
+// POST /projects/:projectId/tasks/:taskId/done — Manually mark task done (and epic if last)
+tasksRouter.post('/:taskId/done', async (req: Request<TaskParams>, res, next) => {
   try {
-    const result = await taskService.markComplete(req.params.projectId, req.params.taskId);
+    const result = await taskService.markDone(req.params.projectId, req.params.taskId);
     const body: ApiResponse<{ taskClosed: boolean; epicClosed?: boolean }> = { data: result };
     res.json(body);
   } catch (err) {

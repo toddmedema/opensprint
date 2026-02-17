@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { DependencyGraph } from "./DependencyGraph";
 import type { PlanDependencyGraph } from "@opensprint/shared";
 
-const mockPlan = (planId: string, status: "planning" | "building" | "complete" = "planning") => ({
+const mockPlan = (planId: string, status: "planning" | "building" | "done" = "planning") => ({
   metadata: {
     planId,
     beadEpicId: `epic-${planId}`,
@@ -15,7 +15,7 @@ const mockPlan = (planId: string, status: "planning" | "building" | "complete" =
   content: `# ${planId}\n\nContent.`,
   status,
   taskCount: 2,
-  completedTaskCount: 0,
+  doneTaskCount: 0,
   dependencyCount: 0,
 });
 
@@ -121,7 +121,7 @@ describe("DependencyGraph", () => {
       plans: [
         mockPlan("planning-plan", "planning"),
         mockPlan("building-plan", "building"),
-        mockPlan("complete-plan", "complete"),
+        mockPlan("done-plan", "done"),
       ],
       edges: [],
     };
@@ -151,10 +151,10 @@ describe("DependencyGraph", () => {
     // Verify status-specific colors are applied
     const planningFill = "#fef3c7";
     const buildingFill = "#dbeafe";
-    const completeFill = "#d1fae5";
+    const doneFill = "#d1fae5";
     const fills = nodeRects.map((r) => r.getAttribute("fill"));
     expect(fills).toContain(planningFill);
     expect(fills).toContain(buildingFill);
-    expect(fills).toContain(completeFill);
+    expect(fills).toContain(doneFill);
   });
 });

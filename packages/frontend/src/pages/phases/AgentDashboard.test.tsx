@@ -7,7 +7,7 @@ import buildReducer from "../../store/slices/buildSlice";
 
 const mockBuildStatus = vi.fn().mockResolvedValue({
   running: false,
-  totalCompleted: 0,
+  totalDone: 0,
   totalFailed: 0,
   queueDepth: 0,
 });
@@ -44,7 +44,7 @@ describe("AgentDashboard", () => {
     vi.clearAllMocks();
     mockBuildStatus.mockResolvedValue({
       running: false,
-      totalCompleted: 0,
+      totalDone: 0,
       totalFailed: 0,
       queueDepth: 0,
     });

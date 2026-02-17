@@ -231,7 +231,7 @@ describe("ProjectView URL deep linking for Plan and Build detail panes", () => {
           completionState: null,
           archivedSessions: [],
           archivedLoading: false,
-          markCompleteLoading: false,
+          markDoneLoading: false,
           statusLoading: false,
           loading: false,
           error: null,

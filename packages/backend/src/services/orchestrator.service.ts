@@ -86,7 +86,7 @@ interface PersistedOrchestratorState {
   startedAt: string | null;
   lastTransition: string;
   queueDepth: number;
-  totalCompleted: number;
+  totalDone: number;
   totalFailed: number;
 }
 
@@ -191,7 +191,7 @@ export class OrchestratorService {
       currentTask: null,
       currentPhase: null,
       queueDepth: 0,
-      totalCompleted: 0,
+      totalDone: 0,
       totalFailed: 0,
     };
   }
@@ -216,7 +216,7 @@ export class OrchestratorService {
       startedAt: state.startedAt || null,
       lastTransition: new Date().toISOString(),
       queueDepth: state.status.queueDepth,
-      totalCompleted: state.status.totalCompleted,
+      totalDone: state.status.totalDone,
       totalFailed: state.status.totalFailed,
     };
 
@@ -267,7 +267,7 @@ export class OrchestratorService {
     const state = this.getState(projectId);
 
     // Restore aggregate counters from persisted state
-    state.status.totalCompleted = persisted.totalCompleted;
+    state.status.totalDone = persisted.totalDone ?? (persisted as { totalCompleted?: number }).totalCompleted ?? 0;
     state.status.totalFailed = persisted.totalFailed;
 
     if (!persisted.currentTaskId || !persisted.branchName) {
@@ -309,9 +309,9 @@ export class OrchestratorService {
         try {
           const task = await this.beads.show(repoPath, taskId);
           if (persisted.currentPhase === "review") {
-            await this.handleReviewComplete(projectId, repoPath, task, branchName, null);
+            await this.handleReviewDone(projectId, repoPath, task, branchName, null);
           } else {
-            await this.handleCodingComplete(projectId, repoPath, task, branchName, null);
+            await this.handleCodingDone(projectId, repoPath, task, branchName, null);
           }
         } catch (err) {
           console.error("[orchestrator] Recovery: post-exit handling failed:", err);
@@ -531,7 +531,7 @@ export class OrchestratorService {
       await this.recoverFromPersistedState(projectId, repoPath, persisted);
     } else if (persisted) {
       // Persisted state exists but no active task — restore counters and clean up
-      state.status.totalCompleted = persisted.totalCompleted;
+      state.status.totalDone = persisted.totalDone ?? (persisted as { totalCompleted?: number }).totalCompleted ?? 0;
       state.status.totalFailed = persisted.totalFailed;
       await this.clearPersistedState(repoPath);
     }
@@ -785,7 +785,7 @@ export class OrchestratorService {
           }
           await heartbeatService.deleteHeartbeat(wtPath, task.id);
 
-          await this.handleCodingComplete(projectId, repoPath, task, branchName, code);
+          await this.handleCodingDone(projectId, repoPath, task, branchName, code);
         },
       });
 
@@ -826,10 +826,10 @@ export class OrchestratorService {
           heartbeatService.deleteHeartbeat(wtPath, task.id).catch(() => {});
           this.branchManager
             .commitWip(wtPath, task.id)
-            .then(() => this.handleCodingComplete(projectId, repoPath, task, branchName, null))
+            .then(() => this.handleCodingDone(projectId, repoPath, task, branchName, null))
             .catch((err) => {
               console.error(`[orchestrator] Post-death handler failed for ${task.id}:`, err);
-              this.handleCodingComplete(projectId, repoPath, task, branchName, null);
+              this.handleCodingDone(projectId, repoPath, task, branchName, null);
             });
           return;
         }
@@ -861,7 +861,7 @@ export class OrchestratorService {
     }
   }
 
-  private async handleCodingComplete(
+  private async handleCodingDone(
     projectId: string,
     repoPath: string,
     task: BeadsIssue,
@@ -946,7 +946,7 @@ export class OrchestratorService {
 
       if (reviewMode === "never") {
         // Skip review — go straight to merge
-        await this.performMergeAndComplete(projectId, repoPath, task, branchName);
+        await this.performMergeAndDone(projectId, repoPath, task, branchName);
       } else {
         // Move to review phase (coding-to-review transition)
         state.status.currentPhase = "review";
@@ -1062,7 +1062,7 @@ export class OrchestratorService {
           }
           await heartbeatService.deleteHeartbeat(wtPath, task.id);
 
-          await this.handleReviewComplete(projectId, repoPath, task, branchName, code);
+          await this.handleReviewDone(projectId, repoPath, task, branchName, code);
         },
       });
 
@@ -1103,10 +1103,10 @@ export class OrchestratorService {
           heartbeatService.deleteHeartbeat(wtPath, task.id).catch(() => {});
           this.branchManager
             .commitWip(wtPath, task.id)
-            .then(() => this.handleReviewComplete(projectId, repoPath, task, branchName, null))
+            .then(() => this.handleReviewDone(projectId, repoPath, task, branchName, null))
             .catch((err) => {
               console.error(`[orchestrator] Post-death handler failed for ${task.id}:`, err);
-              this.handleReviewComplete(projectId, repoPath, task, branchName, null);
+              this.handleReviewDone(projectId, repoPath, task, branchName, null);
             });
           return;
         }
@@ -1138,7 +1138,7 @@ export class OrchestratorService {
     }
   }
 
-  private async handleReviewComplete(
+  private async handleReviewDone(
     projectId: string,
     repoPath: string,
     task: BeadsIssue,
@@ -1162,7 +1162,7 @@ export class OrchestratorService {
     }
 
     if (result && result.status === "approved") {
-      await this.performMergeAndComplete(projectId, repoPath, task, branchName);
+      await this.performMergeAndDone(projectId, repoPath, task, branchName);
     } else if (result && result.status === "rejected") {
       // Review rejected — add feedback to bead, trigger coding retry with feedback in prompt (PRD §7.3.2)
       const reason = `Review rejected: ${result.issues?.join("; ") || result.summary}`;
@@ -1228,7 +1228,7 @@ export class OrchestratorService {
    * Merge to main, close task, archive session, clean up.
    * Shared by both the direct-merge path (reviewMode: "never") and the review-approved path.
    */
-  private async performMergeAndComplete(
+  private async performMergeAndDone(
     projectId: string,
     repoPath: string,
     task: BeadsIssue,
@@ -1291,7 +1291,7 @@ export class OrchestratorService {
       console.warn("[orchestrator] pushMain failed after merge:", err);
     });
 
-    state.status.totalCompleted += 1;
+    state.status.totalDone += 1;
     state.status.currentTask = null;
     state.status.currentPhase = null;
     state.activeBranchName = null;
@@ -1309,7 +1309,7 @@ export class OrchestratorService {
     });
 
     broadcastToProject(projectId, {
-      type: "agent.completed",
+      type: "agent.done",
       taskId: task.id,
       status: "approved",
       testResults: state.lastTestResults,
@@ -1511,7 +1511,7 @@ export class OrchestratorService {
         });
 
         broadcastToProject(projectId, {
-          type: "agent.completed",
+          type: "agent.done",
           taskId: task.id,
           status: "failed",
           testResults: null,
@@ -1601,7 +1601,7 @@ export class OrchestratorService {
     });
 
     broadcastToProject(projectId, {
-      type: "agent.completed",
+      type: "agent.done",
       taskId: task.id,
       status: "failed",
       testResults: null,

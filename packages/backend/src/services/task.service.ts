@@ -180,8 +180,8 @@ export class TaskService {
     return session;
   }
 
-  /** Manually mark a task as complete. If it was the last task in its epic, closes the epic too. */
-  async markComplete(projectId: string, taskId: string): Promise<{ taskClosed: boolean; epicClosed?: boolean }> {
+  /** Manually mark a task as done. If it was the last task in its epic, closes the epic too. */
+  async markDone(projectId: string, taskId: string): Promise<{ taskClosed: boolean; epicClosed?: boolean }> {
     const project = await this.projectService.getProject(projectId);
     const issue = await this.beads.show(project.repoPath, taskId);
     const status = (issue.status as string) ?? "open";
@@ -190,7 +190,7 @@ export class TaskService {
       return { taskClosed: false };
     }
 
-    await this.beads.close(project.repoPath, taskId, "Manually marked complete", true);
+    await this.beads.close(project.repoPath, taskId, "Manually marked done", true);
     await this.beads.sync(project.repoPath);
     broadcastToProject(projectId, {
       type: "task.updated",
@@ -212,7 +212,7 @@ export class TaskService {
       if (allClosed) {
         const epicIssue = allIssues.find((i) => i.id === epicId);
         if (epicIssue && (epicIssue.status as string) !== "closed") {
-          await this.beads.close(project.repoPath, epicId, "All tasks completed", true);
+          await this.beads.close(project.repoPath, epicId, "All tasks done", true);
           await this.beads.sync(project.repoPath);
           broadcastToProject(projectId, {
             type: "task.updated",

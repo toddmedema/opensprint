@@ -37,7 +37,7 @@ describe("AddPlanModal", () => {
       content: "# New Feature\n\nContent.",
       status: "planning",
       taskCount: 0,
-      completedTaskCount: 0,
+      doneTaskCount: 0,
       dependencyCount: 0,
     });
 

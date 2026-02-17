@@ -22,7 +22,7 @@ export function AgentDashboard({ projectId }: AgentDashboardProps) {
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [currentTask, setCurrentTask] = useState<string | null>(null);
-  const [stats, setStats] = useState({ totalCompleted: 0, totalFailed: 0, queueDepth: 0 });
+  const [stats, setStats] = useState({ totalDone: 0, totalFailed: 0, queueDepth: 0 });
 
   const agentOutput = useAppSelector((s) => s.build.agentOutput);
 
@@ -30,13 +30,13 @@ export function AgentDashboard({ projectId }: AgentDashboardProps) {
     api.build.status(projectId).then((data: unknown) => {
       const status = data as {
         currentTask: string | null;
-        totalCompleted: number;
+        totalDone: number;
         totalFailed: number;
         queueDepth: number;
       };
       setCurrentTask(status?.currentTask ?? null);
       setStats({
-        totalCompleted: status?.totalCompleted ?? 0,
+        totalDone: status?.totalDone ?? 0,
         totalFailed: status?.totalFailed ?? 0,
         queueDepth: status?.queueDepth ?? 0,
       });
@@ -104,8 +104,8 @@ export function AgentDashboard({ projectId }: AgentDashboardProps) {
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Performance</h3>
             <div className="grid grid-cols-3 gap-3">
               <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">{stats.totalCompleted}</div>
-                <div className="text-xs text-gray-500">Completed</div>
+                <div className="text-2xl font-bold text-green-600">{stats.totalDone}</div>
+                <div className="text-xs text-gray-500">Done</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-red-600">{stats.totalFailed}</div>
@@ -116,14 +116,14 @@ export function AgentDashboard({ projectId }: AgentDashboardProps) {
                 <div className="text-xs text-gray-500">Queue</div>
               </div>
             </div>
-            {stats.totalCompleted + stats.totalFailed > 0 && (
+            {stats.totalDone + stats.totalFailed > 0 && (
               <div className="mt-3">
                 <div className="text-xs text-gray-500 mb-1">Success Rate</div>
                 <div className="w-full bg-gray-100 rounded-full h-2">
                   <div
                     className="bg-green-500 h-2 rounded-full"
                     style={{
-                      width: `${Math.round((stats.totalCompleted / (stats.totalCompleted + stats.totalFailed)) * 100)}%`,
+                      width: `${Math.round((stats.totalDone / (stats.totalDone + stats.totalFailed)) * 100)}%`,
                     }}
                   />
                 </div>

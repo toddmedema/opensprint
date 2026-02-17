@@ -178,18 +178,18 @@ export class PlanService {
   }
 
   /** Count tasks under an epic from beads (implementation tasks only, excludes gating .0) */
-  private async countTasks(repoPath: string, epicId: string): Promise<{ total: number; completed: number }> {
+  private async countTasks(repoPath: string, epicId: string): Promise<{ total: number; done: number }> {
     try {
       const allIssues = await this.beads.listAll(repoPath);
       const children = allIssues.filter(
         (issue: BeadsIssue) =>
           issue.id.startsWith(epicId + ".") && !issue.id.endsWith(".0") && (issue.issue_type ?? issue.type) !== "epic",
       );
-      const completed = children.filter((issue: BeadsIssue) => (issue.status as string) === "closed").length;
-      return { total: children.length, completed };
+      const done = children.filter((issue: BeadsIssue) => (issue.status as string) === "closed").length;
+      return { total: children.length, done };
     } catch (err) {
       console.warn("[plan] countTasks failed, using default:", err instanceof Error ? err.message : err);
-      return { total: 0, completed: 0 };
+      return { total: 0, done: 0 };
     }
   }
 
@@ -377,12 +377,12 @@ export class PlanService {
 
     // Derive status from beads state
     let status: Plan["status"] = "planning";
-    const { total, completed } = metadata.beadEpicId
+    const { total, done } = metadata.beadEpicId
       ? await this.countTasks(repoPath, metadata.beadEpicId)
-      : { total: 0, completed: 0 };
+      : { total: 0, done: 0 };
 
     if (metadata.shippedAt) {
-      status = total > 0 && completed === total ? "complete" : "building";
+      status = total > 0 && done === total ? "done" : "building";
     }
 
     const edges = await this.buildDependencyEdgesFromProject(projectId);
@@ -393,7 +393,7 @@ export class PlanService {
       content,
       status,
       taskCount: total,
-      completedTaskCount: completed,
+      doneTaskCount: done,
       dependencyCount,
       lastModified,
     };
@@ -499,7 +499,7 @@ export class PlanService {
       content: body.content,
       status: "planning",
       taskCount: body.tasks?.length ?? 0,
-      completedTaskCount: 0,
+      doneTaskCount: 0,
       dependencyCount: 0,
     };
   }

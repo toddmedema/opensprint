@@ -51,7 +51,7 @@ describe("Build API", () => {
         currentTask: null,
         currentPhase: null,
         queueDepth: 0,
-        totalCompleted: 0,
+        totalDone: 0,
         totalFailed: 0,
       });
       // Always-on orchestrator: no `running` field (PRDv2 §5.7)

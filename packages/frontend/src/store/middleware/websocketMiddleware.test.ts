@@ -296,7 +296,7 @@ describe("websocketMiddleware", () => {
       });
     });
 
-    it("dispatches setCompletionState on agent.completed", async () => {
+    it("dispatches setCompletionState on agent.done", async () => {
       const store = createStore();
       store.dispatch(wsConnect({ projectId: "proj-1" }));
       wsInstance!.simulateOpen();
@@ -306,7 +306,7 @@ describe("websocketMiddleware", () => {
       store.dispatch(setSelectedTaskId("task-1"));
 
       wsInstance!.simulateMessage({
-        type: "agent.completed",
+        type: "agent.done",
         taskId: "task-1",
         status: "done",
         testResults: { passed: 5, failed: 0, skipped: 1, total: 6 },

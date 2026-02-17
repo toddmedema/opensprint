@@ -170,8 +170,8 @@ export const api = {
       request<AgentSession[]>(`/projects/${projectId}/tasks/${taskId}/sessions`),
     session: (projectId: string, taskId: string, attempt: number) =>
       request<AgentSession>(`/projects/${projectId}/tasks/${taskId}/sessions/${attempt}`),
-    markComplete: (projectId: string, taskId: string) =>
-      request<{ taskClosed: boolean; epicClosed?: boolean }>(`/projects/${projectId}/tasks/${taskId}/complete`, {
+    markDone: (projectId: string, taskId: string) =>
+      request<{ taskClosed: boolean; epicClosed?: boolean }>(`/projects/${projectId}/tasks/${taskId}/done`, {
         method: "POST",
       }),
   },

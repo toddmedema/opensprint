@@ -48,7 +48,7 @@ const mockPlan: Plan = {
   content: "# Plan 1\n\nDescription",
   status: "planning",
   taskCount: 3,
-  completedTaskCount: 0,
+  doneTaskCount: 0,
   dependencyCount: 0,
 };
 

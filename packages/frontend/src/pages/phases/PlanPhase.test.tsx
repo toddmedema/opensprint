@@ -24,7 +24,7 @@ const mockPlansList = vi.fn().mockResolvedValue({
       content: "# Archive Test\n\nContent.",
       status: "building",
       taskCount: 2,
-      completedTaskCount: 0,
+      doneTaskCount: 0,
       dependencyCount: 0,
     },
   ],
@@ -40,7 +40,7 @@ const mockPlansGet = vi.fn().mockResolvedValue({
   content: "# Archive Test\n\nContent.",
   status: "building",
   taskCount: 2,
-  completedTaskCount: 0,
+  doneTaskCount: 0,
   dependencyCount: 0,
 });
 const mockPlansCreate = vi.fn().mockResolvedValue({
@@ -48,7 +48,7 @@ const mockPlansCreate = vi.fn().mockResolvedValue({
   content: "# New Feature\n\nContent.",
   status: "planning",
   taskCount: 0,
-  completedTaskCount: 0,
+  doneTaskCount: 0,
   dependencyCount: 0,
 });
 vi.mock("../../api/client", () => ({
@@ -79,7 +79,7 @@ const basePlan = {
   content: "# Archive Test\n\nContent.",
   status: "building" as const,
   taskCount: 2,
-  completedTaskCount: 0,
+  doneTaskCount: 0,
   dependencyCount: 0,
 };
 
@@ -153,7 +153,7 @@ describe("PlanPhase Redux integration", () => {
       </Provider>,
     );
 
-    expect(screen.getByRole("progressbar", { name: /tasks completed/i })).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: /tasks done/i })).toBeInTheDocument();
     expect(screen.getByText("Task A")).toBeInTheDocument();
     expect(screen.getByText("Task B")).toBeInTheDocument();
     expect(screen.getByText(/0\/2 done/)).toBeInTheDocument();
@@ -260,8 +260,8 @@ describe("PlanPhase Rebuild button", () => {
     const plans = [
       {
         ...basePlan,
-        status: "complete" as const,
-        completedTaskCount: 2,
+        status: "done" as const,
+        doneTaskCount: 2,
         metadata: {
           ...basePlan.metadata,
           shippedAt: "2026-02-16T08:00:00.000Z",
@@ -283,8 +283,8 @@ describe("PlanPhase Rebuild button", () => {
     const plans = [
       {
         ...basePlan,
-        status: "complete" as const,
-        completedTaskCount: 2,
+        status: "done" as const,
+        doneTaskCount: 2,
         metadata: {
           ...basePlan.metadata,
           shippedAt: "2026-02-16T10:00:00.000Z",
@@ -306,8 +306,8 @@ describe("PlanPhase Rebuild button", () => {
     const plans = [
       {
         ...basePlan,
-        status: "complete" as const,
-        completedTaskCount: 2,
+        status: "done" as const,
+        doneTaskCount: 2,
         metadata: {
           ...basePlan.metadata,
           shippedAt: "2026-02-16T10:00:00.000Z",
@@ -329,8 +329,8 @@ describe("PlanPhase Rebuild button", () => {
     const plans = [
       {
         ...basePlan,
-        status: "complete" as const,
-        completedTaskCount: 2,
+        status: "done" as const,
+        doneTaskCount: 2,
         metadata: {
           ...basePlan.metadata,
           shippedAt: "2026-02-16T08:00:00.000Z",
@@ -352,8 +352,8 @@ describe("PlanPhase Rebuild button", () => {
     const plans = [
       {
         ...basePlan,
-        status: "complete" as const,
-        completedTaskCount: 2,
+        status: "done" as const,
+        doneTaskCount: 2,
         metadata: {
           ...basePlan.metadata,
           shippedAt: null,
@@ -411,8 +411,8 @@ describe("PlanPhase reshipPlan thunk", () => {
     const plans = [
       {
         ...basePlan,
-        status: "complete" as const,
-        completedTaskCount: 2,
+        status: "done" as const,
+        doneTaskCount: 2,
         metadata: {
           ...basePlan.metadata,
           shippedAt: "2026-02-16T08:00:00.000Z",

@@ -24,8 +24,8 @@ export interface AgentStartedEvent {
   branchName?: string;
 }
 
-export interface AgentCompletedEvent {
-  type: 'agent.completed';
+export interface AgentDoneEvent {
+  type: 'agent.done';
   taskId: string;
   status: string;
   testResults: TestResults | null;
@@ -96,7 +96,7 @@ export type ServerEvent =
   | TaskUpdatedEvent
   | AgentOutputEvent
   | AgentStartedEvent
-  | AgentCompletedEvent
+  | AgentDoneEvent
   | PrdUpdatedEvent
   | BuildStatusEvent
   | TaskBlockedEvent

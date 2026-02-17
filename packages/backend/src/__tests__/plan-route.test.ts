@@ -26,7 +26,7 @@ vi.mock("../services/orchestrator.service.js", () => ({
       currentTask: null,
       currentPhase: null,
       queueDepth: 0,
-      totalCompleted: 0,
+      totalDone: 0,
       totalFailed: 0,
     }),
     getActiveAgents: vi.fn().mockResolvedValue([]),

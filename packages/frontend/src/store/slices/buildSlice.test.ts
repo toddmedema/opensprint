@@ -6,7 +6,7 @@ import buildReducer, {
   fetchBuildStatus,
   fetchTaskDetail,
   fetchArchivedSessions,
-  markTaskComplete,
+  markTaskDone,
   setSelectedTaskId,
   appendAgentOutput,
   setOrchestratorRunning,
@@ -27,7 +27,7 @@ vi.mock("../../api/client", () => ({
       list: vi.fn(),
       get: vi.fn(),
       sessions: vi.fn(),
-      markComplete: vi.fn(),
+      markDone: vi.fn(),
     },
     plans: { list: vi.fn() },
     build: {
@@ -65,7 +65,7 @@ const mockPlan: Plan = {
   content: "# Plan 1",
   status: "planning",
   taskCount: 3,
-  completedTaskCount: 0,
+  doneTaskCount: 0,
   dependencyCount: 0,
 };
 
@@ -78,7 +78,7 @@ const mockOrchestratorStatus = {
   currentTask: "task-1",
   currentPhase: "coding" as const,
   queueDepth: 2,
-  totalCompleted: 5,
+  totalDone: 5,
   totalFailed: 0,
   awaitingApproval: false,
 };
@@ -88,7 +88,7 @@ describe("buildSlice", () => {
     vi.mocked(api.tasks.list).mockReset();
     vi.mocked(api.tasks.get).mockReset();
     vi.mocked(api.tasks.sessions).mockReset();
-    vi.mocked(api.tasks.markComplete).mockReset();
+    vi.mocked(api.tasks.markDone).mockReset();
     vi.mocked(api.plans.list).mockReset();
     vi.mocked(api.build.status).mockReset();
   });
@@ -246,7 +246,7 @@ describe("buildSlice", () => {
         currentTask: null,
         currentPhase: null,
         queueDepth: 0,
-        totalCompleted: 0,
+        totalDone: 0,
         totalFailed: 0,
       } as never);
       const store = createStore();
@@ -304,15 +304,15 @@ describe("buildSlice", () => {
     });
   });
 
-  describe("markTaskComplete thunk", () => {
+  describe("markTaskDone thunk", () => {
     it("updates tasks and plan slice on fulfilled", async () => {
-      vi.mocked(api.tasks.markComplete).mockResolvedValue({ taskClosed: true } as never);
+      vi.mocked(api.tasks.markDone).mockResolvedValue({ taskClosed: true } as never);
       vi.mocked(api.tasks.list).mockResolvedValue([{ ...mockTask, kanbanColumn: "done" }] as never);
       vi.mocked(api.plans.list).mockResolvedValue(mockGraph as never);
       const store = createStore();
-      await store.dispatch(markTaskComplete({ projectId: "proj-1", taskId: "task-1" }));
+      await store.dispatch(markTaskDone({ projectId: "proj-1", taskId: "task-1" }));
       expect(store.getState().build.tasks[0].kanbanColumn).toBe("done");
-      expect(api.tasks.markComplete).toHaveBeenCalledWith("proj-1", "task-1");
+      expect(api.tasks.markDone).toHaveBeenCalledWith("proj-1", "task-1");
     });
   });
 });
