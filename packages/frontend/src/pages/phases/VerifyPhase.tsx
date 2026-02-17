@@ -32,9 +32,8 @@ const categoryColors: Record<string, string> = {
   scope: "bg-yellow-50 text-yellow-700",
 };
 
-/** Display label for feedback type chip: "Pending" until mapped, then category (Bug/Feature/UX/Scope) */
+/** Display label for feedback type chip: always show category (Bug/Feature/UX/Scope) */
 function getFeedbackTypeLabel(item: FeedbackItem): string {
-  if (item.status === "pending") return "Pending";
   return item.category === "ux" ? "UX" : item.category.charAt(0).toUpperCase() + item.category.slice(1);
 }
 
@@ -249,9 +248,7 @@ export function VerifyPhase({ projectId, onNavigateToBuildTask }: VerifyPhasePro
                   <div className="flex items-center gap-2 ml-4 flex-shrink-0">
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                        item.status === "pending"
-                          ? "bg-gray-100 text-gray-600"
-                          : categoryColors[item.category] ?? "bg-gray-100 text-gray-600"
+                        categoryColors[item.category] ?? "bg-gray-100 text-gray-600"
                       }`}
                     >
                       {getFeedbackTypeLabel(item)}

@@ -349,7 +349,7 @@ describe("VerifyPhase feedback input", () => {
     });
   });
 
-  it("shows Pending chip for unmapped feedback (status pending)", () => {
+  it("shows category chip (Bug/Feature/UX/Scope) for all feedback, not Pending/Mapped", () => {
     const storeWithFeedback = configureStore({
       reducer: {
         project: projectReducer,
@@ -394,12 +394,12 @@ describe("VerifyPhase feedback input", () => {
       </Provider>,
     );
 
-    expect(screen.getByText("Pending")).toBeInTheDocument();
-    expect(screen.queryByText("Bug")).not.toBeInTheDocument();
+    expect(screen.getByText("Bug")).toBeInTheDocument();
+    expect(screen.queryByText("Pending")).not.toBeInTheDocument();
     expect(screen.queryByText("Mapped")).not.toBeInTheDocument();
   });
 
-  it("shows mapped type chip (Bug/Feature/UX) for mapped feedback, not Mapped chip", () => {
+  it("shows category chip (Bug/Feature/UX/Scope) for mapped feedback", () => {
     const storeWithFeedback = configureStore({
       reducer: {
         project: projectReducer,
@@ -448,6 +448,15 @@ describe("VerifyPhase feedback input", () => {
               status: "resolved",
               createdAt: new Date().toISOString(),
             },
+            {
+              id: "fb-scope",
+              text: "Scope change request",
+              category: "scope",
+              mappedPlanId: "plan-4",
+              createdTaskIds: [],
+              status: "mapped",
+              createdAt: new Date().toISOString(),
+            },
           ],
           loading: false,
           submitting: false,
@@ -465,6 +474,7 @@ describe("VerifyPhase feedback input", () => {
     expect(screen.getByText("Bug")).toBeInTheDocument();
     expect(screen.getByText("Feature")).toBeInTheDocument();
     expect(screen.getByText("UX")).toBeInTheDocument();
+    expect(screen.getByText("Scope")).toBeInTheDocument();
     expect(screen.queryByText("Mapped")).not.toBeInTheDocument();
     expect(screen.queryByText("Pending")).not.toBeInTheDocument();
   });
