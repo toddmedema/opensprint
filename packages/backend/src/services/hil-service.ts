@@ -43,12 +43,18 @@ export class HilService {
    */
   async evaluateDecision(
     projectId: string,
-    category: HilCategory,
+    category: HilCategory | 'testFailuresAndRetries',
     description: string,
     options?: Array<{ id: string; label: string; description: string }>,
     defaultApproved = true,
     scopeChangeMetadata?: ScopeChangeHilMetadata,
   ): Promise<{ approved: boolean; notes?: string }> {
+    // PRD §6.5.1: Test failures are always automated, not configurable
+    if (category === 'testFailuresAndRetries') {
+      console.log(`[HIL] Automated decision for testFailuresAndRetries: ${description}`);
+      return { approved: defaultApproved };
+    }
+
     const settings = await this.projectService.getSettings(projectId);
     const mode = settings.hilConfig[category];
 

@@ -17,11 +17,6 @@ const HIL_CATEGORIES = [
     label: "Dependency Modifications",
     desc: "Task reordering and re-prioritization",
   },
-  {
-    key: "testFailuresAndRetries",
-    label: "Test Failures & Retries",
-    desc: "How to handle failing tests",
-  },
 ] as const;
 
 export function HilStep({ value, onChange }: HilStepProps) {

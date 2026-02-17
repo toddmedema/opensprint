@@ -28,7 +28,6 @@ describe('HilService', () => {
         scopeChanges: 'requires_approval',
         architectureDecisions: 'requires_approval',
         dependencyModifications: 'automated',
-        testFailuresAndRetries: 'automated',
       },
     });
     hilService = new HilService();
@@ -49,7 +48,6 @@ describe('HilService', () => {
         scopeChanges: 'notify_and_proceed',
         architectureDecisions: 'notify_and_proceed',
         dependencyModifications: 'automated',
-        testFailuresAndRetries: 'automated',
       },
     });
 
@@ -81,7 +79,7 @@ describe('HilService', () => {
     expect(result.notes).toBe('Approved');
   });
 
-  it('should return defaultApproved for automated when provided', async () => {
+  it('should always treat testFailuresAndRetries as automated (PRD §6.5.1)', async () => {
     const result = await hilService.evaluateDecision(
       'test-project',
       'testFailuresAndRetries',

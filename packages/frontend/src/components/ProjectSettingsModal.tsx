@@ -727,11 +727,6 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                         label: "Dependency Modifications",
                         desc: "Task reordering and re-prioritization",
                       },
-                      {
-                        key: "testFailuresAndRetries" as const,
-                        label: "Test Failures & Retries",
-                        desc: "How to handle failing tests",
-                      },
                     ] as const
                   ).map((cat) => (
                     <div key={cat.key} className="flex items-center justify-between p-3 rounded-lg bg-gray-50">

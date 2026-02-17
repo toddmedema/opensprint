@@ -15,7 +15,6 @@ function makeSettings(overrides?: Partial<ProjectSettings>): ProjectSettings {
       scopeChanges: "requires_approval",
       architectureDecisions: "requires_approval",
       dependencyModifications: "automated",
-      testFailuresAndRetries: "automated",
     },
     testFramework: null,
     ...overrides,

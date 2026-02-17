@@ -47,10 +47,14 @@ function normalizeDeployment(input: CreateProjectRequest["deployment"]): Deploym
   };
 }
 
-/** Normalize HIL config: merge partial input with defaults (PRD §6.5) */
+/** Normalize HIL config: merge partial input with defaults (PRD §6.5). Strips testFailuresAndRetries (PRD §6.5.1: always automated). */
 function normalizeHilConfig(input: CreateProjectRequest["hilConfig"]): HilConfig {
   if (!input) return DEFAULT_HIL_CONFIG;
-  const defined = Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined));
+  const defined = Object.fromEntries(
+    Object.entries(input).filter(
+      ([k, v]) => v !== undefined && k !== 'testFailuresAndRetries',
+    ),
+  );
   return {
     ...DEFAULT_HIL_CONFIG,
     ...defined,
@@ -405,12 +409,16 @@ export class ProjectService {
       }
     }
 
+    const hilConfig = normalizeHilConfig(
+      (updates.hilConfig ?? current.hilConfig) as CreateProjectRequest["hilConfig"],
+    );
     const updated: ProjectSettings = {
       ...current,
       ...updates,
       planningAgent,
       codingAgent,
       codingAgentByComplexity,
+      hilConfig,
     };
     const settingsPath = path.join(repoPath, OPENSPRINT_PATHS.settings);
     await writeJsonAtomic(settingsPath, updated);

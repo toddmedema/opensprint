@@ -43,12 +43,11 @@ export const DEFAULT_DEPLOYMENT_CONFIG: DeploymentConfig = {
 /** HIL notification mode for each category */
 export type HilNotificationMode = 'automated' | 'notify_and_proceed' | 'requires_approval';
 
-/** Human-in-the-loop decision categories */
+/** Human-in-the-loop decision categories (PRD §6.5.1: test failures are always automated, not configurable) */
 export interface HilConfig {
   scopeChanges: HilNotificationMode;
   architectureDecisions: HilNotificationMode;
   dependencyModifications: HilNotificationMode;
-  testFailuresAndRetries: HilNotificationMode;
 }
 
 export type HilConfigInput = HilConfig;
@@ -93,5 +92,4 @@ export const DEFAULT_HIL_CONFIG: HilConfig = {
   scopeChanges: 'requires_approval',
   architectureDecisions: 'requires_approval',
   dependencyModifications: 'automated',
-  testFailuresAndRetries: 'automated',
 };

@@ -40,7 +40,6 @@ const mockSettings = {
     scopeChanges: "requires_approval" as const,
     architectureDecisions: "requires_approval" as const,
     dependencyModifications: "requires_approval" as const,
-    testFailuresAndRetries: "requires_approval" as const,
   },
 };
 

@@ -4,7 +4,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   scopeChanges: "Scope Changes",
   architectureDecisions: "Architecture Decisions",
   dependencyModifications: "Dependency Modifications",
-  testFailuresAndRetries: "Test Failures & Retries",
 };
 
 interface HilApprovalModalProps {
