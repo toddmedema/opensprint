@@ -47,6 +47,12 @@ const mockBeadsCreate = vi.fn().mockImplementation(() => {
   return Promise.resolve({ id, title: "Mock", status: "open" });
 });
 const mockBeadsAddDependency = vi.fn().mockResolvedValue(undefined);
+
+let feedbackIdSequence: string[] = [];
+vi.mock("../utils/feedback-id.js", () => ({
+  generateShortFeedbackId: () => feedbackIdSequence.shift() ?? "fallback1",
+}));
+
 vi.mock("../services/beads.service.js", () => ({
   BeadsService: vi.fn().mockImplementation(() => ({
     init: vi.fn().mockResolvedValue(undefined),
@@ -71,6 +77,7 @@ describe("FeedbackService", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    feedbackIdSequence = [];
     mockHilEvaluate.mockResolvedValue({ approved: false });
     mockSyncPrdFromScopeChange.mockResolvedValue(undefined);
     beadsCreateCallCount = 0;
@@ -150,6 +157,61 @@ describe("FeedbackService", () => {
     expect(items).toHaveLength(1);
     expect(items[0].createdTaskIds).toEqual([]);
     expect(items[0].status).toBe("pending");
+  });
+
+  it("should assign short 8-char alphanumeric feedback IDs", async () => {
+    feedbackIdSequence = ["a1b2c3d4"];
+    mockInvoke.mockResolvedValue({
+      content: JSON.stringify({
+        category: "bug",
+        mappedPlanId: null,
+        task_titles: ["Fix something"],
+      }),
+    });
+
+    const item = await feedbackService.submitFeedback(projectId, {
+      text: "Something broke",
+    });
+
+    expect(item.id).toMatch(/^[a-z0-9]{8}$/);
+    expect(item.id).toHaveLength(8);
+  });
+
+  it("should retry with new ID on collision", async () => {
+    const repoPath = path.join(tempDir, "my-project");
+    const feedbackDir = path.join(repoPath, OPENSPRINT_PATHS.feedback);
+    await fs.mkdir(feedbackDir, { recursive: true });
+    const existingId = "aaaaaaaa";
+    await fs.writeFile(
+      path.join(feedbackDir, `${existingId}.json`),
+      JSON.stringify({
+        id: existingId,
+        text: "Existing",
+        category: "bug",
+        mappedPlanId: null,
+        createdTaskIds: [],
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      }),
+      "utf-8",
+    );
+
+    feedbackIdSequence = [existingId, "bbbbbbbb"];
+    mockInvoke.mockResolvedValue({
+      content: JSON.stringify({
+        category: "bug",
+        mappedPlanId: null,
+        task_titles: ["Fix collision"],
+      }),
+    });
+
+    const item = await feedbackService.submitFeedback(projectId, {
+      text: "New feedback",
+    });
+
+    expect(item.id).toBe("bbbbbbbb");
+    const existing = await feedbackService.getFeedback(projectId, existingId);
+    expect(existing.text).toBe("Existing");
   });
 
   it("should categorize feedback via planning agent with PRD and plans context", async () => {

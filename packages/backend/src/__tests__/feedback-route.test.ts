@@ -95,6 +95,7 @@ describe("Feedback REST API", () => {
     expect(res.status).toBe(201);
     expect(res.body.data).toBeDefined();
     expect(res.body.data.id).toBeDefined();
+    expect(res.body.data.id).toMatch(/^[a-z0-9]{8}$/);
     expect(res.body.data.text).toBe("Add dark mode toggle");
     expect(res.body.data.category).toBe("bug");
     expect(res.body.data.status).toBe("pending");

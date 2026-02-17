@@ -630,7 +630,7 @@ Stored as `.opensprint/sessions/<task-id>-<attempt>.json`:
 Stored as `.opensprint/feedback/<feedback-id>.json`:
 | Field | Type | Description |
 |-------|------|-------------|
-| id | string (UUID) | Unique feedback identifier |
+| id | string (8 alphanumeric) | Unique feedback identifier |
 | text | string | User's feedback in natural language |
 | category | enum | bug / feature / ux / scope |
 | mapped_plan_id | string | Plan epic the feedback maps to |

@@ -1,6 +1,5 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { v4 as uuid } from 'uuid';
 import type { FeedbackItem, FeedbackSubmitRequest, FeedbackCategory } from '@opensprint/shared';
 import { OPENSPRINT_PATHS } from '@opensprint/shared';
 import { AppError } from '../middleware/error-handler.js';
@@ -15,6 +14,7 @@ import { BeadsService, type BeadsIssue } from './beads.service.js';
 import { activeAgentsService } from './active-agents.service.js';
 import { broadcastToProject } from '../websocket/index.js';
 import { writeJsonAtomic } from '../utils/file-utils.js';
+import { generateShortFeedbackId } from '../utils/feedback-id.js';
 
 const FEEDBACK_CATEGORIZATION_PROMPT = `You are an AI assistant that categorizes user feedback about a software product.
 
@@ -38,6 +38,21 @@ export class FeedbackService {
   private planService = new PlanService();
   private prdService = new PrdService();
   private beadsService = new BeadsService();
+
+  /** Generate a unique 8-char alphanumeric feedback ID; retries on collision */
+  private async generateUniqueFeedbackId(feedbackDir: string): Promise<string> {
+    const MAX_RETRIES = 10;
+    for (let i = 0; i < MAX_RETRIES; i++) {
+      const id = generateShortFeedbackId();
+      const filePath = path.join(feedbackDir, `${id}.json`);
+      try {
+        await fs.access(filePath);
+      } catch {
+        return id;
+      }
+    }
+    throw new Error('Failed to generate unique feedback ID after retries');
+  }
 
   /** Get feedback directory for a project */
   private async getFeedbackDir(projectId: string): Promise<string> {
@@ -76,7 +91,7 @@ export class FeedbackService {
     }
     const feedbackDir = await this.getFeedbackDir(projectId);
     await fs.mkdir(feedbackDir, { recursive: true });
-    const id = uuid();
+    const id = await this.generateUniqueFeedbackId(feedbackDir);
 
     // Validate and normalize image attachments (base64 strings)
     const images: string[] = [];
