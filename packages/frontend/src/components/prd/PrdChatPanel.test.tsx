@@ -53,10 +53,75 @@ describe("PrdChatPanel", () => {
     expect(clearBtn).toBeInTheDocument();
   });
 
-  it("renders as inline sidebar without close button when variant is inline", () => {
+  it("renders as inline sidebar with Discuss title when variant is inline", () => {
     render(<PrdChatPanel {...defaultProps} variant="inline" />);
 
     expect(screen.getByTestId("prd-chat-sidebar")).toBeInTheDocument();
+    expect(screen.getByText("Discuss")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Close chat panel" })).not.toBeInTheDocument();
+  });
+
+  it("shows collapse button when inline and onCollapsedChange is provided", () => {
+    const onCollapsedChange = vi.fn();
+    render(
+      <PrdChatPanel
+        {...defaultProps}
+        variant="inline"
+        collapsed={false}
+        onCollapsedChange={onCollapsedChange}
+      />,
+    );
+
+    const collapseBtn = screen.getByRole("button", { name: "Collapse Discuss sidebar" });
+    expect(collapseBtn).toBeInTheDocument();
+  });
+
+  it("calls onCollapsedChange(true) when collapse button is clicked", async () => {
+    const user = userEvent.setup();
+    const onCollapsedChange = vi.fn();
+    render(
+      <PrdChatPanel
+        {...defaultProps}
+        variant="inline"
+        collapsed={false}
+        onCollapsedChange={onCollapsedChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Collapse Discuss sidebar" }));
+
+    expect(onCollapsedChange).toHaveBeenCalledWith(true);
+  });
+
+  it("renders collapsed bar with expand button when inline and collapsed", () => {
+    render(
+      <PrdChatPanel
+        {...defaultProps}
+        variant="inline"
+        collapsed={true}
+        onCollapsedChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("prd-chat-sidebar")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expand Discuss sidebar" })).toBeInTheDocument();
+    expect(screen.queryByText("Discuss")).not.toBeInTheDocument();
+  });
+
+  it("calls onCollapsedChange(false) when expand button is clicked in collapsed state", async () => {
+    const user = userEvent.setup();
+    const onCollapsedChange = vi.fn();
+    render(
+      <PrdChatPanel
+        {...defaultProps}
+        variant="inline"
+        collapsed={true}
+        onCollapsedChange={onCollapsedChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Expand Discuss sidebar" }));
+
+    expect(onCollapsedChange).toHaveBeenCalledWith(false);
   });
 });

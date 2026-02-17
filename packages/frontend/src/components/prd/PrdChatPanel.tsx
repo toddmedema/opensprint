@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { ChatIcon, SendIcon, SparklesIcon } from "../icons/PrdIcons";
+import { ChatIcon, ChevronLeftIcon, ChevronRightIcon, SendIcon, SparklesIcon } from "../icons/PrdIcons";
 import { CloseButton } from "../CloseButton";
 import { formatSectionKey } from "../../lib/formatting";
 
@@ -27,6 +27,10 @@ export interface PrdChatPanelProps {
   inputRef?: React.RefObject<HTMLInputElement | null>;
   /** "floating" = overlay panel with toggle button; "inline" = always-visible sidebar in split-pane */
   variant?: "floating" | "inline";
+  /** When inline: whether sidebar is collapsed (narrow bar only). Ignored for floating. */
+  collapsed?: boolean;
+  /** When inline: called when user toggles collapse. Ignored for floating. */
+  onCollapsedChange?: (collapsed: boolean) => void;
 }
 
 export function PrdChatPanel({
@@ -41,12 +45,15 @@ export function PrdChatPanel({
   onSend,
   inputRef: externalInputRef,
   variant = "floating",
+  collapsed = false,
+  onCollapsedChange,
 }: PrdChatPanelProps) {
   const [chatInput, setChatInput] = useState("");
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const internalInputRef = useRef<HTMLInputElement>(null);
   const inputRef = externalInputRef ?? internalInputRef;
   const isInline = variant === "inline";
+  const isCollapsed = isInline && collapsed;
 
   useEffect(() => {
     chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -59,7 +66,28 @@ export function PrdChatPanel({
     onSend(text);
   };
 
-  // In inline mode, always show chat; in floating mode, show toggle when closed
+  // In inline mode when collapsed: show narrow bar with expand button
+  if (isCollapsed) {
+    return (
+      <div
+        className="flex flex-col h-full w-12 min-w-[48px] border-l border-gray-200 bg-gray-50 shrink-0 overflow-hidden items-center justify-center"
+        data-testid="prd-chat-sidebar"
+      >
+        <button
+          type="button"
+          onClick={() => onCollapsedChange?.(false)}
+          className="flex flex-col items-center gap-1 p-2 text-gray-600 hover:text-brand-600 hover:bg-gray-100 rounded-lg transition-colors"
+          title="Expand Discuss"
+          aria-label="Expand Discuss sidebar"
+        >
+          <ChatIcon className="w-5 h-5" />
+          <ChevronLeftIcon className="w-4 h-4" />
+        </button>
+      </div>
+    );
+  }
+
+  // In floating mode when closed: show toggle button
   if (!open && !isInline) {
     return (
       <button
@@ -82,15 +110,29 @@ export function PrdChatPanel({
     ? "flex flex-col h-full w-[380px] min-w-[320px] border-l border-gray-200 bg-gray-50 shrink-0 overflow-hidden"
     : "fixed bottom-6 right-6 w-96 h-[520px] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col z-40 overflow-hidden animate-slide-up-fade";
 
+  const headerTitle = isInline ? "Discuss" : "Chat with AI";
+
   return (
     <div className={containerClass} data-testid={isInline ? "prd-chat-sidebar" : undefined}>
       {/* Chat header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-white shrink-0">
         <div className="flex items-center gap-2">
           <SparklesIcon className="w-4 h-4 text-brand-500" />
-          <span className="text-sm font-semibold text-gray-800">Chat with AI</span>
+          <span className="text-sm font-semibold text-gray-800">{headerTitle}</span>
         </div>
-        {!isInline && (
+        {isInline ? (
+          onCollapsedChange && (
+            <button
+              type="button"
+              onClick={() => onCollapsedChange(true)}
+              className="p-1.5 rounded-full hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors"
+              title="Collapse Discuss"
+              aria-label="Collapse Discuss sidebar"
+            >
+              <ChevronRightIcon className="w-4 h-4" />
+            </button>
+          )
+        ) : (
           <CloseButton
             onClick={() => {
               onOpenChange(false);
