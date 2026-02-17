@@ -122,6 +122,34 @@ describe("VerifyPhase feedback input", () => {
     });
   });
 
+  it("shows feedback immediately in history with categorizing state after submit", async () => {
+    const user = userEvent.setup();
+    const store = createStore();
+    mockFeedbackSubmit.mockResolvedValue({
+      id: "fb-new",
+      text: "Bug in login",
+      category: "bug",
+      mappedPlanId: null,
+      createdTaskIds: [],
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    });
+    render(
+      <Provider store={store}>
+        <VerifyPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    await user.type(screen.getByPlaceholderText(/Describe a bug/), "Bug in login");
+    await user.click(screen.getByRole("button", { name: /Submit Feedback/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Bug in login")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Categorizing…")).toBeInTheDocument();
+    expect(screen.getByText(/Feedback History \(1\)/)).toBeInTheDocument();
+  });
+
   it("submits feedback with images when images are attached", async () => {
     const user = userEvent.setup();
     const store = createStore();
@@ -218,7 +246,7 @@ describe("VerifyPhase feedback input", () => {
     });
   });
 
-  it("displays feedback list from Redux store (mapped feedback only)", () => {
+  it("displays feedback list from Redux store (all feedback including pending)", () => {
     const storeWithFeedback = configureStore({
       reducer: {
         project: projectReducer,
@@ -453,7 +481,7 @@ describe("VerifyPhase feedback input", () => {
     });
   });
 
-  it("does not show feedback cards when status is pending", () => {
+  it("shows pending feedback immediately with categorizing loading state", () => {
     const storeWithFeedback = configureStore({
       reducer: {
         project: projectReducer,
@@ -498,13 +526,14 @@ describe("VerifyPhase feedback input", () => {
       </Provider>,
     );
 
-    // Pending feedback is not shown — feed appears empty
-    expect(screen.getByText(/Feedback History \(0\)/)).toBeInTheDocument();
-    expect(screen.queryByText("Login button is broken")).not.toBeInTheDocument();
-    expect(screen.getByText(/No feedback submitted yet/)).toBeInTheDocument();
+    // Pending feedback is shown immediately with loading state
+    expect(screen.getByText(/Feedback History \(1\)/)).toBeInTheDocument();
+    expect(screen.getByText("Login button is broken")).toBeInTheDocument();
+    expect(screen.getByText("Categorizing…")).toBeInTheDocument();
+    expect(screen.getByLabelText("Categorizing feedback")).toBeInTheDocument();
   });
 
-  it("shows only mapped feedback and hides pending in mixed list", () => {
+  it("shows both pending and mapped feedback; pending has categorizing loading state", () => {
     const storeWithFeedback = configureStore({
       reducer: {
         project: projectReducer,
@@ -558,13 +587,13 @@ describe("VerifyPhase feedback input", () => {
       </Provider>,
     );
 
-    // Pending: not shown at all
-    expect(screen.queryByText("Pending feedback")).not.toBeInTheDocument();
-    // Mapped: shown with original feedback text and category
+    // Both shown: pending with loading state, mapped with category chip
+    expect(screen.getByText("Pending feedback")).toBeInTheDocument();
+    expect(screen.getByText("Categorizing…")).toBeInTheDocument();
     expect(screen.getByText("Mapped feedback")).toBeInTheDocument();
     expect(screen.getByText("Feature")).toBeInTheDocument();
     expect(screen.getByText("plan-1")).toBeInTheDocument();
-    expect(screen.getByText(/Feedback History \(1\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Feedback History \(2\)/)).toBeInTheDocument();
   });
 
   it("shows category chip (Bug/Feature/UX/Scope) for mapped feedback", () => {

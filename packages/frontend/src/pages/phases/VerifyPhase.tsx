@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback } from "react";
 import type { FeedbackItem } from "@opensprint/shared";
 import { useAppDispatch, useAppSelector } from "../../store";
 import { submitFeedback, setVerifyError } from "../../store/slices/verifySlice";
@@ -42,10 +42,6 @@ export function VerifyPhase({ projectId, onNavigateToBuildTask }: VerifyPhasePro
 
   /* ── Redux state ── */
   const feedback = useAppSelector((s) => s.verify.feedback);
-  const displayedFeedback = useMemo(
-    () => feedback.filter((item) => item.status !== "pending"),
-    [feedback],
-  );
   const loading = useAppSelector((s) => s.verify.loading);
   const submitting = useAppSelector((s) => s.verify.submitting);
   const error = useAppSelector((s) => s.verify.error);
@@ -235,17 +231,17 @@ export function VerifyPhase({ projectId, onNavigateToBuildTask }: VerifyPhasePro
         </div>
 
         {/* Feedback Feed */}
-        <h3 className="text-sm font-semibold text-gray-900 mb-4">Feedback History ({displayedFeedback.length})</h3>
+        <h3 className="text-sm font-semibold text-gray-900 mb-4">Feedback History ({feedback.length})</h3>
 
         {loading ? (
           <div className="text-center py-10 text-gray-400">Loading feedback...</div>
-        ) : displayedFeedback.length === 0 ? (
+        ) : feedback.length === 0 ? (
           <div className="text-center py-10 text-gray-400 text-sm">
             No feedback submitted yet. Test your app and report findings above.
           </div>
         ) : (
           <div className="space-y-3">
-            {displayedFeedback.map((item: FeedbackItem) => (
+            {feedback.map((item: FeedbackItem) => (
               <div key={item.id} className="card p-4">
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <div className="flex-1 min-w-0">
@@ -258,13 +254,26 @@ export function VerifyPhase({ projectId, onNavigateToBuildTask }: VerifyPhasePro
                     <p className="text-sm text-gray-900">{item.text}</p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                        categoryColors[item.category] ?? "bg-gray-100 text-gray-600"
-                      }`}
-                    >
-                      {getFeedbackTypeLabel(item)}
-                    </span>
+                    {item.status === "pending" ? (
+                      <span
+                        className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600"
+                        aria-label="Categorizing feedback"
+                      >
+                        <div
+                          className="h-3 w-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"
+                          aria-hidden="true"
+                        />
+                        Categorizing…
+                      </span>
+                    ) : (
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                          categoryColors[item.category] ?? "bg-gray-100 text-gray-600"
+                        }`}
+                      >
+                        {getFeedbackTypeLabel(item)}
+                      </span>
+                    )}
                   </div>
                 </div>
 
