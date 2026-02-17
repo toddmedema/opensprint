@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
@@ -11,6 +11,19 @@ import buildReducer from "../../store/slices/buildSlice";
 const mockArchive = vi.fn().mockResolvedValue(undefined);
 const mockShip = vi.fn().mockResolvedValue(undefined);
 const mockReship = vi.fn().mockResolvedValue(undefined);
+const mockPlansUpdate = vi.fn().mockResolvedValue({
+  metadata: {
+    planId: "archive-test-feature",
+    beadEpicId: "epic-1",
+    gateTaskId: "epic-1.0",
+    complexity: "medium",
+  },
+  content: "# Updated Plan\n\nUpdated content.",
+  status: "building",
+  taskCount: 2,
+  doneTaskCount: 0,
+  dependencyCount: 0,
+});
 const mockChatSend = vi.fn().mockResolvedValue({ message: "AI response" });
 const mockPlansList = vi.fn().mockResolvedValue({
   plans: [
@@ -57,6 +70,7 @@ vi.mock("../../api/client", () => ({
       list: (...args: unknown[]) => mockPlansList(...args),
       get: (...args: unknown[]) => mockPlansGet(...args),
       create: (...args: unknown[]) => mockPlansCreate(...args),
+      update: (...args: unknown[]) => mockPlansUpdate(...args),
       archive: (...args: unknown[]) => mockArchive(...args),
       ship: (...args: unknown[]) => mockShip(...args),
       reship: (...args: unknown[]) => mockReship(...args),
@@ -100,6 +114,7 @@ function createStore(plansOverride?: typeof basePlan[]) {
         chatMessages: {},
         loading: false,
         decomposing: false,
+        planStatus: null,
         shippingPlanId: null,
         reshippingPlanId: null,
         archivingPlanId: null,
@@ -274,6 +289,53 @@ describe("PlanPhase archive", () => {
     await user.click(archiveButton);
 
     expect(mockArchive).toHaveBeenCalledWith("proj-1", "archive-test-feature");
+  });
+});
+
+describe("PlanPhase inline editing", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+
+  it("renders inline editable plan title and markdown in details sidebar", () => {
+    const store = createStore();
+    const { container } = render(
+      <Provider store={store}>
+        <PlanPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    expect(screen.getByRole("textbox", { name: /plan title/i })).toBeInTheDocument();
+    expect(container.querySelector('[data-prd-section="plan-body"]')).toBeInTheDocument();
+  });
+
+  it("dispatches updatePlan when plan title is edited and blurred", async () => {
+    const store = createStore();
+    const user = userEvent.setup();
+    render(
+      <Provider store={store}>
+        <PlanPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    const titleInput = screen.getByRole("textbox", { name: /plan title/i });
+    await user.clear(titleInput);
+    await user.type(titleInput, "New Title");
+    titleInput.blur();
+
+    await waitFor(
+      () => {
+        expect(mockPlansUpdate).toHaveBeenCalledWith(
+          "proj-1",
+          "archive-test-feature",
+          expect.objectContaining({
+            content: expect.stringContaining("New Title"),
+          }),
+        );
+      },
+      { timeout: 2000 },
+    );
   });
 });
 

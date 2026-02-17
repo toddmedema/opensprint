@@ -9,6 +9,7 @@ import planReducer, {
   fetchPlanChat,
   sendPlanMessage,
   fetchSinglePlan,
+  updatePlan,
   archivePlan,
   setSelectedPlanId,
   addPlanLocally,
@@ -28,6 +29,7 @@ vi.mock("../../api/client", () => ({
       reship: vi.fn(),
       archive: vi.fn(),
       get: vi.fn(),
+      update: vi.fn(),
     },
     projects: {
       getPlanStatus: vi.fn(),
@@ -69,6 +71,7 @@ describe("planSlice", () => {
     vi.mocked(api.plans.reship).mockReset();
     vi.mocked(api.plans.archive).mockReset();
     vi.mocked(api.plans.get).mockReset();
+    vi.mocked(api.plans.update).mockReset();
     vi.mocked(api.chat.history).mockReset();
     vi.mocked(api.chat.send).mockReset();
   });
@@ -467,6 +470,44 @@ describe("planSlice", () => {
       store.dispatch(setPlansAndGraph({ plans: [mockPlan], dependencyGraph: mockGraph }));
 
       await store.dispatch(fetchSinglePlan({ projectId: "proj-1", planId: "plan-other" }));
+
+      expect(store.getState().plan.plans).toHaveLength(1);
+      expect(store.getState().plan.plans[0].metadata.planId).toBe("plan-1");
+    });
+  });
+
+  describe("updatePlan thunk", () => {
+    it("updates plan in plans array when fulfilled", async () => {
+      const updatedPlan: Plan = {
+        ...mockPlan,
+        content: "# Updated Title\n\nUpdated body content",
+      };
+      vi.mocked(api.plans.update).mockResolvedValue(updatedPlan);
+      const store = createStore();
+      store.dispatch(setPlansAndGraph({ plans: [mockPlan], dependencyGraph: mockGraph }));
+
+      await store.dispatch(
+        updatePlan({ projectId: "proj-1", planId: "plan-1", content: "# Updated Title\n\nUpdated body content" }),
+      );
+
+      const state = store.getState().plan;
+      expect(state.plans[0].content).toBe("# Updated Title\n\nUpdated body content");
+      expect(api.plans.update).toHaveBeenCalledWith("proj-1", "plan-1", {
+        content: "# Updated Title\n\nUpdated body content",
+      });
+    });
+
+    it("does not add plan when not in array", async () => {
+      const otherPlan: Plan = {
+        ...mockPlan,
+        metadata: { ...mockPlan.metadata, planId: "plan-other" },
+        content: "# Other content",
+      };
+      vi.mocked(api.plans.update).mockResolvedValue(otherPlan);
+      const store = createStore();
+      store.dispatch(setPlansAndGraph({ plans: [mockPlan], dependencyGraph: mockGraph }));
+
+      await store.dispatch(updatePlan({ projectId: "proj-1", planId: "plan-other", content: "# Other content" }));
 
       expect(store.getState().plan.plans).toHaveLength(1);
       expect(store.getState().plan.plans[0].metadata.planId).toBe("plan-1");

@@ -1,6 +1,4 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import type { Plan, PlanStatus } from "@opensprint/shared";
 import { sortPlansByStatus } from "@opensprint/shared";
 import { useAppDispatch, useAppSelector } from "../../store";
@@ -12,6 +10,7 @@ import {
   fetchPlanChat,
   sendPlanMessage,
   fetchSinglePlan,
+  updatePlan,
   setSelectedPlanId,
   addPlanLocally,
   setPlanError,
@@ -19,6 +18,7 @@ import {
 import { AddPlanModal } from "../../components/AddPlanModal";
 import { CloseButton } from "../../components/CloseButton";
 import { DependencyGraph } from "../../components/DependencyGraph";
+import { PlanDetailContent } from "../../components/plan/PlanDetailContent";
 import { EpicCard } from "../../components/EpicCard";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
 import { fetchTasks } from "../../store/slices/buildSlice";
@@ -74,6 +74,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
   const [chatError, setChatError] = useState<string | null>(null);
   const [tasksSectionExpanded, setTasksSectionExpanded] = useState(true);
   const [dependencyGraphExpanded, setDependencyGraphExpanded] = useState(loadDependencyGraphExpanded);
+  const [savingPlanContentId, setSavingPlanContentId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const selectedPlan = plans.find((p) => p.metadata.planId === selectedPlanId) ?? null;
@@ -180,6 +181,19 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
   const handleClosePlan = useCallback(() => {
     dispatch(setSelectedPlanId(null));
   }, [dispatch]);
+
+  const handlePlanContentSave = useCallback(
+    async (content: string) => {
+      if (!selectedPlanId) return;
+      setSavingPlanContentId(selectedPlanId);
+      const result = await dispatch(updatePlan({ projectId, planId: selectedPlanId, content }));
+      setSavingPlanContentId(null);
+      if (updatePlan.fulfilled.match(result)) {
+        dispatch(fetchPlans(projectId));
+      }
+    },
+    [dispatch, projectId, selectedPlanId],
+  );
 
   const handleSendChat = async () => {
     if (!chatInput.trim() || !planContext || chatSending) return;
@@ -308,7 +322,12 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
       {selectedPlan && (
         <ResizableSidebar storageKey="plan" defaultWidth={420}>
           <div className="flex items-center justify-between p-4 border-b border-gray-200 shrink-0">
-            <h3 className="font-semibold text-gray-900">{selectedPlan.metadata.planId.replace(/-/g, " ")}</h3>
+            <h3 className="font-semibold text-gray-900 truncate flex-1 mr-2" title={selectedPlan.metadata.planId}>
+              {selectedPlan.content?.trim()
+                ? (selectedPlan.content.split("\n")[0]?.replace(/^#+\s*/, "").trim() ||
+                    selectedPlan.metadata.planId.replace(/-/g, " "))
+                : selectedPlan.metadata.planId.replace(/-/g, " ")}
+            </h3>
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -340,13 +359,12 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
 
           {/* Scrollable content area: plan + mockups + chat messages */}
           <div className="flex-1 overflow-y-auto min-h-0">
-            {/* Plan markdown */}
-            <div className="p-4 border-b border-gray-200">
-              <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Plan</h4>
-              <div className="prose prose-sm max-w-none bg-white p-4 rounded-lg border text-xs">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{selectedPlan.content || "_No content yet_"}</ReactMarkdown>
-              </div>
-            </div>
+            {/* Plan markdown — inline editable */}
+            <PlanDetailContent
+              plan={selectedPlan}
+              onContentSave={handlePlanContentSave}
+              saving={savingPlanContentId === selectedPlan.metadata.planId}
+            />
 
             {/* Mockups */}
             {selectedPlan.metadata.mockups && selectedPlan.metadata.mockups.length > 0 && (

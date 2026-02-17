@@ -103,6 +103,21 @@ export const fetchSinglePlan = createAsyncThunk(
   },
 );
 
+export const updatePlan = createAsyncThunk(
+  "plan/update",
+  async ({
+    projectId,
+    planId,
+    content,
+  }: {
+    projectId: string;
+    planId: string;
+    content: string;
+  }) => {
+    return api.plans.update(projectId, planId, { content });
+  },
+);
+
 const planSlice = createSlice({
   name: "plan",
   initialState,
@@ -213,6 +228,13 @@ const planSlice = createSlice({
       })
       // fetchSinglePlan
       .addCase(fetchSinglePlan.fulfilled, (state, action) => {
+        const idx = state.plans.findIndex((p) => p.metadata.planId === action.payload.metadata.planId);
+        if (idx >= 0) {
+          state.plans[idx] = action.payload;
+        }
+      })
+      // updatePlan
+      .addCase(updatePlan.fulfilled, (state, action) => {
         const idx = state.plans.findIndex((p) => p.metadata.planId === action.payload.metadata.planId);
         if (idx >= 0) {
           state.plans[idx] = action.payload;
