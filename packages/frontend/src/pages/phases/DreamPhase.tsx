@@ -86,6 +86,7 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
   } | null>(null);
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [planningIt, setPlanningIt] = useState(false);
+  const [discussCollapsed, setDiscussCollapsed] = useState(false);
 
   /* ── Refs ── */
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -441,7 +442,7 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
         </div>
       </div>
 
-      {/* Right pane: chat window */}
+      {/* Right pane: Discuss sidebar (collapsible) */}
       <PrdChatPanel
         open={true}
         onOpenChange={() => {}}
@@ -454,6 +455,8 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
         onSend={handleChatSend}
         inputRef={chatInputRef}
         variant="inline"
+        collapsed={discussCollapsed}
+        onCollapsedChange={setDiscussCollapsed}
       />
 
       {selection && (

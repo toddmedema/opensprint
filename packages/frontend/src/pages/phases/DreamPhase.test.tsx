@@ -305,7 +305,7 @@ describe("DreamPhase with designSlice", () => {
       expect(screen.getByText("Hi there!")).toBeInTheDocument();
     });
 
-    it("displays split-pane with light mode theme (PRD left, chat right)", () => {
+    it("displays split-pane with light mode theme (PRD left, Discuss right)", () => {
       const store = createStore({
         design: { prdContent: { overview: "Content" } },
       });
@@ -313,8 +313,32 @@ describe("DreamPhase with designSlice", () => {
       // Main split-pane wrapper uses light mode bg-gray-50
       const splitPane = container.querySelector("[class*='bg-gray-50']");
       expect(splitPane).toBeInTheDocument();
-      // Chat sidebar is on the right (PrdChatPanel with variant inline)
+      // Discuss sidebar is on the right (PrdChatPanel with variant inline)
       expect(screen.getByTestId("prd-chat-sidebar")).toBeInTheDocument();
+      expect(screen.getByText("Discuss")).toBeInTheDocument();
+    });
+
+    it("collapses and expands Discuss sidebar when collapse/expand buttons are clicked", async () => {
+      const user = userEvent.setup();
+      const store = createStore({
+        design: { prdContent: { overview: "Content" } },
+      });
+      renderDreamPhase(store);
+
+      // Initially expanded: full Discuss panel with collapse button
+      expect(screen.getByText("Discuss")).toBeInTheDocument();
+      const collapseBtn = screen.getByRole("button", { name: "Collapse Discuss sidebar" });
+      expect(collapseBtn).toBeInTheDocument();
+
+      // Click collapse
+      await user.click(collapseBtn);
+      // Collapsed: narrow bar with expand button (Discuss title hidden in collapsed bar)
+      expect(screen.getByRole("button", { name: "Expand Discuss sidebar" })).toBeInTheDocument();
+
+      // Click expand
+      await user.click(screen.getByRole("button", { name: "Expand Discuss sidebar" }));
+      expect(screen.getByText("Discuss")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Collapse Discuss sidebar" })).toBeInTheDocument();
     });
 
     it("shows Plan it when planStatus.action is plan", async () => {
