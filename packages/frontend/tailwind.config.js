@@ -28,6 +28,10 @@ export default {
           "0%": { opacity: "0", transform: "translateY(12px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
+        "slide-in-right": {
+          "0%": { transform: "translateX(100%)" },
+          "100%": { transform: "translateX(0)" },
+        },
         "fade-in": {
           "0%": { opacity: "0" },
           "100%": { opacity: "1" },
@@ -35,6 +39,7 @@ export default {
       },
       animation: {
         "slide-up-fade": "slide-up-fade 0.2s ease-out",
+        "slide-in-right": "slide-in-right 0.2s ease-out",
         "fade-in": "fade-in 0.15s ease-out",
       },
     },

@@ -255,9 +255,26 @@ export function BuildPhase({ projectId, onNavigateToPlan }: BuildPhaseProps) {
       </div>
 
       {selectedTask && (
-        <div className="w-[420px] border-l border-gray-200 flex flex-col bg-gray-50 shrink-0">
-          <div className="flex items-center justify-between p-4 border-b border-gray-200 shrink-0">
-            <div className="min-w-0 flex-1 pr-2">
+        <>
+          {/* Backdrop for narrow screens: tap to close */}
+          <button
+            type="button"
+            className="md:hidden fixed inset-0 bg-black/40 z-40 animate-fade-in"
+            onClick={() => dispatch(setSelectedTaskId(null))}
+            aria-label="Dismiss task detail"
+          />
+          {/* Task detail panel: overlay on narrow, sidebar on md+ */}
+          <div
+            className={`
+              flex flex-col bg-gray-50 shrink-0
+              fixed md:static inset-y-0 right-0 z-50 w-full max-w-[420px] md:max-w-none md:w-[420px]
+              md:border-l border-gray-200
+              shadow-xl md:shadow-none
+              animate-slide-in-right md:animate-none
+            `}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 shrink-0">
+              <div className="min-w-0 flex-1 pr-2">
               <h3 className="font-semibold text-gray-900 truncate">
                 {taskDetailLoading ? "Loading…" : taskDetail?.title ?? selectedTask}
               </h3>
@@ -276,8 +293,8 @@ export function BuildPhase({ projectId, onNavigateToPlan }: BuildPhaseProps) {
                   </button>
                 );
               })()}
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
               {!isDoneTask && (
                 <button
                   type="button"
@@ -289,11 +306,11 @@ export function BuildPhase({ projectId, onNavigateToPlan }: BuildPhaseProps) {
                 </button>
               )}
               <CloseButton onClick={() => dispatch(setSelectedTaskId(null))} ariaLabel="Close task detail" />
+              </div>
             </div>
-          </div>
 
-          <div className="flex-1 overflow-y-auto min-h-0">
-            <div className="p-4 border-b border-gray-200">
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <div className="p-4 border-b border-gray-200">
               <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Task</h4>
               {taskDetailLoading ? (
                 <div className="text-sm text-gray-500">Loading task spec...</div>
@@ -350,9 +367,9 @@ export function BuildPhase({ projectId, onNavigateToPlan }: BuildPhaseProps) {
               ) : (
                 <div className="text-sm text-gray-500">Could not load task details.</div>
               )}
-            </div>
+              </div>
 
-            <div className="p-4">
+              <div className="p-4">
               <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
                 {isDoneTask ? "Completed work artifacts" : "Live agent output"}
               </h4>
@@ -392,9 +409,10 @@ export function BuildPhase({ projectId, onNavigateToPlan }: BuildPhaseProps) {
                   </>
                 )}
               </div>
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
