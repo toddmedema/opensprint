@@ -209,4 +209,43 @@ describe("ProjectSettingsModal", () => {
     expect(screen.getByText("Dependency Modifications")).toBeInTheDocument();
     expect(screen.queryByText(/Test Failures|testFailuresAndRetries/i)).not.toBeInTheDocument();
   });
+
+  it("Deployment tab shows auto-deploy toggles (PRD §7.5.3)", async () => {
+    render(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
+    await screen.findByText("Project Settings");
+
+    const deploymentTab = screen.getByRole("button", { name: "Deployment" });
+    await userEvent.click(deploymentTab);
+
+    expect(screen.getByText("Auto-deploy on epic completion")).toBeInTheDocument();
+    expect(screen.getByText("Auto-deploy on Eval resolution")).toBeInTheDocument();
+    const epicToggle = screen.getByTestId("auto-deploy-epic-toggle");
+    const evalToggle = screen.getByTestId("auto-deploy-eval-toggle");
+    expect(epicToggle).not.toBeChecked();
+    expect(evalToggle).not.toBeChecked();
+  });
+
+  it("saves auto-deploy toggles when changed and Save is clicked", async () => {
+    render(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
+    await screen.findByText("Project Settings");
+
+    const deploymentTab = screen.getByRole("button", { name: "Deployment" });
+    await userEvent.click(deploymentTab);
+
+    const epicToggle = screen.getByTestId("auto-deploy-epic-toggle");
+    await userEvent.click(epicToggle);
+
+    const saveButton = screen.getByRole("button", { name: "Save Changes" });
+    await userEvent.click(saveButton);
+
+    expect(mockUpdateSettings).toHaveBeenCalledWith(
+      "proj-1",
+      expect.objectContaining({
+        deployment: expect.objectContaining({
+          autoDeployOnEpicCompletion: true,
+          autoDeployOnEvalResolution: false,
+        }),
+      })
+    );
+  });
 });

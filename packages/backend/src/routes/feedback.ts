@@ -56,3 +56,14 @@ feedbackRouter.post('/:feedbackId/recategorize', async (req: Request<FeedbackPar
     next(err);
   }
 });
+
+// POST /projects/:projectId/feedback/:feedbackId/resolve — Mark feedback as resolved (PRD §10.2)
+feedbackRouter.post('/:feedbackId/resolve', async (req: Request<FeedbackParams>, res, next) => {
+  try {
+    const item = await feedbackService.resolveFeedback(req.params.projectId, req.params.feedbackId);
+    const body: ApiResponse<FeedbackItem> = { data: item };
+    res.json(body);
+  } catch (err) {
+    next(err);
+  }
+});

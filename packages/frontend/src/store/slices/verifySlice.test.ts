@@ -7,6 +7,7 @@ import evalReducer, {
   fetchFeedback,
   submitFeedback,
   recategorizeFeedback,
+  resolveFeedback,
   type EvalState,
 } from "./evalSlice";
 import type { FeedbackItem } from "@opensprint/shared";
@@ -17,6 +18,7 @@ vi.mock("../../api/client", () => ({
       list: vi.fn(),
       submit: vi.fn(),
       recategorize: vi.fn(),
+      resolve: vi.fn(),
     },
   },
 }));
@@ -39,6 +41,7 @@ describe("evalSlice", () => {
     vi.mocked(api.feedback.list).mockReset();
     vi.mocked(api.feedback.submit).mockReset();
     vi.mocked(api.feedback.recategorize).mockReset();
+    vi.mocked(api.feedback.resolve).mockReset();
   });
 
   function createStore() {
@@ -314,6 +317,35 @@ describe("evalSlice", () => {
       );
 
       expect(store.getState().eval.error).toBe("Recategorize failed");
+    });
+  });
+
+  describe("resolveFeedback thunk", () => {
+    it("updates feedback item status to resolved on fulfilled", async () => {
+      const resolvedFeedback: FeedbackItem = {
+        ...mockFeedback,
+        status: "resolved" as const,
+      };
+      vi.mocked(api.feedback.resolve).mockResolvedValue(resolvedFeedback as never);
+      const store = createStore();
+      store.dispatch(setFeedback([{ ...mockFeedback, status: "mapped" }]));
+      await store.dispatch(
+        resolveFeedback({ projectId: "proj-1", feedbackId: "fb-1" }),
+      );
+
+      expect(store.getState().eval.feedback[0].status).toBe("resolved");
+      expect(api.feedback.resolve).toHaveBeenCalledWith("proj-1", "fb-1");
+    });
+
+    it("sets error on rejected", async () => {
+      vi.mocked(api.feedback.resolve).mockRejectedValue(new Error("Resolve failed"));
+      const store = createStore();
+      store.dispatch(setFeedback([{ ...mockFeedback, status: "mapped" }]));
+      await store.dispatch(
+        resolveFeedback({ projectId: "proj-1", feedbackId: "fb-1" }),
+      );
+
+      expect(store.getState().eval.error).toBe("Resolve failed");
     });
   });
 });

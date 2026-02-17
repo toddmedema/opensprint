@@ -25,6 +25,10 @@ export interface DeploymentConfig {
   mode: DeploymentMode;
   /** Target environment (default: production) */
   target?: DeploymentTarget;
+  /** Auto-deploy when all tasks in an epic reach Done (PRD §7.5.3). Default: false. */
+  autoDeployOnEpicCompletion?: boolean;
+  /** Auto-deploy when all critical feedback (bugs) are resolved (PRD §7.5.3). Default: false. */
+  autoDeployOnEvalResolution?: boolean;
   expoConfig?: {
     projectId?: string;
     /** OTA update channel (default: preview) */
@@ -40,9 +44,11 @@ export interface DeploymentConfig {
 
 export type DeploymentConfigInput = DeploymentConfig;
 
-/** Default deployment configuration (PRD §6.4) */
+/** Default deployment configuration (PRD §6.4, §7.5.3) */
 export const DEFAULT_DEPLOYMENT_CONFIG: DeploymentConfig = {
   mode: 'custom',
+  autoDeployOnEpicCompletion: false,
+  autoDeployOnEvalResolution: false,
 };
 
 /** HIL notification mode for each category */

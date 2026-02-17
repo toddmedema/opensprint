@@ -15,6 +15,7 @@ import { activeAgentsService } from './active-agents.service.js';
 import { broadcastToProject } from '../websocket/index.js';
 import { writeJsonAtomic } from '../utils/file-utils.js';
 import { generateShortFeedbackId } from '../utils/feedback-id.js';
+import { triggerDeploy } from './deploy-trigger.service.js';
 
 /**
  * Build a user-friendly description for scope change HIL approval (PRD §6.5.1).
@@ -659,6 +660,42 @@ export class FeedbackService {
     this.categorizeFeedback(projectId, item).catch((err) => {
       console.error(`[feedback] Recategorize failed for ${item.id}:`, err);
     });
+
+    return item;
+  }
+
+  /**
+   * Resolve a feedback item (status -> resolved).
+   * PRD §7.5.3: When all critical feedback (bugs) are resolved and autoDeployOnEvalResolution is enabled,
+   * auto-triggers deployment.
+   */
+  async resolveFeedback(projectId: string, feedbackId: string): Promise<FeedbackItem> {
+    const item = await this.getFeedback(projectId, feedbackId);
+    if (item.status === 'resolved') {
+      return item;
+    }
+    item.status = 'resolved';
+    await this.saveFeedback(projectId, item);
+
+    broadcastToProject(projectId, {
+      type: 'feedback.resolved',
+      feedbackId: item.id,
+    });
+
+    // PRD §7.5.3: Auto-deploy on eval resolution — when all critical (bug) feedback resolved
+    const items = await this.listFeedback(projectId);
+    const criticalItems = items.filter((i) => i.category === 'bug');
+    const allCriticalResolved =
+      criticalItems.length > 0 && criticalItems.every((i) => i.status === 'resolved');
+
+    if (allCriticalResolved) {
+      const settings = await this.projectService.getSettings(projectId);
+      if (settings.deployment.autoDeployOnEvalResolution) {
+        triggerDeploy(projectId).catch((err) => {
+          console.warn(`[feedback] Auto-deploy on eval resolution failed for ${projectId}:`, err);
+        });
+      }
+    }
 
     return item;
   }

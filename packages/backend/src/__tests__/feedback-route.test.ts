@@ -27,6 +27,10 @@ vi.mock("../websocket/index.js", () => ({
   broadcastToProject: vi.fn(),
 }));
 
+vi.mock("../services/deploy-trigger.service.js", () => ({
+  triggerDeploy: vi.fn().mockResolvedValue("deploy-123"),
+}));
+
 describe("Feedback REST API", () => {
   let app: ReturnType<typeof createApp>;
   let projectService: ProjectService;
@@ -194,6 +198,42 @@ describe("Feedback REST API", () => {
   it("GET /projects/:id/feedback/:feedbackId should return 404 when not found", async () => {
     const res = await request(app).get(
       `${API_PREFIX}/projects/${projectId}/feedback/nonexistent-id`
+    );
+
+    expect(res.status).toBe(404);
+    expect(res.body.error?.code).toBe("FEEDBACK_NOT_FOUND");
+  });
+
+  it("POST /projects/:id/feedback/:feedbackId/resolve should set status to resolved", async () => {
+    const feedbackDir = path.join(tempDir, "my-project", OPENSPRINT_PATHS.feedback);
+    await fs.mkdir(feedbackDir, { recursive: true });
+    const item = {
+      id: "fb-resolve-1",
+      text: "Bug in login",
+      category: "bug",
+      mappedPlanId: null,
+      createdTaskIds: [],
+      status: "mapped",
+      createdAt: new Date().toISOString(),
+    };
+    await fs.writeFile(path.join(feedbackDir, "fb-resolve-1.json"), JSON.stringify(item), "utf-8");
+
+    const res = await request(app).post(
+      `${API_PREFIX}/projects/${projectId}/feedback/fb-resolve-1/resolve`
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.id).toBe("fb-resolve-1");
+    expect(res.body.data.status).toBe("resolved");
+
+    const fileContent = await fs.readFile(path.join(feedbackDir, "fb-resolve-1.json"), "utf-8");
+    const saved = JSON.parse(fileContent);
+    expect(saved.status).toBe("resolved");
+  });
+
+  it("POST /projects/:id/feedback/:feedbackId/resolve should return 404 when not found", async () => {
+    const res = await request(app).post(
+      `${API_PREFIX}/projects/${projectId}/feedback/nonexistent-id/resolve`
     );
 
     expect(res.status).toBe(404);

@@ -22,7 +22,7 @@ import {
 import { BeadsService, type BeadsIssue } from "./beads.service.js";
 import { ProjectService } from "./project.service.js";
 import { agentService } from "./agent.service.js";
-import { deploymentService } from "./deployment-service.js";
+import { triggerDeploy } from "./deploy-trigger.service.js";
 import { BranchManager } from "./branch-manager.js";
 import { gitCommitQueue } from "./git-commit-queue.service.js";
 import { ContextAssembler } from "./context-assembler.js";
@@ -105,6 +105,14 @@ function isPidAlive(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+/** Extract epic ID from task ID (e.g. bd-a3f8.2 -> bd-a3f8). Returns null if not a child task. */
+function extractEpicId(id: string | undefined | null): string | null {
+  if (id == null || typeof id !== "string") return null;
+  const lastDot = id.lastIndexOf(".");
+  if (lastDot <= 0) return null;
+  return id.slice(0, lastDot);
 }
 
 /** Format review rejection result into actionable feedback for the coding agent retry prompt. Exported for testing. */
@@ -1539,10 +1547,23 @@ export class OrchestratorService {
       testResults: state.lastTestResults,
     });
 
-    // Trigger deployment after Build completion (PRD §6.4)
-    deploymentService.deploy(projectId).catch((err) => {
-      console.warn(`Deployment trigger failed for project ${projectId}:`, err);
-    });
+    // PRD §7.5.3: Auto-deploy on epic completion — only when all epic tasks are Done and config enabled
+    const epicId = extractEpicId(task.id);
+    if (epicId) {
+      const allIssues = await this.beads.listAll(repoPath);
+      const implTasks = allIssues.filter(
+        (i) => i.id.startsWith(epicId + ".") && !i.id.endsWith(".0") && (i.issue_type ?? i.type) !== "epic",
+      );
+      const allClosed = implTasks.length > 0 && implTasks.every((i) => (i.status as string) === "closed");
+      if (allClosed) {
+        const settings = await this.projectService.getSettings(projectId);
+        if (settings.deployment.autoDeployOnEpicCompletion) {
+          triggerDeploy(projectId).catch((err) => {
+            console.warn(`[orchestrator] Auto-deploy on epic completion failed for ${projectId}:`, err);
+          });
+        }
+      }
+    }
 
     // Mark loop as idle, then re-trigger after a short delay to let git settle
     state.loopActive = false;

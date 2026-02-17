@@ -31,6 +31,15 @@ const mockFeedbackRecategorize = vi.fn().mockResolvedValue({
   status: "pending",
   createdAt: new Date().toISOString(),
 });
+const mockFeedbackResolve = vi.fn().mockResolvedValue({
+  id: "fb-1",
+  text: "Bug in login",
+  category: "bug",
+  mappedPlanId: "plan-1",
+  createdTaskIds: [],
+  status: "resolved",
+  createdAt: new Date().toISOString(),
+});
 
 vi.mock("../../api/client", () => ({
   api: {
@@ -38,6 +47,7 @@ vi.mock("../../api/client", () => ({
       list: (...args: unknown[]) => mockFeedbackList(...args),
       submit: (...args: unknown[]) => mockFeedbackSubmit(...args),
       recategorize: (...args: unknown[]) => mockFeedbackRecategorize(...args),
+      resolve: (...args: unknown[]) => mockFeedbackResolve(...args),
     },
   },
 }));
@@ -807,6 +817,63 @@ describe("EvalPhase feedback input", () => {
     // Mapped status label must be hidden — no "Mapped" anywhere in status/chip area
     expect(screen.queryByText("Mapped")).not.toBeInTheDocument();
     expect(screen.getByText("Bug")).toBeInTheDocument();
+  });
+
+  it("shows Resolve button for mapped feedback and calls resolve API when clicked", async () => {
+    const user = userEvent.setup();
+    const storeWithFeedback = configureStore({
+      reducer: {
+        project: projectReducer,
+        eval: evalReducer,
+        execute: executeReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "eval",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        eval: {
+          feedback: [
+            {
+              id: "fb-resolve-test",
+              text: "Bug in login",
+              category: "bug",
+              mappedPlanId: "auth-plan",
+              createdTaskIds: [],
+              status: "mapped",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+      },
+    });
+
+    render(
+      <Provider store={storeWithFeedback}>
+        <EvalPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    const resolveBtn = screen.getByRole("button", { name: /resolve/i });
+    expect(resolveBtn).toBeInTheDocument();
+
+    await user.click(resolveBtn);
+
+    await waitFor(() => {
+      expect(mockFeedbackResolve).toHaveBeenCalledWith("proj-1", "fb-resolve-test");
+    });
   });
 
   it("shows category chip for each feedback card", () => {

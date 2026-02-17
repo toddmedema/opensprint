@@ -44,6 +44,13 @@ export const recategorizeFeedback = createAsyncThunk(
   },
 );
 
+export const resolveFeedback = createAsyncThunk(
+  "eval/resolveFeedback",
+  async ({ projectId, feedbackId }: { projectId: string; feedbackId: string }) => {
+    return api.feedback.resolve(projectId, feedbackId);
+  },
+);
+
 /** Prefix for optimistic feedback IDs; replaced when API returns */
 const OPTIMISTIC_ID_PREFIX = "temp-";
 
@@ -126,6 +133,14 @@ const evalSlice = createSlice({
       })
       .addCase(recategorizeFeedback.rejected, (state, action) => {
         state.error = action.error.message ?? "Failed to recategorize feedback";
+      })
+      // resolveFeedback
+      .addCase(resolveFeedback.fulfilled, (state, action) => {
+        const idx = state.feedback.findIndex((f) => f.id === action.payload.id);
+        if (idx !== -1) state.feedback[idx] = action.payload;
+      })
+      .addCase(resolveFeedback.rejected, (state, action) => {
+        state.error = action.error.message ?? "Failed to resolve feedback";
       });
   },
 });

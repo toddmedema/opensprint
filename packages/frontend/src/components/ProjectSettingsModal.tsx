@@ -118,6 +118,8 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
             customCommand: deployment.customCommand ?? undefined,
             webhookUrl: deployment.webhookUrl ?? undefined,
             rollbackCommand: deployment.rollbackCommand ?? undefined,
+            autoDeployOnEpicCompletion: deployment.autoDeployOnEpicCompletion ?? false,
+            autoDeployOnEvalResolution: deployment.autoDeployOnEvalResolution ?? false,
           },
           hilConfig,
           testCommand: settings?.testCommand ?? undefined,
@@ -623,6 +625,40 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
 
               {activeTab === "deployment" && (
                 <div className="space-y-4">
+                  <div className="space-y-3 p-3 rounded-lg bg-gray-50 border border-gray-200">
+                    <h3 className="text-sm font-semibold text-gray-900">Auto-deploy triggers (PRD §7.5.3)</h3>
+                    <p className="text-xs text-gray-500">Both off by default. Enable to auto-trigger deployment.</p>
+                    <label className="flex items-center justify-between gap-3 cursor-pointer">
+                      <span className="text-sm text-gray-700">Auto-deploy on epic completion</span>
+                      <input
+                        type="checkbox"
+                        checked={deployment.autoDeployOnEpicCompletion ?? false}
+                        onChange={(e) =>
+                          updateDeployment({ autoDeployOnEpicCompletion: e.target.checked })
+                        }
+                        className="rounded"
+                        data-testid="auto-deploy-epic-toggle"
+                      />
+                    </label>
+                    <p className="text-xs text-gray-500 ml-1">
+                      When all tasks in an epic reach Done, trigger deployment automatically.
+                    </p>
+                    <label className="flex items-center justify-between gap-3 cursor-pointer">
+                      <span className="text-sm text-gray-700">Auto-deploy on Eval resolution</span>
+                      <input
+                        type="checkbox"
+                        checked={deployment.autoDeployOnEvalResolution ?? false}
+                        onChange={(e) =>
+                          updateDeployment({ autoDeployOnEvalResolution: e.target.checked })
+                        }
+                        className="rounded"
+                        data-testid="auto-deploy-eval-toggle"
+                      />
+                    </label>
+                    <p className="text-xs text-gray-500 ml-1">
+                      When all critical (bug) feedback is resolved, trigger deployment automatically.
+                    </p>
+                  </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-3">Deployment Mode</label>
                     <div className="space-y-3">

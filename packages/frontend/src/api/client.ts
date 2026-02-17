@@ -239,6 +239,10 @@ export const api = {
       request<FeedbackItem>(`/projects/${projectId}/feedback/${feedbackId}/recategorize`, {
         method: "POST",
       }),
+    resolve: (projectId: string, feedbackId: string) =>
+      request<FeedbackItem>(`/projects/${projectId}/feedback/${feedbackId}/resolve`, {
+        method: "POST",
+      }),
   },
 
   // ─── Filesystem ───

@@ -84,6 +84,11 @@ export interface FeedbackMappedEvent {
   taskIds: string[];
 }
 
+export interface FeedbackResolvedEvent {
+  type: 'feedback.resolved';
+  feedbackId: string;
+}
+
 export interface PlanUpdatedEvent {
   type: 'plan.updated';
   planId: string;
@@ -131,6 +136,7 @@ export type ServerEvent =
   | DeployOutputEvent
   | HilRequestEvent
   | FeedbackMappedEvent
+  | FeedbackResolvedEvent
   | PlanUpdatedEvent;
 
 // ─── Client → Server Events ───

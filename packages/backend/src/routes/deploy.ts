@@ -186,8 +186,9 @@ deployRouter.post("/:deployId/rollback", async (req: Request<DeployIdParams>, re
 
 /** Run deployment asynchronously with streaming output.
  * PRD §7.5.2: Runs pre-deploy test suite first. If tests fail, creates fix epic via Planner and aborts.
+ * Exported for use by deploy-trigger.service (auto-deploy on epic completion / eval resolution).
  */
-async function runDeployAsync(
+export async function runDeployAsync(
   projectId: string,
   deployId: string,
   repoPath: string,

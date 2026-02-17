@@ -8,6 +8,7 @@ import { ErrorCodes } from "../middleware/error-codes.js";
 import { SessionManager } from "./session-manager.js";
 import { orchestratorService } from "./orchestrator.service.js";
 import { broadcastToProject } from "../websocket/index.js";
+import { triggerDeploy } from "./deploy-trigger.service.js";
 import { ContextAssembler } from "./context-assembler.js";
 import { BranchManager } from "./branch-manager.js";
 import type { BeadsIssue } from "./beads.service.js";
@@ -260,6 +261,14 @@ export class TaskService {
             assignee: null,
           });
           epicClosed = true;
+
+          // PRD §7.5.3: Auto-deploy on epic completion when user manually marks last task done
+          const settings = await this.projectService.getSettings(projectId);
+          if (settings.deployment.autoDeployOnEpicCompletion) {
+            triggerDeploy(projectId).catch((err) => {
+              console.warn(`[task] Auto-deploy on epic completion failed for ${projectId}:`, err);
+            });
+          }
         }
       }
     }

@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useMemo } from "react";
 import type { FeedbackItem, KanbanColumn } from "@opensprint/shared";
 import { useAppDispatch, useAppSelector } from "../../store";
-import { submitFeedback, setEvalError } from "../../store/slices/evalSlice";
+import { submitFeedback, resolveFeedback, setEvalError } from "../../store/slices/evalSlice";
 import { TaskStatusBadge, COLUMN_LABELS } from "../../components/kanban";
 
 /** Reply icon (message turn / corner up-right) */
@@ -116,12 +116,14 @@ function buildFeedbackTree(items: FeedbackItem[]): FeedbackTreeNode[] {
 interface FeedbackCardProps {
   node: FeedbackTreeNode;
   depth: number;
+  projectId: string;
   getTaskColumn: (taskId: string) => KanbanColumn;
   onNavigateToBuildTask?: (taskId: string) => void;
   replyingToId: string | null;
   onStartReply: (id: string) => void;
   onCancelReply: () => void;
   onSubmitReply: (parentId: string, text: string) => void;
+  onResolve: (feedbackId: string) => void;
   collapsedIds: Set<string>;
   onToggleCollapse: (id: string) => void;
   submitting: boolean;
@@ -130,12 +132,14 @@ interface FeedbackCardProps {
 function FeedbackCard({
   node,
   depth,
+  projectId,
   getTaskColumn,
   onNavigateToBuildTask,
   replyingToId,
   onStartReply,
   onCancelReply,
   onSubmitReply,
+  onResolve,
   collapsedIds,
   onToggleCollapse,
   submitting,
@@ -233,6 +237,17 @@ function FeedbackCard({
             </div>
           )}
           <div className="flex gap-2 flex-shrink-0 ml-auto">
+            {item.status === "mapped" && (
+              <button
+                type="button"
+                onClick={() => onResolve(item.id)}
+                className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-green-600 hover:bg-green-50 hover:text-green-800 transition-colors"
+                title="Mark as resolved"
+                aria-label="Resolve"
+              >
+                Resolve
+              </button>
+            )}
             <button
               type="button"
               onClick={() => (isReplying ? onCancelReply() : onStartReply(item.id))}
@@ -308,12 +323,14 @@ function FeedbackCard({
             key={child.item.id}
             node={child}
             depth={depth + 1}
+            projectId={projectId}
             getTaskColumn={getTaskColumn}
             onNavigateToBuildTask={onNavigateToBuildTask}
             replyingToId={replyingToId}
             onStartReply={onStartReply}
             onCancelReply={onCancelReply}
             onSubmitReply={onSubmitReply}
+            onResolve={onResolve}
             collapsedIds={collapsedIds}
             onToggleCollapse={onToggleCollapse}
             submitting={submitting}
@@ -427,6 +444,13 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
       await dispatch(submitFeedback({ projectId, text, parentId }));
     },
     [dispatch, projectId, submitting],
+  );
+
+  const handleResolve = useCallback(
+    (feedbackId: string) => {
+      dispatch(resolveFeedback({ projectId, feedbackId }));
+    },
+    [dispatch, projectId],
   );
 
   const handleToggleCollapse = useCallback(
@@ -563,12 +587,14 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
                 key={node.item.id}
                 node={node}
                 depth={0}
+                projectId={projectId}
                 getTaskColumn={getTaskColumn}
                 onNavigateToBuildTask={onNavigateToBuildTask}
                 replyingToId={replyingToId}
                 onStartReply={setReplyingToId}
                 onCancelReply={() => setReplyingToId(null)}
                 onSubmitReply={handleSubmitReply}
+                onResolve={handleResolve}
                 collapsedIds={collapsedIds}
                 onToggleCollapse={handleToggleCollapse}
                 submitting={submitting}

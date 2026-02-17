@@ -173,6 +173,7 @@ export const websocketMiddleware: Middleware = (storeApi) => {
       }
 
       case "feedback.mapped":
+      case "feedback.resolved":
         d(fetchFeedback(projectId));
         break;
 

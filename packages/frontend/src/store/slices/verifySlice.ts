@@ -6,6 +6,7 @@ export {
   fetchFeedback,
   submitFeedback,
   recategorizeFeedback,
+  resolveFeedback,
   setFeedback,
   setEvalError as setVerifyError,
   resetEval as resetVerify,
