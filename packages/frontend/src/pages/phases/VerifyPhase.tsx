@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback } from "react";
-import type { FeedbackItem } from "@opensprint/shared";
+import type { FeedbackItem, KanbanColumn } from "@opensprint/shared";
 import { useAppDispatch, useAppSelector } from "../../store";
 import { submitFeedback, setVerifyError } from "../../store/slices/verifySlice";
+import { TaskStatusBadge } from "../../components/kanban";
 
 const MAX_IMAGES = 5;
 const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
@@ -42,9 +43,18 @@ export function VerifyPhase({ projectId, onNavigateToBuildTask }: VerifyPhasePro
 
   /* ── Redux state ── */
   const feedback = useAppSelector((s) => s.verify.feedback);
+  const buildTasks = useAppSelector((s) => s.build.tasks);
   const loading = useAppSelector((s) => s.verify.loading);
   const submitting = useAppSelector((s) => s.verify.submitting);
   const error = useAppSelector((s) => s.verify.error);
+
+  const getTaskColumn = useCallback(
+    (taskId: string): KanbanColumn => {
+      const task = buildTasks.find((t) => t.id === taskId);
+      return task?.kanbanColumn ?? "backlog";
+    },
+    [buildTasks],
+  );
 
   /* ── Local UI state (preserved by mount-all) ── */
   const [input, setInput] = useState("");
@@ -282,26 +292,29 @@ export function VerifyPhase({ projectId, onNavigateToBuildTask }: VerifyPhasePro
 
                 {item.createdTaskIds.length > 0 && (
                   <div className="mt-1 flex gap-1 flex-wrap">
-                    {item.createdTaskIds.map((taskId) =>
-                      onNavigateToBuildTask ? (
+                    {item.createdTaskIds.map((taskId) => {
+                      const column = getTaskColumn(taskId);
+                      return onNavigateToBuildTask ? (
                         <button
                           key={taskId}
                           type="button"
                           onClick={() => onNavigateToBuildTask(taskId)}
-                          className="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-brand-600 hover:bg-brand-50 hover:text-brand-700 underline transition-colors"
+                          className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-brand-600 hover:bg-brand-50 hover:text-brand-700 underline transition-colors"
                           title={`Go to ${taskId} on Build tab`}
                         >
+                          <TaskStatusBadge column={column} size="xs" />
                           {taskId}
                         </button>
                       ) : (
                         <span
                           key={taskId}
-                          className="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-gray-600"
+                          className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-gray-600"
                         >
+                          <TaskStatusBadge column={column} size="xs" />
                           {taskId}
                         </span>
-                      ),
-                    )}
+                      );
+                    })}
                   </div>
                 )}
               </div>

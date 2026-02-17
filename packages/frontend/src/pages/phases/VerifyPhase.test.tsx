@@ -6,6 +6,7 @@ import { configureStore } from "@reduxjs/toolkit";
 import { VerifyPhase } from "./VerifyPhase";
 import projectReducer from "../../store/slices/projectSlice";
 import verifyReducer from "../../store/slices/verifySlice";
+import buildReducer from "../../store/slices/buildSlice";
 
 const mockFeedbackList = vi.fn().mockResolvedValue([]);
 const mockFeedbackSubmit = vi.fn().mockResolvedValue({
@@ -42,6 +43,7 @@ function createStore() {
     reducer: {
       project: projectReducer,
       verify: verifyReducer,
+      build: buildReducer,
     },
     preloadedState: {
       project: {
@@ -270,6 +272,7 @@ describe("VerifyPhase feedback input", () => {
       reducer: {
         project: projectReducer,
         verify: verifyReducer,
+        build: buildReducer,
       },
       preloadedState: {
         project: {
@@ -320,6 +323,7 @@ describe("VerifyPhase feedback input", () => {
       reducer: {
         project: projectReducer,
         verify: verifyReducer,
+        build: buildReducer,
       },
       preloadedState: {
         project: {
@@ -378,6 +382,7 @@ describe("VerifyPhase feedback input", () => {
       reducer: {
         project: projectReducer,
         verify: verifyReducer,
+        build: buildReducer,
       },
       preloadedState: {
         project: {
@@ -426,6 +431,7 @@ describe("VerifyPhase feedback input", () => {
       reducer: {
         project: projectReducer,
         verify: verifyReducer,
+        build: buildReducer,
       },
       preloadedState: {
         project: {
@@ -474,6 +480,7 @@ describe("VerifyPhase feedback input", () => {
       reducer: {
         project: projectReducer,
         verify: verifyReducer,
+        build: buildReducer,
       },
       preloadedState: {
         project: {
@@ -513,6 +520,7 @@ describe("VerifyPhase feedback input", () => {
       reducer: {
         project: projectReducer,
         verify: verifyReducer,
+        build: buildReducer,
       },
       preloadedState: {
         project: {
@@ -556,6 +564,7 @@ describe("VerifyPhase feedback input", () => {
       reducer: {
         project: projectReducer,
         verify: verifyReducer,
+        build: buildReducer,
       },
       preloadedState: {
         project: {
@@ -607,6 +616,7 @@ describe("VerifyPhase feedback input", () => {
       reducer: {
         project: projectReducer,
         verify: verifyReducer,
+        build: buildReducer,
       },
       preloadedState: {
         project: {
@@ -667,6 +677,7 @@ describe("VerifyPhase feedback input", () => {
       reducer: {
         project: projectReducer,
         verify: verifyReducer,
+        build: buildReducer,
       },
       preloadedState: {
         project: {
@@ -748,6 +759,7 @@ describe("VerifyPhase feedback input", () => {
       reducer: {
         project: projectReducer,
         verify: verifyReducer,
+        build: buildReducer,
       },
       preloadedState: {
         project: {
@@ -798,6 +810,7 @@ describe("VerifyPhase feedback input", () => {
       reducer: {
         project: projectReducer,
         verify: verifyReducer,
+        build: buildReducer,
       },
       preloadedState: {
         project: {
@@ -857,6 +870,7 @@ describe("VerifyPhase feedback input", () => {
       reducer: {
         project: projectReducer,
         verify: verifyReducer,
+        build: buildReducer,
       },
       preloadedState: {
         project: {
@@ -909,6 +923,7 @@ describe("VerifyPhase feedback input", () => {
       reducer: {
         project: projectReducer,
         verify: verifyReducer,
+        build: buildReducer,
       },
       preloadedState: {
         project: {
@@ -966,5 +981,176 @@ describe("VerifyPhase feedback input", () => {
     expect(badgeEl).toHaveClass("float-right");
     const topRow = textEl.parentElement;
     expect(topRow).toContainElement(badgeEl);
+  });
+
+  it("shows task status icon next to each task link in feedback cards", () => {
+    const storeWithTasks = configureStore({
+      reducer: {
+        project: projectReducer,
+        verify: verifyReducer,
+        build: buildReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "verify",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        verify: {
+          feedback: [
+            {
+              id: "fb-1",
+              text: "Bug in login",
+              category: "bug",
+              mappedPlanId: "plan-1",
+              createdTaskIds: ["opensprint.dev-abc.1", "opensprint.dev-xyz.2"],
+              status: "mapped",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+        build: {
+          tasks: [
+            {
+              id: "opensprint.dev-abc.1",
+              title: "Fix login",
+              description: "",
+              type: "bug" as const,
+              status: "closed" as const,
+              priority: 2,
+              assignee: null,
+              labels: [],
+              dependencies: [],
+              epicId: "plan-1",
+              kanbanColumn: "done" as const,
+              createdAt: "",
+              updatedAt: "",
+            },
+            {
+              id: "opensprint.dev-xyz.2",
+              title: "Related task",
+              description: "",
+              type: "task" as const,
+              status: "in_progress" as const,
+              priority: 2,
+              assignee: "agent-1",
+              labels: [],
+              dependencies: [],
+              epicId: "plan-1",
+              kanbanColumn: "in_progress" as const,
+              createdAt: "",
+              updatedAt: "",
+            },
+          ],
+          plans: [],
+          orchestratorRunning: false,
+          awaitingApproval: false,
+          selectedTaskId: null,
+          taskDetail: null,
+          taskDetailLoading: false,
+          agentOutput: [],
+          completionState: null,
+          archivedSessions: [],
+          archivedLoading: false,
+          markDoneLoading: false,
+          statusLoading: false,
+          loading: false,
+          error: null,
+        },
+      },
+    });
+
+    render(
+      <Provider store={storeWithTasks}>
+        <VerifyPhase projectId="proj-1" onNavigateToBuildTask={(id) => id} />
+      </Provider>,
+    );
+
+    // Task links are shown
+    expect(screen.getByText("opensprint.dev-abc.1")).toBeInTheDocument();
+    expect(screen.getByText("opensprint.dev-xyz.2")).toBeInTheDocument();
+
+    // Task status icons: Done (checkmark) for first task, In Progress for second
+    expect(screen.getByTitle("Done")).toBeInTheDocument();
+    expect(screen.getByTitle("In Progress")).toBeInTheDocument();
+  });
+
+  it("shows backlog icon for task not in build tasks", () => {
+    const storeWithUnknownTask = configureStore({
+      reducer: {
+        project: projectReducer,
+        verify: verifyReducer,
+        build: buildReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "verify",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        verify: {
+          feedback: [
+            {
+              id: "fb-1",
+              text: "New feedback",
+              category: "bug",
+              mappedPlanId: "plan-1",
+              createdTaskIds: ["opensprint.dev-new.1"],
+              status: "mapped",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+        build: {
+          tasks: [],
+          plans: [],
+          orchestratorRunning: false,
+          awaitingApproval: false,
+          selectedTaskId: null,
+          taskDetail: null,
+          taskDetailLoading: false,
+          agentOutput: [],
+          completionState: null,
+          archivedSessions: [],
+          archivedLoading: false,
+          markDoneLoading: false,
+          statusLoading: false,
+          loading: false,
+          error: null,
+        },
+      },
+    });
+
+    render(
+      <Provider store={storeWithUnknownTask}>
+        <VerifyPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    // Unknown task shows backlog icon (default)
+    expect(screen.getByText("opensprint.dev-new.1")).toBeInTheDocument();
+    expect(screen.getByTitle("Backlog")).toBeInTheDocument();
   });
 });
