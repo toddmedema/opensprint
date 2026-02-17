@@ -13,6 +13,9 @@ import {
   fetchDesignChat,
 } from "../../store/slices/designSlice";
 import { decomposePlans } from "../../store/slices/planSlice";
+import { formatSectionKey, formatTimestamp } from "../../lib/formatting";
+import { getPrdSourceColor } from "../../lib/constants";
+import { getOrderedSections } from "../../lib/prdUtils";
 
 /* ── Types ──────────────────────────────────────────────── */
 
@@ -45,50 +48,9 @@ const EXAMPLE_IDEAS = [
   "A subscription auditor that alerts you about services you haven't used in months",
 ];
 
-const PRD_SECTION_ORDER = [
-  "executive_summary",
-  "problem_statement",
-  "goals_and_metrics",
-  "user_personas",
-  "technical_architecture",
-  "feature_list",
-  "non_functional_requirements",
-  "data_model",
-  "api_contracts",
-  "open_questions",
-] as const;
-
 const ACCEPTED_FILE_TYPES = ".md,.docx,.pdf";
 
 /* ── Helpers ────────────────────────────────────────────── */
-
-function formatSectionKey(key: string): string {
-  return key
-    .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
-function formatTimestamp(ts: string): string {
-  const d = new Date(ts);
-  const now = new Date();
-  const diffMs = now.getTime() - d.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return d.toLocaleDateString();
-}
-
-function getOrderedSections(prdContent: Record<string, string>): string[] {
-  const orderSet = new Set<string>(PRD_SECTION_ORDER);
-  const ordered = PRD_SECTION_ORDER.filter((k) => prdContent[k]);
-  const rest = Object.keys(prdContent).filter((k) => !orderSet.has(k));
-  return [...ordered, ...rest];
-}
 
 function findParentSection(node: Node): string | null {
   let el: HTMLElement | null =
@@ -700,15 +662,7 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
                     </div>
                     <div className="mt-1 flex items-center gap-2">
                       <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                          entry.source === "dream"
-                            ? "bg-blue-100 text-blue-800"
-                            : entry.source === "plan"
-                              ? "bg-amber-100 text-amber-800"
-                              : entry.source === "build"
-                                ? "bg-green-100 text-green-800"
-                                : "bg-purple-100 text-purple-800"
-                        }`}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${getPrdSourceColor(entry.source)}`}
                       >
                         {entry.source}
                       </span>

@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk, type PayloadAction } from "@reduxjs/toolkit";
 import { api } from "../../api/client";
+import { parsePrdSections } from "../../lib/prdUtils";
 
 interface Message {
   role: "user" | "assistant";
@@ -32,17 +33,6 @@ const initialState: DreamState = {
   savingSection: null,
   error: null,
 };
-
-function parsePrdSections(prd: unknown): Record<string, string> {
-  const data = prd as { sections?: Record<string, { content: string }> };
-  const content: Record<string, string> = {};
-  if (data?.sections) {
-    for (const [key, section] of Object.entries(data.sections)) {
-      content[key] = section.content;
-    }
-  }
-  return content;
-}
 
 export const fetchDreamChat = createAsyncThunk("dream/fetchChat", async (projectId: string) => {
   const data = await api.chat.history(projectId, "dream");
