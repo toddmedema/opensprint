@@ -178,6 +178,27 @@ describe("PrdSectionEditor", () => {
     vi.useRealTimers();
   });
 
+  it("has theme-aware prose styling for readable text in light and dark mode", async () => {
+    const { container } = render(
+      <PrdSectionEditor
+        sectionKey="overview"
+        markdown="Content"
+        onSave={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Content")).toBeInTheDocument();
+    });
+
+    const editor = container.querySelector("[contenteditable]");
+    expect(editor).toBeTruthy();
+    expect(editor?.className).toMatch(/text-gray-900/);
+    expect(editor?.className).toMatch(/dark:text-gray-100/);
+    expect(editor?.className).toMatch(/prose-code:text-gray-900/);
+    expect(editor?.className).toMatch(/dark:prose-code:text-gray-100/);
+  });
+
   it("flushes pending save on unmount so edits persist when navigating away", async () => {
     vi.useFakeTimers();
     const onSave = vi.fn();

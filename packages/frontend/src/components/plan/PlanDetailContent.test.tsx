@@ -104,4 +104,17 @@ describe("PlanDetailContent", () => {
     const titleInput = screen.getByRole("textbox", { name: /plan title/i });
     expect(titleInput).toHaveValue("Plain content without heading");
   });
+
+  it("renders plan markdown editor with theme-aware styling for readable text in light/dark mode", () => {
+    render(<PlanDetailContent plan={mockPlan} onContentSave={onContentSave} />);
+    const editorContainer = screen.getByTestId("plan-markdown-editor");
+    expect(editorContainer).toBeInTheDocument();
+    // Light mode: text-gray-900 for readable dark text on white
+    expect(editorContainer.className).toMatch(/text-gray-900/);
+    // Dark mode: dark:text-gray-100 for readable light text
+    expect(editorContainer.className).toMatch(/dark:text-gray-100/);
+    // Explicit background for both themes
+    expect(editorContainer.className).toMatch(/bg-white/);
+    expect(editorContainer.className).toMatch(/dark:bg-gray-800/);
+  });
 });
