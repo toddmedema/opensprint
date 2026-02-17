@@ -1086,6 +1086,463 @@ describe("VerifyPhase feedback input", () => {
     expect(screen.getByTitle("In Progress")).toBeInTheDocument();
   });
 
+  it("shows reply button on each feedback card", () => {
+    const storeWithFeedback = configureStore({
+      reducer: {
+        project: projectReducer,
+        verify: verifyReducer,
+        build: buildReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "verify",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        verify: {
+          feedback: [
+            {
+              id: "fb-1",
+              text: "Original feedback",
+              category: "bug",
+              mappedPlanId: "plan-1",
+              createdTaskIds: [],
+              status: "mapped",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+        build: {
+          tasks: [],
+          plans: [],
+          orchestratorRunning: false,
+          awaitingApproval: false,
+          selectedTaskId: null,
+          taskDetail: null,
+          taskDetailLoading: false,
+          agentOutput: [],
+          completionState: null,
+          archivedSessions: [],
+          archivedLoading: false,
+          markDoneLoading: false,
+          statusLoading: false,
+          loading: false,
+          error: null,
+        },
+      },
+    });
+
+    render(
+      <Provider store={storeWithFeedback}>
+        <VerifyPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    const replyButtons = screen.getAllByRole("button", { name: /Reply/i });
+    expect(replyButtons.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("opens inline reply composer when reply button is clicked", async () => {
+    const user = userEvent.setup();
+    const storeWithFeedback = configureStore({
+      reducer: {
+        project: projectReducer,
+        verify: verifyReducer,
+        build: buildReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "verify",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        verify: {
+          feedback: [
+            {
+              id: "fb-1",
+              text: "Original feedback",
+              category: "bug",
+              mappedPlanId: "plan-1",
+              createdTaskIds: [],
+              status: "mapped",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+        build: {
+          tasks: [],
+          plans: [],
+          orchestratorRunning: false,
+          awaitingApproval: false,
+          selectedTaskId: null,
+          taskDetail: null,
+          taskDetailLoading: false,
+          agentOutput: [],
+          completionState: null,
+          archivedSessions: [],
+          archivedLoading: false,
+          markDoneLoading: false,
+          statusLoading: false,
+          loading: false,
+          error: null,
+        },
+      },
+    });
+
+    render(
+      <Provider store={storeWithFeedback}>
+        <VerifyPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    const replyBtn = screen.getByRole("button", { name: /^Reply$/i });
+    await user.click(replyBtn);
+
+    expect(screen.getByPlaceholderText(/Write a reply/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Cancel/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Submit Reply/i })).toBeInTheDocument();
+  });
+
+  it("submits reply with parent_id when submit reply is clicked", async () => {
+    const user = userEvent.setup();
+    mockFeedbackSubmit.mockResolvedValue({
+      id: "fb-reply",
+      text: "Reply text",
+      category: "bug",
+      mappedPlanId: "plan-1",
+      createdTaskIds: [],
+      status: "pending",
+      parent_id: "fb-1",
+      depth: 1,
+      createdAt: new Date().toISOString(),
+    });
+    const storeWithFeedback = configureStore({
+      reducer: {
+        project: projectReducer,
+        verify: verifyReducer,
+        build: buildReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "verify",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        verify: {
+          feedback: [
+            {
+              id: "fb-1",
+              text: "Original feedback",
+              category: "bug",
+              mappedPlanId: "plan-1",
+              createdTaskIds: [],
+              status: "mapped",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+        build: {
+          tasks: [],
+          plans: [],
+          orchestratorRunning: false,
+          awaitingApproval: false,
+          selectedTaskId: null,
+          taskDetail: null,
+          taskDetailLoading: false,
+          agentOutput: [],
+          completionState: null,
+          archivedSessions: [],
+          archivedLoading: false,
+          markDoneLoading: false,
+          statusLoading: false,
+          loading: false,
+          error: null,
+        },
+      },
+    });
+
+    render(
+      <Provider store={storeWithFeedback}>
+        <VerifyPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /^Reply$/i }));
+    await user.type(screen.getByPlaceholderText(/Write a reply/), "Reply text");
+    await user.click(screen.getByRole("button", { name: /Submit Reply/i }));
+
+    await waitFor(() => {
+      expect(mockFeedbackSubmit).toHaveBeenCalledWith("proj-1", "Reply text", undefined, "fb-1");
+    });
+  });
+
+  it("dismisses reply composer when cancel is clicked", async () => {
+    const user = userEvent.setup();
+    const storeWithFeedback = configureStore({
+      reducer: {
+        project: projectReducer,
+        verify: verifyReducer,
+        build: buildReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "verify",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        verify: {
+          feedback: [
+            {
+              id: "fb-1",
+              text: "Original feedback",
+              category: "bug",
+              mappedPlanId: "plan-1",
+              createdTaskIds: [],
+              status: "mapped",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+        build: {
+          tasks: [],
+          plans: [],
+          orchestratorRunning: false,
+          awaitingApproval: false,
+          selectedTaskId: null,
+          taskDetail: null,
+          taskDetailLoading: false,
+          agentOutput: [],
+          completionState: null,
+          archivedSessions: [],
+          archivedLoading: false,
+          markDoneLoading: false,
+          statusLoading: false,
+          loading: false,
+          error: null,
+        },
+      },
+    });
+
+    render(
+      <Provider store={storeWithFeedback}>
+        <VerifyPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /^Reply$/i }));
+    expect(screen.getByPlaceholderText(/Write a reply/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Cancel/i }));
+    await waitFor(() => {
+      expect(screen.queryByPlaceholderText(/Write a reply/)).not.toBeInTheDocument();
+    });
+  });
+
+  it("displays nested replies indented below parent", () => {
+    const storeWithNested = configureStore({
+      reducer: {
+        project: projectReducer,
+        verify: verifyReducer,
+        build: buildReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "verify",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        verify: {
+          feedback: [
+            {
+              id: "fb-parent",
+              text: "Parent feedback",
+              category: "bug",
+              mappedPlanId: "plan-1",
+              createdTaskIds: [],
+              status: "mapped",
+              parent_id: null,
+              depth: 0,
+              createdAt: "2026-01-01T10:00:00Z",
+            },
+            {
+              id: "fb-child",
+              text: "Child reply",
+              category: "bug",
+              mappedPlanId: "plan-1",
+              createdTaskIds: [],
+              status: "mapped",
+              parent_id: "fb-parent",
+              depth: 1,
+              createdAt: "2026-01-01T11:00:00Z",
+            },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+        build: {
+          tasks: [],
+          plans: [],
+          orchestratorRunning: false,
+          awaitingApproval: false,
+          selectedTaskId: null,
+          taskDetail: null,
+          taskDetailLoading: false,
+          agentOutput: [],
+          completionState: null,
+          archivedSessions: [],
+          archivedLoading: false,
+          markDoneLoading: false,
+          statusLoading: false,
+          loading: false,
+          error: null,
+        },
+      },
+    });
+
+    render(
+      <Provider store={storeWithNested}>
+        <VerifyPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    expect(screen.getByText("Parent feedback")).toBeInTheDocument();
+    expect(screen.getByText("Child reply")).toBeInTheDocument();
+    // Both have reply buttons
+    const replyButtons = screen.getAllByRole("button", { name: /Reply/i });
+    expect(replyButtons.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("shows collapse/expand button when feedback has replies", () => {
+    const storeWithReplies = configureStore({
+      reducer: {
+        project: projectReducer,
+        verify: verifyReducer,
+        build: buildReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "verify",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        verify: {
+          feedback: [
+            {
+              id: "fb-parent",
+              text: "Parent",
+              category: "bug",
+              mappedPlanId: null,
+              createdTaskIds: [],
+              status: "mapped",
+              parent_id: null,
+              depth: 0,
+              createdAt: "2026-01-01T10:00:00Z",
+            },
+            {
+              id: "fb-child",
+              text: "Child",
+              category: "bug",
+              mappedPlanId: null,
+              createdTaskIds: [],
+              status: "mapped",
+              parent_id: "fb-parent",
+              depth: 1,
+              createdAt: "2026-01-01T11:00:00Z",
+            },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+        build: {
+          tasks: [],
+          plans: [],
+          orchestratorRunning: false,
+          awaitingApproval: false,
+          selectedTaskId: null,
+          taskDetail: null,
+          taskDetailLoading: false,
+          agentOutput: [],
+          completionState: null,
+          archivedSessions: [],
+          archivedLoading: false,
+          markDoneLoading: false,
+          statusLoading: false,
+          loading: false,
+          error: null,
+        },
+      },
+    });
+
+    render(
+      <Provider store={storeWithReplies}>
+        <VerifyPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    expect(screen.getByRole("button", { name: /Collapse \(1\)/i })).toBeInTheDocument();
+  });
+
   it("shows backlog icon for task not in build tasks", () => {
     const storeWithUnknownTask = configureStore({
       reducer: {

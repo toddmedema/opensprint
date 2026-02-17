@@ -1,8 +1,28 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import type { FeedbackItem, KanbanColumn } from "@opensprint/shared";
 import { useAppDispatch, useAppSelector } from "../../store";
 import { submitFeedback, setVerifyError } from "../../store/slices/verifySlice";
 import { TaskStatusBadge } from "../../components/kanban";
+
+/** Reply icon (message turn / corner up-right) */
+function ReplyIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <polyline points="9 10 4 15 9 20" />
+      <path d="M20 4v7a4 4 0 0 1-4 4H4" />
+    </svg>
+  );
+}
 
 const MAX_IMAGES = 5;
 const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
@@ -38,6 +58,232 @@ function getFeedbackTypeLabel(item: FeedbackItem): string {
   return item.category === "ux" ? "UX" : item.category.charAt(0).toUpperCase() + item.category.slice(1);
 }
 
+/** Tree node for feedback display (parent + children) */
+interface FeedbackTreeNode {
+  item: FeedbackItem;
+  children: FeedbackTreeNode[];
+}
+
+/** Build tree from flat feedback list. Top-level first, then children by createdAt desc. */
+function buildFeedbackTree(items: FeedbackItem[]): FeedbackTreeNode[] {
+  const byParent = new Map<string | null, FeedbackItem[]>();
+  for (const item of items) {
+    const pid = item.parent_id ?? null;
+    if (!byParent.has(pid)) byParent.set(pid, []);
+    byParent.get(pid)!.push(item);
+  }
+  for (const arr of byParent.values()) {
+    arr.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+  }
+  function build(pid: string | null): FeedbackTreeNode[] {
+    const list = byParent.get(pid) ?? [];
+    return list.map((item) => ({
+      item,
+      children: build(item.id),
+    }));
+  }
+  return build(null);
+}
+
+interface FeedbackCardProps {
+  node: FeedbackTreeNode;
+  depth: number;
+  getTaskColumn: (taskId: string) => KanbanColumn;
+  onNavigateToBuildTask?: (taskId: string) => void;
+  replyingToId: string | null;
+  onStartReply: (id: string) => void;
+  onCancelReply: () => void;
+  onSubmitReply: (parentId: string, text: string) => void;
+  collapsedIds: Set<string>;
+  onToggleCollapse: (id: string) => void;
+  submitting: boolean;
+}
+
+function FeedbackCard({
+  node,
+  depth,
+  getTaskColumn,
+  onNavigateToBuildTask,
+  replyingToId,
+  onStartReply,
+  onCancelReply,
+  onSubmitReply,
+  collapsedIds,
+  onToggleCollapse,
+  submitting,
+}: FeedbackCardProps) {
+  const { item, children } = node;
+  const [replyText, setReplyText] = useState("");
+  const isReplying = replyingToId === item.id;
+  const isCollapsed = collapsedIds.has(item.id);
+  const hasChildren = children.length > 0;
+
+  const handleSubmitReply = () => {
+    if (!replyText.trim() || submitting) return;
+    onSubmitReply(item.id, replyText.trim());
+    setReplyText("");
+    onCancelReply();
+  };
+
+  return (
+    <div className={depth > 0 ? "ml-4 mt-2 border-l-2 border-gray-200 pl-4" : ""}>
+      <div className="card p-4">
+        {/* Category badge/spinner floats top-right */}
+        <div className="mb-2 overflow-hidden">
+          {item.status === "pending" ? (
+            <span
+              className="float-right ml-2 mb-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 flex-shrink-0"
+              aria-label="Categorizing feedback"
+            >
+              <div
+                className="h-3 w-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"
+                aria-hidden="true"
+              />
+              Categorizing…
+            </span>
+          ) : (
+            <span
+              className={`float-right ml-2 mb-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium flex-shrink-0 ${
+                categoryColors[item.category] ?? "bg-gray-100 text-gray-600"
+              }`}
+            >
+              {getFeedbackTypeLabel(item)}
+            </span>
+          )}
+          <p className="text-sm text-gray-700 whitespace-pre-wrap break-words min-w-0">
+            {item.text ?? "(No feedback text)"}
+          </p>
+        </div>
+
+        {item.images && item.images.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-2">
+            {item.images.map((dataUrl, i) => (
+              <img
+                key={i}
+                src={dataUrl}
+                alt={`Attachment ${i + 1}`}
+                className="h-16 w-16 object-cover rounded border border-gray-200"
+              />
+            ))}
+          </div>
+        )}
+
+        {item.createdTaskIds.length > 0 && (
+          <div className="mt-1 flex gap-1 flex-wrap">
+            {item.createdTaskIds.map((taskId) => {
+              const column = getTaskColumn(taskId);
+              return onNavigateToBuildTask ? (
+                <button
+                  key={taskId}
+                  type="button"
+                  onClick={() => onNavigateToBuildTask(taskId)}
+                  className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-brand-600 hover:bg-brand-50 hover:text-brand-700 underline transition-colors"
+                  title={`Go to ${taskId} on Build tab`}
+                >
+                  <TaskStatusBadge column={column} size="xs" />
+                  {taskId}
+                </button>
+              ) : (
+                <span
+                  key={taskId}
+                  className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-gray-600"
+                >
+                  <TaskStatusBadge column={column} size="xs" />
+                  {taskId}
+                </span>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Reply button bottom-right */}
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() => (isReplying ? onCancelReply() : onStartReply(item.id))}
+            className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 hover:text-gray-800 transition-colors"
+            title="Reply"
+            aria-label={isReplying ? "Cancel reply" : "Reply"}
+          >
+            <ReplyIcon className="w-4 h-4" />
+            {isReplying ? "Cancel" : "Reply"}
+          </button>
+          {hasChildren && (
+            <button
+              type="button"
+              onClick={() => onToggleCollapse(item.id)}
+              className="ml-2 inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 hover:text-gray-800 transition-colors"
+              aria-label={isCollapsed ? "Expand replies" : "Collapse replies"}
+            >
+              {isCollapsed ? "Expand" : "Collapse"} ({children.length})
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Inline reply composer */}
+      {isReplying && (
+        <div className="mt-2 ml-0 card p-3">
+          <textarea
+            className="input min-h-[60px] mb-2 text-sm"
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                e.preventDefault();
+                handleSubmitReply();
+              }
+              if (e.key === "Escape") {
+                e.preventDefault();
+                onCancelReply();
+              }
+            }}
+            placeholder="Write a reply..."
+            disabled={submitting}
+            autoFocus
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onCancelReply}
+              className="btn-secondary text-sm py-1 px-2"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmitReply}
+              disabled={submitting || !replyText.trim()}
+              className="btn-primary text-sm py-1 px-2 disabled:opacity-50"
+            >
+              {submitting ? "Submitting..." : "Submit Reply"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Nested children (hidden when collapsed) */}
+      {!isCollapsed &&
+        children.map((child) => (
+          <FeedbackCard
+            key={child.item.id}
+            node={child}
+            depth={depth + 1}
+            getTaskColumn={getTaskColumn}
+            onNavigateToBuildTask={onNavigateToBuildTask}
+            replyingToId={replyingToId}
+            onStartReply={onStartReply}
+            onCancelReply={onCancelReply}
+            onSubmitReply={onSubmitReply}
+            collapsedIds={collapsedIds}
+            onToggleCollapse={onToggleCollapse}
+            submitting={submitting}
+          />
+        ))}
+    </div>
+  );
+}
+
 export function VerifyPhase({ projectId, onNavigateToBuildTask }: VerifyPhaseProps) {
   const dispatch = useAppDispatch();
 
@@ -60,6 +306,8 @@ export function VerifyPhase({ projectId, onNavigateToBuildTask }: VerifyPhasePro
   const [input, setInput] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [replyingToId, setReplyingToId] = useState<string | null>(null);
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
 
   const addImagesFromFiles = useCallback(async (files: FileList | File[]) => {
     const fileArray = Array.from(files).filter(isImageFile);
@@ -133,6 +381,25 @@ export function VerifyPhase({ projectId, onNavigateToBuildTask }: VerifyPhasePro
     setImages([]);
     await dispatch(submitFeedback({ projectId, text, images: imagePayload }));
   };
+
+  const handleSubmitReply = useCallback(
+    async (parentId: string, text: string) => {
+      if (!text.trim() || submitting) return;
+      await dispatch(submitFeedback({ projectId, text, parentId }));
+    },
+    [dispatch, projectId, submitting],
+  );
+
+  const handleToggleCollapse = useCallback((id: string) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const feedbackTree = useMemo(() => buildFeedbackTree(feedback), [feedback]);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -248,76 +515,21 @@ export function VerifyPhase({ projectId, onNavigateToBuildTask }: VerifyPhasePro
           </div>
         ) : (
           <div className="space-y-3">
-            {feedback.map((item: FeedbackItem) => (
-              <div key={item.id} className="card p-4">
-                {/* Category badge/spinner floats top-right; text wraps around it */}
-                <div className="mb-2 overflow-hidden">
-                  {item.status === "pending" ? (
-                    <span
-                      className="float-right ml-2 mb-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 flex-shrink-0"
-                      aria-label="Categorizing feedback"
-                    >
-                      <div
-                        className="h-3 w-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"
-                        aria-hidden="true"
-                      />
-                      Categorizing…
-                    </span>
-                  ) : (
-                    <span
-                      className={`float-right ml-2 mb-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium flex-shrink-0 ${
-                        categoryColors[item.category] ?? "bg-gray-100 text-gray-600"
-                      }`}
-                    >
-                      {getFeedbackTypeLabel(item)}
-                    </span>
-                  )}
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap break-words min-w-0">
-                    {item.text ?? "(No feedback text)"}
-                  </p>
-                </div>
-
-                {item.images && item.images.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {item.images.map((dataUrl, i) => (
-                      <img
-                        key={i}
-                        src={dataUrl}
-                        alt={`Attachment ${i + 1}`}
-                        className="h-16 w-16 object-cover rounded border border-gray-200"
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {item.createdTaskIds.length > 0 && (
-                  <div className="mt-1 flex gap-1 flex-wrap">
-                    {item.createdTaskIds.map((taskId) => {
-                      const column = getTaskColumn(taskId);
-                      return onNavigateToBuildTask ? (
-                        <button
-                          key={taskId}
-                          type="button"
-                          onClick={() => onNavigateToBuildTask(taskId)}
-                          className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-brand-600 hover:bg-brand-50 hover:text-brand-700 underline transition-colors"
-                          title={`Go to ${taskId} on Build tab`}
-                        >
-                          <TaskStatusBadge column={column} size="xs" />
-                          {taskId}
-                        </button>
-                      ) : (
-                        <span
-                          key={taskId}
-                          className="inline-flex items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-gray-600"
-                        >
-                          <TaskStatusBadge column={column} size="xs" />
-                          {taskId}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+            {feedbackTree.map((node) => (
+              <FeedbackCard
+                key={node.item.id}
+                node={node}
+                depth={0}
+                getTaskColumn={getTaskColumn}
+                onNavigateToBuildTask={onNavigateToBuildTask}
+                replyingToId={replyingToId}
+                onStartReply={setReplyingToId}
+                onCancelReply={() => setReplyingToId(null)}
+                onSubmitReply={handleSubmitReply}
+                collapsedIds={collapsedIds}
+                onToggleCollapse={handleToggleCollapse}
+                submitting={submitting}
+              />
             ))}
           </div>
         )}
