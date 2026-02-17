@@ -186,6 +186,22 @@ describe("PrdChatPanel", () => {
     expect(onCollapsedChange).toHaveBeenCalledWith(false);
   });
 
+  it("applies smooth width transition when opening/closing inline sidebar", () => {
+    const { container } = render(
+      <PrdChatPanel
+        {...defaultProps}
+        variant="inline"
+        collapsed={false}
+        onCollapsedChange={vi.fn()}
+      />,
+    );
+
+    const sidebar = container.querySelector('[data-testid="prd-chat-sidebar"]');
+    expect(sidebar).toHaveClass("transition-[width]");
+    expect(sidebar).toHaveClass("duration-200");
+    expect(sidebar).toHaveClass("ease-out");
+  });
+
   it("applies dark mode classes when html has data-theme=dark", () => {
     document.documentElement.setAttribute("data-theme", "dark");
     render(
