@@ -108,6 +108,37 @@ describe("PrdChatPanel", () => {
     expect(screen.queryByText("Discuss")).not.toBeInTheDocument();
   });
 
+  it("pins expand toggle to top when collapsed (justify-start pt-3)", () => {
+    const { container } = render(
+      <PrdChatPanel
+        {...defaultProps}
+        variant="inline"
+        collapsed={true}
+        onCollapsedChange={vi.fn()}
+      />,
+    );
+
+    const sidebar = container.querySelector('[data-testid="prd-chat-sidebar"]');
+    expect(sidebar).toHaveClass("justify-start");
+    expect(sidebar).toHaveClass("pt-3");
+  });
+
+  it("pins header with collapse toggle to top when expanded (sticky top-0)", () => {
+    render(
+      <PrdChatPanel
+        {...defaultProps}
+        variant="inline"
+        collapsed={false}
+        onCollapsedChange={vi.fn()}
+      />,
+    );
+
+    const header = screen.getByTestId("prd-chat-header");
+    expect(header).toHaveClass("sticky");
+    expect(header).toHaveClass("top-0");
+    expect(screen.getByRole("button", { name: "Collapse Discuss sidebar" })).toBeInTheDocument();
+  });
+
   it("calls onCollapsedChange(false) when expand button is clicked in collapsed state", async () => {
     const user = userEvent.setup();
     const onCollapsedChange = vi.fn();

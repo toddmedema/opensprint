@@ -66,11 +66,11 @@ export function PrdChatPanel({
     onSend(text);
   };
 
-  // In inline mode when collapsed: show narrow bar with expand button
+  // In inline mode when collapsed: show narrow bar with expand button pinned to top
   if (isCollapsed) {
     return (
       <div
-        className="flex flex-col h-full w-12 min-w-[48px] border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 shrink-0 overflow-hidden items-center justify-center"
+        className="flex flex-col h-full w-12 min-w-[48px] border-l border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 shrink-0 overflow-hidden items-center justify-start pt-3"
         data-testid="prd-chat-sidebar"
       >
         <button
@@ -114,8 +114,11 @@ export function PrdChatPanel({
 
   return (
     <div className={containerClass} data-testid={isInline ? "prd-chat-sidebar" : undefined}>
-      {/* Chat header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shrink-0">
+      {/* Chat header — sticky in inline mode so toggle stays pinned when container scrolls */}
+      <div
+        className={`flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shrink-0 ${isInline ? "sticky top-0 z-10" : ""}`}
+        data-testid={isInline ? "prd-chat-header" : undefined}
+      >
         <div className="flex items-center gap-2">
           <SparklesIcon className="w-4 h-4 text-brand-500" />
           <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{headerTitle}</span>
