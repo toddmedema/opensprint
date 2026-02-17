@@ -8,10 +8,21 @@ import { BeadsService } from "../services/beads.service.js";
 import { DEFAULT_HIL_CONFIG, OPENSPRINT_PATHS } from "@opensprint/shared";
 
 const mockInvoke = vi.fn();
+const mockRegister = vi.fn();
+const mockUnregister = vi.fn();
+
 vi.mock("../services/agent-client.js", () => ({
   AgentClient: vi.fn().mockImplementation(() => ({
     invoke: (opts: unknown) => mockInvoke(opts),
   })),
+}));
+
+vi.mock("../services/active-agents.service.js", () => ({
+  activeAgentsService: {
+    register: (...args: unknown[]) => mockRegister(...args),
+    unregister: (...args: unknown[]) => mockUnregister(...args),
+    list: vi.fn().mockReturnValue([]),
+  },
 }));
 
 vi.mock("../services/chat.service.js", () => ({
@@ -188,6 +199,93 @@ describe("Plan decompose with auto-review", () => {
     expect(result.created).toBe(1);
     // Auto-review is skipped when validTaskIds.size === 0, so invoke is only called once
     expect(mockInvoke).toHaveBeenCalledTimes(1);
+  });
+
+  describe("Plan phase agent registry", () => {
+    it("should register and unregister for Feature decomposition", { timeout: 15000 }, async () => {
+      mockInvoke.mockResolvedValueOnce({
+        content: JSON.stringify({
+          plans: [
+            {
+              title: "Registry Test",
+              content: "# Registry\n\nTest.",
+              complexity: "low",
+              mockups: [{ title: "UI", content: "Box" }],
+              tasks: [],
+            },
+          ],
+        }),
+      });
+
+      const result = await planService.decomposeFromPrd(projectId);
+
+      expect(result.created).toBe(1);
+      // Decompose: register before invoke, unregister in finally
+      expect(mockRegister).toHaveBeenCalledWith(
+        expect.stringMatching(/^plan-decompose-.*-/),
+        projectId,
+        "plan",
+        "Feature decomposition",
+        expect.any(String),
+      );
+      expect(mockUnregister).toHaveBeenCalledWith(mockRegister.mock.calls[0][0]);
+    });
+
+    it("should register and unregister for Plan auto-review when tasks exist", { timeout: 15000 }, async () => {
+      mockInvoke
+        .mockResolvedValueOnce({
+          content: JSON.stringify({
+            plans: [
+              {
+                title: "Auto-Review Registry Test",
+                content: "# Test\n\nContent.",
+                complexity: "low",
+                mockups: [{ title: "UI", content: "Box" }],
+                tasks: [{ title: "Task 1", description: "Do it", priority: 0, dependsOn: [] }],
+              },
+            ],
+          }),
+        })
+        .mockResolvedValueOnce({
+          content: JSON.stringify({ taskIdsToClose: [], reason: "Nothing implemented" }),
+        });
+
+      await planService.decomposeFromPrd(projectId);
+
+      // First call: decompose (register plan-decompose, unregister)
+      // Second call: auto-review (register plan-auto-review, unregister)
+      expect(mockRegister).toHaveBeenCalledTimes(2);
+      expect(mockUnregister).toHaveBeenCalledTimes(2);
+
+      const decomposeCall = mockRegister.mock.calls.find((c) => c[0].startsWith("plan-decompose-"));
+      const autoReviewCall = mockRegister.mock.calls.find((c) => c[0].startsWith("plan-auto-review-"));
+      expect(decomposeCall).toBeDefined();
+      expect(decomposeCall).toEqual([
+        expect.stringMatching(/^plan-decompose-.*-/),
+        projectId,
+        "plan",
+        "Feature decomposition",
+        expect.any(String),
+      ]);
+      expect(autoReviewCall).toBeDefined();
+      expect(autoReviewCall).toEqual([
+        expect.stringMatching(/^plan-auto-review-.*-/),
+        projectId,
+        "plan",
+        "Plan auto-review",
+        expect.any(String),
+      ]);
+    });
+
+    it("should unregister even when decompose agent throws", { timeout: 15000 }, async () => {
+      mockInvoke.mockRejectedValueOnce(new Error("Agent failed"));
+
+      await expect(planService.decomposeFromPrd(projectId)).rejects.toThrow();
+
+      expect(mockRegister).toHaveBeenCalledTimes(1);
+      expect(mockUnregister).toHaveBeenCalledTimes(1);
+      expect(mockUnregister).toHaveBeenCalledWith(mockRegister.mock.calls[0][0]);
+    });
   });
 
   it("does not close tasks when auto-review returns empty taskIdsToClose", { timeout: 15000 }, async () => {

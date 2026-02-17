@@ -245,12 +245,14 @@ export class ChatService {
 
     let responseContent: string;
 
-    // Register Design phase agent for unified active-agents view (phase: design, label: Design chat)
-    const isDesignContext = !isPlanContext;
-    const agentId = isDesignContext ? `design-chat-${projectId}-${conversation.id}-${Date.now()}` : null;
-    if (agentId) {
-      activeAgentsService.register(agentId, projectId, "design", "Design chat", new Date().toISOString());
-    }
+    // Register agent for unified active-agents view (Design: phase design, Plan: phase plan)
+    const agentId =
+      isPlanContext && planId
+        ? `plan-chat-${projectId}-${planId}-${conversation.id}-${Date.now()}`
+        : `design-chat-${projectId}-${conversation.id}-${Date.now()}`;
+    const phase = isPlanContext ? "plan" : "design";
+    const label = isPlanContext ? "Plan chat" : "Design chat";
+    activeAgentsService.register(agentId, projectId, phase, label, new Date().toISOString());
 
     try {
       console.log("[chat] Invoking planning agent", {
@@ -275,9 +277,7 @@ export class ChatService {
         `**Error:** ${msg}\n\n` +
         "**What to try:** Open Project Settings → Agent Config. Ensure your API key is set, the CLI is installed, and the model is valid.";
     } finally {
-      if (agentId) {
-        activeAgentsService.unregister(agentId);
-      }
+      activeAgentsService.unregister(agentId);
     }
 
     let displayContent: string;
@@ -384,11 +384,19 @@ Only output PRD_UPDATE blocks for sections that need changes. If no updates are 
 
     const fullContext = `${systemPrompt}\n\n## Current PRD\n\n${prdContext}`;
 
-    const response = await agentService.invokePlanningAgent({
-      config: agentConfig,
-      messages: [{ role: "user", content: prompt }],
-      systemPrompt: fullContext,
-    });
+    const agentId = `plan-ship-prd-${projectId}-${planId}-${Date.now()}`;
+    activeAgentsService.register(agentId, projectId, "plan", "Ship-it PRD update", new Date().toISOString());
+
+    let response;
+    try {
+      response = await agentService.invokePlanningAgent({
+        config: agentConfig,
+        messages: [{ role: "user", content: prompt }],
+        systemPrompt: fullContext,
+      });
+    } finally {
+      activeAgentsService.unregister(agentId);
+    }
 
     const prdUpdates = this.parsePrdUpdates(response.content);
     if (prdUpdates.length === 0) return;

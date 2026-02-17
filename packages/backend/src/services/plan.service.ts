@@ -9,6 +9,7 @@ import { PrdService } from "./prd.service.js";
 import { AgentClient } from "./agent-client.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
+import { activeAgentsService } from "./active-agents.service.js";
 import { broadcastToProject } from "../websocket/index.js";
 import { writeJsonAtomic } from "../utils/file-utils.js";
 
@@ -673,12 +674,20 @@ export class PlanService {
 
       const prompt = `Review the following plans and tasks against the codebase. Identify which tasks are already implemented.\n\n## Created plans and tasks\n\n${planSummary}\n\n${codebaseContext}`;
 
-      const response = await this.agentClient.invoke({
-        config: settings.planningAgent,
-        prompt,
-        systemPrompt: AUTO_REVIEW_SYSTEM_PROMPT,
-        cwd: repoPath,
-      });
+      const agentId = `plan-auto-review-${projectId}-${Date.now()}`;
+      activeAgentsService.register(agentId, projectId, "plan", "Plan auto-review", new Date().toISOString());
+
+      let response;
+      try {
+        response = await this.agentClient.invoke({
+          config: settings.planningAgent,
+          prompt,
+          systemPrompt: AUTO_REVIEW_SYSTEM_PROMPT,
+          cwd: repoPath,
+        });
+      } finally {
+        activeAgentsService.unregister(agentId);
+      }
 
       const jsonMatch = response.content.match(/\{[\s\S]*"taskIdsToClose"[\s\S]*\}/);
       if (!jsonMatch) {
@@ -751,12 +760,20 @@ export class PlanService {
 
     const prompt = `Analyze the PRD below and produce a feature decomposition. Output valid JSON with a "plans" array. Each plan has: title, content (full markdown), complexity (low|medium|high|very_high), and tasks array. Each task has: title, description, priority (0-4), dependsOn (array of task titles it depends on).`;
 
-    const response = await this.agentClient.invoke({
-      config: settings.planningAgent,
-      prompt,
-      systemPrompt: DECOMPOSE_SYSTEM_PROMPT + "\n\n## Current PRD\n\n" + prdContext,
-      cwd: repoPath,
-    });
+    const agentId = `plan-decompose-${projectId}-${Date.now()}`;
+    activeAgentsService.register(agentId, projectId, "plan", "Feature decomposition", new Date().toISOString());
+
+    let response;
+    try {
+      response = await this.agentClient.invoke({
+        config: settings.planningAgent,
+        prompt,
+        systemPrompt: DECOMPOSE_SYSTEM_PROMPT + "\n\n## Current PRD\n\n" + prdContext,
+        cwd: repoPath,
+      });
+    } finally {
+      activeAgentsService.unregister(agentId);
+    }
 
     // Extract JSON from response (may be wrapped in ```json ... ```)
     const jsonMatch = response.content.match(/\{[\s\S]*"plans"[\s\S]*\}/);

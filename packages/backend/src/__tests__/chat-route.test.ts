@@ -244,7 +244,7 @@ Hope that helps!`;
       expect(mockUnregister).toHaveBeenCalledWith(mockRegister.mock.calls[0][0]);
     });
 
-    it("should not register Design agent when context is plan", async () => {
+    it("should register and unregister Plan chat agent when context is plan", async () => {
       mockInvokePlanningAgent.mockResolvedValue({
         content: "I can help refine this plan. What would you like to change?",
       });
@@ -254,8 +254,16 @@ Hope that helps!`;
         .send({ message: "Refine the acceptance criteria", context: "plan:auth-plan" });
 
       expect(res.status).toBe(200);
-      expect(mockRegister).not.toHaveBeenCalled();
-      expect(mockUnregister).not.toHaveBeenCalled();
+      expect(mockRegister).toHaveBeenCalledTimes(1);
+      expect(mockRegister).toHaveBeenCalledWith(
+        expect.stringMatching(/^plan-chat-.*auth-plan.*-/),
+        projectId,
+        "plan",
+        "Plan chat",
+        expect.any(String),
+      );
+      expect(mockUnregister).toHaveBeenCalledTimes(1);
+      expect(mockUnregister).toHaveBeenCalledWith(mockRegister.mock.calls[0][0]);
     });
 
     it("should unregister even when agent invocation throws", async () => {
