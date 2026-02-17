@@ -14,6 +14,17 @@ function getProjectIndexPaths(): { dir: string; file: string } {
   return { dir, file: path.join(dir, "projects.json") };
 }
 
+/** Validate that a project entry has the minimum required fields. */
+function isValidEntry(entry: unknown): entry is ProjectIndexEntry {
+  return (
+    typeof entry === "object" &&
+    entry !== null &&
+    typeof (entry as ProjectIndexEntry).id === "string" &&
+    typeof (entry as ProjectIndexEntry).repoPath === "string" &&
+    (entry as ProjectIndexEntry).repoPath.length > 0
+  );
+}
+
 /** Load the project index from disk. Returns empty array if file missing or corrupt. */
 async function loadIndex(): Promise<ProjectIndex> {
   const { file } = getProjectIndexPaths();
@@ -23,7 +34,14 @@ async function loadIndex(): Promise<ProjectIndex> {
     if (!Array.isArray(parsed?.projects)) {
       return { projects: [] };
     }
-    return parsed;
+    // Filter out corrupt entries missing required fields
+    const valid = parsed.projects.filter(isValidEntry);
+    if (valid.length < parsed.projects.length) {
+      console.warn(
+        `[project-index] Filtered ${parsed.projects.length - valid.length} corrupt entries from project index`
+      );
+    }
+    return { projects: valid };
   } catch {
     return { projects: [] };
   }
@@ -67,7 +85,7 @@ export async function removeProject(id: string): Promise<void> {
  */
 export async function updateProject(
   id: string,
-  updates: Partial<Omit<ProjectIndexEntry, "id">>,
+  updates: Partial<Omit<ProjectIndexEntry, "id">>
 ): Promise<ProjectIndexEntry | null> {
   const index = await loadIndex();
   const idx = index.projects.findIndex((p) => p.id === id);

@@ -13,8 +13,6 @@
 
 OpenSprint orchestrates AI agents across four phases — **Dream**, **Plan**, **Build**, and **Verify** — to transform a high-level product idea into well-architected, working software with minimal manual intervention.
 
----
-
 ## Why OpenSprint?
 
 Building software with AI today is **fragmented and unstructured**. Developers use AI coding assistants for individual tasks, but there is no cohesive system that manages the full journey from idea to deployed product. This leads to:
@@ -27,8 +25,6 @@ Building software with AI today is **fragmented and unstructured**. Developers u
 OpenSprint solves this by maintaining context across the entire lifecycle and automating the orchestration of AI development agents. Humans focus on _what_ to build and _why_; AI handles _how_.
 
 _OpenSprint_: The speed of a full-out open sprint. Agile methodology sprints of quick iteration and user feedback. Open source software. And a nod to OpenAI for starting this crazy new era.
-
----
 
 ## Quick Start
 
@@ -55,8 +51,6 @@ The app will be available at:
 | Backend   | http://localhost:3100  |
 | WebSocket | ws://localhost:3100/ws |
 
----
-
 ## Configuration
 
 OpenSprint requires at least one AI provider API key. Create a `.env` file in the project root:
@@ -82,8 +76,6 @@ These are created automatically — no manual setup needed:
 | `~/.opensprint/projects.json` | Global project index                                          |
 | `<project>/.opensprint/`      | Per-project PRD, plans, conversations, sessions, and feedback |
 
----
-
 ## Architecture
 
 ```mermaid
@@ -106,8 +98,6 @@ flowchart LR
 | **Build**  | AI agents autonomously execute tasks with two-agent code + review cycles         |
 | **Verify** | Submit feedback that AI categorizes and maps back to plan epics for iteration    |
 
----
-
 ## Project Structure
 
 ```
@@ -120,8 +110,6 @@ opensprint/
 ├── PRD.md          # Product Requirements Document
 └── package.json    # Root workspace config (npm workspaces)
 ```
-
----
 
 ## Scripts
 
@@ -137,8 +125,6 @@ All scripts can be run from the project root:
 | `npm run lint`         | Lint all packages                                |
 | `npm run clean`        | Remove all build artifacts and node_modules      |
 
----
-
 ## Tech Stack
 
 | Layer              | Technologies                                                            |
@@ -148,15 +134,11 @@ All scripts can be run from the project root:
 | **Shared**         | TypeScript types and constants consumed by both packages                |
 | **Issue Tracking** | [Beads](https://github.com/toddmedema/beads) — git-native issue tracker |
 
----
-
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) >= 20.0.0
 - npm (included with Node.js)
 - Git
-
----
 
 ## Developing on OpenSprint
 
@@ -194,8 +176,6 @@ curl -X PUT http://localhost:3100/api/v1/projects/<PROJECT_ID> \
 - Run `bd` commands from `~/opensprint-dev` (that's where `.beads/` lives)
 - After agents push changes, `git pull` in the control clone to pick them up
 
----
-
 ## Contributing
 
 Contributions are welcome! Whether it's a bug report, feature request, or pull request — all input is appreciated.
@@ -217,8 +197,6 @@ Open a [GitHub Issue](https://github.com/toddmedema/opensprint/issues) with:
 - Steps to reproduce
 - Expected vs actual behavior
 - Environment details (OS, Node version, browser)
-
----
 
 ## License
 

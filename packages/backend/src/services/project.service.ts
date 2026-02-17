@@ -3,8 +3,18 @@ import path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { v4 as uuid } from "uuid";
-import type { Project, CreateProjectRequest, ProjectSettings, CodingAgentByComplexity } from "@opensprint/shared";
-import { OPENSPRINT_DIR, OPENSPRINT_PATHS, DEFAULT_HIL_CONFIG, DEFAULT_DEPLOYMENT_CONFIG } from "@opensprint/shared";
+import type {
+  Project,
+  CreateProjectRequest,
+  ProjectSettings,
+  CodingAgentByComplexity,
+} from "@opensprint/shared";
+import {
+  OPENSPRINT_DIR,
+  OPENSPRINT_PATHS,
+  DEFAULT_HIL_CONFIG,
+  DEFAULT_DEPLOYMENT_CONFIG,
+} from "@opensprint/shared";
 import type { DeploymentConfig, HilConfig, PlanComplexity } from "@opensprint/shared";
 import { BeadsService } from "./beads.service.js";
 import { ensureEasConfig } from "./eas-config.js";
@@ -37,9 +47,7 @@ function normalizeDeployment(input: CreateProjectRequest["deployment"]): Deploym
 /** Normalize HIL config: merge partial input with defaults (PRD §6.5) */
 function normalizeHilConfig(input: CreateProjectRequest["hilConfig"]): HilConfig {
   if (!input) return DEFAULT_HIL_CONFIG;
-  const defined = Object.fromEntries(
-    Object.entries(input).filter(([, v]) => v !== undefined),
-  );
+  const defined = Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined));
   return {
     ...DEFAULT_HIL_CONFIG,
     ...defined,
@@ -54,7 +62,7 @@ export class ProjectService {
     try {
       const issues = await this.beads.listAll(repoPath);
       const buildTasks = issues.filter(
-        (i) => (i.type ?? i.issue_type) !== "epic" && !/\.0$/.test(i.id) && i.id.includes("."),
+        (i) => (i.type ?? i.issue_type) !== "epic" && !/\.0$/.test(i.id) && i.id.includes(".")
       );
       const done = buildTasks.filter((i) => (i.status as string) === "closed").length;
       const total = buildTasks.length;
@@ -105,8 +113,16 @@ export class ProjectService {
     }
 
     // Validate agent config schema
-    let planningAgent: { type: "claude" | "cursor" | "custom"; model: string | null; cliCommand: string | null };
-    let codingAgent: { type: "claude" | "cursor" | "custom"; model: string | null; cliCommand: string | null };
+    let planningAgent: {
+      type: "claude" | "cursor" | "custom";
+      model: string | null;
+      cliCommand: string | null;
+    };
+    let codingAgent: {
+      type: "claude" | "cursor" | "custom";
+      model: string | null;
+      cliCommand: string | null;
+    };
     try {
       planningAgent = parseAgentConfig(input.planningAgent, "planningAgent");
       codingAgent = parseAgentConfig(input.codingAgent, "codingAgent");
@@ -122,7 +138,12 @@ export class ProjectService {
     const opensprintDir = path.join(repoPath, OPENSPRINT_DIR);
     try {
       await fs.access(opensprintDir);
-      throw new AppError(400, ErrorCodes.ALREADY_OPENSPRINT_PROJECT, `Path already contains an OpenSprint project: ${repoPath}`, { repoPath });
+      throw new AppError(
+        400,
+        ErrorCodes.ALREADY_OPENSPRINT_PROJECT,
+        `Path already contains an OpenSprint project: ${repoPath}`,
+        { repoPath }
+      );
     } catch (err) {
       if (err instanceof AppError) throw err;
       // Directory doesn't exist — proceed
@@ -144,7 +165,12 @@ export class ProjectService {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (!msg.toLowerCase().includes("already initialized")) {
-        throw new AppError(500, ErrorCodes.BEADS_INIT_FAILED, `Failed to initialize beads: ${msg}`, { cause: msg });
+        throw new AppError(
+          500,
+          ErrorCodes.BEADS_INIT_FAILED,
+          `Failed to initialize beads: ${msg}`,
+          { cause: msg }
+        );
       }
     }
 
@@ -218,7 +244,22 @@ export class ProjectService {
     const entries = await projectIndex.getProjects();
     const entry = entries.find((p) => p.id === id);
     if (!entry) {
-      throw new AppError(404, ErrorCodes.PROJECT_NOT_FOUND, `Project ${id} not found`, { projectId: id });
+      throw new AppError(404, ErrorCodes.PROJECT_NOT_FOUND, `Project ${id} not found`, {
+        projectId: id,
+      });
+    }
+
+    // Guard against corrupt index entries missing repoPath
+    if (!entry.repoPath || typeof entry.repoPath !== "string") {
+      throw new AppError(
+        500,
+        ErrorCodes.INTERNAL_ERROR,
+        `Project ${id} has invalid repoPath in index`,
+        {
+          projectId: id,
+          repoPath: entry.repoPath,
+        }
+      );
     }
 
     let updatedAt = new Date().toISOString();
@@ -247,7 +288,10 @@ export class ProjectService {
   }
 
   /** Update project (name, description, repoPath, etc.) */
-  async updateProject(id: string, updates: Partial<Project>): Promise<{ project: Project; repoPathChanged: boolean }> {
+  async updateProject(
+    id: string,
+    updates: Partial<Project>
+  ): Promise<{ project: Project; repoPathChanged: boolean }> {
     const project = await this.getProject(id);
     const repoPathChanged = updates.repoPath !== undefined && updates.repoPath !== project.repoPath;
     const updated = { ...project, ...updates, updatedAt: new Date().toISOString() };
@@ -277,7 +321,10 @@ export class ProjectService {
   }
 
   /** Update project settings */
-  async updateSettings(projectId: string, updates: Partial<ProjectSettings>): Promise<ProjectSettings> {
+  async updateSettings(
+    projectId: string,
+    updates: Partial<ProjectSettings>
+  ): Promise<ProjectSettings> {
     const repoPath = await this.getRepoPath(projectId);
     const current = await this.getSettings(projectId);
 
@@ -302,9 +349,13 @@ export class ProjectService {
     }
 
     // Validate codingAgentByComplexity if provided
-    let codingAgentByComplexity: CodingAgentByComplexity | undefined = current.codingAgentByComplexity;
+    let codingAgentByComplexity: CodingAgentByComplexity | undefined =
+      current.codingAgentByComplexity;
     if (updates.codingAgentByComplexity !== undefined) {
-      if (updates.codingAgentByComplexity === null || Object.keys(updates.codingAgentByComplexity).length === 0) {
+      if (
+        updates.codingAgentByComplexity === null ||
+        Object.keys(updates.codingAgentByComplexity).length === 0
+      ) {
         codingAgentByComplexity = undefined;
       } else {
         codingAgentByComplexity = {};
