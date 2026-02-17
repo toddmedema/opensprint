@@ -10,9 +10,10 @@ import {
   markTaskComplete,
   setSelectedTaskId,
   setBuildError,
+  startBuild,
+  pauseBuild,
 } from "../../store/slices/buildSlice";
 import { wsSend } from "../../store/middleware/websocketMiddleware";
-import { api } from "../../api/client";
 
 interface BuildPhaseProps {
   projectId: string;
@@ -83,21 +84,22 @@ function PauseIcon({ className }: { className?: string }) {
 }
 
 function BuildControls({ projectId }: { projectId: string }) {
-  const [nudgeLoading, setNudgeLoading] = useState(false);
-  const handleNudge = async () => {
-    setNudgeLoading(true);
-    try {
-      await api.build.nudge(projectId);
-    } finally {
-      setNudgeLoading(false);
-    }
-  };
+  const dispatch = useAppDispatch();
+  const startBuildLoading = useAppSelector((s) => s.build.startBuildLoading);
+  const pauseBuildLoading = useAppSelector((s) => s.build.pauseBuildLoading);
+  const orchestratorRunning = useAppSelector((s) => s.build.orchestratorRunning);
+
+  const handleStart = () => dispatch(startBuild(projectId));
+  const handlePause = () => dispatch(pauseBuild(projectId));
+
+  const pauseEnabled = orchestratorRunning && !pauseBuildLoading;
+
   return (
     <div className="flex items-center gap-1" role="group" aria-label="Build controls">
       <button
         type="button"
-        onClick={handleNudge}
-        disabled={nudgeLoading}
+        onClick={handleStart}
+        disabled={startBuildLoading}
         className="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         title="Pick up next task"
         aria-label="Pick up next task"
@@ -106,10 +108,11 @@ function BuildControls({ projectId }: { projectId: string }) {
       </button>
       <button
         type="button"
-        disabled
-        className="p-2 rounded-md text-gray-300 cursor-not-allowed transition-colors"
-        title="Orchestrator runs continuously"
-        aria-label="Pause (orchestrator runs continuously)"
+        onClick={handlePause}
+        disabled={!pauseEnabled}
+        className="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors disabled:text-gray-300"
+        title={pauseEnabled ? "Pause build" : "Orchestrator runs continuously"}
+        aria-label={pauseEnabled ? "Pause build" : "Pause (orchestrator runs continuously)"}
       >
         <PauseIcon className="w-5 h-5" />
       </button>
