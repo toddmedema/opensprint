@@ -1,0 +1,16 @@
+{
+  "id": "xabehj",
+  "text": "The /build top bar should show separate task numbers for \"ready\" vs \"blocked\" tasks (and only show the blocked number if there's >0 blocked tasks)",
+  "category": "ux",
+  "mappedPlanId": "build-phase-kanban-and-task-listing",
+  "createdTaskIds": [
+    "opensprint.dev-cxx.16"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-17T10:54:25.360Z",
+  "parent_id": null,
+  "depth": 0,
+  "taskTitles": [
+    "Show separate ready vs blocked task counts in build phase top bar"
+  ]
+}

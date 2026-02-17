@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 5,
   "sections": {
     "executive_summary": {
       "content": "",
@@ -7,9 +7,9 @@
       "updatedAt": "2026-02-17T07:33:18.682Z"
     },
     "problem_statement": {
-      "content": "",
-      "version": 1,
-      "updatedAt": "2026-02-15T09:08:59.834Z"
+      "content": "d",
+      "version": 2,
+      "updatedAt": "2026-02-17T18:48:19.604Z"
     },
     "goals_and_metrics": {
       "content": "",
@@ -27,19 +27,19 @@
       "updatedAt": "2026-02-17T07:49:15.826Z"
     },
     "feature_list": {
-      "content": "",
-      "version": 3,
-      "updatedAt": "2026-02-17T07:49:15.826Z"
+      "content": "#### 7.1.5 User Interface\n\nThe Dream tab presents a split-pane interface. The left pane is a chat window where the user converses with the planning agent. The right pane displays the live PRD document, updating in real-time as the conversation progresses.\n\n**Inline editing:** Users edit PRD sections directly inline — there is no Edit/Save flow. The PRD behaves like a live document (similar to Google Docs): users click into any section and type. A WYSIWYG-style editor supports rich formatting (e.g., Ctrl+B for bold) while storing content as markdown in the backend. Changes are saved automatically with debounced autosave per section. Users can click on any section to focus the conversation on that area; edits are reflected back into the conversation context.\n\n**Plan it / Replan it CTA:** A call-to-action button appears in the Dream phase header to move from PRD to Plan:\n- **Plan it** — Shown when no planning run exists. Clicking it runs the first decomposition of the PRD into feature plans.\n- **Replan it** — Shown when a planning run exists and the PRD has changed since the last run. Clicking it invokes the planning agent to review the PRD changes and create or update plans accordingly.\n- **Hidden** — Shown when a planning run exists and the PRD has not changed since the last run.\n\nThe button is disabled while a plan or replan operation is in progress. The frontend fetches plan-status on Dream load and after each PRD save to determine which label to show or whether to hide the button.\n\n#### 7.2.2 Key Capabilities (additions)\n\n- **Plan it / Replan it lifecycle:** The Dream phase CTA drives when decomposition runs. Before the first \"Plan it\", PRD edits are applied when the user clicks \"Plan it\". After the first run, any further PRD edits cause the button to show \"Replan it\". Clicking \"Replan it\" invokes the planning agent with the current PRD and the last planning run's PRD snapshot; the agent diffs the changes and returns create/update/archive operations for plans. The orchestrator applies these changes and persists a new planning run with an updated PRD snapshot. If plans exist and the PRD is unchanged, the CTA is hidden.\n\n#### 7.4.1 Threaded Feedback Replies\n\nThe Examine phase feedback list supports threaded conversations. Each feedback card displays a reply button (↩) in its bottom-right corner. Clicking the reply button opens an inline composer directly below the card, with a quote snippet of the parent feedback shown above the text input. The composer can be dismissed without submitting.\n\nSubmitting a reply creates a new feedback item linked to its parent via a `parent_id` field. Child feedback is rendered nested below its parent with indentation and a subtle left border to indicate threading. Nesting is supported at least 2 levels deep in data, with a maximum visual nesting depth of 3 levels — deeper replies flatten visually but retain the data relationship.\n\nParent feedback cards show a reply count (e.g., \"2 replies\"). Collapsing a parent hides all nested children. Long reply threads are collapsible with a \"Show N more replies\" affordance.\n\nWhen a reply is submitted, the categorization agent receives the parent feedback's content, category, and metadata as additional context, allowing it to categorize replies with full awareness of the conversation thread.\n\n**Edge cases:**\n- Deleting a parent feedback re-parents its children to top level or marks them as orphaned.\n- The agent receives the full ancestor chain even when replying to an already-categorized and ticketed feedback item.\n- Concurrent replies to the same parent from different users are handled gracefully.",
+      "version": 4,
+      "updatedAt": "2026-02-17T09:02:18.923Z"
     },
     "data_model": {
-      "content": "",
-      "version": 3,
-      "updatedAt": "2026-02-17T07:49:15.826Z"
+      "content": "#### PlanningRun\n\nStored in `.opensprint/planning-runs/<run-id>.json`. Each planning run records when decomposition or replan was executed and stores a PRD snapshot for diffing on Replan:\n\n| Field | Type | Description |\n|-------|------|-------------|\n| id | string (UUID) | Unique run identifier |\n| created_at | datetime | When the run completed |\n| prd_snapshot | object | Full PRD state at run time (same structure as `prd.json`) |\n| plans_created | string[] | Plan IDs created or updated in this run |\n\nThe current working PRD remains in `.opensprint/prd.json`. Planning run snapshots are used only for Replan diffs; the agent receives the current PRD and the latest run's snapshot to compute changes.\n\n#### Feedback (threading fields)\n\nThe following fields are added to the existing feedback data model to support threaded replies:\n\n| Field | Type | Description |\n|-------|------|-------------|\n| parent_id | string \\| null | ID of the parent feedback item (null for top-level feedback) |\n| depth | number | Nesting depth, computed from the parent chain (0 for top-level) |\n\nTop-level feedback items have `parent_id: null` and `depth: 0`. Replies reference their parent's ID, and depth is derived from the ancestor chain. The feedback list can be queried as a flat list with `parent_id` for client-side tree construction, or returned as a pre-built tree structure.",
+      "version": 4,
+      "updatedAt": "2026-02-17T09:02:18.923Z"
     },
     "api_contracts": {
-      "content": "",
-      "version": 3,
-      "updatedAt": "2026-02-17T07:49:15.826Z"
+      "content": "#### Plan Status\n\n| Method | Endpoint | Description |\n| ------ | -------- | ----------- |\n| GET | `/projects/:id/plan-status` | Returns `{ hasPlanningRun, prdChangedSinceLastRun, action }` where `action` is `\"plan\"` (show Plan it), `\"replan\"` (show Replan it), or `\"none\"` (hide button). Used by the Dream phase to drive CTA visibility.\n\n#### Feedback\n\n| Method | Endpoint | Description |\n| ------ | -------- | ----------- |\n| POST | `/projects/:id/feedback` | Create a feedback item. Accepts an optional `parent_id` field to create a reply linked to an existing feedback item. When `parent_id` is set, the categorization agent receives the parent feedback's content, category, and metadata as additional context. |\n| GET | `/projects/:id/feedback` | Returns the feedback list. Each item includes a `parent_id` field (null for top-level items) enabling the client to build a nested tree structure for rendering threaded replies. |",
+      "version": 4,
+      "updatedAt": "2026-02-17T09:02:18.923Z"
     },
     "non_functional_requirements": {
       "content": "",
@@ -136,6 +136,34 @@
       "source": "plan",
       "timestamp": "2026-02-17T07:49:15.826Z",
       "diff": "[-159 lines, -17639 chars]"
+    },
+    {
+      "section": "feature_list",
+      "version": 4,
+      "source": "plan",
+      "timestamp": "2026-02-17T09:02:18.923Z",
+      "diff": "[+15 lines, +1476 chars]"
+    },
+    {
+      "section": "data_model",
+      "version": 4,
+      "source": "plan",
+      "timestamp": "2026-02-17T09:02:18.923Z",
+      "diff": "[+11 lines, +664 chars]"
+    },
+    {
+      "section": "api_contracts",
+      "version": 4,
+      "source": "plan",
+      "timestamp": "2026-02-17T09:02:18.923Z",
+      "diff": "[+7 lines, +594 chars]"
+    },
+    {
+      "section": "problem_statement",
+      "version": 2,
+      "source": "spec",
+      "timestamp": "2026-02-17T18:48:19.604Z",
+      "diff": "[-9 lines, -1071 chars]"
     }
   ]
 }

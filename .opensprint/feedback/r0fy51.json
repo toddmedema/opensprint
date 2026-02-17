@@ -1,0 +1,17 @@
+{
+  "id": "r0fy51",
+  "text": "Please remember the state of expanded/collapsed in local storage so that if I refresh the page, it keeps its expanded vs collapsed state",
+  "category": "ux",
+  "mappedPlanId": "plan-phase-feature-decomposition",
+  "createdTaskIds": [
+    "opensprint.dev-vwf.13"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-17T09:36:32.862Z",
+  "parent_id": "nfo8t3",
+  "depth": 1,
+  "taskTitles": [
+    "Persist dependency graph expanded/collapsed state in local storage"
+  ],
+  "feedbackSourceBeadId": "opensprint.dev-tej"
+}

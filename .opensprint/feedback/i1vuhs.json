@@ -1,0 +1,16 @@
+{
+  "id": "i1vuhs",
+  "text": "In the top right of the navbar, when you open the \"Current agents running\" dropdown, please show the current uptime for each agent (e.g. 1m10s). This should be calculated using the agent's start timestamp, which we can send when first notifying the frontend about the agent, so that the frontend can calculate it live based on the current timestamp, without making further server calls.",
+  "category": "feature",
+  "mappedPlanId": "agent-invocation-service",
+  "createdTaskIds": [
+    "opensprint.dev-z0v.14"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-17T10:35:53.225Z",
+  "parent_id": null,
+  "depth": 0,
+  "taskTitles": [
+    "Show live uptime for each agent in the running agents dropdown"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "6l8q9x",
+  "text": "Remember the open/close state of the ai chat sidebar in the Spac phase",
+  "category": "ux",
+  "mappedPlanId": "design-phase-chat-and-living-prd",
+  "createdTaskIds": [
+    "opensprint.dev-6bk.8"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-17T18:24:03.380Z",
+  "parent_id": null,
+  "depth": 0,
+  "taskTitles": [
+    "Persist AI chat sidebar open/close state across sessions in the Spec phase"
+  ],
+  "feedbackSourceBeadId": "opensprint.dev-5q6"
+}

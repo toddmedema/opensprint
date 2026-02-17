@@ -1,0 +1,17 @@
+{
+  "id": "noztde",
+  "text": "When viewing the live agent output in the build view, don't show all of the extra metadata - just show the actual messages / content",
+  "category": "ux",
+  "mappedPlanId": "build-phase-kanban-and-task-listing",
+  "createdTaskIds": [
+    "opensprint.dev-cxx.15"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-17T10:53:39.643Z",
+  "parent_id": null,
+  "depth": 0,
+  "taskTitles": [
+    "Filter live agent output in build view to display only messages/content, hiding extra metadata"
+  ],
+  "feedbackSourceBeadId": "opensprint.dev-1gx"
+}

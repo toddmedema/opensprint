@@ -1,0 +1,17 @@
+{
+  "id": "1rfj7c",
+  "text": "It looks like this is still broken. The Dream page should display all sections of the PRD in a Google Docs-style live-editable text editor with styling (the text is still saved as markdown in the backend). Users can also select any text and click the \"Comment\" icon, which opens a comment thread conversation with the AI about that section.",
+  "category": "bug",
+  "mappedPlanId": "live-editing-dream-stage",
+  "createdTaskIds": [
+    "opensprint.dev-5om.3"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-17T09:52:17.230Z",
+  "parent_id": "2cgfei",
+  "depth": 1,
+  "taskTitles": [
+    "Fix persistent broken live-editing on Dream page"
+  ],
+  "feedbackSourceBeadId": "opensprint.dev-1fx"
+}

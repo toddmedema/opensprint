@@ -1,0 +1,19 @@
+{
+  "id": "h2ayj0",
+  "text": "Please update the /dream page to be styled as light mode, and to have the AI chat on the right side, not the left.\n\nAlso, if all of the sections of the PRD are empty / the user hasn't entered anything yet, then don't display the full editor: Display a single central prompt (like google.com) prompting the user to describe what they want to build. (Also show a browse icon and support the user uploading a .txt, .md, .docx, .pdf or .ppt). Once the user submits that initial prompt, show a thinking spinner with a few cheeky text strings rotating every 5 seconds (e.g. evaluating humanity, planning to take over the world) have an AI agent generate the initial content of the PRD and show the current edit screen.",
+  "category": "ux",
+  "mappedPlanId": "design-phase-chat-and-living-prd",
+  "createdTaskIds": [
+    "opensprint.dev-6bk.1",
+    "opensprint.dev-2pk"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-17T10:32:25.499Z",
+  "parent_id": null,
+  "depth": 0,
+  "taskTitles": [
+    "Restyle Dream page with light mode theme and move chat pane to right side",
+    "Add empty-state onboarding flow with central prompt, file upload, and AI-generated initial PRD"
+  ],
+  "feedbackSourceBeadId": "opensprint.dev-2cr"
+}

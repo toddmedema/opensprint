@@ -1,0 +1,17 @@
+{
+  "id": "qtapjc",
+  "text": "Users should be able to edit the plan title and markdown in the Plan phase details sidebar.",
+  "category": "feature",
+  "mappedPlanId": "plan-phase-feature-decomposition",
+  "createdTaskIds": [
+    "opensprint.dev-vwf.14"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-17T09:55:40.084Z",
+  "parent_id": null,
+  "depth": 0,
+  "taskTitles": [
+    "Add inline editing for plan title and markdown in Plan phase details sidebar"
+  ],
+  "feedbackSourceBeadId": "opensprint.dev-5nv"
+}

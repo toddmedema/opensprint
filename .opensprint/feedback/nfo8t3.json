@@ -1,0 +1,15 @@
+{
+  "id": "nfo8t3",
+  "text": "The \"Dependency Graph\" view at the top of plan should not be nested inside of a card, it should be a top-level container (no border or extra padding). It should also be expandable/collapsable and start collapsed.",
+  "category": "ux",
+  "mappedPlanId": "plan-phase-feature-decomposition",
+  "createdTaskIds": [
+    "opensprint.dev-vwf.11"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-17T09:08:25.377Z",
+  "taskTitles": [
+    "Restyle Dependency Graph as a top-level collapsible container"
+  ],
+  "feedbackSourceBeadId": "opensprint.dev-6xj"
+}

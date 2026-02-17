@@ -1,0 +1,17 @@
+{
+  "id": "omjp3o",
+  "text": "The \"Chat with AI\" sidebar in the Dream view should 1. Be called \"Discuss\" and 2. be collapsible and re-expandable.",
+  "category": "ux",
+  "mappedPlanId": "design-phase-chat-and-living-prd",
+  "createdTaskIds": [
+    "opensprint.dev-6bk.6"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-17T10:46:09.358Z",
+  "parent_id": null,
+  "depth": 0,
+  "taskTitles": [
+    "Rename Dream chat sidebar to \"Discuss\" and make it collapsible"
+  ],
+  "feedbackSourceBeadId": "opensprint.dev-do0"
+}

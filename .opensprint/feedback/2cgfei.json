@@ -1,0 +1,15 @@
+{
+  "id": "2cgfei",
+  "text": "It looks like the changes in opensprint.dev-33d broke editing on the dream page. Can you please revert those changes?",
+  "category": "bug",
+  "mappedPlanId": "live-editing-dream-stage",
+  "createdTaskIds": [
+    "opensprint.dev-5om.2"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-17T09:22:21.607Z",
+  "taskTitles": [
+    "Revert opensprint.dev-33d changes that broke Dream page editing"
+  ],
+  "feedbackSourceBeadId": "opensprint.dev-nqw"
+}

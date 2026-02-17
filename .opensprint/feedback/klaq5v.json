@@ -1,0 +1,16 @@
+{
+  "id": "klaq5v",
+  "text": "In Project settings, update the Code Review helptext from \"When enabled, a review agent verifies the coding agent's work before merging to main. Rejected work is sent back to the coding agent with feedback.\" to \"When enabled, a review agent verifies the coding agent's work before merging. Rejected work is sent back to the coding agent with feedback. Reviews increase code quality at the expense of increased agent costs and slower development.\"\n\nAlso, update reviews to be on \"Always\" by default.",
+  "category": "ux",
+  "mappedPlanId": "two-agent-build-cycle-and-review",
+  "createdTaskIds": [
+    "opensprint.dev-g7s.1"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-17T09:59:28.702Z",
+  "parent_id": null,
+  "depth": 0,
+  "taskTitles": [
+    "Update Code Review helptext and default setting in Project Settings"
+  ]
+}
