@@ -199,6 +199,26 @@ describe("PrdSectionEditor", () => {
     expect(editor?.className).toMatch(/dark:prose-code:text-gray-100/);
   });
 
+  it("uses light mode styles only when lightMode prop is true", async () => {
+    const { container } = render(
+      <PrdSectionEditor
+        sectionKey="overview"
+        markdown="Content"
+        onSave={vi.fn()}
+        lightMode
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Content")).toBeInTheDocument();
+    });
+
+    const editor = container.querySelector("[contenteditable]");
+    expect(editor).toBeTruthy();
+    expect(editor?.className).toMatch(/text-gray-900/);
+    expect(editor?.className).not.toMatch(/dark:/);
+  });
+
   it("flushes pending save on unmount so edits persist when navigating away", async () => {
     vi.useFakeTimers();
     const onSave = vi.fn();

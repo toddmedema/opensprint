@@ -109,16 +109,17 @@ export function PlanDetailContent({
             Saving...
           </span>
         )}
-        {/* Inline editable markdown body — theme-aware for readable text in light/dark mode */}
+        {/* Inline editable markdown body — light mode styles only */}
         <div
           data-testid="plan-markdown-editor"
-          className="prose prose-sm max-w-none bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-gray-100 text-xs"
+          className="prose prose-sm max-w-none bg-white p-4 rounded-lg border border-gray-200 text-gray-900 text-xs"
         >
           <PrdSectionEditor
             sectionKey="plan-body"
             markdown={bodyMarkdown}
             onSave={handleBodySave}
             disabled={saving}
+            lightMode
           />
         </div>
       </div>
