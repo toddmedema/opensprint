@@ -438,16 +438,6 @@ export function DreamPhase({ projectId, onNavigateToPlan }: DreamPhaseProps) {
                 </button>
               )}
               {planStatus?.action === "none" && null}
-              {!planStatus && hasPrdContent && (
-                <button
-                  type="button"
-                  onClick={handlePlanIt}
-                  disabled={planningIt || decomposing}
-                  className="btn-primary text-sm disabled:opacity-50"
-                >
-                  {planningIt || decomposing ? "Planning..." : "Plan it"}
-                </button>
-              )}
             </div>
           </div>
 

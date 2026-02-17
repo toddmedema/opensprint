@@ -233,6 +233,16 @@ describe("DreamPhase with designSlice", () => {
       });
     });
 
+    it("hides CTA button when planStatus is null (loading)", () => {
+      const store = createStore({
+        design: { prdContent: { overview: "Content" } },
+        plan: { planStatus: null },
+      });
+      renderDreamPhase(store);
+      expect(screen.queryByRole("button", { name: /Plan it/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Replan it/i })).not.toBeInTheDocument();
+    });
+
     it("fetches plan-status on Dream load when PRD exists", async () => {
       const store = createStore({
         design: { prdContent: { overview: "Content" } },
