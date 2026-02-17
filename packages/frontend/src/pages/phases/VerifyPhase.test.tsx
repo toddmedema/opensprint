@@ -952,7 +952,7 @@ describe("VerifyPhase feedback input", () => {
     const card = container.querySelector(".card");
     expect(card).toBeInTheDocument();
 
-    // Feedback text and category badge are in the same flex row (top row)
+    // Feedback text and category badge are in the same top row container
     const textEl = screen.getByText(/Long feedback text that should wrap/);
     const badgeEl = screen.getByText("Bug");
     expect(textEl).toBeInTheDocument();
@@ -962,9 +962,9 @@ describe("VerifyPhase feedback input", () => {
     expect(textEl).toHaveClass("break-words");
     expect(textEl).toHaveClass("whitespace-pre-wrap");
 
-    // Badge and text share a flex parent (top row)
+    // Badge floats to top-right (float-right) so text wraps around it
+    expect(badgeEl).toHaveClass("float-right");
     const topRow = textEl.parentElement;
     expect(topRow).toContainElement(badgeEl);
-    expect(topRow).toHaveClass("flex");
   });
 });

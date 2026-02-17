@@ -240,33 +240,31 @@ export function VerifyPhase({ projectId, onNavigateToBuildTask }: VerifyPhasePro
           <div className="space-y-3">
             {feedback.map((item: FeedbackItem) => (
               <div key={item.id} className="card p-4">
-                {/* Top row: feedback text (wraps) + category badge/spinner (top-right) */}
-                <div className="flex items-start gap-2 mb-2">
-                  <p className="flex-1 min-w-0 text-sm text-gray-700 whitespace-pre-wrap break-words">
+                {/* Category badge/spinner floats top-right; text wraps around it */}
+                <div className="mb-2 overflow-hidden">
+                  {item.status === "pending" ? (
+                    <span
+                      className="float-right ml-2 mb-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 flex-shrink-0"
+                      aria-label="Categorizing feedback"
+                    >
+                      <div
+                        className="h-3 w-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"
+                        aria-hidden="true"
+                      />
+                      Categorizing…
+                    </span>
+                  ) : (
+                    <span
+                      className={`float-right ml-2 mb-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium flex-shrink-0 ${
+                        categoryColors[item.category] ?? "bg-gray-100 text-gray-600"
+                      }`}
+                    >
+                      {getFeedbackTypeLabel(item)}
+                    </span>
+                  )}
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap break-words min-w-0">
                     {item.text ?? "(No feedback text)"}
                   </p>
-                  <div className="flex-shrink-0">
-                    {item.status === "pending" ? (
-                      <span
-                        className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600"
-                        aria-label="Categorizing feedback"
-                      >
-                        <div
-                          className="h-3 w-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"
-                          aria-hidden="true"
-                        />
-                        Categorizing…
-                      </span>
-                    ) : (
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                          categoryColors[item.category] ?? "bg-gray-100 text-gray-600"
-                        }`}
-                      >
-                        {getFeedbackTypeLabel(item)}
-                      </span>
-                    )}
-                  </div>
                 </div>
 
                 {item.images && item.images.length > 0 && (
