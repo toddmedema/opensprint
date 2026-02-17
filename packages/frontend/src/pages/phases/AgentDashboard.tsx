@@ -3,6 +3,7 @@ import { api } from "../../api/client";
 import { useAppDispatch, useAppSelector } from "../../store";
 import { setSelectedTaskId } from "../../store/slices/buildSlice";
 import { wsSend } from "../../store/middleware/websocketMiddleware";
+import { CloseButton } from "../../components/CloseButton";
 
 interface AgentDashboardProps {
   projectId: string;
@@ -180,9 +181,10 @@ export function AgentDashboard({ projectId }: AgentDashboardProps) {
                   <span className="text-xs font-mono text-green-400">Agent Output</span>
                   <span className="text-xs text-gray-500">{selectedAgent}</span>
                 </div>
-                <button onClick={() => setSelectedAgent(null)} className="text-gray-500 hover:text-gray-300 text-xs">
-                  Close
-                </button>
+                <CloseButton
+                  onClick={() => setSelectedAgent(null)}
+                  className="p-1 rounded-md text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
+                />
               </div>
               <div className="flex-1 overflow-y-auto p-4">
                 <pre className="text-xs font-mono text-green-400 whitespace-pre-wrap">

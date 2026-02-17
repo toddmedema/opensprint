@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "../api/client";
+import { CloseButton } from "./CloseButton";
 
 interface FolderBrowserProps {
   initialPath?: string;
@@ -62,15 +63,7 @@ export function FolderBrowser({ initialPath, onSelect, onCancel }: FolderBrowser
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900">Select Folder</h2>
-          <button
-            onClick={onCancel}
-            className="p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-            aria-label="Close"
-          >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <CloseButton onClick={onCancel} />
         </div>
 
         {/* Path bar */}

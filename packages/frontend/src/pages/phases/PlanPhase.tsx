@@ -16,6 +16,7 @@ import {
   setPlanError,
 } from "../../store/slices/planSlice";
 import { AddPlanModal } from "../../components/AddPlanModal";
+import { CloseButton } from "../../components/CloseButton";
 import { DependencyGraph } from "../../components/DependencyGraph";
 import { fetchTasks } from "../../store/slices/buildSlice";
 
@@ -275,9 +276,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                   <path d="M10 12h4" />
                 </svg>
               </button>
-              <button onClick={handleClosePlan} className="text-gray-400 hover:text-gray-600">
-                Close
-              </button>
+              <CloseButton onClick={handleClosePlan} />
             </div>
           </div>
 

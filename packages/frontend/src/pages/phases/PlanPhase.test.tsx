@@ -162,6 +162,24 @@ describe("PlanPhase Redux integration", () => {
 
     expect(screen.getByText("Feature Title")).toBeInTheDocument();
   });
+
+  it("closes Add Plan modal when X close button is clicked", async () => {
+    const store = createStore();
+    const user = userEvent.setup();
+    render(
+      <Provider store={store}>
+        <PlanPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    await user.click(screen.getAllByRole("button", { name: /add feature/i })[0]);
+    expect(screen.getByText("Feature Title")).toBeInTheDocument();
+
+    const closeButtons = screen.getAllByRole("button", { name: "Close" });
+    await user.click(closeButtons[0]);
+
+    expect(screen.queryByText("Feature Title")).not.toBeInTheDocument();
+  });
 });
 
 describe("PlanPhase archive", () => {

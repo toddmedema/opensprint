@@ -14,6 +14,7 @@ import {
   pauseBuild,
 } from "../../store/slices/buildSlice";
 import { wsSend } from "../../store/middleware/websocketMiddleware";
+import { CloseButton } from "../../components/CloseButton";
 
 interface BuildPhaseProps {
   projectId: string;
@@ -463,9 +464,7 @@ export function BuildPhase({ projectId, onNavigateToPlan }: BuildPhaseProps) {
                   {markCompleteLoading ? "Marking…" : "Mark complete"}
                 </button>
               )}
-              <button onClick={() => dispatch(setSelectedTaskId(null))} className="text-gray-400 hover:text-gray-600">
-                Close
-              </button>
+              <CloseButton onClick={() => dispatch(setSelectedTaskId(null))} />
             </div>
           </div>
 

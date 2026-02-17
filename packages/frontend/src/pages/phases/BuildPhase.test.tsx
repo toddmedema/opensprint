@@ -254,6 +254,29 @@ describe("BuildPhase Redux integration", () => {
       expect(mockMarkComplete).toHaveBeenCalledWith("proj-1", "epic-1.1");
     });
   });
+
+  it("closes task detail panel when X close button is clicked", async () => {
+    const user = userEvent.setup();
+    mockGet.mockResolvedValue({ id: "epic-1.1", title: "Task A", kanbanColumn: "in_progress" });
+    const tasks = [
+      { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "in_progress", priority: 0, assignee: null },
+    ];
+    const store = createStore(tasks, { selectedTaskId: "epic-1.1" });
+    render(
+      <Provider store={store}>
+        <BuildPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
+    });
+
+    const closeBtn = screen.getByRole("button", { name: "Close" });
+    await user.click(closeBtn);
+
+    expect(store.getState().build.selectedTaskId).toBeNull();
+  });
 });
 
 describe("BuildPhase task detail plan link", () => {
