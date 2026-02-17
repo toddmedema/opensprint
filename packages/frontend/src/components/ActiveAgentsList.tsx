@@ -84,7 +84,7 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
 
       {open && (
         <div
-          className="absolute right-0 top-full mt-1 min-w-[220px] max-h-[320px] overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-50"
+          className="absolute right-0 top-full mt-1 min-w-[220px] max-h-[320px] overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-[100]"
           role="listbox"
         >
           {agents.length === 0 ? (
