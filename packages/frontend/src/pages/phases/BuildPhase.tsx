@@ -213,7 +213,7 @@ export function BuildPhase({ projectId, onNavigateToPlan }: BuildPhaseProps) {
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
       {error && (
-        <div className="mx-4 mt-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex justify-between items-center">
+        <div className="mx-4 mt-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex justify-between items-center shrink-0">
           <span>{error}</span>
           <button type="button" onClick={() => dispatch(setBuildError(null))} className="text-red-500 hover:text-red-700 underline">
             Dismiss

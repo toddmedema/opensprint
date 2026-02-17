@@ -168,6 +168,18 @@ describe("ResizableSidebar", () => {
     expect(container).toHaveStyle({ width: "200px" });
   });
 
+  it("has root with min-h-0 and overflow-hidden for flex shrinking and scroll containment", () => {
+    render(
+      <ResizableSidebar storageKey={STORAGE_KEY}>
+        <span>Content</span>
+      </ResizableSidebar>,
+    );
+
+    const root = screen.getByText("Content").closest(".relative");
+    expect(root).toHaveClass("min-h-0");
+    expect(root).toHaveClass("overflow-hidden");
+  });
+
   it("has inner wrapper with min-h-0 and overflow-hidden for independent sidebar scroll", () => {
     render(
       <ResizableSidebar storageKey={STORAGE_KEY}>

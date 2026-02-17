@@ -159,7 +159,7 @@ export function ResizableSidebar({
 
   return (
     <div
-      className={`relative flex flex-col bg-gray-50 shrink-0 ${borderClass} ${responsiveClasses} ${className}`}
+      className={`relative flex flex-col min-h-0 bg-gray-50 shrink-0 overflow-hidden ${borderClass} ${responsiveClasses} ${className}`}
       style={widthStyle}
     >
       {visible && (
