@@ -222,15 +222,18 @@ function FeedbackCard({
               className="ml-2 inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 hover:text-gray-800 transition-colors"
               aria-label={isCollapsed ? "Expand replies" : "Collapse replies"}
             >
-              {isCollapsed ? "Expand" : "Collapse"} ({children.length})
+              {isCollapsed ? "Expand" : "Collapse"} ({children.length} {children.length === 1 ? "reply" : "replies"})
             </button>
           )}
         </div>
       </div>
 
-      {/* Inline reply composer */}
+      {/* Inline reply composer (PRD §7.4.1: quote snippet of parent above text input) */}
       {isReplying && (
         <div className="mt-2 ml-0 card p-3">
+          <blockquote className="mb-2 pl-3 border-l-2 border-gray-300 text-sm text-gray-600 italic">
+            {item.text && item.text.length > 80 ? `${item.text.slice(0, 80)}…` : (item.text || "(No feedback text)")}
+          </blockquote>
           <textarea
             className="input min-h-[60px] mb-2 text-sm"
             value={replyText}
