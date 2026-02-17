@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useAppDispatch, useAppSelector } from "../../store";
 import {
   sendSpecMessage,
@@ -11,12 +11,7 @@ import {
   fetchSpecChat,
 } from "../../store/slices/specSlice";
 import { decomposePlans, fetchPlanStatus } from "../../store/slices/planSlice";
-import {
-  PrdViewer,
-  PrdChatPanel,
-  PrdUploadButton,
-  PrdChangeLog,
-} from "../../components/prd";
+import { PrdViewer, PrdChatPanel, PrdUploadButton, PrdChangeLog } from "../../components/prd";
 import { SendIcon, SparklesIcon, CommentIcon } from "../../components/icons/PrdIcons";
 
 /* ── Types ──────────────────────────────────────────────── */
@@ -53,8 +48,7 @@ const EXAMPLE_IDEAS = [
 /* ── Helpers ────────────────────────────────────────────── */
 
 function findParentSection(node: Node): string | null {
-  let el: HTMLElement | null =
-    node instanceof HTMLElement ? node : node.parentElement;
+  let el: HTMLElement | null = node instanceof HTMLElement ? node : node.parentElement;
   while (el) {
     if (el.dataset.prdSection) return el.dataset.prdSection;
     el = el.parentElement;
@@ -92,6 +86,7 @@ export function SpecPhase({ projectId, onNavigateToPlan }: SpecPhaseProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prdContainerRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
+  const refreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* ── Derived ── */
   const hasPrdContent = Object.keys(prdContent).length > 0;
@@ -101,6 +96,49 @@ export function SpecPhase({ projectId, onNavigateToPlan }: SpecPhaseProps) {
     if (!hasPrdContent) return;
     void dispatch(fetchPlanStatus(projectId));
   }, [projectId, hasPrdContent, dispatch]);
+
+  /* ── Debounced refresh cascade (3 s after last section save, or immediate on blur) ── */
+  const REFRESH_DEBOUNCE_MS = 3000;
+
+  const triggerRefreshCascade = useCallback(() => {
+    dispatch(fetchPrd(projectId));
+    dispatch(fetchPrdHistory(projectId));
+    dispatch(fetchSpecChat(projectId));
+    dispatch(fetchPlanStatus(projectId));
+  }, [projectId, dispatch]);
+
+  const scheduleRefreshCascade = useCallback(() => {
+    if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
+    refreshDebounceRef.current = setTimeout(() => {
+      refreshDebounceRef.current = null;
+      triggerRefreshCascade();
+    }, REFRESH_DEBOUNCE_MS);
+  }, [triggerRefreshCascade]);
+
+  // Flush pending cascade immediately when focus leaves the PRD editor
+  useEffect(() => {
+    const container = prdContainerRef.current;
+    if (!container || !hasPrdContent) return;
+
+    const handleFocusOut = (e: FocusEvent) => {
+      if (e.relatedTarget && container.contains(e.relatedTarget as Node)) return;
+      if (refreshDebounceRef.current) {
+        clearTimeout(refreshDebounceRef.current);
+        refreshDebounceRef.current = null;
+        triggerRefreshCascade();
+      }
+    };
+
+    container.addEventListener("focusout", handleFocusOut);
+    return () => container.removeEventListener("focusout", handleFocusOut);
+  }, [hasPrdContent, triggerRefreshCascade]);
+
+  // Clean up refresh timer on unmount
+  useEffect(() => {
+    return () => {
+      if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
+    };
+  }, []);
 
   /* ── Typewriter placeholder effect ── */
   useEffect(() => {
@@ -200,7 +238,7 @@ export function SpecPhase({ projectId, onNavigateToPlan }: SpecPhaseProps) {
         role: "user",
         content: text,
         timestamp: new Date().toISOString(),
-      }),
+      })
     );
 
     const result = await dispatch(sendSpecMessage({ projectId, message: text }));
@@ -218,7 +256,7 @@ export function SpecPhase({ projectId, onNavigateToPlan }: SpecPhaseProps) {
           role: "user",
           content: `[Uploaded: ${file.name}]`,
           timestamp: new Date().toISOString(),
-        }),
+        })
       );
 
       const result = await dispatch(uploadPrdFile({ projectId, file }));
@@ -229,7 +267,7 @@ export function SpecPhase({ projectId, onNavigateToPlan }: SpecPhaseProps) {
         dispatch(fetchPlanStatus(projectId));
       }
     },
-    [projectId, dispatch],
+    [projectId, dispatch]
   );
 
   const handleChatSend = useCallback(
@@ -245,11 +283,11 @@ export function SpecPhase({ projectId, onNavigateToPlan }: SpecPhaseProps) {
           role: "user",
           content: fullMessage,
           timestamp: new Date().toISOString(),
-        }),
+        })
       );
 
       const result = await dispatch(
-        sendSpecMessage({ projectId, message: fullMessage, prdSectionFocus: prdFocus }),
+        sendSpecMessage({ projectId, message: fullMessage, prdSectionFocus: prdFocus })
       );
       if (sendSpecMessage.fulfilled.match(result) && result.payload.prdChanges?.length) {
         dispatch(fetchPrd(projectId));
@@ -257,7 +295,7 @@ export function SpecPhase({ projectId, onNavigateToPlan }: SpecPhaseProps) {
         dispatch(fetchPlanStatus(projectId));
       }
     },
-    [selectionContext, projectId, dispatch],
+    [selectionContext, projectId, dispatch]
   );
 
   const handleDiscuss = () => {
@@ -274,17 +312,12 @@ export function SpecPhase({ projectId, onNavigateToPlan }: SpecPhaseProps) {
   const handleSectionChange = useCallback(
     async (section: string, content: string) => {
       if (savingSections.includes(section)) return;
-      const result = await dispatch(
-        savePrdSection({ projectId, section, content }),
-      );
+      const result = await dispatch(savePrdSection({ projectId, section, content }));
       if (savePrdSection.fulfilled.match(result)) {
-        dispatch(fetchPrd(projectId));
-        dispatch(fetchPrdHistory(projectId));
-        dispatch(fetchSpecChat(projectId));
-        dispatch(fetchPlanStatus(projectId));
+        scheduleRefreshCascade();
       }
     },
-    [projectId, savingSections, dispatch],
+    [projectId, savingSections, dispatch, scheduleRefreshCascade]
   );
 
   const handlePlanIt = async () => {
@@ -312,12 +345,9 @@ export function SpecPhase({ projectId, onNavigateToPlan }: SpecPhaseProps) {
               <span className="w-3 h-3 bg-brand-500 rounded-full animate-bounce [animation-delay:150ms]" />
               <span className="w-3 h-3 bg-brand-500 rounded-full animate-bounce [animation-delay:300ms]" />
             </div>
-            <p className="text-lg font-medium text-gray-700">
-              Generating your PRD...
-            </p>
+            <p className="text-lg font-medium text-gray-700">Generating your PRD...</p>
             <p className="text-sm text-gray-500 mt-1">
-              This may take a moment while the AI crafts your product
-              requirements
+              This may take a moment while the AI crafts your product requirements
             </p>
           </div>
         )}
@@ -329,8 +359,8 @@ export function SpecPhase({ projectId, onNavigateToPlan }: SpecPhaseProps) {
             What do you want to build?
           </h1>
           <p className="text-gray-500 mt-2 max-w-md mx-auto">
-            Describe your app idea and AI will generate a comprehensive product
-            requirements document for you.
+            Describe your app idea and AI will generate a comprehensive product requirements
+            document for you.
           </p>
         </div>
 
@@ -397,7 +427,7 @@ export function SpecPhase({ projectId, onNavigateToPlan }: SpecPhaseProps) {
     <div className="h-full flex overflow-hidden bg-gray-50">
       {/* Left pane: live PRD document */}
       <div className="flex-1 min-w-0 overflow-y-auto">
-      <div className="max-w-4xl mx-auto px-6 py-8 pb-24">
+        <div className="max-w-4xl mx-auto px-6 py-8 pb-24">
           <div className="flex items-center justify-between mb-8 sticky top-0 bg-gray-50/95 backdrop-blur-sm py-3 -mx-6 px-6 z-20 border-b border-gray-200">
             <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
               Product Requirements Document
