@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import type { FeedbackItem, FeedbackSubmitRequest, FeedbackCategory } from '@opensprint/shared';
+import type { FeedbackItem, FeedbackSubmitRequest, FeedbackCategory, ProposedTask } from '@opensprint/shared';
 import { OPENSPRINT_PATHS } from '@opensprint/shared';
 import { AppError } from '../middleware/error-handler.js';
 import { ErrorCodes } from '../middleware/error-codes.js';
@@ -30,19 +30,28 @@ function buildScopeChangeHilDescription(feedbackText: string): string {
 User feedback: "${truncated}"`;
 }
 
-const FEEDBACK_CATEGORIZATION_PROMPT = `You are an AI assistant that categorizes user feedback about a software product.
+const FEEDBACK_CATEGORIZATION_PROMPT = `You are an AI assistant that categorizes user feedback about a software product (PRD §12.3.4 Analyst contract).
 
 Given the user's feedback text, the PRD (Product Requirements Document), and available plans, determine:
 1. The category: "bug" (something broken), "feature" (new capability request), "ux" (usability improvement), or "scope" (fundamental change to requirements)
 2. Which feature/plan it relates to (if identifiable) — use the planId from the available plans list
-3. A suggested task title to address the feedback. Use a SINGLE title unless the feedback clearly describes multiple independent problems or requests that cannot be addressed in one task.
+3. The mapped epic ID — use the beadEpicId from the plan you mapped to (or null if no plan)
+4. Whether this is a scope change — true if the feedback fundamentally alters requirements/PRD; false otherwise
+5. Proposed tasks in indexed Planner format — same structure as Planner output: index, title, description, priority, depends_on
 
 Respond in JSON format:
 {
   "category": "bug" | "feature" | "ux" | "scope",
-  "mappedPlanId": "plan-id-if-identifiable or null",
-  "task_titles": ["Short task title"]
-}`;
+  "mapped_plan_id": "plan-id-if-identifiable or null",
+  "mapped_epic_id": "beadEpicId-from-plan or null",
+  "is_scope_change": true | false,
+  "proposed_tasks": [
+    { "index": 0, "title": "Task title", "description": "Detailed spec with acceptance criteria", "priority": 1, "depends_on": [] },
+    { "index": 1, "title": "Another task", "description": "...", "priority": 2, "depends_on": [0] }
+  ]
+}
+
+priority: 0 (highest) to 4 (lowest). depends_on: array of task indices (0-based) this task is blocked by. Use a single task when feedback addresses one concern; use multiple only when clearly independent.`;
 
 export class FeedbackService {
   private projectService = new ProjectService();
@@ -188,18 +197,19 @@ export class FeedbackService {
     }
   }
 
-  /** Build plan context for AI mapping (planId, title from first heading) */
+  /** Build plan context for AI mapping (planId, beadEpicId, title from first heading) */
   private async getPlanContextForCategorization(projectId: string): Promise<string> {
     try {
       const plans = await this.planService.listPlans(projectId);
-      if (plans.length === 0) return 'No plans exist yet. Use mappedPlanId: null.';
+      if (plans.length === 0) return 'No plans exist yet. Use mapped_plan_id: null, mapped_epic_id: null.';
       const lines = plans.map((p) => {
         const title = p.content.split('\n')[0]?.replace(/^#+\s*/, '').trim() || p.metadata.planId;
-        return `- ${p.metadata.planId}: ${title}`;
+        const epicId = p.metadata.beadEpicId ?? '';
+        return `- ${p.metadata.planId} (beadEpicId: ${epicId || 'none'}): ${title}`;
       });
-      return `Available plans (use planId for mappedPlanId):\n${lines.join('\n')}`;
+      return `Available plans (use planId for mapped_plan_id, beadEpicId for mapped_epic_id):\n${lines.join('\n')}`;
     } catch {
-      return 'No plans available. Use mappedPlanId: null.';
+      return 'No plans available. Use mapped_plan_id: null, mapped_epic_id: null.';
     }
   }
 
@@ -258,17 +268,53 @@ export class FeedbackService {
         item.category = validCategories.includes(parsed.category)
           ? (parsed.category as FeedbackCategory)
           : 'bug';
-        item.mappedPlanId = parsed.mappedPlanId || firstPlanId;
+        item.mappedPlanId = parsed.mapped_plan_id ?? parsed.mappedPlanId ?? firstPlanId;
 
-        // task_titles: array of strings; support legacy suggestedTitle
-        item.taskTitles = Array.isArray(parsed.task_titles)
-          ? parsed.task_titles.filter((t: unknown) => typeof t === 'string')
-          : parsed.suggestedTitle
-            ? [String(parsed.suggestedTitle)]
-            : [item.text.slice(0, 80)];
+        // mapped_epic_id: resolve from Plan beadEpicId if not provided (PRD §12.3.4)
+        const rawMappedEpicId = parsed.mapped_epic_id ?? parsed.mappedEpicId;
+        if (typeof rawMappedEpicId === 'string' && rawMappedEpicId.trim()) {
+          item.mappedEpicId = rawMappedEpicId.trim();
+        } else if (item.mappedPlanId) {
+          try {
+            const plan = await this.planService.getPlan(projectId, item.mappedPlanId);
+            if (plan.metadata.beadEpicId) {
+              item.mappedEpicId = plan.metadata.beadEpicId;
+            }
+          } catch {
+            // Plan not found — leave mappedEpicId unset
+          }
+        }
 
-        // Handle scope changes with HIL (PRD §7.4.2, §15.1)
-        if (item.category === 'scope') {
+        // is_scope_change: explicit flag (PRD §12.3.4)
+        item.isScopeChange = typeof parsed.is_scope_change === 'boolean' ? parsed.is_scope_change : item.category === 'scope';
+
+        // proposed_tasks: full Planner format; fallback to task_titles / suggestedTitle (legacy)
+        const rawProposed = parsed.proposed_tasks ?? parsed.proposedTasks;
+        if (Array.isArray(rawProposed) && rawProposed.length > 0) {
+          const tasks: ProposedTask[] = rawProposed
+            .filter((t: unknown) => t && typeof t === 'object' && typeof (t as { title?: unknown }).title === 'string')
+            .map((t: { index?: number; title: string; description?: string; priority?: number; depends_on?: number[] }) => ({
+              index: typeof t.index === 'number' ? t.index : 0,
+              title: String(t.title),
+              description: typeof t.description === 'string' ? t.description : '',
+              priority: typeof t.priority === 'number' ? t.priority : 2,
+              depends_on: Array.isArray(t.depends_on) ? t.depends_on.filter((d): d is number => typeof d === 'number') : [],
+            }));
+          if (tasks.length > 0) {
+            item.proposedTasks = tasks;
+            item.taskTitles = tasks.map((t) => t.title);
+          }
+        }
+        if (!item.proposedTasks?.length) {
+          item.taskTitles = Array.isArray(parsed.task_titles)
+            ? parsed.task_titles.filter((t: unknown) => typeof t === 'string')
+            : parsed.suggestedTitle
+              ? [String(parsed.suggestedTitle)]
+              : [item.text.slice(0, 80)];
+        }
+
+        // Handle scope changes with HIL (PRD §7.4.2, §15.1) — category=scope OR is_scope_change=true
+        if (item.category === 'scope' || item.isScopeChange) {
           // Get AI-generated proposal for modal summary (before HIL)
           let proposal: { summary: string; prdUpdates: Array<{ section: string; content: string; changeLogEntry?: string }> } | null = null;
           try {
@@ -376,20 +422,25 @@ export class FeedbackService {
     }
   }
 
-  /** Create beads tasks from feedback task titles under the mapped plan's epic */
+  /** Create beads tasks from feedback — uses proposed_tasks (PRD §12.3.4) or task_titles (legacy) */
   private async createBeadTasksFromFeedback(
     projectId: string,
     item: FeedbackItem,
   ): Promise<string[]> {
+    const proposedTasks = item.proposedTasks ?? [];
     const taskTitles = item.taskTitles ?? [];
-    if (taskTitles.length === 0) return [];
+    const hasProposed = proposedTasks.length > 0;
+    const hasTitles = taskTitles.length > 0;
+    if (!hasProposed && !hasTitles) return [];
 
     const project = await this.projectService.getProject(projectId);
     const repoPath = project.repoPath;
 
-    // Look up the plan's beadEpicId if a plan is mapped
+    // Resolve parent epic: mappedEpicId (from AI or plan) or look up from plan (PRD §12.3.4)
     let parentEpicId: string | undefined;
-    if (item.mappedPlanId) {
+    if (item.mappedEpicId) {
+      parentEpicId = item.mappedEpicId;
+    } else if (item.mappedPlanId) {
       try {
         const plan = await this.planService.getPlan(projectId, item.mappedPlanId);
         if (plan.metadata.beadEpicId) {
@@ -417,32 +468,86 @@ export class FeedbackService {
 
     const beadType = this.categoryToBeadType(item.category);
     const createdIds: string[] = [];
-    for (const title of taskTitles) {
-      try {
-        const issue = await this.createBeadTaskWithRetry(repoPath, title, {
-          type: beadType,
-          priority: item.category === 'bug' ? 0 : 2,
-          parentId: parentEpicId,
-        });
-        if (issue) {
-          createdIds.push(issue.id);
+    const taskIdMap = new Map<number, string>();
 
-          // Link task to feedback source via discovered-from (PRD §14)
-          if (feedbackSourceBeadId) {
-            try {
-              await this.beadsService.addDependency(
-                repoPath,
-                issue.id,
-                feedbackSourceBeadId,
-                'discovered-from',
-              );
-            } catch (depErr) {
-              console.error(`[feedback] Failed to add discovered-from for ${issue.id}:`, depErr);
+    if (hasProposed) {
+      // Create tasks from proposed_tasks (Planner format) with description, priority, depends_on
+      const sorted = [...proposedTasks].sort((a, b) => a.index - b.index);
+      for (const task of sorted) {
+        try {
+          const priority = task.priority ?? (item.category === 'bug' ? 0 : 2);
+          const issue = await this.createBeadTaskWithRetry(repoPath, task.title, {
+            type: beadType,
+            priority,
+            description: task.description || undefined,
+            parentId: parentEpicId,
+          });
+          if (issue) {
+            createdIds.push(issue.id);
+            taskIdMap.set(task.index, issue.id);
+
+            if (feedbackSourceBeadId) {
+              try {
+                await this.beadsService.addDependency(
+                  repoPath,
+                  issue.id,
+                  feedbackSourceBeadId,
+                  'discovered-from',
+                );
+              } catch (depErr) {
+                console.error(`[feedback] Failed to add discovered-from for ${issue.id}:`, depErr);
+              }
+            }
+          }
+        } catch (err) {
+          console.error(`[feedback] Failed to create beads task "${task.title}":`, err);
+        }
+      }
+
+      // Add inter-task blocks dependencies (depends_on indices → bead IDs)
+      for (const task of sorted) {
+        const childId = taskIdMap.get(task.index);
+        const deps = task.depends_on ?? [];
+        if (childId) {
+          for (const depIdx of deps) {
+            const parentId = taskIdMap.get(depIdx);
+            if (parentId) {
+              try {
+                await this.beadsService.addDependency(repoPath, childId, parentId);
+              } catch (depErr) {
+                console.error(`[feedback] Failed to add blocks dep ${childId} -> ${parentId}:`, depErr);
+              }
             }
           }
         }
-      } catch (err) {
-        console.error(`[feedback] Failed to create beads task "${title}":`, err);
+      }
+    } else {
+      // Legacy: create from task_titles only
+      for (const title of taskTitles) {
+        try {
+          const issue = await this.createBeadTaskWithRetry(repoPath, title, {
+            type: beadType,
+            priority: item.category === 'bug' ? 0 : 2,
+            parentId: parentEpicId,
+          });
+          if (issue) {
+            createdIds.push(issue.id);
+            if (feedbackSourceBeadId) {
+              try {
+                await this.beadsService.addDependency(
+                  repoPath,
+                  issue.id,
+                  feedbackSourceBeadId,
+                  'discovered-from',
+                );
+              } catch (depErr) {
+                console.error(`[feedback] Failed to add discovered-from for ${issue.id}:`, depErr);
+              }
+            }
+          }
+        } catch (err) {
+          console.error(`[feedback] Failed to create beads task "${title}":`, err);
+        }
       }
     }
 
@@ -544,8 +649,11 @@ export class FeedbackService {
     item.status = 'pending';
     item.category = 'bug';
     item.mappedPlanId = null;
+    item.mappedEpicId = undefined;
+    item.isScopeChange = undefined;
     item.createdTaskIds = [];
     item.taskTitles = undefined;
+    item.proposedTasks = undefined;
     await this.saveFeedback(projectId, item);
 
     this.categorizeFeedback(projectId, item).catch((err) => {

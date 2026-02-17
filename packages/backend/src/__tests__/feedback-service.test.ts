@@ -367,6 +367,97 @@ describe("FeedbackService", () => {
     expect(updated.taskTitles).toEqual(["Fix login button"]);
   });
 
+  it("should parse full PRD 12.3.4 format: proposed_tasks, mapped_epic_id, is_scope_change", async () => {
+    mockInvoke.mockResolvedValue({
+      content: JSON.stringify({
+        category: "feature",
+        mapped_plan_id: "auth-plan",
+        mapped_epic_id: "bd-auth-123",
+        is_scope_change: false,
+        proposed_tasks: [
+          { index: 0, title: "Add theme toggle", description: "Add dark/light toggle to settings", priority: 1, depends_on: [] },
+          { index: 1, title: "Persist theme", description: "Save preference to localStorage", priority: 2, depends_on: [0] },
+        ],
+      }),
+    });
+
+    const item = await feedbackService.submitFeedback(projectId, {
+      text: "Users want dark mode",
+    });
+
+    await new Promise((r) => setTimeout(r, 200));
+
+    const updated = await feedbackService.getFeedback(projectId, item.id);
+    expect(updated.category).toBe("feature");
+    expect(updated.mappedPlanId).toBe("auth-plan");
+    expect(updated.mappedEpicId).toBe("bd-auth-123");
+    expect(updated.isScopeChange).toBe(false);
+    expect(updated.proposedTasks).toHaveLength(2);
+    expect(updated.proposedTasks![0]).toMatchObject({
+      index: 0,
+      title: "Add theme toggle",
+      description: "Add dark/light toggle to settings",
+      priority: 1,
+      depends_on: [],
+    });
+    expect(updated.proposedTasks![1].depends_on).toEqual([0]);
+    expect(updated.taskTitles).toEqual(["Add theme toggle", "Persist theme"]);
+
+    // Beads create should be called with description and priority for proposed_tasks
+    const taskCreateCalls = mockBeadsCreate.mock.calls.filter((c) => c[2]?.type === "feature");
+    expect(taskCreateCalls).toHaveLength(2);
+    expect(taskCreateCalls[0][2]).toMatchObject({
+      type: "feature",
+      priority: 1,
+      description: "Add dark/light toggle to settings",
+    });
+    expect(taskCreateCalls[1][2]).toMatchObject({
+      type: "feature",
+      priority: 2,
+      description: "Save preference to localStorage",
+    });
+
+    // Inter-task blocks dependency (task 1 depends_on task 0) + 2 discovered-from
+    expect(mockBeadsAddDependency).toHaveBeenCalledTimes(3);
+  });
+
+  it("should trigger HIL when is_scope_change is true even if category is not scope", async () => {
+    mockInvoke.mockResolvedValue({
+      content: JSON.stringify({
+        category: "feature",
+        mapped_plan_id: null,
+        mapped_epic_id: null,
+        is_scope_change: true,
+        proposed_tasks: [{ index: 0, title: "Add mobile platform", description: "...", priority: 1, depends_on: [] }],
+      }),
+    });
+
+    await feedbackService.submitFeedback(projectId, {
+      text: "We need a native mobile app",
+    });
+
+    await new Promise((r) => setTimeout(r, 200));
+
+    expect(mockGetScopeChangeProposal).toHaveBeenCalledWith(projectId, "We need a native mobile app");
+    expect(mockHilEvaluate).toHaveBeenCalledTimes(1);
+  });
+
+  it("should accept legacy mappedPlanId (camelCase) for backward compatibility", async () => {
+    mockInvoke.mockResolvedValue({
+      content: JSON.stringify({
+        category: "bug",
+        mappedPlanId: "legacy-plan",
+        task_titles: ["Fix legacy"],
+      }),
+    });
+
+    const item = await feedbackService.submitFeedback(projectId, { text: "Legacy format" });
+    await new Promise((r) => setTimeout(r, 200));
+
+    const updated = await feedbackService.getFeedback(projectId, item.id);
+    expect(updated.mappedPlanId).toBe("legacy-plan");
+  });
+
   it("should fallback to bug and first plan when agent returns invalid JSON", async () => {
     mockInvoke.mockResolvedValue({ content: "This is not valid JSON at all" });
 
@@ -663,6 +754,7 @@ describe("FeedbackService", () => {
         expect.stringMatching(/^feedback-categorize-.*-/),
         projectId,
         "eval",
+        "analyst",
         "Feedback categorization",
         expect.any(String),
       );
