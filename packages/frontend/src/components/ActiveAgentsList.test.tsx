@@ -57,13 +57,14 @@ describe("ActiveAgentsList", () => {
     expect(screen.getByText("No agents running")).toBeInTheDocument();
   });
 
-  it("dropdown has z-[100] to appear above Build sidebar (z-50)", async () => {
+  it("dropdown is rendered in portal with high z-index to appear above Build sidebar (z-50)", async () => {
     const user = userEvent.setup();
     renderActiveAgentsList();
 
     await user.click(screen.getByTitle("Active agents"));
 
     const dropdown = screen.getByRole("listbox");
-    expect(dropdown).toHaveClass("z-[100]");
+    expect(dropdown.parentElement).toBe(document.body);
+    expect(Number(dropdown.style.zIndex)).toBeGreaterThanOrEqual(9999);
   });
 });

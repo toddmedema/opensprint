@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import type { ActiveAgent } from "@opensprint/shared";
 import { api } from "../api/client";
@@ -8,6 +9,9 @@ import { setSelectedTaskId } from "../store/slices/buildSlice";
 
 const POLL_INTERVAL_MS = 5000;
 
+/** z-index for dropdown portal — above Build sidebar (z-50) and Navbar (z-60) */
+const DROPDOWN_Z_INDEX = 9999;
+
 interface ActiveAgentsListProps {
   projectId: string;
 }
@@ -15,6 +19,8 @@ interface ActiveAgentsListProps {
 export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
   const [agents, setAgents] = useState<ActiveAgent[]>([]);
   const [open, setOpen] = useState(false);
+  const [dropdownRect, setDropdownRect] = useState<DOMRect | null>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
@@ -35,8 +41,22 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
   }, [fetchAgents]);
 
   useEffect(() => {
+    if (open && buttonRef.current) {
+      setDropdownRect(buttonRef.current.getBoundingClientRect());
+    } else {
+      setDropdownRect(null);
+    }
+  }, [open]);
+
+  useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(target) &&
+        buttonRef.current &&
+        !buttonRef.current.contains(target)
+      ) {
         setOpen(false);
       }
     }
@@ -58,9 +78,49 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
     return m[phase] ?? phase;
   };
 
+  const dropdownContent =
+    open && dropdownRect ? (
+      <div
+        ref={dropdownRef}
+        role="listbox"
+        className="fixed min-w-[220px] max-h-[320px] overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg py-2"
+        style={{
+          top: dropdownRect.bottom + 4,
+          right: window.innerWidth - dropdownRect.right,
+          zIndex: DROPDOWN_Z_INDEX,
+        }}
+      >
+        {agents.length === 0 ? (
+          <div className="px-4 py-6 text-center text-sm text-gray-500">No agents running</div>
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {agents.map((agent) => (
+              <li key={agent.id} role="option">
+                <button
+                  type="button"
+                  className="w-full px-4 py-2.5 text-sm text-left hover:bg-gray-50 transition-colors"
+                  onClick={() => {
+                    dispatch(setSelectedTaskId(agent.id));
+                    navigate(getProjectPhasePath(projectId, "build"));
+                    setOpen(false);
+                  }}
+                >
+                  <div className="font-medium text-gray-900">{agent.label || agent.id}</div>
+                  <div className="text-gray-500 mt-0.5">
+                    {phaseLabel(agent.phase)} &middot; <span className="text-gray-400">{agent.id}</span>
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    ) : null;
+
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="relative">
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700 transition-colors"
@@ -82,37 +142,7 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
         </svg>
       </button>
 
-      {open && (
-        <div
-          className="absolute right-0 top-full mt-1 min-w-[220px] max-h-[320px] overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg py-2 z-[100]"
-          role="listbox"
-        >
-          {agents.length === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-gray-500">No agents running</div>
-          ) : (
-            <ul className="divide-y divide-gray-100">
-              {agents.map((agent) => (
-                <li key={agent.id} role="option">
-                  <button
-                    type="button"
-                    className="w-full px-4 py-2.5 text-sm text-left hover:bg-gray-50 transition-colors"
-                    onClick={() => {
-                      dispatch(setSelectedTaskId(agent.id));
-                      navigate(getProjectPhasePath(projectId, "build"));
-                      setOpen(false);
-                    }}
-                  >
-                    <div className="font-medium text-gray-900">{agent.label || agent.id}</div>
-                    <div className="text-gray-500 mt-0.5">
-                      {phaseLabel(agent.phase)} &middot; <span className="text-gray-400">{agent.id}</span>
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
+      {dropdownContent && createPortal(dropdownContent, document.body)}
     </div>
   );
 }
