@@ -17,7 +17,7 @@ function ProjectCard({ project }: { project: Project }) {
   const progress = project.progressPercent ?? 0;
 
   return (
-    <Link to={getProjectPhasePath(project.id, project.currentPhase)} className="card p-5 hover:shadow-md transition-shadow group block">
+    <Link to={getProjectPhasePath(project.id, project.currentPhase)} className="card p-6 hover:shadow-md transition-shadow group block">
       <h3 className="font-semibold text-gray-900 group-hover:text-brand-600 transition-colors">{project.name}</h3>
       {project.description && <p className="mt-1 text-sm text-gray-500 line-clamp-2">{project.description}</p>}
       <div className="mt-3 flex items-center justify-between">
@@ -59,9 +59,9 @@ export function HomeScreen() {
 
   return (
     <Layout>
-      <div className="max-w-5xl mx-auto px-6 py-10">
+      <div className="max-w-6xl mx-auto px-6 py-10">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-10">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Projects</h1>
             <p className="mt-1 text-gray-500">Manage your AI-powered development projects</p>
@@ -88,7 +88,7 @@ export function HomeScreen() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
             {projects.map((project) => (
               <ProjectCard key={project.id} project={project} />
             ))}
