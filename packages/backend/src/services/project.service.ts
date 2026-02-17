@@ -47,13 +47,20 @@ function normalizeDeployment(input: CreateProjectRequest["deployment"]): Deploym
   };
 }
 
-/** Normalize HIL config: merge partial input with defaults (PRD §6.5). Strips testFailuresAndRetries (PRD §6.5.1: always automated). */
-function normalizeHilConfig(input: CreateProjectRequest["hilConfig"]): HilConfig {
+/** Normalize HIL config: merge partial input with defaults (PRD §6.5). Only valid keys are used; testFailuresAndRetries is never configurable (PRD §6.5.1). */
+const HIL_CONFIG_KEYS: (keyof HilConfig)[] = [
+  "scopeChanges",
+  "architectureDecisions",
+  "dependencyModifications",
+];
+
+function normalizeHilConfig(input: CreateProjectRequest["hilConfig"] | Record<string, unknown>): HilConfig {
   if (!input) return DEFAULT_HIL_CONFIG;
   const defined = Object.fromEntries(
-    Object.entries(input).filter(
-      ([k, v]) => v !== undefined && k !== 'testFailuresAndRetries',
-    ),
+    HIL_CONFIG_KEYS.filter((k) => (input as Record<string, unknown>)[k] !== undefined).map((k) => [
+      k,
+      (input as Record<string, unknown>)[k],
+    ]),
   );
   return {
     ...DEFAULT_HIL_CONFIG,
@@ -347,7 +354,11 @@ export class ProjectService {
     const settingsPath = path.join(repoPath, OPENSPRINT_PATHS.settings);
     try {
       const raw = await fs.readFile(settingsPath, "utf-8");
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw) as ProjectSettings;
+      return {
+        ...parsed,
+        hilConfig: normalizeHilConfig(parsed.hilConfig ?? {}),
+      };
     } catch {
       throw new AppError(404, ErrorCodes.SETTINGS_NOT_FOUND, "Project settings not found");
     }

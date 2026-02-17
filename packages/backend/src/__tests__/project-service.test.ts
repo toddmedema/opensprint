@@ -406,6 +406,30 @@ describe("ProjectService", () => {
     expect(reloaded.hilConfig).not.toHaveProperty("testFailuresAndRetries");
   });
 
+  it("should strip testFailuresAndRetries from hilConfig when reading settings (PRD §6.5.1)", async () => {
+    const repoPath = path.join(tempDir, "hil-read-strip");
+    const project = await projectService.createProject({
+      name: "HIL Read Strip",
+      description: "",
+      repoPath,
+      planningAgent: { type: "claude", model: null, cliCommand: null },
+      codingAgent: { type: "claude", model: null, cliCommand: null },
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+    });
+
+    // Manually write settings with legacy testFailuresAndRetries
+    const settingsPath = path.join(repoPath, ".opensprint", "settings.json");
+    const raw = await fs.readFile(settingsPath, "utf-8");
+    const settings = JSON.parse(raw);
+    settings.hilConfig.testFailuresAndRetries = "requires_approval";
+    await fs.writeFile(settingsPath, JSON.stringify(settings));
+
+    const fetched = await projectService.getSettings(project.id);
+    expect(fetched.hilConfig).not.toHaveProperty("testFailuresAndRetries");
+    expect(fetched.hilConfig.scopeChanges).toBe("requires_approval");
+  });
+
   it("should reject invalid agent config in codingAgentByComplexity", async () => {
     const repoPath = path.join(tempDir, "bad-complexity");
     const project = await projectService.createProject({
