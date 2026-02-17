@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import type { DeploymentRecord } from "@opensprint/shared";
+import type { DeploymentRecord, DeploymentConfig } from "@opensprint/shared";
+import { getDefaultDeploymentTarget } from "@opensprint/shared";
 import { getProjectPhasePath } from "../../lib/phaseRouting";
 import { useAppDispatch, useAppSelector } from "../../store";
 import {
@@ -52,7 +53,12 @@ export function DeployPhase({ projectId, onOpenSettings }: DeployPhaseProps) {
   const navigate = useNavigate();
   const { projectId: paramProjectId } = useParams<{ projectId: string }>();
   const effectiveProjectId = projectId ?? paramProjectId ?? "";
-  const [settings, setSettings] = useState<{ deployment: { mode: string; customCommand?: string; webhookUrl?: string; rollbackCommand?: string } } | null>(null);
+  const [settings, setSettings] = useState<{ deployment: DeploymentConfig } | null>(null);
+  const defaultTarget = useMemo(
+    () => (settings?.deployment ? getDefaultDeploymentTarget(settings.deployment) : "production"),
+    [settings?.deployment],
+  );
+  const [selectedTarget, setSelectedTarget] = useState<string>(defaultTarget);
 
   const history = useAppSelector((s) => s.deploy.history);
   const currentDeploy = useAppSelector((s) => s.deploy.currentDeploy);
@@ -67,6 +73,10 @@ export function DeployPhase({ projectId, onOpenSettings }: DeployPhaseProps) {
   useEffect(() => {
     api.projects.getSettings(projectId).then(setSettings).catch(() => setSettings(null));
   }, [projectId]);
+
+  useEffect(() => {
+    setSelectedTarget(defaultTarget);
+  }, [defaultTarget]);
 
   useEffect(() => {
     dispatch(fetchDeployStatus(projectId));
@@ -90,7 +100,7 @@ export function DeployPhase({ projectId, onOpenSettings }: DeployPhaseProps) {
     selectedRecord?.status === "success";
 
   const handleDeploy = () => {
-    dispatch(triggerDeploy(projectId));
+    dispatch(triggerDeploy({ projectId, target: selectedTarget }));
   };
 
   const handleRollback = () => {
@@ -115,22 +125,44 @@ export function DeployPhase({ projectId, onOpenSettings }: DeployPhaseProps) {
                 Deploy your project to Expo.dev or a custom pipeline
               </p>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="text-sm text-gray-500">
-                Environment:{" "}
-                <span className="font-medium text-gray-700">
-                  {settings?.deployment?.mode === "expo" ? "Expo" : "Custom"}
-                </span>
-                {onOpenSettings && (
-                  <button
-                    type="button"
-                    onClick={onOpenSettings}
-                    className="ml-2 text-brand-600 hover:text-brand-700 text-xs"
+            <div className="flex items-center gap-3 flex-wrap">
+              {settings?.deployment?.targets && settings.deployment.targets.length > 0 ? (
+                <div className="flex items-center gap-2">
+                  <label htmlFor="deploy-target" className="text-sm text-gray-500">
+                    Target:
+                  </label>
+                  <select
+                    id="deploy-target"
+                    value={selectedTarget}
+                    onChange={(e) => setSelectedTarget(e.target.value)}
+                    className="input text-sm py-1.5 px-2"
+                    data-testid="deploy-target-select"
                   >
-                    Configure
-                  </button>
-                )}
-              </div>
+                    {settings.deployment.targets.map((t) => (
+                      <option key={t.name} value={t.name}>
+                        {t.name}
+                        {t.isDefault ? " (default)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="text-sm text-gray-500">
+                  Environment:{" "}
+                  <span className="font-medium text-gray-700">
+                    {settings?.deployment?.mode === "expo" ? "Expo" : "Custom"}
+                  </span>
+                </div>
+              )}
+              {onOpenSettings && (
+                <button
+                  type="button"
+                  onClick={onOpenSettings}
+                  className="text-sm text-brand-600 hover:text-brand-700"
+                >
+                  Configure
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleDeploy}

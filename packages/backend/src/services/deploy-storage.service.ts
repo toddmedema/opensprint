@@ -25,7 +25,7 @@ export class DeployStorageService {
   async createRecord(
     projectId: string,
     previousDeployId?: string | null,
-    options?: { commitHash?: string | null; target?: 'staging' | 'production'; mode?: 'expo' | 'custom' },
+    options?: { commitHash?: string | null; target?: string; mode?: 'expo' | 'custom' },
   ): Promise<DeploymentRecord> {
     const project = await projectService.getProject(projectId);
     await this.ensureDeploymentsDir(project.repoPath);

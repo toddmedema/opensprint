@@ -11,8 +11,8 @@ export interface DeploymentRecord {
   completedAt: string | null;
   /** Git commit SHA at deploy time (git rev-parse HEAD) */
   commitHash?: string | null;
-  /** Target environment (staging/production, default production) */
-  target?: DeploymentTarget;
+  /** Target name (from targets[].name or legacy staging/production) */
+  target?: string | DeploymentTarget;
   /** Deployment mode from settings (expo/custom) */
   mode?: 'expo' | 'custom';
   /** Deploy URL (e.g. Expo preview link) when successful */

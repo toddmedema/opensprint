@@ -53,8 +53,11 @@ export const fetchDeployHistory = createAsyncThunk(
 
 export const triggerDeploy = createAsyncThunk(
   "deploy/trigger",
-  async (projectId: string, { dispatch }) => {
-    const { deployId } = await api.deploy.deploy(projectId);
+  async (
+    { projectId, target }: { projectId: string; target?: string },
+    { dispatch },
+  ) => {
+    const { deployId } = await api.deploy.deploy(projectId, target);
     dispatch(fetchDeployStatus(projectId));
     dispatch(fetchDeployHistory(projectId));
     return { deployId };

@@ -31,7 +31,7 @@ const execAsync = promisify(exec);
 
 const VALID_DEPLOYMENT_MODES = ["expo", "custom"] as const;
 
-/** Normalize deployment config: ensure valid mode, merge with defaults (PRD §6.4) */
+/** Normalize deployment config: ensure valid mode, merge with defaults (PRD §6.4, §7.5.4) */
 function normalizeDeployment(input: CreateProjectRequest["deployment"]): DeploymentConfig {
   const mode =
     input?.mode && VALID_DEPLOYMENT_MODES.includes(input.mode as "expo" | "custom")
@@ -41,6 +41,8 @@ function normalizeDeployment(input: CreateProjectRequest["deployment"]): Deploym
     ...DEFAULT_DEPLOYMENT_CONFIG,
     ...input,
     mode,
+    targets: input?.targets,
+    envVars: input?.envVars,
     expoConfig: mode === "expo" ? { channel: input?.expoConfig?.channel ?? "preview" } : undefined,
     customCommand: mode === "custom" ? input?.customCommand : undefined,
     webhookUrl: mode === "custom" ? input?.webhookUrl : undefined,

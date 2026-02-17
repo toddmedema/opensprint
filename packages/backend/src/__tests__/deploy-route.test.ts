@@ -145,6 +145,42 @@ describe("Deploy API", () => {
       expect(getRes.body.data.deployment.autoDeployOnEpicCompletion).toBe(true);
       expect(getRes.body.data.deployment.autoDeployOnEvalResolution).toBe(true);
     });
+
+    it("should accept and persist targets and envVars (PRD §7.5.2/7.5.4)", async () => {
+      const res = await request(app)
+        .put(`${API_PREFIX}/projects/${projectId}/deploy/settings`)
+        .send({
+          mode: "custom",
+          targets: [
+            { name: "staging", command: "echo deploy-staging", isDefault: true },
+            { name: "production", webhookUrl: "https://api.example.com/deploy" },
+          ],
+          envVars: { NODE_ENV: "production", API_URL: "https://api.example.com" },
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.deployment.targets).toHaveLength(2);
+      expect(res.body.data.deployment.targets[0]).toMatchObject({
+        name: "staging",
+        command: "echo deploy-staging",
+        isDefault: true,
+      });
+      expect(res.body.data.deployment.targets[1]).toMatchObject({
+        name: "production",
+        webhookUrl: "https://api.example.com/deploy",
+      });
+      expect(res.body.data.deployment.envVars).toEqual({
+        NODE_ENV: "production",
+        API_URL: "https://api.example.com",
+      });
+
+      const getRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/settings`);
+      expect(getRes.body.data.deployment.targets).toHaveLength(2);
+      expect(getRes.body.data.deployment.envVars).toEqual({
+        NODE_ENV: "production",
+        API_URL: "https://api.example.com",
+      });
+    });
   });
 
   describe("POST /projects/:projectId/deploy - record fields", () => {
@@ -165,6 +201,33 @@ describe("Deploy API", () => {
       expect(record.mode).toBe("custom");
       // commitHash may be a SHA or null if git fails
       expect(typeof record.commitHash === "string" || record.commitHash === null).toBe(true);
+    });
+
+    it("should deploy to specified target when body.target provided (PRD §7.5.4)", async () => {
+      await request(app)
+        .put(`${API_PREFIX}/projects/${projectId}/deploy/settings`)
+        .send({
+          mode: "custom",
+          targets: [
+            { name: "staging", command: "echo deploy-staging", isDefault: true },
+            { name: "production", command: "echo deploy-production" },
+          ],
+        });
+
+      const res = await request(app)
+        .post(`${API_PREFIX}/projects/${projectId}/deploy`)
+        .send({ target: "production" });
+
+      expect(res.status).toBe(202);
+      expect(res.body.data.deployId).toBeDefined();
+
+      await new Promise((r) => setTimeout(r, 500));
+
+      const historyRes = await request(app).get(
+        `${API_PREFIX}/projects/${projectId}/deploy/history?limit=1`,
+      );
+      const record = historyRes.body.data[0];
+      expect(record.target).toBe("production");
     });
   });
 

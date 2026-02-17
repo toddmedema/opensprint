@@ -1,7 +1,7 @@
 import { Router, Request } from "express";
 import { spawn, execSync } from "child_process";
 import type { ApiResponse, DeploymentRecord, DeploymentConfig, ProjectSettings } from "@opensprint/shared";
-import { resolveTestCommand } from "@opensprint/shared";
+import { resolveTestCommand, getDefaultDeploymentTarget, getDeploymentTargetConfig } from "@opensprint/shared";
 import { deploymentService } from "../services/deployment-service.js";
 import { deployStorageService } from "../services/deploy-storage.service.js";
 import { ProjectService } from "../services/project.service.js";
@@ -34,9 +34,11 @@ function getCommitHash(repoPath: string): string | null {
 }
 
 // POST /projects/:projectId/deploy — Trigger deployment
+// Body: { target?: string } — target name from targets array; defaults to getDefaultDeploymentTarget()
 deployRouter.post("/", async (req: Request<ProjectParams>, res, next) => {
   try {
     const { projectId } = req.params;
+    const bodyTarget = (req.body as { target?: string } | undefined)?.target;
     const project = await projectService.getProject(projectId);
     const settings = await projectService.getSettings(projectId);
 
@@ -44,7 +46,8 @@ deployRouter.post("/", async (req: Request<ProjectParams>, res, next) => {
     const previousDeployId = latest?.id ?? null;
 
     const commitHash = getCommitHash(project.repoPath);
-    const target = settings.deployment.target ?? "production";
+    const target =
+      bodyTarget ?? getDefaultDeploymentTarget(settings.deployment);
     const mode = settings.deployment.mode ?? "custom";
 
     const record = await deployStorageService.createRecord(projectId, previousDeployId, {
@@ -57,7 +60,7 @@ deployRouter.post("/", async (req: Request<ProjectParams>, res, next) => {
 
     await deployStorageService.updateRecord(projectId, record.id, { status: "running" });
 
-    runDeployAsync(projectId, record.id, project.repoPath, settings).catch((err) => {
+    runDeployAsync(projectId, record.id, project.repoPath, settings, target).catch((err) => {
       console.error(`[deploy] Deploy ${record.id} failed:`, err);
     });
 
@@ -148,7 +151,7 @@ deployRouter.post("/:deployId/rollback", async (req: Request<DeployIdParams>, re
         latest && latest.id !== deployId ? latest.id : null;
 
       const commitHash = getCommitHash(project.repoPath);
-      const target = settings.deployment.target ?? "production";
+      const target = getDefaultDeploymentTarget(settings.deployment);
       const mode = settings.deployment.mode ?? "custom";
 
       const rollbackRecord = await deployStorageService.createRecord(projectId, deployId, {
@@ -187,14 +190,19 @@ deployRouter.post("/:deployId/rollback", async (req: Request<DeployIdParams>, re
 /** Run deployment asynchronously with streaming output.
  * PRD §7.5.2: Runs pre-deploy test suite first. If tests fail, creates fix epic via Planner and aborts.
  * Exported for use by deploy-trigger.service (auto-deploy on epic completion / eval resolution).
+ * @param targetName — Target name from targets array; defaults to getDefaultDeploymentTarget when not provided.
  */
 export async function runDeployAsync(
   projectId: string,
   deployId: string,
   repoPath: string,
   settings: ProjectSettings,
+  targetName?: string,
 ): Promise<void> {
   const config = settings.deployment;
+  const effectiveTarget = targetName ?? getDefaultDeploymentTarget(config);
+  const targetConfig = getDeploymentTargetConfig(config, effectiveTarget);
+  const envVars = config.envVars ?? {};
   const emit = (chunk: string) => {
     deployStorageService.appendLog(projectId, deployId, chunk);
     broadcastToProject(projectId, { type: "deploy.output", deployId, chunk });
@@ -256,6 +264,7 @@ export async function runDeployAsync(
           ["eas-cli", "update", "--channel", channel, "--message", message, "--non-interactive", "--json"],
           repoPath,
           captureEmit,
+          envVars,
         );
         let url: string | undefined;
         try {
@@ -280,16 +289,19 @@ export async function runDeployAsync(
         broadcastToProject(projectId, { type: "deploy.completed", deployId, success: false });
       }
     } else if (config.mode === "custom") {
-      if (config.customCommand) {
-        await runCommandStreaming("sh", ["-c", config.customCommand], repoPath, emit);
+      const customCommand = targetConfig?.command ?? config.customCommand;
+      const webhookUrl = targetConfig?.webhookUrl ?? config.webhookUrl;
+
+      if (customCommand) {
+        await runCommandStreaming("sh", ["-c", customCommand], repoPath, emit, envVars);
         await deployStorageService.updateRecord(projectId, deployId, {
           status: "success",
           completedAt: new Date().toISOString(),
         });
         broadcastToProject(projectId, { type: "deploy.completed", deployId, success: true });
-      } else if (config.webhookUrl) {
-        const result = await deploymentService.deploy(projectId);
-        emit(`Webhook POST to ${config.webhookUrl}\n`);
+      } else if (webhookUrl) {
+        const result = await deploymentService.deployWithWebhook(projectId, webhookUrl, envVars);
+        emit(`Webhook POST to ${webhookUrl}\n`);
         await deployStorageService.updateRecord(projectId, deployId, {
           status: result.success ? "success" : "failed",
           completedAt: new Date().toISOString(),
@@ -368,11 +380,13 @@ function runCommandStreaming(
   args: string[],
   cwd: string,
   onOutput: (chunk: string) => void,
+  envVars?: Record<string, string>,
 ): Promise<void> {
+  const env = { ...process.env, ...envVars };
   return new Promise((resolve, reject) => {
     const proc = spawn(command, args, {
       cwd,
-      env: process.env,
+      env,
       shell: false,
     });
 

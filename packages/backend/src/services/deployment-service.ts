@@ -151,11 +151,24 @@ export class DeploymentService {
   }
 
   /**
+   * Deploy via webhook with optional env vars (PRD §7.5.4).
+   * Used when deploying to a specific target with its own webhook URL.
+   */
+  async deployWithWebhook(
+    projectId: string,
+    webhookUrl: string,
+    envVars?: Record<string, string>,
+  ): Promise<DeploymentResult> {
+    const project = await this.projectService.getProject(projectId);
+    return this.deployWebhook(webhookUrl, project.repoPath, envVars);
+  }
+
+  /**
    * Deploy using a custom pipeline: command or webhook (PRD §6.4).
    */
   private async deployCustom(repoPath: string, config: DeploymentConfig): Promise<DeploymentResult> {
     if (config.webhookUrl) {
-      return this.deployWebhook(config.webhookUrl, repoPath);
+      return this.deployWebhook(config.webhookUrl, repoPath, config.envVars);
     }
     if (config.customCommand) {
       return this.deployCommand(repoPath, config.customCommand);
@@ -189,18 +202,26 @@ export class DeploymentService {
     }
   }
 
-  private async deployWebhook(url: string, repoPath: string): Promise<DeploymentResult> {
+  private async deployWebhook(
+    url: string,
+    repoPath: string,
+    envVars?: Record<string, string>,
+  ): Promise<DeploymentResult> {
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 60000);
+      const payload: Record<string, unknown> = {
+        event: "build.completed",
+        repoPath,
+        timestamp: new Date().toISOString(),
+      };
+      if (envVars && Object.keys(envVars).length > 0) {
+        payload.envVars = envVars;
+      }
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          event: "build.completed",
-          repoPath,
-          timestamp: new Date().toISOString(),
-        }),
+        body: JSON.stringify(payload),
         signal: controller.signal,
       });
       clearTimeout(timeout);

@@ -3,7 +3,7 @@ import { FolderBrowser } from "./FolderBrowser";
 import { CloseButton } from "./CloseButton";
 import { ModelSelect } from "./ModelSelect";
 import { api } from "../api/client";
-import type { Project, ProjectSettings, AgentType, DeploymentMode, HilNotificationMode, AgentConfig, PlanComplexity, ReviewMode } from "@opensprint/shared";
+import type { Project, ProjectSettings, AgentType, DeploymentMode, HilNotificationMode, AgentConfig, PlanComplexity, ReviewMode, DeploymentTargetConfig } from "@opensprint/shared";
 import { DEFAULT_HIL_CONFIG, DEFAULT_REVIEW_MODE } from "@opensprint/shared";
 
 interface ProjectSettingsModalProps {
@@ -118,6 +118,8 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
             customCommand: deployment.customCommand ?? undefined,
             webhookUrl: deployment.webhookUrl ?? undefined,
             rollbackCommand: deployment.rollbackCommand ?? undefined,
+            targets: deployment.targets,
+            envVars: deployment.envVars,
             autoDeployOnEpicCompletion: deployment.autoDeployOnEpicCompletion ?? false,
             autoDeployOnEvalResolution: deployment.autoDeployOnEvalResolution ?? false,
           },
@@ -735,6 +737,139 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                         <p className="mt-1 text-xs text-gray-500">
                           Shell command for rolling back to a previous deployment (Deploy phase)
                         </p>
+                      </div>
+                      <div className="pt-3 border-t border-gray-200">
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Deployment targets (PRD §7.5.2/7.5.4)</h4>
+                        <p className="text-xs text-gray-500 mb-2">
+                          Define staging/production targets with per-target command or webhook. Leave empty to use legacy single command/webhook above.
+                        </p>
+                        {(deployment.targets ?? []).map((t, i) => (
+                          <div key={i} className="mb-3 p-3 rounded-lg border border-gray-200 bg-white">
+                            <div className="flex justify-between items-center mb-2">
+                              <input
+                                type="text"
+                                className="input flex-1 mr-2 font-mono text-sm"
+                                placeholder="Target name (e.g. staging, production)"
+                                value={t.name}
+                                onChange={(e) => {
+                                  const next = [...(deployment.targets ?? [])];
+                                  next[i] = { ...t, name: e.target.value };
+                                  updateDeployment({ targets: next });
+                                }}
+                              />
+                              <label className="flex items-center gap-1 text-xs">
+                                <input
+                                  type="checkbox"
+                                  checked={t.isDefault ?? false}
+                                  onChange={(e) => {
+                                    const next = (deployment.targets ?? []).map((x, j) =>
+                                      j === i ? { ...x, isDefault: e.target.checked } : { ...x, isDefault: false },
+                                    );
+                                    updateDeployment({ targets: next });
+                                  }}
+                                />
+                                default
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = (deployment.targets ?? []).filter((_, j) => j !== i);
+                                  updateDeployment({ targets: next.length ? next : undefined });
+                                }}
+                                className="text-red-600 hover:text-red-700 text-xs ml-1"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                            <input
+                              type="text"
+                              className="input w-full font-mono text-xs mb-1"
+                              placeholder="Command (e.g. ./deploy-staging.sh)"
+                              value={t.command ?? ""}
+                              onChange={(e) => {
+                                const next = [...(deployment.targets ?? [])];
+                                next[i] = { ...t, command: e.target.value || undefined };
+                                updateDeployment({ targets: next });
+                              }}
+                            />
+                            <input
+                              type="url"
+                              className="input w-full font-mono text-xs"
+                              placeholder="Webhook URL (alternative to command)"
+                              value={t.webhookUrl ?? ""}
+                              onChange={(e) => {
+                                const next = [...(deployment.targets ?? [])];
+                                next[i] = { ...t, webhookUrl: e.target.value || undefined };
+                                updateDeployment({ targets: next });
+                              }}
+                            />
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = [...(deployment.targets ?? []), { name: "", isDefault: (deployment.targets ?? []).length === 0 }];
+                            updateDeployment({ targets: next });
+                          }}
+                          className="btn-secondary text-sm"
+                        >
+                          + Add target
+                        </button>
+                      </div>
+                      <div className="pt-3 border-t border-gray-200">
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Environment variables</h4>
+                        <p className="text-xs text-gray-500 mb-2">
+                          Key-value pairs passed to deployment commands and webhooks.
+                        </p>
+                        {Object.entries(deployment.envVars ?? {}).map(([k, v], i) => (
+                          <div key={i} className="flex gap-2 mb-2">
+                            <input
+                              type="text"
+                              className="input flex-1 font-mono text-xs"
+                              placeholder="KEY"
+                              value={k}
+                              onChange={(e) => {
+                                const next = { ...(deployment.envVars ?? {}) };
+                                delete next[k];
+                                if (e.target.value) next[e.target.value] = v;
+                                updateDeployment({ envVars: Object.keys(next).length ? next : undefined });
+                              }}
+                            />
+                            <input
+                              type="text"
+                              className="input flex-1 font-mono text-xs"
+                              placeholder="value"
+                              value={v}
+                              onChange={(e) => {
+                                const next = { ...(deployment.envVars ?? {}), [k]: e.target.value };
+                                updateDeployment({ envVars: next });
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = { ...(deployment.envVars ?? {}) };
+                                delete next[k];
+                                updateDeployment({ envVars: Object.keys(next).length ? next : undefined });
+                              }}
+                              className="text-red-600 hover:text-red-700 text-xs"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const key = prompt("Environment variable name:");
+                            if (key && !(deployment.envVars ?? {})[key]) {
+                              updateDeployment({ envVars: { ...(deployment.envVars ?? {}), [key]: "" } });
+                            }
+                          }}
+                          className="btn-secondary text-sm"
+                        >
+                          + Add env var
+                        </button>
                       </div>
                     </div>
                   )}

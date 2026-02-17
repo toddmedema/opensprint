@@ -1,4 +1,5 @@
 import { execSync } from "child_process";
+import { getDefaultDeploymentTarget } from "@opensprint/shared";
 import { ProjectService } from "./project.service.js";
 import { deployStorageService } from "./deploy-storage.service.js";
 import { broadcastToProject } from "../websocket/index.js";
@@ -31,7 +32,7 @@ export async function triggerDeploy(projectId: string): Promise<string | null> {
     const previousDeployId = latest?.id ?? null;
 
     const commitHash = getCommitHash(project.repoPath);
-    const target = settings.deployment.target ?? "production";
+    const target = getDefaultDeploymentTarget(settings.deployment);
     const mode = settings.deployment.mode ?? "custom";
 
     const record = await deployStorageService.createRecord(projectId, previousDeployId, {
@@ -44,7 +45,7 @@ export async function triggerDeploy(projectId: string): Promise<string | null> {
 
     await deployStorageService.updateRecord(projectId, record.id, { status: "running" });
 
-    runDeployAsync(projectId, record.id, project.repoPath, settings).catch((err) => {
+    runDeployAsync(projectId, record.id, project.repoPath, settings, target).catch((err) => {
       console.error(`[deploy] Deploy ${record.id} failed:`, err);
     });
 

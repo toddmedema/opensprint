@@ -7,12 +7,14 @@ import { DeployPhase } from "./DeployPhase";
 import deployReducer from "../../store/slices/deploySlice";
 import projectReducer from "../../store/slices/projectSlice";
 
+const mockGetSettings = vi.fn().mockResolvedValue({
+  deployment: { mode: "custom", customCommand: "echo deploy" },
+});
+
 vi.mock("../../api/client", () => ({
   api: {
     projects: {
-      getSettings: vi.fn().mockResolvedValue({
-        deployment: { mode: "custom", customCommand: "echo deploy" },
-      }),
+      getSettings: mockGetSettings,
     },
   },
 }));
@@ -57,6 +59,9 @@ function renderWithRouter(store: ReturnType<typeof createStore>, projectId = "pr
 describe("DeployPhase", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetSettings.mockResolvedValue({
+      deployment: { mode: "custom", customCommand: "echo deploy" },
+    });
   });
 
   it("renders Deploy! button", () => {
@@ -119,5 +124,25 @@ describe("DeployPhase", () => {
     renderWithRouter(store);
     expect(screen.getByTestId("fix-epic-link")).toBeInTheDocument();
     expect(screen.getByTestId("fix-epic-link")).toHaveTextContent(/View fix epic \(bd-abc123\)/);
+  });
+
+  it("shows target selector when targets are configured (PRD §7.5.4)", async () => {
+    mockGetSettings.mockResolvedValueOnce({
+      deployment: {
+        mode: "custom",
+        targets: [
+          { name: "staging", command: "echo staging", isDefault: true },
+          { name: "production", webhookUrl: "https://example.com/deploy" },
+        ],
+      },
+    });
+    const store = createStore();
+    renderWithRouter(store);
+
+    const selector = await screen.findByTestId("deploy-target-select");
+    expect(selector).toBeInTheDocument();
+    expect(selector).toHaveValue("staging");
+    expect(selector).toHaveTextContent("staging (default)");
+    expect(selector).toHaveTextContent("production");
   });
 });

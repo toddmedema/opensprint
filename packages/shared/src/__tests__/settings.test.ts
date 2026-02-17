@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { getCodingAgentForComplexity } from "../types/settings.js";
-import type { ProjectSettings, AgentConfig } from "../types/settings.js";
+import {
+  getCodingAgentForComplexity,
+  getDefaultDeploymentTarget,
+  getDeploymentTargetConfig,
+} from "../types/settings.js";
+import type { ProjectSettings, AgentConfig, DeploymentConfig } from "../types/settings.js";
 
 const defaultAgent: AgentConfig = { type: "claude", model: "claude-sonnet-4", cliCommand: null };
 const highAgent: AgentConfig = { type: "claude", model: "claude-opus-5", cliCommand: null };
@@ -53,5 +57,69 @@ describe("getCodingAgentForComplexity", () => {
   it("should handle empty codingAgentByComplexity object", () => {
     const settings = makeSettings({ codingAgentByComplexity: {} });
     expect(getCodingAgentForComplexity(settings, "high")).toBe(defaultAgent);
+  });
+});
+
+describe("getDefaultDeploymentTarget", () => {
+  it("returns first isDefault target when targets exist", () => {
+    const config: DeploymentConfig = {
+      mode: "custom",
+      targets: [
+        { name: "staging", isDefault: false },
+        { name: "production", isDefault: true },
+      ],
+    };
+    expect(getDefaultDeploymentTarget(config)).toBe("production");
+  });
+
+  it("returns first target when no isDefault and targets exist", () => {
+    const config: DeploymentConfig = {
+      mode: "custom",
+      targets: [{ name: "staging" }, { name: "production" }],
+    };
+    expect(getDefaultDeploymentTarget(config)).toBe("staging");
+  });
+
+  it("returns legacy target when no targets", () => {
+    const config: DeploymentConfig = { mode: "custom", target: "staging" };
+    expect(getDefaultDeploymentTarget(config)).toBe("staging");
+  });
+
+  it("returns production when no targets and no legacy target", () => {
+    const config: DeploymentConfig = { mode: "custom" };
+    expect(getDefaultDeploymentTarget(config)).toBe("production");
+  });
+});
+
+describe("getDeploymentTargetConfig", () => {
+  it("returns target config by name", () => {
+    const config: DeploymentConfig = {
+      mode: "custom",
+      targets: [
+        { name: "staging", command: "echo staging" },
+        { name: "production", webhookUrl: "https://example.com/deploy" },
+      ],
+    };
+    expect(getDeploymentTargetConfig(config, "staging")).toMatchObject({
+      name: "staging",
+      command: "echo staging",
+    });
+    expect(getDeploymentTargetConfig(config, "production")).toMatchObject({
+      name: "production",
+      webhookUrl: "https://example.com/deploy",
+    });
+  });
+
+  it("returns undefined when target not found", () => {
+    const config: DeploymentConfig = {
+      mode: "custom",
+      targets: [{ name: "staging" }],
+    };
+    expect(getDeploymentTargetConfig(config, "production")).toBeUndefined();
+  });
+
+  it("returns undefined when no targets", () => {
+    const config: DeploymentConfig = { mode: "custom" };
+    expect(getDeploymentTargetConfig(config, "staging")).toBeUndefined();
   });
 });

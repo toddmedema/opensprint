@@ -198,9 +198,10 @@ export const api = {
 
   // ─── Deploy ───
   deploy: {
-    deploy: (projectId: string) =>
+    deploy: (projectId: string, target?: string) =>
       request<{ deployId: string }>(`/projects/${projectId}/deploy`, {
         method: "POST",
+        body: target != null ? JSON.stringify({ target }) : undefined,
       }),
     status: (projectId: string) =>
       request<{ activeDeployId: string | null; currentDeploy: DeploymentRecord | null }>(
