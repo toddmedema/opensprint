@@ -136,4 +136,31 @@ describe("PrdSectionEditor", () => {
       expect(editor.textContent).not.toContain("Overwritten by WebSocket");
     });
   });
+
+  it("flushes pending save on unmount so edits persist when navigating away", async () => {
+    vi.useFakeTimers();
+    const onSave = vi.fn();
+    const { unmount, container } = render(
+      <PrdSectionEditor
+        sectionKey="overview"
+        markdown="Initial"
+        onSave={onSave}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Initial")).toBeInTheDocument();
+    });
+
+    const editor = container.querySelector("[contenteditable]") as HTMLElement;
+    (editor as HTMLElement).innerHTML = "<p>Edited but not yet saved</p>";
+    (editor as HTMLElement).dispatchEvent(new Event("input", { bubbles: true }));
+
+    expect(onSave).not.toHaveBeenCalled();
+
+    unmount();
+
+    expect(onSave).toHaveBeenCalledWith("overview", "Edited but not yet saved");
+    vi.useRealTimers();
+  });
 });

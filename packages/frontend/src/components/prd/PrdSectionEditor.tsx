@@ -29,18 +29,33 @@ export function PrdSectionEditor({
   const isInternalUpdateRef = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const pendingHtmlRef = useRef<string | null>(null);
+
   const flushDebounce = useCallback(() => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
-  }, []);
+    // Flush pending save on unmount so edits persist when navigating away
+    const html = pendingHtmlRef.current;
+    pendingHtmlRef.current = null;
+    if (html != null && !disabled) {
+      let md = htmlToMarkdown(html);
+      if (!md.trim() || md.trim() === "_No content yet_") md = "";
+      if (md !== lastMarkdownRef.current) {
+        lastMarkdownRef.current = md;
+        onSave(sectionKey, md);
+      }
+    }
+  }, [sectionKey, onSave, disabled]);
 
   const scheduleSave = useCallback(
     (html: string) => {
       flushDebounce();
+      pendingHtmlRef.current = html;
       debounceRef.current = setTimeout(() => {
         debounceRef.current = null;
+        pendingHtmlRef.current = null;
         let md = htmlToMarkdown(html);
         // Normalize empty/placeholder to empty string
         if (!md.trim() || md.trim() === "_No content yet_") md = "";
