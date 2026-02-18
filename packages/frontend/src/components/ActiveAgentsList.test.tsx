@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
 import { MemoryRouter } from "react-router-dom";
@@ -62,8 +62,9 @@ describe("ActiveAgentsList", () => {
 
     await user.click(screen.getByTitle("Active agents"));
 
-    expect(screen.getByRole("listbox")).toBeInTheDocument();
-    expect(screen.getByText("No agents running")).toBeInTheDocument();
+    const listbox = screen.getByRole("listbox");
+    expect(listbox).toBeInTheDocument();
+    expect(within(listbox).getByText("No agents running")).toBeInTheDocument();
   });
 
   it("dropdown is rendered in portal with high z-index to appear above Build sidebar (z-50)", async () => {
@@ -86,10 +87,15 @@ describe("ActiveAgentsList", () => {
     ]);
 
     renderActiveAgentsList();
-    await vi.runAllTimersAsync();
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
 
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    await user.click(screen.getByTitle("Active agents"));
+    fireEvent.click(screen.getByTitle("Active agents"));
+
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
 
     // Elapsed time correct from first frame (startedAt in list response, no separate fetch)
     expect(screen.getByText("0s")).toBeInTheDocument();
@@ -115,10 +121,15 @@ describe("ActiveAgentsList", () => {
     ]);
 
     renderActiveAgentsList();
-    await vi.runAllTimersAsync();
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
 
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    await user.click(screen.getByTitle("Active agents"));
+    fireEvent.click(screen.getByTitle("Active agents"));
+
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
 
     // fetchAgents is called on open — ensures fresh startedAt from list response
     expect(mockAgentsActive).toHaveBeenCalledWith("proj-1");
@@ -134,12 +145,11 @@ describe("ActiveAgentsList", () => {
     ]);
 
     renderActiveAgentsList();
-    await vi.runAllTimersAsync();
 
     const user = userEvent.setup();
     await user.click(screen.getByTitle("Active agents"));
 
-    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(await screen.findByText("—")).toBeInTheDocument();
     expect(screen.getByText("Task 1")).toBeInTheDocument();
   });
 });
