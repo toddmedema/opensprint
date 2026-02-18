@@ -429,6 +429,42 @@ describe("ExecutePhase Redux integration", () => {
     expect(taskLabels).toHaveLength(0);
   });
 
+  it("task detail sidebar does not display task type (Task text removed per feedback)", async () => {
+    mockGet.mockResolvedValue({
+      id: "epic-1.1",
+      title: "Fix login bug",
+      kanbanColumn: "in_progress",
+      description: "Bug description",
+      type: "task",
+      status: "in_progress",
+      labels: [],
+      dependencies: [],
+      priority: 0,
+      assignee: null,
+      epicId: "epic-1",
+      createdAt: "",
+      updatedAt: "",
+    });
+    const tasks = [
+      { id: "epic-1.1", title: "Fix login bug", epicId: "epic-1", kanbanColumn: "in_progress", priority: 0, assignee: null },
+    ];
+    const store = createStore(tasks, { selectedTaskId: "epic-1.1" });
+    render(
+      <Provider store={store}>
+        <ExecutePhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
+    });
+
+    // Task type should not be displayed in the details sidebar (feedback: remove Task text)
+    // The metadata row used to show "title · task · priority"; we no longer show the type
+    const metadataSection = document.body.textContent ?? "";
+    expect(metadataSection).not.toMatch(/\s·\s*task\s*·/);
+  });
+
   it("task description renders fully and is scrollable when long", async () => {
     const longDescription = "Line 1\n".repeat(100) + "Final line";
     mockGet.mockResolvedValue({
