@@ -7,6 +7,10 @@ dist/
 build/
 *.tsbuildinfo
 
+# packages/shared build artifacts (generated for production only)
+packages/shared/dist/
+packages/shared/tsconfig.tsbuildinfo
+
 # Environment
 .env
 .env.local
