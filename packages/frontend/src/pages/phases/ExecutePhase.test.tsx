@@ -155,7 +155,22 @@ describe("ExecutePhase top bar", () => {
     vi.clearAllMocks();
   });
 
-  it("shows task count per stage (Ready, Blocked, In Progress, Done) and total in top bar", () => {
+  it("does not show Execute heading or progress bar in top bar", () => {
+    const tasks = [
+      { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "ready", priority: 0, assignee: null },
+    ];
+    const store = createStore(tasks);
+    render(
+      <Provider store={store}>
+        <ExecutePhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    expect(screen.queryByRole("heading", { name: "Execute" })).not.toBeInTheDocument();
+    expect(document.querySelector('[role="progressbar"]')).not.toBeInTheDocument();
+  });
+
+  it("shows status filter chips with task counts (All, Ready, In Progress, In Review, Done, Blocked)", () => {
     const tasks = [
       { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "done", priority: 0, assignee: null },
       { id: "epic-1.2", title: "Task B", epicId: "epic-1", kanbanColumn: "ready", priority: 1, assignee: null },
@@ -167,10 +182,15 @@ describe("ExecutePhase top bar", () => {
       </Provider>,
     );
 
-    expect(screen.getByText("Ready: 1 · Blocked: 0 · In Progress: 0 · Done: 1 · Total: 2")).toBeInTheDocument();
+    expect(screen.getByTestId("filter-chip-all")).toHaveTextContent("All");
+    expect(screen.getByTestId("filter-chip-all")).toHaveTextContent("2");
+    expect(screen.getByTestId("filter-chip-ready")).toHaveTextContent("Ready");
+    expect(screen.getByTestId("filter-chip-ready")).toHaveTextContent("1");
+    expect(screen.getByTestId("filter-chip-done")).toHaveTextContent("Done");
+    expect(screen.getByTestId("filter-chip-done")).toHaveTextContent("1");
   });
 
-  it("shows in-progress task count when tasks are in progress or in review", () => {
+  it("shows in-progress and in-review counts separately in chips", () => {
     const tasks = [
       { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "done", priority: 0, assignee: null },
       { id: "epic-1.2", title: "Task B", epicId: "epic-1", kanbanColumn: "in_progress", priority: 1, assignee: "agent-1" },
@@ -183,10 +203,12 @@ describe("ExecutePhase top bar", () => {
       </Provider>,
     );
 
-    expect(screen.getByText("Ready: 0 · Blocked: 0 · In Progress: 2 · Done: 1 · Total: 3")).toBeInTheDocument();
+    expect(screen.getByTestId("filter-chip-in_progress")).toHaveTextContent("1");
+    expect(screen.getByTestId("filter-chip-in_review")).toHaveTextContent("1");
+    expect(screen.getByTestId("filter-chip-done")).toHaveTextContent("1");
   });
 
-  it("shows separate ready and blocked counts when tasks are in backlog or ready", () => {
+  it("shows separate ready and blocked counts in chips", () => {
     const tasks = [
       { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "backlog", priority: 0, assignee: null },
       { id: "epic-1.2", title: "Task B", epicId: "epic-1", kanbanColumn: "ready", priority: 1, assignee: null },
@@ -198,10 +220,11 @@ describe("ExecutePhase top bar", () => {
       </Provider>,
     );
 
-    expect(screen.getByText("Ready: 1 · Blocked: 1 · In Progress: 0 · Done: 0 · Total: 2")).toBeInTheDocument();
+    expect(screen.getByTestId("filter-chip-ready")).toHaveTextContent("1");
+    expect(screen.getByTestId("filter-chip-blocked")).toHaveTextContent("1");
   });
 
-  it("counts planning, backlog, and blocked as Blocked", () => {
+  it("counts planning, backlog, and blocked as Blocked chip", () => {
     const tasks = [
       { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "planning", priority: 0, assignee: null },
       { id: "epic-1.2", title: "Task B", epicId: "epic-1", kanbanColumn: "backlog", priority: 1, assignee: null },
@@ -214,7 +237,72 @@ describe("ExecutePhase top bar", () => {
       </Provider>,
     );
 
-    expect(screen.getByText("Ready: 0 · Blocked: 3 · In Progress: 0 · Done: 0 · Total: 3")).toBeInTheDocument();
+    expect(screen.getByTestId("filter-chip-blocked")).toHaveTextContent("3");
+  });
+
+  it("filters task list when chip is clicked", async () => {
+    const user = userEvent.setup();
+    const tasks = [
+      { id: "epic-1.1", title: "Done task", epicId: "epic-1", kanbanColumn: "done", priority: 0, assignee: null },
+      { id: "epic-1.2", title: "Ready task", epicId: "epic-1", kanbanColumn: "ready", priority: 1, assignee: null },
+      { id: "epic-1.3", title: "In progress task", epicId: "epic-1", kanbanColumn: "in_progress", priority: 2, assignee: null },
+    ];
+    const store = createStore(tasks);
+    const { container } = render(
+      <Provider store={store}>
+        <ExecutePhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    const epicCard = container.querySelector('[data-testid="epic-card-epic-1"]');
+    expect(epicCard).toBeInTheDocument();
+    expect(epicCard!.querySelectorAll("ul li")).toHaveLength(3);
+
+    await user.click(screen.getByTestId("filter-chip-done"));
+    const doneList = epicCard!.querySelectorAll("ul li");
+    expect(doneList).toHaveLength(1);
+    expect(doneList[0].textContent).toContain("Done task");
+
+    await user.click(screen.getByTestId("filter-chip-ready"));
+    expect(epicCard!.querySelectorAll("ul li")).toHaveLength(1);
+    expect(epicCard!.textContent).toContain("Ready task");
+
+    await user.click(screen.getByTestId("filter-chip-all"));
+    expect(epicCard!.querySelectorAll("ul li")).toHaveLength(3);
+  });
+
+  it("re-clicking active chip (non-All) resets to All", async () => {
+    const user = userEvent.setup();
+    const tasks = [
+      { id: "epic-1.1", title: "Done task", epicId: "epic-1", kanbanColumn: "done", priority: 0, assignee: null },
+      { id: "epic-1.2", title: "Ready task", epicId: "epic-1", kanbanColumn: "ready", priority: 1, assignee: null },
+    ];
+    const store = createStore(tasks);
+    const { container } = render(
+      <Provider store={store}>
+        <ExecutePhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    await user.click(screen.getByTestId("filter-chip-done"));
+    expect(container.querySelector('[data-testid="epic-card-epic-1"]')!.querySelectorAll("ul li")).toHaveLength(1);
+
+    await user.click(screen.getByTestId("filter-chip-done"));
+    expect(container.querySelector('[data-testid="epic-card-epic-1"]')!.querySelectorAll("ul li")).toHaveLength(2);
+  });
+
+  it("All chip is active by default", () => {
+    const tasks = [
+      { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "ready", priority: 0, assignee: null },
+    ];
+    const store = createStore(tasks);
+    render(
+      <Provider store={store}>
+        <ExecutePhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    expect(screen.getByTestId("filter-chip-all")).toHaveAttribute("aria-pressed", "true");
   });
 
   it("does not render play or pause buttons in the header", () => {

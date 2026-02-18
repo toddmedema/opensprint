@@ -209,9 +209,24 @@ function SourceFeedbackSection({
   );
 }
 
+type StatusFilter =
+  | "all"
+  | "ready"
+  | "in_progress"
+  | "in_review"
+  | "done"
+  | "blocked";
+
+function matchesFilter(kanbanColumn: string, filter: StatusFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "blocked") return ["planning", "backlog", "blocked"].includes(kanbanColumn);
+  return kanbanColumn === filter;
+}
+
 export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps) {
   const dispatch = useAppDispatch();
   const [taskIdToStartedAt, setTaskIdToStartedAt] = useState<Record<string, string>>({});
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const tasks = useAppSelector((s) => s.execute.tasks);
 
@@ -302,6 +317,11 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
     [tasks],
   );
 
+  const filteredTasks = useMemo(
+    () => implTasks.filter((t) => matchesFilter(t.kanbanColumn, statusFilter)),
+    [implTasks, statusFilter],
+  );
+
   const swimlanes = useMemo(() => {
     const epicIdToTitle = new Map<string, string>();
     plans.forEach((p) => {
@@ -309,20 +329,24 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
     });
 
     const byEpic = new Map<string | null, Task[]>();
-    for (const t of implTasks) {
+    for (const t of filteredTasks) {
       const key = t.epicId ?? null;
       if (!byEpic.has(key)) byEpic.set(key, []);
       byEpic.get(key)!.push(t);
     }
 
     const allDone = (tasks: Task[]) => tasks.length > 0 && tasks.every((t) => t.kanbanColumn === "done");
+    const hideCompletedEpics = statusFilter === "all";
+
+    const includeLane = (laneTasks: Task[]) =>
+      laneTasks.length > 0 && (!hideCompletedEpics || !allDone(laneTasks));
 
     const result: { epicId: string; epicTitle: string; tasks: Task[] }[] = [];
     for (const plan of plans) {
       const epicId = plan.metadata.beadEpicId;
       if (!epicId) continue;
       const laneTasks = byEpic.get(epicId) ?? [];
-      if (laneTasks.length > 0 && !allDone(laneTasks)) {
+      if (includeLane(laneTasks)) {
         result.push({
           epicId,
           epicTitle: epicIdToTitle.get(epicId) ?? epicId,
@@ -332,7 +356,7 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
     }
     const seenEpics = new Set(result.map((r) => r.epicId));
     for (const [epicId, laneTasks] of byEpic) {
-      if (epicId && !seenEpics.has(epicId) && laneTasks.length > 0 && !allDone(laneTasks)) {
+      if (epicId && !seenEpics.has(epicId) && includeLane(laneTasks)) {
         result.push({
           epicId,
           epicTitle: epicId,
@@ -342,43 +366,63 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
       }
     }
     const unassigned = byEpic.get(null) ?? [];
-    if (unassigned.length > 0 && !allDone(unassigned)) {
+    if (includeLane(unassigned)) {
       result.push({ epicId: "", epicTitle: "Other", tasks: sortEpicTasksByStatus(unassigned) });
     }
     return result;
-  }, [implTasks, plans]);
+  }, [filteredTasks, plans]);
 
   const totalTasks = implTasks.length;
-  const readyTasks = implTasks.filter((t) => t.kanbanColumn === "ready").length;
-  const blockedTasks = implTasks.filter((t) =>
+  const readyCount = implTasks.filter((t) => t.kanbanColumn === "ready").length;
+  const blockedCount = implTasks.filter((t) =>
     ["planning", "backlog", "blocked"].includes(t.kanbanColumn),
   ).length;
-  const inProgressTasks = implTasks.filter(
-    (t) => t.kanbanColumn === "in_progress" || t.kanbanColumn === "in_review",
-  ).length;
-  const doneTasks = implTasks.filter((t) => t.kanbanColumn === "done").length;
-  const progress = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+  const inProgressCount = implTasks.filter((t) => t.kanbanColumn === "in_progress").length;
+  const inReviewCount = implTasks.filter((t) => t.kanbanColumn === "in_review").length;
+  const doneCount = implTasks.filter((t) => t.kanbanColumn === "done").length;
+
+  const chipConfig: { label: string; filter: StatusFilter; count: number }[] = [
+    { label: "All", filter: "all", count: totalTasks },
+    { label: "Ready", filter: "ready", count: readyCount },
+    { label: "In Progress", filter: "in_progress", count: inProgressCount },
+    { label: "In Review", filter: "in_review", count: inReviewCount },
+    { label: "Done", filter: "done", count: doneCount },
+    { label: "Blocked", filter: "blocked", count: blockedCount },
+  ];
 
   return (
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
         <div className="px-6 py-4 border-b border-theme-border bg-theme-surface shrink-0">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h2 className="text-lg font-semibold text-theme-text">Execute</h2>
-              <p className="text-sm text-theme-muted">
-                Ready: {readyTasks} · Blocked: {blockedTasks} · In Progress: {inProgressTasks} · Done: {doneTasks} · Total: {totalTasks}
-              </p>
-            </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {chipConfig.map(({ label, filter, count }) => {
+              const isActive = statusFilter === filter;
+              const isAll = filter === "all";
+              const handleClick = () => {
+                setStatusFilter(isActive && !isAll ? "all" : filter);
+              };
+              return (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={handleClick}
+                  data-testid={`filter-chip-${filter}`}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                    isActive
+                      ? "bg-brand-600 text-white ring-2 ring-brand-500 ring-offset-2 ring-offset-theme-bg"
+                      : "bg-theme-surface-muted text-theme-text hover:bg-theme-border-subtle"
+                  }`}
+                  aria-pressed={isActive}
+                  aria-label={`${label} ${count}${isActive ? ", selected" : ""}`}
+                >
+                  <span>{label}</span>
+                  <span className={isActive ? "opacity-90" : "text-theme-muted"}>{count}</span>
+                </button>
+              );
+            })}
             {awaitingApproval && (
-              <span className="text-sm font-medium text-theme-warning-text">Awaiting approval…</span>
+              <span className="ml-2 text-sm font-medium text-theme-warning-text">Awaiting approval…</span>
             )}
-          </div>
-          <div className="w-full bg-theme-border-subtle rounded-full h-2">
-            <div
-              className="bg-brand-600 h-2 rounded-full transition-all duration-500"
-              style={{ width: `${progress}%` }}
-            />
           </div>
         </div>
 
@@ -387,6 +431,10 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
             <div className="text-center py-10 text-theme-muted">Loading tasks...</div>
           ) : implTasks.length === 0 ? (
             <div className="text-center py-10 text-theme-muted">No tasks yet. Ship a Plan to start generating tasks.</div>
+          ) : swimlanes.length === 0 ? (
+            <div className="text-center py-10 text-theme-muted">
+              {statusFilter === "all" ? "All tasks completed." : "No tasks match this filter."}
+            </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {swimlanes.map((lane) => (
