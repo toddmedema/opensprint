@@ -1,4 +1,6 @@
 import { exec } from "child_process";
+import { existsSync, readFileSync } from "fs";
+import path from "path";
 import { promisify } from "util";
 import type { TaskType, TaskPriority } from "@opensprint/shared";
 import { AppError } from "../middleware/error-handler.js";
@@ -46,22 +48,37 @@ export class BeadsService {
    * rather than each spawning their own daemon.
    */
   async ensureDaemon(repoPath: string): Promise<void> {
+    const now = Date.now();
     const existing = daemonReady.get(repoPath);
-    if (existing && Date.now() - existing.checkedAt < DAEMON_CHECK_INTERVAL_MS) {
+    if (existing && now - existing.checkedAt < DAEMON_CHECK_INTERVAL_MS) {
       return existing.promise;
     }
 
-    const promise = this.startDaemonIfNeeded(repoPath);
-    daemonReady.set(repoPath, { promise, checkedAt: Date.now() });
-
-    try {
-      await promise;
-    } catch {
+    const promise = this.startDaemonIfNeeded(repoPath).catch((err) => {
       daemonReady.delete(repoPath);
+      console.warn("[beads] Daemon startup failed, will retry next call:", (err as Error).message);
+    });
+    daemonReady.set(repoPath, { promise, checkedAt: now });
+
+    return promise;
+  }
+
+  private isDaemonPidAlive(repoPath: string): boolean {
+    try {
+      const pidFile = path.join(repoPath, ".beads", "daemon.pid");
+      if (!existsSync(pidFile)) return false;
+      const pid = parseInt(readFileSync(pidFile, "utf-8").trim(), 10);
+      if (!pid || isNaN(pid)) return false;
+      process.kill(pid, 0);
+      return true;
+    } catch {
+      return false;
     }
   }
 
   private async startDaemonIfNeeded(repoPath: string): Promise<void> {
+    if (this.isDaemonPidAlive(repoPath)) return;
+
     try {
       const { stdout } = await execAsync("bd daemon status --json", {
         cwd: repoPath,
@@ -71,8 +88,10 @@ export class BeadsService {
       const status = JSON.parse(stdout.trim());
       if (status.status === "running") return;
     } catch {
-      // status check failed — daemon likely not running
+      // status check failed or timed out
     }
+
+    if (this.isDaemonPidAlive(repoPath)) return;
 
     try {
       await execAsync("bd daemon start", {
@@ -81,19 +100,36 @@ export class BeadsService {
         env: { ...process.env },
       });
     } catch (err: unknown) {
-      const msg =
-        (err as { stderr?: string; message?: string }).stderr ??
-        (err as { message?: string }).message ??
-        "";
+      const e = err as { stderr?: string; message?: string; killed?: boolean };
+      if (e.killed || this.isDaemonPidAlive(repoPath)) return;
+      const msg = e.stderr ?? e.message ?? "";
       if (msg.includes("already running")) return;
-      console.warn(`[beads] Failed to start daemon for ${repoPath}: ${msg}`);
+      throw new Error(`Failed to start daemon for ${repoPath}: ${msg}`);
     }
+  }
+
+  private async syncImport(repoPath: string): Promise<void> {
+    try {
+      await execAsync("bd sync --import-only", {
+        cwd: repoPath,
+        timeout: 15_000,
+        env: { ...process.env },
+      });
+    } catch (err: unknown) {
+      const e = err as { stderr?: string; message?: string };
+      console.warn(`[beads] sync --import-only failed for ${repoPath}: ${e.stderr ?? e.message}`);
+    }
+  }
+
+  private isStaleDbError(stderr: string): boolean {
+    return stderr.includes("Database out of sync") || stderr.includes("bd sync --import-only");
   }
 
   /**
    * Execute a bd command in the context of a project directory.
    * Handles exec errors, timeouts, and surfaces stderr to caller.
    * Ensures a daemon is running before executing.
+   * Auto-recovers from stale-database errors by running sync --import-only and retrying once.
    */
   private async exec(
     repoPath: string,
@@ -131,7 +167,34 @@ export class BeadsService {
           }
         );
       }
+
       const stderr = err.stderr || err.stdout || err.message;
+      if (this.isStaleDbError(stderr)) {
+        console.warn(`[beads] Stale DB detected for bd ${command}, running sync --import-only`);
+        await this.syncImport(repoPath);
+        try {
+          const { stdout } = await execAsync(`bd ${command}`, {
+            cwd: repoPath,
+            timeout,
+            maxBuffer: MAX_BUFFER_BYTES,
+            env: { ...process.env },
+          });
+          return stdout;
+        } catch (retryError: unknown) {
+          const retryErr = retryError as { stderr?: string; stdout?: string; message: string };
+          const retryStderr = retryErr.stderr || retryErr.stdout || retryErr.message;
+          throw new AppError(
+            502,
+            ErrorCodes.BEADS_COMMAND_FAILED,
+            `Beads command failed after sync retry: bd ${command}\n${retryStderr}`,
+            {
+              command: `bd ${command}`,
+              stderr: retryStderr,
+            }
+          );
+        }
+      }
+
       throw new AppError(
         502,
         ErrorCodes.BEADS_COMMAND_FAILED,

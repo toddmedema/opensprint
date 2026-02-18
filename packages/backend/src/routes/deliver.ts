@@ -81,7 +81,12 @@ deliverRouter.post("/", async (req: Request<ProjectParams>, res, next) => {
     activeDeployments.set(projectId, record.id);
     broadcastToProject(projectId, { type: "deliver.started", deployId: record.id });
 
-    await deployStorageService.updateRecord(projectId, record.id, { status: "running" });
+    try {
+      await deployStorageService.updateRecord(projectId, record.id, { status: "running" });
+    } catch (updateErr) {
+      activeDeployments.delete(projectId);
+      throw updateErr;
+    }
 
     runDeployAsync(projectId, record.id, project.repoPath, settings, target)
       .catch((err) => {
@@ -94,6 +99,7 @@ deliverRouter.post("/", async (req: Request<ProjectParams>, res, next) => {
     const body: ApiResponse<{ deployId: string }> = { data: { deployId: record.id } };
     res.status(202).json(body);
   } catch (err) {
+    activeDeployments.delete(req.params.projectId);
     next(err);
   }
 });

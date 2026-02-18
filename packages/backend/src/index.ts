@@ -31,26 +31,40 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+function waitForProcessExit(pid: number, timeoutMs: number): boolean {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (!isProcessAlive(pid)) return true;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
+  }
+  return !isProcessAlive(pid);
+}
+
 function acquirePidFile(): void {
   try {
     const content = fs.readFileSync(pidFile, "utf-8").trim();
     const oldPid = parseInt(content, 10);
     if (!isNaN(oldPid) && isProcessAlive(oldPid)) {
       if (oldPid === process.pid) return; // re-entrant call
-      console.error(
-        `[FATAL] Another OpenSprint server is already running on port ${port} (PID ${oldPid}).\n` +
-          `  Kill it with: kill ${oldPid}\n` +
-          `  Or force:     kill -9 ${oldPid}`
-      );
-      process.exit(1);
+      // During tsx watch restarts, the old process may still be in its exit sequence.
+      // Wait briefly before giving up.
+      console.log(`[startup] Waiting for previous process (PID ${oldPid}) to exit...`);
+      if (!waitForProcessExit(oldPid, 3000)) {
+        console.error(
+          `[FATAL] Another OpenSprint server is already running on port ${port} (PID ${oldPid}).\n` +
+            `  Kill it with: kill ${oldPid}\n` +
+            `  Or force:     kill -9 ${oldPid}`
+        );
+        process.exit(1);
+      }
+      console.log(`[startup] Previous process (PID ${oldPid}) has exited`);
+    } else if (!isNaN(oldPid)) {
+      console.log(`[startup] Removing stale PID file (old PID ${oldPid} is no longer running)`);
     }
-    // Stale PID file — previous process died without cleanup
-    console.log(`[startup] Removing stale PID file (old PID ${oldPid} is no longer running)`);
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
       console.warn(`[startup] Could not read PID file: ${(err as Error).message}`);
     }
-    // ENOENT = no PID file, which is fine
   }
 
   // Write our PID

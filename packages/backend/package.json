@@ -5,7 +5,7 @@
   "type": "module",
   "main": "./dist/index.js",
   "scripts": {
-    "dev": "tsx watch --ignore '.beads/**' --ignore 'data/**' --ignore '**/*.jsonl' src/index.ts",
+    "dev": "tsx watch --ignore '.beads/**' --ignore 'data/**' --ignore '**/*.jsonl' --ignore '../shared/dist/**' src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "clean": "rm -rf dist",
