@@ -22,6 +22,8 @@ export default {
           "code-text": "var(--color-code-text)",
           overlay: "var(--color-overlay)",
           "surface-muted": "var(--color-surface-muted)",
+          "graph-edge": "var(--color-graph-edge)",
+          "graph-edge-critical": "var(--color-graph-edge-critical)",
         },
         brand: {
           50: "#f0f7ff",

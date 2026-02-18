@@ -21,6 +21,20 @@ html:not([data-theme]) {
   --color-code-text: #10b981;
   --color-overlay: rgba(0, 0, 0, 0.4);
   --color-surface-muted: #f3f4f6;
+  /* DependencyGraph D3/SVG theme tokens */
+  --color-graph-edge: #d1d5db;
+  --color-graph-edge-critical: #dc2626;
+  --color-graph-text: #111827;
+  --color-graph-node-default-fill: #f9fafb;
+  --color-graph-node-default-stroke: #e5e7eb;
+  --color-graph-status-planning-fill: #fef3c7;
+  --color-graph-status-planning-stroke: #f59e0b;
+  --color-graph-status-building-fill: #dbeafe;
+  --color-graph-status-building-stroke: #3b82f6;
+  --color-graph-status-complete-fill: #d1fae5;
+  --color-graph-status-complete-stroke: #10b981;
+  --color-graph-arrow: #9ca3af;
+  --color-graph-arrow-critical: #dc2626;
 }
 
 html[data-theme="dark"] {
@@ -39,6 +53,20 @@ html[data-theme="dark"] {
   --color-code-text: #34d399;
   --color-overlay: rgba(0, 0, 0, 0.6);
   --color-surface-muted: #1f2937;
+  /* DependencyGraph D3/SVG theme tokens (dark mode) */
+  --color-graph-edge: #4b5563;
+  --color-graph-edge-critical: #ef4444;
+  --color-graph-text: #f3f4f6;
+  --color-graph-node-default-fill: #374151;
+  --color-graph-node-default-stroke: #4b5563;
+  --color-graph-status-planning-fill: #78350f;
+  --color-graph-status-planning-stroke: #f59e0b;
+  --color-graph-status-building-fill: #1e3a8a;
+  --color-graph-status-building-stroke: #60a5fa;
+  --color-graph-status-complete-fill: #064e3b;
+  --color-graph-status-complete-stroke: #34d399;
+  --color-graph-arrow: #6b7280;
+  --color-graph-arrow-critical: #ef4444;
 }
 
 @layer base {
@@ -70,6 +98,19 @@ html.sketch-phase-light {
   --color-code-text: #10b981;
   --color-overlay: rgba(0, 0, 0, 0.4);
   --color-surface-muted: #f3f4f6;
+  --color-graph-edge: #d1d5db;
+  --color-graph-edge-critical: #dc2626;
+  --color-graph-text: #111827;
+  --color-graph-node-default-fill: #f9fafb;
+  --color-graph-node-default-stroke: #e5e7eb;
+  --color-graph-status-planning-fill: #fef3c7;
+  --color-graph-status-planning-stroke: #f59e0b;
+  --color-graph-status-building-fill: #dbeafe;
+  --color-graph-status-building-stroke: #3b82f6;
+  --color-graph-status-complete-fill: #d1fae5;
+  --color-graph-status-complete-stroke: #10b981;
+  --color-graph-arrow: #9ca3af;
+  --color-graph-arrow-critical: #dc2626;
 }
   body {
     @apply antialiased;

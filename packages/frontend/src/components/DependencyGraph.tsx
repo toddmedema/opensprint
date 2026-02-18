@@ -12,6 +12,13 @@ interface Dimensions {
   height: number;
 }
 
+/** Read theme token from CSS variable (D3/SVG cannot inherit Tailwind classes). */
+function getThemeColor(varName: string): string {
+  if (typeof document === "undefined") return "#6b7280";
+  const value = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+  return value || "#6b7280";
+}
+
 /** Compute critical path edges (longest path in DAG). Returns Set of "from->to" keys. */
 function computeCriticalPathEdges(planIds: string[], edges: { from: string; to: string }[]): Set<string> {
   const incoming = new Map<string, string[]>();
@@ -143,6 +150,22 @@ export function DependencyGraph({ graph, onPlanClick }: DependencyGraphProps) {
       }))
       .filter((l) => planById.has(l.source) && planById.has(l.target));
 
+    const tokens = {
+      edge: getThemeColor("--color-graph-edge"),
+      edgeCritical: getThemeColor("--color-graph-edge-critical"),
+      text: getThemeColor("--color-graph-text"),
+      nodeDefaultFill: getThemeColor("--color-graph-node-default-fill"),
+      nodeDefaultStroke: getThemeColor("--color-graph-node-default-stroke"),
+      planningFill: getThemeColor("--color-graph-status-planning-fill"),
+      planningStroke: getThemeColor("--color-graph-status-planning-stroke"),
+      buildingFill: getThemeColor("--color-graph-status-building-fill"),
+      buildingStroke: getThemeColor("--color-graph-status-building-stroke"),
+      completeFill: getThemeColor("--color-graph-status-complete-fill"),
+      completeStroke: getThemeColor("--color-graph-status-complete-stroke"),
+      arrow: getThemeColor("--color-graph-arrow"),
+      arrowCritical: getThemeColor("--color-graph-arrow-critical"),
+    };
+
     const simulation = d3
       .forceSimulation(nodeData as d3.SimulationNodeDatum[])
       .force(
@@ -162,7 +185,7 @@ export function DependencyGraph({ graph, onPlanClick }: DependencyGraphProps) {
       .selectAll("line")
       .data(linkData)
       .join("line")
-      .attr("stroke", (d) => (d.isCritical ? "#dc2626" : "#d1d5db"))
+      .attr("stroke", (d) => (d.isCritical ? tokens.edgeCritical : tokens.edge))
       .attr("stroke-width", (d) => (d.isCritical ? 2.5 : 1.5))
       .attr("stroke-opacity", (d) => (d.isCritical ? 0.9 : 0.5))
       .attr("marker-end", (d) => (d.isCritical ? "url(#arrow-critical)" : "url(#arrow-normal)"));
@@ -198,10 +221,11 @@ export function DependencyGraph({ graph, onPlanClick }: DependencyGraphProps) {
       .on("click", (_, d) => onPlanClick?.(d.plan));
 
     const statusColors: Record<string, { fill: string; stroke: string }> = {
-      planning: { fill: "#fef3c7", stroke: "#f59e0b" },
-      building: { fill: "#dbeafe", stroke: "#3b82f6" },
-      done: { fill: "#d1fae5", stroke: "#10b981" },
+      planning: { fill: tokens.planningFill, stroke: tokens.planningStroke },
+      building: { fill: tokens.buildingFill, stroke: tokens.buildingStroke },
+      complete: { fill: tokens.completeFill, stroke: tokens.completeStroke },
     };
+    const defaultNode = { fill: tokens.nodeDefaultFill, stroke: tokens.nodeDefaultStroke };
 
     node
       .append("rect")
@@ -210,8 +234,8 @@ export function DependencyGraph({ graph, onPlanClick }: DependencyGraphProps) {
       .attr("rx", 6)
       .attr("x", -50)
       .attr("y", -18)
-      .attr("fill", (d) => (statusColors[d.plan.status] ?? { fill: "#f9fafb", stroke: "#e5e7eb" }).fill)
-      .attr("stroke", (d) => (statusColors[d.plan.status] ?? { fill: "#f9fafb", stroke: "#e5e7eb" }).stroke)
+      .attr("fill", (d) => (statusColors[d.plan.status] ?? defaultNode).fill)
+      .attr("stroke", (d) => (statusColors[d.plan.status] ?? defaultNode).stroke)
       .attr("stroke-width", 1.5)
       .on("mouseover", function () {
         d3.select(this).attr("stroke-width", 2.5);
@@ -226,7 +250,7 @@ export function DependencyGraph({ graph, onPlanClick }: DependencyGraphProps) {
       .attr("dominant-baseline", "middle")
       .attr("font-size", "11px")
       .attr("font-weight", "500")
-      .attr("fill", "#374151")
+      .attr("fill", tokens.text)
       .text((d) => {
         const label = d.plan.metadata.planId.replace(/-/g, " ");
         return label.length > 14 ? label.slice(0, 12) + "…" : label;
@@ -268,7 +292,7 @@ export function DependencyGraph({ graph, onPlanClick }: DependencyGraphProps) {
       .attr("orient", "auto")
       .append("path")
       .attr("d", "M0,0 L8,4 L0,8 Z")
-      .attr("fill", "#9ca3af");
+      .attr("fill", tokens.arrow);
     defs
       .append("marker")
       .attr("id", "arrow-critical")
@@ -279,7 +303,7 @@ export function DependencyGraph({ graph, onPlanClick }: DependencyGraphProps) {
       .attr("orient", "auto")
       .append("path")
       .attr("d", "M0,0 L8,4 L0,8 Z")
-      .attr("fill", "#dc2626");
+      .attr("fill", tokens.arrowCritical);
 
     return () => {
       simulation.stop();
@@ -302,7 +326,7 @@ export function DependencyGraph({ graph, onPlanClick }: DependencyGraphProps) {
         graph.edges,
       ).size > 0 && (
         <div className="px-3 py-1.5 text-xs text-theme-muted border-t border-theme-border-subtle flex items-center gap-2">
-          <span className="inline-block w-3 h-0.5 bg-red-500 rounded" />
+          <span className="inline-block w-3 h-0.5 bg-theme-graph-edge-critical rounded" />
           Critical path (longest dependency chain)
         </div>
       )}

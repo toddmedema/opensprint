@@ -27,10 +27,32 @@ const mockGraph: PlanDependencyGraph = {
   ],
 };
 
+const LIGHT_THEME_TOKENS = {
+  planningFill: "#fef3c7",
+  buildingFill: "#dbeafe",
+  completeFill: "#d1fae5",
+  text: "#111827",
+  nodeDefaultFill: "#f9fafb",
+  nodeDefaultStroke: "#e5e7eb",
+};
+
+function setThemeTokens(tokens: typeof LIGHT_THEME_TOKENS) {
+  const root = document.documentElement;
+  root.style.setProperty("--color-graph-status-planning-fill", tokens.planningFill);
+  root.style.setProperty("--color-graph-status-planning-stroke", "#f59e0b");
+  root.style.setProperty("--color-graph-status-building-fill", tokens.buildingFill);
+  root.style.setProperty("--color-graph-status-building-stroke", "#3b82f6");
+  root.style.setProperty("--color-graph-status-complete-fill", tokens.completeFill);
+  root.style.setProperty("--color-graph-status-complete-stroke", "#10b981");
+  root.style.setProperty("--color-graph-text", tokens.text);
+  root.style.setProperty("--color-graph-node-default-fill", tokens.nodeDefaultFill);
+  root.style.setProperty("--color-graph-node-default-stroke", tokens.nodeDefaultStroke);
+}
+
 describe("DependencyGraph", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // ResizeObserver is not available in jsdom; provide a no-op mock
+    setThemeTokens(LIGHT_THEME_TOKENS);
     global.ResizeObserver = vi.fn().mockImplementation(() => ({
       observe: vi.fn(),
       unobserve: vi.fn(),
@@ -137,7 +159,6 @@ describe("DependencyGraph", () => {
     const nodeRects = Array.from(rects).filter((r) => r.getAttribute("width") === "100");
     expect(nodeRects.length).toBe(3);
 
-    // Each node rect must have fill and stroke set (not default black)
     for (const rect of nodeRects) {
       const fill = rect.getAttribute("fill");
       const stroke = rect.getAttribute("stroke");
@@ -148,13 +169,85 @@ describe("DependencyGraph", () => {
       expect(fill).not.toBe("#000000");
     }
 
-    // Verify status-specific colors are applied
-    const planningFill = "#fef3c7";
-    const buildingFill = "#dbeafe";
-    const doneFill = "#d1fae5";
     const fills = nodeRects.map((r) => r.getAttribute("fill"));
-    expect(fills).toContain(planningFill);
-    expect(fills).toContain(buildingFill);
-    expect(fills).toContain(doneFill);
+    expect(fills).toContain(LIGHT_THEME_TOKENS.planningFill);
+    expect(fills).toContain(LIGHT_THEME_TOKENS.buildingFill);
+    expect(fills).toContain(LIGHT_THEME_TOKENS.completeFill);
+  });
+
+  it("uses theme tokens for node colors (theme-aware)", async () => {
+    const graphWithStatuses: PlanDependencyGraph = {
+      plans: [
+        mockPlan("planning-plan", "planning"),
+        mockPlan("building-plan", "building"),
+        mockPlan("done-plan", "complete"),
+      ],
+      edges: [],
+    };
+
+    render(<DependencyGraph graph={graphWithStatuses} />);
+
+    await vi.waitFor(() => {
+      const rects = document.querySelectorAll("svg rect");
+      expect(rects.length).toBeGreaterThanOrEqual(3);
+    });
+
+    const nodeRects = Array.from(document.querySelectorAll("svg rect")).filter(
+      (r) => r.getAttribute("width") === "100",
+    );
+    const textEls = document.querySelectorAll("svg text");
+    expect(textEls.length).toBeGreaterThanOrEqual(3);
+
+    for (const text of textEls) {
+      const fill = text.getAttribute("fill");
+      expect(fill).toBe(LIGHT_THEME_TOKENS.text);
+    }
+  });
+
+  it("uses dark theme tokens when data-theme is dark", async () => {
+    const darkTokens = {
+      planningFill: "#78350f",
+      buildingFill: "#1e3a8a",
+      completeFill: "#064e3b",
+      text: "#f3f4f6",
+      nodeDefaultFill: "#374151",
+      nodeDefaultStroke: "#4b5563",
+    };
+    document.documentElement.setAttribute("data-theme", "dark");
+    document.documentElement.style.setProperty("--color-graph-status-planning-fill", darkTokens.planningFill);
+    document.documentElement.style.setProperty("--color-graph-status-planning-stroke", "#f59e0b");
+    document.documentElement.style.setProperty("--color-graph-status-building-fill", darkTokens.buildingFill);
+    document.documentElement.style.setProperty("--color-graph-status-building-stroke", "#60a5fa");
+    document.documentElement.style.setProperty("--color-graph-status-complete-fill", darkTokens.completeFill);
+    document.documentElement.style.setProperty("--color-graph-status-complete-stroke", "#34d399");
+    document.documentElement.style.setProperty("--color-graph-text", darkTokens.text);
+    document.documentElement.style.setProperty("--color-graph-node-default-fill", darkTokens.nodeDefaultFill);
+    document.documentElement.style.setProperty("--color-graph-node-default-stroke", darkTokens.nodeDefaultStroke);
+
+    const graphWithStatuses: PlanDependencyGraph = {
+      plans: [
+        mockPlan("planning-plan", "planning"),
+        mockPlan("building-plan", "building"),
+        mockPlan("done-plan", "complete"),
+      ],
+      edges: [],
+    };
+
+    render(<DependencyGraph graph={graphWithStatuses} />);
+
+    await vi.waitFor(() => {
+      const rects = document.querySelectorAll("svg rect");
+      expect(rects.length).toBeGreaterThanOrEqual(3);
+    });
+
+    const fills = Array.from(document.querySelectorAll("svg rect"))
+      .filter((r) => r.getAttribute("width") === "100")
+      .map((r) => r.getAttribute("fill"));
+    expect(fills).toContain(darkTokens.planningFill);
+    expect(fills).toContain(darkTokens.buildingFill);
+    expect(fills).toContain(darkTokens.completeFill);
+
+    document.documentElement.removeAttribute("data-theme");
+    setThemeTokens(LIGHT_THEME_TOKENS);
   });
 });
