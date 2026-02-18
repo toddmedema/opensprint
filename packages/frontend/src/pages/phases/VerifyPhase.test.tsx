@@ -83,8 +83,8 @@ function createStore() {
   });
 }
 
-describe("EvalPhase header", () => {
-  it("renders Eval title and description with theme-aware classes", () => {
+describe("EvalPhase layout", () => {
+  it("renders feedback input at top without header bar", () => {
     const store = createStore();
     render(
       <Provider store={store}>
@@ -92,26 +92,9 @@ describe("EvalPhase header", () => {
       </Provider>,
     );
 
-    const heading = screen.getByRole("heading", { name: "Eval", level: 2 });
-    expect(heading).toBeInTheDocument();
-    expect(heading).toHaveClass("text-theme-text");
-
-    const description = screen.getByText(/Test your application and report feedback/);
-    expect(description).toBeInTheDocument();
-    expect(description).toHaveClass("text-theme-muted");
-  });
-
-  it("renders header with dark-mode-compatible surface styling", () => {
-    const store = createStore();
-    render(
-      <Provider store={store}>
-        <EvalPhase projectId="proj-1" />
-      </Provider>,
-    );
-
-    const headerSection = screen.getByTestId("eval-phase-header");
-    expect(headerSection).toBeInTheDocument();
-    expect(headerSection).toHaveClass("bg-theme-surface", "border-b", "border-theme-border");
+    expect(screen.queryByTestId("eval-phase-header")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Eval", level: 2 })).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Describe a bug/)).toBeInTheDocument();
   });
 });
 
