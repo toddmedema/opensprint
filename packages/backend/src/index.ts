@@ -157,9 +157,9 @@ async function initAlwaysOnOrchestrator(): Promise<void> {
 }
 
 // Graceful shutdown
-const shutdown = () => {
+const shutdown = async () => {
   console.log("\nShutting down...");
-  killAllTrackedAgentProcesses();
+  await killAllTrackedAgentProcesses();
   stopProcessReaper();
   orchestratorService.stopAll();
   removePidFile();
@@ -171,7 +171,7 @@ const shutdown = () => {
   setTimeout(() => {
     console.error("Forced shutdown after timeout.");
     process.exit(1);
-  }, 3000);
+  }, 5000);
 };
 
 // Handle server errors (especially EADDRINUSE) before calling listen

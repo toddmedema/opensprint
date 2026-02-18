@@ -23,25 +23,59 @@ export function unregisterAgentProcess(pid: number, options?: { processGroup?: b
   }
 }
 
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Kill all tracked agent processes. Called on backend SIGTERM/SIGINT.
+ * Sends SIGTERM first, waits briefly, then SIGKILLs any still alive.
+ * Returns a Promise that resolves when cleanup is done.
+ * @param waitMs - Time to wait before SIGKILL fallback (default 2000). Use 0 in tests.
  */
-export function killAllTrackedAgentProcesses(): void {
-  for (const pgid of trackedProcessGroups) {
+export async function killAllTrackedAgentProcesses(waitMs = 2000): Promise<void> {
+  const pgids = [...trackedProcessGroups];
+  const pids = [...trackedPids];
+  trackedProcessGroups.clear();
+  trackedPids.clear();
+
+  for (const pgid of pgids) {
     try {
       process.kill(pgid, "SIGTERM");
     } catch {
       /* process already exited */
     }
   }
-  trackedProcessGroups.clear();
-
-  for (const pid of trackedPids) {
+  for (const pid of pids) {
     try {
       process.kill(pid, "SIGTERM");
     } catch {
       /* process already exited */
     }
   }
-  trackedPids.clear();
+
+  if (waitMs > 0) {
+    await new Promise((r) => setTimeout(r, waitMs));
+  }
+
+  for (const pgid of pgids) {
+    try {
+      const leaderPid = -pgid;
+      if (isProcessAlive(leaderPid)) process.kill(pgid, "SIGKILL");
+    } catch {
+      /* already dead */
+    }
+  }
+  for (const pid of pids) {
+    try {
+      if (isProcessAlive(pid)) process.kill(pid, "SIGKILL");
+    } catch {
+      /* already dead */
+    }
+  }
 }

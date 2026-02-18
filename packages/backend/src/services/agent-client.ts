@@ -298,14 +298,15 @@ export class AgentClient {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env },
+      detached: true,
     });
 
     if (child.pid) {
-      registerAgentProcess(child.pid);
+      registerAgentProcess(child.pid, { processGroup: true });
     }
 
     try {
-      const stdout = await this.runClaudeAgentSpawn(child);
+      const stdout = await this.runClaudeAgentSpawn(child, { processGroup: true });
       const content = stdout.trim();
       if (options.onChunk) {
         options.onChunk(content);
@@ -320,24 +321,49 @@ export class AgentClient {
       });
     } finally {
       if (child.pid) {
-        unregisterAgentProcess(child.pid);
+        unregisterAgentProcess(child.pid, { processGroup: true });
       }
     }
   }
 
   /** Run Claude CLI via spawn; pass prompt as argv (no shell) to avoid orphan processes */
-  private runClaudeAgentSpawn(child: ReturnType<typeof spawn>): Promise<string> {
+  private runClaudeAgentSpawn(
+    child: ReturnType<typeof spawn>,
+    options?: { processGroup?: boolean }
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
       const TIMEOUT_MS = 300_000;
       let stdout = "";
       let stderr = "";
 
+      const killChild = () => {
+        if (child.killed) return;
+        try {
+          if (options?.processGroup && child.pid) {
+            process.kill(-child.pid, "SIGTERM");
+          } else {
+            child.kill("SIGTERM");
+          }
+        } catch {
+          child.kill("SIGTERM");
+        }
+      };
+      const killChildForce = () => {
+        if (child.killed) return;
+        try {
+          if (options?.processGroup && child.pid) {
+            process.kill(-child.pid, "SIGKILL");
+          } else {
+            child.kill("SIGKILL");
+          }
+        } catch {
+          child.kill("SIGKILL");
+        }
+      };
       const timeout = setTimeout(() => {
         if (child.killed) return;
-        child.kill("SIGTERM");
-        setTimeout(() => {
-          if (!child.killed) child.kill("SIGKILL");
-        }, 3000);
+        killChild();
+        setTimeout(killChildForce, 3000);
         if (stdout.trim()) {
           resolve(stdout.trim());
         } else {

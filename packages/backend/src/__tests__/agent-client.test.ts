@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AgentClient } from "../services/agent-client.js";
 import type { AgentConfig } from "@opensprint/shared";
+import { registerAgentProcess, unregisterAgentProcess } from "../services/agent-process-registry.js";
 
 // Mock child_process
 const mockExec = vi.fn();
@@ -69,10 +70,12 @@ describe("AgentClient", () => {
       expect(mockSpawn).toHaveBeenCalledWith(
         "claude",
         expect.arrayContaining(["--model", "claude-sonnet-4", "--print", expect.stringContaining("Human: Hello")]),
-        expect.objectContaining({ cwd: "/tmp", stdio: ["ignore", "pipe", "pipe"] })
+        expect.objectContaining({ cwd: "/tmp", stdio: ["ignore", "pipe", "pipe"], detached: true })
       );
       expect(mockExec).not.toHaveBeenCalled();
       expect(result.content).toContain("Claude response");
+      expect(registerAgentProcess).toHaveBeenCalledWith(12345, { processGroup: true });
+      expect(unregisterAgentProcess).toHaveBeenCalledWith(12345, { processGroup: true });
     });
 
     it("should route claude config without model", async () => {
