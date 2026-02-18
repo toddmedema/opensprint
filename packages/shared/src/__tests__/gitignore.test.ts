@@ -8,7 +8,7 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(__dirname, "../../../../..");
+const repoRoot = join(__dirname, "../../../..");
 const gitignorePath = join(repoRoot, ".gitignore");
 
 describe("gitignore excludes shared build artifacts", () => {
