@@ -83,6 +83,13 @@ export class TaskService {
     return { targetId, type };
   }
 
+  /** Extract feedback ID from "Feedback ID: xxx" pattern (feedback source bead description) */
+  private extractFeedbackIdFromDescription(desc: string | undefined | null): string | null {
+    if (!desc || typeof desc !== "string") return null;
+    const m = desc.trim().match(/^Feedback ID:\s*(.+)$/);
+    return m ? m[1].trim() : null;
+  }
+
   /** Transform beads issue to Task with computed kanbanColumn */
   private beadsIssueToTask(issue: BeadsIssue, readyIds: Set<string>, idToIssue: Map<string, BeadsIssue>): Task {
     const id = issue.id ?? "";
@@ -93,6 +100,20 @@ export class TaskService {
       .filter((x): x is { targetId: string; type: string } => x != null)
       .map(({ targetId, type }) => ({ targetId, type: type as TaskDependency["type"] }));
     const epicId = this.extractEpicId(issue.id);
+
+    // Resolve sourceFeedbackId: task is feedback source bead, or has discovered-from dep to one
+    let sourceFeedbackId: string | undefined;
+    const ownDesc = this.extractFeedbackIdFromDescription(issue.description as string);
+    if (ownDesc) {
+      sourceFeedbackId = ownDesc;
+    } else {
+      const discoveredFrom = dependencies.find((d) => d.type === "discovered-from");
+      if (discoveredFrom) {
+        const targetIssue = idToIssue.get(discoveredFrom.targetId);
+        const targetDesc = this.extractFeedbackIdFromDescription(targetIssue?.description as string);
+        if (targetDesc) sourceFeedbackId = targetDesc;
+      }
+    }
 
     return {
       id,
@@ -108,6 +129,7 @@ export class TaskService {
       kanbanColumn,
       createdAt: (issue.created_at as string) ?? "",
       updatedAt: (issue.updated_at as string) ?? "",
+      ...(sourceFeedbackId ? { sourceFeedbackId } : {}),
     };
   }
 

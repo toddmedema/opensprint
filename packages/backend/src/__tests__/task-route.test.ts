@@ -314,4 +314,54 @@ Test review prompt generation.
     expect(unblockRes.status).toBe(200);
     expect(unblockRes.body.data.taskUnblocked).toBe(true);
   });
+
+  it("GET /tasks/:taskId returns sourceFeedbackId when task has discovered-from dep to feedback source bead", {
+    timeout: 20000,
+  }, async () => {
+    const app = createApp();
+    const project = await projectService.getProject(projectId);
+    const repoPath = project.repoPath;
+
+    // Create feedback source bead (chore with "Feedback ID: xxx" in description)
+    const sourceBead = await beads.create(repoPath, "Feedback: Add dark mode", {
+      type: "chore",
+      priority: 4,
+      description: "Feedback ID: fb-test-source",
+    });
+    expect(sourceBead.id).toBeDefined();
+
+    // Create child task
+    const childBead = await beads.create(repoPath, "Implement dark mode", {
+      type: "task",
+      priority: 2,
+      description: "Add dark mode support to the app",
+    });
+    expect(childBead.id).toBeDefined();
+
+    // Add discovered-from dependency: child -> feedback source
+    await beads.addDependency(repoPath, childBead.id, sourceBead.id, "discovered-from");
+
+    const res = await request(app).get(`${API_PREFIX}/projects/${projectId}/tasks/${childBead.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.sourceFeedbackId).toBe("fb-test-source");
+  });
+
+  it("GET /tasks/:taskId returns sourceFeedbackId when task is the feedback source bead itself", {
+    timeout: 20000,
+  }, async () => {
+    const app = createApp();
+    const project = await projectService.getProject(projectId);
+    const repoPath = project.repoPath;
+
+    // Create feedback source bead (task IS the source - description is "Feedback ID: xxx")
+    const sourceBead = await beads.create(repoPath, "Feedback: Fix login bug", {
+      type: "chore",
+      priority: 4,
+      description: "Feedback ID: fb-direct-source",
+    });
+
+    const res = await request(app).get(`${API_PREFIX}/projects/${projectId}/tasks/${sourceBead.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.sourceFeedbackId).toBe("fb-direct-source");
+  });
 });

@@ -28,6 +28,8 @@ export interface Task {
   updatedAt: string;
   /** Latest test results from agent sessions (PRD §8.3) */
   testResults?: { passed: number; failed: number; skipped: number; total: number } | null;
+  /** Feedback item ID when task originates from Eval feedback (discovered-from provenance) */
+  sourceFeedbackId?: string;
 }
 
 /** Dependency relationship between tasks */

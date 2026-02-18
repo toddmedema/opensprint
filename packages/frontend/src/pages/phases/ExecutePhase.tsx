@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { AgentSession, Plan, Task } from "@opensprint/shared";
+import type { AgentSession, FeedbackItem, Plan, Task } from "@opensprint/shared";
 import { PRIORITY_LABELS, AGENT_ROLE_LABELS } from "@opensprint/shared";
 import { useAppDispatch, useAppSelector } from "../../store";
+import { api } from "../../api/client";
 import {
   fetchTaskDetail,
   fetchArchivedSessions,
@@ -98,6 +99,105 @@ function getEpicTitleFromPlan(plan: Plan): string {
   const heading = firstLine.replace(/^#+\s*/, "").trim();
   if (heading) return heading;
   return plan.metadata.planId.replace(/-/g, " ");
+}
+
+const feedbackCategoryColors: Record<string, string> = {
+  bug: "bg-red-50 text-red-700",
+  feature: "bg-purple-50 text-purple-700",
+  ux: "bg-blue-50 text-blue-700",
+  scope: "bg-yellow-50 text-yellow-700",
+};
+
+function getFeedbackTypeLabel(item: FeedbackItem): string {
+  return item.category === "ux" ? "UX" : item.category.charAt(0).toUpperCase() + item.category.slice(1);
+}
+
+function SourceFeedbackSection({
+  projectId,
+  feedbackId,
+  plans,
+}: {
+  projectId: string;
+  feedbackId: string;
+  plans: Plan[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [feedback, setFeedback] = useState<FeedbackItem | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!expanded) return;
+    setLoading(true);
+    setError(null);
+    api.feedback
+      .get(projectId, feedbackId)
+      .then(setFeedback)
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load feedback"))
+      .finally(() => setLoading(false));
+  }, [projectId, feedbackId, expanded]);
+
+  const mappedPlan = feedback?.mappedPlanId
+    ? plans.find((p) => p.metadata.planId === feedback.mappedPlanId)
+    : null;
+  const planTitle = mappedPlan ? getEpicTitleFromPlan(mappedPlan) : feedback?.mappedPlanId ?? null;
+
+  return (
+    <div className="border border-gray-200 rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((e) => !e)}
+        className="w-full flex items-center justify-between p-3 text-left hover:bg-gray-50 transition-colors text-sm font-medium text-gray-900"
+        aria-expanded={expanded}
+        aria-controls="source-feedback-content"
+        id="source-feedback-header"
+      >
+        <span>Source feedback</span>
+        <span className="text-gray-400 text-xs" aria-hidden>
+          {expanded ? "▼" : "▶"}
+        </span>
+      </button>
+      {expanded && (
+        <div
+          id="source-feedback-content"
+          role="region"
+          aria-labelledby="source-feedback-header"
+          className="p-3 pt-0 border-t border-gray-200"
+        >
+          {loading ? (
+            <div className="text-xs text-gray-500 py-2">Loading feedback…</div>
+          ) : error ? (
+            <div className="text-xs text-red-600 py-2">{error}</div>
+          ) : feedback ? (
+            <div className="card p-3 text-xs space-y-2" data-testid="source-feedback-card">
+              <div className="flex items-start justify-between gap-2 overflow-hidden">
+                <span
+                  className={`inline-flex rounded-full px-2 py-0.5 font-medium flex-shrink-0 ${
+                    feedbackCategoryColors[feedback.category] ?? "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  {getFeedbackTypeLabel(feedback)}
+                </span>
+              </div>
+              <p className="text-gray-700 whitespace-pre-wrap break-words min-w-0">
+                {feedback.text ?? "(No feedback text)"}
+              </p>
+              {planTitle && (
+                <div className="text-gray-500">
+                  Mapped plan: <span className="font-medium text-gray-700">{planTitle}</span>
+                </div>
+              )}
+              {feedback.createdAt && (
+                <div className="text-gray-400">
+                  {new Date(feedback.createdAt).toLocaleString()}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps) {
@@ -366,17 +466,29 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
                       </>
                     )}
                   </div>
-                  {taskDetail.description && (
-                    <div className="prose prose-sm max-w-none bg-white p-4 rounded-lg border text-xs overflow-y-auto min-h-0 max-h-[50vh]">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{taskDetail.description}</ReactMarkdown>
-                    </div>
+                  {taskDetail.sourceFeedbackId && (
+                    <SourceFeedbackSection
+                      projectId={projectId}
+                      feedbackId={taskDetail.sourceFeedbackId}
+                      plans={plans}
+                    />
                   )}
-                  {taskDetail.dependencies.filter((d) => d.targetId).length > 0 && (
+                  {(() => {
+                    const desc = taskDetail.description ?? "";
+                    const isOnlyFeedbackId = /^Feedback ID:\s*.+$/.test(desc.trim());
+                    const displayDesc = taskDetail.sourceFeedbackId && isOnlyFeedbackId ? "" : desc;
+                    return displayDesc ? (
+                      <div className="prose prose-sm max-w-none bg-white p-4 rounded-lg border text-xs overflow-y-auto min-h-0 max-h-[50vh]">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayDesc}</ReactMarkdown>
+                      </div>
+                    ) : null;
+                  })()}
+                  {taskDetail.dependencies.filter((d) => d.targetId && d.type !== "discovered-from").length > 0 && (
                     <div className="text-xs">
                       <span className="text-gray-500">Depends on:</span>
                       <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-1.5">
                         {taskDetail.dependencies
-                          .filter((d) => d.targetId)
+                          .filter((d) => d.targetId && d.type !== "discovered-from")
                           .map((d) => {
                             const depTask = tasks.find((t) => t.id === d.targetId);
                             const label = depTask?.title ?? d.targetId;
