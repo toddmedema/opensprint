@@ -252,6 +252,37 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
     return () => container.removeEventListener("mouseup", handleMouseUp);
   }, [hasPrdContent]);
 
+  /* ── Dismiss Discuss popover on click/touch outside popover and selection ── */
+  const selectionRef = useRef<SelectionInfo | null>(null);
+  selectionRef.current = selection;
+
+  useEffect(() => {
+    if (!hasPrdContent || !selection) return;
+
+    const handlePointerDown = (e: PointerEvent) => {
+      const current = selectionRef.current;
+      if (!current) return;
+
+      const target = e.target as Node;
+      if (target.closest("[data-selection-toolbar]")) return;
+
+      const { clientX, clientY } = e;
+      const { rect } = current;
+      const inSelection =
+        clientX >= rect.left &&
+        clientX <= rect.right &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom;
+      if (inSelection) return;
+
+      setSelection(null);
+      window.getSelection()?.removeAllRanges();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => document.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [hasPrdContent, selection]);
+
   /* ── Handlers ── */
 
   const handleInitialSubmit = useCallback(async () => {
@@ -504,6 +535,7 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
       {selection && (
         <div
           data-selection-toolbar
+          data-testid="discuss-popover"
           className="fixed z-50 animate-fade-in"
           style={{
             top: selection.rect.top - 44,

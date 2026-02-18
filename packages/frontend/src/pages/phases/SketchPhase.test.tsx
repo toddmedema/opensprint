@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
@@ -339,6 +339,149 @@ describe("SketchPhase with specSlice", () => {
       await user.click(screen.getByRole("button", { name: "Expand Discuss sidebar" }));
       expect(screen.getByText("Discuss")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Collapse Discuss sidebar" })).toBeInTheDocument();
+    });
+
+    describe("Discuss popover (selection toolbar)", () => {
+      /** Simulate text selection in PRD and trigger mouseup to show the Discuss popover */
+      function showDiscussPopover(sectionKey: string) {
+        const contentEl = screen.getByTestId(`prd-content-${sectionKey}`);
+        const range = document.createRange();
+        range.selectNodeContents(contentEl);
+        const sel = window.getSelection()!;
+        sel.removeAllRanges();
+        sel.addRange(range);
+        const container = contentEl.closest("[data-prd-section]") ?? contentEl.parentElement!;
+        fireEvent.mouseUp(container);
+      }
+
+      it("shows Discuss popover when user selects text in PRD", async () => {
+        const store = createStore({
+          spec: { prdContent: { executive_summary: "Some summary text to select" } },
+        });
+        renderSketchPhase(store);
+
+        showDiscussPopover("executive_summary");
+
+        await waitFor(() => {
+          expect(screen.getByTestId("discuss-popover")).toBeInTheDocument();
+          expect(screen.getByRole("button", { name: /Discuss/i })).toBeInTheDocument();
+        });
+      });
+
+      it("clicking Discuss button moves selection to chat and focuses input", async () => {
+        const user = userEvent.setup();
+        const store = createStore({
+          spec: { prdContent: { executive_summary: "Selected text" } },
+        });
+        renderSketchPhase(store);
+
+        showDiscussPopover("executive_summary");
+
+        await waitFor(() => {
+          expect(screen.getByTestId("discuss-popover")).toBeInTheDocument();
+        });
+
+        const discussBtn = screen.getByRole("button", { name: /Discuss/i });
+        await user.click(discussBtn);
+
+        await waitFor(() => {
+          expect(screen.queryByTestId("discuss-popover")).not.toBeInTheDocument();
+          expect(screen.getByText(/Discussing: Executive Summary/i)).toBeInTheDocument();
+          expect(screen.getByPlaceholderText(/Comment on this selection/)).toBeInTheDocument();
+        });
+      });
+
+      it("dismisses popover when clicking outside popover and selection", async () => {
+        const user = userEvent.setup();
+        const store = createStore({
+          spec: { prdContent: { executive_summary: "Some text" } },
+        });
+        renderSketchPhase(store);
+
+        showDiscussPopover("executive_summary");
+
+        await waitFor(() => {
+          expect(screen.getByTestId("discuss-popover")).toBeInTheDocument();
+        });
+
+        // Click on page header (outside popover and selection)
+        await user.click(screen.getByRole("heading", { name: /Product Requirements Document/i }));
+
+        await waitFor(() => {
+          expect(screen.queryByTestId("discuss-popover")).not.toBeInTheDocument();
+        });
+      });
+
+      it("dismisses popover when clicking in chat input area", async () => {
+        const user = userEvent.setup();
+        const store = createStore({
+          spec: { prdContent: { executive_summary: "Some text" } },
+        });
+        renderSketchPhase(store);
+
+        showDiscussPopover("executive_summary");
+
+        await waitFor(() => {
+          expect(screen.getByTestId("discuss-popover")).toBeInTheDocument();
+        });
+
+        // Click in chat input (outside popover) - placeholder is "Ask about your PRD" when no selectionContext
+        const chatInput = screen.getByPlaceholderText(/Ask about your PRD/);
+        await user.click(chatInput);
+
+        await waitFor(() => {
+          expect(screen.queryByTestId("discuss-popover")).not.toBeInTheDocument();
+        });
+      });
+
+      it("does not dismiss when clicking Discuss button (triggers discuss flow)", async () => {
+        const user = userEvent.setup();
+        const store = createStore({
+          spec: { prdContent: { executive_summary: "Some text" } },
+        });
+        renderSketchPhase(store);
+
+        showDiscussPopover("executive_summary");
+
+        await waitFor(() => {
+          expect(screen.getByTestId("discuss-popover")).toBeInTheDocument();
+        });
+
+        // Click Discuss - should trigger discuss flow (selection moves to chat)
+        const discussBtn = screen.getByRole("button", { name: /Discuss/i });
+        await user.click(discussBtn);
+
+        await waitFor(() => {
+          expect(screen.queryByTestId("discuss-popover")).not.toBeInTheDocument();
+          expect(screen.getByText(/Discussing: Executive Summary/i)).toBeInTheDocument();
+        });
+      });
+
+      it("replaces popover when user selects new text elsewhere in PRD", async () => {
+        const store = createStore({
+          spec: {
+            prdContent: {
+              executive_summary: "First section text",
+              goals_and_metrics: "Second section text",
+            },
+          },
+        });
+        renderSketchPhase(store);
+
+        showDiscussPopover("executive_summary");
+
+        await waitFor(() => {
+          expect(screen.getByTestId("discuss-popover")).toBeInTheDocument();
+        });
+
+        // Select text in different section - popover should move to new selection
+        showDiscussPopover("goals_and_metrics");
+
+        await waitFor(() => {
+          expect(screen.getByTestId("discuss-popover")).toBeInTheDocument();
+          expect(screen.getByRole("button", { name: /Discuss/i })).toBeInTheDocument();
+        });
+      });
     });
 
     describe("chat sidebar persistence across sessions", () => {
