@@ -505,6 +505,178 @@ describe("OrchestratorService", () => {
       });
     });
 
+    it("advances to review when crash recovery finds result.json success and branch has commits", async () => {
+      const wtPath = path.join(repoPath, "wt-result-success");
+      await fs.mkdir(path.join(wtPath, "node_modules"), { recursive: true });
+      await fs.mkdir(path.join(wtPath, ".opensprint", "active", "task-result-success"), {
+        recursive: true,
+      });
+      mockGetActiveDir.mockImplementation((base: string, tid: string) =>
+        path.join(base, ".opensprint", "active", tid)
+      );
+
+      const persistedState = {
+        projectId,
+        currentTaskId: "task-result-success",
+        currentTaskTitle: "Task with successful result",
+        currentPhase: "coding" as const,
+        branchName: "opensprint/task-result-success",
+        worktreePath: wtPath,
+        agentPid: 999999999, // Dead PID
+        attempt: 1,
+        startedAt: new Date().toISOString(),
+        lastTransition: new Date().toISOString(),
+        lastOutputTimestamp: null,
+        queueDepth: 0,
+        totalDone: 0,
+        totalFailed: 0,
+      };
+
+      const statePath = path.join(repoPath, OPENSPRINT_PATHS.orchestratorState);
+      await fs.writeFile(statePath, JSON.stringify(persistedState), "utf-8");
+
+      mockReadResult.mockResolvedValue({ status: "success", summary: "Implemented feature" });
+      mockGetCommitCountAhead.mockResolvedValue(2);
+      mockCaptureBranchDiff.mockResolvedValue("diff content");
+      mockGetChangedFiles.mockResolvedValue([]);
+      mockRunScopedTests.mockResolvedValue({
+        passed: 3,
+        failed: 0,
+        rawOutput: "tests passed",
+      });
+      mockBeadsShow.mockResolvedValue({
+        id: "task-result-success",
+        title: "Task with successful result",
+        issue_type: "task",
+        priority: 2,
+        status: "in_progress",
+      });
+      mockGetSettings.mockResolvedValue({
+        testFramework: "vitest",
+        codingAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+        reviewMode: "always",
+      });
+      mockCommitWip.mockResolvedValue(undefined);
+      mockMergeToMain.mockResolvedValue(undefined);
+      mockCreateSession.mockResolvedValue({ id: "sess-1" });
+      mockArchiveSession.mockResolvedValue(undefined);
+
+      let reviewOnExit: (code: number | null) => Promise<void> = async () => {};
+      mockInvokeReviewAgent.mockImplementation(
+        (_p: string, _c: unknown, opts: { onExit?: (code: number | null) => Promise<void> }) => {
+          reviewOnExit = opts.onExit ?? (async () => {});
+          return { kill: vi.fn(), pid: 12346 };
+        }
+      );
+
+      await orchestrator.ensureRunning(projectId);
+
+      await new Promise((r) => setTimeout(r, 150));
+
+      // Should NOT requeue — should have advanced to review
+      expect(mockBeadsUpdate).not.toHaveBeenCalledWith(
+        repoPath,
+        "task-result-success",
+        expect.objectContaining({ status: "open" })
+      );
+
+      // Should NOT have removed worktree (we need it for review)
+      expect(mockRemoveTaskWorktree).not.toHaveBeenCalledWith(repoPath, "task-result-success");
+
+      // Should have invoked review agent
+      expect(mockInvokeReviewAgent).toHaveBeenCalled();
+
+      // Should have read result.json from worktree
+      expect(mockReadResult).toHaveBeenCalledWith(wtPath, "task-result-success");
+
+      // Clean up: simulate review agent exit so we don't leave timers running
+      await reviewOnExit(0);
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    it("requeues when crash recovery finds result.json success but tests fail", async () => {
+      const wtPath = path.join(repoPath, "wt-result-tests-fail");
+      await fs.mkdir(path.join(wtPath, "node_modules"), { recursive: true });
+
+      const persistedState = {
+        projectId,
+        currentTaskId: "task-result-tests-fail",
+        currentTaskTitle: "Task with result but failing tests",
+        currentPhase: "coding" as const,
+        branchName: "opensprint/task-result-tests-fail",
+        worktreePath: wtPath,
+        agentPid: 999999999,
+        attempt: 1,
+        startedAt: new Date().toISOString(),
+        lastTransition: new Date().toISOString(),
+        lastOutputTimestamp: null,
+        queueDepth: 0,
+        totalDone: 0,
+        totalFailed: 0,
+      };
+
+      const statePath = path.join(repoPath, OPENSPRINT_PATHS.orchestratorState);
+      await fs.writeFile(statePath, JSON.stringify(persistedState), "utf-8");
+
+      mockReadResult.mockResolvedValue({ status: "success", summary: "Done" });
+      mockGetCommitCountAhead.mockResolvedValue(1);
+      mockGetChangedFiles.mockResolvedValue([]);
+      mockRunScopedTests.mockResolvedValue({
+        passed: 1,
+        failed: 2,
+        rawOutput: "2 tests failed",
+      });
+
+      await orchestrator.ensureRunning(projectId);
+
+      await new Promise((r) => setTimeout(r, 150));
+
+      // Tests failed — should fall through to normal recovery and requeue
+      expect(mockBeadsUpdate).toHaveBeenCalledWith(repoPath, "task-result-tests-fail", {
+        status: "open",
+        assignee: "",
+      });
+      expect(mockRemoveTaskWorktree).toHaveBeenCalledWith(repoPath, "task-result-tests-fail");
+    });
+
+    it("requeues when crash recovery has result.json but no commits (commitCount 0)", async () => {
+      const wtPath = path.join(repoPath, "wt-result-no-commits");
+      await fs.mkdir(path.join(wtPath, "node_modules"), { recursive: true });
+
+      const persistedState = {
+        projectId,
+        currentTaskId: "task-result-no-commits",
+        currentTaskTitle: "Task with result but no commits",
+        currentPhase: "coding" as const,
+        branchName: "opensprint/task-result-no-commits",
+        worktreePath: wtPath,
+        agentPid: 999999999,
+        attempt: 1,
+        startedAt: new Date().toISOString(),
+        lastTransition: new Date().toISOString(),
+        lastOutputTimestamp: null,
+        queueDepth: 0,
+        totalDone: 0,
+        totalFailed: 0,
+      };
+
+      const statePath = path.join(repoPath, OPENSPRINT_PATHS.orchestratorState);
+      await fs.writeFile(statePath, JSON.stringify(persistedState), "utf-8");
+
+      mockReadResult.mockResolvedValue({ status: "success", summary: "Done" });
+      mockGetCommitCountAhead.mockResolvedValue(0);
+
+      await orchestrator.ensureRunning(projectId);
+
+      await new Promise((r) => setTimeout(r, 150));
+
+      // No commits — should requeue (result.json without commits is suspicious)
+      expect(mockBeadsUpdate).toHaveBeenCalledWith(repoPath, "task-result-no-commits", {
+        status: "open",
+        assignee: "",
+      });
+    });
+
     it("starts fresh when persisted state has no active task", async () => {
       const persistedState = {
         projectId,
