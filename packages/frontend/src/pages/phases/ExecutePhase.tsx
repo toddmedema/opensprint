@@ -17,6 +17,7 @@ import { wsSend } from "../../store/middleware/websocketMiddleware";
 import { CloseButton } from "../../components/CloseButton";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
 import { BuildEpicCard, TaskStatusBadge, COLUMN_LABELS } from "../../components/kanban";
+import { sortEpicTasksByStatus } from "../../lib/executeTaskSort";
 
 interface ExecutePhaseProps {
   projectId: string;
@@ -299,7 +300,7 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
         result.push({
           epicId,
           epicTitle: epicIdToTitle.get(epicId) ?? epicId,
-          tasks: laneTasks,
+          tasks: sortEpicTasksByStatus(laneTasks),
         });
       }
     }
@@ -309,14 +310,14 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
         result.push({
           epicId,
           epicTitle: epicId,
-          tasks: laneTasks,
+          tasks: sortEpicTasksByStatus(laneTasks),
         });
         seenEpics.add(epicId);
       }
     }
     const unassigned = byEpic.get(null) ?? [];
     if (unassigned.length > 0 && !allDone(unassigned)) {
-      result.push({ epicId: "", epicTitle: "Other", tasks: unassigned });
+      result.push({ epicId: "", epicTitle: "Other", tasks: sortEpicTasksByStatus(unassigned) });
     }
     return result;
   }, [implTasks, plans]);

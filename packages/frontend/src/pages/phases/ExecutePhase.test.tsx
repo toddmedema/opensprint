@@ -98,6 +98,55 @@ function createStore(
   });
 }
 
+describe("ExecutePhase epic card task order", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("sorts epic card tasks by status: In Progress → In Review → Ready → Backlog → Done", () => {
+    const tasks = [
+      { id: "epic-1.1", title: "Done task", epicId: "epic-1", kanbanColumn: "done", priority: 0, assignee: null },
+      { id: "epic-1.2", title: "Ready task", epicId: "epic-1", kanbanColumn: "ready", priority: 0, assignee: null },
+      { id: "epic-1.3", title: "In progress task", epicId: "epic-1", kanbanColumn: "in_progress", priority: 0, assignee: null },
+    ];
+    const store = createStore(tasks);
+    const { container } = render(
+      <Provider store={store}>
+        <ExecutePhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    const epicCard = container.querySelector('[data-testid="epic-card-epic-1"]');
+    expect(epicCard).toBeInTheDocument();
+    const listItems = epicCard!.querySelectorAll("ul li");
+    expect(listItems).toHaveLength(3);
+    expect(listItems[0].textContent).toContain("In progress task");
+    expect(listItems[1].textContent).toContain("Ready task");
+    expect(listItems[2].textContent).toContain("Done task");
+  });
+
+  it("sorts by priority within same status, then by ID", () => {
+    const tasks = [
+      { id: "epic-1.3", title: "Low priority", epicId: "epic-1", kanbanColumn: "ready", priority: 2, assignee: null },
+      { id: "epic-1.1", title: "High priority", epicId: "epic-1", kanbanColumn: "ready", priority: 0, assignee: null },
+      { id: "epic-1.2", title: "Mid priority", epicId: "epic-1", kanbanColumn: "ready", priority: 1, assignee: null },
+    ];
+    const store = createStore(tasks);
+    const { container } = render(
+      <Provider store={store}>
+        <ExecutePhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    const epicCard = container.querySelector('[data-testid="epic-card-epic-1"]');
+    const listItems = epicCard!.querySelectorAll("ul li");
+    const titles = Array.from(listItems).map((li) => li.textContent?.trim().split(/\s+/).slice(0, 2).join(" ") ?? "");
+    expect(titles[0]).toContain("High");
+    expect(titles[1]).toContain("Mid");
+    expect(titles[2]).toContain("Low");
+  });
+});
+
 describe("ExecutePhase top bar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
