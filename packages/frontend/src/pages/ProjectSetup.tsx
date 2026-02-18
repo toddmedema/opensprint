@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { getProjectPhasePath } from "../lib/phaseRouting";
 import { Layout } from "../components/layout/Layout";
 import { FolderBrowser } from "../components/FolderBrowser";
 import {
@@ -138,7 +139,7 @@ export function ProjectSetup() {
         hilConfig,
         testFramework: testFramework === "none" ? null : testFramework,
       });
-      navigate(`/projects/${(project as { id: string }).id}/spec`);
+      navigate(getProjectPhasePath((project as { id: string }).id, "spec"));
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to create project";
       setCreateError(msg);

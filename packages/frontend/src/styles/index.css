@@ -42,11 +42,11 @@ html[data-theme="dark"] {
   @apply bg-gray-900 text-gray-100;
 }
 
-/* Spec phase (dream) always uses light mode per feedback */
-html.spec-phase-light {
+/* Sketch phase always uses light mode per feedback */
+html.sketch-phase-light {
   @apply bg-gray-50 text-gray-900;
 }
-html.spec-phase-light {
+html.sketch-phase-light {
   --color-bg: #f9fafb;
   --color-bg-elevated: #ffffff;
   --color-text: #111827;

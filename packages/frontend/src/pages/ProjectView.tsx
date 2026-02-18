@@ -30,7 +30,7 @@ import { fetchDeployStatus, fetchDeployHistory, resetDeploy } from "../store/sli
 import { wsConnect, wsDisconnect, wsSend } from "../store/middleware/websocketMiddleware";
 import { Layout } from "../components/layout/Layout";
 import { HilApprovalModal } from "../components/HilApprovalModal";
-import { SpecPhase } from "./phases/SpecPhase";
+import { SketchPhase } from "./phases/SketchPhase";
 import { PlanPhase } from "./phases/PlanPhase";
 import { ExecutePhase } from "./phases/ExecutePhase";
 import { EvalPhase } from "./phases/EvalPhase";
@@ -53,15 +53,15 @@ export function ProjectView() {
   const currentPhase = phaseFromSlug(phaseSlug);
   const selectedPlanId = useAppSelector((s) => s.plan.selectedPlanId);
 
-  /* Spec phase (dream) always uses light mode per feedback h2ayj0 */
+  /* Sketch phase always uses light mode per feedback h2ayj0 */
   useEffect(() => {
     const el = document.documentElement;
     if (currentPhase === "spec") {
-      el.classList.add("spec-phase-light");
+      el.classList.add("sketch-phase-light");
     } else {
-      el.classList.remove("spec-phase-light");
+      el.classList.remove("sketch-phase-light");
     }
-    return () => el.classList.remove("spec-phase-light");
+    return () => el.classList.remove("sketch-phase-light");
   }, [currentPhase]);
   const selectedTaskId = useAppSelector((s) => s.execute.selectedTaskId);
 
@@ -245,7 +245,7 @@ export function ProjectView() {
             }
           >
             {phase === "spec" && (
-              <SpecPhase projectId={projectId} onNavigateToPlan={() => handlePhaseChange("plan")} />
+              <SketchPhase projectId={projectId} onNavigateToPlan={() => handlePhaseChange("plan")} />
             )}
             {phase === "plan" && (
               <PlanPhase projectId={projectId} onNavigateToBuildTask={handleNavigateToBuildTask} />

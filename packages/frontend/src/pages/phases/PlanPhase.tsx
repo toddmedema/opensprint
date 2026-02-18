@@ -321,7 +321,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
         ) : plans.length === 0 ? (
           <div className="text-center py-10">
             <p className="text-gray-500 mb-4">
-              No plans yet. Use &ldquo;Plan it&rdquo; from the Spec phase to decompose the PRD into
+              No plans yet. Use &ldquo;Plan it&rdquo; from the Sketch phase to decompose the PRD into
               feature plans and tasks, or add a plan manually.
             </p>
             <button type="button" onClick={() => setShowAddPlanModal(true)} className="btn-primary">

@@ -456,7 +456,7 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
                 </div>
               )}
               {taskDetailLoading ? (
-                <div className="text-sm text-gray-500">Loading task spec...</div>
+                <div className="text-sm text-gray-500">Loading task details...</div>
               ) : taskDetail ? (
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">

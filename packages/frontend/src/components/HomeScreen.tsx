@@ -6,7 +6,7 @@ import { getProjectPhasePath } from "../lib/phaseRouting";
 import type { Project } from "@opensprint/shared";
 
 const PHASE_LABELS: Record<string, string> = {
-  spec: "Spec",
+  spec: "Sketch",
   plan: "Plan",
   execute: "Execute",
   eval: "Eval",

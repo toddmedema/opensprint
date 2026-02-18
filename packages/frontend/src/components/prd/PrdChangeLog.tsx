@@ -1,5 +1,5 @@
 import { formatSectionKey, formatTimestamp } from "../../lib/formatting";
-import { getPrdSourceColor } from "../../lib/constants";
+import { getPrdSourceColor, PRD_SOURCE_LABELS } from "../../lib/constants";
 
 export interface PrdHistoryEntry {
   section: string;
@@ -51,7 +51,7 @@ export function PrdChangeLog({ entries, expanded, onToggle }: PrdChangeLogProps)
                   <span
                     className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${getPrdSourceColor(entry.source)}`}
                   >
-                    {entry.source}
+                    {PRD_SOURCE_LABELS[entry.source] ?? entry.source}
                   </span>
                   <span className="text-gray-500 dark:text-gray-400">v{entry.version}</span>
                   <span className="text-gray-400 dark:text-gray-500 truncate">{entry.diff}</span>

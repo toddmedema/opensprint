@@ -108,6 +108,6 @@ describe("HomeScreen", () => {
 
     await screen.findByText("My Project");
     const link = screen.getByRole("link", { name: /my project/i });
-    expect(link).toHaveAttribute("href", "/projects/proj-1/spec");
+    expect(link).toHaveAttribute("href", "/projects/proj-1/sketch");
   });
 });

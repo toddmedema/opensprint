@@ -92,19 +92,27 @@ describe("ProjectView URL behavior", () => {
     vi.clearAllMocks();
   });
 
-  it("redirects /projects/:id to /projects/:id/spec", async () => {
+  it("redirects /projects/:id to /projects/:id/sketch", async () => {
     renderWithRouter("/projects/proj-1");
 
     await waitFor(() => {
-      expect(screen.getByTestId("location")).toHaveTextContent("/projects/proj-1/spec");
+      expect(screen.getByTestId("location")).toHaveTextContent("/projects/proj-1/sketch");
     });
   });
 
-  it("redirects invalid phase slug to /projects/:id/spec", async () => {
+  it("redirects invalid phase slug to /projects/:id/sketch", async () => {
     renderWithRouter("/projects/proj-1/invalid-phase");
 
     await waitFor(() => {
-      expect(screen.getByTestId("location")).toHaveTextContent("/projects/proj-1/spec");
+      expect(screen.getByTestId("location")).toHaveTextContent("/projects/proj-1/sketch");
+    });
+  });
+
+  it("redirects /projects/:id/spec to /projects/:id/sketch for bookmarkability", async () => {
+    renderWithRouter("/projects/proj-1/spec");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("/projects/proj-1/sketch");
     });
   });
 
@@ -117,36 +125,36 @@ describe("ProjectView URL behavior", () => {
   });
 
   it("displays project when at valid phase URL", async () => {
-    renderWithRouter("/projects/proj-1/spec");
+    renderWithRouter("/projects/proj-1/sketch");
 
     await waitFor(() => {
       expect(screen.getByText("Test Project")).toBeInTheDocument();
     });
   });
 
-  it("adds spec-phase-light to document when on spec phase (dream page light mode)", async () => {
-    document.documentElement.classList.remove("spec-phase-light");
-    const { unmount } = renderWithRouter("/projects/proj-1/spec");
+  it("adds sketch-phase-light to document when on sketch phase (light mode)", async () => {
+    document.documentElement.classList.remove("sketch-phase-light");
+    const { unmount } = renderWithRouter("/projects/proj-1/sketch");
 
     await waitFor(() => {
       expect(screen.getByText("Test Project")).toBeInTheDocument();
     });
 
-    expect(document.documentElement.classList.contains("spec-phase-light")).toBe(true);
+    expect(document.documentElement.classList.contains("sketch-phase-light")).toBe(true);
 
     unmount();
-    expect(document.documentElement.classList.contains("spec-phase-light")).toBe(false);
+    expect(document.documentElement.classList.contains("sketch-phase-light")).toBe(false);
   });
 
-  it("does not add spec-phase-light when on plan phase", async () => {
-    document.documentElement.classList.remove("spec-phase-light");
+  it("does not add sketch-phase-light when on plan phase", async () => {
+    document.documentElement.classList.remove("sketch-phase-light");
     renderWithRouter("/projects/proj-1/plan");
 
     await waitFor(() => {
       expect(screen.getByText("Test Project")).toBeInTheDocument();
     });
 
-    expect(document.documentElement.classList.contains("spec-phase-light")).toBe(false);
+    expect(document.documentElement.classList.contains("sketch-phase-light")).toBe(false);
   });
 });
 
@@ -156,7 +164,7 @@ describe("ProjectView upfront loading and mount-all", () => {
   });
 
   it("dispatches wsConnect and all fetch thunks on mount", async () => {
-    renderWithRouter("/projects/proj-1/spec");
+    renderWithRouter("/projects/proj-1/sketch");
 
     await waitFor(() => {
       expect(mockWsConnect).toHaveBeenCalledWith({ projectId: "proj-1" });
@@ -174,7 +182,7 @@ describe("ProjectView upfront loading and mount-all", () => {
   });
 
   it("dispatches wsDisconnect on unmount", async () => {
-    const { unmount } = renderWithRouter("/projects/proj-1/spec");
+    const { unmount } = renderWithRouter("/projects/proj-1/sketch");
     await waitFor(() => expect(mockWsConnect).toHaveBeenCalled());
 
     unmount();
@@ -435,7 +443,7 @@ describe("ProjectView global deliver toast", () => {
   it("shows DeliverToast when deliverToast is in state (global, regardless of active tab)", async () => {
     const store = createStore();
     store.dispatch(setDeliverToast({ message: "Delivery succeeded", variant: "succeeded" }));
-    renderWithRouter("/projects/proj-1/spec", store);
+    renderWithRouter("/projects/proj-1/sketch", store);
 
     await waitFor(() => {
       expect(screen.getByTestId("deliver-toast")).toBeInTheDocument();
