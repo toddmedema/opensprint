@@ -1,26 +1,26 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import type { HilRequestEvent } from "@opensprint/shared";
 
-export type DeployToastVariant = "started" | "succeeded" | "failed";
+export type DeliverToastVariant = "started" | "succeeded" | "failed";
 
-export interface DeployToast {
+export interface DeliverToast {
   message: string;
-  variant: DeployToastVariant;
+  variant: DeliverToastVariant;
 }
 
 export interface WebsocketState {
   connected: boolean;
   hilRequest: HilRequestEvent | null;
   hilNotification: HilRequestEvent | null;
-  /** Global toast for deploy.started / deploy.completed (shown regardless of active tab) */
-  deployToast: DeployToast | null;
+  /** Global toast for deliver.started / deliver.completed (shown regardless of active tab) */
+  deliverToast: DeliverToast | null;
 }
 
 const initialState: WebsocketState = {
   connected: false,
   hilRequest: null,
   hilNotification: null,
-  deployToast: null,
+  deliverToast: null,
 };
 
 const websocketSlice = createSlice({
@@ -42,11 +42,11 @@ const websocketSlice = createSlice({
     clearHilNotification(state) {
       state.hilNotification = null;
     },
-    setDeployToast(state, action: PayloadAction<DeployToast | null>) {
-      state.deployToast = action.payload;
+    setDeliverToast(state, action: PayloadAction<DeliverToast | null>) {
+      state.deliverToast = action.payload;
     },
-    clearDeployToast(state) {
-      state.deployToast = null;
+    clearDeliverToast(state) {
+      state.deliverToast = null;
     },
     resetWebsocket() {
       return initialState;
@@ -60,8 +60,8 @@ export const {
   setHilNotification,
   clearHilRequest,
   clearHilNotification,
-  setDeployToast,
-  clearDeployToast,
+  setDeliverToast,
+  clearDeliverToast,
   resetWebsocket,
 } = websocketSlice.actions;
 export default websocketSlice.reducer;

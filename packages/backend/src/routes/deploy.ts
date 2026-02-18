@@ -56,7 +56,7 @@ deployRouter.post("/", async (req: Request<ProjectParams>, res, next) => {
       mode,
     });
 
-    broadcastToProject(projectId, { type: "deploy.started", deployId: record.id });
+    broadcastToProject(projectId, { type: "deliver.started", deployId: record.id });
 
     await deployStorageService.updateRecord(projectId, record.id, { status: "running" });
 
@@ -159,7 +159,7 @@ deployRouter.post("/:deployId/rollback", async (req: Request<DeployIdParams>, re
         target,
         mode,
       });
-      broadcastToProject(projectId, { type: "deploy.started", deployId: rollbackRecord.id });
+      broadcastToProject(projectId, { type: "deliver.started", deployId: rollbackRecord.id });
       await deployStorageService.updateRecord(projectId, rollbackRecord.id, { status: "running" });
 
       runRollbackAsync(
@@ -205,7 +205,7 @@ export async function runDeployAsync(
   const envVars = config.envVars ?? {};
   const emit = (chunk: string) => {
     deployStorageService.appendLog(projectId, deployId, chunk);
-    broadcastToProject(projectId, { type: "deploy.output", deployId, chunk });
+    broadcastToProject(projectId, { type: "deliver.output", deployId, chunk });
   };
 
   try {
@@ -239,7 +239,7 @@ export async function runDeployAsync(
         emit(`Fix epic created: ${fixResult.epicId} (${fixResult.taskCount} tasks)\n`);
       }
       broadcastToProject(projectId, {
-        type: "deploy.completed",
+        type: "deliver.completed",
         deployId,
         success: false,
         fixEpicId: fixResult?.epicId ?? undefined,
@@ -278,7 +278,7 @@ export async function runDeployAsync(
           completedAt: new Date().toISOString(),
           url,
         });
-        broadcastToProject(projectId, { type: "deploy.completed", deployId, success: true });
+        broadcastToProject(projectId, { type: "deliver.completed", deployId, success: true });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         await deployStorageService.updateRecord(projectId, deployId, {
@@ -286,7 +286,7 @@ export async function runDeployAsync(
           completedAt: new Date().toISOString(),
           error: msg,
         });
-        broadcastToProject(projectId, { type: "deploy.completed", deployId, success: false });
+        broadcastToProject(projectId, { type: "deliver.completed", deployId, success: false });
       }
     } else if (config.mode === "custom") {
       const customCommand = targetConfig?.command ?? config.customCommand;
@@ -298,7 +298,7 @@ export async function runDeployAsync(
           status: "success",
           completedAt: new Date().toISOString(),
         });
-        broadcastToProject(projectId, { type: "deploy.completed", deployId, success: true });
+        broadcastToProject(projectId, { type: "deliver.completed", deployId, success: true });
       } else if (webhookUrl) {
         const result = await deploymentService.deployWithWebhook(projectId, webhookUrl, envVars);
         emit(`Webhook POST to ${webhookUrl}\n`);
@@ -308,14 +308,14 @@ export async function runDeployAsync(
           url: result.url,
           error: result.error,
         });
-        broadcastToProject(projectId, { type: "deploy.completed", deployId, success: result.success });
+        broadcastToProject(projectId, { type: "deliver.completed", deployId, success: result.success });
       } else {
         await deployStorageService.updateRecord(projectId, deployId, {
           status: "failed",
           completedAt: new Date().toISOString(),
           error: "No custom deployment command or webhook URL configured",
         });
-        broadcastToProject(projectId, { type: "deploy.completed", deployId, success: false });
+        broadcastToProject(projectId, { type: "deliver.completed", deployId, success: false });
       }
     } else {
       await deployStorageService.updateRecord(projectId, deployId, {
@@ -323,7 +323,7 @@ export async function runDeployAsync(
         completedAt: new Date().toISOString(),
         error: `Unknown deployment mode: ${config.mode}`,
       });
-      broadcastToProject(projectId, { type: "deploy.completed", deployId, success: false });
+      broadcastToProject(projectId, { type: "deliver.completed", deployId, success: false });
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -333,7 +333,7 @@ export async function runDeployAsync(
       completedAt: new Date().toISOString(),
       error: msg,
     });
-    broadcastToProject(projectId, { type: "deploy.completed", deployId, success: false });
+    broadcastToProject(projectId, { type: "deliver.completed", deployId, success: false });
   }
 }
 
@@ -347,7 +347,7 @@ async function runRollbackAsync(
 ): Promise<void> {
   const emit = (chunk: string) => {
     deployStorageService.appendLog(projectId, deployId, chunk);
-    broadcastToProject(projectId, { type: "deploy.output", deployId, chunk });
+    broadcastToProject(projectId, { type: "deliver.output", deployId, chunk });
   };
 
   try {
@@ -362,7 +362,7 @@ async function runRollbackAsync(
         rolledBackBy: deployId,
       });
     }
-    broadcastToProject(projectId, { type: "deploy.completed", deployId, success: true });
+    broadcastToProject(projectId, { type: "deliver.completed", deployId, success: true });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     emit(`Error: ${msg}\n`);
@@ -371,7 +371,7 @@ async function runRollbackAsync(
       completedAt: new Date().toISOString(),
       error: msg,
     });
-    broadcastToProject(projectId, { type: "deploy.completed", deployId, success: false });
+    broadcastToProject(projectId, { type: "deliver.completed", deployId, success: false });
   }
 }
 

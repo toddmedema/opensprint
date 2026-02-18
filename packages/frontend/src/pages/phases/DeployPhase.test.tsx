@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
-import { DeployPhase } from "./DeployPhase";
+import { DeliverPhase } from "./DeliverPhase";
 import deployReducer from "../../store/slices/deploySlice";
 import projectReducer from "../../store/slices/projectSlice";
 
@@ -47,16 +47,16 @@ function createStore(initialDeployState = {}) {
 function renderWithRouter(store: ReturnType<typeof createStore>, projectId = "proj-1") {
   return render(
     <Provider store={store}>
-      <MemoryRouter initialEntries={[`/projects/${projectId}/deploy`]}>
+      <MemoryRouter initialEntries={[`/projects/${projectId}/deliver`]}>
         <Routes>
-          <Route path="/projects/:projectId/deploy" element={<DeployPhase projectId={projectId} />} />
+          <Route path="/projects/:projectId/deliver" element={<DeliverPhase projectId={projectId} />} />
         </Routes>
       </MemoryRouter>
     </Provider>,
   );
 }
 
-describe("DeployPhase", () => {
+describe("DeliverPhase", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSettings.mockResolvedValue({

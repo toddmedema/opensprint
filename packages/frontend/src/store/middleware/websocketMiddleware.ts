@@ -1,7 +1,7 @@
 import type { Middleware, ThunkDispatch, UnknownAction } from "@reduxjs/toolkit";
 import { createAction } from "@reduxjs/toolkit";
 import type { ServerEvent, ClientEvent } from "@opensprint/shared";
-import { setConnected, setHilRequest, setHilNotification, setDeployToast } from "../slices/websocketSlice";
+import { setConnected, setHilRequest, setHilNotification, setDeliverToast } from "../slices/websocketSlice";
 import { fetchPrd, fetchPrdHistory, fetchSpecChat } from "../slices/specSlice";
 import { fetchPlanStatus } from "../slices/planSlice";
 import { fetchPlans, fetchSinglePlan } from "../slices/planSlice";
@@ -177,16 +177,16 @@ export const websocketMiddleware: Middleware = (storeApi) => {
         d(fetchFeedback(projectId));
         break;
 
-      case "deploy.started":
+      case "deliver.started":
         d(deployStarted({ deployId: event.deployId }));
-        d(setDeployToast({ message: "Deployment started", variant: "started" }));
+        d(setDeliverToast({ message: "Deployment started", variant: "started" }));
         break;
 
-      case "deploy.output":
+      case "deliver.output":
         d(appendDeployOutput({ deployId: event.deployId, chunk: event.chunk }));
         break;
 
-      case "deploy.completed":
+      case "deliver.completed":
         d(
           deployCompleted({
             deployId: event.deployId,
@@ -195,7 +195,7 @@ export const websocketMiddleware: Middleware = (storeApi) => {
           }),
         );
         d(
-          setDeployToast({
+          setDeliverToast({
             message: event.success ? "Deployment succeeded" : "Deployment failed",
             variant: event.success ? "succeeded" : "failed",
           }),

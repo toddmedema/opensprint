@@ -884,7 +884,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                           }
                         />
                         <p className="mt-1 text-xs text-gray-500">
-                          Shell command for rolling back to a previous deployment (Deploy phase)
+                          Shell command for rolling back to a previous deployment (Deliver phase)
                         </p>
                       </div>
                       <div className="pt-3 border-t border-gray-200">

@@ -496,56 +496,56 @@ describe("websocketMiddleware", () => {
       });
     });
 
-    it("dispatches setDeployToast on deploy.started", async () => {
+    it("dispatches setDeliverToast on deliver.started", async () => {
       const store = createStore();
       store.dispatch(wsConnect({ projectId: "proj-1" }));
       wsInstance!.simulateOpen();
       await vi.waitFor(() => store.getState().websocket.connected);
 
-      wsInstance!.simulateMessage({ type: "deploy.started", deployId: "deploy-123" });
+      wsInstance!.simulateMessage({ type: "deliver.started", deployId: "deploy-123" });
 
       await vi.waitFor(() => {
-        expect(store.getState().websocket.deployToast).toEqual({
+        expect(store.getState().websocket.deliverToast).toEqual({
           message: "Deployment started",
           variant: "started",
         });
       });
     });
 
-    it("dispatches setDeployToast with succeeded on deploy.completed success", async () => {
+    it("dispatches setDeliverToast with succeeded on deliver.completed success", async () => {
       const store = createStore();
       store.dispatch(wsConnect({ projectId: "proj-1" }));
       wsInstance!.simulateOpen();
       await vi.waitFor(() => store.getState().websocket.connected);
 
       wsInstance!.simulateMessage({
-        type: "deploy.completed",
+        type: "deliver.completed",
         deployId: "deploy-123",
         success: true,
       });
 
       await vi.waitFor(() => {
-        expect(store.getState().websocket.deployToast).toEqual({
+        expect(store.getState().websocket.deliverToast).toEqual({
           message: "Deployment succeeded",
           variant: "succeeded",
         });
       });
     });
 
-    it("dispatches setDeployToast with failed on deploy.completed failure", async () => {
+    it("dispatches setDeliverToast with failed on deliver.completed failure", async () => {
       const store = createStore();
       store.dispatch(wsConnect({ projectId: "proj-1" }));
       wsInstance!.simulateOpen();
       await vi.waitFor(() => store.getState().websocket.connected);
 
       wsInstance!.simulateMessage({
-        type: "deploy.completed",
+        type: "deliver.completed",
         deployId: "deploy-123",
         success: false,
       });
 
       await vi.waitFor(() => {
-        expect(store.getState().websocket.deployToast).toEqual({
+        expect(store.getState().websocket.deliverToast).toEqual({
           message: "Deployment failed",
           variant: "failed",
         });

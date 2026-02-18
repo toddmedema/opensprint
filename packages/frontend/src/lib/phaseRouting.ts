@@ -1,6 +1,6 @@
 import type { ProjectPhase } from "@opensprint/shared";
 
-export const VALID_PHASES: ProjectPhase[] = ["spec", "plan", "execute", "eval", "deploy"];
+export const VALID_PHASES: ProjectPhase[] = ["spec", "plan", "execute", "eval", "deliver"];
 
 /**
  * Parses a URL slug into a valid ProjectPhase. Returns "spec" for invalid or missing slugs.

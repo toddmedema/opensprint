@@ -5,7 +5,7 @@ import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
 import { ProjectView } from "./ProjectView";
 import projectReducer from "../store/slices/projectSlice";
-import websocketReducer, { setDeployToast } from "../store/slices/websocketSlice";
+import websocketReducer, { setDeliverToast } from "../store/slices/websocketSlice";
 import specReducer from "../store/slices/specSlice";
 import planReducer from "../store/slices/planSlice";
 import executeReducer from "../store/slices/executeSlice";
@@ -194,7 +194,7 @@ describe("ProjectView upfront loading and mount-all", () => {
     expect(screen.getByTestId("phase-plan")).toBeInTheDocument();
     expect(screen.getByTestId("phase-execute")).toBeInTheDocument();
     expect(screen.getByTestId("phase-eval")).toBeInTheDocument();
-    expect(screen.getByTestId("phase-deploy")).toBeInTheDocument();
+    expect(screen.getByTestId("phase-deliver")).toBeInTheDocument();
   });
 
   it("active phase wrapper has flex-1 min-h-0 for bounded height and independent page/sidebar scroll", async () => {
@@ -427,29 +427,29 @@ describe("ProjectView URL deep linking for Plan and Build detail panes", () => {
   });
 });
 
-describe("ProjectView global deploy toast", () => {
+describe("ProjectView global deliver toast", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("shows DeployToast when deployToast is in state (global, regardless of active tab)", async () => {
+  it("shows DeliverToast when deliverToast is in state (global, regardless of active tab)", async () => {
     const store = createStore();
-    store.dispatch(setDeployToast({ message: "Deployment succeeded", variant: "succeeded" }));
+    store.dispatch(setDeliverToast({ message: "Deployment succeeded", variant: "succeeded" }));
     renderWithRouter("/projects/proj-1/spec", store);
 
     await waitFor(() => {
-      expect(screen.getByTestId("deploy-toast")).toBeInTheDocument();
+      expect(screen.getByTestId("deliver-toast")).toBeInTheDocument();
       expect(screen.getByText("Deployment succeeded")).toBeInTheDocument();
     });
   });
 
-  it("shows deploy toast on deploy phase as well (confirms global visibility)", async () => {
+  it("shows deliver toast on deliver phase as well (confirms global visibility)", async () => {
     const store = createStore();
-    store.dispatch(setDeployToast({ message: "Deployment failed", variant: "failed" }));
-    renderWithRouter("/projects/proj-1/deploy", store);
+    store.dispatch(setDeliverToast({ message: "Deployment failed", variant: "failed" }));
+    renderWithRouter("/projects/proj-1/deliver", store);
 
     await waitFor(() => {
-      expect(screen.getByTestId("deploy-toast")).toBeInTheDocument();
+      expect(screen.getByTestId("deliver-toast")).toBeInTheDocument();
       expect(screen.getByText("Deployment failed")).toBeInTheDocument();
     });
   });

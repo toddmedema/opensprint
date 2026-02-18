@@ -19,7 +19,7 @@ function getCommitHash(repoPath: string): string | null {
 
 /**
  * Trigger a full deployment for a project (PRD §7.5).
- * Creates a deployment record, broadcasts deploy.started, and runs the deploy pipeline
+ * Creates a deployment record, broadcasts deliver.started, and runs the deploy pipeline
  * (pre-deploy tests, then Expo or custom command/webhook).
  * Returns the deploy ID. Does not throw — logs errors.
  */
@@ -41,7 +41,7 @@ export async function triggerDeploy(projectId: string): Promise<string | null> {
       mode,
     });
 
-    broadcastToProject(projectId, { type: "deploy.started", deployId: record.id });
+    broadcastToProject(projectId, { type: "deliver.started", deployId: record.id });
 
     await deployStorageService.updateRecord(projectId, record.id, { status: "running" });
 

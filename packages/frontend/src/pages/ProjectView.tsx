@@ -14,7 +14,7 @@ import {
   resetWebsocket,
   clearHilRequest,
   clearHilNotification,
-  clearDeployToast,
+  clearDeliverToast,
 } from "../store/slices/websocketSlice";
 import { fetchSpecChat, fetchPrd, fetchPrdHistory, resetSpec } from "../store/slices/specSlice";
 import { fetchPlans, resetPlan, setSelectedPlanId } from "../store/slices/planSlice";
@@ -34,7 +34,7 @@ import { SpecPhase } from "./phases/SpecPhase";
 import { PlanPhase } from "./phases/PlanPhase";
 import { ExecutePhase } from "./phases/ExecutePhase";
 import { EvalPhase } from "./phases/EvalPhase";
-import { DeployPhase } from "./phases/DeployPhase";
+import { DeliverPhase } from "./phases/DeliverPhase";
 
 const CATEGORY_LABELS: Record<string, string> = {
   scopeChanges: "Scope Changes",
@@ -72,7 +72,7 @@ export function ProjectView() {
   const projectError = useAppSelector((s) => s.project.error);
   const hilRequest = useAppSelector((s) => s.websocket.hilRequest);
   const hilNotification = useAppSelector((s) => s.websocket.hilNotification);
-  const deployToast = useAppSelector((s) => s.websocket.deployToast);
+  const deliverToast = useAppSelector((s) => s.websocket.deliverToast);
 
   // Upfront data loading for ALL phases on mount
   useEffect(() => {
@@ -174,8 +174,8 @@ export function ProjectView() {
     dispatch(clearHilNotification());
   };
 
-  const handleDismissDeployToast = () => {
-    dispatch(clearDeployToast());
+  const handleDismissDeliverToast = () => {
+    dispatch(clearDeliverToast());
   };
 
   const handleProjectSaved = () => {
@@ -196,7 +196,7 @@ export function ProjectView() {
           notification={hilNotification}
           onDismiss={handleDismissNotification}
         />
-        <DeployToast toast={deployToast} onDismiss={handleDismissDeployToast} />
+        <DeliverToast toast={deliverToast} onDismiss={handleDismissDeliverToast} />
       </>
     );
   }
@@ -215,7 +215,7 @@ export function ProjectView() {
           notification={hilNotification}
           onDismiss={handleDismissNotification}
         />
-        <DeployToast toast={deployToast} onDismiss={handleDismissDeployToast} />
+        <DeliverToast toast={deliverToast} onDismiss={handleDismissDeliverToast} />
       </>
     );
   }
@@ -256,24 +256,24 @@ export function ProjectView() {
             {phase === "eval" && (
               <EvalPhase projectId={projectId} onNavigateToBuildTask={handleNavigateToBuildTask} />
             )}
-            {phase === "deploy" && (
-              <DeployPhase projectId={projectId} onOpenSettings={() => setSettingsOpen(true)} />
+            {phase === "deliver" && (
+              <DeliverPhase projectId={projectId} onOpenSettings={() => setSettingsOpen(true)} />
             )}
           </div>
         ))}
       </Layout>
       {hilRequest && <HilApprovalModal request={hilRequest} onRespond={handleRespondToHil} />}
       <HilNotificationToast notification={hilNotification} onDismiss={handleDismissNotification} />
-      <DeployToast toast={deployToast} onDismiss={handleDismissDeployToast} />
+      <DeliverToast toast={deliverToast} onDismiss={handleDismissDeliverToast} />
     </>
   );
 }
 
-function DeployToast({
+function DeliverToast({
   toast,
   onDismiss,
 }: {
-  toast: import("../store/slices/websocketSlice").DeployToast | null;
+  toast: import("../store/slices/websocketSlice").DeliverToast | null;
   onDismiss: () => void;
 }) {
   if (!toast) return null;
@@ -286,7 +286,7 @@ function DeployToast({
   return (
     <div
       className={`fixed bottom-4 right-4 z-40 max-w-md rounded-lg border p-4 shadow-lg ${style}`}
-      data-testid="deploy-toast"
+      data-testid="deliver-toast"
       role="status"
     >
       <div className="flex items-start justify-between gap-3">

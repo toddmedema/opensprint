@@ -100,22 +100,22 @@ export interface TaskBlockedEvent {
   cumulativeAttempts: number;
 }
 
-/** Deploy phase events (PRDv2 Deploy phase) */
-export interface DeployStartedEvent {
-  type: "deploy.started";
+/** Deliver phase events (PRDv2 Deliver phase) */
+export interface DeliverStartedEvent {
+  type: "deliver.started";
   deployId: string;
 }
 
-export interface DeployCompletedEvent {
-  type: "deploy.completed";
+export interface DeliverCompletedEvent {
+  type: "deliver.completed";
   deployId: string;
   success: boolean;
   /** Beads epic ID for fix tasks when failed due to pre-deploy test failures (PRD §7.5.2) */
   fixEpicId?: string | null;
 }
 
-export interface DeployOutputEvent {
-  type: "deploy.output";
+export interface DeliverOutputEvent {
+  type: "deliver.output";
   deployId: string;
   chunk: string;
 }
@@ -129,9 +129,9 @@ export type ServerEvent =
   | PrdUpdatedEvent
   | ExecuteStatusEvent
   | TaskBlockedEvent
-  | DeployStartedEvent
-  | DeployCompletedEvent
-  | DeployOutputEvent
+  | DeliverStartedEvent
+  | DeliverCompletedEvent
+  | DeliverOutputEvent
   | HilRequestEvent
   | FeedbackMappedEvent
   | FeedbackResolvedEvent

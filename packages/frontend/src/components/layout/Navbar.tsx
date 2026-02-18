@@ -22,7 +22,7 @@ const phases: { key: ProjectPhase; label: string }[] = [
   { key: "plan", label: "Plan" },
   { key: "execute", label: "Execute" },
   { key: "eval", label: "Eval" },
-  { key: "deploy", label: "Deploy" },
+  { key: "deliver", label: "Deliver" },
 ];
 
 export function Navbar({
