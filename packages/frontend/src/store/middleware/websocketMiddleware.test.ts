@@ -242,7 +242,7 @@ describe("websocketMiddleware", () => {
         {
           section: "overview",
           version: 2,
-          source: "spec",
+          source: "sketch",
           timestamp: "2025-01-01",
           diff: "+Updated",
         },
@@ -261,7 +261,7 @@ describe("websocketMiddleware", () => {
       await vi.waitFor(() => {
         expect(api.prd.get).toHaveBeenCalledWith("proj-1");
         expect(api.prd.getHistory).toHaveBeenCalledWith("proj-1");
-        expect(api.chat.history).toHaveBeenCalledWith("proj-1", "spec");
+        expect(api.chat.history).toHaveBeenCalledWith("proj-1", "sketch");
         expect(api.projects.getPlanStatus).toHaveBeenCalledWith("proj-1");
       });
 

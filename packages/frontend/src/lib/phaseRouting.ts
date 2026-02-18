@@ -1,10 +1,10 @@
 import type { ProjectPhase } from "@opensprint/shared";
 
-export const VALID_PHASES: ProjectPhase[] = ["spec", "plan", "execute", "eval", "deliver"];
+export const VALID_PHASES: ProjectPhase[] = ["sketch", "plan", "execute", "eval", "deliver"];
 
-/** URL slugs for each phase. Spec phase uses "sketch" in URL for user-facing branding. */
+/** URL slugs for each phase. Sketch phase uses "sketch" in URL. */
 const PHASE_TO_SLUG: Record<ProjectPhase, string> = {
-  spec: "sketch",
+  sketch: "sketch",
   plan: "plan",
   execute: "execute",
   eval: "eval",
@@ -12,24 +12,24 @@ const PHASE_TO_SLUG: Record<ProjectPhase, string> = {
 };
 
 const SLUG_TO_PHASE: Record<string, ProjectPhase> = {
-  sketch: "spec",
-  spec: "spec", // legacy; /spec redirects to /sketch
+  sketch: "sketch",
+  spec: "sketch", // legacy; /spec redirects to /sketch
   plan: "plan",
   execute: "execute",
   eval: "eval",
   deliver: "deliver",
 };
 
-/** Valid URL slugs (sketch, not spec, for bookmarkability). */
+/** Valid URL slugs. */
 export const VALID_PHASE_SLUGS = ["sketch", "plan", "execute", "eval", "deliver"] as const;
 
 /**
- * Parses a URL slug into a valid ProjectPhase. Returns "spec" for invalid or missing slugs.
- * Accepts "sketch" as the URL slug for the spec phase.
+ * Parses a URL slug into a valid ProjectPhase. Returns "sketch" for invalid or missing slugs.
+ * Accepts "spec" as legacy alias for "sketch".
  */
 export function phaseFromSlug(slug: string | undefined): ProjectPhase {
   if (slug && slug in SLUG_TO_PHASE) return SLUG_TO_PHASE[slug];
-  return "spec";
+  return "sketch";
 }
 
 /**

@@ -102,7 +102,7 @@ describe("designSlice", () => {
     it("setPrdHistory sets prdHistory", () => {
       const store = createStore();
       const history = [
-        { section: "overview", version: 1, source: "spec" as const, timestamp: "2025-01-01", diff: "+new" },
+        { section: "overview", version: 1, source: "sketch" as const, timestamp: "2025-01-01", diff: "+new" },
       ];
       store.dispatch(setPrdHistory(history));
       expect(store.getState().design.prdHistory).toEqual(history);
@@ -120,7 +120,7 @@ describe("designSlice", () => {
       await store.dispatch(fetchDesignChat("proj-1"));
 
       expect(store.getState().design.messages).toEqual(messages);
-      expect(api.chat.history).toHaveBeenCalledWith("proj-1", "spec");
+      expect(api.chat.history).toHaveBeenCalledWith("proj-1", "sketch");
     });
 
     it("uses empty array when messages missing", async () => {
@@ -162,7 +162,7 @@ describe("designSlice", () => {
   describe("fetchPrdHistory thunk", () => {
     it("stores history on fulfilled", async () => {
       const history = [
-        { section: "overview", version: 1, source: "spec" as const, timestamp: "2025-01-01", diff: "+new" },
+        { section: "overview", version: 1, source: "sketch" as const, timestamp: "2025-01-01", diff: "+new" },
       ];
       vi.mocked(api.prd.getHistory).mockResolvedValue(history);
       const store = createStore();
@@ -210,7 +210,7 @@ describe("designSlice", () => {
       expect(state.messages).toHaveLength(1);
       expect(state.messages[0].role).toBe("assistant");
       expect(state.messages[0].content).toBe("Here is my response");
-      expect(api.chat.send).toHaveBeenCalledWith("proj-1", "hello", "spec", undefined);
+      expect(api.chat.send).toHaveBeenCalledWith("proj-1", "hello", "sketch", undefined);
     });
 
     it("passes prdSectionFocus when provided", async () => {
@@ -220,7 +220,7 @@ describe("designSlice", () => {
         sendDesignMessage({ projectId: "proj-1", message: "edit overview", prdSectionFocus: "overview" }),
       );
 
-      expect(api.chat.send).toHaveBeenCalledWith("proj-1", "edit overview", "spec", "overview");
+      expect(api.chat.send).toHaveBeenCalledWith("proj-1", "edit overview", "sketch", "overview");
     });
 
     it("sets error and clears sendingChat on rejected", async () => {
@@ -331,7 +331,7 @@ describe("designSlice", () => {
       expect(api.chat.send).toHaveBeenCalledWith(
         "proj-1",
         expect.stringContaining("# My PRD"),
-        "spec",
+        "sketch",
         undefined,
       );
       const state = store.getState().design;

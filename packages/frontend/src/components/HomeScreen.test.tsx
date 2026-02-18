@@ -28,7 +28,7 @@ const mockProject = {
   id: "proj-1",
   name: "My Project",
   description: "A test project",
-  currentPhase: "spec",
+  currentPhase: "sketch",
   progressPercent: 25,
   updatedAt: "2026-02-15T12:00:00Z",
 };

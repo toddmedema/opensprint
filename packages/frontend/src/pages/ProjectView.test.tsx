@@ -25,7 +25,7 @@ vi.mock("../store/middleware/websocketMiddleware", () => ({
 // Mock API
 vi.mock("../api/client", () => ({
   api: {
-    projects: { get: vi.fn().mockResolvedValue({ id: "proj-1", name: "Test", currentPhase: "spec" }) },
+    projects: { get: vi.fn().mockResolvedValue({ id: "proj-1", name: "Test", currentPhase: "sketch" }) },
     prd: { get: vi.fn().mockResolvedValue({}), getHistory: vi.fn().mockResolvedValue([]) },
     plans: { list: vi.fn().mockResolvedValue({ plans: [], edges: [] }) },
     tasks: { list: vi.fn().mockResolvedValue([]) },
@@ -63,7 +63,7 @@ function createStore() {
           name: "Test Project",
           description: "",
           repoPath: "/tmp/test",
-          currentPhase: "spec",
+          currentPhase: "sketch",
           createdAt: "",
           updatedAt: "",
         },
@@ -178,7 +178,7 @@ describe("ProjectView upfront loading and mount-all", () => {
     expect(mockedApi.tasks.list).toHaveBeenCalledWith("proj-1");
     expect(mockedApi.execute.status).toHaveBeenCalledWith("proj-1");
     expect(mockedApi.feedback.list).toHaveBeenCalledWith("proj-1");
-    expect(mockedApi.chat.history).toHaveBeenCalledWith("proj-1", "spec");
+    expect(mockedApi.chat.history).toHaveBeenCalledWith("proj-1", "sketch");
   });
 
   it("dispatches wsDisconnect on unmount", async () => {

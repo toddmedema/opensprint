@@ -73,7 +73,7 @@ describe("Chat REST API", () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toBeDefined();
     expect(res.body.data.id).toBeDefined();
-    expect(res.body.data.context).toBe("spec");
+    expect(res.body.data.context).toBe("sketch");
     expect(res.body.data.messages).toEqual([]);
   });
 
@@ -82,6 +82,14 @@ describe("Chat REST API", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.context).toBe("plan:auth-plan");
+    expect(res.body.data.messages).toEqual([]);
+  });
+
+  it("GET /projects/:id/chat/history should accept spec as alias for sketch (backwards compatibility)", async () => {
+    const res = await request(app).get(`${API_PREFIX}/projects/${projectId}/chat/history?context=spec`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.context).toBe("sketch");
     expect(res.body.data.messages).toEqual([]);
   });
 
@@ -111,7 +119,7 @@ Let me know if you'd like to refine this further.`;
 
     const res = await request(app)
       .post(`${API_PREFIX}/projects/${projectId}/chat`)
-      .send({ message: "Help me write an executive summary", context: "spec" });
+      .send({ message: "Help me write an executive summary", context: "sketch" });
 
     expect(res.status).toBe(200);
     expect(res.body.data.message).not.toContain("[PRD_UPDATE:");
@@ -151,7 +159,7 @@ Let me know if you'd like to expand any section.`;
 
     const res = await request(app)
       .post(`${API_PREFIX}/projects/${projectId}/chat`)
-      .send({ message: "I want to build a todo app", context: "spec" });
+      .send({ message: "I want to build a todo app", context: "sketch" });
 
     expect(res.status).toBe(200);
     expect(res.body.data.prdChanges).toHaveLength(3);
@@ -188,7 +196,7 @@ Hope that helps!`;
 
     const res = await request(app)
       .post(`${API_PREFIX}/projects/${projectId}/chat`)
-      .send({ message: "Update both sections", context: "spec" });
+      .send({ message: "Update both sections", context: "sketch" });
 
     expect(res.status).toBe(200);
     expect(res.body.data.prdChanges).toHaveLength(2);
@@ -210,7 +218,7 @@ Hope that helps!`;
 
     const res = await request(app)
       .post(`${API_PREFIX}/projects/${projectId}/chat`)
-      .send({ message: "What should I include?", context: "spec" });
+      .send({ message: "What should I include?", context: "sketch" });
 
     expect(res.status).toBe(200);
     expect(res.body.data.prdChanges).toBeUndefined();
@@ -260,23 +268,23 @@ Hope that helps!`;
     const content = await fs.readFile(path.join(convDir, jsonFile!), "utf-8");
     const conv = JSON.parse(content);
     expect(conv.id).toBeDefined();
-    expect(conv.context).toBe("spec");
+    expect(conv.context).toBe("sketch");
     expect(conv.messages).toHaveLength(2);
   });
 
   describe("Design phase agent registry", () => {
-    it("should register and unregister Design chat agent when context is spec", async () => {
+    it("should register and unregister Sketch chat agent when context is sketch", async () => {
       const res = await request(app)
         .post(`${API_PREFIX}/projects/${projectId}/chat`)
-        .send({ message: "Help me design my product", context: "spec" });
+        .send({ message: "Help me design my product", context: "sketch" });
 
       expect(res.status).toBe(200);
       expect(mockRegister).toHaveBeenCalledTimes(1);
       expect(mockRegister).toHaveBeenCalledWith(
         expect.stringMatching(/^design-chat-.*-/),
         projectId,
-        "design",
-        "Design chat",
+        "sketch",
+        "Sketch chat",
         expect.any(String),
       );
       expect(mockUnregister).toHaveBeenCalledTimes(1);
@@ -310,7 +318,7 @@ Hope that helps!`;
 
       const res = await request(app)
         .post(`${API_PREFIX}/projects/${projectId}/chat`)
-        .send({ message: "Help me", context: "spec" });
+        .send({ message: "Help me", context: "sketch" });
 
       expect(res.status).toBe(200);
       expect(res.body.data.message).toContain("unable to connect");

@@ -17,8 +17,8 @@ describe("constants", () => {
   });
 
   describe("PRD_SOURCE_LABELS", () => {
-    it("maps spec to Sketch for user-facing display", () => {
-      expect(PRD_SOURCE_LABELS.spec).toBe("Sketch");
+    it("maps sketch to Sketch for user-facing display", () => {
+      expect(PRD_SOURCE_LABELS.sketch).toBe("Sketch");
       expect(PRD_SOURCE_LABELS.plan).toBe("Plan");
       expect(PRD_SOURCE_LABELS.execute).toBe("Execute");
       expect(PRD_SOURCE_LABELS.eval).toBe("Eval");
@@ -27,8 +27,8 @@ describe("constants", () => {
   });
 
   describe("PRD_SOURCE_COLORS", () => {
-    it("has colors for spec, plan, execute, eval, deliver", () => {
-      expect(PRD_SOURCE_COLORS.spec).toBe("bg-blue-100 text-blue-800");
+    it("has colors for sketch, plan, execute, eval, deliver", () => {
+      expect(PRD_SOURCE_COLORS.sketch).toBe("bg-blue-100 text-blue-800");
       expect(PRD_SOURCE_COLORS.plan).toBe("bg-amber-100 text-amber-800");
       expect(PRD_SOURCE_COLORS.execute).toBe("bg-green-100 text-green-800");
       expect(PRD_SOURCE_COLORS.eval).toBe("bg-purple-100 text-purple-800");
@@ -38,7 +38,7 @@ describe("constants", () => {
 
   describe("getPrdSourceColor", () => {
     it("returns known source colors", () => {
-      expect(getPrdSourceColor("spec")).toBe("bg-blue-100 text-blue-800");
+      expect(getPrdSourceColor("sketch")).toBe("bg-blue-100 text-blue-800");
       expect(getPrdSourceColor("plan")).toBe("bg-amber-100 text-amber-800");
       expect(getPrdSourceColor("execute")).toBe("bg-green-100 text-green-800");
       expect(getPrdSourceColor("eval")).toBe("bg-purple-100 text-purple-800");

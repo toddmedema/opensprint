@@ -89,7 +89,7 @@
         "version": { "type": "integer", "minimum": 0 },
         "source": {
           "type": "string",
-          "enum": ["spec", "plan", "execute", "eval", "deliver"]
+          "enum": ["sketch", "plan", "execute", "eval", "deliver"]
         },
         "timestamp": { "type": "string", "format": "date-time" },
         "diff": { "type": "string", "description": "Summary of changes" }

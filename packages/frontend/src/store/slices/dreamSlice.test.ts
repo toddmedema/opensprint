@@ -29,26 +29,26 @@ describe("dreamSlice (deprecated re-export of specSlice)", () => {
     vi.mocked(api.chat.send).mockReset();
   });
 
-  it("fetchDreamChat delegates to api.chat.history with spec context", async () => {
+  it("fetchDreamChat delegates to api.chat.history with sketch context", async () => {
     vi.mocked(api.chat.history).mockResolvedValue({ messages: [] } as never);
     const store = configureStore({ reducer: { dream: dreamReducer } });
     await store.dispatch(fetchDreamChat("proj-1"));
-    expect(api.chat.history).toHaveBeenCalledWith("proj-1", "spec");
+    expect(api.chat.history).toHaveBeenCalledWith("proj-1", "sketch");
   });
 
-  it("sendDreamMessage delegates to api.chat.send with spec context", async () => {
+  it("sendDreamMessage delegates to api.chat.send with sketch context", async () => {
     vi.mocked(api.chat.send).mockResolvedValue({ message: "OK" } as never);
     const store = configureStore({ reducer: { dream: dreamReducer } });
     await store.dispatch(sendDreamMessage({ projectId: "proj-1", message: "hi" }));
-    expect(api.chat.send).toHaveBeenCalledWith("proj-1", "hi", "spec", undefined);
+    expect(api.chat.send).toHaveBeenCalledWith("proj-1", "hi", "sketch", undefined);
   });
 
-  it("setPrdHistory accepts PrdChangeLogEntry with source spec", () => {
+  it("setPrdHistory accepts PrdChangeLogEntry with source sketch", () => {
     const history = [
       {
         section: "executive_summary" as const,
         version: 1,
-        source: "spec" as const,
+        source: "sketch" as const,
         timestamp: "2025-01-01",
         diff: "old",
       },
@@ -57,6 +57,6 @@ describe("dreamSlice (deprecated re-export of specSlice)", () => {
     store.dispatch(setPrdHistory(history as never));
     const state = store.getState().dream as DreamState;
     expect(state.prdHistory).toEqual(history);
-    expect(state.prdHistory[0].source).toBe("spec");
+    expect(state.prdHistory[0].source).toBe("sketch");
   });
 });

@@ -142,7 +142,7 @@ describe("SketchPhase with specSlice", () => {
       await user.click(screen.getByTitle("Sketch it"));
 
       await waitFor(() => {
-        expect(mockChatSend).toHaveBeenCalledWith("proj-1", "A todo app", "spec", undefined);
+        expect(mockChatSend).toHaveBeenCalledWith("proj-1", "A todo app", "sketch", undefined);
       });
     });
 
@@ -154,7 +154,7 @@ describe("SketchPhase with specSlice", () => {
       await user.keyboard("{Enter}");
 
       await waitFor(() => {
-        expect(mockChatSend).toHaveBeenCalledWith("proj-1", "A fitness app", "spec", undefined);
+        expect(mockChatSend).toHaveBeenCalledWith("proj-1", "A fitness app", "sketch", undefined);
       });
     });
 
@@ -199,7 +199,7 @@ describe("SketchPhase with specSlice", () => {
         expect(mockChatSend).toHaveBeenCalledWith(
           "proj-1",
           expect.stringContaining("Here's my existing product requirements document"),
-          "spec",
+          "sketch",
           undefined,
         );
       });

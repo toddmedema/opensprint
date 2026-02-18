@@ -29,7 +29,7 @@ const initialState: SpecState = {
 };
 
 export const fetchSpecChat = createAsyncThunk("spec/fetchChat", async (projectId: string) => {
-  const conv = await api.chat.history(projectId, "spec");
+  const conv = await api.chat.history(projectId, "sketch");
   return conv?.messages ?? [];
 });
 
@@ -46,7 +46,7 @@ export const fetchPrdHistory = createAsyncThunk("spec/fetchPrdHistory", async (p
 export const sendSpecMessage = createAsyncThunk(
   "spec/sendMessage",
   async ({ projectId, message, prdSectionFocus }: { projectId: string; message: string; prdSectionFocus?: string }) => {
-    return api.chat.send(projectId, message, "spec", prdSectionFocus);
+    return api.chat.send(projectId, message, "sketch", prdSectionFocus);
   },
 );
 
@@ -66,13 +66,13 @@ export const uploadPrdFile = createAsyncThunk(
     if (ext === "md") {
       const text = await file.text();
       const prompt = `Here's my existing product requirements document. Please analyze it and generate a structured PRD from it:\n\n${text}`;
-      const response = await api.chat.send(projectId, prompt, "spec");
+      const response = await api.chat.send(projectId, prompt, "sketch");
       return { response, fileName: file.name };
     } else if (ext === "docx" || ext === "pdf") {
       const result = await api.prd.upload(projectId, file);
       if (result.text) {
         const prompt = `Here's my existing product requirements document. Please analyze it and generate a structured PRD from it:\n\n${result.text}`;
-        const response = await api.chat.send(projectId, prompt, "spec");
+        const response = await api.chat.send(projectId, prompt, "sketch");
         return { response, fileName: file.name };
       }
       return { response: null, fileName: file.name };

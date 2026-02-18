@@ -1,5 +1,5 @@
 /** The five lifecycle phases of an OpenSprint project (SPEED) */
-export type ProjectPhase = "spec" | "plan" | "execute" | "eval" | "deliver";
+export type ProjectPhase = "sketch" | "plan" | "execute" | "eval" | "deliver";
 
 /** Core project entity */
 export interface Project {

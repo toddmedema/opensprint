@@ -49,7 +49,7 @@ Context: ${contextDescription}
 Affected sections: ${sectionNames}`;
 }
 
-const DREAM_SYSTEM_PROMPT = `You are the Dream phase AI assistant for OpenSprint. You help users define their product vision and create a comprehensive Product Requirements Document (PRD).
+const DREAM_SYSTEM_PROMPT = `You are the Sketch phase AI assistant for OpenSprint. You help users define their product vision and create a comprehensive Product Requirements Document (PRD).
 
 Your role is to:
 1. Ask clarifying questions about the user's product vision
@@ -101,18 +101,30 @@ export class ChatService {
     return path.join(project.repoPath, OPENSPRINT_PATHS.conversations);
   }
 
-  /** Find or create a conversation for a given context */
+  /** Normalize context: "spec" is legacy alias for "sketch". */
+  private normalizeContext(context: string): string {
+    return context === "spec" ? "sketch" : context;
+  }
+
+  /** Find or create a conversation for a given context. Accepts "spec" as alias for "sketch". */
   private async getOrCreateConversation(projectId: string, context: string): Promise<Conversation> {
+    const canonical = this.normalizeContext(context);
     const dir = await this.getConversationsDir(projectId);
 
-    // Look for existing conversation with this context
+    // Look for existing conversation (check both canonical and legacy "spec" for sketch phase)
     try {
       const files = await fs.readdir(dir);
       for (const file of files) {
         if (file.endsWith(".json")) {
           const data = await fs.readFile(path.join(dir, file), "utf-8");
           const conv = JSON.parse(data) as Conversation;
-          if (conv.context === context) {
+          const convCanonical = this.normalizeContext(conv.context as string);
+          if (convCanonical === canonical) {
+            // Migrate legacy context to canonical when loading
+            if (conv.context !== canonical) {
+              conv.context = canonical as Conversation["context"];
+              await this.saveConversation(projectId, conv);
+            }
             return conv;
           }
         }
@@ -124,7 +136,7 @@ export class ChatService {
     // Create new conversation
     const conversation: Conversation = {
       id: uuid(),
-      context: context as Conversation["context"],
+      context: canonical as Conversation["context"],
       messages: [],
     };
 
@@ -223,7 +235,7 @@ export class ChatService {
     if (body.message == null || String(body.message).trim() === "") {
       throw new AppError(400, ErrorCodes.INVALID_INPUT, "Chat message is required");
     }
-    const context = body.context ?? "spec";
+    const context = body.context ?? "sketch";
     const isPlanContext = context.startsWith("plan:");
     const planId = isPlanContext ? context.slice(5) : null;
 
@@ -285,8 +297,8 @@ export class ChatService {
       isPlanContext && planId
         ? `plan-chat-${projectId}-${planId}-${conversation.id}-${Date.now()}`
         : `design-chat-${projectId}-${conversation.id}-${Date.now()}`;
-    const phase = isPlanContext ? "plan" : "design";
-    const label = isPlanContext ? "Plan chat" : "Design chat";
+    const phase = isPlanContext ? "plan" : "sketch";
+    const label = isPlanContext ? "Plan chat" : "Sketch chat";
     activeAgentsService.register(
       agentId,
       projectId,
@@ -338,7 +350,7 @@ export class ChatService {
       const prdUpdates = this.parsePrdUpdates(responseContent);
       displayContent = this.stripPrdUpdates(responseContent) || responseContent;
       if (prdUpdates.length > 0) {
-        const changes = await this.prdService.updateSections(projectId, prdUpdates, "spec");
+        const changes = await this.prdService.updateSections(projectId, prdUpdates, "sketch");
         for (const change of changes) {
           prdChanges.push({
             section: change.section,
@@ -387,7 +399,7 @@ export class ChatService {
    * Syncs the edit into conversation context so the agent is aware of user-made changes (PRD §7.1.5).
    */
   async addDirectEditMessage(projectId: string, section: string, _content: string): Promise<void> {
-    const conversation = await this.getOrCreateConversation(projectId, "spec");
+    const conversation = await this.getOrCreateConversation(projectId, "sketch");
     const sectionLabel = section.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
     const message: ConversationMessage = {
       role: "user",

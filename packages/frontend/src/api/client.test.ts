@@ -114,11 +114,11 @@ describe("api client", () => {
         json: vi.fn().mockResolvedValue({ data: { message: "Hi" } }),
       } as Response);
 
-      await api.chat.send("proj-1", "Hello", "spec", "overview");
+      await api.chat.send("proj-1", "Hello", "sketch", "overview");
       const call = vi.mocked(fetch).mock.calls[0];
       const body = JSON.parse(call[1]?.body as string);
       expect(body.message).toBe("Hello");
-      expect(body.context).toBe("spec");
+      expect(body.context).toBe("sketch");
       expect(body.prdSectionFocus).toBe("overview");
     });
   });

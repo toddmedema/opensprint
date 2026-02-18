@@ -94,7 +94,7 @@ describe("specSlice", () => {
         {
           section: "executive_summary" as const,
           version: 1,
-          source: "spec" as const,
+          source: "sketch" as const,
           timestamp: "2025-01-01",
           diff: "old",
         },
@@ -128,7 +128,7 @@ describe("specSlice", () => {
       await store.dispatch(fetchSpecChat("proj-1"));
 
       expect(store.getState().spec.messages).toEqual(messages);
-      expect(api.chat.history).toHaveBeenCalledWith("proj-1", "spec");
+      expect(api.chat.history).toHaveBeenCalledWith("proj-1", "sketch");
     });
 
     it("uses empty array when messages missing", async () => {
@@ -162,7 +162,7 @@ describe("specSlice", () => {
         {
           section: "executive_summary" as const,
           version: 1,
-          source: "spec" as const,
+          source: "sketch" as const,
           timestamp: "2025-01-01",
           diff: "old",
         },
@@ -215,7 +215,7 @@ describe("specSlice", () => {
       expect(state.messages).toHaveLength(1);
       expect(state.messages[0].role).toBe("assistant");
       expect(state.messages[0].content).toBe("Here is my response");
-      expect(api.chat.send).toHaveBeenCalledWith("proj-1", "hello", "spec", undefined);
+      expect(api.chat.send).toHaveBeenCalledWith("proj-1", "hello", "sketch", undefined);
     });
 
     it("sets error on rejected", async () => {

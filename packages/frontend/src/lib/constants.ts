@@ -20,7 +20,8 @@ export type PrdSectionKey = (typeof PRD_SECTION_ORDER)[number];
 
 /** Display labels for PRD change log source badges (user-facing phase names). */
 export const PRD_SOURCE_LABELS: Record<string, string> = {
-  spec: "Sketch",
+  sketch: "Sketch",
+  spec: "Sketch", // legacy alias
   plan: "Plan",
   execute: "Execute",
   eval: "Eval",
@@ -29,7 +30,8 @@ export const PRD_SOURCE_LABELS: Record<string, string> = {
 
 /** Tailwind class pairs for PRD change log source badges (bg-* text-*). */
 export const PRD_SOURCE_COLORS: Record<string, string> = {
-  spec: "bg-blue-100 text-blue-800",
+  sketch: "bg-blue-100 text-blue-800",
+  spec: "bg-blue-100 text-blue-800", // legacy alias
   plan: "bg-amber-100 text-amber-800",
   execute: "bg-green-100 text-green-800",
   eval: "bg-purple-100 text-purple-800",

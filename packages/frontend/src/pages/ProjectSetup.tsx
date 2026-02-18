@@ -139,7 +139,7 @@ export function ProjectSetup() {
         hilConfig,
         testFramework: testFramework === "none" ? null : testFramework,
       });
-      navigate(getProjectPhasePath((project as { id: string }).id, "spec"));
+      navigate(getProjectPhasePath((project as { id: string }).id, "sketch"));
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to create project";
       setCreateError(msg);

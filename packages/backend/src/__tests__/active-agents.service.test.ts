@@ -123,13 +123,13 @@ describe("ActiveAgentsService", () => {
     });
 
     it("omits projectId from response (API compatibility)", () => {
-      activeAgentsService.register("task-1", "proj-1", "spec", "dreamer", "PRD draft", "2026-02-16T10:00:00.000Z");
+      activeAgentsService.register("task-1", "proj-1", "sketch", "dreamer", "PRD draft", "2026-02-16T10:00:00.000Z");
 
       const agents = activeAgentsService.list("proj-1");
       expect(agents[0]).not.toHaveProperty("projectId");
       expect(agents[0]).toMatchObject({
         id: "task-1",
-        phase: "spec",
+        phase: "sketch",
         role: "dreamer",
         label: "PRD draft",
         startedAt: "2026-02-16T10:00:00.000Z",

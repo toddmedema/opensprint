@@ -58,7 +58,7 @@ describe("GitCommitQueue", () => {
     await gitCommitQueue.enqueueAndWait({
       type: "prd_update",
       repoPath,
-      source: "spec",
+      source: "sketch",
     });
 
     const { stdout } = await execAsync("git log -1 --oneline", { cwd: repoPath });
@@ -75,7 +75,7 @@ describe("GitCommitQueue", () => {
     gitCommitQueue.enqueue({
       type: "prd_update",
       repoPath,
-      source: "spec",
+      source: "sketch",
     });
     await gitCommitQueue.drain();
 

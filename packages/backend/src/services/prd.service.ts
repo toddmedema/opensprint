@@ -30,6 +30,23 @@ export class PrdService {
     return path.join(project.repoPath, OPENSPRINT_PATHS.prd);
   }
 
+  /** Normalize legacy "spec" source to "sketch" in changeLog entries. */
+  private normalizePrdSources(prd: Prd): Prd {
+    if (!Array.isArray(prd.changeLog)) return prd;
+    let changed = false;
+    const normalized = prd.changeLog.map((e) => {
+      if (e.source === "spec") {
+        changed = true;
+        return { ...e, source: "sketch" as const };
+      }
+      return e;
+    });
+    if (changed) {
+      prd.changeLog = normalized;
+    }
+    return prd;
+  }
+
   /** Load the PRD from disk */
   private async loadPrd(projectId: string): Promise<Prd> {
     const prdPath = await this.getPrdPath(projectId);
@@ -40,7 +57,7 @@ export class PrdService {
       if (!Array.isArray(parsed.changeLog)) {
         parsed.changeLog = [];
       }
-      return parsed;
+      return this.normalizePrdSources(parsed);
     } catch {
       throw new AppError(404, ErrorCodes.PRD_NOT_FOUND, "PRD not found for this project");
     }
@@ -55,7 +72,7 @@ export class PrdService {
     const prdPath = await this.getPrdPath(projectId);
     await writeJsonAtomic(prdPath, prd);
     const project = await this.projectService.getProject(projectId);
-    const source = options?.source ?? "spec";
+    const source = options?.source ?? "sketch";
     gitCommitQueue.enqueue({
       type: "prd_update",
       repoPath: project.repoPath,
@@ -108,7 +125,7 @@ export class PrdService {
     projectId: string,
     sectionKey: string,
     content: string,
-    source: PrdChangeLogEntry["source"] = "spec",
+    source: PrdChangeLogEntry["source"] = "sketch",
   ): Promise<{ section: PrdSection; previousVersion: number; newVersion: number }> {
     this.validateSectionKey(sectionKey);
     const prd = await this.loadPrd(projectId);
@@ -146,7 +163,7 @@ export class PrdService {
   async updateSections(
     projectId: string,
     updates: Array<{ section: PrdSectionKey; content: string }>,
-    source: PrdChangeLogEntry["source"] = "spec",
+    source: PrdChangeLogEntry["source"] = "sketch",
   ): Promise<Array<{ section: string; previousVersion: number; newVersion: number }>> {
     const prd = await this.loadPrd(projectId);
     const changes: Array<{ section: string; previousVersion: number; newVersion: number }> = [];

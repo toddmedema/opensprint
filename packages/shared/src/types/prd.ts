@@ -22,7 +22,7 @@ export interface PrdSection {
 export interface PrdChangeLogEntry {
   section: PrdSectionKey;
   version: number;
-  source: "spec" | "plan" | "execute" | "eval" | "deliver";
+  source: "sketch" | "plan" | "execute" | "eval" | "deliver";
   timestamp: string;
   diff: string;
 }

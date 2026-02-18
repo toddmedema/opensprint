@@ -8,6 +8,12 @@ import { broadcastToProject } from '../websocket/index.js';
 import type { ApiResponse, Prd, PrdSection, PrdChangeLogEntry } from '@opensprint/shared';
 
 const prdService = new PrdService();
+
+/** Normalize source: "spec" is legacy alias for "sketch". */
+function normalizePrdSource(source: string | undefined): PrdChangeLogEntry['source'] {
+  const raw = source ?? 'sketch';
+  return (raw === 'spec' ? 'sketch' : raw) as PrdChangeLogEntry['source'];
+}
 const chatService = new ChatService();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -66,7 +72,7 @@ prdRouter.put('/:section', async (req: Request<SectionParams>, res, next) => {
       req.params.projectId,
       req.params.section,
       content,
-      (source as 'spec' | 'plan' | 'execute' | 'eval' | 'deliver') || 'spec',
+      normalizePrdSource(source),
     );
 
     // Sync direct edit to conversation context (PRD §7.1.5)

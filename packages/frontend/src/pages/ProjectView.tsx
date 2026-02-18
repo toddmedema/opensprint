@@ -48,7 +48,7 @@ export function ProjectView() {
   const location = useLocation();
   const dispatch = useAppDispatch();
   const redirectTo =
-    projectId && !isValidPhaseSlug(phaseSlug) ? getProjectPhasePath(projectId, "spec") : null;
+    projectId && !isValidPhaseSlug(phaseSlug) ? getProjectPhasePath(projectId, "sketch") : null;
 
   const currentPhase = phaseFromSlug(phaseSlug);
   const selectedPlanId = useAppSelector((s) => s.plan.selectedPlanId);
@@ -56,7 +56,7 @@ export function ProjectView() {
   /* Sketch phase always uses light mode per feedback h2ayj0 */
   useEffect(() => {
     const el = document.documentElement;
-    if (currentPhase === "spec") {
+    if (currentPhase === "sketch") {
       el.classList.add("sketch-phase-light");
     } else {
       el.classList.remove("sketch-phase-light");
@@ -244,7 +244,7 @@ export function ProjectView() {
                 : undefined
             }
           >
-            {phase === "spec" && (
+            {phase === "sketch" && (
               <SketchPhase projectId={projectId} onNavigateToPlan={() => handlePhaseChange("plan")} />
             )}
             {phase === "plan" && (
