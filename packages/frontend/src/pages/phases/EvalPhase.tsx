@@ -468,9 +468,19 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
     [dispatch, projectId, submitting],
   );
 
+  const feedbackFeedRef = useRef<HTMLDivElement>(null);
+
   const handleResolve = useCallback(
     (feedbackId: string) => {
+      const scrollEl = feedbackFeedRef.current;
+      const scrollTop = scrollEl?.scrollTop ?? 0;
       dispatch(resolveFeedback({ projectId, feedbackId }));
+      // Restore scroll after React re-renders; double rAF ensures we run after paint
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (scrollEl) scrollEl.scrollTop = scrollTop;
+        });
+      });
     },
     [dispatch, projectId],
   );
@@ -496,7 +506,7 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
 
   return (
     <div className="h-full flex flex-col min-h-0">
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div ref={feedbackFeedRef} className="flex-1 min-h-0 overflow-y-auto" data-testid="eval-feedback-feed-scroll">
         <div className="max-w-3xl mx-auto px-6 py-8">
 
         {/* Feedback Input */}

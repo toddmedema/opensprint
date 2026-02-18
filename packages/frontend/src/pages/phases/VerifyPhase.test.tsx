@@ -3,7 +3,7 @@
  * This file tests EvalPhase component. Filename VerifyPhase.test.tsx retained for compatibility.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
@@ -889,6 +889,115 @@ describe("EvalPhase feedback input", () => {
     await waitFor(() => {
       expect(mockFeedbackResolve).toHaveBeenCalledWith("proj-1", "fb-resolve-test");
     });
+  });
+
+  it("preserves scroll position when resolving feedback", async () => {
+    vi.useFakeTimers();
+    const storeWithFeedback = configureStore({
+      reducer: {
+        project: projectReducer,
+        eval: evalReducer,
+        execute: executeReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "eval",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        eval: {
+          feedback: [
+            { id: "fb-1", text: "First", category: "bug", mappedPlanId: "p1", createdTaskIds: [], status: "mapped", createdAt: "2024-01-01T00:00:00Z" },
+            { id: "fb-2", text: "Second", category: "feature", mappedPlanId: "p2", createdTaskIds: [], status: "mapped", createdAt: "2024-01-01T00:00:01Z" },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+      },
+    });
+
+    render(
+      <Provider store={storeWithFeedback}>
+        <EvalPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    const scrollContainer = screen.getByTestId("eval-feedback-feed-scroll");
+    scrollContainer.scrollTop = 150;
+
+    const resolveBtns = screen.getAllByRole("button", { name: /resolve/i });
+    fireEvent.click(resolveBtns[0]);
+
+    await vi.runAllTimersAsync();
+
+    expect(scrollContainer.scrollTop).toBe(150);
+    vi.useRealTimers();
+  });
+
+  it("preserves scroll position when resolving multiple items in sequence", async () => {
+    vi.useFakeTimers();
+    const storeWithFeedback = configureStore({
+      reducer: {
+        project: projectReducer,
+        eval: evalReducer,
+        execute: executeReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "eval",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        eval: {
+          feedback: [
+            { id: "fb-a", text: "A", category: "bug", mappedPlanId: "p1", createdTaskIds: [], status: "mapped", createdAt: "2024-01-01T00:00:00Z" },
+            { id: "fb-b", text: "B", category: "feature", mappedPlanId: "p2", createdTaskIds: [], status: "mapped", createdAt: "2024-01-01T00:00:01Z" },
+            { id: "fb-c", text: "C", category: "ux", mappedPlanId: "p3", createdTaskIds: [], status: "mapped", createdAt: "2024-01-01T00:00:02Z" },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+      },
+    });
+
+    render(
+      <Provider store={storeWithFeedback}>
+        <EvalPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    const scrollContainer = screen.getByTestId("eval-feedback-feed-scroll");
+    scrollContainer.scrollTop = 300;
+
+    let resolveBtns = screen.getAllByRole("button", { name: /resolve/i });
+    fireEvent.click(resolveBtns[1]);
+    await vi.runAllTimersAsync();
+    expect(scrollContainer.scrollTop).toBe(300);
+
+    resolveBtns = screen.getAllByRole("button", { name: /resolve/i });
+    fireEvent.click(resolveBtns[0]);
+    await vi.runAllTimersAsync();
+    expect(scrollContainer.scrollTop).toBe(300);
+
+    vi.useRealTimers();
   });
 
   it("shows category chip for each feedback card", () => {
