@@ -347,7 +347,6 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
                   Active: {activeRoleLabel}
                 </div>
               )}
-              <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Task</h4>
               {taskDetailLoading ? (
                 <div className="text-sm text-gray-500">Loading task spec...</div>
               ) : taskDetail ? (
@@ -368,7 +367,7 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
                     )}
                   </div>
                   {taskDetail.description && (
-                    <div className="prose prose-sm max-w-none bg-white p-4 rounded-lg border text-xs">
+                    <div className="prose prose-sm max-w-none bg-white p-4 rounded-lg border text-xs overflow-y-auto min-h-0 max-h-[50vh]">
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{taskDetail.description}</ReactMarkdown>
                     </div>
                   )}

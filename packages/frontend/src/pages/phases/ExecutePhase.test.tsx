@@ -396,6 +396,72 @@ describe("ExecutePhase Redux integration", () => {
     expect(liveOutput).toHaveTextContent("Line 2");
     expect(liveOutput).toHaveTextContent("Line 3");
   });
+
+  it("task detail sidebar header shows only task title, not redundant Task label", async () => {
+    mockGet.mockResolvedValue({
+      id: "epic-1.1",
+      title: "Implement feature X",
+      kanbanColumn: "in_progress",
+      description: "Short desc",
+    });
+    const tasks = [
+      { id: "epic-1.1", title: "Implement feature X", epicId: "epic-1", kanbanColumn: "in_progress", priority: 0, assignee: null },
+    ];
+    const store = createStore(tasks, { selectedTaskId: "epic-1.1" });
+    render(
+      <Provider store={store}>
+        <ExecutePhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
+    });
+
+    const header = screen.getByRole("heading", { level: 3 });
+    expect(header).toHaveTextContent("Implement feature X");
+    expect(header).not.toHaveTextContent(/^Task$/);
+    // No separate "Task" label in the detail section
+    const taskLabels = screen.queryAllByText(/^Task$/);
+    expect(taskLabels).toHaveLength(0);
+  });
+
+  it("task description renders fully and is scrollable when long", async () => {
+    const longDescription = "Line 1\n".repeat(100) + "Final line";
+    mockGet.mockResolvedValue({
+      id: "epic-1.1",
+      title: "Task A",
+      kanbanColumn: "in_progress",
+      description: longDescription,
+      type: "task",
+      status: "in_progress",
+      labels: [],
+      dependencies: [],
+      priority: 0,
+      assignee: null,
+      epicId: "epic-1",
+      createdAt: "",
+      updatedAt: "",
+    });
+    const tasks = [
+      { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "in_progress", priority: 0, assignee: null },
+    ];
+    const store = createStore(tasks, { selectedTaskId: "epic-1.1" });
+    render(
+      <Provider store={store}>
+        <ExecutePhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
+    });
+
+    expect(screen.getByText("Final line")).toBeInTheDocument();
+    const descriptionContainer = document.querySelector(".prose.overflow-y-auto");
+    expect(descriptionContainer).toBeInTheDocument();
+    expect(descriptionContainer).toHaveClass("overflow-y-auto");
+  });
 });
 
 describe("ExecutePhase task detail plan link", () => {
