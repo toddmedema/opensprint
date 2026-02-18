@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AgentClient } from "../services/agent-client.js";
 import type { AgentConfig } from "@opensprint/shared";
+import { registerAgentProcess, unregisterAgentProcess } from "../services/agent-process-registry.js";
 
 // Mock child_process
 const mockExec = vi.fn();
@@ -9,6 +10,11 @@ const mockSpawn = vi.fn();
 vi.mock("child_process", () => ({
   exec: (...args: unknown[]) => mockExec(...args),
   spawn: (...args: unknown[]) => mockSpawn(...args),
+}));
+
+vi.mock("../services/agent-process-registry.js", () => ({
+  registerAgentProcess: vi.fn(),
+  unregisterAgentProcess: vi.fn(),
 }));
 
 vi.mock("util", () => ({
@@ -38,6 +44,68 @@ describe("AgentClient", () => {
   });
 
   describe("invoke", () => {
+    it("should route claude config to Claude CLI via spawn (not exec)", async () => {
+      const mockChild = {
+        killed: false,
+        kill: vi.fn(),
+        pid: 12345,
+        stdout: {
+          on: vi.fn((_ev: string, fn: (d: Buffer) => void) => fn(Buffer.from("Claude response"))),
+        },
+        stderr: { on: vi.fn() },
+        on: vi.fn((ev: string, fn: (code: number) => void) => {
+          if (ev === "close") setTimeout(() => fn(0), 0);
+          if (ev === "error") return;
+          return { on: vi.fn() };
+        }),
+      };
+      mockSpawn.mockReturnValue(mockChild);
+
+      const result = await client.invoke({
+        config: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+        prompt: "Hello",
+        cwd: "/tmp",
+      });
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        "claude",
+        expect.arrayContaining(["--model", "claude-sonnet-4", "--print", expect.stringContaining("Human: Hello")]),
+        expect.objectContaining({ cwd: "/tmp", stdio: ["ignore", "pipe", "pipe"], detached: true })
+      );
+      expect(mockExec).not.toHaveBeenCalled();
+      expect(result.content).toContain("Claude response");
+      expect(registerAgentProcess).toHaveBeenCalledWith(12345, { processGroup: true });
+      expect(unregisterAgentProcess).toHaveBeenCalledWith(12345, { processGroup: true });
+    });
+
+    it("should route claude config without model", async () => {
+      const mockChild = {
+        killed: false,
+        kill: vi.fn(),
+        pid: 12346,
+        stdout: {
+          on: vi.fn((_ev: string, fn: (d: Buffer) => void) => fn(Buffer.from("Claude no-model"))),
+        },
+        stderr: { on: vi.fn() },
+        on: vi.fn((ev: string, fn: (code: number) => void) => {
+          if (ev === "close") setTimeout(() => fn(0), 0);
+          return { on: vi.fn() };
+        }),
+      };
+      mockSpawn.mockReturnValue(mockChild);
+
+      const result = await client.invoke({
+        config: { type: "claude", model: null, cliCommand: null },
+        prompt: "Test",
+        cwd: "/work",
+      });
+
+      const args = mockSpawn.mock.calls[0][1];
+      expect(args[0]).toBe("--print");
+      expect(args).not.toContain("--model");
+      expect(result.content).toContain("Claude no-model");
+    });
+
     it("should route cursor config to Cursor CLI", async () => {
       const mockChild = {
         killed: false,

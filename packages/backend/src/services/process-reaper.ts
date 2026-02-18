@@ -54,10 +54,62 @@ function reapOrphanedWorkers(): void {
   }
 }
 
+/**
+ * Kills orphaned claude CLI processes (ppid=1) from previous backend runs.
+ * These accumulate when the backend restarts (e.g. tsx watch) and the parent
+ * dies before killing spawned children.
+ */
+function reapOrphanedClaudeProcesses(): void {
+  if (process.platform === "win32") return;
+
+  try {
+    const output = execSync(
+      `ps -eo pid,ppid,comm 2>/dev/null | awk '$2 == 1 && $3 == "claude"' | awk '{print $1}'`,
+      { encoding: "utf-8", timeout: 5_000 }
+    ).trim();
+
+    if (!output) return;
+
+    const pids = output
+      .split("\n")
+      .map((p) => parseInt(p.trim(), 10))
+      .filter((p) => !isNaN(p) && p !== process.pid);
+
+    if (pids.length === 0) return;
+
+    let killed = 0;
+    for (const pid of pids) {
+      try {
+        const cmdline = execSync(`ps -p ${pid} -o command=`, {
+          encoding: "utf-8",
+          timeout: 2_000,
+        }).trim();
+
+        if (!cmdline.includes("claude") || !cmdline.includes("--print")) continue;
+
+        process.kill(pid, "SIGKILL");
+        killed++;
+      } catch {
+        /* process already exited or no permission */
+      }
+    }
+
+    if (killed > 0) {
+      console.log(`[reaper] Killed ${killed} orphaned claude process(es)`);
+    }
+  } catch {
+    /* ps/awk not available or timed out — skip silently */
+  }
+}
+
 export function startProcessReaper(): void {
   if (timer) return;
   reapOrphanedWorkers();
-  timer = setInterval(reapOrphanedWorkers, REAP_INTERVAL_MS);
+  reapOrphanedClaudeProcesses();
+  timer = setInterval(() => {
+    reapOrphanedWorkers();
+    reapOrphanedClaudeProcesses();
+  }, REAP_INTERVAL_MS);
   timer.unref();
 }
 

@@ -4,6 +4,7 @@ import { promisify } from "util";
 import type { AgentConfig } from "@opensprint/shared";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
+import { registerAgentProcess, unregisterAgentProcess } from "./agent-process-registry.js";
 
 const execAsync = promisify(exec);
 
@@ -199,9 +200,16 @@ export class AgentClient {
       detached: true,
     });
 
+    if (child.pid) {
+      registerAgentProcess(child.pid, { processGroup: true });
+    }
+
     let killTimer: ReturnType<typeof setTimeout> | null = null;
 
     const cleanup = () => {
+      if (child.pid) {
+        unregisterAgentProcess(child.pid, { processGroup: true });
+      }
       child.stdout?.removeAllListeners();
       child.stderr?.removeAllListeners();
       child.removeAllListeners();
@@ -280,64 +288,122 @@ export class AgentClient {
     }
     fullPrompt += `Human: ${prompt}\n\nAssistant:`;
 
-    const modelArg = config.model ? `--model ${config.model}` : "";
-    const child = exec(`claude ${modelArg} --print "${fullPrompt.replace(/"/g, '\\"')}"`, {
-      cwd: options.cwd || process.cwd(),
-      timeout: 300_000,
-      maxBuffer: 10 * 1024 * 1024,
-      killSignal: "SIGTERM",
+    const args = ["--print", fullPrompt];
+    if (config.model) {
+      args.unshift("--model", config.model);
+    }
+    const cwd = options.cwd || process.cwd();
+
+    const child = spawn("claude", args, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env },
+      detached: true,
     });
 
-    try {
-      const { stdout } = await new Promise<{ stdout: string; stderr: string }>(
-        (resolve, reject) => {
-          let stdout = "";
-          let stderr = "";
-          child.stdout?.on("data", (d: Buffer) => {
-            stdout += d.toString();
-          });
-          child.stderr?.on("data", (d: Buffer) => {
-            stderr += d.toString();
-          });
-          child.on("error", reject);
-          child.on("close", (code) => {
-            if (code === 0) resolve({ stdout, stderr });
-            else reject(new Error(stderr || `claude exited with code ${code}`));
-          });
-        }
-      );
+    if (child.pid) {
+      registerAgentProcess(child.pid, { processGroup: true });
+    }
 
+    try {
+      const stdout = await this.runClaudeAgentSpawn(child, { processGroup: true });
       const content = stdout.trim();
       if (options.onChunk) {
         options.onChunk(content);
       }
-
       return { content };
     } catch (error: unknown) {
-      if (child.pid && !child.killed) {
-        try {
-          process.kill(child.pid, "SIGTERM");
-        } catch {
-          /* already dead */
-        }
-        // Escalate to SIGKILL if SIGTERM doesn't take effect
-        setTimeout(() => {
-          if (child.pid && !child.killed) {
-            try {
-              process.kill(child.pid, "SIGKILL");
-            } catch {
-              /* already dead */
-            }
-          }
-        }, 3000);
-      }
       const err = error as { message: string; stderr?: string };
       const raw = err.stderr || err.message;
       throw new AppError(502, ErrorCodes.AGENT_INVOKE_FAILED, formatAgentError("claude", raw), {
         agentType: "claude",
         raw,
       });
+    } finally {
+      if (child.pid) {
+        unregisterAgentProcess(child.pid, { processGroup: true });
+      }
     }
+  }
+
+  /** Run Claude CLI via spawn; pass prompt as argv (no shell) to avoid orphan processes */
+  private runClaudeAgentSpawn(
+    child: ReturnType<typeof spawn>,
+    options?: { processGroup?: boolean }
+  ): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const TIMEOUT_MS = 300_000;
+      let stdout = "";
+      let stderr = "";
+
+      const killChild = () => {
+        if (child.killed) return;
+        try {
+          if (options?.processGroup && child.pid) {
+            process.kill(-child.pid, "SIGTERM");
+          } else {
+            child.kill("SIGTERM");
+          }
+        } catch {
+          child.kill("SIGTERM");
+        }
+      };
+      const killChildForce = () => {
+        if (child.killed) return;
+        try {
+          if (options?.processGroup && child.pid) {
+            process.kill(-child.pid, "SIGKILL");
+          } else {
+            child.kill("SIGKILL");
+          }
+        } catch {
+          child.kill("SIGKILL");
+        }
+      };
+      const timeout = setTimeout(() => {
+        if (child.killed) return;
+        killChild();
+        setTimeout(killChildForce, 3000);
+        if (stdout.trim()) {
+          resolve(stdout.trim());
+        } else {
+          reject(
+            new AppError(
+              504,
+              ErrorCodes.AGENT_INVOKE_FAILED,
+              `Claude CLI timed out after ${TIMEOUT_MS / 1000}s. stderr: ${stderr.slice(0, 500)}`,
+              {
+                agentType: "claude",
+                isTimeout: true,
+                stderr: stderr.slice(0, 500),
+              }
+            )
+          );
+        }
+      }, TIMEOUT_MS);
+
+      child.stdout?.on("data", (data: Buffer) => {
+        stdout += data.toString();
+      });
+
+      child.stderr?.on("data", (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      child.on("close", (code) => {
+        clearTimeout(timeout);
+        if (code === 0 || stdout.trim()) {
+          resolve(stdout.trim());
+        } else {
+          reject(new Error(stderr || `claude exited with code ${code}`));
+        }
+      });
+
+      child.on("error", (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+    });
   }
 
   private async invokeCursorCli(options: AgentInvokeOptions): Promise<AgentResponse> {
@@ -426,6 +492,10 @@ export class AgentClient {
         stdio: ["ignore", "pipe", "pipe"],
       });
 
+      if (child.pid) {
+        registerAgentProcess(child.pid);
+      }
+
       const timeout = setTimeout(() => {
         if (child.killed) return;
         child.kill("SIGTERM");
@@ -474,6 +544,7 @@ export class AgentClient {
 
       child.on("close", (code) => {
         clearTimeout(timeout);
+        if (child.pid) unregisterAgentProcess(child.pid);
         if (code === 0 || stdout.trim()) {
           resolve(stdout.trim());
         } else {
@@ -494,6 +565,7 @@ export class AgentClient {
 
       child.on("error", (err) => {
         clearTimeout(timeout);
+        if (child.pid) unregisterAgentProcess(child.pid);
         reject(err);
       });
     });

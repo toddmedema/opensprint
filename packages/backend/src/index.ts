@@ -15,6 +15,7 @@ import { BeadsService } from "./services/beads.service.js";
 import { FeedbackService } from "./services/feedback.service.js";
 import { orchestratorService } from "./services/orchestrator.service.js";
 import { startProcessReaper, stopProcessReaper } from "./services/process-reaper.js";
+import { killAllTrackedAgentProcesses } from "./services/agent-process-registry.js";
 
 const port = parseInt(process.env.PORT || String(DEFAULT_API_PORT), 10);
 
@@ -156,8 +157,9 @@ async function initAlwaysOnOrchestrator(): Promise<void> {
 }
 
 // Graceful shutdown
-const shutdown = () => {
+const shutdown = async () => {
   console.log("\nShutting down...");
+  await killAllTrackedAgentProcesses();
   stopProcessReaper();
   orchestratorService.stopAll();
   removePidFile();
@@ -169,7 +171,7 @@ const shutdown = () => {
   setTimeout(() => {
     console.error("Forced shutdown after timeout.");
     process.exit(1);
-  }, 3000);
+  }, 5000);
 };
 
 // Handle server errors (especially EADDRINUSE) before calling listen
