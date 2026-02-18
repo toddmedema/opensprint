@@ -222,10 +222,10 @@ function FeedbackCard({
           </div>
         )}
 
-        {/* Ticket info and reply button share same line */}
-        <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+        {/* Ticket info on left, action buttons (Reply, Resolve, etc.) on right — same line */}
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-2" data-testid="feedback-card-actions-row">
           {item.createdTaskIds.length > 0 && (
-            <div className="flex gap-1 flex-wrap min-w-0">
+            <div className="flex gap-1 flex-wrap min-w-0" data-testid="feedback-card-ticket-info">
               {item.createdTaskIds.map((taskId) => {
                 const column = getTaskColumn(taskId);
                 const statusLabel = COLUMN_LABELS[column];
