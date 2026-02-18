@@ -23,11 +23,18 @@ describe("planContentUtils", () => {
       expect(body).toBe("More text");
     });
 
-    it("handles ## heading (uses first line as title)", () => {
-      const content = "## Section\n\nBody";
+    it("treats ## heading as section header, not plan title (returns empty title)", () => {
+      const content = "## Overview\n\nBody";
       const { title, body } = parsePlanContent(content);
-      expect(title).toBe("Section");
-      expect(body).toBe("Body");
+      expect(title).toBe("");
+      expect(body).toBe("## Overview\n\nBody");
+    });
+
+    it("treats ### heading as section header, not plan title", () => {
+      const content = "### Subsection\n\nBody";
+      const { title, body } = parsePlanContent(content);
+      expect(title).toBe("");
+      expect(body).toBe("### Subsection\n\nBody");
     });
   });
 
