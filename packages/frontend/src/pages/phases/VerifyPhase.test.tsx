@@ -1774,12 +1774,86 @@ describe("EvalPhase feedback input", () => {
     const taskLink = screen.getByText("opensprint.dev-abc.1");
     const replyBtn = screen.getByRole("button", { name: /^Reply$/i });
 
-    // Both ticket info and reply button share the same row (flex with justify-between)
-    const ticketInfoRow = replyBtn.parentElement?.parentElement;
-    expect(ticketInfoRow).toBeInTheDocument();
-    expect(ticketInfoRow).toContainElement(taskLink);
-    expect(ticketInfoRow).toContainElement(replyBtn);
-    expect(ticketInfoRow).toHaveClass("justify-between");
+    // Ticket info on left, reply button on right — same row (flex with justify-between)
+    const actionsRow = screen.getByTestId("feedback-card-actions-row");
+    expect(actionsRow).toBeInTheDocument();
+    expect(actionsRow).toContainElement(taskLink);
+    expect(actionsRow).toContainElement(replyBtn);
+    expect(actionsRow).toHaveClass("justify-between");
+    expect(screen.getByTestId("feedback-card-ticket-info")).toContainElement(taskLink);
+  });
+
+  it("shows reply button in actions row when feedback has no created tickets", () => {
+    const storeNoTickets = configureStore({
+      reducer: {
+        project: projectReducer,
+        eval: evalReducer,
+        execute: executeReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "eval",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        eval: {
+          feedback: [
+            {
+              id: "fb-2",
+              text: "Suggestion for improvement",
+              category: "feature",
+              mappedPlanId: null,
+              createdTaskIds: [],
+              status: "pending",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+        execute: {
+          tasks: [],
+          plans: [],
+          orchestratorRunning: false,
+          awaitingApproval: false,
+          currentTaskId: null,
+          currentPhase: null,
+          selectedTaskId: null,
+          taskDetail: null,
+          taskDetailLoading: false,
+          agentOutput: [],
+          completionState: null,
+          archivedSessions: [],
+          archivedLoading: false,
+          markDoneLoading: false,
+          unblockLoading: false,
+          statusLoading: false,
+          loading: false,
+          error: null,
+        },
+      },
+    });
+
+    render(
+      <Provider store={storeNoTickets}>
+        <EvalPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    const replyBtn = screen.getByRole("button", { name: /^Reply$/i });
+    const actionsRow = screen.getByTestId("feedback-card-actions-row");
+    expect(actionsRow).toBeInTheDocument();
+    expect(actionsRow).toContainElement(replyBtn);
+    expect(actionsRow).toHaveClass("justify-between");
   });
 
   it("shows quote snippet of parent feedback above reply textarea", async () => {
