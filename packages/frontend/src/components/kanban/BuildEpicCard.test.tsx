@@ -237,7 +237,7 @@ describe("BuildEpicCard", () => {
     expect(screen.getByText("0/0")).toBeInTheDocument();
   });
 
-  it("renders status indicator exclusively on the left of task title", () => {
+  it("renders exactly one status indicator on the left of task title", () => {
     const tasks = [
       createMockTask({ id: "epic-1.1", title: "Task A", kanbanColumn: "in_progress" }),
     ];
@@ -250,6 +250,8 @@ describe("BuildEpicCard", () => {
     expect(button).toBeTruthy();
     const children = Array.from(button!.children);
     const titleIdx = children.findIndex((el) => el.textContent?.includes("Task A"));
+    const statusIndicators = children.filter((el) => el.getAttribute("title") === "In Progress");
+    expect(statusIndicators).toHaveLength(1);
     const statusIdx = children.findIndex((el) => el.getAttribute("title") === "In Progress");
     expect(statusIdx).toBeGreaterThanOrEqual(0);
     expect(titleIdx).toBeGreaterThanOrEqual(0);
@@ -276,6 +278,7 @@ describe("BuildEpicCard", () => {
     expect(assigneeIdx).toBeGreaterThanOrEqual(0);
     expect(titleIdx).toBeGreaterThanOrEqual(0);
     expect(assigneeIdx).toBeGreaterThan(titleIdx);
+    expect(screen.getByTestId("task-row-right")).toHaveTextContent("agent-1");
   });
 
   it("shows no assignee element on the right when task is unassigned", () => {
@@ -288,6 +291,7 @@ describe("BuildEpicCard", () => {
     expect(screen.getByText("Unassigned Task")).toBeInTheDocument();
     expect(screen.getByTitle("Ready")).toBeInTheDocument();
     expect(screen.queryByText("—")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("task-row-right")).not.toBeInTheDocument();
   });
 
   it("renders all task states correctly in left-side position", () => {

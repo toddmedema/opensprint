@@ -5,6 +5,56 @@ import { formatUptime } from "../../lib/formatting";
 
 const VISIBLE_SUBTASKS = 3;
 
+/** Task row: status badge left, title center, assignee right. No duplicate indicators. */
+function EpicTaskRow({
+  task,
+  elapsed,
+  onTaskSelect,
+  onUnblock,
+}: {
+  task: Task;
+  elapsed: string | null;
+  onTaskSelect: (taskId: string) => void;
+  onUnblock?: (taskId: string) => void;
+}) {
+  const rightContent = [task.assignee, elapsed].filter(Boolean).join(" · ");
+  return (
+    <li data-testid={task.kanbanColumn === "blocked" ? "task-blocked" : undefined}>
+      <div className="flex items-center gap-2 px-4 py-2.5 group">
+        <button
+          type="button"
+          onClick={() => onTaskSelect(task.id)}
+          className="flex-1 flex items-center gap-3 text-left hover:bg-theme-info-bg/50 transition-colors text-sm min-w-0"
+        >
+          {/* Status: exclusively on the left */}
+          <TaskStatusBadge column={task.kanbanColumn} size="xs" title={COLUMN_LABELS[task.kanbanColumn]} />
+          <span className="flex-1 min-w-0 truncate font-medium text-theme-text" title={task.title}>
+            {task.title}
+          </span>
+          {/* Assignee/elapsed: exclusively on the right; nothing when unassigned and no elapsed */}
+          {rightContent ? (
+            <span className="text-xs text-theme-muted shrink-0 tabular-nums" data-testid="task-row-right">
+              {rightContent}
+            </span>
+          ) : null}
+        </button>
+        {task.kanbanColumn === "blocked" && onUnblock && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onUnblock(task.id);
+            }}
+            className="shrink-0 text-xs font-medium text-theme-error-text hover:bg-theme-error-bg px-2 py-1 rounded transition-colors"
+          >
+            Unblock
+          </button>
+        )}
+      </div>
+    </li>
+  );
+}
+
 export interface BuildEpicCardProps {
   epicId: string;
   epicTitle: string;
@@ -61,47 +111,19 @@ export function BuildEpicCard({
         </div>
       </div>
 
-      {/* Nested subtasks with names and statuses */}
+      {/* Nested subtasks: status left, title center, assignee right (no duplicates) */}
       {tasks.length > 0 && (
         <div className="border-t border-theme-border-subtle">
           <ul className="divide-y divide-theme-border-subtle">
-            {visibleTasks.map((task) => {
-              const startedAt = taskIdToStartedAt[task.id];
-              const elapsed = startedAt ? formatUptime(startedAt) : null;
-              return (
-              <li key={task.id} data-testid={task.kanbanColumn === "blocked" ? "task-blocked" : undefined}>
-                <div className="flex items-center gap-2 px-4 py-2.5 group">
-                  <button
-                    type="button"
-                    onClick={() => onTaskSelect(task.id)}
-                    className="flex-1 flex items-center gap-3 text-left hover:bg-theme-info-bg/50 transition-colors text-sm min-w-0"
-                  >
-                    <TaskStatusBadge column={task.kanbanColumn} size="xs" title={COLUMN_LABELS[task.kanbanColumn]} />
-                    <span className="flex-1 min-w-0 truncate font-medium text-theme-text" title={task.title}>
-                      {task.title}
-                    </span>
-                    {(task.assignee || elapsed) && (
-                      <span className="text-xs text-theme-muted shrink-0 tabular-nums">
-                        {[task.assignee, elapsed].filter(Boolean).join(" · ")}
-                      </span>
-                    )}
-                  </button>
-                  {task.kanbanColumn === "blocked" && onUnblock && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onUnblock(task.id);
-                      }}
-                      className="shrink-0 text-xs font-medium text-theme-error-text hover:bg-theme-error-bg px-2 py-1 rounded transition-colors"
-                    >
-                      Unblock
-                    </button>
-                  )}
-                </div>
-              </li>
-            );
-            })}
+            {visibleTasks.map((task) => (
+              <EpicTaskRow
+                key={task.id}
+                task={task}
+                elapsed={taskIdToStartedAt[task.id] ? formatUptime(taskIdToStartedAt[task.id]) : null}
+                onTaskSelect={onTaskSelect}
+                onUnblock={task.kanbanColumn === "blocked" ? onUnblock : undefined}
+              />
+            ))}
           </ul>
           {hasMore && !expanded && (
             <button
