@@ -6,6 +6,8 @@ import websocketReducer, {
   setHilNotification,
   clearHilRequest,
   clearHilNotification,
+  setDeployToast,
+  clearDeployToast,
   resetWebsocket,
   type WebsocketState,
 } from "./websocketSlice";
@@ -41,6 +43,7 @@ describe("websocketSlice", () => {
       expect(state.connected).toBe(false);
       expect(state.hilRequest).toBeNull();
       expect(state.hilNotification).toBeNull();
+      expect(state.deployToast).toBeNull();
     });
   });
 
@@ -109,12 +112,40 @@ describe("websocketSlice", () => {
     });
   });
 
+  describe("setDeployToast", () => {
+    it("stores deploy toast", () => {
+      const store = configureStore({ reducer: { websocket: websocketReducer } });
+      store.dispatch(setDeployToast({ message: "Deployment started", variant: "started" }));
+      expect(store.getState().websocket.deployToast).toEqual({
+        message: "Deployment started",
+        variant: "started",
+      });
+    });
+
+    it("clears deploy toast when null passed", () => {
+      const store = configureStore({ reducer: { websocket: websocketReducer } });
+      store.dispatch(setDeployToast({ message: "Deployment succeeded", variant: "succeeded" }));
+      store.dispatch(setDeployToast(null));
+      expect(store.getState().websocket.deployToast).toBeNull();
+    });
+  });
+
+  describe("clearDeployToast", () => {
+    it("clears deployToast to null", () => {
+      const store = configureStore({ reducer: { websocket: websocketReducer } });
+      store.dispatch(setDeployToast({ message: "Deployment failed", variant: "failed" }));
+      store.dispatch(clearDeployToast());
+      expect(store.getState().websocket.deployToast).toBeNull();
+    });
+  });
+
   describe("resetWebsocket", () => {
     it("resets all state to initial values", () => {
       const store = configureStore({ reducer: { websocket: websocketReducer } });
       store.dispatch(setConnected(true));
       store.dispatch(setHilRequest(mockHilRequest));
       store.dispatch(setHilNotification(mockHilNotification));
+      store.dispatch(setDeployToast({ message: "Deployment started", variant: "started" }));
 
       store.dispatch(resetWebsocket());
 
@@ -122,6 +153,7 @@ describe("websocketSlice", () => {
       expect(state.connected).toBe(false);
       expect(state.hilRequest).toBeNull();
       expect(state.hilNotification).toBeNull();
+      expect(state.deployToast).toBeNull();
     });
   });
 });

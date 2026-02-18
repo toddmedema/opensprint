@@ -10,7 +10,7 @@ import {
 } from "../lib/phaseRouting";
 import { useAppDispatch, useAppSelector } from "../store";
 import { fetchProject, resetProject } from "../store/slices/projectSlice";
-import { resetWebsocket, clearHilRequest, clearHilNotification } from "../store/slices/websocketSlice";
+import { resetWebsocket, clearHilRequest, clearHilNotification, clearDeployToast } from "../store/slices/websocketSlice";
 import { fetchSpecChat, fetchPrd, fetchPrdHistory, resetSpec } from "../store/slices/specSlice";
 import { fetchPlans, resetPlan, setSelectedPlanId } from "../store/slices/planSlice";
 import {
@@ -65,6 +65,7 @@ export function ProjectView() {
   const projectError = useAppSelector((s) => s.project.error);
   const hilRequest = useAppSelector((s) => s.websocket.hilRequest);
   const hilNotification = useAppSelector((s) => s.websocket.hilNotification);
+  const deployToast = useAppSelector((s) => s.websocket.deployToast);
 
   // Upfront data loading for ALL phases on mount
   useEffect(() => {
@@ -148,6 +149,10 @@ export function ProjectView() {
     dispatch(clearHilNotification());
   };
 
+  const handleDismissDeployToast = () => {
+    dispatch(clearDeployToast());
+  };
+
   const handleProjectSaved = () => {
     if (projectId) dispatch(fetchProject(projectId));
   };
@@ -161,6 +166,7 @@ export function ProjectView() {
         </Layout>
         {hilRequest && <HilApprovalModal request={hilRequest} onRespond={handleRespondToHil} />}
         <HilNotificationToast notification={hilNotification} onDismiss={handleDismissNotification} />
+        <DeployToast toast={deployToast} onDismiss={handleDismissDeployToast} />
       </>
     );
   }
@@ -176,6 +182,7 @@ export function ProjectView() {
         </Layout>
         {hilRequest && <HilApprovalModal request={hilRequest} onRespond={handleRespondToHil} />}
         <HilNotificationToast notification={hilNotification} onDismiss={handleDismissNotification} />
+        <DeployToast toast={deployToast} onDismiss={handleDismissDeployToast} />
       </>
     );
   }
@@ -216,7 +223,45 @@ export function ProjectView() {
       </Layout>
       {hilRequest && <HilApprovalModal request={hilRequest} onRespond={handleRespondToHil} />}
       <HilNotificationToast notification={hilNotification} onDismiss={handleDismissNotification} />
+      <DeployToast toast={deployToast} onDismiss={handleDismissDeployToast} />
     </>
+  );
+}
+
+function DeployToast({
+  toast,
+  onDismiss,
+}: {
+  toast: import("../store/slices/websocketSlice").DeployToast | null;
+  onDismiss: () => void;
+}) {
+  if (!toast) return null;
+  const variantStyles: Record<string, string> = {
+    started: "border-blue-200 bg-blue-50 text-blue-900",
+    succeeded: "border-green-200 bg-green-50 text-green-900",
+    failed: "border-red-200 bg-red-50 text-red-900",
+  };
+  const style = variantStyles[toast.variant] ?? "border-gray-200 bg-white text-gray-900";
+  return (
+    <div
+      className={`fixed bottom-4 right-4 z-40 max-w-md rounded-lg border p-4 shadow-lg ${style}`}
+      data-testid="deploy-toast"
+      role="status"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-medium">{toast.message}</p>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+          aria-label="Dismiss"
+        >
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    </div>
   );
 }
 

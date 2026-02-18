@@ -12,6 +12,7 @@ import specReducer from "../slices/specSlice";
 import planReducer from "../slices/planSlice";
 import executeReducer from "../slices/executeSlice";
 import evalReducer from "../slices/evalSlice";
+import deployReducer from "../slices/deploySlice";
 
 /** Mock WebSocket that allows controlling open/close/message events */
 class MockWebSocket {
@@ -67,6 +68,7 @@ vi.mock("../../api/client", () => ({
     projects: { getPlanStatus: vi.fn().mockResolvedValue({ hasPlanningRun: false, prdChangedSinceLastRun: false, action: "plan" }) },
     tasks: { list: vi.fn().mockResolvedValue([]) },
     feedback: { list: vi.fn().mockResolvedValue([]) },
+    deploy: { status: vi.fn().mockResolvedValue({ activeDeployId: null, currentDeploy: null }), history: vi.fn().mockResolvedValue([]) },
   },
 }));
 
@@ -102,6 +104,7 @@ describe("websocketMiddleware", () => {
         plan: planReducer,
         execute: executeReducer,
         eval: evalReducer,
+        deploy: deployReducer,
       },
       middleware: (getDefaultMiddleware) =>
         getDefaultMiddleware({
@@ -470,6 +473,54 @@ describe("websocketMiddleware", () => {
 
       await vi.waitFor(() => {
         expect(api.feedback.list).toHaveBeenCalledWith("proj-1");
+      });
+    });
+
+    it("dispatches setDeployToast on deploy.started", async () => {
+      const store = createStore();
+      store.dispatch(wsConnect({ projectId: "proj-1" }));
+      wsInstance!.simulateOpen();
+      await vi.waitFor(() => store.getState().websocket.connected);
+
+      wsInstance!.simulateMessage({ type: "deploy.started", deployId: "deploy-123" });
+
+      await vi.waitFor(() => {
+        expect(store.getState().websocket.deployToast).toEqual({
+          message: "Deployment started",
+          variant: "started",
+        });
+      });
+    });
+
+    it("dispatches setDeployToast with succeeded on deploy.completed success", async () => {
+      const store = createStore();
+      store.dispatch(wsConnect({ projectId: "proj-1" }));
+      wsInstance!.simulateOpen();
+      await vi.waitFor(() => store.getState().websocket.connected);
+
+      wsInstance!.simulateMessage({ type: "deploy.completed", deployId: "deploy-123", success: true });
+
+      await vi.waitFor(() => {
+        expect(store.getState().websocket.deployToast).toEqual({
+          message: "Deployment succeeded",
+          variant: "succeeded",
+        });
+      });
+    });
+
+    it("dispatches setDeployToast with failed on deploy.completed failure", async () => {
+      const store = createStore();
+      store.dispatch(wsConnect({ projectId: "proj-1" }));
+      wsInstance!.simulateOpen();
+      await vi.waitFor(() => store.getState().websocket.connected);
+
+      wsInstance!.simulateMessage({ type: "deploy.completed", deployId: "deploy-123", success: false });
+
+      await vi.waitFor(() => {
+        expect(store.getState().websocket.deployToast).toEqual({
+          message: "Deployment failed",
+          variant: "failed",
+        });
       });
     });
   });

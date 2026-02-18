@@ -5,7 +5,7 @@ import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
 import { ProjectView } from "./ProjectView";
 import projectReducer from "../store/slices/projectSlice";
-import websocketReducer from "../store/slices/websocketSlice";
+import websocketReducer, { setDeployToast } from "../store/slices/websocketSlice";
 import specReducer from "../store/slices/specSlice";
 import planReducer from "../store/slices/planSlice";
 import executeReducer from "../store/slices/executeSlice";
@@ -423,6 +423,34 @@ describe("ProjectView URL deep linking for Plan and Build detail panes", () => {
     await waitFor(() => {
       const loc = screen.getByTestId("location").textContent;
       expect(loc).toContain("plan=opensprint.dev-abc");
+    });
+  });
+});
+
+describe("ProjectView global deploy toast", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shows DeployToast when deployToast is in state (global, regardless of active tab)", async () => {
+    const store = createStore();
+    store.dispatch(setDeployToast({ message: "Deployment succeeded", variant: "succeeded" }));
+    renderWithRouter("/projects/proj-1/spec", store);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("deploy-toast")).toBeInTheDocument();
+      expect(screen.getByText("Deployment succeeded")).toBeInTheDocument();
+    });
+  });
+
+  it("shows deploy toast on deploy phase as well (confirms global visibility)", async () => {
+    const store = createStore();
+    store.dispatch(setDeployToast({ message: "Deployment failed", variant: "failed" }));
+    renderWithRouter("/projects/proj-1/deploy", store);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("deploy-toast")).toBeInTheDocument();
+      expect(screen.getByText("Deployment failed")).toBeInTheDocument();
     });
   });
 });
