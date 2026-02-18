@@ -9,6 +9,7 @@ import { ThemeProvider } from "../../contexts/ThemeContext";
 import { Navbar } from "./Navbar";
 import executeReducer from "../../store/slices/executeSlice";
 import planReducer from "../../store/slices/planSlice";
+import websocketReducer from "../../store/slices/websocketSlice";
 
 const mockGetSettings = vi.fn();
 vi.mock("../../api/client", () => ({
@@ -58,7 +59,11 @@ function renderNavbar(ui: ReactElement) {
 
 function createStore() {
   return configureStore({
-    reducer: { execute: executeReducer, plan: planReducer },
+    reducer: {
+      execute: executeReducer,
+      plan: planReducer,
+      websocket: websocketReducer,
+    },
   });
 }
 
