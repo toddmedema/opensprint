@@ -83,6 +83,25 @@ function createStore() {
   });
 }
 
+describe("EvalPhase header", () => {
+  it("renders Eval title and description with dark mode classes for theme compatibility", () => {
+    const store = createStore();
+    render(
+      <Provider store={store}>
+        <EvalPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    const heading = screen.getByRole("heading", { name: "Eval", level: 2 });
+    expect(heading).toBeInTheDocument();
+    expect(heading).toHaveClass("text-gray-900", "dark:text-gray-100");
+
+    const description = screen.getByText(/Test your application and report feedback/);
+    expect(description).toBeInTheDocument();
+    expect(description).toHaveClass("text-gray-500", "dark:text-gray-400");
+  });
+});
+
 describe("EvalPhase feedback input", () => {
   beforeEach(() => {
     vi.clearAllMocks();

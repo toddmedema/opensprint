@@ -498,8 +498,8 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
     <div className="h-full overflow-y-auto">
       <div className="max-w-3xl mx-auto px-6 py-8">
         <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-1">Eval</h2>
-          <p className="text-sm text-gray-500">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">Eval</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             Test your application and report feedback. The AI will map issues to the right features and create tickets
             automatically.
           </p>
