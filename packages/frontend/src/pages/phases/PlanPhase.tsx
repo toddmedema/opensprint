@@ -13,6 +13,7 @@ import {
   updatePlan,
   setSelectedPlanId,
   addPlanLocally,
+  setPlanError,
 } from "../../store/slices/planSlice";
 import { api } from "../../api/client";
 import { AddPlanModal } from "../../components/AddPlanModal";
@@ -64,6 +65,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
   const executingPlanId = useAppSelector((s) => s.plan.executingPlanId);
   const reExecutingPlanId = useAppSelector((s) => s.plan.reExecutingPlanId);
   const archivingPlanId = useAppSelector((s) => s.plan.archivingPlanId);
+  const planError = useAppSelector((s) => s.plan.error);
   const executeTasks = useAppSelector((s) => s.execute.tasks);
 
   /* ── Local UI state (preserved by mount-all) ── */
@@ -235,6 +237,34 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
       {/* Main content */}
       <div className="flex-1 min-w-0 min-h-0 overflow-y-auto p-6">
+        {/* Error banner — inline, dismissible */}
+        {planError && (
+          <div
+            role="alert"
+            className="mb-4 flex items-center justify-between gap-3 p-3 bg-red-50 border border-red-200 rounded-lg"
+            data-testid="plan-error-banner"
+          >
+            <span className="flex-1 min-w-0 text-sm text-red-700">{planError}</span>
+            <button
+              type="button"
+              onClick={() => dispatch(setPlanError(null))}
+              className="shrink-0 p-1.5 rounded hover:bg-red-100 text-red-600 hover:text-red-800 transition-colors"
+              aria-label="Dismiss error"
+            >
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+                aria-hidden
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+
         {/* Dependency Graph — collapsible top-level container */}
         <div className="card mb-6 overflow-hidden">
           <button

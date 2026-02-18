@@ -99,7 +99,10 @@ const basePlan = {
   dependencyCount: 0,
 };
 
-function createStore(plansOverride?: typeof basePlan[]) {
+function createStore(
+  plansOverride?: typeof basePlan[],
+  planError?: string | null,
+) {
   const plans = plansOverride ?? [basePlan];
 
   return configureStore({
@@ -120,7 +123,7 @@ function createStore(plansOverride?: typeof basePlan[]) {
         executingPlanId: null,
         reExecutingPlanId: null,
         archivingPlanId: null,
-        error: null,
+        error: planError ?? null,
       },
       execute: {
         tasks: [
@@ -186,6 +189,26 @@ describe("PlanPhase Redux integration", () => {
 
     expect(screen.getByText("Archive Test Feature")).toBeInTheDocument();
     expect(screen.getByText(/archive test/i)).toBeInTheDocument();
+  });
+
+  it("displays error from Redux and allows dismiss", async () => {
+    const store = createStore(undefined, "Failed to load plans");
+    const user = userEvent.setup();
+    render(
+      <Provider store={store}>
+        <PlanPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    expect(screen.getByText("Failed to load plans")).toBeInTheDocument();
+    expect(screen.getByTestId("plan-error-banner")).toBeInTheDocument();
+    const dismissBtn = screen.getByRole("button", { name: /Dismiss error/i });
+    await user.click(dismissBtn);
+
+    await waitFor(() => {
+      expect(store.getState().plan.error).toBeNull();
+    });
+    expect(screen.queryByText("Failed to load plans")).not.toBeInTheDocument();
   });
 
   it("keeps chatInput and showAddPlanModal as local state (Add Feature opens modal)", async () => {
