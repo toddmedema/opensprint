@@ -4,7 +4,7 @@ This project uses **bd** (beads) for all task and issue tracking. Run `bd onboar
 
 ## Project Overview
 
-OpenSprint is a web application that guides users through the full software development lifecycle using AI agents. It has four phases: Dream, Plan, Build, and Verify. The PRD is at `PRD.md`.
+OpenSprint is a web application that guides users through the full software development lifecycle using AI agents. It has five phases — SPEED: Sketch, Plan, Execute, Eval, and Deliver. The PRD is at `PRD.md`.
 
 **Tech stack:** Node.js + TypeScript (backend), React + TypeScript (frontend).
 

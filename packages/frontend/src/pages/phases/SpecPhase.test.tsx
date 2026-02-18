@@ -1,5 +1,5 @@
 /**
- * @deprecated Tests moved to SketchPhase.test.tsx — Spec phase renamed to Sketch in UI.
+ * @deprecated Tests moved to SketchPhase.test.tsx — Sketch phase was formerly named Spec in UI.
  */
 import { describe, it } from "vitest";
 

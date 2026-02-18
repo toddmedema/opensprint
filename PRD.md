@@ -8,7 +8,7 @@
 
 ## 1. Executive Summary
 
-OpenSprint is a web application that guides users through the complete software development lifecycle using AI agents. It provides a structured, five-phase workflow — **SPEED**: Spec, Plan, Execute, Eval, and Deliver — that transforms high-level product ideas into working software with minimal manual intervention.
+OpenSprint is a web application that guides users through the complete software development lifecycle using AI agents. It provides a structured, five-phase workflow — **SPEED**: Sketch, Plan, Execute, Eval, and Deliver — that transforms high-level product ideas into working software with minimal manual intervention.
 
 The platform pairs a browser-based interface with a background agent CLI, enabling AI to autonomously execute development tasks while keeping the user in control of strategy and direction. The core philosophy is that humans should focus on _what_ to build and _why_, while AI handles _how_ to build it.
 
@@ -44,9 +44,9 @@ OpenSprint solves these problems by providing an end-to-end platform that mainta
 | ------------------------------------- | ------------------------------------------ | ------------------------------- |
 | Time from idea to working prototype   | < 1 day for standard web apps              | End-to-end session timing       |
 | User intervention rate during Execute | < 10% of tasks require manual input        | Task completion telemetry       |
-| Spec-to-code fidelity                 | > 90% alignment with PRD                   | Automated PRD compliance checks |
+| Sketch-to-code fidelity               | > 90% alignment with PRD                   | Automated PRD compliance checks |
 | Feedback loop closure time            | < 30 min from bug report to fix deployed   | Eval-to-Execute cycle tracking  |
-| First-time user task completion       | > 80% complete a full Spec-Execute cycle   | Onboarding funnel analytics     |
+| First-time user task completion       | > 80% complete a full Sketch-Execute cycle  | Onboarding funnel analytics     |
 | Test coverage                         | > 80% code coverage with passing E2E tests | Automated coverage reporting    |
 
 ---
@@ -73,7 +73,7 @@ A small team that builds software for clients. They need to move quickly from cl
 
 OpenSprint consists of three primary layers: a web-based frontend, a backend API server, and a background agent CLI that executes development work. The frontend communicates with the backend via WebSockets for real-time updates and REST APIs for CRUD operations. The backend orchestrates agent CLI instances, manages project state, and maintains the living PRD.
 
-OpenSprint is designed to run entirely offline. The web frontend and backend API server run locally on the user's machine. When using a local agent CLI (such as a locally-hosted LLM), the entire development loop — from Spec through Deliver — operates without any internet connectivity. Beads is git-based and inherently offline-compatible with no special synchronization logic required.
+OpenSprint is designed to run entirely offline. The web frontend and backend API server run locally on the user's machine. When using a local agent CLI (such as a locally-hosted LLM), the entire development loop — from Sketch through Deliver — operates without any internet connectivity. Beads is git-based and inherently offline-compatible with no special synchronization logic required.
 
 ### 5.2 Technology Stack
 
@@ -142,7 +142,7 @@ OpenSprint is designed to run entirely offline. The web frontend and backend API
 
 ### 5.6 Data Flow
 
-The data flows through the system in a unidirectional pipeline with feedback loops. User input in Spec creates or updates the PRD. The PRD is decomposed in Plan into feature-level Plan markdown files, each representing an epic. In Execute, Plan markdowns are further broken into individual tasks mapped to beads for dependency tracking. Agent CLIs pick up tasks, execute them, and report results back through the system. In Eval, user feedback is mapped back to the relevant Plan epic and Build tasks, creating new tickets as needed. Any changes at any phase propagate upstream to update the living PRD, ensuring the document always reflects the current state of the project.
+The data flows through the system in a unidirectional pipeline with feedback loops. User input in Sketch creates or updates the PRD. The PRD is decomposed in Plan into feature-level Plan markdown files, each representing an epic. In Execute, Plan markdowns are further broken into individual tasks mapped to beads for dependency tracking. Agent CLIs pick up tasks, execute them, and report results back through the system. In Eval, user feedback is mapped back to the relevant Plan epic and Build tasks, creating new tickets as needed. Any changes at any phase propagate upstream to update the living PRD, ensuring the document always reflects the current state of the project.
 
 ### 5.7 Orchestrator Lifecycle & Always-On Loop
 
@@ -192,7 +192,7 @@ Multiple concurrent agents trigger operations that commit to git on the main bra
 | --------------------------- | ----------------------------------------------------------------- | -------------------------------------------- |
 | Beads JSONL export + commit | After task creation batch, status transitions, dependency changes | `beads: <summary of changes>`                |
 | PRD update (Harmonizer)     | After orchestrator writes Harmonizer's proposed updates           | `prd: updated after Plan <plan-id> built`    |
-| PRD update (Dreamer)        | After Dreamer modifies `prd.json` during conversation             | `prd: Spec session update`                   |
+| PRD update (Dreamer)        | After Dreamer modifies `prd.json` during conversation             | `prd: Sketch session update`                 |
 | Worktree merge              | After Reviewer approves a task                                    | `merge: opensprint/<task-id> — <task title>` |
 
 The Dreamer writes `prd.json` directly but does not commit; the orchestrator detects the change and enqueues a commit job. If a commit job fails, it is retried once; if it fails again, the error is logged and the next job proceeds — in-memory/SQLite state is still correct, and the next successful commit captures accumulated changes.
@@ -217,7 +217,7 @@ Creating a new project follows a sequential wizard:
 4. **Human-in-the-loop preferences** — configure autonomy thresholds (see 6.5).
 5. **Repository initialization** — OpenSprint creates a git repo, runs `bd init` to set up beads, configures beads with `auto-flush` and `auto-commit` disabled (see Section 5.9), creates the `.opensprint/` directory structure, and adds `.opensprint/orchestrator-state.json` and `.opensprint/worktrees/` to `.gitignore`.
 
-After setup, the user lands directly in the Spec tab.
+After setup, the user lands directly in the Sketch tab.
 
 ### 6.3 Agent Configuration
 
@@ -239,7 +239,7 @@ Users configure two agent slots during project setup. Both use the same invocati
 
 | Agent         | Slot     | Phase             | Purpose                                                                    |
 | ------------- | -------- | ----------------- | -------------------------------------------------------------------------- |
-| Dreamer       | Planning | Spec              | Multi-turn PRD creation and refinement via chat                            |
+| Dreamer       | Planning | Sketch            | Multi-turn PRD creation and refinement via chat                            |
 | Planner       | Planning | Plan              | Decomposes PRD into features and tasks; outputs indexed task list          |
 | Harmonizer    | Planning | Plan (Execute!)   | Reviews shipped Plan against PRD; proposes PRD section updates             |
 | Analyst       | Planning | Eval              | Categorizes feedback; maps to epics; proposes new tasks                    |
@@ -288,11 +288,11 @@ OpenSprint supports Light, Dark, and System (follows OS `prefers-color-scheme`) 
 
 ## 7. Feature Specification
 
-### 7.1 Spec Phase
+### 7.1 Sketch Phase
 
 #### 7.1.1 Purpose
 
-The Spec phase is where the user collaborates with the **Dreamer** agent to define what they are building and why. The output is a living PRD that serves as the single source of truth for the entire project.
+The Sketch phase is where the user collaborates with the **Dreamer** agent to define what they are building and why. The output is a living PRD that serves as the single source of truth for the entire project.
 
 #### 7.1.2 Key Capabilities
 
@@ -312,7 +312,7 @@ The PRD is stored as `.opensprint/prd.json` — a structured JSON file with each
 
 #### 7.1.5 User Interface
 
-The Spec tab presents a split-pane interface. The left pane is a chat window where the user converses with the **Dreamer** agent. The right pane displays the live PRD document, updating in real-time as the conversation progresses. Users can click on any section of the PRD to focus the conversation on that area, or edit the PRD directly with changes reflected back into the conversation context.
+The Sketch tab presents a split-pane interface. The left pane is a chat window where the user converses with the **Dreamer** agent. The right pane displays the live PRD document, updating in real-time as the conversation progresses. Users can click on any section of the PRD to focus the conversation on that area, or edit the PRD directly with changes reflected back into the conversation context.
 
 ---
 
@@ -545,7 +545,7 @@ User (implicit, single-user)
 | repo_path     | string        | Absolute path to the git repository   |
 | created_at    | datetime      | Creation timestamp                    |
 | updated_at    | datetime      | Last modification timestamp           |
-| current_phase | enum          | spec / plan / execute / eval / deliver |
+| current_phase | enum          | sketch / plan / execute / eval / deliver |
 
 #### PRD (PRDDocument)
 
@@ -559,7 +559,7 @@ Stored as `.opensprint/prd.json`. Top-level fields:
 
 #### Conversation
 
-Stored as `.opensprint/conversations/<conversation-id>.json`. Created per phase context (one for Spec chat, one per Plan sidebar). Fields: `id`, `context` (spec / plan:\<plan-id\>), `messages[]`. Each message: `role` (user/assistant), `content` (markdown), `timestamp`, `prd_changes[]` (optional — PRD sections modified by this message).
+Stored as `.opensprint/conversations/<conversation-id>.json`. Created per phase context (one for Sketch chat, one per Plan sidebar). Fields: `id`, `context` (sketch / plan:\<plan-id\>), `messages[]`. Each message: `role` (user/assistant), `content` (markdown), `timestamp`, `prd_changes[]` (optional — PRD sections modified by this message).
 
 #### Plan
 
@@ -683,7 +683,7 @@ All endpoints are prefixed with `/api/v1`. Responses are JSON.
 | POST   | `/projects/:id/deploy/:deployId/rollback` | Roll back to a previous deployment          |
 | PUT    | `/projects/:id/deploy/settings`           | Update deployment environment configuration |
 
-#### Chat (Spec & Plan conversation)
+#### Chat (Sketch & Plan conversation)
 
 | Method | Endpoint                     | Description                                                 |
 | ------ | ---------------------------- | ----------------------------------------------------------- |
@@ -934,7 +934,7 @@ The orchestrator invokes agents as subprocesses: `claude --task-file <path>`, `c
 
 ## 13. How It All Connects — End-to-End Walkthrough
 
-The user creates a project via the setup wizard (Section 6.2), which initializes a git repo and beads. In the **Spec** tab, the **Dreamer** collaborates conversationally to produce the PRD (Section 7.1). Switching to the **Plan** tab, the **Planner** decomposes the PRD into features and tasks, which the orchestrator creates as beads epics and child issues gated behind approval tasks (Section 7.2). When the user clicks "Execute!", the orchestrator closes the gate, invokes the **Harmonizer** to sync the PRD, and unblocks tasks (Section 7.2.2). The always-on orchestrator loop (Section 5.7) picks up tasks from `bd ready`, creates worktrees, optionally invokes the **Summarizer** for large contexts, then runs the **Coder** → **Reviewer** cycle in the **Execute** phase (Section 7.3, 12.3.8–9). Approved tasks are merged to main; failed tasks follow the progressive backoff flow (Section 9). In the **Eval** tab, users test the built software and submit feedback that the **Analyst** categorizes into new tasks that re-enter the execution queue automatically (Section 7.4) — closing the flywheel. Finally, the **Deliver** phase packages and ships the validated software to its target environment via Expo.dev or a custom deployment pipeline (Section 7.5).
+The user creates a project via the setup wizard (Section 6.2), which initializes a git repo and beads. In the **Sketch** tab, the **Dreamer** collaborates conversationally to produce the PRD (Section 7.1). Switching to the **Plan** tab, the **Planner** decomposes the PRD into features and tasks, which the orchestrator creates as beads epics and child issues gated behind approval tasks (Section 7.2). When the user clicks "Execute!", the orchestrator closes the gate, invokes the **Harmonizer** to sync the PRD, and unblocks tasks (Section 7.2.2). The always-on orchestrator loop (Section 5.7) picks up tasks from `bd ready`, creates worktrees, optionally invokes the **Summarizer** for large contexts, then runs the **Coder** → **Reviewer** cycle in the **Execute** phase (Section 7.3, 12.3.8–9). Approved tasks are merged to main; failed tasks follow the progressive backoff flow (Section 9). In the **Eval** tab, users test the built software and submit feedback that the **Analyst** categorizes into new tasks that re-enter the execution queue automatically (Section 7.4) — closing the flywheel. Finally, the **Deliver** phase packages and ships the validated software to its target environment via Expo.dev or a custom deployment pipeline (Section 7.5).
 
 ---
 
@@ -973,11 +973,11 @@ All beads interactions use the `bd` CLI with `--json` flags, invoked via `child_
 | Scalability     | Handle projects with up to 500 tasks; single Coder/Reviewer in v1, concurrent Coders planned for v2         |
 | Reliability     | Agent failures must not corrupt project state; all state changes are transactional and recoverable          |
 | Security        | Code execution in sandboxed environments; user projects isolated at the filesystem level                    |
-| Usability       | First-time users can create a Spec and reach Execute phase within 30 minutes without documentation          |
+| Usability       | First-time users can create a Sketch and reach Execute phase within 30 minutes without documentation         |
 | Theme Support   | Light, dark, and system themes; preference persists across sessions; no flash of wrong theme on load        |
 | Data Integrity  | Full audit trail of every change via PRD versioning and bead provenance; no data loss on agent crash        |
 | Testing         | Minimum 80% code coverage; all test layers automated; test results visible in real-time                     |
-| Offline Support | All core features (Spec, Plan, Execute, Eval, Deliver) fully functional without internet connectivity        |
+| Offline Support | All core features (Sketch, Plan, Execute, Eval, Deliver) fully functional without internet connectivity       |
 
 ---
 
@@ -995,7 +995,7 @@ All beads interactions use the `bd` CLI with `--json` flags, invoked via `child_
 
 | Phase | Scope                                                                                                                                                                                                                                                                                                   |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Alpha | Spec + Plan phases with living PRD; Dreamer chat interface; Planner for Plan markdown generation; agent slot selection during setup; project home screen; light/dark/system theme toggle                                                                                                                |
+| Alpha | Sketch + Plan phases with living PRD; Dreamer chat interface; Planner for Plan markdown generation; agent slot selection during setup; project home screen; light/dark/system theme toggle                                                                                                               |
 | Beta  | Execute phase with epic card interface, single Coder/Reviewer execution, beads integration, agent CLI contract (all 9 named agents), unit test generation, Summarizer for context management, and error handling with progressive backoff                                                               |
 | v1.0  | Full Execute phase with real-time monitoring, comprehensive testing (unit + integration + E2E), HIL configuration, git worktree isolation, cross-epic dependency resolution on "Execute!", and 10-minute timeout handling                                                                               |
 | v1.1  | Eval phase with Analyst for feedback ingestion, Harmonizer for scope-change PRD updates, flywheel closure, Re-execute with Auditor + Delta Planner; Deliver phase with Expo.dev integration and custom deployment pipelines                                                                              |
@@ -1020,15 +1020,15 @@ This table records architectural decisions where the rationale isn't self-eviden
 | Planning state via gating task | `bd-a3f8.0` with `blocks` dependency on all child tasks                                                                       | Leverages beads' native `bd ready` — closing the gate unblocks children; epic stays open                    |
 | In Review state                | Use beads `in_progress` + orchestrator-tracked sub-phase                                                                      | Beads has no native `in_review` status; avoids extending beads' status enum                                 |
 | Blocked task mechanism         | Beads native `blocked` status                                                                                                 | `bd ready` excludes blocked issues natively; no custom filtering needed                                     |
-| Spec vs Plan separation        | Separate phases                                                                                                               | PRD is holistic product doc; Plans are implementation-scoped agent handoffs                                 |
+| Sketch vs Plan separation      | Separate phases                                                                                                               | PRD is holistic product doc; Plans are implementation-scoped agent handoffs                                 |
 | Branch strategy                | Git worktrees in `.opensprint/worktrees/<task-id>/`                                                                           | Isolates agent work from user's main working directory; eliminates conflicts with uncommitted user changes  |
-| PRD trust boundary             | Dreamer writes directly (supervised); Harmonizer proposes, orchestrator applies                                               | Spec is interactive so direct access is safe; all other phases follow standard trust boundary               |
+| PRD trust boundary             | Dreamer writes directly (supervised); Harmonizer proposes, orchestrator applies                                               | Sketch is interactive so direct access is safe; all other phases follow standard trust boundary             |
 | Orchestrator design            | Deterministic Node.js process; one per project; always-on; event-driven + 5-min watchdog; persistent state for crash recovery | Not an AI agent — all decision points are coded conditionals; self-healing on crash                         |
 | Git concurrency control        | Serialized commit queue; beads auto-commit disabled                                                                           | Multiple concurrent agents produce git-tracked changes; serialization prevents `.git/index.lock` contention |
 | Cross-epic dependencies        | "Execute!" checks for blocking deps, shows confirmation modal, queues prerequisites automatically                             | Prevents deadlocked tasks; user is informed and in control; no silent failures                              |
 | Re-execute approach            | Two-agent: Auditor + Delta Planner                                                                                            | Splitting the work avoids overloading one agent's context; Auditor output is reusable                       |
 | Offline mode                   | Fully supported with local agents                                                                                             | Beads is git-based and inherently offline-compatible; all features work without internet                    |
-| Scope exclusions (v1)          | No cost management, multi-tenancy, agent marketplace, logical conflict detection                                              | Keeps v1 focused on the core Spec → Plan → Execute → Eval → Deliver (SPEED) workflow                         |
+| Scope exclusions (v1)          | No cost management, multi-tenancy, agent marketplace, logical conflict detection                                              | Keeps v1 focused on the core Sketch → Plan → Execute → Eval → Deliver (SPEED) workflow                      |
 
 ---
 

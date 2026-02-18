@@ -11,7 +11,7 @@
   <img src="docs/assets/hero-screenshot.png" alt="OpenSprint — Dream, Plan, Build, Verify" width="800" />
 </p>
 
-OpenSprint orchestrates AI agents across five phases — SPEED: **Spec**, **Plan**, **Execute**, **Eval**, and **Deliver** — to transform a high-level product idea into well-architected, working software with minimal manual intervention.
+OpenSprint orchestrates AI agents across five phases — SPEED: **Sketch**, **Plan**, **Execute**, **Eval**, and **Deliver** — to transform a high-level product idea into well-architected, working software with minimal manual intervention.
 
 ## Why OpenSprint?
 
