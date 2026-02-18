@@ -205,7 +205,7 @@ The Dreamer writes `prd.json` directly but does not commit; the orchestrator det
 
 OpenSprint opens to a home screen that lists all existing projects as cards, each showing the project name, last-modified date, current phase, and overall progress. A prominent "Create New Project" button starts the project setup wizard.
 
-Once inside a project, the project name appears at the top-left of the navbar and functions as a dropdown selector. Clicking it reveals a list of all projects, allowing the user to rapidly switch between projects without returning to the home screen. The navbar also includes a theme toggle (light/dark/system) for quick access to appearance preferences (see 6.6).
+Once inside a project, the project name appears at the top-left of the navbar and functions as a dropdown selector. Clicking it reveals a list of all projects, allowing the user to rapidly switch between projects without returning to the home screen. Theme (light/dark/system) is configurable from project settings (Display section; see 6.6).
 
 ### 6.2 Project Setup Wizard
 
@@ -282,7 +282,7 @@ For each category, users choose one of three modes:
 
 ### 6.6 Appearance & Theme
 
-OpenSprint supports Light, Dark, and System (follows OS `prefers-color-scheme`) themes. The preference is global across all projects, persists in `localStorage`, applies immediately to all views, and is toggleable from the navbar. System is the default for new users.
+OpenSprint supports Light, Dark, and System (follows OS `prefers-color-scheme`) themes. The preference is global across all projects, persists in `localStorage`, applies immediately to all views, and is configurable from project settings (Display section). The theme selector is not shown in the navbar; it is accessed via the settings gear icon → Display tab. System is the default for new users.
 
 ---
 
@@ -995,7 +995,7 @@ All beads interactions use the `bd` CLI with `--json` flags, invoked via `child_
 
 | Phase | Scope                                                                                                                                                                                                                                                                                                   |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Alpha | Sketch + Plan phases with living PRD; Dreamer chat interface; Planner for Plan markdown generation; agent slot selection during setup; project home screen; light/dark/system theme toggle                                                                                                               |
+| Alpha | Sketch + Plan phases with living PRD; Dreamer chat interface; Planner for Plan markdown generation; agent slot selection during setup; project home screen; light/dark/system theme (Project Settings → Display)                                                                                                               |
 | Beta  | Execute phase with epic card interface, single Coder/Reviewer execution, beads integration, agent CLI contract (all 9 named agents), unit test generation, Summarizer for context management, and error handling with progressive backoff                                                               |
 | v1.0  | Full Execute phase with real-time monitoring, comprehensive testing (unit + integration + E2E), HIL configuration, git worktree isolation, cross-epic dependency resolution on "Execute!", and 10-minute timeout handling                                                                               |
 | v1.1  | Eval phase with Analyst for feedback ingestion, Harmonizer for scope-change PRD updates, flywheel closure, Re-execute with Auditor + Delta Planner; Deliver phase with Expo.dev integration and custom deployment pipelines                                                                              |

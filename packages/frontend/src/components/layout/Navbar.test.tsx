@@ -9,6 +9,7 @@ import { ThemeProvider } from "../../contexts/ThemeContext";
 import { Navbar } from "./Navbar";
 import executeReducer from "../../store/slices/executeSlice";
 import planReducer from "../../store/slices/planSlice";
+import websocketReducer from "../../store/slices/websocketSlice";
 
 const mockGetSettings = vi.fn();
 vi.mock("../../api/client", () => ({
@@ -58,7 +59,11 @@ function renderNavbar(ui: ReactElement) {
 
 function createStore() {
   return configureStore({
-    reducer: { execute: executeReducer, plan: planReducer },
+    reducer: {
+      execute: executeReducer,
+      plan: planReducer,
+      websocket: websocketReducer,
+    },
   });
 }
 
@@ -70,28 +75,15 @@ describe("Navbar", () => {
     expect(nav).toHaveClass("z-[60]");
   });
 
-  it("renders theme toggle with Light, Dark, System options", () => {
+  it("does not render theme toggle in navbar", () => {
     renderNavbar(<Navbar project={null} />);
 
-    expect(screen.getByTestId("navbar-theme-light")).toBeInTheDocument();
-    expect(screen.getByTestId("navbar-theme-dark")).toBeInTheDocument();
-    expect(screen.getByTestId("navbar-theme-system")).toBeInTheDocument();
+    expect(screen.queryByTestId("navbar-theme-light")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("navbar-theme-dark")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("navbar-theme-system")).not.toBeInTheDocument();
   });
 
-  it("applies theme when user selects from navbar toggle", async () => {
-    const user = userEvent.setup();
-    renderNavbar(<Navbar project={null} />);
-
-    await user.click(screen.getByTestId("navbar-theme-dark"));
-    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
-    expect(localStorage.getItem("opensprint.theme")).toBe("dark");
-
-    await user.click(screen.getByTestId("navbar-theme-light"));
-    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
-    expect(localStorage.getItem("opensprint.theme")).toBe("light");
-  });
-
-  it("navbar and settings theme picker stay in sync when changed from settings", async () => {
+  it("theme is configurable from project settings Display section", async () => {
     const user = userEvent.setup();
     const mockProject = {
       id: "proj-1",
@@ -128,6 +120,6 @@ describe("Navbar", () => {
 
     await user.click(screen.getByTestId("theme-option-dark"));
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
-    expect(screen.getByTestId("navbar-theme-dark")).toHaveClass("bg-brand-600");
+    expect(localStorage.getItem("opensprint.theme")).toBe("dark");
   });
 });

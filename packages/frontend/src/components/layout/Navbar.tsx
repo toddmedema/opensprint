@@ -2,17 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { Project, ProjectPhase } from "@opensprint/shared";
 import { getProjectPhasePath } from "../../lib/phaseRouting";
-import { useTheme } from "../../contexts/ThemeContext";
 import { api } from "../../api/client";
 import { ActiveAgentsList } from "../ActiveAgentsList";
 import { ConnectionIndicator } from "../ConnectionIndicator";
 import { ProjectSettingsModal } from "../ProjectSettingsModal";
-
-const THEME_OPTIONS: { value: "light" | "dark" | "system"; label: string }[] = [
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
-  { value: "system", label: "System" },
-];
 
 interface NavbarProps {
   project?: Project | null;
@@ -41,7 +34,6 @@ export function Navbar({
   onSettingsOpenChange,
 }: NavbarProps) {
   const navigate = useNavigate();
-  const { preference: themePreference, setTheme } = useTheme();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [internalSettingsOpen, setInternalSettingsOpen] = useState(false);
@@ -169,31 +161,8 @@ export function Navbar({
           </div>
         )}
 
-        {/* Right: Theme toggle + Active agents + Status + Settings */}
+        {/* Right: Active agents + Status + Settings */}
         <div className="flex items-center gap-3">
-          <div
-            className="flex items-center gap-1 bg-theme-border-subtle rounded-lg p-1"
-            role="group"
-            aria-label="Theme"
-          >
-            {THEME_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setTheme(opt.value)}
-                aria-pressed={themePreference === opt.value}
-                aria-label={`Theme: ${opt.label}`}
-                data-testid={`navbar-theme-${opt.value}`}
-                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                  themePreference === opt.value
-                    ? "bg-brand-600 text-white"
-                    : "text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
           {project && (
             <>
               <ActiveAgentsList projectId={project.id} />
