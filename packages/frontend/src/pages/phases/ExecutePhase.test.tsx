@@ -711,11 +711,15 @@ describe("ExecutePhase Redux integration", () => {
     expect(cn).toMatch(/prose-headings:text-theme-text/);
     expect(cn).toMatch(/prose-p:text-theme-text/);
     expect(cn).toMatch(/prose-li:text-theme-text/);
+    expect(cn).toMatch(/prose-em:text-theme-text/);
     expect(cn).toMatch(/prose-code:text-theme-text/);
     expect(cn).toMatch(/prose-a:text-brand-600/);
     expect(cn).toMatch(/dark:prose-a:text-brand-400/);
     expect(cn).toMatch(/prose-pre:bg-theme-code-bg/);
     expect(cn).toMatch(/prose-pre:text-theme-code-text/);
+    expect(cn).toMatch(/prose-blockquote:border-theme-border/);
+    expect(cn).toMatch(/prose-hr:border-theme-border/);
+    expect(cn).toMatch(/prose-execute-task/);
     expect(cn).toMatch(/prose-gray/);
     expect(cn).toMatch(/dark:prose-invert/);
   });

@@ -552,7 +552,7 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
                     const displayDesc = taskDetail.sourceFeedbackId && isOnlyFeedbackId ? "" : desc;
                     return displayDesc ? (
                       <div
-                        className="prose prose-sm prose-gray dark:prose-invert max-w-none bg-theme-surface p-4 rounded-lg border border-theme-border text-theme-text text-xs overflow-y-auto min-h-0 max-h-[50vh] prose-headings:text-theme-text prose-p:text-theme-text prose-li:text-theme-text prose-td:text-theme-text prose-th:text-theme-text prose-a:text-brand-600 dark:prose-a:text-brand-400 prose-code:text-theme-text prose-strong:text-theme-text prose-blockquote:text-theme-text prose-pre:bg-theme-code-bg prose-pre:text-theme-code-text prose-pre:border prose-pre:border-theme-border prose-pre:rounded-lg"
+                        className="prose prose-sm prose-gray dark:prose-invert prose-execute-task max-w-none bg-theme-surface p-4 rounded-lg border border-theme-border text-theme-text text-xs overflow-y-auto min-h-0 max-h-[50vh] prose-headings:text-theme-text prose-p:text-theme-text prose-li:text-theme-text prose-td:text-theme-text prose-th:text-theme-text prose-em:text-theme-text prose-a:text-brand-600 dark:prose-a:text-brand-400 prose-code:text-theme-text prose-strong:text-theme-text prose-blockquote:text-theme-text prose-blockquote:border-theme-border prose-hr:border-theme-border prose-pre:bg-theme-code-bg prose-pre:text-theme-code-text prose-pre:border prose-pre:border-theme-border prose-pre:rounded-lg"
                         data-testid="task-description-markdown"
                       >
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayDesc}</ReactMarkdown>
