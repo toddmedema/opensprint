@@ -84,7 +84,7 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
       plan: "Plan",
       execute: "Execute",
       eval: "Eval",
-      deploy: "Deploy",
+      deliver: "Deliver",
       coding: "Coding",
       review: "Review",
     };

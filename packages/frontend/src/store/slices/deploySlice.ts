@@ -163,7 +163,7 @@ const deploySlice = createSlice({
       })
       .addCase(triggerDeploy.rejected, (state, action) => {
         state.deployLoading = false;
-        state.error = action.error.message ?? "Deploy failed";
+        state.error = action.error.message ?? "Deliver failed";
       })
       .addCase(rollbackDeploy.pending, (state) => {
         state.rollbackLoading = true;

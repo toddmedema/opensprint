@@ -126,7 +126,7 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Deliver</h2>
               <p className="text-sm text-gray-500">
-                Deploy your project to Expo.dev or a custom pipeline
+                Deliver your project to Expo.dev or a custom pipeline
               </p>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
@@ -172,9 +172,9 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
                 onClick={handleDeploy}
                 disabled={isDeploying}
                 className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                data-testid="deploy-button"
+                data-testid="deliver-button"
               >
-                {isDeploying ? "Deploying…" : "Deploy!"}
+                {isDeploying ? "Delivering…" : "Deliver!"}
               </button>
             </div>
           </div>
@@ -197,7 +197,7 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
                   <div className="p-4 text-center text-sm text-gray-500">Loading…</div>
                 ) : history.length === 0 ? (
                   <div className="p-4 text-center text-sm text-gray-500">
-                    No deployments yet. Click Deploy! to start.
+                    No deployments yet. Click Deliver! to start.
                   </div>
                 ) : (
                   <ul className="py-2">
@@ -229,7 +229,7 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
           <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-white">
             <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between shrink-0">
               <h3 className="text-sm font-medium text-gray-900">
-                {selectedRecord ? `Deploy ${formatDate(selectedRecord.startedAt)}` : "Live Log"}
+                {selectedRecord ? `Deployment ${formatDate(selectedRecord.startedAt)}` : "Live Log"}
               </h3>
               {canRollback && (
                 <button

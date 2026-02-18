@@ -10,7 +10,7 @@ const PHASE_LABELS: Record<string, string> = {
   plan: "Plan",
   execute: "Execute",
   eval: "Eval",
-  deploy: "Deploy",
+  deliver: "Deliver",
 };
 
 function ProjectCard({ project }: { project: Project }) {

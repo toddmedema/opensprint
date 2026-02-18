@@ -27,7 +27,7 @@ export interface DeploymentTargetConfig {
   command?: string;
   /** Webhook URL for this target (custom mode) */
   webhookUrl?: string;
-  /** When true, this target is selected by default in the Deploy tab */
+  /** When true, this target is selected by default in the Deliver tab */
   isDefault?: boolean;
 }
 
