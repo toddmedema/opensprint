@@ -66,7 +66,7 @@ All major UI surfaces audited and updated to use theme-aware design tokens. No h
 | - ConnectionIndicator | ✅ | Offline state |
 | - ModelSelect | ✅ | Error text |
 | - PrdChatPanel | ✅ | Unread count badge |
-| - ActiveAgentsList | ✅ | Pulse indicator |
+| - ActiveAgentsList | ✅ | Agent count, dropdown |
 | **Project Setup Wizard** | | |
 | - ProjectMetadataStep | ✅ | Name error |
 | - TestingStep | ✅ | Success message |
