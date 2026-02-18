@@ -174,13 +174,23 @@ function FeedbackCard({
               Categorizing…
             </span>
           ) : (
-            <span
-              className={`float-right ml-2 mb-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium flex-shrink-0 ${
-                categoryColors[item.category] ?? "bg-gray-100 text-gray-600"
-              }`}
-            >
-              {getFeedbackTypeLabel(item)}
-            </span>
+            <>
+              {item.status === "resolved" && (
+                <span
+                  className="float-right ml-2 mb-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium flex-shrink-0 bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                  aria-label="Resolved"
+                >
+                  Resolved
+                </span>
+              )}
+              <span
+                className={`float-right ml-2 mb-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium flex-shrink-0 ${
+                  categoryColors[item.category] ?? "bg-gray-100 text-gray-600"
+                }`}
+              >
+                {getFeedbackTypeLabel(item)}
+              </span>
+            </>
           )}
           <p className="text-sm text-gray-700 whitespace-pre-wrap break-words min-w-0">
             {item.text ?? "(No feedback text)"}

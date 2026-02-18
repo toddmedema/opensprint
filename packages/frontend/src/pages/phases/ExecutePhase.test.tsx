@@ -781,4 +781,58 @@ describe("ExecutePhase Source feedback section", () => {
     expect(screen.getByText("Feature")).toBeInTheDocument();
     expect(screen.getByText(/mapped plan: build test/i)).toBeInTheDocument();
   });
+
+  it("shows Resolved chip in Source feedback section when feedback is resolved", async () => {
+    const user = userEvent.setup();
+    const taskDetail = {
+      id: "epic-1.1",
+      title: "Implement feature",
+      epicId: "epic-1",
+      kanbanColumn: "in_progress" as const,
+      priority: 0,
+      assignee: "agent",
+      description: "Task spec",
+      type: "task" as const,
+      status: "in_progress" as const,
+      labels: [],
+      dependencies: [],
+      createdAt: "",
+      updatedAt: "",
+      sourceFeedbackId: "fb-resolved",
+    };
+    mockGet.mockResolvedValue(taskDetail);
+    mockFeedbackGet.mockResolvedValue({
+      id: "fb-resolved",
+      text: "Fixed login bug",
+      category: "bug",
+      mappedPlanId: "build-auth",
+      createdTaskIds: ["epic-1.1"],
+      status: "resolved",
+      createdAt: "2026-02-17T10:00:00Z",
+    });
+    const tasks = [
+      { id: "epic-1.1", title: "Implement feature", epicId: "epic-1", kanbanColumn: "in_progress", priority: 0, assignee: "agent" },
+    ];
+    const store = createStore(tasks, { selectedTaskId: "epic-1.1" });
+    render(
+      <Provider store={store}>
+        <ExecutePhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
+    });
+
+    const expandBtn = screen.getByRole("button", { name: /source feedback/i });
+    await user.click(expandBtn);
+
+    await vi.waitFor(() => {
+      expect(mockFeedbackGet).toHaveBeenCalledWith("proj-1", "fb-resolved");
+    });
+
+    expect(screen.getByTestId("source-feedback-card")).toBeInTheDocument();
+    expect(screen.getByText("Resolved")).toBeInTheDocument();
+    expect(screen.getByText("Bug")).toBeInTheDocument();
+  });
 });

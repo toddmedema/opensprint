@@ -936,6 +936,190 @@ describe("EvalPhase feedback input", () => {
     expect(screen.getByText(/Feedback History \(2\)/)).toBeInTheDocument();
   });
 
+  it("shows green Resolved chip for resolved feedback items adjacent to category chip", () => {
+    const storeWithFeedback = configureStore({
+      reducer: {
+        project: projectReducer,
+        eval: evalReducer,
+        execute: executeReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "eval",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        eval: {
+          feedback: [
+            {
+              id: "fb-resolved",
+              text: "Fixed bug",
+              category: "bug",
+              mappedPlanId: "plan-1",
+              createdTaskIds: [],
+              status: "resolved",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+      },
+    });
+
+    render(
+      <Provider store={storeWithFeedback}>
+        <EvalPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    const resolvedChip = screen.getByText("Resolved");
+    expect(resolvedChip).toBeInTheDocument();
+    expect(resolvedChip).toHaveClass("bg-green-100", "text-green-800");
+    expect(resolvedChip).toHaveClass("dark:bg-green-900/30", "dark:text-green-300");
+    expect(screen.getByText("Bug")).toBeInTheDocument();
+  });
+
+  it("does not show Resolved chip for pending or mapped feedback", () => {
+    const storeWithFeedback = configureStore({
+      reducer: {
+        project: projectReducer,
+        eval: evalReducer,
+        execute: executeReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "eval",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        eval: {
+          feedback: [
+            {
+              id: "fb-pending",
+              text: "Pending feedback",
+              category: "bug",
+              mappedPlanId: null,
+              createdTaskIds: [],
+              status: "pending",
+              createdAt: new Date().toISOString(),
+            },
+            {
+              id: "fb-mapped",
+              text: "Mapped feedback",
+              category: "feature",
+              mappedPlanId: "plan-1",
+              createdTaskIds: [],
+              status: "mapped",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+      },
+    });
+
+    render(
+      <Provider store={storeWithFeedback}>
+        <EvalPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    expect(screen.queryByText("Resolved")).not.toBeInTheDocument();
+    expect(screen.getByText("Categorizing…")).toBeInTheDocument();
+    expect(screen.getByText("Feature")).toBeInTheDocument();
+  });
+
+  it("shows Resolved chip immediately when user clicks Resolve (optimistic update)", async () => {
+    const user = userEvent.setup();
+    let resolveApi: (v: unknown) => void;
+    const resolvePromise = new Promise<unknown>((r) => {
+      resolveApi = r;
+    });
+    mockFeedbackResolve.mockReturnValue(resolvePromise as never);
+
+    const storeWithFeedback = configureStore({
+      reducer: {
+        project: projectReducer,
+        eval: evalReducer,
+        execute: executeReducer,
+      },
+      preloadedState: {
+        project: {
+          data: {
+            id: "proj-1",
+            name: "Test Project",
+            description: "",
+            repoPath: "/tmp/test",
+            currentPhase: "eval",
+            createdAt: "",
+            updatedAt: "",
+          },
+          loading: false,
+          error: null,
+        },
+        eval: {
+          feedback: [
+            {
+              id: "fb-opt",
+              text: "Bug to resolve",
+              category: "bug",
+              mappedPlanId: "plan-1",
+              createdTaskIds: [],
+              status: "mapped",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          loading: false,
+          submitting: false,
+          error: null,
+        },
+      },
+    });
+
+    render(
+      <Provider store={storeWithFeedback}>
+        <EvalPhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    expect(screen.queryByText("Resolved")).not.toBeInTheDocument();
+    const resolveBtn = screen.getByRole("button", { name: /resolve/i });
+    await user.click(resolveBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText("Resolved")).toBeInTheDocument();
+    });
+    resolveApi!({
+      id: "fb-opt",
+      text: "Bug to resolve",
+      category: "bug",
+      mappedPlanId: "plan-1",
+      createdTaskIds: [],
+      status: "resolved",
+      createdAt: new Date().toISOString(),
+    });
+  });
+
   it("displays images in feedback history when present", () => {
     const storeWithFeedback = configureStore({
       reducer: {

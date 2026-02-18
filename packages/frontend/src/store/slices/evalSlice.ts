@@ -134,13 +134,22 @@ const evalSlice = createSlice({
       .addCase(recategorizeFeedback.rejected, (state, action) => {
         state.error = action.error.message ?? "Failed to recategorize feedback";
       })
-      // resolveFeedback
+      // resolveFeedback — optimistic: set status to resolved immediately
+      .addCase(resolveFeedback.pending, (state, action) => {
+        const { feedbackId } = action.meta.arg;
+        const idx = state.feedback.findIndex((f) => f.id === feedbackId);
+        if (idx !== -1) state.feedback[idx].status = "resolved";
+      })
       .addCase(resolveFeedback.fulfilled, (state, action) => {
         const idx = state.feedback.findIndex((f) => f.id === action.payload.id);
         if (idx !== -1) state.feedback[idx] = action.payload;
       })
       .addCase(resolveFeedback.rejected, (state, action) => {
         state.error = action.error.message ?? "Failed to resolve feedback";
+        // Revert optimistic update: set status back to mapped
+        const { feedbackId } = action.meta.arg;
+        const idx = state.feedback.findIndex((f) => f.id === feedbackId);
+        if (idx !== -1) state.feedback[idx].status = "mapped";
       });
   },
 });

@@ -321,6 +321,24 @@ describe("evalSlice", () => {
   });
 
   describe("resolveFeedback thunk", () => {
+    it("updates feedback item status to resolved optimistically on pending", async () => {
+      let resolveApi: (v: FeedbackItem) => void;
+      const apiPromise = new Promise<FeedbackItem>((r) => {
+        resolveApi = r;
+      });
+      vi.mocked(api.feedback.resolve).mockReturnValue(apiPromise as never);
+      const store = createStore();
+      store.dispatch(setFeedback([{ ...mockFeedback, id: "fb-1", status: "mapped" }]));
+      const dispatchPromise = store.dispatch(
+        resolveFeedback({ projectId: "proj-1", feedbackId: "fb-1" }),
+      );
+
+      expect(store.getState().eval.feedback[0].status).toBe("resolved");
+      resolveApi!({ ...mockFeedback, id: "fb-1", status: "resolved" });
+      await dispatchPromise;
+      expect(store.getState().eval.feedback[0].status).toBe("resolved");
+    });
+
     it("updates feedback item status to resolved on fulfilled", async () => {
       const resolvedFeedback: FeedbackItem = {
         ...mockFeedback,
@@ -337,7 +355,7 @@ describe("evalSlice", () => {
       expect(api.feedback.resolve).toHaveBeenCalledWith("proj-1", "fb-1");
     });
 
-    it("sets error on rejected", async () => {
+    it("sets error and reverts status to mapped on rejected", async () => {
       vi.mocked(api.feedback.resolve).mockRejectedValue(new Error("Resolve failed"));
       const store = createStore();
       store.dispatch(setFeedback([{ ...mockFeedback, status: "mapped" }]));
@@ -346,6 +364,7 @@ describe("evalSlice", () => {
       );
 
       expect(store.getState().eval.error).toBe("Resolve failed");
+      expect(store.getState().eval.feedback[0].status).toBe("mapped");
     });
   });
 });
