@@ -551,7 +551,10 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
                     const isOnlyFeedbackId = /^Feedback ID:\s*.+$/.test(desc.trim());
                     const displayDesc = taskDetail.sourceFeedbackId && isOnlyFeedbackId ? "" : desc;
                     return displayDesc ? (
-                      <div className="prose prose-sm max-w-none bg-theme-surface p-4 rounded-lg border border-theme-border text-xs overflow-y-auto min-h-0 max-h-[50vh]">
+                      <div
+                        className="prose prose-sm prose-gray dark:prose-invert max-w-none bg-theme-surface p-4 rounded-lg border border-theme-border text-theme-text text-xs overflow-y-auto min-h-0 max-h-[50vh] prose-headings:text-theme-text prose-p:text-theme-text prose-li:text-theme-text prose-td:text-theme-text prose-th:text-theme-text prose-a:text-brand-600 dark:prose-a:text-brand-400 prose-code:text-theme-text prose-strong:text-theme-text prose-blockquote:text-theme-text prose-pre:bg-theme-code-bg prose-pre:text-theme-code-text prose-pre:border prose-pre:border-theme-border prose-pre:rounded-lg"
+                        data-testid="task-description-markdown"
+                      >
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayDesc}</ReactMarkdown>
                       </div>
                     ) : null;

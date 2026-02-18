@@ -673,6 +673,52 @@ describe("ExecutePhase Redux integration", () => {
     expect(descriptionContainer).toBeInTheDocument();
     expect(descriptionContainer).toHaveClass("overflow-y-auto");
   });
+
+  it("task description markdown has theme-aware prose styles for WCAG AA contrast", async () => {
+    mockGet.mockResolvedValue({
+      id: "epic-1.1",
+      title: "Task A",
+      kanbanColumn: "in_progress",
+      description: "## Heading\n\nParagraph with **bold** and `inline code`.\n\n- List item",
+      type: "task",
+      status: "in_progress",
+      labels: [],
+      dependencies: [],
+      priority: 0,
+      assignee: null,
+      epicId: "epic-1",
+      createdAt: "",
+      updatedAt: "",
+    });
+    const tasks = [
+      { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "in_progress", priority: 0, assignee: null },
+    ];
+    const store = createStore(tasks, { selectedTaskId: "epic-1.1" });
+    render(
+      <Provider store={store}>
+        <ExecutePhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
+    });
+
+    const markdownContainer = screen.getByTestId("task-description-markdown");
+    expect(markdownContainer).toBeInTheDocument();
+    const cn = markdownContainer.className;
+    expect(cn).toMatch(/text-theme-text/);
+    expect(cn).toMatch(/prose-headings:text-theme-text/);
+    expect(cn).toMatch(/prose-p:text-theme-text/);
+    expect(cn).toMatch(/prose-li:text-theme-text/);
+    expect(cn).toMatch(/prose-code:text-theme-text/);
+    expect(cn).toMatch(/prose-a:text-brand-600/);
+    expect(cn).toMatch(/dark:prose-a:text-brand-400/);
+    expect(cn).toMatch(/prose-pre:bg-theme-code-bg/);
+    expect(cn).toMatch(/prose-pre:text-theme-code-text/);
+    expect(cn).toMatch(/prose-gray/);
+    expect(cn).toMatch(/dark:prose-invert/);
+  });
 });
 
 describe("ExecutePhase task detail plan link", () => {
