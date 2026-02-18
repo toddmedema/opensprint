@@ -13,6 +13,7 @@ const MAX_BUFFER_BYTES = 2 * 1024 * 1024; // 2MB for large list output
 
 const daemonReady = new Map<string, { promise: Promise<void>; checkedAt: number }>();
 const DAEMON_CHECK_INTERVAL_MS = 60_000;
+const DAEMON_STALE_THRESHOLD_MS = 5 * 60_000;
 
 /**
  * Raw shape returned by `bd list --json` / `bd show --json`.
@@ -49,6 +50,14 @@ export class BeadsService {
    */
   async ensureDaemon(repoPath: string): Promise<void> {
     const now = Date.now();
+
+    // Prune entries that haven't been refreshed recently
+    for (const [path, entry] of daemonReady) {
+      if (now - entry.checkedAt > DAEMON_STALE_THRESHOLD_MS) {
+        daemonReady.delete(path);
+      }
+    }
+
     const existing = daemonReady.get(repoPath);
     if (existing && now - existing.checkedAt < DAEMON_CHECK_INTERVAL_MS) {
       return existing.promise;
@@ -285,7 +294,21 @@ export class BeadsService {
 
   /** Initialize beads in a project repository */
   async init(repoPath: string): Promise<void> {
-    await this.exec(repoPath, "init");
+    try {
+      await execAsync("bd init", {
+        cwd: repoPath,
+        timeout: DEFAULT_TIMEOUT_MS,
+        env: { ...process.env },
+      });
+    } catch (error: unknown) {
+      const err = error as { stderr?: string; stdout?: string; message: string };
+      const msg = err.stderr || err.stdout || err.message;
+      if (msg.includes("already initialized")) return;
+      throw new AppError(502, ErrorCodes.BEADS_COMMAND_FAILED, `Beads init failed: ${msg}`, {
+        command: "bd init",
+        stderr: msg,
+      });
+    }
   }
 
   /**

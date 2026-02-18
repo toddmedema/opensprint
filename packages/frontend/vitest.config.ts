@@ -19,9 +19,10 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     pool: "threads",
     poolOptions: {
-      threads: { maxThreads: 4 },
+      threads: { minThreads: 1, maxThreads: 2 },
     },
     testTimeout: 30_000,
+    teardownTimeout: 10_000,
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],

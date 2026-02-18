@@ -285,7 +285,7 @@ export class AgentClient {
       cwd: options.cwd || process.cwd(),
       timeout: 300_000,
       maxBuffer: 10 * 1024 * 1024,
-      killSignal: "SIGKILL",
+      killSignal: "SIGTERM",
     });
 
     try {
@@ -316,10 +316,20 @@ export class AgentClient {
     } catch (error: unknown) {
       if (child.pid && !child.killed) {
         try {
-          process.kill(child.pid, "SIGKILL");
+          process.kill(child.pid, "SIGTERM");
         } catch {
           /* already dead */
         }
+        // Escalate to SIGKILL if SIGTERM doesn't take effect
+        setTimeout(() => {
+          if (child.pid && !child.killed) {
+            try {
+              process.kill(child.pid, "SIGKILL");
+            } catch {
+              /* already dead */
+            }
+          }
+        }, 3000);
       }
       const err = error as { message: string; stderr?: string };
       const raw = err.stderr || err.message;

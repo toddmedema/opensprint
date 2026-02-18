@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { execSync } from "child_process";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
@@ -56,7 +57,7 @@ describe("Plan suggestPlans (POST /plans/suggest)", () => {
 
     repoPath = path.join(tempDir, "test-project");
     await fs.mkdir(repoPath, { recursive: true });
-    await fs.mkdir(path.join(repoPath, ".git"), { recursive: true });
+    execSync("git init", { cwd: repoPath });
 
     const project = await projectService.createProject({
       name: "Suggest Test",
@@ -78,11 +79,19 @@ describe("Plan suggestPlans (POST /plans/suggest)", () => {
       JSON.stringify({
         version: 1,
         sections: {
-          executive_summary: { content: "A todo app", version: 1, updated_at: new Date().toISOString() },
-          feature_list: { content: "Tasks, filters, sharing", version: 1, updated_at: new Date().toISOString() },
+          executive_summary: {
+            content: "A todo app",
+            version: 1,
+            updated_at: new Date().toISOString(),
+          },
+          feature_list: {
+            content: "Tasks, filters, sharing",
+            version: 1,
+            updated_at: new Date().toISOString(),
+          },
         },
       }),
-      "utf-8",
+      "utf-8"
     );
   });
 
@@ -91,54 +100,71 @@ describe("Plan suggestPlans (POST /plans/suggest)", () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  it("returns suggested plans from agent without creating plans or beads", { timeout: 10000 }, async () => {
-    const suggestedPlans = [
-      {
-        title: "Task Management",
-        content: "# Task Management\n\n## Overview\n\nCore task CRUD.\n\n## Acceptance Criteria\n\n- Create, read, update, delete tasks",
-        complexity: "medium",
-        dependsOnPlans: [] as string[],
-        mockups: [{ title: "Task List", content: "+----------+\n| Tasks    |\n+----------+" }],
-        tasks: [
-          { title: "Create task model", description: "Define task schema", priority: 0, dependsOn: [] as string[] },
-          { title: "Implement task API", description: "REST endpoints", priority: 1, dependsOn: ["Create task model"] },
-        ],
-      },
-    ];
+  it(
+    "returns suggested plans from agent without creating plans or beads",
+    { timeout: 10000 },
+    async () => {
+      const suggestedPlans = [
+        {
+          title: "Task Management",
+          content:
+            "# Task Management\n\n## Overview\n\nCore task CRUD.\n\n## Acceptance Criteria\n\n- Create, read, update, delete tasks",
+          complexity: "medium",
+          dependsOnPlans: [] as string[],
+          mockups: [{ title: "Task List", content: "+----------+\n| Tasks    |\n+----------+" }],
+          tasks: [
+            {
+              title: "Create task model",
+              description: "Define task schema",
+              priority: 0,
+              dependsOn: [] as string[],
+            },
+            {
+              title: "Implement task API",
+              description: "REST endpoints",
+              priority: 1,
+              dependsOn: ["Create task model"],
+            },
+          ],
+        },
+      ];
 
-    mockInvoke.mockResolvedValueOnce({
-      content: JSON.stringify({ plans: suggestedPlans }),
-    });
+      mockInvoke.mockResolvedValueOnce({
+        content: JSON.stringify({ plans: suggestedPlans }),
+      });
 
-    const result = await planService.suggestPlans(projectId);
+      const result = await planService.suggestPlans(projectId);
 
-    expect(result.plans).toHaveLength(1);
-    expect(result.plans[0].title).toBe("Task Management");
-    expect(result.plans[0].content).toContain("# Task Management");
-    expect(result.plans[0].complexity).toBe("medium");
-    expect(result.plans[0].tasks).toHaveLength(2);
-    expect(result.plans[0].tasks![0].title).toBe("Create task model");
-    expect(result.plans[0].tasks![1].dependsOn).toEqual(["Create task model"]);
+      expect(result.plans).toHaveLength(1);
+      expect(result.plans[0].title).toBe("Task Management");
+      expect(result.plans[0].content).toContain("# Task Management");
+      expect(result.plans[0].complexity).toBe("medium");
+      expect(result.plans[0].tasks).toHaveLength(2);
+      expect(result.plans[0].tasks![0].title).toBe("Create task model");
+      expect(result.plans[0].tasks![1].dependsOn).toEqual(["Create task model"]);
 
-    expect(mockInvoke).toHaveBeenCalledTimes(1);
-    expect(mockRegister).toHaveBeenCalledWith(
-      expect.stringMatching(/^plan-suggest-.*-/),
-      projectId,
-      "plan",
-      "planner",
-      "Feature decomposition (suggest)",
-      expect.any(String),
-    );
-    expect(mockUnregister).toHaveBeenCalledTimes(1);
+      expect(mockInvoke).toHaveBeenCalledTimes(1);
+      expect(mockRegister).toHaveBeenCalledWith(
+        expect.stringMatching(/^plan-suggest-.*-/),
+        projectId,
+        "plan",
+        "planner",
+        "Feature decomposition (suggest)",
+        expect.any(String)
+      );
+      expect(mockUnregister).toHaveBeenCalledTimes(1);
 
-    const plansDir = path.join(repoPath, ".opensprint", "plans");
-    const files = await fs.readdir(plansDir).catch(() => []);
-    expect(files).toHaveLength(0);
+      const plansDir = path.join(repoPath, ".opensprint", "plans");
+      const files = await fs.readdir(plansDir).catch(() => []);
+      expect(files).toHaveLength(0);
 
-    const allIssues = await beads.listAll(repoPath);
-    const epics = allIssues.filter((i: { issue_type?: string; type?: string }) => (i.issue_type ?? i.type) === "epic");
-    expect(epics).toHaveLength(0);
-  });
+      const allIssues = await beads.listAll(repoPath);
+      const epics = allIssues.filter(
+        (i: { issue_type?: string; type?: string }) => (i.issue_type ?? i.type) === "epic"
+      );
+      expect(epics).toHaveLength(0);
+    }
+  );
 
   it("parses JSON from markdown code block", { timeout: 10000 }, async () => {
     mockInvoke.mockResolvedValueOnce({
@@ -209,28 +235,32 @@ describe("Plan suggestPlans (POST /plans/suggest)", () => {
     expect(mockUnregister).toHaveBeenCalledTimes(1);
   });
 
-  it("passes Plan template structure (PRD §7.2.3) in system prompt to agent", { timeout: 10000 }, async () => {
-    mockInvoke.mockResolvedValueOnce({
-      content: JSON.stringify({
-        plans: [
-          {
-            title: "Test",
-            content: "# Test\n\n## Overview\n\nText.",
-            complexity: "low",
-            mockups: [{ title: "M", content: "x" }],
-            tasks: [],
-          },
-        ],
-      }),
-    });
+  it(
+    "passes Plan template structure (PRD §7.2.3) in system prompt to agent",
+    { timeout: 10000 },
+    async () => {
+      mockInvoke.mockResolvedValueOnce({
+        content: JSON.stringify({
+          plans: [
+            {
+              title: "Test",
+              content: "# Test\n\n## Overview\n\nText.",
+              complexity: "low",
+              mockups: [{ title: "M", content: "x" }],
+              tasks: [],
+            },
+          ],
+        }),
+      });
 
-    await planService.suggestPlans(projectId);
+      await planService.suggestPlans(projectId);
 
-    const invokeCall = mockInvoke.mock.calls[0][0];
-    const systemPrompt = invokeCall.systemPrompt as string;
-    for (const section of PLAN_MARKDOWN_SECTIONS) {
-      expect(systemPrompt).toContain(`## ${section}`);
+      const invokeCall = mockInvoke.mock.calls[0][0];
+      const systemPrompt = invokeCall.systemPrompt as string;
+      for (const section of PLAN_MARKDOWN_SECTIONS) {
+        expect(systemPrompt).toContain(`## ${section}`);
+      }
+      expect(systemPrompt).toContain("PRD §7.2.3");
     }
-    expect(systemPrompt).toContain("PRD §7.2.3");
-  });
+  );
 });

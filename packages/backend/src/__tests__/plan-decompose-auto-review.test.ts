@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { execSync } from "child_process";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
@@ -55,7 +56,7 @@ describe("Plan decompose with auto-review", () => {
 
     repoPath = path.join(tempDir, "test-project");
     await fs.mkdir(repoPath, { recursive: true });
-    await fs.mkdir(path.join(repoPath, ".git"), { recursive: true });
+    execSync("git init", { cwd: repoPath });
 
     const project = await projectService.createProject({
       name: "Auto-Review Test",

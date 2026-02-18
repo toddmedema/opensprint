@@ -50,16 +50,18 @@ deliverRouter.post("/", async (req: Request<ProjectParams>, res, next) => {
   try {
     const { projectId } = req.params;
 
-    const existingDeployId = activeDeployments.get(projectId);
-    if (existingDeployId) {
+    if (activeDeployments.has(projectId)) {
       res.status(409).json({
         error: {
           code: "DEPLOY_ALREADY_RUNNING",
-          message: `Deployment ${existingDeployId} is already running for this project`,
+          message: `Deployment ${activeDeployments.get(projectId)} is already running for this project`,
         },
       });
       return;
     }
+
+    // Reserve the slot synchronously before any awaits to prevent concurrent deploys
+    activeDeployments.set(projectId, "pending");
 
     const bodyTarget = (req.body as { target?: string } | undefined)?.target;
     const project = await projectService.getProject(projectId);

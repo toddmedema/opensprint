@@ -1,8 +1,9 @@
-import { exec } from "child_process";
-import { promisify } from "util";
+import { spawn } from "child_process";
 import type { TestResults, TestResultDetail } from "@opensprint/shared";
 
-const execAsync = promisify(exec);
+const TEST_TIMEOUT_MS = 300_000;
+const MAX_BUFFER_BYTES = 10 * 1024 * 1024;
+const SIGKILL_GRACE_MS = 3_000;
 
 export interface ScopedTestResult extends TestResults {
   /** Raw stdout+stderr output from the test run */
@@ -57,95 +58,105 @@ export class TestRunner {
       };
     }
 
-    try {
-      const { stdout, stderr } = await execAsync(command, {
-        cwd: repoPath,
-        timeout: 300000,
-        maxBuffer: 10 * 1024 * 1024,
-        env: { ...process.env, CI: "true", FORCE_COLOR: "0" },
-      });
+    const { stdout, stderr, exitCode } = await this.execWithProcessGroup(command, repoPath);
+    const rawOutput = stdout + "\n" + stderr;
 
-      const rawOutput = stdout + "\n" + stderr;
+    if (exitCode === 0) {
       const parsed = this.parseTestOutput(rawOutput, command);
       return { ...parsed, rawOutput };
-    } catch (error: unknown) {
-      const err = error as { stdout?: string; stderr?: string; code?: number };
-      const rawOutput = (err.stdout || "") + "\n" + (err.stderr || "");
-      const results = this.parseTestOutput(rawOutput, command);
-
-      if (results.total === 0) {
-        return {
-          passed: 0,
-          failed: 1,
-          skipped: 0,
-          total: 1,
-          details: [
-            {
-              name: "Test execution",
-              status: "failed",
-              duration: 0,
-              error: err.stderr || "Test command failed with no output",
-            },
-          ],
-          rawOutput,
-        };
-      }
-
-      return { ...results, rawOutput };
     }
+
+    const results = this.parseTestOutput(rawOutput, command);
+    if (results.total === 0) {
+      return {
+        passed: 0,
+        failed: 1,
+        skipped: 0,
+        total: 1,
+        details: [
+          {
+            name: "Test execution",
+            status: "failed",
+            duration: 0,
+            error: stderr || "Test command failed with no output",
+          },
+        ],
+        rawOutput,
+      };
+    }
+
+    return { ...results, rawOutput };
   }
 
   /**
    * Run tests for a project and return structured results.
    */
   async runTests(repoPath: string, testCommand?: string): Promise<TestResults> {
-    const command = testCommand || (await this.detectTestCommand(repoPath));
+    const result = await this.runTestsWithOutput(repoPath, testCommand);
+    const { rawOutput: _, ...testResults } = result;
+    return testResults;
+  }
 
-    if (!command) {
-      return {
-        passed: 0,
-        failed: 0,
-        skipped: 0,
-        total: 0,
-        details: [],
-      };
-    }
+  /**
+   * Run a shell command in its own process group so the entire tree
+   * (including vitest/jest workers) can be killed on timeout or cancellation.
+   */
+  private execWithProcessGroup(
+    command: string,
+    cwd: string
+  ): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
+    return new Promise((resolve) => {
+      let stdout = "";
+      let stderr = "";
+      let settled = false;
 
-    try {
-      const { stdout, stderr } = await execAsync(command, {
-        cwd: repoPath,
-        timeout: 300000, // 5 min timeout for tests
-        maxBuffer: 10 * 1024 * 1024,
+      const child = spawn("sh", ["-c", command], {
+        cwd,
+        detached: true,
+        stdio: ["ignore", "pipe", "pipe"],
         env: { ...process.env, CI: "true", FORCE_COLOR: "0" },
       });
 
-      return this.parseTestOutput(stdout + "\n" + stderr, command);
-    } catch (error: unknown) {
-      const err = error as { stdout?: string; stderr?: string; code?: number };
-      // Tests might have failed (non-zero exit) but still produced output
-      const output = (err.stdout || "") + "\n" + (err.stderr || "");
-      const results = this.parseTestOutput(output, command);
+      const killProcessGroup = () => {
+        if (!child.pid) return;
+        try {
+          process.kill(-child.pid, "SIGTERM");
+        } catch {
+          /* already gone */
+        }
+        setTimeout(() => {
+          try {
+            process.kill(-child.pid!, "SIGKILL");
+          } catch {
+            /* already gone */
+          }
+        }, SIGKILL_GRACE_MS);
+      };
 
-      if (results.total === 0) {
-        // No parseable output — treat as complete failure
-        return {
-          passed: 0,
-          failed: 1,
-          skipped: 0,
-          total: 1,
-          details: [
-            {
-              name: "Test execution",
-              status: "failed",
-              duration: 0,
-              error: err.stderr || "Test command failed with no output",
-            },
-          ],
-        };
-      }
+      const timeout = setTimeout(() => {
+        killProcessGroup();
+      }, TEST_TIMEOUT_MS);
 
-      return results;
-    }
+      child.stdout.on("data", (data: Buffer) => {
+        if (stdout.length < MAX_BUFFER_BYTES) stdout += data.toString();
+      });
+
+      child.stderr.on("data", (data: Buffer) => {
+        if (stderr.length < MAX_BUFFER_BYTES) stderr += data.toString();
+      });
+
+      const finish = (exitCode: number | null) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve({ stdout, stderr, exitCode });
+      };
+
+      child.on("close", (code) => finish(code));
+      child.on("error", () => finish(1));
+
+      child.unref();
+    });
   }
 
   /**

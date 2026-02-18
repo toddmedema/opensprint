@@ -14,6 +14,7 @@ import { ProjectService } from "./services/project.service.js";
 import { BeadsService } from "./services/beads.service.js";
 import { FeedbackService } from "./services/feedback.service.js";
 import { orchestratorService } from "./services/orchestrator.service.js";
+import { startProcessReaper, stopProcessReaper } from "./services/process-reaper.js";
 
 const port = parseInt(process.env.PORT || String(DEFAULT_API_PORT), 10);
 
@@ -157,6 +158,7 @@ async function initAlwaysOnOrchestrator(): Promise<void> {
 // Graceful shutdown
 const shutdown = () => {
   console.log("\nShutting down...");
+  stopProcessReaper();
   orchestratorService.stopAll();
   removePidFile();
   closeWebSocket();
@@ -187,6 +189,7 @@ server.on("error", (err: NodeJS.ErrnoException) => {
 server.listen(port, () => {
   console.log(`OpenSprint backend listening on http://localhost:${port}`);
   console.log(`WebSocket server ready on ws://localhost:${port}/ws`);
+  startProcessReaper();
   initAlwaysOnOrchestrator().catch((err) => {
     console.error("[orchestrator] Always-on init failed:", err);
   });
