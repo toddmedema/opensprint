@@ -127,6 +127,16 @@ describe("PlanDetailContent", () => {
     expect(titleInput).toHaveValue("Plan Phase Feature Decomposition");
   });
 
+  it("uses formatted planId as fallback when content starts with ## (section header, not plan title)", () => {
+    const planSectionFirst: Plan = {
+      ...mockPlan,
+      content: "## Overview\n\nBody content without # plan title.",
+    };
+    render(<PlanDetailContent plan={planSectionFirst} onContentSave={onContentSave} />);
+    const titleInput = screen.getByRole("textbox", { name: /title/i });
+    expect(titleInput).toHaveValue("Plan Phase Feature Decomposition");
+  });
+
   it("saves with formatted planId when user clears title and blurs", async () => {
     const user = userEvent.setup();
     render(<PlanDetailContent plan={mockPlan} onContentSave={onContentSave} />);
