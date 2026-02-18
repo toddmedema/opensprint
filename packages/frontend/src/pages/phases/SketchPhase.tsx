@@ -357,6 +357,10 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
 
   const handleDiscuss = () => {
     if (!selection) return;
+    // Auto-open sidebar if collapsed so user sees the Discuss flow
+    if (discussCollapsed) {
+      setDiscussCollapsed(false);
+    }
     setSelectionContext({
       text: selection.text,
       section: selection.sectionKey,
