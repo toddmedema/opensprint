@@ -457,6 +457,45 @@ describe("SketchPhase with specSlice", () => {
         });
       });
 
+      it("opens collapsed sidebar when Discuss is clicked with sidebar closed", async () => {
+        const user = userEvent.setup();
+        const STORAGE_KEY = "opensprint-sketch-chat-sidebar-collapsed";
+        const localStorageMock: Record<string, string> = { [STORAGE_KEY]: "true" };
+        vi.spyOn(Storage.prototype, "getItem").mockImplementation((key: string) => {
+          return localStorageMock[key] ?? null;
+        });
+        vi.spyOn(Storage.prototype, "setItem").mockImplementation((key: string, value: string) => {
+          localStorageMock[key] = value;
+        });
+
+        const store = createStore({
+          spec: { prdContent: { executive_summary: "Selected text" } },
+        });
+        renderSketchPhase(store);
+
+        // Sidebar starts collapsed
+        expect(screen.getByRole("button", { name: "Expand Discuss sidebar" })).toBeInTheDocument();
+        expect(screen.queryByText(/Discussing:/i)).not.toBeInTheDocument();
+
+        showDiscussPopover("executive_summary");
+
+        await waitFor(() => {
+          expect(screen.getByTestId("discuss-popover")).toBeInTheDocument();
+        });
+
+        const discussBtn = screen.getByRole("button", { name: /Discuss/i });
+        await user.click(discussBtn);
+
+        await waitFor(() => {
+          // Sidebar opens and shows Discussing context
+          expect(screen.getByRole("button", { name: "Collapse Discuss sidebar" })).toBeInTheDocument();
+          expect(screen.getByText(/Discussing: Executive Summary/i)).toBeInTheDocument();
+          expect(screen.getByPlaceholderText(/Comment on this selection/)).toBeInTheDocument();
+        });
+
+        vi.restoreAllMocks();
+      });
+
       it("replaces popover when user selects new text elsewhere in PRD", async () => {
         const store = createStore({
           spec: {
