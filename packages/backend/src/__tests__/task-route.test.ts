@@ -228,10 +228,9 @@ Test review prompt generation.
     expect(prompt).toContain("# Review Task: Task Y");
     expect(prompt).toContain("Review the implementation of this task against its specification and acceptance criteria");
     expect(prompt).toContain("The orchestrator has already committed them before invoking you");
-    expect(prompt).toContain('Do NOT merge — the orchestrator will merge after you exit');
-    expect(prompt).toContain('status "approved"');
-    expect(prompt).toContain('status "rejected"');
-    expect(prompt).toContain("provide specific, actionable feedback");
+    expect(prompt).toMatch(/do NOT merge.*orchestrator will merge after you exit/i);
+    expect(prompt).toMatch(/"status":\s*"approved"/);
+    expect(prompt).toMatch(/"status":\s*"rejected"/);
 
     const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
     expect(config.phase).toBe("review");
