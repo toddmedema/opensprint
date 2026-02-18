@@ -7,7 +7,7 @@ import { createApp } from "../app.js";
 import { ProjectService } from "../services/project.service.js";
 import { API_PREFIX, DEFAULT_HIL_CONFIG } from "@opensprint/shared";
 
-describe("Deploy API", () => {
+describe("Deliver API (phase routes for deployment records)", () => {
   let app: ReturnType<typeof createApp>;
   let projectService: ProjectService;
   let tempDir: string;
@@ -49,10 +49,10 @@ describe("Deploy API", () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  describe("GET /projects/:projectId/deploy/status", () => {
-    it("should return deploy status for existing project", async () => {
+  describe("GET /projects/:projectId/deliver/status", () => {
+    it("should return deliver status for existing project", async () => {
       const res = await request(app).get(
-        `${API_PREFIX}/projects/${projectId}/deploy/status`,
+        `${API_PREFIX}/projects/${projectId}/deliver/status`,
       );
 
       expect(res.status).toBe(200);
@@ -65,7 +65,7 @@ describe("Deploy API", () => {
 
     it("should return 404 for non-existent project", async () => {
       const res = await request(app).get(
-        `${API_PREFIX}/projects/nonexistent-id/deploy/status`,
+        `${API_PREFIX}/projects/nonexistent-id/deliver/status`,
       );
 
       expect(res.status).toBe(404);
@@ -74,10 +74,10 @@ describe("Deploy API", () => {
     });
   });
 
-  describe("GET /projects/:projectId/deploy/history", () => {
+  describe("GET /projects/:projectId/deliver/history", () => {
     it("should return empty history for new project", async () => {
       const res = await request(app).get(
-        `${API_PREFIX}/projects/${projectId}/deploy/history`,
+        `${API_PREFIX}/projects/${projectId}/deliver/history`,
       );
 
       expect(res.status).toBe(200);
@@ -86,7 +86,7 @@ describe("Deploy API", () => {
 
     it("should return 404 for non-existent project", async () => {
       const res = await request(app).get(
-        `${API_PREFIX}/projects/nonexistent-id/deploy/history`,
+        `${API_PREFIX}/projects/nonexistent-id/deliver/history`,
       );
 
       expect(res.status).toBe(404);
@@ -94,10 +94,10 @@ describe("Deploy API", () => {
     });
   });
 
-  describe("POST /projects/:projectId/deploy", () => {
+  describe("POST /projects/:projectId/deliver", () => {
     it("should accept deploy and return deployId", async () => {
       const res = await request(app)
-        .post(`${API_PREFIX}/projects/${projectId}/deploy`);
+        .post(`${API_PREFIX}/projects/${projectId}/deliver`);
 
       expect(res.status).toBe(202);
       expect(res.body.data).toBeDefined();
@@ -107,17 +107,17 @@ describe("Deploy API", () => {
 
     it("should return 404 for non-existent project", async () => {
       const res = await request(app)
-        .post(`${API_PREFIX}/projects/nonexistent-id/deploy`);
+        .post(`${API_PREFIX}/projects/nonexistent-id/deliver`);
 
       expect(res.status).toBe(404);
       expect(res.body.error).toBeDefined();
     });
   });
 
-  describe("PUT /projects/:projectId/deploy/settings", () => {
+  describe("PUT /projects/:projectId/deliver/settings", () => {
     it("should update deployment settings", async () => {
       const res = await request(app)
-        .put(`${API_PREFIX}/projects/${projectId}/deploy/settings`)
+        .put(`${API_PREFIX}/projects/${projectId}/deliver/settings`)
         .send({ mode: "custom", customCommand: "npm run deploy" });
 
       expect(res.status).toBe(200);
@@ -130,7 +130,7 @@ describe("Deploy API", () => {
 
     it("should accept and persist autoDeployOnEpicCompletion, autoDeployOnEvalResolution, and autoResolveFeedbackOnTaskCompletion (PRD §7.5.3, §10.2)", async () => {
       const res = await request(app)
-        .put(`${API_PREFIX}/projects/${projectId}/deploy/settings`)
+        .put(`${API_PREFIX}/projects/${projectId}/deliver/settings`)
         .send({
           mode: "custom",
           autoDeployOnEpicCompletion: true,
@@ -151,7 +151,7 @@ describe("Deploy API", () => {
 
     it("should accept and persist targets and envVars (PRD §7.5.2/7.5.4)", async () => {
       const res = await request(app)
-        .put(`${API_PREFIX}/projects/${projectId}/deploy/settings`)
+        .put(`${API_PREFIX}/projects/${projectId}/deliver/settings`)
         .send({
           mode: "custom",
           targets: [
@@ -186,15 +186,15 @@ describe("Deploy API", () => {
     });
   });
 
-  describe("POST /projects/:projectId/deploy - record fields", () => {
+  describe("POST /projects/:projectId/deliver - record fields", () => {
     it("should create deploy record with commitHash, target, mode from settings", async () => {
-      await request(app).post(`${API_PREFIX}/projects/${projectId}/deploy`);
+      await request(app).post(`${API_PREFIX}/projects/${projectId}/deliver`);
 
       // Wait for deploy to complete (echo is fast)
       await new Promise((r) => setTimeout(r, 500));
 
       const historyRes = await request(app).get(
-        `${API_PREFIX}/projects/${projectId}/deploy/history?limit=1`,
+        `${API_PREFIX}/projects/${projectId}/deliver/history?limit=1`,
       );
       expect(historyRes.status).toBe(200);
       expect(historyRes.body.data.length).toBeGreaterThan(0);
@@ -208,7 +208,7 @@ describe("Deploy API", () => {
 
     it("should deploy to specified target when body.target provided (PRD §7.5.4)", async () => {
       await request(app)
-        .put(`${API_PREFIX}/projects/${projectId}/deploy/settings`)
+        .put(`${API_PREFIX}/projects/${projectId}/deliver/settings`)
         .send({
           mode: "custom",
           targets: [
@@ -218,7 +218,7 @@ describe("Deploy API", () => {
         });
 
       const res = await request(app)
-        .post(`${API_PREFIX}/projects/${projectId}/deploy`)
+        .post(`${API_PREFIX}/projects/${projectId}/deliver`)
         .send({ target: "production" });
 
       expect(res.status).toBe(202);
@@ -227,29 +227,29 @@ describe("Deploy API", () => {
       await new Promise((r) => setTimeout(r, 500));
 
       const historyRes = await request(app).get(
-        `${API_PREFIX}/projects/${projectId}/deploy/history?limit=1`,
+        `${API_PREFIX}/projects/${projectId}/deliver/history?limit=1`,
       );
       const record = historyRes.body.data[0];
       expect(record.target).toBe("production");
     });
   });
 
-  describe("POST /projects/:projectId/deploy/:deployId/rollback", () => {
+  describe("POST /projects/:projectId/deliver/:deployId/rollback", () => {
     it("should mark original deploy as rolled_back on success", async () => {
-      await request(app).post(`${API_PREFIX}/projects/${projectId}/deploy`);
+      await request(app).post(`${API_PREFIX}/projects/${projectId}/deliver`);
       await new Promise((r) => setTimeout(r, 500));
 
-      await request(app).post(`${API_PREFIX}/projects/${projectId}/deploy`);
+      await request(app).post(`${API_PREFIX}/projects/${projectId}/deliver`);
       await new Promise((r) => setTimeout(r, 500));
 
       const historyBefore = await request(app).get(
-        `${API_PREFIX}/projects/${projectId}/deploy/history?limit=5`,
+        `${API_PREFIX}/projects/${projectId}/deliver/history?limit=5`,
       );
       const deployToRestore = historyBefore.body.data[1];
       const currentDeploy = historyBefore.body.data[0];
 
       const rollbackRes = await request(app).post(
-        `${API_PREFIX}/projects/${projectId}/deploy/${deployToRestore.id}/rollback`,
+        `${API_PREFIX}/projects/${projectId}/deliver/${deployToRestore.id}/rollback`,
       );
       expect(rollbackRes.status).toBe(202);
       const rollbackDeployId = rollbackRes.body.data.deployId;
@@ -257,7 +257,7 @@ describe("Deploy API", () => {
       await new Promise((r) => setTimeout(r, 500));
 
       const historyRes = await request(app).get(
-        `${API_PREFIX}/projects/${projectId}/deploy/history?limit=5`,
+        `${API_PREFIX}/projects/${projectId}/deliver/history?limit=5`,
       );
       const records = historyRes.body.data;
 

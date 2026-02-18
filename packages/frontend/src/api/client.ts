@@ -196,27 +196,27 @@ export const api = {
     status: (projectId: string) => request<OrchestratorStatus>(`/projects/${projectId}/execute/status`),
   },
 
-  // ─── Deploy ───
-  deploy: {
+  // ─── Deliver (phase API for deployment records) ───
+  deliver: {
     deploy: (projectId: string, target?: string) =>
-      request<{ deployId: string }>(`/projects/${projectId}/deploy`, {
+      request<{ deployId: string }>(`/projects/${projectId}/deliver`, {
         method: "POST",
         body: target != null ? JSON.stringify({ target }) : undefined,
       }),
     status: (projectId: string) =>
       request<{ activeDeployId: string | null; currentDeploy: DeploymentRecord | null }>(
-        `/projects/${projectId}/deploy/status`,
+        `/projects/${projectId}/deliver/status`,
       ),
     history: (projectId: string, limit?: number) =>
       request<DeploymentRecord[]>(
-        `/projects/${projectId}/deploy/history${limit ? `?limit=${limit}` : ""}`,
+        `/projects/${projectId}/deliver/history${limit ? `?limit=${limit}` : ""}`,
       ),
     rollback: (projectId: string, deployId: string) =>
-      request<{ deployId: string }>(`/projects/${projectId}/deploy/${deployId}/rollback`, {
+      request<{ deployId: string }>(`/projects/${projectId}/deliver/${deployId}/rollback`, {
         method: "POST",
       }),
     updateSettings: (projectId: string, deployment: Partial<DeploymentConfig>) =>
-      request<ProjectSettings>(`/projects/${projectId}/deploy/settings`, {
+      request<ProjectSettings>(`/projects/${projectId}/deliver/settings`, {
         method: "PUT",
         body: JSON.stringify(deployment),
       }),

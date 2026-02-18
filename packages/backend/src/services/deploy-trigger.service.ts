@@ -3,7 +3,7 @@ import { getDefaultDeploymentTarget } from "@opensprint/shared";
 import { ProjectService } from "./project.service.js";
 import { deployStorageService } from "./deploy-storage.service.js";
 import { broadcastToProject } from "../websocket/index.js";
-import { runDeployAsync } from "../routes/deploy.js";
+import { runDeployAsync } from "../routes/deliver.js";
 
 const projectService = new ProjectService();
 

@@ -40,21 +40,21 @@ const MAX_LIVE_LOG = 10000;
 export const fetchDeployStatus = createAsyncThunk(
   "deploy/fetchStatus",
   async (projectId: string) => {
-    return api.deploy.status(projectId);
+    return api.deliver.status(projectId);
   }
 );
 
 export const fetchDeployHistory = createAsyncThunk(
   "deploy/fetchHistory",
   async (projectId: string) => {
-    return api.deploy.history(projectId);
+    return api.deliver.history(projectId);
   }
 );
 
 export const triggerDeploy = createAsyncThunk(
   "deploy/trigger",
   async ({ projectId, target }: { projectId: string; target?: string }, { dispatch }) => {
-    const { deployId } = await api.deploy.deploy(projectId, target);
+    const { deployId } = await api.deliver.deploy(projectId, target);
     dispatch(fetchDeployStatus(projectId));
     dispatch(fetchDeployHistory(projectId));
     return { deployId };
@@ -64,7 +64,7 @@ export const triggerDeploy = createAsyncThunk(
 export const rollbackDeploy = createAsyncThunk(
   "deploy/rollback",
   async ({ projectId, deployId }: { projectId: string; deployId: string }, { dispatch }) => {
-    const result = await api.deploy.rollback(projectId, deployId);
+    const result = await api.deliver.rollback(projectId, deployId);
     dispatch(fetchDeployStatus(projectId));
     dispatch(fetchDeployHistory(projectId));
     return result;
@@ -80,7 +80,7 @@ export const updateDeploySettings = createAsyncThunk(
     projectId: string;
     deployment: Partial<DeploymentConfig>;
   }) => {
-    return api.deploy.updateSettings(projectId, deployment);
+    return api.deliver.updateSettings(projectId, deployment);
   }
 );
 
