@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Task } from "@opensprint/shared";
-import { TaskStatusBadge, COLUMN_LABELS } from "./TaskStatusBadge";
+import { TaskStatusBadge } from "./TaskStatusBadge";
+import { formatUptime } from "../../lib/formatting";
 
 const VISIBLE_SUBTASKS = 3;
 
@@ -10,9 +11,18 @@ export interface BuildEpicCardProps {
   tasks: Task[];
   onTaskSelect: (taskId: string) => void;
   onUnblock?: (taskId: string) => void;
+  /** Map of task ID to startedAt for active tasks (elapsed time display) */
+  taskIdToStartedAt?: Record<string, string>;
 }
 
-export function BuildEpicCard({ epicId, epicTitle, tasks, onTaskSelect, onUnblock }: BuildEpicCardProps) {
+export function BuildEpicCard({
+  epicId,
+  epicTitle,
+  tasks,
+  onTaskSelect,
+  onUnblock,
+  taskIdToStartedAt = {},
+}: BuildEpicCardProps) {
   const [expanded, setExpanded] = useState(false);
   const doneCount = tasks.filter((t) => t.kanbanColumn === "done").length;
   const totalCount = tasks.length;
@@ -55,7 +65,10 @@ export function BuildEpicCard({ epicId, epicTitle, tasks, onTaskSelect, onUnbloc
       {tasks.length > 0 && (
         <div className="border-t border-gray-100">
           <ul className="divide-y divide-gray-50">
-            {visibleTasks.map((task) => (
+            {visibleTasks.map((task) => {
+              const startedAt = taskIdToStartedAt[task.id];
+              const elapsed = startedAt ? formatUptime(startedAt) : null;
+              return (
               <li key={task.id} data-testid={task.kanbanColumn === "blocked" ? "task-blocked" : undefined}>
                 <div className="flex items-center gap-2 px-4 py-2.5 group">
                   <button
@@ -77,8 +90,12 @@ export function BuildEpicCard({ epicId, epicTitle, tasks, onTaskSelect, onUnbloc
                     <span className="flex-1 min-w-0 truncate font-medium text-gray-900" title={task.title}>
                       {task.title}
                     </span>
-                    <TaskStatusBadge column={task.kanbanColumn} size="xs" title={COLUMN_LABELS[task.kanbanColumn]} />
-                    <span className="text-xs text-gray-500 shrink-0">{COLUMN_LABELS[task.kanbanColumn]}</span>
+                    <TaskStatusBadge column={task.kanbanColumn} size="xs" />
+                    {(task.assignee || elapsed) && (
+                      <span className="text-xs text-gray-500 shrink-0 tabular-nums">
+                        {[task.assignee, elapsed].filter(Boolean).join(" · ")}
+                      </span>
+                    )}
                   </button>
                   {task.kanbanColumn === "blocked" && onUnblock && (
                     <button
@@ -94,7 +111,8 @@ export function BuildEpicCard({ epicId, epicTitle, tasks, onTaskSelect, onUnbloc
                   )}
                 </div>
               </li>
-            ))}
+            );
+            })}
           </ul>
           {hasMore && !expanded && (
             <button

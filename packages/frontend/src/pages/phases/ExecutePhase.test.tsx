@@ -27,6 +27,9 @@ vi.mock("../../api/client", () => ({
     execute: {
       status: vi.fn().mockResolvedValue({}),
     },
+    agents: {
+      active: vi.fn().mockResolvedValue([]),
+    },
     feedback: {
       get: (...args: unknown[]) => mockFeedbackGet(...args),
     },

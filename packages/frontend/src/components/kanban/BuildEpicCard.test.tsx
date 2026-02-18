@@ -68,9 +68,9 @@ describe("BuildEpicCard", () => {
     expect(screen.getByText("Task A")).toBeInTheDocument();
     expect(screen.getByText("Task B")).toBeInTheDocument();
     expect(screen.getByText("Task C")).toBeInTheDocument();
-    expect(screen.getByText("Done")).toBeInTheDocument();
-    expect(screen.getByText("In Progress")).toBeInTheDocument();
-    expect(screen.getByText("Backlog")).toBeInTheDocument();
+    expect(screen.getByTitle("Done")).toBeInTheDocument();
+    expect(screen.getByTitle("In Progress")).toBeInTheDocument();
+    expect(screen.getByTitle("Backlog")).toBeInTheDocument();
   });
 
   it("calls onTaskSelect when a task is clicked", async () => {
@@ -161,7 +161,7 @@ describe("BuildEpicCard", () => {
       />,
     );
 
-    expect(screen.getByText("Blocked")).toBeInTheDocument();
+    expect(screen.getByTitle("Blocked")).toBeInTheDocument();
     expect(screen.getByTestId("task-blocked")).toBeInTheDocument();
     const unblockBtn = screen.getByRole("button", { name: "Unblock" });
     expect(unblockBtn).toBeInTheDocument();
@@ -184,6 +184,42 @@ describe("BuildEpicCard", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Unblock" })).not.toBeInTheDocument();
+  });
+
+  it("shows assignee when task has assignee", () => {
+    const tasks = [
+      createMockTask({ id: "epic-1.1", title: "Task A", assignee: "agent-1", kanbanColumn: "in_progress" }),
+    ];
+    render(
+      <BuildEpicCard
+        epicId="epic-1"
+        epicTitle="Auth"
+        tasks={tasks}
+        onTaskSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("agent-1")).toBeInTheDocument();
+  });
+
+  it("shows elapsed time when taskIdToStartedAt is provided for active task", () => {
+    const mockNow = new Date("2026-02-17T12:02:35.000Z");
+    vi.setSystemTime(mockNow);
+    const tasks = [
+      createMockTask({ id: "epic-1.1", title: "Task A", kanbanColumn: "in_progress" }),
+    ];
+    render(
+      <BuildEpicCard
+        epicId="epic-1"
+        epicTitle="Auth"
+        tasks={tasks}
+        onTaskSelect={vi.fn()}
+        taskIdToStartedAt={{ "epic-1.1": "2026-02-17T12:02:20.000Z" }}
+      />,
+    );
+
+    expect(screen.getByText(/15s/)).toBeInTheDocument();
+    vi.useRealTimers();
   });
 
   it("handles epic with no tasks", () => {

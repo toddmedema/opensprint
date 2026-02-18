@@ -211,8 +211,34 @@ function SourceFeedbackSection({
 
 export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps) {
   const dispatch = useAppDispatch();
+  const [taskIdToStartedAt, setTaskIdToStartedAt] = useState<Record<string, string>>({});
 
   const tasks = useAppSelector((s) => s.execute.tasks);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const agents = await api.agents.active(projectId);
+        if (cancelled) return;
+        const map: Record<string, string> = {};
+        for (const a of agents) {
+          if (a.phase === "coding" || a.phase === "review") {
+            map[a.id] = a.startedAt;
+          }
+        }
+        setTaskIdToStartedAt(map);
+      } catch {
+        if (!cancelled) setTaskIdToStartedAt({});
+      }
+    };
+    load();
+    const interval = setInterval(load, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [projectId]);
   const plans = useAppSelector((s) => s.plan.plans);
   const awaitingApproval = useAppSelector((s) => s.execute.awaitingApproval);
   const selectedTask = useAppSelector((s) => s.execute.selectedTaskId);
@@ -371,6 +397,7 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
                   tasks={lane.tasks}
                   onTaskSelect={(taskId) => dispatch(setSelectedTaskId(taskId))}
                   onUnblock={(taskId) => dispatch(unblockTask({ projectId, taskId }))}
+                  taskIdToStartedAt={taskIdToStartedAt}
                 />
               ))}
             </div>
