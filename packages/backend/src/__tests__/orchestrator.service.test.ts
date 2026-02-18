@@ -388,6 +388,12 @@ describe("OrchestratorService", () => {
         (c: [string, { type?: string }]) => c[1]?.type === "agent.started"
       );
       expect(agentStartedCalls.length).toBeLessThanOrEqual(1);
+      // agent.started includes startedAt so frontend can compute elapsed time without separate fetch
+      if (agentStartedCalls.length > 0) {
+        const payload = agentStartedCalls[0][1] as { type: string; taskId: string; startedAt?: string };
+        expect(payload.startedAt).toBeDefined();
+        expect(typeof payload.startedAt).toBe("string");
+      }
     });
   });
 

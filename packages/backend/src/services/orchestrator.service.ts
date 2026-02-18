@@ -846,12 +846,7 @@ export class OrchestratorService {
         queueDepth: readyTasks.length - 1,
       });
 
-      broadcastToProject(projectId, {
-        type: "agent.started",
-        taskId: task.id,
-        phase: "coding",
-        branchName: `opensprint/${task.id}`,
-      });
+      // agent.started (with startedAt) is broadcast from executeCodingPhase after agent spawn
 
       // 4. Verify main WT is on main (assertion, not corrective checkout)
       await this.branchManager.ensureOnMain(repoPath);
@@ -979,6 +974,14 @@ export class OrchestratorService {
         state.startedAt,
         branchName
       );
+
+      broadcastToProject(projectId, {
+        type: "agent.started",
+        taskId: task.id,
+        phase: "coding",
+        branchName,
+        startedAt: state.startedAt,
+      });
 
       // Spawn the coding agent in the worktree
       const taskDir = this.sessionManager.getActiveDir(wtPath, task.id);
@@ -1258,6 +1261,7 @@ export class OrchestratorService {
         taskId: task.id,
         phase: "review",
         branchName,
+        startedAt: state.startedAt,
       });
 
       const promptPath = path.join(taskDir, "prompt.md");

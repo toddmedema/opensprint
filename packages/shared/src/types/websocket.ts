@@ -20,6 +20,8 @@ export interface AgentStartedEvent {
   taskId: string;
   phase: AgentPhase;
   branchName?: string;
+  /** ISO timestamp when the agent started — for computing elapsed time without a separate fetch */
+  startedAt?: string;
 }
 
 export interface AgentCompletedEvent {

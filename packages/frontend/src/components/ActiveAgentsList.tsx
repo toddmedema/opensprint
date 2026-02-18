@@ -53,12 +53,14 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
     }
   }, [open]);
 
-  // Live uptime tick: update every second when dropdown is open
+  // When dropdown opens: immediately refresh agents and now so elapsed time is correct from first frame
   useEffect(() => {
     if (!open) return;
+    setNow(new Date());
+    fetchAgents();
     const interval = setInterval(() => setNow(new Date()), UPTIME_TICK_MS);
     return () => clearInterval(interval);
-  }, [open]);
+  }, [open, fetchAgents]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -126,7 +128,9 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
                   <div className="font-medium text-theme-text">{agent.label || agent.id}</div>
                   <div className="text-theme-muted mt-0.5">
                     {roleLabel(agent)} &middot;{" "}
-                    <span className="text-theme-muted tabular-nums">{formatUptime(agent.startedAt, now)}</span>
+                    <span className="text-theme-muted tabular-nums">
+                      {agent.startedAt ? formatUptime(agent.startedAt, now) : "—"}
+                    </span>
                   </div>
                 </button>
               </li>

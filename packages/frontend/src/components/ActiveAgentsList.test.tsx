@@ -82,7 +82,7 @@ describe("ActiveAgentsList", () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     await user.click(screen.getByTitle("Active agents"));
 
-    // Initially uptime is 0s
+    // Elapsed time correct from first frame (startedAt in list response, no separate fetch)
     expect(screen.getByText("0s")).toBeInTheDocument();
 
     // Advance 2m 34s — uptime tick fires every second, so "now" updates
@@ -95,5 +95,42 @@ describe("ActiveAgentsList", () => {
     expect(screen.getByText(/Coder/)).toBeInTheDocument();
 
     vi.useRealTimers();
+  });
+
+  it("fetches agents when dropdown opens so elapsed time is correct from first frame", async () => {
+    const startedAt = "2026-02-16T11:57:00.000Z"; // 3 min ago from 12:00
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-16T12:00:00.000Z"));
+    mockAgentsActive.mockResolvedValue([
+      { id: "task-1", phase: "coding", role: "coder", label: "Task 1", startedAt },
+    ]);
+
+    renderActiveAgentsList();
+    await vi.runAllTimersAsync();
+
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.click(screen.getByTitle("Active agents"));
+
+    // fetchAgents is called on open — ensures fresh startedAt from list response
+    expect(mockAgentsActive).toHaveBeenCalledWith("proj-1");
+    // Elapsed time from startedAt (3m) — correct from first frame
+    expect(screen.getByText("3m 0s")).toBeInTheDocument();
+
+    vi.useRealTimers();
+  });
+
+  it("shows em dash when agent has no startedAt", async () => {
+    mockAgentsActive.mockResolvedValue([
+      { id: "task-1", phase: "coding", role: "coder", label: "Task 1" },
+    ]);
+
+    renderActiveAgentsList();
+    await vi.runAllTimersAsync();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTitle("Active agents"));
+
+    expect(screen.getByText("—")).toBeInTheDocument();
+    expect(screen.getByText("Task 1")).toBeInTheDocument();
   });
 });
