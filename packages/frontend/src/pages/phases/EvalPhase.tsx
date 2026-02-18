@@ -496,18 +496,6 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
 
   return (
     <div className="h-full flex flex-col min-h-0">
-      <div
-        className="shrink-0 border-b border-theme-border bg-theme-surface"
-        data-testid="eval-phase-header"
-      >
-        <div className="max-w-3xl mx-auto px-6 py-4">
-          <h2 className="text-lg font-semibold text-theme-text mb-1">Eval</h2>
-          <p className="text-sm text-theme-muted">
-            Test your application and report feedback. The AI will map issues to the right features and create tickets
-            automatically.
-          </p>
-        </div>
-      </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-8">
 
