@@ -1,14 +1,14 @@
-# PRD v2.0 Alignment — SPEED Rename, Deploy Phase, Named Agents
+# PRD v2.0 Alignment — SPEED Rename, Deliver Phase, Named Agents
 
 ## Overview
 
-Align the OpenSprint codebase with PRD v2.0, which introduces the five-phase **SPEED** workflow (Spec, Plan, Execute, Eval, Deploy), replacing the previous four-phase Dream/Plan/Build/Verify model. This epic covers the global rename, new Deploy phase, named agent roles (9 total), new planning-slot agents (Harmonizer, Summarizer, Auditor, Delta Planner), API/WebSocket renames, cross-epic dependency UX, serialized git commit queue, and various internal alignment items.
+Align the OpenSprint codebase with PRD v2.0, which introduces the five-phase **SPEED** workflow (Spec, Plan, Execute, Eval, Deliver), replacing the previous four-phase Dream/Plan/Build/Verify model. This epic covers the global rename, new Deliver phase, named agent roles (9 total), new planning-slot agents (Harmonizer, Summarizer, Auditor, Delta Planner), API/WebSocket renames, cross-epic dependency UX, serialized git commit queue, and various internal alignment items.
 
 ## Acceptance Criteria
 
-1. All UI labels, routes, types, and API endpoints use the SPEED phase names (Spec, Plan, Execute, Eval, Deploy).
-2. The PRD.md file is updated to v2.0 with all new sections (Deploy phase, named agents, git concurrency, etc.).
-3. The Deploy phase has a fully functional UI tab with deploy button, history, live logs, and rollback.
+1. All UI labels, routes, types, and API endpoints use the SPEED phase names (Spec, Plan, Execute, Eval, Deliver).
+2. The PRD.md file is updated to v2.0 with all new sections (Deliver phase, named agents, git concurrency, etc.).
+3. The Deliver phase has a fully functional UI tab with deploy button, history, live logs, and rollback.
 4. All 9 named agent roles are defined in types and used in orchestrator prompts and frontend display.
 5. The Harmonizer agent is invoked during Execute! flow and scope-change feedback.
 6. The Summarizer agent is invoked when context thresholds are exceeded (>2 deps or >2000-word Plan).
@@ -33,8 +33,8 @@ REST: `/build/status` → `/execute/status`, `/plans/:planId/ship` → `/plans/:
 ### Task 4: Action button renames (60k.5)
 EpicCard.tsx: "Build It!" → "Execute!", "Rebuild" → "Re-execute". Update PlanPhase.tsx references and all related test files.
 
-### Task 5: New Deploy phase (60k.6)
-Backend: deploy routes (POST /deploy, GET /deploy/status, GET /deploy/history, POST /deploy/:deployId/rollback, PUT /deploy/settings). DeploymentRecord storage. WebSocket events. Wire existing DeploymentService. Frontend: DeployPhase.tsx component, deploySlice.ts, phase routing integration.
+### Task 5: New Deliver phase (60k.6)
+Backend: deploy routes (POST /deploy, GET /deploy/status, GET /deploy/history, POST /deploy/:deployId/rollback, PUT /deploy/settings). DeploymentRecord storage. WebSocket events. Wire existing DeploymentService. Frontend: DeliverPhase.tsx component, deploySlice.ts, phase routing integration.
 
 ### Task 6: Named agent roles (60k.7)
 Add `AgentRole` type with all 9 roles. Update AgentConfig terminology. Map roles to Planning/Coding slots. Update orchestrator, ActiveAgentsList, task detail panel.
@@ -60,7 +60,7 @@ None — this is a standalone epic.
 
 ## Data Model Changes
 
-- `ProjectPhase`: `"dream" | "plan" | "build" | "verify"` → `"spec" | "plan" | "execute" | "eval" | "deploy"`
+- `ProjectPhase`: `"dream" | "plan" | "build" | "verify"` → `"spec" | "plan" | "execute" | "eval" | "deliver"`
 - `PlanStatus`: `"done"` → `"complete"`
 - `ConversationContext`: `"dream"` → `"spec"`
 - New `AgentRole` type with 9 values
@@ -73,11 +73,11 @@ See PRD v2.0 Sections 11.1 and 11.2 for the full updated API and WebSocket event
 
 ## UI/UX Requirements
 
-- Navbar adds a 5th "Deploy" tab
-- Phase route paths update to `/spec`, `/plan`, `/execute`, `/eval`, `/deploy`
+- Navbar adds a 5th "Deliver" tab
+- Phase route paths update to `/spec`, `/plan`, `/execute`, `/eval`, `/deliver`
 - "Build It!" button becomes "Execute!"
 - Cross-epic dependency confirmation modal on Execute!
-- Deploy tab: deploy button, history list, live log panel, rollback
+- Deliver tab: deploy button, history list, live log panel, rollback
 
 ## Edge Cases and Error Handling
 
@@ -88,7 +88,7 @@ See PRD v2.0 Sections 11.1 and 11.2 for the full updated API and WebSocket event
 ## Testing Strategy
 
 - Update all existing tests referencing old phase names
-- Add tests for Deploy phase (routes, UI, WebSocket events)
+- Add tests for Deliver phase (routes, UI, WebSocket events)
 - Add tests for named agent roles in orchestrator
 - Add tests for Harmonizer/Summarizer invocation and thresholds
 - Add tests for cross-epic dependency detection and confirmation flow

@@ -8,7 +8,7 @@
 
 ## 1. Executive Summary
 
-OpenSprint is a web application that guides users through the complete software development lifecycle using AI agents. It provides a structured, five-phase workflow — **SPEED**: Spec, Plan, Execute, Eval, and Deploy — that transforms high-level product ideas into working software with minimal manual intervention.
+OpenSprint is a web application that guides users through the complete software development lifecycle using AI agents. It provides a structured, five-phase workflow — **SPEED**: Spec, Plan, Execute, Eval, and Deliver — that transforms high-level product ideas into working software with minimal manual intervention.
 
 The platform pairs a browser-based interface with a background agent CLI, enabling AI to autonomously execute development tasks while keeping the user in control of strategy and direction. The core philosophy is that humans should focus on _what_ to build and _why_, while AI handles _how_ to build it.
 
@@ -73,7 +73,7 @@ A small team that builds software for clients. They need to move quickly from cl
 
 OpenSprint consists of three primary layers: a web-based frontend, a backend API server, and a background agent CLI that executes development work. The frontend communicates with the backend via WebSockets for real-time updates and REST APIs for CRUD operations. The backend orchestrates agent CLI instances, manages project state, and maintains the living PRD.
 
-OpenSprint is designed to run entirely offline. The web frontend and backend API server run locally on the user's machine. When using a local agent CLI (such as a locally-hosted LLM), the entire development loop — from Spec through Deploy — operates without any internet connectivity. Beads is git-based and inherently offline-compatible with no special synchronization logic required.
+OpenSprint is designed to run entirely offline. The web frontend and backend API server run locally on the user's machine. When using a local agent CLI (such as a locally-hosted LLM), the entire development loop — from Spec through Deliver — operates without any internet connectivity. Beads is git-based and inherently offline-compatible with no special synchronization logic required.
 
 ### 5.2 Technology Stack
 
@@ -427,32 +427,32 @@ The Eval tab has a text input for feedback at the top and a chronological feed o
 
 ---
 
-### 7.5 Deploy Phase
+### 7.5 Deliver Phase
 
 #### 7.5.1 Purpose
 
-The Deploy phase is where the built and validated software is packaged and shipped to its target environment. This phase automates the transition from a working local build to a live, accessible deployment.
+The Deliver phase is where the built and validated software is packaged and shipped to its target environment. This phase automates the transition from a working local build to a live, accessible deployment.
 
 #### 7.5.2 Key Capabilities
 
-- **Automated deployment:** Once all tasks in a Plan epic are Done and examination feedback is resolved, the Deploy phase triggers the configured deployment pipeline (Expo.dev or custom). The orchestrator invokes the deployment command and monitors the process.
+- **Automated deployment:** Once all tasks in a Plan epic are Done and examination feedback is resolved, the Deliver phase triggers the configured deployment pipeline (Expo.dev or custom). The orchestrator invokes the deployment command and monitors the process.
 - **Pre-deployment validation:** Before deploying, the orchestrator runs the full test suite (unit, integration, and E2E) as a final gate. If any tests fail, the deployment is aborted and the orchestrator invokes a planning-slot agent to analyze the test output, create a new epic with sub-tasks to fix all errors and issues encountered, and queue that epic for execution. The user is notified via a `deploy.failed` WebSocket event with a link to the newly created fix epic. Once all fix tasks are completed, the user can re-trigger deployment.
-- **Deployment history:** Each deployment is recorded with a timestamp, git commit hash, deployment target, and status (success/failed/rolled back). This history is displayed in the Deploy tab.
+- **Deployment history:** Each deployment is recorded with a timestamp, git commit hash, deployment target, and status (success/failed/rolled back). This history is displayed in the Deliver tab.
 - **Rollback support:** If a deployment fails or the user identifies a critical issue post-deploy, a one-click rollback reverts to the last successful deployment.
-- **Environment configuration:** Users can configure deployment targets (staging, production) and environment-specific variables during project setup or from the Deploy tab.
+- **Environment configuration:** Users can configure deployment targets (staging, production) and environment-specific variables during project setup or from the Deliver tab.
 - **Deployment notifications:** Users receive real-time notifications when deployments start, succeed, or fail. For custom pipelines, webhook responses are parsed for status.
 
 #### 7.5.3 Deployment Triggers
 
 | Trigger                        | Behavior                                                                                                                                  |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Manual "Deploy!" button        | User initiates deployment from the Deploy tab after reviewing the current state                                                           |
+| Manual "Deploy!" button        | User initiates deployment from the Deliver tab after reviewing the current state                                                           |
 | Auto-deploy on epic completion | When all tasks in an epic are Done and examination feedback is resolved, deployment is triggered automatically (configurable)             |
 | Post-Eval deployment           | After an Eval cycle resolves all critical feedback, the orchestrator can auto-trigger deployment if the user has enabled this in settings |
 
 #### 7.5.4 User Interface
 
-The Deploy tab displays the current deployment status, deployment history, and environment configuration. A prominent "Deploy!" button triggers a manual deployment. Each deployment entry in the history shows the timestamp, commit hash, target environment, status, and a rollback button for the most recent successful deployment. A live log panel streams deployment output when a deployment is in progress.
+The Deliver tab displays the current deployment status, deployment history, and environment configuration. A prominent "Deploy!" button triggers a manual deployment. Each deployment entry in the history shows the timestamp, commit hash, target environment, status, and a rollback button for the most recent successful deployment. A live log panel streams deployment output when a deployment is in progress.
 
 ---
 
@@ -545,7 +545,7 @@ User (implicit, single-user)
 | repo_path     | string        | Absolute path to the git repository   |
 | created_at    | datetime      | Creation timestamp                    |
 | updated_at    | datetime      | Last modification timestamp           |
-| current_phase | enum          | spec / plan / execute / eval / deploy |
+| current_phase | enum          | spec / plan / execute / eval / deliver |
 
 #### PRD (PRDDocument)
 
@@ -934,7 +934,7 @@ The orchestrator invokes agents as subprocesses: `claude --task-file <path>`, `c
 
 ## 13. How It All Connects — End-to-End Walkthrough
 
-The user creates a project via the setup wizard (Section 6.2), which initializes a git repo and beads. In the **Spec** tab, the **Dreamer** collaborates conversationally to produce the PRD (Section 7.1). Switching to the **Plan** tab, the **Planner** decomposes the PRD into features and tasks, which the orchestrator creates as beads epics and child issues gated behind approval tasks (Section 7.2). When the user clicks "Execute!", the orchestrator closes the gate, invokes the **Harmonizer** to sync the PRD, and unblocks tasks (Section 7.2.2). The always-on orchestrator loop (Section 5.7) picks up tasks from `bd ready`, creates worktrees, optionally invokes the **Summarizer** for large contexts, then runs the **Coder** → **Reviewer** cycle in the **Execute** phase (Section 7.3, 12.3.8–9). Approved tasks are merged to main; failed tasks follow the progressive backoff flow (Section 9). In the **Eval** tab, users test the built software and submit feedback that the **Analyst** categorizes into new tasks that re-enter the execution queue automatically (Section 7.4) — closing the flywheel. Finally, the **Deploy** phase packages and ships the validated software to its target environment via Expo.dev or a custom deployment pipeline (Section 7.5).
+The user creates a project via the setup wizard (Section 6.2), which initializes a git repo and beads. In the **Spec** tab, the **Dreamer** collaborates conversationally to produce the PRD (Section 7.1). Switching to the **Plan** tab, the **Planner** decomposes the PRD into features and tasks, which the orchestrator creates as beads epics and child issues gated behind approval tasks (Section 7.2). When the user clicks "Execute!", the orchestrator closes the gate, invokes the **Harmonizer** to sync the PRD, and unblocks tasks (Section 7.2.2). The always-on orchestrator loop (Section 5.7) picks up tasks from `bd ready`, creates worktrees, optionally invokes the **Summarizer** for large contexts, then runs the **Coder** → **Reviewer** cycle in the **Execute** phase (Section 7.3, 12.3.8–9). Approved tasks are merged to main; failed tasks follow the progressive backoff flow (Section 9). In the **Eval** tab, users test the built software and submit feedback that the **Analyst** categorizes into new tasks that re-enter the execution queue automatically (Section 7.4) — closing the flywheel. Finally, the **Deliver** phase packages and ships the validated software to its target environment via Expo.dev or a custom deployment pipeline (Section 7.5).
 
 ---
 
@@ -977,7 +977,7 @@ All beads interactions use the `bd` CLI with `--json` flags, invoked via `child_
 | Theme Support   | Light, dark, and system themes; preference persists across sessions; no flash of wrong theme on load        |
 | Data Integrity  | Full audit trail of every change via PRD versioning and bead provenance; no data loss on agent crash        |
 | Testing         | Minimum 80% code coverage; all test layers automated; test results visible in real-time                     |
-| Offline Support | All core features (Spec, Plan, Execute, Eval, Deploy) fully functional without internet connectivity        |
+| Offline Support | All core features (Spec, Plan, Execute, Eval, Deliver) fully functional without internet connectivity        |
 
 ---
 
@@ -998,8 +998,8 @@ All beads interactions use the `bd` CLI with `--json` flags, invoked via `child_
 | Alpha | Spec + Plan phases with living PRD; Dreamer chat interface; Planner for Plan markdown generation; agent slot selection during setup; project home screen; light/dark/system theme toggle                                                                                                                |
 | Beta  | Execute phase with epic card interface, single Coder/Reviewer execution, beads integration, agent CLI contract (all 9 named agents), unit test generation, Summarizer for context management, and error handling with progressive backoff                                                               |
 | v1.0  | Full Execute phase with real-time monitoring, comprehensive testing (unit + integration + E2E), HIL configuration, git worktree isolation, cross-epic dependency resolution on "Execute!", and 10-minute timeout handling                                                                               |
-| v1.1  | Eval phase with Analyst for feedback ingestion, Harmonizer for scope-change PRD updates, flywheel closure, Re-execute with Auditor + Delta Planner; Deploy phase with Expo.dev integration and custom deployment pipelines                                                                              |
-| v2.0  | Concurrent multi-Coder execution with conflict resolution, **Agent Dashboard tab** (view, monitor, and manage all agent status and output), multi-project parallel execution, team collaboration, advanced Deploy features (staging environments, canary deployments), regression test suite management |
+| v1.1  | Eval phase with Analyst for feedback ingestion, Harmonizer for scope-change PRD updates, flywheel closure, Re-execute with Auditor + Delta Planner; Deliver phase with Expo.dev integration and custom deployment pipelines                                                                              |
+| v2.0  | Concurrent multi-Coder execution with conflict resolution, **Agent Dashboard tab** (view, monitor, and manage all agent status and output), multi-project parallel execution, team collaboration, advanced Deliver features (staging environments, canary deployments), regression test suite management |
 
 ---
 
@@ -1028,7 +1028,7 @@ This table records architectural decisions where the rationale isn't self-eviden
 | Cross-epic dependencies        | "Execute!" checks for blocking deps, shows confirmation modal, queues prerequisites automatically                             | Prevents deadlocked tasks; user is informed and in control; no silent failures                              |
 | Re-execute approach            | Two-agent: Auditor + Delta Planner                                                                                            | Splitting the work avoids overloading one agent's context; Auditor output is reusable                       |
 | Offline mode                   | Fully supported with local agents                                                                                             | Beads is git-based and inherently offline-compatible; all features work without internet                    |
-| Scope exclusions (v1)          | No cost management, multi-tenancy, agent marketplace, logical conflict detection                                              | Keeps v1 focused on the core Spec → Plan → Execute → Eval → Deploy (SPEED) workflow                         |
+| Scope exclusions (v1)          | No cost management, multi-tenancy, agent marketplace, logical conflict detection                                              | Keeps v1 focused on the core Spec → Plan → Execute → Eval → Deliver (SPEED) workflow                         |
 
 ---
 
