@@ -434,6 +434,33 @@ describe("SketchPhase with specSlice", () => {
         });
       });
 
+      it("dismisses popover when clicking on different PRD section (outside highlighted text)", async () => {
+        const user = userEvent.setup();
+        const store = createStore({
+          spec: {
+            prdContent: {
+              executive_summary: "First section text",
+              goals_and_metrics: "Second section text",
+            },
+          },
+        });
+        renderSketchPhase(store);
+
+        showDiscussPopover("executive_summary");
+
+        await waitFor(() => {
+          expect(screen.getByTestId("discuss-popover")).toBeInTheDocument();
+        });
+
+        // Click on different section's content - outside the highlighted text
+        const otherSectionContent = screen.getByTestId("prd-content-goals_and_metrics");
+        await user.click(otherSectionContent);
+
+        await waitFor(() => {
+          expect(screen.queryByTestId("discuss-popover")).not.toBeInTheDocument();
+        });
+      });
+
       it("does not dismiss when clicking Discuss button (triggers discuss flow)", async () => {
         const user = userEvent.setup();
         const store = createStore({
