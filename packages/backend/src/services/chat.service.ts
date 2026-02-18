@@ -346,7 +346,7 @@ export class ChatService {
         broadcastToProject(projectId, { type: "plan.updated", planId });
       }
     } else {
-      // Dream context: parse PRD updates, apply, strip from display
+      // Sketch context: parse PRD updates, apply, strip from display
       const prdUpdates = this.parsePrdUpdates(responseContent);
       displayContent = this.stripPrdUpdates(responseContent) || responseContent;
       if (prdUpdates.length > 0) {

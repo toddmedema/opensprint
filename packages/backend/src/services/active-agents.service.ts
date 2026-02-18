@@ -14,7 +14,7 @@ export interface ActiveAgentEntry {
 
 /**
  * Central registry for in-flight agent invocations.
- * Used by all phases (Spec, Plan, Execute, Eval, Deliver) to track active agents.
+ * Used by all phases (Sketch, Plan, Execute, Eval, Deliver) to track active agents.
  */
 export class ActiveAgentsService {
   private agents = new Map<string, ActiveAgentEntry>();

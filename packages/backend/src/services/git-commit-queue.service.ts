@@ -14,7 +14,7 @@ const execAsync = promisify(exec);
 /** Job types for main-branch git operations.
  * Commit message patterns per PRD §5.9:
  * - beads: <summary of changes>
- * - prd: updated after Plan <plan-id> built | prd: Spec session update
+ * - prd: updated after Plan <plan-id> built | prd: Sketch session update
  * - merge: opensprint/<task-id> — <task title>
  */
 export type GitCommitJobType = "beads_export" | "prd_update" | "worktree_merge";

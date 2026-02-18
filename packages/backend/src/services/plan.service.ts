@@ -1086,7 +1086,7 @@ ${auditorResult.capability_summary}`;
     return this.shipPlan(projectId, planId);
   }
 
-  /** Get plan status for Dream CTA (plan/replan/none). PRD §7.1.5 */
+  /** Get plan status for Sketch CTA (plan/replan/none). PRD §7.1.5 */
   async getPlanStatus(projectId: string): Promise<PlanStatusResponse> {
     const latestRun = await this.getLatestPlanningRun(projectId);
     if (!latestRun) {

@@ -34,6 +34,22 @@ projectsRouter.post("/", async (req, res, next) => {
   }
 });
 
+// GET /projects/:id/spec — 301 redirect to sketch (backwards compatibility, one version cycle)
+projectsRouter.get("/:id/spec", (req: Request<ProjectParams>, res) => {
+  res.redirect(301, `${req.baseUrl}/${req.params.id}/sketch`);
+});
+
+// GET /projects/:id/sketch — Sketch phase resource (returns project; chat/prd under /chat, /prd)
+projectsRouter.get("/:id/sketch", async (req: Request<ProjectParams>, res, next) => {
+  try {
+    const project = await projectService.getProject(req.params.id);
+    const body: ApiResponse<Project> = { data: project };
+    res.json(body);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /projects/:id/plan-status — Plan it / Replan it CTA visibility (PRD §7.1.5)
 projectsRouter.get("/:id/plan-status", async (req: Request<ProjectParams>, res, next) => {
   try {
