@@ -102,9 +102,15 @@ describe("PlanDetailContent", () => {
     expect(screen.getByText("Saving...")).toBeInTheDocument();
   });
 
-  it("disables title input when saving", () => {
-    render(<PlanDetailContent plan={mockPlan} onContentSave={onContentSave} saving />);
-    expect(screen.getByRole("textbox", { name: /title/i })).toBeDisabled();
+  it("shows Saved briefly when save completes (editor stays editable during save)", () => {
+    const { rerender } = render(
+      <PlanDetailContent plan={mockPlan} onContentSave={onContentSave} saving />,
+    );
+    expect(screen.getByText("Saving...")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /title/i })).not.toBeDisabled();
+
+    rerender(<PlanDetailContent plan={mockPlan} onContentSave={onContentSave} saving={false} />);
+    expect(screen.getByText("Saved")).toBeInTheDocument();
   });
 
   it("uses first line as title when content has no # heading", () => {

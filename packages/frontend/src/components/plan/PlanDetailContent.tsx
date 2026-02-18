@@ -4,7 +4,8 @@ import { formatPlanIdAsTitle } from "../../lib/formatting";
 import { parsePlanContent, serializePlanContent } from "../../lib/planContentUtils";
 import { PrdSectionEditor } from "../prd/PrdSectionEditor";
 
-const DEBOUNCE_MS = 600;
+/** Matches PrdSectionEditor / Sketch phase debounce for consistency */
+const DEBOUNCE_MS = 800;
 
 export interface PlanDetailContentProps {
   plan: Plan;
@@ -29,9 +30,24 @@ export function PlanDetailContent({
   const displayTitle = title || formatPlanIdAsTitle(plan.metadata.planId);
 
   const [titleValue, setTitleValue] = useState(displayTitle);
+  const [savedRecently, setSavedRecently] = useState(false);
+  const prevSavingRef = useRef(saving);
+
+  // Show "Saved" briefly when save completes
+  useEffect(() => {
+    if (prevSavingRef.current && !saving) {
+      setSavedRecently(true);
+      const t = setTimeout(() => setSavedRecently(false), 2000);
+      return () => clearTimeout(t);
+    }
+    prevSavingRef.current = saving;
+  }, [saving]);
   const titleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastBodyRef = useRef(body);
+  const titleValueRef = useRef(titleValue);
+  const saveTitleRef = useRef<(t: string) => void>(() => {});
   lastBodyRef.current = body;
+  titleValueRef.current = titleValue;
 
   // Sync title from props when plan changes (e.g. after fetch)
   useEffect(() => {
@@ -50,6 +66,19 @@ export function PlanDetailContent({
     },
     [body, plan.content, plan.metadata.planId, onContentSave],
   );
+
+  saveTitleRef.current = saveTitle;
+
+  // Flush pending title save on unmount only (navigate away before debounce fires)
+  useEffect(() => {
+    return () => {
+      if (titleDebounceRef.current) {
+        clearTimeout(titleDebounceRef.current);
+        titleDebounceRef.current = null;
+      }
+      saveTitleRef.current(titleValueRef.current);
+    };
+  }, []);
 
   const handleTitleBlur = useCallback(() => {
     if (titleDebounceRef.current) {
@@ -103,14 +132,13 @@ export function PlanDetailContent({
             onChange={handleTitleChange}
             onBlur={handleTitleBlur}
             onKeyDown={handleTitleKeyDown}
-            disabled={saving}
-            className="w-full font-semibold text-theme-text bg-transparent border border-transparent rounded px-2 py-1 -ml-2 hover:border-theme-border focus:border-theme-info-border focus:ring-2 focus:ring-theme-info-border/30 outline-none transition-colors disabled:opacity-50"
+            className="w-full font-semibold text-theme-text bg-transparent border border-transparent rounded px-2 py-1 -ml-2 hover:border-theme-border focus:border-theme-info-border focus:ring-2 focus:ring-theme-info-border/30 outline-none transition-colors"
             placeholder="Title"
             aria-label="Title"
           />
-          {saving && (
+          {(saving || savedRecently) && (
             <span className="text-xs text-theme-muted" aria-live="polite">
-              Saving...
+              {saving ? "Saving..." : "Saved"}
             </span>
           )}
         </div>
@@ -126,7 +154,6 @@ export function PlanDetailContent({
             sectionKey="plan-body"
             markdown={bodyMarkdown}
             onSave={handleBodySave}
-            disabled={saving}
             lightMode
           />
         </div>

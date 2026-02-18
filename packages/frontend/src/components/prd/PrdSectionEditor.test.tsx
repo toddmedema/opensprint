@@ -62,6 +62,43 @@ describe("PrdSectionEditor", () => {
     vi.useRealTimers();
   });
 
+  it("debounces multiple rapid keystrokes to a single save (no per-keystroke saves)", async () => {
+    vi.useFakeTimers();
+    const onSave = vi.fn();
+    const { container } = render(
+      <PrdSectionEditor
+        sectionKey="overview"
+        markdown="A"
+        onSave={onSave}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("A")).toBeInTheDocument();
+    });
+
+    const editor = container.querySelector("[contenteditable]") as HTMLElement;
+    expect(editor).toBeTruthy();
+
+    // Simulate rapid typing: A -> AB -> ABC -> ABCD
+    (editor as HTMLElement).innerHTML = "<p>AB</p>";
+    (editor as HTMLElement).dispatchEvent(new Event("input", { bubbles: true }));
+    (editor as HTMLElement).innerHTML = "<p>ABC</p>";
+    (editor as HTMLElement).dispatchEvent(new Event("input", { bubbles: true }));
+    (editor as HTMLElement).innerHTML = "<p>ABCD</p>";
+    (editor as HTMLElement).dispatchEvent(new Event("input", { bubbles: true }));
+
+    expect(onSave).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(850);
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledTimes(1);
+      expect(onSave).toHaveBeenCalledWith("overview", "ABCD");
+    });
+    vi.useRealTimers();
+  });
+
   it("is not editable when disabled", async () => {
     render(
       <PrdSectionEditor

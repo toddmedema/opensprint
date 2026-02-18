@@ -62,7 +62,11 @@ export function PrdSectionEditor({
 
   const scheduleSave = useCallback(
     (html: string) => {
-      flushDebounce();
+      // Clear existing timer only — do NOT flush pending (that would save on every keystroke)
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
       pendingHtmlRef.current = html;
       debounceRef.current = setTimeout(() => {
         debounceRef.current = null;
@@ -76,7 +80,7 @@ export function PrdSectionEditor({
         }
       }, DEBOUNCE_MS);
     },
-    [sectionKey, onSave, flushDebounce]
+    [sectionKey, onSave]
   );
 
   const handleInput = useCallback(() => {
