@@ -59,7 +59,7 @@ describe("HomeScreen", () => {
 
     await screen.findByText("My Project");
     expect(screen.getByText("A test project")).toBeInTheDocument();
-    expect(screen.getByText("Spec")).toBeInTheDocument();
+    expect(screen.getByText("Sketch")).toBeInTheDocument();
     expect(screen.getByText("25%")).toBeInTheDocument();
   });
 
@@ -108,6 +108,6 @@ describe("HomeScreen", () => {
 
     await screen.findByText("My Project");
     const link = screen.getByRole("link", { name: /my project/i });
-    expect(link).toHaveAttribute("href", "/projects/proj-1/spec");
+    expect(link).toHaveAttribute("href", "/projects/proj-1/sketch");
   });
 });

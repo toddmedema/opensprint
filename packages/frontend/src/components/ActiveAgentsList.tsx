@@ -80,7 +80,7 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
 
   const phaseLabel = (phase: string) => {
     const m: Record<string, string> = {
-      spec: "Spec",
+      spec: "Sketch",
       plan: "Plan",
       execute: "Execute",
       eval: "Eval",

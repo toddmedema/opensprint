@@ -18,7 +18,7 @@ interface NavbarProps {
 }
 
 const phases: { key: ProjectPhase; label: string }[] = [
-  { key: "spec", label: "Spec" },
+  { key: "spec", label: "Sketch" },
   { key: "plan", label: "Plan" },
   { key: "execute", label: "Execute" },
   { key: "eval", label: "Eval" },

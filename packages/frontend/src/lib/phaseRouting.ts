@@ -2,19 +2,42 @@ import type { ProjectPhase } from "@opensprint/shared";
 
 export const VALID_PHASES: ProjectPhase[] = ["spec", "plan", "execute", "eval", "deliver"];
 
+/** URL slugs for each phase. Spec phase uses "sketch" in URL for user-facing branding. */
+const PHASE_TO_SLUG: Record<ProjectPhase, string> = {
+  spec: "sketch",
+  plan: "plan",
+  execute: "execute",
+  eval: "eval",
+  deliver: "deliver",
+};
+
+const SLUG_TO_PHASE: Record<string, ProjectPhase> = {
+  sketch: "spec",
+  spec: "spec", // legacy; /spec redirects to /sketch
+  plan: "plan",
+  execute: "execute",
+  eval: "eval",
+  deliver: "deliver",
+};
+
+/** Valid URL slugs (sketch, not spec, for bookmarkability). */
+export const VALID_PHASE_SLUGS = ["sketch", "plan", "execute", "eval", "deliver"] as const;
+
 /**
  * Parses a URL slug into a valid ProjectPhase. Returns "spec" for invalid or missing slugs.
+ * Accepts "sketch" as the URL slug for the spec phase.
  */
 export function phaseFromSlug(slug: string | undefined): ProjectPhase {
-  if (slug && VALID_PHASES.includes(slug as ProjectPhase)) return slug as ProjectPhase;
+  if (slug && slug in SLUG_TO_PHASE) return SLUG_TO_PHASE[slug];
   return "spec";
 }
 
 /**
- * Returns true if the slug is a valid phase.
+ * Returns true if the slug is a valid phase URL slug.
+ * "sketch" is valid; "spec" is not (triggers redirect to /sketch).
  */
-export function isValidPhaseSlug(slug: string | undefined): slug is ProjectPhase {
-  return !!slug && VALID_PHASES.includes(slug as ProjectPhase);
+export function isValidPhaseSlug(slug: string | undefined): slug is (typeof VALID_PHASE_SLUGS)[number] {
+  return !!slug && VALID_PHASE_SLUGS.includes(slug as (typeof VALID_PHASE_SLUGS)[number]);
 }
 
 /** Query param keys for deep linking to Plan/Build detail panes */
@@ -37,7 +60,8 @@ export function getProjectPhasePath(
   phase: ProjectPhase,
   options?: PhasePathOptions,
 ): string {
-  const base = `/projects/${projectId}/${phase}`;
+  const slug = PHASE_TO_SLUG[phase];
+  const base = `/projects/${projectId}/${slug}`;
   const params = new URLSearchParams();
   if (options?.plan) params.set(PLAN_PARAM, options.plan);
   if (options?.task) params.set(TASK_PARAM, options.task);

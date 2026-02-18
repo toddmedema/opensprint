@@ -1,10 +1,10 @@
 /**
- * @deprecated Tests moved to SpecPhase.test.tsx — DreamPhase renamed to SpecPhase per SPEED phase names.
+ * @deprecated Tests moved to SketchPhase.test.tsx — DreamPhase renamed to SketchPhase per SPEED phase names.
  */
 import { describe, it, expect } from "vitest";
 
 describe("DreamPhase (deprecated)", () => {
-  it("replaced by SpecPhase.test.tsx", () => {
+  it("replaced by SketchPhase.test.tsx", () => {
     expect(true).toBe(true);
   });
 });

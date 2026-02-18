@@ -5,6 +5,7 @@ import {
   getProjectPhasePath,
   parseDetailParams,
   VALID_PHASES,
+  VALID_PHASE_SLUGS,
   PLAN_PARAM,
   TASK_PARAM,
 } from "./phaseRouting";
@@ -19,12 +20,16 @@ describe("phaseRouting", () => {
       expect(phaseFromSlug("")).toBe("spec");
     });
 
-    it("returns phase for valid slugs", () => {
-      expect(phaseFromSlug("spec")).toBe("spec");
+    it("returns phase for valid slugs (sketch maps to spec)", () => {
+      expect(phaseFromSlug("sketch")).toBe("spec");
       expect(phaseFromSlug("plan")).toBe("plan");
       expect(phaseFromSlug("execute")).toBe("execute");
       expect(phaseFromSlug("eval")).toBe("eval");
       expect(phaseFromSlug("deliver")).toBe("deliver");
+    });
+
+    it("returns spec for spec slug (legacy redirect target)", () => {
+      expect(phaseFromSlug("spec")).toBe("spec");
     });
 
     it("returns spec for invalid slugs", () => {
@@ -39,13 +44,14 @@ describe("phaseRouting", () => {
       expect(isValidPhaseSlug(undefined)).toBe(false);
     });
 
-    it("returns false for invalid slugs", () => {
+    it("returns false for invalid slugs and legacy spec", () => {
       expect(isValidPhaseSlug("")).toBe(false);
       expect(isValidPhaseSlug("invalid")).toBe(false);
+      expect(isValidPhaseSlug("spec")).toBe(false); // spec redirects to sketch
     });
 
     it("returns true for valid slugs", () => {
-      expect(isValidPhaseSlug("spec")).toBe(true);
+      expect(isValidPhaseSlug("sketch")).toBe(true);
       expect(isValidPhaseSlug("plan")).toBe(true);
       expect(isValidPhaseSlug("execute")).toBe(true);
       expect(isValidPhaseSlug("eval")).toBe(true);
@@ -54,8 +60,8 @@ describe("phaseRouting", () => {
   });
 
   describe("getProjectPhasePath", () => {
-    it("builds path with explicit phase for all phases", () => {
-      expect(getProjectPhasePath("proj-123", "spec")).toBe("/projects/proj-123/spec");
+    it("builds path with sketch for spec phase, others unchanged", () => {
+      expect(getProjectPhasePath("proj-123", "spec")).toBe("/projects/proj-123/sketch");
       expect(getProjectPhasePath("proj-123", "plan")).toBe("/projects/proj-123/plan");
       expect(getProjectPhasePath("proj-123", "execute")).toBe("/projects/proj-123/execute");
       expect(getProjectPhasePath("proj-123", "eval")).toBe("/projects/proj-123/eval");
@@ -63,7 +69,7 @@ describe("phaseRouting", () => {
     });
 
     it("handles different project IDs", () => {
-      expect(getProjectPhasePath("abc", "spec")).toBe("/projects/abc/spec");
+      expect(getProjectPhasePath("abc", "spec")).toBe("/projects/abc/sketch");
       expect(getProjectPhasePath("uuid-xyz-789", "execute")).toBe("/projects/uuid-xyz-789/execute");
     });
 
@@ -131,8 +137,14 @@ describe("phaseRouting", () => {
   });
 
   describe("VALID_PHASES", () => {
-    it("contains all four phases in order", () => {
+    it("contains all five phases in order", () => {
       expect(VALID_PHASES).toEqual(["spec", "plan", "execute", "eval", "deliver"]);
+    });
+  });
+
+  describe("VALID_PHASE_SLUGS", () => {
+    it("uses sketch not spec for URL slugs", () => {
+      expect(VALID_PHASE_SLUGS).toEqual(["sketch", "plan", "execute", "eval", "deliver"]);
     });
   });
 });

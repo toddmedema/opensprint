@@ -18,6 +18,15 @@ export const PRD_SECTION_ORDER = [
 
 export type PrdSectionKey = (typeof PRD_SECTION_ORDER)[number];
 
+/** Display labels for PRD change log source badges (user-facing phase names). */
+export const PRD_SOURCE_LABELS: Record<string, string> = {
+  spec: "Sketch",
+  plan: "Plan",
+  execute: "Execute",
+  eval: "Eval",
+  deliver: "Deliver",
+};
+
 /** Tailwind class pairs for PRD change log source badges (bg-* text-*). */
 export const PRD_SOURCE_COLORS: Record<string, string> = {
   spec: "bg-blue-100 text-blue-800",
