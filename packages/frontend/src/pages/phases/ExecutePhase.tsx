@@ -527,8 +527,6 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
               ) : taskDetail ? (
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center gap-2 text-xs text-theme-muted">
-                    <span className="font-medium text-theme-text">{taskDetail.title}</span>
-                    <span className="text-theme-muted">·</span>
                     <span className="text-theme-muted">{PRIORITY_LABELS[taskDetail.priority] ?? "Medium"}</span>
                     <span className="text-theme-muted">·</span>
                     <span className="text-theme-muted">{COLUMN_LABELS[taskDetail.kanbanColumn]}</span>

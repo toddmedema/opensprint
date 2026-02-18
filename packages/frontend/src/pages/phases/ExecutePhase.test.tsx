@@ -601,6 +601,40 @@ describe("ExecutePhase Redux integration", () => {
     expect(taskLabels).toHaveLength(0);
   });
 
+  it("task title renders exactly once in detail sidebar, status badge visible without redundant title", async () => {
+    const uniqueTitle = "Single Display Task Title";
+    mockGet.mockResolvedValue({
+      id: "epic-1.1",
+      title: uniqueTitle,
+      kanbanColumn: "in_progress",
+      description: "Desc",
+      priority: 0,
+      assignee: null,
+      epicId: "epic-1",
+    });
+    const tasks = [
+      { id: "epic-1.1", title: uniqueTitle, epicId: "epic-1", kanbanColumn: "in_progress", priority: 0, assignee: null },
+    ];
+    const store = createStore(tasks, { selectedTaskId: "epic-1.1" });
+    render(
+      <Provider store={store}>
+        <ExecutePhase projectId="proj-1" />
+      </Provider>,
+    );
+
+    await vi.waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
+    });
+
+    // Title appears exactly once (in the header only)
+    const titleElements = screen.getAllByText(uniqueTitle);
+    expect(titleElements).toHaveLength(1);
+    expect(titleElements[0].tagName).toBe("H3");
+
+    // Status badge (In Progress) remains visible in metadata row
+    expect(screen.getByText("In Progress")).toBeInTheDocument();
+  });
+
   it("task detail sidebar does not display task type (Task text removed per feedback)", async () => {
     mockGet.mockResolvedValue({
       id: "epic-1.1",
