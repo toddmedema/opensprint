@@ -27,11 +27,11 @@ export function PrdViewer({
           >
             {/* Section header */}
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+              <h2 className="text-lg font-semibold text-theme-text">
                 {formatSectionKey(sectionKey)}
               </h2>
               {savingSections.includes(sectionKey) && (
-                <span className="text-xs text-gray-500 dark:text-gray-400">Saving...</span>
+                <span className="text-xs text-theme-muted">Saving...</span>
               )}
             </div>
 
@@ -44,7 +44,7 @@ export function PrdViewer({
             />
 
             {/* Divider */}
-            <div className="mt-8 border-b border-gray-100 dark:border-gray-700" />
+            <div className="mt-8 border-b border-theme-border" />
           </div>
         ))}
       </div>

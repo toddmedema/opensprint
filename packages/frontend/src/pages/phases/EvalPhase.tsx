@@ -170,17 +170,17 @@ function FeedbackCard({
   };
 
   return (
-    <div className={depth > 0 ? "ml-4 mt-2 border-l-2 border-gray-200 pl-4" : ""}>
+    <div className={depth > 0 ? "ml-4 mt-2 border-l-2 border-theme-border pl-4" : ""}>
       <div className="card p-4">
         {/* Category badge/spinner floats top-right */}
         <div className="mb-2 overflow-hidden">
           {item.status === "pending" ? (
             <span
-              className="float-right ml-2 mb-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 flex-shrink-0"
+              className="float-right ml-2 mb-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-theme-border-subtle text-theme-muted flex-shrink-0"
               aria-label="Categorizing feedback"
             >
               <div
-                className="h-3 w-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"
+                className="h-3 w-3 border-2 border-theme-ring border-t-transparent rounded-full animate-spin"
                 aria-hidden="true"
               />
               Categorizing…
@@ -197,14 +197,14 @@ function FeedbackCard({
               )}
               <span
                 className={`float-right ml-2 mb-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium flex-shrink-0 ${
-                  categoryColors[item.category] ?? "bg-gray-100 text-gray-600"
+                  categoryColors[item.category] ?? "bg-theme-border-subtle text-theme-muted"
                 }`}
               >
                 {getFeedbackTypeLabel(item)}
               </span>
             </>
           )}
-          <p className="text-sm text-gray-700 whitespace-pre-wrap break-words min-w-0">
+          <p className="text-sm text-theme-text whitespace-pre-wrap break-words min-w-0">
             {item.text ?? "(No feedback text)"}
           </p>
         </div>
@@ -216,7 +216,7 @@ function FeedbackCard({
                 key={i}
                 src={dataUrl}
                 alt={`Attachment ${i + 1}`}
-                className="h-16 w-16 object-cover rounded border border-gray-200"
+                className="h-16 w-16 object-cover rounded border border-theme-border"
               />
             ))}
           </div>
@@ -234,11 +234,11 @@ function FeedbackCard({
                     key={taskId}
                     type="button"
                     onClick={() => onNavigateToBuildTask(taskId)}
-                    className="inline-flex items-center gap-1.5 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-brand-600 hover:bg-brand-50 hover:text-brand-700 underline transition-colors"
+                    className="inline-flex items-center gap-1.5 rounded bg-theme-border-subtle px-1.5 py-0.5 text-xs font-mono text-brand-600 hover:bg-brand-50 hover:text-brand-700 underline transition-colors"
                     title={`Go to ${taskId} on Execute tab (${statusLabel})`}
                   >
                     <TaskStatusBadge column={column} size="xs" />
-                    <span className="text-gray-500 font-sans font-normal no-underline" aria-label={`Status: ${statusLabel}`}>
+                    <span className="text-theme-muted font-sans font-normal no-underline" aria-label={`Status: ${statusLabel}`}>
                       {statusLabel}
                     </span>
                     {taskId}
@@ -246,10 +246,10 @@ function FeedbackCard({
                 ) : (
                   <span
                     key={taskId}
-                    className="inline-flex items-center gap-1.5 rounded bg-gray-100 px-1.5 py-0.5 text-xs font-mono text-gray-600"
+                    className="inline-flex items-center gap-1.5 rounded bg-theme-border-subtle px-1.5 py-0.5 text-xs font-mono text-theme-muted"
                   >
                     <TaskStatusBadge column={column} size="xs" />
-                    <span className="text-gray-500 font-sans font-normal" aria-label={`Status: ${statusLabel}`}>
+                    <span className="text-theme-muted font-sans font-normal" aria-label={`Status: ${statusLabel}`}>
                       {statusLabel}
                     </span>
                     {taskId}
@@ -273,7 +273,7 @@ function FeedbackCard({
             <button
               type="button"
               onClick={() => (isReplying ? onCancelReply() : onStartReply(item.id))}
-              className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 hover:text-gray-800 transition-colors"
+              className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-theme-muted hover:bg-theme-border-subtle hover:text-gray-800 transition-colors"
               title="Reply"
               aria-label={isReplying ? "Cancel reply" : "Reply"}
             >
@@ -284,7 +284,7 @@ function FeedbackCard({
               <button
                 type="button"
                 onClick={() => onToggleCollapse(item.id)}
-                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 hover:text-gray-800 transition-colors"
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-theme-muted hover:bg-theme-border-subtle hover:text-gray-800 transition-colors"
                 aria-label={isCollapsed ? "Expand replies" : "Collapse replies"}
               >
                 {isCollapsed ? "Expand" : "Collapse"} ({children.length} {children.length === 1 ? "reply" : "replies"})
@@ -297,7 +297,7 @@ function FeedbackCard({
       {/* Inline reply composer (PRD §7.4.1: quote snippet of parent above text input) */}
       {isReplying && (
         <div className="mt-2 ml-0 card p-3">
-          <blockquote className="mb-2 pl-3 border-l-2 border-gray-300 text-sm text-gray-600 italic">
+          <blockquote className="mb-2 pl-3 border-l-2 border-theme-border text-sm text-theme-muted italic">
             {item.text && item.text.length > 80 ? `${item.text.slice(0, 80)}…` : (item.text || "(No feedback text)")}
           </blockquote>
           <textarea
@@ -498,8 +498,8 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
     <div className="h-full overflow-y-auto">
       <div className="max-w-3xl mx-auto px-6 py-8">
         <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-1">Eval</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <h2 className="text-lg font-semibold text-theme-text mb-1">Eval</h2>
+          <p className="text-sm text-theme-muted">
             Test your application and report feedback. The AI will map issues to the right features and create tickets
             automatically.
           </p>
@@ -511,7 +511,7 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
           onDragOver={handleDragOver}
           onDrop={handleDrop}
         >
-          <label className="block text-sm font-medium text-gray-700 mb-2">What did you find?</label>
+          <label className="block text-sm font-medium text-theme-text mb-2">What did you find?</label>
           <textarea
             className="input min-h-[100px] mb-3"
             value={input}
@@ -533,7 +533,7 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
                   <img
                     src={dataUrl}
                     alt={`Attachment ${i + 1}`}
-                    className="h-16 w-16 object-cover rounded border border-gray-200"
+                    className="h-16 w-16 object-cover rounded border border-theme-border"
                   />
                   <button
                     type="button"
@@ -591,14 +591,14 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
 
         {/* Feedback Feed */}
         <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          <h3 className="text-sm font-semibold text-theme-text">
             Feedback History ({filteredFeedback.length})
           </h3>
           {feedback.length > 0 && (
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as FeedbackStatusFilter)}
-              className="input text-sm py-1.5 px-2.5 w-auto min-w-[7rem] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 ring-gray-300 dark:ring-gray-600"
+              className="input text-sm py-1.5 px-2.5 w-auto min-w-[7rem] bg-theme-input-bg text-theme-input-text ring-theme-ring"
               aria-label="Filter feedback by status"
               data-testid="feedback-status-filter"
             >
@@ -610,13 +610,13 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
         </div>
 
         {loading ? (
-          <div className="text-center py-10 text-gray-400 dark:text-gray-500">Loading feedback...</div>
+          <div className="text-center py-10 text-theme-muted">Loading feedback...</div>
         ) : feedback.length === 0 ? (
-          <div className="text-center py-10 text-gray-400 dark:text-gray-500 text-sm">
+          <div className="text-center py-10 text-theme-muted text-sm">
             No feedback submitted yet. Test your app and report findings above.
           </div>
         ) : filteredFeedback.length === 0 ? (
-          <div className="text-center py-10 text-gray-400 dark:text-gray-500 text-sm">
+          <div className="text-center py-10 text-theme-muted text-sm">
             {statusFilter === "pending"
               ? "No pending feedback yet."
               : statusFilter === "resolved"

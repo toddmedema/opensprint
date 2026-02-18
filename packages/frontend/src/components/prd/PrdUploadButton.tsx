@@ -24,11 +24,11 @@ export function PrdUploadButton({ onUpload, disabled }: PrdUploadButtonProps) {
         type="button"
         onClick={() => fileInputRef.current?.click()}
         disabled={disabled}
-        className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-brand-600 dark:hover:text-brand-400 transition-colors disabled:opacity-40"
+        className="flex items-center gap-2 text-sm text-theme-muted hover:text-brand-600 dark:hover:text-brand-400 transition-colors disabled:opacity-40"
       >
         <UploadIcon className="w-4 h-4" />
         <span>Upload existing PRD</span>
-        <span className="text-xs text-gray-400 dark:text-gray-500">(.md, .docx, .pdf)</span>
+        <span className="text-xs text-theme-muted">(.md, .docx, .pdf)</span>
       </button>
       <input
         ref={fileInputRef}

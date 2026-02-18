@@ -84,7 +84,7 @@ function createStore() {
 }
 
 describe("EvalPhase header", () => {
-  it("renders Eval title and description with dark mode classes for theme compatibility", () => {
+  it("renders Eval title and description with theme-aware classes", () => {
     const store = createStore();
     render(
       <Provider store={store}>
@@ -94,11 +94,11 @@ describe("EvalPhase header", () => {
 
     const heading = screen.getByRole("heading", { name: "Eval", level: 2 });
     expect(heading).toBeInTheDocument();
-    expect(heading).toHaveClass("text-gray-900", "dark:text-gray-100");
+    expect(heading).toHaveClass("text-theme-text");
 
     const description = screen.getByText(/Test your application and report feedback/);
     expect(description).toBeInTheDocument();
-    expect(description).toHaveClass("text-gray-500", "dark:text-gray-400");
+    expect(description).toHaveClass("text-theme-muted");
   });
 });
 
@@ -1348,7 +1348,7 @@ describe("EvalPhase feedback input", () => {
       );
 
       const filter = screen.getByTestId("feedback-status-filter");
-      expect(filter).toHaveClass("dark:bg-gray-800", "dark:text-gray-100");
+      expect(filter).toHaveClass("bg-theme-input-bg", "text-theme-input-text");
     });
   });
 

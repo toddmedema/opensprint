@@ -193,10 +193,8 @@ describe("PrdSectionEditor", () => {
 
     const editor = container.querySelector("[contenteditable]");
     expect(editor).toBeTruthy();
-    expect(editor?.className).toMatch(/text-gray-900/);
-    expect(editor?.className).toMatch(/dark:text-gray-100/);
-    expect(editor?.className).toMatch(/prose-code:text-gray-900/);
-    expect(editor?.className).toMatch(/dark:prose-code:text-gray-100/);
+    expect(editor?.className).toMatch(/text-theme-text/);
+    expect(editor?.className).toMatch(/prose-code:text-theme-text/);
   });
 
   it("uses light mode styles only when lightMode prop is true", async () => {
@@ -215,7 +213,7 @@ describe("PrdSectionEditor", () => {
 
     const editor = container.querySelector("[contenteditable]");
     expect(editor).toBeTruthy();
-    expect(editor?.className).toMatch(/text-gray-900/);
+    expect(editor?.className).toMatch(/text-theme-text/);
     expect(editor?.className).not.toMatch(/dark:/);
   });
 

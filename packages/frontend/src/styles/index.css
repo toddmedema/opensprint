@@ -17,6 +17,8 @@ html:not([data-theme]) {
   --color-input-bg: #ffffff;
   --color-input-text: #111827;
   --color-input-placeholder: #9ca3af;
+  --color-code-bg: #1f2937;
+  --color-code-text: #10b981;
 }
 
 html[data-theme="dark"] {
@@ -31,21 +33,23 @@ html[data-theme="dark"] {
   --color-input-bg: #1f2937;
   --color-input-text: #f3f4f6;
   --color-input-placeholder: #6b7280;
+  --color-code-bg: #111827;
+  --color-code-text: #34d399;
 }
 
 @layer base {
   html[data-theme="light"],
   html:not([data-theme]) {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-theme-bg text-theme-text;
   }
-html[data-theme="dark"] {
-  @apply bg-gray-900 text-gray-100;
-}
+  html[data-theme="dark"] {
+    @apply bg-theme-bg text-theme-text;
+  }
 
-/* Sketch phase always uses light mode per feedback */
-html.sketch-phase-light {
-  @apply bg-gray-50 text-gray-900;
-}
+  /* Sketch phase always uses light mode per feedback */
+  html.sketch-phase-light {
+    @apply bg-theme-bg text-theme-text;
+  }
 html.sketch-phase-light {
   --color-bg: #f9fafb;
   --color-bg-elevated: #ffffff;
@@ -58,6 +62,8 @@ html.sketch-phase-light {
   --color-input-bg: #ffffff;
   --color-input-text: #111827;
   --color-input-placeholder: #9ca3af;
+  --color-code-bg: #1f2937;
+  --color-code-text: #10b981;
 }
   body {
     @apply antialiased;
@@ -73,9 +79,9 @@ html.sketch-phase-light {
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center rounded-lg bg-white px-4 py-2.5
-      text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300
-      hover:bg-gray-50 transition-colors;
+    @apply inline-flex items-center justify-center rounded-lg bg-theme-surface px-4 py-2.5
+      text-sm font-semibold text-theme-text shadow-sm ring-1 ring-inset ring-theme-ring
+      hover:bg-theme-bg-elevated transition-colors;
   }
 
   .btn-danger {
@@ -84,13 +90,13 @@ html.sketch-phase-light {
   }
 
   .card {
-    @apply rounded-xl bg-white shadow-sm ring-1 ring-gray-950/5;
+    @apply rounded-xl bg-theme-surface shadow-sm ring-1 ring-theme-border/10;
   }
 
   .input {
-    @apply block w-full rounded-lg border-0 py-2.5 px-3 text-gray-900 shadow-sm
-      ring-1 ring-inset ring-gray-300 placeholder:text-gray-400
-      focus:ring-2 focus:ring-inset focus:ring-brand-600 sm:text-sm;
+    @apply block w-full rounded-lg border-0 py-2.5 px-3 shadow-sm sm:text-sm
+      bg-theme-input-bg text-theme-input-text placeholder:text-theme-input-placeholder
+      ring-1 ring-inset ring-theme-ring focus:ring-2 focus:ring-inset focus:ring-brand-600;
   }
 
   .phase-tab {
@@ -102,7 +108,7 @@ html.sketch-phase-light {
   }
 
   .phase-tab-inactive {
-    @apply text-gray-500 hover:text-gray-700 hover:bg-gray-100;
+    @apply text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle;
   }
 
   .kanban-column {

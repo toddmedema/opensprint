@@ -36,12 +36,12 @@ function ArchivedSessionView({ sessions }: { sessions: AgentSession[] }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-4 py-2 border-b border-gray-700 flex items-center gap-4 text-xs flex-wrap">
+      <div className="px-4 py-2 border-b border-theme-border flex items-center gap-4 text-xs flex-wrap">
         {sessions.length > 1 ? (
           <select
             value={safeIdx}
             onChange={(e) => setSelectedIdx(Number(e.target.value))}
-            className="bg-gray-800 text-green-400 border border-gray-600 rounded px-2 py-1"
+            className="bg-theme-bg-elevated text-green-400 border border-theme-border rounded px-2 py-1"
           >
             {sessions.map((s, i) => (
               <option key={s.attempt} value={i}>
@@ -50,7 +50,7 @@ function ArchivedSessionView({ sessions }: { sessions: AgentSession[] }) {
             ))}
           </select>
         ) : (
-          <span className="text-gray-400">
+          <span className="text-theme-muted">
             Attempt {session.attempt} · {session.status} · {session.agentType}
           </span>
         )}
@@ -66,12 +66,12 @@ function ArchivedSessionView({ sessions }: { sessions: AgentSession[] }) {
           </span>
         )}
       </div>
-      <div className="flex gap-2 px-4 py-2 border-b border-gray-700 shrink-0">
+      <div className="flex gap-2 px-4 py-2 border-b border-theme-border shrink-0">
         <button
           type="button"
           onClick={() => setActiveTab("output")}
           className={`text-xs font-medium ${
-            activeTab === "output" ? "text-green-400" : "text-gray-500 hover:text-gray-300"
+            activeTab === "output" ? "text-green-400" : "text-theme-muted hover:text-theme-text"
           }`}
         >
           Output log
@@ -81,7 +81,7 @@ function ArchivedSessionView({ sessions }: { sessions: AgentSession[] }) {
             type="button"
             onClick={() => setActiveTab("diff")}
             className={`text-xs font-medium ${
-              activeTab === "diff" ? "text-green-400" : "text-gray-500 hover:text-gray-300"
+              activeTab === "diff" ? "text-green-400" : "text-theme-muted hover:text-theme-text"
             }`}
           >
             Git diff
@@ -146,17 +146,17 @@ function SourceFeedbackSection({
   const planTitle = mappedPlan ? getEpicTitleFromPlan(mappedPlan) : feedback?.mappedPlanId ?? null;
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <div className="border border-theme-border rounded-lg overflow-hidden">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="w-full flex items-center justify-between p-3 text-left hover:bg-gray-50 transition-colors text-sm font-medium text-gray-900"
+        className="w-full flex items-center justify-between p-3 text-left hover:bg-theme-border-subtle transition-colors text-sm font-medium text-theme-text"
         aria-expanded={expanded}
         aria-controls="source-feedback-content"
         id="source-feedback-header"
       >
         <span>Source feedback</span>
-        <span className="text-gray-400 text-xs" aria-hidden>
+        <span className="text-theme-muted text-xs" aria-hidden>
           {expanded ? "▼" : "▶"}
         </span>
       </button>
@@ -165,16 +165,16 @@ function SourceFeedbackSection({
           id="source-feedback-content"
           role="region"
           aria-labelledby="source-feedback-header"
-          className="p-3 pt-0 border-t border-gray-200"
+          className="p-3 pt-0 border-t border-theme-border"
         >
           {loading ? (
-            <div className="text-xs text-gray-500 py-2">Loading feedback…</div>
+            <div className="text-xs text-theme-muted py-2">Loading feedback…</div>
           ) : feedback ? (
             <div className="card p-3 text-xs space-y-2" data-testid="source-feedback-card">
               <div className="flex items-start justify-between gap-2 overflow-hidden flex-wrap">
                 <span
                   className={`inline-flex rounded-full px-2 py-0.5 font-medium flex-shrink-0 ${
-                    feedbackCategoryColors[feedback.category] ?? "bg-gray-100 text-gray-600"
+                    feedbackCategoryColors[feedback.category] ?? "bg-theme-border-subtle text-theme-muted"
                   }`}
                 >
                   {getFeedbackTypeLabel(feedback)}
@@ -188,16 +188,16 @@ function SourceFeedbackSection({
                   </span>
                 )}
               </div>
-              <p className="text-gray-700 whitespace-pre-wrap break-words min-w-0">
+              <p className="text-theme-text whitespace-pre-wrap break-words min-w-0">
                 {feedback.text ?? "(No feedback text)"}
               </p>
               {planTitle && (
-                <div className="text-gray-500">
-                  Mapped plan: <span className="font-medium text-gray-700">{planTitle}</span>
+                <div className="text-theme-muted">
+                  Mapped plan: <span className="font-medium text-theme-text">{planTitle}</span>
                 </div>
               )}
               {feedback.createdAt && (
-                <div className="text-gray-400">
+                <div className="text-theme-muted">
                   {new Date(feedback.createdAt).toLocaleString()}
                 </div>
               )}
@@ -362,11 +362,11 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
   return (
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
-        <div className="px-6 py-4 border-b border-gray-200 bg-white shrink-0">
+        <div className="px-6 py-4 border-b border-theme-border bg-theme-surface shrink-0">
           <div className="flex items-center justify-between mb-3">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Execute</h2>
-              <p className="text-sm text-gray-500">
+              <h2 className="text-lg font-semibold text-theme-text">Execute</h2>
+              <p className="text-sm text-theme-muted">
                 Ready: {readyTasks} · Blocked: {blockedTasks} · In Progress: {inProgressTasks} · Done: {doneTasks} · Total: {totalTasks}
               </p>
             </div>
@@ -374,7 +374,7 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
               <span className="text-sm font-medium text-amber-600">Awaiting approval…</span>
             )}
           </div>
-          <div className="w-full bg-gray-100 rounded-full h-2">
+          <div className="w-full bg-theme-border-subtle rounded-full h-2">
             <div
               className="bg-brand-600 h-2 rounded-full transition-all duration-500"
               style={{ width: `${progress}%` }}
@@ -384,9 +384,9 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
 
         <div className="flex-1 min-h-0 overflow-auto p-6">
           {loading ? (
-            <div className="text-center py-10 text-gray-400">Loading tasks...</div>
+            <div className="text-center py-10 text-theme-muted">Loading tasks...</div>
           ) : implTasks.length === 0 ? (
-            <div className="text-center py-10 text-gray-500">No tasks yet. Ship a Plan to start generating tasks.</div>
+            <div className="text-center py-10 text-theme-muted">No tasks yet. Ship a Plan to start generating tasks.</div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {swimlanes.map((lane) => (
@@ -419,11 +419,11 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
             storageKey="execute"
             defaultWidth={420}
             responsive
-            className="fixed md:static inset-y-0 right-0 z-50 md:border-l border-gray-200 shadow-xl md:shadow-none animate-slide-in-right md:animate-none"
+            className="fixed md:static inset-y-0 right-0 z-50 md:border-l border-theme-border shadow-xl md:shadow-none animate-slide-in-right md:animate-none"
           >
-            <div className="flex items-center justify-between p-4 border-b border-gray-200 shrink-0">
+            <div className="flex items-center justify-between p-4 border-b border-theme-border shrink-0">
               <div className="min-w-0 flex-1 pr-2">
-              <h3 className="font-semibold text-gray-900 truncate">
+              <h3 className="font-semibold text-theme-text truncate">
                 {taskDetailLoading ? "Loading…" : taskDetail?.title ?? selectedTask}
               </h3>
               {taskDetail?.epicId && !taskDetailLoading && (() => {
@@ -468,25 +468,25 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
             </div>
 
             <div className="flex-1 overflow-y-auto min-h-0">
-              <div className="p-4 border-b border-gray-200">
+              <div className="p-4 border-b border-theme-border">
               {activeRoleLabel && (
                 <div className="mb-3 px-3 py-1.5 rounded-md bg-amber-50 border border-amber-200 text-xs font-medium text-amber-800">
                   Active: {activeRoleLabel}
                 </div>
               )}
               {taskDetailLoading ? (
-                <div className="text-sm text-gray-500">Loading task details...</div>
+                <div className="text-sm text-theme-muted">Loading task details...</div>
               ) : taskDetail ? (
                 <div className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
-                    <span className="font-medium text-gray-900">{taskDetail.title}</span>
-                    <span className="text-gray-400">·</span>
-                    <span className="text-gray-500">{PRIORITY_LABELS[taskDetail.priority] ?? "Medium"}</span>
-                    <span className="text-gray-400">·</span>
-                    <span className="text-gray-500">{COLUMN_LABELS[taskDetail.kanbanColumn]}</span>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-theme-muted">
+                    <span className="font-medium text-theme-text">{taskDetail.title}</span>
+                    <span className="text-theme-muted">·</span>
+                    <span className="text-theme-muted">{PRIORITY_LABELS[taskDetail.priority] ?? "Medium"}</span>
+                    <span className="text-theme-muted">·</span>
+                    <span className="text-theme-muted">{COLUMN_LABELS[taskDetail.kanbanColumn]}</span>
                     {taskDetail.assignee && (
                       <>
-                        <span className="text-gray-400">·</span>
+                        <span className="text-theme-muted">·</span>
                         <span className="text-brand-600">{taskDetail.assignee}</span>
                       </>
                     )}
@@ -503,14 +503,14 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
                     const isOnlyFeedbackId = /^Feedback ID:\s*.+$/.test(desc.trim());
                     const displayDesc = taskDetail.sourceFeedbackId && isOnlyFeedbackId ? "" : desc;
                     return displayDesc ? (
-                      <div className="prose prose-sm max-w-none bg-white p-4 rounded-lg border text-xs overflow-y-auto min-h-0 max-h-[50vh]">
+                      <div className="prose prose-sm max-w-none bg-theme-surface p-4 rounded-lg border border-theme-border text-xs overflow-y-auto min-h-0 max-h-[50vh]">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayDesc}</ReactMarkdown>
                       </div>
                     ) : null;
                   })()}
                   {taskDetail.dependencies.filter((d) => d.targetId && d.type !== "discovered-from").length > 0 && (
                     <div className="text-xs">
-                      <span className="text-gray-500">Depends on:</span>
+                      <span className="text-theme-muted">Depends on:</span>
                       <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-1.5">
                         {taskDetail.dependencies
                           .filter((d) => d.targetId && d.type !== "discovered-from")
@@ -537,20 +537,20 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
                   )}
                 </div>
               ) : (
-                <div className="text-sm text-gray-500">Could not load task details.</div>
+                <div className="text-sm text-theme-muted">Could not load task details.</div>
               )}
               </div>
 
               <div className="p-4">
-              <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+              <h4 className="text-xs font-medium text-theme-muted uppercase tracking-wide mb-2">
                 {isDoneTask ? "Done work artifacts" : "Live agent output"}
               </h4>
-              <div className="bg-gray-900 rounded-lg border border-gray-700 overflow-hidden min-h-[200px] max-h-[400px] flex flex-col">
+              <div className="bg-theme-code-bg rounded-lg border border-theme-border overflow-hidden min-h-[200px] max-h-[400px] flex flex-col">
                 {isDoneTask ? (
                   archivedLoading ? (
-                    <div className="p-4 text-gray-400 text-sm">Loading archived sessions...</div>
+                    <div className="p-4 text-theme-muted text-sm">Loading archived sessions...</div>
                   ) : archivedSessions.length === 0 ? (
-                    <div className="p-4 text-gray-400 text-sm">No archived sessions for this task.</div>
+                    <div className="p-4 text-theme-muted text-sm">No archived sessions for this task.</div>
                   ) : (
                     <ArchivedSessionView sessions={archivedSessions} />
                   )
@@ -560,7 +560,7 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
                       {agentOutput.length > 0 ? agentOutput.join("") : "Waiting for agent output..."}
                     </pre>
                     {completionState && (
-                      <div className="px-4 pb-4 border-t border-gray-700 pt-3 mt-0">
+                      <div className="px-4 pb-4 border-t border-theme-border pt-3 mt-0">
                         <div
                           className={`text-sm font-medium ${
                             completionState.status === "approved" ? "text-green-400" : "text-amber-400"
@@ -569,7 +569,7 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
                           Agent done: {completionState.status}
                         </div>
                         {completionState.testResults && completionState.testResults.total > 0 && (
-                          <div className="text-xs text-gray-400 mt-1">
+                          <div className="text-xs text-theme-muted mt-1">
                             {completionState.testResults.passed} passed
                             {completionState.testResults.failed > 0 ? `, ${completionState.testResults.failed} failed` : ""}
                             {completionState.testResults.skipped > 0 &&

@@ -5,6 +5,22 @@ export default {
   theme: {
     extend: {
       colors: {
+        /* Theme-aware tokens (map to CSS variables in index.css) */
+        theme: {
+          bg: "var(--color-bg)",
+          "bg-elevated": "var(--color-bg-elevated)",
+          text: "var(--color-text)",
+          muted: "var(--color-text-muted)",
+          surface: "var(--color-surface)",
+          border: "var(--color-border)",
+          "border-subtle": "var(--color-border-subtle)",
+          ring: "var(--color-ring)",
+          "input-bg": "var(--color-input-bg)",
+          "input-text": "var(--color-input-text)",
+          "input-placeholder": "var(--color-input-placeholder)",
+          "code-bg": "var(--color-code-bg)",
+          "code-text": "var(--color-code-text)",
+        },
         brand: {
           50: "#f0f7ff",
           100: "#e0effe",

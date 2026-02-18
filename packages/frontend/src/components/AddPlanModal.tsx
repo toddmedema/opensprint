@@ -56,19 +56,19 @@ export function AddPlanModal({ projectId, onClose, onCreated }: AddPlanModalProp
       {/* Modal */}
       <form
         onSubmit={handleSubmit}
-        className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 flex flex-col max-h-[85vh]"
+        className="relative bg-theme-surface rounded-xl shadow-2xl w-full max-w-2xl mx-4 flex flex-col max-h-[85vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Add Feature</h2>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-theme-border">
+          <h2 className="text-lg font-semibold text-theme-text">Add Feature</h2>
           <CloseButton onClick={onClose} ariaLabel="Close add plan modal" />
         </div>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Feature Title</label>
+            <label className="block text-sm font-medium text-theme-text mb-1">Feature Title</label>
             <input
               type="text"
               className="input"
@@ -80,14 +80,14 @@ export function AddPlanModal({ projectId, onClose, onCreated }: AddPlanModalProp
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Plan Markdown</label>
+            <label className="block text-sm font-medium text-theme-text mb-1">Plan Markdown</label>
             <textarea
               className="input font-mono text-sm min-h-[280px]"
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder="Plan specification in markdown format"
             />
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1 text-xs text-theme-muted">
               Include overview, acceptance criteria, technical approach, and other sections per PRD §7.2.3
             </p>
           </div>
@@ -100,7 +100,7 @@ export function AddPlanModal({ projectId, onClose, onCreated }: AddPlanModalProp
         )}
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-theme-border bg-theme-bg rounded-b-xl">
           <button type="button" onClick={onClose} className="btn-secondary">
             Cancel
           </button>

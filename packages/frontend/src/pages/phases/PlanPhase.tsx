@@ -274,13 +274,13 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
               setDependencyGraphExpanded(next);
               saveDependencyGraphExpanded(next);
             }}
-            className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-100/50 transition-colors"
+            className="w-full flex items-center justify-between p-4 text-left hover:bg-theme-border-subtle/50 transition-colors"
             aria-expanded={dependencyGraphExpanded}
             aria-controls="dependency-graph-content"
             id="dependency-graph-header"
           >
-            <h3 className="text-sm font-semibold text-gray-900">Dependency Graph</h3>
-            <span className="text-gray-400 text-xs" aria-hidden>
+            <h3 className="text-sm font-semibold text-theme-text">Dependency Graph</h3>
+            <span className="text-theme-muted text-xs" aria-hidden>
               {dependencyGraphExpanded ? "▼" : "▶"}
             </span>
           </button>
@@ -299,7 +299,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
         {/* Plan Cards */}
         <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
           <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold text-gray-900">Feature Plans</h2>
+            <h2 className="text-lg font-semibold text-theme-text">Feature Plans</h2>
             {plans.length > 0 && (
               <select
                 value={statusFilter}
@@ -324,10 +324,10 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
         </div>
 
         {loading ? (
-          <div className="text-center py-10 text-gray-400">Loading plans...</div>
+          <div className="text-center py-10 text-theme-muted">Loading plans...</div>
         ) : plans.length === 0 ? (
           <div className="text-center py-10">
-            <p className="text-gray-500 mb-4">
+            <p className="text-theme-muted mb-4">
               No plans yet. Use &ldquo;Plan it&rdquo; from the Sketch phase to decompose the PRD into
               feature plans and tasks, or add a plan manually.
             </p>
@@ -337,7 +337,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
           </div>
         ) : filteredAndSortedPlans.length === 0 ? (
           <div className="text-center py-10">
-            <p className="text-gray-500">
+            <p className="text-theme-muted">
               No plans match the &ldquo;
               {statusFilter === "all"
                 ? "All"
@@ -398,7 +398,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                     type="button"
                     onClick={() => handleArchive(selectedPlan.metadata.planId)}
                     disabled={!!archivingPlanId}
-                    className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-200/50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="p-1.5 text-theme-muted hover:text-gray-600 hover:bg-theme-border-subtle/50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Archive plan (mark all ready/open tasks as done)"
                   >
                     <svg
@@ -425,17 +425,17 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
 
             {/* Mockups */}
             {selectedPlan.metadata.mockups && selectedPlan.metadata.mockups.length > 0 && (
-              <div className="p-4 border-b border-gray-200">
-                <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+              <div className="p-4 border-b border-theme-border">
+                <h4 className="text-xs font-medium text-theme-muted uppercase tracking-wide mb-2">
                   Mockups
                 </h4>
                 <div className="space-y-3">
                   {selectedPlan.metadata.mockups.map((mockup, i) => (
-                    <div key={i} className="bg-white rounded-lg border overflow-hidden">
-                      <div className="px-3 py-1.5 bg-gray-50 border-b">
-                        <span className="text-xs font-medium text-gray-700">{mockup.title}</span>
+                    <div key={i} className="bg-theme-surface rounded-lg border overflow-hidden">
+                      <div className="px-3 py-1.5 bg-theme-bg-elevated border-b">
+                        <span className="text-xs font-medium text-theme-text">{mockup.title}</span>
                       </div>
-                      <pre className="p-3 text-xs leading-tight text-gray-800 overflow-x-auto font-mono whitespace-pre">
+                      <pre className="p-3 text-xs leading-tight text-theme-text overflow-x-auto font-mono whitespace-pre">
                         {mockup.content}
                       </pre>
                     </div>
@@ -445,21 +445,21 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
             )}
 
             {/* Tasks — collapsible */}
-            <div className="border-b border-gray-200">
+            <div className="border-b border-theme-border">
               <button
                 type="button"
                 onClick={() => setTasksSectionExpanded(!tasksSectionExpanded)}
-                className="w-full flex items-center justify-between p-4 text-left hover:bg-gray-100/50 transition-colors"
+                className="w-full flex items-center justify-between p-4 text-left hover:bg-theme-border-subtle/50 transition-colors"
               >
-                <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                <h4 className="text-xs font-medium text-theme-muted uppercase tracking-wide">
                   Tasks ({planTasks.length})
                 </h4>
-                <span className="text-gray-400 text-xs">{tasksSectionExpanded ? "▼" : "▶"}</span>
+                <span className="text-theme-muted text-xs">{tasksSectionExpanded ? "▼" : "▶"}</span>
               </button>
               {tasksSectionExpanded && (
                 <div className="px-4 pb-4 space-y-2">
                   {planTasks.length === 0 ? (
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-theme-muted">
                       No tasks yet. Click &ldquo;Execute!&rdquo; to auto-generate tasks from this
                       plan, or use the AI chat to refine the plan first.
                     </p>
@@ -469,7 +469,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                         key={task.id}
                         type="button"
                         onClick={() => onNavigateToBuildTask?.(task.id)}
-                        className="w-full flex items-center gap-2 p-2 bg-white rounded-lg border border-gray-200 text-sm text-left hover:border-brand-500 hover:bg-brand-50/50 transition-colors cursor-pointer"
+                        className="w-full flex items-center gap-2 p-2 bg-theme-surface rounded-lg border border-theme-border text-sm text-left hover:border-brand-500 hover:bg-brand-50/50 transition-colors cursor-pointer"
                       >
                         <span
                           className={`shrink-0 w-2 h-2 rounded-full ${
@@ -478,14 +478,14 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                               : task.kanbanColumn === "in_progress" ||
                                   task.kanbanColumn === "in_review"
                                 ? "bg-blue-500"
-                                : "bg-gray-300"
+                                : "bg-theme-ring"
                           }`}
                           title={task.kanbanColumn}
                         />
-                        <span className="flex-1 truncate text-gray-900" title={task.title}>
+                        <span className="flex-1 truncate text-theme-text" title={task.title}>
                           {task.title}
                         </span>
-                        <span className="shrink-0 text-xs text-gray-500 capitalize">
+                        <span className="shrink-0 text-xs text-theme-muted capitalize">
                           {task.kanbanColumn.replace(/_/g, " ")}
                         </span>
                       </button>
@@ -497,12 +497,12 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
 
             {/* Chat messages */}
             <div className="p-4">
-              <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">
+              <h4 className="text-xs font-medium text-theme-muted uppercase tracking-wide mb-3">
                 Refine with AI
               </h4>
               <div className="space-y-3">
                 {currentChatMessages.length === 0 && (
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-theme-muted">
                     Chat with the planning agent to refine this plan. Ask questions, suggest
                     changes, or request updates.
                   </p>
@@ -516,7 +516,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                       className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
                         msg.role === "user"
                           ? "bg-brand-600 text-white"
-                          : "bg-white border border-gray-200 text-gray-900"
+                          : "bg-theme-surface border border-theme-border text-theme-text"
                       }`}
                     >
                       <p className="whitespace-pre-wrap">{msg.content}</p>
@@ -525,7 +525,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                 ))}
                 {chatSending && (
                   <div className="flex justify-start">
-                    <div className="bg-white border border-gray-200 rounded-2xl px-3 py-2 text-sm text-gray-400">
+                    <div className="bg-theme-surface border border-theme-border rounded-2xl px-3 py-2 text-sm text-theme-muted">
                       Thinking...
                     </div>
                   </div>
@@ -536,7 +536,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
           </div>
 
           {/* Pinned chat input at bottom */}
-          <div className="shrink-0 border-t border-gray-200 p-4 bg-gray-50">
+          <div className="shrink-0 border-t border-theme-border p-4 bg-theme-bg">
             <div className="flex gap-2">
               <input
                 type="text"

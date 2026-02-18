@@ -305,13 +305,13 @@ describe("SketchPhase with specSlice", () => {
       expect(screen.getByText("Hi there!")).toBeInTheDocument();
     });
 
-    it("displays split-pane with light mode theme (PRD left, Discuss right)", () => {
+    it("displays split-pane with theme-aware layout (PRD left, Discuss right)", () => {
       const store = createStore({
         spec: { prdContent: { overview: "Content" } },
       });
       const { container } = renderSketchPhase(store);
-      // Main split-pane wrapper uses light mode bg-gray-50
-      const splitPane = container.querySelector("[class*='bg-gray-50']");
+      // Main split-pane wrapper uses theme bg
+      const splitPane = container.querySelector("[class*='bg-theme-bg']");
       expect(splitPane).toBeInTheDocument();
       // Discuss sidebar is on the right (PrdChatPanel with variant inline)
       expect(screen.getByTestId("prd-chat-sidebar")).toBeInTheDocument();

@@ -155,11 +155,11 @@ export function ResizableSidebar({
     ? "w-full max-w-[var(--sidebar-mobile-max,420px)] md:max-w-none md:w-[var(--sidebar-width)]"
     : "";
 
-  const borderClass = responsive ? "" : "border-l border-gray-200";
+  const borderClass = responsive ? "" : "border-l border-theme-border";
 
   return (
     <div
-      className={`relative flex flex-col min-h-0 bg-gray-50 shrink-0 overflow-hidden ${borderClass} ${responsiveClasses} ${className}`}
+      className={`relative flex flex-col min-h-0 bg-theme-bg shrink-0 overflow-hidden ${borderClass} ${responsiveClasses} ${className}`}
       style={widthStyle}
     >
       {visible && (
@@ -173,7 +173,7 @@ export function ResizableSidebar({
           onMouseDown={onHandleMouseDown}
           className={`absolute left-0 top-0 bottom-0 w-2 -ml-1 cursor-col-resize z-10 flex items-center justify-center group hover:bg-brand-500/10 ${responsive ? "hidden md:flex" : ""}`}
         >
-          <div className="w-1 h-12 rounded-full bg-gray-300 group-hover:bg-brand-500/60 opacity-0 group-hover:opacity-100 transition-opacity" />
+          <div className="w-1 h-12 rounded-full bg-theme-ring group-hover:bg-brand-500/60 opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
       )}
       <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">{children}</div>

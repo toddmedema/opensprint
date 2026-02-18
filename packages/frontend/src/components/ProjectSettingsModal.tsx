@@ -229,21 +229,21 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
 
       {/* Modal */}
       <div
-        className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl mx-4 flex flex-col max-h-[85vh] overflow-hidden"
+        className="relative bg-theme-surface rounded-xl shadow-2xl w-full max-w-2xl mx-4 flex flex-col max-h-[85vh] overflow-hidden"
         data-testid="settings-modal"
       >
         {/* Header */}
         <div
-          className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-gray-200"
+          className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-theme-border"
           data-testid="settings-modal-header"
         >
-          <h2 className="text-lg font-semibold text-gray-900">Project Settings</h2>
+          <h2 className="text-lg font-semibold text-theme-text">Project Settings</h2>
           <CloseButton onClick={onClose} ariaLabel="Close settings modal" />
         </div>
 
         {/* Tabs */}
         <div
-          className="flex-shrink-0 flex flex-nowrap gap-1 px-5 pt-3 pb-2 border-b border-gray-200 overflow-x-auto overflow-y-hidden"
+          className="flex-shrink-0 flex flex-nowrap gap-1 px-5 pt-3 pb-2 border-b border-theme-border overflow-x-auto overflow-y-hidden"
           data-testid="settings-modal-tabs"
         >
           {TABS.map((tab) => (
@@ -253,7 +253,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
               className={`px-3 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${
                 activeTab === tab.key
                   ? "bg-brand-600 text-white"
-                  : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+                  : "text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle"
               }`}
             >
               {tab.label}
@@ -275,7 +275,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
               {activeTab === "basics" && (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-theme-text mb-1">
                       Project Name
                     </label>
                     <input
@@ -287,7 +287,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-theme-text mb-1">
                       Description
                     </label>
                     <textarea
@@ -298,7 +298,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label className="block text-sm font-medium text-theme-text mb-1">
                       Repository Path
                     </label>
                     <div className="flex gap-2">
@@ -330,7 +330,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                         Browse
                       </button>
                     </div>
-                    <p className="mt-1 text-xs text-gray-400">
+                    <p className="mt-1 text-xs text-theme-muted">
                       Absolute path to the project repository
                     </p>
                   </div>
@@ -372,7 +372,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                         {!envKeys.anthropic && (
                           <div className="flex gap-2 items-end">
                             <div className="flex-1">
-                              <label className="block text-xs font-medium text-gray-500 mb-1">
+                              <label className="block text-xs font-medium text-theme-muted mb-1">
                                 ANTHROPIC_API_KEY (Claude)
                               </label>
                               <input
@@ -399,7 +399,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                         {!envKeys.cursor && (
                           <div className="flex gap-2 items-end">
                             <div className="flex-1">
-                              <label className="block text-xs font-medium text-gray-500 mb-1">
+                              <label className="block text-xs font-medium text-theme-muted mb-1">
                                 CURSOR_API_KEY
                               </label>
                               <input
@@ -427,17 +427,17 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                     </>
                   )}
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3">
+                    <h3 className="text-sm font-semibold text-theme-text mb-3">
                       Planning Agent Slot
                     </h3>
-                    <p className="text-xs text-gray-500 mb-3">
+                    <p className="text-xs text-theme-muted mb-3">
                       Used by Dreamer, Planner, Harmonizer, Analyst, Summarizer, Auditor, Delta
                       Planner
                     </p>
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <label className="block text-sm font-medium text-theme-text mb-1">
                             Provider
                           </label>
                           <select
@@ -456,7 +456,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                         </div>
                         {planningAgent.type !== "custom" && (
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                            <label className="block text-sm font-medium text-theme-text mb-1">
                               Model
                             </label>
                             <ModelSelect
@@ -470,7 +470,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                       </div>
                       {planningAgent.type === "custom" && (
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <label className="block text-sm font-medium text-theme-text mb-1">
                             CLI command
                           </label>
                           <input
@@ -482,7 +482,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                               updatePlanningAgent({ cliCommand: e.target.value || null })
                             }
                           />
-                          <p className="mt-1 text-xs text-gray-500">
+                          <p className="mt-1 text-xs text-theme-muted">
                             Command invoked with prompt as argument. Must accept input and produce
                             output.
                           </p>
@@ -492,14 +492,14 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                   </div>
                   <hr />
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Coding Agent Slot</h3>
-                    <p className="text-xs text-gray-500 mb-3">
+                    <h3 className="text-sm font-semibold text-theme-text mb-3">Coding Agent Slot</h3>
+                    <p className="text-xs text-theme-muted mb-3">
                       Used by Coder and Reviewer for Execute phase implementation and review
                     </p>
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <label className="block text-sm font-medium text-theme-text mb-1">
                             Provider
                           </label>
                           <select
@@ -516,7 +516,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                         </div>
                         {codingAgent.type !== "custom" && (
                           <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                            <label className="block text-sm font-medium text-theme-text mb-1">
                               Model
                             </label>
                             <ModelSelect
@@ -530,7 +530,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                       </div>
                       {codingAgent.type === "custom" && (
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <label className="block text-sm font-medium text-theme-text mb-1">
                             CLI command
                           </label>
                           <input
@@ -542,7 +542,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                               updateCodingAgent({ cliCommand: e.target.value || null })
                             }
                           />
-                          <p className="mt-1 text-xs text-gray-500">
+                          <p className="mt-1 text-xs text-theme-muted">
                             Command invoked with prompt as argument. Must accept input and produce
                             output.
                           </p>
@@ -552,8 +552,8 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                   </div>
                   <hr />
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-1">Test Command</h3>
-                    <p className="text-xs text-gray-500 mb-3">
+                    <h3 className="text-sm font-semibold text-theme-text mb-1">Test Command</h3>
+                    <p className="text-xs text-theme-muted mb-3">
                       Override the test command (auto-detected from package.json). Leave empty to
                       use detection.
                     </p>
@@ -571,17 +571,17 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                   </div>
                   <hr />
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-1">Code Review</h3>
-                    <p className="text-xs text-gray-500 mb-3">
+                    <h3 className="text-sm font-semibold text-theme-text mb-1">Code Review</h3>
+                    <p className="text-xs text-theme-muted mb-3">
                       After the coding agent completes a task, a review agent can validate the
                       implementation against the ticket specification, verify tests pass and cover
                       the scope, and check code quality. Rejected work is sent back to the coding
                       agent with feedback for improvement.
                     </p>
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50">
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-theme-bg-elevated">
                       <div>
-                        <p className="text-sm font-medium text-gray-900">Review Mode</p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-sm font-medium text-theme-text">Review Mode</p>
+                        <p className="text-xs text-theme-muted">
                           Never: merge directly. Always: run review after every success. On Failure
                           Only: run review only when the task has had previous failures.
                         </p>
@@ -604,10 +604,10 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                   </div>
                   <hr />
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-1">
+                    <h3 className="text-sm font-semibold text-theme-text mb-1">
                       Per-Complexity Overrides
                     </h3>
-                    <p className="text-xs text-gray-500 mb-3">
+                    <p className="text-xs text-theme-muted mb-3">
                       Optionally use different agents for tasks based on plan complexity. When not
                       set, the default coding agent above is used.
                     </p>
@@ -639,7 +639,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                         const override = codingAgentByComplexity[level.key];
                         const isEnabled = !!override;
                         return (
-                          <div key={level.key} className="rounded-lg border border-gray-200 p-3">
+                          <div key={level.key} className="rounded-lg border border-theme-border p-3">
                             <label className="flex items-center gap-3 cursor-pointer">
                               <input
                                 type="checkbox"
@@ -658,16 +658,16 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                                 className="rounded"
                               />
                               <div className="flex-1">
-                                <span className="text-sm font-medium text-gray-900">
+                                <span className="text-sm font-medium text-theme-text">
                                   {level.label}
                                 </span>
-                                <span className="text-xs text-gray-500 ml-2">{level.desc}</span>
+                                <span className="text-xs text-theme-muted ml-2">{level.desc}</span>
                               </div>
                             </label>
                             {isEnabled && override && (
                               <div className="mt-3 ml-7 grid grid-cols-2 gap-3">
                                 <div>
-                                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                                  <label className="block text-xs font-medium text-theme-muted mb-1">
                                     Provider
                                   </label>
                                   <select
@@ -687,7 +687,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                                 </div>
                                 {override.type !== "custom" ? (
                                   <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                                    <label className="block text-xs font-medium text-theme-muted mb-1">
                                       Model
                                     </label>
                                     <ModelSelect
@@ -704,7 +704,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                                   </div>
                                 ) : (
                                   <div>
-                                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                                    <label className="block text-xs font-medium text-theme-muted mb-1">
                                       CLI command
                                     </label>
                                     <input
@@ -733,15 +733,15 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
 
               {activeTab === "deployment" && (
                 <div className="space-y-4">
-                  <div className="space-y-3 p-3 rounded-lg bg-gray-50 border border-gray-200">
-                    <h3 className="text-sm font-semibold text-gray-900">
+                  <div className="space-y-3 p-3 rounded-lg bg-theme-bg-elevated border border-theme-border">
+                    <h3 className="text-sm font-semibold text-theme-text">
                       Auto-deploy triggers (PRD §7.5.3)
                     </h3>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-theme-muted">
                       Both off by default. Enable to auto-trigger deployment.
                     </p>
                     <label className="flex items-center justify-between gap-3 cursor-pointer">
-                      <span className="text-sm text-gray-700">Auto-deploy on epic completion</span>
+                      <span className="text-sm text-theme-text">Auto-deploy on epic completion</span>
                       <input
                         type="checkbox"
                         checked={deployment.autoDeployOnEpicCompletion ?? false}
@@ -752,11 +752,11 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                         data-testid="auto-deploy-epic-toggle"
                       />
                     </label>
-                    <p className="text-xs text-gray-500 ml-1">
+                    <p className="text-xs text-theme-muted ml-1">
                       When all tasks in an epic reach Done, trigger deployment automatically.
                     </p>
                     <label className="flex items-center justify-between gap-3 cursor-pointer">
-                      <span className="text-sm text-gray-700">Auto-deploy on Eval resolution</span>
+                      <span className="text-sm text-theme-text">Auto-deploy on Eval resolution</span>
                       <input
                         type="checkbox"
                         checked={deployment.autoDeployOnEvalResolution ?? false}
@@ -767,12 +767,12 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                         data-testid="auto-deploy-eval-toggle"
                       />
                     </label>
-                    <p className="text-xs text-gray-500 ml-1">
+                    <p className="text-xs text-theme-muted ml-1">
                       When all critical (bug) feedback is resolved, trigger deployment
                       automatically.
                     </p>
                     <label className="flex items-center justify-between gap-3 cursor-pointer">
-                      <span className="text-sm text-gray-700">
+                      <span className="text-sm text-theme-text">
                         Auto-resolve feedback when tasks done
                       </span>
                       <input
@@ -787,17 +787,17 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                         data-testid="auto-resolve-feedback-toggle"
                       />
                     </label>
-                    <p className="text-xs text-gray-500 ml-1">
+                    <p className="text-xs text-theme-muted ml-1">
                       When all tasks created from feedback reach Done, mark the feedback as resolved
                       (PRD §10.2).
                     </p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                    <label className="block text-sm font-medium text-theme-text mb-3">
                       Delivery Mode
                     </label>
                     <div className="space-y-3">
-                      <label className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 hover:border-brand-300 cursor-pointer transition-colors">
+                      <label className="flex items-start gap-3 p-3 rounded-lg border border-theme-border hover:border-brand-300 cursor-pointer transition-colors">
                         <input
                           type="radio"
                           name="deployment"
@@ -809,13 +809,13 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                           className="mt-0.5"
                         />
                         <div>
-                          <p className="text-sm font-medium text-gray-900">Expo.dev</p>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-sm font-medium text-theme-text">Expo.dev</p>
+                          <p className="text-xs text-theme-muted">
                             Automatic delivery for React Native and web projects
                           </p>
                         </div>
                       </label>
-                      <label className="flex items-start gap-3 p-3 rounded-lg border border-gray-200 hover:border-brand-300 cursor-pointer transition-colors">
+                      <label className="flex items-start gap-3 p-3 rounded-lg border border-theme-border hover:border-brand-300 cursor-pointer transition-colors">
                         <input
                           type="radio"
                           name="deployment"
@@ -825,8 +825,8 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                           className="mt-0.5"
                         />
                         <div>
-                          <p className="text-sm font-medium text-gray-900">Custom Pipeline</p>
-                          <p className="text-xs text-gray-500">
+                          <p className="text-sm font-medium text-theme-text">Custom Pipeline</p>
+                          <p className="text-xs text-theme-muted">
                             Command or webhook triggered after Build completion
                           </p>
                         </div>
@@ -834,9 +834,9 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                     </div>
                   </div>
                   {deployment.mode === "custom" && (
-                    <div className="space-y-3 pt-2 border-t border-gray-200">
+                    <div className="space-y-3 pt-2 border-t border-theme-border">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <label className="block text-sm font-medium text-theme-text mb-1">
                           Delivery command
                         </label>
                         <input
@@ -848,13 +848,13 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                             updateDeployment({ customCommand: e.target.value || undefined })
                           }
                         />
-                        <p className="mt-1 text-xs text-gray-500">
+                        <p className="mt-1 text-xs text-theme-muted">
                           Shell command run from project root after each task completion
                         </p>
                       </div>
-                      <div className="text-sm text-gray-500 text-center">— or —</div>
+                      <div className="text-sm text-theme-muted text-center">— or —</div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <label className="block text-sm font-medium text-theme-text mb-1">
                           Webhook URL
                         </label>
                         <input
@@ -866,12 +866,12 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                             updateDeployment({ webhookUrl: e.target.value || undefined })
                           }
                         />
-                        <p className="mt-1 text-xs text-gray-500">
+                        <p className="mt-1 text-xs text-theme-muted">
                           HTTP POST sent after each task completion (GitHub Actions, Vercel, etc.)
                         </p>
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <label className="block text-sm font-medium text-theme-text mb-1">
                           Rollback command
                         </label>
                         <input
@@ -883,22 +883,22 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                             updateDeployment({ rollbackCommand: e.target.value || undefined })
                           }
                         />
-                        <p className="mt-1 text-xs text-gray-500">
+                        <p className="mt-1 text-xs text-theme-muted">
                           Shell command for rolling back to a previous delivery (Deliver phase)
                         </p>
                       </div>
-                      <div className="pt-3 border-t border-gray-200">
-                        <h4 className="text-sm font-medium text-gray-700 mb-2">
+                      <div className="pt-3 border-t border-theme-border">
+                        <h4 className="text-sm font-medium text-theme-text mb-2">
                           Delivery targets (PRD §7.5.2/7.5.4)
                         </h4>
-                        <p className="text-xs text-gray-500 mb-2">
+                        <p className="text-xs text-theme-muted mb-2">
                           Define staging/production targets with per-target command or webhook.
                           Leave empty to use legacy single command/webhook above.
                         </p>
                         {(deployment.targets ?? []).map((t, i) => (
                           <div
                             key={i}
-                            className="mb-3 p-3 rounded-lg border border-gray-200 bg-white"
+                            className="mb-3 p-3 rounded-lg border border-theme-border bg-theme-surface"
                           >
                             <div className="flex justify-between items-center mb-2">
                               <input
@@ -976,11 +976,11 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                           + Add target
                         </button>
                       </div>
-                      <div className="pt-3 border-t border-gray-200">
-                        <h4 className="text-sm font-medium text-gray-700 mb-2">
+                      <div className="pt-3 border-t border-theme-border">
+                        <h4 className="text-sm font-medium text-theme-text mb-2">
                           Environment variables
                         </h4>
-                        <p className="text-xs text-gray-500 mb-2">
+                        <p className="text-xs text-theme-muted mb-2">
                           Key-value pairs passed to deployment commands and webhooks.
                         </p>
                         {Object.entries(deployment.envVars ?? {}).map(([k, v], i) => (
@@ -1046,7 +1046,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
 
               {activeTab === "hil" && (
                 <div className="space-y-4">
-                  <p className="text-sm text-gray-500 mb-4">
+                  <p className="text-sm text-theme-muted mb-4">
                     Configure when OpenSprint should pause for your input vs. proceed autonomously.
                   </p>
                   {(
@@ -1070,11 +1070,11 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                   ).map((cat) => (
                     <div
                       key={cat.key}
-                      className="flex items-center justify-between p-3 rounded-lg bg-gray-50"
+                      className="flex items-center justify-between p-3 rounded-lg bg-theme-bg-elevated"
                     >
                       <div>
-                        <p className="text-sm font-medium text-gray-900">{cat.label}</p>
-                        <p className="text-xs text-gray-500">{cat.desc}</p>
+                        <p className="text-sm font-medium text-theme-text">{cat.label}</p>
+                        <p className="text-xs text-theme-muted">{cat.desc}</p>
                       </div>
                       <select
                         className="input w-48"
@@ -1103,7 +1103,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
         )}
 
         {/* Footer */}
-        <div className="flex-shrink-0 flex justify-end gap-2 px-5 py-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+        <div className="flex-shrink-0 flex justify-end gap-2 px-5 py-4 border-t border-theme-border bg-theme-bg rounded-b-xl">
           <button onClick={onClose} className="btn-secondary">
             Cancel
           </button>

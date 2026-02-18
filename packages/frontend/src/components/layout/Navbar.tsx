@@ -63,7 +63,7 @@ export function Navbar({
   }, [dropdownOpen]);
 
   return (
-    <nav className="relative z-[60] bg-white border-b border-gray-200 px-6 py-3">
+    <nav className="relative z-[60] bg-theme-surface border-b border-theme-border px-6 py-3">
       <div className="flex items-center justify-between">
         {/* Left: Logo + Project Selector */}
         <div className="flex items-center gap-4">
@@ -71,15 +71,15 @@ export function Navbar({
             <div className="w-8 h-8 rounded-lg bg-brand-600 flex items-center justify-center">
               <span className="text-white font-bold text-sm">OS</span>
             </div>
-            <span className="font-semibold text-lg text-gray-900">OpenSprint</span>
+            <span className="font-semibold text-lg text-theme-text">OpenSprint</span>
           </Link>
 
           <div className="relative flex items-center" ref={dropdownRef}>
-            <span className="text-gray-300">/</span>
+            <span className="text-theme-muted">/</span>
             <button
               type="button"
               onClick={() => setDropdownOpen((o) => !o)}
-              className="ml-1 inline-flex items-center gap-1 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors rounded px-2 py-1 hover:bg-gray-100"
+              className="ml-1 inline-flex items-center gap-1 text-sm font-medium text-theme-muted hover:text-theme-text transition-colors rounded px-2 py-1 hover:bg-theme-border-subtle"
               aria-expanded={dropdownOpen}
               aria-haspopup="listbox"
             >
@@ -95,7 +95,7 @@ export function Navbar({
             </button>
             {dropdownOpen && (
               <div
-                className="absolute left-0 top-full mt-1 min-w-[200px] max-h-[280px] overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-50"
+                className="absolute left-0 top-full mt-1 min-w-[200px] max-h-[280px] overflow-y-auto bg-theme-surface border border-theme-border rounded-lg shadow-lg py-1 z-50"
                 role="listbox"
               >
                 {projects.map((p) => (
@@ -108,15 +108,15 @@ export function Navbar({
                       setDropdownOpen(false);
                       navigate(getProjectPhasePath(p.id, currentPhase ?? "sketch"));
                     }}
-                    className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-50 transition-colors ${
-                      p.id === project?.id ? "bg-brand-50 text-brand-700 font-medium" : "text-gray-700"
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-theme-bg-elevated transition-colors ${
+                      p.id === project?.id ? "bg-brand-50 text-brand-700 font-medium" : "text-theme-muted"
                     }`}
                   >
                     {p.name}
                   </button>
                 ))}
-                {projects.length === 0 && <div className="px-4 py-3 text-sm text-gray-500">No projects</div>}
-                <div className="border-t border-gray-100 mt-1 pt-1">
+                {projects.length === 0 && <div className="px-4 py-3 text-sm text-theme-muted">No projects</div>}
+                <div className="border-t border-theme-border-subtle mt-1 pt-1">
                   <button
                     type="button"
                     onClick={() => {
@@ -135,7 +135,7 @@ export function Navbar({
 
         {/* Center: Phase Tabs */}
         {project && currentPhase && onPhaseChange && (
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+          <div className="flex items-center gap-1 bg-theme-border-subtle rounded-lg p-1">
             {phases.map((phase) => (
               <button
                 key={phase.key}
@@ -157,7 +157,7 @@ export function Navbar({
               <button
                 type="button"
                 onClick={() => setSettingsOpen(true)}
-                className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                className="p-1.5 rounded-md text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle transition-colors"
                 aria-label="Project settings"
                 title="Project settings"
               >

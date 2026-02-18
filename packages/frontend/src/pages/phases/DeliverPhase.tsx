@@ -35,7 +35,7 @@ function formatDate(iso: string): string {
 
 function StatusBadge({ status }: { status: DeploymentRecord["status"] }) {
   const styles: Record<DeploymentRecord["status"], string> = {
-    pending: "bg-gray-100 text-gray-700",
+    pending: "bg-gray-100 text-theme-text",
     running: "bg-blue-100 text-blue-700",
     success: "bg-green-100 text-green-700",
     failed: "bg-red-100 text-red-700",
@@ -120,18 +120,18 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
   return (
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
-        <div className="px-6 py-4 border-b border-gray-200 bg-white shrink-0">
+        <div className="px-6 py-4 border-b border-theme-border bg-theme-surface shrink-0">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Deliver</h2>
-              <p className="text-sm text-gray-500">
+              <h2 className="text-lg font-semibold text-theme-text">Deliver</h2>
+              <p className="text-sm text-theme-muted">
                 Deliver your project to Expo.dev or a custom pipeline
               </p>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
               {settings?.deployment?.targets && settings.deployment.targets.length > 0 ? (
                 <div className="flex items-center gap-2">
-                  <label htmlFor="deploy-target" className="text-sm text-gray-500">
+                  <label htmlFor="deploy-target" className="text-sm text-theme-muted">
                     Target:
                   </label>
                   <select
@@ -150,9 +150,9 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
                   </select>
                 </div>
               ) : (
-                <div className="text-sm text-gray-500">
+                <div className="text-sm text-theme-muted">
                   Environment:{" "}
-                  <span className="font-medium text-gray-700">
+                  <span className="font-medium text-theme-text">
                     {settings?.deployment?.mode === "expo" ? "Expo" : "Custom"}
                   </span>
                 </div>
@@ -182,15 +182,15 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
 
         <div className="flex-1 min-h-0 flex overflow-hidden">
           <ResizableSidebar storageKey="deliver" defaultWidth={280} visible>
-            <div className="h-full flex flex-col border-r border-gray-200 bg-gray-50">
-              <div className="px-3 py-2 border-b border-gray-200">
-                <h3 className="text-sm font-medium text-gray-900">Delivery History</h3>
+            <div className="h-full flex flex-col border-r border-theme-border bg-theme-bg">
+              <div className="px-3 py-2 border-b border-theme-border">
+                <h3 className="text-sm font-medium text-theme-text">Delivery History</h3>
               </div>
               <div className="flex-1 overflow-y-auto">
                 {historyLoading ? (
-                  <div className="p-4 text-center text-sm text-gray-500">Loading…</div>
+                  <div className="p-4 text-center text-sm text-theme-muted">Loading…</div>
                 ) : history.length === 0 ? (
-                  <div className="p-4 text-center text-sm text-gray-500">
+                  <div className="p-4 text-center text-sm text-theme-muted">
                     No deliveries yet. Click Deliver! to start.
                   </div>
                 ) : (
@@ -200,15 +200,15 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
                         <button
                           type="button"
                           onClick={() => handleSelectDeploy(r.id)}
-                          className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-gray-100 transition-colors ${
+                          className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-theme-border-subtle transition-colors ${
                             selectedDeployId === r.id ||
                             (!selectedDeployId && r.id === history[0]?.id)
-                              ? "bg-white border-l-2 border-brand-600"
+                              ? "bg-theme-surface border-l-2 border-brand-600"
                               : ""
                           }`}
                         >
                           <StatusBadge status={r.status} />
-                          <span className="text-xs text-gray-600 truncate flex-1">
+                          <span className="text-xs text-theme-muted truncate flex-1">
                             {formatDate(r.startedAt)}
                           </span>
                         </button>
@@ -220,9 +220,9 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
             </div>
           </ResizableSidebar>
 
-          <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-white">
-            <div className="px-4 py-2 border-b border-gray-200 flex items-center justify-between shrink-0">
-              <h3 className="text-sm font-medium text-gray-900">
+          <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-theme-surface">
+            <div className="px-4 py-2 border-b border-theme-border flex items-center justify-between shrink-0">
+              <h3 className="text-sm font-medium text-theme-text">
                 {selectedRecord ? `Delivery ${formatDate(selectedRecord.startedAt)}` : "Live Log"}
               </h3>
               {canRollback && (
@@ -238,7 +238,7 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
             </div>
             <div className="flex-1 overflow-y-auto p-4">
               <pre
-                className="text-xs font-mono whitespace-pre-wrap text-gray-800 bg-gray-900 text-green-400 p-4 rounded-lg min-h-full"
+                className="text-xs font-mono whitespace-pre-wrap text-theme-text bg-theme-code-bg text-theme-code-text p-4 rounded-lg min-h-full"
                 data-testid="deploy-log"
               >
                 {displayLog.length > 0 ? displayLog.join("") : "(No log output)"}

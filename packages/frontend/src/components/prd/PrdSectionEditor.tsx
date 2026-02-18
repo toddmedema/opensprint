@@ -20,10 +20,10 @@ export interface PrdSectionEditorProps {
  * Debounced autosave; serializes to markdown before API save.
  */
 const THEME_AWARE_CLASSES =
-  "prose prose-gray dark:prose-invert max-w-none text-gray-900 dark:text-gray-100 prose-headings:text-gray-800 dark:prose-headings:text-gray-200 prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-li:text-gray-700 dark:prose-li:text-gray-300 prose-td:text-gray-700 dark:prose-td:text-gray-300 prose-th:text-gray-700 dark:prose-th:text-gray-300 prose-a:text-brand-600 dark:prose-a:text-brand-400 prose-code:text-gray-900 dark:prose-code:text-gray-100 prose-strong:text-gray-900 dark:prose-strong:text-gray-100 prose-blockquote:text-gray-700 dark:prose-blockquote:text-gray-300 selection:bg-brand-100 dark:selection:bg-brand-900/40 outline-none empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400 dark:empty:before:text-gray-500";
+  "prose prose-gray dark:prose-invert max-w-none text-theme-text prose-headings:text-theme-text prose-p:text-theme-text prose-li:text-theme-text prose-td:text-theme-text prose-th:text-theme-text prose-a:text-brand-600 dark:prose-a:text-brand-400 prose-code:text-theme-text prose-strong:text-theme-text prose-blockquote:text-theme-text selection:bg-brand-100 dark:selection:bg-brand-900/40 outline-none empty:before:content-[attr(data-placeholder)] empty:before:text-theme-muted";
 
 const LIGHT_MODE_CLASSES =
-  "prose prose-gray max-w-none text-gray-900 prose-headings:text-gray-800 prose-p:text-gray-700 prose-li:text-gray-700 prose-td:text-gray-700 prose-th:text-gray-700 prose-a:text-brand-600 prose-code:text-gray-900 prose-strong:text-gray-900 prose-blockquote:text-gray-700 selection:bg-brand-100 outline-none empty:before:content-[attr(data-placeholder)] empty:before:text-gray-400";
+  "prose prose-gray max-w-none text-theme-text prose-headings:text-theme-text prose-p:text-theme-text prose-li:text-theme-text prose-td:text-theme-text prose-th:text-theme-text prose-a:text-brand-600 prose-code:text-theme-text prose-strong:text-theme-text prose-blockquote:text-theme-text selection:bg-brand-100 outline-none empty:before:content-[attr(data-placeholder)] empty:before:text-theme-muted";
 
 export function PrdSectionEditor({
   sectionKey,
