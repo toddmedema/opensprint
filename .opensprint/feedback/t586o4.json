@@ -1,0 +1,37 @@
+{
+  "id": "t586o4",
+  "text": "When loading task details in the Execute sidebar, we should at least already have the name of the task stored in the global app state, correct? If so, can we please display the name at the top of the sidebar immediately using that state, while we're waiting to load the rest of the task details?\n\nALSO, please conduct a performance review of why it takes so long to load the task details, and optimize it. This is running locally, it should take <1s to load the task details, but right now it's taking more like 5s.",
+  "category": "ux",
+  "mappedPlanId": "build-phase-kanban-and-task-listing",
+  "createdTaskIds": [
+    "opensprint.dev-cxx.26",
+    "opensprint.dev-cxx.27"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-18T19:02:38.069Z",
+  "parent_id": null,
+  "depth": 0,
+  "mappedEpicId": "opensprint.dev-cxx",
+  "isScopeChange": false,
+  "proposedTasks": [
+    {
+      "index": 0,
+      "title": "Show task name immediately in Execute detail sidebar using cached state",
+      "description": "When a user clicks a task row in the Execute phase to open the detail sidebar, the task name (and any other metadata already present in the global Redux/app state from the task list) should render instantly at the top of the sidebar, rather than waiting for the full detail API response. A loading skeleton or spinner should appear below the name for the remaining fields (spec, agent output, artifacts). Acceptance criteria: (1) Task title appears in the sidebar header within one render frame of clicking the task row. (2) Previously-loaded list-level metadata (status, assignee, elapsed time) also renders immediately. (3) A loading indicator is shown for fields that require the detail fetch (full description, agent output stream, artifacts). (4) If the detail fetch fails, an error state is shown below the already-visible name without clearing it.",
+      "priority": 2,
+      "depends_on": []
+    },
+    {
+      "index": 1,
+      "title": "Audit and optimize task detail loading performance to sub-1s",
+      "description": "Investigate why loading full task details in the Execute sidebar takes ~5s on a local setup and optimize to <1s. Audit the full request path: frontend fetch call, backend API handler, any beads CLI invocations (bd show), file reads (agent session logs, result.json, git diffs), and response serialization. Likely causes to check: (1) Sequential bd CLI calls that could be parallelized or cached. (2) Reading large agent output logs synchronously instead of streaming or paginating. (3) Unnecessary re-parsing of issues.jsonl on every request instead of using the in-memory index. (4) Missing caching of recently-fetched task data. Acceptance criteria: (1) Task detail endpoint responds in <500ms for typical tasks (measured via server-side timing). (2) End-to-end sidebar population completes in <1s from click. (3) Add a server-timing header or log entry so future regressions are detectable. (4) No functional regressions — all existing detail fields still load correctly.",
+      "priority": 1,
+      "depends_on": []
+    }
+  ],
+  "taskTitles": [
+    "Show task name immediately in Execute detail sidebar using cached state",
+    "Audit and optimize task detail loading performance to sub-1s"
+  ],
+  "feedbackSourceBeadId": "opensprint.dev-sjik"
+}
