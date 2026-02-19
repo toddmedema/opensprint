@@ -8,12 +8,13 @@ import { api } from "../../api/client";
 import {
   fetchTaskDetail,
   fetchArchivedSessions,
+  fetchLiveOutputBackfill,
   markTaskDone,
   unblockTask,
   setSelectedTaskId,
 } from "../../store/slices/executeSlice";
 import { addNotification } from "../../store/slices/notificationSlice";
-import { wsSend } from "../../store/middleware/websocketMiddleware";
+import { wsSend, wsConnect } from "../../store/middleware/websocketMiddleware";
 import { CloseButton } from "../../components/CloseButton";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
 import { BuildEpicCard, TaskStatusBadge, COLUMN_LABELS } from "../../components/kanban";
@@ -277,6 +278,7 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
   const isDoneTask = selectedTaskData?.kanbanColumn === "done";
   const currentTaskId = useAppSelector((s) => s.execute.currentTaskId);
   const currentPhase = useAppSelector((s) => s.execute.currentPhase);
+  const wsConnected = useAppSelector((s) => s.websocket?.connected ?? false);
   const activeRoleLabel =
     selectedTask && selectedTask === currentTaskId && currentPhase
       ? AGENT_ROLE_LABELS[currentPhase === "coding" ? "coder" : "reviewer"]
@@ -295,13 +297,39 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
   }, [projectId, selectedTask, isDoneTask, dispatch]);
 
   useEffect(() => {
-    if (selectedTask && !isDoneTask) {
+    if (
+      selectedTask &&
+      !isDoneTask &&
+      completionState &&
+      agentOutput.length === 0 &&
+      !archivedLoading
+    ) {
+      dispatch(fetchArchivedSessions({ projectId, taskId: selectedTask }));
+    }
+  }, [
+    projectId,
+    selectedTask,
+    isDoneTask,
+    completionState,
+    agentOutput.length,
+    archivedLoading,
+    dispatch,
+  ]);
+
+  useEffect(() => {
+    if (selectedTask && !isDoneTask && wsConnected) {
       dispatch(wsSend({ type: "agent.subscribe", taskId: selectedTask }));
       return () => {
         dispatch(wsSend({ type: "agent.unsubscribe", taskId: selectedTask }));
       };
     }
-  }, [selectedTask, isDoneTask, dispatch]);
+  }, [selectedTask, isDoneTask, wsConnected, dispatch]);
+
+  useEffect(() => {
+    if (selectedTask && !isDoneTask) {
+      dispatch(fetchLiveOutputBackfill({ projectId, taskId: selectedTask }));
+    }
+  }, [projectId, selectedTask, isDoneTask, dispatch]);
 
   useEffect(() => {
     if (searchExpanded) {
@@ -783,9 +811,33 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
                   )
                 ) : (
                   <div className="flex flex-col min-h-0 flex-1">
-                    <pre className="p-4 text-xs font-mono whitespace-pre-wrap text-theme-success-muted min-h-[120px] overflow-y-auto flex-1 min-h-0" data-testid="live-agent-output">
-                      {agentOutput.length > 0 ? agentOutput.join("") : "Waiting for agent output..."}
-                    </pre>
+                    {!wsConnected ? (
+                      <div className="p-4 flex flex-col gap-3" data-testid="live-output-connecting">
+                        <div className="text-sm text-theme-muted flex items-center gap-2">
+                          <span className="inline-block w-4 h-4 border-2 border-theme-border border-t-brand-500 rounded-full animate-spin" aria-hidden />
+                          Connecting to live output…
+                        </div>
+                        <p className="text-xs text-theme-muted">
+                          If the connection fails, you can retry.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => dispatch(wsConnect({ projectId }))}
+                          className="text-xs font-medium text-brand-600 hover:text-brand-700 hover:underline self-start"
+                          data-testid="live-output-retry"
+                        >
+                          Retry connection
+                        </button>
+                      </div>
+                    ) : (
+                      <pre className="p-4 text-xs font-mono whitespace-pre-wrap text-theme-success-muted min-h-[120px] overflow-y-auto flex-1 min-h-0" data-testid="live-agent-output">
+                        {agentOutput.length > 0
+                          ? agentOutput.join("")
+                          : completionState && archivedSessions.length > 0
+                            ? (archivedSessions[archivedSessions.length - 1]?.outputLog ?? "Waiting for agent output...")
+                            : "Waiting for agent output..."}
+                      </pre>
+                    )}
                     {completionState && (
                       <div className="px-4 pb-4 border-t border-theme-border pt-3 mt-0">
                         <div
