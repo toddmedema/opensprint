@@ -59,6 +59,8 @@ export interface BuildEpicCardProps {
   epicId: string;
   epicTitle: string;
   tasks: Task[];
+  /** When true, progress summary reflects filtered results; show indicator */
+  filteringActive?: boolean;
   onTaskSelect: (taskId: string) => void;
   onUnblock?: (taskId: string) => void;
   /** Map of task ID to startedAt for active tasks (elapsed time display) */
@@ -69,6 +71,7 @@ export function BuildEpicCard({
   epicId,
   epicTitle,
   tasks,
+  filteringActive = false,
   onTaskSelect,
   onUnblock,
   taskIdToStartedAt = {},
@@ -95,6 +98,11 @@ export function BuildEpicCard({
             {doneCount}/{totalCount}
             {totalCount > 0 && (
               <span className="ml-1 text-theme-muted font-normal">({Math.round(progress)}%)</span>
+            )}
+            {filteringActive && (
+              <span className="ml-1.5 text-theme-muted font-normal" title="Filtered view">
+                filtered
+              </span>
             )}
           </span>
         </div>

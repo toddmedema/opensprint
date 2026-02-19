@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { AgentSession, FeedbackItem, Plan, Task } from "@opensprint/shared";
@@ -18,6 +18,10 @@ import { CloseButton } from "../../components/CloseButton";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
 import { BuildEpicCard, TaskStatusBadge, COLUMN_LABELS } from "../../components/kanban";
 import { sortEpicTasksByStatus } from "../../lib/executeTaskSort";
+import {
+  filterTasksByStatusAndSearch,
+  type StatusFilter as FilterStatusFilter,
+} from "../../lib/executeTaskFilter";
 import { formatUptime } from "../../lib/formatting";
 
 interface ExecutePhaseProps {
@@ -214,19 +218,9 @@ function SourceFeedbackSection({
   );
 }
 
-type StatusFilter =
-  | "all"
-  | "ready"
-  | "in_progress"
-  | "in_review"
-  | "done"
-  | "blocked";
+type StatusFilter = FilterStatusFilter;
 
-function matchesFilter(kanbanColumn: string, filter: StatusFilter): boolean {
-  if (filter === "all") return true;
-  if (filter === "blocked") return ["planning", "backlog", "blocked"].includes(kanbanColumn);
-  return kanbanColumn === filter;
-}
+const SEARCH_DEBOUNCE_MS = 150;
 
 export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps) {
   const dispatch = useAppDispatch();
@@ -235,8 +229,10 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
   const [artifactsSectionExpanded, setArtifactsSectionExpanded] = useState(true);
   const [sourceFeedbackExpanded, setSourceFeedbackExpanded] = useState<Record<string, boolean>>({});
   const [searchExpanded, setSearchExpanded] = useState(false);
+  const [searchInputValue, setSearchInputValue] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const tasks = useAppSelector((s) => s.execute.tasks);
 
@@ -313,15 +309,40 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
     }
   }, [searchExpanded]);
 
+  useEffect(() => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = null;
+    }
+    if (searchInputValue === "") {
+      setSearchQuery("");
+      return;
+    }
+    const id = setTimeout(() => {
+      searchDebounceRef.current = null;
+      setSearchQuery(searchInputValue);
+    }, SEARCH_DEBOUNCE_MS);
+    searchDebounceRef.current = id;
+    return () => {
+      clearTimeout(id);
+      if (searchDebounceRef.current === id) searchDebounceRef.current = null;
+    };
+  }, [searchInputValue]);
+
   const handleSearchExpand = () => {
     setSearchExpanded(true);
   };
 
-  const handleSearchClose = () => {
+  const handleSearchClose = useCallback(() => {
+    setSearchInputValue("");
     setSearchQuery("");
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = null;
+    }
     searchInputRef.current?.blur();
     setSearchExpanded(false);
-  };
+  }, []);
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Escape") {
@@ -351,14 +372,12 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
     [tasks],
   );
 
-  const filteredTasks = useMemo(() => {
-    let result = implTasks.filter((t) => matchesFilter(t.kanbanColumn, statusFilter));
-    const q = searchQuery.trim().toLowerCase();
-    if (q) {
-      result = result.filter((t) => (t.title ?? "").toLowerCase().includes(q));
-    }
-    return result;
-  }, [implTasks, statusFilter, searchQuery]);
+  const filteredTasks = useMemo(
+    () => filterTasksByStatusAndSearch(implTasks, statusFilter, searchQuery),
+    [implTasks, statusFilter, searchQuery]
+  );
+
+  const isSearchActive = searchQuery.trim().length > 0;
 
   const swimlanes = useMemo(() => {
     const epicIdToTitle = new Map<string, string>();
@@ -472,8 +491,8 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
                   <input
                     ref={searchInputRef}
                     type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    value={searchInputValue}
+                    onChange={(e) => setSearchInputValue(e.target.value)}
                     onKeyDown={handleSearchKeyDown}
                     placeholder="Search tickets…"
                     className="w-48 sm:w-56 px-3 py-1.5 text-sm bg-theme-surface-muted border border-theme-border rounded-md text-theme-text placeholder:text-theme-muted focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
@@ -524,7 +543,11 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
             <div className="text-center py-10 text-theme-muted">No tasks yet. Ship a Plan to start generating tasks.</div>
           ) : swimlanes.length === 0 ? (
             <div className="text-center py-10 text-theme-muted">
-              {statusFilter === "all" ? "All tasks completed." : "No tasks match this filter."}
+              {isSearchActive
+                ? "No tasks match your search."
+                : statusFilter === "all"
+                  ? "All tasks completed."
+                  : "No tasks match this filter."}
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -534,6 +557,7 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
                   epicId={lane.epicId}
                   epicTitle={lane.epicTitle}
                   tasks={lane.tasks}
+                  filteringActive={isSearchActive}
                   onTaskSelect={(taskId) => dispatch(setSelectedTaskId(taskId))}
                   onUnblock={(taskId) => dispatch(unblockTask({ projectId, taskId }))}
                   taskIdToStartedAt={taskIdToStartedAt}
