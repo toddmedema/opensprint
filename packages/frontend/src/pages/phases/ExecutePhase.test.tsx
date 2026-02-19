@@ -1433,6 +1433,60 @@ describe("ExecutePhase Source feedback section", () => {
     expect(screen.getByText(/mapped plan:/i)).toBeInTheDocument();
   });
 
+  it("collapses and expands Source feedback section when icon button is clicked", async () => {
+    const taskDetail = {
+      id: "epic-1.1",
+      title: "Implement feature",
+      epicId: "epic-1",
+      kanbanColumn: "in_progress" as const,
+      priority: 0,
+      assignee: "agent",
+      description: "Task details",
+      type: "task" as const,
+      status: "in_progress" as const,
+      labels: [],
+      dependencies: [],
+      createdAt: "",
+      updatedAt: "",
+      sourceFeedbackId: "fb-xyz",
+    };
+    mockGet.mockResolvedValue(taskDetail);
+    mockFeedbackGet.mockResolvedValue({
+      id: "fb-xyz",
+      text: "Please add dark mode support",
+      category: "feature",
+      mappedPlanId: "build-test-feature",
+      createdTaskIds: ["epic-1.1"],
+      status: "mapped",
+      createdAt: "2026-02-17T10:00:00Z",
+    });
+    const tasks = [
+      {
+        id: "epic-1.1",
+        title: "Implement feature",
+        epicId: "epic-1",
+        kanbanColumn: "in_progress",
+        priority: 0,
+        assignee: "agent",
+      },
+    ];
+    const store = createStore(tasks, { selectedTaskId: "epic-1.1" });
+    render(
+      <Provider store={store}>
+        <ExecutePhase projectId="proj-1" />
+      </Provider>
+    );
+
+    const toggleBtn = await screen.findByRole("button", { name: /source feedback/i });
+    expect(screen.getByTestId("source-feedback-card")).toBeInTheDocument();
+
+    await userEvent.click(toggleBtn);
+    expect(screen.queryByTestId("source-feedback-card")).not.toBeInTheDocument();
+
+    await userEvent.click(toggleBtn);
+    expect(screen.getByTestId("source-feedback-card")).toBeInTheDocument();
+  });
+
   it("shows Resolved chip in Source feedback section when feedback is resolved", async () => {
     const taskDetail = {
       id: "epic-1.1",

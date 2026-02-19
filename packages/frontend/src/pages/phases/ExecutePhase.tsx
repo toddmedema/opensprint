@@ -148,21 +148,24 @@ function SourceFeedbackSection({
 
   return (
     <div className="border-b border-theme-border">
-      <button
-        type="button"
-        onClick={() => setExpanded((e) => !e)}
-        className="w-full flex items-center justify-between p-4 text-left hover:bg-theme-border-subtle/50 transition-colors"
-        aria-expanded={expanded}
-        aria-controls="source-feedback-content"
-        id="source-feedback-header"
-      >
-        <h4 className="text-xs font-medium text-theme-muted uppercase tracking-wide">
+      <div className="flex items-center justify-between p-4">
+        <h4
+          className="text-xs font-medium text-theme-muted uppercase tracking-wide"
+          id="source-feedback-header"
+        >
           Source feedback
         </h4>
-        <span className="text-theme-muted text-xs" aria-hidden>
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="text-theme-muted text-xs p-1 -m-1 rounded hover:bg-theme-border-subtle/50 transition-colors"
+          aria-expanded={expanded}
+          aria-controls="source-feedback-content"
+          aria-label={expanded ? "Collapse Source feedback" : "Expand Source feedback"}
+        >
           {expanded ? "▼" : "▶"}
-        </span>
-      </button>
+        </button>
+      </div>
       {expanded && (
         <div
           id="source-feedback-content"
@@ -622,21 +625,28 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
               </div>
 
               <div className="border-b border-theme-border">
-              <button
-                type="button"
-                onClick={() => setArtifactsSectionExpanded(!artifactsSectionExpanded)}
-                className="w-full flex items-center justify-between p-4 text-left hover:bg-theme-border-subtle/50 transition-colors"
-                aria-expanded={artifactsSectionExpanded}
-                aria-controls="artifacts-content"
-                id="artifacts-header"
-              >
-                <h4 className="text-xs font-medium text-theme-muted uppercase tracking-wide">
+              <div className="flex items-center justify-between p-4">
+                <h4
+                  className="text-xs font-medium text-theme-muted uppercase tracking-wide"
+                  id="artifacts-header"
+                >
                   {isDoneTask ? "Done work artifacts" : "Live agent output"}
                 </h4>
-                <span className="text-theme-muted text-xs" aria-hidden>
+                <button
+                  type="button"
+                  onClick={() => setArtifactsSectionExpanded(!artifactsSectionExpanded)}
+                  className="text-theme-muted text-xs p-1 -m-1 rounded hover:bg-theme-border-subtle/50 transition-colors"
+                  aria-expanded={artifactsSectionExpanded}
+                  aria-controls="artifacts-content"
+                  aria-label={
+                    artifactsSectionExpanded
+                      ? `Collapse ${isDoneTask ? "Done work artifacts" : "Live agent output"}`
+                      : `Expand ${isDoneTask ? "Done work artifacts" : "Live agent output"}`
+                  }
+                >
                   {artifactsSectionExpanded ? "▼" : "▶"}
-                </span>
-              </button>
+                </button>
+              </div>
               {artifactsSectionExpanded && (
               <div
                 id="artifacts-content"
