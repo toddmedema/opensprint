@@ -1160,9 +1160,26 @@ export class OrchestratorService {
         return;
       }
 
-      // If git auto-resolved all conflicts (no unmerged files), just continue the rebase
-      // directly — no need to spawn a merger agent for a trivial rebase --continue.
+      // If git auto-resolved all conflicts (no unmerged files), check whether a rebase
+      // is actually in progress. The rebase command can fail for non-conflict reasons
+      // (e.g. already up-to-date divergence, completed despite exit code), leaving no
+      // rebase state on disk. In that case, just push directly.
       if (err.conflictedFiles.length === 0) {
+        const rebaseActive = await this.branchManager.isRebaseInProgress(repoPath);
+        if (!rebaseActive) {
+          console.log(
+            "[orchestrator] Rebase error with no conflicts and no rebase in progress, attempting direct push"
+          );
+          try {
+            await this.branchManager.pushMainToOrigin(repoPath);
+            console.log("[orchestrator] Direct push succeeded after rebase error");
+            return;
+          } catch (pushErr) {
+            console.warn("[orchestrator] Direct push after rebase error failed:", pushErr);
+            return;
+          }
+        }
+
         console.log("[orchestrator] Rebase paused with no unmerged files, continuing directly");
         try {
           await this.branchManager.rebaseContinue(repoPath);
@@ -1174,7 +1191,6 @@ export class OrchestratorService {
             "[orchestrator] rebaseContinue failed, falling through to merger agent:",
             contErr
           );
-          // Fall through to merger agent — the continue may have hit new conflicts
         }
       }
 

@@ -148,7 +148,13 @@ export class BranchManager {
 
     try {
       await this.git(repoPath, "rebase origin/main");
-    } catch {
+    } catch (rebaseErr) {
+      const rebaseActive = await this.isRebaseInProgress(repoPath);
+      if (!rebaseActive) {
+        // Rebase failed for a non-conflict reason (or completed despite the error).
+        // Re-throw the original error so the caller doesn't mistake this for a conflict.
+        throw rebaseErr;
+      }
       const conflictedFiles = await this.getConflictedFiles(repoPath);
       throw new RebaseConflictError(conflictedFiles);
     }
