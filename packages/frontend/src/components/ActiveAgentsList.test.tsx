@@ -185,4 +185,23 @@ describe("ActiveAgentsList", () => {
     expect(await screen.findByText("—")).toBeInTheDocument();
     expect(screen.getByText("Task 1")).toBeInTheDocument();
   });
+
+  it("renders agent icons at 15% larger size (23px) in dropdown", async () => {
+    mockAgentsActive.mockResolvedValue([
+      { id: "task-1", phase: "coding", role: "coder", label: "Task 1", startedAt: "2026-02-16T12:00:00.000Z" },
+    ]);
+
+    renderActiveAgentsList();
+    await waitFor(() => {
+      expect(screen.getByText("1 agent running")).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTitle("Active agents"));
+
+    const listbox = screen.getByRole("listbox");
+    const icon = listbox.querySelector("img");
+    expect(icon).toBeInTheDocument();
+    expect(icon).toHaveStyle({ width: "23px", height: "23px" });
+  });
 });
