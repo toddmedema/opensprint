@@ -438,6 +438,45 @@ describe("BeadsService", () => {
     });
   });
 
+  describe("export", () => {
+    it("runs bd import before export to prevent stale DB errors", async () => {
+      const execCalls: string[] = [];
+      mockExecImpl = async (cmd: string) => {
+        execCalls.push(cmd);
+        return { stdout: "", stderr: "" };
+      };
+      await beads.export("/repo", ".beads/issues.jsonl");
+      const importIdx = execCalls.findIndex((c) => c.includes("import -i .beads/issues.jsonl"));
+      const exportIdx = execCalls.findIndex((c) => c.includes("export -o"));
+      expect(importIdx).toBeGreaterThanOrEqual(0);
+      expect(exportIdx).toBeGreaterThan(importIdx);
+    });
+
+    it("falls back to --force when export fails after import", async () => {
+      let exportAttempt = 0;
+      const execCalls: string[] = [];
+      mockExecImpl = async (cmd: string) => {
+        execCalls.push(cmd);
+        if (cmd.includes("import -i")) {
+          return { stdout: "", stderr: "" };
+        }
+        if (cmd.includes("export -o") && !cmd.includes("--force")) {
+          exportAttempt++;
+          throw Object.assign(new Error("export failed"), {
+            stderr:
+              "Error: refusing to export stale database that would lose issues\n" +
+              "  Export would lose 1 issue(s):\n" +
+              "    - opensprint.dev-ly1e\n",
+          });
+        }
+        return { stdout: "", stderr: "" };
+      };
+      await beads.export("/repo", ".beads/issues.jsonl");
+      expect(exportAttempt).toBeGreaterThanOrEqual(1);
+      expect(execCalls.some((c) => c.includes("--force"))).toBe(true);
+    });
+  });
+
   describe("daemon lifecycle (leak fix)", () => {
     it("runs bd daemon stop before bd daemon start to prevent accumulation", async () => {
       const uniqueRepo = path.join(os.tmpdir(), `beads-daemon-test-${Date.now()}`);
@@ -504,10 +543,12 @@ describe("BeadsService", () => {
       fs.writeFileSync(path.join(tmpDir, ".beads", "backend.pid"), String(otherPid), "utf-8");
 
       // Mock process.kill so otherPid appears alive (real kill would throw for non-existent PID)
-      const killSpy = vi.spyOn(process, "kill").mockImplementation((pid: number, signal?: number) => {
-        if (pid === otherPid && signal === 0) return true;
-        return process.kill(pid, signal);
-      });
+      const killSpy = vi
+        .spyOn(process, "kill")
+        .mockImplementation((pid: number, signal?: number) => {
+          if (pid === otherPid && signal === 0) return true;
+          return process.kill(pid, signal);
+        });
 
       const execCalls: string[] = [];
       mockExecImpl = async (cmd: string) => {

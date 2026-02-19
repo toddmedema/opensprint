@@ -78,7 +78,12 @@ export class BeadsService {
   }
 
   private isStaleDbError(stderr: string): boolean {
-    return stderr.includes("Database out of sync") || stderr.includes("bd sync --import-only");
+    return (
+      stderr.includes("Database out of sync") ||
+      stderr.includes("bd sync --import-only") ||
+      stderr.includes("refusing to export stale database") ||
+      stderr.includes("Export would lose")
+    );
   }
 
   /**
@@ -266,9 +271,31 @@ export class BeadsService {
   /**
    * Export beads state to JSONL file (PRD §5.9).
    * Orchestrator manages persistence explicitly when auto-commit is disabled.
+   *
+   * Imports from the JSONL first so the database includes any issues added
+   * externally (e.g. by agents in worktrees or git merges). If the normal
+   * export still fails after import, falls back to --force to avoid blocking
+   * the commit queue indefinitely.
    */
   async export(repoPath: string, outputPath: string): Promise<void> {
-    await this.exec(repoPath, `export -o ${outputPath}`);
+    try {
+      await execAsync(`bd ${BD_GLOBAL_FLAGS} import -i ${outputPath}`, {
+        cwd: repoPath,
+        timeout: 30_000,
+        maxBuffer: MAX_BUFFER_BYTES,
+      });
+    } catch (err: unknown) {
+      const e = err as { stderr?: string; message?: string };
+      console.warn(`[beads] pre-export import failed: ${e.stderr ?? e.message}`);
+    }
+
+    try {
+      await this.exec(repoPath, `export -o ${outputPath}`);
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      console.warn(`[beads] export failed, retrying with --force: ${e.message}`);
+      await this.exec(repoPath, `export -o ${outputPath} --force`);
+    }
   }
 
   /** Create a new issue */
