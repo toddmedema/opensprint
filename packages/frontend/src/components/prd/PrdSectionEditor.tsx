@@ -23,7 +23,7 @@ const THEME_AWARE_CLASSES =
   "prose prose-gray dark:prose-invert max-w-none text-theme-text prose-headings:text-theme-text prose-p:text-theme-text prose-li:text-theme-text prose-td:text-theme-text prose-th:text-theme-text prose-a:text-brand-600 dark:prose-a:text-brand-400 prose-code:text-theme-text prose-strong:text-theme-text prose-blockquote:text-theme-text selection:bg-brand-100 dark:selection:bg-brand-900/40 outline-none empty:before:content-[attr(data-placeholder)] empty:before:text-theme-muted";
 
 const LIGHT_MODE_CLASSES =
-  "prose prose-gray max-w-none text-theme-text prose-headings:text-theme-text prose-p:text-theme-text prose-li:text-theme-text prose-td:text-theme-text prose-th:text-theme-text prose-a:text-brand-600 prose-code:text-theme-text prose-strong:text-theme-text prose-blockquote:text-theme-text selection:bg-brand-100 outline-none empty:before:content-[attr(data-placeholder)] empty:before:text-theme-muted";
+  "prose prose-gray max-w-none text-theme-text prose-headings:text-theme-text prose-p:text-theme-text prose-li:text-theme-text prose-td:text-theme-text prose-th:text-theme-text prose-a:text-brand-600 prose-code:text-theme-text prose-strong:text-theme-text prose-blockquote:text-theme-text selection:bg-brand-100 outline-none empty:before:content-[attr(data-placeholder)] empty:before:text-theme-muted [&>:first-child]:!mt-0";
 
 export function PrdSectionEditor({
   sectionKey,

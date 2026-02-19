@@ -18,7 +18,9 @@ const turndown = new TurndownService({
 export async function markdownToHtml(md: string): Promise<string> {
   if (!md?.trim()) return "";
   const result = await marked.parse(md.trim());
-  return typeof result === "string" ? result : "";
+  const html = typeof result === "string" ? result : "";
+  // Trim leading/trailing whitespace to avoid spurious blank space at top of rendered content
+  return html.trim();
 }
 
 /**

@@ -20,6 +20,14 @@ describe("markdownUtils", () => {
       expect(html).toContain("Header");
     });
 
+    it("trims HTML output to avoid spurious blank space at top of rendered content", async () => {
+      const html = await markdownToHtml("## Overview\n\nContent");
+      expect(html).not.toMatch(/^\s/);
+      expect(html).not.toMatch(/\s$/);
+      expect(html).toContain("<h2");
+      expect(html).toContain("Overview");
+    });
+
     it("converts lists", async () => {
       const html = await markdownToHtml("- item 1\n- item 2");
       expect(html).toContain("<ul");
