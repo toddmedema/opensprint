@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
@@ -769,7 +769,8 @@ describe("ExecutePhase expandable search bar", () => {
   });
 
   it("filters tasks by search query", async () => {
-    const user = userEvent.setup();
+    vi.useFakeTimers();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const tasks = [
       {
         id: "epic-1.1",
@@ -805,15 +806,20 @@ describe("ExecutePhase expandable search bar", () => {
 
     await user.click(screen.getByTestId("execute-search-expand"));
     const input = screen.getByPlaceholderText("Search tickets…");
-    await user.type(input, "login");
+    fireEvent.change(input, { target: { value: "login" } });
+    vi.advanceTimersByTime(200);
 
-    const epicCard = container.querySelector('[data-testid="epic-card-epic-1"]');
-    expect(epicCard!.querySelectorAll("ul li")).toHaveLength(1);
-    expect(epicCard!.textContent).toContain("Add login form");
+    await waitFor(() => {
+      const epicCard = container.querySelector('[data-testid="epic-card-epic-1"]');
+      expect(epicCard!.querySelectorAll("ul li")).toHaveLength(1);
+      expect(epicCard!.textContent).toContain("Add login form");
+    });
+    vi.useRealTimers();
   });
 
   it("works alongside status filter without layout conflicts", async () => {
-    const user = userEvent.setup();
+    vi.useFakeTimers();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const tasks = [
       {
         id: "epic-1.1",
@@ -843,15 +849,233 @@ describe("ExecutePhase expandable search bar", () => {
     expect(container.querySelector('[data-testid="epic-card-epic-1"]')!.querySelectorAll("ul li")).toHaveLength(1);
 
     await user.click(screen.getByTestId("execute-search-expand"));
-    await user.type(screen.getByPlaceholderText("Search tickets…"), "Logout");
+    const input = screen.getByPlaceholderText("Search tickets…");
+    fireEvent.change(input, { target: { value: "Logout" } });
+    vi.advanceTimersByTime(200);
 
-    expect(container.querySelector('[data-testid="epic-card-epic-1"]')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="epic-card-epic-1"]')).not.toBeInTheDocument();
+    });
 
-    await user.clear(screen.getByPlaceholderText("Search tickets…"));
-    await user.type(screen.getByPlaceholderText("Search tickets…"), "Login");
+    fireEvent.change(input, { target: { value: "Login" } });
+    vi.advanceTimersByTime(200);
 
-    expect(container.querySelector('[data-testid="epic-card-epic-1"]')!.querySelectorAll("ul li")).toHaveLength(1);
-    expect(container.querySelector('[data-testid="epic-card-epic-1"]')!.textContent).toContain("Login task");
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="epic-card-epic-1"]')!.querySelectorAll("ul li")).toHaveLength(1);
+      expect(container.querySelector('[data-testid="epic-card-epic-1"]')!.textContent).toContain("Login task");
+    });
+    vi.useRealTimers();
+  });
+
+  it("filters by description when title does not match", async () => {
+    vi.useFakeTimers();
+    const tasks = [
+      {
+        id: "epic-1.1",
+        title: "Implement auth",
+        description: "Add OAuth2 login flow",
+        epicId: "epic-1",
+        kanbanColumn: "ready",
+        priority: 0,
+        assignee: null,
+      },
+      {
+        id: "epic-1.2",
+        title: "Add tests",
+        description: "Unit tests for auth",
+        epicId: "epic-1",
+        kanbanColumn: "ready",
+        priority: 1,
+        assignee: null,
+      },
+    ];
+    const store = createStore(tasks);
+    const { container } = render(
+      <Provider store={store}>
+        <ExecutePhase projectId="proj-1" />
+      </Provider>
+    );
+
+    await userEvent.click(screen.getByTestId("execute-search-expand"));
+    const input = screen.getByPlaceholderText("Search tickets…");
+    fireEvent.change(input, { target: { value: "OAuth2" } });
+    vi.advanceTimersByTime(200);
+
+    await waitFor(() => {
+      const epicCard = container.querySelector('[data-testid="epic-card-epic-1"]');
+      expect(epicCard!.querySelectorAll("ul li")).toHaveLength(1);
+      expect(epicCard!.textContent).toContain("Implement auth");
+    });
+    vi.useRealTimers();
+  });
+
+  it("hides epic cards with zero matching tickets when search is active", async () => {
+    vi.useFakeTimers();
+    const tasks = [
+      {
+        id: "epic-1.1",
+        title: "Login task",
+        epicId: "epic-1",
+        kanbanColumn: "ready",
+        priority: 0,
+        assignee: null,
+      },
+      {
+        id: "epic-2.1",
+        title: "Unrelated task",
+        epicId: "epic-2",
+        kanbanColumn: "ready",
+        priority: 0,
+        assignee: null,
+      },
+    ];
+    const plan2 = {
+      ...basePlan,
+      metadata: { ...basePlan.metadata, planId: "plan-2", beadEpicId: "epic-2", gateTaskId: "epic-2.0" },
+      content: "# Other Epic",
+    };
+    const store = configureStore({
+      reducer: { project: projectReducer, plan: planReducer, execute: executeReducer },
+      preloadedState: {
+        plan: {
+          plans: [basePlan, plan2],
+          dependencyGraph: null,
+          selectedPlanId: null,
+          chatMessages: {},
+          loading: false,
+          decomposing: false,
+          executingPlanId: null,
+          reExecutingPlanId: null,
+          archivingPlanId: null,
+          error: null,
+        },
+        execute: {
+          tasks,
+          plans: [],
+          awaitingApproval: false,
+          orchestratorRunning: false,
+          currentTaskId: null,
+          currentPhase: null,
+          selectedTaskId: null,
+          taskDetail: null,
+          taskDetailLoading: false,
+          taskDetailError: null,
+          agentOutput: [],
+          completionState: null,
+          archivedSessions: [],
+          archivedLoading: false,
+          markDoneLoading: false,
+          unblockLoading: false,
+          statusLoading: false,
+          loading: false,
+          error: null,
+        },
+      },
+    });
+    const { container } = render(
+      <Provider store={store}>
+        <ExecutePhase projectId="proj-1" />
+      </Provider>
+    );
+
+    expect(container.querySelectorAll('[data-testid^="epic-card-"]')).toHaveLength(2);
+
+    await userEvent.click(screen.getByTestId("execute-search-expand"));
+    fireEvent.change(screen.getByPlaceholderText("Search tickets…"), { target: { value: "Login" } });
+    vi.advanceTimersByTime(200);
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="epic-card-epic-1"]')).toBeInTheDocument();
+      expect(container.querySelector('[data-testid="epic-card-epic-2"]')).not.toBeInTheDocument();
+    });
+    vi.useRealTimers();
+  });
+
+  it("clearing search via X restores full unfiltered view", async () => {
+    vi.useFakeTimers();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const tasks = [
+      {
+        id: "epic-1.1",
+        title: "Add login",
+        epicId: "epic-1",
+        kanbanColumn: "ready",
+        priority: 0,
+        assignee: null,
+      },
+      {
+        id: "epic-1.2",
+        title: "Add logout",
+        epicId: "epic-1",
+        kanbanColumn: "ready",
+        priority: 1,
+        assignee: null,
+      },
+    ];
+    const store = createStore(tasks);
+    const { container } = render(
+      <Provider store={store}>
+        <ExecutePhase projectId="proj-1" />
+      </Provider>
+    );
+
+    await user.click(screen.getByTestId("execute-search-expand"));
+    fireEvent.change(screen.getByPlaceholderText("Search tickets…"), { target: { value: "login" } });
+    vi.advanceTimersByTime(200);
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="epic-card-epic-1"]')!.querySelectorAll("ul li")).toHaveLength(1);
+    });
+
+    await user.click(screen.getByTestId("execute-search-close"));
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="epic-card-epic-1"]')!.querySelectorAll("ul li")).toHaveLength(2);
+    });
+
+    await user.click(screen.getByTestId("execute-search-expand"));
+    const input = screen.getByPlaceholderText("Search tickets…");
+    expect(input).toHaveValue("");
+    vi.useRealTimers();
+  });
+
+  it("shows filtered indicator in epic card progress when search is active", async () => {
+    vi.useFakeTimers();
+    const tasks = [
+      {
+        id: "epic-1.1",
+        title: "Login task",
+        epicId: "epic-1",
+        kanbanColumn: "done",
+        priority: 0,
+        assignee: null,
+      },
+      {
+        id: "epic-1.2",
+        title: "Logout task",
+        epicId: "epic-1",
+        kanbanColumn: "ready",
+        priority: 1,
+        assignee: null,
+      },
+    ];
+    const store = createStore(tasks);
+    const { container } = render(
+      <Provider store={store}>
+        <ExecutePhase projectId="proj-1" />
+      </Provider>
+    );
+
+    await userEvent.click(screen.getByTestId("execute-search-expand"));
+    fireEvent.change(screen.getByPlaceholderText("Search tickets…"), { target: { value: "Login" } });
+    vi.advanceTimersByTime(200);
+
+    await waitFor(() => {
+      const epicCard = container.querySelector('[data-testid="epic-card-epic-1"]');
+      expect(epicCard).toBeInTheDocument();
+      expect(epicCard!.textContent).toContain("filtered");
+    });
+    vi.useRealTimers();
   });
 });
 
