@@ -5,8 +5,12 @@
  * - Plain text (Claude CLI, custom agents): passes through unchanged
  */
 
-/** Buffer for incomplete NDJSON lines across chunks */
-let lineBuffer = "";
+export interface AgentOutputFilter {
+  /** Filter a chunk of agent output to extract only displayable content. */
+  filter(chunk: string): string;
+  /** Reset the line buffer. Call when switching tasks or starting a new stream. */
+  reset(): void;
+}
 
 /**
  * Extract displayable content from a single JSON event.
@@ -23,7 +27,11 @@ function extractContentFromEvent(obj: unknown): string | null {
   }
 
   // message_delta: {"type":"message_delta","delta":{"content":"..."}}
-  if (o.type === "message_delta" && o.delta && typeof (o.delta as Record<string, unknown>).content === "string") {
+  if (
+    o.type === "message_delta" &&
+    o.delta &&
+    typeof (o.delta as Record<string, unknown>).content === "string"
+  ) {
     return (o.delta as Record<string, unknown>).content as string;
   }
 
@@ -40,7 +48,11 @@ function extractContentFromEvent(obj: unknown): string | null {
   if (o.type === "message" && Array.isArray(o.content)) {
     const parts: string[] = [];
     for (const block of o.content) {
-      if (block && typeof block === "object" && (block as Record<string, unknown>).type === "text") {
+      if (
+        block &&
+        typeof block === "object" &&
+        (block as Record<string, unknown>).type === "text"
+      ) {
         const t = (block as Record<string, unknown>).text;
         if (typeof t === "string") parts.push(t);
       }
@@ -65,44 +77,42 @@ function extractContentFromEvent(obj: unknown): string | null {
 }
 
 /**
- * Filter a chunk of agent output to extract only messages/content.
- * Handles NDJSON (newline-delimited JSON) for Cursor stream-json format.
- * Plain text is passed through unchanged.
- *
- * @param chunk - Raw chunk from agent stdout/stderr
- * @returns Filtered string to display (may be empty if chunk was metadata only)
+ * Factory: creates an isolated agent output filter with its own line buffer.
+ * Each consumer should create its own instance to avoid shared mutable state.
  */
-export function filterAgentOutputChunk(chunk: string): string {
-  if (!chunk) return "";
+export function createAgentOutputFilter(): AgentOutputFilter {
+  let lineBuffer = "";
 
-  lineBuffer += chunk;
-  const lines = lineBuffer.split("\n");
-  lineBuffer = lines.pop() ?? ""; // Keep incomplete line in buffer
+  return {
+    filter(chunk: string): string {
+      if (!chunk) return "";
 
-  const results: string[] = [];
+      lineBuffer += chunk;
+      const lines = lineBuffer.split("\n");
+      lineBuffer = lines.pop() ?? "";
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
+      const results: string[] = [];
 
-    try {
-      const obj = JSON.parse(trimmed) as unknown;
-      const content = extractContentFromEvent(obj);
-      if (content) {
-        results.push(content);
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+
+        try {
+          const obj = JSON.parse(trimmed) as unknown;
+          const content = extractContentFromEvent(obj);
+          if (content) {
+            results.push(content);
+          }
+        } catch {
+          results.push(line + "\n");
+        }
       }
-    } catch {
-      // Not valid JSON - treat as plain text and pass through
-      results.push(line + "\n");
-    }
-  }
 
-  return results.join("");
-}
+      return results.join("");
+    },
 
-/**
- * Reset the line buffer. Call when switching tasks or starting a new stream.
- */
-export function resetAgentOutputFilter(): void {
-  lineBuffer = "";
+    reset(): void {
+      lineBuffer = "";
+    },
+  };
 }

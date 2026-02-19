@@ -2,10 +2,9 @@ import { createSlice, createAsyncThunk, type PayloadAction } from "@reduxjs/tool
 import type { AgentSession, Task, KanbanColumn, Plan } from "@opensprint/shared";
 import { api } from "../../api/client";
 import { setPlansAndGraph } from "./planSlice";
-import {
-  filterAgentOutputChunk,
-  resetAgentOutputFilter,
-} from "../../utils/agentOutputFilter";
+import { createAgentOutputFilter } from "../../utils/agentOutputFilter";
+
+const agentOutputFilter = createAgentOutputFilter();
 
 /** Task display shape for kanban (subset of Task) */
 export type TaskCard = Pick<
@@ -73,28 +72,28 @@ export const fetchExecutePlans = createAsyncThunk(
     const graph = await api.plans.list(projectId);
     dispatch(setPlansAndGraph({ plans: graph.plans, dependencyGraph: graph }));
     return graph.plans;
-  },
+  }
 );
 
 export const fetchExecuteStatus = createAsyncThunk(
   "execute/fetchExecuteStatus",
   async (projectId: string) => {
     return api.execute.status(projectId);
-  },
+  }
 );
 
 export const fetchTaskDetail = createAsyncThunk(
   "execute/fetchTaskDetail",
   async ({ projectId, taskId }: { projectId: string; taskId: string }) => {
     return api.tasks.get(projectId, taskId);
-  },
+  }
 );
 
 export const fetchArchivedSessions = createAsyncThunk(
   "execute/fetchArchivedSessions",
   async ({ projectId, taskId }: { projectId: string; taskId: string }) => {
     return (await api.tasks.sessions(projectId, taskId)) ?? [];
-  },
+  }
 );
 
 export const fetchLiveOutputBackfill = createAsyncThunk(
@@ -102,7 +101,7 @@ export const fetchLiveOutputBackfill = createAsyncThunk(
   async ({ projectId, taskId }: { projectId: string; taskId: string }) => {
     const output = (await api.execute.liveOutput(projectId, taskId)).output;
     return { taskId, output };
-  },
+  }
 );
 
 export const markTaskDone = createAsyncThunk(
@@ -115,14 +114,18 @@ export const markTaskDone = createAsyncThunk(
     ]);
     dispatch(setPlansAndGraph({ plans: plansGraph.plans, dependencyGraph: plansGraph }));
     return { tasks: tasksData ?? [] };
-  },
+  }
 );
 
 export const unblockTask = createAsyncThunk(
   "execute/unblockTask",
   async (
-    { projectId, taskId, resetAttempts }: { projectId: string; taskId: string; resetAttempts?: boolean },
-    { dispatch },
+    {
+      projectId,
+      taskId,
+      resetAttempts,
+    }: { projectId: string; taskId: string; resetAttempts?: boolean },
+    { dispatch }
   ) => {
     await api.tasks.unblock(projectId, taskId, { resetAttempts });
     const [tasksData, plansGraph] = await Promise.all([
@@ -131,7 +134,7 @@ export const unblockTask = createAsyncThunk(
     ]);
     dispatch(setPlansAndGraph({ plans: plansGraph.plans, dependencyGraph: plansGraph }));
     return { tasks: tasksData ?? [], taskId };
-  },
+  }
 );
 
 const MAX_AGENT_OUTPUT = 5000;
@@ -147,12 +150,12 @@ const executeSlice = createSlice({
       state.taskDetail = null;
       state.taskDetailError = null;
       state.agentOutput = [];
-      resetAgentOutputFilter();
+      agentOutputFilter.reset();
     },
     appendAgentOutput(state, action: PayloadAction<{ taskId: string; chunk: string }>) {
       if (action.payload.taskId === state.selectedTaskId) {
         state.completionState = null;
-        const filtered = filterAgentOutputChunk(action.payload.chunk);
+        const filtered = agentOutputFilter.filter(action.payload.chunk);
         if (filtered) {
           state.agentOutput.push(filtered);
           if (state.agentOutput.length > MAX_AGENT_OUTPUT) {
@@ -173,7 +176,7 @@ const executeSlice = createSlice({
         taskId: string;
         status: string;
         testResults: { passed: number; failed: number; skipped: number; total: number } | null;
-      }>,
+      }>
     ) {
       if (action.payload.taskId === state.selectedTaskId) {
         state.completionState = {
@@ -184,7 +187,7 @@ const executeSlice = createSlice({
     },
     taskUpdated(
       state,
-      action: PayloadAction<{ taskId: string; status?: string; assignee?: string | null }>,
+      action: PayloadAction<{ taskId: string; status?: string; assignee?: string | null }>
     ) {
       const task = state.tasks.find((t) => t.id === action.payload.taskId);
       if (task) {
@@ -207,7 +210,10 @@ const executeSlice = createSlice({
     },
     setCurrentTaskAndPhase(
       state,
-      action: PayloadAction<{ currentTaskId: string | null; currentPhase: "coding" | "review" | null }>,
+      action: PayloadAction<{
+        currentTaskId: string | null;
+        currentPhase: "coding" | "review" | null;
+      }>
     ) {
       state.currentTaskId = action.payload.currentTaskId;
       state.currentPhase = action.payload.currentPhase;
@@ -250,7 +256,8 @@ const executeSlice = createSlice({
         state.error = null;
       })
       .addCase(fetchExecuteStatus.fulfilled, (state, action) => {
-        state.orchestratorRunning = action.payload.currentTask !== null || action.payload.queueDepth > 0;
+        state.orchestratorRunning =
+          action.payload.currentTask !== null || action.payload.queueDepth > 0;
         state.awaitingApproval = action.payload.awaitingApproval ?? false;
         state.currentTaskId = action.payload.currentTask ?? null;
         state.currentPhase = action.payload.currentPhase ?? null;
@@ -289,10 +296,7 @@ const executeSlice = createSlice({
       })
       // fetchLiveOutputBackfill
       .addCase(fetchLiveOutputBackfill.fulfilled, (state, action) => {
-        if (
-          action.payload.taskId === state.selectedTaskId &&
-          action.payload.output
-        ) {
+        if (action.payload.taskId === state.selectedTaskId && action.payload.output) {
           state.agentOutput = [action.payload.output];
         }
       })
@@ -318,7 +322,7 @@ const executeSlice = createSlice({
         state.tasks = action.payload.tasks;
         state.taskDetail =
           state.taskDetail?.id === action.payload.taskId
-            ? action.payload.tasks.find((t) => t.id === action.payload.taskId) ?? state.taskDetail
+            ? (action.payload.tasks.find((t) => t.id === action.payload.taskId) ?? state.taskDetail)
             : state.taskDetail;
         state.unblockLoading = false;
       })
