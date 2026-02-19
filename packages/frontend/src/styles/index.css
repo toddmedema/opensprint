@@ -370,3 +370,9 @@ html.sketch-phase-light {
     --tw-prose-invert-td-borders: var(--color-border);
   }
 }
+
+/* Plan sidebar markdown: no spurious blank space at top (feedback wnqybx) */
+[data-testid="plan-markdown-editor"] > div > :first-child,
+[data-testid="plan-markdown-editor"] [contenteditable="true"] > :first-child {
+  margin-top: 0 !important;
+}
