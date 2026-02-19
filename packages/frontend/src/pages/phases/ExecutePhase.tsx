@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { AgentSession, FeedbackItem, Plan, Task } from "@opensprint/shared";
@@ -234,6 +234,9 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [artifactsSectionExpanded, setArtifactsSectionExpanded] = useState(true);
   const [sourceFeedbackExpanded, setSourceFeedbackExpanded] = useState<Record<string, boolean>>({});
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const tasks = useAppSelector((s) => s.execute.tasks);
 
@@ -304,6 +307,29 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
     }
   }, [selectedTask, isDoneTask, dispatch]);
 
+  useEffect(() => {
+    if (searchExpanded) {
+      searchInputRef.current?.focus();
+    }
+  }, [searchExpanded]);
+
+  const handleSearchExpand = () => {
+    setSearchExpanded(true);
+  };
+
+  const handleSearchClose = () => {
+    setSearchQuery("");
+    searchInputRef.current?.blur();
+    setSearchExpanded(false);
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      handleSearchClose();
+    }
+  };
+
   const handleMarkDone = async () => {
     if (!selectedTask || isDoneTask) return;
     dispatch(markTaskDone({ projectId, taskId: selectedTask }));
@@ -325,10 +351,14 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
     [tasks],
   );
 
-  const filteredTasks = useMemo(
-    () => implTasks.filter((t) => matchesFilter(t.kanbanColumn, statusFilter)),
-    [implTasks, statusFilter],
-  );
+  const filteredTasks = useMemo(() => {
+    let result = implTasks.filter((t) => matchesFilter(t.kanbanColumn, statusFilter));
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      result = result.filter((t) => (t.title ?? "").toLowerCase().includes(q));
+    }
+    return result;
+  }, [implTasks, statusFilter, searchQuery]);
 
   const swimlanes = useMemo(() => {
     const epicIdToTitle = new Map<string, string>();
@@ -402,7 +432,8 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
         <div className="px-6 py-4 border-b border-theme-border bg-theme-surface shrink-0">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
             {chipConfig.map(({ label, filter, count }) => {
               const isActive = statusFilter === filter;
               const isAll = filter === "all";
@@ -431,6 +462,58 @@ export function ExecutePhase({ projectId, onNavigateToPlan }: ExecutePhaseProps)
             {awaitingApproval && (
               <span className="ml-2 text-sm font-medium text-theme-warning-text">Awaiting approval…</span>
             )}
+            </div>
+            <div className="flex items-center shrink-0">
+              {searchExpanded ? (
+                <div
+                  className="flex items-center gap-1 overflow-hidden animate-fade-in"
+                  data-testid="execute-search-expanded"
+                >
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={handleSearchKeyDown}
+                    placeholder="Search tickets…"
+                    className="w-48 sm:w-56 px-3 py-1.5 text-sm bg-theme-surface-muted border border-theme-border rounded-md text-theme-text placeholder:text-theme-muted focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
+                    aria-label="Search tickets"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSearchClose}
+                    className="p-1.5 rounded-md text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle transition-colors"
+                    aria-label="Close search"
+                    data-testid="execute-search-close"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSearchExpand}
+                  className="p-1.5 rounded-md text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle transition-colors"
+                  aria-label="Expand search"
+                  data-testid="execute-search-expand"
+                >
+                  <svg
+                    className="w-5 h-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="m21 21-4.35-4.35" />
+                  </svg>
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
