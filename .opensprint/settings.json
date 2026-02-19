@@ -16,8 +16,8 @@
     "autoResolveFeedbackOnTaskCompletion": false
   },
   "hilConfig": {
-    "scopeChanges": "requires_approval",
-    "architectureDecisions": "requires_approval",
+    "scopeChanges": "automated",
+    "architectureDecisions": "automated",
     "dependencyModifications": "automated"
   },
   "testFramework": null,

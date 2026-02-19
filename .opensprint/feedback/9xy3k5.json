@@ -1,0 +1,39 @@
+{
+  "id": "9xy3k5",
+  "text": "Remove the \"Project description\" from settings and new project creation flow, including deleting it from API routes and data stores (no backwards compatibility required)",
+  "category": "scope",
+  "mappedPlanId": "project-setup-wizard",
+  "createdTaskIds": [
+    "opensprint.dev-9q3.5",
+    "opensprint.dev-9q3.6"
+  ],
+  "status": "mapped",
+  "createdAt": "2026-02-19T08:44:17.049Z",
+  "parent_id": null,
+  "depth": 0,
+  "mappedEpicId": "opensprint.dev-9q3",
+  "isScopeChange": true,
+  "proposedTasks": [
+    {
+      "index": 0,
+      "title": "Remove project description from backend API and data stores",
+      "description": "Remove the `description` field from the Project entity across all backend layers.\n\n- Remove `description` from the Project type/interface definition\n- Remove `description` from the project creation API route (POST /projects) request schema and handler\n- Remove `description` from the project update/settings API route (PATCH /projects/:id) request schema and handler\n- Remove `description` from the GET /projects and GET /projects/:id response payloads\n- Remove `description` from the project index file (~/.opensprint/projects.json) schema and any read/write logic\n- Remove `description` from any in-memory project index or cache structures\n- No migration or backwards compatibility needed — existing stored `description` values can be silently ignored or stripped\n\nAcceptance criteria:\n- No API route accepts or returns a `description` field for projects\n- Project creation succeeds without a `description` field\n- Existing projects load without error even if they have a stale `description` in stored JSON\n- All backend tests updated to remove `description` references; all tests pass",
+      "priority": 2,
+      "depends_on": []
+    },
+    {
+      "index": 1,
+      "title": "Remove project description from frontend settings and creation wizard",
+      "description": "Remove all UI elements and frontend state related to project description.\n\n- Remove the description input field from the Project Setup Wizard (step 1: 'Project name and description')\n- Update wizard step 1 heading/copy to reflect name-only input (e.g., 'Project name')\n- Remove the description field from project settings / edit project UI\n- Remove `description` from any frontend form state, validation, Redux/store slices, and API call payloads\n- Remove `description` from the home screen project cards if displayed\n- Remove `description` from the project switcher dropdown if displayed\n\nAcceptance criteria:\n- No UI anywhere shows a project description input or display\n- Project creation wizard works end-to-end without description\n- Project settings page works without description\n- Home screen project cards render without description\n- All frontend tests updated; all tests pass",
+      "priority": 2,
+      "depends_on": [
+        0
+      ]
+    }
+  ],
+  "taskTitles": [
+    "Remove project description from backend API and data stores",
+    "Remove project description from frontend settings and creation wizard"
+  ],
+  "feedbackSourceBeadId": "opensprint.dev-lepu"
+}
