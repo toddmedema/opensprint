@@ -20,8 +20,20 @@ interface ActiveAgentsListProps {
 
 const UPTIME_TICK_MS = 1000;
 
+/** Compact loading spinner matching design system (border-brand-600, animate-spin) */
+function LoadingSpinner({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <div
+      className={`border-2 border-brand-600 border-t-transparent rounded-full animate-spin ${className}`}
+      role="status"
+      aria-label="Loading"
+    />
+  );
+}
+
 export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
   const [agents, setAgents] = useState<ActiveAgent[]>([]);
+  const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [dropdownRect, setDropdownRect] = useState<DOMRect | null>(null);
   const [now, setNow] = useState(() => new Date());
@@ -36,6 +48,8 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
       setAgents(Array.isArray(data) ? data : []);
     } catch {
       setAgents([]);
+    } finally {
+      setLoading(false);
     }
   }, [projectId]);
 
@@ -120,7 +134,11 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
           zIndex: DROPDOWN_Z_INDEX,
         }}
       >
-        {agents.length === 0 ? (
+        {loading ? (
+          <div className="px-4 py-6 flex items-center justify-center" role="status" aria-label="Loading agents">
+            <LoadingSpinner className="w-4 h-4" />
+          </div>
+        ) : agents.length === 0 ? (
           <div className="px-4 py-6 text-center text-sm text-theme-muted">No agents running</div>
         ) : (
           <ul className="divide-y divide-theme-border-subtle">
@@ -169,10 +187,14 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
         aria-haspopup="listbox"
         title="Active agents"
       >
-        <span>
-          {agents.length > 0
-            ? `${agents.length} agent${agents.length === 1 ? "" : "s"} running`
-            : "No agents running"}
+        <span className="min-w-[7.5rem] inline-flex items-center justify-center">
+          {loading ? (
+            <LoadingSpinner className="w-4 h-4" />
+          ) : agents.length > 0 ? (
+            `${agents.length} agent${agents.length === 1 ? "" : "s"} running`
+          ) : (
+            "No agents running"
+          )}
         </span>
         <svg
           className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
