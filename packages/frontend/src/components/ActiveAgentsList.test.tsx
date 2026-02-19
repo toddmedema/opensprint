@@ -30,7 +30,7 @@ function renderActiveAgentsList() {
       <MemoryRouter>
         <ActiveAgentsList projectId="proj-1" />
       </MemoryRouter>
-    </Provider>,
+    </Provider>
   );
 }
 
@@ -186,9 +186,15 @@ describe("ActiveAgentsList", () => {
     expect(screen.getByText("Task 1")).toBeInTheDocument();
   });
 
-  it("renders agent icons at 15% larger size (23px) in dropdown", async () => {
+  it("renders agent icons that scale to match text height with correct aspect ratio", async () => {
     mockAgentsActive.mockResolvedValue([
-      { id: "task-1", phase: "coding", role: "coder", label: "Task 1", startedAt: "2026-02-16T12:00:00.000Z" },
+      {
+        id: "task-1",
+        phase: "coding",
+        role: "coder",
+        label: "Task 1",
+        startedAt: "2026-02-16T12:00:00.000Z",
+      },
     ]);
 
     renderActiveAgentsList();
@@ -202,6 +208,6 @@ describe("ActiveAgentsList", () => {
     const listbox = screen.getByRole("listbox");
     const icon = listbox.querySelector("img");
     expect(icon).toBeInTheDocument();
-    expect(icon).toHaveStyle({ width: "23px", height: "23px" });
+    expect(icon).toHaveClass("self-stretch", "aspect-square");
   });
 });
