@@ -53,7 +53,8 @@ Beads supports hierarchical IDs for organizing work:
 4. **PUSH TO REMOTE** — This is MANDATORY:
    ```bash
    git pull --rebase
-   bd --no-daemon sync
+   bd --no-daemon sync --import-only   # import any issues pulled from remote
+   bd --no-daemon sync                 # export local changes to JSONL
    git push
    git status  # MUST show "up to date with origin"
    ```
