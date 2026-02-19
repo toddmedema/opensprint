@@ -9,7 +9,7 @@ const PHASE_LABELS: Record<string, string> = {
   spec: "Sketch",
   plan: "Plan",
   execute: "Execute",
-  eval: "Eval",
+  eval: "Evaluate",
   deliver: "Deliver",
 };
 
@@ -18,14 +18,23 @@ function ProjectCard({ project }: { project: Project }) {
   const progress = project.progressPercent ?? 0;
 
   return (
-    <Link to={getProjectPhasePath(project.id, project.currentPhase)} className="card p-8 hover:shadow-md transition-shadow group block">
-      <h3 className="font-semibold text-theme-text group-hover:text-brand-600 transition-colors">{project.name}</h3>
-      {project.description && <p className="mt-1 text-sm text-theme-muted line-clamp-2">{project.description}</p>}
+    <Link
+      to={getProjectPhasePath(project.id, project.currentPhase)}
+      className="card p-8 hover:shadow-md transition-shadow group block"
+    >
+      <h3 className="font-semibold text-theme-text group-hover:text-brand-600 transition-colors">
+        {project.name}
+      </h3>
+      {project.description && (
+        <p className="mt-1 text-sm text-theme-muted line-clamp-2">{project.description}</p>
+      )}
       <div className="mt-3 flex items-center justify-between">
         <span className="inline-flex items-center rounded-full bg-theme-info-bg px-2.5 py-1 text-xs font-medium text-theme-info-text">
           {phaseLabel}
         </span>
-        <span className="text-xs text-theme-muted">{new Date(project.updatedAt).toLocaleDateString()}</span>
+        <span className="text-xs text-theme-muted">
+          {new Date(project.updatedAt).toLocaleDateString()}
+        </span>
       </div>
       {progress > 0 && (
         <div className="mt-3">
@@ -78,8 +87,18 @@ export function HomeScreen() {
         ) : projects.length === 0 ? (
           <div className="text-center py-20">
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-theme-border-subtle flex items-center justify-center">
-              <svg className="w-8 h-8 text-theme-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.5v15m7.5-7.5h-15" />
+              <svg
+                className="w-8 h-8 text-theme-muted"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M12 4.5v15m7.5-7.5h-15"
+                />
               </svg>
             </div>
             <h3 className="text-lg font-medium text-theme-text mb-1">No projects yet</h3>

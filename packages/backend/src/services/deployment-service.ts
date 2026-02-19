@@ -64,7 +64,7 @@ export class DeploymentService {
 
   /**
    * Deploy using Expo.dev / EAS.
-   * OTA update to preview channel for Eval phase (PRD §6.4).
+   * OTA update to preview channel for Evaluate phase (PRD §6.4).
    */
   private async deployExpo(repoPath: string, config: DeploymentConfig): Promise<DeploymentResult> {
     try {
@@ -80,7 +80,7 @@ export class DeploymentService {
           cwd: repoPath,
           timeout: 600000, // 10 min timeout
           env: { ...process.env },
-        },
+        }
       );
 
       // Parse EAS output for URL
@@ -114,7 +114,7 @@ export class DeploymentService {
   async buildExpo(
     repoPath: string,
     platform: "ios" | "android" | "all",
-    profile: string = "preview",
+    profile: string = "preview"
   ): Promise<DeploymentResult> {
     try {
       const platformArg = platform === "all" ? "--platform all" : `--platform ${platform}`;
@@ -124,7 +124,7 @@ export class DeploymentService {
           cwd: repoPath,
           timeout: 1800000, // 30 min timeout
           env: { ...process.env },
-        },
+        }
       );
 
       try {
@@ -157,7 +157,7 @@ export class DeploymentService {
   async deployWithWebhook(
     projectId: string,
     webhookUrl: string,
-    envVars?: Record<string, string>,
+    envVars?: Record<string, string>
   ): Promise<DeploymentResult> {
     const project = await this.projectService.getProject(projectId);
     return this.deployWebhook(webhookUrl, project.repoPath, envVars);
@@ -166,7 +166,10 @@ export class DeploymentService {
   /**
    * Deploy using a custom pipeline: command or webhook (PRD §6.4).
    */
-  private async deployCustom(repoPath: string, config: DeploymentConfig): Promise<DeploymentResult> {
+  private async deployCustom(
+    repoPath: string,
+    config: DeploymentConfig
+  ): Promise<DeploymentResult> {
     if (config.webhookUrl) {
       return this.deployWebhook(config.webhookUrl, repoPath, config.envVars);
     }
@@ -205,7 +208,7 @@ export class DeploymentService {
   private async deployWebhook(
     url: string,
     repoPath: string,
-    envVars?: Record<string, string>,
+    envVars?: Record<string, string>
   ): Promise<DeploymentResult> {
     try {
       const controller = new AbortController();

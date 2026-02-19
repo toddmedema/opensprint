@@ -738,7 +738,7 @@ export class FeedbackService {
 
   /**
    * Resolve a feedback item (status -> resolved).
-   * PRD §7.5.3: When all critical feedback (bugs) are resolved and autoDeployOnEvalResolution is enabled,
+   * PRD §7.5.3: When all critical feedback (bugs) are resolved and autoDeployOnEvaluateResolution is enabled,
    * auto-triggers deployment.
    */
   async resolveFeedback(projectId: string, feedbackId: string): Promise<FeedbackItem> {
@@ -754,7 +754,7 @@ export class FeedbackService {
       feedbackId: item.id,
     });
 
-    // PRD §7.5.3: Auto-deploy on eval resolution — when all critical (bug) feedback resolved
+    // PRD §7.5.3: Auto-deploy on Evaluate resolution — when all critical (bug) feedback resolved
     const items = await this.listFeedback(projectId);
     const criticalItems = items.filter((i) => i.category === "bug");
     const allCriticalResolved =
@@ -764,7 +764,10 @@ export class FeedbackService {
       const settings = await this.projectService.getSettings(projectId);
       if (settings.deployment.autoDeployOnEvalResolution) {
         triggerDeploy(projectId).catch((err) => {
-          console.warn(`[feedback] Auto-deploy on eval resolution failed for ${projectId}:`, err);
+          console.warn(
+            `[feedback] Auto-deploy on Evaluate resolution failed for ${projectId}:`,
+            err
+          );
         });
       }
     }

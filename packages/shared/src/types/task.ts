@@ -5,7 +5,14 @@ export type TaskType = "bug" | "feature" | "task" | "epic" | "chore";
 export type BeadsStatus = "open" | "in_progress" | "closed";
 
 /** Display status on the kanban board */
-export type KanbanColumn = "planning" | "backlog" | "ready" | "in_progress" | "in_review" | "done" | "blocked";
+export type KanbanColumn =
+  | "planning"
+  | "backlog"
+  | "ready"
+  | "in_progress"
+  | "in_review"
+  | "done"
+  | "blocked";
 
 /** Beads priority (0 = highest, 4 = lowest) */
 export type TaskPriority = 0 | 1 | 2 | 3 | 4;
@@ -28,7 +35,7 @@ export interface Task {
   updatedAt: string;
   /** Latest test results from agent sessions (PRD §8.3) */
   testResults?: { passed: number; failed: number; skipped: number; total: number } | null;
-  /** Feedback item ID when task originates from Eval feedback (discovered-from provenance) */
+  /** Feedback item ID when task originates from Evaluate feedback (discovered-from provenance) */
   sourceFeedbackId?: string;
 }
 

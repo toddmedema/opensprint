@@ -58,7 +58,7 @@ Valid section keys: ${VALID_SECTION_KEYS.join(", ")}
 Do NOT include a top-level section header (e.g. "## 1. Executive Summary") in the content — the UI already displays the section title. Start with the body content directly.`;
 }
 
-/** Build the Harmonizer prompt for scope_change trigger (Eval feedback) */
+/** Build the Harmonizer prompt for scope_change trigger (Evaluate feedback) */
 export function buildHarmonizerPromptScopeChange(feedbackText: string): string {
   return `# Harmonizer: Review scope-change feedback against PRD
 
@@ -97,7 +97,10 @@ export interface HarmonizerPrdUpdate {
 export function parseHarmonizerResult(
   content: string,
   legacyUpdates?: Array<{ section: PrdSectionKey; content: string }>
-): { status: "success" | "no_changes_needed"; prdUpdates: Array<{ section: PrdSectionKey; content: string }> } | null {
+): {
+  status: "success" | "no_changes_needed";
+  prdUpdates: Array<{ section: PrdSectionKey; content: string }>;
+} | null {
   const full = parseHarmonizerResultFull(content, legacyUpdates);
   if (!full) return null;
   return {

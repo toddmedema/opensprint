@@ -1,12 +1,9 @@
 {
   "id": "ag3ibt",
-  "text": "On the eval page, clicking \"Resolve\" should not jump the user to the top of the page. They should maintain their current scroll position so that the user maintains visual context and and keep reading through feedback. And, when a task is marked as resolved, there should be a cute little animation of it disappearing (animating its height going to 0 over 1s before removing the element from the page)",
+  "text": "On the Evaluate page, clicking \"Resolve\" should not jump the user to the top of the page. They should maintain their current scroll position so that the user maintains visual context and and keep reading through feedback. And, when a task is marked as resolved, there should be a cute little animation of it disappearing (animating its height going to 0 over 1s before removing the element from the page)",
   "category": "ux",
   "mappedPlanId": "verify-phase-feedback-submission-and-mapping",
-  "createdTaskIds": [
-    "opensprint.dev-srl.24",
-    "opensprint.dev-srl.25"
-  ],
+  "createdTaskIds": ["opensprint.dev-srl.24", "opensprint.dev-srl.25"],
   "status": "mapped",
   "createdAt": "2026-02-18T17:06:53.572Z",
   "parent_id": null,
@@ -17,7 +14,7 @@
     {
       "index": 0,
       "title": "Preserve scroll position when resolving feedback items",
-      "description": "When the user clicks \"Resolve\" on a feedback item in the Eval tab, the page currently scrolls to the top, breaking visual context. Fix the resolve handler so the user's scroll position is maintained after the state update and re-render. Acceptance criteria: (1) Clicking Resolve on any feedback item does not change the scroll position of the feedback feed. (2) Works correctly regardless of where the item is in the list (top, middle, bottom). (3) Works when multiple items are resolved in sequence.",
+      "description": "When the user clicks \"Resolve\" on a feedback item in the Evaluate tab, the page currently scrolls to the top, breaking visual context. Fix the resolve handler so the user's scroll position is maintained after the state update and re-render. Acceptance criteria: (1) Clicking Resolve on any feedback item does not change the scroll position of the feedback feed. (2) Works correctly regardless of where the item is in the list (top, middle, bottom). (3) Works when multiple items are resolved in sequence.",
       "priority": 2,
       "depends_on": []
     },
@@ -26,9 +23,7 @@
       "title": "Add collapse animation when feedback item is resolved",
       "description": "After a feedback item is marked as resolved, animate it out of the list by smoothly collapsing its height to 0 over 1 second, then remove the element from the DOM. The animation should feel polished and delightful. Acceptance criteria: (1) Resolved item's height animates from its current value to 0 over a 1s duration with an appropriate easing curve. (2) The element is removed from the DOM after the animation completes. (3) Surrounding items reflow smoothly without jank. (4) Animation does not affect scroll position of the remaining items above the resolved item. (5) If the user resolves multiple items in quick succession, each animates independently without visual glitches.",
       "priority": 2,
-      "depends_on": [
-        0
-      ]
+      "depends_on": [0]
     }
   ],
   "taskTitles": [

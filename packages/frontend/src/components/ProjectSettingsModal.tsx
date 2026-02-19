@@ -771,7 +771,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                     </p>
                     <label className="flex items-center justify-between gap-3 cursor-pointer">
                       <span className="text-sm text-theme-text">
-                        Auto-deploy on Eval resolution
+                        Auto-deploy on Evaluate resolution
                       </span>
                       <input
                         type="checkbox"

@@ -24,7 +24,7 @@ export const PRD_SOURCE_LABELS: Record<string, string> = {
   spec: "Sketch", // legacy alias
   plan: "Plan",
   execute: "Execute",
-  eval: "Eval",
+  eval: "Evaluate",
   deliver: "Deliver",
 };
 

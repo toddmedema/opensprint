@@ -12,7 +12,7 @@ export interface TaskLinkTooltipProps {
 }
 
 /**
- * Wraps ticket links in the Eval feedback feed. On hover, shows a tooltip with the
+ * Wraps ticket links in the Evaluate feedback feed. On hover, shows a tooltip with the
  * task's full title after a short delay. Fetches title via API when not cached.
  * Gracefully handles fetch failures (e.g. deleted ticket) by not showing tooltip.
  */

@@ -102,7 +102,7 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
       spec: "Sketch",
       plan: "Plan",
       execute: "Execute",
-      eval: "Eval",
+      eval: "Evaluate",
       deliver: "Deliver",
       coding: "Coding",
       review: "Review",
@@ -138,7 +138,11 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
         }}
       >
         {loading ? (
-          <div className="px-4 py-6 flex items-center justify-center" role="status" aria-label="Loading agents">
+          <div
+            className="px-4 py-6 flex items-center justify-center"
+            role="status"
+            aria-label="Loading agents"
+          >
             <LoadingSpinner className="w-4 h-4" />
           </div>
         ) : agents.length === 0 ? (

@@ -19,7 +19,7 @@
     {
       "index": 0,
       "title": "Rename Deploy to Deliver in shared types, enums, and constants",
-      "description": "Rename all references to the 'Deploy' phase to 'Deliver' in shared TypeScript types, enums, constants, and configuration schemas. This includes the `current_phase` enum (spec/plan/execute/eval/deploy → deliver), deployment-related type names where they refer to the UI phase (e.g., DeployPhase → DeliverPhase), route constants, and WebSocket event prefixes (e.g., `deploy.failed` → `deliver.failed`). Do NOT rename references to standard deployment concepts (npm scripts, CI/CD pipeline terminology, Expo deploy commands, or the DeploymentRecord entity which describes an infrastructure action, not the UI phase). Acceptance criteria: all shared type definitions compile; grep for 'deploy' in enum/phase contexts returns zero hits; SPEED acronym references still resolve correctly (Spec, Plan, Execute, Eval, Deliver).",
+      "description": "Rename all references to the 'Deploy' phase to 'Deliver' in shared TypeScript types, enums, constants, and configuration schemas. This includes the `current_phase` enum (spec/plan/execute/evaluate/deploy → deliver), deployment-related type names where they refer to the UI phase (e.g., DeployPhase → DeliverPhase), route constants, and WebSocket event prefixes (e.g., `deploy.failed` → `deliver.failed`). Do NOT rename references to standard deployment concepts (npm scripts, CI/CD pipeline terminology, Expo deploy commands, or the DeploymentRecord entity which describes an infrastructure action, not the UI phase). Acceptance criteria: all shared type definitions compile; grep for 'deploy' in enum/phase contexts returns zero hits; SPEED acronym references still resolve correctly (Spec, Plan, Execute, Evaluate, Deliver).",
       "priority": 1,
       "depends_on": []
     },
@@ -28,27 +28,21 @@
       "title": "Rename Deploy to Deliver in backend API routes and handlers",
       "description": "Update all backend API endpoints, route paths, handler names, and WebSocket event names that reference the 'Deploy' UI phase to use 'Deliver' instead. This includes REST route segments (e.g., `/api/projects/:id/deploy` → `/api/projects/:id/deliver`), orchestrator phase checks, phase transition logic, and any API response payloads that expose the phase name. Preserve backward compatibility if any persisted data uses the old name (e.g., migration or normalization of stored `current_phase` values). Do NOT rename infrastructure deployment logic (deployment pipeline invocation, Expo integration, custom deploy commands). Acceptance criteria: all backend tests pass; API endpoints use 'deliver' for the phase; orchestrator phase transitions work end-to-end.",
       "priority": 2,
-      "depends_on": [
-        0
-      ]
+      "depends_on": [0]
     },
     {
       "index": 2,
       "title": "Rename Deploy to Deliver in frontend UI components and labels",
-      "description": "Update all frontend references to the 'Deploy' phase to 'Deliver'. This includes: tab labels, navbar items, phase indicators, toast notifications, button text ('Deploy!' → 'Deliver!'), status badges, settings labels, and any user-facing strings. Update component file names and CSS class names where they reference the phase (e.g., DeployTab → DeliverTab). Ensure the phase progression UI (Spec → Plan → Execute → Eval → Deliver) renders correctly. Do NOT rename UI text that refers to infrastructure deployment concepts (e.g., 'Deployment History' and 'deployment pipeline' labels are acceptable since they describe infrastructure actions). Acceptance criteria: no user-facing text says 'Deploy' when referring to the SPEED phase; all frontend tests pass; phase navigation works correctly.",
+      "description": "Update all frontend references to the 'Deploy' phase to 'Deliver'. This includes: tab labels, navbar items, phase indicators, toast notifications, button text ('Deploy!' → 'Deliver!'), status badges, settings labels, and any user-facing strings. Update component file names and CSS class names where they reference the phase (e.g., DeployTab → DeliverTab). Ensure the phase progression UI (Spec → Plan → Execute → Evaluate → Deliver) renders correctly. Do NOT rename UI text that refers to infrastructure deployment concepts (e.g., 'Deployment History' and 'deployment pipeline' labels are acceptable since they describe infrastructure actions). Acceptance criteria: no user-facing text says 'Deploy' when referring to the SPEED phase; all frontend tests pass; phase navigation works correctly.",
       "priority": 2,
-      "depends_on": [
-        0
-      ]
+      "depends_on": [0]
     },
     {
       "index": 3,
       "title": "Update PRD and plan documentation to use Deliver",
-      "description": "Update `.opensprint/prd.json` section references from 'Deploy' to 'Deliver' where they name the UI phase (e.g., section 7.5 title, SPEED acronym expansion, phase enum references, Deploy tab descriptions). Update any plan markdown files that reference the phase by name. Preserve references to deployment infrastructure concepts (deployment pipelines, deployment modes, deployment records). Acceptance criteria: PRD consistently uses 'Deliver' for the fifth SPEED phase; SPEED acronym is documented as Spec, Plan, Execute, Eval, Deliver; no plan files reference 'Deploy' as a phase name.",
+      "description": "Update `.opensprint/prd.json` section references from 'Deploy' to 'Deliver' where they name the UI phase (e.g., section 7.5 title, SPEED acronym expansion, phase enum references, Deploy tab descriptions). Update any plan markdown files that reference the phase by name. Preserve references to deployment infrastructure concepts (deployment pipelines, deployment modes, deployment records). Acceptance criteria: PRD consistently uses 'Deliver' for the fifth SPEED phase; SPEED acronym is documented as Spec, Plan, Execute, Evaluate, Deliver; no plan files reference 'Deploy' as a phase name.",
       "priority": 2,
-      "depends_on": [
-        0
-      ]
+      "depends_on": [0]
     }
   ],
   "taskTitles": [

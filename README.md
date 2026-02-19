@@ -8,7 +8,7 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 <p align="center">
-  <img src="docs/assets/hero-demo.gif" alt="OpenSprint — Sketch, Plan, Execute, Eval, Deliver" width="800" />
+  <img src="docs/assets/hero-demo.gif" alt="OpenSprint — Sketch, Plan, Execute, Evaluate, Deliver" width="800" />
 </p>
 
 Tired of _managing AI_ and just want to _build good software_? Open Sprint guides you across five phases of product development — SPEED: **Sketch**, **Plan**, **Execute**, **Evaluate**, and **Deliver** — to transform a high-level product idea into well-architected, working software with minimal manual intervention. The built-in AI orchestration layer manages a whole team of agents, from product visionaries that help you write PRDs, to coders and QA to build and test your software.
@@ -28,7 +28,7 @@ _Open Sprint_: The speed of a full-out open sprint. Agile methodology sprints of
 
 ### What about Gas Town?
 
-You've probably heard about [Gas Town]([url](https://github.com/steveyegge/gastown)), the original AI orchestrator. 
+You've probably heard about [Gas Town](<[url](https://github.com/steveyegge/gastown)>), the original AI orchestrator.
 
 Open Sprint takes the concept of an AI orchestrator and levels it up: now you're not working in terminals giving text-only prompts and trying to keep track of agents, you're working in a web-first workflow that gives Jira a run for its money. Brainstorm your PRD alongside an agent in a Google Docs-like interface. Track project status and provide feedback (including wonderful web features like attaching screenshots and replying inline). Once you've opened your sprint, you'll never be able to stop!
 
@@ -55,7 +55,7 @@ We currently natively support Claude and Cursor APIs, as well as custom APIs via
 flowchart LR
     A["🌙 Sketch"] -->|PRD| B["📋 Plan"]
     B -->|Epics & Tasks| C["🔨 Execute"]
-    C -->|Working Code| D["✅ Evaludate"]
+    C -->|Working Code| D["✅ Evaluate"]
     D -->|Feedback| B
 
     style A fill:#3B82F6,color:#fff
@@ -89,13 +89,13 @@ opensprint/
 
 All scripts can be run from the project root:
 
-| Command                | Description                                      |
-| ---------------------- | ------------------------------------------------ |
-| `npm run dev`          | Start backend + frontend concurrently            |
-| `npm run build`        | Build all packages (shared → backend → frontend) |
-| `npm run test`         | Run tests across all packages                    |
-| `npm run lint`         | Lint all packages                                |
-| `npm run clean`        | Remove all build artifacts and node_modules      |
+| Command         | Description                                      |
+| --------------- | ------------------------------------------------ |
+| `npm run dev`   | Start backend + frontend concurrently            |
+| `npm run build` | Build all packages (shared → backend → frontend) |
+| `npm run test`  | Run tests across all packages                    |
+| `npm run lint`  | Lint all packages                                |
+| `npm run clean` | Remove all build artifacts and node_modules      |
 
 ## Tech Stack
 

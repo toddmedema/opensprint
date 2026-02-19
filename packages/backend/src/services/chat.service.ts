@@ -529,7 +529,7 @@ export class ChatService {
   }
 
   /**
-   * When Eval feedback is categorized as a scope change and the user approves via HIL,
+   * When Evaluate feedback is categorized as a scope change and the user approves via HIL,
    * invoke the Harmonizer to review the feedback against the PRD and update affected
    * sections. PRD §7.4.2, §12.3.3, §15.1 Living PRD Synchronization.
    * Trigger: scope_change.

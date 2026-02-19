@@ -1,5 +1,5 @@
 /**
- * EvalPhase tests — VerifyPhase renamed to EvalPhase (Ensure→Eval per feedback).
+ * EvalPhase tests — VerifyPhase renamed to EvalPhase (Ensure→Evaluate per feedback).
  * This file tests EvalPhase component. Filename VerifyPhase.test.tsx retained for compatibility.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -108,11 +108,11 @@ describe("EvalPhase layout", () => {
     render(
       <Provider store={store}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     expect(screen.queryByTestId("eval-phase-header")).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Eval", level: 2 })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Evaluate", level: 2 })).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText(/Describe a bug/)).toBeInTheDocument();
   });
 });
@@ -136,7 +136,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={store}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     expect(screen.getByPlaceholderText(/Describe a bug/)).toBeInTheDocument();
@@ -149,7 +149,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={store}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     const attachBtn = screen.getByRole("button", { name: /Attach image/i });
@@ -161,7 +161,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={store}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     const attachBtn = screen.getByRole("button", { name: /Attach image/i });
@@ -180,7 +180,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={store}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     await user.type(screen.getByPlaceholderText(/Describe a bug/), "Bug in login");
@@ -206,7 +206,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={store}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     await user.type(screen.getByPlaceholderText(/Describe a bug/), "Bug in login");
@@ -225,16 +225,15 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={store}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     // Create a minimal PNG file (1x1 pixel)
     const pngBase64 =
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-    const blob = new Blob(
-      [Uint8Array.from(atob(pngBase64), (c) => c.charCodeAt(0))],
-      { type: "image/png" },
-    );
+    const blob = new Blob([Uint8Array.from(atob(pngBase64), (c) => c.charCodeAt(0))], {
+      type: "image/png",
+    });
     const file = new File([blob], "screenshot.png", { type: "image/png" });
 
     const textarea = screen.getByPlaceholderText(/Describe a bug/);
@@ -242,7 +241,9 @@ describe("EvalPhase feedback input", () => {
 
     // Trigger file input via the attach button
     const attachBtn = screen.getByRole("button", { name: /Attach image/i });
-    const fileInput = attachBtn.parentElement?.querySelector('input[type="file"]') as HTMLInputElement;
+    const fileInput = attachBtn.parentElement?.querySelector(
+      'input[type="file"]'
+    ) as HTMLInputElement;
     expect(fileInput).toBeInTheDocument();
 
     // Simulate file selection
@@ -273,7 +274,7 @@ describe("EvalPhase feedback input", () => {
     const { container } = render(
       <Provider store={store}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     const feedbackCard = container.querySelector(".card");
@@ -287,19 +288,20 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={store}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     const pngBase64 =
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-    const blob = new Blob(
-      [Uint8Array.from(atob(pngBase64), (c) => c.charCodeAt(0))],
-      { type: "image/png" },
-    );
+    const blob = new Blob([Uint8Array.from(atob(pngBase64), (c) => c.charCodeAt(0))], {
+      type: "image/png",
+    });
     const file = new File([blob], "screenshot.png", { type: "image/png" });
 
     const attachBtn = screen.getByRole("button", { name: /Attach image/i });
-    const fileInput = attachBtn.parentElement?.querySelector('input[type="file"]') as HTMLInputElement;
+    const fileInput = attachBtn.parentElement?.querySelector(
+      'input[type="file"]'
+    ) as HTMLInputElement;
     Object.defineProperty(fileInput, "files", { value: [file], writable: false });
     fileInput.dispatchEvent(new Event("change", { bubbles: true }));
 
@@ -358,7 +360,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     expect(screen.getByText(/Feedback History \(1\)/)).toBeInTheDocument();
@@ -418,7 +420,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     expect(screen.getByText("Bug feedback")).toBeInTheDocument();
@@ -468,7 +470,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     expect(screen.getByText("(No feedback text)")).toBeInTheDocument();
@@ -517,7 +519,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     expect(screen.getByText("Bug")).toBeInTheDocument();
@@ -556,7 +558,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeLoading}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     expect(screen.getByText(/Loading feedback/)).toBeInTheDocument();
@@ -596,7 +598,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithError}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     expect(screen.getByText("Failed to load feedback")).toBeInTheDocument();
@@ -650,7 +652,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     // Pending feedback is shown immediately with loading state
@@ -711,7 +713,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     // Both shown: pending with loading state, mapped with category chip
@@ -790,7 +792,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     expect(screen.getByText("Bug")).toBeInTheDocument();
@@ -845,7 +847,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     // Mapped status label must be hidden — no "Mapped" anywhere in status/chip area
@@ -897,7 +899,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     const resolveBtn = screen.getByRole("button", { name: /resolve/i });
@@ -934,8 +936,24 @@ describe("EvalPhase feedback input", () => {
         },
         eval: {
           feedback: [
-            { id: "fb-1", text: "First", category: "bug", mappedPlanId: "p1", createdTaskIds: [], status: "mapped", createdAt: "2024-01-01T00:00:00Z" },
-            { id: "fb-2", text: "Second", category: "feature", mappedPlanId: "p2", createdTaskIds: [], status: "mapped", createdAt: "2024-01-01T00:00:01Z" },
+            {
+              id: "fb-1",
+              text: "First",
+              category: "bug",
+              mappedPlanId: "p1",
+              createdTaskIds: [],
+              status: "mapped",
+              createdAt: "2024-01-01T00:00:00Z",
+            },
+            {
+              id: "fb-2",
+              text: "Second",
+              category: "feature",
+              mappedPlanId: "p2",
+              createdTaskIds: [],
+              status: "mapped",
+              createdAt: "2024-01-01T00:00:01Z",
+            },
           ],
           loading: false,
           submitting: false,
@@ -947,7 +965,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     const scrollContainer = screen.getByTestId("eval-feedback-feed-scroll");
@@ -1017,7 +1035,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     expect(screen.getByText("Bug to resolve and collapse")).toBeInTheDocument();
@@ -1063,8 +1081,24 @@ describe("EvalPhase feedback input", () => {
         },
         eval: {
           feedback: [
-            { id: "fb-a", text: "First bug", category: "bug", mappedPlanId: "p1", createdTaskIds: [], status: "mapped", createdAt: "2024-01-01T00:00:00Z" },
-            { id: "fb-b", text: "Second bug", category: "bug", mappedPlanId: "p2", createdTaskIds: [], status: "mapped", createdAt: "2024-01-01T00:00:01Z" },
+            {
+              id: "fb-a",
+              text: "First bug",
+              category: "bug",
+              mappedPlanId: "p1",
+              createdTaskIds: [],
+              status: "mapped",
+              createdAt: "2024-01-01T00:00:00Z",
+            },
+            {
+              id: "fb-b",
+              text: "Second bug",
+              category: "bug",
+              mappedPlanId: "p2",
+              createdTaskIds: [],
+              status: "mapped",
+              createdAt: "2024-01-01T00:00:01Z",
+            },
           ],
           loading: false,
           submitting: false,
@@ -1082,13 +1116,13 @@ describe("EvalPhase feedback input", () => {
         createdTaskIds: [],
         status: "resolved",
         createdAt: new Date().toISOString(),
-      } as never),
+      } as never)
     );
 
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     const resolveBtn1 = screen.getByRole("button", { name: /resolve/i });
@@ -1135,9 +1169,33 @@ describe("EvalPhase feedback input", () => {
         },
         eval: {
           feedback: [
-            { id: "fb-a", text: "A", category: "bug", mappedPlanId: "p1", createdTaskIds: [], status: "mapped", createdAt: "2024-01-01T00:00:00Z" },
-            { id: "fb-b", text: "B", category: "feature", mappedPlanId: "p2", createdTaskIds: [], status: "mapped", createdAt: "2024-01-01T00:00:01Z" },
-            { id: "fb-c", text: "C", category: "ux", mappedPlanId: "p3", createdTaskIds: [], status: "mapped", createdAt: "2024-01-01T00:00:02Z" },
+            {
+              id: "fb-a",
+              text: "A",
+              category: "bug",
+              mappedPlanId: "p1",
+              createdTaskIds: [],
+              status: "mapped",
+              createdAt: "2024-01-01T00:00:00Z",
+            },
+            {
+              id: "fb-b",
+              text: "B",
+              category: "feature",
+              mappedPlanId: "p2",
+              createdTaskIds: [],
+              status: "mapped",
+              createdAt: "2024-01-01T00:00:01Z",
+            },
+            {
+              id: "fb-c",
+              text: "C",
+              category: "ux",
+              mappedPlanId: "p3",
+              createdTaskIds: [],
+              status: "mapped",
+              createdAt: "2024-01-01T00:00:02Z",
+            },
           ],
           loading: false,
           submitting: false,
@@ -1149,7 +1207,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     const scrollContainer = screen.getByTestId("eval-feedback-feed-scroll");
@@ -1220,7 +1278,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     expect(screen.getByText("Bug")).toBeInTheDocument();
@@ -1271,7 +1329,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     const resolvedChip = screen.getByText("Resolved");
@@ -1332,7 +1390,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     expect(screen.queryByText("Resolved")).not.toBeInTheDocument();
@@ -1390,7 +1448,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     expect(screen.queryByText("Resolved")).not.toBeInTheDocument();
@@ -1478,7 +1536,7 @@ describe("EvalPhase feedback input", () => {
       render(
         <Provider store={store}>
           <EvalPhase projectId="proj-1" />
-        </Provider>,
+        </Provider>
       );
 
       const filter = screen.getByTestId("feedback-status-filter");
@@ -1495,7 +1553,7 @@ describe("EvalPhase feedback input", () => {
       render(
         <Provider store={store}>
           <EvalPhase projectId="proj-1" />
-        </Provider>,
+        </Provider>
       );
 
       const filter = screen.getByTestId("feedback-status-filter");
@@ -1512,7 +1570,7 @@ describe("EvalPhase feedback input", () => {
       render(
         <Provider store={store}>
           <EvalPhase projectId="proj-1" />
-        </Provider>,
+        </Provider>
       );
 
       const filter = screen.getByTestId("feedback-status-filter");
@@ -1531,7 +1589,7 @@ describe("EvalPhase feedback input", () => {
       render(
         <Provider store={store}>
           <EvalPhase projectId="proj-1" />
-        </Provider>,
+        </Provider>
       );
 
       const filter = screen.getByTestId("feedback-status-filter");
@@ -1553,7 +1611,7 @@ describe("EvalPhase feedback input", () => {
       render(
         <Provider store={store}>
           <EvalPhase projectId="proj-1" />
-        </Provider>,
+        </Provider>
       );
 
       const filter = screen.getByTestId("feedback-status-filter");
@@ -1569,7 +1627,7 @@ describe("EvalPhase feedback input", () => {
       render(
         <Provider store={store}>
           <EvalPhase projectId="proj-1" />
-        </Provider>,
+        </Provider>
       );
 
       const filter = screen.getByTestId("feedback-status-filter");
@@ -1584,7 +1642,7 @@ describe("EvalPhase feedback input", () => {
       render(
         <Provider store={store}>
           <EvalPhase projectId="proj-1" />
-        </Provider>,
+        </Provider>
       );
 
       expect(screen.queryByTestId("feedback-status-filter")).not.toBeInTheDocument();
@@ -1596,7 +1654,7 @@ describe("EvalPhase feedback input", () => {
       render(
         <Provider store={store}>
           <EvalPhase projectId="proj-1" />
-        </Provider>,
+        </Provider>
       );
 
       const filter = screen.getByTestId("feedback-status-filter");
@@ -1616,7 +1674,7 @@ describe("EvalPhase feedback input", () => {
       render(
         <Provider store={store}>
           <EvalPhase projectId="proj-1" />
-        </Provider>,
+        </Provider>
       );
 
       const filter = screen.getByTestId("feedback-status-filter");
@@ -1670,7 +1728,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     const imgs = screen.getAllByRole("img", { name: /Attachment \d+/ });
@@ -1720,7 +1778,7 @@ describe("EvalPhase feedback input", () => {
     const { container } = render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     const card = container.querySelector(".card");
@@ -1833,7 +1891,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithTasks}>
         <EvalPhase projectId="proj-1" onNavigateToBuildTask={(id) => id} />
-      </Provider>,
+      </Provider>
     );
 
     // Task links are shown
@@ -1909,7 +1967,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithUnmappedTask}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     expect(screen.getByText("opensprint.dev-new.1")).toBeInTheDocument();
@@ -1976,7 +2034,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     const replyButtons = screen.getAllByRole("button", { name: /Reply/i });
@@ -2059,7 +2117,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithTaskAndReply}>
         <EvalPhase projectId="proj-1" onNavigateToBuildTask={(id) => id} />
-      </Provider>,
+      </Provider>
     );
 
     const taskLink = screen.getByText("opensprint.dev-abc.1");
@@ -2151,7 +2209,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithTaskAndReply}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     const taskLink = screen.getByText("opensprint.dev-abc.1");
@@ -2233,7 +2291,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeNoTickets}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     const replyBtn = screen.getByRole("button", { name: /^Reply$/i });
@@ -2304,7 +2362,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     await user.click(screen.getByRole("button", { name: /^Reply$/i }));
@@ -2375,7 +2433,7 @@ describe("EvalPhase feedback input", () => {
     const { container } = render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     await user.click(screen.getByRole("button", { name: /^Reply$/i }));
@@ -2446,7 +2504,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     const replyBtn = screen.getByRole("button", { name: /^Reply$/i });
@@ -2529,7 +2587,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     await user.click(screen.getByRole("button", { name: /^Reply$/i }));
@@ -2602,7 +2660,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithFeedback}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     await user.click(screen.getByRole("button", { name: /^Reply$/i }));
@@ -2686,7 +2744,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithNested}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     expect(screen.getByText("Parent feedback")).toBeInTheDocument();
@@ -2769,7 +2827,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithReplies}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     expect(screen.getByRole("button", { name: /Collapse \(1 reply\)/i })).toBeInTheDocument();
@@ -2859,7 +2917,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithMultipleReplies}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     expect(screen.getByRole("button", { name: /Collapse \(2 replies\)/i })).toBeInTheDocument();
@@ -2925,7 +2983,7 @@ describe("EvalPhase feedback input", () => {
     render(
       <Provider store={storeWithUnknownTask}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     // Unknown task shows backlog icon (default)
@@ -3034,7 +3092,7 @@ describe("EvalPhase feedback collapsed state persistence", () => {
     render(
       <Provider store={storeWithReplies}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     // Initially child is visible
@@ -3129,7 +3187,7 @@ describe("EvalPhase feedback collapsed state persistence", () => {
     render(
       <Provider store={storeWithReplies}>
         <EvalPhase projectId="proj-1" />
-      </Provider>,
+      </Provider>
     );
 
     // Parent is visible, child is collapsed (hidden)

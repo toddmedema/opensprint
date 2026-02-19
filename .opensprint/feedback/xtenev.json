@@ -1,12 +1,9 @@
 {
   "id": "xtenev",
-  "text": "The header in Eval tab is incorrectly styled in dark mode, please invert it to use light mode styles. This seems to be a recurring issue with many UI elements, so please also do a pass on the overall UI architecture of the app to make sure that everything is consistently styled in light theme.",
+  "text": "The header in Evaluate tab is incorrectly styled in dark mode, please invert it to use light mode styles. This seems to be a recurring issue with many UI elements, so please also do a pass on the overall UI architecture of the app to make sure that everything is consistently styled in light theme.",
   "category": "bug",
   "mappedPlanId": "theme-support",
-  "createdTaskIds": [
-    "opensprint.dev-ax8.1",
-    "opensprint.dev-ax8.5"
-  ],
+  "createdTaskIds": ["opensprint.dev-ax8.1", "opensprint.dev-ax8.5"],
   "status": "mapped",
   "createdAt": "2026-02-18T05:20:33.656Z",
   "images": [
@@ -19,23 +16,21 @@
   "proposedTasks": [
     {
       "index": 0,
-      "title": "Fix Eval tab header styling in dark mode",
-      "description": "The header element in the Eval tab uses incorrect color tokens in dark mode, resulting in unreadable or visually broken styling. Identify the header component(s) rendered in the Eval tab and ensure they reference the correct theme-aware CSS variables / design tokens so that foreground and background colors invert properly when the dark theme is active.\n\nAcceptance criteria:\n- Eval tab header renders with correct dark-mode colors (appropriate contrast, readable text).\n- No regressions in light mode or system-preference mode.\n- Visual snapshot or screenshot confirms fix in both themes.",
+      "title": "Fix Evaluate tab header styling in dark mode",
+      "description": "The header element in the Evaluate tab uses incorrect color tokens in dark mode, resulting in unreadable or visually broken styling. Identify the header component(s) rendered in the Evaluate tab and ensure they reference the correct theme-aware CSS variables / design tokens so that foreground and background colors invert properly when the dark theme is active.\n\nAcceptance criteria:\n- Evaluate tab header renders with correct dark-mode colors (appropriate contrast, readable text).\n- No regressions in light mode or system-preference mode.\n- Visual snapshot or screenshot confirms fix in both themes.",
       "priority": 1,
       "depends_on": []
     },
     {
       "index": 1,
       "title": "Audit and fix app-wide dark mode styling inconsistencies",
-      "description": "Perform a systematic audit of every major UI surface (Home, Spec, Plan, Execute, Eval, Deploy tabs; navbar; modals; toasts; sidebar; settings) to identify components that do not correctly respond to the active theme. For each inconsistency found, update the component to use the project's theme-aware design tokens / CSS variables rather than hard-coded color values.\n\nAcceptance criteria:\n- Every page and shared component (navbar, sidebar, modals, toasts, cards, buttons, inputs, badges) renders correctly in light, dark, and system themes.\n- A checklist of all audited components is included in the PR description.\n- No hard-coded color literals remain in component styles (all reference theme tokens).\n- Visual review confirms consistent appearance across all tabs in both themes.",
+      "description": "Perform a systematic audit of every major UI surface (Home, Spec, Plan, Execute, Evaluate, Deploy tabs; navbar; modals; toasts; sidebar; settings) to identify components that do not correctly respond to the active theme. For each inconsistency found, update the component to use the project's theme-aware design tokens / CSS variables rather than hard-coded color values.\n\nAcceptance criteria:\n- Every page and shared component (navbar, sidebar, modals, toasts, cards, buttons, inputs, badges) renders correctly in light, dark, and system themes.\n- A checklist of all audited components is included in the PR description.\n- No hard-coded color literals remain in component styles (all reference theme tokens).\n- Visual review confirms consistent appearance across all tabs in both themes.",
       "priority": 2,
-      "depends_on": [
-        0
-      ]
+      "depends_on": [0]
     }
   ],
   "taskTitles": [
-    "Fix Eval tab header styling in dark mode",
+    "Fix Evaluate tab header styling in dark mode",
     "Audit and fix app-wide dark mode styling inconsistencies"
   ],
   "feedbackSourceBeadId": "opensprint.dev-5h0"

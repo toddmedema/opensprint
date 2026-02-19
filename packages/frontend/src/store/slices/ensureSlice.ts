@@ -1,5 +1,5 @@
 /**
- * @deprecated Use evalSlice. Ensure phase renamed to Eval. Re-exported for backward compatibility.
+ * @deprecated Use evalSlice. Ensure phase renamed to Evaluate. Re-exported for backward compatibility.
  */
 export {
   type EvalState as EnsureState,

@@ -74,7 +74,7 @@ interface RetryContext {
 }
 
 /** Watchdog interval: 5 minutes (PRDv2 §5.7) */
-const WATCHDOG_INTERVAL_MS = 5 * 60 * 1000;
+const WATCHDOG_INTERVAL_MS = 60 * 1000;
 
 /** Polling interval for monitoring orphaned agent processes during crash recovery */
 
@@ -509,7 +509,7 @@ export class OrchestratorService {
         },
         WATCHDOG_INTERVAL_MS
       );
-      console.log("[orchestrator] Watchdog started (5m interval) for project", projectId);
+      console.log("[orchestrator] Watchdog started (60s interval) for project", projectId);
     }
 
     // Kick off the loop if idle (recovery may have left it active for PID-alive monitoring)

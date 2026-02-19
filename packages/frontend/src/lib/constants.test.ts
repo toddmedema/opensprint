@@ -21,7 +21,7 @@ describe("constants", () => {
       expect(PRD_SOURCE_LABELS.sketch).toBe("Sketch");
       expect(PRD_SOURCE_LABELS.plan).toBe("Plan");
       expect(PRD_SOURCE_LABELS.execute).toBe("Execute");
-      expect(PRD_SOURCE_LABELS.eval).toBe("Eval");
+      expect(PRD_SOURCE_LABELS.eval).toBe("Evaluate");
       expect(PRD_SOURCE_LABELS.deliver).toBe("Deliver");
     });
   });

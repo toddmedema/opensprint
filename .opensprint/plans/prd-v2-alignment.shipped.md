@@ -2,11 +2,11 @@
 
 ## Overview
 
-Align the OpenSprint codebase with PRD v2.0, which introduces the five-phase **SPEED** workflow (Spec, Plan, Execute, Eval, Deliver), replacing the previous four-phase Dream/Plan/Build/Verify model. This epic covers the global rename, new Deliver phase, named agent roles (9 total), new planning-slot agents (Harmonizer, Summarizer, Auditor, Delta Planner), API/WebSocket renames, cross-epic dependency UX, serialized git commit queue, and various internal alignment items.
+Align the OpenSprint codebase with PRD v2.0, which introduces the five-phase **SPEED** workflow (Spec, Plan, Execute, Evaluate, Deliver), replacing the previous four-phase Dream/Plan/Build/Verify model. This epic covers the global rename, new Deliver phase, named agent roles (9 total), new planning-slot agents (Harmonizer, Summarizer, Auditor, Delta Planner), API/WebSocket renames, cross-epic dependency UX, serialized git commit queue, and various internal alignment items.
 
 ## Acceptance Criteria
 
-1.  All UI labels, routes, types, and API endpoints use the SPEED phase names (Spec, Plan, Execute, Eval, Deliver).
+1.  All UI labels, routes, types, and API endpoints use the SPEED phase names (Spec, Plan, Execute, Evaluate, Deliver).
 2.  The PRD.md file is updated to v2.0 with all new sections (Deliver phase, named agents, git concurrency, etc.).
 3.  The Deliver phase has a fully functional UI tab with deploy button, history, live logs, and rollback.
 4.  All 9 named agent roles are defined in types and used in orchestrator prompts and frontend display.
@@ -15,7 +15,7 @@ Align the OpenSprint codebase with PRD v2.0, which introduces the five-phase **S
 7.  Execute! checks for cross-epic dependencies and shows a confirmation modal before auto-queueing prerequisite epics.
 8.  A serialized git commit queue prevents concurrent git operations on main.
 9.  Re-execute uses the Auditor + Delta Planner two-agent approach.
-10.  Blocked tasks use beads `blocked` status; attempt counts use beads labels.
+10. Blocked tasks use beads `blocked` status; attempt counts use beads labels.
 
 ## Technical Approach
 
@@ -27,7 +27,7 @@ Copy the new PRD from ~/Downloads/PRD.md, replacing the existing file. This is t
 
 ### Task 2: Global phase rename (60k.3)
 
-Rename across the entire stack: `ProjectPhase` type, `ConversationContext`, `PrdChangeLogEntry.source`, `PlanStatus` (done→complete), Navbar tabs, HomeScreen labels, phaseRouting, PRD\_SOURCE\_COLORS, component filenames (DreamPhase→SpecPhase, BuildPhase→ExecutePhase, VerifyPhase→EvalPhase), Redux slice names, backend route paths, shared schemas and constants. Update all imports and test files.
+Rename across the entire stack: `ProjectPhase` type, `ConversationContext`, `PrdChangeLogEntry.source`, `PlanStatus` (done→complete), Navbar tabs, HomeScreen labels, phaseRouting, PRD_SOURCE_COLORS, component filenames (DreamPhase→SpecPhase, BuildPhase→ExecutePhase, VerifyPhase→EvaluatePhase), Redux slice names, backend route paths, shared schemas and constants. Update all imports and test files.
 
 ### Task 3: API endpoint and WebSocket event renames (60k.4)
 
@@ -63,7 +63,7 @@ Replace generic rebuild with two-agent approach. Auditor produces capability sum
 
 ### Task 11: Minor alignment items (60k.12)
 
-Blocked status (not label), attempt tracking via labels, orchestrator state updates, test\_command setting, setup wizard enhancements.
+Blocked status (not label), attempt tracking via labels, orchestrator state updates, test_command setting, setup wizard enhancements.
 
 ## Dependencies
 
@@ -71,12 +71,12 @@ None — this is a standalone epic.
 
 ## Data Model Changes
 
-*   `ProjectPhase`: `"dream" | "plan" | "build" | "verify"` → `"spec" | "plan" | "execute" | "eval" | "deliver"`
-*   `PlanStatus`: `"done"` → `"complete"`
-*   `ConversationContext`: `"dream"` → `"spec"`
-*   New `AgentRole` type with 9 values
-*   New `DeploymentRecord` entity
-*   New deploy WebSocket events
+- `ProjectPhase`: `"dream" | "plan" | "build" | "verify"` → `"spec" | "plan" | "execute" | "eval" | "deliver"`
+- `PlanStatus`: `"done"` → `"complete"`
+- `ConversationContext`: `"dream"` → `"spec"`
+- New `AgentRole` type with 9 values
+- New `DeploymentRecord` entity
+- New deploy WebSocket events
 
 ## API Specification
 
@@ -84,27 +84,27 @@ See PRD v2.0 Sections 11.1 and 11.2 for the full updated API and WebSocket event
 
 ## UI/UX Requirements
 
-*   Navbar adds a 5th "Deliver" tab
-*   Phase route paths update to `/spec`, `/plan`, `/execute`, `/eval`, `/deliver`
-*   "Build It!" button becomes "Execute!"
-*   Cross-epic dependency confirmation modal on Execute!
-*   Deliver tab: deploy button, history list, live log panel, rollback
+- Navbar adds a 5th "Deliver" tab
+- Phase route paths update to `/spec`, `/plan`, `/execute`, `/eval`, `/deliver`
+- "Build It!" button becomes "Execute!"
+- Cross-epic dependency confirmation modal on Execute!
+- Deliver tab: deploy button, history list, live log panel, rollback
 
 ## Edge Cases and Error Handling
 
-*   Backward compatibility: existing projects with `currentPhase: "dream"` need migration or fallback parsing
-*   Deploy failures: rollback support, error display in deploy history
-*   Cross-epic confirmation: handle circular dependencies gracefully
+- Backward compatibility: existing projects with `currentPhase: "dream"` need migration or fallback parsing
+- Deploy failures: rollback support, error display in deploy history
+- Cross-epic confirmation: handle circular dependencies gracefully
 
 ## Testing Strategy
 
-*   Update all existing tests referencing old phase names
-*   Add tests for Deliver phase (routes, UI, WebSocket events)
-*   Add tests for named agent roles in orchestrator
-*   Add tests for Harmonizer/Summarizer invocation and thresholds
-*   Add tests for cross-epic dependency detection and confirmation flow
-*   Add tests for git commit queue serialization
+- Update all existing tests referencing old phase names
+- Add tests for Deliver phase (routes, UI, WebSocket events)
+- Add tests for named agent roles in orchestrator
+- Add tests for Harmonizer/Summarizer invocation and thresholds
+- Add tests for cross-epic dependency detection and confirmation flow
+- Add tests for git commit queue serialization
 
 ## Estimated Complexity
 
-very\_high
+very_high

@@ -82,7 +82,10 @@ class GitCommitQueueImpl implements GitCommitQueueService {
       } catch (err) {
         console.warn(`[git-commit-queue] Job failed (attempt ${attempt + 1}/${maxRetries}):`, err);
         if (attempt === maxRetries - 1) {
-          console.error(`[git-commit-queue] Job failed after ${maxRetries} attempts, proceeding to next:`, job);
+          console.error(
+            `[git-commit-queue] Job failed after ${maxRetries} attempts, proceeding to next:`,
+            job
+          );
           item.resolve?.();
         }
       }
@@ -109,7 +112,7 @@ class GitCommitQueueImpl implements GitCommitQueueService {
           job.source === "sketch"
             ? "prd: Sketch session update"
             : job.source === "eval"
-              ? "prd: Eval feedback"
+              ? "prd: Evaluate feedback"
               : job.planId
                 ? `prd: updated after Plan ${job.planId} built`
                 : "prd: updated";

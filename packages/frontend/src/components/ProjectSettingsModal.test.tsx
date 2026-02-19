@@ -69,11 +69,14 @@ describe("ProjectSettingsModal", () => {
       length: 0,
       key: () => null,
     });
-    vi.stubGlobal("matchMedia", vi.fn(() => ({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })));
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }))
+    );
     Object.keys(storage).forEach((k) => delete storage[k]);
   });
 
@@ -153,7 +156,9 @@ describe("ProjectSettingsModal", () => {
     expect(screen.queryByPlaceholderText("sk-ant-...")).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText("key_...")).not.toBeInTheDocument();
     expect(
-      screen.queryByText(/Both API keys configured|Claude API key configured|Cursor API key configured/)
+      screen.queryByText(
+        /Both API keys configured|Claude API key configured|Cursor API key configured/
+      )
     ).not.toBeInTheDocument();
   });
 
@@ -182,7 +187,9 @@ describe("ProjectSettingsModal", () => {
     expect(
       screen.getByText(/After the coding agent completes a task, a review agent can validate/)
     ).toBeInTheDocument();
-    expect(screen.getByText(/Rejected work is sent back to the coding agent with feedback/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Rejected work is sent back to the coding agent with feedback/)
+    ).toBeInTheDocument();
 
     const reviewModeSelect = screen.getByTestId("review-mode-select");
     expect(reviewModeSelect).toHaveValue("always");
@@ -247,7 +254,7 @@ describe("ProjectSettingsModal", () => {
     await userEvent.click(deploymentTab);
 
     expect(screen.getByText("Auto-deploy on epic completion")).toBeInTheDocument();
-    expect(screen.getByText("Auto-deploy on Eval resolution")).toBeInTheDocument();
+    expect(screen.getByText("Auto-deploy on Evaluate resolution")).toBeInTheDocument();
     const epicToggle = screen.getByTestId("auto-deploy-epic-toggle");
     const evalToggle = screen.getByTestId("auto-deploy-eval-toggle");
     expect(epicToggle).not.toBeChecked();

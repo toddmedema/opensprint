@@ -19,7 +19,7 @@
     {
       "index": 0,
       "title": "Rename 'Spec' to 'Sketch' in PRD and shared constants",
-      "description": "Update .opensprint/prd.json to replace all references to the 'Spec' phase with 'Sketch'. Update the SPEED acronym to 'Sketch, Plan, Execute, Eval, Deploy' in the executive summary. Update any shared enum/constant definitions (e.g. phase enum values, route constants) in both backend and frontend code so the canonical phase identifier is 'sketch' (lowercase in code, 'Sketch' in display strings). Acceptance criteria: (1) prd.json contains zero occurrences of 'Spec' as a phase name, (2) the SPEED acronym explanation reads 'Sketch, Plan, Execute, Eval, Deploy', (3) the phase enum/type in shared code uses 'sketch', (4) existing data migration path documented — any persisted 'spec' values in project current_phase or conversation context fields are handled gracefully (treat 'spec' as alias for 'sketch' on read).",
+      "description": "Update .opensprint/prd.json to replace all references to the 'Spec' phase with 'Sketch'. Update the SPEED acronym to 'Sketch, Plan, Execute, Evaluate, Deploy' in the executive summary. Update any shared enum/constant definitions (e.g. phase enum values, route constants) in both backend and frontend code so the canonical phase identifier is 'sketch' (lowercase in code, 'Sketch' in display strings). Acceptance criteria: (1) prd.json contains zero occurrences of 'Spec' as a phase name, (2) the SPEED acronym explanation reads 'Sketch, Plan, Execute, Evaluate, Deploy', (3) the phase enum/type in shared code uses 'sketch', (4) existing data migration path documented — any persisted 'spec' values in project current_phase or conversation context fields are handled gracefully (treat 'spec' as alias for 'sketch' on read).",
       "priority": 1,
       "depends_on": []
     },
@@ -28,27 +28,21 @@
       "title": "Rename 'Spec' to 'Sketch' across frontend UI",
       "description": "Find and replace all user-facing occurrences of 'Spec' with 'Sketch' in the React frontend: tab labels, navbar items, phase indicators, wizard steps, toast messages, tooltips, and any ARIA labels. Update component file names and exports if they reference 'Spec' (e.g. SpecTab → SketchTab, SpecChat → SketchChat). Update route paths from /spec to /sketch with a redirect from the old path for bookmarkability. Acceptance criteria: (1) no user-visible string reads 'Spec' as a phase name, (2) /sketch route renders the phase view, (3) /spec redirects to /sketch, (4) all renamed components compile without errors, (5) existing tests updated and passing.",
       "priority": 1,
-      "depends_on": [
-        0
-      ]
+      "depends_on": [0]
     },
     {
       "index": 2,
       "title": "Rename 'Spec' to 'Sketch' across backend API and orchestrator",
       "description": "Update all backend references: REST endpoint paths (e.g. /api/projects/:id/spec → /api/projects/:id/sketch), WebSocket event names, orchestrator phase checks, conversation context identifiers ('spec' → 'sketch'), agent prompt templates that reference the Spec phase, and commit message patterns. Preserve backwards compatibility by accepting 'spec' as an alias in API routes for one version cycle. Acceptance criteria: (1) API serves the sketch endpoint, (2) orchestrator phase logic uses 'sketch', (3) Dreamer agent prompts reference 'Sketch' phase, (4) conversation context for the phase is 'sketch', (5) old 'spec' API routes return 301 redirect or transparent alias, (6) all backend tests updated and passing.",
       "priority": 1,
-      "depends_on": [
-        0
-      ]
+      "depends_on": [0]
     },
     {
       "index": 3,
       "title": "Rename 'Spec' to 'Sketch' in documentation and agent instructions",
       "description": "Update AGENTS.md, README, inline code documentation, and any agent system prompts or contract definitions (Section 12) that reference 'Spec' to use 'Sketch'. Update the Dreamer agent description from 'Spec' phase to 'Sketch' phase. Acceptance criteria: (1) grep for 'Spec phase' or 'Spec tab' in docs returns zero hits (excluding changelog/historical references), (2) agent role table in PRD shows Dreamer under 'Sketch' phase, (3) AGENTS.md workflow references updated.",
       "priority": 2,
-      "depends_on": [
-        0
-      ]
+      "depends_on": [0]
     }
   ],
   "taskTitles": [
