@@ -145,6 +145,26 @@ describe("PrdService", () => {
     expect(prd.changeLog[0].section).toBe("executive_summary");
   });
 
+  it("should normalize legacy spec source to sketch when loading from disk", async () => {
+    const prdWithLegacySpec = {
+      ...mockPrd,
+      changeLog: [
+        {
+          section: "executive_summary",
+          version: 1,
+          source: "spec",
+          timestamp: "2026-01-01T00:00:00.000Z",
+          diff: "[Initial content added]",
+        },
+      ],
+    };
+    await fs.writeFile(prdPath, JSON.stringify(prdWithLegacySpec, null, 2));
+
+    const prd = await prdService.getPrd("test-project");
+    expect(prd.changeLog).toHaveLength(1);
+    expect(prd.changeLog[0].source).toBe("sketch");
+  });
+
   it("should get change history", async () => {
     await prdService.updateSection("test-project", "executive_summary", "v2", "sketch");
     await prdService.updateSection("test-project", "executive_summary", "v3", "plan");

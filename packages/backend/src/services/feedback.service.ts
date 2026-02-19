@@ -15,6 +15,7 @@ import { hilService } from "./hil-service.js";
 import { ChatService } from "./chat.service.js";
 import { PlanService } from "./plan.service.js";
 import { PrdService } from "./prd.service.js";
+import type { HarmonizerPrdUpdate } from "./harmonizer.service.js";
 import { BeadsService, type BeadsIssue } from "./beads.service.js";
 import { broadcastToProject } from "../websocket/index.js";
 import { writeJsonAtomic } from "../utils/file-utils.js";
@@ -347,10 +348,7 @@ export class FeedbackService {
         // Handle scope changes with HIL (PRD §7.4.2, §15.1) — category=scope OR is_scope_change=true
         if (item.category === "scope" || item.isScopeChange) {
           // Get AI-generated proposal for modal summary (before HIL)
-          let proposal: {
-            summary: string;
-            prdUpdates: Array<{ section: string; content: string; changeLogEntry?: string }>;
-          } | null = null;
+          let proposal: { summary: string; prdUpdates: HarmonizerPrdUpdate[] } | null = null;
           try {
             proposal = await this.chatService.getScopeChangeProposal(projectId, item.text);
           } catch (err) {
@@ -605,7 +603,7 @@ export class FeedbackService {
   private async createBeadTaskWithRetry(
     repoPath: string,
     title: string,
-    options: { type: string; priority: number; parentId?: string }
+    options: { type: string; priority: number; description?: string; parentId?: string }
   ): Promise<BeadsIssue | null> {
     const MAX_RETRIES = 3;
 

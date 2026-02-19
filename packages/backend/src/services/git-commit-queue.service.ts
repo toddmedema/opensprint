@@ -28,8 +28,8 @@ export interface BeadsExportJob {
 export interface PrdUpdateJob {
   type: "prd_update";
   repoPath: string;
-  /** "plan" | "sketch" | "eval" — for commit message */
-  source: "plan" | "sketch" | "eval";
+  /** "plan" | "sketch" | "eval" | "execute" | "deliver" — for commit message */
+  source: "plan" | "sketch" | "eval" | "execute" | "deliver";
   planId?: string;
 }
 

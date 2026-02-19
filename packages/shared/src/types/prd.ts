@@ -27,6 +27,11 @@ export interface PrdChangeLogEntry {
   diff: string;
 }
 
+/** Change log entry as stored on disk; may include legacy "spec" source (normalized to "sketch" when loading) */
+export type PrdChangeLogEntryFromDisk = Omit<PrdChangeLogEntry, "source"> & {
+  source: PrdChangeLogEntry["source"] | "spec";
+};
+
 /** PRD section update response */
 export interface PrdSectionUpdateResult {
   section: PrdSection;
@@ -45,4 +50,9 @@ export interface Prd {
   version: number;
   sections: Record<PrdSectionKey, PrdSection>;
   changeLog: PrdChangeLogEntry[];
+}
+
+/** PRD as loaded from disk; changeLog may contain legacy "spec" source */
+export interface PrdFromDisk extends Omit<Prd, "changeLog"> {
+  changeLog: PrdChangeLogEntryFromDisk[];
 }

@@ -1,6 +1,11 @@
 import fs from "fs/promises";
 import path from "path";
 import type { Prd, PrdSection, PrdChangeLogEntry, PrdSectionKey } from "@opensprint/shared";
+
+/** PRD as loaded from disk; changeLog may contain legacy "spec" source (normalized to "sketch" when loading) */
+interface PrdFromDisk extends Omit<Prd, "changeLog"> {
+  changeLog: Array<Omit<PrdChangeLogEntry, "source"> & { source: PrdChangeLogEntry["source"] | "spec" }>;
+}
 import { OPENSPRINT_PATHS } from "@opensprint/shared";
 import { ProjectService } from "./project.service.js";
 import { gitCommitQueue } from "./git-commit-queue.service.js";
@@ -31,20 +36,15 @@ export class PrdService {
   }
 
   /** Normalize legacy "spec" source to "sketch" in changeLog entries. */
-  private normalizePrdSources(prd: Prd): Prd {
-    if (!Array.isArray(prd.changeLog)) return prd;
-    let changed = false;
-    const normalized = prd.changeLog.map((e) => {
+  private normalizePrdSources(prd: PrdFromDisk): Prd {
+    if (!Array.isArray(prd.changeLog)) return prd as Prd;
+    const normalized: PrdChangeLogEntry[] = prd.changeLog.map((e) => {
       if (e.source === "spec") {
-        changed = true;
         return { ...e, source: "sketch" as const };
       }
-      return e;
+      return e as PrdChangeLogEntry;
     });
-    if (changed) {
-      prd.changeLog = normalized;
-    }
-    return prd;
+    return { ...prd, changeLog: normalized };
   }
 
   /** Load the PRD from disk */
@@ -52,7 +52,7 @@ export class PrdService {
     const prdPath = await this.getPrdPath(projectId);
     try {
       const data = await fs.readFile(prdPath, "utf-8");
-      const parsed = JSON.parse(data) as Prd;
+      const parsed = JSON.parse(data) as PrdFromDisk;
       // Ensure changeLog exists for backward compatibility with older PRD files
       if (!Array.isArray(parsed.changeLog)) {
         parsed.changeLog = [];
