@@ -1,6 +1,6 @@
 # Open Sprint
 
-**Build _good_ software at the speed of thought. Never pay for SaaS again.**
+**Build _good_ software at the speed of thought, and never pay for SaaS again.**
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Node.js >= 20](https://img.shields.io/badge/Node.js-%3E%3D20-green.svg)](https://nodejs.org/)
@@ -11,52 +11,37 @@
   <img src="docs/assets/hero-demo.gif" alt="OpenSprint — Sketch, Plan, Execute, Eval, Deliver" width="800" />
 </p>
 
-Open Sprint orchestrates AI agents across five phases — SPEED: **Sketch**, **Plan**, **Execute**, **Evaluate**, and **Deliver** — to transform a high-level product idea into well-architected, working software with minimal manual intervention.
+Tired of _managing AI_ and just want to _build good software_? Open Sprint guides you across five phases of product development — SPEED: **Sketch**, **Plan**, **Execute**, **Evaluate**, and **Deliver** — to transform a high-level product idea into well-architected, working software with minimal manual intervention. The built-in AI orchestration layer manages a whole team of agents, from product visionaries that help you write PRDs, to coders and QA to build and test your software.
 
 ## Why Open Sprint?
 
 Building software with AI today is **fragmented and unstructured**. Developers use AI coding assistants for individual tasks, but there is no cohesive system that manages the full journey from idea to deployed product. This leads to:
 
 - **No architectural coherence** — AI-generated code lacks a unified vision because each prompt is handled in isolation
-- **No dependency tracking** — parallel features have no mechanism to account for shared dependencies
 - **Manual orchestration overhead** — users spend time managing prompts, context windows, and task sequencing instead of making product decisions
 - **No feedback loop** — there is no structured way to validate completed work and feed findings back into development
-- **Complex tooling** - using advanced AI tools currently requires deep technical familiarity with terminal commands, preventing ordinary people from participating in their full power.
+- **Tooling headaches** - using advanced AI tools currently requires deep technical familiarity with terminal commands, preventing ordinary people from participating in their full power.
 
-Open Sprint solves this with a Product-Driven web UI that maintains context across the entire lifecycle and automates the orchestration of AI agents. Humans focus on _what_ to build and _why_; AI handles _how_.
+Open Sprint solves this with a Product-Driven web UI that maintains context across the entire lifecycle and automates the orchestration of agents. Humans focus on _what_ to build and _why_; AI handles _how_.
 
 _Open Sprint_: The speed of a full-out open sprint. Agile methodology sprints of quick iteration and user feedback. Open source software. And a nod to OpenAI for starting this crazy new era.
 
 ## Quick Start
 
 ```bash
-# Clone the repo
-git clone https://github.com/toddmedema/opensprint.git
+git clone https://github.com/toddmedema/OpenSprint.dev.git
 cd opensprint
-
-# Install all dependencies
 npm install
-
-# Start both backend and frontend in development mode
 npm run dev
 ```
 
-The app will be available at:
+Then open your browser to http://localhost:5173 and get building!
 
-| Service   | URL                    |
-| --------- | ---------------------- |
-| Frontend  | http://localhost:5173  |
-| Backend   | http://localhost:3100  |
-| WebSocket | ws://localhost:3100/ws |
+### Integrations
 
-### Auto-created directories
+To run a team of AI agents, you'll need at least one existing agent subscription and API key. The orchestration layer is designed to work on top of any AI agent that can read prompts and return outputs, so it's BYO-AI!
 
-These are created automatically — no manual setup needed:
-
-| Path                          | Purpose                                                       |
-| ----------------------------- | ------------------------------------------------------------- |
-| `~/.opensprint/projects.json` | Global project index                                          |
-| `<project>/.opensprint/`      | Per-project PRD, plans, conversations, sessions, and feedback |
+We currently natively support Claude and Cursor APIs, as well as custom APIs via inputting your own CLI command that calls the agents. Please open an issue if you'd like native support for other AI providers!
 
 ## Architecture
 
@@ -101,8 +86,6 @@ All scripts can be run from the project root:
 | Command                | Description                                      |
 | ---------------------- | ------------------------------------------------ |
 | `npm run dev`          | Start backend + frontend concurrently            |
-| `npm run dev:backend`  | Start backend only (with hot reload)             |
-| `npm run dev:frontend` | Start frontend only (Vite dev server)            |
 | `npm run build`        | Build all packages (shared → backend → frontend) |
 | `npm run test`         | Run tests across all packages                    |
 | `npm run lint`         | Lint all packages                                |
