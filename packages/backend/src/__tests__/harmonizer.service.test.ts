@@ -39,9 +39,7 @@ describe("harmonizer.service", () => {
     it("parses success with prd_updates", () => {
       const content = JSON.stringify({
         status: "success",
-        prd_updates: [
-          { section: "feature_list", action: "update", content: "New feature" },
-        ],
+        prd_updates: [{ section: "feature_list", action: "update", content: "New feature" }],
       });
       const result = parseHarmonizerResult(content);
       expect(result?.status).toBe("success");
@@ -57,13 +55,6 @@ describe("harmonizer.service", () => {
       const result = parseHarmonizerResult(content);
       expect(result?.status).toBe("no_changes_needed");
       expect(result?.prdUpdates).toHaveLength(0);
-    });
-
-    it("falls back to legacy updates when provided", () => {
-      const legacy = [{ section: "feature_list" as const, content: "Legacy" }];
-      const result = parseHarmonizerResult("some text", legacy);
-      expect(result?.status).toBe("success");
-      expect(result?.prdUpdates).toEqual(legacy);
     });
 
     it("filters invalid section keys", () => {

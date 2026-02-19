@@ -3,11 +3,11 @@ import { configureStore } from "@reduxjs/toolkit";
 import { websocketMiddleware, wsConnect, wsDisconnect, wsSend } from "./websocketMiddleware";
 import projectReducer from "../slices/projectSlice";
 import websocketReducer from "../slices/websocketSlice";
-import specReducer from "../slices/specSlice";
+import sketchReducer from "../slices/sketchSlice";
 import planReducer from "../slices/planSlice";
 import executeReducer from "../slices/executeSlice";
 import evalReducer from "../slices/evalSlice";
-import deployReducer from "../slices/deploySlice";
+import deliverReducer from "../slices/deliverSlice";
 
 /** Mock WebSocket that allows controlling open/close/message events */
 class MockWebSocket {
@@ -64,17 +64,15 @@ vi.mock("../../api/client", () => ({
       get: vi.fn().mockResolvedValue({}),
     },
     projects: {
-      getPlanStatus: vi
-        .fn()
-        .mockResolvedValue({
-          hasPlanningRun: false,
-          prdChangedSinceLastRun: false,
-          action: "plan",
-        }),
+      getPlanStatus: vi.fn().mockResolvedValue({
+        hasPlanningRun: false,
+        prdChangedSinceLastRun: false,
+        action: "plan",
+      }),
     },
     tasks: { list: vi.fn().mockResolvedValue([]) },
     feedback: { list: vi.fn().mockResolvedValue([]) },
-    deploy: {
+    deliver: {
       status: vi.fn().mockResolvedValue({ activeDeployId: null, currentDeploy: null }),
       history: vi.fn().mockResolvedValue([]),
     },
@@ -109,11 +107,11 @@ describe("websocketMiddleware", () => {
       reducer: {
         project: projectReducer,
         websocket: websocketReducer,
-        spec: specReducer,
+        sketch: sketchReducer,
         plan: planReducer,
         execute: executeReducer,
         eval: evalReducer,
-        deploy: deployReducer,
+        deliver: deliverReducer,
       },
       middleware: (getDefaultMiddleware) =>
         getDefaultMiddleware({
@@ -266,9 +264,9 @@ describe("websocketMiddleware", () => {
       });
 
       await vi.waitFor(() => {
-        expect(store.getState().spec.prdContent).toEqual({ overview: "Updated" });
-        expect(store.getState().spec.prdHistory).toHaveLength(1);
-        expect(store.getState().spec.messages).toHaveLength(1);
+        expect(store.getState().sketch.prdContent).toEqual({ overview: "Updated" });
+        expect(store.getState().sketch.prdHistory).toHaveLength(1);
+        expect(store.getState().sketch.messages).toHaveLength(1);
         expect(store.getState().plan.planStatus).toEqual({
           hasPlanningRun: false,
           prdChangedSinceLastRun: false,
@@ -639,7 +637,7 @@ describe("websocketMiddleware", () => {
       wsInstance!.simulateMessage({ type: "prd.updated", section: "overview", version: 2 });
 
       await vi.waitFor(() => {
-        expect(store.getState().spec.prdContent).toEqual({ overview: "After reconnect" });
+        expect(store.getState().sketch.prdContent).toEqual({ overview: "After reconnect" });
         expect(api.projects.getPlanStatus).toHaveBeenCalledWith("proj-1");
       });
       vi.useRealTimers();

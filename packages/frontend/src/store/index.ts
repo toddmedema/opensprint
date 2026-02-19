@@ -2,11 +2,11 @@ import { configureStore } from "@reduxjs/toolkit";
 import { useDispatch, useSelector } from "react-redux";
 import projectReducer from "./slices/projectSlice";
 import websocketReducer from "./slices/websocketSlice";
-import specReducer from "./slices/specSlice";
+import sketchReducer from "./slices/sketchSlice";
 import planReducer from "./slices/planSlice";
 import executeReducer from "./slices/executeSlice";
 import evalReducer from "./slices/evalSlice";
-import deployReducer from "./slices/deploySlice";
+import deliverReducer from "./slices/deliverSlice";
 import notificationReducer from "./slices/notificationSlice";
 import { websocketMiddleware } from "./middleware/websocketMiddleware";
 import { notificationListener } from "./listeners/notificationListener";
@@ -15,11 +15,11 @@ export const store = configureStore({
   reducer: {
     project: projectReducer,
     websocket: websocketReducer,
-    spec: specReducer,
+    sketch: sketchReducer,
     plan: planReducer,
     execute: executeReducer,
     eval: evalReducer,
-    deploy: deployReducer,
+    deliver: deliverReducer,
     notification: notificationReducer,
   },
   middleware: (getDefaultMiddleware) =>

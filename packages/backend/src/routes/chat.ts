@@ -4,12 +4,6 @@ import type { ApiResponse, ChatRequest, ChatResponse, Conversation } from "@open
 
 const chatService = new ChatService();
 
-/** Normalize context: accept "spec" as alias for "sketch" (backwards compatibility). */
-function normalizeContext(context: string | undefined): string {
-  const raw = context ?? "sketch";
-  return raw === "spec" ? "sketch" : raw;
-}
-
 export const chatRouter = Router({ mergeParams: true });
 
 type ProjectParams = { projectId: string };
@@ -18,7 +12,7 @@ type ProjectParams = { projectId: string };
 chatRouter.post("/", async (req: Request<ProjectParams>, res, next) => {
   try {
     const body = req.body as ChatRequest;
-    const context = normalizeContext(body.context);
+    const context = body.context ?? "sketch";
     console.log("[chat] POST received", {
       projectId: req.params.projectId,
       context,
@@ -36,7 +30,7 @@ chatRouter.post("/", async (req: Request<ProjectParams>, res, next) => {
 // GET /projects/:projectId/chat/history — Get conversation history
 chatRouter.get("/history", async (req: Request<ProjectParams>, res, next) => {
   try {
-    const context = normalizeContext(req.query.context as string);
+    const context = (req.query.context as string) ?? "sketch";
     const conversation = await chatService.getHistory(req.params.projectId, context);
     const result: ApiResponse<Conversation> = { data: conversation };
     res.json(result);

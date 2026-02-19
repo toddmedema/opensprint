@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useAppDispatch, useAppSelector } from "../../store";
 import {
-  sendSpecMessage,
+  sendSketchMessage,
   savePrdSection,
   uploadPrdFile,
   addUserMessage,
   fetchPrd,
   fetchPrdHistory,
-  fetchSpecChat,
-} from "../../store/slices/specSlice";
+  fetchSketchChat,
+} from "../../store/slices/sketchSlice";
 import { decomposePlans, fetchPlanStatus } from "../../store/slices/planSlice";
 import { PrdViewer, PrdChatPanel, PrdUploadButton, PrdChangeLog } from "../../components/prd";
 import { SendIcon, SparklesIcon, CommentIcon } from "../../components/icons/PrdIcons";
@@ -84,11 +84,11 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
   const dispatch = useAppDispatch();
 
   /* ── Redux state ── */
-  const messages = useAppSelector((s) => s.spec.messages);
-  const prdContent = useAppSelector((s) => s.spec.prdContent);
-  const prdHistory = useAppSelector((s) => s.spec.prdHistory);
-  const sending = useAppSelector((s) => s.spec.sendingChat);
-  const savingSections = useAppSelector((s) => s.spec.savingSections);
+  const messages = useAppSelector((s) => s.sketch.messages);
+  const prdContent = useAppSelector((s) => s.sketch.prdContent);
+  const prdHistory = useAppSelector((s) => s.sketch.prdHistory);
+  const sending = useAppSelector((s) => s.sketch.sendingChat);
+  const savingSections = useAppSelector((s) => s.sketch.savingSections);
   const planStatus = useAppSelector((s) => s.plan.planStatus);
   const decomposing = useAppSelector((s) => s.plan.decomposing);
 
@@ -129,7 +129,7 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
   const triggerRefreshCascade = useCallback(() => {
     dispatch(fetchPrd(projectId));
     dispatch(fetchPrdHistory(projectId));
-    dispatch(fetchSpecChat(projectId));
+    dispatch(fetchSketchChat(projectId));
     dispatch(fetchPlanStatus(projectId));
   }, [projectId, dispatch]);
 
@@ -298,8 +298,8 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
       })
     );
 
-    const result = await dispatch(sendSpecMessage({ projectId, message: text }));
-    if (sendSpecMessage.fulfilled.match(result) && result.payload.prdChanges?.length) {
+    const result = await dispatch(sendSketchMessage({ projectId, message: text }));
+    if (sendSketchMessage.fulfilled.match(result) && result.payload.prdChanges?.length) {
       dispatch(fetchPrd(projectId));
       dispatch(fetchPrdHistory(projectId));
       dispatch(fetchPlanStatus(projectId));
@@ -320,7 +320,7 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
       if (uploadPrdFile.fulfilled.match(result)) {
         dispatch(fetchPrd(projectId));
         dispatch(fetchPrdHistory(projectId));
-        dispatch(fetchSpecChat(projectId));
+        dispatch(fetchSketchChat(projectId));
         dispatch(fetchPlanStatus(projectId));
       }
     },
@@ -344,9 +344,9 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
       );
 
       const result = await dispatch(
-        sendSpecMessage({ projectId, message: fullMessage, prdSectionFocus: prdFocus })
+        sendSketchMessage({ projectId, message: fullMessage, prdSectionFocus: prdFocus })
       );
-      if (sendSpecMessage.fulfilled.match(result) && result.payload.prdChanges?.length) {
+      if (sendSketchMessage.fulfilled.match(result) && result.payload.prdChanges?.length) {
         dispatch(fetchPrd(projectId));
         dispatch(fetchPrdHistory(projectId));
         dispatch(fetchPlanStatus(projectId));

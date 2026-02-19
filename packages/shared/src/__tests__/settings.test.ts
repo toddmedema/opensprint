@@ -80,12 +80,12 @@ describe("getDefaultDeploymentTarget", () => {
     expect(getDefaultDeploymentTarget(config)).toBe("staging");
   });
 
-  it("returns legacy target when no targets", () => {
+  it("returns config.target when no targets array", () => {
     const config: DeploymentConfig = { mode: "custom", target: "staging" };
     expect(getDefaultDeploymentTarget(config)).toBe("staging");
   });
 
-  it("returns production when no targets and no legacy target", () => {
+  it("returns production when no targets and no target", () => {
     const config: DeploymentConfig = { mode: "custom" };
     expect(getDefaultDeploymentTarget(config)).toBe("production");
   });

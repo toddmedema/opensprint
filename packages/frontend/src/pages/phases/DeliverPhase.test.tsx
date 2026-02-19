@@ -4,7 +4,7 @@ import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { DeliverPhase } from "./DeliverPhase";
-import deployReducer from "../../store/slices/deploySlice";
+import deliverReducer from "../../store/slices/deliverSlice";
 import projectReducer from "../../store/slices/projectSlice";
 
 const mockGetSettings = vi.fn().mockResolvedValue({
@@ -22,17 +22,17 @@ vi.mock("../../api/client", () => ({
 function createStore(initialDeployState = {}) {
   return configureStore({
     reducer: {
-      deploy: deployReducer,
+      deliver: deliverReducer,
       project: projectReducer,
     },
     preloadedState: {
-      deploy: {
+      deliver: {
         history: [],
         currentDeploy: null,
         activeDeployId: null,
         selectedDeployId: null,
         liveLog: [],
-        deployLoading: false,
+        deliverLoading: false,
         statusLoading: false,
         historyLoading: false,
         rollbackLoading: false,
@@ -49,10 +49,13 @@ function renderWithRouter(store: ReturnType<typeof createStore>, projectId = "pr
     <Provider store={store}>
       <MemoryRouter initialEntries={[`/projects/${projectId}/deliver`]}>
         <Routes>
-          <Route path="/projects/:projectId/deliver" element={<DeliverPhase projectId={projectId} />} />
+          <Route
+            path="/projects/:projectId/deliver"
+            element={<DeliverPhase projectId={projectId} />}
+          />
         </Routes>
       </MemoryRouter>
-    </Provider>,
+    </Provider>
   );
 }
 

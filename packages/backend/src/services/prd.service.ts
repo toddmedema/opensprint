@@ -1,11 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
 import type { Prd, PrdSection, PrdChangeLogEntry, PrdSectionKey } from "@opensprint/shared";
-
-/** PRD as loaded from disk; changeLog may contain legacy "spec" source (normalized to "sketch" when loading) */
-interface PrdFromDisk extends Omit<Prd, "changeLog"> {
-  changeLog: Array<Omit<PrdChangeLogEntry, "source"> & { source: PrdChangeLogEntry["source"] | "spec" }>;
-}
 import { OPENSPRINT_PATHS } from "@opensprint/shared";
 import { ProjectService } from "./project.service.js";
 import { gitCommitQueue } from "./git-commit-queue.service.js";
@@ -35,29 +30,16 @@ export class PrdService {
     return path.join(project.repoPath, OPENSPRINT_PATHS.prd);
   }
 
-  /** Normalize legacy "spec" source to "sketch" in changeLog entries. */
-  private normalizePrdSources(prd: PrdFromDisk): Prd {
-    if (!Array.isArray(prd.changeLog)) return prd as Prd;
-    const normalized: PrdChangeLogEntry[] = prd.changeLog.map((e) => {
-      if (e.source === "spec") {
-        return { ...e, source: "sketch" as const };
-      }
-      return e as PrdChangeLogEntry;
-    });
-    return { ...prd, changeLog: normalized };
-  }
-
   /** Load the PRD from disk */
   private async loadPrd(projectId: string): Promise<Prd> {
     const prdPath = await this.getPrdPath(projectId);
     try {
       const data = await fs.readFile(prdPath, "utf-8");
-      const parsed = JSON.parse(data) as PrdFromDisk;
-      // Ensure changeLog exists for backward compatibility with older PRD files
+      const parsed = JSON.parse(data) as Prd;
       if (!Array.isArray(parsed.changeLog)) {
         parsed.changeLog = [];
       }
-      return this.normalizePrdSources(parsed);
+      return parsed;
     } catch {
       throw new AppError(404, ErrorCodes.PRD_NOT_FOUND, "PRD not found for this project");
     }
@@ -87,7 +69,7 @@ export class PrdService {
       throw new AppError(
         400,
         "INVALID_SECTION",
-        `Invalid PRD section key '${key}'. Valid keys: ${PRD_SECTION_KEYS.join(", ")}`,
+        `Invalid PRD section key '${key}'. Valid keys: ${PRD_SECTION_KEYS.join(", ")}`
       );
     }
   }
@@ -115,7 +97,12 @@ export class PrdService {
     const prd = await this.loadPrd(projectId);
     const section = prd.sections[sectionKey as PrdSectionKey];
     if (!section) {
-      throw new AppError(404, ErrorCodes.SECTION_NOT_FOUND, `PRD section '${sectionKey}' not found`, { sectionKey });
+      throw new AppError(
+        404,
+        ErrorCodes.SECTION_NOT_FOUND,
+        `PRD section '${sectionKey}' not found`,
+        { sectionKey }
+      );
     }
     return section;
   }
@@ -125,7 +112,7 @@ export class PrdService {
     projectId: string,
     sectionKey: string,
     content: string,
-    source: PrdChangeLogEntry["source"] = "sketch",
+    source: PrdChangeLogEntry["source"] = "sketch"
   ): Promise<{ section: PrdSection; previousVersion: number; newVersion: number }> {
     this.validateSectionKey(sectionKey);
     const prd = await this.loadPrd(projectId);
@@ -163,7 +150,7 @@ export class PrdService {
   async updateSections(
     projectId: string,
     updates: Array<{ section: PrdSectionKey; content: string }>,
-    source: PrdChangeLogEntry["source"] = "sketch",
+    source: PrdChangeLogEntry["source"] = "sketch"
   ): Promise<Array<{ section: string; previousVersion: number; newVersion: number }>> {
     const prd = await this.loadPrd(projectId);
     const changes: Array<{ section: string; previousVersion: number; newVersion: number }> = [];

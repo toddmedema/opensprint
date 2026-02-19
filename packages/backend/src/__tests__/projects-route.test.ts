@@ -40,15 +40,6 @@ describe("Projects REST API — spec/sketch phase routes", () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  it("GET /projects/:id/spec should 301 redirect to /projects/:id/sketch (backwards compatibility)", async () => {
-    const res = await request(app)
-      .get(`${API_PREFIX}/projects/${projectId}/spec`)
-      .redirects(0);
-
-    expect(res.status).toBe(301);
-    expect(res.headers.location).toMatch(new RegExp(`/projects/${projectId}/sketch$`));
-  });
-
   it("GET /projects/:id/sketch should return project (Sketch phase canonical endpoint)", async () => {
     const res = await request(app).get(`${API_PREFIX}/projects/${projectId}/sketch`);
 

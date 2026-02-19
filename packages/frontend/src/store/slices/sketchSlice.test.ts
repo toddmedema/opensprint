@@ -1,19 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { configureStore } from "@reduxjs/toolkit";
-import specReducer, {
+import sketchReducer, {
   addUserMessage,
-  setSpecError,
+  setSketchError,
   setPrdContent,
   setPrdHistory,
-  resetSpec,
-  fetchSpecChat,
+  resetSketch,
+  fetchSketchChat,
   fetchPrd,
   fetchPrdHistory,
-  sendSpecMessage,
+  sendSketchMessage,
   savePrdSection,
   uploadPrdFile,
-  type SpecState,
-} from "./specSlice";
+  type SketchState,
+} from "./sketchSlice";
 
 vi.mock("../../api/client", () => ({
   api: {
@@ -38,7 +38,7 @@ const mockMessage = {
   timestamp: "2025-01-01T00:00:00Z",
 };
 
-describe("specSlice", () => {
+describe("sketchSlice", () => {
   beforeEach(() => {
     vi.mocked(api.chat.history).mockReset();
     vi.mocked(api.chat.send).mockReset();
@@ -49,13 +49,13 @@ describe("specSlice", () => {
   });
 
   function createStore() {
-    return configureStore({ reducer: { spec: specReducer } });
+    return configureStore({ reducer: { sketch: sketchReducer } });
   }
 
   describe("initial state", () => {
     it("has correct initial state", () => {
       const store = createStore();
-      const state = store.getState().spec as SpecState;
+      const state = store.getState().sketch as SketchState;
       expect(state.messages).toEqual([]);
       expect(state.prdContent).toEqual({});
       expect(state.prdHistory).toEqual([]);
@@ -69,23 +69,23 @@ describe("specSlice", () => {
     it("addUserMessage appends message", () => {
       const store = createStore();
       store.dispatch(addUserMessage(mockMessage));
-      expect(store.getState().spec.messages).toHaveLength(1);
-      expect(store.getState().spec.messages[0]).toEqual(mockMessage);
+      expect(store.getState().sketch.messages).toHaveLength(1);
+      expect(store.getState().sketch.messages[0]).toEqual(mockMessage);
     });
 
-    it("setSpecError sets error", () => {
+    it("setSketchError sets error", () => {
       const store = createStore();
-      store.dispatch(setSpecError("Something went wrong"));
-      expect(store.getState().spec.error).toBe("Something went wrong");
-      store.dispatch(setSpecError(null));
-      expect(store.getState().spec.error).toBeNull();
+      store.dispatch(setSketchError("Something went wrong"));
+      expect(store.getState().sketch.error).toBe("Something went wrong");
+      store.dispatch(setSketchError(null));
+      expect(store.getState().sketch.error).toBeNull();
     });
 
     it("setPrdContent sets PRD content", () => {
       const store = createStore();
       const content = { overview: "Overview text", goals: "Goals text" };
       store.dispatch(setPrdContent(content));
-      expect(store.getState().spec.prdContent).toEqual(content);
+      expect(store.getState().sketch.prdContent).toEqual(content);
     });
 
     it("setPrdHistory sets PRD history", () => {
@@ -100,24 +100,24 @@ describe("specSlice", () => {
         },
       ];
       store.dispatch(setPrdHistory(history as never));
-      expect(store.getState().spec.prdHistory).toEqual(history);
+      expect(store.getState().sketch.prdHistory).toEqual(history);
     });
 
-    it("resetSpec resets to initial state", () => {
+    it("resetSketch resets to initial state", () => {
       const store = createStore();
       store.dispatch(addUserMessage(mockMessage));
-      store.dispatch(setSpecError("error"));
+      store.dispatch(setSketchError("error"));
       store.dispatch(setPrdContent({ overview: "x" }));
 
-      store.dispatch(resetSpec());
-      const state = store.getState().spec as SpecState;
+      store.dispatch(resetSketch());
+      const state = store.getState().sketch as SketchState;
       expect(state.messages).toEqual([]);
       expect(state.prdContent).toEqual({});
       expect(state.error).toBeNull();
     });
   });
 
-  describe("fetchSpecChat thunk", () => {
+  describe("fetchSketchChat thunk", () => {
     it("stores messages on fulfilled", async () => {
       const messages = [
         { role: "user" as const, content: "hi", timestamp: "2025-01-01" },
@@ -125,18 +125,18 @@ describe("specSlice", () => {
       ];
       vi.mocked(api.chat.history).mockResolvedValue({ messages } as never);
       const store = createStore();
-      await store.dispatch(fetchSpecChat("proj-1"));
+      await store.dispatch(fetchSketchChat("proj-1"));
 
-      expect(store.getState().spec.messages).toEqual(messages);
+      expect(store.getState().sketch.messages).toEqual(messages);
       expect(api.chat.history).toHaveBeenCalledWith("proj-1", "sketch");
     });
 
     it("uses empty array when messages missing", async () => {
       vi.mocked(api.chat.history).mockResolvedValue({} as never);
       const store = createStore();
-      await store.dispatch(fetchSpecChat("proj-1"));
+      await store.dispatch(fetchSketchChat("proj-1"));
 
-      expect(store.getState().spec.messages).toEqual([]);
+      expect(store.getState().sketch.messages).toEqual([]);
     });
   });
 
@@ -151,7 +151,7 @@ describe("specSlice", () => {
       const store = createStore();
       await store.dispatch(fetchPrd("proj-1"));
 
-      expect(store.getState().spec.prdContent).toEqual({ overview: "Overview", goals: "Goals" });
+      expect(store.getState().sketch.prdContent).toEqual({ overview: "Overview", goals: "Goals" });
       expect(api.prd.get).toHaveBeenCalledWith("proj-1");
     });
   });
@@ -171,7 +171,7 @@ describe("specSlice", () => {
       const store = createStore();
       await store.dispatch(fetchPrdHistory("proj-1"));
 
-      expect(store.getState().spec.prdHistory).toEqual(history);
+      expect(store.getState().sketch.prdHistory).toEqual(history);
       expect(api.prd.getHistory).toHaveBeenCalledWith("proj-1");
     });
 
@@ -180,11 +180,11 @@ describe("specSlice", () => {
       const store = createStore();
       await store.dispatch(fetchPrdHistory("proj-1"));
 
-      expect(store.getState().spec.prdHistory).toEqual([]);
+      expect(store.getState().sketch.prdHistory).toEqual([]);
     });
   });
 
-  describe("sendSpecMessage thunk", () => {
+  describe("sendSketchMessage thunk", () => {
     it("sets sendingChat true on pending", async () => {
       let resolveApi: (v: { message: string }) => void;
       const apiPromise = new Promise<{ message: string }>((r) => {
@@ -193,11 +193,11 @@ describe("specSlice", () => {
       vi.mocked(api.chat.send).mockReturnValue(apiPromise as never);
       const store = createStore();
       const dispatchPromise = store.dispatch(
-        sendSpecMessage({ projectId: "proj-1", message: "Hello" }),
+        sendSketchMessage({ projectId: "proj-1", message: "Hello" })
       );
 
-      expect(store.getState().spec.sendingChat).toBe(true);
-      expect(store.getState().spec.error).toBeNull();
+      expect(store.getState().sketch.sendingChat).toBe(true);
+      expect(store.getState().sketch.error).toBeNull();
 
       resolveApi!({ message: "Response" });
       await dispatchPromise;
@@ -206,11 +206,9 @@ describe("specSlice", () => {
     it("appends assistant message and clears sendingChat on fulfilled", async () => {
       vi.mocked(api.chat.send).mockResolvedValue({ message: "Here is my response" } as never);
       const store = createStore();
-      await store.dispatch(
-        sendSpecMessage({ projectId: "proj-1", message: "hello" }),
-      );
+      await store.dispatch(sendSketchMessage({ projectId: "proj-1", message: "hello" }));
 
-      const state = store.getState().spec;
+      const state = store.getState().sketch;
       expect(state.sendingChat).toBe(false);
       expect(state.messages).toHaveLength(1);
       expect(state.messages[0].role).toBe("assistant");
@@ -221,22 +219,18 @@ describe("specSlice", () => {
     it("sets error on rejected", async () => {
       vi.mocked(api.chat.send).mockRejectedValue(new Error("Send failed"));
       const store = createStore();
-      await store.dispatch(
-        sendSpecMessage({ projectId: "proj-1", message: "hello" }),
-      );
+      await store.dispatch(sendSketchMessage({ projectId: "proj-1", message: "hello" }));
 
-      expect(store.getState().spec.sendingChat).toBe(false);
-      expect(store.getState().spec.error).toBe("Send failed");
+      expect(store.getState().sketch.sendingChat).toBe(false);
+      expect(store.getState().sketch.error).toBe("Send failed");
     });
 
     it("uses fallback error message when error has no message", async () => {
       vi.mocked(api.chat.send).mockRejectedValue(new Error());
       const store = createStore();
-      await store.dispatch(
-        sendSpecMessage({ projectId: "proj-1", message: "hello" }),
-      );
+      await store.dispatch(sendSketchMessage({ projectId: "proj-1", message: "hello" }));
 
-      expect(store.getState().spec.error).toBe("Failed to send message");
+      expect(store.getState().sketch.error).toBe("Failed to send message");
     });
   });
 
@@ -249,10 +243,10 @@ describe("specSlice", () => {
       vi.mocked(api.prd.updateSection).mockReturnValue(apiPromise as never);
       const store = createStore();
       const dispatchPromise = store.dispatch(
-        savePrdSection({ projectId: "proj-1", section: "overview", content: "New content" }),
+        savePrdSection({ projectId: "proj-1", section: "overview", content: "New content" })
       );
 
-      expect(store.getState().spec.savingSections).toContain("overview");
+      expect(store.getState().sketch.savingSections).toContain("overview");
 
       resolveApi!();
       await dispatchPromise;
@@ -262,10 +256,10 @@ describe("specSlice", () => {
       vi.mocked(api.prd.updateSection).mockResolvedValue(undefined as never);
       const store = createStore();
       await store.dispatch(
-        savePrdSection({ projectId: "proj-1", section: "overview", content: "Content" }),
+        savePrdSection({ projectId: "proj-1", section: "overview", content: "Content" })
       );
 
-      expect(store.getState().spec.savingSections).not.toContain("overview");
+      expect(store.getState().sketch.savingSections).not.toContain("overview");
       expect(api.prd.updateSection).toHaveBeenCalledWith("proj-1", "overview", "Content");
     });
 
@@ -273,11 +267,11 @@ describe("specSlice", () => {
       vi.mocked(api.prd.updateSection).mockRejectedValue(new Error("Save failed"));
       const store = createStore();
       await store.dispatch(
-        savePrdSection({ projectId: "proj-1", section: "overview", content: "Content" }),
+        savePrdSection({ projectId: "proj-1", section: "overview", content: "Content" })
       );
 
-      expect(store.getState().spec.savingSections).not.toContain("overview");
-      expect(store.getState().spec.error).toBe("Save failed");
+      expect(store.getState().sketch.savingSections).not.toContain("overview");
+      expect(store.getState().sketch.error).toBe("Save failed");
     });
   });
 
@@ -288,7 +282,7 @@ describe("specSlice", () => {
       const file = new File(["# PRD content"], "doc.md", { type: "text/markdown" });
       await store.dispatch(uploadPrdFile({ projectId: "proj-1", file }));
 
-      const state = store.getState().spec;
+      const state = store.getState().sketch;
       expect(state.sendingChat).toBe(false);
       expect(state.messages).toHaveLength(1);
       expect(state.messages[0].content).toBe("Parsed PRD");
@@ -297,15 +291,17 @@ describe("specSlice", () => {
 
     it("sets sendingChat true on pending", async () => {
       let resolveApi: (v: { response: { message: string } | null; fileName: string }) => void;
-      const apiPromise = new Promise<{ response: { message: string } | null; fileName: string }>((r) => {
-        resolveApi = r;
-      });
+      const apiPromise = new Promise<{ response: { message: string } | null; fileName: string }>(
+        (r) => {
+          resolveApi = r;
+        }
+      );
       vi.mocked(api.chat.send).mockReturnValue(apiPromise as never);
       const store = createStore();
       const file = new File(["content"], "doc.md", { type: "text/markdown" });
       const dispatchPromise = store.dispatch(uploadPrdFile({ projectId: "proj-1", file }));
 
-      expect(store.getState().spec.sendingChat).toBe(true);
+      expect(store.getState().sketch.sendingChat).toBe(true);
 
       resolveApi!({ response: { message: "Done" }, fileName: "doc.md" });
       await dispatchPromise;
@@ -317,8 +313,8 @@ describe("specSlice", () => {
       const file = new File(["content"], "doc.md", { type: "text/markdown" });
       await store.dispatch(uploadPrdFile({ projectId: "proj-1", file }));
 
-      expect(store.getState().spec.sendingChat).toBe(false);
-      expect(store.getState().spec.error).toBe("Upload failed");
+      expect(store.getState().sketch.sendingChat).toBe(false);
+      expect(store.getState().sketch.error).toBe("Upload failed");
     });
 
     it("throws for unsupported file type", async () => {
@@ -326,7 +322,7 @@ describe("specSlice", () => {
       const file = new File(["content"], "doc.txt", { type: "text/plain" });
       const result = await store.dispatch(uploadPrdFile({ projectId: "proj-1", file }));
 
-      expect(result.type).toBe("spec/uploadPrdFile/rejected");
+      expect(result.type).toBe("sketch/uploadPrdFile/rejected");
     });
   });
 });

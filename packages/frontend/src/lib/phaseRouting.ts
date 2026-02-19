@@ -13,7 +13,6 @@ const PHASE_TO_SLUG: Record<ProjectPhase, string> = {
 
 const SLUG_TO_PHASE: Record<string, ProjectPhase> = {
   sketch: "sketch",
-  spec: "sketch", // legacy; /spec redirects to /sketch
   plan: "plan",
   execute: "execute",
   eval: "eval",
@@ -23,20 +22,16 @@ const SLUG_TO_PHASE: Record<string, ProjectPhase> = {
 /** Valid URL slugs. */
 export const VALID_PHASE_SLUGS = ["sketch", "plan", "execute", "eval", "deliver"] as const;
 
-/**
- * Parses a URL slug into a valid ProjectPhase. Returns "sketch" for invalid or missing slugs.
- * Accepts "spec" as legacy alias for "sketch".
- */
+/** Parses a URL slug into a valid ProjectPhase. Returns "sketch" for invalid or missing slugs. */
 export function phaseFromSlug(slug: string | undefined): ProjectPhase {
   if (slug && slug in SLUG_TO_PHASE) return SLUG_TO_PHASE[slug];
   return "sketch";
 }
 
-/**
- * Returns true if the slug is a valid phase URL slug.
- * "sketch" is valid; "spec" is not (triggers redirect to /sketch).
- */
-export function isValidPhaseSlug(slug: string | undefined): slug is (typeof VALID_PHASE_SLUGS)[number] {
+/** Returns true if the slug is a valid phase URL slug. */
+export function isValidPhaseSlug(
+  slug: string | undefined
+): slug is (typeof VALID_PHASE_SLUGS)[number] {
   return !!slug && VALID_PHASE_SLUGS.includes(slug as (typeof VALID_PHASE_SLUGS)[number]);
 }
 
@@ -58,7 +53,7 @@ export interface PhasePathOptions {
 export function getProjectPhasePath(
   projectId: string,
   phase: ProjectPhase,
-  options?: PhasePathOptions,
+  options?: PhasePathOptions
 ): string {
   const slug = PHASE_TO_SLUG[phase];
   const base = `/projects/${projectId}/${slug}`;

@@ -21,7 +21,6 @@ export type PrdSectionKey = (typeof PRD_SECTION_ORDER)[number];
 /** Display labels for PRD change log source badges (user-facing phase names). */
 export const PRD_SOURCE_LABELS: Record<string, string> = {
   sketch: "Sketch",
-  spec: "Sketch", // legacy alias
   plan: "Plan",
   execute: "Execute",
   eval: "Evaluate",
@@ -31,7 +30,6 @@ export const PRD_SOURCE_LABELS: Record<string, string> = {
 /** Tailwind class pairs for PRD change log source badges (bg-* text-*). Theme-aware. */
 export const PRD_SOURCE_COLORS: Record<string, string> = {
   sketch: "bg-theme-info-bg text-theme-info-text",
-  spec: "bg-theme-info-bg text-theme-info-text", // legacy alias
   plan: "bg-theme-warning-bg text-theme-warning-text",
   execute: "bg-theme-success-bg text-theme-success-text",
   eval: "bg-theme-feedback-feature-bg text-theme-feedback-feature-text",

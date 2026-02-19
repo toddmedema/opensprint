@@ -6,11 +6,12 @@ import { configureStore } from "@reduxjs/toolkit";
 import { ProjectView } from "./ProjectView";
 import projectReducer from "../store/slices/projectSlice";
 import websocketReducer, { setDeliverToast } from "../store/slices/websocketSlice";
-import specReducer from "../store/slices/specSlice";
+import sketchReducer from "../store/slices/sketchSlice";
 import planReducer, { fetchPlans } from "../store/slices/planSlice";
 import executeReducer from "../store/slices/executeSlice";
 import evalReducer from "../store/slices/evalSlice";
-import deployReducer from "../store/slices/deploySlice";
+import deliverReducer from "../store/slices/deliverSlice";
+import notificationReducer from "../store/slices/notificationSlice";
 
 // Mock websocket middleware to prevent connection attempts
 const mockWsConnect = vi.fn((payload: unknown) => ({ type: "ws/connect", payload }));
@@ -25,14 +26,17 @@ vi.mock("../store/middleware/websocketMiddleware", () => ({
 // Mock API
 vi.mock("../api/client", () => ({
   api: {
-    projects: { get: vi.fn().mockResolvedValue({ id: "proj-1", name: "Test", currentPhase: "sketch" }) },
+    projects: {
+      get: vi.fn().mockResolvedValue({ id: "proj-1", name: "Test", currentPhase: "sketch" }),
+      getSettings: vi.fn().mockResolvedValue({ deployment: {} }),
+    },
     prd: { get: vi.fn().mockResolvedValue({}), getHistory: vi.fn().mockResolvedValue([]) },
     plans: { list: vi.fn().mockResolvedValue({ plans: [], edges: [] }) },
     tasks: { list: vi.fn().mockResolvedValue([]) },
     execute: { status: vi.fn().mockResolvedValue({}) },
     feedback: { list: vi.fn().mockResolvedValue([]) },
     chat: { history: vi.fn().mockResolvedValue({ messages: [] }) },
-    deploy: {
+    deliver: {
       status: vi.fn().mockResolvedValue({ activeDeployId: null, currentDeploy: null }),
       history: vi.fn().mockResolvedValue([]),
     },
@@ -50,11 +54,12 @@ function createStore() {
     reducer: {
       project: projectReducer,
       websocket: websocketReducer,
-      spec: specReducer,
+      sketch: sketchReducer,
       plan: planReducer,
       execute: executeReducer,
       eval: evalReducer,
-      deploy: deployReducer,
+      deliver: deliverReducer,
+      notification: notificationReducer,
     },
     preloadedState: {
       project: {
@@ -83,7 +88,7 @@ function renderWithRouter(initialPath: string, store = createStore()) {
           <Route path="/projects/:projectId/:phase?" element={<ProjectView />} />
         </Routes>
       </MemoryRouter>
-    </Provider>,
+    </Provider>
   );
 }
 
@@ -102,14 +107,6 @@ describe("ProjectView URL behavior", () => {
 
   it("redirects invalid phase slug to /projects/:id/sketch", async () => {
     renderWithRouter("/projects/proj-1/invalid-phase");
-
-    await waitFor(() => {
-      expect(screen.getByTestId("location")).toHaveTextContent("/projects/proj-1/sketch");
-    });
-  });
-
-  it("redirects /projects/:id/spec to /projects/:id/sketch for bookmarkability", async () => {
-    renderWithRouter("/projects/proj-1/spec");
 
     await waitFor(() => {
       expect(screen.getByTestId("location")).toHaveTextContent("/projects/proj-1/sketch");
@@ -198,7 +195,7 @@ describe("ProjectView upfront loading and mount-all", () => {
     });
 
     // All 4 phase wrappers should be mounted; execute is visible (flex), others hidden (none)
-    expect(screen.getByTestId("phase-spec")).toBeInTheDocument();
+    expect(screen.getByTestId("phase-sketch")).toBeInTheDocument();
     expect(screen.getByTestId("phase-plan")).toBeInTheDocument();
     expect(screen.getByTestId("phase-execute")).toBeInTheDocument();
     expect(screen.getByTestId("phase-eval")).toBeInTheDocument();
@@ -253,11 +250,12 @@ describe("ProjectView URL deep linking for Plan and Build detail panes", () => {
       reducer: {
         project: projectReducer,
         websocket: websocketReducer,
-        spec: specReducer,
+        sketch: sketchReducer,
         plan: planReducer,
         execute: executeReducer,
         eval: evalReducer,
-        deploy: deployReducer,
+        deliver: deliverReducer,
+        notification: notificationReducer,
       },
       preloadedState: {
         project: {
@@ -325,11 +323,12 @@ describe("ProjectView URL deep linking for Plan and Build detail panes", () => {
       reducer: {
         project: projectReducer,
         websocket: websocketReducer,
-        spec: specReducer,
+        sketch: sketchReducer,
         plan: planReducer,
         execute: executeReducer,
         eval: evalReducer,
-        deploy: deployReducer,
+        deliver: deliverReducer,
+        notification: notificationReducer,
       },
       preloadedState: {
         project: {
@@ -392,11 +391,12 @@ describe("ProjectView URL deep linking for Plan and Build detail panes", () => {
       reducer: {
         project: projectReducer,
         websocket: websocketReducer,
-        spec: specReducer,
+        sketch: sketchReducer,
         plan: planReducer,
         execute: executeReducer,
         eval: evalReducer,
-        deploy: deployReducer,
+        deliver: deliverReducer,
+        notification: notificationReducer,
       },
       preloadedState: {
         project: {

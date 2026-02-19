@@ -93,15 +93,12 @@ export interface HarmonizerPrdUpdate {
   changeLogEntry?: string;
 }
 
-/** Parse Harmonizer result from agent response (supports result.json format and legacy [PRD_UPDATE:...] blocks) */
-export function parseHarmonizerResult(
-  content: string,
-  legacyUpdates?: Array<{ section: PrdSectionKey; content: string }>
-): {
+/** Parse Harmonizer result from agent response (result.json format). */
+export function parseHarmonizerResult(content: string): {
   status: "success" | "no_changes_needed";
   prdUpdates: Array<{ section: PrdSectionKey; content: string }>;
 } | null {
-  const full = parseHarmonizerResultFull(content, legacyUpdates);
+  const full = parseHarmonizerResultFull(content);
   if (!full) return null;
   return {
     status: full.status,
@@ -109,12 +106,10 @@ export function parseHarmonizerResult(
   };
 }
 
-/** Parse Harmonizer result including change_log_entry (for scope-change HIL summary) */
+/** Parse Harmonizer result including change_log_entry (for scope-change HIL summary). */
 export function parseHarmonizerResultFull(
-  content: string,
-  legacyUpdates?: Array<{ section: PrdSectionKey; content: string }>
+  content: string
 ): { status: "success" | "no_changes_needed"; prdUpdates: HarmonizerPrdUpdate[] } | null {
-  // Try to parse JSON result first (result.json format)
   const jsonMatch = content.match(/\{[\s\S]*"status"[\s\S]*\}/);
   if (jsonMatch) {
     try {
@@ -138,16 +133,8 @@ export function parseHarmonizerResultFull(
         return { status: "no_changes_needed", prdUpdates: [] };
       }
     } catch {
-      // Fall through to legacy parsing
+      // JSON parse failed
     }
-  }
-
-  // Legacy: [PRD_UPDATE:section_key] blocks
-  if (legacyUpdates && legacyUpdates.length > 0) {
-    return {
-      status: "success",
-      prdUpdates: legacyUpdates.map((u) => ({ section: u.section, content: u.content })),
-    };
   }
 
   return null;

@@ -1,8 +1,13 @@
 import type { Middleware, ThunkDispatch, UnknownAction } from "@reduxjs/toolkit";
 import { createAction } from "@reduxjs/toolkit";
 import type { ServerEvent, ClientEvent } from "@opensprint/shared";
-import { setConnected, setHilRequest, setHilNotification, setDeliverToast } from "../slices/websocketSlice";
-import { fetchPrd, fetchPrdHistory, fetchSpecChat } from "../slices/specSlice";
+import {
+  setConnected,
+  setHilRequest,
+  setHilNotification,
+  setDeliverToast,
+} from "../slices/websocketSlice";
+import { fetchPrd, fetchPrdHistory, fetchSketchChat } from "../slices/sketchSlice";
 import { fetchPlanStatus } from "../slices/planSlice";
 import { fetchPlans, fetchSinglePlan } from "../slices/planSlice";
 import {
@@ -16,12 +21,12 @@ import {
 } from "../slices/executeSlice";
 import { fetchFeedback } from "../slices/evalSlice";
 import {
-  appendDeployOutput,
-  deployStarted,
-  deployCompleted,
-  fetchDeployStatus,
-  fetchDeployHistory,
-} from "../slices/deploySlice";
+  appendDeliverOutput,
+  deliverStarted,
+  deliverCompleted,
+  fetchDeliverStatus,
+  fetchDeliverHistory,
+} from "../slices/deliverSlice";
 
 type StoreDispatch = ThunkDispatch<unknown, unknown, UnknownAction>;
 
@@ -124,7 +129,7 @@ export const websocketMiddleware: Middleware = (storeApi) => {
       case "prd.updated":
         d(fetchPrd(projectId));
         d(fetchPrdHistory(projectId));
-        d(fetchSpecChat(projectId));
+        d(fetchSketchChat(projectId));
         d(fetchPlanStatus(projectId));
         break;
 
@@ -149,7 +154,7 @@ export const websocketMiddleware: Middleware = (storeApi) => {
             taskId: event.taskId,
             status: event.status,
             testResults: event.testResults,
-          }),
+          })
         );
         break;
 
@@ -167,7 +172,7 @@ export const websocketMiddleware: Middleware = (storeApi) => {
           setCurrentTaskAndPhase({
             currentTaskId: event.currentTask ?? null,
             currentPhase: event.currentPhase ?? null,
-          }),
+          })
         );
         break;
       }
@@ -178,30 +183,30 @@ export const websocketMiddleware: Middleware = (storeApi) => {
         break;
 
       case "deliver.started":
-        d(deployStarted({ deployId: event.deployId }));
+        d(deliverStarted({ deployId: event.deployId }));
         d(setDeliverToast({ message: "Delivery started", variant: "started" }));
         break;
 
       case "deliver.output":
-        d(appendDeployOutput({ deployId: event.deployId, chunk: event.chunk }));
+        d(appendDeliverOutput({ deployId: event.deployId, chunk: event.chunk }));
         break;
 
       case "deliver.completed":
         d(
-          deployCompleted({
+          deliverCompleted({
             deployId: event.deployId,
             success: event.success,
             fixEpicId: event.fixEpicId,
-          }),
+          })
         );
         d(
           setDeliverToast({
             message: event.success ? "Delivery succeeded" : "Delivery failed",
             variant: event.success ? "succeeded" : "failed",
-          }),
+          })
         );
-        d(fetchDeployStatus(projectId));
-        d(fetchDeployHistory(projectId));
+        d(fetchDeliverStatus(projectId));
+        d(fetchDeliverHistory(projectId));
         break;
     }
   }

@@ -112,33 +112,6 @@ describe("FeedbackService", () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  it("should normalize parent_id and depth for legacy feedback items", async () => {
-    const repoPath = path.join(tempDir, "my-project");
-    const feedbackDir = path.join(repoPath, OPENSPRINT_PATHS.feedback);
-    await fs.mkdir(feedbackDir, { recursive: true });
-
-    const legacyItem = {
-      id: "fb-legacy",
-      text: "Old feedback without parent_id",
-      category: "bug",
-      mappedPlanId: null,
-      createdTaskIds: [],
-      status: "mapped",
-      createdAt: new Date().toISOString(),
-    };
-    await fs.writeFile(
-      path.join(feedbackDir, "fb-legacy.json"),
-      JSON.stringify(legacyItem),
-      "utf-8"
-    );
-
-    const items = await feedbackService.listFeedback(projectId);
-
-    expect(items).toHaveLength(1);
-    expect(items[0].parent_id).toBeNull();
-    expect(items[0].depth).toBe(0);
-  });
-
   it("should list feedback items with createdTaskIds for Build tab navigation", async () => {
     const repoPath = path.join(tempDir, "my-project");
     const feedbackDir = path.join(repoPath, OPENSPRINT_PATHS.feedback);
@@ -340,26 +313,6 @@ describe("FeedbackService", () => {
     expect(prompt).toContain("Users want dark mode");
   });
 
-  it("should support legacy suggestedTitle when task_titles is missing", async () => {
-    mockInvoke.mockResolvedValue({
-      content: JSON.stringify({
-        category: "bug",
-        mappedPlanId: null,
-        suggestedTitle: "Fix login button",
-      }),
-    });
-
-    const item = await feedbackService.submitFeedback(projectId, {
-      text: "Login button broken",
-    });
-
-    await new Promise((r) => setTimeout(r, 200));
-
-    const updated = await feedbackService.getFeedback(projectId, item.id);
-    expect(updated.category).toBe("bug");
-    expect(updated.taskTitles).toEqual(["Fix login button"]);
-  });
-
   it("should parse full PRD 12.3.4 format: proposed_tasks, mapped_epic_id, is_scope_change", async () => {
     mockInvoke.mockResolvedValue({
       content: JSON.stringify({
@@ -456,22 +409,6 @@ describe("FeedbackService", () => {
       "We need a native mobile app"
     );
     expect(mockHilEvaluate).toHaveBeenCalledTimes(1);
-  });
-
-  it("should accept legacy mappedPlanId (camelCase) for backward compatibility", async () => {
-    mockInvoke.mockResolvedValue({
-      content: JSON.stringify({
-        category: "bug",
-        mappedPlanId: "legacy-plan",
-        task_titles: ["Fix legacy"],
-      }),
-    });
-
-    const item = await feedbackService.submitFeedback(projectId, { text: "Legacy format" });
-    await new Promise((r) => setTimeout(r, 200));
-
-    const updated = await feedbackService.getFeedback(projectId, item.id);
-    expect(updated.mappedPlanId).toBe("legacy-plan");
   });
 
   it("should fallback to bug and first plan when agent returns invalid JSON", async () => {

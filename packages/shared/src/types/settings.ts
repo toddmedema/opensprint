@@ -1,5 +1,5 @@
-import type { AgentType } from './agent.js';
-import type { PlanComplexity } from './plan.js';
+import type { AgentType } from "./agent.js";
+import type { PlanComplexity } from "./plan.js";
 
 /** Agent configuration */
 export interface AgentConfig {
@@ -15,10 +15,10 @@ export type AgentConfigInput = AgentConfig;
 export type CodingAgentByComplexity = Partial<Record<PlanComplexity, AgentConfig>>;
 
 /** Deployment mode */
-export type DeploymentMode = 'expo' | 'custom';
+export type DeploymentMode = "expo" | "custom";
 
-/** Deployment target (staging/production) — legacy, prefer targets array */
-export type DeploymentTarget = 'staging' | 'production';
+/** Deployment target (staging/production) */
+export type DeploymentTarget = "staging" | "production";
 
 /** Deployment target config (PRD §7.5.2/7.5.4): staging/production targets with per-target command/webhook */
 export interface DeploymentTargetConfig {
@@ -34,7 +34,7 @@ export interface DeploymentTargetConfig {
 /** Deployment configuration */
 export interface DeploymentConfig {
   mode: DeploymentMode;
-  /** Target environment (default: production) — legacy, prefer targets array */
+  /** Target environment (default: production) */
   target?: DeploymentTarget;
   /** Deployment targets with per-target command/webhook (PRD §7.5.2/7.5.4) */
   targets?: DeploymentTargetConfig[];
@@ -51,9 +51,9 @@ export interface DeploymentConfig {
     /** OTA update channel (default: preview) */
     channel?: string;
   };
-  /** Shell command to run after Build completion (custom mode) — legacy, prefer targets[].command */
+  /** Shell command to run after Build completion (custom mode) */
   customCommand?: string;
-  /** Webhook URL to POST after Build completion (custom mode) — legacy, prefer targets[].webhookUrl */
+  /** Webhook URL to POST after Build completion (custom mode) */
   webhookUrl?: string;
   /** Shell command for rollback (custom mode) */
   rollbackCommand?: string;
@@ -61,34 +61,34 @@ export interface DeploymentConfig {
 
 export type DeploymentConfigInput = DeploymentConfig;
 
-/** Resolve the default target name from targets array (first isDefault, or first entry, or legacy target) */
+/** Resolve the default target name from targets array (first isDefault, or first entry, or config.target). */
 export function getDefaultDeploymentTarget(config: DeploymentConfig): string {
   const targets = config.targets;
   if (targets && targets.length > 0) {
     const def = targets.find((t) => t.isDefault) ?? targets[0];
     return def.name;
   }
-  return config.target ?? 'production';
+  return config.target ?? "production";
 }
 
-/** Resolve target config by name. Returns undefined if not found (caller should fall back to legacy customCommand/webhookUrl). */
+/** Resolve target config by name. Returns undefined if not found. */
 export function getDeploymentTargetConfig(
   config: DeploymentConfig,
-  targetName: string,
+  targetName: string
 ): DeploymentTargetConfig | undefined {
   return config.targets?.find((t) => t.name === targetName);
 }
 
 /** Default deployment configuration (PRD §6.4, §7.5.3) */
 export const DEFAULT_DEPLOYMENT_CONFIG: DeploymentConfig = {
-  mode: 'custom',
+  mode: "custom",
   autoDeployOnEpicCompletion: false,
   autoDeployOnEvalResolution: false,
   autoResolveFeedbackOnTaskCompletion: false,
 };
 
 /** HIL notification mode for each category */
-export type HilNotificationMode = 'automated' | 'notify_and_proceed' | 'requires_approval';
+export type HilNotificationMode = "automated" | "notify_and_proceed" | "requires_approval";
 
 /** Human-in-the-loop decision categories (PRD §6.5.1: test failures are always automated, not configurable) */
 export interface HilConfig {
@@ -100,10 +100,10 @@ export interface HilConfig {
 export type HilConfigInput = HilConfig;
 
 /** Review mode controls when the review agent is invoked after coding */
-export type ReviewMode = 'always' | 'never' | 'on-failure-only';
+export type ReviewMode = "always" | "never" | "on-failure-only";
 
 /** Default review mode for new projects (PRD §7.3.2: two-agent cycle is recommended) */
-export const DEFAULT_REVIEW_MODE: ReviewMode = 'always';
+export const DEFAULT_REVIEW_MODE: ReviewMode = "always";
 
 /** Full project settings stored at .opensprint/settings.json */
 export interface ProjectSettings {
@@ -126,7 +126,7 @@ export interface ProjectSettings {
  */
 export function getCodingAgentForComplexity(
   settings: ProjectSettings,
-  complexity: PlanComplexity | undefined,
+  complexity: PlanComplexity | undefined
 ): AgentConfig {
   if (complexity && settings.codingAgentByComplexity?.[complexity]) {
     return settings.codingAgentByComplexity[complexity]!;
@@ -136,7 +136,7 @@ export function getCodingAgentForComplexity(
 
 /** Default HIL configuration */
 export const DEFAULT_HIL_CONFIG: HilConfig = {
-  scopeChanges: 'requires_approval',
-  architectureDecisions: 'requires_approval',
-  dependencyModifications: 'automated',
+  scopeChanges: "requires_approval",
+  architectureDecisions: "requires_approval",
+  dependencyModifications: "automated",
 };

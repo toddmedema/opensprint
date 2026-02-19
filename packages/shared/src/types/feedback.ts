@@ -1,8 +1,8 @@
 /** Feedback categorization */
-export type FeedbackCategory = 'bug' | 'feature' | 'ux' | 'scope';
+export type FeedbackCategory = "bug" | "feature" | "ux" | "scope";
 
 /** Feedback resolution status */
-export type FeedbackStatus = 'pending' | 'mapped' | 'resolved';
+export type FeedbackStatus = "pending" | "mapped" | "resolved";
 
 /** Proposed task in indexed Planner format (PRD §12.3.4) */
 export interface ProposedTask {
@@ -22,7 +22,7 @@ export interface FeedbackItem {
   createdTaskIds: string[];
   status: FeedbackStatus;
   createdAt: string;
-  /** Suggested task titles from AI categorization (legacy) */
+  /** Suggested task titles from AI categorization */
   taskTitles?: string[];
   /** Full proposed tasks in Planner format (PRD §12.3.4) */
   proposedTasks?: ProposedTask[];

@@ -5,12 +5,12 @@ import { getDefaultDeploymentTarget } from "@opensprint/shared";
 import { getProjectPhasePath } from "../../lib/phaseRouting";
 import { useAppDispatch, useAppSelector } from "../../store";
 import {
-  triggerDeploy,
-  rollbackDeploy,
-  fetchDeployHistory,
-  fetchDeployStatus,
+  triggerDeliver,
+  rollbackDeliver,
+  fetchDeliverHistory,
+  fetchDeliverStatus,
   setSelectedDeployId,
-} from "../../store/slices/deploySlice";
+} from "../../store/slices/deliverSlice";
 import { api } from "../../api/client";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
 
@@ -62,13 +62,13 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
   );
   const [selectedTarget, setSelectedTarget] = useState<string>(defaultTarget);
 
-  const history = useAppSelector((s) => s.deploy.history);
-  const activeDeployId = useAppSelector((s) => s.deploy.activeDeployId);
-  const selectedDeployId = useAppSelector((s) => s.deploy.selectedDeployId);
-  const liveLog = useAppSelector((s) => s.deploy.liveLog);
-  const deployLoading = useAppSelector((s) => s.deploy.deployLoading);
-  const historyLoading = useAppSelector((s) => s.deploy.historyLoading);
-  const rollbackLoading = useAppSelector((s) => s.deploy.rollbackLoading);
+  const history = useAppSelector((s) => s.deliver.history);
+  const activeDeployId = useAppSelector((s) => s.deliver.activeDeployId);
+  const selectedDeployId = useAppSelector((s) => s.deliver.selectedDeployId);
+  const liveLog = useAppSelector((s) => s.deliver.liveLog);
+  const deliverLoading = useAppSelector((s) => s.deliver.deliverLoading);
+  const historyLoading = useAppSelector((s) => s.deliver.historyLoading);
+  const rollbackLoading = useAppSelector((s) => s.deliver.rollbackLoading);
 
   useEffect(() => {
     api.projects
@@ -82,8 +82,8 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
   }, [defaultTarget]);
 
   useEffect(() => {
-    dispatch(fetchDeployStatus(projectId));
-    dispatch(fetchDeployHistory(projectId));
+    dispatch(fetchDeliverStatus(projectId));
+    dispatch(fetchDeliverHistory(projectId));
   }, [projectId, dispatch]);
 
   const selectedRecord = selectedDeployId
@@ -103,19 +103,19 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
     selectedRecord?.status === "success";
 
   const handleDeploy = () => {
-    dispatch(triggerDeploy({ projectId, target: selectedTarget }));
+    dispatch(triggerDeliver({ projectId, target: selectedTarget }));
   };
 
   const handleRollback = () => {
     if (!selectedRecord?.id || !canRollback || rollbackLoading) return;
-    dispatch(rollbackDeploy({ projectId, deployId: selectedRecord.id }));
+    dispatch(rollbackDeliver({ projectId, deployId: selectedRecord.id }));
   };
 
   const handleSelectDeploy = (id: string) => {
     dispatch(setSelectedDeployId(id));
   };
 
-  const isDeploying = deployLoading || !!activeDeployId;
+  const isDeploying = deliverLoading || !!activeDeployId;
 
   return (
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
@@ -178,7 +178,6 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
             </div>
           </div>
         </div>
-
 
         <div className="flex-1 min-h-0 flex overflow-hidden">
           <ResizableSidebar storageKey="deliver" defaultWidth={280} visible>

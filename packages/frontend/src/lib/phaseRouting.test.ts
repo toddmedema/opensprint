@@ -28,12 +28,9 @@ describe("phaseRouting", () => {
       expect(phaseFromSlug("deliver")).toBe("deliver");
     });
 
-    it("returns sketch for spec slug (legacy alias)", () => {
-      expect(phaseFromSlug("spec")).toBe("sketch");
-    });
-
     it("returns sketch for invalid slugs", () => {
       expect(phaseFromSlug("invalid")).toBe("sketch");
+      expect(phaseFromSlug("spec")).toBe("sketch");
       expect(phaseFromSlug("design")).toBe("sketch");
       expect(phaseFromSlug("validate")).toBe("sketch");
     });
@@ -44,10 +41,10 @@ describe("phaseRouting", () => {
       expect(isValidPhaseSlug(undefined)).toBe(false);
     });
 
-    it("returns false for invalid slugs and legacy spec", () => {
+    it("returns false for invalid slugs", () => {
       expect(isValidPhaseSlug("")).toBe(false);
       expect(isValidPhaseSlug("invalid")).toBe(false);
-      expect(isValidPhaseSlug("spec")).toBe(false); // spec redirects to sketch
+      expect(isValidPhaseSlug("spec")).toBe(false);
     });
 
     it("returns true for valid slugs", () => {
@@ -75,13 +72,13 @@ describe("phaseRouting", () => {
 
     it("appends plan param for Plan phase deep linking", () => {
       expect(getProjectPhasePath("proj-1", "plan", { plan: "opensprint.dev-abc" })).toBe(
-        "/projects/proj-1/plan?plan=opensprint.dev-abc",
+        "/projects/proj-1/plan?plan=opensprint.dev-abc"
       );
     });
 
     it("appends task param for Execute phase deep linking", () => {
       expect(getProjectPhasePath("proj-1", "execute", { task: "opensprint.dev-abc.1" })).toBe(
-        "/projects/proj-1/execute?task=opensprint.dev-abc.1",
+        "/projects/proj-1/execute?task=opensprint.dev-abc.1"
       );
     });
 

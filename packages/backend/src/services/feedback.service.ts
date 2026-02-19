@@ -85,7 +85,6 @@ export class FeedbackService {
     return path.join(project.repoPath, OPENSPRINT_PATHS.feedback);
   }
 
-  /** List all feedback items. Normalizes legacy items to include parent_id and depth (PRD §7.4.1). */
   async listFeedback(projectId: string): Promise<FeedbackItem[]> {
     const feedbackDir = await this.getFeedbackDir(projectId);
     const items: FeedbackItem[] = [];
@@ -96,9 +95,6 @@ export class FeedbackService {
         if (file.endsWith(".json")) {
           const data = await fs.readFile(path.join(feedbackDir, file), "utf-8");
           const item = JSON.parse(data) as FeedbackItem;
-          // Ensure parent_id and depth for client tree building (legacy items may lack these)
-          if (item.parent_id === undefined) item.parent_id = null;
-          if (item.depth === undefined) item.depth = 0;
           items.push(item);
         }
       }
@@ -307,7 +303,6 @@ export class FeedbackService {
             ? parsed.is_scope_change
             : item.category === "scope";
 
-        // proposed_tasks: full Planner format; fallback to task_titles / suggestedTitle (legacy)
         const rawProposed = parsed.proposed_tasks ?? parsed.proposedTasks;
         if (Array.isArray(rawProposed) && rawProposed.length > 0) {
           const tasks: ProposedTask[] = rawProposed
@@ -458,7 +453,7 @@ export class FeedbackService {
     }
   }
 
-  /** Create beads tasks from feedback — uses proposed_tasks (PRD §12.3.4) or task_titles (legacy) */
+  /** Create beads tasks from feedback (PRD §12.3.4). */
   private async createBeadTasksFromFeedback(
     projectId: string,
     item: FeedbackItem
@@ -775,15 +770,11 @@ export class FeedbackService {
     return item;
   }
 
-  /** Get a single feedback item. Normalizes legacy items (parent_id, depth). */
   async getFeedback(projectId: string, feedbackId: string): Promise<FeedbackItem> {
     const feedbackDir = await this.getFeedbackDir(projectId);
     try {
       const data = await fs.readFile(path.join(feedbackDir, `${feedbackId}.json`), "utf-8");
-      const item = JSON.parse(data) as FeedbackItem;
-      if (item.parent_id === undefined) item.parent_id = null;
-      if (item.depth === undefined) item.depth = 0;
-      return item;
+      return JSON.parse(data) as FeedbackItem;
     } catch (err) {
       const nodeErr = err as NodeJS.ErrnoException;
       if (nodeErr?.code === "ENOENT") {

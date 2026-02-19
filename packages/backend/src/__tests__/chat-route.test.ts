@@ -78,18 +78,12 @@ describe("Chat REST API", () => {
   });
 
   it("GET /projects/:id/chat/history should accept context query param", async () => {
-    const res = await request(app).get(`${API_PREFIX}/projects/${projectId}/chat/history?context=plan:auth-plan`);
+    const res = await request(app).get(
+      `${API_PREFIX}/projects/${projectId}/chat/history?context=plan:auth-plan`
+    );
 
     expect(res.status).toBe(200);
     expect(res.body.data.context).toBe("plan:auth-plan");
-    expect(res.body.data.messages).toEqual([]);
-  });
-
-  it("GET /projects/:id/chat/history should accept spec as alias for sketch (backwards compatibility)", async () => {
-    const res = await request(app).get(`${API_PREFIX}/projects/${projectId}/chat/history?context=spec`);
-
-    expect(res.status).toBe(200);
-    expect(res.body.data.context).toBe("sketch");
     expect(res.body.data.messages).toEqual([]);
   });
 
@@ -129,10 +123,12 @@ Let me know if you'd like to refine this further.`;
     expect(res.body.data.prdChanges).toHaveLength(1);
     expect(res.body.data.prdChanges[0].section).toBe("executive_summary");
 
-    const prdRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/prd/executive_summary`);
+    const prdRes = await request(app).get(
+      `${API_PREFIX}/projects/${projectId}/prd/executive_summary`
+    );
     expect(prdRes.status).toBe(200);
     expect(prdRes.body.data.content).toContain(
-      "OpenSprint is a web application that guides users through the full software development lifecycle using AI agents",
+      "OpenSprint is a web application that guides users through the full software development lifecycle using AI agents"
     );
   });
 
@@ -168,10 +164,14 @@ Let me know if you'd like to expand any section.`;
     expect(sections).toContain("problem_statement");
     expect(sections).toContain("feature_list");
 
-    const execRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/prd/executive_summary`);
+    const execRes = await request(app).get(
+      `${API_PREFIX}/projects/${projectId}/prd/executive_summary`
+    );
     expect(execRes.body.data.content).toContain("task management app");
 
-    const problemRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/prd/problem_statement`);
+    const problemRes = await request(app).get(
+      `${API_PREFIX}/projects/${projectId}/prd/problem_statement`
+    );
     expect(problemRes.body.data.content).toContain("keep track of tasks");
   });
 
@@ -204,10 +204,14 @@ Hope that helps!`;
     expect(sections).toContain("executive_summary");
     expect(sections).toContain("problem_statement");
 
-    const execRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/prd/executive_summary`);
+    const execRes = await request(app).get(
+      `${API_PREFIX}/projects/${projectId}/prd/executive_summary`
+    );
     expect(execRes.body.data.content).toContain("Product A helps users do X");
 
-    const problemRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/prd/problem_statement`);
+    const problemRes = await request(app).get(
+      `${API_PREFIX}/projects/${projectId}/prd/problem_statement`
+    );
     expect(problemRes.body.data.content).toContain("Users currently face Y");
   });
 
@@ -243,7 +247,9 @@ Hope that helps!`;
   });
 
   it("POST /projects/:id/chat should return 400 when message is empty", async () => {
-    const res = await request(app).post(`${API_PREFIX}/projects/${projectId}/chat`).send({ message: "" });
+    const res = await request(app)
+      .post(`${API_PREFIX}/projects/${projectId}/chat`)
+      .send({ message: "" });
 
     expect(res.status).toBe(400);
     expect(res.body.error?.code).toBe("INVALID_INPUT");
@@ -257,7 +263,9 @@ Hope that helps!`;
   });
 
   it("conversation should be stored in .opensprint/conversations/", async () => {
-    await request(app).post(`${API_PREFIX}/projects/${projectId}/chat`).send({ message: "Test message" });
+    await request(app)
+      .post(`${API_PREFIX}/projects/${projectId}/chat`)
+      .send({ message: "Test message" });
 
     const convDir = path.join(repoPath, OPENSPRINT_PATHS.conversations);
     const files = await fs.readdir(convDir);
@@ -285,7 +293,7 @@ Hope that helps!`;
         projectId,
         "sketch",
         "Sketch chat",
-        expect.any(String),
+        expect.any(String)
       );
       expect(mockUnregister).toHaveBeenCalledTimes(1);
       expect(mockUnregister).toHaveBeenCalledWith(mockRegister.mock.calls[0][0]);
@@ -307,7 +315,7 @@ Hope that helps!`;
         projectId,
         "plan",
         "Plan chat",
-        expect.any(String),
+        expect.any(String)
       );
       expect(mockUnregister).toHaveBeenCalledTimes(1);
       expect(mockUnregister).toHaveBeenCalledWith(mockRegister.mock.calls[0][0]);

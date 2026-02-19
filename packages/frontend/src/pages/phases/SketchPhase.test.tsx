@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
 import { SketchPhase } from "./SketchPhase";
-import specReducer from "../../store/slices/specSlice";
+import sketchReducer from "../../store/slices/sketchSlice";
 import planReducer, { decomposePlans } from "../../store/slices/planSlice";
 
 const mockChatSend = vi.fn();
@@ -60,7 +60,7 @@ vi.mock("../../api/client", () => ({
 }));
 
 function createStore(preloadedState?: {
-  spec?: {
+  sketch?: {
     messages?: { role: "user" | "assistant"; content: string; timestamp: string }[];
     prdContent?: Record<string, string>;
     prdHistory?: unknown[];
@@ -69,14 +69,14 @@ function createStore(preloadedState?: {
 }) {
   return configureStore({
     reducer: {
-      spec: specReducer,
+      sketch: sketchReducer,
       plan: planReducer,
     },
     preloadedState: {
-      spec: {
-        messages: preloadedState?.spec?.messages ?? [],
-        prdContent: preloadedState?.spec?.prdContent ?? {},
-        prdHistory: preloadedState?.spec?.prdHistory ?? [],
+      sketch: {
+        messages: preloadedState?.sketch?.messages ?? [],
+        prdContent: preloadedState?.sketch?.prdContent ?? {},
+        prdHistory: preloadedState?.sketch?.prdHistory ?? [],
         sendingChat: false,
         savingSections: [],
         error: null,
@@ -102,7 +102,7 @@ function renderSketchPhase(store = createStore()) {
   return render(
     <Provider store={store}>
       <SketchPhase projectId="proj-1" />
-    </Provider>,
+    </Provider>
   );
 }
 
@@ -115,7 +115,11 @@ describe("SketchPhase with specSlice", () => {
     mockPrdGetHistory.mockResolvedValue([]);
     mockPrdUpdateSection.mockResolvedValue(undefined);
     mockPlansDecompose.mockResolvedValue({ created: 2, plans: [] });
-    mockGetPlanStatus.mockResolvedValue({ hasPlanningRun: false, prdChangedSinceLastRun: false, action: "plan" });
+    mockGetPlanStatus.mockResolvedValue({
+      hasPlanningRun: false,
+      prdChangedSinceLastRun: false,
+      action: "plan",
+    });
   });
 
   describe("initial prompt view (no PRD) — empty-state onboarding", () => {
@@ -164,7 +168,7 @@ describe("SketchPhase with specSlice", () => {
         () =>
           new Promise((r) => {
             resolveSend = r;
-          }),
+          })
       );
 
       const user = userEvent.setup();
@@ -200,7 +204,7 @@ describe("SketchPhase with specSlice", () => {
           "proj-1",
           expect.stringContaining("Here's my existing product requirements document"),
           "sketch",
-          undefined,
+          undefined
         );
       });
 
@@ -215,7 +219,7 @@ describe("SketchPhase with specSlice", () => {
         () =>
           new Promise((r) => {
             resolveSend = r;
-          }),
+          })
       );
 
       const user = userEvent.setup();
@@ -251,7 +255,7 @@ describe("SketchPhase with specSlice", () => {
   describe("PRD document view", () => {
     it("renders PRD sections when prdContent exists", () => {
       const store = createStore({
-        spec: {
+        sketch: {
           prdContent: {
             executive_summary: "Summary text",
             goals_and_metrics: "Goals text",
@@ -270,7 +274,7 @@ describe("SketchPhase with specSlice", () => {
     it("dispatches savePrdSection when user edits section (debounced autosave)", async () => {
       const user = userEvent.setup();
       const store = createStore({
-        spec: { prdContent: { overview: "Original content" } },
+        sketch: { prdContent: { overview: "Original content" } },
       });
       renderSketchPhase(store);
 
@@ -282,14 +286,14 @@ describe("SketchPhase with specSlice", () => {
         expect(mockPrdUpdateSection).toHaveBeenLastCalledWith(
           "proj-1",
           "overview",
-          "Updated content",
+          "Updated content"
         );
       });
     });
 
     it("displays chat and messages in split-pane when PRD exists", () => {
       const store = createStore({
-        spec: {
+        sketch: {
           prdContent: { overview: "Content" },
           messages: [
             { role: "user", content: "Hello", timestamp: "2025-01-01" },
@@ -307,7 +311,7 @@ describe("SketchPhase with specSlice", () => {
 
     it("displays split-pane with theme-aware layout (PRD left, Discuss right)", () => {
       const store = createStore({
-        spec: { prdContent: { overview: "Content" } },
+        sketch: { prdContent: { overview: "Content" } },
       });
       const { container } = renderSketchPhase(store);
       // Main split-pane wrapper uses theme bg
@@ -321,7 +325,7 @@ describe("SketchPhase with specSlice", () => {
     it("collapses and expands Discuss sidebar when collapse/expand buttons are clicked", async () => {
       const user = userEvent.setup();
       const store = createStore({
-        spec: { prdContent: { overview: "Content" } },
+        sketch: { prdContent: { overview: "Content" } },
       });
       renderSketchPhase(store);
 
@@ -356,7 +360,7 @@ describe("SketchPhase with specSlice", () => {
 
       it("shows Discuss popover when user selects text in PRD", async () => {
         const store = createStore({
-          spec: { prdContent: { executive_summary: "Some summary text to select" } },
+          sketch: { prdContent: { executive_summary: "Some summary text to select" } },
         });
         renderSketchPhase(store);
 
@@ -371,7 +375,7 @@ describe("SketchPhase with specSlice", () => {
       it("clicking Discuss button moves selection to chat and focuses input", async () => {
         const user = userEvent.setup();
         const store = createStore({
-          spec: { prdContent: { executive_summary: "Selected text" } },
+          sketch: { prdContent: { executive_summary: "Selected text" } },
         });
         renderSketchPhase(store);
 
@@ -402,7 +406,7 @@ describe("SketchPhase with specSlice", () => {
       it("dismisses popover when clicking outside popover and selection", async () => {
         const user = userEvent.setup();
         const store = createStore({
-          spec: { prdContent: { executive_summary: "Some text" } },
+          sketch: { prdContent: { executive_summary: "Some text" } },
         });
         renderSketchPhase(store);
 
@@ -423,7 +427,7 @@ describe("SketchPhase with specSlice", () => {
       it("dismisses popover when clicking in chat input area", async () => {
         const user = userEvent.setup();
         const store = createStore({
-          spec: { prdContent: { executive_summary: "Some text" } },
+          sketch: { prdContent: { executive_summary: "Some text" } },
         });
         renderSketchPhase(store);
 
@@ -445,7 +449,7 @@ describe("SketchPhase with specSlice", () => {
       it("dismisses popover when clicking on different PRD section (outside highlighted text)", async () => {
         const user = userEvent.setup();
         const store = createStore({
-          spec: {
+          sketch: {
             prdContent: {
               executive_summary: "First section text",
               goals_and_metrics: "Second section text",
@@ -472,7 +476,7 @@ describe("SketchPhase with specSlice", () => {
       it("does not dismiss when clicking Discuss button (triggers discuss flow)", async () => {
         const user = userEvent.setup();
         const store = createStore({
-          spec: { prdContent: { executive_summary: "Some text" } },
+          sketch: { prdContent: { executive_summary: "Some text" } },
         });
         renderSketchPhase(store);
 
@@ -504,7 +508,7 @@ describe("SketchPhase with specSlice", () => {
         });
 
         const store = createStore({
-          spec: { prdContent: { executive_summary: "Selected text" } },
+          sketch: { prdContent: { executive_summary: "Selected text" } },
         });
         renderSketchPhase(store);
 
@@ -523,7 +527,9 @@ describe("SketchPhase with specSlice", () => {
 
         await waitFor(() => {
           // Sidebar opens and shows Discussing context
-          expect(screen.getByRole("button", { name: "Collapse Discuss sidebar" })).toBeInTheDocument();
+          expect(
+            screen.getByRole("button", { name: "Collapse Discuss sidebar" })
+          ).toBeInTheDocument();
           expect(screen.getByText(/Discussing: Executive Summary/i)).toBeInTheDocument();
           expect(screen.getByPlaceholderText(/Comment on this selection/)).toBeInTheDocument();
         });
@@ -542,7 +548,7 @@ describe("SketchPhase with specSlice", () => {
 
       it("replaces popover when user selects new text elsewhere in PRD", async () => {
         const store = createStore({
-          spec: {
+          sketch: {
             prdContent: {
               executive_summary: "First section text",
               goals_and_metrics: "Second section text",
@@ -588,43 +594,49 @@ describe("SketchPhase with specSlice", () => {
       it("defaults to expanded when localStorage has no value", () => {
         // Do not set STORAGE_KEY in localStorageMock - simulates first visit
         const store = createStore({
-          spec: { prdContent: { overview: "Content" } },
+          sketch: { prdContent: { overview: "Content" } },
         });
         renderSketchPhase(store);
 
         expect(screen.getByText("Discuss")).toBeInTheDocument();
-        expect(screen.getByRole("button", { name: "Collapse Discuss sidebar" })).toBeInTheDocument();
+        expect(
+          screen.getByRole("button", { name: "Collapse Discuss sidebar" })
+        ).toBeInTheDocument();
       });
 
       it("restores collapsed state from localStorage when true", () => {
         localStorageMock[STORAGE_KEY] = "true";
 
         const store = createStore({
-          spec: { prdContent: { overview: "Content" } },
+          sketch: { prdContent: { overview: "Content" } },
         });
         renderSketchPhase(store);
 
         // Sidebar should start collapsed (narrow bar with expand button)
         expect(screen.getByRole("button", { name: "Expand Discuss sidebar" })).toBeInTheDocument();
-        expect(screen.queryByRole("button", { name: "Collapse Discuss sidebar" })).not.toBeInTheDocument();
+        expect(
+          screen.queryByRole("button", { name: "Collapse Discuss sidebar" })
+        ).not.toBeInTheDocument();
       });
 
       it("restores expanded state from localStorage when false", () => {
         localStorageMock[STORAGE_KEY] = "false";
 
         const store = createStore({
-          spec: { prdContent: { overview: "Content" } },
+          sketch: { prdContent: { overview: "Content" } },
         });
         renderSketchPhase(store);
 
         expect(screen.getByText("Discuss")).toBeInTheDocument();
-        expect(screen.getByRole("button", { name: "Collapse Discuss sidebar" })).toBeInTheDocument();
+        expect(
+          screen.getByRole("button", { name: "Collapse Discuss sidebar" })
+        ).toBeInTheDocument();
       });
 
       it("persists collapsed state to localStorage when user collapses sidebar", async () => {
         const user = userEvent.setup();
         const store = createStore({
-          spec: { prdContent: { overview: "Content" } },
+          sketch: { prdContent: { overview: "Content" } },
         });
         renderSketchPhase(store);
 
@@ -638,7 +650,7 @@ describe("SketchPhase with specSlice", () => {
         localStorageMock[STORAGE_KEY] = "true";
 
         const store = createStore({
-          spec: { prdContent: { overview: "Content" } },
+          sketch: { prdContent: { overview: "Content" } },
         });
         renderSketchPhase(store);
 
@@ -650,8 +662,10 @@ describe("SketchPhase with specSlice", () => {
 
     it("shows Plan it when planStatus.action is plan", async () => {
       const store = createStore({
-        spec: { prdContent: { overview: "Content" } },
-        plan: { planStatus: { hasPlanningRun: false, prdChangedSinceLastRun: false, action: "plan" } },
+        sketch: { prdContent: { overview: "Content" } },
+        plan: {
+          planStatus: { hasPlanningRun: false, prdChangedSinceLastRun: false, action: "plan" },
+        },
       });
       renderSketchPhase(store);
       await waitFor(() => {
@@ -662,8 +676,10 @@ describe("SketchPhase with specSlice", () => {
 
     it("shows Replan it when planStatus.action is replan", async () => {
       const store = createStore({
-        spec: { prdContent: { overview: "Content" } },
-        plan: { planStatus: { hasPlanningRun: true, prdChangedSinceLastRun: true, action: "replan" } },
+        sketch: { prdContent: { overview: "Content" } },
+        plan: {
+          planStatus: { hasPlanningRun: true, prdChangedSinceLastRun: true, action: "replan" },
+        },
       });
       renderSketchPhase(store);
       await waitFor(() => {
@@ -674,8 +690,10 @@ describe("SketchPhase with specSlice", () => {
 
     it("hides CTA button when planStatus.action is none", async () => {
       const store = createStore({
-        spec: { prdContent: { overview: "Content" } },
-        plan: { planStatus: { hasPlanningRun: true, prdChangedSinceLastRun: false, action: "none" } },
+        sketch: { prdContent: { overview: "Content" } },
+        plan: {
+          planStatus: { hasPlanningRun: true, prdChangedSinceLastRun: false, action: "none" },
+        },
       });
       renderSketchPhase(store);
       await waitFor(() => {
@@ -686,7 +704,7 @@ describe("SketchPhase with specSlice", () => {
 
     it("hides CTA button when planStatus is null (loading)", () => {
       const store = createStore({
-        spec: { prdContent: { overview: "Content" } },
+        sketch: { prdContent: { overview: "Content" } },
         plan: { planStatus: null },
       });
       renderSketchPhase(store);
@@ -696,7 +714,7 @@ describe("SketchPhase with specSlice", () => {
 
     it("fetches plan-status on Sketch load when PRD exists", async () => {
       const store = createStore({
-        spec: { prdContent: { overview: "Content" } },
+        sketch: { prdContent: { overview: "Content" } },
       });
       renderSketchPhase(store);
       await waitFor(() => {
@@ -707,11 +725,16 @@ describe("SketchPhase with specSlice", () => {
     it("disables CTA button during decomposing", async () => {
       let resolveDecompose: () => void;
       mockPlansDecompose.mockImplementation(
-        () => new Promise<void>((r) => { resolveDecompose = r; }),
+        () =>
+          new Promise<void>((r) => {
+            resolveDecompose = r;
+          })
       );
       const store = createStore({
-        spec: { prdContent: { overview: "Content" } },
-        plan: { planStatus: { hasPlanningRun: false, prdChangedSinceLastRun: false, action: "plan" } },
+        sketch: { prdContent: { overview: "Content" } },
+        plan: {
+          planStatus: { hasPlanningRun: false, prdChangedSinceLastRun: false, action: "plan" },
+        },
       });
       renderSketchPhase(store);
       await waitFor(() => {
@@ -729,7 +752,7 @@ describe("SketchPhase with specSlice", () => {
     it("dispatches fetchPlanStatus after savePrdSection succeeds", async () => {
       const user = userEvent.setup();
       const store = createStore({
-        spec: {
+        sketch: {
           prdContent: {
             executive_summary: "Original",
             goals_and_metrics: "Goals",
@@ -747,7 +770,7 @@ describe("SketchPhase with specSlice", () => {
         expect(mockPrdUpdateSection).toHaveBeenCalledWith(
           "proj-1",
           "executive_summary",
-          "Updated summary",
+          "Updated summary"
         );
       });
 
@@ -759,7 +782,7 @@ describe("SketchPhase with specSlice", () => {
     it("saves multiple sections independently (multi-section edits)", async () => {
       const user = userEvent.setup();
       const store = createStore({
-        spec: {
+        sketch: {
           prdContent: {
             executive_summary: "Summary",
             goals_and_metrics: "Goals",
@@ -781,14 +804,14 @@ describe("SketchPhase with specSlice", () => {
         expect(mockPrdUpdateSection).toHaveBeenCalledWith(
           "proj-1",
           "executive_summary",
-          "New summary",
+          "New summary"
         );
       });
       await waitFor(() => {
         expect(mockPrdUpdateSection).toHaveBeenCalledWith(
           "proj-1",
           "goals_and_metrics",
-          "New goals",
+          "New goals"
         );
       });
     });

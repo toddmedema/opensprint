@@ -56,21 +56,20 @@ const HIL_CONFIG_KEYS: (keyof HilConfig)[] = [
   "dependencyModifications",
 ];
 
-function normalizeHilConfig(input: CreateProjectRequest["hilConfig"] | Record<string, unknown>): HilConfig {
+function normalizeHilConfig(
+  input: CreateProjectRequest["hilConfig"] | Record<string, unknown>
+): HilConfig {
   if (!input) return DEFAULT_HIL_CONFIG;
   const defined = Object.fromEntries(
     HIL_CONFIG_KEYS.filter((k) => (input as Record<string, unknown>)[k] !== undefined).map((k) => [
       k,
       (input as Record<string, unknown>)[k],
-    ]),
+    ])
   );
-  const result = {
+  return {
     ...DEFAULT_HIL_CONFIG,
     ...defined,
   };
-  // Strip legacy testFailuresAndRetries if present (PRD §6.5.1: never persisted)
-  const { testFailuresAndRetries: _legacy, ...clean } = result as HilConfig & { testFailuresAndRetries?: unknown };
-  return clean as HilConfig;
 }
 
 export class ProjectService {
@@ -426,7 +425,7 @@ export class ProjectService {
     }
 
     const hilConfig = normalizeHilConfig(
-      (updates.hilConfig ?? current.hilConfig) as CreateProjectRequest["hilConfig"],
+      (updates.hilConfig ?? current.hilConfig) as CreateProjectRequest["hilConfig"]
     );
     const updated: ProjectSettings = {
       ...current,

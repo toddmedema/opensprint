@@ -9,7 +9,7 @@ interface Message {
   timestamp: string;
 }
 
-export interface SpecState {
+export interface SketchState {
   messages: Message[];
   prdContent: Record<string, string>;
   prdHistory: PrdChangeLogEntry[];
@@ -19,7 +19,7 @@ export interface SpecState {
   error: string | null;
 }
 
-const initialState: SpecState = {
+const initialState: SketchState = {
   messages: [],
   prdContent: {},
   prdHistory: [],
@@ -28,38 +28,57 @@ const initialState: SpecState = {
   error: null,
 };
 
-export const fetchSpecChat = createAsyncThunk("spec/fetchChat", async (projectId: string) => {
+export const fetchSketchChat = createAsyncThunk("sketch/fetchChat", async (projectId: string) => {
   const conv = await api.chat.history(projectId, "sketch");
   return conv?.messages ?? [];
 });
 
-export const fetchPrd = createAsyncThunk("spec/fetchPrd", async (projectId: string) => {
+export const fetchPrd = createAsyncThunk("sketch/fetchPrd", async (projectId: string) => {
   const data = await api.prd.get(projectId);
   return parsePrdSections(data);
 });
 
-export const fetchPrdHistory = createAsyncThunk("spec/fetchPrdHistory", async (projectId: string) => {
-  const data = await api.prd.getHistory(projectId);
-  return data ?? [];
-});
+export const fetchPrdHistory = createAsyncThunk(
+  "sketch/fetchPrdHistory",
+  async (projectId: string) => {
+    const data = await api.prd.getHistory(projectId);
+    return data ?? [];
+  }
+);
 
-export const sendSpecMessage = createAsyncThunk(
-  "spec/sendMessage",
-  async ({ projectId, message, prdSectionFocus }: { projectId: string; message: string; prdSectionFocus?: string }) => {
+export const sendSketchMessage = createAsyncThunk(
+  "sketch/sendMessage",
+  async ({
+    projectId,
+    message,
+    prdSectionFocus,
+  }: {
+    projectId: string;
+    message: string;
+    prdSectionFocus?: string;
+  }) => {
     return api.chat.send(projectId, message, "sketch", prdSectionFocus);
-  },
+  }
 );
 
 export const savePrdSection = createAsyncThunk(
-  "spec/savePrdSection",
-  async ({ projectId, section, content }: { projectId: string; section: string; content: string }) => {
+  "sketch/savePrdSection",
+  async ({
+    projectId,
+    section,
+    content,
+  }: {
+    projectId: string;
+    section: string;
+    content: string;
+  }) => {
     await api.prd.updateSection(projectId, section, content);
     return { section, content };
-  },
+  }
 );
 
 export const uploadPrdFile = createAsyncThunk(
-  "spec/uploadPrdFile",
+  "sketch/uploadPrdFile",
   async ({ projectId, file }: { projectId: string; file: File }) => {
     const ext = file.name.split(".").pop()?.toLowerCase();
 
@@ -79,17 +98,17 @@ export const uploadPrdFile = createAsyncThunk(
     }
 
     throw new Error("Unsupported file type. Please use .md, .docx, or .pdf");
-  },
+  }
 );
 
-const specSlice = createSlice({
-  name: "spec",
+const sketchSlice = createSlice({
+  name: "sketch",
   initialState,
   reducers: {
     addUserMessage(state, action: PayloadAction<Message>) {
       state.messages.push(action.payload);
     },
-    setSpecError(state, action: PayloadAction<string | null>) {
+    setSketchError(state, action: PayloadAction<string | null>) {
       state.error = action.payload;
     },
     setPrdContent(state, action: PayloadAction<Record<string, string>>) {
@@ -98,30 +117,26 @@ const specSlice = createSlice({
     setPrdHistory(state, action: PayloadAction<PrdChangeLogEntry[]>) {
       state.prdHistory = action.payload;
     },
-    resetSpec() {
+    resetSketch() {
       return initialState;
     },
   },
   extraReducers: (builder) => {
     builder
-      // fetchSpecChat
-      .addCase(fetchSpecChat.fulfilled, (state, action) => {
+      .addCase(fetchSketchChat.fulfilled, (state, action) => {
         state.messages = action.payload;
       })
-      // fetchPrd
       .addCase(fetchPrd.fulfilled, (state, action) => {
         state.prdContent = action.payload;
       })
-      // fetchPrdHistory
       .addCase(fetchPrdHistory.fulfilled, (state, action) => {
         state.prdHistory = action.payload;
       })
-      // sendSpecMessage
-      .addCase(sendSpecMessage.pending, (state) => {
+      .addCase(sendSketchMessage.pending, (state) => {
         state.sendingChat = true;
         state.error = null;
       })
-      .addCase(sendSpecMessage.fulfilled, (state, action) => {
+      .addCase(sendSketchMessage.fulfilled, (state, action) => {
         state.sendingChat = false;
         state.messages.push({
           role: "assistant",
@@ -129,11 +144,10 @@ const specSlice = createSlice({
           timestamp: new Date().toISOString(),
         });
       })
-      .addCase(sendSpecMessage.rejected, (state, action) => {
+      .addCase(sendSketchMessage.rejected, (state, action) => {
         state.sendingChat = false;
         state.error = action.error.message ?? "Failed to send message";
       })
-      // savePrdSection
       .addCase(savePrdSection.pending, (state, action) => {
         const section = action.meta.arg.section;
         if (!state.savingSections.includes(section)) {
@@ -147,7 +161,6 @@ const specSlice = createSlice({
         state.savingSections = state.savingSections.filter((s) => s !== action.meta.arg.section);
         state.error = action.error.message ?? "Failed to save PRD section";
       })
-      // uploadPrdFile
       .addCase(uploadPrdFile.pending, (state) => {
         state.sendingChat = true;
         state.error = null;
@@ -169,5 +182,6 @@ const specSlice = createSlice({
   },
 });
 
-export const { addUserMessage, setSpecError, setPrdContent, setPrdHistory, resetSpec } = specSlice.actions;
-export default specSlice.reducer;
+export const { addUserMessage, setSketchError, setPrdContent, setPrdHistory, resetSketch } =
+  sketchSlice.actions;
+export default sketchSlice.reducer;

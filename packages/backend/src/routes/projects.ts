@@ -34,11 +34,6 @@ projectsRouter.post("/", async (req, res, next) => {
   }
 });
 
-// GET /projects/:id/spec — 301 redirect to sketch (backwards compatibility, one version cycle)
-projectsRouter.get("/:id/spec", (req: Request<ProjectParams>, res) => {
-  res.redirect(301, `${req.baseUrl}/${req.params.id}/sketch`);
-});
-
 // GET /projects/:id/sketch — Sketch phase resource (returns project; chat/prd under /chat, /prd)
 projectsRouter.get("/:id/sketch", async (req: Request<ProjectParams>, res, next) => {
   try {
@@ -74,7 +69,10 @@ projectsRouter.get("/:id", async (req, res, next) => {
 // PUT /projects/:id — Update project
 projectsRouter.put("/:id", async (req, res, next) => {
   try {
-    const { project, repoPathChanged } = await projectService.updateProject(req.params.id, req.body);
+    const { project, repoPathChanged } = await projectService.updateProject(
+      req.params.id,
+      req.body
+    );
 
     // When repoPath changes, restart the orchestrator so it operates on the new directory.
     // Await ensureRunning so the orchestrator is fully initialized before responding;

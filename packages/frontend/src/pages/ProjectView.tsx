@@ -16,7 +16,12 @@ import {
   clearHilNotification,
   clearDeliverToast,
 } from "../store/slices/websocketSlice";
-import { fetchSpecChat, fetchPrd, fetchPrdHistory, resetSpec } from "../store/slices/specSlice";
+import {
+  fetchSketchChat,
+  fetchPrd,
+  fetchPrdHistory,
+  resetSketch,
+} from "../store/slices/sketchSlice";
 import {
   fetchPlans,
   resetPlan,
@@ -31,7 +36,11 @@ import {
   setAwaitingApproval,
 } from "../store/slices/executeSlice";
 import { fetchFeedback, resetEval } from "../store/slices/evalSlice";
-import { fetchDeployStatus, fetchDeployHistory, resetDeploy } from "../store/slices/deploySlice";
+import {
+  fetchDeliverStatus,
+  fetchDeliverHistory,
+  resetDeliver,
+} from "../store/slices/deliverSlice";
 import { wsConnect, wsDisconnect, wsSend } from "../store/middleware/websocketMiddleware";
 import { Layout } from "../components/layout/Layout";
 import { HilApprovalModal } from "../components/HilApprovalModal";
@@ -84,35 +93,35 @@ export function ProjectView() {
   useEffect(() => {
     if (!projectId || redirectTo) return;
 
-    // Only reset spec when switching projects (not on Strict Mode remount with same projectId)
+    // Only reset sketch when switching projects (not on Strict Mode remount with same projectId)
     if (prevProjectIdRef.current != null && prevProjectIdRef.current !== projectId) {
-      dispatch(resetSpec());
+      dispatch(resetSketch());
     }
     prevProjectIdRef.current = projectId;
 
     dispatch(wsConnect({ projectId }));
     dispatch(fetchProject(projectId));
-    dispatch(fetchSpecChat(projectId));
+    dispatch(fetchSketchChat(projectId));
     dispatch(fetchPrd(projectId));
     dispatch(fetchPrdHistory(projectId));
     dispatch(fetchPlans(projectId));
     dispatch(fetchTasks(projectId));
     dispatch(fetchExecuteStatus(projectId));
     dispatch(fetchFeedback(projectId));
-    dispatch(fetchDeployStatus(projectId));
-    dispatch(fetchDeployHistory(projectId));
+    dispatch(fetchDeliverStatus(projectId));
+    dispatch(fetchDeliverHistory(projectId));
 
     return () => {
       dispatch(wsDisconnect());
       dispatch(resetProject());
       dispatch(resetWebsocket());
-      // Do NOT reset spec in cleanup: React Strict Mode double-mounts in dev; resetSpec
+      // Do NOT reset sketch in cleanup: React Strict Mode double-mounts in dev; resetSketch
       // would clear prdContent before remount's fetchPrd completes. Reset only when
       // projectId changes (handled at effect start).
       dispatch(resetPlan());
       dispatch(resetExecute());
       dispatch(resetEval());
-      dispatch(resetDeploy());
+      dispatch(resetDeliver());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, redirectTo]);
@@ -266,7 +275,10 @@ export function ProjectView() {
             }
           >
             {phase === "sketch" && (
-              <SketchPhase projectId={projectId} onNavigateToPlan={() => handlePhaseChange("plan")} />
+              <SketchPhase
+                projectId={projectId}
+                onNavigateToPlan={() => handlePhaseChange("plan")}
+              />
             )}
             {phase === "plan" && (
               <PlanPhase projectId={projectId} onNavigateToBuildTask={handleNavigateToBuildTask} />
@@ -286,21 +298,12 @@ export function ProjectView() {
       {hilRequest && <HilApprovalModal request={hilRequest} onRespond={handleRespondToHil} />}
       <HilNotificationToast notification={hilNotification} onDismiss={handleDismissNotification} />
       <DeliverToast toast={deliverToast} onDismiss={handleDismissDeliverToast} />
-      <PlanRefreshToast
-        error={planBackgroundError}
-        onDismiss={handleDismissPlanBackgroundError}
-      />
+      <PlanRefreshToast error={planBackgroundError} onDismiss={handleDismissPlanBackgroundError} />
     </>
   );
 }
 
-function PlanRefreshToast({
-  error,
-  onDismiss,
-}: {
-  error: string | null;
-  onDismiss: () => void;
-}) {
+function PlanRefreshToast({ error, onDismiss }: { error: string | null; onDismiss: () => void }) {
   if (!error) return null;
   return (
     <div
@@ -344,7 +347,8 @@ function DeliverToast({
     succeeded: "border-theme-success-border bg-theme-success-bg text-theme-success-text",
     failed: "border-theme-error-border bg-theme-error-bg text-theme-error-text",
   };
-  const style = variantStyles[toast.variant] ?? "border-theme-border bg-theme-surface text-theme-text";
+  const style =
+    variantStyles[toast.variant] ?? "border-theme-border bg-theme-surface text-theme-text";
   return (
     <div
       className={`fixed bottom-4 right-4 z-40 max-w-md rounded-lg border p-4 shadow-lg ${style}`}

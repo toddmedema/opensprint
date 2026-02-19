@@ -100,30 +100,16 @@ export class ChatService {
     return path.join(project.repoPath, OPENSPRINT_PATHS.conversations);
   }
 
-  /** Normalize context: "spec" is legacy alias for "sketch". */
-  private normalizeContext(context: string): string {
-    return context === "spec" ? "sketch" : context;
-  }
-
-  /** Find or create a conversation for a given context. Accepts "spec" as alias for "sketch". */
   private async getOrCreateConversation(projectId: string, context: string): Promise<Conversation> {
-    const canonical = this.normalizeContext(context);
     const dir = await this.getConversationsDir(projectId);
 
-    // Look for existing conversation (check both canonical and legacy "spec" for sketch phase)
     try {
       const files = await fs.readdir(dir);
       for (const file of files) {
         if (file.endsWith(".json")) {
           const data = await fs.readFile(path.join(dir, file), "utf-8");
           const conv = JSON.parse(data) as Conversation;
-          const convCanonical = this.normalizeContext(conv.context as string);
-          if (convCanonical === canonical) {
-            // Migrate legacy context to canonical when loading
-            if (conv.context !== canonical) {
-              conv.context = canonical as Conversation["context"];
-              await this.saveConversation(projectId, conv);
-            }
+          if (conv.context === context) {
             return conv;
           }
         }
@@ -132,10 +118,9 @@ export class ChatService {
       // Directory may not exist yet
     }
 
-    // Create new conversation
     const conversation: Conversation = {
       id: uuid(),
-      context: canonical as Conversation["context"],
+      context: context as Conversation["context"],
       messages: [],
     };
 
@@ -430,8 +415,7 @@ export class ChatService {
     const responseContent = response?.content ?? "";
     if (!responseContent) return;
 
-    const legacyUpdates = this.parsePrdUpdates(responseContent);
-    const result = parseHarmonizerResult(responseContent, legacyUpdates);
+    const result = parseHarmonizerResult(responseContent);
     if (!result || result.status === "no_changes_needed" || result.prdUpdates.length === 0) return;
 
     const filtered = await this.filterArchitectureUpdatesWithHil(
@@ -485,8 +469,7 @@ export class ChatService {
     const responseContent = response?.content ?? "";
     if (!responseContent) return null;
 
-    const legacyUpdates = this.parsePrdUpdates(responseContent);
-    const result = parseHarmonizerResultFull(responseContent, legacyUpdates);
+    const result = parseHarmonizerResultFull(responseContent);
     if (!result || result.status === "no_changes_needed" || result.prdUpdates.length === 0)
       return null;
 
@@ -560,8 +543,7 @@ export class ChatService {
     const responseContent = response?.content ?? "";
     if (!responseContent) return;
 
-    const legacyUpdates = this.parsePrdUpdates(responseContent);
-    const result = parseHarmonizerResult(responseContent, legacyUpdates);
+    const result = parseHarmonizerResult(responseContent);
     if (!result || result.status === "no_changes_needed" || result.prdUpdates.length === 0) return;
 
     const filtered = await this.filterArchitectureUpdatesWithHil(
