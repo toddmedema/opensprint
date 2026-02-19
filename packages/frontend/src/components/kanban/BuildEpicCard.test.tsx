@@ -294,7 +294,70 @@ describe("BuildEpicCard", () => {
     expect(screen.queryByTestId("task-row-right")).not.toBeInTheDocument();
   });
 
-  it("renders all task states correctly in left-side position", () => {
+  it("shows green checkmark when all child tasks are Done", () => {
+    const tasks = [
+      createMockTask({ id: "epic-1.1", title: "Task A", kanbanColumn: "done" }),
+      createMockTask({ id: "epic-1.2", title: "Task B", kanbanColumn: "done" }),
+    ];
+    render(
+      <BuildEpicCard
+        epicId="epic-1"
+        epicTitle="Auth"
+        tasks={tasks}
+        onTaskSelect={vi.fn()}
+      />,
+    );
+
+    const checkmark = screen.getByTestId("epic-completed-checkmark");
+    expect(checkmark).toBeInTheDocument();
+    expect(checkmark).toHaveAttribute("aria-label", "All tasks completed");
+    expect(checkmark).toHaveClass("text-theme-success-muted");
+  });
+
+  it("does not show checkmark when any child task is not Done", () => {
+    const tasks = [
+      createMockTask({ id: "epic-1.1", title: "Task A", kanbanColumn: "done" }),
+      createMockTask({ id: "epic-1.2", title: "Task B", kanbanColumn: "in_progress" }),
+    ];
+    render(
+      <BuildEpicCard
+        epicId="epic-1"
+        epicTitle="Auth"
+        tasks={tasks}
+        onTaskSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId("epic-completed-checkmark")).not.toBeInTheDocument();
+  });
+
+  it("does not show checkmark for non-Done states: planning, backlog, ready, in_review, blocked", () => {
+    const states: Array<"planning" | "backlog" | "ready" | "in_review" | "blocked"> = [
+      "planning",
+      "backlog",
+      "ready",
+      "in_review",
+      "blocked",
+    ];
+    for (const col of states) {
+      const tasks = [createMockTask({ id: "epic-1.1", title: "Task", kanbanColumn: col })];
+      const { unmount } = render(
+        <BuildEpicCard epicId="epic-1" epicTitle="Auth" tasks={tasks} onTaskSelect={vi.fn()} />,
+      );
+      expect(screen.queryByTestId("epic-completed-checkmark")).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it("does not show checkmark when epic has no tasks", () => {
+    render(
+      <BuildEpicCard epicId="epic-empty" epicTitle="Empty Epic" tasks={[]} onTaskSelect={vi.fn()} />,
+    );
+    expect(screen.queryByTestId("epic-completed-checkmark")).not.toBeInTheDocument();
+  });
+
+  it("renders all task states correctly in left-side position", async () => {
+    const user = userEvent.setup();
     const states: Array<"planning" | "backlog" | "ready" | "in_progress" | "in_review" | "done" | "blocked"> = [
       "planning",
       "backlog",
@@ -315,6 +378,7 @@ describe("BuildEpicCard", () => {
         onTaskSelect={vi.fn()}
       />,
     );
+    await user.click(screen.getByRole("button", { name: "+4 more" }));
     expect(screen.getByTitle("Planning")).toBeInTheDocument();
     expect(screen.getByTitle("Backlog")).toBeInTheDocument();
     expect(screen.getByTitle("Ready")).toBeInTheDocument();
