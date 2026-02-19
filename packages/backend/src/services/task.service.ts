@@ -26,12 +26,8 @@ export class TaskService {
   /** List all tasks for a project with computed kanban columns and test results */
   async listTasks(projectId: string): Promise<Task[]> {
     const project = await this.projectService.getProject(projectId);
-    const [allIssues, readyIssues] = await Promise.all([
-      this.beads.listAll(project.repoPath),
-      this.beads.ready(project.repoPath),
-    ]);
-    // Exclude epics from ready — they are containers, not work items
-    const readyIds = new Set(readyIssues.filter((i) => (i.issue_type ?? i.type) !== "epic").map((i) => i.id));
+    const allIssues = await this.beads.listAll(project.repoPath);
+    const readyIds = this.computeReadyIdsFromListAll(allIssues);
     const idToIssue = new Map(allIssues.map((i) => [i.id, i]));
 
     const tasks = allIssues.map((issue) => this.beadsIssueToTask(issue, readyIds, idToIssue));
@@ -48,17 +44,14 @@ export class TaskService {
     return tasks;
   }
 
-  /** Get ready tasks (wraps bd ready --json). Excludes epics — they are containers, not work items. */
+  /** Get ready tasks. Computes ready from listAll (excludes epics — they are containers, not work items). */
   async getReadyTasks(projectId: string): Promise<Task[]> {
     const project = await this.projectService.getProject(projectId);
-    const [readyIssues, allIssues] = await Promise.all([
-      this.beads.ready(project.repoPath),
-      this.beads.listAll(project.repoPath),
-    ]);
-    const nonEpicReady = readyIssues.filter((i) => (i.issue_type ?? i.type) !== "epic");
-    const readyIds = new Set(nonEpicReady.map((i) => i.id));
+    const allIssues = await this.beads.listAll(project.repoPath);
+    const readyIds = this.computeReadyIdsFromListAll(allIssues);
     const idToIssue = new Map(allIssues.map((i) => [i.id, i]));
-    return nonEpicReady.map((issue) => this.beadsIssueToTask(issue, readyIds, idToIssue));
+    const readyIssues = allIssues.filter((i) => readyIds.has(i.id ?? ""));
+    return readyIssues.map((issue) => this.beadsIssueToTask(issue, readyIds, idToIssue));
   }
 
   /** Get a single task with full details (wraps bd show --json).
@@ -80,6 +73,21 @@ export class TaskService {
     const idToIssue = new Map(allIssues.map((i) => [i.id, i]));
     const readyIds = this.computeReadyForSingleTask(issue, idToIssue);
     return this.beadsIssueToTask(issue, readyIds, idToIssue);
+  }
+
+  /**
+   * Compute ready IDs for all tasks from listAll data.
+   * Avoids beads.ready() which does 1 bd ready + 1 getStatusMap + M bd show calls.
+   * A task is ready iff: status=open, not epic, all blocks dependencies closed.
+   */
+  private computeReadyIdsFromListAll(allIssues: BeadsIssue[]): Set<string> {
+    const idToIssue = new Map(allIssues.map((i) => [i.id, i]));
+    const readyIds = new Set<string>();
+    for (const issue of allIssues) {
+      const single = this.computeReadyForSingleTask(issue, idToIssue);
+      if (single.size > 0) readyIds.add(issue.id ?? "");
+    }
+    return readyIds;
   }
 
   /** Compute whether this task is ready (avoids expensive beads.ready() which does N bd show calls). */
