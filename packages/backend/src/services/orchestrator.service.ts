@@ -960,6 +960,17 @@ export class OrchestratorService {
         });
         try {
           await this.feedbackService.processFeedbackWithAnalyst(projectId, nextFeedbackId);
+          // Broadcast execute.status so UI updates pendingFeedbackCategorizations immediately
+          // (feedback.updated is emitted by FeedbackService; this syncs the "Categorizing" state)
+          const status = await this.getStatus(projectId);
+          broadcastToProject(projectId, {
+            type: "execute.status",
+            activeTasks: status.activeTasks,
+            queueDepth: status.queueDepth,
+            ...(status.pendingFeedbackCategorizations && {
+              pendingFeedbackCategorizations: status.pendingFeedbackCategorizations,
+            }),
+          });
         } catch (err) {
           log.error("Analyst failed for queued feedback; leaving in inbox for retry", {
             projectId,
