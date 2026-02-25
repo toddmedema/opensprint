@@ -139,12 +139,10 @@ describe("Chat REST API", () => {
   it("Plan chat with PLAN_UPDATE only shows 'Plan updated' in response and history", async () => {
     await taskStore.planInsert(projectId, "auth-plan", {
       epic_id: "os-auth",
-      gate_task_id: "os-auth.0",
       content: "# Auth Plan\n\nOriginal content.",
       metadata: JSON.stringify({
         planId: "auth-plan",
         epicId: "os-auth",
-        gateTaskId: "os-auth.0",
         shippedAt: null,
         complexity: "medium",
       }),
@@ -182,12 +180,10 @@ Updated auth flow with OAuth support.
   it("Plan chat with PLAN_UPDATE plus text shows only the text in chat", async () => {
     await taskStore.planInsert(projectId, "auth-plan", {
       epic_id: "os-auth",
-      gate_task_id: "os-auth.0",
       content: "# Auth Plan\n\nOriginal.",
       metadata: JSON.stringify({
         planId: "auth-plan",
         epicId: "os-auth",
-        gateTaskId: "os-auth.0",
         shippedAt: null,
         complexity: "medium",
       }),

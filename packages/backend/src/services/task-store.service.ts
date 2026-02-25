@@ -309,6 +309,7 @@ export class TaskStoreService {
       }
 
       this.db.run(SCHEMA_SQL);
+      await this.migratePlansWithGateTasks();
       await this.saveToDisk();
     } catch (err) {
       throw new AppError(
@@ -317,6 +318,86 @@ export class TaskStoreService {
         `Failed to initialize task store: ${err instanceof Error ? err.message : String(err)}`
       );
     }
+  }
+
+  /**
+   * Migration: Epic-blocked model. Plans with gate_task_id are migrated:
+   * - If gate task is closed → set epic status "open"
+   * - If gate task is open or missing → set epic status "blocked"
+   * - Delete gate task and its dependency rows
+   * - Clear gate_task_id and re_execute_gate_task_id on plan row
+   */
+  private async migratePlansWithGateTasks(): Promise<void> {
+    if (this.injectedDb) return;
+    const db = this.ensureDb();
+    const stmt = db.prepare(
+      "SELECT project_id, plan_id, epic_id, gate_task_id, re_execute_gate_task_id FROM plans WHERE (gate_task_id IS NOT NULL AND gate_task_id != '') OR (re_execute_gate_task_id IS NOT NULL AND re_execute_gate_task_id != '')"
+    );
+    const rows: Array<{
+      project_id: string;
+      plan_id: string;
+      epic_id: string;
+      gate_task_id: string | null;
+      re_execute_gate_task_id: string | null;
+    }> = [];
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      rows.push({
+        project_id: row.project_id as string,
+        plan_id: row.plan_id as string,
+        epic_id: row.epic_id as string,
+        gate_task_id: (row.gate_task_id as string) || null,
+        re_execute_gate_task_id: (row.re_execute_gate_task_id as string) || null,
+      });
+    }
+    stmt.free();
+    if (rows.length === 0) return;
+
+    const gateIds = new Set<string>();
+    for (const r of rows) {
+      if (r.gate_task_id) gateIds.add(r.gate_task_id);
+      if (r.re_execute_gate_task_id) gateIds.add(r.re_execute_gate_task_id);
+    }
+
+    for (const r of rows) {
+      const epicId = r.epic_id;
+      if (!epicId) continue;
+      let epicStatus: "open" | "blocked" = "blocked";
+      for (const gateId of [r.gate_task_id, r.re_execute_gate_task_id]) {
+        if (!gateId) continue;
+        try {
+          const gateTask = this.show(r.project_id, gateId);
+          if ((gateTask.status as string) === "closed") epicStatus = "open";
+        } catch {
+          // Gate task missing — treat as not approved
+        }
+      }
+      db.run("UPDATE tasks SET status = ? WHERE id = ? AND project_id = ?", [
+        epicStatus,
+        epicId,
+        r.project_id,
+      ]);
+    }
+
+    for (const gateId of gateIds) {
+      const planRow = rows.find(
+        (r) => r.gate_task_id === gateId || r.re_execute_gate_task_id === gateId
+      );
+      if (!planRow) continue;
+      db.run("DELETE FROM task_dependencies WHERE task_id = ? OR depends_on_id = ?", [
+        gateId,
+        gateId,
+      ]);
+      db.run("DELETE FROM tasks WHERE id = ? AND project_id = ?", [gateId, planRow.project_id]);
+    }
+
+    for (const r of rows) {
+      db.run(
+        "UPDATE plans SET gate_task_id = NULL, re_execute_gate_task_id = NULL WHERE project_id = ? AND plan_id = ?",
+        [r.project_id, r.plan_id]
+      );
+    }
+    log.info("Migrated plans with gate tasks to epic-blocked model", { count: rows.length });
   }
 
   protected ensureDb(): Database {

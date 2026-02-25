@@ -112,7 +112,7 @@ export class TaskService {
     if ((issue.issue_type ?? issue.type) === "epic") return new Set();
 
     // Tasks in blocked epic are not ready
-    const epicId = this.extractEpicId(issue.id);
+    const epicId = this.extractEpicId(issue.id, idToIssue);
     if (epicId) {
       const epic = idToIssue.get(epicId);
       if (epic && (epic.status as string) === "blocked") return new Set();
@@ -162,7 +162,7 @@ export class TaskService {
       .map((d) => this.normalizeDependency(d))
       .filter((x): x is { targetId: string; type: string } => x != null)
       .map(({ targetId, type }) => ({ targetId, type: type as TaskDependency["type"] }));
-    const epicId = this.extractEpicId(issue.id);
+    const epicId = this.extractEpicId(issue.id, idToIssue);
 
     // Resolve sourceFeedbackId: task is feedback source task, or has discovered-from dep to one
     let sourceFeedbackId: string | undefined;
@@ -210,7 +210,7 @@ export class TaskService {
     if (status === "in_progress" && issue.assignee) return "in_progress";
 
     // Tasks in blocked epic show "planning"
-    const epicId = this.extractEpicId(issue.id);
+    const epicId = this.extractEpicId(issue.id, idToIssue);
     if (epicId) {
       const epic = idToIssue.get(epicId);
       if (epic && (epic.status as string) === "blocked") return "planning";
@@ -230,11 +230,16 @@ export class TaskService {
     return readyIds.has(issue.id) ? "ready" : "backlog";
   }
 
-  private extractEpicId(id: string | undefined | null): string | null {
+  /** Walk up parent chain to find epic (epic-blocked model: no gate). */
+  private extractEpicId(id: string | undefined | null, idToIssue?: Map<string, StoredTask>): string | null {
     if (id == null || typeof id !== "string") return null;
     const lastDot = id.lastIndexOf(".");
     if (lastDot <= 0) return null;
-    return id.slice(0, lastDot);
+    const parentId = id.slice(0, lastDot);
+    if (!idToIssue) return parentId;
+    const parent = idToIssue.get(parentId);
+    if (parent && (parent.issue_type ?? parent.type) === "epic") return parentId;
+    return this.extractEpicId(parentId, idToIssue);
   }
 
   private normalizeType(t: string | undefined): Task["type"] {
@@ -371,15 +376,15 @@ export class TaskService {
       log.warn("Auto-resolve feedback on task done failed", { taskId, err });
     });
 
-    const epicId = this.extractEpicId(taskId);
+    const allIssues = await this.taskStore.listAll(projectId);
+    const idToIssue = new Map(allIssues.map((i) => [i.id, i]));
+    const epicId = this.extractEpicId(taskId, idToIssue);
     let epicClosed = false;
 
     if (epicId) {
-      const allIssues = await this.taskStore.listAll(projectId);
       const implTasks = allIssues.filter(
         (i) =>
           i.id.startsWith(epicId + ".") &&
-          !i.id.endsWith(".0") &&
           (i.issue_type ?? i.type) !== "epic"
       );
       const allClosed = implTasks.every((i) => (i.status as string) === "closed");

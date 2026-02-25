@@ -1,5 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import initSqlJs from "sql.js";
+import fs from "fs/promises";
+import path from "path";
+import os from "os";
 import { TaskStoreService } from "../services/task-store.service.js";
 
 const TEST_PROJECT_ID = "test-project";
@@ -661,6 +664,114 @@ describe("TaskStoreService", () => {
       await expect(store.planUpdateContent(TEST_PROJECT_ID, "no-such-plan", "x")).rejects.toThrow(
         /Plan no-such-plan not found/
       );
+    });
+  });
+
+  describe("migration: plans with gate tasks to epic-blocked", () => {
+    let tempDir: string;
+    let originalHome: string | undefined;
+
+    beforeEach(async () => {
+      tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-migration-test-"));
+      originalHome = process.env.HOME;
+      process.env.HOME = tempDir;
+    });
+
+    afterEach(async () => {
+      process.env.HOME = originalHome;
+      await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    it("migrates plan with closed gate: epic set open, gate task and deps removed", async () => {
+      const store1 = new TaskStoreService();
+      await store1.init();
+
+      const now = new Date().toISOString();
+      const projectId = "proj-mig";
+      const epicId = "os-auth";
+      const gateId = "os-auth.0";
+
+      await store1.runWrite(async (db) => {
+        db.run(
+          `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, extra)
+           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, '[]', ?, ?, '{}')`,
+          [epicId, projectId, "Auth Epic", null, "epic", "blocked", 2, now, now]
+        );
+        db.run(
+          `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, extra)
+           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, '[]', ?, ?, '{}')`,
+          [gateId, projectId, "Plan approval gate", null, "task", "closed", 2, now, now]
+        );
+        db.run(
+          `INSERT INTO plans (project_id, plan_id, epic_id, gate_task_id, re_execute_gate_task_id, content, metadata, shipped_content, updated_at)
+           VALUES (?, ?, ?, ?, NULL, ?, ?, NULL, ?)`,
+          [
+            projectId,
+            "auth-plan",
+            epicId,
+            gateId,
+            "# Auth\n\nContent.",
+            JSON.stringify({ planId: "auth-plan", epicId, shippedAt: null, complexity: "medium" }),
+            now,
+          ]
+        );
+      });
+
+      const store2 = new TaskStoreService();
+      await store2.init();
+
+      const epic = store2.show(projectId, epicId);
+      expect((epic as { status?: string }).status).toBe("open");
+
+      await expect(store2.show(projectId, gateId)).rejects.toThrow();
+
+      const row = await store2.planGet(projectId, "auth-plan");
+      expect(row).not.toBeNull();
+      expect((row!.metadata as { gateTaskId?: string }).gateTaskId).toBeUndefined();
+    });
+
+    it("migrates plan with open gate: epic set blocked", async () => {
+      const store1 = new TaskStoreService();
+      await store1.init();
+
+      const now = new Date().toISOString();
+      const projectId = "proj-mig2";
+      const epicId = "os-dash";
+      const gateId = "os-dash.0";
+
+      await store1.runWrite(async (db) => {
+        db.run(
+          `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, extra)
+           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, '[]', ?, ?, '{}')`,
+          [epicId, projectId, "Dashboard Epic", null, "epic", "blocked", 2, now, now]
+        );
+        db.run(
+          `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, extra)
+           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, '[]', ?, ?, '{}')`,
+          [gateId, projectId, "Plan approval gate", null, "task", "open", 2, now, now]
+        );
+        db.run(
+          `INSERT INTO plans (project_id, plan_id, epic_id, gate_task_id, re_execute_gate_task_id, content, metadata, shipped_content, updated_at)
+           VALUES (?, ?, ?, ?, NULL, ?, ?, NULL, ?)`,
+          [
+            projectId,
+            "dash-plan",
+            epicId,
+            gateId,
+            "# Dashboard\n\nContent.",
+            JSON.stringify({ planId: "dash-plan", epicId, shippedAt: null, complexity: "low" }),
+            now,
+          ]
+        );
+      });
+
+      const store2 = new TaskStoreService();
+      await store2.init();
+
+      const epic = store2.show(projectId, epicId);
+      expect((epic as { status?: string }).status).toBe("blocked");
+
+      await expect(store2.show(projectId, gateId)).rejects.toThrow();
     });
   });
 });

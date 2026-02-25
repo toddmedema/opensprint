@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "sections": {
     "executive_summary": {
       "content": "OpenSprint is a web application that guides users through the complete software development lifecycle using AI agents. It provides a structured, five-phase workflow — **SPEED**: Sketch, Plan, Execute, Evaluate, and Deliver — that transforms high-level product ideas into working software with minimal manual intervention.\n\nThe platform pairs a browser-based interface with a background agent CLI, enabling AI to autonomously execute development tasks while keeping the user in control of strategy and direction. The core philosophy is that humans should focus on _what_ to build and _why_, while AI handles _how_ to build it.\n\nOpenSprint supports multiple agent backends (Claude, Cursor, and custom CLI agents), comprehensive automated testing including end-to-end and integration tests, configurable human-in-the-loop thresholds, and full offline operation for users with local agent setups.",
@@ -22,9 +22,9 @@
       "updatedAt": "2026-02-25T00:03:38.391Z"
     },
     "feature_list": {
-      "content": "### Sketch Phase\n- Conversational PRD creation with Dreamer agent\n- Living document with section-level versioning\n- Architecture definition (tech stack, data models, API contracts)\n- Mockup generation and iteration\n- Proactive challenge of assumptions and edge cases\n- Split-pane UI: chat + live PRD\n\n### Plan Phase\n- AI-assisted decomposition into features and tasks\n- Plan markdown specification (`.opensprint/plans/<plan-id>.md`)\n- Dependency graph visualization\n- \"Execute!\" transition with cross-epic dependency check\n- Harmonizer for PRD sync on Execute!\n- Re-execute with Auditor for delta task generation\n\n### Execute Phase\n- Automatic task decomposition via Planner\n- Epic card interface with task status (Planning, Backlog, Ready, In Progress, In Review, Done, Blocked)\n- Two-agent Coder → Reviewer cycle\n- Real-time agent monitoring and output streaming\n- Summarizer for context when >2 deps or >2,000-word Plan\n- Git working mode: Worktree (isolated worktrees per task) or Branches (main repo on task branches); configurable in Agent Config\n- Progressive backoff on failures\n\n### Evaluate Phase\n- Feedback submission in natural language\n- Analyst categorization (bug/feature/UX/scope) and mapping to epics\n- Harmonizer for scope-change PRD updates\n- Feedback history feed\n\n### Deliver Phase\n- Automated deployment (Expo.dev or custom pipeline)\n- Pre-deployment test gate with fix epic on failure\n- Deployment history and rollback\n- Environment configuration (staging, production)\n\n### Project Setup & Configuration\n- Home screen with project cards\n- Setup wizard: name, agents, deployment, HIL, repo init\n- Two agent slots: Planning (Dreamer, Planner, Harmonizer, Analyst, Summarizer, Auditor) and Coding (Coder, Reviewer)\n- Git working mode: Worktree (default) or Branches; when Branches, parallel coders disabled and Parallelism section hidden\n- HIL: Scope Changes, Architecture Decisions, Dependency Modifications — each with Automated / Notify and proceed / Requires approval\n- Light/dark/system theme",
-      "version": 2,
-      "updatedAt": "2026-02-25T05:10:52.879Z"
+      "content": "Add under Project Setup & Configuration:\n\n- **Help modal (?):** Available on both homepage and per-project view. Two tabs: \"Ask a Question\" (default) and \"Meet your Team\". Ask a Question is a chat area with an AI agent in ask-only mode — explicitly instructed to answer only, never to change project state, PRD, or tasks. The agent receives project context when in per-project view (PRD, Plans, tasks, current agent status) or summary info about all projects when on homepage. Includes instructions for accessing more information about projects, tasks, and currently running agents. Meet your Team displays configured agents and their roles.",
+      "version": 3,
+      "updatedAt": "2026-02-25T22:47:28.376Z"
     },
     "technical_architecture": {
       "content": "### Architecture Overview\n\nThree primary layers: web frontend, backend API server, and background agent CLI. Frontend uses WebSockets for real-time updates and REST for CRUD. Backend orchestrates agent CLIs, manages project state, and maintains the living PRD. Fully offline-capable with local agents.\n\n### Technology Stack\n\n- **Backend:** Node.js + TypeScript (subprocess management, WebSocket, beads CLI via `child_process.exec()`)\n- **Frontend:** React + TypeScript\n- **Task store:** Beads (git-based, CLI `bd` with `--json`)\n- **Version control:** Git, branch-per-task; Worktree mode: isolated worktrees; Branches mode: main repo with task branches (configurable in Agent Config)\n\n### Core Components\n\n| Component           | Responsibility |\n| ------------------- | -------------- |\n| Web Frontend        | UI for all five phases; real-time agent monitoring |\n| Backend API         | Project state, WebSocket relay, PRD versioning, agent orchestration |\n| Agent CLI           | Code generation, testing, debugging (Claude/Cursor/Custom) |\n| Orchestration Layer | Deterministic Node.js; agent lifecycle; git/task ops; commit queue; watchdog |\n| Beads               | Issue CRUD, dependencies, `bd ready`, assignee, hierarchical IDs |\n| Test Runner         | Jest, Playwright, etc. — auto-detected from `package.json` |\n| Deployment          | Expo.dev or custom pipeline |\n\n### Orchestrator Trust Boundary\n\nOrchestrator owns: worktree/branch management (Worktree mode) or branch-only management (Branches mode), commits/merges, agent triggering, beads state transitions, beads issue creation, PRD updates (except Dreamer direct write), gating task closure. Agents produce outputs; orchestrator performs all critical operations.\n\n### Data Flow\n\nSketch → PRD. Plan → Plan markdowns (epics). Execute → tasks in beads. Agent CLIs execute tasks. Evaluate → feedback mapped to epics/tasks. Changes propagate upstream to PRD.\n\n### Orchestrator Lifecycle\n\nOne orchestrator per project, always on. Single Coder/Reviewer at a time (v1); Planning-slot agents concurrent. Event-driven + 5-min watchdog. State in `.opensprint/orchestrator-state.json`; recovery on crash.\n\n### Git Concurrency\n\nSerialized commit queue for main-branch ops. Beads auto-commit disabled; orchestrator manages persistence.",
@@ -143,6 +143,13 @@
       "source": "plan",
       "timestamp": "2026-02-25T05:10:52.879Z",
       "diff": "[+1 lines, +135 chars]"
+    },
+    {
+      "section": "feature_list",
+      "version": 3,
+      "source": "eval",
+      "timestamp": "2026-02-25T22:47:28.376Z",
+      "diff": "[-41 lines, -1376 chars]"
     }
   ]
 }
