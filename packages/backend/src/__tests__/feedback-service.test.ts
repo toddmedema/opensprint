@@ -113,6 +113,7 @@ vi.mock("../utils/feedback-id.js", () => ({
 }));
 
 const mockTaskStoreListAll = vi.fn().mockResolvedValue([]);
+const mockTaskStoreReady = vi.fn().mockResolvedValue([]);
 let testDb: Database;
 vi.mock("../services/task-store.service.js", async (importOriginal) => {
   const mod = await importOriginal<typeof import("../services/task-store.service.js")>();
@@ -131,7 +132,7 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
     addDependency: (...args: unknown[]) => mockTaskStoreAddDependency(...args),
     listAll: (...args: unknown[]) => mockTaskStoreListAll(...args),
     list: vi.fn().mockResolvedValue([]),
-    ready: vi.fn().mockResolvedValue([]),
+    ready: (...args: unknown[]) => mockTaskStoreReady(...args),
     show: vi.fn().mockResolvedValue({}),
     update: vi.fn().mockResolvedValue({}),
     close: vi.fn().mockResolvedValue({}),
@@ -153,6 +154,7 @@ describe("FeedbackService", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mockTaskStoreListAll.mockResolvedValue([]);
+    mockTaskStoreReady.mockResolvedValue([]);
     feedbackIdSequence = [];
     mockHilEvaluate.mockResolvedValue({ approved: false });
     mockSyncPrdFromScopeChange.mockResolvedValue(undefined);
@@ -530,6 +532,7 @@ describe("FeedbackService", () => {
     const prompt = mockInvoke.mock.calls[0][0]?.prompt ?? "";
     expect(prompt).toContain("# PRD");
     expect(prompt).toContain("# Plans");
+    expect(prompt).toContain("# Existing OPEN/READY tasks");
     expect(prompt).toContain("Users want dark mode");
 
     const { broadcastToProject } = await import("../websocket/index.js");
@@ -545,6 +548,118 @@ describe("FeedbackService", () => {
         }),
       })
     );
+  });
+
+  it("should link to existing tasks when Analyst returns link_to_existing_task_ids", async () => {
+    const existingTask = {
+      id: "os-abc.1",
+      title: "Add dark mode",
+      description: "Implement dark mode",
+      issue_type: "task",
+      status: "open",
+    };
+    mockTaskStoreReady.mockResolvedValue([existingTask]);
+    mockInvoke.mockResolvedValue({
+      content: JSON.stringify({
+        category: "feature",
+        mapped_plan_id: null,
+        link_to_existing_task_ids: ["os-abc.1"],
+        proposed_tasks: [],
+      }),
+    });
+
+    const item = await feedbackService.submitFeedback(projectId, {
+      text: "Same as dark mode task - just add it",
+    });
+
+    await feedbackService.processFeedbackWithAnalyst(projectId, item.id);
+
+    const updated = await feedbackService.getFeedback(projectId, item.id);
+    expect(updated.createdTaskIds).toEqual(["os-abc.1"]);
+    expect(updated.feedbackSourceTaskId).toBeDefined();
+    expect(mockTaskStoreCreateWithRetry).not.toHaveBeenCalled();
+    expect(mockTaskStoreCreate).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.stringMatching(/^Feedback: /),
+      expect.objectContaining({ type: "chore" })
+    );
+    expect(mockTaskStoreAddDependency).toHaveBeenCalledWith(
+      projectId,
+      "os-abc.1",
+      updated.feedbackSourceTaskId,
+      "discovered-from"
+    );
+  });
+
+  it("should link when Analyst returns similar_existing_task_id", async () => {
+    const existingTask = {
+      id: "os-xyz.2",
+      title: "Fix login",
+      description: "Fix login flow",
+      issue_type: "bug",
+      status: "open",
+    };
+    mockTaskStoreReady.mockResolvedValue([existingTask]);
+    mockInvoke.mockResolvedValue({
+      content: JSON.stringify({
+        category: "bug",
+        mapped_plan_id: null,
+        similar_existing_task_id: "os-xyz.2",
+        proposed_tasks: [],
+      }),
+    });
+
+    const item = await feedbackService.submitFeedback(projectId, {
+      text: "Login is broken on mobile too",
+    });
+
+    await feedbackService.processFeedbackWithAnalyst(projectId, item.id);
+
+    const updated = await feedbackService.getFeedback(projectId, item.id);
+    expect(updated.createdTaskIds).toEqual(["os-xyz.2"]);
+    expect(mockTaskStoreCreateWithRetry).not.toHaveBeenCalled();
+  });
+
+  it("should re-enqueue when link_to_existing_task_ids contains invalid task ID", async () => {
+    mockTaskStoreReady.mockResolvedValue([]);
+    mockInvoke.mockResolvedValue({
+      content: JSON.stringify({
+        category: "feature",
+        mapped_plan_id: null,
+        link_to_existing_task_ids: ["os-nonexistent"],
+        proposed_tasks: [],
+      }),
+    });
+
+    const item = await feedbackService.submitFeedback(projectId, {
+      text: "Link to non-existent task",
+    });
+
+    const enqueueSpy = vi.spyOn(feedbackService, "enqueueForCategorization");
+
+    await feedbackService.processFeedbackWithAnalyst(projectId, item.id);
+
+    expect(enqueueSpy).toHaveBeenCalledWith(projectId, item.id);
+    const updated = await feedbackService.getFeedback(projectId, item.id);
+    expect(updated.createdTaskIds).toEqual([]);
+  });
+
+  it("should create tasks when similar_existing_task_id is null (no link)", async () => {
+    mockInvoke.mockResolvedValue({
+      content: JSON.stringify({
+        category: "bug",
+        mapped_plan_id: null,
+        similar_existing_task_id: null,
+        proposed_tasks: [{ index: 0, title: "Fix bug", description: "", priority: 0, depends_on: [] }],
+      }),
+    });
+
+    const item = await feedbackService.submitFeedback(projectId, { text: "Bug report" });
+    await feedbackService.processFeedbackWithAnalyst(projectId, item.id);
+
+    const updated = await feedbackService.getFeedback(projectId, item.id);
+    expect(updated.createdTaskIds).toHaveLength(1);
+    expect(updated.createdTaskIds[0]).toBeDefined();
   });
 
   it("should parse full PRD 12.3.4 format: proposed_tasks, mapped_epic_id, is_scope_change", async () => {

@@ -42,12 +42,18 @@ ${JSON_OUTPUT_PREAMBLE}
 
 **Category guide:** bug = broken/incorrect behavior; feature = new capability request; ux = usability/copy/layout improvement; scope = fundamental requirement change requiring PRD update.
 
-Given the user's feedback (and any attached images), the PRD, and available plans, determine:
+Given the user's feedback (and any attached images), the PRD, available plans, and **Existing OPEN/READY tasks**, determine:
 1. The category: "bug" | "feature" | "ux" | "scope"
 2. Which feature/plan it relates to (if identifiable) — use the planId from the available plans list
 3. The mapped epic ID — use the epicId from the plan you mapped to (or null if no plan)
 4. Whether this is a scope change — true if the feedback fundamentally alters requirements/PRD; false otherwise
 5. Proposed tasks in indexed Planner format — same structure as Planner output: index, title, description, priority, depends_on
+
+**Linking to existing tasks:** When feedback is clearly covered by one or more existing OPEN/READY tasks, prefer linking instead of creating new tasks:
+- \`link_to_existing_task_ids\`: string[]. If non-empty, do NOT create new tasks; link feedback to these existing task IDs. All IDs must appear in the Existing OPEN/READY tasks list.
+- \`similar_existing_task_id\`: string | null. Return a task ID only when feedback clearly adds to or refines the same work (single task). Otherwise null. When set, it is equivalent to link_to_existing_task_ids: [id].
+- \`update_existing_tasks\`: Record<taskId, { title?: string, description?: string }>. Keys are task IDs from link_to_existing_task_ids. Apply these updates before linking (e.g. refine title/description when feedback improves the task).
+- Rule: if link_to_existing_task_ids is non-empty (or similar_existing_task_id is set), ignore proposed_tasks.
 
 When feedback maps to no plan, use mapped_plan_id: null, mapped_epic_id: null and propose_tasks as a new epic candidate. For proposed_tasks: use a single task when feedback addresses one concern; use multiple only when feedback clearly describes distinct work items.
 
@@ -61,7 +67,10 @@ JSON format:
   "is_scope_change": true | false,
   "proposed_tasks": [
     { "index": 0, "title": "Task title", "description": "Detailed spec with acceptance criteria", "priority": 1, "depends_on": [] }
-  ]
+  ],
+  "link_to_existing_task_ids": ["task-id-1", "task-id-2"],
+  "similar_existing_task_id": "task-id or null",
+  "update_existing_tasks": { "task-id": { "title": "...", "description": "..." } }
 }
 
 priority: 0 (highest) to 4 (lowest). depends_on: array of task indices (0-based) this task is blocked by.`;
@@ -242,12 +251,32 @@ export class FeedbackService {
     }
   }
 
+  /** Build open/ready tasks context for Analyst (id, title, description excerpt). Excludes epic, chore, blocked. */
+  private async getOpenTasksContextForCategorization(projectId: string): Promise<string> {
+    try {
+      const readyTasks = await this.taskStore.ready(projectId);
+      const leafTasks = readyTasks.filter(
+        (t) => (t.issue_type ?? t.type) !== "epic" && (t.issue_type ?? t.type) !== "chore"
+      );
+      if (leafTasks.length === 0) return "No open/ready tasks.";
+      const lines = leafTasks.map((t) => {
+        const desc = (t.description ?? "").trim();
+        const excerpt = desc.length > 200 ? `${desc.slice(0, 200)}…` : desc || "(no description)";
+        return `- ${t.id}: ${t.title} — ${excerpt}`;
+      });
+      return `Existing OPEN/READY tasks (leaf tasks only; use these IDs for link_to_existing_task_ids or similar_existing_task_id):\n${lines.join("\n")}`;
+    } catch {
+      return "No open/ready tasks.";
+    }
+  }
+
   private async categorizeFeedbackImpl(projectId: string, item: FeedbackItem): Promise<void> {
     const settings = await this.projectService.getSettings(projectId);
     const project = await this.projectService.getProject(projectId);
-    const [prdContext, planContext] = await Promise.all([
+    const [prdContext, planContext, openTasksContext] = await Promise.all([
       this.getPrdContextForCategorization(projectId),
       this.getPlanContextForCategorization(projectId),
+      this.getOpenTasksContextForCategorization(projectId),
     ]);
 
     let plans: { metadata: { planId: string } }[] = [];
@@ -270,13 +299,15 @@ export class FeedbackService {
     }
 
     const agentId = `feedback-categorize-${projectId}-${item.id}-${Date.now()}`;
+    let linkIds: string[] = [];
+    let updateExistingTasks: Record<string, { title?: string; description?: string }> = {};
     try {
       const response = await agentService.invokePlanningAgent({
         config: getAgentForPlanningRole(settings, "analyst"),
         messages: [
           {
             role: "user",
-            content: `# PRD\n\n${prdContext}\n\n# Plans\n\n${planContext}${parentContext}\n\n# Feedback to categorize\n\n"${item.text}"`,
+            content: `# PRD\n\n${prdContext}\n\n# Plans\n\n${planContext}\n\n# Existing OPEN/READY tasks\n\n${openTasksContext}${parentContext}\n\n# Feedback to categorize\n\n"${item.text}"`,
           },
         ],
         systemPrompt: FEEDBACK_CATEGORIZATION_PROMPT,
@@ -384,6 +415,23 @@ export class FeedbackService {
           item.taskTitles = fromTaskTitles.length > 0 ? fromTaskTitles : [item.text.slice(0, 80)];
         }
 
+        // link_to_existing_task_ids / similar_existing_task_id — stored for use after try block
+        const rawLinkIds = parsed.link_to_existing_task_ids ?? parsed.linkToExistingTaskIds;
+        const rawSimilarId = parsed.similar_existing_task_id ?? parsed.similarExistingTaskId;
+        linkIds =
+          Array.isArray(rawLinkIds) && rawLinkIds.length > 0
+            ? rawLinkIds.filter((id: unknown) => typeof id === "string").map((id) => String(id))
+            : typeof rawSimilarId === "string" && rawSimilarId.trim()
+              ? [rawSimilarId.trim()]
+              : [];
+        const rawUpdates = parsed.update_existing_tasks ?? parsed.updateExistingTasks;
+        updateExistingTasks =
+          rawUpdates &&
+          typeof rawUpdates === "object" &&
+          !Array.isArray(rawUpdates)
+            ? (rawUpdates as Record<string, { title?: string; description?: string }>)
+            : {};
+
         // Handle scope changes with HIL (PRD §7.4.2, §15.1) — category=scope OR is_scope_change=true
         if (item.category === "scope" || item.isScopeChange) {
           // Get AI-generated proposal for modal summary (before HIL)
@@ -463,11 +511,38 @@ export class FeedbackService {
       item.taskTitles = [item.text.slice(0, 80)];
     }
 
-    // Create tasks from the generated task titles (best-effort)
+    // Link to existing tasks or create new tasks
     try {
-      item.createdTaskIds = await this.createTasksFromFeedback(projectId, item);
+      if (linkIds.length > 0) {
+        const readyTasks = await this.taskStore.ready(projectId);
+        const validIds = new Set(
+          readyTasks
+            .filter(
+              (t) =>
+                (t.issue_type ?? t.type) !== "epic" && (t.issue_type ?? t.type) !== "chore"
+            )
+            .map((t) => t.id)
+        );
+        const invalidIds = linkIds.filter((id) => !validIds.has(id));
+        if (invalidIds.length > 0) {
+          log.warn("Invalid task IDs in link_to_existing_task_ids", {
+            feedbackId: item.id,
+            invalidIds: [...new Set(invalidIds)],
+          });
+          await this.enqueueForCategorization(projectId, item.id);
+          return;
+        }
+        item.createdTaskIds = await this.linkFeedbackToExistingTasks(
+          projectId,
+          item,
+          linkIds,
+          updateExistingTasks
+        );
+      } else {
+        item.createdTaskIds = await this.createTasksFromFeedback(projectId, item);
+      }
     } catch (err) {
-      log.error("Failed to create tasks", { feedbackId: item.id, err });
+      log.error("Failed to create or link tasks", { feedbackId: item.id, err });
     }
     item.status = "pending";
 
@@ -529,6 +604,51 @@ export class FeedbackService {
       default:
         return "task";
     }
+  }
+
+  /**
+   * Link feedback to existing tasks instead of creating new ones.
+   * Creates a feedback source (chore) task, applies optional updates to existing tasks,
+   * adds discovered-from deps from each existing task to the feedback source, sets createdTaskIds.
+   */
+  private async linkFeedbackToExistingTasks(
+    projectId: string,
+    item: FeedbackItem,
+    taskIds: string[],
+    updates?: Record<string, { title?: string; description?: string }>
+  ): Promise<string[]> {
+    const fresh = await feedbackStore.getFeedback(projectId, item.id);
+    if (fresh.createdTaskIds && fresh.createdTaskIds.length > 0) {
+      return fresh.createdTaskIds;
+    }
+
+    const project = await this.projectService.getProject(projectId);
+
+    const sourceTitle = `Feedback: ${item.text.slice(0, 60)}${item.text.length > 60 ? "…" : ""}`;
+    const sourceTask = await this.taskStore.create(project.id, sourceTitle, {
+      type: "chore",
+      priority: 4,
+      description: `Feedback ID: ${item.id}`,
+    });
+    item.feedbackSourceTaskId = sourceTask.id;
+
+    for (const taskId of taskIds) {
+      const upd = updates?.[taskId];
+      if (upd && (upd.title != null || upd.description != null)) {
+        await this.taskStore.update(projectId, taskId, {
+          ...(upd.title != null && { title: upd.title }),
+          ...(upd.description != null && { description: upd.description }),
+        });
+      }
+      await this.taskStore.addDependency(
+        projectId,
+        taskId,
+        sourceTask.id,
+        "discovered-from"
+      );
+    }
+
+    return taskIds;
   }
 
   /** Create tasks from feedback (PRD §12.3.4). Idempotent: skips if tasks already created. */
