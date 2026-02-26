@@ -285,7 +285,7 @@ describe("Settings API lifecycle", () => {
     expect(settings.complexComplexityAgent.model).toBe("claude-opus-4");
   });
 
-  it("PUT /api/v1/projects/:id/settings accepts and persists apiKeys", async () => {
+  it("PUT /api/v1/projects/:id/settings accepts and persists apiKeys (response masked)", async () => {
     const apiKeys = {
       ANTHROPIC_API_KEY: [{ id: "a1", value: "sk-ant-test" }],
       CURSOR_API_KEY: [{ id: "c1", value: "cursor-test-key" }],
@@ -295,13 +295,84 @@ describe("Settings API lifecycle", () => {
       .send({ apiKeys });
 
     expect(res.status).toBe(200);
-    expect(res.body.data.apiKeys).toEqual(apiKeys);
+    expect(res.body.data.apiKeys).toEqual({
+      ANTHROPIC_API_KEY: [{ id: "a1", masked: "••••••••" }],
+      CURSOR_API_KEY: [{ id: "c1", masked: "••••••••" }],
+    });
 
     const getRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/settings`);
-    expect(getRes.body.data.apiKeys).toEqual(apiKeys);
+    expect(getRes.body.data.apiKeys).toEqual({
+      ANTHROPIC_API_KEY: [{ id: "a1", masked: "••••••••" }],
+      CURSOR_API_KEY: [{ id: "c1", masked: "••••••••" }],
+    });
 
     const settings = await readProjectFromGlobalStore(tempDir, projectId);
     expect(settings.apiKeys).toEqual(apiKeys);
+  });
+
+  it("GET /api/v1/projects/:id/settings returns masked apiKeys with limitHitAt", async () => {
+    const apiKeys = {
+      ANTHROPIC_API_KEY: [
+        { id: "k1", value: "sk-ant-secret" },
+        { id: "k2", value: "sk-ant-other", limitHitAt: "2025-02-25T12:00:00Z" },
+      ],
+    };
+    await request(app)
+      .put(`${API_PREFIX}/projects/${projectId}/settings`)
+      .send({ apiKeys });
+
+    const getRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/settings`);
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.data.apiKeys).not.toBeUndefined();
+    expect(getRes.body.data.apiKeys.ANTHROPIC_API_KEY).toHaveLength(2);
+    expect(getRes.body.data.apiKeys.ANTHROPIC_API_KEY[0]).toEqual({
+      id: "k1",
+      masked: "••••••••",
+    });
+    expect(getRes.body.data.apiKeys.ANTHROPIC_API_KEY[1]).toEqual({
+      id: "k2",
+      masked: "••••••••",
+      limitHitAt: "2025-02-25T12:00:00Z",
+    });
+    expect(getRes.body.data.apiKeys.ANTHROPIC_API_KEY[0].value).toBeUndefined();
+    expect(getRes.body.data.apiKeys.ANTHROPIC_API_KEY[1].value).toBeUndefined();
+  });
+
+  it("PUT /api/v1/projects/:id/settings rejects empty apiKeys when provider in use", async () => {
+    const res = await request(app)
+      .put(`${API_PREFIX}/projects/${projectId}/settings`)
+      .send({
+        apiKeys: {
+          ANTHROPIC_API_KEY: [],
+        },
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error?.code).toBe("INVALID_INPUT");
+    expect(res.body.error?.message).toContain("ANTHROPIC_API_KEY");
+    expect(res.body.error?.message).toContain("cannot be empty");
+  });
+
+  it("PUT /api/v1/projects/:id/settings allows apiKeys without provider when that provider not in use", async () => {
+    await request(app)
+      .put(`${API_PREFIX}/projects/${projectId}/settings`)
+      .send({
+        simpleComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+        complexComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+      });
+
+    const res = await request(app)
+      .put(`${API_PREFIX}/projects/${projectId}/settings`)
+      .send({
+        apiKeys: {
+          CURSOR_API_KEY: [{ id: "c1", value: "cursor-key" }],
+        },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.apiKeys?.CURSOR_API_KEY).toHaveLength(1);
+    expect(res.body.data.apiKeys?.CURSOR_API_KEY?.[0]).toMatchObject({ id: "c1", masked: "••••••••" });
+    expect(res.body.data.apiKeys?.ANTHROPIC_API_KEY).toBeUndefined();
   });
 
   it("Create project with gitWorkingMode branches → global store persists it", async () => {

@@ -3,6 +3,7 @@ import { ProjectService } from "../services/project.service.js";
 import { PlanService } from "../services/plan.service.js";
 import { orchestratorService } from "../services/orchestrator.service.js";
 import type { CreateProjectRequest, ApiResponse, Project } from "@opensprint/shared";
+import { maskApiKeysForResponse } from "@opensprint/shared";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("projects");
@@ -127,22 +128,30 @@ projectsRouter.delete("/:id", async (req: Request<ProjectParams>, res, next) => 
   }
 });
 
-// GET /projects/:id/settings — Get project settings
+// GET /projects/:id/settings — Get project settings (apiKeys masked, never raw value)
 projectsRouter.get("/:id/settings", async (req, res, next) => {
   try {
     const settings = await projectService.getSettings(req.params.id);
-    res.json({ data: settings });
+    const masked = {
+      ...settings,
+      apiKeys: maskApiKeysForResponse(settings.apiKeys),
+    };
+    res.json({ data: masked });
   } catch (err) {
     next(err);
   }
 });
 
-// PUT /projects/:id/settings — Update project settings
+// PUT /projects/:id/settings — Update project settings (apiKeys masked in response)
 projectsRouter.put("/:id/settings", async (req, res, next) => {
   try {
     const settings = await projectService.updateSettings(req.params.id, req.body);
     orchestratorService.invalidateMaxSlotsCache(req.params.id);
-    res.json({ data: settings });
+    const masked = {
+      ...settings,
+      apiKeys: maskApiKeysForResponse(settings.apiKeys),
+    };
+    res.json({ data: masked });
   } catch (err) {
     next(err);
   }

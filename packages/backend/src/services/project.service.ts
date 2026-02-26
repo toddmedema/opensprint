@@ -13,6 +13,7 @@ import {
   getTestCommandForFramework,
   parseSettings,
   sanitizeApiKeys,
+  getProvidersInUse,
 } from "@opensprint/shared";
 import type { DeploymentConfig, HilConfig } from "@opensprint/shared";
 import { taskStore as taskStoreSingleton } from "./task-store.service.js";
@@ -459,8 +460,9 @@ export class ProjectService {
     const current = await this.getSettings(projectId);
 
     // Validate agent config if provided (accept new or legacy keys)
-    const simpleUpdate = updates.simpleComplexityAgent ?? updates.lowComplexityAgent;
-    const complexUpdate = updates.complexComplexityAgent ?? updates.highComplexityAgent;
+    const raw = updates as Partial<ProjectSettings> & { lowComplexityAgent?: unknown; highComplexityAgent?: unknown };
+    const simpleUpdate = updates.simpleComplexityAgent ?? raw.lowComplexityAgent;
+    const complexUpdate = updates.complexComplexityAgent ?? raw.highComplexityAgent;
     let simpleComplexityAgent = current.simpleComplexityAgent;
     let complexComplexityAgent = current.complexComplexityAgent;
     if (simpleUpdate !== undefined) {
@@ -489,7 +491,7 @@ export class ProjectService {
         : (current.gitWorkingMode ?? "worktree");
     const apiKeys =
       updates.apiKeys !== undefined ? sanitizeApiKeys(updates.apiKeys) ?? undefined : current.apiKeys;
-    const updated: ProjectSettings = {
+    const effectiveSettings: ProjectSettings = {
       ...current,
       ...updates,
       simpleComplexityAgent,
@@ -497,6 +499,23 @@ export class ProjectService {
       hilConfig,
       gitWorkingMode,
       apiKeys,
+    };
+    if (updates.apiKeys !== undefined) {
+      const providersInUse = getProvidersInUse(effectiveSettings);
+      const effectiveApiKeys = apiKeys ?? {};
+      for (const provider of providersInUse) {
+        const entries = effectiveApiKeys[provider];
+        if (!entries || entries.length === 0) {
+          throw new AppError(
+            400,
+            ErrorCodes.INVALID_INPUT,
+            `API keys for ${provider} cannot be empty when this provider is selected in agent config`
+          );
+        }
+      }
+    }
+    const updated: ProjectSettings = {
+      ...effectiveSettings,
       // Branches mode forces maxConcurrentCoders=1 regardless of stored value
       ...(gitWorkingMode === "branches" && { maxConcurrentCoders: 1 }),
     };

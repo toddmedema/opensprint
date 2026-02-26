@@ -122,6 +122,38 @@ export interface ApiKeyEntry {
 /** API keys per provider: array of entries ordered by preference (first available used) */
 export type ApiKeys = Partial<Record<ApiKeyProvider, ApiKeyEntry[]>>;
 
+/** Masked API key entry for API responses (never exposes raw value) */
+export interface MaskedApiKeyEntry {
+  id: string;
+  masked: string;
+  limitHitAt?: string;
+}
+
+/** Masked API keys for GET /projects/:id/settings response */
+export type MaskedApiKeys = Partial<Record<ApiKeyProvider, MaskedApiKeyEntry[]>>;
+
+const MASKED_PLACEHOLDER = "••••••••";
+
+/**
+ * Transform apiKeys for API response: exclude value, return {id, masked, limitHitAt}.
+ * Use for GET /projects/:id/settings so raw keys are never exposed.
+ */
+export function maskApiKeysForResponse(apiKeys: ApiKeys | undefined): MaskedApiKeys | undefined {
+  if (!apiKeys || Object.keys(apiKeys).length === 0) return undefined;
+  const result: MaskedApiKeys = {};
+  for (const provider of API_KEY_PROVIDERS) {
+    const entries = apiKeys[provider];
+    if (entries && entries.length > 0) {
+      result[provider] = entries.map((e) => ({
+        id: e.id,
+        masked: MASKED_PLACEHOLDER,
+        ...(e.limitHitAt && { limitHitAt: e.limitHitAt }),
+      }));
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 /** Full project settings stored in global database (~/.opensprint/settings.json) keyed by project_id */
 export interface ProjectSettings {
   simpleComplexityAgent: AgentConfig;
@@ -296,6 +328,20 @@ export function sanitizeApiKeys(raw: unknown): ApiKeys | undefined {
     }
   }
   return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/**
+ * Get API key providers in use based on agent config (simple + complex).
+ * claude/claude-cli → ANTHROPIC_API_KEY; cursor → CURSOR_API_KEY.
+ */
+export function getProvidersInUse(settings: ProjectSettings): ApiKeyProvider[] {
+  const providers: Set<ApiKeyProvider> = new Set();
+  const agents = [settings.simpleComplexityAgent, settings.complexComplexityAgent];
+  for (const a of agents) {
+    if (a.type === "claude" || a.type === "claude-cli") providers.add("ANTHROPIC_API_KEY");
+    if (a.type === "cursor") providers.add("CURSOR_API_KEY");
+  }
+  return Array.from(providers);
 }
 
 /**

@@ -43,7 +43,7 @@ export interface FailureHandlerHost {
   branchManager: {
     captureBranchDiff(repoPath: string, branchName: string): Promise<string>;
     captureUncommittedDiff(wtPath: string): Promise<string>;
-    removeTaskWorktree(repoPath: string, taskId: string): Promise<void>;
+    removeTaskWorktree(repoPath: string, taskId: string, actualPath?: string): Promise<void>;
     deleteBranch(repoPath: string, branchName: string): Promise<void>;
     revertAndReturnToMain(repoPath: string, branchName: string): Promise<void>;
   };

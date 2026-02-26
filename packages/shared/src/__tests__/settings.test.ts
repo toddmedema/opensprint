@@ -10,6 +10,8 @@ import {
   validateApiKeyEntry,
   sanitizeApiKeys,
   isLimitHitExpired,
+  maskApiKeysForResponse,
+  getProvidersInUse,
 } from "../types/settings.js";
 import type { ProjectSettings, AgentConfig, DeploymentConfig, ApiKeys } from "../types/settings.js";
 
@@ -420,5 +422,66 @@ describe("parseSettings with apiKeys", () => {
     };
     const parsed = parseSettings(raw);
     expect(parsed.apiKeys).toBeUndefined();
+  });
+});
+
+describe("maskApiKeysForResponse", () => {
+  it("returns undefined for undefined apiKeys", () => {
+    expect(maskApiKeysForResponse(undefined)).toBeUndefined();
+  });
+
+  it("returns undefined for empty apiKeys", () => {
+    expect(maskApiKeysForResponse({})).toBeUndefined();
+  });
+
+  it("masks values and preserves id and limitHitAt", () => {
+    const apiKeys: ApiKeys = {
+      ANTHROPIC_API_KEY: [
+        { id: "k1", value: "sk-ant-secret" },
+        { id: "k2", value: "sk-ant-other", limitHitAt: "2025-02-25T12:00:00Z" },
+      ],
+    };
+    const masked = maskApiKeysForResponse(apiKeys);
+    expect(masked).toEqual({
+      ANTHROPIC_API_KEY: [
+        { id: "k1", masked: "••••••••" },
+        { id: "k2", masked: "••••••••", limitHitAt: "2025-02-25T12:00:00Z" },
+      ],
+    });
+  });
+
+  it("never includes value in output", () => {
+    const apiKeys: ApiKeys = {
+      CURSOR_API_KEY: [{ id: "c1", value: "cursor-secret-key" }],
+    };
+    const masked = maskApiKeysForResponse(apiKeys);
+    expect(masked?.CURSOR_API_KEY?.[0]).not.toHaveProperty("value");
+    expect(masked?.CURSOR_API_KEY?.[0]).toEqual({ id: "c1", masked: "••••••••" });
+  });
+});
+
+describe("getProvidersInUse", () => {
+  it("returns ANTHROPIC_API_KEY when claude in use", () => {
+    const settings = makeSettings({
+      simpleComplexityAgent: { type: "claude", model: "x", cliCommand: null },
+      complexComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+    });
+    expect(getProvidersInUse(settings)).toEqual(["ANTHROPIC_API_KEY", "CURSOR_API_KEY"]);
+  });
+
+  it("returns CURSOR_API_KEY only when both agents are cursor", () => {
+    const settings = makeSettings({
+      simpleComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+    });
+    expect(getProvidersInUse(settings)).toEqual(["CURSOR_API_KEY"]);
+  });
+
+  it("returns ANTHROPIC_API_KEY for claude-cli", () => {
+    const settings = makeSettings({
+      simpleComplexityAgent: { type: "claude-cli", model: null, cliCommand: "claude" },
+      complexComplexityAgent: { type: "claude-cli", model: null, cliCommand: null },
+    });
+    expect(getProvidersInUse(settings)).toEqual(["ANTHROPIC_API_KEY"]);
   });
 });
