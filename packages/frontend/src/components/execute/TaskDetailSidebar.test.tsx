@@ -214,13 +214,14 @@ describe("TaskDetailSidebar", () => {
       </Provider>
     );
 
-    expect(screen.getByTestId("sidebar-actions-menu-btn")).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-actions-menu-trigger")).toBeInTheDocument();
     expect(screen.queryByTestId("sidebar-unblock-btn")).not.toBeInTheDocument();
-    await user.click(screen.getByTestId("sidebar-actions-menu-btn"));
+    await user.click(screen.getByTestId("sidebar-actions-menu-trigger"));
     expect(screen.getByTestId("sidebar-mark-done-btn")).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /mark done/i })).toBeInTheDocument();
   });
 
-  it("actions menu is in header row with title and close button", () => {
+  it("renders actions menu trigger to the right of title, close to the left of X", () => {
     const props = createMinimalProps();
     render(
       <Provider store={createStore()}>
@@ -229,14 +230,18 @@ describe("TaskDetailSidebar", () => {
     );
 
     const title = screen.getByTestId("task-detail-title");
-    const menuBtn = screen.getByTestId("sidebar-actions-menu-btn");
+    const menuTrigger = screen.getByTestId("sidebar-actions-menu-trigger");
     const closeBtn = screen.getByRole("button", { name: "Close task detail" });
-    const header = title.closest(".border-b");
-    expect(header).toContainElement(menuBtn);
-    expect(header).toContainElement(closeBtn);
+    // Title before menu trigger before close
+    expect(
+      title.compareDocumentPosition(menuTrigger) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      menuTrigger.compareDocumentPosition(closeBtn) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 
-  it("renders Unblock in actions menu when task is blocked", async () => {
+  it("renders actions menu with Unblock when task is blocked", async () => {
     const user = userEvent.setup();
     const props = createMinimalProps({
       selectedTaskData: {
@@ -262,9 +267,10 @@ describe("TaskDetailSidebar", () => {
       </Provider>
     );
 
-    await user.click(screen.getByTestId("sidebar-actions-menu-btn"));
+    expect(screen.getByTestId("sidebar-actions-menu-trigger")).toBeInTheDocument();
+    await user.click(screen.getByTestId("sidebar-actions-menu-trigger"));
     expect(screen.getByTestId("sidebar-unblock-btn")).toBeInTheDocument();
-    expect(screen.queryByTestId("sidebar-mark-done-btn")).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /mark done/i })).not.toBeInTheDocument();
   });
 
   it("shows block reason below status/priority row when task is blocked", () => {
@@ -311,6 +317,82 @@ describe("TaskDetailSidebar", () => {
 
     await user.click(screen.getByRole("button", { name: "Close task detail" }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onMarkDone when Mark done is clicked from actions menu", async () => {
+    const user = userEvent.setup();
+    const onMarkDone = vi.fn();
+    const props = createMinimalProps({ onMarkDone });
+
+    render(
+      <Provider store={createStore()}>
+        <TaskDetailSidebar {...props} />
+      </Provider>
+    );
+
+    await user.click(screen.getByTestId("sidebar-actions-menu-trigger"));
+    await user.click(screen.getByTestId("sidebar-mark-done-btn"));
+    expect(onMarkDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onUnblock when Unblock is clicked from actions menu", async () => {
+    const user = userEvent.setup();
+    const onUnblock = vi.fn();
+    const props = createMinimalProps({
+      onUnblock,
+      selectedTaskData: {
+        id: "epic-1.1",
+        title: "Blocked Task",
+        epicId: "epic-1",
+        kanbanColumn: "blocked" as const,
+        priority: 0,
+        assignee: null,
+        type: "task" as const,
+        status: "blocked" as const,
+        labels: [],
+        dependencies: [],
+        description: "",
+        createdAt: "",
+        updatedAt: "",
+      },
+      isBlockedTask: true,
+    });
+
+    render(
+      <Provider store={createStore()}>
+        <TaskDetailSidebar {...props} />
+      </Provider>
+    );
+
+    await user.click(screen.getByTestId("sidebar-actions-menu-trigger"));
+    await user.click(screen.getByTestId("sidebar-unblock-btn"));
+    expect(onUnblock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not render actions menu when task is done", () => {
+    const props = createMinimalProps({ isDoneTask: true });
+    render(
+      <Provider store={createStore()}>
+        <TaskDetailSidebar {...props} />
+      </Provider>
+    );
+
+    expect(screen.queryByTestId("sidebar-actions-menu-trigger")).not.toBeInTheDocument();
+  });
+
+  it("closes actions menu on outside click", async () => {
+    const user = userEvent.setup();
+    const props = createMinimalProps();
+    render(
+      <Provider store={createStore()}>
+        <TaskDetailSidebar {...props} />
+      </Provider>
+    );
+
+    await user.click(screen.getByTestId("sidebar-actions-menu-trigger"));
+    expect(screen.getByTestId("sidebar-actions-menu")).toBeInTheDocument();
+    await user.click(document.body);
+    expect(screen.queryByTestId("sidebar-actions-menu")).not.toBeInTheDocument();
   });
 
   it("uses scrollable div with ReactMarkdown for live output (not pre)", () => {

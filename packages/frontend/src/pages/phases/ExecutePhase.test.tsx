@@ -1517,8 +1517,9 @@ describe("ExecutePhase Redux integration", () => {
       </Provider>
     );
 
-    await user.click(await screen.findByTestId("sidebar-actions-menu-btn"));
-    const markDoneBtn = await screen.findByTestId("sidebar-mark-done-btn");
+    const menuTrigger = await screen.findByTestId("sidebar-actions-menu-trigger");
+    await user.click(menuTrigger);
+    const markDoneBtn = await screen.findByRole("menuitem", { name: /mark done/i });
     await user.click(markDoneBtn);
 
     await vi.waitFor(() => {
@@ -1546,10 +1547,11 @@ describe("ExecutePhase Redux integration", () => {
       </Provider>
     );
 
-    await user.click(await screen.findByTestId("sidebar-actions-menu-btn"));
+    const menuTrigger = await screen.findByTestId("sidebar-actions-menu-trigger");
+    await user.click(menuTrigger);
     const unblockBtn = await screen.findByTestId("sidebar-unblock-btn");
     expect(unblockBtn).toBeInTheDocument();
-    expect(screen.queryByTestId("sidebar-mark-done-btn")).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /mark done/i })).not.toBeInTheDocument();
 
     await user.click(unblockBtn);
 
@@ -2381,8 +2383,6 @@ describe("ExecutePhase task detail plan link", () => {
       expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
     });
 
-    const user = userEvent.setup();
-    await user.click(await screen.findByTestId("sidebar-actions-menu-btn"));
     const planLink = await screen.findByTestId("sidebar-view-plan-btn");
     expect(planLink).toBeInTheDocument();
     expect(planLink).toHaveTextContent(/view plan: build test/i);
@@ -2426,8 +2426,6 @@ describe("ExecutePhase task detail plan link", () => {
       expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
     });
 
-    const user = userEvent.setup();
-    await user.click(await screen.findByTestId("sidebar-actions-menu-btn"));
     expect(screen.queryByTestId("sidebar-view-plan-btn")).not.toBeInTheDocument();
   });
 
@@ -2470,8 +2468,6 @@ describe("ExecutePhase task detail plan link", () => {
       expect(mockGet).toHaveBeenCalledWith("proj-1", "other-1");
     });
 
-    const user = userEvent.setup();
-    await user.click(await screen.findByTestId("sidebar-actions-menu-btn"));
     expect(screen.queryByTestId("sidebar-view-plan-btn")).not.toBeInTheDocument();
   });
 
@@ -2515,7 +2511,6 @@ describe("ExecutePhase task detail plan link", () => {
       expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
     });
 
-    await user.click(await screen.findByTestId("sidebar-actions-menu-btn"));
     const planLink = await screen.findByTestId("sidebar-view-plan-btn");
     await user.click(planLink);
 
