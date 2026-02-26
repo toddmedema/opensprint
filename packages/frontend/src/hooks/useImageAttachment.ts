@@ -28,14 +28,19 @@ export interface UseImageAttachmentReturn {
   addImagesFromFiles: (files: FileList | File[]) => Promise<void>;
   removeImage: (index: number) => void;
   reset: () => void;
+  /** Reset to specific images (e.g. when restoring from localStorage). */
+  resetTo: (images: string[]) => void;
   handlePaste: (e: React.ClipboardEvent) => Promise<void>;
   handleDragOver: (e: React.DragEvent) => void;
   handleDrop: (e: React.DragEvent) => Promise<void>;
   handleFileInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
-export function useImageAttachment(): UseImageAttachmentReturn {
-  const [images, setImages] = useState<string[]>([]);
+export function useImageAttachment(initialImages?: string[]): UseImageAttachmentReturn {
+  const [images, setImages] = useState<string[]>(() => {
+    if (!initialImages || !Array.isArray(initialImages)) return [];
+    return initialImages.filter((img) => typeof img === "string" && img.startsWith("data:image/"));
+  });
 
   const addImagesFromFiles = useCallback(async (files: FileList | File[]) => {
     const fileArray = Array.from(files).filter(isImageFile);
@@ -61,6 +66,12 @@ export function useImageAttachment(): UseImageAttachmentReturn {
 
   const reset = useCallback(() => {
     setImages([]);
+  }, []);
+
+  const resetTo = useCallback((imgs: string[]) => {
+    setImages(
+      Array.isArray(imgs) ? imgs.filter((img) => typeof img === "string" && img.startsWith("data:image/")) : []
+    );
   }, []);
 
   const handlePaste = useCallback(
@@ -113,6 +124,7 @@ export function useImageAttachment(): UseImageAttachmentReturn {
     addImagesFromFiles,
     removeImage,
     reset,
+    resetTo,
     handlePaste,
     handleDragOver,
     handleDrop,

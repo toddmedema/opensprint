@@ -1,6 +1,11 @@
 import { useState, useRef, useCallback, useMemo, useEffect, memo } from "react";
 import type { FeedbackItem } from "@opensprint/shared";
 import { PRIORITY_LABELS } from "@opensprint/shared";
+import {
+  loadFeedbackFormDraft,
+  saveFeedbackFormDraft,
+  clearFeedbackFormDraft,
+} from "../../lib/feedbackFormStorage";
 import { useAppDispatch, useAppSelector } from "../../store";
 import {
   submitFeedback,
@@ -570,11 +575,29 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
     }
   }, [projectId, tasksCount, dispatch]);
 
-  /* ── Local UI state (preserved by mount-all) ── */
-  const [input, setInput] = useState("");
-  const imageAttachment = useImageAttachment();
+  /* ── Local UI state (restored from localStorage on mount) ── */
+  const initialDraft = useMemo(() => loadFeedbackFormDraft(projectId), [projectId]);
+  const [input, setInput] = useState(initialDraft.text);
+  const imageAttachment = useImageAttachment(initialDraft.images);
   const isDraggingImage = useImageDragOverPage();
-  const [priority, setPriority] = useState<number | null>(null);
+  const [priority, setPriority] = useState<number | null>(initialDraft.priority);
+
+  /* Sync state when projectId changes (e.g. navigate to different project) */
+  useEffect(() => {
+    const draft = loadFeedbackFormDraft(projectId);
+    setInput(draft.text);
+    setPriority(draft.priority);
+    imageAttachment.resetTo(draft.images);
+  }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps -- resetTo is stable
+
+  /* Persist form state to localStorage on change */
+  useEffect(() => {
+    saveFeedbackFormDraft(projectId, {
+      text: input,
+      images: imageAttachment.images,
+      priority,
+    });
+  }, [projectId, input, imageAttachment.images, priority]);
   const [feedbackPriorityDropdownOpen, setFeedbackPriorityDropdownOpen] = useState(false);
   const feedbackPriorityDropdownRef = useRef<HTMLDivElement>(null);
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
@@ -604,9 +627,12 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
     setInput("");
     imageAttachment.reset();
     setPriority(null);
-    await dispatch(
+    const result = await dispatch(
       submitFeedback({ projectId, text, images: imagePayload, priority: priorityPayload })
     );
+    if (submitFeedback.fulfilled.match(result)) {
+      clearFeedbackFormDraft(projectId);
+    }
   };
 
   const onKeyDownFeedback = useSubmitShortcut(handleSubmit, {

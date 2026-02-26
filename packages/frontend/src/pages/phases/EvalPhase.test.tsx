@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
 import { EvalPhase, EVALUATE_FEEDBACK_FILTER_KEY } from "./EvalPhase";
+import { FEEDBACK_FORM_DRAFT_KEY_PREFIX } from "../../lib/feedbackFormStorage";
 import { CONTENT_CONTAINER_CLASS } from "../../lib/constants";
 import projectReducer from "../../store/slices/projectSlice";
 import websocketReducer from "../../store/slices/websocketSlice";
@@ -447,6 +448,112 @@ describe("EvalPhase feedback form", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("feedback-priority-select")).not.toBeDisabled();
+    });
+  });
+
+  describe("feedback form draft persistence (localStorage)", () => {
+    const DRAFT_KEY = `${FEEDBACK_FORM_DRAFT_KEY_PREFIX}-proj-1`;
+
+    beforeEach(() => {
+      localStorage.removeItem(DRAFT_KEY);
+    });
+
+    it("restores text and priority from localStorage on mount", async () => {
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ text: "Draft feedback text", images: [], priority: 2 })
+      );
+
+      const store = createStore();
+      render(
+        <Provider store={store}>
+          <EvalPhase projectId="proj-1" />
+        </Provider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/Describe a bug/)).toBeInTheDocument();
+      });
+
+      const textarea = screen.getByPlaceholderText(/Describe a bug/);
+      expect(textarea).toHaveValue("Draft feedback text");
+
+      await userEvent.setup().click(screen.getByTestId("feedback-priority-select"));
+      expect(screen.getByTestId("feedback-priority-option-2")).toHaveClass("font-medium");
+    });
+
+    it("persists text to localStorage on change", async () => {
+      const store = createStore();
+      const user = userEvent.setup();
+      render(
+        <Provider store={store}>
+          <EvalPhase projectId="proj-1" />
+        </Provider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/Describe a bug/)).toBeInTheDocument();
+      });
+
+      await user.type(screen.getByPlaceholderText(/Describe a bug/), "Typed feedback");
+      const stored = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? "{}");
+      expect(stored.text).toBe("Typed feedback");
+    });
+
+    it("persists priority to localStorage when selected", async () => {
+      const store = createStore();
+      const user = userEvent.setup();
+      render(
+        <Provider store={store}>
+          <EvalPhase projectId="proj-1" />
+        </Provider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("feedback-priority-select")).toBeInTheDocument();
+      });
+
+      await user.type(screen.getByPlaceholderText(/Describe a bug/), "x");
+      await user.click(screen.getByTestId("feedback-priority-select"));
+      await user.click(screen.getByTestId("feedback-priority-option-1"));
+      const stored = JSON.parse(localStorage.getItem(DRAFT_KEY) ?? "{}");
+      expect(stored.priority).toBe(1);
+    });
+
+    it("clears localStorage when feedback is successfully submitted", async () => {
+      const { api } = await import("../../api/client");
+      vi.mocked(api.feedback.submit).mockResolvedValue({
+        id: "fb-new",
+        text: "Submitted feedback",
+        category: "bug",
+        mappedPlanId: null,
+        createdTaskIds: [],
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      });
+
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({ text: "Draft before submit", images: [], priority: 0 })
+      );
+
+      const store = createStore();
+      const user = userEvent.setup();
+      render(
+        <Provider store={store}>
+          <EvalPhase projectId="proj-1" />
+        </Provider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/Describe a bug/)).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole("button", { name: /Submit Feedback/i }));
+
+      await waitFor(() => {
+        expect(localStorage.getItem(DRAFT_KEY)).toBeNull();
+      });
     });
   });
 
