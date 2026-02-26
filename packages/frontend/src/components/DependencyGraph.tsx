@@ -297,7 +297,7 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
         return label.length > 14 ? label.slice(0, 12) + "…" : label;
       });
 
-    simulation.on("tick", () => {
+    const tick = () => {
       link
         .attr("x1", (d) => {
           const src = d.source as d3.SimulationNodeDatum & { x?: number; y?: number };
@@ -320,7 +320,16 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
         const n = d as d3.SimulationNodeDatum & { x?: number; y?: number };
         return `translate(${n.x ?? 0},${n.y ?? 0})`;
       });
-    });
+    };
+
+    simulation.on("tick", tick);
+
+    // Run simulation to completion synchronously so graph appears immediately (no load animation)
+    for (let i = 0; i < 400; i++) {
+      simulation.tick();
+      if (simulation.alpha() < 0.001) break;
+    }
+    simulation.stop();
 
     const defs = svg.append("defs");
     defs

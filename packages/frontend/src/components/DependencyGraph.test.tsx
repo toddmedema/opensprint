@@ -248,7 +248,7 @@ describe("DependencyGraph", () => {
     expect(svg.getAttribute("width")).toBe("800");
   });
 
-  it("animates graph only once on initial load, not on subsequent resizes", async () => {
+  it("does not rebuild the graph on subsequent resizes", async () => {
     const resizeCallbacks: ((entries: unknown[]) => void)[] = [];
     global.ResizeObserver = vi.fn().mockImplementation((cb: (entries: unknown[]) => void) => ({
       observe: vi.fn(() => {
