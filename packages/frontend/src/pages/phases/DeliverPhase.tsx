@@ -85,13 +85,25 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
     setSelectedTarget(defaultTarget);
   }, [defaultTarget]);
 
+  // Live updates: poll status and history at least once per second when deployment is active.
+  // WebSocket delivers deliver.output in real time; polling provides fallback (e.g. after refresh).
+  useEffect(() => {
+    if (!activeDeployId || !projectId) return;
+    const interval = setInterval(() => {
+      dispatch(fetchDeliverStatus(projectId));
+      dispatch(fetchDeliverHistory(projectId));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [activeDeployId, projectId, dispatch]);
+
   const selectedRecord = selectedDeployId
     ? (history.find((r) => r.id === selectedDeployId) ?? null)
     : (history[0] ?? null);
 
   const displayLog = (() => {
     if (activeDeployId && (selectedDeployId === activeDeployId || !selectedDeployId)) {
-      return liveLog;
+      // Prefer live WebSocket stream; fallback to polled history (e.g. after refresh)
+      return liveLog.length > 0 ? liveLog : (selectedRecord?.log ?? []);
     }
     return selectedRecord?.log ?? [];
   })();

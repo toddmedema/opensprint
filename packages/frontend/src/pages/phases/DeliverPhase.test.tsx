@@ -445,4 +445,105 @@ describe("DeliverPhase", () => {
     await waitFor(() => expect(mockGetSettings).toHaveBeenCalled());
     expect(screen.queryByTestId("deliver-configure-button")).not.toBeInTheDocument();
   });
+
+  describe("live log updates", () => {
+    it("polls status and history every second when active deployment exists", async () => {
+      vi.useFakeTimers();
+      try {
+        mockGetSettings.mockResolvedValue({
+          deployment: { mode: "custom", customCommand: "echo deploy" },
+        });
+        mockDeliverStatus.mockResolvedValue({
+          activeDeployId: "deploy-1",
+          currentDeploy: null,
+        });
+        mockDeliverHistory.mockResolvedValue([]);
+        const store = createStore({
+          activeDeployId: "deploy-1",
+          selectedDeployId: "deploy-1",
+          liveLog: [],
+          history: [
+            {
+              id: "deploy-1",
+              projectId: "proj-1",
+              status: "running",
+              startedAt: new Date().toISOString(),
+              completedAt: null,
+              log: [],
+            },
+          ],
+        });
+
+        renderWithRouter(store);
+        // Flush initial microtasks so effect runs
+        await vi.advanceTimersByTimeAsync(0);
+
+        const beforeStatus = mockDeliverStatus.mock.calls.length;
+        const beforeHistory = mockDeliverHistory.mock.calls.length;
+
+        // Advance 2.5 seconds — interval fires at 1s and 2s
+        await vi.advanceTimersByTimeAsync(2500);
+
+        expect(mockDeliverStatus.mock.calls.length).toBeGreaterThanOrEqual(beforeStatus + 2);
+        expect(mockDeliverHistory.mock.calls.length).toBeGreaterThanOrEqual(beforeHistory + 2);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("shows polled history log when liveLog is empty (e.g. after refresh)", async () => {
+      mockGetSettings.mockResolvedValueOnce({
+        deployment: { mode: "custom", customCommand: "echo deploy" },
+      });
+      const store = createStore({
+        activeDeployId: "deploy-1",
+        selectedDeployId: "deploy-1",
+        liveLog: [],
+        history: [
+          {
+            id: "deploy-1",
+            projectId: "proj-1",
+            status: "running",
+            startedAt: new Date().toISOString(),
+            completedAt: null,
+            log: ["Deploying...\n", "Step 1 complete\n"],
+          },
+        ],
+      });
+      renderWithRouter(store);
+      await waitFor(() => expect(mockGetSettings).toHaveBeenCalled());
+
+      const logEl = screen.getByTestId("deploy-log");
+      expect(logEl).toHaveTextContent("Deploying...");
+      expect(logEl).toHaveTextContent("Step 1 complete");
+    });
+
+    it("prefers liveLog over polled history when both available", async () => {
+      mockGetSettings.mockResolvedValueOnce({
+        deployment: { mode: "custom", customCommand: "echo deploy" },
+      });
+      const store = createStore({
+        activeDeployId: "deploy-1",
+        selectedDeployId: "deploy-1",
+        liveLog: ["Live chunk 1\n", "Live chunk 2\n"],
+        history: [
+          {
+            id: "deploy-1",
+            projectId: "proj-1",
+            status: "running",
+            startedAt: new Date().toISOString(),
+            completedAt: null,
+            log: ["Older polled line\n"],
+          },
+        ],
+      });
+      renderWithRouter(store);
+      await waitFor(() => expect(mockGetSettings).toHaveBeenCalled());
+
+      const logEl = screen.getByTestId("deploy-log");
+      expect(logEl).toHaveTextContent("Live chunk 1");
+      expect(logEl).toHaveTextContent("Live chunk 2");
+      expect(logEl).not.toHaveTextContent("Older polled line");
+    });
+  });
 });
