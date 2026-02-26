@@ -147,7 +147,24 @@ export function CreateNewProjectPage() {
   };
 
   const canProceedFromBasics = parentPath.trim().length > 0;
+
+  const needsAnthropic =
+    envKeys &&
+    !envKeys.anthropic &&
+    (simpleComplexityAgent.type === "claude" || complexComplexityAgent.type === "claude");
+  const needsCursor =
+    envKeys &&
+    !envKeys.cursor &&
+    (simpleComplexityAgent.type === "cursor" || complexComplexityAgent.type === "cursor");
+  const usesClaudeCli =
+    simpleComplexityAgent.type === "claude-cli" || complexComplexityAgent.type === "claude-cli";
+  const claudeCliMissing = envKeys && !envKeys.claudeCli && usesClaudeCli;
+
   const canProceedFromAgents =
+    envKeys !== null &&
+    !needsAnthropic &&
+    !needsCursor &&
+    !claudeCliMissing &&
     (simpleComplexityAgent.type !== "custom" || simpleComplexityAgent.cliCommand.trim()) &&
     (complexComplexityAgent.type !== "custom" || complexComplexityAgent.cliCommand.trim());
 

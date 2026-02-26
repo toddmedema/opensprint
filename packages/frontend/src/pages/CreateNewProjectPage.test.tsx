@@ -223,4 +223,132 @@ describe("CreateNewProjectPage", () => {
     const errors = await screen.findAllByText("Folder already exists");
     expect(errors.length).toBeGreaterThanOrEqual(1);
   });
+
+  it("loads env keys when entering agents step", async () => {
+    const user = userEvent.setup();
+    renderCreateNewProjectPage();
+    await user.type(screen.getByLabelText(/project name/i), "My App");
+    await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/path/to/parent");
+    await user.click(screen.getByTestId("next-button"));
+
+    expect(screen.getByTestId("simplified-agents-step")).toBeInTheDocument();
+    expect(mockGetKeys).toHaveBeenCalled();
+  });
+
+  it("disables Next on agents step when env keys are loading", async () => {
+    let resolveGetKeys: (value: { anthropic: boolean; cursor: boolean; claudeCli: boolean }) => void;
+    mockGetKeys.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveGetKeys = resolve;
+        })
+    );
+    const user = userEvent.setup();
+    renderCreateNewProjectPage();
+    await user.type(screen.getByLabelText(/project name/i), "My App");
+    await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/path/to/parent");
+    await user.click(screen.getByTestId("next-button"));
+
+    expect(screen.getByTestId("simplified-agents-step")).toBeInTheDocument();
+    const nextButton = screen.getByTestId("next-button");
+    expect(nextButton).toBeDisabled();
+
+    resolveGetKeys!({ anthropic: true, cursor: true, claudeCli: true });
+    await screen.findByTestId("next-button");
+    expect(screen.getByTestId("next-button")).toBeEnabled();
+  });
+
+  it("disables Next on agents step when cursor selected but API key missing", async () => {
+    mockGetKeys.mockResolvedValue({ anthropic: true, cursor: false, claudeCli: true });
+    const user = userEvent.setup();
+    renderCreateNewProjectPage();
+    await user.type(screen.getByLabelText(/project name/i), "My App");
+    await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/path/to/parent");
+    await user.click(screen.getByTestId("next-button"));
+
+    await screen.findByTestId("simplified-agents-step");
+    expect(screen.getByTestId("next-button")).toBeDisabled();
+  });
+
+  it("disables Next on agents step when claude selected but API key missing", async () => {
+    mockGetKeys.mockResolvedValue({ anthropic: false, cursor: true, claudeCli: true });
+    const user = userEvent.setup();
+    renderCreateNewProjectPage();
+    await user.type(screen.getByLabelText(/project name/i), "My App");
+    await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/path/to/parent");
+    await user.click(screen.getByTestId("next-button"));
+
+    await screen.findByTestId("simplified-agents-step");
+    const providerSelects = screen.getAllByRole("combobox");
+    await user.selectOptions(providerSelects[0], "claude");
+    expect(screen.getByTestId("next-button")).toBeDisabled();
+  });
+
+  it("disables Next on agents step when claude-cli selected but CLI not available", async () => {
+    mockGetKeys.mockResolvedValue({ anthropic: true, cursor: true, claudeCli: false });
+    const user = userEvent.setup();
+    renderCreateNewProjectPage();
+    await user.type(screen.getByLabelText(/project name/i), "My App");
+    await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/path/to/parent");
+    await user.click(screen.getByTestId("next-button"));
+
+    await screen.findByTestId("simplified-agents-step");
+    const providerSelects = screen.getAllByRole("combobox");
+    await user.selectOptions(providerSelects[0], "claude-cli");
+    expect(screen.getByTestId("next-button")).toBeDisabled();
+  });
+
+  it("disables Next on agents step when custom CLI selected but cliCommand empty", async () => {
+    mockGetKeys.mockResolvedValue({ anthropic: true, cursor: true, claudeCli: true });
+    const user = userEvent.setup();
+    renderCreateNewProjectPage();
+    await user.type(screen.getByLabelText(/project name/i), "My App");
+    await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/path/to/parent");
+    await user.click(screen.getByTestId("next-button"));
+
+    await screen.findByTestId("simplified-agents-step");
+    const providerSelects = screen.getAllByRole("combobox");
+    await user.selectOptions(providerSelects[0], "custom");
+    expect(screen.getByTestId("next-button")).toBeDisabled();
+  });
+
+  it("enables Next on agents step when custom CLI has cliCommand", async () => {
+    mockGetKeys.mockResolvedValue({ anthropic: true, cursor: true, claudeCli: true });
+    const user = userEvent.setup();
+    renderCreateNewProjectPage();
+    await user.type(screen.getByLabelText(/project name/i), "My App");
+    await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/path/to/parent");
+    await user.click(screen.getByTestId("next-button"));
+
+    await screen.findByTestId("simplified-agents-step");
+    const providerSelects = screen.getAllByRole("combobox");
+    await user.selectOptions(providerSelects[0], "custom");
+    await user.type(screen.getByPlaceholderText(/e\.g\. my-agent/), "my-agent");
+    expect(screen.getByTestId("next-button")).toBeEnabled();
+  });
+
+  it("passes agent config to scaffold API", async () => {
+    mockScaffold.mockResolvedValue({
+      project: { id: "proj-1", name: "My App", repoPath: "/path/to/parent/My App" },
+      runCommand: "cd /path/to/parent/My\\ App && npm run web",
+    });
+    const user = userEvent.setup();
+    renderCreateNewProjectPage();
+    await user.type(screen.getByLabelText(/project name/i), "My App");
+    await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/path/to/parent");
+    await user.click(screen.getByTestId("next-button"));
+    await screen.findByTestId("simplified-agents-step");
+    const providerSelects = screen.getAllByRole("combobox");
+    await user.selectOptions(providerSelects[0], "claude");
+    await user.selectOptions(providerSelects[2], "cursor");
+    await user.click(screen.getByTestId("next-button"));
+    await user.click(screen.getByTestId("scaffold-button"));
+
+    expect(mockScaffold).toHaveBeenCalledWith(
+      expect.objectContaining({
+        simpleComplexityAgent: expect.objectContaining({ type: "claude" }),
+        complexComplexityAgent: expect.objectContaining({ type: "cursor" }),
+      })
+    );
+  });
 });
