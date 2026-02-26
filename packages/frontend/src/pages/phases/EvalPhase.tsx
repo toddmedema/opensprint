@@ -73,12 +73,13 @@ interface EvalPhaseProps {
   onNavigateToBuildTask?: (taskId: string) => void;
 }
 
-export type FeedbackStatusFilter = "all" | "pending" | "resolved";
+export type FeedbackStatusFilter = "all" | "pending" | "resolved" | "cancelled";
 
 function matchesStatusFilter(item: FeedbackItem, filter: FeedbackStatusFilter): boolean {
   if (filter === "all") return true;
   if (filter === "pending") return item.status === "pending";
-  if (filter === "resolved") return item.status === "resolved" || item.status === "cancelled";
+  if (filter === "resolved") return item.status === "resolved";
+  if (filter === "cancelled") return item.status === "cancelled";
   return true;
 }
 
@@ -86,7 +87,7 @@ function countByStatus(feedback: FeedbackItem[], filter: FeedbackStatusFilter): 
   return feedback.filter((item) => matchesStatusFilter(item, filter)).length;
 }
 
-const VALID_FILTER_VALUES: FeedbackStatusFilter[] = ["all", "pending", "resolved"];
+const VALID_FILTER_VALUES: FeedbackStatusFilter[] = ["all", "pending", "resolved", "cancelled"];
 
 function loadFeedbackStatusFilter(): FeedbackStatusFilter {
   if (typeof window === "undefined") return "pending";
@@ -586,6 +587,15 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
   /** IDs of items animating out (resolved but still visible during collapse). Keeps them in the tree when filter would hide them. */
   const [animatingOutIds, setAnimatingOutIds] = useState<Set<string>>(new Set());
 
+  // Reset filter when "cancelled" is selected but no feedback has status cancelled (option no longer shown)
+  const hasCancelled = feedback.some((f) => f.status === "cancelled");
+  useEffect(() => {
+    if (statusFilter === "cancelled" && !hasCancelled) {
+      setStatusFilter("pending");
+      saveFeedbackStatusFilter("pending");
+    }
+  }, [statusFilter, hasCancelled]);
+
   const handleSubmit = async () => {
     if (!input.trim() || submitting) return;
     const text = input.trim();
@@ -847,6 +857,11 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
                 <option value="all">All ({countByStatus(feedback, "all")})</option>
                 <option value="pending">Pending ({countByStatus(feedback, "pending")})</option>
                 <option value="resolved">Resolved ({countByStatus(feedback, "resolved")})</option>
+                {feedback.some((f) => f.status === "cancelled") && (
+                  <option value="cancelled">
+                    Cancelled ({countByStatus(feedback, "cancelled")})
+                  </option>
+                )}
               </select>
             )}
           </div>
@@ -863,7 +878,9 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
                 ? "No feedback yet."
                 : statusFilter === "pending"
                   ? "No pending feedback yet."
-                  : "No resolved feedback yet."}
+                  : statusFilter === "resolved"
+                    ? "No resolved feedback yet."
+                    : "No cancelled feedback yet."}
             </div>
           ) : (
             <div className="space-y-3">

@@ -227,6 +227,20 @@ const mockFeedbackItems: FeedbackItem[] = [
   },
 ];
 
+/** Same as mockFeedbackItems but with one cancelled item (Bug 7). */
+const mockFeedbackWithCancelled: FeedbackItem[] = [
+  ...mockFeedbackItems,
+  {
+    id: "fb-7",
+    text: "Bug 7",
+    category: "bug",
+    mappedPlanId: null,
+    createdTaskIds: [],
+    status: "cancelled",
+    createdAt: "2024-01-01T00:00:07Z",
+  },
+];
+
 describe("EvalPhase feedback form", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1015,6 +1029,125 @@ describe("EvalPhase feedback form", () => {
       expect(screen.getByText("Bug 6")).toBeInTheDocument();
       expect(screen.queryByText("Bug 1")).not.toBeInTheDocument();
       expect(screen.queryByText("Bug 3")).not.toBeInTheDocument();
+    });
+
+    it("does not show Cancelled option when no feedback has status cancelled", async () => {
+      const store = createStore({ evalFeedback: mockFeedbackItems });
+      render(
+        <Provider store={store}>
+          <EvalPhase projectId="proj-1" />
+        </Provider>
+      );
+
+      await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
+
+      const filterSelect = screen.getByTestId("feedback-status-filter") as HTMLSelectElement;
+      const options = Array.from(filterSelect.options).map((o) => o.value);
+      expect(options).toEqual(["all", "pending", "resolved"]);
+      expect(options).not.toContain("cancelled");
+    });
+
+    it("shows Cancelled option when at least one feedback has status cancelled", async () => {
+      const store = createStore({ evalFeedback: mockFeedbackWithCancelled });
+      render(
+        <Provider store={store}>
+          <EvalPhase projectId="proj-1" />
+        </Provider>
+      );
+
+      await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
+
+      expect(screen.getByRole("option", { name: "Cancelled (1)" })).toBeInTheDocument();
+      const filterSelect = screen.getByTestId("feedback-status-filter") as HTMLSelectElement;
+      const options = Array.from(filterSelect.options).map((o) => o.value);
+      expect(options).toContain("cancelled");
+    });
+
+    it("Cancelled filter shows only cancelled items", async () => {
+      const store = createStore({ evalFeedback: mockFeedbackWithCancelled });
+      const user = userEvent.setup();
+      render(
+        <Provider store={store}>
+          <EvalPhase projectId="proj-1" />
+        </Provider>
+      );
+
+      await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
+
+      await user.selectOptions(screen.getByTestId("feedback-status-filter"), "cancelled");
+
+      expect(screen.getByText("Bug 7")).toBeInTheDocument();
+      expect(screen.queryByText("Bug 6")).not.toBeInTheDocument();
+      expect(screen.queryByText("Bug 1")).not.toBeInTheDocument();
+    });
+
+    it("Resolved filter excludes cancelled items", async () => {
+      const store = createStore({ evalFeedback: mockFeedbackWithCancelled });
+      const user = userEvent.setup();
+      render(
+        <Provider store={store}>
+          <EvalPhase projectId="proj-1" />
+        </Provider>
+      );
+
+      await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
+
+      await user.selectOptions(screen.getByTestId("feedback-status-filter"), "resolved");
+
+      expect(screen.getByText("Bug 6")).toBeInTheDocument();
+      expect(screen.queryByText("Bug 7")).not.toBeInTheDocument();
+    });
+
+    it("resets to Pending when cancelled is selected but no cancelled items exist", async () => {
+      const store = createStore({ evalFeedback: mockFeedbackWithCancelled });
+      const user = userEvent.setup();
+      render(
+        <Provider store={store}>
+          <EvalPhase projectId="proj-1" />
+        </Provider>
+      );
+
+      await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
+      await user.selectOptions(screen.getByTestId("feedback-status-filter"), "cancelled");
+
+      // Simulate feedback changing: cancelled item gets resolved (e.g. via WebSocket update)
+      act(() => {
+        store.dispatch(
+          updateFeedbackItem({ ...mockFeedbackWithCancelled[6], status: "resolved" })
+        );
+      });
+
+      await waitFor(() => {
+        const filterSelect = screen.getByTestId("feedback-status-filter") as HTMLSelectElement;
+        expect(filterSelect.value).toBe("pending");
+      });
+    });
+
+    it("writes and restores cancelled filter to localStorage", async () => {
+      const store = createStore({ evalFeedback: mockFeedbackWithCancelled });
+      const user = userEvent.setup();
+      const { rerender } = render(
+        <Provider store={store}>
+          <EvalPhase key="first" projectId="proj-1" />
+        </Provider>
+      );
+
+      await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
+
+      await user.selectOptions(screen.getByTestId("feedback-status-filter"), "cancelled");
+      expect(localStorage.getItem(EVALUATE_FEEDBACK_FILTER_KEY)).toBe("cancelled");
+
+      // Re-mount with new key to force fresh mount and verify restore from localStorage
+      rerender(
+        <Provider store={store}>
+          <EvalPhase key="second" projectId="proj-1" />
+        </Provider>
+      );
+
+      await waitFor(() => {
+        const filterSelect = screen.getByTestId("feedback-status-filter") as HTMLSelectElement;
+        expect(filterSelect.value).toBe("cancelled");
+      });
     });
 
     it("default Pending filter shows both pending and mapped items on first load", async () => {
