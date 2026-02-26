@@ -116,7 +116,7 @@ describe("Help chat API", () => {
         messages: expect.arrayContaining([
           expect.objectContaining({ role: "user", content: "What is in this project?" }),
         ]),
-        systemPrompt: expect.stringContaining("Project: Test Project"),
+        systemPrompt: expect.stringMatching(/Project: Test Project[\s\S]*## Currently Running Agents/),
       })
     );
   });
@@ -167,4 +167,5 @@ describe("Help chat API", () => {
       })
     );
   });
+
 });

@@ -1,10 +1,10 @@
-import type { HelpChatRequest, HelpChatResponse } from "@opensprint/shared";
+import type { HelpChatRequest, HelpChatResponse, ActiveAgent } from "@opensprint/shared";
 import { getAgentForPlanningRole, AGENT_ROLE_LABELS } from "@opensprint/shared";
 import { ProjectService } from "./project.service.js";
 import { PrdService } from "./prd.service.js";
 import { PlanService } from "./plan.service.js";
 import { taskStore } from "./task-store.service.js";
-import { activeAgentsService } from "./active-agents.service.js";
+import { orchestratorService } from "./orchestrator.service.js";
 import { agentService } from "./agent.service.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
@@ -25,6 +25,7 @@ Your role is to help users understand their projects, tasks, plans, and currentl
 
 **How to help:**
 - Explain what you see in the context (PRD, plans, tasks, active agents)
+- When asked "how many agents are running" or similar, report the exact count and list each agent from the "Currently Running Agents" section — never say "(None)" if the context shows agents
 - Answer questions about OpenSprint workflow (Sketch, Plan, Execute, Evaluate, Deliver)
 - Point users to where they can take action (e.g. "Use the Execute tab to run tasks")
 - Describe agent roles and phases when asked`;
@@ -49,7 +50,7 @@ export class HelpChatService {
       this.prdService.getPrd(projectId).catch(() => null),
       this.planService.listPlans(projectId).catch(() => []),
       taskStore.listAll(projectId).catch(() => []),
-      Promise.resolve(activeAgentsService.listEntries(projectId)),
+      orchestratorService.getActiveAgents(projectId).catch(() => []),
     ]);
 
     const parts: string[] = [];
@@ -113,10 +114,18 @@ export class HelpChatService {
 
   /** Build homepage context: projects summary, active agents across all projects */
   private async buildHomepageContext(): Promise<string> {
-    const [projects, agents] = await Promise.all([
-      this.projectService.listProjects(),
-      Promise.resolve(activeAgentsService.listEntries()),
-    ]);
+    const projects = await this.projectService.listProjects();
+    const agentsWithProject: { agent: ActiveAgent; projectName: string }[] = [];
+    for (const p of projects) {
+      try {
+        const agents = await orchestratorService.getActiveAgents(p.id);
+        for (const a of agents) {
+          agentsWithProject.push({ agent: a, projectName: p.name });
+        }
+      } catch {
+        // Skip projects that fail (e.g. not yet initialized)
+      }
+    }
 
     const parts: string[] = [];
     parts.push("## Homepage View — All Projects");
@@ -128,10 +137,10 @@ export class HelpChatService {
       parts.push("## Projects\n(No projects yet)");
     }
 
-    if (agents.length > 0) {
-      const agentLines = agents.map(
-        (a) =>
-          `- ${AGENT_ROLE_LABELS[a.role as keyof typeof AGENT_ROLE_LABELS] ?? a.role}: ${a.label} | project: ${a.projectId} | phase: ${a.phase}`
+    if (agentsWithProject.length > 0) {
+      const agentLines = agentsWithProject.map(
+        ({ agent: a, projectName }) =>
+          `- ${AGENT_ROLE_LABELS[a.role as keyof typeof AGENT_ROLE_LABELS] ?? a.role}: ${a.label} | project: ${projectName} | phase: ${a.phase}`
       );
       parts.push("## Currently Running Agents (across all projects)\n\n" + agentLines.join("\n"));
     } else {
