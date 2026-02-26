@@ -255,7 +255,7 @@ export function ProjectSetup() {
 
           <div className="card p-6">
             {step === "basics" && (
-              <>
+              <div className="space-y-4">
                 <ProjectMetadataStep
                   value={metadata}
                   onChange={(v) => {
@@ -269,7 +269,7 @@ export function ProjectSetup() {
                   onChange={setRepoPath}
                   onBrowse={() => setShowFolderBrowser(true)}
                 />
-              </>
+              </div>
             )}
 
             {step === "agents" && (
