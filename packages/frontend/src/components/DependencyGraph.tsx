@@ -193,6 +193,10 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
     };
 
     updateDimensions();
+    // Run again after first paint so layout runs on mount without requiring a click.
+    // Fixes: plans render at (0,0) until user interaction (ResizeObserver may not fire
+    // until layout is complete; rAF ensures we check after the browser has laid out).
+    const rafId = requestAnimationFrame(() => updateDimensions());
     const ro = new ResizeObserver(updateDimensions);
     ro.observe(el);
 
@@ -212,6 +216,7 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
     }, 100);
 
     return () => {
+      cancelAnimationFrame(rafId);
       ro.disconnect();
       clearTimeout(fallbackId);
     };

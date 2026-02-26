@@ -147,6 +147,11 @@ describe("DependencyGraph", () => {
 
     const nodes = document.querySelectorAll("svg g.nodes g");
     expect(nodes.length).toBe(3);
+
+    // Acceptance: plans display in correct position on initial load (not stacked at 0,0)
+    const transforms = Array.from(nodes).map((n) => n.getAttribute("transform") ?? "");
+    const atOrigin = transforms.filter((t) => t === "translate(0,0)");
+    expect(atOrigin.length).toBeLessThan(nodes.length);
   });
 
   it("calls onPlanClick when a plan node is clicked", async () => {
