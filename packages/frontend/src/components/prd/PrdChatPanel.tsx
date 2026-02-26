@@ -224,6 +224,9 @@ export function PrdChatPanel({
                 onChange={setChatInput}
                 onSend={handleSend}
                 sendDisabled={sending}
+                sendDisabledTooltip={
+                  sending ? `Waiting on ${agentLabel} to finish current response` : undefined
+                }
                 placeholder={
                   selectionContext ? "Comment on this selection..." : "Ask about your PRD..."
                 }
@@ -337,6 +340,9 @@ export function PrdChatPanel({
           onChange={setChatInput}
           onSend={handleSend}
           sendDisabled={sending}
+          sendDisabledTooltip={
+            sending ? `Waiting on ${agentLabel} to finish current response` : undefined
+          }
           placeholder={
             selectionContext ? "Comment on this selection..." : "Ask about your PRD..."
           }

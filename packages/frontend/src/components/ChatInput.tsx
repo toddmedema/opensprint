@@ -18,6 +18,8 @@ export interface ChatInputProps {
   onSend: () => void;
   /** When true, disables the send button (e.g. while sending). Input stays enabled so user can compose next message. */
   sendDisabled?: boolean;
+  /** Tooltip shown when send button is disabled due to sendDisabled (e.g. "Waiting on Dreamer to finish current response"). */
+  sendDisabledTooltip?: string;
   placeholder?: string;
   inputRef?: React.RefObject<HTMLTextAreaElement | null>;
   "aria-label"?: string;
@@ -35,6 +37,7 @@ export function ChatInput({
   onChange,
   onSend,
   sendDisabled = false,
+  sendDisabledTooltip,
   placeholder,
   inputRef: externalInputRef,
   "aria-label": ariaLabel = "Chat message",
@@ -73,6 +76,7 @@ export function ChatInput({
         onClick={onSend}
         disabled={sendDisabled || !value.trim()}
         aria-label="Send"
+        title={sendDisabled && sendDisabledTooltip ? sendDisabledTooltip : undefined}
         className={sendButtonClassName}
       >
         <SendIcon className="w-3.5 h-3.5" />

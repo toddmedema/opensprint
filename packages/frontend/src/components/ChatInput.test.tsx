@@ -104,6 +104,38 @@ describe("ChatInput", () => {
     expect(input).not.toBeDisabled();
   });
 
+  it("shows tooltip on disabled Send when sendDisabledTooltip is provided", () => {
+    render(
+      <ChatInput
+        value="Hello"
+        onChange={vi.fn()}
+        onSend={vi.fn()}
+        sendDisabled={true}
+        sendDisabledTooltip="Waiting on Dreamer to finish current response"
+        placeholder="Type..."
+      />
+    );
+    const sendButton = screen.getByRole("button", { name: "Send" });
+    expect(sendButton).toHaveAttribute(
+      "title",
+      "Waiting on Dreamer to finish current response"
+    );
+  });
+
+  it("does not show sendDisabledTooltip when sendDisabled is false", () => {
+    render(
+      <ChatInput
+        value="Hello"
+        onChange={vi.fn()}
+        onSend={vi.fn()}
+        sendDisabledTooltip="Waiting on Dreamer to finish current response"
+        placeholder="Type..."
+      />
+    );
+    const sendButton = screen.getByRole("button", { name: "Send" });
+    expect(sendButton).not.toHaveAttribute("title");
+  });
+
   it("disables send button when value is empty", () => {
     render(
       <ChatInput value="" onChange={vi.fn()} onSend={vi.fn()} placeholder="Type..." />

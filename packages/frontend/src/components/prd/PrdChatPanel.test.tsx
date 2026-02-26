@@ -340,6 +340,24 @@ describe("PrdChatPanel", () => {
       expect(sendButton).toBeDisabled();
     });
 
+    it("shows tooltip on disabled Send when Dreamer is responding", () => {
+      render(
+        <PrdChatPanel
+          {...defaultProps}
+          variant="inline"
+          collapsed={false}
+          onCollapsedChange={vi.fn()}
+          sending={true}
+        />
+      );
+
+      const sendButton = screen.getByRole("button", { name: "Send" });
+      expect(sendButton).toHaveAttribute(
+        "title",
+        "Waiting on Dreamer to finish current response"
+      );
+    });
+
     it("allows typing in input while sending (floating variant)", async () => {
       const user = userEvent.setup();
       render(
