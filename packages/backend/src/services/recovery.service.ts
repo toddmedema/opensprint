@@ -69,6 +69,26 @@ function isPidAlive(pid: number): boolean {
   }
 }
 
+const SIGTERM_WAIT_MS = 2000;
+
+/** Terminate an agent process: SIGTERM first, then SIGKILL if it does not exit. */
+async function terminateAgentProcess(pid: number): Promise<void> {
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    // Process may already be gone
+    return;
+  }
+  await new Promise((r) => setTimeout(r, SIGTERM_WAIT_MS));
+  if (isPidAlive(pid)) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      // Best effort
+    }
+  }
+}
+
 export class RecoveryService {
   private taskStore = taskStoreSingleton;
   private branchManager = new BranchManager();
@@ -241,6 +261,14 @@ export class RecoveryService {
       try {
         const task = await this.taskStore.show(projectId, taskId);
         if (task.status === "in_progress") {
+          if (
+            typeof heartbeat.pid === "number" &&
+            heartbeat.pid > 0 &&
+            isPidAlive(heartbeat.pid)
+          ) {
+            log.info("Terminating orphaned agent process", { taskId, pid: heartbeat.pid });
+            await terminateAgentProcess(heartbeat.pid);
+          }
           await this.recoverTask(projectId, repoPath, task);
           recovered.push(taskId);
         }
