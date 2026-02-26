@@ -14,11 +14,13 @@ const mockBuildStatus = vi.fn().mockResolvedValue({
 });
 
 const mockAgentsActive = vi.fn().mockResolvedValue([]);
+const mockLiveOutput = vi.fn().mockResolvedValue({ output: "" });
 
 vi.mock("../../api/client", () => ({
   api: {
     execute: {
       status: (...args: unknown[]) => mockBuildStatus(...args),
+      liveOutput: (...args: unknown[]) => mockLiveOutput(...args),
     },
     agents: {
       active: (...args: unknown[]) => mockAgentsActive(...args),
@@ -50,6 +52,7 @@ describe("AgentDashboard", () => {
       queueDepth: 0,
     });
     mockAgentsActive.mockResolvedValue([]);
+    mockLiveOutput.mockResolvedValue({ output: "" });
   });
 
   it("renders header with title and subtitle", async () => {
@@ -93,6 +96,7 @@ describe("AgentDashboard", () => {
         startedAt: "2024-01-01T12:00:00Z",
       },
     ]);
+    mockLiveOutput.mockResolvedValue({ output: "**Bold text** and `code`" });
     const store = configureStore({
       reducer: { execute: executeReducer },
       preloadedState: {
@@ -172,5 +176,51 @@ describe("AgentDashboard", () => {
     expect(outputDiv).toBeInTheDocument();
     expect(outputDiv).toHaveClass("prose-execute-task");
     expect(outputDiv).toHaveClass("text-theme-success-muted");
+  });
+
+  it("fetches and polls live output when agent is selected", async () => {
+    mockAgentsActive.mockResolvedValue([
+      {
+        id: "task-1",
+        phase: "coding",
+        branchName: "opensprint/task-1",
+        label: "opensprint/task-1",
+        startedAt: "2024-01-01T12:00:00Z",
+      },
+    ]);
+    mockLiveOutput.mockResolvedValue({ output: "Initial output" });
+    const store = configureStore({
+      reducer: { execute: executeReducer },
+      preloadedState: {
+        execute: {
+          ...initialExecuteState,
+          activeAgents: [
+            {
+              id: "task-1",
+              phase: "coding",
+              branchName: "opensprint/task-1",
+              label: "opensprint/task-1",
+              startedAt: "2024-01-01T12:00:00Z",
+            },
+          ],
+          activeAgentsLoadedOnce: true,
+        },
+      },
+    });
+    const user = userEvent.setup();
+    render(
+      <Provider store={store}>
+        <AgentDashboard projectId="proj-1" />
+      </Provider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("task-1")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("task-1"));
+
+    await waitFor(() => {
+      expect(mockLiveOutput).toHaveBeenCalledWith("proj-1", "task-1");
+    });
   });
 });

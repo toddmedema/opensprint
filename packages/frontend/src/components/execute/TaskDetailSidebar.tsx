@@ -105,7 +105,7 @@ export function TaskDetailSidebar({
     jumpToBottom,
     handleScroll: handleLiveOutputScroll,
   } = useAutoScroll({
-    contentLength: agentOutput.length,
+    contentLength: agentOutput.join("").length,
     resetKey: selectedTask,
   });
   const priorityDropdownRef = useRef<HTMLDivElement>(null);

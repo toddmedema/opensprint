@@ -19,6 +19,7 @@ const mockMarkDone = vi.fn().mockResolvedValue(undefined);
 const mockUnblock = vi.fn().mockResolvedValue({ taskUnblocked: true });
 const mockFeedbackGet = vi.fn().mockResolvedValue(null);
 const mockAgentsActive = vi.fn().mockResolvedValue([]);
+const mockLiveOutput = vi.fn().mockResolvedValue({ output: "" });
 
 vi.mock("../../api/client", () => ({
   api: {
@@ -34,7 +35,7 @@ vi.mock("../../api/client", () => ({
     },
     execute: {
       status: vi.fn().mockResolvedValue({}),
-      liveOutput: vi.fn().mockResolvedValue({ output: "" }),
+      liveOutput: (...args: unknown[]) => mockLiveOutput(...args),
     },
     agents: {
       active: (...args: unknown[]) => mockAgentsActive(...args),
@@ -1769,6 +1770,7 @@ describe("ExecutePhase Redux integration", () => {
         assignee: null,
       },
     ];
+    mockLiveOutput.mockResolvedValue({ output: "Line 1\nLine 2\nLine 3\n" });
     const store = createStore(
       tasks,
       {
@@ -1817,6 +1819,50 @@ describe("ExecutePhase Redux integration", () => {
       expect(screen.getByText("Connecting to live output…")).toBeInTheDocument();
       expect(screen.getByTestId("live-output-retry")).toBeInTheDocument();
     });
+  });
+
+  it("polls live output every 1s when viewing in-progress task", async () => {
+    vi.useFakeTimers();
+    try {
+      mockGet.mockResolvedValue({
+        id: "epic-1.1",
+        title: "Task A",
+        kanbanColumn: "in_progress",
+      });
+      mockLiveOutput.mockResolvedValue({ output: "Agent output" });
+      const tasks = [
+        {
+          id: "epic-1.1",
+          title: "Task A",
+          epicId: "epic-1",
+          kanbanColumn: "in_progress",
+          priority: 0,
+          assignee: null,
+        },
+      ];
+      const store = createStore(
+        tasks,
+        { selectedTaskId: "epic-1.1", agentOutput: { "epic-1.1": ["Initial"] } },
+        { connected: true }
+      );
+      render(
+        <Provider store={store}>
+          <ExecutePhase projectId="proj-1" />
+        </Provider>
+      );
+
+      await vi.waitFor(() => {
+        expect(mockLiveOutput).toHaveBeenCalledWith("proj-1", "epic-1.1");
+      });
+      const beforeCalls = mockLiveOutput.mock.calls.length;
+
+      // Advance 2.5 seconds — interval fires at 1s and 2s
+      await vi.advanceTimersByTimeAsync(2500);
+
+      expect(mockLiveOutput.mock.calls.length).toBeGreaterThanOrEqual(beforeCalls + 2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("task detail sidebar header shows only task title, not redundant Task label", async () => {

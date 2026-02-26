@@ -241,6 +241,13 @@ describe("executeSlice", () => {
       expect(store.getState().execute.agentOutput["task-1"]).toEqual(["Hello world"]);
     });
 
+    it("fetchLiveOutputBackfill.fulfilled always applies result (including empty) so UI refreshes during polling", async () => {
+      vi.mocked(api.execute.liveOutput).mockResolvedValue({ output: "" });
+      const store = createStore();
+      await store.dispatch(fetchLiveOutputBackfill({ projectId: "proj-1", taskId: "task-1" }));
+      expect(store.getState().execute.agentOutput["task-1"]).toEqual([""]);
+    });
+
     it("setOrchestratorRunning sets orchestrator state", () => {
       const store = createStore();
       store.dispatch(setOrchestratorRunning(true));

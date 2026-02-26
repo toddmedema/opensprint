@@ -2,7 +2,11 @@ import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAppDispatch, useAppSelector } from "../../store";
-import { fetchExecuteStatus, fetchActiveAgents } from "../../store/slices/executeSlice";
+import {
+  fetchExecuteStatus,
+  fetchActiveAgents,
+  fetchLiveOutputBackfill,
+} from "../../store/slices/executeSlice";
 import { setSelectedTaskId } from "../../store/slices/executeSlice";
 import { wsSend } from "../../store/middleware/websocketMiddleware";
 import { CloseButton } from "../../components/CloseButton";
@@ -64,6 +68,17 @@ export function AgentDashboard({ projectId }: AgentDashboardProps) {
       dispatch(setSelectedTaskId(null));
     }
   }, [selectedAgent, dispatch]);
+
+  // Live polling: refresh agent output every 1s while viewing an active agent.
+  // WebSocket streams chunks when available; polling ensures updates even when WS fails (e.g. Cursor agent).
+  useEffect(() => {
+    if (!selectedAgent) return;
+    dispatch(fetchLiveOutputBackfill({ projectId, taskId: selectedAgent }));
+    const interval = setInterval(() => {
+      dispatch(fetchLiveOutputBackfill({ projectId, taskId: selectedAgent }));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [projectId, selectedAgent, dispatch]);
 
   return (
     <div className="flex flex-col h-full">

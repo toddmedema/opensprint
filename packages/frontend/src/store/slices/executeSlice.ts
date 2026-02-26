@@ -455,12 +455,11 @@ const executeSlice = createSlice({
       },
     });
 
-    // fetchLiveOutputBackfill — filter NDJSON/plain text for consistency with live/archived
+    // fetchLiveOutputBackfill — filter NDJSON/plain text for consistency with live/archived.
+    // Always apply poll result so UI refreshes every ~1s during active agent sessions.
     builder.addCase(fetchLiveOutputBackfill.fulfilled, (state, action) => {
-      if (action.payload.output) {
-        const filtered = filterAgentOutput(action.payload.output);
-        state.agentOutput[action.payload.taskId] = [filtered];
-      }
+      const filtered = filterAgentOutput(action.payload.output ?? "");
+      state.agentOutput[action.payload.taskId] = [filtered];
     });
 
     // fetchActiveAgents

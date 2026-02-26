@@ -139,10 +139,15 @@ export function ExecutePhase({
     }
   }, [effectiveSelectedTask, isDoneTask, wsConnected, dispatch]);
 
+  // Live polling: refresh agent output every 1s while viewing an in-progress task.
+  // WebSocket streams chunks when available; polling ensures updates even when WS fails (e.g. Cursor agent).
   useEffect(() => {
-    if (effectiveSelectedTask && !isDoneTask) {
+    if (!effectiveSelectedTask || isDoneTask) return;
+    dispatch(fetchLiveOutputBackfill({ projectId, taskId: effectiveSelectedTask }));
+    const interval = setInterval(() => {
       dispatch(fetchLiveOutputBackfill({ projectId, taskId: effectiveSelectedTask }));
-    }
+    }, 1000);
+    return () => clearInterval(interval);
   }, [projectId, effectiveSelectedTask, isDoneTask, dispatch]);
 
   const handleMarkDone = async () => {
