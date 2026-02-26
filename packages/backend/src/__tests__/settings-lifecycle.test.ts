@@ -94,6 +94,33 @@ describe("Settings lifecycle — service-level", () => {
     expect(persisted.maxConcurrentCoders).toBe(3);
   });
 
+  it("persists apiKeys to global store and returns them after getSettings", async () => {
+    const repoPath = path.join(tempDir, "apikeys");
+    const project = await projectService.createProject({
+      name: "API Keys",
+      repoPath,
+      simpleComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+      complexComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+    });
+
+    const apiKeys = {
+      ANTHROPIC_API_KEY: [{ id: "k1", value: "sk-ant-xxx" }],
+      CURSOR_API_KEY: [
+        { id: "k2", value: "cursor-key-1" },
+        { id: "k3", value: "cursor-key-2", limitHitAt: "2025-02-25T12:00:00Z" },
+      ],
+    };
+    await projectService.updateSettings(project.id, { apiKeys });
+
+    const fetched = await projectService.getSettings(project.id);
+    expect(fetched.apiKeys).toEqual(apiKeys);
+
+    const persisted = await readProjectFromGlobalStore(tempDir, project.id);
+    expect(persisted.apiKeys).toEqual(apiKeys);
+  });
+
   it("round-trip: save new shape → read → save again → output is identical (idempotent)", async () => {
     const repoPath = path.join(tempDir, "round-trip");
     const project = await projectService.createProject({
@@ -256,6 +283,25 @@ describe("Settings API lifecycle", () => {
     expect(settings.complexComplexityAgent).toBeDefined();
     expect(settings.complexComplexityAgent.type).toBe("claude");
     expect(settings.complexComplexityAgent.model).toBe("claude-opus-4");
+  });
+
+  it("PUT /api/v1/projects/:id/settings accepts and persists apiKeys", async () => {
+    const apiKeys = {
+      ANTHROPIC_API_KEY: [{ id: "a1", value: "sk-ant-test" }],
+      CURSOR_API_KEY: [{ id: "c1", value: "cursor-test-key" }],
+    };
+    const res = await request(app)
+      .put(`${API_PREFIX}/projects/${projectId}/settings`)
+      .send({ apiKeys });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.apiKeys).toEqual(apiKeys);
+
+    const getRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/settings`);
+    expect(getRes.body.data.apiKeys).toEqual(apiKeys);
+
+    const settings = await readProjectFromGlobalStore(tempDir, projectId);
+    expect(settings.apiKeys).toEqual(apiKeys);
   });
 
   it("Create project with gitWorkingMode branches → global store persists it", async () => {

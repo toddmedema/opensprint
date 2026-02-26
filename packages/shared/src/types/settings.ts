@@ -108,6 +108,20 @@ export type UnknownScopeStrategy = "conservative" | "optimistic";
 /** Git working mode: worktree (parallel worktrees) or branches (single branch in main repo) */
 export type GitWorkingMode = "worktree" | "branches";
 
+/** API key provider env var names (used as keys in apiKeys) */
+export type ApiKeyProvider = "ANTHROPIC_API_KEY" | "CURSOR_API_KEY";
+
+/** Single API key entry with optional limit-hit timestamp */
+export interface ApiKeyEntry {
+  id: string;
+  value: string;
+  /** ISO8601 timestamp when rate/limit was hit; key is retried after 24h */
+  limitHitAt?: string;
+}
+
+/** API keys per provider: array of entries ordered by preference (first available used) */
+export type ApiKeys = Partial<Record<ApiKeyProvider, ApiKeyEntry[]>>;
+
 /** Full project settings stored in global database (~/.opensprint/settings.json) keyed by project_id */
 export interface ProjectSettings {
   simpleComplexityAgent: AgentConfig;
@@ -125,6 +139,8 @@ export interface ProjectSettings {
   unknownScopeStrategy?: UnknownScopeStrategy;
   /** Git working mode: "worktree" (parallel worktrees) or "branches" (single branch in main repo). Default: "worktree". */
   gitWorkingMode?: GitWorkingMode;
+  /** Per-provider API keys for rotation when limits are hit. Falls back to process.env when absent. */
+  apiKeys?: ApiKeys;
 }
 
 /** Planning agent roles — Dreamer/Analyst use fixed tiers; others inherit plan complexity */
@@ -182,6 +198,15 @@ export function parseSettings(raw: unknown): ProjectSettings {
     r?.gitWorkingMode === "worktree" || r?.gitWorkingMode === "branches"
       ? (r.gitWorkingMode as "worktree" | "branches")
       : "worktree";
+  const apiKeys = sanitizeApiKeys(r?.apiKeys);
+
+  const base = {
+    deployment: (r?.deployment as DeploymentConfig) ?? DEFAULT_DEPLOYMENT_CONFIG,
+    hilConfig: (r?.hilConfig as HilConfig) ?? DEFAULT_HIL_CONFIG,
+    testFramework: (r?.testFramework as string | null) ?? null,
+    gitWorkingMode,
+    apiKeys: apiKeys ?? undefined,
+  };
 
   if (simpleObj && typeof simpleObj === "object" && complexObj && typeof complexObj === "object") {
     const simple = simpleObj as AgentConfig;
@@ -190,10 +215,7 @@ export function parseSettings(raw: unknown): ProjectSettings {
       ...(r as Partial<ProjectSettings>),
       simpleComplexityAgent: simple,
       complexComplexityAgent: complex,
-      deployment: (r?.deployment as DeploymentConfig) ?? DEFAULT_DEPLOYMENT_CONFIG,
-      hilConfig: (r?.hilConfig as HilConfig) ?? DEFAULT_HIL_CONFIG,
-      testFramework: (r?.testFramework as string | null) ?? null,
-      gitWorkingMode,
+      ...base,
     };
   }
   const simple =
@@ -204,10 +226,7 @@ export function parseSettings(raw: unknown): ProjectSettings {
     ...(r as Partial<ProjectSettings>),
     simpleComplexityAgent: simple,
     complexComplexityAgent: complex,
-    deployment: (r?.deployment as DeploymentConfig) ?? DEFAULT_DEPLOYMENT_CONFIG,
-    hilConfig: (r?.hilConfig as HilConfig) ?? DEFAULT_HIL_CONFIG,
-    testFramework: (r?.testFramework as string | null) ?? null,
-    gitWorkingMode,
+    ...base,
   } as ProjectSettings;
 }
 
@@ -217,3 +236,78 @@ export const DEFAULT_HIL_CONFIG: HilConfig = {
   architectureDecisions: "automated",
   dependencyModifications: "automated",
 };
+
+/** Valid API key provider names */
+export const API_KEY_PROVIDERS: ApiKeyProvider[] = ["ANTHROPIC_API_KEY", "CURSOR_API_KEY"];
+
+/**
+ * Validate a single API key entry. Returns the entry if valid; throws if invalid.
+ */
+export function validateApiKeyEntry(entry: unknown): ApiKeyEntry {
+  if (!entry || typeof entry !== "object") {
+    throw new Error("API key entry must be an object");
+  }
+  const e = entry as Record<string, unknown>;
+  const id = e.id;
+  const value = e.value;
+  if (typeof id !== "string" || !id.trim()) {
+    throw new Error("API key entry must have a non-empty string id");
+  }
+  if (typeof value !== "string") {
+    throw new Error("API key entry must have a string value");
+  }
+  const limitHitAt = e.limitHitAt;
+  if (limitHitAt !== undefined && limitHitAt !== null) {
+    if (typeof limitHitAt !== "string") {
+      throw new Error("API key limitHitAt must be a string (ISO8601)");
+    }
+  }
+  return {
+    id: id.trim(),
+    value,
+    ...(limitHitAt != null && limitHitAt !== "" && { limitHitAt: String(limitHitAt) }),
+  };
+}
+
+/**
+ * Sanitize raw apiKeys into valid ApiKeys. Returns undefined if input is empty/invalid.
+ * Backward compat: ignores unknown provider keys; validates entries for known providers.
+ */
+export function sanitizeApiKeys(raw: unknown): ApiKeys | undefined {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
+    return undefined;
+  }
+  const obj = raw as Record<string, unknown>;
+  const result: ApiKeys = {};
+  for (const provider of API_KEY_PROVIDERS) {
+    const arr = obj[provider];
+    if (arr == null) continue;
+    if (!Array.isArray(arr)) continue;
+    const entries: ApiKeyEntry[] = [];
+    for (const item of arr) {
+      try {
+        entries.push(validateApiKeyEntry(item));
+      } catch {
+        // Skip invalid entries
+      }
+    }
+    if (entries.length > 0) {
+      result[provider] = entries;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/**
+ * Check if limitHitAt is older than 24 hours (key is available again).
+ */
+export function isLimitHitExpired(limitHitAt: string | undefined): boolean {
+  if (!limitHitAt) return true;
+  try {
+    const ts = new Date(limitHitAt).getTime();
+    if (Number.isNaN(ts)) return true;
+    return Date.now() - ts > 24 * 60 * 60 * 1000;
+  } catch {
+    return true;
+  }
+}

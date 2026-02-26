@@ -12,6 +12,7 @@ import {
   DEFAULT_REVIEW_MODE,
   getTestCommandForFramework,
   parseSettings,
+  sanitizeApiKeys,
 } from "@opensprint/shared";
 import type { DeploymentConfig, HilConfig } from "@opensprint/shared";
 import { taskStore as taskStoreSingleton } from "./task-store.service.js";
@@ -117,6 +118,7 @@ function toCanonicalSettings(s: ProjectSettings): ProjectSettings {
     ...(s.maxConcurrentCoders !== undefined && { maxConcurrentCoders: s.maxConcurrentCoders }),
     ...(s.unknownScopeStrategy !== undefined && { unknownScopeStrategy: s.unknownScopeStrategy }),
     gitWorkingMode: s.gitWorkingMode ?? "worktree",
+    ...(s.apiKeys && Object.keys(s.apiKeys).length > 0 && { apiKeys: s.apiKeys }),
   };
 }
 
@@ -485,6 +487,8 @@ export class ProjectService {
       updates.gitWorkingMode === "worktree" || updates.gitWorkingMode === "branches"
         ? updates.gitWorkingMode
         : (current.gitWorkingMode ?? "worktree");
+    const apiKeys =
+      updates.apiKeys !== undefined ? sanitizeApiKeys(updates.apiKeys) ?? undefined : current.apiKeys;
     const updated: ProjectSettings = {
       ...current,
       ...updates,
@@ -492,6 +496,7 @@ export class ProjectService {
       complexComplexityAgent,
       hilConfig,
       gitWorkingMode,
+      apiKeys,
       // Branches mode forces maxConcurrentCoders=1 regardless of stored value
       ...(gitWorkingMode === "branches" && { maxConcurrentCoders: 1 }),
     };
