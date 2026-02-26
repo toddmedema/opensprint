@@ -867,11 +867,11 @@ describe("TaskDetailSidebar", () => {
   });
 
   describe("Task complexity", () => {
-    it("shows Low when task has complexity low", () => {
+    it("shows Simple when task has complexity simple", () => {
       const props = createMinimalProps({
         selectedTaskData: {
           ...createMinimalProps().selectedTaskData,
-          complexity: "low" as const,
+          complexity: "simple" as const,
         },
       });
       render(
@@ -880,16 +880,16 @@ describe("TaskDetailSidebar", () => {
         </Provider>
       );
       const complexity = screen.getByTestId("task-complexity");
-      expect(complexity).toHaveTextContent("Low");
-      expect(complexity).toHaveAttribute("aria-label", "Complexity: low");
-      expect(screen.getByRole("img", { name: "Low complexity" })).toBeInTheDocument();
+      expect(complexity).toHaveTextContent("Simple");
+      expect(complexity).toHaveAttribute("aria-label", "Complexity: simple");
+      expect(screen.getByRole("img", { name: "Simple complexity" })).toBeInTheDocument();
     });
 
-    it("shows High when task has complexity high", () => {
+    it("shows Complex when task has complexity complex", () => {
       const props = createMinimalProps({
         selectedTaskData: {
           ...createMinimalProps().selectedTaskData,
-          complexity: "high" as const,
+          complexity: "complex" as const,
         },
       });
       render(
@@ -898,9 +898,9 @@ describe("TaskDetailSidebar", () => {
         </Provider>
       );
       const complexity = screen.getByTestId("task-complexity");
-      expect(complexity).toHaveTextContent("High");
-      expect(complexity).toHaveAttribute("aria-label", "Complexity: high");
-      expect(screen.getByRole("img", { name: "high complexity" })).toBeInTheDocument();
+      expect(complexity).toHaveTextContent("Complex");
+      expect(complexity).toHaveAttribute("aria-label", "Complexity: complex");
+      expect(screen.getByRole("img", { name: "Complex complexity" })).toBeInTheDocument();
     });
 
     it("shows em dash when task has no complexity", () => {
@@ -924,7 +924,7 @@ describe("TaskDetailSidebar", () => {
       const props = createMinimalProps({
         selectedTaskData: {
           ...createMinimalProps().selectedTaskData,
-          complexity: "high" as const,
+          complexity: "complex" as const,
         },
       });
       render(
@@ -934,7 +934,7 @@ describe("TaskDetailSidebar", () => {
       );
       const row = screen.getByTestId("task-detail-priority-state-row");
       expect(row).toContainElement(screen.getByTestId("task-complexity"));
-      expect(row).toHaveTextContent("High");
+      expect(row).toHaveTextContent("Complex");
       expect(row).toHaveTextContent("In Progress");
     });
   });

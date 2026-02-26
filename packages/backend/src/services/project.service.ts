@@ -94,8 +94,8 @@ const DEFAULT_AGENT_CONFIG = {
 /** Build default ProjectSettings for a repo (no user input). Used when adopting or repairing. */
 function buildDefaultSettings(): ProjectSettings {
   return {
-    lowComplexityAgent: { ...DEFAULT_AGENT_CONFIG },
-    highComplexityAgent: { ...DEFAULT_AGENT_CONFIG },
+    simpleComplexityAgent: { ...DEFAULT_AGENT_CONFIG },
+    complexComplexityAgent: { ...DEFAULT_AGENT_CONFIG },
     deployment: { ...DEFAULT_DEPLOYMENT_CONFIG },
     hilConfig: { ...DEFAULT_HIL_CONFIG },
     testFramework: null,
@@ -108,8 +108,8 @@ function buildDefaultSettings(): ProjectSettings {
 /** Build canonical ProjectSettings for persistence. */
 function toCanonicalSettings(s: ProjectSettings): ProjectSettings {
   return {
-    lowComplexityAgent: s.lowComplexityAgent,
-    highComplexityAgent: s.highComplexityAgent,
+    simpleComplexityAgent: s.simpleComplexityAgent,
+    complexComplexityAgent: s.complexComplexityAgent,
     deployment: s.deployment,
     hilConfig: s.hilConfig,
     testFramework: s.testFramework ?? null,
@@ -174,12 +174,14 @@ export class ProjectService {
       throw new AppError(400, ErrorCodes.INVALID_INPUT, "Repository path is required");
     }
 
-    // Validate agent config schema
-    let lowComplexityAgent: AgentConfigInput;
-    let highComplexityAgent: AgentConfigInput;
+    // Validate agent config schema (accept new or legacy keys)
+    const simpleInput = input.simpleComplexityAgent ?? input.lowComplexityAgent;
+    const complexInput = input.complexComplexityAgent ?? input.highComplexityAgent;
+    let simpleComplexityAgent: AgentConfigInput;
+    let complexComplexityAgent: AgentConfigInput;
     try {
-      lowComplexityAgent = parseAgentConfig(input.lowComplexityAgent, "lowComplexityAgent");
-      highComplexityAgent = parseAgentConfig(input.highComplexityAgent, "highComplexityAgent");
+      simpleComplexityAgent = parseAgentConfig(simpleInput, "simpleComplexityAgent");
+      complexComplexityAgent = parseAgentConfig(complexInput, "complexComplexityAgent");
     } catch (err) {
       const msg = getErrorMessage(err, "Invalid agent configuration");
       throw new AppError(400, ErrorCodes.INVALID_AGENT_CONFIG, msg);
@@ -302,8 +304,8 @@ export class ProjectService {
     const effectiveMaxConcurrentCoders =
       gitWorkingMode === "branches" ? 1 : (input.maxConcurrentCoders ?? 1);
     const settings: ProjectSettings = {
-      lowComplexityAgent,
-      highComplexityAgent,
+      simpleComplexityAgent,
+      complexComplexityAgent,
       deployment,
       hilConfig,
       testFramework,
@@ -455,22 +457,24 @@ export class ProjectService {
     await this.getRepoPath(projectId);
     const current = await this.getSettings(projectId);
 
-    // Validate agent config if provided
-    let lowComplexityAgent = updates.lowComplexityAgent ?? current.lowComplexityAgent;
-    let highComplexityAgent = updates.highComplexityAgent ?? current.highComplexityAgent;
-    if (updates.lowComplexityAgent !== undefined) {
+    // Validate agent config if provided (accept new or legacy keys)
+    const simpleUpdate = updates.simpleComplexityAgent ?? updates.lowComplexityAgent;
+    const complexUpdate = updates.complexComplexityAgent ?? updates.highComplexityAgent;
+    let simpleComplexityAgent = current.simpleComplexityAgent;
+    let complexComplexityAgent = current.complexComplexityAgent;
+    if (simpleUpdate !== undefined) {
       try {
-        lowComplexityAgent = parseAgentConfig(updates.lowComplexityAgent, "lowComplexityAgent");
+        simpleComplexityAgent = parseAgentConfig(simpleUpdate, "simpleComplexityAgent");
       } catch (err) {
-        const msg = getErrorMessage(err, "Invalid low complexity agent configuration");
+        const msg = getErrorMessage(err, "Invalid simple complexity agent configuration");
         throw new AppError(400, ErrorCodes.INVALID_AGENT_CONFIG, msg);
       }
     }
-    if (updates.highComplexityAgent !== undefined) {
+    if (complexUpdate !== undefined) {
       try {
-        highComplexityAgent = parseAgentConfig(updates.highComplexityAgent, "highComplexityAgent");
+        complexComplexityAgent = parseAgentConfig(complexUpdate, "complexComplexityAgent");
       } catch (err) {
-        const msg = getErrorMessage(err, "Invalid high complexity agent configuration");
+        const msg = getErrorMessage(err, "Invalid complex complexity agent configuration");
         throw new AppError(400, ErrorCodes.INVALID_AGENT_CONFIG, msg);
       }
     }
@@ -485,8 +489,8 @@ export class ProjectService {
     const updated: ProjectSettings = {
       ...current,
       ...updates,
-      lowComplexityAgent,
-      highComplexityAgent,
+      simpleComplexityAgent,
+      complexComplexityAgent,
       hilConfig,
       gitWorkingMode,
       // Branches mode forces maxConcurrentCoders=1 regardless of stored value

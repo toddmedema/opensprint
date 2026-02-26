@@ -156,28 +156,28 @@ describe("getPlanComplexityForTask", () => {
 });
 
 describe("planComplexityToTask", () => {
-  it("maps low and medium to low", () => {
-    expect(planComplexityToTask("low")).toBe("low");
-    expect(planComplexityToTask("medium")).toBe("low");
+  it("maps low and medium to simple", () => {
+    expect(planComplexityToTask("low")).toBe("simple");
+    expect(planComplexityToTask("medium")).toBe("simple");
   });
-  it("maps high and very_high to high", () => {
-    expect(planComplexityToTask("high")).toBe("high");
-    expect(planComplexityToTask("very_high")).toBe("high");
+  it("maps high and very_high to complex", () => {
+    expect(planComplexityToTask("high")).toBe("complex");
+    expect(planComplexityToTask("very_high")).toBe("complex");
   });
 });
 
 describe("getTaskComplexity", () => {
-  it("returns task own complexity when set", () => {
+  it("returns task own complexity when set (migrates legacy high->complex)", () => {
     const task = { complexity: "high" } as { complexity?: string };
-    expect(getTaskComplexity(task, "low")).toBe("high");
-    expect(getTaskComplexity(task, undefined)).toBe("high");
+    expect(getTaskComplexity(task, "low")).toBe("complex");
+    expect(getTaskComplexity(task, undefined)).toBe("complex");
   });
   it("infers from plan when task has no complexity", () => {
     const task = {} as { complexity?: string };
-    expect(getTaskComplexity(task, "low")).toBe("low");
-    expect(getTaskComplexity(task, "medium")).toBe("low");
-    expect(getTaskComplexity(task, "high")).toBe("high");
-    expect(getTaskComplexity(task, "very_high")).toBe("high");
+    expect(getTaskComplexity(task, "low")).toBe("simple");
+    expect(getTaskComplexity(task, "medium")).toBe("simple");
+    expect(getTaskComplexity(task, "high")).toBe("complex");
+    expect(getTaskComplexity(task, "very_high")).toBe("complex");
   });
   it("returns undefined when neither task nor plan has valid complexity", () => {
     const task = {} as { complexity?: string };
@@ -209,7 +209,7 @@ describe("getComplexityForAgent", () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  it("uses max of task and epic complexity (task=low, epic=high → high)", async () => {
+  it("uses max of task and epic complexity (task=simple, epic=complex → complex)", async () => {
     const planId = `plan-${Date.now()}`;
     const epic = await taskStore.create(TEST_PROJECT_ID, "Epic", {
       type: "epic",
@@ -228,14 +228,14 @@ describe("getComplexityForAgent", () => {
     const child = await taskStore.create(TEST_PROJECT_ID, "Child", {
       type: "task",
       parentId: epic.id,
-      complexity: "low",
+      complexity: "simple",
     });
     const task = await taskStore.show(TEST_PROJECT_ID, child.id);
     const complexity = await getComplexityForAgent(TEST_PROJECT_ID, tempDir, task, taskStore);
     expect(complexity).toBe("high");
   });
 
-  it("uses max of task and epic complexity (task=high, epic=low → high)", async () => {
+  it("uses max of task and epic complexity (task=complex, epic=simple → complex)", async () => {
     const planId = `plan-${Date.now()}`;
     const epic = await taskStore.create(TEST_PROJECT_ID, "Epic", {
       type: "epic",
@@ -254,14 +254,14 @@ describe("getComplexityForAgent", () => {
     const child = await taskStore.create(TEST_PROJECT_ID, "Child", {
       type: "task",
       parentId: epic.id,
-      complexity: "high",
+      complexity: "complex",
     });
     const task = await taskStore.show(TEST_PROJECT_ID, child.id);
     const complexity = await getComplexityForAgent(TEST_PROJECT_ID, tempDir, task, taskStore);
     expect(complexity).toBe("high");
   });
 
-  it("uses low when both task and epic are low", async () => {
+  it("uses low when both task and epic are simple", async () => {
     const planId = `plan-${Date.now()}`;
     const epic = await taskStore.create(TEST_PROJECT_ID, "Epic", {
       type: "epic",
@@ -280,7 +280,7 @@ describe("getComplexityForAgent", () => {
     const child = await taskStore.create(TEST_PROJECT_ID, "Child", {
       type: "task",
       parentId: epic.id,
-      complexity: "low",
+      complexity: "simple",
     });
     const task = await taskStore.show(TEST_PROJECT_ID, child.id);
     const complexity = await getComplexityForAgent(TEST_PROJECT_ID, tempDir, task, taskStore);

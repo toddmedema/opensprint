@@ -41,8 +41,8 @@ const mockProject: Project = {
 };
 
 const mockSettings = {
-  lowComplexityAgent: { type: "claude" as const, model: "claude-3-5-sonnet", cliCommand: null },
-  highComplexityAgent: { type: "claude" as const, model: "claude-3-5-sonnet", cliCommand: null },
+  simpleComplexityAgent: { type: "claude" as const, model: "claude-3-5-sonnet", cliCommand: null },
+  complexComplexityAgent: { type: "claude" as const, model: "claude-3-5-sonnet", cliCommand: null },
   deployment: { mode: "custom" as const },
   hilConfig: {
     scopeChanges: "requires_approval" as const,
@@ -113,7 +113,7 @@ describe("ProjectSettingsModal", () => {
     const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
     await userEvent.click(agentConfigTab);
 
-    await screen.findByText("Low Complexity");
+    await screen.findByText("Simple Complexity");
 
     const contentArea = screen.getByTestId("settings-modal-content");
     expect(contentArea).toHaveClass("min-h-0");
@@ -129,7 +129,7 @@ describe("ProjectSettingsModal", () => {
     const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
     await userEvent.click(agentConfigTab);
 
-    await screen.findByText("Low Complexity");
+    await screen.findByText("Simple Complexity");
 
     const modal = screen.getByTestId("settings-modal");
     expect(modal).toHaveClass("overflow-hidden");
@@ -160,7 +160,7 @@ describe("ProjectSettingsModal", () => {
     const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
     await userEvent.click(agentConfigTab);
 
-    await screen.findByText("Low Complexity");
+    await screen.findByText("Simple Complexity");
 
     expect(screen.queryByText(/API key required/)).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText("sk-ant-...")).not.toBeInTheDocument();
@@ -345,18 +345,18 @@ describe("ProjectSettingsModal", () => {
     expect(screen.getByTestId("theme-option-system")).toHaveClass("bg-brand-600");
   });
 
-  it("Agent Config tab shows exactly two agent sections: Low Complexity and High Complexity", async () => {
+  it("Agent Config tab shows exactly two agent sections: Simple Complexity and Complex Complexity", async () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await screen.findByText("Project Settings");
 
     const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
     await userEvent.click(agentConfigTab);
 
-    await screen.findByText("Low Complexity");
+    await screen.findByText("Simple Complexity");
     expect(
       screen.getByText("Used for routine tasks (low and medium complexity plans)")
     ).toBeInTheDocument();
-    expect(screen.getByText("High Complexity")).toBeInTheDocument();
+    expect(screen.getByText("Complex Complexity")).toBeInTheDocument();
     expect(
       screen.getByText("Used for challenging tasks (high and very high complexity plans)")
     ).toBeInTheDocument();
@@ -364,22 +364,22 @@ describe("ProjectSettingsModal", () => {
     expect(screen.queryByText(/Planning Agent Slot|Coding Agent Slot/i)).not.toBeInTheDocument();
   });
 
-  it("saves lowComplexityAgent and highComplexityAgent when Save is clicked", async () => {
+  it("saves simpleComplexityAgent and complexComplexityAgent when Save is clicked", async () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
     await screen.findByText("Project Settings");
 
     const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
     await userEvent.click(agentConfigTab);
 
-    await screen.findByText("Low Complexity");
+    await screen.findByText("Simple Complexity");
     const saveButton = screen.getByRole("button", { name: "Save Changes" });
     await userEvent.click(saveButton);
 
     expect(mockUpdateSettings).toHaveBeenCalledWith(
       "proj-1",
       expect.objectContaining({
-        lowComplexityAgent: expect.objectContaining({ type: "claude", model: "claude-3-5-sonnet" }),
-        highComplexityAgent: expect.objectContaining({
+        simpleComplexityAgent: expect.objectContaining({ type: "claude", model: "claude-3-5-sonnet" }),
+        complexComplexityAgent: expect.objectContaining({
           type: "claude",
           model: "claude-3-5-sonnet",
         }),

@@ -11,8 +11,8 @@ export interface ProposedTask {
   description: string;
   priority: number;
   depends_on: number[];
-  /** Task-level complexity (low|high). When absent, inferred from plan or default. */
-  complexity?: "low" | "high";
+  /** Task-level complexity (simple|complex). When absent, inferred from plan or default. */
+  complexity?: "simple" | "complex";
 }
 
 /** Feedback item stored at .opensprint/feedback/<id>.json */

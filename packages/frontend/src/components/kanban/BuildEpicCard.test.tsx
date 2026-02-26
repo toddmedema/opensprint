@@ -17,7 +17,7 @@ const createMockTask = (
       | "blocked";
     priority: number;
     assignee: string | null;
-    complexity: "low" | "high";
+    complexity: "simple" | "complex";
   }> = {}
 ) => ({
   id: "epic-1.1",
@@ -368,14 +368,14 @@ describe("BuildEpicCard", () => {
         id: "epic-1.1",
         title: "Complex task",
         kanbanColumn: "in_progress",
-        complexity: "low",
+        complexity: "simple",
       }),
     ];
     render(
       <BuildEpicCard epicId="epic-1" epicTitle="Auth" tasks={tasks} onTaskSelect={vi.fn()} />
     );
 
-    expect(screen.getByRole("img", { name: "Low complexity" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Simple complexity" })).toBeInTheDocument();
   });
 
   it("makes epic title clickable when onViewPlan is provided", async () => {

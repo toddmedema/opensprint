@@ -50,8 +50,8 @@ describe("Feedback REST API", () => {
     const project = await projectService.createProject({
       name: "Test Project",
       repoPath: path.join(tempDir, "my-project"),
-      lowComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
-      highComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });

@@ -159,8 +159,8 @@ describe("deploy-fix-epic service", () => {
     const project = await projectService.createProject({
       name: "Fix Epic Test",
       repoPath,
-      lowComplexityAgent: { type: "custom", model: null, cliCommand: "echo" },
-      highComplexityAgent: { type: "custom", model: null, cliCommand: "echo" },
+      simpleComplexityAgent: { type: "custom", model: null, cliCommand: "echo" },
+      complexComplexityAgent: { type: "custom", model: null, cliCommand: "echo" },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });

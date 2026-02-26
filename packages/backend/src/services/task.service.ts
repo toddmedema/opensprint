@@ -188,9 +188,15 @@ export class TaskService {
       if (derived.length > 0) sourceFeedbackIds = derived;
     }
 
-    const complexity = (issue as { complexity?: string }).complexity;
+    const raw = (issue as { complexity?: string }).complexity;
     const taskComplexity: TaskComplexity | undefined =
-      complexity === "low" || complexity === "high" ? complexity : undefined;
+      raw === "simple" || raw === "complex"
+        ? raw
+        : raw === "low"
+          ? "simple"
+          : raw === "high"
+            ? "complex"
+            : undefined;
 
     const blockReason =
       (issue as { block_reason?: string | null }).block_reason ?? null;

@@ -34,8 +34,8 @@ const defaultHighComplexityAgent = {
 function renderAgentsStep(overrides: Partial<Parameters<typeof AgentsStep>[0]> = {}) {
   return render(
     <AgentsStep
-      lowComplexityAgent={defaultLowComplexityAgent}
-      highComplexityAgent={defaultHighComplexityAgent}
+      simpleComplexityAgent={defaultLowComplexityAgent}
+      complexComplexityAgent={defaultHighComplexityAgent}
       onLowComplexityAgentChange={() => {}}
       onHighComplexityAgentChange={() => {}}
       envKeys={null}
@@ -56,12 +56,12 @@ function renderAgentsStep(overrides: Partial<Parameters<typeof AgentsStep>[0]> =
 }
 
 describe("AgentsStep", () => {
-  it("renders agents step with Low Complexity Agent and High Complexity Agent sections", () => {
+  it("renders agents step with Simple Complexity Agent and Complex Complexity Agent sections", () => {
     renderAgentsStep();
 
     expect(screen.getByTestId("agents-step")).toBeInTheDocument();
-    expect(screen.getByText("Low Complexity Agent")).toBeInTheDocument();
-    expect(screen.getByText("High Complexity Agent")).toBeInTheDocument();
+    expect(screen.getByText("Simple Complexity Agent")).toBeInTheDocument();
+    expect(screen.getByText("Complex Complexity Agent")).toBeInTheDocument();
   });
 
   it("hides API key banner when all keys for selected providers are configured", () => {
@@ -95,7 +95,7 @@ describe("AgentsStep", () => {
 
   it("shows anthropic key input when an agent uses claude provider and key is missing", () => {
     renderAgentsStep({
-      lowComplexityAgent: { type: "claude", model: "", cliCommand: "" },
+      simpleComplexityAgent: { type: "claude", model: "", cliCommand: "" },
       envKeys: { anthropic: false, cursor: true, claudeCli: true },
     });
 
@@ -106,7 +106,7 @@ describe("AgentsStep", () => {
 
   it("shows both key inputs when both providers are selected and both keys missing", () => {
     renderAgentsStep({
-      lowComplexityAgent: { type: "claude", model: "", cliCommand: "" },
+      simpleComplexityAgent: { type: "claude", model: "", cliCommand: "" },
       envKeys: { anthropic: false, cursor: false, claudeCli: true },
     });
 
@@ -135,7 +135,7 @@ describe("AgentsStep", () => {
 
   it("does not require API key when claude-cli is selected", () => {
     renderAgentsStep({
-      lowComplexityAgent: { type: "claude-cli", model: "", cliCommand: "" },
+      simpleComplexityAgent: { type: "claude-cli", model: "", cliCommand: "" },
       envKeys: { anthropic: false, cursor: true, claudeCli: true },
     });
 
@@ -145,7 +145,7 @@ describe("AgentsStep", () => {
 
   it("shows CLI warning when claude-cli is selected and CLI is not available", () => {
     renderAgentsStep({
-      lowComplexityAgent: { type: "claude-cli", model: "", cliCommand: "" },
+      simpleComplexityAgent: { type: "claude-cli", model: "", cliCommand: "" },
       envKeys: { anthropic: false, cursor: true, claudeCli: false },
     });
 
@@ -155,7 +155,7 @@ describe("AgentsStep", () => {
 
   it("shows CLI info when claude-cli is selected and CLI is available", () => {
     renderAgentsStep({
-      lowComplexityAgent: { type: "claude-cli", model: "", cliCommand: "" },
+      simpleComplexityAgent: { type: "claude-cli", model: "", cliCommand: "" },
       envKeys: { anthropic: true, cursor: true, claudeCli: true },
     });
 

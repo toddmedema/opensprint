@@ -123,12 +123,12 @@ describe("AgentIdentityService", () => {
 
   describe("selectAgentForRetry", () => {
     const baseSettings = {
-      lowComplexityAgent: {
+      simpleComplexityAgent: {
         type: "claude" as const,
         model: "claude-sonnet-4-20250514",
         cliCommand: null,
       },
-      highComplexityAgent: {
+      complexComplexityAgent: {
         type: "claude" as const,
         model: "claude-sonnet-4-20250514",
         cliCommand: null,
@@ -196,14 +196,14 @@ describe("AgentIdentityService", () => {
       expect(config.model).toBe("claude-sonnet-4-20250514");
     });
 
-    it("retry with high complexity uses highComplexityAgent as the base config", () => {
+    it("retry with high complexity uses complexComplexityAgent as the base config", () => {
       const settingsWithDifferentAgents = {
-        lowComplexityAgent: {
+        simpleComplexityAgent: {
           type: "claude" as const,
           model: "claude-sonnet-4-20250514",
           cliCommand: null,
         },
-        highComplexityAgent: {
+        complexComplexityAgent: {
           type: "claude" as const,
           model: "claude-opus-4-20250514",
           cliCommand: null,
@@ -223,14 +223,14 @@ describe("AgentIdentityService", () => {
       expect(config.model).toBe("claude-opus-4-20250514");
     });
 
-    it("retry with low complexity uses lowComplexityAgent as the base config", () => {
+    it("retry with low complexity uses simpleComplexityAgent as the base config", () => {
       const settingsWithDifferentAgents = {
-        lowComplexityAgent: {
+        simpleComplexityAgent: {
           type: "claude" as const,
           model: "claude-sonnet-4-20250514",
           cliCommand: null,
         },
-        highComplexityAgent: {
+        complexComplexityAgent: {
           type: "claude" as const,
           model: "claude-opus-4-20250514",
           cliCommand: null,

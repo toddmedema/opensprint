@@ -108,8 +108,8 @@ export interface MergeCoordinatorHost {
   };
   projectService: {
     getSettings(projectId: string): Promise<{
-      lowComplexityAgent: { type: string; model?: string | null };
-      highComplexityAgent: { type: string; model?: string | null };
+      simpleComplexityAgent: { type: string; model?: string | null };
+      complexComplexityAgent: { type: string; model?: string | null };
       deployment: { autoDeployOnEpicCompletion?: boolean };
       gitWorkingMode?: "worktree" | "branches";
     }>;
@@ -235,7 +235,7 @@ export class MergeCoordinatorService {
     await this.host.taskStore.close(projectId, task.id, closeReason);
 
     const settings = await this.host.projectService.getSettings(projectId);
-    const agentConfig = settings.lowComplexityAgent;
+    const agentConfig = settings.simpleComplexityAgent;
     agentIdentityService
       .recordAttempt(repoPath, {
         taskId: task.id,

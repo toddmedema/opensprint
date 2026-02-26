@@ -62,11 +62,11 @@ describe("TaskStoreService", () => {
     it("should persist complexity in extra when provided", async () => {
       const result = await store.create(TEST_PROJECT_ID, "Complex Task", {
         type: "task",
-        complexity: "high",
+        complexity: "complex",
       });
-      expect((result as { complexity?: string }).complexity).toBe("high");
+      expect((result as { complexity?: string }).complexity).toBe("complex");
       const refetched = store.show(TEST_PROJECT_ID, result.id);
-      expect((refetched as { complexity?: string }).complexity).toBe("high");
+      expect((refetched as { complexity?: string }).complexity).toBe("complex");
     });
 
     it("should persist extra.sourceFeedbackIds when provided", async () => {
@@ -131,11 +131,11 @@ describe("TaskStoreService", () => {
 
     it("should persist complexity when provided in inputs", async () => {
       const results = await store.createMany(TEST_PROJECT_ID, [
-        { title: "Low Task", type: "task", complexity: "low" },
-        { title: "High Task", type: "task", complexity: "high" },
+        { title: "Simple Task", type: "task", complexity: "simple" },
+        { title: "Complex Task", type: "task", complexity: "complex" },
       ]);
-      expect((results[0] as { complexity?: string }).complexity).toBe("low");
-      expect((results[1] as { complexity?: string }).complexity).toBe("high");
+      expect((results[0] as { complexity?: string }).complexity).toBe("simple");
+      expect((results[1] as { complexity?: string }).complexity).toBe("complex");
     });
   });
 
@@ -180,11 +180,11 @@ describe("TaskStoreService", () => {
     it("should update complexity via options", async () => {
       const created = await store.create(TEST_PROJECT_ID, "My Task");
       const result = await store.update(TEST_PROJECT_ID, created.id, {
-        complexity: "high",
+        complexity: "complex",
       });
-      expect((result as { complexity?: string }).complexity).toBe("high");
+      expect((result as { complexity?: string }).complexity).toBe("complex");
       const refetched = store.show(TEST_PROJECT_ID, created.id);
-      expect((refetched as { complexity?: string }).complexity).toBe("high");
+      expect((refetched as { complexity?: string }).complexity).toBe("complex");
     });
 
     it("should merge extra (e.g. sourceFeedbackIds) into task", async () => {

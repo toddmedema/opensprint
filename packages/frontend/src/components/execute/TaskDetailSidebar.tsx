@@ -278,7 +278,7 @@ export function TaskDetailSidebar({
                   aria-label={task.complexity ? `Complexity: ${task.complexity}` : "Complexity: not set"}
                 >
                   <ComplexityIcon complexity={task.complexity} size="sm" />
-                  {task.complexity === "low" || task.complexity === "high"
+                  {task.complexity === "simple" || task.complexity === "complex"
                     ? task.complexity.charAt(0).toUpperCase() + task.complexity.slice(1)
                     : "—"}
                 </span>

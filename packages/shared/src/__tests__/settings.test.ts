@@ -15,8 +15,8 @@ const lowAgent: AgentConfig = { type: "cursor", model: "fast-model", cliCommand:
 
 function makeSettings(overrides?: Partial<ProjectSettings>): ProjectSettings {
   return {
-    lowComplexityAgent: defaultAgent,
-    highComplexityAgent: defaultAgent,
+    simpleComplexityAgent: defaultAgent,
+    complexComplexityAgent: defaultAgent,
     deployment: { mode: "custom" },
     hilConfig: DEFAULT_HIL_CONFIG,
     testFramework: null,
@@ -34,49 +34,49 @@ describe("DEFAULT_HIL_CONFIG", () => {
 });
 
 describe("getAgentForComplexity", () => {
-  it("should return lowComplexityAgent for low", () => {
-    const settings = makeSettings({ lowComplexityAgent: lowAgent, highComplexityAgent: highAgent });
+  it("should return simpleComplexityAgent for low", () => {
+    const settings = makeSettings({ simpleComplexityAgent: lowAgent, complexComplexityAgent: highAgent });
     expect(getAgentForComplexity(settings, "low")).toBe(lowAgent);
   });
 
-  it("should return lowComplexityAgent for medium", () => {
-    const settings = makeSettings({ lowComplexityAgent: lowAgent, highComplexityAgent: highAgent });
+  it("should return simpleComplexityAgent for medium", () => {
+    const settings = makeSettings({ simpleComplexityAgent: lowAgent, complexComplexityAgent: highAgent });
     expect(getAgentForComplexity(settings, "medium")).toBe(lowAgent);
   });
 
-  it("should return highComplexityAgent for high", () => {
-    const settings = makeSettings({ lowComplexityAgent: lowAgent, highComplexityAgent: highAgent });
+  it("should return complexComplexityAgent for high", () => {
+    const settings = makeSettings({ simpleComplexityAgent: lowAgent, complexComplexityAgent: highAgent });
     expect(getAgentForComplexity(settings, "high")).toBe(highAgent);
   });
 
-  it("should return highComplexityAgent for very_high", () => {
-    const settings = makeSettings({ lowComplexityAgent: lowAgent, highComplexityAgent: highAgent });
+  it("should return complexComplexityAgent for very_high", () => {
+    const settings = makeSettings({ simpleComplexityAgent: lowAgent, complexComplexityAgent: highAgent });
     expect(getAgentForComplexity(settings, "very_high")).toBe(highAgent);
   });
 
-  it("should return lowComplexityAgent when complexity is undefined", () => {
-    const settings = makeSettings({ lowComplexityAgent: lowAgent, highComplexityAgent: highAgent });
+  it("should return simpleComplexityAgent when complexity is undefined", () => {
+    const settings = makeSettings({ simpleComplexityAgent: lowAgent, complexComplexityAgent: highAgent });
     expect(getAgentForComplexity(settings, undefined)).toBe(lowAgent);
   });
 });
 
 describe("getAgentForPlanningRole", () => {
-  it("Dreamer always returns highComplexityAgent", () => {
-    const settings = makeSettings({ lowComplexityAgent: lowAgent, highComplexityAgent: highAgent });
+  it("Dreamer always returns complexComplexityAgent", () => {
+    const settings = makeSettings({ simpleComplexityAgent: lowAgent, complexComplexityAgent: highAgent });
     expect(getAgentForPlanningRole(settings, "dreamer")).toBe(highAgent);
     expect(getAgentForPlanningRole(settings, "dreamer", "low")).toBe(highAgent);
     expect(getAgentForPlanningRole(settings, "dreamer", "high")).toBe(highAgent);
   });
 
-  it("Analyst always returns lowComplexityAgent", () => {
-    const settings = makeSettings({ lowComplexityAgent: lowAgent, highComplexityAgent: highAgent });
+  it("Analyst always returns simpleComplexityAgent", () => {
+    const settings = makeSettings({ simpleComplexityAgent: lowAgent, complexComplexityAgent: highAgent });
     expect(getAgentForPlanningRole(settings, "analyst")).toBe(lowAgent);
     expect(getAgentForPlanningRole(settings, "analyst", "high")).toBe(lowAgent);
     expect(getAgentForPlanningRole(settings, "analyst", "very_high")).toBe(lowAgent);
   });
 
   it("Planner/Harmonizer/Auditor/Summarizer inherit plan complexity", () => {
-    const settings = makeSettings({ lowComplexityAgent: lowAgent, highComplexityAgent: highAgent });
+    const settings = makeSettings({ simpleComplexityAgent: lowAgent, complexComplexityAgent: highAgent });
     for (const role of ["planner", "harmonizer", "auditor", "summarizer"] as const) {
       expect(getAgentForPlanningRole(settings, role, "low")).toBe(lowAgent);
       expect(getAgentForPlanningRole(settings, role, "medium")).toBe(lowAgent);
@@ -92,19 +92,18 @@ describe("parseSettings", () => {
 
   it("should pass through two-tier format unchanged", () => {
     const settings = makeSettings({
-      lowComplexityAgent: lowAgent,
-      highComplexityAgent: highAgent,
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
     });
     const parsed = parseSettings(settings);
-    expect(parsed).toBe(settings);
-    expect(parsed.lowComplexityAgent).toBe(lowAgent);
-    expect(parsed.highComplexityAgent).toBe(highAgent);
+    expect(parsed.simpleComplexityAgent).toBe(lowAgent);
+    expect(parsed.complexComplexityAgent).toBe(highAgent);
   });
 
   it("should default both tiers when missing", () => {
     const parsed = parseSettings({});
-    expect(parsed.lowComplexityAgent).toEqual(defaultParsed);
-    expect(parsed.highComplexityAgent).toEqual(defaultParsed);
+    expect(parsed.simpleComplexityAgent).toEqual(defaultParsed);
+    expect(parsed.complexComplexityAgent).toEqual(defaultParsed);
   });
 
   it("should default gitWorkingMode to worktree when parseSettings receives empty object", () => {
@@ -112,23 +111,23 @@ describe("parseSettings", () => {
     expect(parsed.gitWorkingMode).toBe("worktree");
   });
 
-  it("should use provided low/high when present", () => {
+  it("should use provided simple/complex when present", () => {
     const raw = {
-      lowComplexityAgent: lowAgent,
-      highComplexityAgent: highAgent,
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
       testFramework: null,
     };
     const parsed = parseSettings(raw);
-    expect(parsed.lowComplexityAgent).toEqual(lowAgent);
-    expect(parsed.highComplexityAgent).toEqual(highAgent);
+    expect(parsed.simpleComplexityAgent).toEqual(lowAgent);
+    expect(parsed.complexComplexityAgent).toEqual(highAgent);
   });
 
   it("should default gitWorkingMode to worktree when missing", () => {
     const raw = {
-      lowComplexityAgent: lowAgent,
-      highComplexityAgent: highAgent,
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
       testFramework: null,
@@ -139,8 +138,8 @@ describe("parseSettings", () => {
 
   it("should default gitWorkingMode to worktree when invalid", () => {
     const raw = {
-      lowComplexityAgent: lowAgent,
-      highComplexityAgent: highAgent,
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
       testFramework: null,
@@ -152,8 +151,8 @@ describe("parseSettings", () => {
 
   it("should preserve gitWorkingMode branches when valid", () => {
     const raw = {
-      lowComplexityAgent: lowAgent,
-      highComplexityAgent: highAgent,
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
       testFramework: null,
@@ -165,8 +164,8 @@ describe("parseSettings", () => {
 
   it("should preserve gitWorkingMode worktree when valid", () => {
     const raw = {
-      lowComplexityAgent: lowAgent,
-      highComplexityAgent: highAgent,
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
       testFramework: null,

@@ -117,8 +117,8 @@ describe("PhaseExecutorService", () => {
 
     mockGetSettings.mockResolvedValue({
       testFramework: "vitest",
-      lowComplexityAgent: { type: "cursor", model: null, cliCommand: null },
-      highComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "cursor", model: null, cliCommand: null },
       reviewMode: "never",
       deployment: { autoDeployOnEpicCompletion: false, autoResolveFeedbackOnTaskCompletion: false },
       maxConcurrentCoders: 1,
@@ -190,8 +190,8 @@ describe("PhaseExecutorService", () => {
     it("uses createTaskWorktree when gitWorkingMode is worktree (default)", async () => {
       mockGetSettings.mockResolvedValue({
         testFramework: "vitest",
-        lowComplexityAgent: { type: "cursor", model: null, cliCommand: null },
-        highComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+        simpleComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+        complexComplexityAgent: { type: "cursor", model: null, cliCommand: null },
         reviewMode: "never",
         deployment: {
           autoDeployOnEpicCompletion: false,
@@ -217,8 +217,8 @@ describe("PhaseExecutorService", () => {
     it("uses createOrCheckoutBranch and sets worktreePath=repoPath when gitWorkingMode is branches", async () => {
       mockGetSettings.mockResolvedValue({
         testFramework: "vitest",
-        lowComplexityAgent: { type: "cursor", model: null, cliCommand: null },
-        highComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+        simpleComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+        complexComplexityAgent: { type: "cursor", model: null, cliCommand: null },
         reviewMode: "never",
         deployment: {
           autoDeployOnEpicCompletion: false,
@@ -243,8 +243,8 @@ describe("PhaseExecutorService", () => {
     it("defaults to worktree when gitWorkingMode is missing", async () => {
       mockGetSettings.mockResolvedValue({
         testFramework: "vitest",
-        lowComplexityAgent: { type: "cursor", model: null, cliCommand: null },
-        highComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+        simpleComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+        complexComplexityAgent: { type: "cursor", model: null, cliCommand: null },
         reviewMode: "never",
         deployment: {
           autoDeployOnEpicCompletion: false,

@@ -48,7 +48,7 @@ Given the user's feedback (and any attached images), the PRD, available plans, a
 2. Which feature/plan it relates to (if identifiable) — use the planId from the available plans list
 3. The mapped epic ID — use the epicId from the plan you mapped to (or null if no plan)
 4. Whether this is a scope change — true if the feedback fundamentally alters requirements/PRD; false otherwise
-5. Proposed tasks in indexed Planner format — same structure as Planner output: index, title, description, priority, depends_on, complexity (low|high — assign per task based on implementation difficulty)
+5. Proposed tasks in indexed Planner format — same structure as Planner output: index, title, description, priority, depends_on, complexity (simple|complex — assign per task based on implementation difficulty)
 
 **Linking to existing tasks:** When feedback is clearly covered by one or more existing OPEN/READY tasks, prefer linking instead of creating new tasks:
 - \`link_to_existing_task_ids\`: string[]. If non-empty, do NOT create new tasks; link feedback to these existing task IDs. All IDs must appear in the Existing OPEN/READY tasks list.
@@ -67,14 +67,14 @@ JSON format:
   "mapped_epic_id": "epicId-from-plan or null",
   "is_scope_change": true | false,
   "proposed_tasks": [
-    { "index": 0, "title": "Task title", "description": "Detailed spec with acceptance criteria", "priority": 1, "depends_on": [], "complexity": "low" }
+    { "index": 0, "title": "Task title", "description": "Detailed spec with acceptance criteria", "priority": 1, "depends_on": [], "complexity": "simple" }
   ],
   "link_to_existing_task_ids": ["task-id-1", "task-id-2"],
   "similar_existing_task_id": "task-id or null",
   "update_existing_tasks": { "task-id": { "title": "...", "description": "..." } }
 }
 
-priority: 0 (highest) to 4 (lowest). depends_on: array of task indices (0-based) this task is blocked by. complexity: low or high — assign per task based on implementation difficulty.`;
+priority: 0 (highest) to 4 (lowest). depends_on: array of task indices (0-based) this task is blocked by. complexity: simple or complex — assign per task based on implementation difficulty.`;
 
 export class FeedbackService {
   private projectService = new ProjectService();
@@ -386,7 +386,13 @@ export class FeedbackService {
                 const deps = (t.depends_on ?? t.dependsOn ?? []) as unknown[];
                 const rawComplexity = t.complexity;
                 const complexity =
-                  rawComplexity === "low" || rawComplexity === "high" ? rawComplexity : undefined;
+                  rawComplexity === "simple" || rawComplexity === "complex"
+                    ? rawComplexity
+                    : rawComplexity === "low"
+                      ? "simple"
+                      : rawComplexity === "high"
+                        ? "complex"
+                        : undefined;
                 return {
                   index: typeof t.index === "number" ? t.index : 0,
                   title,
@@ -843,7 +849,7 @@ export class FeedbackService {
             ? await this.resolvePlanComplexityForEpic(projectId, parentEpicId)
             : undefined;
           const taskComplexity =
-            task.complexity ?? (planComplexity ? planComplexityToTask(planComplexity) : "low");
+            task.complexity ?? (planComplexity ? planComplexityToTask(planComplexity) : "simple");
           const issue = await this.taskStore.createWithRetry(
             project.id,
             task.title,

@@ -343,8 +343,8 @@ describe("OrchestratorService (slot-based model)", () => {
 
   const defaultSettings = {
     testFramework: "vitest",
-    lowComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
-    highComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+    simpleComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+    complexComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
     reviewMode: "never",
     deployment: { autoDeployOnEpicCompletion: false, autoResolveFeedbackOnTaskCompletion: false },
     maxConcurrentCoders: 1,

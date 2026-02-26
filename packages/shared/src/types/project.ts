@@ -30,8 +30,12 @@ export interface ProjectIndex {
 export interface CreateProjectRequest {
   name: string;
   repoPath: string;
-  lowComplexityAgent: AgentConfigInput;
-  highComplexityAgent: AgentConfigInput;
+  /** @deprecated Use simpleComplexityAgent. Accepted for backward compat. */
+  lowComplexityAgent?: AgentConfigInput;
+  /** @deprecated Use complexComplexityAgent. Accepted for backward compat. */
+  highComplexityAgent?: AgentConfigInput;
+  simpleComplexityAgent?: AgentConfigInput;
+  complexComplexityAgent?: AgentConfigInput;
   deployment: DeploymentConfigInput;
   hilConfig: HilConfigInput;
   /** Detected or user-selected test framework (PRD §10.2) */

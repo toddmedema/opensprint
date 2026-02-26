@@ -474,8 +474,18 @@ export class TaskStoreService {
     depCountStmt.free();
 
     const blockReason = (extra.block_reason as string) ?? null;
+    const rawComplexity = extra.complexity as string | undefined;
+    const complexity =
+      rawComplexity === "simple" || rawComplexity === "complex"
+        ? rawComplexity
+        : rawComplexity === "low"
+          ? "simple"
+          : rawComplexity === "high"
+            ? "complex"
+            : undefined;
     return {
       ...extra,
+      ...(complexity != null && { complexity }),
       block_reason: blockReason,
       id: row.id as string,
       project_id: row.project_id as string | undefined,
@@ -675,7 +685,7 @@ export class TaskStoreService {
       const baseExtra: Record<string, unknown> = {
         ...options.extra,
         ...(options.complexity &&
-        (options.complexity === "low" || options.complexity === "high")
+        (options.complexity === "simple" || options.complexity === "complex")
           ? { complexity: options.complexity }
           : {}),
       };
@@ -781,7 +791,7 @@ export class TaskStoreService {
           const type = (input.type as string) ?? "task";
           const priority = input.priority ?? 2;
           const extra =
-            input.complexity && (input.complexity === "low" || input.complexity === "high")
+            input.complexity && (input.complexity === "simple" || input.complexity === "complex")
               ? JSON.stringify({ complexity: input.complexity })
               : "{}";
 

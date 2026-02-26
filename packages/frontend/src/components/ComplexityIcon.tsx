@@ -2,7 +2,7 @@ import type { TaskComplexity } from "@opensprint/shared";
 import type { PlanComplexity } from "@opensprint/shared";
 
 export interface ComplexityIconProps {
-  /** Task-level complexity (low|high) or plan-level (low|medium|high|very_high). Simple = low; Complex = medium/high/very_high. */
+  /** Task-level complexity (simple|complex) or plan-level (low|medium|high|very_high). Simple = low/simple; Complex = medium/high/very_high/complex. */
   complexity: TaskComplexity | PlanComplexity | undefined;
   size?: "xs" | "sm" | "md";
   className?: string;
@@ -24,8 +24,8 @@ export function ComplexityIcon({
 
   const sizeClass = SIZE_CLASSES[size];
   const isSimple =
-    complexity === "low";
-  const ariaLabel = isSimple ? "Low complexity" : `${complexity} complexity`;
+    complexity === "simple" || complexity === "low";
+  const ariaLabel = isSimple ? "Simple complexity" : complexity === "complex" || complexity === "high" ? "Complex complexity" : `${complexity} complexity`;
 
   return (
     <svg

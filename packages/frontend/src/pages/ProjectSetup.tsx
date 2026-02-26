@@ -43,12 +43,12 @@ export function ProjectSetup() {
   const [metadata, setMetadata] = useState<ProjectMetadataState>({ name: "" });
   const [metadataError, setMetadataError] = useState<string | null>(null);
   const [repoPath, setRepoPath] = useState("");
-  const [lowComplexityAgent, setLowComplexityAgent] = useState({
+  const [simpleComplexityAgent, setSimpleComplexityAgent] = useState({
     type: "cursor" as AgentType,
     model: "",
     cliCommand: "",
   });
-  const [highComplexityAgent, setHighComplexityAgent] = useState({
+  const [complexComplexityAgent, setComplexComplexityAgent] = useState({
     type: "cursor" as AgentType,
     model: "",
     cliCommand: "",
@@ -165,20 +165,20 @@ export function ProjectSetup() {
       const project = await api.projects.create({
         name: metadata.name.trim(),
         repoPath,
-        lowComplexityAgent: {
-          type: lowComplexityAgent.type,
-          model: lowComplexityAgent.type === "custom" ? null : lowComplexityAgent.model || null,
+        simpleComplexityAgent: {
+          type: simpleComplexityAgent.type,
+          model: simpleComplexityAgent.type === "custom" ? null : simpleComplexityAgent.model || null,
           cliCommand:
-            lowComplexityAgent.type === "custom" && lowComplexityAgent.cliCommand.trim()
-              ? lowComplexityAgent.cliCommand.trim()
+            simpleComplexityAgent.type === "custom" && simpleComplexityAgent.cliCommand.trim()
+              ? simpleComplexityAgent.cliCommand.trim()
               : null,
         },
-        highComplexityAgent: {
-          type: highComplexityAgent.type,
-          model: highComplexityAgent.type === "custom" ? null : highComplexityAgent.model || null,
+        complexComplexityAgent: {
+          type: complexComplexityAgent.type,
+          model: complexComplexityAgent.type === "custom" ? null : complexComplexityAgent.model || null,
           cliCommand:
-            highComplexityAgent.type === "custom" && highComplexityAgent.cliCommand.trim()
-              ? highComplexityAgent.cliCommand.trim()
+            complexComplexityAgent.type === "custom" && complexComplexityAgent.cliCommand.trim()
+              ? complexComplexityAgent.cliCommand.trim()
               : null,
         },
         deployment: {
@@ -274,10 +274,10 @@ export function ProjectSetup() {
 
             {step === "agents" && (
               <AgentsStep
-                lowComplexityAgent={lowComplexityAgent}
-                highComplexityAgent={highComplexityAgent}
-                onLowComplexityAgentChange={setLowComplexityAgent}
-                onHighComplexityAgentChange={setHighComplexityAgent}
+                simpleComplexityAgent={simpleComplexityAgent}
+                complexComplexityAgent={complexComplexityAgent}
+                onSimpleComplexityAgentChange={setSimpleComplexityAgent}
+                onComplexComplexityAgentChange={setComplexComplexityAgent}
                 envKeys={envKeys}
                 keyInput={keyInput}
                 onKeyInputChange={(key, value) => setKeyInput((p) => ({ ...p, [key]: value }))}
@@ -322,8 +322,8 @@ export function ProjectSetup() {
               <ConfirmStep
                 metadata={metadata}
                 repoPath={repoPath}
-                lowComplexityAgent={lowComplexityAgent}
-                highComplexityAgent={highComplexityAgent}
+                simpleComplexityAgent={simpleComplexityAgent}
+                complexComplexityAgent={complexComplexityAgent}
                 deploymentMode={deploymentMode}
                 customDeployCommand={customDeployCommand}
                 customDeployWebhook={customDeployWebhook}
@@ -366,8 +366,8 @@ export function ProjectSetup() {
                 onClick={handleCreate}
                 disabled={
                   creating ||
-                  (lowComplexityAgent.type === "custom" && !lowComplexityAgent.cliCommand.trim()) ||
-                  (highComplexityAgent.type === "custom" && !highComplexityAgent.cliCommand.trim())
+                  (simpleComplexityAgent.type === "custom" && !simpleComplexityAgent.cliCommand.trim()) ||
+                  (complexComplexityAgent.type === "custom" && !complexComplexityAgent.cliCommand.trim())
                 }
                 className="btn-primary disabled:opacity-50"
               >
@@ -386,10 +386,10 @@ export function ProjectSetup() {
                 onClick={() => setStep(STEPS[currentStepIndex + 1]?.key ?? "confirm")}
                 disabled={
                   step === "agents" &&
-                  ((lowComplexityAgent.type === "custom" &&
-                    !lowComplexityAgent.cliCommand.trim()) ||
-                    (highComplexityAgent.type === "custom" &&
-                      !highComplexityAgent.cliCommand.trim()))
+                  ((simpleComplexityAgent.type === "custom" &&
+                    !simpleComplexityAgent.cliCommand.trim()) ||
+                    (complexComplexityAgent.type === "custom" &&
+                      !complexComplexityAgent.cliCommand.trim()))
                 }
                 className="btn-primary disabled:opacity-50"
               >

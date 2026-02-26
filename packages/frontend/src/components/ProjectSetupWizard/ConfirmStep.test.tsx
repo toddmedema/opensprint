@@ -12,8 +12,8 @@ function renderConfirmStep(overrides: Partial<Parameters<typeof ConfirmStep>[0]>
     <ConfirmStep
       metadata={defaultMetadata}
       repoPath="/path/to/repo"
-      lowComplexityAgent={{ type: "cursor", model: "gpt-4", cliCommand: null }}
-      highComplexityAgent={{ type: "claude", model: "claude-3-5-sonnet", cliCommand: null }}
+      simpleComplexityAgent={{ type: "cursor", model: "gpt-4", cliCommand: null }}
+      complexComplexityAgent={{ type: "claude", model: "claude-3-5-sonnet", cliCommand: null }}
       deploymentMode="expo"
       customDeployCommand=""
       customDeployWebhook=""
@@ -38,8 +38,8 @@ describe("ConfirmStep", () => {
 
   it("shows low and high complexity agent labels", () => {
     renderConfirmStep({
-      lowComplexityAgent: { type: "cursor", model: "gpt-4", cliCommand: null },
-      highComplexityAgent: { type: "claude-cli", model: "claude-3-5-sonnet", cliCommand: null },
+      simpleComplexityAgent: { type: "cursor", model: "gpt-4", cliCommand: null },
+      complexComplexityAgent: { type: "claude-cli", model: "claude-3-5-sonnet", cliCommand: null },
     });
     expect(screen.getByText(/Cursor.*gpt-4/)).toBeInTheDocument();
     expect(screen.getByText(/Claude \(CLI\).*claude-3-5-sonnet/)).toBeInTheDocument();
@@ -67,7 +67,7 @@ describe("ConfirmStep", () => {
 
   it("shows custom agent label when cliCommand is set", () => {
     renderConfirmStep({
-      lowComplexityAgent: { type: "custom", model: null, cliCommand: "my-agent --foo" },
+      simpleComplexityAgent: { type: "custom", model: null, cliCommand: "my-agent --foo" },
     });
     expect(screen.getByText(/Custom: my-agent --foo/)).toBeInTheDocument();
   });

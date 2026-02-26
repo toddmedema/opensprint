@@ -118,14 +118,14 @@ describe("TimelineList", () => {
         id: "task-1",
         title: "Complex task",
         kanbanColumn: "in_progress",
-        complexity: "high",
+        complexity: "complex",
       }),
     ];
     const plans = [createMockPlan("epic-1", "Auth")];
 
     render(<TimelineList tasks={tasks} plans={plans} onTaskSelect={vi.fn()} />);
 
-    expect(screen.getByRole("img", { name: "high complexity" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Complex complexity" })).toBeInTheDocument();
   });
 
   it("click calls onTaskSelect with correct ID", async () => {

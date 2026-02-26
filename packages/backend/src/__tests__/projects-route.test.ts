@@ -10,8 +10,8 @@ import { API_PREFIX, DEFAULT_HIL_CONFIG, OPENSPRINT_DIR } from "@opensprint/shar
 const validCreateBody = {
   name: "New Project",
   repoPath: "", // set in each test
-  lowComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
-  highComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+  simpleComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+  complexComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
   deployment: { mode: "custom" },
   hilConfig: DEFAULT_HIL_CONFIG,
 };
@@ -35,8 +35,8 @@ describe("Projects REST API — spec/sketch phase routes", () => {
     const project = await projectService.createProject({
       name: "Sketch Test Project",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
-      highComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -126,8 +126,8 @@ describe("Projects REST API — create and settings", () => {
     const project = await projectService.createProject({
       name: "Settings Test Project",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
-      highComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -139,7 +139,7 @@ describe("Projects REST API — create and settings", () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  it("POST /projects creates project with lowComplexityAgent and highComplexityAgent", async () => {
+  it("POST /projects creates project with simpleComplexityAgent and complexComplexityAgent", async () => {
     const repoPath = path.join(tempDir, "create-via-api");
     await fs.mkdir(repoPath, { recursive: true });
 
@@ -156,28 +156,28 @@ describe("Projects REST API — create and settings", () => {
       `${API_PREFIX}/projects/${res.body.data.id}/settings`
     );
     expect(settingsRes.status).toBe(200);
-    expect(settingsRes.body.data.lowComplexityAgent).toBeDefined();
-    expect(settingsRes.body.data.lowComplexityAgent.type).toBe("claude");
-    expect(settingsRes.body.data.highComplexityAgent).toBeDefined();
-    expect(settingsRes.body.data.highComplexityAgent.type).toBe("claude");
+    expect(settingsRes.body.data.simpleComplexityAgent).toBeDefined();
+    expect(settingsRes.body.data.simpleComplexityAgent.type).toBe("claude");
+    expect(settingsRes.body.data.complexComplexityAgent).toBeDefined();
+    expect(settingsRes.body.data.complexComplexityAgent.type).toBe("claude");
   });
 
-  it("PUT /projects/:id/settings updates lowComplexityAgent and highComplexityAgent", async () => {
+  it("PUT /projects/:id/settings updates simpleComplexityAgent and complexComplexityAgent", async () => {
     const res = await request(app)
       .put(`${API_PREFIX}/projects/${projectId}/settings`)
       .send({
-        lowComplexityAgent: { type: "cursor", model: "composer-1.5", cliCommand: null },
-        highComplexityAgent: { type: "claude", model: "claude-opus-4", cliCommand: null },
+        simpleComplexityAgent: { type: "cursor", model: "composer-1.5", cliCommand: null },
+        complexComplexityAgent: { type: "claude", model: "claude-opus-4", cliCommand: null },
       });
 
     expect(res.status).toBe(200);
-    expect(res.body.data.lowComplexityAgent.type).toBe("cursor");
-    expect(res.body.data.lowComplexityAgent.model).toBe("composer-1.5");
-    expect(res.body.data.highComplexityAgent.type).toBe("claude");
-    expect(res.body.data.highComplexityAgent.model).toBe("claude-opus-4");
+    expect(res.body.data.simpleComplexityAgent.type).toBe("cursor");
+    expect(res.body.data.simpleComplexityAgent.model).toBe("composer-1.5");
+    expect(res.body.data.complexComplexityAgent.type).toBe("claude");
+    expect(res.body.data.complexComplexityAgent.model).toBe("claude-opus-4");
   });
 
-  it("POST /projects without lowComplexityAgent/highComplexityAgent returns 400", async () => {
+  it("POST /projects without simpleComplexityAgent/complexComplexityAgent returns 400", async () => {
     const repoPath = path.join(tempDir, "missing-agents");
     await fs.mkdir(repoPath, { recursive: true });
 

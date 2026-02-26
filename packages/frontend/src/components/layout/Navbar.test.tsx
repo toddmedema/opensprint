@@ -292,8 +292,8 @@ describe("Navbar", () => {
       updatedAt: "2025-01-01T00:00:00Z",
     };
     mockGetSettings.mockResolvedValue({
-      lowComplexityAgent: { type: "claude", model: "claude-3-5-sonnet", cliCommand: null },
-      highComplexityAgent: { type: "claude", model: "claude-3-5-sonnet", cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: "claude-3-5-sonnet", cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: "claude-3-5-sonnet", cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: {
         scopeChanges: "requires_approval",

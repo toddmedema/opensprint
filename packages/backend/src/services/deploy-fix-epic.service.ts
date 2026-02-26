@@ -41,7 +41,7 @@ Respond with ONLY valid JSON in this exact format (you may wrap in a markdown js
       "description": "Detailed spec: what to fix, which files, acceptance criteria",
       "priority": 1,
       "depends_on": [],
-      "complexity": "low"
+      "complexity": "simple"
     },
     {
       "index": 1,
@@ -49,12 +49,12 @@ Respond with ONLY valid JSON in this exact format (you may wrap in a markdown js
       "description": "...",
       "priority": 1,
       "depends_on": [0],
-      "complexity": "low"
+      "complexity": "simple"
     }
   ]
 }
 
-priority: 0 (highest) to 4 (lowest). depends_on: array of task indices (0-based) this task is blocked by. complexity: low or high — assign per task based on fix difficulty (low: routine; high: challenging).
+priority: 0 (highest) to 4 (lowest). depends_on: array of task indices (0-based) this task is blocked by. complexity: simple or complex — assign per task based on fix difficulty (simple: routine; complex: challenging).
 If you cannot parse meaningful fix tasks from the output, return: {"status": "failed", "tasks": []}`;
 
 export interface CreateFixEpicResult {
@@ -109,7 +109,7 @@ Output your response as JSON with status and tasks array.`;
       description?: string;
       priority?: number;
       depends_on?: number[];
-      complexity?: "low" | "high";
+      complexity?: "simple" | "complex";
     }>;
   }>(response.content, "tasks");
   if (!parsed) {
@@ -171,7 +171,13 @@ ${testOutput.slice(0, 15000)}
     const idx = task.index ?? tasks.indexOf(task);
     const priority = Math.min(4, Math.max(0, task.priority ?? 2));
     const taskComplexity =
-      task.complexity === "low" || task.complexity === "high" ? task.complexity : "low";
+      task.complexity === "simple" || task.complexity === "complex"
+        ? task.complexity
+        : task.complexity === "low"
+          ? "simple"
+          : task.complexity === "high"
+            ? "complex"
+            : "simple";
     const taskResult = await taskStore.createWithRetry(projectId, task.title, {
       type: "task",
       description: task.description ?? "",

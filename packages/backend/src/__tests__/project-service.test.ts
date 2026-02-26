@@ -40,8 +40,8 @@ describe("ProjectService", () => {
     const project = await projectService.createProject({
       name: "Test Project",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
-      highComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -64,9 +64,9 @@ describe("ProjectService", () => {
 
     // Verify settings in global store
     const settings = await readSettingsFromGlobalStore(tempDir, project.id);
-    expect(settings.lowComplexityAgent).toBeDefined();
-    expect((settings.lowComplexityAgent as { type: string }).type).toBe("claude");
-    expect((settings.highComplexityAgent as { type: string }).type).toBe("claude");
+    expect(settings.simpleComplexityAgent).toBeDefined();
+    expect((settings.simpleComplexityAgent as { type: string }).type).toBe("claude");
+    expect((settings.complexComplexityAgent as { type: string }).type).toBe("claude");
     expect(settings.hilConfig).toEqual(DEFAULT_HIL_CONFIG);
     expect(settings.testFramework).toBeNull();
     expect(settings.reviewMode).toBe(DEFAULT_REVIEW_MODE);
@@ -115,8 +115,8 @@ describe("ProjectService", () => {
     const project = await projectService.createProject({
       name: "No Description",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -135,8 +135,8 @@ describe("ProjectService", () => {
     const project = await projectService.createProject({
       name: "Stale Desc",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -172,8 +172,8 @@ describe("ProjectService", () => {
     await projectService.createProject({
       name: "Existing AGENTS.md",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -195,8 +195,8 @@ describe("ProjectService", () => {
     await projectService.createProject({
       name: "Already Has BD",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -211,8 +211,8 @@ describe("ProjectService", () => {
       projectService.createProject({
         name: "",
         repoPath: path.join(tempDir, "proj"),
-        lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-        highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+        simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+        complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
         deployment: { mode: "custom" },
         hilConfig: DEFAULT_HIL_CONFIG,
       })
@@ -224,8 +224,8 @@ describe("ProjectService", () => {
       projectService.createProject({
         name: "Test",
         repoPath: "",
-        lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-        highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+        simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+        complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
         deployment: { mode: "custom" },
         hilConfig: DEFAULT_HIL_CONFIG,
       })
@@ -239,8 +239,8 @@ describe("ProjectService", () => {
       name: "Expo Project",
 
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "expo", expoConfig: { channel: "preview" } },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -261,8 +261,8 @@ describe("ProjectService", () => {
       name: "Jest Project",
 
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
       testFramework: "jest",
@@ -279,8 +279,8 @@ describe("ProjectService", () => {
       name: "Custom Deploy Project",
 
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: {
         mode: "custom",
         customCommand: "./deploy.sh",
@@ -305,8 +305,8 @@ describe("ProjectService", () => {
       name: "Expo Ignores Custom",
 
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: {
         mode: "expo",
         expoConfig: { channel: "preview" },
@@ -329,8 +329,8 @@ describe("ProjectService", () => {
       name: "Invalid Deployment",
 
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "invalid" as "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -347,8 +347,8 @@ describe("ProjectService", () => {
       name: "Partial HIL",
 
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: { scopeChanges: "automated" } as typeof DEFAULT_HIL_CONFIG,
     });
@@ -370,8 +370,8 @@ describe("ProjectService", () => {
     const project = await projectService.createProject({
       name: "Test",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -385,16 +385,16 @@ describe("ProjectService", () => {
     const first = await projectService.createProject({
       name: "First",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
     const again = await projectService.createProject({
       name: "Other",
       repoPath: repoPath + "/",
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -403,7 +403,7 @@ describe("ProjectService", () => {
     expect(again.repoPath).toBe(first.repoPath);
   });
 
-  it("should reject createProject when lowComplexityAgent/highComplexityAgent are missing", async () => {
+  it("should reject createProject when simpleComplexityAgent/complexComplexityAgent are missing", async () => {
     const repoPath = path.join(tempDir, "missing-agents");
     await expect(
       projectService.createProject({
@@ -415,30 +415,30 @@ describe("ProjectService", () => {
     ).rejects.toMatchObject({ code: "INVALID_AGENT_CONFIG" });
   });
 
-  it("should reject invalid lowComplexityAgent schema", async () => {
+  it("should reject invalid simpleComplexityAgent schema", async () => {
     const repoPath = path.join(tempDir, "invalid-low");
 
     await expect(
       projectService.createProject({
         name: "Test",
         repoPath,
-        lowComplexityAgent: { type: "invalid" as "claude", model: null, cliCommand: null },
-        highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+        simpleComplexityAgent: { type: "invalid" as "claude", model: null, cliCommand: null },
+        complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
         deployment: { mode: "custom" },
         hilConfig: DEFAULT_HIL_CONFIG,
       })
     ).rejects.toMatchObject({ code: "INVALID_AGENT_CONFIG" });
   });
 
-  it("should reject invalid highComplexityAgent schema", async () => {
+  it("should reject invalid complexComplexityAgent schema", async () => {
     const repoPath = path.join(tempDir, "invalid-high");
 
     await expect(
       projectService.createProject({
         name: "Test",
         repoPath,
-        lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-        highComplexityAgent: { type: "cursor", model: 123 as unknown as string, cliCommand: null },
+        simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+        complexComplexityAgent: { type: "cursor", model: 123 as unknown as string, cliCommand: null },
         deployment: { mode: "custom" },
         hilConfig: DEFAULT_HIL_CONFIG,
       })
@@ -452,17 +452,17 @@ describe("ProjectService", () => {
       name: "Cursor Project",
 
       repoPath,
-      lowComplexityAgent: { type: "cursor", model: "composer-1.5", cliCommand: null },
-      highComplexityAgent: { type: "cursor", model: "composer-1.5", cliCommand: null },
+      simpleComplexityAgent: { type: "cursor", model: "composer-1.5", cliCommand: null },
+      complexComplexityAgent: { type: "cursor", model: "composer-1.5", cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
 
     expect(project.id).toBeDefined();
     const settings = await projectService.getSettings(project.id);
-    expect(settings.lowComplexityAgent.type).toBe("cursor");
-    expect(settings.lowComplexityAgent.model).toBe("composer-1.5");
-    expect(settings.highComplexityAgent.type).toBe("cursor");
+    expect(settings.simpleComplexityAgent.type).toBe("cursor");
+    expect(settings.simpleComplexityAgent.model).toBe("composer-1.5");
+    expect(settings.complexComplexityAgent.type).toBe("cursor");
   });
 
   it("should accept custom agent with cliCommand", async () => {
@@ -472,40 +472,40 @@ describe("ProjectService", () => {
       name: "Custom Agent",
 
       repoPath,
-      lowComplexityAgent: { type: "custom", model: null, cliCommand: "/usr/bin/my-agent" },
-      highComplexityAgent: { type: "custom", model: null, cliCommand: "/usr/bin/my-agent" },
+      simpleComplexityAgent: { type: "custom", model: null, cliCommand: "/usr/bin/my-agent" },
+      complexComplexityAgent: { type: "custom", model: null, cliCommand: "/usr/bin/my-agent" },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
 
     expect(project.id).toBeDefined();
     const settings = await projectService.getSettings(project.id);
-    expect(settings.lowComplexityAgent.type).toBe("custom");
-    expect(settings.lowComplexityAgent.cliCommand).toBe("/usr/bin/my-agent");
+    expect(settings.simpleComplexityAgent.type).toBe("custom");
+    expect(settings.simpleComplexityAgent.cliCommand).toBe("/usr/bin/my-agent");
   });
 
-  it("should accept and persist lowComplexityAgent and highComplexityAgent in updateSettings", async () => {
+  it("should accept and persist simpleComplexityAgent and complexComplexityAgent in updateSettings", async () => {
     const repoPath = path.join(tempDir, "complexity-overrides");
     const project = await projectService.createProject({
       name: "Complexity Project",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
 
     const updated = await projectService.updateSettings(project.id, {
-      lowComplexityAgent: { type: "cursor", model: "fast-model", cliCommand: null },
-      highComplexityAgent: { type: "claude", model: "claude-opus-5", cliCommand: null },
+      simpleComplexityAgent: { type: "cursor", model: "fast-model", cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: "claude-opus-5", cliCommand: null },
     });
 
-    expect(updated.lowComplexityAgent.type).toBe("cursor");
-    expect(updated.lowComplexityAgent.model).toBe("fast-model");
-    expect(updated.highComplexityAgent.model).toBe("claude-opus-5");
+    expect(updated.simpleComplexityAgent.type).toBe("cursor");
+    expect(updated.simpleComplexityAgent.model).toBe("fast-model");
+    expect(updated.complexComplexityAgent.model).toBe("claude-opus-5");
 
     const reloaded = await projectService.getSettings(project.id);
-    expect(reloaded.highComplexityAgent.model).toBe("claude-opus-5");
+    expect(reloaded.complexComplexityAgent.model).toBe("claude-opus-5");
   });
 
   it("should strip testFailuresAndRetries from hilConfig in updateSettings (PRD §6.5.1)", async () => {
@@ -514,8 +514,8 @@ describe("ProjectService", () => {
       name: "HIL Strip",
 
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -540,8 +540,8 @@ describe("ProjectService", () => {
       name: "HIL Read Strip",
 
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -567,17 +567,17 @@ describe("ProjectService", () => {
     const project = await projectService.createProject({
       name: "Read Settings",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: "code-model", cliCommand: null },
-      highComplexityAgent: { type: "cursor", model: "plan-model", cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: "code-model", cliCommand: null },
+      complexComplexityAgent: { type: "cursor", model: "plan-model", cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
 
     const fetched = await projectService.getSettings(project.id);
-    expect(fetched.lowComplexityAgent.type).toBe("claude");
-    expect(fetched.lowComplexityAgent.model).toBe("code-model");
-    expect(fetched.highComplexityAgent.type).toBe("cursor");
-    expect(fetched.highComplexityAgent.model).toBe("plan-model");
+    expect(fetched.simpleComplexityAgent.type).toBe("claude");
+    expect(fetched.simpleComplexityAgent.model).toBe("code-model");
+    expect(fetched.complexComplexityAgent.type).toBe("cursor");
+    expect(fetched.complexComplexityAgent.model).toBe("plan-model");
   });
 
   it("should persist two-tier shape on save", async () => {
@@ -585,8 +585,8 @@ describe("ProjectService", () => {
     const project = await projectService.createProject({
       name: "Persist Settings",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -594,8 +594,8 @@ describe("ProjectService", () => {
     await projectService.updateSettings(project.id, { testFramework: "vitest" });
 
     const persisted = await readSettingsFromGlobalStore(tempDir, project.id);
-    expect(persisted.lowComplexityAgent).toBeDefined();
-    expect(persisted.highComplexityAgent).toBeDefined();
+    expect(persisted.simpleComplexityAgent).toBeDefined();
+    expect(persisted.complexComplexityAgent).toBeDefined();
     expect(persisted.testFramework).toBe("vitest");
   });
 
@@ -604,8 +604,8 @@ describe("ProjectService", () => {
     const project = await projectService.createProject({
       name: "Branches Max Coders",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -627,15 +627,15 @@ describe("ProjectService", () => {
     const project = await projectService.createProject({
       name: "Test",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
 
     await expect(
       projectService.updateSettings(project.id, {
-        lowComplexityAgent: { type: "invalid" as "claude", model: null, cliCommand: null },
+        simpleComplexityAgent: { type: "invalid" as "claude", model: null, cliCommand: null },
       })
     ).rejects.toMatchObject({ code: "INVALID_AGENT_CONFIG" });
   });
@@ -645,8 +645,8 @@ describe("ProjectService", () => {
     const project = await projectService.createProject({
       name: "Archive Me",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -672,8 +672,8 @@ describe("ProjectService", () => {
     const project = await projectService.createProject({
       name: "Delete Me",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      highComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });

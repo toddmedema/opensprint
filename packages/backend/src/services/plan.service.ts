@@ -78,8 +78,8 @@ interface NormalizedPlannerTask {
   description: string;
   priority: number;
   dependsOn: string[];
-  /** Task-level complexity (low|high). When absent, inferred from plan. */
-  complexity?: "low" | "high";
+  /** Task-level complexity (simple|complex). When absent, inferred from plan. */
+  complexity?: "simple" | "complex";
 }
 
 /**
@@ -101,7 +101,13 @@ function normalizePlannerTask(
   );
   const rawComplexity = task.complexity as string | undefined;
   const complexity =
-    rawComplexity === "low" || rawComplexity === "high" ? rawComplexity : undefined;
+    rawComplexity === "simple" || rawComplexity === "complex"
+      ? rawComplexity
+      : rawComplexity === "low"
+        ? "simple"
+        : rawComplexity === "high"
+          ? "complex"
+          : undefined;
   return { title, description, priority, dependsOn, complexity };
 }
 
@@ -182,13 +188,13 @@ const DECOMPOSE_SYSTEM_PROMPT = `You are an AI planning assistant for OpenSprint
         {"title": "Main Screen", "content": "+------------------+\\n| Header           |\\n+------------------+\\n| Content area     |\\n|                  |\\n+------------------+"}
       ],
       "tasks": [
-        {"title": "Task title", "description": "Task spec", "priority": 1, "dependsOn": [], "complexity": "low"}
+        {"title": "Task title", "description": "Task spec", "priority": 1, "dependsOn": [], "complexity": "simple"}
       ]
     }
   ]
 }
 
-complexity: low, medium, high, or very_high (plan-level). Task-level complexity: low or high — assign per task based on implementation difficulty (low: routine, isolated; high: challenging, many integrations). priority: 0=highest. dependsOn: array of task titles this task depends on (blocked by) — use exact titles from your own output. dependsOnPlans: array of slugified plan titles (lowercase, hyphens) that match other plan titles in your output; e.g. if Plan A is "User Authentication", another plan depending on it uses dependsOnPlans: ["user-authentication"]. mockups: array of {title, content} — ASCII wireframes; at least one required per plan.
+complexity: low, medium, high, or very_high (plan-level). Task-level complexity: simple or complex — assign per task based on implementation difficulty (simple: routine, isolated; complex: challenging, many integrations). priority: 0=highest. dependsOn: array of task titles this task depends on (blocked by) — use exact titles from your own output. dependsOnPlans: array of slugified plan titles (lowercase, hyphens) that match other plan titles in your output; e.g. if Plan A is "User Authentication", another plan depending on it uses dependsOnPlans: ["user-authentication"]. mockups: array of {title, content} — ASCII wireframes; at least one required per plan.
 
 **Task:** Given the full PRD, produce a feature decomposition. For each feature:
 1. Create a Plan with a clear title and full markdown specification
@@ -227,11 +233,11 @@ Guidelines:
 Respond with ONLY valid JSON (you may wrap in a markdown json code block):
 {
   "tasks": [
-    {"title": "Task title", "description": "Detailed implementation spec with acceptance criteria", "priority": 1, "dependsOn": [], "complexity": "low"}
+    {"title": "Task title", "description": "Detailed implementation spec with acceptance criteria", "priority": 1, "dependsOn": [], "complexity": "simple"}
   ]
 }
 
-Task-level complexity: low or high — assign per task based on implementation difficulty (low: routine, isolated; high: challenging, many integrations).`;
+Task-level complexity: simple or complex — assign per task based on implementation difficulty (simple: routine, isolated; complex: challenging, many integrations).`;
 
 const AUTO_REVIEW_SYSTEM_PROMPT = `You are an auto-review agent for OpenSprint. After a plan is decomposed from a PRD, you review the generated plans and tasks against the existing codebase to identify what is already implemented.
 
@@ -1724,11 +1730,11 @@ Respond with ONLY valid JSON (you may wrap in a markdown json code block):
   "complexity": "medium",
   "mockups": [{"title": "Main Screen", "content": "ASCII wireframe"}],
   "tasks": [
-    {"title": "Task title", "description": "Detailed spec", "priority": 1, "dependsOn": [], "complexity": "low"}
+    {"title": "Task title", "description": "Detailed spec", "priority": 1, "dependsOn": [], "complexity": "simple"}
   ]
 }
 
-complexity: low, medium, high, or very_high (plan-level). Task-level complexity: low or high — assign per task based on implementation difficulty. priority: 0=highest. dependsOn: array of other task titles this task depends on.`;
+complexity: low, medium, high, or very_high (plan-level). Task-level complexity: simple or complex — assign per task based on implementation difficulty. priority: 0=highest. dependsOn: array of other task titles this task depends on.`;
 
     const prompt = `Generate a complete feature plan for the following idea.\n\n## Feature Idea\n\n${description}\n\n## PRD Context\n\n${prdContext}`;
 
@@ -1799,7 +1805,7 @@ complexity: low, medium, high, or very_high (plan-level). Task-level complexity:
     const prdContext = await this.buildPrdContext(projectId);
     const repoPath = await this.getRepoPath(projectId);
 
-    const prompt = `Analyze the PRD below and produce a feature decomposition. Output valid JSON with a "plans" array. Each plan has: title, content (full markdown), complexity (low|medium|high|very_high), and tasks array. Each task has: title, description, priority (0-4), dependsOn (array of task titles it depends on), complexity (low|high — assign per task based on implementation difficulty).`;
+    const prompt = `Analyze the PRD below and produce a feature decomposition. Output valid JSON with a "plans" array. Each plan has: title, content (full markdown), complexity (low|medium|high|very_high), and tasks array. Each task has: title, description, priority (0-4), dependsOn (array of task titles it depends on), complexity (simple|complex — assign per task based on implementation difficulty).`;
 
     const agentId = `plan-suggest-${projectId}-${Date.now()}`;
 
@@ -1878,7 +1884,7 @@ complexity: low, medium, high, or very_high (plan-level). Task-level complexity:
 
     const prdContext = await this.buildPrdContext(projectId);
 
-    const prompt = `Analyze the PRD below and produce a feature decomposition. Output valid JSON with a "plans" array. Each plan has: title, content (full markdown), complexity (low|medium|high|very_high), and tasks array. Each task has: title, description, priority (0-4), dependsOn (array of task titles it depends on), complexity (low|high — assign per task based on implementation difficulty).`;
+    const prompt = `Analyze the PRD below and produce a feature decomposition. Output valid JSON with a "plans" array. Each plan has: title, content (full markdown), complexity (low|medium|high|very_high), and tasks array. Each task has: title, description, priority (0-4), dependsOn (array of task titles it depends on), complexity (simple|complex — assign per task based on implementation difficulty).`;
 
     const agentId = `plan-decompose-${projectId}-${Date.now()}`;
 

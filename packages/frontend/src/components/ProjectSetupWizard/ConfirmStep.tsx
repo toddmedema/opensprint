@@ -4,8 +4,8 @@ import type { ProjectMetadataState } from "./ProjectMetadataStep";
 export interface ConfirmStepProps {
   metadata: ProjectMetadataState;
   repoPath: string;
-  lowComplexityAgent: AgentConfig;
-  highComplexityAgent: AgentConfig;
+  simpleComplexityAgent: AgentConfig;
+  complexComplexityAgent: AgentConfig;
   deploymentMode: string;
   customDeployCommand: string;
   customDeployWebhook: string;
@@ -20,8 +20,8 @@ export interface ConfirmStepProps {
 export function ConfirmStep({
   metadata,
   repoPath,
-  lowComplexityAgent,
-  highComplexityAgent,
+  simpleComplexityAgent,
+  complexComplexityAgent,
   deploymentMode,
   customDeployCommand,
   customDeployWebhook,
@@ -43,19 +43,19 @@ export function ConfirmStep({
     }
   };
 
-  const lowComplexityLabel =
-    lowComplexityAgent.type === "custom"
-      ? (lowComplexityAgent.cliCommand ?? "").trim()
-        ? `Custom: ${(lowComplexityAgent.cliCommand ?? "").trim()}`
+  const simpleComplexityLabel =
+    simpleComplexityAgent.type === "custom"
+      ? (simpleComplexityAgent.cliCommand ?? "").trim()
+        ? `Custom: ${(simpleComplexityAgent.cliCommand ?? "").trim()}`
         : "Custom (not configured)"
-      : `${providerDisplayName(lowComplexityAgent.type)}${lowComplexityAgent.model ? ` — ${lowComplexityAgent.model}` : ""}`;
+      : `${providerDisplayName(simpleComplexityAgent.type)}${simpleComplexityAgent.model ? ` — ${simpleComplexityAgent.model}` : ""}`;
 
-  const highComplexityLabel =
-    highComplexityAgent.type === "custom"
-      ? (highComplexityAgent.cliCommand ?? "").trim()
-        ? `Custom: ${(highComplexityAgent.cliCommand ?? "").trim()}`
+  const complexComplexityLabel =
+    complexComplexityAgent.type === "custom"
+      ? (complexComplexityAgent.cliCommand ?? "").trim()
+        ? `Custom: ${(complexComplexityAgent.cliCommand ?? "").trim()}`
         : "Custom (not configured)"
-      : `${providerDisplayName(highComplexityAgent.type)}${highComplexityAgent.model ? ` — ${highComplexityAgent.model}` : ""}`;
+      : `${providerDisplayName(complexComplexityAgent.type)}${complexComplexityAgent.model ? ` — ${complexComplexityAgent.model}` : ""}`;
 
   const deploymentLabel =
     deploymentMode === "custom"
@@ -84,12 +84,12 @@ export function ConfirmStep({
           <dd className="font-mono text-xs">{repoPath}</dd>
         </div>
         <div className="flex justify-between">
-          <dt className="text-theme-muted">Low Complexity Agent</dt>
-          <dd className="font-medium capitalize">{lowComplexityLabel}</dd>
+          <dt className="text-theme-muted">Simple Complexity Agent</dt>
+          <dd className="font-medium capitalize">{simpleComplexityLabel}</dd>
         </div>
         <div className="flex justify-between">
-          <dt className="text-theme-muted">High Complexity Agent</dt>
-          <dd className="font-medium capitalize">{highComplexityLabel}</dd>
+          <dt className="text-theme-muted">Complex Complexity Agent</dt>
+          <dd className="font-medium capitalize">{complexComplexityLabel}</dd>
         </div>
         <div className="flex justify-between">
           <dt className="text-theme-muted">Deliver</dt>

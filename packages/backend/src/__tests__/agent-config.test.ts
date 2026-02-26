@@ -4,10 +4,10 @@ import { AppError } from "../middleware/error-handler.js";
 
 describe("agent-config schema", () => {
   describe("parseAgentConfig", () => {
-    it("should accept valid lowComplexityAgent config", () => {
+    it("should accept valid simpleComplexityAgent config", () => {
       const config = parseAgentConfig(
         { type: "claude", model: "claude-sonnet-4", cliCommand: null },
-        "lowComplexityAgent"
+        "simpleComplexityAgent"
       );
       expect(config).toEqual({
         type: "claude",
@@ -16,10 +16,10 @@ describe("agent-config schema", () => {
       });
     });
 
-    it("should accept valid highComplexityAgent config", () => {
+    it("should accept valid complexComplexityAgent config", () => {
       const config = parseAgentConfig(
         { type: "cursor", model: "composer-1.5", cliCommand: null },
-        "highComplexityAgent"
+        "complexComplexityAgent"
       );
       expect(config).toEqual({
         type: "cursor",
@@ -30,13 +30,13 @@ describe("agent-config schema", () => {
 
     it("should reject invalid type", () => {
       expect(() =>
-        parseAgentConfig({ type: "invalid", model: null, cliCommand: null }, "lowComplexityAgent")
+        parseAgentConfig({ type: "invalid", model: null, cliCommand: null }, "simpleComplexityAgent")
       ).toThrow(AppError);
     });
 
     it("should reject invalid model type", () => {
       expect(() =>
-        parseAgentConfig({ type: "claude", model: 123, cliCommand: null }, "highComplexityAgent")
+        parseAgentConfig({ type: "claude", model: 123, cliCommand: null }, "complexComplexityAgent")
       ).toThrow(AppError);
     });
   });

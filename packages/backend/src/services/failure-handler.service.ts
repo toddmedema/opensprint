@@ -55,8 +55,8 @@ export interface FailureHandlerHost {
   };
   projectService: {
     getSettings(projectId: string): Promise<{
-      lowComplexityAgent: { type: string; model?: string | null };
-      highComplexityAgent: { type: string; model?: string | null };
+      simpleComplexityAgent: { type: string; model?: string | null };
+      complexComplexityAgent: { type: string; model?: string | null };
       gitWorkingMode?: "worktree" | "branches";
     }>;
   };
@@ -130,7 +130,7 @@ export class FailureHandlerService {
       .catch(() => {});
 
     const failSettings = await this.host.projectService.getSettings(projectId);
-    const agentConfig = failSettings.lowComplexityAgent;
+    const agentConfig = failSettings.simpleComplexityAgent;
     const gitWorkingMode = failSettings.gitWorkingMode ?? "worktree";
     agentIdentityService
       .recordAttempt(repoPath, {

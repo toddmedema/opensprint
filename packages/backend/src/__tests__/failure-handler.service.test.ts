@@ -73,8 +73,8 @@ describe("FailureHandlerService", () => {
     mockRevertAndReturnToMain.mockResolvedValue(undefined);
     mockExecuteCodingPhase.mockResolvedValue(undefined);
     mockGetSettings.mockResolvedValue({
-      lowComplexityAgent: { type: "cursor", model: null },
-      highComplexityAgent: { type: "cursor", model: null },
+      simpleComplexityAgent: { type: "cursor", model: null },
+      complexComplexityAgent: { type: "cursor", model: null },
       gitWorkingMode: "worktree",
     });
 
@@ -117,8 +117,8 @@ describe("FailureHandlerService", () => {
   describe("Branches mode revert", () => {
     it("calls revertAndReturnToMain when gitWorkingMode is branches (infra retry)", async () => {
       mockGetSettings.mockResolvedValue({
-        lowComplexityAgent: { type: "cursor", model: null },
-        highComplexityAgent: { type: "cursor", model: null },
+        simpleComplexityAgent: { type: "cursor", model: null },
+        complexComplexityAgent: { type: "cursor", model: null },
         gitWorkingMode: "branches",
       });
       mockHost.getState = vi.fn().mockReturnValue({
@@ -143,8 +143,8 @@ describe("FailureHandlerService", () => {
 
     it("calls revertAndReturnToMain when gitWorkingMode is branches (demotion)", async () => {
       mockGetSettings.mockResolvedValue({
-        lowComplexityAgent: { type: "cursor", model: null },
-        highComplexityAgent: { type: "cursor", model: null },
+        simpleComplexityAgent: { type: "cursor", model: null },
+        complexComplexityAgent: { type: "cursor", model: null },
         gitWorkingMode: "branches",
       });
       const slot = makeSlot(repoPath);
@@ -171,8 +171,8 @@ describe("FailureHandlerService", () => {
 
     it("calls removeTaskWorktree when gitWorkingMode is worktree (infra retry)", async () => {
       mockGetSettings.mockResolvedValue({
-        lowComplexityAgent: { type: "cursor", model: null },
-        highComplexityAgent: { type: "cursor", model: null },
+        simpleComplexityAgent: { type: "cursor", model: null },
+        complexComplexityAgent: { type: "cursor", model: null },
         gitWorkingMode: "worktree",
       });
       mockHost.getState = vi.fn().mockReturnValue({
@@ -196,8 +196,8 @@ describe("FailureHandlerService", () => {
 
     it("calls removeTaskWorktree and deleteBranch when gitWorkingMode is worktree (demotion)", async () => {
       mockGetSettings.mockResolvedValue({
-        lowComplexityAgent: { type: "cursor", model: null },
-        highComplexityAgent: { type: "cursor", model: null },
+        simpleComplexityAgent: { type: "cursor", model: null },
+        complexComplexityAgent: { type: "cursor", model: null },
         gitWorkingMode: "worktree",
       });
       const slot = makeSlot("/tmp/worktree");

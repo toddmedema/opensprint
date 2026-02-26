@@ -26,10 +26,10 @@ export interface EnvKeys {
 }
 
 export interface AgentsStepProps {
-  lowComplexityAgent: AgentConfig;
-  highComplexityAgent: AgentConfig;
-  onLowComplexityAgentChange: (config: AgentConfig) => void;
-  onHighComplexityAgentChange: (config: AgentConfig) => void;
+  simpleComplexityAgent: AgentConfig;
+  complexComplexityAgent: AgentConfig;
+  onSimpleComplexityAgentChange: (config: AgentConfig) => void;
+  onComplexComplexityAgentChange: (config: AgentConfig) => void;
   envKeys: EnvKeys | null;
   keyInput: { anthropic: string; cursor: string };
   onKeyInputChange: (key: "anthropic" | "cursor", value: string) => void;
@@ -45,10 +45,10 @@ export interface AgentsStepProps {
 }
 
 export function AgentsStep({
-  lowComplexityAgent,
-  highComplexityAgent,
-  onLowComplexityAgentChange,
-  onHighComplexityAgentChange,
+  simpleComplexityAgent,
+  complexComplexityAgent,
+  onSimpleComplexityAgentChange,
+  onComplexComplexityAgentChange,
   envKeys,
   keyInput,
   onKeyInputChange,
@@ -67,13 +67,13 @@ export function AgentsStep({
   const needsAnthropic =
     envKeys &&
     !envKeys.anthropic &&
-    (lowComplexityAgent.type === "claude" || highComplexityAgent.type === "claude");
+    (simpleComplexityAgent.type === "claude" || complexComplexityAgent.type === "claude");
   const needsCursor =
     envKeys &&
     !envKeys.cursor &&
-    (lowComplexityAgent.type === "cursor" || highComplexityAgent.type === "cursor");
+    (simpleComplexityAgent.type === "cursor" || complexComplexityAgent.type === "cursor");
   const usesClaudeCli =
-    lowComplexityAgent.type === "claude-cli" || highComplexityAgent.type === "claude-cli";
+    simpleComplexityAgent.type === "claude-cli" || complexComplexityAgent.type === "claude-cli";
   const claudeCliMissing = envKeys && !envKeys.claudeCli && usesClaudeCli;
 
   return (
@@ -223,7 +223,7 @@ export function AgentsStep({
         </div>
       )}
       <div>
-        <h3 className="text-sm font-semibold text-theme-text mb-3">Low Complexity Agent</h3>
+        <h3 className="text-sm font-semibold text-theme-text mb-3">Simple Complexity Agent</h3>
         <p className="text-xs text-theme-muted mb-3">For routine and moderate tasks</p>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
@@ -231,10 +231,10 @@ export function AgentsStep({
               <label className="block text-sm font-medium text-theme-text mb-1">Provider</label>
               <select
                 className="input"
-                value={lowComplexityAgent.type}
+                value={simpleComplexityAgent.type}
                 onChange={(e) =>
-                  onLowComplexityAgentChange({
-                    ...lowComplexityAgent,
+                  onSimpleComplexityAgentChange({
+                    ...simpleComplexityAgent,
                     type: e.target.value as AgentType,
                   })
                 }
@@ -245,30 +245,30 @@ export function AgentsStep({
                 <option value="custom">Custom CLI</option>
               </select>
             </div>
-            {lowComplexityAgent.type !== "custom" && (
+            {simpleComplexityAgent.type !== "custom" && (
               <div>
                 <label className="block text-sm font-medium text-theme-text mb-1">Model</label>
                 <ModelSelect
-                  provider={lowComplexityAgent.type}
-                  value={lowComplexityAgent.model || null}
+                  provider={simpleComplexityAgent.type}
+                  value={simpleComplexityAgent.model || null}
                   onChange={(id) =>
-                    onLowComplexityAgentChange({ ...lowComplexityAgent, model: id ?? "" })
+                    onSimpleComplexityAgentChange({ ...simpleComplexityAgent, model: id ?? "" })
                   }
                   refreshTrigger={modelRefreshTrigger}
                 />
               </div>
             )}
           </div>
-          {lowComplexityAgent.type === "custom" && (
+          {simpleComplexityAgent.type === "custom" && (
             <div>
               <label className="block text-sm font-medium text-theme-text mb-1">CLI command</label>
               <input
                 type="text"
                 className="input w-full font-mono text-sm"
                 placeholder="e.g. my-agent or /usr/local/bin/my-agent --model gpt-4"
-                value={lowComplexityAgent.cliCommand}
+                value={simpleComplexityAgent.cliCommand}
                 onChange={(e) =>
-                  onLowComplexityAgentChange({ ...lowComplexityAgent, cliCommand: e.target.value })
+                  onSimpleComplexityAgentChange({ ...simpleComplexityAgent, cliCommand: e.target.value })
                 }
               />
               <p className="mt-1 text-xs text-theme-muted">
@@ -280,7 +280,7 @@ export function AgentsStep({
       </div>
       <hr />
       <div>
-        <h3 className="text-sm font-semibold text-theme-text mb-3">High Complexity Agent</h3>
+        <h3 className="text-sm font-semibold text-theme-text mb-3">Complex Complexity Agent</h3>
         <p className="text-xs text-theme-muted mb-3">For complex and cross-cutting tasks</p>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
@@ -288,10 +288,10 @@ export function AgentsStep({
               <label className="block text-sm font-medium text-theme-text mb-1">Provider</label>
               <select
                 className="input"
-                value={highComplexityAgent.type}
+                value={complexComplexityAgent.type}
                 onChange={(e) =>
-                  onHighComplexityAgentChange({
-                    ...highComplexityAgent,
+                  onComplexComplexityAgentChange({
+                    ...complexComplexityAgent,
                     type: e.target.value as AgentType,
                   })
                 }
@@ -302,31 +302,31 @@ export function AgentsStep({
                 <option value="custom">Custom CLI</option>
               </select>
             </div>
-            {highComplexityAgent.type !== "custom" && (
+            {complexComplexityAgent.type !== "custom" && (
               <div>
                 <label className="block text-sm font-medium text-theme-text mb-1">Model</label>
                 <ModelSelect
-                  provider={highComplexityAgent.type}
-                  value={highComplexityAgent.model || null}
+                  provider={complexComplexityAgent.type}
+                  value={complexComplexityAgent.model || null}
                   onChange={(id) =>
-                    onHighComplexityAgentChange({ ...highComplexityAgent, model: id ?? "" })
+                    onComplexComplexityAgentChange({ ...complexComplexityAgent, model: id ?? "" })
                   }
                   refreshTrigger={modelRefreshTrigger}
                 />
               </div>
             )}
           </div>
-          {highComplexityAgent.type === "custom" && (
+          {complexComplexityAgent.type === "custom" && (
             <div>
               <label className="block text-sm font-medium text-theme-text mb-1">CLI command</label>
               <input
                 type="text"
                 className="input w-full font-mono text-sm"
                 placeholder="e.g. my-agent or /usr/local/bin/my-agent --model gpt-4"
-                value={highComplexityAgent.cliCommand}
+                value={complexComplexityAgent.cliCommand}
                 onChange={(e) =>
-                  onHighComplexityAgentChange({
-                    ...highComplexityAgent,
+                  onComplexComplexityAgentChange({
+                    ...complexComplexityAgent,
                     cliCommand: e.target.value,
                   })
                 }

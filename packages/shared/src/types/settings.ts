@@ -110,8 +110,8 @@ export type GitWorkingMode = "worktree" | "branches";
 
 /** Full project settings stored in global database (~/.opensprint/settings.json) keyed by project_id */
 export interface ProjectSettings {
-  lowComplexityAgent: AgentConfig;
-  highComplexityAgent: AgentConfig;
+  simpleComplexityAgent: AgentConfig;
+  complexComplexityAgent: AgentConfig;
   deployment: DeploymentConfig;
   hilConfig: HilConfig;
   testFramework: string | null;
@@ -138,8 +138,8 @@ export type PlanningRole =
 
 /**
  * Resolve the agent config for a planning role based on plan complexity.
- * - Dreamer: always highComplexityAgent
- * - Analyst: always lowComplexityAgent
+ * - Dreamer: always complexComplexityAgent
+ * - Analyst: always simpleComplexityAgent
  * - Planner, Harmonizer, Auditor, Summarizer: inherit plan complexity (getAgentForComplexity)
  */
 export function getAgentForPlanningRole(
@@ -147,57 +147,64 @@ export function getAgentForPlanningRole(
   role: PlanningRole,
   planComplexity?: PlanComplexity
 ): AgentConfig {
-  if (role === "dreamer") return settings.highComplexityAgent;
-  if (role === "analyst") return settings.lowComplexityAgent;
+  if (role === "dreamer") return settings.complexComplexityAgent;
+  if (role === "analyst") return settings.simpleComplexityAgent;
   return getAgentForComplexity(settings, planComplexity);
 }
 
 /**
  * Resolve the agent config for a given task complexity.
- * high/very_high → highComplexityAgent; low/medium/undefined → lowComplexityAgent.
+ * high/very_high → complexComplexityAgent; low/medium/undefined → simpleComplexityAgent.
  */
 export function getAgentForComplexity(
   settings: ProjectSettings,
   complexity: PlanComplexity | undefined
 ): AgentConfig {
   if (complexity === "high" || complexity === "very_high") {
-    return settings.highComplexityAgent;
+    return settings.complexComplexityAgent;
   }
-  return settings.lowComplexityAgent;
+  return settings.simpleComplexityAgent;
 }
 
 /** Default agent config when settings are missing */
 const DEFAULT_AGENT: AgentConfig = { type: "cursor", model: null, cliCommand: null };
 
 /**
- * Parse raw settings into ProjectSettings. Expects two-tier format (lowComplexityAgent, highComplexityAgent).
+ * Parse raw settings into ProjectSettings. Expects two-tier format (simpleComplexityAgent, complexComplexityAgent).
+ * Backward compat: accepts legacy lowComplexityAgent/highComplexityAgent.
  * Missing or invalid agent fields default to { type: "cursor", model: null, cliCommand: null }.
- * Already-valid settings pass through unchanged.
  */
 export function parseSettings(raw: unknown): ProjectSettings {
   const r = raw as Record<string, unknown>;
-  const lowObj = r?.lowComplexityAgent;
-  const highObj = r?.highComplexityAgent;
+  const simpleObj = r?.simpleComplexityAgent ?? r?.lowComplexityAgent;
+  const complexObj = r?.complexComplexityAgent ?? r?.highComplexityAgent;
   const gitWorkingMode =
     r?.gitWorkingMode === "worktree" || r?.gitWorkingMode === "branches"
       ? (r.gitWorkingMode as "worktree" | "branches")
       : "worktree";
 
-  if (lowObj && typeof lowObj === "object" && highObj && typeof highObj === "object") {
-    const result = raw as ProjectSettings;
-    if (result.gitWorkingMode === gitWorkingMode) {
-      return result;
+  if (simpleObj && typeof simpleObj === "object" && complexObj && typeof complexObj === "object") {
+    const hasNewKeys = "simpleComplexityAgent" in (r as object) && "complexComplexityAgent" in (r as object);
+    if (hasNewKeys && (r as ProjectSettings).gitWorkingMode === gitWorkingMode) {
+      return r as ProjectSettings;
     }
-    return { ...result, gitWorkingMode };
+    const simple = simpleObj as AgentConfig;
+    const complex = complexObj as AgentConfig;
+    return {
+      ...(r as Partial<ProjectSettings>),
+      simpleComplexityAgent: simple,
+      complexComplexityAgent: complex,
+      gitWorkingMode,
+    } as ProjectSettings;
   }
-  const low =
-    (lowObj && typeof lowObj === "object" ? (lowObj as AgentConfig) : null) ?? DEFAULT_AGENT;
-  const high =
-    (highObj && typeof highObj === "object" ? (highObj as AgentConfig) : null) ?? DEFAULT_AGENT;
+  const simple =
+    (simpleObj && typeof simpleObj === "object" ? (simpleObj as AgentConfig) : null) ?? DEFAULT_AGENT;
+  const complex =
+    (complexObj && typeof complexObj === "object" ? (complexObj as AgentConfig) : null) ?? DEFAULT_AGENT;
   return {
     ...(r as Partial<ProjectSettings>),
-    lowComplexityAgent: low,
-    highComplexityAgent: high,
+    simpleComplexityAgent: simple,
+    complexComplexityAgent: complex,
     deployment: (r?.deployment as DeploymentConfig) ?? DEFAULT_DEPLOYMENT_CONFIG,
     hilConfig: (r?.hilConfig as HilConfig) ?? DEFAULT_HIL_CONFIG,
     testFramework: (r?.testFramework as string | null) ?? null,

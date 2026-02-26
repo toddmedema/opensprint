@@ -7,21 +7,30 @@ import {
 
 const VALID_COMPLEXITIES: PlanComplexity[] = ["low", "medium", "high", "very_high"];
 
-/** Map plan complexity to task complexity: low/medium -> low, high/very_high -> high */
+/** Map plan complexity to task complexity: low/medium -> simple, high/very_high -> complex */
 export function planComplexityToTask(plan: PlanComplexity): TaskComplexity {
-  return plan === "low" || plan === "medium" ? "low" : "high";
+  return plan === "low" || plan === "medium" ? "simple" : "complex";
+}
+
+/** Normalize legacy low/high to simple/complex */
+function normalizeTaskComplexity(raw: string | undefined): TaskComplexity | undefined {
+  if (raw === "simple" || raw === "complex") return raw;
+  if (raw === "low") return "simple";
+  if (raw === "high") return "complex";
+  return undefined;
 }
 
 /**
  * Resolve task-level complexity: task's own value if set, else infer from epic's plan.
- * Returns undefined if no complexity can be determined.
+ * Returns undefined if no complexity can be determined. Migrates legacy low/high to simple/complex.
  */
 export function getTaskComplexity(
   task: StoredTask,
   planComplexity: PlanComplexity | undefined
 ): TaskComplexity | undefined {
   const own = (task as { complexity?: string }).complexity;
-  if (own === "low" || own === "high") return own;
+  const normalized = normalizeTaskComplexity(own);
+  if (normalized) return normalized;
   if (planComplexity && VALID_COMPLEXITIES.includes(planComplexity)) {
     return planComplexityToTask(planComplexity);
   }
@@ -58,7 +67,7 @@ export async function getPlanComplexityForTask(
 
 /**
  * Resolve complexity for agent selection: use the higher of task.complexity and epic.complexity.
- * E.g. task=low, epic=high → use high.
+ * E.g. task=simple, epic=complex → use complex. Returns PlanComplexity for getAgentForComplexity.
  */
 export async function getComplexityForAgent(
   projectId: string,
@@ -67,8 +76,7 @@ export async function getComplexityForAgent(
   taskStore?: TaskStoreService
 ): Promise<PlanComplexity | undefined> {
   const own = (task as { complexity?: string }).complexity;
-  const taskComplexity: TaskComplexity | undefined =
-    own === "low" || own === "high" ? (own as TaskComplexity) : undefined;
+  const taskComplexity = normalizeTaskComplexity(own);
 
   const planComplexity = await getPlanComplexityForTask(
     projectId,
@@ -80,8 +88,8 @@ export async function getComplexityForAgent(
     ? planComplexityToTask(planComplexity)
     : undefined;
 
-  const taskLevel = taskComplexity === "high" ? 1 : taskComplexity === "low" ? 0 : -1;
-  const epicLevel = epicComplexity === "high" ? 1 : epicComplexity === "low" ? 0 : -1;
+  const taskLevel = taskComplexity === "complex" ? 1 : taskComplexity === "simple" ? 0 : -1;
+  const epicLevel = epicComplexity === "complex" ? 1 : epicComplexity === "simple" ? 0 : -1;
   const maxLevel = Math.max(taskLevel, epicLevel);
 
   if (maxLevel === 1) {

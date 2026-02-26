@@ -89,8 +89,8 @@ describe("MergeCoordinatorService", () => {
     mockGitQueueDrain.mockResolvedValue(undefined);
     mockGitQueueEnqueueAndWait.mockResolvedValue(undefined);
     mockGetSettings.mockResolvedValue({
-      lowComplexityAgent: { type: "cursor", model: null },
-      highComplexityAgent: { type: "cursor", model: null },
+      simpleComplexityAgent: { type: "cursor", model: null },
+      complexComplexityAgent: { type: "cursor", model: null },
       deployment: { autoDeployOnEpicCompletion: false },
       gitWorkingMode: "worktree",
     });
@@ -152,8 +152,8 @@ describe("MergeCoordinatorService", () => {
 
   it("calls removeTaskWorktree when gitWorkingMode is worktree", async () => {
     mockGetSettings.mockResolvedValue({
-      lowComplexityAgent: { type: "cursor", model: null },
-      highComplexityAgent: { type: "cursor", model: null },
+      simpleComplexityAgent: { type: "cursor", model: null },
+      complexComplexityAgent: { type: "cursor", model: null },
       deployment: {},
       gitWorkingMode: "worktree",
     });
@@ -166,8 +166,8 @@ describe("MergeCoordinatorService", () => {
 
   it("skips removeTaskWorktree when gitWorkingMode is branches", async () => {
     mockGetSettings.mockResolvedValue({
-      lowComplexityAgent: { type: "cursor", model: null },
-      highComplexityAgent: { type: "cursor", model: null },
+      simpleComplexityAgent: { type: "cursor", model: null },
+      complexComplexityAgent: { type: "cursor", model: null },
       deployment: {},
       gitWorkingMode: "branches",
     });
@@ -180,8 +180,8 @@ describe("MergeCoordinatorService", () => {
 
   it("skips removeTaskWorktree when gitWorkingMode is missing (defaults to worktree behavior)", async () => {
     mockGetSettings.mockResolvedValue({
-      lowComplexityAgent: { type: "cursor", model: null },
-      highComplexityAgent: { type: "cursor", model: null },
+      simpleComplexityAgent: { type: "cursor", model: null },
+      complexComplexityAgent: { type: "cursor", model: null },
       deployment: {},
       // gitWorkingMode omitted
     });
@@ -200,8 +200,8 @@ describe("MergeCoordinatorService", () => {
       mockDeleteBranch.mockResolvedValue(undefined);
 
       mockGetSettings.mockResolvedValue({
-        lowComplexityAgent: { type: "cursor", model: null },
-        highComplexityAgent: { type: "cursor", model: null },
+        simpleComplexityAgent: { type: "cursor", model: null },
+        complexComplexityAgent: { type: "cursor", model: null },
         deployment: {},
         gitWorkingMode: mode,
       });

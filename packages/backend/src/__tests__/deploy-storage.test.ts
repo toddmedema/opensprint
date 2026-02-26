@@ -46,8 +46,8 @@ describe("DeployStorageService", () => {
     const project = await projectService.createProject({
       name: "Deploy Storage Test",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
-      highComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });

@@ -1467,8 +1467,8 @@ export class OrchestratorService {
     const session = await this.sessionManager.createSession(repoPath, {
       taskId: task.id,
       attempt: slot.attempt,
-      agentType: (await this.projectService.getSettings(projectId)).lowComplexityAgent.type,
-      agentModel: (await this.projectService.getSettings(projectId)).lowComplexityAgent.model || "",
+      agentType: (await this.projectService.getSettings(projectId)).simpleComplexityAgent.type,
+      agentModel: (await this.projectService.getSettings(projectId)).simpleComplexityAgent.model || "",
       gitBranch: branchName,
       status: "rejected",
       outputLog: slot.agent.outputLog.join(""),
@@ -1596,7 +1596,7 @@ export class OrchestratorService {
   /** MergeCoordinatorHost: run merger agent to resolve conflicts; returns true if agent exited 0 */
   async runMergerAgentAndWait(projectId: string, cwd: string): Promise<boolean> {
     const settings = await this.projectService.getSettings(projectId);
-    const config = settings.lowComplexityAgent as AgentConfig;
+    const config = settings.simpleComplexityAgent as AgentConfig;
     return agentService.runMergerAgentAndWait(cwd, config);
   }
 }

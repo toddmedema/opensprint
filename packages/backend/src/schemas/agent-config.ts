@@ -7,7 +7,7 @@ const agentTypeSchema = z.enum(["claude", "claude-cli", "cursor", "custom"]);
 
 /**
  * Agent configuration schema (PRD §6.3, §10.2).
- * lowComplexityAgent and highComplexityAgent: { type, model, cliCommand }
+ * simpleComplexityAgent and complexComplexityAgent: { type, model, cliCommand }
  * - claude/cursor: model used when invoking; cliCommand null
  * - custom: cliCommand required; model null
  */
@@ -22,7 +22,7 @@ export type AgentConfigInput = z.infer<typeof agentConfigSchema>;
 /** Validate and parse agent config from request body */
 export function parseAgentConfig(
   value: unknown,
-  field: "lowComplexityAgent" | "highComplexityAgent"
+  field: "simpleComplexityAgent" | "complexComplexityAgent"
 ): AgentConfigInput {
   const result = agentConfigSchema.safeParse(value);
   if (!result.success) {

@@ -108,12 +108,12 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
       .catch(() => setEnvKeys(null));
   }, [activeTab]);
 
-  const lowComplexityAgent = settings?.lowComplexityAgent ?? {
+  const simpleComplexityAgent = settings?.simpleComplexityAgent ?? settings?.simpleComplexityAgent ?? {
     type: "cursor" as AgentType,
     model: null,
     cliCommand: null,
   };
-  const highComplexityAgent = settings?.highComplexityAgent ?? {
+  const complexComplexityAgent = settings?.complexComplexityAgent ?? settings?.complexComplexityAgent ?? {
     type: "cursor" as AgentType,
     model: null,
     cliCommand: null,
@@ -132,15 +132,15 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
           repoPath,
         }),
         api.projects.updateSettings(project.id, {
-          lowComplexityAgent: {
-            type: lowComplexityAgent.type,
-            model: lowComplexityAgent.model || null,
-            cliCommand: lowComplexityAgent.cliCommand || null,
+          simpleComplexityAgent: {
+            type: simpleComplexityAgent.type,
+            model: simpleComplexityAgent.model || null,
+            cliCommand: simpleComplexityAgent.cliCommand || null,
           },
-          highComplexityAgent: {
-            type: highComplexityAgent.type,
-            model: highComplexityAgent.model || null,
-            cliCommand: highComplexityAgent.cliCommand || null,
+          complexComplexityAgent: {
+            type: complexComplexityAgent.type,
+            model: complexComplexityAgent.model || null,
+            cliCommand: complexComplexityAgent.cliCommand || null,
           },
           deployment: {
             mode: deployment.mode,
@@ -178,13 +178,13 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
 
   const defaultAgent = { type: "cursor" as AgentType, model: null, cliCommand: null };
 
-  const updateLowComplexityAgent = (updates: Partial<typeof lowComplexityAgent>) => {
+  const updateSimpleComplexityAgent = (updates: Partial<typeof simpleComplexityAgent>) => {
     setSettings((s) =>
       s
         ? {
             ...s,
-            lowComplexityAgent: {
-              ...(s.lowComplexityAgent ?? defaultAgent),
+            simpleComplexityAgent: {
+              ...(s.simpleComplexityAgent ?? s.simpleComplexityAgent ?? defaultAgent),
               ...updates,
             },
           }
@@ -192,13 +192,13 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
     );
   };
 
-  const updateHighComplexityAgent = (updates: Partial<typeof highComplexityAgent>) => {
+  const updateComplexComplexityAgent = (updates: Partial<typeof complexComplexityAgent>) => {
     setSettings((s) =>
       s
         ? {
             ...s,
-            highComplexityAgent: {
-              ...(s.highComplexityAgent ?? defaultAgent),
+            complexComplexityAgent: {
+              ...(s.complexComplexityAgent ?? s.complexComplexityAgent ?? defaultAgent),
               ...updates,
             },
           }
@@ -343,8 +343,8 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                 <div className="space-y-6">
                   {(() => {
                     const selectedTypes = new Set([
-                      lowComplexityAgent.type,
-                      highComplexityAgent.type,
+                      simpleComplexityAgent.type,
+                      complexComplexityAgent.type,
                     ]);
                     const needsAnthropic =
                       envKeys && !envKeys.anthropic && selectedTypes.has("claude");
@@ -477,7 +477,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                     );
                   })()}
                   <div>
-                    <h3 className="text-sm font-semibold text-theme-text mb-3">Low Complexity</h3>
+                    <h3 className="text-sm font-semibold text-theme-text mb-3">Simple Complexity</h3>
                     <p className="text-xs text-theme-muted mb-3">
                       Used for routine tasks (low and medium complexity plans)
                     </p>
@@ -489,9 +489,9 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                           </label>
                           <select
                             className="input"
-                            value={lowComplexityAgent.type}
+                            value={simpleComplexityAgent.type}
                             onChange={(e) =>
-                              updateLowComplexityAgent({
+                              updateSimpleComplexityAgent({
                                 type: e.target.value as AgentType,
                               })
                             }
@@ -502,21 +502,21 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                             <option value="custom">Custom CLI</option>
                           </select>
                         </div>
-                        {lowComplexityAgent.type !== "custom" && (
+                        {simpleComplexityAgent.type !== "custom" && (
                           <div>
                             <label className="block text-sm font-medium text-theme-text mb-1">
                               Model
                             </label>
                             <ModelSelect
-                              provider={lowComplexityAgent.type}
-                              value={lowComplexityAgent.model}
-                              onChange={(id) => updateLowComplexityAgent({ model: id })}
+                              provider={simpleComplexityAgent.type}
+                              value={simpleComplexityAgent.model}
+                              onChange={(id) => updateSimpleComplexityAgent({ model: id })}
                               refreshTrigger={modelRefreshTrigger}
                             />
                           </div>
                         )}
                       </div>
-                      {lowComplexityAgent.type === "custom" && (
+                      {simpleComplexityAgent.type === "custom" && (
                         <div>
                           <label className="block text-sm font-medium text-theme-text mb-1">
                             CLI command
@@ -525,9 +525,9 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                             type="text"
                             className="input w-full font-mono text-sm"
                             placeholder="e.g. my-agent or /usr/local/bin/my-agent --model gpt-4"
-                            value={lowComplexityAgent.cliCommand ?? ""}
+                            value={simpleComplexityAgent.cliCommand ?? ""}
                             onChange={(e) =>
-                              updateLowComplexityAgent({ cliCommand: e.target.value || null })
+                              updateSimpleComplexityAgent({ cliCommand: e.target.value || null })
                             }
                           />
                           <p className="mt-1 text-xs text-theme-muted">
@@ -540,7 +540,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                   </div>
                   <hr />
                   <div>
-                    <h3 className="text-sm font-semibold text-theme-text mb-3">High Complexity</h3>
+                    <h3 className="text-sm font-semibold text-theme-text mb-3">Complex Complexity</h3>
                     <p className="text-xs text-theme-muted mb-3">
                       Used for challenging tasks (high and very high complexity plans)
                     </p>
@@ -552,9 +552,9 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                           </label>
                           <select
                             className="input"
-                            value={highComplexityAgent.type}
+                            value={complexComplexityAgent.type}
                             onChange={(e) =>
-                              updateHighComplexityAgent({ type: e.target.value as AgentType })
+                              updateComplexComplexityAgent({ type: e.target.value as AgentType })
                             }
                           >
                             <option value="claude">Claude (API)</option>
@@ -563,21 +563,21 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                             <option value="custom">Custom CLI</option>
                           </select>
                         </div>
-                        {highComplexityAgent.type !== "custom" && (
+                        {complexComplexityAgent.type !== "custom" && (
                           <div>
                             <label className="block text-sm font-medium text-theme-text mb-1">
                               Model
                             </label>
                             <ModelSelect
-                              provider={highComplexityAgent.type}
-                              value={highComplexityAgent.model}
-                              onChange={(id) => updateHighComplexityAgent({ model: id })}
+                              provider={complexComplexityAgent.type}
+                              value={complexComplexityAgent.model}
+                              onChange={(id) => updateComplexComplexityAgent({ model: id })}
                               refreshTrigger={modelRefreshTrigger}
                             />
                           </div>
                         )}
                       </div>
-                      {highComplexityAgent.type === "custom" && (
+                      {complexComplexityAgent.type === "custom" && (
                         <div>
                           <label className="block text-sm font-medium text-theme-text mb-1">
                             CLI command
@@ -586,9 +586,9 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                             type="text"
                             className="input w-full font-mono text-sm"
                             placeholder="e.g. my-agent or /usr/local/bin/my-agent --model gpt-4"
-                            value={highComplexityAgent.cliCommand ?? ""}
+                            value={complexComplexityAgent.cliCommand ?? ""}
                             onChange={(e) =>
-                              updateHighComplexityAgent({ cliCommand: e.target.value || null })
+                              updateComplexComplexityAgent({ cliCommand: e.target.value || null })
                             }
                           />
                           <p className="mt-1 text-xs text-theme-muted">
@@ -1179,10 +1179,10 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
             disabled={
               saving ||
               loading ||
-              (lowComplexityAgent.type === "custom" &&
-                !(lowComplexityAgent.cliCommand ?? "").trim()) ||
-              (highComplexityAgent.type === "custom" &&
-                !(highComplexityAgent.cliCommand ?? "").trim())
+              (simpleComplexityAgent.type === "custom" &&
+                !(simpleComplexityAgent.cliCommand ?? "").trim()) ||
+              (complexComplexityAgent.type === "custom" &&
+                !(complexComplexityAgent.cliCommand ?? "").trim())
             }
             className="btn-primary disabled:opacity-50"
           >

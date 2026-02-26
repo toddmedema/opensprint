@@ -1,6 +1,6 @@
 /**
  * Full integration test: settings lifecycle.
- * Verifies settings read/write round-trip with two-tier format (lowComplexityAgent/highComplexityAgent).
+ * Verifies settings read/write round-trip with two-tier format (simpleComplexityAgent/complexComplexityAgent).
  * Settings are stored in global DB at ~/.opensprint/settings.json keyed by project_id.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -51,26 +51,26 @@ describe("Settings lifecycle — service-level", () => {
     const project = await projectService.createProject({
       name: "Lifecycle",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: "code-model", cliCommand: null },
-      highComplexityAgent: { type: "cursor", model: "plan-model", cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: "code-model", cliCommand: null },
+      complexComplexityAgent: { type: "cursor", model: "plan-model", cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
 
     // getSettings() returns two-tier shape and gitWorkingMode default
     const fetched = await projectService.getSettings(project.id);
-    expect(fetched.lowComplexityAgent.type).toBe("claude");
-    expect(fetched.lowComplexityAgent.model).toBe("code-model");
-    expect(fetched.highComplexityAgent.type).toBe("cursor");
-    expect(fetched.highComplexityAgent.model).toBe("plan-model");
+    expect(fetched.simpleComplexityAgent.type).toBe("claude");
+    expect(fetched.simpleComplexityAgent.model).toBe("code-model");
+    expect(fetched.complexComplexityAgent.type).toBe("cursor");
+    expect(fetched.complexComplexityAgent.model).toBe("plan-model");
     expect(fetched.gitWorkingMode).toBe("worktree");
 
     // updateSettings() persists to global store
     await projectService.updateSettings(project.id, { testFramework: "vitest" });
 
     const persisted = await readProjectFromGlobalStore(tempDir, project.id);
-    expect(persisted.lowComplexityAgent).toBeDefined();
-    expect(persisted.highComplexityAgent).toBeDefined();
+    expect(persisted.simpleComplexityAgent).toBeDefined();
+    expect(persisted.complexComplexityAgent).toBeDefined();
     expect(persisted.testFramework).toBe("vitest");
   });
 
@@ -79,8 +79,8 @@ describe("Settings lifecycle — service-level", () => {
     const project = await projectService.createProject({
       name: "Parallelism",
       repoPath,
-      lowComplexityAgent: { type: "cursor", model: null, cliCommand: null },
-      highComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+      simpleComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "cursor", model: null, cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -99,8 +99,8 @@ describe("Settings lifecycle — service-level", () => {
     const project = await projectService.createProject({
       name: "Round Trip",
       repoPath,
-      lowComplexityAgent: { type: "cursor", model: "composer-1.5", cliCommand: null },
-      highComplexityAgent: { type: "claude", model: "claude-opus-4", cliCommand: null },
+      simpleComplexityAgent: { type: "cursor", model: "composer-1.5", cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: "claude-opus-4", cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -115,8 +115,8 @@ describe("Settings lifecycle — service-level", () => {
     const secondParsed = await readProjectFromGlobalStore(tempDir, project.id);
 
     // Output should be identical (idempotent)
-    expect(secondParsed.lowComplexityAgent).toEqual(firstParsed.lowComplexityAgent);
-    expect(secondParsed.highComplexityAgent).toEqual(firstParsed.highComplexityAgent);
+    expect(secondParsed.simpleComplexityAgent).toEqual(firstParsed.simpleComplexityAgent);
+    expect(secondParsed.complexComplexityAgent).toEqual(firstParsed.complexComplexityAgent);
     expect(secondParsed.deployment).toEqual(firstParsed.deployment);
     expect(secondParsed.hilConfig).toEqual(firstParsed.hilConfig);
     expect(secondParsed.testFramework).toEqual(firstParsed.testFramework);
@@ -144,8 +144,8 @@ describe("Settings API lifecycle", () => {
     const project = await projectService.createProject({
       name: "API Lifecycle Test",
       repoPath,
-      lowComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
-      highComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+      simpleComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     });
@@ -162,10 +162,10 @@ describe("Settings API lifecycle", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data).toBeDefined();
-    expect(res.body.data.lowComplexityAgent).toBeDefined();
-    expect(res.body.data.lowComplexityAgent.type).toBe("claude");
-    expect(res.body.data.highComplexityAgent).toBeDefined();
-    expect(res.body.data.highComplexityAgent.type).toBe("claude");
+    expect(res.body.data.simpleComplexityAgent).toBeDefined();
+    expect(res.body.data.simpleComplexityAgent.type).toBe("claude");
+    expect(res.body.data.complexComplexityAgent).toBeDefined();
+    expect(res.body.data.complexComplexityAgent.type).toBe("claude");
     expect(res.body.data.gitWorkingMode).toBe("worktree");
   });
 
@@ -173,15 +173,15 @@ describe("Settings API lifecycle", () => {
     const res = await request(app)
       .put(`${API_PREFIX}/projects/${projectId}/settings`)
       .send({
-        lowComplexityAgent: { type: "cursor", model: "composer-1.5", cliCommand: null },
-        highComplexityAgent: { type: "claude", model: "claude-opus-4", cliCommand: null },
+        simpleComplexityAgent: { type: "cursor", model: "composer-1.5", cliCommand: null },
+        complexComplexityAgent: { type: "claude", model: "claude-opus-4", cliCommand: null },
       });
 
     expect(res.status).toBe(200);
-    expect(res.body.data.lowComplexityAgent.type).toBe("cursor");
-    expect(res.body.data.lowComplexityAgent.model).toBe("composer-1.5");
-    expect(res.body.data.highComplexityAgent.type).toBe("claude");
-    expect(res.body.data.highComplexityAgent.model).toBe("claude-opus-4");
+    expect(res.body.data.simpleComplexityAgent.type).toBe("cursor");
+    expect(res.body.data.simpleComplexityAgent.model).toBe("composer-1.5");
+    expect(res.body.data.complexComplexityAgent.type).toBe("claude");
+    expect(res.body.data.complexComplexityAgent.model).toBe("claude-opus-4");
   });
 
   it("PUT /api/v1/projects/:id/settings accepts and persists gitWorkingMode", async () => {
@@ -237,8 +237,8 @@ describe("Settings API lifecycle", () => {
     const body = {
       name: "New Project via API",
       repoPath,
-      lowComplexityAgent: { type: "cursor", model: "composer-1.5", cliCommand: null },
-      highComplexityAgent: { type: "claude", model: "claude-opus-4", cliCommand: null },
+      simpleComplexityAgent: { type: "cursor", model: "composer-1.5", cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: "claude-opus-4", cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
     };
@@ -250,12 +250,12 @@ describe("Settings API lifecycle", () => {
 
     const settings = await readProjectFromGlobalStore(tempDir, res.body.data.id);
 
-    expect(settings.lowComplexityAgent).toBeDefined();
-    expect(settings.lowComplexityAgent.type).toBe("cursor");
-    expect(settings.lowComplexityAgent.model).toBe("composer-1.5");
-    expect(settings.highComplexityAgent).toBeDefined();
-    expect(settings.highComplexityAgent.type).toBe("claude");
-    expect(settings.highComplexityAgent.model).toBe("claude-opus-4");
+    expect(settings.simpleComplexityAgent).toBeDefined();
+    expect(settings.simpleComplexityAgent.type).toBe("cursor");
+    expect(settings.simpleComplexityAgent.model).toBe("composer-1.5");
+    expect(settings.complexComplexityAgent).toBeDefined();
+    expect(settings.complexComplexityAgent.type).toBe("claude");
+    expect(settings.complexComplexityAgent.model).toBe("claude-opus-4");
   });
 
   it("Create project with gitWorkingMode branches → global store persists it", async () => {
@@ -265,8 +265,8 @@ describe("Settings API lifecycle", () => {
     const body = {
       name: "Branches Mode Project",
       repoPath,
-      lowComplexityAgent: { type: "cursor", model: "composer-1.5", cliCommand: null },
-      highComplexityAgent: { type: "claude", model: "claude-opus-4", cliCommand: null },
+      simpleComplexityAgent: { type: "cursor", model: "composer-1.5", cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: "claude-opus-4", cliCommand: null },
       deployment: { mode: "custom" },
       hilConfig: DEFAULT_HIL_CONFIG,
       gitWorkingMode: "branches",
