@@ -46,9 +46,15 @@ function renderCreateNewProjectPage() {
   );
 }
 
+const defaultScaffoldResponse = {
+  project: { id: "proj-1", name: "My App", repoPath: "/path/to/parent/My App" },
+  runCommand: "cd /path/to/parent/My\\ App && npm run web",
+};
+
 describe("CreateNewProjectPage", () => {
   beforeEach(() => {
     mockScaffold.mockReset();
+    mockScaffold.mockResolvedValue(defaultScaffoldResponse);
     mockGetKeys.mockResolvedValue({ anthropic: true, cursor: true, claudeCli: true });
   });
 
@@ -157,7 +163,7 @@ describe("CreateNewProjectPage", () => {
     expect(screen.getByPlaceholderText("/Users/you/projects/my-app")).toHaveValue("/path/to/parent");
   });
 
-  it("advances to scaffold step from agents", async () => {
+  it("advances to scaffold step from agents and scaffolds on mount", async () => {
     const user = userEvent.setup();
     renderCreateNewProjectPage();
     await user.type(screen.getByLabelText(/project name/i), "My App");
@@ -167,21 +173,19 @@ describe("CreateNewProjectPage", () => {
 
     expect(screen.getByTestId("create-new-scaffold-step")).toBeInTheDocument();
     expect(screen.getByText("Step 3 of 3")).toBeInTheDocument();
-    expect(screen.getByTestId("scaffold-button")).toBeInTheDocument();
+    await screen.findByText(/your project is ready/i);
+    expect(screen.getByTestId("im-ready-button")).toBeInTheDocument();
   });
 
-  it("calls scaffold API when Scaffold clicked", async () => {
-    mockScaffold.mockResolvedValue({
-      project: { id: "proj-1", name: "My App", repoPath: "/path/to/parent/My App" },
-      runCommand: "cd /path/to/parent/My\\ App && npm run web",
-    });
+  it("calls scaffold API when entering scaffold step", async () => {
     const user = userEvent.setup();
     renderCreateNewProjectPage();
     await user.type(screen.getByLabelText(/project name/i), "My App");
     await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/path/to/parent");
     await user.click(screen.getByTestId("next-button"));
     await user.click(screen.getByTestId("next-button"));
-    await user.click(screen.getByTestId("scaffold-button"));
+
+    await screen.findByText(/your project is ready/i);
 
     expect(mockScaffold).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -193,21 +197,56 @@ describe("CreateNewProjectPage", () => {
   });
 
   it("shows run command and I'm Ready after successful scaffold", async () => {
-    mockScaffold.mockResolvedValue({
-      project: { id: "proj-1", name: "My App", repoPath: "/path/to/parent/My App" },
-      runCommand: "cd /path/to/parent/My\\ App && npm run web",
-    });
     const user = userEvent.setup();
     renderCreateNewProjectPage();
     await user.type(screen.getByLabelText(/project name/i), "My App");
     await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/path/to/parent");
     await user.click(screen.getByTestId("next-button"));
     await user.click(screen.getByTestId("next-button"));
-    await user.click(screen.getByTestId("scaffold-button"));
 
     await screen.findByText(/your project is ready/i);
     expect(screen.getByText("cd /path/to/parent/My\\ App && npm run web")).toBeInTheDocument();
     expect(screen.getByTestId("im-ready-button")).toBeInTheDocument();
+  });
+
+  it("I'm Ready navigates to project sketch phase", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/projects/create-new"]}>
+        <CreateNewProjectPage />
+        <LocationDisplay />
+      </MemoryRouter>
+    );
+    await user.type(screen.getByLabelText(/project name/i), "My App");
+    await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/path/to/parent");
+    await user.click(screen.getByTestId("next-button"));
+    await user.click(screen.getByTestId("next-button"));
+
+    await screen.findByText(/your project is ready/i);
+    await user.click(screen.getByTestId("im-ready-button"));
+
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/proj-1/sketch");
+  });
+
+  it("shows Building your project spinner during scaffold", async () => {
+    let resolveScaffold: (value: typeof defaultScaffoldResponse) => void;
+    mockScaffold.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveScaffold = resolve;
+        })
+    );
+    const user = userEvent.setup();
+    renderCreateNewProjectPage();
+    await user.type(screen.getByLabelText(/project name/i), "My App");
+    await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/path/to/parent");
+    await user.click(screen.getByTestId("next-button"));
+    await user.click(screen.getByTestId("next-button"));
+
+    expect(screen.getByText("Building your project...")).toBeInTheDocument();
+
+    resolveScaffold!(defaultScaffoldResponse);
+    await screen.findByText(/your project is ready/i);
   });
 
   it("shows error when scaffold fails", async () => {
@@ -218,10 +257,10 @@ describe("CreateNewProjectPage", () => {
     await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/path/to/parent");
     await user.click(screen.getByTestId("next-button"));
     await user.click(screen.getByTestId("next-button"));
-    await user.click(screen.getByTestId("scaffold-button"));
 
     const errors = await screen.findAllByText("Folder already exists");
     expect(errors.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByTestId("scaffold-retry-button")).toBeInTheDocument();
   });
 
   it("loads env keys when entering agents step", async () => {
@@ -328,10 +367,6 @@ describe("CreateNewProjectPage", () => {
   });
 
   it("passes agent config to scaffold API", async () => {
-    mockScaffold.mockResolvedValue({
-      project: { id: "proj-1", name: "My App", repoPath: "/path/to/parent/My App" },
-      runCommand: "cd /path/to/parent/My\\ App && npm run web",
-    });
     const user = userEvent.setup();
     renderCreateNewProjectPage();
     await user.type(screen.getByLabelText(/project name/i), "My App");
@@ -342,7 +377,8 @@ describe("CreateNewProjectPage", () => {
     await user.selectOptions(providerSelects[0], "claude");
     await user.selectOptions(providerSelects[2], "cursor");
     await user.click(screen.getByTestId("next-button"));
-    await user.click(screen.getByTestId("scaffold-button"));
+
+    await screen.findByText(/your project is ready/i);
 
     expect(mockScaffold).toHaveBeenCalledWith(
       expect.objectContaining({

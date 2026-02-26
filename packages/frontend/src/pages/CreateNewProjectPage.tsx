@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { getProjectPhasePath } from "../lib/phaseRouting";
 import { Layout } from "../components/layout/Layout";
@@ -103,14 +103,80 @@ export function CreateNewProjectPage() {
   };
 
   const handleAgentsNext = () => {
+    setScaffoldError(null);
+    setRunCommand(null);
+    setScaffoldedProject(null);
+    setScaffolding(true);
     setStep("scaffold");
   };
 
-  const handleScaffold = async () => {
-    setScaffolding(true);
+  const scaffoldStepMountedRef = useRef(false);
+
+  useEffect(() => {
+    if (step !== "scaffold") {
+      scaffoldStepMountedRef.current = false;
+      return;
+    }
+    scaffoldStepMountedRef.current = true;
     setScaffoldError(null);
-    try {
-      const result = await api.projects.scaffold({
+
+    const runScaffold = async () => {
+      try {
+        const result = await api.projects.scaffold({
+          name: metadata.name.trim(),
+          parentPath: parentPath.trim(),
+          template,
+          simpleComplexityAgent: {
+            type: simpleComplexityAgent.type,
+            model: simpleComplexityAgent.type === "custom" ? null : simpleComplexityAgent.model || null,
+            cliCommand:
+              simpleComplexityAgent.type === "custom" && simpleComplexityAgent.cliCommand.trim()
+                ? simpleComplexityAgent.cliCommand.trim()
+                : null,
+          },
+          complexComplexityAgent: {
+            type: complexComplexityAgent.type,
+            model: complexComplexityAgent.type === "custom" ? null : complexComplexityAgent.model || null,
+            cliCommand:
+              complexComplexityAgent.type === "custom" && complexComplexityAgent.cliCommand.trim()
+                ? complexComplexityAgent.cliCommand.trim()
+                : null,
+          },
+        });
+        if (scaffoldStepMountedRef.current) {
+          setRunCommand(result.runCommand);
+          setScaffoldedProject(result.project);
+        }
+      } catch (err) {
+        if (scaffoldStepMountedRef.current) {
+          setScaffoldError(err instanceof Error ? err.message : "Failed to scaffold project");
+        }
+      } finally {
+        if (scaffoldStepMountedRef.current) {
+          setScaffolding(false);
+        }
+      }
+    };
+
+    runScaffold();
+  }, [
+    step,
+    metadata.name,
+    parentPath,
+    template,
+    simpleComplexityAgent.type,
+    simpleComplexityAgent.model,
+    simpleComplexityAgent.cliCommand,
+    complexComplexityAgent.type,
+    complexComplexityAgent.model,
+    complexComplexityAgent.cliCommand,
+  ]);
+
+  const handleScaffoldRetry = () => {
+    setScaffoldError(null);
+    setScaffolding(true);
+    api.projects
+      .scaffold({
         name: metadata.name.trim(),
         parentPath: parentPath.trim(),
         template,
@@ -130,14 +196,31 @@ export function CreateNewProjectPage() {
               ? complexComplexityAgent.cliCommand.trim()
               : null,
         },
+      })
+      .then((result) => {
+        if (scaffoldStepMountedRef.current) {
+          setRunCommand(result.runCommand);
+          setScaffoldedProject(result.project);
+        }
+      })
+      .catch((err) => {
+        if (scaffoldStepMountedRef.current) {
+          setScaffoldError(err instanceof Error ? err.message : "Failed to scaffold project");
+        }
+      })
+      .finally(() => {
+        if (scaffoldStepMountedRef.current) {
+          setScaffolding(false);
+        }
       });
-      setRunCommand(result.runCommand);
-      setScaffoldedProject(result.project);
-    } catch (err) {
-      setScaffoldError(err instanceof Error ? err.message : "Failed to scaffold project");
-    } finally {
-      setScaffolding(false);
-    }
+  };
+
+  const handleScaffoldBack = () => {
+    setScaffoldError(null);
+    setRunCommand(null);
+    setScaffoldedProject(null);
+    setScaffolding(false);
+    setStep("agents");
   };
 
   const handleImReady = () => {
@@ -294,9 +377,6 @@ export function CreateNewProjectPage() {
                     </pre>
                   </div>
                 )}
-                {!scaffolding && !runCommand && !scaffoldError && (
-                  <p className="text-theme-muted">Click &quot;Scaffold&quot; to build your project.</p>
-                )}
               </div>
             )}
           </div>
@@ -319,7 +399,11 @@ export function CreateNewProjectPage() {
               <button
                 onClick={() => {
                   setMetadataError(null);
-                  setStep(STEPS[currentStepIndex - 1]?.key ?? "basics");
+                  if (step === "scaffold") {
+                    handleScaffoldBack();
+                  } else {
+                    setStep(STEPS[currentStepIndex - 1]?.key ?? "basics");
+                  }
                 }}
                 className="btn-secondary"
                 data-testid="back-button"
@@ -351,16 +435,7 @@ export function CreateNewProjectPage() {
             )}
             {step === "scaffold" && (
               <>
-                {!runCommand ? (
-                  <button
-                    onClick={handleScaffold}
-                    disabled={scaffolding}
-                    className="btn-primary disabled:opacity-50"
-                    data-testid="scaffold-button"
-                  >
-                    {scaffolding ? "Building..." : "Scaffold"}
-                  </button>
-                ) : (
+                {runCommand ? (
                   <button
                     onClick={handleImReady}
                     className="btn-primary"
@@ -368,7 +443,15 @@ export function CreateNewProjectPage() {
                   >
                     I&apos;m Ready
                   </button>
-                )}
+                ) : scaffoldError ? (
+                  <button
+                    onClick={handleScaffoldRetry}
+                    className="btn-primary"
+                    data-testid="scaffold-retry-button"
+                  >
+                    Retry
+                  </button>
+                ) : null}
               </>
             )}
           </div>
