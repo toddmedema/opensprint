@@ -430,22 +430,25 @@ export function TaskDetailSidebar({
             const hasSourceFeedback =
               (task.sourceFeedbackIds?.length ?? (task.sourceFeedbackId ? 1 : 0)) > 0;
             const displayDesc = hasSourceFeedback && isOnlyFeedbackId ? "" : desc;
-            const hasDeps =
-              (task.dependencies ?? []).filter((d) => d.targetId && d.type !== "discovered-from")
-                .length > 0;
+            // Exclude epic (parent) from Depends on — show only non-epic dependencies
+            const nonEpicDeps = (task.dependencies ?? []).filter(
+              (d) =>
+                d.targetId &&
+                d.type !== "discovered-from" &&
+                d.targetId !== task.epicId
+            );
+            const hasDeps = nonEpicDeps.length > 0;
             if (!displayDesc && !hasDeps) return null;
 
             return (
               <>
-                {/* Depends on (above Description) */}
+                {/* Depends on (above Description) — hidden when epic is the only dependency */}
                 {hasDeps && (
                   <div className="p-4 border-b border-theme-border" data-section="depends-on">
                     <div className="text-xs">
                       <span className="text-theme-muted">Depends on:</span>
                       <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-1.5">
-                        {task.dependencies
-                          .filter((d) => d.targetId && d.type !== "discovered-from")
-                          .map((d) => {
+                        {nonEpicDeps.map((d) => {
                             const depTask = tasks.find((t) => t.id === d.targetId);
                             const label = depTask?.title ?? d.targetId;
                             const col = depTask?.kanbanColumn ?? "backlog";

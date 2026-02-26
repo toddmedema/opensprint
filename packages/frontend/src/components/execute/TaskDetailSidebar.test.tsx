@@ -619,6 +619,132 @@ describe("TaskDetailSidebar", () => {
     ).toBeTruthy();
   });
 
+  it("hides Depends on section when epic is the only dependency", () => {
+    const props = createMinimalProps({
+      selectedTaskData: {
+        id: "epic-1.1",
+        title: "Task A",
+        epicId: "epic-1",
+        kanbanColumn: "in_progress" as const,
+        priority: 0,
+        assignee: null,
+        type: "task" as const,
+        status: "in_progress" as const,
+        labels: [],
+        dependencies: [{ targetId: "epic-1", type: "blocks" }],
+        description: "",
+        createdAt: "",
+        updatedAt: "",
+      },
+      tasks: [],
+      descriptionSectionExpanded: true,
+    });
+
+    render(
+      <Provider store={createStore()}>
+        <TaskDetailSidebar {...props} />
+      </Provider>
+    );
+
+    expect(screen.queryByText("Depends on:")).not.toBeInTheDocument();
+  });
+
+  it("shows Depends on only non-epic dependencies when epic and others exist", () => {
+    const depTask = {
+      id: "epic-1.2",
+      title: "Prerequisite Task",
+      epicId: "epic-1",
+      kanbanColumn: "done" as const,
+      priority: 1,
+      assignee: null,
+      type: "task" as const,
+      status: "closed" as const,
+      labels: [],
+      dependencies: [],
+      description: "",
+      createdAt: "",
+      updatedAt: "",
+    };
+    const props = createMinimalProps({
+      selectedTaskData: {
+        id: "epic-1.1",
+        title: "Task A",
+        epicId: "epic-1",
+        kanbanColumn: "in_progress" as const,
+        priority: 0,
+        assignee: null,
+        type: "task" as const,
+        status: "in_progress" as const,
+        labels: [],
+        dependencies: [
+          { targetId: "epic-1", type: "blocks" },
+          { targetId: "epic-1.2", type: "blocks" },
+        ],
+        description: "",
+        createdAt: "",
+        updatedAt: "",
+      },
+      tasks: [depTask],
+      descriptionSectionExpanded: true,
+    });
+
+    render(
+      <Provider store={createStore()}>
+        <TaskDetailSidebar {...props} />
+      </Provider>
+    );
+
+    expect(screen.getByText("Depends on:")).toBeInTheDocument();
+    expect(screen.getByText("Prerequisite Task")).toBeInTheDocument();
+    expect(screen.queryByText("epic-1")).not.toBeInTheDocument();
+  });
+
+  it("shows Depends on when task has only non-epic dependencies", () => {
+    const depTask = {
+      id: "epic-1.2",
+      title: "Other Task",
+      epicId: "epic-1",
+      kanbanColumn: "ready" as const,
+      priority: 1,
+      assignee: null,
+      type: "task" as const,
+      status: "open" as const,
+      labels: [],
+      dependencies: [],
+      description: "",
+      createdAt: "",
+      updatedAt: "",
+    };
+    const props = createMinimalProps({
+      selectedTaskData: {
+        id: "epic-1.1",
+        title: "Task A",
+        epicId: "epic-1",
+        kanbanColumn: "in_progress" as const,
+        priority: 0,
+        assignee: null,
+        type: "task" as const,
+        status: "in_progress" as const,
+        labels: [],
+        dependencies: [{ targetId: "epic-1.2", type: "blocks" }],
+        description: "",
+        createdAt: "",
+        updatedAt: "",
+      },
+      tasks: [depTask],
+      descriptionSectionExpanded: true,
+    });
+
+    render(
+      <Provider store={createStore()}>
+        <TaskDetailSidebar {...props} />
+      </Provider>
+    );
+
+    expect(screen.getByText("Depends on:")).toBeInTheDocument();
+    expect(screen.getByText("Other Task")).toBeInTheDocument();
+  });
+
   it("renders task description markdown when selectedTaskData has description", () => {
     const props = createMinimalProps({
       selectedTaskData: {
