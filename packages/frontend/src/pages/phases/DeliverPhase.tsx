@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import type { DeploymentRecord, DeploymentConfig } from "@opensprint/shared";
-import { getDefaultDeploymentTarget } from "@opensprint/shared";
+import { getDeploymentTargetConfig } from "@opensprint/shared";
 import { getProjectPhasePath } from "../../lib/phaseRouting";
 import { useAppDispatch, useAppSelector } from "../../store";
 import {
@@ -96,11 +96,6 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
   const { projectId: paramProjectId } = useParams<{ projectId: string }>();
   const effectiveProjectId = projectId ?? paramProjectId ?? "";
   const [settings, setSettings] = useState<{ deployment: DeploymentConfig } | null>(null);
-  const defaultTarget = useMemo(
-    () => (settings?.deployment ? getDefaultDeploymentTarget(settings.deployment) : "production"),
-    [settings?.deployment]
-  );
-  const [selectedTarget, setSelectedTarget] = useState<string>(defaultTarget);
   const [resetLoading, setResetLoading] = useState(false);
   const [envFilter, setEnvFilter] = useState<string>("all");
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
@@ -149,10 +144,6 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
       .catch(() => setSettings(null));
   }, [projectId]);
 
-  useEffect(() => {
-    setSelectedTarget(defaultTarget);
-  }, [defaultTarget]);
-
   // Live updates: poll status and history at least once per second when deployment is active.
   // WebSocket delivers deliver.output in real time; polling provides fallback (e.g. after refresh).
   useEffect(() => {
@@ -176,14 +167,17 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
     return selectedRecord?.log ?? [];
   })();
 
+  const selectedRecordTarget =
+    selectedRecord?.target && typeof selectedRecord.target === "string"
+      ? selectedRecord.target
+      : "production";
+  const selectedTargetConfig = settings?.deployment
+    ? getDeploymentTargetConfig(settings.deployment, selectedRecordTarget)
+    : undefined;
   const canRollback =
     settings?.deployment?.mode === "custom" &&
-    !!settings?.deployment?.rollbackCommand &&
+    !!(selectedTargetConfig?.rollbackCommand ?? settings?.deployment?.rollbackCommand) &&
     selectedRecord?.status === "success";
-
-  const handleDeploy = () => {
-    dispatch(triggerDeliver({ projectId, target: selectedTarget }));
-  };
 
   const handleDeployToBeta = () => {
     dispatch(deployExpo({ projectId, variant: "beta" }));
@@ -224,39 +218,7 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
         <div className="px-6 py-4 border-b border-theme-border bg-theme-surface shrink-0">
           <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-3 flex-wrap">
-              {settings?.deployment?.targets && settings.deployment.targets.length > 0 ? (
-                <div className="flex items-center gap-2">
-                  <label htmlFor="deploy-target" className="text-sm text-theme-muted">
-                    Target:
-                  </label>
-                  <select
-                    id="deploy-target"
-                    value={selectedTarget}
-                    onChange={(e) => setSelectedTarget(e.target.value)}
-                    className="input text-sm py-1.5 pl-2"
-                    data-testid="deploy-target-select"
-                  >
-                    {settings.deployment.targets.map((t) => (
-                      <option key={t.name} value={t.name}>
-                        {t.name}
-                        {t.isDefault ? " (default)" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : null}
-              {onOpenSettings && settings?.deployment?.mode === "custom" && (
-                <button
-                  type="button"
-                  onClick={onOpenSettings}
-                  className="text-sm text-brand-600 hover:text-brand-700"
-                  data-testid="deliver-configure-button"
-                >
-                  Configure
-                </button>
-              )}
-            </div>
+            <div className="flex items-center gap-3 flex-wrap" />
             <div className="flex items-center gap-2 shrink-0">
               {settings?.deployment?.mode === "expo" ? (
                 isDeploying ? (
@@ -313,16 +275,43 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
                     aria-label="Delivering"
                   />
                 </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleDeploy}
-                  className="btn-primary"
-                  data-testid="deliver-button"
-                >
-                  Deliver!
-                </button>
-              )}
+              ) : (() => {
+                const targets = settings?.deployment?.targets ?? [];
+                const hasTargets = targets.length > 0;
+                if (hasTargets) {
+                  const nonDefault = targets.filter((t) => !t.isDefault);
+                  const defaultTarget = targets.find((t) => t.isDefault) ?? targets[0];
+                  const ordered = [...nonDefault, defaultTarget];
+                  return (
+                    <>
+                      {ordered.map((t) => (
+                        <button
+                          key={t.name}
+                          type="button"
+                          onClick={() => dispatch(triggerDeliver({ projectId, target: t.name }))}
+                          className={t.isDefault ? "btn-primary" : "btn-secondary"}
+                          data-testid={`deploy-to-${t.name}-button`}
+                        >
+                          Deploy to {t.name}
+                        </button>
+                      ))}
+                    </>
+                  );
+                }
+                if (onOpenSettings) {
+                  return (
+                    <button
+                      type="button"
+                      onClick={onOpenSettings}
+                      className="text-sm text-brand-600 hover:text-brand-700"
+                      data-testid="deliver-configure-targets-link"
+                    >
+                      Configure Targets
+                    </button>
+                  );
+                }
+                return null;
+              })()}
             </div>
           </div>
         </div>
@@ -427,7 +416,7 @@ className={`dropdown-item w-full text-left text-sm hover:bg-theme-border-subtle 
                   <div className="p-4 text-center text-sm text-theme-muted">Loading…</div>
                 ) : history.length === 0 ? (
                   <div className="p-4 text-center text-sm text-theme-muted">
-                    No deliveries yet. Click Deliver! to start.
+                    No deliveries yet. Configure targets and deploy.
                   </div>
                 ) : filteredHistory.length === 0 ? (
                   <div className="p-4 text-center text-sm text-theme-muted">

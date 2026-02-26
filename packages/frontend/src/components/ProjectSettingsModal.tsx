@@ -852,64 +852,11 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                   {deployment.mode === "custom" && (
                     <div className="space-y-3 pt-2 border-t border-theme-border">
                       <div>
-                        <label className="block text-sm font-medium text-theme-text mb-1">
-                          Delivery command
-                        </label>
-                        <input
-                          type="text"
-                          className="input w-full font-mono text-sm"
-                          placeholder="e.g. ./deploy.sh or vercel deploy --prod"
-                          value={deployment.customCommand ?? ""}
-                          onChange={(e) =>
-                            updateDeployment({ customCommand: e.target.value || undefined })
-                          }
-                        />
-                        <p className="mt-1 text-xs text-theme-muted">
-                          Shell command run from project root after each task completion
-                        </p>
-                      </div>
-                      <div className="text-sm text-theme-muted text-center">— or —</div>
-                      <div>
-                        <label className="block text-sm font-medium text-theme-text mb-1">
-                          Webhook URL
-                        </label>
-                        <input
-                          type="url"
-                          className="input w-full font-mono text-sm"
-                          placeholder="https://api.example.com/deploy"
-                          value={deployment.webhookUrl ?? ""}
-                          onChange={(e) =>
-                            updateDeployment({ webhookUrl: e.target.value || undefined })
-                          }
-                        />
-                        <p className="mt-1 text-xs text-theme-muted">
-                          HTTP POST sent after each task completion (GitHub Actions, Vercel, etc.)
-                        </p>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-theme-text mb-1">
-                          Rollback command
-                        </label>
-                        <input
-                          type="text"
-                          className="input w-full font-mono text-sm"
-                          placeholder="e.g. ./rollback.sh or vercel rollback"
-                          value={deployment.rollbackCommand ?? ""}
-                          onChange={(e) =>
-                            updateDeployment({ rollbackCommand: e.target.value || undefined })
-                          }
-                        />
-                        <p className="mt-1 text-xs text-theme-muted">
-                          Shell command for rolling back to a previous delivery (Deliver phase)
-                        </p>
-                      </div>
-                      <div className="pt-3 border-t border-theme-border">
                         <h4 className="text-sm font-medium text-theme-text mb-2">
                           Delivery targets
                         </h4>
                         <p className="text-xs text-theme-muted mb-2">
                           Define staging/production targets with per-target command or webhook.
-                          Leave empty to use legacy single command/webhook above.
                         </p>
                         {(deployment.targets ?? []).map((t, i) => (
                           <div
@@ -967,12 +914,23 @@ export function ProjectSettingsModal({ project, onClose, onSaved }: ProjectSetti
                             />
                             <input
                               type="url"
-                              className="input w-full font-mono text-xs"
+                              className="input w-full font-mono text-xs mb-1"
                               placeholder="Webhook URL (alternative to command)"
                               value={t.webhookUrl ?? ""}
                               onChange={(e) => {
                                 const next = [...(deployment.targets ?? [])];
                                 next[i] = { ...t, webhookUrl: e.target.value || undefined };
+                                updateDeployment({ targets: next });
+                              }}
+                            />
+                            <input
+                              type="text"
+                              className="input w-full font-mono text-xs"
+                              placeholder="Rollback command (e.g. ./rollback.sh)"
+                              value={t.rollbackCommand ?? ""}
+                              onChange={(e) => {
+                                const next = [...(deployment.targets ?? [])];
+                                next[i] = { ...t, rollbackCommand: e.target.value || undefined };
                                 updateDeployment({ targets: next });
                               }}
                             />

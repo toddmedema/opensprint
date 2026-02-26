@@ -329,7 +329,13 @@ deliverRouter.post("/:deployId/rollback", async (req: Request<DeployIdParams>, r
     const project = await projectService.getProject(projectId);
     const settings = await projectService.getSettings(projectId);
 
-    if (settings.deployment.mode === "custom" && settings.deployment.rollbackCommand) {
+    const recordTarget =
+      record.target && typeof record.target === "string" ? record.target : "production";
+    const targetConfig = getDeploymentTargetConfig(settings.deployment, recordTarget);
+    const rollbackCommand =
+      targetConfig?.rollbackCommand ?? settings.deployment.rollbackCommand;
+
+    if (settings.deployment.mode === "custom" && rollbackCommand) {
       const latest = await deployStorageService.getLatestDeploy(projectId);
       const rolledBackDeployId = latest && latest.id !== deployId ? latest.id : null;
 
@@ -349,7 +355,7 @@ deliverRouter.post("/:deployId/rollback", async (req: Request<DeployIdParams>, r
         projectId,
         rollbackRecord.id,
         project.repoPath,
-        settings.deployment.rollbackCommand!,
+        rollbackCommand,
         rolledBackDeployId
       ).catch((err) => {
         log.error("Rollback failed", { rollbackId: rollbackRecord.id, err });

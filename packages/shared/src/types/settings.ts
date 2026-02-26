@@ -24,6 +24,8 @@ export interface DeploymentTargetConfig {
   command?: string;
   /** Webhook URL for this target (custom mode) */
   webhookUrl?: string;
+  /** Shell command for rollback (custom mode) */
+  rollbackCommand?: string;
   /** When true, this target is selected by default in the Deliver tab */
   isDefault?: boolean;
 }

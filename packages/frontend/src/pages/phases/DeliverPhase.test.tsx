@@ -13,13 +13,18 @@ const {
   mockDeliverHistory,
   mockDeliverStatus,
   mockExpoDeploy,
+  mockDeliverDeploy,
 } = vi.hoisted(() => ({
   mockGetSettings: vi.fn().mockResolvedValue({
-    deployment: { mode: "custom", customCommand: "echo deploy" },
+    deployment: {
+      mode: "custom",
+      targets: [{ name: "production", command: "echo deploy", isDefault: true }],
+    },
   }),
   mockDeliverHistory: vi.fn().mockResolvedValue([]),
   mockDeliverStatus: vi.fn().mockResolvedValue({ activeDeployId: null, currentDeploy: null }),
   mockExpoDeploy: vi.fn().mockResolvedValue({ deployId: "expo-1" }),
+  mockDeliverDeploy: vi.fn().mockResolvedValue({ deployId: "d1" }),
 }));
 
 vi.mock("../../api/client", () => ({
@@ -31,7 +36,7 @@ vi.mock("../../api/client", () => ({
     deliver: {
       status: (...args: unknown[]) => mockDeliverStatus(...args),
       history: (...args: unknown[]) => mockDeliverHistory(...args),
-      deploy: vi.fn().mockResolvedValue({ deployId: "d1" }),
+      deploy: (...args: unknown[]) => mockDeliverDeploy(...args),
       expoDeploy: (...args: unknown[]) => mockExpoDeploy(...args),
       rollback: vi.fn().mockResolvedValue({}),
       updateSettings: vi.fn().mockResolvedValue({}),
@@ -93,14 +98,18 @@ describe("DeliverPhase", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSettings.mockResolvedValue({
-      deployment: { mode: "custom", customCommand: "echo deploy" },
+      deployment: {
+        mode: "custom",
+        targets: [{ name: "production", command: "echo deploy", isDefault: true }],
+      },
     });
   });
 
-  it("renders Deliver! button", () => {
+  it("renders Deploy to [Target] buttons when targets configured", async () => {
     const store = createStore();
     renderWithRouter(store);
-    expect(screen.getByTestId("deliver-button")).toHaveTextContent("Deliver!");
+    const btn = await screen.findByTestId("deploy-to-production-button");
+    expect(btn).toHaveTextContent("Deploy to production");
   });
 
   it("renders deployment history section", () => {
@@ -113,7 +122,7 @@ describe("DeliverPhase", () => {
     const store = createStore();
     renderWithRouter(store);
     expect(
-      await screen.findByText(/No deliveries yet\. Click Deliver! to start\./)
+      await screen.findByText(/No deliveries yet\. Configure targets and deploy\./)
     ).toBeInTheDocument();
   });
 
@@ -161,7 +170,7 @@ describe("DeliverPhase", () => {
     expect(screen.getByTestId("fix-epic-link")).toHaveTextContent(/View fix epic \(bd-abc123\)/);
   });
 
-  it("shows target selector when targets are configured (PRD §7.5.4)", async () => {
+  it("shows Deploy to [Target] buttons when targets are configured (PRD §7.5.4)", async () => {
     mockGetSettings.mockResolvedValueOnce({
       deployment: {
         mode: "custom",
@@ -174,11 +183,12 @@ describe("DeliverPhase", () => {
     const store = createStore();
     renderWithRouter(store);
 
-    const selector = await screen.findByTestId("deploy-target-select");
-    expect(selector).toBeInTheDocument();
-    await waitFor(() => expect(selector).toHaveValue("staging"));
-    expect(selector).toHaveTextContent("staging (default)");
-    expect(selector).toHaveTextContent("production");
+    const stagingBtn = await screen.findByTestId("deploy-to-staging-button");
+    const prodBtn = screen.getByTestId("deploy-to-production-button");
+    expect(stagingBtn).toHaveTextContent("Deploy to staging");
+    expect(prodBtn).toHaveTextContent("Deploy to production");
+    expect(stagingBtn).toHaveClass("btn-primary");
+    expect(prodBtn).toHaveClass("btn-secondary");
   });
 
   it("never shows environment display (Expo or Custom text)", async () => {
@@ -202,26 +212,29 @@ describe("DeliverPhase", () => {
     expect(screen.queryByText(/Environment:/)).not.toBeInTheDocument();
   });
 
-  it("shows Configure button only when custom mode and onOpenSettings provided", async () => {
+  it("shows Configure Targets link on right when custom mode, no targets, and onOpenSettings provided", async () => {
     const onOpenSettings = vi.fn();
     mockGetSettings.mockResolvedValueOnce({
-      deployment: { mode: "custom", customCommand: "echo deploy" },
+      deployment: { mode: "custom" },
     });
     const store = createStore();
     renderWithRouter(store, "proj-1", onOpenSettings);
-    const configureBtn = await screen.findByTestId("deliver-configure-button");
+    const configureBtn = await screen.findByTestId("deliver-configure-targets-link");
     expect(configureBtn).toBeInTheDocument();
-    expect(configureBtn).toHaveTextContent("Configure");
+    expect(configureBtn).toHaveTextContent("Configure Targets");
+    const topBar = configureBtn.closest(".flex.items-center.justify-between")!;
+    const rightSection = topBar.querySelector(":scope > div:last-child")!;
+    expect(rightSection).toContainElement(configureBtn);
   });
 
-  it("hides Configure button when expo mode even with onOpenSettings", async () => {
+  it("hides Configure Targets when expo mode even with onOpenSettings", async () => {
     mockGetSettings.mockResolvedValueOnce({
       deployment: { mode: "expo" },
     });
     const store = createStore();
     renderWithRouter(store, "proj-1", () => {});
     await waitFor(() => expect(mockGetSettings).toHaveBeenCalled());
-    expect(screen.queryByTestId("deliver-configure-button")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("deliver-configure-targets-link")).not.toBeInTheDocument();
   });
 
   it("positions Deploy buttons on right side of top bar (Expo mode)", async () => {
@@ -242,19 +255,20 @@ describe("DeliverPhase", () => {
     expect(rightSection).toContainElement(prodBtn);
   });
 
-  it("positions Deliver! button on right side of top bar (custom mode)", async () => {
+  it("positions Deploy to [Target] buttons on right side of top bar (custom mode)", async () => {
     mockGetSettings.mockResolvedValueOnce({
-      deployment: { mode: "custom", customCommand: "echo deploy" },
+      deployment: {
+        mode: "custom",
+        targets: [{ name: "production", command: "echo deploy", isDefault: true }],
+      },
     });
     const store = createStore();
     renderWithRouter(store);
     await waitFor(() => expect(mockGetSettings).toHaveBeenCalled());
-    const deliverBtn = screen.getByTestId("deliver-button");
-    const topBar = deliverBtn.closest(".flex.items-center.justify-between")!;
-    const leftSection = topBar.querySelector(":scope > div:first-child")!;
+    const deployBtn = screen.getByTestId("deploy-to-production-button");
+    const topBar = deployBtn.closest(".flex.items-center.justify-between")!;
     const rightSection = topBar.querySelector(":scope > div:last-child")!;
-    expect(leftSection).not.toContainElement(deliverBtn);
-    expect(rightSection).toContainElement(deliverBtn);
+    expect(rightSection).toContainElement(deployBtn);
   });
 
   it("shows Deploy to Staging (secondary) left of Deploy to Production (primary) when Expo mode", async () => {
@@ -279,15 +293,18 @@ describe("DeliverPhase", () => {
     expect(betaIdx).toBeLessThan(prodIdx);
   });
 
-  it("hides Deploy to Production when custom mode (shows Deliver! instead)", async () => {
+  it("shows Deploy to [Target] buttons when custom mode with targets (not Expo buttons)", async () => {
     mockGetSettings.mockResolvedValueOnce({
-      deployment: { mode: "custom", customCommand: "echo deploy" },
+      deployment: {
+        mode: "custom",
+        targets: [{ name: "production", command: "echo deploy", isDefault: true }],
+      },
     });
     const store = createStore();
     renderWithRouter(store);
     await waitFor(() => expect(mockGetSettings).toHaveBeenCalled());
     expect(screen.queryByTestId("deploy-prod-button")).not.toBeInTheDocument();
-    expect(screen.getByTestId("deliver-button")).toHaveTextContent("Deliver!");
+    expect(screen.getByTestId("deploy-to-production-button")).toHaveTextContent("Deploy to production");
   });
 
   it("Deploy to Staging calls expoDeploy with variant beta", async () => {
@@ -308,9 +325,29 @@ describe("DeliverPhase", () => {
     await waitFor(() => expect(mockExpoDeploy).toHaveBeenCalledWith("proj-1", "prod"));
   });
 
+  it("Deploy to [target] calls deploy with target", async () => {
+    mockGetSettings.mockResolvedValueOnce({
+      deployment: {
+        mode: "custom",
+        targets: [
+          { name: "staging", command: "echo staging", isDefault: false },
+          { name: "production", command: "echo prod", isDefault: true },
+        ],
+      },
+    });
+    const store = createStore();
+    renderWithRouter(store);
+    const prodBtn = await screen.findByTestId("deploy-to-production-button");
+    prodBtn.click();
+    await waitFor(() => expect(mockDeliverDeploy).toHaveBeenCalledWith("proj-1", "production"));
+  });
+
   it("shows Cancel Deployment button when deploying", async () => {
     mockGetSettings.mockResolvedValueOnce({
-      deployment: { mode: "custom", customCommand: "echo deploy" },
+      deployment: {
+        mode: "custom",
+        targets: [{ name: "production", command: "echo deploy", isDefault: true }],
+      },
     });
     const store = createStore({
       activeDeployId: "deploy-1",
@@ -333,7 +370,10 @@ describe("DeliverPhase", () => {
 
   it("Cancel Deployment is on right side of top bar, directly left of deploy spinner", async () => {
     mockGetSettings.mockResolvedValueOnce({
-      deployment: { mode: "custom", customCommand: "echo deploy" },
+      deployment: {
+        mode: "custom",
+        targets: [{ name: "production", command: "echo deploy", isDefault: true }],
+      },
     });
     const store = createStore({
       activeDeployId: "deploy-1",
@@ -388,9 +428,12 @@ describe("DeliverPhase", () => {
     expect(screen.getByTestId("cancel-deployment-button")).toBeInTheDocument();
   });
 
-  it("hides Deliver! button and shows spinner during deployment (custom mode)", async () => {
+  it("hides deploy buttons and shows spinner during deployment (custom mode)", async () => {
     mockGetSettings.mockResolvedValueOnce({
-      deployment: { mode: "custom", customCommand: "echo deploy" },
+      deployment: {
+        mode: "custom",
+        targets: [{ name: "production", command: "echo deploy", isDefault: true }],
+      },
     });
     const store = createStore({
       activeDeployId: "deploy-1",
@@ -407,7 +450,7 @@ describe("DeliverPhase", () => {
     });
     renderWithRouter(store);
     await waitFor(() => expect(mockGetSettings).toHaveBeenCalled());
-    expect(screen.queryByTestId("deliver-button")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("deploy-to-production-button")).not.toBeInTheDocument();
     expect(screen.getByTestId("deploy-spinner")).toBeInTheDocument();
     expect(screen.getByTestId("cancel-deployment-button")).toBeInTheDocument();
   });
@@ -436,14 +479,14 @@ describe("DeliverPhase", () => {
     expect(screen.queryByTestId("deploy-spinner")).not.toBeInTheDocument();
   });
 
-  it("hides Configure button when onOpenSettings not provided", async () => {
+  it("hides Configure Targets when onOpenSettings not provided (custom mode, no targets)", async () => {
     mockGetSettings.mockResolvedValueOnce({
-      deployment: { mode: "custom", customCommand: "echo deploy" },
+      deployment: { mode: "custom" },
     });
     const store = createStore();
     renderWithRouter(store);
     await waitFor(() => expect(mockGetSettings).toHaveBeenCalled());
-    expect(screen.queryByTestId("deliver-configure-button")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("deliver-configure-targets-link")).not.toBeInTheDocument();
   });
 
   describe("Delivery History environment chip and filter", () => {
@@ -603,7 +646,10 @@ describe("DeliverPhase", () => {
       vi.useFakeTimers();
       try {
         mockGetSettings.mockResolvedValue({
-          deployment: { mode: "custom", customCommand: "echo deploy" },
+          deployment: {
+            mode: "custom",
+            targets: [{ name: "production", command: "echo deploy", isDefault: true }],
+          },
         });
         mockDeliverStatus.mockResolvedValue({
           activeDeployId: "deploy-1",
@@ -645,7 +691,10 @@ describe("DeliverPhase", () => {
 
     it("shows polled history log when liveLog is empty (e.g. after refresh)", async () => {
       mockGetSettings.mockResolvedValueOnce({
-        deployment: { mode: "custom", customCommand: "echo deploy" },
+        deployment: {
+          mode: "custom",
+          targets: [{ name: "production", command: "echo deploy", isDefault: true }],
+        },
       });
       const store = createStore({
         activeDeployId: "deploy-1",
@@ -672,7 +721,10 @@ describe("DeliverPhase", () => {
 
     it("prefers liveLog over polled history when both available", async () => {
       mockGetSettings.mockResolvedValueOnce({
-        deployment: { mode: "custom", customCommand: "echo deploy" },
+        deployment: {
+          mode: "custom",
+          targets: [{ name: "production", command: "echo deploy", isDefault: true }],
+        },
       });
       const store = createStore({
         activeDeployId: "deploy-1",
