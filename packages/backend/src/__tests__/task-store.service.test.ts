@@ -239,6 +239,102 @@ describe("TaskStoreService", () => {
       expect(result.status).toBe("closed");
       expect(result.close_reason).toBe("Implemented and tested");
     });
+
+    it("should set completed_at when task is closed", async () => {
+      const created = await store.create(TEST_PROJECT_ID, "My Task");
+      const beforeClose = new Date().toISOString();
+      const result = await store.close(TEST_PROJECT_ID, created.id, "Done");
+      const afterClose = new Date().toISOString();
+      expect(result.completed_at).toBeTruthy();
+      expect(result.completed_at! >= beforeClose && result.completed_at! <= afterClose).toBe(true);
+    });
+  });
+
+  describe("task duration metadata (started_at, completed_at)", () => {
+    it("should set started_at when assignee is first set via update", async () => {
+      const created = await store.create(TEST_PROJECT_ID, "My Task");
+      expect(created.started_at).toBeNull();
+
+      const beforeAssign = new Date().toISOString();
+      const result = await store.update(TEST_PROJECT_ID, created.id, {
+        status: "in_progress",
+        assignee: "Frodo",
+      });
+      const afterAssign = new Date().toISOString();
+
+      expect(result.started_at).toBeTruthy();
+      expect(
+        result.started_at! >= beforeAssign && result.started_at! <= afterAssign
+      ).toBe(true);
+    });
+
+    it("should set started_at when assignee is first set via claim", async () => {
+      const created = await store.create(TEST_PROJECT_ID, "My Task");
+      const result = await store.update(TEST_PROJECT_ID, created.id, {
+        claim: true,
+        assignee: "Samwise",
+      });
+      expect(result.started_at).toBeTruthy();
+    });
+
+    it("should not overwrite started_at when assignee changes again", async () => {
+      const created = await store.create(TEST_PROJECT_ID, "My Task");
+      const first = await store.update(TEST_PROJECT_ID, created.id, {
+        status: "in_progress",
+        assignee: "Frodo",
+      });
+      const firstStartedAt = first.started_at;
+      expect(firstStartedAt).toBeTruthy();
+
+      await new Promise((r) => setTimeout(r, 10));
+      const second = await store.update(TEST_PROJECT_ID, created.id, {
+        assignee: "Samwise",
+      });
+      expect(second.started_at).toBe(firstStartedAt);
+    });
+
+    it("should have started_at and completed_at for closed tasks; duration derivable", async () => {
+      const created = await store.create(TEST_PROJECT_ID, "Duration Task");
+      await store.update(TEST_PROJECT_ID, created.id, {
+        status: "in_progress",
+        assignee: "Frodo",
+      });
+      const closed = await store.close(TEST_PROJECT_ID, created.id, "Done");
+
+      expect(closed.started_at).toBeTruthy();
+      expect(closed.completed_at).toBeTruthy();
+      const started = new Date(closed.started_at!).getTime();
+      const completed = new Date(closed.completed_at!).getTime();
+      expect(completed).toBeGreaterThanOrEqual(started);
+      const durationMs = completed - started;
+      expect(durationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it("should set started_at in updateMany when assignee first set", async () => {
+      const t1 = await store.create(TEST_PROJECT_ID, "Task 1");
+      const t2 = await store.create(TEST_PROJECT_ID, "Task 2");
+
+      const results = await store.updateMany(TEST_PROJECT_ID, [
+        { id: t1.id, assignee: "Frodo", status: "in_progress" },
+        { id: t2.id, assignee: "Samwise", status: "in_progress" },
+      ]);
+
+      expect(results[0].started_at).toBeTruthy();
+      expect(results[1].started_at).toBeTruthy();
+    });
+
+    it("should set completed_at in closeMany", async () => {
+      const t1 = await store.create(TEST_PROJECT_ID, "Task 1");
+      const t2 = await store.create(TEST_PROJECT_ID, "Task 2");
+
+      const results = await store.closeMany(TEST_PROJECT_ID, [
+        { id: t1.id, reason: "Done 1" },
+        { id: t2.id, reason: "Done 2" },
+      ]);
+
+      expect(results[0].completed_at).toBeTruthy();
+      expect(results[1].completed_at).toBeTruthy();
+    });
   });
 
   describe("closeMany", () => {

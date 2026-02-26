@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS tasks (
     updated_at    TEXT NOT NULL,
     created_by    TEXT,
     close_reason  TEXT,
+    started_at    TEXT,
+    completed_at  TEXT,
     extra         TEXT DEFAULT '{}'
 );
 
@@ -189,13 +191,17 @@ export interface StoredTask {
   created_at: string;
   updated_at: string;
   created_by?: string;
+  close_reason?: string;
+  /** Set when first Coder agent picks up task (assignee set). */
+  started_at?: string | null;
+  /** Set when task is closed. */
+  completed_at?: string | null;
   dependencies?: Array<{
     depends_on_id: string;
     type: string;
   }>;
   dependency_count?: number;
   dependent_count?: number;
-  close_reason?: string;
   /** Reason task was blocked (e.g. Coding Failure, Merge Failure). Stored in extra when status is blocked. */
   block_reason?: string | null;
   [key: string]: unknown;
@@ -317,6 +323,7 @@ export class TaskStoreService {
       }
 
       this.db.run(SCHEMA_SQL);
+      this.migrateTaskDurationColumns();
       await this.migratePlansWithGateTasks();
       await this.saveToDisk();
     } catch (err) {
@@ -325,6 +332,36 @@ export class TaskStoreService {
         ErrorCodes.TASK_STORE_INIT_FAILED,
         `Failed to initialize task store: ${err instanceof Error ? err.message : String(err)}`
       );
+    }
+  }
+
+  /**
+   * Migration: Add started_at and completed_at columns for task duration metadata.
+   */
+  private migrateTaskDurationColumns(): void {
+    const db = this.ensureDb();
+    const stmt = db.prepare(
+      "SELECT COUNT(*) as cnt FROM pragma_table_info('tasks') WHERE name = ?"
+    );
+    stmt.bind(["started_at"]);
+    const hasStartedAt = stmt.step() && (stmt.getAsObject().cnt as number) > 0;
+    stmt.free();
+
+    if (!hasStartedAt) {
+      db.run("ALTER TABLE tasks ADD COLUMN started_at TEXT");
+      log.info("Added started_at column to tasks");
+    }
+
+    const stmt2 = db.prepare(
+      "SELECT COUNT(*) as cnt FROM pragma_table_info('tasks') WHERE name = ?"
+    );
+    stmt2.bind(["completed_at"]);
+    const hasCompletedAt = stmt2.step() && (stmt2.getAsObject().cnt as number) > 0;
+    stmt2.free();
+
+    if (!hasCompletedAt) {
+      db.run("ALTER TABLE tasks ADD COLUMN completed_at TEXT");
+      log.info("Added completed_at column to tasks");
     }
   }
 
@@ -501,6 +538,8 @@ export class TaskStoreService {
       updated_at: row.updated_at as string,
       created_by: (row.created_by as string) ?? undefined,
       close_reason: (row.close_reason as string) ?? undefined,
+      started_at: (row.started_at as string) ?? null,
+      completed_at: (row.completed_at as string) ?? null,
       dependencies: deps,
       dependency_count: deps.length,
       dependent_count: dependentCount,
@@ -865,6 +904,23 @@ export class TaskStoreService {
         }
       }
 
+      // Set started_at when assignee is first set (first Coder agent picks up task)
+      const assigneeBeingSet =
+        options.assignee != null && options.assignee.trim() !== "";
+      if (assigneeBeingSet) {
+        const stmt = db.prepare("SELECT started_at FROM tasks WHERE id = ? AND project_id = ?");
+        stmt.bind([id, projectId]);
+        if (stmt.step()) {
+          const row = stmt.getAsObject();
+          const currentStartedAt = row.started_at as string | null | undefined;
+          if (currentStartedAt == null || currentStartedAt === "") {
+            sets.push("started_at = ?");
+            vals.push(now);
+          }
+        }
+        stmt.free();
+      }
+
       if (options.description != null) {
         sets.push("description = ?");
         vals.push(options.description);
@@ -942,6 +998,19 @@ export class TaskStoreService {
           if (u.assignee != null) {
             sets.push("assignee = ?");
             vals.push(u.assignee);
+            if (u.assignee.trim() !== "") {
+              const stmt = db.prepare("SELECT started_at FROM tasks WHERE id = ? AND project_id = ?");
+              stmt.bind([u.id, projectId]);
+              if (stmt.step()) {
+                const row = stmt.getAsObject();
+                const currentStartedAt = row.started_at as string | null | undefined;
+                if (currentStartedAt == null || currentStartedAt === "") {
+                  sets.push("started_at = ?");
+                  vals.push(now);
+                }
+              }
+              stmt.free();
+            }
           }
           if (u.description != null) {
             sets.push("description = ?");
@@ -970,8 +1039,8 @@ export class TaskStoreService {
       const db = this.ensureDb();
       const now = new Date().toISOString();
       db.run(
-        "UPDATE tasks SET status = 'closed', close_reason = ?, updated_at = ? WHERE id = ? AND project_id = ?",
-        [reason, now, id, projectId]
+        "UPDATE tasks SET status = 'closed', close_reason = ?, completed_at = ?, updated_at = ? WHERE id = ? AND project_id = ?",
+        [reason, now, now, id, projectId]
       );
       if (db.getRowsModified() === 0) {
         throw new AppError(404, ErrorCodes.ISSUE_NOT_FOUND, `Task ${id} not found`, {
@@ -995,8 +1064,8 @@ export class TaskStoreService {
       try {
         for (const item of items) {
           db.run(
-            "UPDATE tasks SET status = 'closed', close_reason = ?, updated_at = ? WHERE id = ? AND project_id = ?",
-            [item.reason, now, item.id, projectId]
+            "UPDATE tasks SET status = 'closed', close_reason = ?, completed_at = ?, updated_at = ? WHERE id = ? AND project_id = ?",
+            [item.reason, now, now, item.id, projectId]
           );
         }
         db.run("COMMIT");

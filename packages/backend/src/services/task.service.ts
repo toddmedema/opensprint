@@ -215,6 +215,8 @@ export class TaskService {
       kanbanColumn,
       createdAt: (issue.created_at as string) ?? "",
       updatedAt: (issue.updated_at as string) ?? "",
+      startedAt: (issue.started_at as string) ?? null,
+      completedAt: (issue.completed_at as string) ?? null,
       ...(sourceFeedbackIds ? { sourceFeedbackIds } : {}),
       ...(sourceFeedbackIds?.[0] ? { sourceFeedbackId: sourceFeedbackIds[0] } : {}),
       ...(taskComplexity ? { complexity: taskComplexity } : {}),

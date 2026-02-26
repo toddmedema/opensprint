@@ -59,6 +59,10 @@ export interface Task {
   kanbanColumn: KanbanColumn;
   createdAt: string;
   updatedAt: string;
+  /** Set when first Coder agent picks up task (assignee set). Duration = completedAt - startedAt. */
+  startedAt?: string | null;
+  /** Set when task is closed. */
+  completedAt?: string | null;
   /** Latest test results from agent sessions (PRD §8.3) */
   testResults?: { passed: number; failed: number; skipped: number; total: number } | null;
   /** Feedback item ID when task originates from Evaluate feedback (discovered-from provenance) */
