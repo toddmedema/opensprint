@@ -19,6 +19,8 @@ export interface ResizableSidebarProps {
   maxWidth?: number;
   /** Max width as fraction of viewport (0–1), used when maxWidth not set (default 0.8) */
   maxWidthPercent?: number;
+  /** Which side of the main content the sidebar is on (default "right") */
+  side?: "left" | "right";
   /** Sidebar content */
   children: React.ReactNode;
   /** Additional class names for the sidebar container */
@@ -27,6 +29,8 @@ export interface ResizableSidebarProps {
   visible?: boolean;
   /** When true, on mobile uses w-full max-w-[defaultWidth], on md+ uses persisted width */
   responsive?: boolean;
+  /** Accessible label for the resize handle (default "Resize sidebar") */
+  resizeHandleLabel?: string;
 }
 
 function loadPersistedWidth(
@@ -82,10 +86,12 @@ export function ResizableSidebar({
   minWidth = DEFAULT_MIN_WIDTH,
   maxWidth: maxWidthProp,
   maxWidthPercent = DEFAULT_MAX_WIDTH_PERCENT,
+  side = "right",
   children,
   className = "",
   visible = true,
   responsive = false,
+  resizeHandleLabel = "Resize sidebar",
 }: ResizableSidebarProps) {
   const viewportWidth = useViewportWidth();
   const maxWidth = maxWidthProp ?? Math.max(minWidth, Math.round(viewportWidth * maxWidthPercent));
@@ -118,7 +124,10 @@ export function ResizableSidebar({
       startWidthRef.current = width;
 
       const handleMouseMove = (moveEvent: MouseEvent) => {
-        const deltaX = startXRef.current - moveEvent.clientX;
+        const deltaX =
+          side === "left"
+            ? moveEvent.clientX - startXRef.current
+            : startXRef.current - moveEvent.clientX;
         const newWidth = Math.round(
           Math.min(maxWidth, Math.max(minWidth, startWidthRef.current + deltaX))
         );
@@ -139,7 +148,7 @@ export function ResizableSidebar({
       document.body.style.cursor = "col-resize";
       document.body.style.userSelect = "none";
     },
-    [width, storageKey, minWidth, maxWidth]
+    [width, storageKey, minWidth, maxWidth, side]
   );
 
   const widthStyle = responsive
@@ -153,7 +162,16 @@ export function ResizableSidebar({
     ? "w-full max-w-[var(--sidebar-mobile-max,420px)] md:max-w-none md:w-[var(--sidebar-width)]"
     : "";
 
-  const borderClass = responsive ? "" : "border-l border-theme-border";
+  const borderClass = responsive
+    ? ""
+    : side === "left"
+      ? "border-r border-theme-border"
+      : "border-l border-theme-border";
+
+  const handlePositionClass =
+    side === "left"
+      ? "absolute right-0 top-0 bottom-0 w-2 -mr-1 cursor-col-resize z-10 flex items-center justify-center group hover:bg-brand-500/10"
+      : "absolute left-0 top-0 bottom-0 w-2 -ml-1 cursor-col-resize z-10 flex items-center justify-center group hover:bg-brand-500/10";
 
   return (
     <div
@@ -167,9 +185,9 @@ export function ResizableSidebar({
           aria-valuenow={width}
           aria-valuemin={minWidth}
           aria-valuemax={maxWidth}
-          aria-label="Resize sidebar"
+          aria-label={resizeHandleLabel}
           onMouseDown={onHandleMouseDown}
-          className={`absolute left-0 top-0 bottom-0 w-2 -ml-1 cursor-col-resize z-10 flex items-center justify-center group hover:bg-brand-500/10 ${responsive ? "hidden md:flex" : ""}`}
+          className={`${handlePositionClass} ${responsive ? "hidden md:flex" : ""}`}
         >
           <div className="w-1 h-12 rounded-full bg-theme-ring group-hover:bg-brand-500/60 opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>

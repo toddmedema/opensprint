@@ -359,8 +359,8 @@ describe("SketchPhase with sketchSlice", () => {
       renderSketchPhase(store);
 
       expect(screen.getByText("Product Requirements Document")).toBeInTheDocument();
-      expect(screen.getByText("Executive Summary")).toBeInTheDocument();
-      expect(screen.getByText("Goals And Metrics")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Executive Summary" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Goals And Metrics" })).toBeInTheDocument();
       expect(screen.getByTestId("prd-content-executive_summary")).toHaveTextContent("Summary text");
       expect(screen.getByTestId("prd-content-goals_and_metrics")).toHaveTextContent("Goals text");
     });
@@ -464,7 +464,7 @@ describe("SketchPhase with sketchSlice", () => {
       });
       renderSketchPhase(store);
       expect(screen.getByText("Chatting with Dreamer")).toBeInTheDocument();
-      expect(screen.getByRole("separator", { name: "Resize sidebar" })).toBeInTheDocument();
+      expect(screen.getByRole("separator", { name: "Resize Discuss sidebar" })).toBeInTheDocument();
     });
 
     it("persists Discuss sidebar width to localStorage when resized", () => {
@@ -473,7 +473,7 @@ describe("SketchPhase with sketchSlice", () => {
         sketch: { prdContent: { overview: "Content" } },
       });
       renderSketchPhase(store);
-      const handle = screen.getByRole("separator", { name: "Resize sidebar" });
+      const handle = screen.getByRole("separator", { name: "Resize Discuss sidebar" });
       handle.dispatchEvent(new MouseEvent("mousedown", { clientX: 100, bubbles: true }));
       document.dispatchEvent(new MouseEvent("mousemove", { clientX: 80, bubbles: true }));
       document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));

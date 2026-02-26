@@ -11,7 +11,13 @@ import {
   setSketchError,
 } from "../../store/slices/sketchSlice";
 import { decomposePlans, fetchPlanStatus, fetchPlans } from "../../store/slices/planSlice";
-import { PrdViewer, PrdChatPanel, PrdUploadButton, PrdChangeLog } from "../../components/prd";
+import {
+  PrdViewer,
+  PrdChatPanel,
+  PrdTocPanel,
+  PrdUploadButton,
+  PrdChangeLog,
+} from "../../components/prd";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
 import { useSubmitShortcut } from "../../hooks/useSubmitShortcut";
 import { useImageAttachment } from "../../hooks/useImageAttachment";
@@ -36,6 +42,7 @@ interface SelectionInfo {
 /* ── Constants ──────────────────────────────────────────────── */
 
 const SKETCH_CHAT_SIDEBAR_STORAGE_KEY = "opensprint-sketch-chat-sidebar-collapsed";
+const SKETCH_TOC_SIDEBAR_STORAGE_KEY = "opensprint-sketch-toc-sidebar-collapsed";
 
 function loadSketchChatSidebarCollapsed(): boolean {
   if (typeof window === "undefined") return false;
@@ -53,6 +60,27 @@ function saveSketchChatSidebarCollapsed(collapsed: boolean): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(SKETCH_CHAT_SIDEBAR_STORAGE_KEY, String(collapsed));
+  } catch {
+    // ignore
+  }
+}
+
+function loadSketchTocSidebarCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const stored = localStorage.getItem(SKETCH_TOC_SIDEBAR_STORAGE_KEY);
+    if (stored === "true") return true;
+    if (stored === "false") return false;
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+function saveSketchTocSidebarCollapsed(collapsed: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(SKETCH_TOC_SIDEBAR_STORAGE_KEY, String(collapsed));
   } catch {
     // ignore
   }
@@ -111,6 +139,7 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [planningIt, setPlanningIt] = useState(false);
   const [discussCollapsed, setDiscussCollapsedState] = useState(loadSketchChatSidebarCollapsed);
+  const [tocCollapsed, setTocCollapsedState] = useState(loadSketchTocSidebarCollapsed);
   const [sketchContext, setSketchContext] = useState<{ hasExistingCode: boolean } | null>(null);
   const [generatingFromCodebase, setGeneratingFromCodebase] = useState(false);
 
@@ -119,9 +148,15 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
     saveSketchChatSidebarCollapsed(collapsed);
   }, []);
 
+  const setTocCollapsed = useCallback((collapsed: boolean) => {
+    setTocCollapsedState(collapsed);
+    saveSketchTocSidebarCollapsed(collapsed);
+  }, []);
+
   /* ── Refs ── */
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const prdContainerRef = useRef<HTMLDivElement>(null);
+  const prdScrollContainerRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const refreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -589,8 +624,34 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
    * ══════════════════════════════════════════════════════════ */
   return (
     <div className="h-full flex overflow-hidden bg-theme-bg">
-      {/* Left pane: live PRD document */}
-      <div className="flex-1 min-w-0 overflow-y-auto">
+      {/* Left: Table of contents (collapsible, resizable when expanded) */}
+      {tocCollapsed ? (
+        <PrdTocPanel
+          prdContent={prdContent}
+          scrollContainerRef={prdScrollContainerRef}
+          collapsed={true}
+          onCollapsedChange={setTocCollapsed}
+        />
+      ) : (
+        <ResizableSidebar
+          storageKey="sketch-toc"
+          defaultWidth={220}
+          minWidth={160}
+          side="left"
+          resizeHandleLabel="Resize table of contents"
+        >
+          <PrdTocPanel
+            prdContent={prdContent}
+            scrollContainerRef={prdScrollContainerRef}
+            collapsed={false}
+            onCollapsedChange={setTocCollapsed}
+            resizable
+          />
+        </ResizableSidebar>
+      )}
+
+      {/* Center: live PRD document */}
+      <div ref={prdScrollContainerRef} className="flex-1 min-w-0 overflow-y-auto">
         <div className="max-w-4xl mx-auto px-6 py-8 pb-24">
           <div className="flex items-center justify-between mb-8 sticky top-0 bg-theme-bg/95 backdrop-blur-sm py-3 -mx-6 px-6 z-20 border-b border-theme-border">
             <h1 className="text-2xl font-bold text-theme-text tracking-tight">
@@ -652,7 +713,11 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
           onCollapsedChange={setDiscussCollapsed}
         />
       ) : (
-        <ResizableSidebar storageKey="sketch" defaultWidth={380}>
+        <ResizableSidebar
+          storageKey="sketch"
+          defaultWidth={380}
+          resizeHandleLabel="Resize Discuss sidebar"
+        >
           <PrdChatPanel
             open={true}
             onOpenChange={() => {}}
