@@ -429,6 +429,8 @@ describe("EpicCard", () => {
 
     expect(screen.getByText("Progress")).toBeInTheDocument();
     expect(screen.getByText(/33%/)).toBeInTheDocument();
+    expect(screen.getByText("medium complexity")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "medium complexity" })).toBeInTheDocument();
   });
 
   it("formats plan title with capitalized words", () => {

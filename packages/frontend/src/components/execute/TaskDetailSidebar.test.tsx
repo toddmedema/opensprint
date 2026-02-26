@@ -882,6 +882,7 @@ describe("TaskDetailSidebar", () => {
       const complexity = screen.getByTestId("task-complexity");
       expect(complexity).toHaveTextContent("Low");
       expect(complexity).toHaveAttribute("aria-label", "Complexity: low");
+      expect(screen.getByRole("img", { name: "Low complexity" })).toBeInTheDocument();
     });
 
     it("shows High when task has complexity high", () => {
@@ -899,6 +900,7 @@ describe("TaskDetailSidebar", () => {
       const complexity = screen.getByTestId("task-complexity");
       expect(complexity).toHaveTextContent("High");
       expect(complexity).toHaveAttribute("aria-label", "Complexity: high");
+      expect(screen.getByRole("img", { name: "high complexity" })).toBeInTheDocument();
     });
 
     it("shows em dash when task has no complexity", () => {

@@ -10,6 +10,7 @@ import { updateTaskPriority } from "../../store/slices/executeSlice";
 import { wsConnect } from "../../store/middleware/websocketMiddleware";
 import { CloseButton } from "../CloseButton";
 import { PriorityIcon } from "../PriorityIcon";
+import { ComplexityIcon } from "../ComplexityIcon";
 import { TaskStatusBadge, COLUMN_LABELS } from "../kanban";
 import { formatUptime } from "../../lib/formatting";
 import { getEpicTitleFromPlan } from "../../lib/planContentUtils";
@@ -276,6 +277,7 @@ export function TaskDetailSidebar({
                   data-testid="task-complexity"
                   aria-label={task.complexity ? `Complexity: ${task.complexity}` : "Complexity: not set"}
                 >
+                  <ComplexityIcon complexity={task.complexity} size="sm" />
                   {task.complexity === "low" || task.complexity === "high"
                     ? task.complexity.charAt(0).toUpperCase() + task.complexity.slice(1)
                     : "—"}

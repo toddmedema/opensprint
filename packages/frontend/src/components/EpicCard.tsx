@@ -4,6 +4,7 @@ import { useAppSelector } from "../store";
 import { selectTasksForEpic } from "../store/slices/executeSlice";
 import { formatPlanIdAsTitle } from "../lib/formatting";
 import { COLUMN_LABELS } from "./kanban/TaskStatusBadge";
+import { ComplexityIcon } from "./ComplexityIcon";
 
 export interface EpicCardProps {
   plan: Plan;
@@ -199,7 +200,8 @@ export function EpicCard({
             {plan.doneTaskCount > 0 &&
               plan.doneTaskCount < plan.taskCount &&
               plan.metadata.complexity && (
-                <p className="text-xs text-theme-muted mt-1">
+                <p className="text-xs text-theme-muted mt-1 inline-flex items-center gap-1.5">
+                  <ComplexityIcon complexity={plan.metadata.complexity} size="xs" />
                   {plan.metadata.complexity} complexity
                 </p>
               )}

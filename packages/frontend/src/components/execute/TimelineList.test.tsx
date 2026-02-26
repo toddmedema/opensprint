@@ -20,6 +20,7 @@ const createMockTask = (
     epicId: string | null;
     updatedAt: string;
     createdAt: string;
+    complexity: Task["complexity"];
   }> = {}
 ): Task =>
   ({
@@ -109,6 +110,22 @@ describe("TimelineList", () => {
     expect(screen.getByTitle("In Progress")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /critical/i })).toBeInTheDocument();
     expect(screen.getByText("Authentication")).toBeInTheDocument();
+  });
+
+  it("displays complexity icon when task has complexity", () => {
+    const tasks = [
+      createMockTask({
+        id: "task-1",
+        title: "Complex task",
+        kanbanColumn: "in_progress",
+        complexity: "high",
+      }),
+    ];
+    const plans = [createMockPlan("epic-1", "Auth")];
+
+    render(<TimelineList tasks={tasks} plans={plans} onTaskSelect={vi.fn()} />);
+
+    expect(screen.getByRole("img", { name: "high complexity" })).toBeInTheDocument();
   });
 
   it("click calls onTaskSelect with correct ID", async () => {

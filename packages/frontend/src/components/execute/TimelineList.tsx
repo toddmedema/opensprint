@@ -9,6 +9,7 @@ import { getEpicTitleFromPlan } from "../../lib/planContentUtils";
 import { formatUptime, formatTimestamp } from "../../lib/formatting";
 import { TaskStatusBadge, COLUMN_LABELS } from "../kanban";
 import { PriorityIcon } from "../PriorityIcon";
+import { ComplexityIcon } from "../ComplexityIcon";
 
 export interface TimelineListProps {
   tasks: Task[];
@@ -54,6 +55,7 @@ function TimelineRow({
             title={COLUMN_LABELS[task.kanbanColumn]}
           />
           <PriorityIcon priority={task.priority ?? 1} size="xs" />
+          <ComplexityIcon complexity={task.complexity} size="xs" />
           <span className="flex-1 min-w-0 truncate font-medium text-theme-text" title={task.title}>
             {task.title}
           </span>
