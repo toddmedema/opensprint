@@ -110,10 +110,51 @@ describe("ApiKeysSection", () => {
   });
 
   it("disables remove when only one key remains", () => {
+    const settingsWithOneKey: ProjectSettings = {
+      ...mockSettingsClaude,
+      apiKeys: {
+        ANTHROPIC_API_KEY: [{ id: "k1", value: "sk-ant-only" }],
+      },
+    };
+    render(<ApiKeysSection settings={settingsWithOneKey} onApiKeysChange={onApiKeysChange} />);
+    const removeBtn = screen.getByTestId("api-key-remove-ANTHROPIC_API_KEY-k1");
+    expect(removeBtn).toBeDisabled();
+  });
+
+  it("enables remove when multiple keys exist", () => {
     render(<ApiKeysSection settings={mockSettingsWithKeys} onApiKeysChange={onApiKeysChange} />);
     const removeButtons = screen.getAllByTestId(/api-key-remove-/);
-    const disabledCount = removeButtons.filter((b) => (b as HTMLButtonElement).disabled).length;
-    expect(disabledCount).toBe(0);
+    expect(removeButtons.length).toBe(2);
+    removeButtons.forEach((b) => expect(b).not.toBeDisabled());
+  });
+
+  it("removes key and calls onApiKeysChange when remove clicked with 2+ keys", async () => {
+    const user = userEvent.setup();
+    render(<ApiKeysSection settings={mockSettingsWithKeys} onApiKeysChange={onApiKeysChange} />);
+    const removeButtons = screen.getAllByTestId(/api-key-remove-/);
+    await user.click(removeButtons[0]);
+
+    expect(onApiKeysChange).toHaveBeenCalled();
+    const lastCall = onApiKeysChange.mock.calls[onApiKeysChange.mock.calls.length - 1][0];
+    expect(lastCall.ANTHROPIC_API_KEY).toHaveLength(1);
+    expect(lastCall.ANTHROPIC_API_KEY![0].id).toBe("k2");
+  });
+
+  it("shows both providers when mixed (claude + cursor)", () => {
+    const mixedSettings: ProjectSettings = {
+      ...mockSettingsClaude,
+      simpleComplexityAgent: { type: "claude", model: "claude-sonnet", cliCommand: null },
+      complexComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+    };
+    render(<ApiKeysSection settings={mixedSettings} onApiKeysChange={onApiKeysChange} />);
+    expect(screen.getByText("ANTHROPIC_API_KEY (Claude API)")).toBeInTheDocument();
+    expect(screen.getByText("CURSOR_API_KEY")).toBeInTheDocument();
+  });
+
+  it("uses password type by default for key inputs", () => {
+    render(<ApiKeysSection settings={mockSettingsWithKeys} onApiKeysChange={onApiKeysChange} />);
+    const inputs = screen.getAllByTestId(/api-key-input-/);
+    inputs.forEach((input) => expect(input).toHaveAttribute("type", "password"));
   });
 
   it("returns null when settings is null", () => {

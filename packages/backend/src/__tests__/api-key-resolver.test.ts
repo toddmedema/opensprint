@@ -166,6 +166,43 @@ describe("ApiKeyResolver", () => {
       const result = await getNextKey(projectId, "ANTHROPIC_API_KEY");
       expect(result).toEqual({ key: "sk-ant-valid", keyId: "k2" });
     });
+
+    it("uses keys in array order: first available key is first in list", async () => {
+      const settings = makeSettings({
+        apiKeys: {
+          ANTHROPIC_API_KEY: [
+            { id: "k1", value: "sk-ant-first" },
+            { id: "k2", value: "sk-ant-second" },
+            { id: "k3", value: "sk-ant-third" },
+          ],
+        },
+      });
+      await setSettingsInStore(projectId, settings);
+
+      const r1 = await getNextKey(projectId, "ANTHROPIC_API_KEY");
+      expect(r1).toEqual({ key: "sk-ant-first", keyId: "k1" });
+
+      await recordLimitHit(projectId, "ANTHROPIC_API_KEY", "k1");
+      const r2 = await getNextKey(projectId, "ANTHROPIC_API_KEY");
+      expect(r2).toEqual({ key: "sk-ant-second", keyId: "k2" });
+
+      await recordLimitHit(projectId, "ANTHROPIC_API_KEY", "k2");
+      const r3 = await getNextKey(projectId, "ANTHROPIC_API_KEY");
+      expect(r3).toEqual({ key: "sk-ant-third", keyId: "k3" });
+    });
+
+    it("falls back to env when apiKeys has empty array for provider", async () => {
+      process.env.ANTHROPIC_API_KEY = "env-fallback-key";
+      const settings = makeSettings({
+        apiKeys: {
+          ANTHROPIC_API_KEY: [],
+        },
+      });
+      await setSettingsInStore(projectId, settings);
+
+      const result = await getNextKey(projectId, "ANTHROPIC_API_KEY");
+      expect(result).toEqual({ key: "env-fallback-key", keyId: ENV_FALLBACK_KEY_ID });
+    });
   });
 
   describe("recordLimitHit", () => {

@@ -101,4 +101,28 @@ describe("isLimitError", () => {
     expect(isLimitError(null)).toBe(false);
     expect(isLimitError(undefined)).toBe(false);
   });
+
+  it("returns true for nested error.error.message (Anthropic SDK style)", () => {
+    expect(
+      isLimitError({
+        message: "API error",
+        error: { message: "Rate limit exceeded for this API key" },
+      })
+    ).toBe(true);
+    expect(
+      isLimitError({
+        error: { message: "add more tokens to continue" },
+      })
+    ).toBe(true);
+  });
+
+  it("returns true for statusText with limit pattern", () => {
+    expect(isLimitError({ statusText: "Too Many Requests" })).toBe(true);
+    expect(isLimitError({ status: 500, statusText: "rate limit exceeded" })).toBe(true);
+  });
+
+  it("returns true for error string with limit pattern", () => {
+    expect(isLimitError("quota exceeded")).toBe(true);
+    expect(isLimitError("Service overloaded")).toBe(true);
+  });
 });

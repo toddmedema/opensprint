@@ -10,6 +10,7 @@ import path from "path";
 import os from "os";
 import { createApp } from "../app.js";
 import { ProjectService } from "../services/project.service.js";
+import { getNextKey } from "../services/api-key-resolver.service.js";
 import { API_PREFIX, DEFAULT_HIL_CONFIG, DEFAULT_REVIEW_MODE } from "@opensprint/shared";
 
 /** Path to global settings store (when HOME is tempDir in tests). */
@@ -336,6 +337,21 @@ describe("Settings API lifecycle", () => {
     });
     expect(getRes.body.data.apiKeys.ANTHROPIC_API_KEY[0].value).toBeUndefined();
     expect(getRes.body.data.apiKeys.ANTHROPIC_API_KEY[1].value).toBeUndefined();
+  });
+
+  it("PUT apiKeys then ApiKeyResolver.getNextKey returns the key (integration)", async () => {
+    const apiKeys = {
+      ANTHROPIC_API_KEY: [
+        { id: "a1", value: "sk-ant-from-api" },
+        { id: "a2", value: "sk-ant-second" },
+      ],
+    };
+    await request(app)
+      .put(`${API_PREFIX}/projects/${projectId}/settings`)
+      .send({ apiKeys });
+
+    const resolved = await getNextKey(projectId, "ANTHROPIC_API_KEY");
+    expect(resolved).toEqual({ key: "sk-ant-from-api", keyId: "a1" });
   });
 
   it("PUT /api/v1/projects/:id/settings rejects empty apiKeys when provider in use", async () => {
