@@ -121,7 +121,7 @@ export function Navbar({
             <button
               type="button"
               onClick={() => setDropdownOpen((o) => !o)}
-              className="ml-1 inline-flex items-center gap-1 text-sm font-medium text-theme-muted hover:text-theme-text transition-colors rounded px-2 py-1 hover:bg-theme-border-subtle"
+              className="dropdown-trigger ml-1 inline-flex items-center gap-1 text-sm font-medium text-theme-muted hover:text-theme-text transition-colors rounded py-1 hover:bg-theme-border-subtle"
               aria-expanded={dropdownOpen}
               aria-haspopup="listbox"
             >

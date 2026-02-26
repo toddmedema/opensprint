@@ -879,7 +879,7 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
                   setStatusFilter(value);
                   saveFeedbackStatusFilter(value);
                 }}
-                className="input text-sm py-1.5 px-2.5 w-auto min-w-[7rem] bg-theme-input-bg text-theme-input-text ring-theme-ring"
+                className="input text-sm py-1.5 px-3 w-auto min-w-[7rem] bg-theme-input-bg text-theme-input-text ring-theme-ring"
                 aria-label="Filter feedback by status"
                 data-testid="feedback-status-filter"
               >

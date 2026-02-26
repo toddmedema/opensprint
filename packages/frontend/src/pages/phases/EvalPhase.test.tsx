@@ -596,6 +596,22 @@ describe("EvalPhase feedback form", () => {
       expect(prioritySelect).toHaveClass("px-3");
     });
 
+    it("status filter select has equal left and right padding", async () => {
+      const store = createStore({ evalFeedback: mockFeedbackItems });
+      render(
+        <Provider store={store}>
+          <EvalPhase projectId="proj-1" />
+        </Provider>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument();
+      });
+
+      const statusFilter = screen.getByTestId("feedback-status-filter");
+      expect(statusFilter).toHaveClass("px-3");
+    });
+
     it("actions row uses items-stretch so all controls share the same height", async () => {
       const store = createStore();
       const { container } = render(

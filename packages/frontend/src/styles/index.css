@@ -234,6 +234,14 @@ html[data-theme="dark"] {
       ring-1 ring-inset ring-theme-ring focus:ring-2 focus:ring-inset focus:ring-brand-600;
   }
 
+  /* Shared dropdown styles — equal left/right padding for consistency (feedback wo3oqk) */
+  .dropdown-trigger {
+    @apply px-3;
+  }
+  .dropdown-item {
+    @apply px-3 py-2;
+  }
+
   .phase-tab {
     @apply px-3 py-1.5 text-sm font-medium rounded-lg transition-colors;
   }

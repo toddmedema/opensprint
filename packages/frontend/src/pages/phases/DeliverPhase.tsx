@@ -359,9 +359,9 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
                             setEnvFilter("all");
                             setFilterDropdownOpen(false);
                           }}
-                          className={`w-full text-left px-3 py-2 text-sm hover:bg-theme-border-subtle ${
-                            envFilter === "all" ? "bg-theme-surface-muted font-medium" : ""
-                          }`}
+className={`dropdown-item w-full text-left text-sm hover:bg-theme-border-subtle ${
+                          envFilter === "all" ? "bg-theme-surface-muted font-medium" : ""
+                        }`}
                         >
                           All ({envCounts.all})
                         </button>
@@ -375,7 +375,7 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
                               setEnvFilter(key);
                               setFilterDropdownOpen(false);
                             }}
-                            className={`w-full text-left px-3 py-2 text-sm hover:bg-theme-border-subtle ${
+                            className={`dropdown-item w-full text-left text-sm hover:bg-theme-border-subtle ${
                               envFilter === key ? "bg-theme-surface-muted font-medium" : ""
                             }`}
                           >
@@ -394,7 +394,7 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
                                 setEnvFilter(key);
                                 setFilterDropdownOpen(false);
                               }}
-                              className={`w-full text-left px-3 py-2 text-sm hover:bg-theme-border-subtle ${
+                              className={`dropdown-item w-full text-left text-sm hover:bg-theme-border-subtle ${
                                 envFilter === key ? "bg-theme-surface-muted font-medium" : ""
                               }`}
                             >
@@ -410,7 +410,7 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
                               setEnvFilter("unknown");
                               setFilterDropdownOpen(false);
                             }}
-                            className={`w-full text-left px-3 py-2 text-sm hover:bg-theme-border-subtle ${
+                            className={`dropdown-item w-full text-left text-sm hover:bg-theme-border-subtle ${
                               envFilter === "unknown" ? "bg-theme-surface-muted font-medium" : ""
                             }`}
                           >

@@ -202,7 +202,7 @@ export function TaskDetailSidebar({
                         setActionsMenuOpen(false);
                       }}
                       disabled={unblockLoading}
-                      className="w-full flex items-center gap-2 text-left px-3 py-2 text-xs text-theme-error-text hover:bg-theme-error-bg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="dropdown-item w-full flex items-center gap-2 text-left text-xs text-theme-error-text hover:bg-theme-error-bg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       data-testid="sidebar-unblock-btn"
                     >
                       {unblockLoading ? "Unblocking…" : "Unblock"}
@@ -219,7 +219,7 @@ export function TaskDetailSidebar({
                         setActionsMenuOpen(false);
                       }}
                       disabled={markDoneLoading}
-                      className="w-full flex items-center gap-2 text-left px-3 py-2 text-xs font-medium text-brand-600 hover:bg-theme-border-subtle/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="dropdown-item w-full flex items-center gap-2 text-left text-xs font-medium text-brand-600 hover:bg-theme-border-subtle/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       data-testid="sidebar-mark-done-btn"
                     >
                       {markDoneLoading ? "Marking…" : "Mark done"}
@@ -266,7 +266,7 @@ export function TaskDetailSidebar({
                     <button
                       type="button"
                       onClick={() => setPriorityDropdownOpen((o) => !o)}
-                      className="inline-flex items-center gap-2 rounded px-2 py-1 text-theme-muted hover:bg-theme-border-subtle/50 hover:text-theme-text transition-colors cursor-pointer"
+                      className="dropdown-trigger inline-flex items-center gap-2 rounded py-1 text-theme-muted hover:bg-theme-border-subtle/50 hover:text-theme-text transition-colors cursor-pointer"
                       aria-haspopup="listbox"
                       aria-expanded={priorityDropdownOpen}
                       aria-label={`Priority: ${PRIORITY_LABELS[task.priority ?? 1] ?? "Medium"}. Click to change`}
@@ -289,7 +289,7 @@ export function TaskDetailSidebar({
                             <button
                               type="button"
                               onClick={() => handlePrioritySelect(p)}
-                              className={`w-full flex items-center gap-2 text-left px-3 py-2 text-xs hover:bg-theme-border-subtle/50 transition-colors ${
+                              className={`dropdown-item w-full flex items-center gap-2 text-left text-xs hover:bg-theme-border-subtle/50 transition-colors ${
                                 (task.priority ?? 1) === p
                                   ? "text-brand-600 font-medium"
                                   : "text-theme-text"
