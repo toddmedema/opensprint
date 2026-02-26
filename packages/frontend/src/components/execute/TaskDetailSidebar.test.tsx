@@ -205,7 +205,8 @@ describe("TaskDetailSidebar", () => {
     );
   });
 
-  it("renders Mark done button when task is not done and not blocked", () => {
+  it("renders actions menu with Mark done when task is not done and not blocked", async () => {
+    const user = userEvent.setup();
     const props = createMinimalProps();
     render(
       <Provider store={createStore()}>
@@ -213,11 +214,13 @@ describe("TaskDetailSidebar", () => {
       </Provider>
     );
 
-    expect(screen.getByRole("button", { name: /mark done/i })).toBeInTheDocument();
+    expect(screen.getByTestId("sidebar-actions-menu-btn")).toBeInTheDocument();
     expect(screen.queryByTestId("sidebar-unblock-btn")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("sidebar-actions-menu-btn"));
+    expect(screen.getByTestId("sidebar-mark-done-btn")).toBeInTheDocument();
   });
 
-  it("renders Mark done button below the task title in DOM order", () => {
+  it("actions menu is in header row with title and close button", () => {
     const props = createMinimalProps();
     render(
       <Provider store={createStore()}>
@@ -226,14 +229,15 @@ describe("TaskDetailSidebar", () => {
     );
 
     const title = screen.getByTestId("task-detail-title");
-    const markDoneBtn = screen.getByTestId("sidebar-mark-done-btn");
-    // Title must appear before Mark Done in document order (below = after in DOM)
-    expect(
-      title.compareDocumentPosition(markDoneBtn) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    const menuBtn = screen.getByTestId("sidebar-actions-menu-btn");
+    const closeBtn = screen.getByRole("button", { name: "Close task detail" });
+    const header = title.closest(".border-b");
+    expect(header).toContainElement(menuBtn);
+    expect(header).toContainElement(closeBtn);
   });
 
-  it("renders Unblock button when task is blocked", () => {
+  it("renders Unblock in actions menu when task is blocked", async () => {
+    const user = userEvent.setup();
     const props = createMinimalProps({
       selectedTaskData: {
         id: "epic-1.1",
@@ -258,8 +262,9 @@ describe("TaskDetailSidebar", () => {
       </Provider>
     );
 
+    await user.click(screen.getByTestId("sidebar-actions-menu-btn"));
     expect(screen.getByTestId("sidebar-unblock-btn")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /mark done/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar-mark-done-btn")).not.toBeInTheDocument();
   });
 
   it("shows block reason below status/priority row when task is blocked", () => {

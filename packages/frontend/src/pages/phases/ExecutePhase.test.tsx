@@ -1498,7 +1498,7 @@ describe("ExecutePhase Redux integration", () => {
     });
   });
 
-  it("dispatches markTaskDone when Mark done button is clicked", async () => {
+  it("dispatches markTaskDone when Mark done is clicked from actions menu", async () => {
     const user = userEvent.setup();
     const tasks = [
       {
@@ -1517,7 +1517,8 @@ describe("ExecutePhase Redux integration", () => {
       </Provider>
     );
 
-    const markDoneBtn = await screen.findByRole("button", { name: /mark done/i });
+    await user.click(await screen.findByTestId("sidebar-actions-menu-btn"));
+    const markDoneBtn = await screen.findByTestId("sidebar-mark-done-btn");
     await user.click(markDoneBtn);
 
     await vi.waitFor(() => {
@@ -1525,7 +1526,7 @@ describe("ExecutePhase Redux integration", () => {
     });
   });
 
-  it("shows Unblock button for blocked tasks and dispatches unblockTask when clicked", async () => {
+  it("shows Unblock in actions menu for blocked tasks and dispatches unblockTask when clicked", async () => {
     const user = userEvent.setup();
     mockGet.mockResolvedValue({ id: "epic-1.1", title: "Blocked Task", kanbanColumn: "blocked" });
     const tasks = [
@@ -1545,9 +1546,10 @@ describe("ExecutePhase Redux integration", () => {
       </Provider>
     );
 
+    await user.click(await screen.findByTestId("sidebar-actions-menu-btn"));
     const unblockBtn = await screen.findByTestId("sidebar-unblock-btn");
     expect(unblockBtn).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /mark done/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("sidebar-mark-done-btn")).not.toBeInTheDocument();
 
     await user.click(unblockBtn);
 
@@ -2379,8 +2381,11 @@ describe("ExecutePhase task detail plan link", () => {
       expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
     });
 
-    const planLink = await screen.findByRole("button", { name: /view plan: build test/i });
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("sidebar-actions-menu-btn"));
+    const planLink = await screen.findByTestId("sidebar-view-plan-btn");
     expect(planLink).toBeInTheDocument();
+    expect(planLink).toHaveTextContent(/view plan: build test/i);
   });
 
   it("does not show plan link when onNavigateToPlan is not provided", async () => {
@@ -2421,7 +2426,9 @@ describe("ExecutePhase task detail plan link", () => {
       expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
     });
 
-    expect(screen.queryByRole("button", { name: /view plan:/i })).not.toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("sidebar-actions-menu-btn"));
+    expect(screen.queryByTestId("sidebar-view-plan-btn")).not.toBeInTheDocument();
   });
 
   it("does not show plan link when task has no epicId", async () => {
@@ -2463,7 +2470,9 @@ describe("ExecutePhase task detail plan link", () => {
       expect(mockGet).toHaveBeenCalledWith("proj-1", "other-1");
     });
 
-    expect(screen.queryByRole("button", { name: /view plan:/i })).not.toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("sidebar-actions-menu-btn"));
+    expect(screen.queryByTestId("sidebar-view-plan-btn")).not.toBeInTheDocument();
   });
 
   it("calls onNavigateToPlan with planId when plan link is clicked", async () => {
@@ -2506,7 +2515,8 @@ describe("ExecutePhase task detail plan link", () => {
       expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
     });
 
-    const planLink = await screen.findByRole("button", { name: /view plan: build test/i });
+    await user.click(await screen.findByTestId("sidebar-actions-menu-btn"));
+    const planLink = await screen.findByTestId("sidebar-view-plan-btn");
     await user.click(planLink);
 
     expect(onNavigateToPlan).toHaveBeenCalledWith("build-test-feature");

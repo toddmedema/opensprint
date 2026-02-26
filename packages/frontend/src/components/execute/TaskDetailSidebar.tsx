@@ -109,8 +109,17 @@ export function TaskDetailSidebar({
     resetKey: selectedTask,
   });
   const priorityDropdownRef = useRef<HTMLDivElement>(null);
+  const actionsMenuRef = useRef<HTMLDivElement>(null);
+  const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const [showLoadingPlaceholder, setShowLoadingPlaceholder] = useState(false);
   const task = selectedTaskData;
+
+  const hasViewPlan =
+    task?.epicId && plans.find((p) => p.metadata.epicId === task.epicId) && onNavigateToPlan;
+  const planForViewPlan = hasViewPlan
+    ? plans.find((p) => p.metadata.epicId === task!.epicId)
+    : null;
+  const hasActions = hasViewPlan || isBlockedTask || (!isDoneTask && !isBlockedTask);
 
   useEffect(() => {
     setShowLoadingPlaceholder(true);
@@ -129,6 +138,17 @@ export function TaskDetailSidebar({
     return () => document.removeEventListener("mousedown", handler);
   }, [priorityDropdownOpen]);
 
+  useEffect(() => {
+    if (!actionsMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (actionsMenuRef.current && !actionsMenuRef.current.contains(e.target as Node)) {
+        setActionsMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [actionsMenuOpen]);
+
   const handlePrioritySelect = (priority: number) => {
     if (!task || !selectedTask || task.priority === priority) return;
     const previousPriority = task.priority ?? 1;
@@ -145,58 +165,92 @@ export function TaskDetailSidebar({
 
   return (
     <>
-      <div className="flex items-center justify-between p-4 border-b border-theme-border shrink-0">
-        <div className="min-w-0 flex-1 pr-2">
-          {/* Task title shown immediately from cached list data while detail loads (feedback t586o4) */}
-          <h3
-            className="font-semibold text-theme-text truncate block"
-            data-testid="task-detail-title"
-          >
-            {task?.title ?? selectedTask ?? ""}
-          </h3>
-          {task?.epicId &&
-            (() => {
-              const epicId = task.epicId;
-              const plan = plans.find((p) => p.metadata.epicId === epicId);
-              if (!plan || !onNavigateToPlan) return null;
-              const planTitle = getEpicTitleFromPlan(plan);
-              return (
-                <button
-                  type="button"
-                  onClick={() => onNavigateToPlan(plan.metadata.planId)}
-                  className="mt-1 text-xs text-brand-600 hover:text-brand-700 hover:underline truncate block text-left"
-                  title={`View plan: ${planTitle}`}
-                >
-                  View plan: {planTitle}
-                </button>
-              );
-            })()}
-          {/* Mark Done / Unblock below title (feedback b7d25f) */}
-          <div className="mt-2 flex items-center gap-2">
-            {isBlockedTask && (
-              <button
-                type="button"
-                onClick={onUnblock}
-                disabled={unblockLoading}
-                className="text-xs py-1.5 px-3 font-medium text-theme-error-text hover:bg-theme-error-bg rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                data-testid="sidebar-unblock-btn"
+      <div className="flex items-center gap-2 p-4 border-b border-theme-border shrink-0 flex-nowrap min-h-0">
+        {/* Task title shown immediately from cached list data while detail loads (feedback t586o4) */}
+        <h3
+          className="font-semibold text-theme-text truncate min-w-0 flex-1"
+          data-testid="task-detail-title"
+        >
+          {task?.title ?? selectedTask ?? ""}
+        </h3>
+        {hasActions && (
+          <div ref={actionsMenuRef} className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setActionsMenuOpen((o) => !o)}
+              className="p-1 rounded-md text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle transition-colors"
+              aria-label="Task actions"
+              aria-haspopup="menu"
+              aria-expanded={actionsMenuOpen}
+              data-testid="sidebar-actions-menu-btn"
+            >
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <circle cx="12" cy="5" r="1.5" />
+                <circle cx="12" cy="12" r="1.5" />
+                <circle cx="12" cy="19" r="1.5" />
+              </svg>
+            </button>
+            {actionsMenuOpen && (
+              <ul
+                role="menu"
+                className="absolute right-0 top-full mt-1 z-50 min-w-[160px] rounded-lg border border-theme-border bg-theme-surface shadow-lg py-1"
+                data-testid="sidebar-actions-menu"
               >
-                {unblockLoading ? "Unblocking…" : "Unblock"}
-              </button>
-            )}
-            {!isDoneTask && !isBlockedTask && (
-              <button
-                type="button"
-                onClick={onMarkDone}
-                disabled={markDoneLoading}
-                className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
-                data-testid="sidebar-mark-done-btn"
-              >
-                {markDoneLoading ? "Marking…" : "Mark done"}
-              </button>
+                {hasViewPlan && planForViewPlan && (
+                  <li role="none">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        onNavigateToPlan!(planForViewPlan.metadata.planId);
+                        setActionsMenuOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs text-brand-600 hover:bg-theme-border-subtle/50 transition-colors"
+                      data-testid="sidebar-view-plan-btn"
+                      title={`View plan: ${getEpicTitleFromPlan(planForViewPlan)}`}
+                    >
+                      View plan: {getEpicTitleFromPlan(planForViewPlan)}
+                    </button>
+                  </li>
+                )}
+                {isBlockedTask && (
+                  <li role="none">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        onUnblock();
+                        setActionsMenuOpen(false);
+                      }}
+                      disabled={unblockLoading}
+                      className="w-full text-left px-3 py-2 text-xs font-medium text-theme-error-text hover:bg-theme-error-bg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      data-testid="sidebar-unblock-btn"
+                    >
+                      {unblockLoading ? "Unblocking…" : "Unblock"}
+                    </button>
+                  </li>
+                )}
+                {!isDoneTask && !isBlockedTask && (
+                  <li role="none">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        onMarkDone();
+                        setActionsMenuOpen(false);
+                      }}
+                      disabled={markDoneLoading}
+                      className="w-full text-left px-3 py-2 text-xs font-medium text-brand-600 hover:bg-theme-border-subtle/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      data-testid="sidebar-mark-done-btn"
+                    >
+                      {markDoneLoading ? "Marking…" : "Mark done"}
+                    </button>
+                  </li>
+                )}
+              </ul>
             )}
           </div>
-        </div>
+        )}
         <div className="shrink-0">
           <CloseButton onClick={onClose} ariaLabel="Close task detail" />
         </div>
