@@ -145,17 +145,6 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
         <div className="px-6 py-4 border-b border-theme-border bg-theme-surface shrink-0">
           <div className="flex items-center justify-between flex-wrap gap-3">
             <div className="flex items-center gap-3 flex-wrap">
-              {isDeploying && (
-                <button
-                  type="button"
-                  onClick={handleResetDeliver}
-                  disabled={resetLoading}
-                  className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-                  data-testid="cancel-deployment-button"
-                >
-                  {resetLoading ? "Cancelling…" : "Cancel Deployment"}
-                </button>
-              )}
               {settings?.deployment?.targets && settings.deployment.targets.length > 0 ? (
                 <div className="flex items-center gap-2">
                   <label htmlFor="deploy-target" className="text-sm text-theme-muted">
@@ -191,11 +180,22 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
             <div className="flex items-center gap-2 shrink-0">
               {settings?.deployment?.mode === "expo" ? (
                 isDeploying ? (
-                  <div
-                    className="w-5 h-5 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"
-                    data-testid="deploy-spinner"
-                    aria-label="Deploying"
-                  />
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleResetDeliver}
+                      disabled={resetLoading}
+                      className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                      data-testid="cancel-deployment-button"
+                    >
+                      {resetLoading ? "Cancelling…" : "Cancel Deployment"}
+                    </button>
+                    <div
+                      className="w-5 h-5 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"
+                      data-testid="deploy-spinner"
+                      aria-label="Deploying"
+                    />
+                  </>
                 ) : (
                   <>
                     <button
@@ -217,11 +217,22 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
                   </>
                 )
               ) : isDeploying ? (
-                <div
-                  className="w-5 h-5 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"
-                  data-testid="deploy-spinner"
-                  aria-label="Delivering"
-                />
+                <>
+                  <button
+                    type="button"
+                    onClick={handleResetDeliver}
+                    disabled={resetLoading}
+                    className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                    data-testid="cancel-deployment-button"
+                  >
+                    {resetLoading ? "Cancelling…" : "Cancel Deployment"}
+                  </button>
+                  <div
+                    className="w-5 h-5 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"
+                    data-testid="deploy-spinner"
+                    aria-label="Delivering"
+                  />
+                </>
               ) : (
                 <button
                   type="button"

@@ -331,7 +331,7 @@ describe("DeliverPhase", () => {
     expect(cancelBtn).toHaveTextContent("Cancel Deployment");
   });
 
-  it("Cancel Deployment is leftmost (before deploy spinner)", async () => {
+  it("Cancel Deployment is on right side of top bar, directly left of deploy spinner", async () => {
     mockGetSettings.mockResolvedValueOnce({
       deployment: { mode: "custom", customCommand: "echo deploy" },
     });
@@ -353,8 +353,11 @@ describe("DeliverPhase", () => {
     const cancelBtn = screen.getByTestId("cancel-deployment-button");
     const spinner = screen.getByTestId("deploy-spinner");
     const topBar = cancelBtn.closest(".flex.items-center.justify-between")!;
+    const rightSection = topBar.querySelector(":scope > div:last-child")!;
+    expect(rightSection).toContainElement(cancelBtn);
+    expect(rightSection).toContainElement(spinner);
     const ordered = Array.from(
-      topBar.querySelectorAll('[data-testid="cancel-deployment-button"], [data-testid="deploy-spinner"]')
+      rightSection.querySelectorAll('[data-testid="cancel-deployment-button"], [data-testid="deploy-spinner"]')
     );
     expect(ordered[0]).toBe(cancelBtn);
     expect(ordered[1]).toBe(spinner);
