@@ -5,6 +5,8 @@ import type { Plan, PlanDependencyGraph } from "@opensprint/shared";
 interface DependencyGraphProps {
   graph: PlanDependencyGraph | null;
   onPlanClick?: (plan: Plan) => void;
+  /** When true, graph fills container height (for full-screen Graph Mode). */
+  fillHeight?: boolean;
 }
 
 interface Dimensions {
@@ -91,7 +93,7 @@ function computeCriticalPathEdges(
 }
 
 /** D3 force-directed dependency graph with critical path highlighting. PRD §7.2.2 */
-export function DependencyGraph({ graph, onPlanClick }: DependencyGraphProps) {
+export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [dimensions, setDimensions] = useState<Dimensions | null>(null);
@@ -103,7 +105,9 @@ export function DependencyGraph({ graph, onPlanClick }: DependencyGraphProps) {
 
     const updateDimensions = () => {
       const width = el.clientWidth || 600;
-      const height = Math.max(280, Math.min(400, (graph?.plans.length ?? 3) * 50));
+      const height = fillHeight
+        ? el.clientHeight || Math.max(280, (graph?.plans.length ?? 3) * 50)
+        : Math.max(280, Math.min(400, (graph?.plans.length ?? 3) * 50));
       setDimensions((prev) => {
         if (prev && prev.width === width && prev.height === height) return prev;
         return { width, height };
@@ -114,7 +118,7 @@ export function DependencyGraph({ graph, onPlanClick }: DependencyGraphProps) {
     const ro = new ResizeObserver(updateDimensions);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [graph?.plans.length]);
+  }, [graph?.plans.length, fillHeight]);
 
   useEffect(() => {
     if (
@@ -338,7 +342,9 @@ export function DependencyGraph({ graph, onPlanClick }: DependencyGraphProps) {
   return (
     <div
       ref={containerRef}
-      className="w-full overflow-hidden rounded-lg border border-theme-border bg-theme-surface"
+      className={`w-full overflow-hidden rounded-lg border border-theme-border bg-theme-surface ${
+        fillHeight ? "h-full min-h-[280px]" : ""
+      }`}
     >
       <svg ref={svgRef} className="block" />
       {computeCriticalPathEdges(

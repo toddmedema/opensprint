@@ -28,6 +28,7 @@ import { CloseButton } from "../../components/CloseButton";
 import { CrossEpicConfirmModal } from "../../components/CrossEpicConfirmModal";
 import { DependencyGraph } from "../../components/DependencyGraph";
 import { PlanDetailContent } from "../../components/plan/PlanDetailContent";
+import { PlanFilterToolbar, type PlanViewMode } from "../../components/plan/PlanFilterToolbar";
 import { EpicCard } from "../../components/EpicCard";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
 import { ChatInput } from "../../components/ChatInput";
@@ -35,32 +36,9 @@ import { fetchTasks, selectTasksForEpic } from "../../store/slices/executeSlice"
 import { useSubmitShortcut } from "../../hooks/useSubmitShortcut";
 import { formatPlanIdAsTitle } from "../../lib/formatting";
 
-export const DEPENDENCY_GRAPH_EXPANDED_KEY = "opensprint-plan-dependencyGraphExpanded";
-
 /** Display text for plan chat: show "Plan updated" when agent response contains [PLAN_UPDATE] */
 export function getPlanChatMessageDisplay(content: string): string {
   return /\[PLAN_UPDATE\]/.test(content) ? "Plan updated" : content;
-}
-
-function loadDependencyGraphExpanded(): boolean {
-  if (typeof window === "undefined") return true;
-  try {
-    const stored = localStorage.getItem(DEPENDENCY_GRAPH_EXPANDED_KEY);
-    if (stored === "true") return true;
-    if (stored === "false") return false;
-  } catch {
-    // ignore
-  }
-  return true;
-}
-
-function saveDependencyGraphExpanded(expanded: boolean): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(DEPENDENCY_GRAPH_EXPANDED_KEY, String(expanded));
-  } catch {
-    // ignore
-  }
 }
 
 /** Topological order for plan IDs: prerequisites first. Edge (from, to) means "from blocks to". */
@@ -127,9 +105,15 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
   const [chatInput, setChatInput] = useState("");
   const [chatSending, setChatSending] = useState(false);
   const [tasksSectionExpanded, setTasksSectionExpanded] = useState(true);
-  const [dependencyGraphExpanded, setDependencyGraphExpanded] = useState(
-    loadDependencyGraphExpanded
-  );
+  const [viewMode, setViewMode] = useState<PlanViewMode>(() => {
+    if (typeof window === "undefined") return "card";
+    try {
+      const stored = localStorage.getItem("opensprint.planView");
+      return stored === "card" || stored === "graph" ? stored : "card";
+    } catch {
+      return "card";
+    }
+  });
   const [savingPlanContentId, setSavingPlanContentId] = useState<string | null>(null);
   const [planAllInProgress, setPlanAllInProgress] = useState(false);
   const [executeAllInProgress, setExecuteAllInProgress] = useState(false);
@@ -227,6 +211,15 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
     }
     return ids;
   }, [plansReadyToExecute, dependencyGraph?.edges]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem("opensprint.planView", viewMode);
+    } catch {
+      // ignore
+    }
+  }, [viewMode]);
 
   // Use selectedPlanId when available so chat can display even before plans load (e.g. deep link)
   const planContext = selectedPlanId ? `plan:${selectedPlanId}` : null;
@@ -494,67 +487,65 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
   return (
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
       {/* Main content */}
-      <div className="flex-1 min-w-0 min-h-0 overflow-y-auto p-6">
-        {/* Error banner — inline, dismissible */}
-        {planError && (
-          <div
-            role="alert"
-            className="mb-4 flex items-center justify-between gap-3 p-3 bg-theme-error-bg border border-theme-error-border rounded-lg"
-            data-testid="plan-error-banner"
-          >
-            <span className="flex-1 min-w-0 text-sm text-theme-error-text">{planError}</span>
-            <button
-              type="button"
-              onClick={() => dispatch(setPlanError(null))}
-              className="shrink-0 p-1.5 rounded hover:bg-theme-error-border/50 text-theme-error-text hover:opacity-80 transition-colors"
-              aria-label="Dismiss error"
-            >
-              <svg
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-                aria-hidden
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        )}
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
+        <PlanFilterToolbar
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          planCountByStatus={planCountByStatus}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          plansWithNoTasksCount={plansWithNoTasks.length}
+          plansReadyToExecuteCount={plansReadyToExecute.length}
+          planAllInProgress={planAllInProgress}
+          executeAllInProgress={executeAllInProgress}
+          executingPlanId={executingPlanId}
+          planTasksPlanIds={planTasksPlanIds ?? []}
+          onPlanAllTasks={handlePlanAllTasks}
+          onExecuteAll={handleExecuteAll}
+        />
 
-        {/* Dependency Graph — collapsible top-level container */}
-        <div className="card mb-6 overflow-hidden">
-          <button
-            type="button"
-            onClick={() => {
-              const next = !dependencyGraphExpanded;
-              setDependencyGraphExpanded(next);
-              saveDependencyGraphExpanded(next);
-            }}
-            className="w-full flex items-center justify-between p-4 text-left hover:bg-theme-border-subtle/50 transition-colors"
-            aria-expanded={dependencyGraphExpanded}
-            aria-controls="dependency-graph-content"
-            id="dependency-graph-header"
-          >
-            <h3 className="text-sm font-semibold text-theme-text">Dependency Graph</h3>
-            <span className="text-theme-muted text-xs" aria-hidden>
-              {dependencyGraphExpanded ? "▼" : "▶"}
-            </span>
-          </button>
-          {dependencyGraphExpanded && (
+        <div className="flex-1 min-h-0 overflow-auto p-6">
+          {/* Error banner — inline, dismissible */}
+          {planError && (
             <div
-              id="dependency-graph-content"
-              role="region"
-              aria-labelledby="dependency-graph-header"
-              className="p-4 pt-0"
+              role="alert"
+              className="mb-4 flex items-center justify-between gap-3 p-3 bg-theme-error-bg border border-theme-error-border rounded-lg"
+              data-testid="plan-error-banner"
             >
-              <DependencyGraph graph={filteredDependencyGraph} onPlanClick={handleSelectPlan} />
+              <span className="flex-1 min-w-0 text-sm text-theme-error-text">{planError}</span>
+              <button
+                type="button"
+                onClick={() => dispatch(setPlanError(null))}
+                className="shrink-0 p-1.5 rounded hover:bg-theme-error-border/50 text-theme-error-text hover:opacity-80 transition-colors"
+                aria-label="Dismiss error"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  aria-hidden
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
           )}
-        </div>
 
-        {/* Generate Plan input */}
+          {viewMode === "graph" ? (
+            /* Graph Mode: dependency graph full screen */
+            <div className="h-full min-h-[400px]" data-testid="plan-graph-view">
+              <DependencyGraph
+                graph={filteredDependencyGraph}
+                onPlanClick={handleSelectPlan}
+                fillHeight
+              />
+            </div>
+          ) : (
+            /* Card Mode: Generate Plan + Feature Plans */
+            <>
+              {/* Generate Plan input */}
         <div className="card mb-6 p-4" data-testid="generate-plan-section">
           <label
             htmlFor="feature-description"
@@ -587,43 +578,6 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
         {/* Plan Cards */}
         <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
           <h2 className="text-lg font-semibold text-theme-text">Feature Plans</h2>
-          {plans.length > 0 && (
-            <div className="flex items-center gap-2">
-              {plansWithNoTasks.length >= 2 && (
-                <button
-                  type="button"
-                  onClick={handlePlanAllTasks}
-                  disabled={planAllInProgress || planTasksPlanIds.length > 0}
-                  className="btn-primary text-sm py-1.5 px-2.5 disabled:opacity-60 disabled:cursor-not-allowed"
-                  data-testid="plan-all-tasks-button"
-                >
-                  {planAllInProgress ? "Planning all…" : "Plan All Tasks"}
-                </button>
-              )}
-              {plansReadyToExecute.length >= 2 && (
-                <button
-                  type="button"
-                  onClick={handleExecuteAll}
-                  disabled={!!executingPlanId || executeAllInProgress}
-                  className="btn-primary text-sm py-1.5 px-2.5 disabled:opacity-60 disabled:cursor-not-allowed"
-                  data-testid="execute-all-button"
-                >
-                  {executeAllInProgress ? "Executing all…" : "Execute All"}
-                </button>
-              )}
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as "all" | PlanStatus)}
-                className="input text-sm py-1.5 px-2.5 w-auto min-w-[7rem]"
-                aria-label="Filter plans by status"
-              >
-                <option value="all">All ({planCountByStatus.all})</option>
-                <option value="planning">Planning ({planCountByStatus.planning})</option>
-                <option value="building">Building ({planCountByStatus.building})</option>
-                <option value="complete">Complete ({planCountByStatus.complete})</option>
-              </select>
-            </div>
-          )}
         </div>
 
         {loading ? (
@@ -695,6 +649,9 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
             ))}
           </div>
         )}
+            </>
+          )}
+        </div>
       </div>
 
       {crossEpicModal && (

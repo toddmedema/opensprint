@@ -4,7 +4,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
-import { PlanPhase, DEPENDENCY_GRAPH_EXPANDED_KEY, getPlanChatMessageDisplay } from "./PlanPhase";
+import { PlanPhase, getPlanChatMessageDisplay } from "./PlanPhase";
 import { api } from "../../api/client";
 import projectReducer from "../../store/slices/projectSlice";
 import planReducer, { setPlansAndGraph } from "../../store/slices/planSlice";
@@ -425,17 +425,18 @@ describe("PlanPhase archive", () => {
     expect(archiveButton).toBeInTheDocument();
   });
 
-  it("has main content area with overflow-y-auto, min-w-0, and min-h-0 for independent scroll", () => {
+  it("has main content area with overflow-auto, min-w-0, and min-h-0 for independent scroll", () => {
     const store = createStore();
     render(
       <Provider store={store}>
         <PlanPhase projectId="proj-1" />
       </Provider>
     );
-    const mainContent = screen.getByText("Feature Plans").closest(".overflow-y-auto");
+    const mainContent = screen.getByText("Feature Plans").closest(".overflow-auto");
     expect(mainContent).toBeInTheDocument();
-    expect(mainContent).toHaveClass("min-w-0");
     expect(mainContent).toHaveClass("min-h-0");
+    const mainWrapper = mainContent?.closest(".flex.flex-col");
+    expect(mainWrapper).toHaveClass("min-w-0");
   });
 
   it("has root with flex flex-1 min-h-0 min-w-0 for proper fill and independent page/sidebar scroll", () => {
@@ -1665,7 +1666,7 @@ describe("PlanPhase plan sorting and status filter", () => {
     }
   });
 
-  it("renders status filter dropdown when plans exist", () => {
+  it("renders status filter chips when plans exist", () => {
     const store = createStore();
     render(
       <Provider store={store}>
@@ -1673,9 +1674,9 @@ describe("PlanPhase plan sorting and status filter", () => {
       </Provider>
     );
 
-    const filter = screen.getByRole("combobox", { name: /filter plans by status/i });
-    expect(filter).toBeInTheDocument();
-    expect(filter).toHaveValue("all");
+    const allChip = screen.getByRole("button", { name: /all 1/i });
+    expect(allChip).toBeInTheDocument();
+    expect(allChip).toHaveAttribute("aria-pressed", "true");
   });
 
   it("filters plans when status filter is changed", async () => {
@@ -1702,8 +1703,8 @@ describe("PlanPhase plan sorting and status filter", () => {
     expect(screen.getByText(/planning feature/i)).toBeInTheDocument();
     expect(screen.getByText(/building feature/i)).toBeInTheDocument();
 
-    const filter = screen.getByRole("combobox", { name: /filter plans by status/i });
-    await user.selectOptions(filter, "planning");
+    const planningChip = screen.getByRole("button", { name: /planning 1/i });
+    await user.click(planningChip);
 
     expect(screen.getByText(/planning feature/i)).toBeInTheDocument();
     expect(screen.queryByText(/building feature/i)).not.toBeInTheDocument();
@@ -1725,8 +1726,8 @@ describe("PlanPhase plan sorting and status filter", () => {
       </Provider>
     );
 
-    const filter = screen.getByRole("combobox", { name: /filter plans by status/i });
-    await user.selectOptions(filter, "complete");
+    const completeChip = screen.getByRole("button", { name: /complete 0/i });
+    await user.click(completeChip);
 
     expect(screen.getByText(/no plans match/i)).toBeInTheDocument();
   });
@@ -1759,7 +1760,33 @@ describe("PlanPhase sendPlanMessage thunk", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders Dependency Graph as collapsible container with expand/collapse toggle", async () => {
+  it("renders secondary top bar with filter chips and view toggle (Card/Graph)", async () => {
+    const store = createStore();
+    render(
+      <Provider store={store}>
+        <PlanPhase projectId="proj-1" />
+      </Provider>
+    );
+
+    // Filter chips
+    expect(screen.getByRole("button", { name: /all 1/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /planning 0/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /building 1/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /complete 0/i })).toBeInTheDocument();
+
+    // View toggle: Card (default) and Graph
+    const cardView = screen.getByRole("radio", { name: /card view/i });
+    const graphView = screen.getByRole("radio", { name: /graph view/i });
+    expect(cardView).toBeInTheDocument();
+    expect(graphView).toBeInTheDocument();
+    expect(cardView).toHaveAttribute("aria-checked", "true");
+    expect(graphView).toHaveAttribute("aria-checked", "false");
+
+    // Card mode shows Feature Plans
+    expect(screen.getByText("Feature Plans")).toBeInTheDocument();
+  });
+
+  it("switches between Card and Graph view modes", async () => {
     const store = createStore();
     const user = userEvent.setup();
     render(
@@ -1768,51 +1795,48 @@ describe("PlanPhase sendPlanMessage thunk", () => {
       </Provider>
     );
 
-    const header = screen.getByRole("button", { name: /dependency graph/i });
-    expect(header).toBeInTheDocument();
-    expect(header).toHaveAttribute("aria-expanded", "true");
+    // Default: Card mode
+    expect(screen.getByText("Feature Plans")).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-graph-view")).not.toBeInTheDocument();
 
-    // Content visible when expanded
-    const content = document.getElementById("dependency-graph-content");
-    expect(content).toBeInTheDocument();
+    // Switch to Graph mode
+    const graphView = screen.getByRole("radio", { name: /graph view/i });
+    await user.click(graphView);
 
-    // Click to collapse
-    await user.click(header);
-    expect(header).toHaveAttribute("aria-expanded", "false");
-    expect(document.getElementById("dependency-graph-content")).toBeNull();
+    expect(screen.getByTestId("plan-graph-view")).toBeInTheDocument();
+    expect(screen.queryByText("Feature Plans")).not.toBeInTheDocument();
 
-    // Click to expand again
-    await user.click(header);
-    expect(header).toHaveAttribute("aria-expanded", "true");
-    expect(document.getElementById("dependency-graph-content")).toBeInTheDocument();
+    // Switch back to Card mode
+    const cardView = screen.getByRole("radio", { name: /card view/i });
+    await user.click(cardView);
+
+    expect(screen.getByText("Feature Plans")).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-graph-view")).not.toBeInTheDocument();
   });
 
-  it("persists dependency graph expanded state to localStorage", async () => {
+  it("persists view mode to localStorage", async () => {
     const store = createStore();
     const user = userEvent.setup();
 
-    // Default: no stored value → expanded (true)
     render(
       <Provider store={store}>
         <PlanPhase projectId="proj-1" />
       </Provider>
     );
-    const header = screen.getByRole("button", { name: /dependency graph/i });
-    expect(header).toHaveAttribute("aria-expanded", "true");
 
-    // Collapse → persists "false"
-    await user.click(header);
-    expect(header).toHaveAttribute("aria-expanded", "false");
-    expect(storage[DEPENDENCY_GRAPH_EXPANDED_KEY]).toBe("false");
+    // Switch to Graph mode
+    const graphView = screen.getByRole("radio", { name: /graph view/i });
+    await user.click(graphView);
+    expect(storage["opensprint.planView"]).toBe("graph");
 
-    // Expand → persists "true"
-    await user.click(header);
-    expect(header).toHaveAttribute("aria-expanded", "true");
-    expect(storage[DEPENDENCY_GRAPH_EXPANDED_KEY]).toBe("true");
+    // Switch to Card mode
+    const cardView = screen.getByRole("radio", { name: /card view/i });
+    await user.click(cardView);
+    expect(storage["opensprint.planView"]).toBe("card");
   });
 
-  it("restores dependency graph expanded state from localStorage on mount", async () => {
-    storage[DEPENDENCY_GRAPH_EXPANDED_KEY] = "false";
+  it("restores view mode from localStorage on mount", async () => {
+    storage["opensprint.planView"] = "graph";
 
     const store = createStore();
     render(
@@ -1821,9 +1845,11 @@ describe("PlanPhase sendPlanMessage thunk", () => {
       </Provider>
     );
 
-    const header = screen.getByRole("button", { name: /dependency graph/i });
-    expect(header).toHaveAttribute("aria-expanded", "false");
-    expect(document.getElementById("dependency-graph-content")).toBeNull();
+    expect(screen.getByRole("radio", { name: /graph view/i })).toHaveAttribute(
+      "aria-checked",
+      "true"
+    );
+    expect(screen.getByTestId("plan-graph-view")).toBeInTheDocument();
   });
 
   it("dispatches sendPlanMessage thunk when chat message is sent", async () => {
