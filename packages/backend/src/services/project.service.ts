@@ -435,7 +435,7 @@ export class ProjectService {
       const enriched: ProjectSettings = {
         ...defaults,
         testFramework: detected?.framework ?? null,
-        testCommand: detected?.testCommand ?? getTestCommandForFramework(null) || null,
+        testCommand: detected?.testCommand ?? (getTestCommandForFramework(null) || null),
       };
       await setSettingsInStore(projectId, enriched);
       return toCanonicalSettings(enriched);

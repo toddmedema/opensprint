@@ -560,6 +560,11 @@ describe("FeedbackService", () => {
       status: "open",
     };
     mockTaskStoreReady.mockResolvedValue([existingTask]);
+    const { taskStore } = await import("../services/task-store.service.js");
+    (taskStore.show as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...existingTask,
+      sourceFeedbackIds: [],
+    });
     mockInvoke.mockResolvedValue({
       content: JSON.stringify({
         category: "feature",
@@ -590,9 +595,14 @@ describe("FeedbackService", () => {
       updated.feedbackSourceTaskId,
       "discovered-from"
     );
+    expect(taskStore.update).toHaveBeenCalledWith(
+      projectId,
+      "os-abc.1",
+      expect.objectContaining({ extra: { sourceFeedbackIds: [item.id] } })
+    );
   });
 
-  it("should link when Analyst returns similar_existing_task_id", async () => {
+  it("should merge into existing task when Analyst returns similar_existing_task_id", async () => {
     const existingTask = {
       id: "os-xyz.2",
       title: "Fix login",
@@ -601,6 +611,11 @@ describe("FeedbackService", () => {
       status: "open",
     };
     mockTaskStoreReady.mockResolvedValue([existingTask]);
+    const { taskStore } = await import("../services/task-store.service.js");
+    (taskStore.show as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...existingTask,
+      sourceFeedbackIds: [],
+    });
     mockInvoke.mockResolvedValue({
       content: JSON.stringify({
         category: "bug",
@@ -619,6 +634,36 @@ describe("FeedbackService", () => {
     const updated = await feedbackService.getFeedback(projectId, item.id);
     expect(updated.createdTaskIds).toEqual(["os-xyz.2"]);
     expect(mockTaskStoreCreateWithRetry).not.toHaveBeenCalled();
+    expect(mockTaskStoreCreate).not.toHaveBeenCalled();
+    const updateCall = (taskStore.update as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(updateCall[0]).toBe(projectId);
+    expect(updateCall[1]).toBe("os-xyz.2");
+    expect(updateCall[2]).toMatchObject({
+      extra: { sourceFeedbackIds: [item.id] },
+      description: expect.stringContaining("Login is broken on mobile too"),
+    });
+  });
+
+  it("should fall through to create when similar_existing_task_id is invalid", async () => {
+    mockTaskStoreReady.mockResolvedValue([]);
+    mockInvoke.mockResolvedValue({
+      content: JSON.stringify({
+        category: "bug",
+        mapped_plan_id: null,
+        similar_existing_task_id: "os-nonexistent",
+        proposed_tasks: [{ index: 0, title: "Fix bug", description: "", priority: 0, depends_on: [] }],
+      }),
+    });
+
+    const item = await feedbackService.submitFeedback(projectId, {
+      text: "Bug with invalid similar task",
+    });
+
+    await feedbackService.processFeedbackWithAnalyst(projectId, item.id);
+
+    const updated = await feedbackService.getFeedback(projectId, item.id);
+    expect(updated.createdTaskIds).toHaveLength(1);
+    expect(mockTaskStoreCreateWithRetry).toHaveBeenCalled();
   });
 
   it("should re-enqueue when link_to_existing_task_ids contains invalid task ID", async () => {
@@ -777,6 +822,30 @@ describe("FeedbackService", () => {
       priority: 1,
       depends_on: [0],
     });
+  });
+
+  it("should set sourceFeedbackIds in extra when creating tasks from feedback", async () => {
+    feedbackIdSequence = ["srcfb1"];
+    mockInvoke.mockResolvedValue({
+      content: JSON.stringify({
+        category: "feature",
+        mapped_plan_id: null,
+        proposed_tasks: [
+          { index: 0, title: "Task A", description: "A", priority: 1, depends_on: [] },
+          { index: 1, title: "Task B", description: "B", priority: 2, depends_on: [0] },
+        ],
+      }),
+    });
+
+    const item = await feedbackService.submitFeedback(projectId, { text: "Add feature" });
+    await feedbackService.processFeedbackWithAnalyst(projectId, item.id);
+
+    const createCalls = mockTaskStoreCreateWithRetry.mock.calls.filter(
+      (c) => c[2] && (c[2] as { type?: string }).type === "feature"
+    );
+    expect(createCalls).toHaveLength(2);
+    expect(createCalls[0][2]).toMatchObject({ extra: { sourceFeedbackIds: [item.id] } });
+    expect(createCalls[1][2]).toMatchObject({ extra: { sourceFeedbackIds: [item.id] } });
   });
 
   it("should create exactly one task when proposed_tasks has one item (no feedback source chore)", async () => {

@@ -301,6 +301,7 @@ export class FeedbackService {
 
     const agentId = `feedback-categorize-${projectId}-${item.id}-${Date.now()}`;
     let linkIds: string[] = [];
+    let similarExistingTaskId: string | null = null;
     let updateExistingTasks: Record<string, { title?: string; description?: string }> = {};
     try {
       const response = await agentService.invokePlanningAgent({
@@ -427,9 +428,13 @@ export class FeedbackService {
         linkIds =
           Array.isArray(rawLinkIds) && rawLinkIds.length > 0
             ? rawLinkIds.filter((id: unknown) => typeof id === "string").map((id) => String(id))
-            : typeof rawSimilarId === "string" && rawSimilarId.trim()
-              ? [rawSimilarId.trim()]
-              : [];
+            : [];
+        similarExistingTaskId =
+          linkIds.length === 0 &&
+          typeof rawSimilarId === "string" &&
+          rawSimilarId.trim()
+            ? rawSimilarId.trim()
+            : null;
         const rawUpdates = parsed.update_existing_tasks ?? parsed.updateExistingTasks;
         updateExistingTasks =
           rawUpdates &&
@@ -545,7 +550,11 @@ export class FeedbackService {
           updateExistingTasks
         );
       } else {
-        item.createdTaskIds = await this.createTasksFromFeedback(projectId, item);
+        item.createdTaskIds = await this.createTasksFromFeedback(
+          projectId,
+          item,
+          similarExistingTaskId ?? undefined
+        );
       }
     } catch (err) {
       log.error("Failed to create or link tasks", { feedbackId: item.id, err });
@@ -640,10 +649,21 @@ export class FeedbackService {
 
     for (const taskId of taskIds) {
       const upd = updates?.[taskId];
+      const existing = await Promise.resolve(this.taskStore.show(projectId, taskId));
+      const existingIds =
+        ((existing as { sourceFeedbackIds?: string[] }).sourceFeedbackIds ?? []) as string[];
+      const sourceFeedbackIds = existingIds.includes(item.id)
+        ? existingIds
+        : [...existingIds, item.id];
       if (upd && (upd.title != null || upd.description != null)) {
         await this.taskStore.update(projectId, taskId, {
           ...(upd.title != null && { title: upd.title }),
           ...(upd.description != null && { description: upd.description }),
+          extra: { sourceFeedbackIds },
+        });
+      } else {
+        await this.taskStore.update(projectId, taskId, {
+          extra: { sourceFeedbackIds },
         });
       }
       await this.taskStore.addDependency(
@@ -670,12 +690,62 @@ export class FeedbackService {
       : undefined;
   }
 
-  /** Create tasks from feedback (PRD §12.3.4). Idempotent: skips if tasks already created. */
-  private async createTasksFromFeedback(projectId: string, item: FeedbackItem): Promise<string[]> {
+  /** Create tasks from feedback (PRD §12.3.4). Idempotent: skips if tasks already created.
+   * @param similar_existing_task_id Optional. When set, merge path: validate task exists and is OPEN/READY,
+   * append feedbackId to sourceFeedbackIds, append feedback text to description, return [existingTaskId].
+   * If invalid, log warning and fall through to create.
+   */
+  private async createTasksFromFeedback(
+    projectId: string,
+    item: FeedbackItem,
+    similar_existing_task_id?: string | null
+  ): Promise<string[]> {
     // Idempotency: fetch fresh from DB to handle concurrent invocation (e.g. before claim-then-process)
     const fresh = await feedbackStore.getFeedback(projectId, item.id);
     if (fresh.createdTaskIds && fresh.createdTaskIds.length > 0) {
       return fresh.createdTaskIds;
+    }
+
+    // Merge path: similar_existing_task_id provided
+    if (similar_existing_task_id) {
+      const readyTasks = await this.taskStore.ready(projectId);
+      const leafTasks = readyTasks.filter(
+        (t) => (t.issue_type ?? t.type) !== "epic" && (t.issue_type ?? t.type) !== "chore"
+      );
+      const validIds = new Set(leafTasks.map((t) => t.id));
+      if (validIds.has(similar_existing_task_id)) {
+        try {
+          const existing = await Promise.resolve(
+            this.taskStore.show(projectId, similar_existing_task_id)
+          );
+          const existingIds =
+            ((existing as { sourceFeedbackIds?: string[] }).sourceFeedbackIds ?? []) as string[];
+          const sourceFeedbackIds = existingIds.includes(item.id)
+            ? existingIds
+            : [...existingIds, item.id];
+          const desc = (existing.description as string) ?? "";
+          const appendedDesc = desc.trim()
+            ? `${desc}\n\n---\nFeedback: ${item.text}`
+            : `Feedback: ${item.text}`;
+          await this.taskStore.update(projectId, similar_existing_task_id, {
+            extra: { sourceFeedbackIds },
+            description: appendedDesc,
+          });
+          item.createdTaskIds = [similar_existing_task_id];
+          return [similar_existing_task_id];
+        } catch (err) {
+          log.warn("Merge into existing task failed, falling through to create", {
+            feedbackId: item.id,
+            existingTaskId: similar_existing_task_id,
+            err,
+          });
+        }
+      } else {
+        log.warn("Invalid similar_existing_task_id, falling through to create", {
+          feedbackId: item.id,
+          similar_existing_task_id,
+        });
+      }
     }
 
     const proposedTasks = item.proposedTasks ?? [];
@@ -765,6 +835,7 @@ export class FeedbackService {
               description,
               parentId: parentEpicId,
               complexity: taskComplexity,
+              extra: { sourceFeedbackIds: [item.id] },
             },
             { fallbackToStandalone: true }
           );
@@ -822,7 +893,12 @@ export class FeedbackService {
           const issue = await this.taskStore.createWithRetry(
             project.id,
             title,
-            { type: taskType, priority, parentId: parentEpicId },
+            {
+              type: taskType,
+              priority,
+              parentId: parentEpicId,
+              extra: { sourceFeedbackIds: [item.id] },
+            },
             { fallbackToStandalone: true }
           );
           if (issue) {

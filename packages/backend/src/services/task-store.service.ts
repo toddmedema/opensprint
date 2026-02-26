@@ -206,6 +206,8 @@ export interface CreateOpts {
   parentId?: string;
   /** Task-level complexity (low|high). Persisted in extra JSON. */
   complexity?: TaskComplexity;
+  /** Merge into extra JSON (e.g. sourceFeedbackIds) */
+  extra?: Record<string, unknown>;
 }
 
 export interface CreateInput {
@@ -666,10 +668,14 @@ export class TaskStoreService {
       const now = new Date().toISOString();
       const type = (options.type as string) ?? "task";
       const priority = options.priority ?? 2;
-      const extra =
-        options.complexity && (options.complexity === "low" || options.complexity === "high")
-          ? JSON.stringify({ complexity: options.complexity })
-          : "{}";
+      const baseExtra: Record<string, unknown> = {
+        ...options.extra,
+        ...(options.complexity &&
+        (options.complexity === "low" || options.complexity === "high")
+          ? { complexity: options.complexity }
+          : {}),
+      };
+      const extra = JSON.stringify(baseExtra);
 
       db.run(
         `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, extra)

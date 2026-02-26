@@ -68,6 +68,18 @@ describe("TaskStoreService", () => {
       const refetched = store.show(TEST_PROJECT_ID, result.id);
       expect((refetched as { complexity?: string }).complexity).toBe("high");
     });
+
+    it("should persist extra.sourceFeedbackIds when provided", async () => {
+      const result = await store.create(TEST_PROJECT_ID, "Feedback Task", {
+        type: "task",
+        extra: { sourceFeedbackIds: ["fb-123"] },
+      });
+      expect((result as { sourceFeedbackIds?: string[] }).sourceFeedbackIds).toEqual(["fb-123"]);
+      const refetched = store.show(TEST_PROJECT_ID, result.id);
+      expect((refetched as { sourceFeedbackIds?: string[] }).sourceFeedbackIds).toEqual([
+        "fb-123",
+      ]);
+    });
   });
 
   describe("createWithRetry", () => {
