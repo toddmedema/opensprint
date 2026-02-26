@@ -253,7 +253,7 @@ const FeedbackCard = memo(
     const isCollapsed = collapsedIds.has(item.id);
     const hasChildren = children.length > 0;
 
-    const wrapperRef = useRef<HTMLDivElement>(null);
+    const innerRef = useRef<HTMLDivElement>(null);
     const [collapseHeight, setCollapseHeight] = useState<number | null>(null);
     const [isAnimatingOut, setIsAnimatingOut] = useState(false);
     const prevStatusRef = useRef(item.status);
@@ -266,7 +266,7 @@ const FeedbackCard = memo(
       prevStatusRef.current = item.status;
 
       if (!justResolved || isAnimatingOut) return;
-      const el = wrapperRef.current;
+      const el = innerRef.current;
       if (!el) return;
 
       const startCollapse = () => {
@@ -316,7 +316,7 @@ const FeedbackCard = memo(
     const isResolvedAndAnimating =
       (item.status === "resolved" || item.status === "cancelled") && collapseHeight !== null;
 
-    const wrapperStyle: React.CSSProperties = isResolvedAndAnimating
+    const innerStyle: React.CSSProperties = isResolvedAndAnimating
       ? {
           height: collapseHeight,
           overflow: "hidden",
@@ -326,12 +326,14 @@ const FeedbackCard = memo(
 
     return (
       <div
-        ref={wrapperRef}
-        style={wrapperStyle}
-        onTransitionEnd={handleTransitionEnd}
         className={depth > 0 ? "ml-4 mt-2 border-l-2 border-theme-border pl-4" : ""}
       >
-        <div className="card p-4">
+        <div
+          ref={innerRef}
+          style={innerStyle}
+          onTransitionEnd={handleTransitionEnd}
+        >
+          <div className="card p-4">
           {/* Category badge/spinner floats top-right */}
           <div className="mb-2 overflow-hidden">
             {isCategorizing(item) ? (
@@ -542,6 +544,7 @@ const FeedbackCard = memo(
               tasks={tasks}
             />
           ))}
+        </div>
       </div>
     );
   },
