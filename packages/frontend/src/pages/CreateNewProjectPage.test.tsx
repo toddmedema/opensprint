@@ -55,7 +55,12 @@ describe("CreateNewProjectPage", () => {
   beforeEach(() => {
     mockScaffold.mockReset();
     mockScaffold.mockResolvedValue(defaultScaffoldResponse);
-    mockGetKeys.mockResolvedValue({ anthropic: true, cursor: true, claudeCli: true });
+    mockGetKeys.mockResolvedValue({
+        anthropic: true,
+        cursor: true,
+        claudeCli: true,
+        useCustomCli: false,
+      });
   });
 
   it("renders Create New Project title", () => {
@@ -64,7 +69,12 @@ describe("CreateNewProjectPage", () => {
   });
 
   it("Cancel button navigates to homepage", async () => {
-    mockGetKeys.mockResolvedValue({ anthropic: true, cursor: true, claudeCli: true });
+    mockGetKeys.mockResolvedValue({
+        anthropic: true,
+        cursor: true,
+        claudeCli: true,
+        useCustomCli: false,
+      });
     const user = userEvent.setup();
     render(
       <MemoryRouter initialEntries={["/projects/create-new"]}>
@@ -282,7 +292,12 @@ describe("CreateNewProjectPage", () => {
   });
 
   it("disables Next on agents step when env keys are loading", async () => {
-    let resolveGetKeys: (value: { anthropic: boolean; cursor: boolean; claudeCli: boolean }) => void;
+    let resolveGetKeys: (value: {
+      anthropic: boolean;
+      cursor: boolean;
+      claudeCli: boolean;
+      useCustomCli: boolean;
+    }) => void;
     mockGetKeys.mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -299,13 +314,23 @@ describe("CreateNewProjectPage", () => {
     const nextButton = screen.getByTestId("next-button");
     expect(nextButton).toBeDisabled();
 
-    resolveGetKeys!({ anthropic: true, cursor: true, claudeCli: true });
+    resolveGetKeys!({
+      anthropic: true,
+      cursor: true,
+      claudeCli: true,
+      useCustomCli: false,
+    });
     await screen.findByTestId("next-button");
     expect(screen.getByTestId("next-button")).toBeEnabled();
   });
 
   it("disables Next on agents step when cursor selected but API key missing", async () => {
-    mockGetKeys.mockResolvedValue({ anthropic: true, cursor: false, claudeCli: true });
+    mockGetKeys.mockResolvedValue({
+      anthropic: true,
+      cursor: false,
+      claudeCli: true,
+      useCustomCli: false,
+    });
     const user = userEvent.setup();
     renderCreateNewProjectPage();
     await user.type(screen.getByLabelText(/project name/i), "My App");
@@ -317,7 +342,12 @@ describe("CreateNewProjectPage", () => {
   });
 
   it("disables Next on agents step when claude selected but API key missing", async () => {
-    mockGetKeys.mockResolvedValue({ anthropic: false, cursor: true, claudeCli: true });
+    mockGetKeys.mockResolvedValue({
+      anthropic: false,
+      cursor: true,
+      claudeCli: true,
+      useCustomCli: false,
+    });
     const user = userEvent.setup();
     renderCreateNewProjectPage();
     await user.type(screen.getByLabelText(/project name/i), "My App");
@@ -331,7 +361,12 @@ describe("CreateNewProjectPage", () => {
   });
 
   it("disables Next on agents step when claude-cli selected but CLI not available", async () => {
-    mockGetKeys.mockResolvedValue({ anthropic: true, cursor: true, claudeCli: false });
+    mockGetKeys.mockResolvedValue({
+      anthropic: true,
+      cursor: true,
+      claudeCli: false,
+      useCustomCli: false,
+    });
     const user = userEvent.setup();
     renderCreateNewProjectPage();
     await user.type(screen.getByLabelText(/project name/i), "My App");
@@ -345,7 +380,12 @@ describe("CreateNewProjectPage", () => {
   });
 
   it("disables Next on agents step when custom CLI selected but cliCommand empty", async () => {
-    mockGetKeys.mockResolvedValue({ anthropic: true, cursor: true, claudeCli: true });
+    mockGetKeys.mockResolvedValue({
+        anthropic: true,
+        cursor: true,
+        claudeCli: true,
+        useCustomCli: false,
+      });
     const user = userEvent.setup();
     renderCreateNewProjectPage();
     await user.type(screen.getByLabelText(/project name/i), "My App");
@@ -359,7 +399,12 @@ describe("CreateNewProjectPage", () => {
   });
 
   it("enables Next on agents step when custom CLI has cliCommand", async () => {
-    mockGetKeys.mockResolvedValue({ anthropic: true, cursor: true, claudeCli: true });
+    mockGetKeys.mockResolvedValue({
+        anthropic: true,
+        cursor: true,
+        claudeCli: true,
+        useCustomCli: false,
+      });
     const user = userEvent.setup();
     renderCreateNewProjectPage();
     await user.type(screen.getByLabelText(/project name/i), "My App");

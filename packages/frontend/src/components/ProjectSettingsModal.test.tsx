@@ -59,7 +59,12 @@ describe("ProjectSettingsModal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSettings.mockResolvedValue(mockSettings);
-    mockGetKeys.mockResolvedValue({ anthropic: true, cursor: true, claudeCli: true });
+    mockGetKeys.mockResolvedValue({
+      anthropic: true,
+      cursor: true,
+      claudeCli: true,
+      useCustomCli: false,
+    });
     mockModelsList.mockResolvedValue([]);
     vi.stubGlobal("localStorage", {
       getItem: (key: string) => storage[key] ?? null,
@@ -152,7 +157,12 @@ describe("ProjectSettingsModal", () => {
   });
 
   it("hides API key banner when all keys for selected providers are configured", async () => {
-    mockGetKeys.mockResolvedValue({ anthropic: true, cursor: true, claudeCli: true });
+    mockGetKeys.mockResolvedValue({
+      anthropic: true,
+      cursor: true,
+      claudeCli: true,
+      useCustomCli: false,
+    });
 
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await screen.findByText("Project Settings");
@@ -168,7 +178,12 @@ describe("ProjectSettingsModal", () => {
   });
 
   it("shows anthropic key input when claude is selected and key is missing", async () => {
-    mockGetKeys.mockResolvedValue({ anthropic: false, cursor: true, claudeCli: true });
+    mockGetKeys.mockResolvedValue({
+      anthropic: false,
+      cursor: true,
+      claudeCli: true,
+      useCustomCli: false,
+    });
 
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await screen.findByText("Project Settings");

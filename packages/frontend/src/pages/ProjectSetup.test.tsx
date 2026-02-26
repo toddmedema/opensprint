@@ -15,7 +15,14 @@ vi.mock("../api/client", () => ({
       create: vi.fn(),
       list: vi.fn().mockResolvedValue([]),
     },
-    env: { getKeys: vi.fn().mockResolvedValue({ anthropic: true, cursor: true, claudeCli: true }) },
+    env: {
+      getKeys: vi.fn().mockResolvedValue({
+        anthropic: true,
+        cursor: true,
+        claudeCli: true,
+        useCustomCli: false,
+      }),
+    },
     filesystem: { detectTestFramework: vi.fn().mockResolvedValue(null) },
   },
 }));

@@ -182,17 +182,22 @@ describe("api client", () => {
   });
 
   describe("env", () => {
-    it("getKeys returns anthropic, cursor, claudeCli", async () => {
+    it("getKeys returns anthropic, cursor, claudeCli, useCustomCli", async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,
         status: 200,
         json: vi.fn().mockResolvedValue({
-          data: { anthropic: true, cursor: false, claudeCli: true },
+          data: { anthropic: true, cursor: false, claudeCli: true, useCustomCli: false },
         }),
       } as Response);
 
       const result = await api.env.getKeys();
-      expect(result).toEqual({ anthropic: true, cursor: false, claudeCli: true });
+      expect(result).toEqual({
+        anthropic: true,
+        cursor: false,
+        claudeCli: true,
+        useCustomCli: false,
+      });
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/v1/env/keys"),
         expect.any(Object)

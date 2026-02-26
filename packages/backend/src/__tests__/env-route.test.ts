@@ -136,13 +136,72 @@ describe("Env API", () => {
   });
 
   describe("GET /env/keys", () => {
-    it("returns shape with anthropic, cursor, claudeCli booleans", async () => {
+    it("returns shape with anthropic, cursor, claudeCli, useCustomCli booleans", async () => {
       const res = await request(app).get(`${API_PREFIX}/env/keys`);
       expect(res.status).toBe(200);
       expect(res.body.data).toBeDefined();
       expect(typeof res.body.data.anthropic).toBe("boolean");
       expect(typeof res.body.data.cursor).toBe("boolean");
       expect(typeof res.body.data.claudeCli).toBe("boolean");
+      expect(typeof res.body.data.useCustomCli).toBe("boolean");
+    });
+
+    it("anthropic true when global store has ANTHROPIC_API_KEY", async () => {
+      await setGlobalSettings({
+        apiKeys: {
+          ANTHROPIC_API_KEY: [{ id: "k1", value: "sk-ant-xxx" }],
+        },
+      });
+
+      const res = await request(app).get(`${API_PREFIX}/env/keys`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.anthropic).toBe(true);
+    });
+
+    it("cursor true when global store has CURSOR_API_KEY", async () => {
+      await setGlobalSettings({
+        apiKeys: {
+          CURSOR_API_KEY: [{ id: "k2", value: "cursor-xxx" }],
+        },
+      });
+
+      const res = await request(app).get(`${API_PREFIX}/env/keys`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.cursor).toBe(true);
+    });
+
+    it("anthropic true when process.env has ANTHROPIC_API_KEY", async () => {
+      const original = process.env.ANTHROPIC_API_KEY;
+      process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+
+      try {
+        const res = await request(app).get(`${API_PREFIX}/env/keys`);
+        expect(res.status).toBe(200);
+        expect(res.body.data.anthropic).toBe(true);
+      } finally {
+        process.env.ANTHROPIC_API_KEY = original;
+      }
+    });
+
+    it("cursor true when process.env has CURSOR_API_KEY", async () => {
+      const original = process.env.CURSOR_API_KEY;
+      process.env.CURSOR_API_KEY = "cursor-test-key";
+
+      try {
+        const res = await request(app).get(`${API_PREFIX}/env/keys`);
+        expect(res.status).toBe(200);
+        expect(res.body.data.cursor).toBe(true);
+      } finally {
+        process.env.CURSOR_API_KEY = original;
+      }
+    });
+
+    it("useCustomCli reflects global settings", async () => {
+      await setGlobalSettings({ useCustomCli: true });
+
+      const res = await request(app).get(`${API_PREFIX}/env/keys`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.useCustomCli).toBe(true);
     });
   });
 

@@ -113,7 +113,12 @@ export const api = {
   },
   env: {
     getKeys: () =>
-      request<{ anthropic: boolean; cursor: boolean; claudeCli: boolean }>("/env/keys"),
+      request<{
+        anthropic: boolean;
+        cursor: boolean;
+        claudeCli: boolean;
+        useCustomCli: boolean;
+      }>("/env/keys"),
     validateKey: (provider: "claude" | "cursor", value: string) =>
       request<{ valid: boolean; error?: string }>("/env/keys/validate", {
         method: "POST",

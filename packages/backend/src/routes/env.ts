@@ -4,7 +4,7 @@ import { readFile, writeFile, access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { ApiResponse } from "@opensprint/shared";
+import type { ApiResponse, ApiKeys } from "@opensprint/shared";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import { getErrorMessage } from "../utils/error-utils.js";
@@ -98,6 +98,15 @@ function globalStoreHasKeys(apiKeys: { [key: string]: unknown[] } | undefined): 
   return false;
 }
 
+/** Check if global store has keys for a given provider (ANTHROPIC_API_KEY or CURSOR_API_KEY) */
+function globalStoreHasProvider(
+  apiKeys: ApiKeys | undefined,
+  provider: "ANTHROPIC_API_KEY" | "CURSOR_API_KEY"
+): boolean {
+  const entries = apiKeys?.[provider];
+  return Array.isArray(entries) && entries.length > 0;
+}
+
 // GET /env/global-status — Returns { hasAnyKey, useCustomCli } for modal flow.
 // hasAnyKey = global store has keys OR process.env has ANTHROPIC/CURSOR OR claudeCli available.
 envRouter.get("/global-status", async (_req, res, next) => {
@@ -143,16 +152,26 @@ envRouter.put("/global-settings", async (req: Request, res, next) => {
 });
 
 // GET /env/keys — Check which API keys / CLIs are configured (never returns key values).
-// Keys are read from process.env (loaded from .env). Project-level API keys (in Project Settings)
-// take precedence over .env when configured; this endpoint reflects global .env state for fallback.
+// Keys are read from global store first, then process.env. Return anthropic/cursor true if any source has them.
 envRouter.get("/keys", async (_req, res, next) => {
   try {
-    const anthropic = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
-    const cursor = Boolean(process.env.CURSOR_API_KEY?.trim());
+    const settings = await getGlobalSettings();
+    const anthropic =
+      Boolean(process.env.ANTHROPIC_API_KEY?.trim()) ||
+      globalStoreHasProvider(settings.apiKeys, "ANTHROPIC_API_KEY");
+    const cursor =
+      Boolean(process.env.CURSOR_API_KEY?.trim()) ||
+      globalStoreHasProvider(settings.apiKeys, "CURSOR_API_KEY");
     const claudeCli = await isClaudeCliAvailable();
+    const useCustomCli = settings.useCustomCli ?? false;
     res.json({
-      data: { anthropic, cursor, claudeCli },
-    } as ApiResponse<{ anthropic: boolean; cursor: boolean; claudeCli: boolean }>);
+      data: { anthropic, cursor, claudeCli, useCustomCli },
+    } as ApiResponse<{
+      anthropic: boolean;
+      cursor: boolean;
+      claudeCli: boolean;
+      useCustomCli: boolean;
+    }>);
   } catch (err) {
     next(err);
   }
