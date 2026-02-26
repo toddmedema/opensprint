@@ -260,6 +260,20 @@ describe("EvalPhase feedback form", () => {
     }
   });
 
+  it("focuses feedback input when Evaluate tab activates", async () => {
+    const store = createStore();
+    render(
+      <Provider store={store}>
+        <EvalPhase projectId="proj-1" />
+      </Provider>
+    );
+
+    await waitFor(() => {
+      const input = screen.getByTestId("eval-feedback-input");
+      expect(document.activeElement).toBe(input);
+    });
+  });
+
   it("renders priority dropdown with placeholder and options", async () => {
     const store = createStore();
     const user = userEvent.setup();

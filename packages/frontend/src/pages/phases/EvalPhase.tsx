@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo, useEffect, memo } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect, useLayoutEffect, memo } from "react";
 import type { FeedbackItem } from "@opensprint/shared";
 import { PRIORITY_LABELS } from "@opensprint/shared";
 import {
@@ -578,6 +578,11 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
     }
   }, [projectId, tasksCount, dispatch]);
 
+  /* Auto-focus feedback input when Evaluate tab activates */
+  useLayoutEffect(() => {
+    feedbackInputRef.current?.focus();
+  }, []);
+
   /* ── Local UI state (restored from localStorage on mount) ── */
   const initialDraft = useMemo(() => loadFeedbackFormDraft(projectId), [projectId]);
   const [input, setInput] = useState(initialDraft.text);
@@ -603,6 +608,7 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
   }, [projectId, input, imageAttachment.images, priority]);
   const [feedbackPriorityDropdownOpen, setFeedbackPriorityDropdownOpen] = useState(false);
   const feedbackPriorityDropdownRef = useRef<HTMLDivElement>(null);
+  const feedbackInputRef = useRef<HTMLTextAreaElement>(null);
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() =>
     loadFeedbackCollapsedIds(projectId)
@@ -777,6 +783,7 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
               What did you find?
             </label>
             <textarea
+              ref={feedbackInputRef}
               className="input min-h-[100px] mb-3"
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -784,6 +791,7 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
               onKeyDown={onKeyDownFeedback}
               placeholder="Describe a bug, suggest a feature, or report a UX issue..."
               disabled={submitting}
+              data-testid="eval-feedback-input"
             />
             <ImageAttachmentThumbnails attachment={imageAttachment} className="mb-3" />
             <div className="flex justify-end items-stretch gap-2 flex-wrap">

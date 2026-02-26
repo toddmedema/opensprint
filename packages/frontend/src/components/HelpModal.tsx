@@ -108,7 +108,7 @@ export function HelpModal({ onClose, project }: HelpModalProps) {
             hidden={activeTab !== "ask"}
             className="px-6 py-4"
           >
-            <AskQuestionContent project={project} />
+            <AskQuestionContent project={project} isActive={activeTab === "ask"} />
           </div>
           <div
             id="help-tabpanel-meet"
@@ -151,7 +151,13 @@ function HelpChatBubble({ msg }: { msg: HelpChatMessage }) {
   );
 }
 
-function AskQuestionContent({ project }: { project?: { id: string; name: string } | null }) {
+function AskQuestionContent({
+  project,
+  isActive,
+}: {
+  project?: { id: string; name: string } | null;
+  isActive: boolean;
+}) {
   const [messages, setMessages] = useState<HelpChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -159,6 +165,7 @@ function AskQuestionContent({ project }: { project?: { id: string; name: string 
   const [error, setError] = useState<string | null>(null);
   const scrollEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -190,6 +197,12 @@ function AskQuestionContent({ project }: { project?: { id: string; name: string 
     const id = requestAnimationFrame(scrollToBottom);
     return () => cancelAnimationFrame(id);
   }, [messages, scrollToBottom]);
+
+  useLayoutEffect(() => {
+    if (isActive) {
+      chatInputRef.current?.focus();
+    }
+  }, [isActive]);
 
   const handleSend = async () => {
     const text = input.trim();
@@ -272,6 +285,7 @@ function AskQuestionContent({ project }: { project?: { id: string; name: string 
           sendDisabled={sending}
           placeholder="Ask a question..."
           aria-label="Help chat message"
+          inputRef={chatInputRef}
         />
       </div>
     </div>

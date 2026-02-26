@@ -182,6 +182,28 @@ describe("HelpModal", () => {
     expect(api.help.history).toHaveBeenCalledWith("proj-1");
   });
 
+  it("focuses chat input when Help modal opens", async () => {
+    render(<HelpModal onClose={vi.fn()} />);
+
+    await waitFor(() => {
+      const input = screen.getByPlaceholderText("Ask a question...");
+      expect(document.activeElement).toBe(input);
+    });
+  });
+
+  it("focuses chat input when switching back to Ask a Question tab", async () => {
+    const user = userEvent.setup();
+    render(<HelpModal onClose={vi.fn()} />);
+
+    await user.click(screen.getByRole("tab", { name: "Meet your Team" }));
+    await user.click(screen.getByRole("tab", { name: "Ask a Question" }));
+
+    await waitFor(() => {
+      const input = screen.getByPlaceholderText("Ask a question...");
+      expect(document.activeElement).toBe(input);
+    });
+  });
+
   it("Ask a Question tab shows loading state during agent response", async () => {
     let resolvePromise: (value: { message: string }) => void;
     const chatPromise = new Promise<{ message: string }>((resolve) => {
