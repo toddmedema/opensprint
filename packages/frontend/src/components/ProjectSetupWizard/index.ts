@@ -4,6 +4,8 @@ export { RepositoryStep } from "./RepositoryStep";
 export type { RepositoryStepProps } from "./RepositoryStep";
 export { AgentsStep } from "./AgentsStep";
 export type { AgentsStepProps, AgentConfig, EnvKeys } from "./AgentsStep";
+export { SimplifiedAgentsStep } from "./SimplifiedAgentsStep";
+export type { SimplifiedAgentsStepProps } from "./SimplifiedAgentsStep";
 export { DeploymentStep } from "./DeploymentStep";
 export type { DeploymentStepProps } from "./DeploymentStep";
 export { TestingStep } from "./TestingStep";

@@ -30,9 +30,9 @@ vi.mock("../components/ModelSelect", () => ({
   ModelSelect: () => <select data-testid="model-select" />,
 }));
 
-function renderProjectSetup() {
+function renderProjectSetup(initialRoute = "/projects/add-existing") {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialRoute]}>
       <ProjectSetup />
     </MemoryRouter>
   );
