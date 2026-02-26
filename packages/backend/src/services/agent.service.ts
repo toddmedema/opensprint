@@ -6,6 +6,7 @@ import type { AgentConfig, AgentRole } from "@opensprint/shared";
 import { AgentClient } from "./agent-client.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
+import { getErrorMessage, isLimitError } from "../utils/error-utils.js";
 import { activeAgentsService } from "./active-agents.service.js";
 
 /** Message for planning agent (user or assistant) */
@@ -402,50 +403,64 @@ A git merge or rebase has encountered conflicts. The working directory contains 
       return { role: m.role as "user" | "assistant", content: m.content };
     });
 
-    if (onChunk) {
-      // Streaming path
-      const stream = client.messages.stream({
+    try {
+      if (onChunk) {
+        // Streaming path
+        const stream = client.messages.stream({
+          model,
+          max_tokens: 8192,
+          system: systemPrompt ?? undefined,
+          messages: anthropicMessages,
+        });
+
+        let fullContent = "";
+        stream.on("text", (text) => {
+          fullContent += text;
+          onChunk(text);
+        });
+
+        const finalMessage = await stream.finalMessage();
+        const contentBlocks = finalMessage?.content ?? [];
+        const textBlock = Array.isArray(contentBlocks)
+          ? contentBlocks.find((b: { type?: string }) => b.type === "text")
+          : undefined;
+        const content =
+          textBlock && typeof textBlock === "object" && "text" in textBlock
+            ? String(textBlock.text)
+            : fullContent;
+        return { content };
+      }
+
+      // Non-streaming path
+      const response = await client.messages.create({
         model,
         max_tokens: 8192,
         system: systemPrompt ?? undefined,
         messages: anthropicMessages,
       });
 
-      let fullContent = "";
-      stream.on("text", (text) => {
-        fullContent += text;
-        onChunk(text);
-      });
-
-      const finalMessage = await stream.finalMessage();
-      const contentBlocks = finalMessage?.content ?? [];
+      const contentBlocks = response?.content ?? [];
       const textBlock = Array.isArray(contentBlocks)
         ? contentBlocks.find((b: { type?: string }) => b.type === "text")
         : undefined;
       const content =
         textBlock && typeof textBlock === "object" && "text" in textBlock
           ? String(textBlock.text)
-          : fullContent;
+          : "";
       return { content };
+    } catch (error: unknown) {
+      const msg = getErrorMessage(error);
+      throw new AppError(
+        502,
+        ErrorCodes.AGENT_INVOKE_FAILED,
+        `Claude API error: ${msg}. Check Project Settings → Agent Config (API key, model).`,
+        {
+          agentType: "claude",
+          raw: msg,
+          isLimitError: isLimitError(error),
+        }
+      );
     }
-
-    // Non-streaming path
-    const response = await client.messages.create({
-      model,
-      max_tokens: 8192,
-      system: systemPrompt ?? undefined,
-      messages: anthropicMessages,
-    });
-
-    const contentBlocks = response?.content ?? [];
-    const textBlock = Array.isArray(contentBlocks)
-      ? contentBlocks.find((b: { type?: string }) => b.type === "text")
-      : undefined;
-    const content =
-      textBlock && typeof textBlock === "object" && "text" in textBlock
-        ? String(textBlock.text)
-        : "";
-    return { content };
   }
 }
 

@@ -7,7 +7,7 @@ import type { AgentConfig } from "@opensprint/shared";
 import { OPENSPRINT_PATHS } from "@opensprint/shared";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
-import { getErrorMessage, getExecErrorShape } from "../utils/error-utils.js";
+import { getErrorMessage, getExecErrorShape, isLimitError } from "../utils/error-utils.js";
 import { registerAgentProcess, unregisterAgentProcess } from "./agent-process-registry.js";
 import { createLogger } from "../utils/logger.js";
 
@@ -497,6 +497,7 @@ export class AgentClient {
       throw new AppError(502, ErrorCodes.AGENT_INVOKE_FAILED, formatAgentError("claude", raw), {
         agentType: "claude",
         raw,
+        isLimitError: isLimitError(error),
       });
     } finally {
       if (child.pid) {
@@ -632,6 +633,7 @@ export class AgentClient {
           agentType: "cursor",
           raw,
           isTimeout,
+          isLimitError: isLimitError(error),
         }
       );
     }
@@ -755,6 +757,7 @@ export class AgentClient {
       throw new AppError(502, ErrorCodes.AGENT_INVOKE_FAILED, formatAgentError("custom", raw), {
         agentType: "custom",
         raw,
+        isLimitError: isLimitError(error),
       });
     }
   }
