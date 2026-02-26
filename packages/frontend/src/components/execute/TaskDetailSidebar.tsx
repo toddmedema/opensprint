@@ -161,32 +161,14 @@ export function TaskDetailSidebar({
   return (
     <>
       <div className="flex items-center gap-2 p-4 border-b border-theme-border shrink-0 min-h-0 flex-nowrap">
-        {/* Title + View plan: truncate to fit single line */}
-        <div className="min-w-0 flex-1 flex flex-col gap-0.5">
+        {/* Title: single line for header */}
+        <div className="min-w-0 flex-1">
           <h3
             className="font-semibold text-theme-text truncate block"
             data-testid="task-detail-title"
           >
             {task?.title ?? selectedTask ?? ""}
           </h3>
-          {task?.epicId &&
-            (() => {
-              const epicId = task.epicId;
-              const plan = plans.find((p) => p.metadata.epicId === epicId);
-              if (!plan || !onNavigateToPlan) return null;
-              const planTitle = getEpicTitleFromPlan(plan);
-              return (
-                <button
-                  type="button"
-                  onClick={() => onNavigateToPlan(plan.metadata.planId)}
-                  className="text-xs text-brand-600 hover:text-brand-700 hover:underline truncate block text-left"
-                  title={`View plan: ${planTitle}`}
-                  data-testid="sidebar-view-plan-btn"
-                >
-                  View plan: {planTitle}
-                </button>
-              );
-            })()}
         </div>
         {/* Actions overflow menu (three-dot) — left of close */}
         {hasActions && (
@@ -420,6 +402,27 @@ export function TaskDetailSidebar({
           ));
         })()}
 
+        {/* View plan link: above Dependencies subsection */}
+        {task?.epicId &&
+          (() => {
+            const plan = plans.find((p) => p.metadata.epicId === task.epicId);
+            if (!plan || !onNavigateToPlan) return null;
+            const planTitle = getEpicTitleFromPlan(plan);
+            return (
+              <div className="p-4 border-b border-theme-border">
+                <button
+                  type="button"
+                  onClick={() => onNavigateToPlan(plan.metadata.planId)}
+                  className="text-xs text-brand-600 hover:text-brand-700 hover:underline text-left"
+                  title={`View plan: ${planTitle}`}
+                  data-testid="sidebar-view-plan-btn"
+                >
+                  View plan: {planTitle}
+                </button>
+              </div>
+            );
+          })()}
+
         {task &&
           (() => {
             const desc = task.description ?? "";
@@ -434,7 +437,7 @@ export function TaskDetailSidebar({
 
             return (
               <>
-                {/* Row 3: Depends on (above Description) */}
+                {/* Depends on (above Description) */}
                 {hasDeps && (
                   <div className="p-4 border-b border-theme-border">
                     <div className="text-xs">
