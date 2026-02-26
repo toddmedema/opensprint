@@ -189,7 +189,7 @@ export function HomeScreen() {
             <button
               type="button"
               onClick={() => navigate("/projects/add-existing")}
-              className="btn-secondary"
+              className="btn-secondary hover:bg-theme-info-bg/50"
               data-testid="add-existing-button"
             >
               Add Existing
@@ -221,7 +221,7 @@ export function HomeScreen() {
                     openProject(project);
                   }
                 }}
-                className="card p-4 group cursor-pointer transition-colors hover:bg-theme-bg-elevated min-w-0"
+                className="card p-4 group cursor-pointer transition-colors hover:bg-theme-info-bg/40 min-w-0"
                 data-testid={`project-card-${project.id}`}
               >
                 <div className="flex items-start justify-between gap-2">

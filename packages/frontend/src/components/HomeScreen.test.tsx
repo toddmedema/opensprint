@@ -86,6 +86,14 @@ describe("HomeScreen", () => {
     expect(screen.getByText("/path/to/repo")).toBeInTheDocument();
   });
 
+  it("project cards have hover effect for clickability feedback", async () => {
+    mockProjectsList.mockResolvedValue([mockProject]);
+    renderHomeScreen();
+    await screen.findByTestId("project-card-proj-1");
+    const card = screen.getByTestId("project-card-proj-1");
+    expect(card).toHaveClass("hover:bg-theme-info-bg/40");
+  });
+
   it("Create New button navigates to /projects/create-new", async () => {
     mockProjectsList.mockResolvedValue([]);
     const user = userEvent.setup();
@@ -108,6 +116,14 @@ describe("HomeScreen", () => {
     await user.click(screen.getByTestId("create-new-button"));
 
     expect(screen.getByTestId("location")).toHaveTextContent("/projects/create-new");
+  });
+
+  it("Add Existing button has hover effect for clickability feedback", async () => {
+    mockProjectsList.mockResolvedValue([]);
+    renderHomeScreen();
+    await screen.findByTestId("add-existing-button");
+    const btn = screen.getByTestId("add-existing-button");
+    expect(btn).toHaveClass("hover:bg-theme-info-bg/50");
   });
 
   it("Add Existing button navigates to /projects/add-existing", async () => {

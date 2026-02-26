@@ -155,10 +155,10 @@ export function Navbar({
                       setDropdownOpen(false);
                       navigate(getProjectPhasePath(p.id, currentPhase ?? "sketch"));
                     }}
-                    className={`w-full text-left px-4 py-2 text-sm hover:bg-theme-bg-elevated transition-colors ${
+                    className={`w-full text-left px-4 py-2 text-sm transition-colors ${
                       p.id === project?.id
                         ? "bg-theme-info-bg text-theme-info-text font-medium"
-                        : "text-theme-muted"
+                        : "text-theme-muted hover:bg-theme-info-bg/50"
                     }`}
                   >
                     {p.name}
@@ -174,7 +174,7 @@ export function Navbar({
                       setDropdownOpen(false);
                       navigate("/projects/add-existing");
                     }}
-                    className="w-full text-left px-4 py-2 text-sm text-theme-text hover:bg-theme-info-bg font-medium"
+                    className="w-full text-left px-4 py-2 text-sm text-theme-text font-medium hover:bg-theme-info-bg transition-colors"
                   >
                     Add Existing Project
                   </button>
@@ -184,7 +184,7 @@ export function Navbar({
                       setDropdownOpen(false);
                       navigate("/projects/create-new");
                     }}
-                    className="w-full text-left px-4 py-2 text-sm text-theme-text hover:bg-theme-info-bg font-medium"
+                    className="w-full text-left px-4 py-2 text-sm text-theme-text font-medium hover:bg-theme-info-bg transition-colors"
                   >
                     Create New Project
                   </button>

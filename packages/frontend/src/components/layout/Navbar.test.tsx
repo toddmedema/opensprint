@@ -15,10 +15,11 @@ import planReducer from "../../store/slices/planSlice";
 import websocketReducer from "../../store/slices/websocketSlice";
 
 const mockGetSettings = vi.fn();
+const mockProjectsList = vi.fn();
 vi.mock("../../api/client", () => ({
   api: {
     projects: {
-      list: vi.fn().mockResolvedValue([]),
+      list: (...args: unknown[]) => mockProjectsList(...args),
       getSettings: (...args: unknown[]) => mockGetSettings(...args),
     },
     agents: { active: vi.fn().mockResolvedValue([]) },
@@ -28,6 +29,7 @@ vi.mock("../../api/client", () => ({
 
 const storage: Record<string, string> = {};
 beforeEach(() => {
+  mockProjectsList.mockResolvedValue([]);
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => storage[key] ?? null,
     setItem: (key: string, value: string) => {
@@ -144,6 +146,36 @@ describe("Navbar", () => {
     );
     const nav = screen.getByRole("navigation");
     expect(nav).toHaveStyle({ height: `${NAVBAR_HEIGHT}px` });
+  });
+
+  it("projects dropdown items have hover effect for clickability feedback", async () => {
+    const projects = [
+      {
+        id: "proj-1",
+        name: "Project A",
+        repoPath: "/path/a",
+        currentPhase: "sketch" as const,
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      },
+      {
+        id: "proj-2",
+        name: "Project B",
+        repoPath: "/path/b",
+        currentPhase: "sketch" as const,
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      },
+    ];
+    mockProjectsList.mockResolvedValue(projects);
+    const user = userEvent.setup();
+    renderNavbar(<Navbar project={projects[0]} currentPhase="sketch" onPhaseChange={vi.fn()} />);
+
+    const trigger = screen.getByRole("button", { name: /Project A/i });
+    await user.click(trigger);
+
+    const nonSelectedOption = screen.getByRole("option", { name: "Project B" });
+    expect(nonSelectedOption).toHaveClass("hover:bg-theme-info-bg/50");
   });
 
   it("has z-[60] so dropdowns appear above Build sidebar (z-50)", () => {
