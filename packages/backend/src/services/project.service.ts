@@ -3,7 +3,13 @@ import path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { v4 as uuid } from "uuid";
-import type { Project, CreateProjectRequest, ProjectSettings } from "@opensprint/shared";
+import type {
+  Project,
+  CreateProjectRequest,
+  ProjectSettings,
+  ScaffoldProjectRequest,
+  ScaffoldProjectResponse,
+} from "@opensprint/shared";
 import type { ApiKeyEntry, ApiKeys } from "@opensprint/shared";
 import {
   OPENSPRINT_DIR,
@@ -396,6 +402,71 @@ export class ProjectService {
       createdAt: now,
       updatedAt: now,
     };
+  }
+
+  /** Scaffold a new project from template (Create New wizard). */
+  async scaffoldProject(input: ScaffoldProjectRequest): Promise<ScaffoldProjectResponse> {
+    const name = (input.name ?? "").trim();
+    const parentPath = (input.parentPath ?? "").trim();
+    const template = input.template;
+
+    if (!name) {
+      throw new AppError(400, ErrorCodes.INVALID_INPUT, "Project name is required");
+    }
+    if (!parentPath) {
+      throw new AppError(400, ErrorCodes.INVALID_INPUT, "Project folder (parentPath) is required");
+    }
+    if (template !== "web-app-expo-react") {
+      throw new AppError(
+        400,
+        ErrorCodes.INVALID_INPUT,
+        `Unsupported template: ${template}. Only "web-app-expo-react" is supported.`
+      );
+    }
+
+    const repoPath = path.resolve(parentPath, name);
+
+    if (template === "web-app-expo-react") {
+      await fs.mkdir(repoPath, { recursive: true });
+      try {
+        await execAsync("npx create-expo-app@latest . --template blank --yes", {
+          cwd: repoPath,
+        });
+      } catch (err) {
+        const msg = getErrorMessage(err, "Failed to scaffold Expo app");
+        throw new AppError(500, ErrorCodes.INTERNAL_ERROR, msg, { repoPath });
+      }
+      try {
+        await execAsync("npm install", { cwd: repoPath });
+      } catch (err) {
+        const msg = getErrorMessage(err, "Failed to run npm install");
+        throw new AppError(500, ErrorCodes.INTERNAL_ERROR, msg, { repoPath });
+      }
+    }
+
+    const simpleInput = input.simpleComplexityAgent ?? DEFAULT_AGENT_CONFIG;
+    const complexInput = input.complexComplexityAgent ?? DEFAULT_AGENT_CONFIG;
+    const createRequest: CreateProjectRequest = {
+      name,
+      repoPath,
+      simpleComplexityAgent: simpleInput as AgentConfigInput,
+      complexComplexityAgent: complexInput as AgentConfigInput,
+      deployment: DEFAULT_DEPLOYMENT_CONFIG,
+      hilConfig: DEFAULT_HIL_CONFIG,
+      gitWorkingMode: "worktree",
+      maxConcurrentCoders: 1,
+      testFramework: null,
+    };
+
+    const project = await this.createProject(createRequest);
+
+    const absPath = path.resolve(repoPath);
+    const runCommand =
+      process.platform === "win32"
+        ? `cd /d ${absPath} && npm run web`
+        : `cd ${absPath} && npm run web`;
+
+    return { project, runCommand };
   }
 
   /** Get a single project by ID */

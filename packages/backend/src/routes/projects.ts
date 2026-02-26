@@ -2,7 +2,13 @@ import { Router, Request } from "express";
 import { ProjectService } from "../services/project.service.js";
 import { PlanService } from "../services/plan.service.js";
 import { orchestratorService } from "../services/orchestrator.service.js";
-import type { CreateProjectRequest, ApiResponse, Project } from "@opensprint/shared";
+import type {
+  CreateProjectRequest,
+  ApiResponse,
+  Project,
+  ScaffoldProjectRequest,
+  ScaffoldProjectResponse,
+} from "@opensprint/shared";
 import { maskApiKeysForResponse } from "@opensprint/shared";
 import { createLogger } from "../utils/logger.js";
 
@@ -31,6 +37,18 @@ projectsRouter.post("/", async (req, res, next) => {
     const request = req.body as CreateProjectRequest;
     const project = await projectService.createProject(request);
     const body: ApiResponse<Project> = { data: project };
+    res.status(201).json(body);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /projects/scaffold — Scaffold new project from template (Create New wizard)
+projectsRouter.post("/scaffold", async (req, res, next) => {
+  try {
+    const request = req.body as ScaffoldProjectRequest;
+    const result = await projectService.scaffoldProject(request);
+    const body: ApiResponse<ScaffoldProjectResponse> = { data: result };
     res.status(201).json(body);
   } catch (err) {
     next(err);

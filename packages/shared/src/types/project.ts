@@ -56,6 +56,21 @@ export interface UpdateProjectRequest {
   repoPath?: string;
 }
 
+/** Scaffold project request (Create New wizard) */
+export interface ScaffoldProjectRequest {
+  name: string;
+  parentPath: string;
+  template: "web-app-expo-react";
+  simpleComplexityAgent?: AgentConfigInput;
+  complexComplexityAgent?: AgentConfigInput;
+}
+
+/** Scaffold project response */
+export interface ScaffoldProjectResponse {
+  project: Project;
+  runCommand: string;
+}
+
 // Forward references for agent/deployment config — defined in settings.ts
 import type {
   AgentConfigInput,

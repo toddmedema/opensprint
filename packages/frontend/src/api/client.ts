@@ -1,6 +1,8 @@
 import type {
   Project,
   CreateProjectRequest,
+  ScaffoldProjectRequest,
+  ScaffoldProjectResponse,
   UpdateProjectRequest,
   ProjectSettings,
   Prd,
@@ -126,6 +128,11 @@ export const api = {
       request<{ hasExistingCode: boolean }>(`/projects/${id}/sketch-context`),
     create: (data: CreateProjectRequest) =>
       request<Project>("/projects", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    scaffold: (data: ScaffoldProjectRequest) =>
+      request<ScaffoldProjectResponse>("/projects/scaffold", {
         method: "POST",
         body: JSON.stringify(data),
       }),
