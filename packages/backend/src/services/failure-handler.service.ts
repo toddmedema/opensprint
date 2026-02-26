@@ -7,7 +7,11 @@
  */
 
 import type { TestResults } from "@opensprint/shared";
-import { BACKOFF_FAILURE_THRESHOLD, MAX_PRIORITY_BEFORE_BLOCK } from "@opensprint/shared";
+import {
+  AGENT_INACTIVITY_TIMEOUT_MS,
+  BACKOFF_FAILURE_THRESHOLD,
+  MAX_PRIORITY_BEFORE_BLOCK,
+} from "@opensprint/shared";
 import type { StoredTask } from "./task-store.service.js";
 import type { FailureType, RetryContext } from "./orchestrator-phase-context.js";
 import { agentIdentityService, type AttemptOutcome } from "./agent-identity.service.js";
@@ -182,10 +186,13 @@ export class FailureHandlerService {
       wtPath ?? undefined
     );
 
+    const inactivityMinutes = Math.round(AGENT_INACTIVITY_TIMEOUT_MS / (60 * 1000));
     const commentText =
-      failureType === "review_rejection" && reviewFeedback
-        ? `Review rejected (attempt ${cumulativeAttempts}):\n\n${reviewFeedback.slice(0, 2000)}`
-        : `Attempt ${cumulativeAttempts} failed [${failureType}]: ${reason.slice(0, 500)}`;
+      failureType === "timeout"
+        ? `Attempt ${cumulativeAttempts} failed [timeout]: Agent stopped responding (${inactivityMinutes} min inactivity); task requeued.`
+        : failureType === "review_rejection" && reviewFeedback
+          ? `Review rejected (attempt ${cumulativeAttempts}):\n\n${reviewFeedback.slice(0, 2000)}`
+          : `Attempt ${cumulativeAttempts} failed [${failureType}]: ${reason.slice(0, 500)}`;
     await this.host.taskStore
       .comment(repoPath, task.id, commentText)
       .catch((err) => log.warn("Failed to add failure comment", { err }));

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { AGENT_INACTIVITY_TIMEOUT_MS } from "@opensprint/shared";
 import {
   FailureHandlerService,
   type FailureHandlerHost,
@@ -220,6 +221,57 @@ describe("FailureHandlerService", () => {
       expect(mockRemoveTaskWorktree).toHaveBeenCalledWith(repoPath, taskId, "/tmp/worktree");
       expect(mockDeleteBranch).toHaveBeenCalledWith(repoPath, branchName);
       expect(mockRevertAndReturnToMain).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("failure comment", () => {
+    it("includes explicit inactivity message for timeout failures", async () => {
+      const mockComment = vi.fn().mockResolvedValue(undefined);
+      mockHost.taskStore = {
+        ...mockHost.taskStore,
+        comment: mockComment,
+      };
+
+      await handler.handleTaskFailure(
+        projectId,
+        repoPath,
+        makeTask(),
+        branchName,
+        "Agent exited with code null without producing a result",
+        null,
+        "timeout"
+      );
+
+      const inactivityMinutes = Math.round(AGENT_INACTIVITY_TIMEOUT_MS / (60 * 1000));
+      expect(mockComment).toHaveBeenCalledWith(
+        repoPath,
+        taskId,
+        `Attempt 1 failed [timeout]: Agent stopped responding (${inactivityMinutes} min inactivity); task requeued.`
+      );
+    });
+
+    it("uses generic format for non-timeout failures", async () => {
+      const mockComment = vi.fn().mockResolvedValue(undefined);
+      mockHost.taskStore = {
+        ...mockHost.taskStore,
+        comment: mockComment,
+      };
+
+      await handler.handleTaskFailure(
+        projectId,
+        repoPath,
+        makeTask(),
+        branchName,
+        "Tests failed: 2 failed, 1 passed",
+        null,
+        "test_failure"
+      );
+
+      expect(mockComment).toHaveBeenCalledWith(
+        repoPath,
+        taskId,
+        "Attempt 1 failed [test_failure]: Tests failed: 2 failed, 1 passed"
+      );
     });
   });
 });
