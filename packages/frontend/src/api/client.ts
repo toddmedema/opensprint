@@ -26,6 +26,8 @@ import type {
   ActiveAgent,
   DeploymentRecord,
   DeploymentConfig,
+  HelpChatRequest,
+  HelpChatResponse,
 } from "@opensprint/shared";
 
 const BASE_URL = "/api/v1";
@@ -356,6 +358,15 @@ export const api = {
   // ─── Agents ───
   agents: {
     active: (projectId: string) => request<ActiveAgent[]>(`/projects/${projectId}/agents/active`),
+  },
+
+  // ─── Help (Ask a Question — ask-only agent) ───
+  help: {
+    chat: (body: HelpChatRequest) =>
+      request<HelpChatResponse>("/help/chat", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
   },
 
   // ─── Chat ───

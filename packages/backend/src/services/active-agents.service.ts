@@ -74,16 +74,23 @@ export class ActiveAgentsService {
   }
 
   /**
+   * List active agent entries with projectId (for internal use, e.g. help context).
+   * @param projectId - If provided, returns only agents for that project
+   */
+  listEntries(projectId?: string): ActiveAgentEntry[] {
+    const entries = projectId
+      ? [...this.agents.values()].filter((e) => e.projectId === projectId)
+      : [...this.agents.values()];
+    return entries;
+  }
+
+  /**
    * List active agents, optionally filtered by projectId.
    * @param projectId - If provided, returns only agents for that project
    * @returns Array of ActiveAgent (projectId omitted from response for project-scoped API)
    */
   list(projectId?: string): ActiveAgent[] {
-    const entries = projectId
-      ? [...this.agents.values()].filter((e) => e.projectId === projectId)
-      : [...this.agents.values()];
-
-    return entries.map((e) => ({
+    return this.listEntries(projectId).map((e) => ({
       id: e.id,
       phase: e.phase,
       role: e.role,

@@ -39,6 +39,20 @@ export interface ChatResponse {
   }>;
 }
 
+/** Help chat request (Ask a Question — ask-only agent, no state changes) */
+export interface HelpChatRequest {
+  message: string;
+  /** Project ID when in per-project view; omit for homepage */
+  projectId?: string | null;
+  /** Prior conversation for multi-turn context (optional) */
+  messages?: Array<{ role: "user" | "assistant"; content: string }>;
+}
+
+/** Help chat response */
+export interface HelpChatResponse {
+  message: string;
+}
+
 /** Feedback submission */
 export interface FeedbackSubmitRequest {
   text: string;

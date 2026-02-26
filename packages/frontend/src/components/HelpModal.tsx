@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useLayoutEffect, useCallback } from "react";
 import type { AgentRole } from "@opensprint/shared";
 import {
   AGENT_ROLE_CANONICAL_ORDER,
@@ -6,7 +6,11 @@ import {
   AGENT_ROLE_PHASES,
   AGENT_ROLE_DESCRIPTIONS,
 } from "@opensprint/shared";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { CloseButton } from "./CloseButton";
+import { ChatInput } from "./ChatInput";
+import { api } from "../api/client";
 
 /** Base URL for public assets (Vite BASE_URL) */
 const ASSET_BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/*$/, "/");
@@ -121,20 +125,127 @@ export function HelpModal({ onClose, project }: HelpModalProps) {
   );
 }
 
-function AskQuestionContent({ project }: { project?: { id: string; name: string } | null }) {
+interface HelpChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+function HelpChatBubble({ msg }: { msg: HelpChatMessage }) {
+  const isUser = msg.role === "user";
   return (
-    <div className="space-y-4">
-      <p className="text-theme-muted text-sm">
+    <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+          isUser ? "bg-brand-600 text-white" : "bg-theme-border-subtle text-theme-text"
+        }`}
+      >
+        {isUser ? (
+          <p className="whitespace-pre-wrap">{msg.content}</p>
+        ) : (
+          <div className="prose-chat-bubble prose-sm max-w-none">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AskQuestionContent({ project }: { project?: { id: string; name: string } | null }) {
+  const [messages, setMessages] = useState<HelpChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const scrollEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = useCallback(() => {
+    const el = scrollContainerRef.current ?? scrollEndRef.current?.parentElement;
+    if (el) el.scrollTop = el.scrollHeight - el.clientHeight;
+  }, []);
+
+  useLayoutEffect(() => {
+    scrollToBottom();
+    const id = requestAnimationFrame(scrollToBottom);
+    return () => cancelAnimationFrame(id);
+  }, [messages, scrollToBottom]);
+
+  const handleSend = async () => {
+    const text = input.trim();
+    if (!text || sending) return;
+    setInput("");
+    setError(null);
+    const userMsg: HelpChatMessage = { role: "user", content: text };
+    setMessages((prev) => [...prev, userMsg]);
+    setSending(true);
+    try {
+      const priorMessages = messages.map((m) => ({ role: m.role, content: m.content }));
+      const res = await api.help.chat({
+        message: text,
+        projectId: project?.id ?? null,
+        messages: priorMessages,
+      });
+      setMessages((prev) => [...prev, { role: "assistant", content: res.message }]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setError(msg);
+      setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${msg}` }]);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2 min-h-0">
+      <p className="text-theme-muted text-sm shrink-0">
         {project
           ? `Ask about ${project.name} — PRD, plans, tasks, or currently running agents.`
           : "Ask about your projects, tasks, or currently running agents."}
       </p>
-      <p className="text-theme-muted text-sm">
+      <p className="text-theme-muted text-sm shrink-0">
         Chat with an AI assistant in ask-only mode. It will answer questions without changing
         project state, PRD, or tasks.
       </p>
-      <div className="rounded-lg border border-theme-border bg-theme-surface-muted p-4 text-center text-theme-muted text-sm">
-        Ask a Question chat coming soon.
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto min-h-[200px] max-h-[400px] space-y-3 py-2"
+        data-testid="help-chat-messages"
+      >
+        {messages.length === 0 && (
+          <div className="text-center py-6 text-theme-muted text-sm">
+            <p>Type a question below and press Enter.</p>
+          </div>
+        )}
+        {messages.map((msg, i) => (
+          <HelpChatBubble key={i} msg={msg} />
+        ))}
+        {sending && (
+          <div className="flex justify-start">
+            <div className="bg-theme-border-subtle rounded-2xl px-3.5 py-2.5 text-sm text-theme-muted">
+              <span className="flex gap-1">
+                <span className="w-1.5 h-1.5 bg-theme-muted rounded-full animate-bounce [animation-delay:0ms]" />
+                <span className="w-1.5 h-1.5 bg-theme-muted rounded-full animate-bounce [animation-delay:150ms]" />
+                <span className="w-1.5 h-1.5 bg-theme-muted rounded-full animate-bounce [animation-delay:300ms]" />
+              </span>
+            </div>
+          </div>
+        )}
+        <div ref={scrollEndRef} />
+      </div>
+      {error && (
+        <p className="text-theme-error text-sm shrink-0" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="shrink-0 border-t border-theme-border pt-3">
+        <ChatInput
+          value={input}
+          onChange={setInput}
+          onSend={handleSend}
+          sendDisabled={sending}
+          placeholder="Ask a question..."
+          aria-label="Help chat message"
+        />
       </div>
     </div>
   );

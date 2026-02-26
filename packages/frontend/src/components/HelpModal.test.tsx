@@ -1,9 +1,21 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HelpModal } from "./HelpModal";
+import { api } from "../api/client";
+
+vi.mock("../api/client", () => ({
+  api: {
+    help: {
+      chat: vi.fn(),
+    },
+  },
+}));
 
 describe("HelpModal", () => {
+  beforeEach(() => {
+    vi.mocked(api.help.chat).mockReset();
+  });
   it("renders Help modal with both tabs, Ask a Question default", () => {
     render(<HelpModal onClose={vi.fn()} />);
 
@@ -93,5 +105,45 @@ describe("HelpModal", () => {
     const dialog = screen.getByRole("dialog", { name: /help/i });
     expect(dialog).toHaveAttribute("aria-modal", "true");
     expect(dialog).toHaveAttribute("aria-labelledby", "help-modal-title");
+  });
+
+  it("Ask a Question tab shows chat input and sends messages", async () => {
+    vi.mocked(api.help.chat).mockResolvedValue({ message: "Here is my response." });
+    const user = userEvent.setup();
+    render(<HelpModal onClose={vi.fn()} />);
+
+    expect(screen.getByTestId("help-chat-messages")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Ask a question...")).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText("Ask a question..."), "What is OpenSprint?");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(api.help.chat).toHaveBeenCalledWith({
+      message: "What is OpenSprint?",
+      projectId: null,
+      messages: [],
+    });
+    expect(await screen.findByText("What is OpenSprint?")).toBeInTheDocument();
+    expect(await screen.findByText("Here is my response.")).toBeInTheDocument();
+  });
+
+  it("Ask a Question tab passes projectId when in project view", async () => {
+    vi.mocked(api.help.chat).mockResolvedValue({ message: "Project context." });
+    const user = userEvent.setup();
+    render(
+      <HelpModal
+        onClose={vi.fn()}
+        project={{ id: "proj-1", name: "My Project" }}
+      />
+    );
+
+    await user.type(screen.getByPlaceholderText("Ask a question..."), "What plans exist?");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(api.help.chat).toHaveBeenCalledWith({
+      message: "What plans exist?",
+      projectId: "proj-1",
+      messages: [],
+    });
   });
 });
