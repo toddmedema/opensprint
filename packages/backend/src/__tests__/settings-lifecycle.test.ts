@@ -1,6 +1,7 @@
 /**
  * Full integration test: settings lifecycle.
  * Verifies settings read/write round-trip with two-tier format (lowComplexityAgent/highComplexityAgent).
+ * Settings are stored in global DB at ~/.opensprint/settings.json keyed by project_id.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import request from "supertest";
@@ -10,6 +11,23 @@ import os from "os";
 import { createApp } from "../app.js";
 import { ProjectService } from "../services/project.service.js";
 import { API_PREFIX, DEFAULT_HIL_CONFIG, DEFAULT_REVIEW_MODE } from "@opensprint/shared";
+
+/** Path to global settings store (when HOME is tempDir in tests). */
+function getGlobalSettingsPath(tempDir: string): string {
+  return path.join(tempDir, ".opensprint", "settings.json");
+}
+
+/** Read project settings from global store. */
+async function readProjectFromGlobalStore(
+  tempDir: string,
+  projectId: string
+): Promise<Record<string, unknown>> {
+  const storePath = getGlobalSettingsPath(tempDir);
+  const raw = await fs.readFile(storePath, "utf-8");
+  const store = JSON.parse(raw) as Record<string, { settings?: Record<string, unknown> }>;
+  const entry = store[projectId];
+  return (entry?.settings ?? entry ?? {}) as Record<string, unknown>;
+}
 
 describe("Settings lifecycle — service-level", () => {
   let projectService: ProjectService;
@@ -28,7 +46,7 @@ describe("Settings lifecycle — service-level", () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  it("writes two-tier settings.json → getSettings returns shape → updateSettings persists → raw file confirms", async () => {
+  it("writes two-tier settings → getSettings returns shape → updateSettings persists → global store confirms", async () => {
     const repoPath = path.join(tempDir, "lifecycle");
     const project = await projectService.createProject({
       name: "Lifecycle",
@@ -39,8 +57,6 @@ describe("Settings lifecycle — service-level", () => {
       hilConfig: DEFAULT_HIL_CONFIG,
     });
 
-    const settingsPath = path.join(repoPath, ".opensprint", "settings.json");
-
     // getSettings() returns two-tier shape and gitWorkingMode default
     const fetched = await projectService.getSettings(project.id);
     expect(fetched.lowComplexityAgent.type).toBe("claude");
@@ -49,18 +65,16 @@ describe("Settings lifecycle — service-level", () => {
     expect(fetched.highComplexityAgent.model).toBe("plan-model");
     expect(fetched.gitWorkingMode).toBe("worktree");
 
-    // updateSettings() persists
+    // updateSettings() persists to global store
     await projectService.updateSettings(project.id, { testFramework: "vitest" });
 
-    // Read raw file confirms two-tier shape on disk
-    const raw = await fs.readFile(settingsPath, "utf-8");
-    const persisted = JSON.parse(raw);
+    const persisted = await readProjectFromGlobalStore(tempDir, project.id);
     expect(persisted.lowComplexityAgent).toBeDefined();
     expect(persisted.highComplexityAgent).toBeDefined();
     expect(persisted.testFramework).toBe("vitest");
   });
 
-  it("persists maxConcurrentCoders to disk and returns it after getSettings (survives restart)", async () => {
+  it("persists maxConcurrentCoders to global store and returns it after getSettings (survives restart)", async () => {
     const repoPath = path.join(tempDir, "parallelism");
     const project = await projectService.createProject({
       name: "Parallelism",
@@ -71,15 +85,12 @@ describe("Settings lifecycle — service-level", () => {
       hilConfig: DEFAULT_HIL_CONFIG,
     });
 
-    const settingsPath = path.join(repoPath, ".opensprint", "settings.json");
-
     await projectService.updateSettings(project.id, { maxConcurrentCoders: 3 });
 
     const fetched = await projectService.getSettings(project.id);
     expect(fetched.maxConcurrentCoders).toBe(3);
 
-    const raw = await fs.readFile(settingsPath, "utf-8");
-    const persisted = JSON.parse(raw);
+    const persisted = await readProjectFromGlobalStore(tempDir, project.id);
     expect(persisted.maxConcurrentCoders).toBe(3);
   });
 
@@ -94,18 +105,14 @@ describe("Settings lifecycle — service-level", () => {
       hilConfig: DEFAULT_HIL_CONFIG,
     });
 
-    const settingsPath = path.join(repoPath, ".opensprint", "settings.json");
-
     // First save: read current (new shape), then update with same values
     const first = await projectService.getSettings(project.id);
-    const firstRaw = await fs.readFile(settingsPath, "utf-8");
+    const firstParsed = await readProjectFromGlobalStore(tempDir, project.id);
 
     // Save again with minimal/no change (trigger write)
     await projectService.updateSettings(project.id, { testFramework: first.testFramework ?? null });
 
-    const secondRaw = await fs.readFile(settingsPath, "utf-8");
-    const firstParsed = JSON.parse(firstRaw);
-    const secondParsed = JSON.parse(secondRaw);
+    const secondParsed = await readProjectFromGlobalStore(tempDir, project.id);
 
     // Output should be identical (idempotent)
     expect(secondParsed.lowComplexityAgent).toEqual(firstParsed.lowComplexityAgent);
@@ -188,9 +195,7 @@ describe("Settings API lifecycle", () => {
     const getRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/settings`);
     expect(getRes.body.data.gitWorkingMode).toBe("branches");
 
-    const settingsPath = path.join(tempDir, "api-project", ".opensprint", "settings.json");
-    const raw = await fs.readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(raw);
+    const settings = await readProjectFromGlobalStore(tempDir, projectId);
     expect(settings.gitWorkingMode).toBe("branches");
   });
 
@@ -203,9 +208,7 @@ describe("Settings API lifecycle", () => {
     expect(res.body.data.gitWorkingMode).toBe("branches");
     expect(res.body.data.maxConcurrentCoders).toBe(1);
 
-    const settingsPath = path.join(tempDir, "api-project", ".opensprint", "settings.json");
-    const raw = await fs.readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(raw);
+    const settings = await readProjectFromGlobalStore(tempDir, projectId);
     expect(settings.maxConcurrentCoders).toBe(1);
   });
 
@@ -223,13 +226,11 @@ describe("Settings API lifecycle", () => {
     expect(res.status).toBe(200);
     expect(res.body.data.gitWorkingMode).toBe("branches");
 
-    const settingsPath = path.join(tempDir, "api-project", ".opensprint", "settings.json");
-    const raw = await fs.readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(raw);
+    const settings = await readProjectFromGlobalStore(tempDir, projectId);
     expect(settings.gitWorkingMode).toBe("branches");
   });
 
-  it("Create project via API with new field names → settings.json on disk has new shape", async () => {
+  it("Create project via API with new field names → global store has new shape", async () => {
     const repoPath = path.join(tempDir, "create-via-api");
     await fs.mkdir(repoPath, { recursive: true });
 
@@ -247,9 +248,7 @@ describe("Settings API lifecycle", () => {
     expect(res.status).toBe(201);
     expect(res.body.data.id).toBeDefined();
 
-    const settingsPath = path.join(repoPath, ".opensprint", "settings.json");
-    const raw = await fs.readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(raw);
+    const settings = await readProjectFromGlobalStore(tempDir, res.body.data.id);
 
     expect(settings.lowComplexityAgent).toBeDefined();
     expect(settings.lowComplexityAgent.type).toBe("cursor");
@@ -259,7 +258,7 @@ describe("Settings API lifecycle", () => {
     expect(settings.highComplexityAgent.model).toBe("claude-opus-4");
   });
 
-  it("Create project with gitWorkingMode branches → settings.json persists it", async () => {
+  it("Create project with gitWorkingMode branches → global store persists it", async () => {
     const repoPath = path.join(tempDir, "branches-mode");
     await fs.mkdir(repoPath, { recursive: true });
 
@@ -277,9 +276,7 @@ describe("Settings API lifecycle", () => {
 
     expect(res.status).toBe(201);
 
-    const settingsPath = path.join(repoPath, ".opensprint", "settings.json");
-    const raw = await fs.readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(raw);
+    const settings = await readProjectFromGlobalStore(tempDir, res.body.data.id);
     expect(settings.gitWorkingMode).toBe("branches");
   });
 });

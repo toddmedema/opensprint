@@ -15,6 +15,12 @@ import {
 } from "@opensprint/shared";
 import type { DeploymentConfig, HilConfig } from "@opensprint/shared";
 import { taskStore as taskStoreSingleton } from "./task-store.service.js";
+import {
+  getSettingsFromStore,
+  setSettingsInStore,
+  deleteSettingsFromStore,
+  getSettingsWithMetaFromStore,
+} from "./settings-store.service.js";
 import { BranchManager } from "./branch-manager.js";
 import { CrashRecoveryService } from "./crash-recovery.service.js";
 import { detectTestFramework } from "./test-framework.service.js";
@@ -124,7 +130,7 @@ export class ProjectService {
     this.listCache = null;
   }
 
-  /** List all projects (cached; invalidated on create/update/delete). */
+  /** List all projects (cached; invalidated on create/update/delete). Settings are in global DB. */
   async listProjects(): Promise<Project[]> {
     if (this.listCache !== null) {
       return this.listCache;
@@ -134,15 +140,18 @@ export class ProjectService {
 
     for (const entry of entries) {
       try {
-        const settingsPath = path.join(entry.repoPath, OPENSPRINT_PATHS.settings);
-        await fs.stat(settingsPath);
+        await fs.access(path.join(entry.repoPath, OPENSPRINT_DIR));
+        const { updatedAt } = await getSettingsWithMetaFromStore(
+          entry.id,
+          buildDefaultSettings()
+        );
         projects.push({
           id: entry.id,
           name: entry.name,
           repoPath: entry.repoPath,
           currentPhase: "sketch",
           createdAt: entry.createdAt,
-          updatedAt: entry.createdAt,
+          updatedAt: updatedAt ?? entry.createdAt,
         });
       } catch {
         // Project directory may no longer exist — skip it
@@ -198,13 +207,9 @@ export class ProjectService {
         repoPath: normalized,
         createdAt: now,
       });
-      // Ensure settings.json exists so getSettings() and Sketch/Plan flows work (PRD §6.3).
-      const adoptSettingsPath = path.join(normalized, OPENSPRINT_PATHS.settings);
-      try {
-        await fs.access(adoptSettingsPath);
-      } catch {
-        await writeJsonAtomic(adoptSettingsPath, buildDefaultSettings());
-      }
+      // Ensure settings exist in global store so getSettings() and Sketch/Plan flows work (PRD §6.3).
+      const defaults = buildDefaultSettings();
+      await setSettingsInStore(adoptId, defaults);
       this.invalidateListCache();
       return this.getProject(adoptId);
     } catch (err) {
@@ -311,8 +316,7 @@ export class ProjectService {
           unknownScopeStrategy: input.unknownScopeStrategy,
         }),
     };
-    const settingsPath = path.join(repoPath, OPENSPRINT_PATHS.settings);
-    await writeJsonAtomic(settingsPath, settings);
+    await setSettingsInStore(id, settings);
 
     // Create eas.json for Expo projects (PRD §6.4)
     if (deployment.mode === "expo") {
@@ -369,13 +373,7 @@ export class ProjectService {
       );
     }
 
-    let updatedAt = new Date().toISOString();
-    try {
-      const stat = await fs.stat(path.join(entry.repoPath, OPENSPRINT_PATHS.settings));
-      updatedAt = stat.mtime.toISOString();
-    } catch {
-      // Settings file might not exist yet
-    }
+    const { updatedAt } = await getSettingsWithMetaFromStore(id, buildDefaultSettings());
 
     return {
       id: entry.id,
@@ -383,7 +381,7 @@ export class ProjectService {
       repoPath: entry.repoPath,
       currentPhase: "sketch",
       createdAt: entry.createdAt,
-      updatedAt,
+      updatedAt: updatedAt ?? entry.createdAt,
     };
   }
 
@@ -427,37 +425,34 @@ export class ProjectService {
     return { project: updated, repoPathChanged };
   }
 
-  /** Read project settings. If the file is missing, write default settings and return them (e.g. adopted repo or corrupted state). */
+  /** Read project settings from global store. If missing, create defaults and return them. */
   async getSettings(projectId: string): Promise<ProjectSettings> {
     const repoPath = await this.getRepoPath(projectId);
-    const settingsPath = path.join(repoPath, OPENSPRINT_PATHS.settings);
-    try {
-      const raw = await fs.readFile(settingsPath, "utf-8");
-      const parsed = parseSettings(JSON.parse(raw));
-      const normalized = {
-        ...parsed,
-        hilConfig: normalizeHilConfig(parsed.hilConfig ?? {}),
+    const defaults = buildDefaultSettings();
+    let stored = await getSettingsFromStore(projectId, defaults);
+    if (stored === defaults) {
+      const detected = await detectTestFramework(repoPath);
+      const enriched: ProjectSettings = {
+        ...defaults,
+        testFramework: detected?.framework ?? null,
+        testCommand: detected?.testCommand ?? getTestCommandForFramework(null) || null,
       };
-      return toCanonicalSettings(normalized);
-    } catch {
-      // Missing or unreadable settings — ensure .opensprint exists and write defaults so Sketch/Plan work
-      try {
-        await fs.mkdir(path.join(repoPath, OPENSPRINT_DIR), { recursive: true });
-        const defaults = buildDefaultSettings();
-        await writeJsonAtomic(settingsPath, defaults);
-        return defaults;
-      } catch (_writeErr) {
-        throw new AppError(404, ErrorCodes.SETTINGS_NOT_FOUND, "Project settings not found");
-      }
+      await setSettingsInStore(projectId, enriched);
+      return toCanonicalSettings(enriched);
     }
+    const normalized = {
+      ...stored,
+      hilConfig: normalizeHilConfig(stored.hilConfig ?? {}),
+    };
+    return toCanonicalSettings(parseSettings(normalized));
   }
 
-  /** Update project settings */
+  /** Update project settings (persisted in global store). */
   async updateSettings(
     projectId: string,
     updates: Partial<ProjectSettings>
   ): Promise<ProjectSettings> {
-    const repoPath = await this.getRepoPath(projectId);
+    await this.getRepoPath(projectId);
     const current = await this.getSettings(projectId);
 
     // Validate agent config if provided
@@ -497,8 +492,7 @@ export class ProjectService {
       // Branches mode forces maxConcurrentCoders=1 regardless of stored value
       ...(gitWorkingMode === "branches" && { maxConcurrentCoders: 1 }),
     };
-    const settingsPath = path.join(repoPath, OPENSPRINT_PATHS.settings);
-    await writeJsonAtomic(settingsPath, toCanonicalSettings(updated));
+    await setSettingsInStore(projectId, toCanonicalSettings(updated));
     return updated;
   }
 
@@ -533,6 +527,7 @@ export class ProjectService {
     }
 
     await this.taskStore.deleteByProjectId(id);
+    await deleteSettingsFromStore(id);
 
     const opensprintPath = path.join(repoPath, OPENSPRINT_DIR);
     try {

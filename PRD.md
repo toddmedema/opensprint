@@ -479,7 +479,7 @@ OpenSprint takes an aggressive approach to automated testing. Every task complet
 
 ### 8.3 Test Execution
 
-The test runner is configurable during project setup. OpenSprint supports common testing frameworks (Jest, Vitest, Playwright, Cypress, pytest, etc.) and will detect the appropriate framework based on the project's tech stack. **The test command is read from `package.json` scripts** (e.g., `npm test`) — no user configuration is needed. For non-Node.js projects, the test command can be overridden in `.opensprint/settings.json`. Test results are displayed in the Execute tab alongside task status. Failed tests block a task from moving to Done and trigger the automatic retry and progressive backoff flow (see Section 9.1).
+The test runner is configurable during project setup. OpenSprint supports common testing frameworks (Jest, Vitest, Playwright, Cypress, pytest, etc.) and will detect the appropriate framework based on the project's tech stack. **The test command is read from `package.json` scripts** (e.g., `npm test`) — no user configuration is needed. For non-Node.js projects, the test command can be overridden in project settings. Test results are displayed in the Execute tab alongside task status. Failed tests block a task from moving to Done and trigger the automatic retry and progressive backoff flow (see Section 9.1).
 
 ### 8.4 Coverage Requirements
 
@@ -605,15 +605,17 @@ Stored as `.opensprint/deployments/<deploy-id>.json`. Fields: `id`, `commit_hash
 
 #### ProjectSettings
 
-Stored as `.opensprint/settings.json`. Fields: `planning_agent` ({ type, model, cli_command }), `coding_agent` ({ type, model, cli_command }), `deployment` ({ mode, expo_config, custom_command }), `hil_config` (per-category notification mode), `test_framework`, `test_command` (auto-detected from `package.json`, default: `npm test`, overridable).
+Stored in global database at `~/.opensprint/settings.json` keyed by project_id. Fields: `planning_agent` ({ type, model, cli_command }), `coding_agent` ({ type, model, cli_command }), `deployment` ({ mode, expo_config, custom_command }), `hil_config` (per-category notification mode), `test_framework`, `test_command` (auto-detected from `package.json`, default: `npm test`, overridable).
 
 **UserPreferences** (frontend-only): Theme stored in `localStorage` at `opensprint.theme` (light/dark/system).
 
 ### 10.3 Storage Strategy
 
-**Project Index:** `~/.opensprint/projects.json` maps project IDs to repo paths (`id`, `name`, `repo_path`, `created_at`). This is the only data stored outside project repos.
+**Project Index:** `~/.opensprint/projects.json` maps project IDs to repo paths (`id`, `name`, `repo_path`, `created_at`).
 
-**Per-Project Data:** OpenSprint metadata lives in the project's `.opensprint/` directory (version-controlled). Task data lives in the global store `~/.opensprint/tasks.db` and is not in the repo. The backend maintains an in-memory index rebuilt from the filesystem on startup.
+**Global Data:** Task data lives in `~/.opensprint/tasks.db`. Project settings live in `~/.opensprint/settings.json` keyed by project_id. Both are outside project repos.
+
+**Per-Project Data:** OpenSprint metadata lives in the project's `.opensprint/` directory (version-controlled). The backend maintains an in-memory index rebuilt from the filesystem on startup.
 
 ---
 

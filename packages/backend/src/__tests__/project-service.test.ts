@@ -5,6 +5,18 @@ import os from "os";
 import { ProjectService } from "../services/project.service.js";
 import { DEFAULT_HIL_CONFIG, DEFAULT_REVIEW_MODE } from "@opensprint/shared";
 
+/** Read project settings from global store (when HOME=tempDir in tests). */
+async function readSettingsFromGlobalStore(
+  tempDir: string,
+  projectId: string
+): Promise<Record<string, unknown>> {
+  const storePath = path.join(tempDir, ".opensprint", "settings.json");
+  const raw = await fs.readFile(storePath, "utf-8");
+  const store = JSON.parse(raw) as Record<string, { settings?: Record<string, unknown> }>;
+  const entry = store[projectId];
+  return (entry?.settings ?? entry ?? {}) as Record<string, unknown>;
+}
+
 describe("ProjectService", () => {
   let projectService: ProjectService;
   let tempDir: string;
@@ -50,12 +62,11 @@ describe("ProjectService", () => {
       expect(subStat.isDirectory()).toBe(true);
     }
 
-    // Verify settings.json
-    const settingsPath = path.join(repoPath, ".opensprint", "settings.json");
-    const settingsRaw = await fs.readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(settingsRaw);
-    expect(settings.lowComplexityAgent.type).toBe("claude");
-    expect(settings.highComplexityAgent.type).toBe("claude");
+    // Verify settings in global store
+    const settings = await readSettingsFromGlobalStore(tempDir, project.id);
+    expect(settings.lowComplexityAgent).toBeDefined();
+    expect((settings.lowComplexityAgent as { type: string }).type).toBe("claude");
+    expect((settings.highComplexityAgent as { type: string }).type).toBe("claude");
     expect(settings.hilConfig).toEqual(DEFAULT_HIL_CONFIG);
     expect(settings.testFramework).toBeNull();
     expect(settings.reviewMode).toBe(DEFAULT_REVIEW_MODE);
@@ -257,9 +268,7 @@ describe("ProjectService", () => {
       testFramework: "jest",
     });
 
-    const settingsPath = path.join(repoPath, ".opensprint", "settings.json");
-    const settingsRaw = await fs.readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(settingsRaw);
+    const settings = await readSettingsFromGlobalStore(tempDir, project.id);
     expect(settings.testFramework).toBe("jest");
   });
 
@@ -280,13 +289,13 @@ describe("ProjectService", () => {
       hilConfig: DEFAULT_HIL_CONFIG,
     });
 
-    const settingsPath = path.join(repoPath, ".opensprint", "settings.json");
-    const settingsRaw = await fs.readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(settingsRaw);
+    const settings = await readSettingsFromGlobalStore(tempDir, project.id);
     expect(settings.deployment).toBeDefined();
-    expect(settings.deployment.mode).toBe("custom");
-    expect(settings.deployment.customCommand).toBe("./deploy.sh");
-    expect(settings.deployment.webhookUrl).toBe("https://api.example.com/deploy");
+    expect((settings.deployment as { mode: string }).mode).toBe("custom");
+    expect((settings.deployment as { customCommand?: string }).customCommand).toBe("./deploy.sh");
+    expect((settings.deployment as { webhookUrl?: string }).webhookUrl).toBe(
+      "https://api.example.com/deploy"
+    );
   });
 
   it("should not persist customCommand/webhookUrl when deployment mode is expo", async () => {
@@ -307,12 +316,10 @@ describe("ProjectService", () => {
       hilConfig: DEFAULT_HIL_CONFIG,
     });
 
-    const settingsPath = path.join(repoPath, ".opensprint", "settings.json");
-    const settingsRaw = await fs.readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(settingsRaw);
-    expect(settings.deployment.mode).toBe("expo");
-    expect(settings.deployment.customCommand).toBeUndefined();
-    expect(settings.deployment.webhookUrl).toBeUndefined();
+    const settings = await readSettingsFromGlobalStore(tempDir, project.id);
+    expect((settings.deployment as { mode: string }).mode).toBe("expo");
+    expect((settings.deployment as { customCommand?: string }).customCommand).toBeUndefined();
+    expect((settings.deployment as { webhookUrl?: string }).webhookUrl).toBeUndefined();
   });
 
   it("should normalize invalid deployment mode to custom", async () => {
@@ -328,11 +335,9 @@ describe("ProjectService", () => {
       hilConfig: DEFAULT_HIL_CONFIG,
     });
 
-    const settingsPath = path.join(repoPath, ".opensprint", "settings.json");
-    const settingsRaw = await fs.readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(settingsRaw);
+    const settings = await readSettingsFromGlobalStore(tempDir, project.id);
     expect(settings.deployment).toBeDefined();
-    expect(settings.deployment.mode).toBe("custom");
+    expect((settings.deployment as { mode: string }).mode).toBe("custom");
   });
 
   it("should merge partial hilConfig with defaults", async () => {
@@ -348,12 +353,14 @@ describe("ProjectService", () => {
       hilConfig: { scopeChanges: "automated" } as typeof DEFAULT_HIL_CONFIG,
     });
 
-    const settingsPath = path.join(repoPath, ".opensprint", "settings.json");
-    const settingsRaw = await fs.readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(settingsRaw);
-    expect(settings.hilConfig.scopeChanges).toBe("automated");
-    expect(settings.hilConfig.architectureDecisions).toBe("automated");
-    expect(settings.hilConfig.dependencyModifications).toBe("automated");
+    const settings = await readSettingsFromGlobalStore(tempDir, project.id);
+    expect((settings.hilConfig as { scopeChanges: string }).scopeChanges).toBe("automated");
+    expect((settings.hilConfig as { architectureDecisions: string }).architectureDecisions).toBe(
+      "automated"
+    );
+    expect((settings.hilConfig as { dependencyModifications: string }).dependencyModifications).toBe(
+      "automated"
+    );
   });
 
   it("should adopt path that has .opensprint when project not in index", async () => {
@@ -539,19 +546,23 @@ describe("ProjectService", () => {
       hilConfig: DEFAULT_HIL_CONFIG,
     });
 
-    // Manually write settings with legacy testFailuresAndRetries
-    const settingsPath = path.join(repoPath, ".opensprint", "settings.json");
-    const raw = await fs.readFile(settingsPath, "utf-8");
-    const settings = JSON.parse(raw);
-    settings.hilConfig.testFailuresAndRetries = "requires_approval";
-    await fs.writeFile(settingsPath, JSON.stringify(settings));
+    // Manually inject legacy testFailuresAndRetries into global store
+    const storePath = path.join(tempDir, ".opensprint", "settings.json");
+    const raw = await fs.readFile(storePath, "utf-8");
+    const store = JSON.parse(raw) as Record<string, { settings: Record<string, unknown> }>;
+    const entry = store[project.id];
+    if (entry?.settings?.hilConfig && typeof entry.settings.hilConfig === "object") {
+      (entry.settings.hilConfig as Record<string, unknown>).testFailuresAndRetries =
+        "requires_approval";
+      await fs.writeFile(storePath, JSON.stringify(store));
+    }
 
     const fetched = await projectService.getSettings(project.id);
     expect(fetched.hilConfig).not.toHaveProperty("testFailuresAndRetries");
     expect(fetched.hilConfig.scopeChanges).toBe("automated");
   });
 
-  it("should return two-tier ProjectSettings when reading settings.json", async () => {
+  it("should return two-tier ProjectSettings when reading from global store", async () => {
     const repoPath = path.join(tempDir, "read-settings");
     const project = await projectService.createProject({
       name: "Read Settings",
@@ -582,9 +593,7 @@ describe("ProjectService", () => {
 
     await projectService.updateSettings(project.id, { testFramework: "vitest" });
 
-    const settingsPath = path.join(repoPath, ".opensprint", "settings.json");
-    const raw = await fs.readFile(settingsPath, "utf-8");
-    const persisted = JSON.parse(raw);
+    const persisted = await readSettingsFromGlobalStore(tempDir, project.id);
     expect(persisted.lowComplexityAgent).toBeDefined();
     expect(persisted.highComplexityAgent).toBeDefined();
     expect(persisted.testFramework).toBe("vitest");

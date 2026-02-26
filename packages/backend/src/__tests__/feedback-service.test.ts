@@ -5,7 +5,7 @@ import os from "os";
 import initSqlJs from "sql.js";
 import { FeedbackService } from "../services/feedback.service.js";
 import { ProjectService } from "../services/project.service.js";
-import { DEFAULT_HIL_CONFIG, OPENSPRINT_PATHS } from "@opensprint/shared";
+import { DEFAULT_HIL_CONFIG } from "@opensprint/shared";
 import { feedbackStore } from "../services/feedback-store.service.js";
 import type { Database } from "sql.js";
 
@@ -1485,10 +1485,17 @@ describe("FeedbackService", () => {
 
   describe("checkAutoResolveOnTaskDone (PRD §10.2)", () => {
     it("should auto-resolve feedback when all created tasks are closed and setting enabled", async () => {
-      const settingsPath = path.join(tempDir, "my-project", OPENSPRINT_PATHS.settings);
-      const settings = JSON.parse(await fs.readFile(settingsPath, "utf-8"));
-      settings.deployment.autoResolveFeedbackOnTaskCompletion = true;
-      await fs.writeFile(settingsPath, JSON.stringify(settings), "utf-8");
+      const storePath = path.join(tempDir, ".opensprint", "settings.json");
+      const store = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
+        string,
+        { settings: { deployment?: { autoResolveFeedbackOnTaskCompletion?: boolean } } }
+      >;
+      const entry = store[projectId];
+      if (entry?.settings) {
+        entry.settings.deployment = entry.settings.deployment ?? {};
+        entry.settings.deployment.autoResolveFeedbackOnTaskCompletion = true;
+        await fs.writeFile(storePath, JSON.stringify(store), "utf-8");
+      }
 
       await feedbackStore.insertFeedback(
         projectId,
@@ -1539,10 +1546,17 @@ describe("FeedbackService", () => {
     });
 
     it("should not resolve when not all created tasks are closed", async () => {
-      const settingsPath = path.join(tempDir, "my-project", OPENSPRINT_PATHS.settings);
-      const settings = JSON.parse(await fs.readFile(settingsPath, "utf-8"));
-      settings.deployment.autoResolveFeedbackOnTaskCompletion = true;
-      await fs.writeFile(settingsPath, JSON.stringify(settings), "utf-8");
+      const storePath = path.join(tempDir, ".opensprint", "settings.json");
+      const store = JSON.parse(await fs.readFile(storePath, "utf-8")) as Record<
+        string,
+        { settings: { deployment?: { autoResolveFeedbackOnTaskCompletion?: boolean } } }
+      >;
+      const entry = store[projectId];
+      if (entry?.settings) {
+        entry.settings.deployment = entry.settings.deployment ?? {};
+        entry.settings.deployment.autoResolveFeedbackOnTaskCompletion = true;
+        await fs.writeFile(storePath, JSON.stringify(store), "utf-8");
+      }
 
       await feedbackStore.insertFeedback(
         projectId,

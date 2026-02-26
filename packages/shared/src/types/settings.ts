@@ -108,7 +108,7 @@ export type UnknownScopeStrategy = "conservative" | "optimistic";
 /** Git working mode: worktree (parallel worktrees) or branches (single branch in main repo) */
 export type GitWorkingMode = "worktree" | "branches";
 
-/** Full project settings stored at .opensprint/settings.json */
+/** Full project settings stored in global database (~/.opensprint/settings.json) keyed by project_id */
 export interface ProjectSettings {
   lowComplexityAgent: AgentConfig;
   highComplexityAgent: AgentConfig;
@@ -166,7 +166,7 @@ export function getAgentForComplexity(
   return settings.lowComplexityAgent;
 }
 
-/** Default agent config when settings.json is missing */
+/** Default agent config when settings are missing */
 const DEFAULT_AGENT: AgentConfig = { type: "cursor", model: null, cliCommand: null };
 
 /**
