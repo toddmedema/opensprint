@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
@@ -444,6 +444,158 @@ describe("DeliverPhase", () => {
     renderWithRouter(store);
     await waitFor(() => expect(mockGetSettings).toHaveBeenCalled());
     expect(screen.queryByTestId("deliver-configure-button")).not.toBeInTheDocument();
+  });
+
+  describe("Delivery History environment chip and filter", () => {
+    it("shows environment chip on each deployment row", async () => {
+      const history = [
+        {
+          id: "deploy-1",
+          projectId: "proj-1",
+          status: "success",
+          startedAt: "2025-01-01T12:00:00.000Z",
+          completedAt: "2025-01-01T12:01:00.000Z",
+          log: [],
+          target: "staging",
+        },
+        {
+          id: "deploy-2",
+          projectId: "proj-1",
+          status: "success",
+          startedAt: "2025-01-01T13:00:00.000Z",
+          completedAt: "2025-01-01T13:01:00.000Z",
+          log: [],
+          target: "production",
+        },
+      ];
+      mockDeliverHistory.mockResolvedValue(history);
+      const store = createStore({ history });
+      renderWithRouter(store);
+      await waitFor(() => expect(screen.getByText("Staging")).toBeInTheDocument());
+      expect(screen.getByText("Production")).toBeInTheDocument();
+    });
+
+    it("shows filter icon when history has deployments", async () => {
+      const history = [
+        {
+          id: "deploy-1",
+          projectId: "proj-1",
+          status: "success",
+          startedAt: "2025-01-01T12:00:00.000Z",
+          completedAt: "2025-01-01T12:01:00.000Z",
+          log: [],
+          target: "staging",
+        },
+      ];
+      const store = createStore({ history });
+      renderWithRouter(store);
+      const filterBtn = await screen.findByTestId("delivery-history-filter-button");
+      expect(filterBtn).toBeInTheDocument();
+    });
+
+    it("filter dropdown shows counts per option (All, Staging, Production)", async () => {
+      const history = [
+        {
+          id: "deploy-1",
+          projectId: "proj-1",
+          status: "success",
+          startedAt: "2025-01-01T12:00:00.000Z",
+          completedAt: "2025-01-01T12:01:00.000Z",
+          log: [],
+          target: "staging",
+        },
+        {
+          id: "deploy-2",
+          projectId: "proj-1",
+          status: "success",
+          startedAt: "2025-01-01T13:00:00.000Z",
+          completedAt: "2025-01-01T13:01:00.000Z",
+          log: [],
+          target: "staging",
+        },
+        {
+          id: "deploy-3",
+          projectId: "proj-1",
+          status: "success",
+          startedAt: "2025-01-01T14:00:00.000Z",
+          completedAt: "2025-01-01T14:01:00.000Z",
+          log: [],
+          target: "production",
+        },
+      ];
+      const store = createStore({ history });
+      renderWithRouter(store);
+      const filterBtn = await screen.findByTestId("delivery-history-filter-button");
+      filterBtn.click();
+      await waitFor(() => {
+        expect(screen.getByTestId("delivery-history-filter-dropdown")).toBeInTheDocument();
+      });
+      expect(screen.getByRole("option", { name: "All (3)" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Staging (2)" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Production (1)" })).toBeInTheDocument();
+    });
+
+    it("filters deployments by environment when Staging selected", async () => {
+      const history = [
+        {
+          id: "deploy-1",
+          projectId: "proj-1",
+          status: "success",
+          startedAt: "2025-01-01T12:00:00.000Z",
+          completedAt: "2025-01-01T12:01:00.000Z",
+          log: [],
+          target: "staging",
+        },
+        {
+          id: "deploy-2",
+          projectId: "proj-1",
+          status: "success",
+          startedAt: "2025-01-01T13:00:00.000Z",
+          completedAt: "2025-01-01T13:01:00.000Z",
+          log: [],
+          target: "production",
+        },
+      ];
+      const store = createStore({ history });
+      renderWithRouter(store);
+      const filterBtn = await screen.findByTestId("delivery-history-filter-button");
+      fireEvent.click(filterBtn);
+      const stagingOpt = await screen.findByRole("option", { name: "Staging (1)" });
+      fireEvent.click(stagingOpt);
+      await waitFor(() => {
+        expect(screen.getByText("Staging")).toBeInTheDocument();
+        expect(screen.queryByText("Production")).not.toBeInTheDocument();
+      });
+    });
+
+    it("shows empty filter message when no deployments match", async () => {
+      const history = [
+        {
+          id: "deploy-1",
+          projectId: "proj-1",
+          status: "success",
+          startedAt: "2025-01-01T12:00:00.000Z",
+          completedAt: "2025-01-01T12:01:00.000Z",
+          log: [],
+          target: "staging",
+        },
+      ];
+      const store = createStore({ history });
+      renderWithRouter(store);
+      const filterBtn = await screen.findByTestId("delivery-history-filter-button");
+      fireEvent.click(filterBtn);
+      const prodOpt = await screen.findByRole("option", { name: "Production (0)" });
+      fireEvent.click(prodOpt);
+      await waitFor(() => {
+        expect(screen.getByText("No deployments match this filter.")).toBeInTheDocument();
+      });
+    });
+
+    it("hides filter icon when no deliveries", () => {
+      const store = createStore({ history: [] });
+      renderWithRouter(store);
+      expect(screen.queryByTestId("delivery-history-filter-button")).not.toBeInTheDocument();
+    });
   });
 
   describe("live log updates", () => {
