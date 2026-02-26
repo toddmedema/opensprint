@@ -136,6 +136,7 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
     show: vi.fn().mockResolvedValue({}),
     update: vi.fn().mockResolvedValue({}),
     close: vi.fn().mockResolvedValue({}),
+    closeMany: vi.fn().mockResolvedValue([]),
     syncForPush: vi.fn().mockResolvedValue(undefined),
     planGetByEpicId: vi.fn().mockResolvedValue(null),
   };
@@ -1650,6 +1651,94 @@ describe("FeedbackService", () => {
 
       const stored = await feedbackService.getFeedback(projectId, "fb-auto-3");
       expect(stored.status).toBe("pending");
+    });
+  });
+
+  describe("cancelFeedback", () => {
+    it("should set status to cancelled and close associated tasks", async () => {
+      await feedbackStore.insertFeedback(
+        projectId,
+        {
+          id: "fb-cancel-1",
+          text: "Cancel me",
+          category: "bug",
+          mappedPlanId: null,
+          createdTaskIds: ["task-a", "task-b"],
+          status: "pending",
+          createdAt: new Date().toISOString(),
+        },
+        null
+      );
+
+      const { taskStore } = await import("../services/task-store.service.js");
+      const { broadcastToProject } = await import("../websocket/index.js");
+
+      const result = await feedbackService.cancelFeedback(projectId, "fb-cancel-1");
+
+      expect(result.status).toBe("cancelled");
+      const stored = await feedbackService.getFeedback(projectId, "fb-cancel-1");
+      expect(stored.status).toBe("cancelled");
+
+      expect(taskStore.closeMany).toHaveBeenCalledWith(projectId, [
+        { id: "task-a", reason: "Feedback cancelled" },
+        { id: "task-b", reason: "Feedback cancelled" },
+      ]);
+
+      expect(broadcastToProject).toHaveBeenCalledWith(
+        projectId,
+        expect.objectContaining({
+          type: "feedback.resolved",
+          feedbackId: "fb-cancel-1",
+          item: expect.objectContaining({
+            id: "fb-cancel-1",
+            status: "cancelled",
+          }),
+        })
+      );
+    });
+
+    it("should return item unchanged when already resolved", async () => {
+      await feedbackStore.insertFeedback(
+        projectId,
+        {
+          id: "fb-cancel-2",
+          text: "Already resolved",
+          category: "bug",
+          mappedPlanId: null,
+          createdTaskIds: [],
+          status: "resolved",
+          createdAt: new Date().toISOString(),
+        },
+        null
+      );
+
+      const { taskStore } = await import("../services/task-store.service.js");
+      const result = await feedbackService.cancelFeedback(projectId, "fb-cancel-2");
+
+      expect(result.status).toBe("resolved");
+      expect(taskStore.closeMany).not.toHaveBeenCalled();
+    });
+
+    it("should not call closeMany when feedback has no linked tasks", async () => {
+      await feedbackStore.insertFeedback(
+        projectId,
+        {
+          id: "fb-cancel-3",
+          text: "No tasks",
+          category: "bug",
+          mappedPlanId: null,
+          createdTaskIds: [],
+          status: "pending",
+          createdAt: new Date().toISOString(),
+        },
+        null
+      );
+
+      const { taskStore } = await import("../services/task-store.service.js");
+      const result = await feedbackService.cancelFeedback(projectId, "fb-cancel-3");
+
+      expect(result.status).toBe("cancelled");
+      expect(taskStore.closeMany).not.toHaveBeenCalled();
     });
   });
 

@@ -4,6 +4,7 @@ import evalReducer, {
   updateFeedbackItem,
   updateFeedbackItemResolved,
   fetchFeedbackItem,
+  cancelFeedback,
   type EvalState,
 } from "./evalSlice";
 import type { FeedbackItem } from "@opensprint/shared";
@@ -16,6 +17,7 @@ vi.mock("../../api/client", () => ({
       submit: vi.fn(),
       recategorize: vi.fn(),
       resolve: vi.fn(),
+      cancel: vi.fn(),
     },
   },
 }));
@@ -185,6 +187,36 @@ describe("evalSlice", () => {
       expect(state.feedbackItemLoadingId).toBeNull();
       expect(state.async.feedbackItem.error).toBe("Not found");
       expect(state.feedbackItemErrorId).toBe("fb-missing");
+    });
+  });
+
+  describe("cancelFeedback", () => {
+    it("sets status to cancelled on fulfilled", async () => {
+      const cancelledItem: FeedbackItem = {
+        ...baseItem,
+        id: "fb-x",
+        status: "cancelled",
+      };
+      const { api } = await import("../../api/client");
+      vi.mocked(api.feedback.cancel).mockResolvedValue(cancelledItem);
+      const store = createStore({
+        feedback: [{ ...baseItem, id: "fb-x", status: "pending" }],
+      });
+      await store.dispatch(cancelFeedback({ projectId: "proj-1", feedbackId: "fb-x" }));
+      const state = store.getState().eval;
+      expect(state.feedback[0].status).toBe("cancelled");
+    });
+
+    it("reverts to pending on rejected", async () => {
+      const { api } = await import("../../api/client");
+      vi.mocked(api.feedback.cancel).mockRejectedValue(new Error("Cancel failed"));
+      const store = createStore({
+        feedback: [{ ...baseItem, id: "fb-x", status: "pending" }],
+      });
+      await store.dispatch(cancelFeedback({ projectId: "proj-1", feedbackId: "fb-x" }));
+      const state = store.getState().eval;
+      expect(state.feedback[0].status).toBe("pending");
+      expect(state.error).toBe("Cancel failed");
     });
   });
 });

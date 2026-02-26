@@ -282,4 +282,40 @@ describe("Feedback REST API", () => {
     const savedChild = await feedbackStore.getFeedback(projectId, "fb-cascade-child");
     expect(savedChild.status).toBe("resolved");
   });
+
+  it("POST /projects/:id/feedback/:feedbackId/cancel should set status to cancelled", async () => {
+    await feedbackStore.insertFeedback(
+      projectId,
+      {
+        id: "fb-cancel-1",
+        text: "Cancel this feedback",
+        category: "bug",
+        mappedPlanId: null,
+        createdTaskIds: [],
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      },
+      null
+    );
+
+    const res = await request(app).post(
+      `${API_PREFIX}/projects/${projectId}/feedback/fb-cancel-1/cancel`
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.id).toBe("fb-cancel-1");
+    expect(res.body.data.status).toBe("cancelled");
+
+    const saved = await feedbackStore.getFeedback(projectId, "fb-cancel-1");
+    expect(saved.status).toBe("cancelled");
+  });
+
+  it("POST /projects/:id/feedback/:feedbackId/cancel should return 404 when not found", async () => {
+    const res = await request(app).post(
+      `${API_PREFIX}/projects/${projectId}/feedback/nonexistent-id/cancel`
+    );
+
+    expect(res.status).toBe(404);
+    expect(res.body.error?.code).toBe("FEEDBACK_NOT_FOUND");
+  });
 });

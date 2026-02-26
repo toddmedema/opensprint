@@ -23,9 +23,10 @@ function getFeedbackAssetsDir(projectId: string, feedbackId: string): string {
   return path.join(getFeedbackAssetsBaseDir(), projectId, feedbackId);
 }
 
-/** Ensure status is pending or resolved. */
-function ensureStatus(s: string): "pending" | "resolved" {
-  return s === "resolved" ? "resolved" : "pending";
+/** Ensure status is pending, resolved, or cancelled. */
+function ensureStatus(s: string): "pending" | "resolved" | "cancelled" {
+  if (s === "resolved" || s === "cancelled") return s;
+  return "pending";
 }
 
 /** Row from feedback table (snake_case). */

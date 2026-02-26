@@ -43,6 +43,17 @@ vi.mock("../../api/client", () => ({
           createdAt: new Date().toISOString(),
         })
       ),
+      cancel: vi.fn().mockImplementation((_projectId: string, feedbackId: string) =>
+        Promise.resolve({
+          id: feedbackId,
+          text: "Cancelled feedback",
+          category: "bug",
+          mappedPlanId: null,
+          createdTaskIds: [],
+          status: "cancelled",
+          createdAt: new Date().toISOString(),
+        })
+      ),
     },
     tasks: {
       list: vi.fn().mockResolvedValue([]),
@@ -1696,6 +1707,139 @@ describe("EvalPhase feedback form", () => {
       await user.click(within(bug3Card!).getByRole("button", { name: /^Resolve$/ }));
 
       expect(formSubmit).not.toHaveBeenCalled();
+    });
+
+    describe("Cancel button", () => {
+      it("shows Cancel button when no linked tasks are in progress, in review, or done", async () => {
+        const feedbackWithTasks: FeedbackItem[] = [
+          {
+            id: "fb-cancel-1",
+            text: "Cancel me",
+            category: "bug",
+            mappedPlanId: null,
+            createdTaskIds: ["task-1"],
+            status: "pending",
+            createdAt: "2024-01-01T00:00:01Z",
+          },
+        ];
+        const executeTasks: Task[] = [
+          createMockTask({ id: "task-1", kanbanColumn: "backlog" }),
+        ];
+        const store = createStore({
+          evalFeedback: feedbackWithTasks,
+          executeTasks,
+        });
+
+        render(
+          <Provider store={store}>
+            <EvalPhase projectId="proj-1" />
+          </Provider>
+        );
+
+        await waitFor(() => {
+          expect(screen.getByTestId("feedback-cancel-button")).toBeInTheDocument();
+        });
+        expect(screen.getByRole("button", { name: /^Cancel$/ })).toBeInTheDocument();
+      });
+
+      it("hides Cancel button when linked task is in progress", async () => {
+        const feedbackWithTasks: FeedbackItem[] = [
+          {
+            id: "fb-cancel-2",
+            text: "In progress",
+            category: "bug",
+            mappedPlanId: null,
+            createdTaskIds: ["task-1"],
+            status: "pending",
+            createdAt: "2024-01-01T00:00:01Z",
+          },
+        ];
+        const executeTasks: Task[] = [
+          createMockTask({ id: "task-1", kanbanColumn: "in_progress" }),
+        ];
+        const store = createStore({
+          evalFeedback: feedbackWithTasks,
+          executeTasks,
+        });
+
+        render(
+          <Provider store={store}>
+            <EvalPhase projectId="proj-1" />
+          </Provider>
+        );
+
+        await waitFor(() => {
+          expect(screen.getByTestId("feedback-card-ticket-info")).toBeInTheDocument();
+        });
+        expect(screen.queryByTestId("feedback-cancel-button")).not.toBeInTheDocument();
+      });
+
+      it("shows Cancel button for feedback with no linked tasks", async () => {
+        const feedbackNoTasks: FeedbackItem[] = [
+          {
+            id: "fb-cancel-3",
+            text: "No tasks yet",
+            category: "bug",
+            mappedPlanId: null,
+            createdTaskIds: [],
+            status: "pending",
+            taskTitles: ["Fix something"],
+            createdAt: "2024-01-01T00:00:01Z",
+          },
+        ];
+        const store = createStore({ evalFeedback: feedbackNoTasks });
+
+        render(
+          <Provider store={store}>
+            <EvalPhase projectId="proj-1" />
+          </Provider>
+        );
+
+        await waitFor(() => {
+          expect(screen.getByTestId("feedback-cancel-button")).toBeInTheDocument();
+        });
+      });
+
+      it("calls cancel API and updates state when Cancel is clicked", async () => {
+        const { api } = await import("../../api/client");
+        const feedbackWithTasks: FeedbackItem[] = [
+          {
+            id: "fb-cancel-4",
+            text: "Cancel this",
+            category: "bug",
+            mappedPlanId: null,
+            createdTaskIds: ["task-1"],
+            status: "pending",
+            createdAt: "2024-01-01T00:00:01Z",
+          },
+        ];
+        const executeTasks: Task[] = [
+          createMockTask({ id: "task-1", kanbanColumn: "backlog" }),
+        ];
+        const store = createStore({
+          evalFeedback: feedbackWithTasks,
+          executeTasks,
+        });
+
+        render(
+          <Provider store={store}>
+            <EvalPhase projectId="proj-1" />
+          </Provider>
+        );
+
+        await waitFor(() => {
+          expect(screen.getByTestId("feedback-cancel-button")).toBeInTheDocument();
+        });
+
+        const user = userEvent.setup();
+        await user.click(screen.getByTestId("feedback-cancel-button"));
+
+        expect(api.feedback.cancel).toHaveBeenCalledWith("proj-1", "fb-cancel-4");
+
+        await waitFor(() => {
+          expect(store.getState().eval.feedback[0].status).toBe("cancelled");
+        });
+      });
     });
 
     it("navigates to correct task when link is clicked", async () => {

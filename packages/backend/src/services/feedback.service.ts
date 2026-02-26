@@ -1071,6 +1071,34 @@ export class FeedbackService {
     return item;
   }
 
+  /**
+   * Cancel a feedback item (status -> cancelled).
+   * Closes all associated tasks (createdTaskIds). Does not cascade to child feedback.
+   * Intended for feedback where no linked tasks are in progress, in review, or done.
+   */
+  async cancelFeedback(projectId: string, feedbackId: string): Promise<FeedbackItem> {
+    const item = await this.getFeedback(projectId, feedbackId);
+    if (item.status !== "pending") {
+      return item;
+    }
+    item.status = "cancelled";
+    await this.saveFeedback(projectId, item);
+
+    broadcastToProject(projectId, {
+      type: "feedback.resolved",
+      feedbackId: item.id,
+      item,
+    });
+
+    const taskIds = item.createdTaskIds ?? [];
+    if (taskIds.length > 0) {
+      const closeItems = taskIds.map((id) => ({ id, reason: "Feedback cancelled" }));
+      await this.taskStore.closeMany(projectId, closeItems);
+    }
+
+    return item;
+  }
+
   async getFeedback(projectId: string, feedbackId: string): Promise<FeedbackItem> {
     return feedbackStore.getFeedback(projectId, feedbackId);
   }

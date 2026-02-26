@@ -335,6 +335,10 @@ export const api = {
       request<FeedbackItem>(`/projects/${projectId}/feedback/${feedbackId}/resolve`, {
         method: "POST",
       }),
+    cancel: (projectId: string, feedbackId: string) =>
+      request<FeedbackItem>(`/projects/${projectId}/feedback/${feedbackId}/cancel`, {
+        method: "POST",
+      }),
   },
 
   // ─── Filesystem ───

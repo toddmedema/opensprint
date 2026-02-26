@@ -2,7 +2,12 @@ import { useState, useRef, useCallback, useMemo, useEffect, memo } from "react";
 import type { FeedbackItem } from "@opensprint/shared";
 import { PRIORITY_LABELS } from "@opensprint/shared";
 import { useAppDispatch, useAppSelector } from "../../store";
-import { submitFeedback, resolveFeedback, removeFeedbackItem } from "../../store/slices/evalSlice";
+import {
+  submitFeedback,
+  resolveFeedback,
+  cancelFeedback,
+  removeFeedbackItem,
+} from "../../store/slices/evalSlice";
 import { fetchTasks } from "../../store/slices/executeSlice";
 import { FeedbackTaskChip } from "../../components/FeedbackTaskChip";
 import { KeyboardShortcutTooltip } from "../../components/KeyboardShortcutTooltip";
@@ -73,7 +78,7 @@ export type FeedbackStatusFilter = "all" | "pending" | "resolved";
 function matchesStatusFilter(item: FeedbackItem, filter: FeedbackStatusFilter): boolean {
   if (filter === "all") return true;
   if (filter === "pending") return item.status === "pending";
-  if (filter === "resolved") return item.status === "resolved";
+  if (filter === "resolved") return item.status === "resolved" || item.status === "cancelled";
   return true;
 }
 
@@ -177,6 +182,23 @@ function buildFeedbackTree(items: FeedbackItem[]): FeedbackTreeNode[] {
   return build(null);
 }
 
+/** Task columns that block Cancel (feedback has work in progress). */
+const ACTIVE_TASK_COLUMNS = ["in_progress", "in_review", "done"] as const;
+
+function canShowCancelButton(
+  item: FeedbackItem,
+  tasks: Array<{ id: string; kanbanColumn: string }>
+): boolean {
+  if (item.status !== "pending") return false;
+  const taskIds = item.createdTaskIds ?? [];
+  if (taskIds.length === 0) return true;
+  return taskIds.every((tid) => {
+    const t = tasks.find((x) => x.id === tid);
+    if (!t) return false;
+    return !ACTIVE_TASK_COLUMNS.includes(t.kanbanColumn as (typeof ACTIVE_TASK_COLUMNS)[number]);
+  });
+}
+
 interface FeedbackCardProps {
   node: FeedbackTreeNode;
   depth: number;
@@ -187,11 +209,13 @@ interface FeedbackCardProps {
   onCancelReply: () => void;
   onSubmitReply: (parentId: string, text: string, images?: string[]) => void;
   onResolve: (feedbackId: string) => void;
+  onCancel: (feedbackId: string) => void;
   onRemoveAfterAnimation: (feedbackId: string) => void;
   collapsedIds: Set<string>;
   onToggleCollapse: (id: string) => void;
   submitting: boolean;
   isDraggingImage: boolean;
+  tasks: Array<{ id: string; kanbanColumn: string }>;
 }
 
 const RESOLVE_COLLAPSE_DURATION_MS = 1000;
@@ -208,11 +232,13 @@ const FeedbackCard = memo(
     onCancelReply,
     onSubmitReply,
     onResolve,
+    onCancel,
     onRemoveAfterAnimation,
     collapsedIds,
     onToggleCollapse,
     submitting,
     isDraggingImage,
+    tasks,
   }: FeedbackCardProps) {
     const { item, children } = node;
     const [replyText, setReplyText] = useState("");
@@ -227,7 +253,10 @@ const FeedbackCard = memo(
     const prevStatusRef = useRef(item.status);
 
     useEffect(() => {
-      const justResolved = item.status === "resolved" && prevStatusRef.current !== "resolved";
+      const justResolved =
+        (item.status === "resolved" || item.status === "cancelled") &&
+        prevStatusRef.current !== "resolved" &&
+        prevStatusRef.current !== "cancelled";
       prevStatusRef.current = item.status;
 
       if (!justResolved || isAnimatingOut) return;
@@ -278,7 +307,8 @@ const FeedbackCard = memo(
       disabled: !replyText.trim() || submitting,
     });
 
-    const isResolvedAndAnimating = item.status === "resolved" && collapseHeight !== null;
+    const isResolvedAndAnimating =
+      (item.status === "resolved" || item.status === "cancelled") && collapseHeight !== null;
 
     const wrapperStyle: React.CSSProperties = isResolvedAndAnimating
       ? {
@@ -311,12 +341,16 @@ const FeedbackCard = memo(
               </span>
             ) : (
               <>
-                {item.status === "resolved" && (
+                {(item.status === "resolved" || item.status === "cancelled") && (
                   <span
-                    className="float-right ml-2 mb-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium flex-shrink-0 bg-theme-success-bg text-theme-success-text"
-                    aria-label="Resolved"
+                    className={`float-right ml-2 mb-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium flex-shrink-0 ${
+                      item.status === "cancelled"
+                        ? "bg-theme-border-subtle text-theme-muted"
+                        : "bg-theme-success-bg text-theme-success-text"
+                    }`}
+                    aria-label={item.status === "cancelled" ? "Cancelled" : "Resolved"}
                   >
-                    Resolved
+                    {item.status === "cancelled" ? "Cancelled" : "Resolved"}
                   </span>
                 )}
                 <span
@@ -365,19 +399,37 @@ const FeedbackCard = memo(
             )}
             <div className="flex gap-2 flex-shrink-0 ml-auto">
               {item.status === "pending" && !isCategorizing(item) && (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onResolve(item.id);
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-theme-success-text hover:bg-theme-success-bg transition-colors"
-                  title="Mark as resolved"
-                  aria-label="Resolve"
-                >
-                  Resolve
-                </button>
+                <>
+                  {canShowCancelButton(item, tasks) && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onCancel(item.id);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-theme-muted hover:bg-theme-border-subtle transition-colors"
+                      title="Cancel feedback and close associated tasks"
+                      aria-label="Cancel"
+                      data-testid="feedback-cancel-button"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onResolve(item.id);
+                    }}
+                    className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-theme-success-text hover:bg-theme-success-bg transition-colors"
+                    title="Mark as resolved"
+                    aria-label="Resolve"
+                  >
+                    Resolve
+                  </button>
+                </>
               )}
               <button
                 type="button"
@@ -475,11 +527,13 @@ const FeedbackCard = memo(
               onCancelReply={onCancelReply}
               onSubmitReply={onSubmitReply}
               onResolve={onResolve}
+              onCancel={onCancel}
               onRemoveAfterAnimation={onRemoveAfterAnimation}
               collapsedIds={collapsedIds}
               onToggleCollapse={onToggleCollapse}
               submitting={submitting}
               isDraggingImage={isDraggingImage}
+              tasks={tasks}
             />
           ))}
       </div>
@@ -491,6 +545,7 @@ const FeedbackCard = memo(
     if (prev.replyingToId !== next.replyingToId) return false;
     if (prev.submitting !== next.submitting) return false;
     if (prev.isDraggingImage !== next.isDraggingImage) return false;
+    if (prev.tasks !== next.tasks) return false;
     return true;
   }
 );
@@ -500,7 +555,10 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
 
   /* ── Redux state ── */
   const feedback = useAppSelector((s) => s.eval.feedback);
-  const tasksCount = useAppSelector((s) => s.execute.tasks.length);
+  const tasks = useAppSelector((s) =>
+    s.execute.tasks.map((t) => ({ id: t.id, kanbanColumn: t.kanbanColumn }))
+  );
+  const tasksCount = tasks.length;
   const loading = useAppSelector((s) => s.eval?.async?.feedback?.loading ?? false);
   const submitting = useAppSelector((s) => s.eval?.async?.submit?.loading ?? false);
 
@@ -584,6 +642,24 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
       setAnimatingOutIds((prev) => new Set(prev).add(feedbackId));
       dispatch(resolveFeedback({ projectId, feedbackId }));
       // Restore scroll after React re-renders; double rAF + setTimeout catches layout updates
+      const restore = () => {
+        if (scrollEl) scrollEl.scrollTop = scrollTop;
+      };
+      requestAnimationFrame(() => {
+        requestAnimationFrame(restore);
+      });
+      setTimeout(restore, 0);
+      setTimeout(restore, 50);
+    },
+    [dispatch, projectId]
+  );
+
+  const handleCancel = useCallback(
+    (feedbackId: string) => {
+      const scrollEl = feedbackFeedRef.current;
+      const scrollTop = scrollEl?.scrollTop ?? 0;
+      setAnimatingOutIds((prev) => new Set(prev).add(feedbackId));
+      dispatch(cancelFeedback({ projectId, feedbackId }));
       const restore = () => {
         if (scrollEl) scrollEl.scrollTop = scrollTop;
       };
@@ -804,11 +880,13 @@ export function EvalPhase({ projectId, onNavigateToBuildTask }: EvalPhaseProps) 
                   onCancelReply={() => setReplyingToId(null)}
                   onSubmitReply={handleSubmitReply}
                   onResolve={handleResolve}
+                  onCancel={handleCancel}
                   onRemoveAfterAnimation={handleRemoveAfterAnimation}
                   collapsedIds={collapsedIds}
                   onToggleCollapse={handleToggleCollapse}
                   submitting={submitting}
                   isDraggingImage={isDraggingImage}
+                  tasks={tasks}
                 />
               ))}
             </div>

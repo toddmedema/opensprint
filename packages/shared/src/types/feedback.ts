@@ -1,8 +1,8 @@
 /** Feedback categorization */
 export type FeedbackCategory = "bug" | "feature" | "ux" | "scope";
 
-/** Feedback resolution status. Pending = not yet resolved (includes both awaiting categorization and categorized). */
-export type FeedbackStatus = "pending" | "resolved";
+/** Feedback resolution status. Pending = not yet resolved (includes both awaiting categorization and categorized). Cancelled = user cancelled; no tasks in progress. */
+export type FeedbackStatus = "pending" | "resolved" | "cancelled";
 
 /** Proposed task in indexed Planner format (PRD §12.3.4) */
 export interface ProposedTask {

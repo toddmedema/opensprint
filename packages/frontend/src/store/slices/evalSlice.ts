@@ -65,6 +65,13 @@ export const resolveFeedback = createAsyncThunk(
   }
 );
 
+export const cancelFeedback = createAsyncThunk(
+  "eval/cancelFeedback",
+  async ({ projectId, feedbackId }: { projectId: string; feedbackId: string }) => {
+    return api.feedback.cancel(projectId, feedbackId);
+  }
+);
+
 export const fetchFeedbackItem = createAsyncThunk(
   "eval/fetchFeedbackItem",
   async ({ projectId, feedbackId }: { projectId: string; feedbackId: string }) => {
@@ -212,6 +219,22 @@ const evalSlice = createSlice({
     builder.addCase(resolveFeedback.rejected, (state, action) => {
       state.error = action.error.message ?? "Failed to resolve feedback";
       // Revert optimistic update: set status back to pending
+      const { feedbackId } = action.meta.arg;
+      const idx = state.feedback.findIndex((f) => f.id === feedbackId);
+      if (idx !== -1) state.feedback[idx].status = "pending";
+    });
+    // cancelFeedback — optimistic: set status to cancelled immediately
+    builder.addCase(cancelFeedback.pending, (state, action) => {
+      const { feedbackId } = action.meta.arg;
+      const idx = state.feedback.findIndex((f) => f.id === feedbackId);
+      if (idx !== -1) state.feedback[idx].status = "cancelled";
+    });
+    builder.addCase(cancelFeedback.fulfilled, (state, action) => {
+      const idx = state.feedback.findIndex((f) => f.id === action.payload.id);
+      if (idx !== -1) state.feedback[idx] = action.payload;
+    });
+    builder.addCase(cancelFeedback.rejected, (state, action) => {
+      state.error = action.error.message ?? "Failed to cancel feedback";
       const { feedbackId } = action.meta.arg;
       const idx = state.feedback.findIndex((f) => f.id === feedbackId);
       if (idx !== -1) state.feedback[idx].status = "pending";

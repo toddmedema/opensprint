@@ -67,13 +67,17 @@ export function SourceFeedbackSection({
           data-testid="source-feedback-card"
         >
           <div className="p-4 text-xs space-y-2">
-            {feedback.status === "resolved" && (
+            {(feedback.status === "resolved" || feedback.status === "cancelled") && (
               <div className="flex items-start justify-between gap-2 overflow-hidden flex-wrap">
                 <span
-                  className="inline-flex rounded-full px-2 py-0.5 font-medium flex-shrink-0 bg-theme-success-bg text-theme-success-text"
-                  aria-label="Resolved"
+                  className={`inline-flex rounded-full px-2 py-0.5 font-medium flex-shrink-0 ${
+                    feedback.status === "cancelled"
+                      ? "bg-theme-border-subtle text-theme-muted"
+                      : "bg-theme-success-bg text-theme-success-text"
+                  }`}
+                  aria-label={feedback.status === "cancelled" ? "Cancelled" : "Resolved"}
                 >
-                  Resolved
+                  {feedback.status === "cancelled" ? "Cancelled" : "Resolved"}
                 </span>
               </div>
             )}
