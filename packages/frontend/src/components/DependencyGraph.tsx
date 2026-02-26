@@ -120,15 +120,36 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
   // Track container size in a ref. Only signal readiness once for the initial D3 render.
   // Subsequent size changes update SVG attributes directly without rebuilding the graph.
   // On resize, adjust pan so the previous view center stays centered (no jump/drift).
+  //
+  // IMPORTANT: Only set ready when we have real measured dimensions. If the container
+  // has zero size (e.g. flex layout not yet computed), wait for ResizeObserver to fire
+  // with real dimensions. Otherwise the simulation runs with fallback 600x280 and nodes
+  // end up clustered in the top-left; when the container later gets real size, we only
+  // resize the SVG and don't re-run the simulation, so the layout stays wrong.
+  const MIN_DIMENSION = 100;
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
     const updateDimensions = () => {
-      const width = el.clientWidth || 600;
+      const measuredWidth = el.clientWidth;
+      const measuredHeight = el.clientHeight;
+
+      const width = measuredWidth || 600;
       const height = fillHeight
-        ? el.clientHeight || Math.max(280, (graph?.plans.length ?? 3) * 50)
+        ? measuredHeight || Math.max(280, (graph?.plans.length ?? 3) * 50)
         : Math.max(280, Math.min(400, (graph?.plans.length ?? 3) * 50));
+
+      // For initial layout, require real measured dimensions so the simulation uses the
+      // actual viewport. Fallbacks cause nodes to cluster in top-left when container
+      // later gets real size (we only resize SVG, we don't re-run simulation).
+      const hasValidDimensions =
+        measuredWidth >= MIN_DIMENSION &&
+        (fillHeight ? measuredHeight >= MIN_DIMENSION : true);
+
+      if (!readyRef.current && !hasValidDimensions) {
+        return;
+      }
 
       const prev = dimensionsRef.current;
       if (prev && prev.width === width && prev.height === height) return;
@@ -164,7 +185,25 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
     updateDimensions();
     const ro = new ResizeObserver(updateDimensions);
     ro.observe(el);
-    return () => ro.disconnect();
+
+    // Fallback: if ResizeObserver never delivers valid dimensions (e.g. jsdom mock, or
+    // layout delayed), use fallbacks after a short delay so the graph renders.
+    const fallbackId = setTimeout(() => {
+      if (!readyRef.current) {
+        const w = el.clientWidth || 600;
+        const h = fillHeight
+          ? el.clientHeight || Math.max(280, (graph?.plans.length ?? 3) * 50)
+          : Math.max(280, Math.min(400, (graph?.plans.length ?? 3) * 50));
+        dimensionsRef.current = { width: w, height: h };
+        readyRef.current = true;
+        setReady(true);
+      }
+    }, 100);
+
+    return () => {
+      ro.disconnect();
+      clearTimeout(fallbackId);
+    };
   }, [graph?.plans.length, fillHeight]);
 
   useEffect(() => {

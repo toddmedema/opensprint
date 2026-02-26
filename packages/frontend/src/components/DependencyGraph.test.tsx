@@ -82,13 +82,40 @@ describe("DependencyGraph", () => {
     expect(svg).toBeInTheDocument();
   });
 
+  it("renders all plans on initial load without requiring user interaction", async () => {
+    // Uses dimension fallback (100ms) when ResizeObserver mock doesn't fire.
+    const graphWithFourPlans: PlanDependencyGraph = {
+      plans: [
+        mockPlan("plan-a"),
+        mockPlan("plan-b"),
+        mockPlan("plan-c"),
+        mockPlan("plan-d"),
+      ],
+      edges: [
+        { from: "plan-a", to: "plan-b", type: "blocks" },
+        { from: "plan-b", to: "plan-c", type: "blocks" },
+        { from: "plan-c", to: "plan-d", type: "blocks" },
+      ],
+    };
+
+    render(<DependencyGraph graph={graphWithFourPlans} fillHeight />);
+
+    // Graph should render all plans without any click/interaction (dimension fallback + D3)
+    await vi.waitFor(() => {
+      expect(screen.getByText("plan a")).toBeInTheDocument();
+      expect(screen.getByText("plan b")).toBeInTheDocument();
+      expect(screen.getByText("plan c")).toBeInTheDocument();
+      expect(screen.getByText("plan d")).toBeInTheDocument();
+    });
+  });
+
   it("calls onPlanClick when a plan node is clicked", async () => {
     const onPlanClick = vi.fn();
     render(<DependencyGraph graph={mockGraph} onPlanClick={onPlanClick} />);
 
+    // Wait for graph to render (dimension fallback + D3 simulation)
     await vi.waitFor(() => {
-      const svg = document.querySelector("svg");
-      expect(svg).toBeInTheDocument();
+      expect(screen.getByText("auth")).toBeInTheDocument();
     });
 
     // D3 renders nodes as g elements with rect and text; find by text content.
