@@ -60,6 +60,8 @@ When feedback maps to no plan, use mapped_plan_id: null, mapped_epic_id: null an
 
 For replies (parent_id present), consider the parent's category and mapped plan — the reply often refines or adds to the parent. If the feedback is a single word or too vague to categorize, default to "ux" and propose_tasks: [] with a generic title.
 
+**Reply-derived complexity:** When feedback is a reply (parent_id present), always set complexity to "complex" for every proposed task. Rationale: a reply indicates the default agent could not resolve it, so the work merits a complex agent.
+
 JSON format:
 {
   "category": "bug" | "feature" | "ux" | "scope",
@@ -387,7 +389,7 @@ export class FeedbackService {
                 const title = String(t.title ?? t.task_title ?? "").trim();
                 const deps = (t.depends_on ?? t.dependsOn ?? []) as unknown[];
                 const rawComplexity = t.complexity;
-                const complexity =
+                let complexity =
                   rawComplexity === "simple" || rawComplexity === "complex"
                     ? rawComplexity
                     : rawComplexity === "low"
@@ -395,6 +397,10 @@ export class FeedbackService {
                       : rawComplexity === "high"
                         ? "complex"
                         : undefined;
+                // Reply-derived tasks: always complex (default agent could not resolve)
+                if (item.parent_id) {
+                  complexity = "complex";
+                }
                 return {
                   index: typeof t.index === "number" ? t.index : 0,
                   title,
@@ -850,8 +856,10 @@ export class FeedbackService {
           const planComplexity = parentEpicId
             ? await this.resolvePlanComplexityForEpic(projectId, parentEpicId)
             : undefined;
-          const taskComplexity =
-            task.complexity ?? (planComplexity ? planComplexityToTask(planComplexity) : "simple");
+          // Reply-derived tasks: always complex (default agent could not resolve)
+          const taskComplexity = item.parent_id
+            ? "complex"
+            : task.complexity ?? (planComplexity ? planComplexityToTask(planComplexity) : "simple");
           const issue = await this.taskStore.createWithRetry(
             project.id,
             task.title,
@@ -916,6 +924,8 @@ export class FeedbackService {
       for (const title of uniqueTitles) {
         try {
           const priority = userPriorityOverride ?? (item.category === "bug" ? 0 : 2);
+          // Reply-derived tasks: always complex (default agent could not resolve)
+          const complexity = item.parent_id ? "complex" : undefined;
           const issue = await this.taskStore.createWithRetry(
             project.id,
             title,
@@ -923,6 +933,7 @@ export class FeedbackService {
               type: taskType,
               priority,
               parentId: parentEpicId,
+              ...(complexity && { complexity }),
               extra: { sourceFeedbackIds: [item.id] },
             },
             { fallbackToStandalone: true }

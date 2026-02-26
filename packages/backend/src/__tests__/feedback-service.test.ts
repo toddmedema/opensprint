@@ -336,6 +336,73 @@ describe("FeedbackService", () => {
     expect(replyPrompt).toContain("Same on mobile");
   });
 
+  it("should set complexity to complex for tasks created from reply feedback (proposed_tasks path)", async () => {
+    feedbackIdSequence = ["parent3", "child03"];
+    mockInvoke
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          category: "bug",
+          mappedPlanId: null,
+          proposed_tasks: [{ index: 0, title: "Fix desktop", description: "Fix", priority: 0, depends_on: [], complexity: "simple" }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          category: "bug",
+          mappedPlanId: null,
+          proposed_tasks: [{ index: 0, title: "Fix mobile too", description: "Same fix", priority: 0, depends_on: [], complexity: "simple" }],
+        }),
+      });
+
+    const parent = await feedbackService.submitFeedback(projectId, { text: "Login broken on desktop" });
+    const reply = await feedbackService.submitFeedback(projectId, {
+      text: "Same on mobile",
+      parent_id: parent.id,
+    });
+
+    await feedbackService.processFeedbackWithAnalyst(projectId, parent.id);
+    await feedbackService.processFeedbackWithAnalyst(projectId, reply.id);
+
+    const createCalls = mockTaskStoreCreateWithRetry.mock.calls;
+    const replyTaskCall = createCalls.find((c) => c[1] === "Fix mobile too");
+    expect(replyTaskCall).toBeDefined();
+    expect((replyTaskCall![2] as { complexity?: string }).complexity).toBe("complex");
+  });
+
+  it("should set complexity to complex for tasks created from reply feedback (task_titles legacy path)", async () => {
+    feedbackIdSequence = ["parent4", "child04"];
+    mockInvoke
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          category: "bug",
+          mappedPlanId: null,
+          task_titles: ["Fix desktop"],
+        }),
+      })
+      .mockResolvedValueOnce({
+        content: JSON.stringify({
+          category: "bug",
+          mappedPlanId: null,
+          proposed_tasks: [],
+          task_titles: ["Fix mobile too"],
+        }),
+      });
+
+    const parent = await feedbackService.submitFeedback(projectId, { text: "Login broken" });
+    const reply = await feedbackService.submitFeedback(projectId, {
+      text: "Same on mobile",
+      parent_id: parent.id,
+    });
+
+    await feedbackService.processFeedbackWithAnalyst(projectId, parent.id);
+    await feedbackService.processFeedbackWithAnalyst(projectId, reply.id);
+
+    const createCalls = mockTaskStoreCreateWithRetry.mock.calls;
+    const replyTaskCall = createCalls.find((c) => c[1] === "Fix mobile too");
+    expect(replyTaskCall).toBeDefined();
+    expect((replyTaskCall![2] as { complexity?: string }).complexity).toBe("complex");
+  });
+
   it("should assign short 6-char alphanumeric feedback IDs", async () => {
     feedbackIdSequence = ["a1b2c3"];
     mockInvoke.mockResolvedValue({
