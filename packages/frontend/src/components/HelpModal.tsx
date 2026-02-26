@@ -220,12 +220,8 @@ function AskQuestionContent({ project }: { project?: { id: string; name: string 
     <div className="flex flex-col gap-2 min-h-0">
       <p className="text-theme-muted text-sm shrink-0">
         {project
-          ? `Ask about ${project.name} — PRD, plans, tasks, or currently running agents.`
-          : "Ask about your projects, tasks, or currently running agents."}
-      </p>
-      <p className="text-theme-muted text-sm shrink-0">
-        Chat with an AI assistant in ask-only mode. It will answer questions without changing
-        project state, PRD, or tasks.
+          ? `Ask about ${project.name} — PRD, plans, tasks, or running agents. AI answers in ask-only mode without changing project state.`
+          : "Ask about your projects, tasks, or running agents. AI answers in ask-only mode without changing project state."}
       </p>
       <div
         ref={scrollContainerRef}
