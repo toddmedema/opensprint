@@ -98,6 +98,27 @@ describe("EpicCard", () => {
     expect(overlay).toBeInTheDocument();
   });
 
+  it("hides Plan Tasks button when isOptimistic (planning, zero tasks)", () => {
+    const planningPlan = { ...basePlan, status: "planning" as const, taskCount: 0, doneTaskCount: 0 };
+    renderWithStore(
+      <EpicCard
+        plan={planningPlan}
+        tasks={[]}
+        isOptimistic
+        executingPlanId={null}
+        reExecutingPlanId={null}
+        planTasksPlanIds={[]}
+        onSelect={vi.fn()}
+        onShip={vi.fn()}
+        onPlanTasks={vi.fn()}
+        onReship={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText("Plan Tasks")).not.toBeInTheDocument();
+    expect(screen.getByTestId("plan-tasks-loading")).toBeInTheDocument();
+  });
+
   it("renders plan title and status", () => {
     const onSelect = vi.fn();
     renderWithStore(

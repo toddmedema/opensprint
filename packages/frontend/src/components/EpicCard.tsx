@@ -243,11 +243,11 @@ export function EpicCard({
                   No tasks yet. Generate tasks from this plan, or use the AI chat to refine it
                   first.
                 </p>
-                {planTasksPlanIds.includes(plan.metadata.planId) ? (
+                {planTasksPlanIds.includes(plan.metadata.planId) || isOptimistic ? (
                   <div
                     className="flex items-center justify-center py-2 text-theme-muted"
                     aria-busy="true"
-                    aria-label="Planning tasks"
+                    aria-label={isOptimistic ? "Generating plan" : "Planning tasks"}
                     data-testid="plan-tasks-loading"
                   >
                     <svg
