@@ -48,6 +48,8 @@ const REJECTED_ACTION_MESSAGES: Record<string, string> = {
   "execute/updateTaskPriority/rejected":
     "Failed to update task priority. The change was reverted. Check the network and try again.",
   "execute/fetchTasks/rejected": "Failed to load tasks. Refresh the page or try again.",
+  "project/fetchTasksFeedbackPlans/rejected":
+    "Failed to load tasks, feedback, or plans. Refresh the page or try again.",
   "execute/fetchExecuteStatus/rejected":
     "Failed to load execute status. Refresh the page or try again.",
   "plan/fetchPlans/rejected": "Failed to load plans. Refresh the page or try again.",

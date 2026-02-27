@@ -1,7 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { configureStore } from "@reduxjs/toolkit";
-import projectReducer, { fetchProject, resetProject, type ProjectState } from "./projectSlice";
-import type { Project } from "@opensprint/shared";
+import projectReducer, {
+  fetchProject,
+  fetchTasksFeedbackPlans,
+  resetProject,
+  type ProjectState,
+} from "./projectSlice";
+import planReducer from "./planSlice";
+import executeReducer from "./executeSlice";
+import evalReducer from "./evalSlice";
+import type { Project, Task, FeedbackItem, PlanDependencyGraph } from "@opensprint/shared";
 
 const mockProject: Project = {
   id: "proj-1",
@@ -14,17 +22,32 @@ const mockProject: Project = {
 
 vi.mock("../../api/client", () => ({
   api: {
-    projects: {
-      get: vi.fn(),
-    },
+    projects: { get: vi.fn() },
+    tasks: { list: vi.fn() },
+    feedback: { list: vi.fn() },
+    plans: { list: vi.fn() },
   },
 }));
 
 import { api } from "../../api/client";
 
+function createFullStore() {
+  return configureStore({
+    reducer: {
+      project: projectReducer,
+      plan: planReducer,
+      execute: executeReducer,
+      eval: evalReducer,
+    },
+  });
+}
+
 describe("projectSlice", () => {
   beforeEach(() => {
     vi.mocked(api.projects.get).mockReset();
+    vi.mocked(api.tasks.list).mockReset();
+    vi.mocked(api.feedback.list).mockReset();
+    vi.mocked(api.plans.list).mockReset();
   });
 
   describe("initial state", () => {
@@ -110,6 +133,81 @@ describe("projectSlice", () => {
 
       const state = store.getState().project as ProjectState;
       expect(state.error).toBe("Failed to load project");
+    });
+  });
+
+  describe("fetchTasksFeedbackPlans thunk", () => {
+    const mockTasks: Task[] = [
+      {
+        id: "task-1",
+        title: "Task 1",
+        description: "",
+        type: "task",
+        status: "open",
+        priority: 1,
+        assignee: null,
+        labels: [],
+        dependencies: [],
+        epicId: null,
+        kanbanColumn: "backlog",
+        createdAt: "",
+        updatedAt: "",
+      },
+    ];
+    const mockFeedback: FeedbackItem[] = [
+      {
+        id: "fb-1",
+        text: "Bug report",
+        category: "bug",
+        mappedPlanId: null,
+        createdTaskIds: [],
+        status: "pending",
+        createdAt: "",
+      },
+    ];
+    const mockPlansGraph: PlanDependencyGraph = { plans: [], edges: [] };
+
+    it("issues three distinct API calls for tasks, feedback, plans concurrently", async () => {
+      vi.mocked(api.tasks.list).mockResolvedValue(mockTasks);
+      vi.mocked(api.feedback.list).mockResolvedValue(mockFeedback);
+      vi.mocked(api.plans.list).mockResolvedValue(mockPlansGraph);
+
+      const store = createFullStore();
+      await store.dispatch(fetchTasksFeedbackPlans("proj-1"));
+
+      expect(api.tasks.list).toHaveBeenCalledWith("proj-1");
+      expect(api.feedback.list).toHaveBeenCalledWith("proj-1");
+      expect(api.plans.list).toHaveBeenCalledWith("proj-1");
+      expect(api.tasks.list).toHaveBeenCalledTimes(1);
+      expect(api.feedback.list).toHaveBeenCalledTimes(1);
+      expect(api.plans.list).toHaveBeenCalledTimes(1);
+    });
+
+    it("hydrates execute, eval, and plan slices when all three responses are available", async () => {
+      vi.mocked(api.tasks.list).mockResolvedValue(mockTasks);
+      vi.mocked(api.feedback.list).mockResolvedValue(mockFeedback);
+      vi.mocked(api.plans.list).mockResolvedValue(mockPlansGraph);
+
+      const store = createFullStore();
+      await store.dispatch(fetchTasksFeedbackPlans("proj-1"));
+
+      expect(store.getState().execute.tasksById["task-1"]).toEqual(mockTasks[0]);
+      expect(store.getState().eval.feedback).toEqual(mockFeedback);
+      expect(store.getState().plan.plans).toEqual([]);
+      expect(store.getState().plan.dependencyGraph).toEqual(mockPlansGraph);
+    });
+
+    it("does not pass pagination params (no limit/offset)", async () => {
+      vi.mocked(api.tasks.list).mockResolvedValue([]);
+      vi.mocked(api.feedback.list).mockResolvedValue([]);
+      vi.mocked(api.plans.list).mockResolvedValue({ plans: [], edges: [] });
+
+      const store = createFullStore();
+      await store.dispatch(fetchTasksFeedbackPlans("proj-1"));
+
+      expect(api.tasks.list).toHaveBeenCalledWith("proj-1");
+      expect(api.feedback.list).toHaveBeenCalledWith("proj-1");
+      expect(api.plans.list).toHaveBeenCalledWith("proj-1");
     });
   });
 });

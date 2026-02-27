@@ -23,20 +23,19 @@ import {
   resetSketch,
 } from "../store/slices/sketchSlice";
 import {
-  fetchPlans,
   fetchPlanChat,
   resetPlan,
   setSelectedPlanId,
   clearPlanBackgroundError,
 } from "../store/slices/planSlice";
 import {
-  fetchTasks,
   fetchExecuteStatus,
   resetExecute,
   setSelectedTaskId,
   setAwaitingApproval,
 } from "../store/slices/executeSlice";
-import { fetchFeedback, resetEval } from "../store/slices/evalSlice";
+import { resetEval } from "../store/slices/evalSlice";
+import { fetchTasksFeedbackPlans } from "../store/slices/projectSlice";
 import {
   fetchDeliverStatus,
   fetchDeliverHistory,
@@ -102,10 +101,8 @@ export function ProjectView() {
     dispatch(fetchSketchChat(projectId));
     dispatch(fetchPrd(projectId));
     dispatch(fetchPrdHistory(projectId));
-    dispatch(fetchPlans(projectId));
-    dispatch(fetchTasks(projectId));
+    dispatch(fetchTasksFeedbackPlans(projectId));
     dispatch(fetchExecuteStatus(projectId));
-    dispatch(fetchFeedback(projectId));
     dispatch(fetchDeliverStatus(projectId));
     dispatch(fetchDeliverHistory(projectId));
 
