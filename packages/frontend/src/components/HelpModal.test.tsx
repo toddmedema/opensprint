@@ -27,34 +27,18 @@ describe("HelpModal", () => {
     vi.mocked(api.help.chat).mockReset();
     vi.mocked(api.help.history).mockResolvedValue({ messages: [] });
   });
-  it("renders Help modal with three tabs, Ask a Question default", () => {
+  it("renders Help modal with two tabs, Ask a Question default", () => {
     renderWithProviders(<HelpModal onClose={vi.fn()} />);
 
     expect(screen.getByRole("dialog", { name: /help/i })).toBeInTheDocument();
     expect(screen.getByText("Help")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Ask a Question" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Meet your Team" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Debug" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Ask a Question" })).toHaveAttribute(
       "aria-selected",
       "true"
     );
     expect(screen.getByText(/Ask about your projects/)).toBeInTheDocument();
-  });
-
-  it("switches to Debug tab and shows TanStack icon and devtools content", async () => {
-    const user = userEvent.setup();
-    renderWithProviders(<HelpModal onClose={vi.fn()} />);
-
-    await user.click(screen.getByRole("tab", { name: "Debug" }));
-
-    expect(screen.getByRole("tab", { name: "Debug" })).toHaveAttribute(
-      "aria-selected",
-      "true"
-    );
-    expect(screen.getByTestId("help-debug-content")).toBeInTheDocument();
-    expect(screen.getByText("React Query DevTools")).toBeInTheDocument();
-    expect(screen.getByText(/Inspect cache and queries/)).toBeInTheDocument();
   });
 
   it("switches to Meet your Team tab and shows agent grid", async () => {

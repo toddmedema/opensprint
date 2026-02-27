@@ -3,7 +3,6 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { Provider } from "react-redux";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { store } from "./store";
 import { setQueryClient } from "./queryClient";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -33,7 +32,6 @@ createRoot(document.getElementById("root")!).render(
           </DisplayPreferencesProvider>
         </ThemeProvider>
       </Provider>
-      <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   </StrictMode>
 );

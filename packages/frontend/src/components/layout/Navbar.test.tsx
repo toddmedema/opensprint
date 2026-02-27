@@ -272,7 +272,7 @@ describe("Navbar", () => {
   });
 
   describe("integration: (?) opens Help modal with tabs", () => {
-    it("homepage (project=null): click (?) opens Help modal with three tabs, Ask a Question default", async () => {
+    it("homepage (project=null): click (?) opens Help modal with two tabs, Ask a Question default", async () => {
       const user = userEvent.setup();
       renderNavbar(<Navbar project={null} />);
 
@@ -283,7 +283,6 @@ describe("Navbar", () => {
       expect(screen.getByText("Help")).toBeInTheDocument();
       expect(screen.getByRole("tab", { name: "Ask a Question" })).toBeInTheDocument();
       expect(screen.getByRole("tab", { name: "Meet your Team" })).toBeInTheDocument();
-      expect(screen.getByRole("tab", { name: "Debug" })).toBeInTheDocument();
       expect(screen.getByRole("tab", { name: "Ask a Question" })).toHaveAttribute(
         "aria-selected",
         "true"
@@ -291,7 +290,7 @@ describe("Navbar", () => {
       expect(screen.getByText(/Ask about your projects/)).toBeInTheDocument();
     });
 
-    it("project view (project set): click (?) opens Help modal with three tabs", async () => {
+    it("project view (project set): click (?) opens Help modal with two tabs", async () => {
       const user = userEvent.setup();
       const mockProject = {
         id: "proj-1",
@@ -311,7 +310,6 @@ describe("Navbar", () => {
       expect(screen.getByText("Help")).toBeInTheDocument();
       expect(screen.getByRole("tab", { name: "Ask a Question" })).toBeInTheDocument();
       expect(screen.getByRole("tab", { name: "Meet your Team" })).toBeInTheDocument();
-      expect(screen.getByRole("tab", { name: "Debug" })).toBeInTheDocument();
     });
 
     it("Meet your Team tab shows agent grid with roles and phases", async () => {

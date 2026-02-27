@@ -8,7 +8,6 @@ import {
 } from "@opensprint/shared";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ReactQueryDevtoolsPanel } from "@tanstack/react-query-devtools";
 import { CloseButton } from "./CloseButton";
 import { ChatInput } from "./ChatInput";
 import { api } from "../api/client";
@@ -22,12 +21,11 @@ export interface HelpModalProps {
   project?: { id: string; name: string } | null;
 }
 
-type TabId = "ask" | "meet" | "debug";
+type TabId = "ask" | "meet";
 
 /**
- * Help modal with three tabs: Ask a Question (default), Meet your Team, and Debug.
+ * Help modal with two tabs: Ask a Question (default) and Meet your Team.
  * Available from ? on homepage and per-project view.
- * TanStack React Query DevTools render inside the Debug tab (not in bottom-right when modal closed).
  */
 export function HelpModal({ onClose, project }: HelpModalProps) {
   const [activeTab, setActiveTab] = useState<TabId>("ask");
@@ -99,21 +97,6 @@ export function HelpModal({ onClose, project }: HelpModalProps) {
             >
               Meet your Team
             </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "debug"}
-              aria-controls="help-tabpanel-debug"
-              id="help-tab-debug"
-              onClick={() => setActiveTab("debug")}
-              className={`px-4 py-2 text-sm font-medium rounded-t-md transition-colors ${
-                activeTab === "debug"
-                  ? "bg-theme-surface text-theme-text border border-theme-border border-b-theme-surface"
-                  : "text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle"
-              }`}
-            >
-              Debug
-            </button>
           </div>
         </div>
 
@@ -136,15 +119,6 @@ export function HelpModal({ onClose, project }: HelpModalProps) {
             className="px-6 py-4"
           >
             <MeetYourTeamContent />
-          </div>
-          <div
-            id="help-tabpanel-debug"
-            role="tabpanel"
-            aria-labelledby="help-tab-debug"
-            hidden={activeTab !== "debug"}
-            className="px-6 py-4 min-h-[300px]"
-          >
-            <DebugContent isActive={activeTab === "debug"} />
           </div>
         </div>
       </div>
@@ -314,50 +288,6 @@ function AskQuestionContent({
           aria-label="Help chat message"
           inputRef={chatInputRef}
         />
-      </div>
-    </div>
-  );
-}
-
-/** TanStack logo icon (React Query / TanStack Query branding) */
-function TanStackIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 256 256"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden
-    >
-      <path
-        d="M128 256c70.694 0 128-57.306 128-128S198.694 0 128 0 0 57.306 0 128s57.306 128 128 128z"
-        fill="#FF4154"
-      />
-      <path
-        d="M128 41.231c47.914 0 86.769 38.855 86.769 86.769S175.914 214.769 128 214.769 41.231 175.914 41.231 128 80.086 41.231 128 41.231z"
-        fill="#fff"
-      />
-      <path
-        d="M128 72.308c30.794 0 55.692 24.898 55.692 55.692s-24.898 55.692-55.692 55.692S72.308 158.794 72.308 128 97.206 72.308 128 72.308z"
-        fill="#FF4154"
-      />
-    </svg>
-  );
-}
-
-function DebugContent({ isActive }: { isActive: boolean }) {
-  if (!isActive) return null;
-  return (
-    <div className="flex flex-col gap-3 min-h-[300px]" data-testid="help-debug-content">
-      <div className="flex items-center gap-2 shrink-0">
-        <TanStackIcon className="w-10 h-10 shrink-0" />
-        <div>
-          <p className="text-theme-text text-sm font-medium">React Query DevTools</p>
-          <p className="text-theme-muted text-xs">Inspect cache and queries.</p>
-        </div>
-      </div>
-      <div className="flex-1 min-h-[280px] rounded-lg border border-theme-border overflow-hidden bg-theme-surface-muted">
-        <ReactQueryDevtoolsPanel style={{ height: "100%", minHeight: 280 }} />
       </div>
     </div>
   );
