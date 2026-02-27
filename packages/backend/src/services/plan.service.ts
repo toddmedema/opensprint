@@ -175,7 +175,7 @@ function ensureDependenciesSection(content: string, dependsOnPlans: string[]): s
 
 const DECOMPOSE_SYSTEM_PROMPT = `You are an AI planning assistant for OpenSprint. You analyze Product Requirements Documents (PRDs) and suggest a breakdown into discrete, implementable features (Plans).
 
-**Output format:** Produce exactly the JSON output — no preamble, no explanation after the JSON block. Respond with ONLY valid JSON in this exact format:
+**Output format:** Your response MUST be the plan(s) as JSON in this message. Do NOT write plans to files; do NOT respond with only a summary or "here's what I created" — the system parses your message for JSON only. Produce exactly the JSON output (no preamble, no explanation after the JSON). You may wrap in a \`\`\`json ... \`\`\` code block. Required shape:
 
 {
   "plans": [
@@ -1718,16 +1718,11 @@ ${planNew}`;
 
     const systemPrompt = `You are an AI planning assistant for OpenSprint. The user will describe a feature idea in freeform text. Your job is to produce a complete, implementation-ready feature plan.
 
-Plan markdown MUST follow this structure (PRD §7.2.3). Each plan's content must include these sections in order:
-${PLAN_MARKDOWN_SECTIONS.map((s) => `- ## ${s}`).join("\n")}
+## Output requirement (mandatory)
+Your entire response MUST be the plan as a single JSON object. Do NOT write the plan to a file. Do NOT respond with a summary, description, or "here's what I created" text — the system parses your message for JSON only; any prose instead of JSON will cause failure.
+You may wrap the JSON in a markdown code block (\`\`\`json ... \`\`\`). The JSON must include at minimum: "title", "content", "complexity", "mockups", "tasks".
 
-Template structure: ${PLAN_TEMPLATE_STRUCTURE}
-
-Tasks should be atomic, implementable in one agent session, with clear acceptance criteria in the description.
-
-MOCKUPS: Include at least one mockup (ASCII wireframe or text diagram) illustrating key UI for the feature.
-
-Respond with ONLY valid JSON (you may wrap in a markdown json code block):
+Required JSON shape:
 {
   "title": "Feature Name",
   "content": "# Feature Name\\n\\n## Overview\\n...full markdown...",
@@ -1738,7 +1733,16 @@ Respond with ONLY valid JSON (you may wrap in a markdown json code block):
   ]
 }
 
-complexity: low, medium, high, or very_high (plan-level). Task-level complexity: simple or complex — assign per task based on implementation difficulty. priority: 0=highest. dependsOn: array of other task titles this task depends on.`;
+Plan markdown MUST follow this structure (PRD §7.2.3). Each plan's content must include these sections in order:
+${PLAN_MARKDOWN_SECTIONS.map((s) => `- ## ${s}`).join("\n")}
+
+Template structure: ${PLAN_TEMPLATE_STRUCTURE}
+
+Tasks should be atomic, implementable in one agent session, with clear acceptance criteria in the description.
+
+MOCKUPS: Include at least one mockup (ASCII wireframe or text diagram) illustrating key UI for the feature.
+
+Field rules: complexity: low, medium, high, or very_high (plan-level). Task-level complexity: simple or complex — assign per task based on implementation difficulty. priority: 0=highest. dependsOn: array of other task titles this task depends on.`;
 
     const prompt = `Generate a complete feature plan for the following idea.\n\n## Feature Idea\n\n${description}\n\n## PRD Context\n\n${prdContext}`;
 
