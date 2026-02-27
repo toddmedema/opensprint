@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CloseButton } from "./CloseButton";
-import { api } from "../api/client";
+import { api, isConnectionError } from "../api/client";
 
 const BODY_COPY =
   "At least one agent API key is required to use Open Sprint. Or, select 'Custom/CLI' if you'll be using your own agent or a CLI integration rather than an API.";
@@ -102,7 +102,12 @@ export function ApiKeySetupModal({
       }
       onComplete();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save");
+      const message = isConnectionError(err)
+        ? "Unable to connect. Please check your network and try again."
+        : err instanceof Error
+          ? err.message
+          : "Failed to save";
+      setError(message);
     } finally {
       setSaving(false);
     }
@@ -212,10 +217,19 @@ export function ApiKeySetupModal({
                   )}
                 </button>
               </div>
+              {error && (
+                <p
+                  className="mt-1.5 text-sm text-theme-error-text"
+                  role="alert"
+                  data-testid="api-key-error"
+                >
+                  {error}
+                </p>
+              )}
             </div>
           )}
 
-          {error && (
+          {error && !needsKeyInput && (
             <div
               className="p-3 rounded-lg bg-theme-error-bg border border-theme-error-border"
               role="alert"

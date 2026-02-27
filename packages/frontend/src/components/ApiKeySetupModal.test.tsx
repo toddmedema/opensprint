@@ -1,18 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ApiKeySetupModal } from "./ApiKeySetupModal";
 import { api } from "../api/client";
 
-vi.mock("../api/client", () => ({
-  api: {
-    env: {
-      validateKey: vi.fn(),
-      saveKey: vi.fn(),
-      setGlobalSettings: vi.fn(),
+vi.mock("../api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/client")>();
+  return {
+    ...actual,
+    api: {
+      env: {
+        validateKey: vi.fn(),
+        saveKey: vi.fn(),
+        setGlobalSettings: vi.fn(),
+      },
     },
-  },
-}));
+  };
+});
 
 describe("ApiKeySetupModal", () => {
   const onComplete = vi.fn();
@@ -125,6 +129,32 @@ describe("ApiKeySetupModal", () => {
     expect(onComplete).not.toHaveBeenCalled();
   });
 
+  it("Custom/CLI shows user-friendly message on network error", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.env.setGlobalSettings).mockRejectedValue(
+      new Error("Failed to fetch")
+    );
+
+    render(
+      <ApiKeySetupModal
+        onComplete={onComplete}
+        onCancel={onCancel}
+        intendedRoute={intendedRoute}
+      />
+    );
+
+    await user.selectOptions(
+      screen.getByTestId("api-key-provider-select"),
+      "Custom/CLI"
+    );
+    await user.click(screen.getByTestId("api-key-save-button"));
+
+    expect(
+      screen.getByText("Unable to connect. Please check your network and try again.")
+    ).toBeInTheDocument();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
   it("Custom/CLI Save calls setGlobalSettings and onComplete", async () => {
     const user = userEvent.setup();
     vi.mocked(api.env.setGlobalSettings).mockResolvedValue({ useCustomCli: true });
@@ -147,6 +177,39 @@ describe("ApiKeySetupModal", () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
     expect(api.env.validateKey).not.toHaveBeenCalled();
     expect(api.env.saveKey).not.toHaveBeenCalled();
+  });
+
+  it("shows loading state during Save (Saving…, disabled)", async () => {
+    const user = userEvent.setup();
+    let resolveValidate!: (v: { valid: boolean }) => void;
+    vi.mocked(api.env.validateKey).mockImplementation(
+      () =>
+        new Promise((r) => {
+          resolveValidate = r;
+        })
+    );
+    vi.mocked(api.env.saveKey).mockResolvedValue({ saved: true });
+
+    render(
+      <ApiKeySetupModal
+        onComplete={onComplete}
+        onCancel={onCancel}
+        intendedRoute={intendedRoute}
+      />
+    );
+
+    await user.type(screen.getByTestId("api-key-input"), "sk-ant-x");
+    const saveBtn = screen.getByTestId("api-key-save-button");
+    const clickPromise = user.click(saveBtn);
+
+    await waitFor(() => {
+      expect(saveBtn).toHaveTextContent("Saving…");
+      expect(saveBtn).toBeDisabled();
+    });
+    resolveValidate({ valid: true });
+    await clickPromise;
+
+    expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
   it("Claude Save validates then saves and calls onComplete", async () => {
@@ -195,7 +258,7 @@ describe("ApiKeySetupModal", () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
-  it("shows error when validation fails", async () => {
+  it("shows error inline below input when validation fails", async () => {
     const user = userEvent.setup();
     vi.mocked(api.env.validateKey).mockResolvedValue({
       valid: false,
@@ -213,8 +276,54 @@ describe("ApiKeySetupModal", () => {
     await user.type(screen.getByTestId("api-key-input"), "bad-key");
     await user.click(screen.getByTestId("api-key-save-button"));
 
-    expect(screen.getByText("Invalid API key")).toBeInTheDocument();
+    const errorEl = screen.getByTestId("api-key-error");
+    expect(errorEl).toBeInTheDocument();
+    expect(errorEl).toHaveTextContent("Invalid API key");
     expect(api.env.saveKey).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("shows user-friendly message on network error during validate", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.env.validateKey).mockRejectedValue(new Error("Failed to fetch"));
+
+    render(
+      <ApiKeySetupModal
+        onComplete={onComplete}
+        onCancel={onCancel}
+        intendedRoute={intendedRoute}
+      />
+    );
+
+    await user.type(screen.getByTestId("api-key-input"), "sk-ant-valid");
+    await user.click(screen.getByTestId("api-key-save-button"));
+
+    expect(
+      screen.getByText("Unable to connect. Please check your network and try again.")
+    ).toBeInTheDocument();
+    expect(api.env.saveKey).not.toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it("shows user-friendly message on network error during save", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.env.validateKey).mockResolvedValue({ valid: true });
+    vi.mocked(api.env.saveKey).mockRejectedValue(new Error("Network request failed"));
+
+    render(
+      <ApiKeySetupModal
+        onComplete={onComplete}
+        onCancel={onCancel}
+        intendedRoute={intendedRoute}
+      />
+    );
+
+    await user.type(screen.getByTestId("api-key-input"), "sk-ant-valid");
+    await user.click(screen.getByTestId("api-key-save-button"));
+
+    expect(
+      screen.getByText("Unable to connect. Please check your network and try again.")
+    ).toBeInTheDocument();
     expect(onComplete).not.toHaveBeenCalled();
   });
 
