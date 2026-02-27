@@ -3,23 +3,28 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../client";
 import { queryKeys } from "../queryKeys";
 
-export function useDeliverStatus(projectId: string | undefined, options?: { enabled?: boolean }) {
+export function useDeliverStatus(
+  projectId: string | undefined,
+  options?: { enabled?: boolean; refetchInterval?: number }
+) {
   return useQuery({
     queryKey: queryKeys.deliver.status(projectId ?? ""),
     queryFn: () => api.deliver.status(projectId!),
     enabled: Boolean(projectId) && (options?.enabled !== false),
+    refetchInterval: options?.refetchInterval,
   });
 }
 
 export function useDeliverHistory(
   projectId: string | undefined,
   limit?: number,
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean; refetchInterval?: number }
 ) {
   return useQuery({
     queryKey: queryKeys.deliver.history(projectId ?? ""),
     queryFn: () => api.deliver.history(projectId!, limit),
     enabled: Boolean(projectId) && (options?.enabled !== false),
+    refetchInterval: options?.refetchInterval,
   });
 }
 

@@ -10,8 +10,9 @@ import {
   sortAgentsByCanonicalOrder,
 } from "@opensprint/shared";
 import type { AgentRole } from "@opensprint/shared";
-import { useAppDispatch, useAppSelector } from "../store";
-import { fetchActiveAgents, setSelectedTaskId } from "../store/slices/executeSlice";
+import { useAppDispatch } from "../store";
+import { setSelectedTaskId } from "../store/slices/executeSlice";
+import { useActiveAgents } from "../api/hooks";
 import { getProjectPhasePath } from "../lib/phaseRouting";
 import { setSelectedPlanId } from "../store/slices/planSlice";
 import { useDisplayPreferences } from "../contexts/DisplayPreferencesContext";
@@ -184,10 +185,13 @@ function LoadingSpinner({ className = "w-4 h-4" }: { className?: string }) {
 
 export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
   const dispatch = useAppDispatch();
-  const agents = useAppSelector((s) => s.execute?.activeAgents ?? []);
-  const loadedOnce = useAppSelector((s) => s.execute?.activeAgentsLoadedOnce ?? false);
+  const { data, isFetching, refetch } = useActiveAgents(projectId, {
+    refetchInterval: POLL_INTERVAL_MS,
+  });
+  const agents = data?.agents ?? [];
   /** Only show loading when never loaded; use cached list when refreshing (avoids flash on open) */
-  const showLoading = !loadedOnce;
+  const loadedOnce = data !== undefined;
+  const showLoading = !loadedOnce && isFetching;
   const showLoadingInDropdown = !loadedOnce;
   const [open, setOpen] = useState(false);
   const [dropdownRect, setDropdownRect] = useState<DOMRect | null>(null);
@@ -195,12 +199,6 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { runningAgentsDisplayMode } = useDisplayPreferences();
-
-  useEffect(() => {
-    dispatch(fetchActiveAgents(projectId));
-    const interval = setInterval(() => dispatch(fetchActiveAgents(projectId)), POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [projectId, dispatch]);
 
   useEffect(() => {
     if (open && buttonRef.current) {
@@ -212,9 +210,8 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
 
   // When dropdown opens: immediately refresh agents so elapsed time is correct from first frame
   useEffect(() => {
-    if (!open) return;
-    dispatch(fetchActiveAgents(projectId));
-  }, [open, projectId, dispatch]);
+    if (open) void refetch();
+  }, [open, refetch]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -255,8 +252,8 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
   );
 
   const handleKillSuccess = useCallback(() => {
-    dispatch(fetchActiveAgents(projectId));
-  }, [dispatch, projectId]);
+    void refetch();
+  }, [refetch]);
 
   /** Sort agents by canonical README/PRD order for consistent icon display. */
   const sortedAgents = sortAgentsByCanonicalOrder(agents);

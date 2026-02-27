@@ -38,23 +38,28 @@ export function useArchivedSessions(
   });
 }
 
-export function useExecuteStatus(projectId: string | undefined, options?: { enabled?: boolean }) {
+export function useExecuteStatus(
+  projectId: string | undefined,
+  options?: { enabled?: boolean; refetchInterval?: number }
+) {
   return useQuery({
     queryKey: queryKeys.execute.status(projectId ?? ""),
     queryFn: () => api.execute.status(projectId!),
     enabled: Boolean(projectId) && (options?.enabled !== false),
+    refetchInterval: options?.refetchInterval,
   });
 }
 
 export function useLiveOutputBackfill(
   projectId: string | undefined,
   taskId: string | undefined,
-  options?: { enabled?: boolean }
+  options?: { enabled?: boolean; refetchInterval?: number }
 ) {
   return useQuery({
     queryKey: queryKeys.execute.liveOutput(projectId ?? "", taskId ?? ""),
     queryFn: async () => (await api.execute.liveOutput(projectId!, taskId!)).output,
     enabled: Boolean(projectId) && Boolean(taskId) && (options?.enabled !== false),
+    refetchInterval: options?.refetchInterval,
   });
 }
 
@@ -116,5 +121,27 @@ export function useAddTaskDependency(projectId: string) {
       void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
       void qc.invalidateQueries({ queryKey: queryKeys.tasks.detail(projectId, taskId) });
     },
+  });
+}
+
+/** Active agents (for Execute phase / AgentDashboard). Use refetchInterval for polling. */
+export function useActiveAgents(
+  projectId: string | undefined,
+  options?: { enabled?: boolean; refetchInterval?: number }
+) {
+  return useQuery({
+    queryKey: ["agents", "active", projectId ?? ""],
+    queryFn: async () => {
+      const agents = await api.agents.active(projectId!);
+      const taskIdToStartedAt: Record<string, string> = {};
+      for (const a of agents) {
+        if (a.phase === "coding" || a.phase === "review") {
+          taskIdToStartedAt[a.id] = a.startedAt;
+        }
+      }
+      return { agents, taskIdToStartedAt };
+    },
+    enabled: Boolean(projectId) && (options?.enabled !== false),
+    refetchInterval: options?.refetchInterval,
   });
 }

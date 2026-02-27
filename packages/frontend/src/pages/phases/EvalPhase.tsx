@@ -6,6 +6,7 @@ import {
   saveFeedbackFormDraft,
   clearFeedbackFormDraft,
 } from "../../lib/feedbackFormStorage";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAppDispatch, useAppSelector } from "../../store";
 import {
   submitFeedback,
@@ -14,11 +15,9 @@ import {
   removeFeedbackItem,
   recategorizeFeedback,
 } from "../../store/slices/evalSlice";
-import {
-  fetchTasks,
-  fetchTasksByIds,
-  selectTasks,
-} from "../../store/slices/executeSlice";
+import { selectTasks } from "../../store/slices/executeSlice";
+import { useTasks } from "../../api/hooks";
+import { queryKeys } from "../../api/queryKeys";
 import { FeedbackTaskChip } from "../../components/FeedbackTaskChip";
 import { KeyboardShortcutTooltip } from "../../components/KeyboardShortcutTooltip";
 import { PriorityIcon } from "../../components/PriorityIcon";
@@ -686,6 +685,8 @@ export function EvalPhase({
   feedbackIdFromUrl: feedbackIdFromUrlProp,
 }: EvalPhaseProps) {
   const dispatch = useAppDispatch();
+  const queryClient = useQueryClient();
+  const { data: tasksList = [] } = useTasks(projectId);
 
   /* ── Redux state ── */
   const feedback = useAppSelector((s) => s.eval.feedback);
@@ -697,14 +698,7 @@ export function EvalPhase({
   const loading = useAppSelector((s) => s.eval?.async?.feedback?.loading ?? false);
   const submitting = useAppSelector((s) => s.eval?.async?.submit?.loading ?? false);
 
-  /* Load tasks when entering Eval so FeedbackTaskChip can show live status */
-  useEffect(() => {
-    if (projectId && tasksCount === 0) {
-      dispatch(fetchTasks(projectId));
-    }
-  }, [projectId, tasksCount, dispatch]);
-
-  /* Fetch tasks for feedback cards so chips live-update when task.updated fires */
+  /* Fetch missing tasks for feedback cards (createdTaskIds) and merge into query cache so list stays in sync */
   const taskIdsFromFeedback = useMemo(() => {
     const ids = new Set<string>();
     for (const item of feedback) {
@@ -715,11 +709,31 @@ export function EvalPhase({
 
   useEffect(() => {
     if (!projectId || taskIdsFromFeedback.size === 0) return;
-    const missing = [...taskIdsFromFeedback].filter((id) => !(id in tasksById));
-    if (missing.length > 0) {
-      dispatch(fetchTasksByIds({ projectId, taskIds: missing }));
-    }
-  }, [projectId, taskIdsFromFeedback, tasksById, dispatch]);
+    const listIds = new Set(tasksList.map((t) => t.id));
+    const missing = [...taskIdsFromFeedback].filter((id) => !listIds.has(id));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      const fetched = await Promise.all(
+        missing.map((taskId) =>
+          queryClient.fetchQuery({
+            queryKey: queryKeys.tasks.detail(projectId, taskId),
+            queryFn: () => api.tasks.get(projectId, taskId),
+          })
+        )
+      );
+      if (cancelled) return;
+      queryClient.setQueryData(queryKeys.tasks.list(projectId), (prev: unknown) => {
+        const prevList = Array.isArray(prev) ? prev : [];
+        const byId = new Map(prevList.map((t: { id: string }) => [t.id, t]));
+        for (const t of fetched) byId.set(t.id, t);
+        return [...byId.values()];
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, taskIdsFromFeedback, tasksList, queryClient]);
 
   /* Auto-focus feedback input when Evaluate tab activates */
   useLayoutEffect(() => {

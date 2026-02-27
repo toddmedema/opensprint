@@ -412,6 +412,22 @@ const executeSlice = createSlice({
       state.totalFailed = p.totalFailed ?? 0;
       state.queueDepth = p.queueDepth ?? 0;
     },
+    /** Sync from TanStack Query useArchivedSessions. */
+    setArchivedSessions(state, action: PayloadAction<AgentSession[]>) {
+      state.archivedSessions = action.payload;
+    },
+    /** Sync from TanStack Query useActiveAgents (agents + taskIdToStartedAt). */
+    setActiveAgentsPayload(
+      state,
+      action: PayloadAction<{
+        agents: ActiveAgent[];
+        taskIdToStartedAt: Record<string, string>;
+      }>
+    ) {
+      state.activeAgents = action.payload.agents;
+      state.activeAgentsLoadedOnce = true;
+      state.taskIdToStartedAt = action.payload.taskIdToStartedAt ?? {};
+    },
     resetExecute() {
       return initialExecuteState;
     },
@@ -663,6 +679,8 @@ export const {
   setTasks,
   setExecuteError,
   setExecuteStatusPayload,
+  setArchivedSessions,
+  setActiveAgentsPayload,
   resetExecute,
 } = executeSlice.actions;
 

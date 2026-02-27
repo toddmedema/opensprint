@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import type { DeploymentRecord, DeploymentConfig } from "@opensprint/shared";
 import { getDeploymentTargetConfig } from "@opensprint/shared";
 import { getProjectPhasePath } from "../../lib/phaseRouting";
@@ -9,10 +10,10 @@ import {
   deployExpo,
   rollbackDeliver,
   setSelectedDeployId,
-  fetchDeliverStatus,
-  fetchDeliverHistory,
   deliverCompleted,
 } from "../../store/slices/deliverSlice";
+import { useDeliverStatus, useDeliverHistory } from "../../api/hooks";
+import { queryKeys } from "../../api/queryKeys";
 import { api } from "../../api/client";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
 
@@ -92,6 +93,7 @@ function FilterIcon({ className }: { className?: string }) {
 
 export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
   const dispatch = useAppDispatch();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { projectId: paramProjectId } = useParams<{ projectId: string }>();
   const effectiveProjectId = projectId ?? paramProjectId ?? "";
@@ -137,23 +139,16 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
   const historyLoading = useAppSelector((s) => s.deliver?.async?.history?.loading ?? false);
   const rollbackLoading = useAppSelector((s) => s.deliver?.async?.rollback?.loading ?? false);
 
+  const polling = Boolean(activeDeployId && projectId);
+  useDeliverStatus(projectId, { refetchInterval: polling ? 1000 : undefined });
+  useDeliverHistory(projectId, undefined, { refetchInterval: polling ? 1000 : undefined });
+
   useEffect(() => {
     api.projects
       .getSettings(projectId)
       .then(setSettings)
       .catch(() => setSettings(null));
   }, [projectId]);
-
-  // Live updates: poll status and history at least once per second when deployment is active.
-  // WebSocket delivers deliver.output in real time; polling provides fallback (e.g. after refresh).
-  useEffect(() => {
-    if (!activeDeployId || !projectId) return;
-    const interval = setInterval(() => {
-      dispatch(fetchDeliverStatus(projectId));
-      dispatch(fetchDeliverHistory(projectId));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [activeDeployId, projectId, dispatch]);
 
   const selectedRecord = selectedDeployId
     ? (history.find((r) => r.id === selectedDeployId) ?? null)
@@ -204,8 +199,8 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
       if (activeDeployId) {
         dispatch(deliverCompleted({ deployId: activeDeployId, success: false }));
       }
-      dispatch(fetchDeliverStatus(projectId));
-      dispatch(fetchDeliverHistory(projectId));
+      void queryClient.invalidateQueries({ queryKey: queryKeys.deliver.status(projectId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.deliver.history(projectId) });
     } finally {
       setResetLoading(false);
     }

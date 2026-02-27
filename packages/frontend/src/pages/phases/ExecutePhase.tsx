@@ -1,16 +1,24 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAppDispatch, useAppSelector } from "../../store";
 import {
-  fetchTaskDetail,
-  fetchArchivedSessions,
-  fetchLiveOutputBackfill,
-  fetchActiveAgents,
-  markTaskDone,
-  unblockTask,
   setSelectedTaskId,
+  setAgentOutputBackfill,
+  setArchivedSessions,
+  setActiveAgentsPayload,
   selectTasks,
 } from "../../store/slices/executeSlice";
 import { wsSend } from "../../store/middleware/websocketMiddleware";
+import {
+  useTaskDetail,
+  useArchivedSessions,
+  useLiveOutputBackfill,
+  useActiveAgents,
+  useMarkTaskDone,
+  useUnblockTask,
+} from "../../api/hooks";
+import { queryKeys } from "../../api/queryKeys";
+import { filterAgentOutput } from "../../utils/agentOutputFilter";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
 import { BuildEpicCard } from "../../components/kanban";
 import { useTaskFilter } from "../../hooks/useTaskFilter";
@@ -93,74 +101,95 @@ export function ExecutePhase({
     handleSearchKeyDown,
   } = useTaskFilter();
 
+  const queryClient = useQueryClient();
   const tasks = useAppSelector(selectTasks);
   const plans = useAppSelector((s) => s.plan.plans);
   const awaitingApproval = useAppSelector((s) => s.execute.awaitingApproval);
   const selectedTask = useAppSelector((s) => s.execute.selectedTaskId);
   /** Resolve selection from Redux or URL so sidebar shows on first paint when opening with ?task= */
   const effectiveSelectedTask = selectedTask ?? initialTaskIdFromUrl ?? null;
-  const taskDetailLoading = useAppSelector((s) => s.execute?.async?.taskDetail?.loading ?? false);
-  const taskDetailError = useAppSelector((s) => s.execute?.async?.taskDetail?.error ?? null);
   const agentOutput = useAppSelector((s) => s.execute?.agentOutput ?? {});
   const completionState = useAppSelector((s) => s.execute?.completionState ?? null);
-  const archivedSessions = useAppSelector((s) => s.execute?.archivedSessions ?? []);
-  const archivedLoading = useAppSelector((s) => s.execute?.async?.archived?.loading ?? false);
-  const markDoneLoading = useAppSelector((s) => s.execute?.async?.markDone?.loading ?? false);
-  const unblockLoading = useAppSelector((s) => s.execute?.async?.unblock?.loading ?? false);
   const loading = useAppSelector((s) => s.execute?.async?.tasks?.loading ?? false);
-  const taskIdToStartedAt = useAppSelector((s) => s.execute?.taskIdToStartedAt ?? {});
-  const selectedTaskData = effectiveSelectedTask
-    ? (tasks.find((t) => t.id === effectiveSelectedTask) ?? null)
-    : null;
-  const isDoneTask = selectedTaskData?.kanbanColumn === "done";
   const activeTasks = useAppSelector((s) => s.execute.activeTasks);
   const wsConnected = useAppSelector((s) => s.websocket?.connected ?? false);
+
+  const taskDetailQuery = useTaskDetail(projectId, effectiveSelectedTask ?? undefined);
+  const archivedQuery = useArchivedSessions(
+    projectId,
+    effectiveSelectedTask ?? undefined,
+    { enabled: Boolean(effectiveSelectedTask) }
+  );
+  const liveOutputQuery = useLiveOutputBackfill(
+    projectId,
+    effectiveSelectedTask ?? undefined,
+    {
+      enabled: Boolean(effectiveSelectedTask),
+      refetchInterval: effectiveSelectedTask ? 1000 : undefined,
+    }
+  );
+  const activeAgentsQuery = useActiveAgents(projectId, { refetchInterval: 5000 });
+  const markDoneMutation = useMarkTaskDone(projectId);
+  const unblockMutation = useUnblockTask(projectId);
+
+  const taskDetailData = taskDetailQuery.data;
+  const taskDetailLoading = taskDetailQuery.isFetching;
+  const taskDetailError = taskDetailQuery.error
+    ? (taskDetailQuery.error instanceof Error ? taskDetailQuery.error.message : String(taskDetailQuery.error))
+    : null;
+  const archivedSessions = archivedQuery.data ?? [];
+  const archivedLoading = archivedQuery.isFetching;
+  const markDoneLoading = markDoneMutation.isPending;
+  const unblockLoading = unblockMutation.isPending;
+  const taskIdToStartedAt = activeAgentsQuery.data?.taskIdToStartedAt ?? {};
+  const selectedTaskData = effectiveSelectedTask
+    ? (taskDetailData ?? tasks.find((t) => t.id === effectiveSelectedTask) ?? null)
+    : null;
+  const isDoneTask = selectedTaskData?.kanbanColumn === "done";
   const isBlockedTask = selectedTaskData?.kanbanColumn === "blocked";
-
-  useEffect(() => {
-    dispatch(fetchActiveAgents(projectId));
-    const interval = setInterval(() => dispatch(fetchActiveAgents(projectId)), 5000);
-    return () => clearInterval(interval);
-  }, [projectId, dispatch]);
-
-  useEffect(() => {
-    if (effectiveSelectedTask) {
-      dispatch(fetchTaskDetail({ projectId, taskId: effectiveSelectedTask }));
-    }
-  }, [projectId, effectiveSelectedTask, dispatch]);
-
-  useEffect(() => {
-    if (effectiveSelectedTask && isDoneTask) {
-      dispatch(fetchArchivedSessions({ projectId, taskId: effectiveSelectedTask }));
-    }
-  }, [projectId, effectiveSelectedTask, isDoneTask, dispatch]);
-
   const selectedAgentOutput = effectiveSelectedTask
     ? (agentOutput[effectiveSelectedTask] ?? [])
     : [];
 
+  // Merge task detail into list cache so Redux sync gets it
   useEffect(() => {
-    if (
-      effectiveSelectedTask &&
-      !isDoneTask &&
-      completionState &&
-      selectedAgentOutput.length === 0 &&
-      !archivedLoading
-    ) {
-      dispatch(fetchArchivedSessions({ projectId, taskId: effectiveSelectedTask }));
+    if (!projectId || !effectiveSelectedTask || !taskDetailData) return;
+    queryClient.setQueryData(queryKeys.tasks.list(projectId), (prev: unknown) => {
+      const list = Array.isArray(prev) ? prev : [];
+      const byId = new Map(list.map((t: { id: string }) => [t.id, t]));
+      byId.set(taskDetailData.id, taskDetailData);
+      return [...byId.values()];
+    });
+  }, [projectId, effectiveSelectedTask, taskDetailData, queryClient]);
+
+  useEffect(() => {
+    if (archivedQuery.data) dispatch(setArchivedSessions(archivedQuery.data));
+  }, [archivedQuery.data, dispatch]);
+
+  useEffect(() => {
+    if (activeAgentsQuery.data)
+      dispatch(setActiveAgentsPayload(activeAgentsQuery.data));
+  }, [activeAgentsQuery.data, dispatch]);
+
+  useEffect(() => {
+    if (effectiveSelectedTask && liveOutputQuery.data !== undefined) {
+      const raw = typeof liveOutputQuery.data === "string" ? liveOutputQuery.data : "";
+      dispatch(
+        setAgentOutputBackfill({
+          taskId: effectiveSelectedTask,
+          output: filterAgentOutput(raw),
+        })
+      );
     }
-  }, [
-    projectId,
-    effectiveSelectedTask,
-    isDoneTask,
-    completionState,
-    selectedAgentOutput.length,
-    archivedLoading,
-    dispatch,
-  ]);
+  }, [effectiveSelectedTask, liveOutputQuery.data, dispatch]);
+
+  useEffect(() => {
+    if (effectiveSelectedTask && !isDoneTask && archivedQuery.data?.length === 0 && !archivedLoading) {
+      void archivedQuery.refetch();
+    }
+  }, [effectiveSelectedTask, isDoneTask, archivedQuery.data?.length, archivedLoading, archivedQuery]);
 
   // Subscribe to live agent output. Middleware queues subscribe when WS not yet connected
-  // and replays on open, fixing "stuck/never loads" when opening sidebar before connection ready.
   useEffect(() => {
     if (effectiveSelectedTask && !isDoneTask) {
       dispatch(wsSend({ type: "agent.subscribe", taskId: effectiveSelectedTask }));
@@ -172,25 +201,14 @@ export function ExecutePhase({
     }
   }, [effectiveSelectedTask, isDoneTask, wsConnected, dispatch]);
 
-  // Live polling: refresh agent output every 1s while viewing an in-progress task.
-  // WebSocket streams chunks when available; polling ensures updates even when WS fails (e.g. Cursor agent).
-  useEffect(() => {
-    if (!effectiveSelectedTask || isDoneTask) return;
-    dispatch(fetchLiveOutputBackfill({ projectId, taskId: effectiveSelectedTask }));
-    const interval = setInterval(() => {
-      dispatch(fetchLiveOutputBackfill({ projectId, taskId: effectiveSelectedTask }));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [projectId, effectiveSelectedTask, isDoneTask, dispatch]);
-
   const handleMarkDone = async () => {
     if (!effectiveSelectedTask || isDoneTask) return;
-    dispatch(markTaskDone({ projectId, taskId: effectiveSelectedTask }));
+    markDoneMutation.mutate(effectiveSelectedTask);
   };
 
   const handleUnblock = async () => {
     if (!effectiveSelectedTask || !isBlockedTask) return;
-    dispatch(unblockTask({ projectId, taskId: effectiveSelectedTask }));
+    unblockMutation.mutate({ taskId: effectiveSelectedTask });
   };
 
   const handleClose = () => {
@@ -264,7 +282,7 @@ export function ExecutePhase({
                       searchQuery={searchQuery}
                       filteringActive={isSearchActive}
                       onTaskSelect={(taskId) => dispatch(setSelectedTaskId(taskId))}
-                      onUnblock={(taskId) => dispatch(unblockTask({ projectId, taskId }))}
+                      onUnblock={(taskId) => unblockMutation.mutate({ taskId })}
                       onViewPlan={
                         lane.planId && onNavigateToPlan
                           ? () => onNavigateToPlan(lane.planId!)
@@ -290,7 +308,7 @@ export function ExecutePhase({
                 tasks={filteredTasks}
                 plans={plans}
                 onTaskSelect={(taskId) => dispatch(setSelectedTaskId(taskId))}
-                onUnblock={(taskId) => dispatch(unblockTask({ projectId, taskId }))}
+                onUnblock={(taskId) => unblockMutation.mutate({ taskId })}
                 taskIdToStartedAt={taskIdToStartedAt}
                 statusFilter={statusFilter}
               />

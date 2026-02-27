@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
-import { useAppDispatch, useAppSelector } from "../../store";
-import { fetchFeedbackItem } from "../../store/slices/evalSlice";
+import { useAppDispatch } from "../../store";
 import { addNotification } from "../../store/slices/notificationSlice";
+import { useFeedbackItem } from "../../api/hooks";
 import { CollapsibleSection } from "./CollapsibleSection";
 
 export function SourceFeedbackSection({
@@ -19,28 +19,22 @@ export function SourceFeedbackSection({
   title?: string;
 }) {
   const dispatch = useAppDispatch();
-  const feedback = useAppSelector((s) =>
-    feedbackId ? (s.eval?.feedbackItemCache?.[feedbackId] ?? null) : null
-  );
-  const loading = useAppSelector((s) => s.eval?.feedbackItemLoadingId === feedbackId);
-  const error = useAppSelector((s) =>
-    s.eval?.feedbackItemErrorId === feedbackId ? (s.eval?.async?.feedbackItem?.error ?? null) : null
+  const { data: feedback, isFetching: loading, error } = useFeedbackItem(
+    projectId,
+    feedbackId,
+    { enabled: expanded && Boolean(feedbackId) }
   );
   const lastNotifiedErrorRef = useRef<string | null>(null);
+  const errorMessage = error instanceof Error ? error.message : error ? String(error) : null;
 
   useEffect(() => {
-    if (!expanded || !feedbackId) return;
-    dispatch(fetchFeedbackItem({ projectId, feedbackId }));
-  }, [projectId, feedbackId, expanded, dispatch]);
-
-  useEffect(() => {
-    if (error && error !== lastNotifiedErrorRef.current) {
-      lastNotifiedErrorRef.current = error;
-      dispatch(addNotification({ message: error, severity: "error" }));
-    } else if (!error) {
+    if (errorMessage && errorMessage !== lastNotifiedErrorRef.current) {
+      lastNotifiedErrorRef.current = errorMessage;
+      dispatch(addNotification({ message: errorMessage, severity: "error" }));
+    } else if (!errorMessage) {
       lastNotifiedErrorRef.current = null;
     }
-  }, [error, dispatch]);
+  }, [errorMessage, dispatch]);
 
   const contentId = `source-feedback-content-${feedbackId}`;
   const headerId = `source-feedback-header-${feedbackId}`;

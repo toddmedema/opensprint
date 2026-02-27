@@ -290,6 +290,23 @@ const planSlice = createSlice({
     removeOptimisticPlan(state, action: PayloadAction<string>) {
       state.optimisticPlans = state.optimisticPlans.filter((p) => p.tempId !== action.payload);
     },
+    /** Sync from TanStack Query usePlanChat. */
+    setPlanChatMessages(
+      state,
+      action: PayloadAction<{ context: string; messages: { role: "user" | "assistant"; content: string; timestamp: string }[] }>
+    ) {
+      const { context, messages } = action.payload;
+      if (context?.trim()) state.chatMessages[context] = messages;
+    },
+    /** Sync from TanStack Query useSinglePlan (merge one plan into list). */
+    setSinglePlan(state, action: PayloadAction<Plan>) {
+      const idx = state.plans.findIndex(
+        (p) => p.metadata.planId === action.payload.metadata.planId
+      );
+      if (idx >= 0) {
+        state.plans[idx] = action.payload;
+      }
+    },
     resetPlan() {
       return { ...initialState };
     },
@@ -548,6 +565,8 @@ export const {
   enqueuePlanTasksId,
   addOptimisticPlan,
   removeOptimisticPlan,
+  setPlanChatMessages,
+  setSinglePlan,
   resetPlan,
 } = planSlice.actions;
 export default planSlice.reducer;

@@ -2,13 +2,13 @@ import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAppDispatch, useAppSelector } from "../../store";
-import {
-  fetchExecuteStatus,
-  fetchActiveAgents,
-  fetchLiveOutputBackfill,
-} from "../../store/slices/executeSlice";
-import { setSelectedTaskId } from "../../store/slices/executeSlice";
+import { setSelectedTaskId, setAgentOutputBackfill } from "../../store/slices/executeSlice";
 import { wsSend } from "../../store/middleware/websocketMiddleware";
+import {
+  useExecuteStatus,
+  useActiveAgents,
+  useLiveOutputBackfill,
+} from "../../api/hooks";
 import { CloseButton } from "../../components/CloseButton";
 
 interface AgentDashboardProps {
@@ -23,17 +23,28 @@ interface AgentInfo {
   outputLength: number;
 }
 
+const DASHBOARD_POLL_MS = 5000;
+const LIVE_OUTPUT_POLL_MS = 1000;
+
 export function AgentDashboard({ projectId }: AgentDashboardProps) {
   const dispatch = useAppDispatch();
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
 
+  const statusQuery = useExecuteStatus(projectId, { refetchInterval: DASHBOARD_POLL_MS });
+  const agentsQuery = useActiveAgents(projectId, { refetchInterval: DASHBOARD_POLL_MS });
+  const liveOutputQuery = useLiveOutputBackfill(projectId, selectedAgent ?? undefined, {
+    enabled: Boolean(selectedAgent),
+    refetchInterval: selectedAgent ? LIVE_OUTPUT_POLL_MS : undefined,
+  });
+
   const agentOutputMap = useAppSelector((s) => s.execute.agentOutput);
   const agentOutput = selectedAgent ? (agentOutputMap[selectedAgent] ?? []) : [];
-  const activeTasks = useAppSelector((s) => s.execute.activeTasks);
-  const activeAgents = useAppSelector((s) => s.execute.activeAgents);
-  const totalDone = useAppSelector((s) => s.execute.totalDone ?? 0);
-  const totalFailed = useAppSelector((s) => s.execute.totalFailed ?? 0);
-  const queueDepth = useAppSelector((s) => s.execute.queueDepth ?? 0);
+  const status = statusQuery.data;
+  const activeTasks = status?.activeTasks ?? [];
+  const totalDone = status?.totalDone ?? 0;
+  const totalFailed = status?.totalFailed ?? 0;
+  const queueDepth = status?.queueDepth ?? 0;
+  const activeAgents = agentsQuery.data?.agents ?? [];
 
   const currentTask = activeTasks[0]?.taskId ?? null;
   const stats = { totalDone, totalFailed, queueDepth };
@@ -45,15 +56,12 @@ export function AgentDashboard({ projectId }: AgentDashboardProps) {
     outputLength: 0,
   }));
 
+  // Sync polled live output into Redux so display (and WS chunks) stay in sync
   useEffect(() => {
-    dispatch(fetchExecuteStatus(projectId));
-    dispatch(fetchActiveAgents(projectId));
-    const interval = setInterval(() => {
-      dispatch(fetchExecuteStatus(projectId));
-      dispatch(fetchActiveAgents(projectId));
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [projectId, dispatch]);
+    if (selectedAgent && liveOutputQuery.data !== undefined) {
+      dispatch(setAgentOutputBackfill({ taskId: selectedAgent, output: liveOutputQuery.data }));
+    }
+  }, [selectedAgent, liveOutputQuery.data, dispatch]);
 
   // Sync selected agent with Redux so agent.output events are stored; subscribe/unsubscribe via wsSend
   useEffect(() => {
@@ -68,17 +76,6 @@ export function AgentDashboard({ projectId }: AgentDashboardProps) {
       dispatch(setSelectedTaskId(null));
     }
   }, [selectedAgent, dispatch]);
-
-  // Live polling: refresh agent output every 1s while viewing an active agent.
-  // WebSocket streams chunks when available; polling ensures updates even when WS fails (e.g. Cursor agent).
-  useEffect(() => {
-    if (!selectedAgent) return;
-    dispatch(fetchLiveOutputBackfill({ projectId, taskId: selectedAgent }));
-    const interval = setInterval(() => {
-      dispatch(fetchLiveOutputBackfill({ projectId, taskId: selectedAgent }));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [projectId, selectedAgent, dispatch]);
 
   return (
     <div className="flex flex-col h-full">

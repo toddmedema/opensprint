@@ -1,18 +1,16 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { shallowEqual } from "react-redux";
+import { useQueryClient } from "@tanstack/react-query";
 import type { Plan, PlanStatus } from "@opensprint/shared";
 import { sortPlansByStatus } from "@opensprint/shared";
 import { store, useAppDispatch, useAppSelector } from "../../store";
 import {
-  fetchPlans,
   executePlan,
   reExecutePlan,
   planTasks,
   archivePlan,
   deletePlan,
-  fetchPlanChat,
   sendPlanMessage,
-  fetchSinglePlan,
   updatePlan,
   setSelectedPlanId,
   generatePlan,
@@ -21,8 +19,12 @@ import {
   clearExecuteError,
   enqueuePlanTasksId,
   addOptimisticPlan,
+  setPlanChatMessages,
+  setSinglePlan,
 } from "../../store/slices/planSlice";
 import { addNotification } from "../../store/slices/notificationSlice";
+import { usePlanChat, useSinglePlan } from "../../api/hooks";
+import { queryKeys } from "../../api/queryKeys";
 import { api } from "../../api/client";
 import { CloseButton } from "../../components/CloseButton";
 import { CrossEpicConfirmModal } from "../../components/CrossEpicConfirmModal";
@@ -34,7 +36,7 @@ import { EpicCard } from "../../components/EpicCard";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
 import { ChatInput } from "../../components/ChatInput";
 import { OpenQuestionsBlock } from "../../components/OpenQuestionsBlock";
-import { fetchTasks, selectTasksForEpic } from "../../store/slices/executeSlice";
+import { selectTasksForEpic } from "../../store/slices/executeSlice";
 import { usePlanFilter } from "../../hooks/usePlanFilter";
 import { useScrollToQuestion } from "../../hooks/useScrollToQuestion";
 import { useOpenQuestionNotifications } from "../../hooks/useOpenQuestionNotifications";
@@ -76,11 +78,26 @@ interface PlanPhaseProps {
 
 export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) {
   const dispatch = useAppDispatch();
+  const queryClient = useQueryClient();
+
+  /* ── Redux state (needed for hook args) ── */
+  const selectedPlanId = useAppSelector((s) => s.plan.selectedPlanId);
+  const planChatQuery = usePlanChat(projectId, selectedPlanId ? `plan:${selectedPlanId}` : undefined);
+  const singlePlanQuery = useSinglePlan(projectId, selectedPlanId ?? undefined);
+
+  useEffect(() => {
+    if (planChatQuery.data) {
+      dispatch(setPlanChatMessages({ context: planChatQuery.data.context, messages: planChatQuery.data.messages }));
+    }
+  }, [planChatQuery.data, dispatch]);
+
+  useEffect(() => {
+    if (singlePlanQuery.data) dispatch(setSinglePlan(singlePlanQuery.data));
+  }, [singlePlanQuery.data, dispatch]);
 
   /* ── Redux state ── */
   const plans = useAppSelector((s) => s.plan.plans);
   const dependencyGraph = useAppSelector((s) => s.plan.dependencyGraph);
-  const selectedPlanId = useAppSelector((s) => s.plan.selectedPlanId);
   const chatMessages = useAppSelector((s) => s.plan.chatMessages);
   const loading = useAppSelector((s) => s.plan.loading);
   const executingPlanId = useAppSelector((s) => s.plan.executingPlanId);
@@ -171,7 +188,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
         const result = await dispatch(generatePlan({ projectId, description, tempId }));
         if (generatePlan.fulfilled.match(result)) {
           dispatch(addNotification({ message: "Plan generated successfully", severity: "success" }));
-          dispatch(fetchPlans({ projectId, background: true }));
+          void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
         } else if (generatePlan.rejected.match(result)) {
           dispatch(
             addNotification({
@@ -259,12 +276,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
     [planContext, chatMessages]
   );
 
-  // Fetch chat history when a plan is selected
-  useEffect(() => {
-    if (planContext) {
-      dispatch(fetchPlanChat({ projectId, context: planContext }));
-    }
-  }, [planContext, projectId, dispatch]);
+  // Plan chat and single plan are loaded via usePlanChat / useSinglePlan and synced to Redux above.
 
   // When sidebar opens: scroll to top of plan content, no animation
   useEffect(() => {
@@ -304,7 +316,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
     }
     const result = await dispatch(executePlan({ projectId, planId }));
     if (executePlan.fulfilled.match(result)) {
-      dispatch(fetchPlans({ projectId, background: true }));
+      void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
     }
   };
 
@@ -314,7 +326,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
     setCrossEpicModal(null);
     const result = await dispatch(executePlan({ projectId, planId, prerequisitePlanIds }));
     if (executePlan.fulfilled.match(result)) {
-      dispatch(fetchPlans({ projectId, background: true }));
+      void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
     }
   };
 
@@ -328,11 +340,11 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
         const planId = planQueueRef.current[0];
         const result = await dispatch(planTasks({ projectId, planId }));
         planQueueRef.current = planQueueRef.current.slice(1);
-        dispatch(fetchPlans({ projectId, background: true }));
-        dispatch(fetchTasks(projectId));
+        void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
         const currentSelected = store.getState().plan.selectedPlanId;
         if (currentSelected === planId) {
-          dispatch(fetchSinglePlan({ projectId, planId }));
+          void queryClient.invalidateQueries({ queryKey: queryKeys.plans.detail(projectId, planId) });
         }
         if (planTasks.fulfilled.match(result)) {
           completed += 1;
@@ -407,7 +419,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
               deps.prerequisitePlanIds.length > 0 ? deps.prerequisitePlanIds : undefined,
           })
         );
-        dispatch(fetchPlans({ projectId, background: true }));
+        void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
         if (executePlan.rejected.match(result)) break;
       }
     } finally {
@@ -418,16 +430,16 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
   const handleReship = async (planId: string) => {
     const result = await dispatch(reExecutePlan({ projectId, planId }));
     if (reExecutePlan.fulfilled.match(result)) {
-      dispatch(fetchPlans({ projectId, background: true }));
+      void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
     }
   };
 
   const handleArchive = async (planId: string) => {
     const result = await dispatch(archivePlan({ projectId, planId }));
     if (archivePlan.fulfilled.match(result)) {
-      dispatch(fetchPlans({ projectId, background: true }));
-      dispatch(fetchTasks(projectId));
-      dispatch(fetchSinglePlan({ projectId, planId }));
+      void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.plans.detail(projectId, planId) });
     }
   };
 
@@ -437,8 +449,8 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
     if (deletePlan.fulfilled.match(result)) {
       setDeleteConfirmPlanId(null);
       dispatch(setSelectedPlanId(null));
-      dispatch(fetchPlans({ projectId, background: true }));
-      dispatch(fetchTasks(projectId));
+      void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
     } else {
       dispatch(
         addNotification({
@@ -482,7 +494,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
       const result = await dispatch(updatePlan({ projectId, planId: selectedPlanId, content }));
       setSavingPlanContentId(null);
       if (updatePlan.fulfilled.match(result)) {
-        dispatch(fetchPlans({ projectId, background: true }));
+        void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
       }
     },
     [dispatch, projectId, selectedPlanId]
@@ -500,12 +512,12 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
     );
 
     if (sendPlanMessage.fulfilled.match(result)) {
-      dispatch(fetchPlans({ projectId, background: true }));
+      void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
       if (selectedPlanId) {
-        dispatch(fetchSinglePlan({ projectId, planId: selectedPlanId }));
+        void queryClient.invalidateQueries({ queryKey: queryKeys.plans.detail(projectId, selectedPlanId!) });
       }
       // Refetch chat history so persisted messages are authoritative in Redux (survives reload)
-      dispatch(fetchPlanChat({ projectId, context: planContext, forceReplace: true }));
+      void planChatQuery.refetch();
     }
 
     setChatSending(false);
@@ -917,13 +929,11 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                             })
                           );
                           if (sendPlanMessage.fulfilled.match(result)) {
-                            dispatch(fetchPlans({ projectId, background: true }));
+                            void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
                             if (selectedPlanId) {
-                              dispatch(fetchSinglePlan({ projectId, planId: selectedPlanId }));
+                              void queryClient.invalidateQueries({ queryKey: queryKeys.plans.detail(projectId, selectedPlanId!) });
                             }
-                            dispatch(
-                              fetchPlanChat({ projectId, context: planContext!, forceReplace: true })
-                            );
+                            void planChatQuery.refetch();
                           } else {
                             throw new Error(result.error?.message ?? "Failed to send");
                           }
