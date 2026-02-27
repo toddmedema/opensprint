@@ -99,14 +99,14 @@ describe("ProjectSetup - Progress indicator", () => {
     renderProjectSetup();
 
     const progressbar = screen.getByRole("progressbar", {
-      name: /step 1 of 6/i,
+      name: /step 1 of 5/i,
     });
     expect(progressbar).toBeInTheDocument();
     expect(progressbar).toHaveAttribute("aria-valuenow", "1");
     expect(progressbar).toHaveAttribute("aria-valuemin", "1");
-    expect(progressbar).toHaveAttribute("aria-valuemax", "6");
+    expect(progressbar).toHaveAttribute("aria-valuemax", "5");
 
-    expect(screen.getByText("Step 1 of 6")).toBeInTheDocument();
+    expect(screen.getByText("Step 1 of 5")).toBeInTheDocument();
     expect(screen.getByText(/Add Existing Project/)).toBeInTheDocument();
     expect(screen.getByText(/— Project Info/)).toBeInTheDocument();
   });
@@ -114,10 +114,10 @@ describe("ProjectSetup - Progress indicator", () => {
   it("progress bar fill reflects current step", () => {
     renderProjectSetup();
 
-    const progressbar = screen.getByRole("progressbar", { name: /step 1 of 6/i });
+    const progressbar = screen.getByRole("progressbar", { name: /step 1 of 5/i });
     const fill = progressbar.querySelector("[style*='width']");
     expect(fill).toBeInTheDocument();
-    expect((fill as HTMLElement).style.width).toMatch(/^16\.6/);
+    expect((fill as HTMLElement).style.width).toBe("20%");
   });
 
   it("updates step label in heading when navigating to next step", async () => {
@@ -129,7 +129,7 @@ describe("ProjectSetup - Progress indicator", () => {
     await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/path/to/repo");
     await user.click(screen.getByRole("button", { name: /next/i }));
 
-    expect(screen.getByRole("progressbar", { name: /step 2 of 6/i })).toBeInTheDocument();
+    expect(screen.getByRole("progressbar", { name: /step 2 of 5/i })).toBeInTheDocument();
     expect(screen.getByText(/— Agent Config/)).toBeInTheDocument();
   });
 });
@@ -145,6 +145,38 @@ describe("ProjectSetup - Cancel button", () => {
     );
     await user.click(screen.getByTestId("cancel-button"));
     expect(screen.getByTestId("location")).toHaveTextContent("/");
+  });
+});
+
+describe("ProjectSetup - Add Existing flow (no Delivery step)", () => {
+  it("does not show Delivery step; flow goes basics → agents → testing → hil → confirm", async () => {
+    const user = userEvent.setup();
+    renderProjectSetup();
+
+    // Step 1: basics
+    await user.type(screen.getByLabelText(/project name/i), "My Project");
+    await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/path/to/repo");
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    // Step 2: agents
+    expect(screen.getByTestId("agents-step")).toBeInTheDocument();
+    expect(screen.queryByTestId("deployment-step")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    // Step 3: testing
+    expect(screen.getByTestId("testing-step")).toBeInTheDocument();
+    expect(screen.queryByTestId("deployment-step")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    // Step 4: hil (skipped deployment)
+    expect(screen.getByTestId("hil-step")).toBeInTheDocument();
+    expect(screen.queryByTestId("deployment-step")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /next/i }));
+
+    // Step 5: confirm
+    expect(screen.getByTestId("confirm-step")).toBeInTheDocument();
+    expect(screen.queryByTestId("deployment-step")).not.toBeInTheDocument();
+    expect(screen.queryByText("Deliver")).not.toBeInTheDocument();
   });
 });
 

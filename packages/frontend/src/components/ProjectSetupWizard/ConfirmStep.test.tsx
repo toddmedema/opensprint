@@ -91,4 +91,9 @@ describe("ConfirmStep", () => {
     renderConfirmStep({ gitWorkingMode: "worktree" });
     expect(screen.queryByText("Git working mode")).not.toBeInTheDocument();
   });
+
+  it("hides Deliver row when hideDeployment is true", () => {
+    renderConfirmStep({ hideDeployment: true });
+    expect(screen.queryByText("Deliver")).not.toBeInTheDocument();
+  });
 });

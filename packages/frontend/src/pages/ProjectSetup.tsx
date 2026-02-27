@@ -8,7 +8,6 @@ import {
   isValidProjectMetadata,
   RepositoryStep,
   AgentsStep,
-  DeploymentStep,
   TestingStep,
   HilStep,
   ConfirmStep,
@@ -17,21 +16,20 @@ import type { ProjectMetadataState } from "../components/ProjectSetupWizard";
 import type {
   AgentType,
   ApiKeys,
-  DeploymentMode,
   GitWorkingMode,
   HilConfig,
   UnknownScopeStrategy,
 } from "@opensprint/shared";
-import { DEFAULT_HIL_CONFIG } from "@opensprint/shared";
+import { DEFAULT_HIL_CONFIG, DEFAULT_DEPLOYMENT_CONFIG } from "@opensprint/shared";
 import { api, isApiError } from "../api/client";
 
-type Step = "basics" | "agents" | "deployment" | "testing" | "hil" | "confirm";
+type Step = "basics" | "agents" | "testing" | "hil" | "confirm";
 
-const STEPS: { key: Step; label: string }[] = [
+/** Add Existing flow: no Delivery step; configure later via project settings. */
+const ADD_EXISTING_STEPS: { key: Step; label: string }[] = [
   { key: "basics", label: "Project Info" },
   { key: "agents", label: "Agent Config" },
   { key: "testing", label: "Execute" },
-  { key: "deployment", label: "Deliver" },
   { key: "hil", label: "Autonomy" },
   { key: "confirm", label: "Confirm" },
 ];
@@ -56,9 +54,6 @@ export function ProjectSetup() {
     model: "",
     cliCommand: "",
   });
-  const [deploymentMode, setDeploymentMode] = useState<DeploymentMode>("custom");
-  const [customDeployCommand, setCustomDeployCommand] = useState("");
-  const [customDeployWebhook, setCustomDeployWebhook] = useState("");
   const [testFramework, setTestFramework] = useState<string>("none");
   const [hilConfig, setHilConfig] = useState<HilConfig>(DEFAULT_HIL_CONFIG);
   const [maxConcurrentCoders, setMaxConcurrentCoders] = useState(1);
@@ -85,7 +80,8 @@ export function ProjectSetup() {
   const [checkingExisting, setCheckingExisting] = useState(false);
   const [apiKeys, setApiKeys] = useState<ApiKeys | undefined>(undefined);
 
-  const currentStepIndex = STEPS.findIndex((s) => s.key === step);
+  const steps = ADD_EXISTING_STEPS;
+  const currentStepIndex = steps.findIndex((s) => s.key === step);
 
   /** Normalize path for comparison (trim, trailing slash optional). */
   const normalizeRepoPath = (p: string) => p.trim().replace(/\/+$/, "") || "";
@@ -185,18 +181,7 @@ export function ProjectSetup() {
               ? complexComplexityAgent.cliCommand.trim()
               : null,
         },
-        deployment: {
-          mode: deploymentMode,
-          expoConfig: deploymentMode === "expo" ? { channel: "preview" } : undefined,
-          customCommand:
-            deploymentMode === "custom" && customDeployCommand.trim()
-              ? customDeployCommand.trim()
-              : undefined,
-          webhookUrl:
-            deploymentMode === "custom" && customDeployWebhook.trim()
-              ? customDeployWebhook.trim()
-              : undefined,
-        },
+        deployment: { ...DEFAULT_DEPLOYMENT_CONFIG },
         hilConfig,
         testFramework: testFramework === "none" ? null : testFramework,
         maxConcurrentCoders: gitWorkingMode === "branches" ? 1 : maxConcurrentCoders,
@@ -234,7 +219,7 @@ export function ProjectSetup() {
             <h1 className="text-2xl font-bold text-theme-text">
               {isAddExisting ? "Add Existing Project" : "Create New Project"}
               <span className="text-theme-muted font-normal text-lg ml-2">
-                — {STEPS[currentStepIndex]?.label ?? step}
+                — {steps[currentStepIndex]?.label ?? step}
               </span>
             </h1>
             <button
@@ -252,18 +237,18 @@ export function ProjectSetup() {
             role="progressbar"
             aria-valuenow={currentStepIndex + 1}
             aria-valuemin={1}
-            aria-valuemax={STEPS.length}
-            aria-label={`Step ${currentStepIndex + 1} of ${STEPS.length}`}
+            aria-valuemax={steps.length}
+            aria-label={`Step ${currentStepIndex + 1} of ${steps.length}`}
             className="mb-4"
           >
             <p className="text-sm text-theme-muted mb-1.5">
-              Step {currentStepIndex + 1} of {STEPS.length}
+              Step {currentStepIndex + 1} of {steps.length}
             </p>
             <div className="h-1.5 w-full rounded-full bg-theme-border overflow-hidden">
               <div
                 className="h-full rounded-full bg-brand-600 transition-[width] duration-200 ease-out"
                 style={{
-                  width: `${((currentStepIndex + 1) / STEPS.length) * 100}%`,
+                  width: `${((currentStepIndex + 1) / steps.length) * 100}%`,
                 }}
               />
             </div>
@@ -325,17 +310,6 @@ export function ProjectSetup() {
               />
             )}
 
-            {step === "deployment" && (
-              <DeploymentStep
-                mode={deploymentMode}
-                customCommand={customDeployCommand}
-                customWebhook={customDeployWebhook}
-                onModeChange={setDeploymentMode}
-                onCustomCommandChange={setCustomDeployCommand}
-                onCustomWebhookChange={setCustomDeployWebhook}
-              />
-            )}
-
             {step === "hil" && <HilStep value={hilConfig} onChange={setHilConfig} />}
 
             {step === "confirm" && (
@@ -344,13 +318,11 @@ export function ProjectSetup() {
                 repoPath={repoPath}
                 simpleComplexityAgent={simpleComplexityAgent}
                 complexComplexityAgent={complexComplexityAgent}
-                deploymentMode={deploymentMode}
-                customDeployCommand={customDeployCommand}
-                customDeployWebhook={customDeployWebhook}
                 testFramework={testFramework}
                 maxConcurrentCoders={maxConcurrentCoders}
                 unknownScopeStrategy={unknownScopeStrategy}
                 gitWorkingMode={gitWorkingMode}
+                hideDeployment
               />
             )}
           </div>
@@ -372,7 +344,7 @@ export function ProjectSetup() {
               <button
                 onClick={() => {
                   setMetadataError(null);
-                  setStep(STEPS[currentStepIndex - 1]?.key ?? "basics");
+                  setStep(steps[currentStepIndex - 1]?.key ?? "basics");
                 }}
                 className="btn-secondary"
               >
@@ -403,7 +375,7 @@ export function ProjectSetup() {
               </button>
             ) : (
               <button
-                onClick={() => setStep(STEPS[currentStepIndex + 1]?.key ?? "confirm")}
+                onClick={() => setStep(steps[currentStepIndex + 1]?.key ?? "confirm")}
                 disabled={
                   step === "agents" &&
                   ((simpleComplexityAgent.type === "custom" &&

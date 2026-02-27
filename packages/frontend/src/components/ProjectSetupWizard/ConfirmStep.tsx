@@ -6,15 +6,17 @@ export interface ConfirmStepProps {
   repoPath: string;
   simpleComplexityAgent: AgentConfig;
   complexComplexityAgent: AgentConfig;
-  deploymentMode: string;
-  customDeployCommand: string;
-  customDeployWebhook: string;
+  deploymentMode?: string;
+  customDeployCommand?: string;
+  customDeployWebhook?: string;
   testFramework: string;
   maxConcurrentCoders: number;
   /** Shown in summary when maxConcurrentCoders > 1 */
   unknownScopeStrategy?: UnknownScopeStrategy;
   /** Shown in summary when Branches selected */
   gitWorkingMode?: "worktree" | "branches";
+  /** Hide Deliver row (e.g. Add Existing flow; configure later via project settings) */
+  hideDeployment?: boolean;
 }
 
 export function ConfirmStep({
@@ -22,13 +24,14 @@ export function ConfirmStep({
   repoPath,
   simpleComplexityAgent,
   complexComplexityAgent,
-  deploymentMode,
-  customDeployCommand,
-  customDeployWebhook,
+  deploymentMode = "custom",
+  customDeployCommand = "",
+  customDeployWebhook = "",
   testFramework,
   maxConcurrentCoders,
   unknownScopeStrategy,
   gitWorkingMode,
+  hideDeployment = false,
 }: ConfirmStepProps) {
   const providerDisplayName = (type: string) => {
     switch (type) {
@@ -59,10 +62,10 @@ export function ConfirmStep({
 
   const deploymentLabel =
     deploymentMode === "custom"
-      ? customDeployCommand.trim()
-        ? `Custom: ${customDeployCommand.trim()}`
-        : customDeployWebhook.trim()
-          ? `Webhook: ${customDeployWebhook.trim()}`
+      ? (customDeployCommand ?? "").trim()
+        ? `Custom: ${(customDeployCommand ?? "").trim()}`
+        : (customDeployWebhook ?? "").trim()
+          ? `Webhook: ${(customDeployWebhook ?? "").trim()}`
           : "Custom (not configured)"
       : "Expo";
 
@@ -91,10 +94,12 @@ export function ConfirmStep({
           <dt className="text-theme-muted">Task Complexity — Complex</dt>
           <dd className="font-medium capitalize">{complexComplexityLabel}</dd>
         </div>
-        <div className="flex justify-between">
-          <dt className="text-theme-muted">Deliver</dt>
-          <dd className="font-medium">{deploymentLabel}</dd>
-        </div>
+        {!hideDeployment && (
+          <div className="flex justify-between">
+            <dt className="text-theme-muted">Deliver</dt>
+            <dd className="font-medium">{deploymentLabel}</dd>
+          </div>
+        )}
         <div className="flex justify-between">
           <dt className="text-theme-muted">Test Framework</dt>
           <dd className="font-medium">{testLabel}</dd>
