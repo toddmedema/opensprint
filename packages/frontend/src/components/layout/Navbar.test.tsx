@@ -16,6 +16,7 @@ import websocketReducer from "../../store/slices/websocketSlice";
 
 const mockGetSettings = vi.fn();
 const mockProjectsList = vi.fn();
+const mockGetGlobalStatus = vi.fn();
 vi.mock("../../api/client", () => ({
   api: {
     projects: {
@@ -30,7 +31,7 @@ vi.mock("../../api/client", () => ({
         claudeCli: true,
         useCustomCli: false,
       }),
-      getGlobalStatus: vi.fn().mockResolvedValue({ hasAnyKey: true, useCustomCli: false }),
+      getGlobalStatus: (...args: unknown[]) => mockGetGlobalStatus(...args),
     },
   },
 }));
@@ -38,6 +39,7 @@ vi.mock("../../api/client", () => ({
 const storage: Record<string, string> = {};
 beforeEach(() => {
   mockProjectsList.mockResolvedValue([]);
+  mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: true, useCustomCli: false });
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => storage[key] ?? null,
     setItem: (key: string, value: string) => {
@@ -358,6 +360,37 @@ describe("Navbar", () => {
     expect(screen.getByText("Settings")).toBeInTheDocument();
     expect(screen.getByTestId("display-section")).toBeInTheDocument();
     expect(screen.getByTestId("theme-option-light")).toBeInTheDocument();
+  });
+
+  it("shows ApiKeySetupModal when Create New Project clicked and no API keys", async () => {
+    mockProjectsList.mockResolvedValue([]);
+    mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: false, useCustomCli: false });
+    const user = userEvent.setup();
+    renderNavbar(<Navbar project={null} />);
+
+    const trigger = screen.getByRole("button", { name: /All Projects/i });
+    await user.click(trigger);
+
+    const createNewButton = screen.getByRole("button", { name: /Create New Project/i });
+    await user.click(createNewButton);
+
+    expect(screen.getByTestId("api-key-setup-modal")).toBeInTheDocument();
+    expect(screen.getByText("Enter agent API key")).toBeInTheDocument();
+  });
+
+  it("shows ApiKeySetupModal when Add Existing Project clicked and no API keys", async () => {
+    mockProjectsList.mockResolvedValue([]);
+    mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: false, useCustomCli: false });
+    const user = userEvent.setup();
+    renderNavbar(<Navbar project={null} />);
+
+    const trigger = screen.getByRole("button", { name: /All Projects/i });
+    await user.click(trigger);
+
+    const addExistingButton = screen.getByRole("button", { name: /Add Existing Project/i });
+    await user.click(addExistingButton);
+
+    expect(screen.getByTestId("api-key-setup-modal")).toBeInTheDocument();
   });
 
   it("theme is configurable from project settings Display section", async () => {
