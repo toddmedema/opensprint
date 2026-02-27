@@ -277,7 +277,7 @@ describe("HomeScreen", () => {
     expect(screen.getByRole("heading", { name: /delete project/i })).toBeInTheDocument();
     expect(
       screen.getByText(
-        /delete all OpenSprint-related data from the project folder\. Task data in the global store is not removed/i
+        /permanently delete all OpenSprint data for this project: tasks, plans, settings, feedback/i
       )
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /cancel/i })).toBeInTheDocument();

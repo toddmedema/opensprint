@@ -257,7 +257,7 @@ describe("ProjectService", () => {
   it("should save testFramework when provided", async () => {
     const repoPath = path.join(tempDir, "jest-project");
 
-    await projectService.createProject({
+    const project = await projectService.createProject({
       name: "Jest Project",
 
       repoPath,
@@ -275,7 +275,7 @@ describe("ProjectService", () => {
   it("should persist customCommand and webhookUrl when deployment mode is custom", async () => {
     const repoPath = path.join(tempDir, "custom-deploy");
 
-    await projectService.createProject({
+    const project = await projectService.createProject({
       name: "Custom Deploy Project",
 
       repoPath,
@@ -301,7 +301,7 @@ describe("ProjectService", () => {
   it("should not persist customCommand/webhookUrl when deployment mode is expo", async () => {
     const repoPath = path.join(tempDir, "expo-ignores-custom");
 
-    await projectService.createProject({
+    const project = await projectService.createProject({
       name: "Expo Ignores Custom",
 
       repoPath,
@@ -325,7 +325,7 @@ describe("ProjectService", () => {
   it("should normalize invalid deployment mode to custom", async () => {
     const repoPath = path.join(tempDir, "invalid-deployment");
 
-    await projectService.createProject({
+    const project = await projectService.createProject({
       name: "Invalid Deployment",
 
       repoPath,
@@ -343,7 +343,7 @@ describe("ProjectService", () => {
   it("should merge partial hilConfig with defaults", async () => {
     const repoPath = path.join(tempDir, "partial-hil");
 
-    await projectService.createProject({
+    const project = await projectService.createProject({
       name: "Partial HIL",
 
       repoPath,
@@ -731,5 +731,27 @@ describe("ProjectService", () => {
     const afterRaw = await fs.readFile(indexPath, "utf-8");
     const after = JSON.parse(afterRaw) as { projects: Array<{ id: string }> };
     expect(after.projects.some((p) => p.id === project.id)).toBe(false);
+  });
+
+  it("deleteProject removes feedback-assets from global store", async () => {
+    const repoPath = path.join(tempDir, "delete-feedback-assets-test");
+    const project = await projectService.createProject({
+      name: "Delete Feedback Assets",
+      repoPath,
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+    });
+
+    const feedbackAssetsDir = path.join(tempDir, ".opensprint", "feedback-assets", project.id);
+    await fs.mkdir(path.join(feedbackAssetsDir, "fb-1"), { recursive: true });
+    await fs.writeFile(path.join(feedbackAssetsDir, "fb-1", "0.png"), "fake-png");
+
+    await projectService.deleteProject(project.id);
+
+    await expect(fs.stat(feedbackAssetsDir)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 });

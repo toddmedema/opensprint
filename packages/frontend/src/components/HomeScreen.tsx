@@ -347,7 +347,7 @@ export function HomeScreen() {
       {deleteModal && (
         <ProjectActionConfirmModal
           title="Delete project"
-          message="This will remove the project from the UI and delete all OpenSprint-related data from the project folder. Task data in the global store is not removed."
+          message="This will remove the project from the UI and permanently delete all OpenSprint data for this project: tasks, plans, settings, feedback, and all data in the project folder."
           onConfirm={handleDelete}
           onCancel={() => setDeleteModal(null)}
           confirming={confirming}

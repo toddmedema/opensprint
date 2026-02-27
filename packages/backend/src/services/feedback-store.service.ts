@@ -23,6 +23,25 @@ function getFeedbackAssetsDir(projectId: string, feedbackId: string): string {
   return path.join(getFeedbackAssetsBaseDir(), projectId, feedbackId);
 }
 
+function getFeedbackAssetsProjectDir(projectId: string): string {
+  return path.join(getFeedbackAssetsBaseDir(), projectId);
+}
+
+/**
+ * Delete all feedback asset images for a project from ~/.opensprint/feedback-assets/<project_id>/.
+ * Call when deleting a project to remove all project-keyed data from global storage.
+ */
+export async function deleteFeedbackAssetsForProject(projectId: string): Promise<void> {
+  const dir = getFeedbackAssetsProjectDir(projectId);
+  try {
+    await fs.rm(dir, { recursive: true, force: true });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      log.warn("Failed to delete feedback assets for project", { projectId, err });
+    }
+  }
+}
+
 /** Ensure status is pending, resolved, or cancelled. */
 function ensureStatus(s: string): "pending" | "resolved" | "cancelled" {
   if (s === "resolved" || s === "cancelled") return s;

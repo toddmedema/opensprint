@@ -32,6 +32,7 @@ import {
   deleteSettingsFromStore,
   getSettingsWithMetaFromStore,
 } from "./settings-store.service.js";
+import { deleteFeedbackAssetsForProject } from "./feedback-store.service.js";
 import { BranchManager } from "./branch-manager.js";
 import { detectTestFramework } from "./test-framework.service.js";
 import { ensureEasConfig } from "./eas-config.js";
@@ -762,7 +763,7 @@ export class ProjectService {
     this.invalidateListCache();
   }
 
-  /** Delete a project: remove from index and delete .opensprint directory. Task data lives in the global store (~/.opensprint/tasks.db) and is not per-repo. */
+  /** Delete a project: remove all project data from global store and delete .opensprint directory. */
   async deleteProject(id: string): Promise<void> {
     const project = await this.getProject(id);
     const repoPath = project.repoPath;
@@ -785,6 +786,7 @@ export class ProjectService {
 
     await this.taskStore.deleteByProjectId(id);
     await deleteSettingsFromStore(id);
+    await deleteFeedbackAssetsForProject(id);
 
     const opensprintPath = path.join(repoPath, OPENSPRINT_DIR);
     try {
