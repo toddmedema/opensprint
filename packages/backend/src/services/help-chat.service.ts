@@ -8,6 +8,7 @@ import { getAgentForPlanningRole, AGENT_ROLE_LABELS, OPENSPRINT_PATHS } from "@o
 import path from "path";
 import fs from "fs/promises";
 import os from "os";
+import { fileURLToPath } from "url";
 import { ProjectService } from "./project.service.js";
 import { PrdService } from "./prd.service.js";
 import { PlanService } from "./plan.service.js";
@@ -37,10 +38,29 @@ Your role is to help users understand their projects, tasks, plans, and currentl
 - When asked "how many agents are running" or similar, report the exact count and list each agent from the "Currently Running Agents" section — never say "(None)" if the context shows agents
 - Answer questions about OpenSprint workflow (Sketch, Plan, Execute, Evaluate, Deliver)
 - Point users to where they can take action (e.g. "Use the Execute tab to run tasks")
-- Describe agent roles and phases when asked`;
+- Describe agent roles and phases when asked
+- Use the "OpenSprint Internal Documentation" section to explain internal behavior (scheduling, task runnability, why one coder is active, epic-blocked logic, loop kicker vs watchdog). Never say "I don't have access" — you have the docs.`;
 
 /** Max chars per section in context to avoid token overflow */
 const MAX_CONTEXT_CHARS = 8000;
+
+/** Max chars for OpenSprint internal docs section */
+const MAX_DOCS_CHARS = 12000;
+
+/** Path to bundled OpenSprint internal docs (relative to backend package) */
+const OPENSPRINT_HELP_DOCS_PATH = "docs/opensprint-help-context.md";
+
+/** Load OpenSprint internal docs for Help Chat context. Returns empty string if file not found. */
+async function loadOpenSprintDocs(): Promise<string> {
+  try {
+    const servicesDir = path.dirname(fileURLToPath(import.meta.url));
+    const docsPath = path.resolve(servicesDir, "..", "..", OPENSPRINT_HELP_DOCS_PATH);
+    const content = await fs.readFile(docsPath, "utf-8");
+    return truncate(content, MAX_DOCS_CHARS);
+  } catch {
+    return "";
+  }
+}
 
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
@@ -217,12 +237,19 @@ export class HelpChatService {
       await this.projectService.getProject(projectId!);
     }
 
-    const context =
+    const [context, opensprintDocs] = await Promise.all([
       isProjectView && projectId
-        ? await this.buildProjectContext(projectId)
-        : await this.buildHomepageContext();
+        ? this.buildProjectContext(projectId)
+        : this.buildHomepageContext(),
+      loadOpenSprintDocs(),
+    ]);
 
-    const systemPrompt = `${HELP_SYSTEM_PROMPT}\n\n---\n\n## Current Context\n\nThe following context is provided for answering the user's question. Use it to give accurate, helpful answers.\n\n${context}`;
+    const docsSection =
+      opensprintDocs.length > 0
+        ? `\n\n---\n\n## OpenSprint Internal Documentation\n\nThe following describes OpenSprint's internal behavior. Use it to answer questions about scheduling, config, orchestrator logic, task runnability, epic-blocked behavior, and why agents run (or don't run).\n\n${opensprintDocs}`
+        : "";
+
+    const systemPrompt = `${HELP_SYSTEM_PROMPT}\n\n---\n\n## Current Context\n\nThe following context is provided for answering the user's question. Use it to give accurate, helpful answers.\n\n${context}${docsSection}`;
 
     const priorMessages = (body.messages ?? []).map((m) => ({
       role: m.role as "user" | "assistant",

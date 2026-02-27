@@ -121,6 +121,20 @@ describe("Help chat API", () => {
     );
   });
 
+  it("POST /help/chat injects OpenSprint internal docs into system prompt", async () => {
+    await request(app)
+      .post(`${API_PREFIX}/help/chat`)
+      .send({ message: "Why is only one coder active?", projectId });
+
+    const systemPrompt = mockInvokePlanningAgent.mock.calls[0]![0].systemPrompt as string;
+    expect(systemPrompt).toContain("OpenSprint Internal Documentation");
+    expect(systemPrompt).toContain("TaskStoreService");
+    expect(systemPrompt).toContain("ready()");
+    expect(systemPrompt).toContain("maxConcurrentCoders");
+    expect(systemPrompt).toContain("loop kicker");
+    expect(systemPrompt).toContain("Watchdog");
+  });
+
   it("POST /help/chat returns 400 when message is empty", async () => {
     const res = await request(app).post(`${API_PREFIX}/help/chat`).send({ message: "" });
     expect(res.status).toBe(400);
