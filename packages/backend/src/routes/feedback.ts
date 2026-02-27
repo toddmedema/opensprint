@@ -62,9 +62,11 @@ feedbackRouter.post(
   "/:feedbackId/recategorize",
   async (req: Request<FeedbackParams>, res, next) => {
     try {
+      const answer = req.body?.answer as string | undefined;
       const item = await feedbackService.recategorizeFeedback(
         req.params.projectId,
-        req.params.feedbackId
+        req.params.feedbackId,
+        answer ? { answer } : undefined
       );
       orchestratorService.nudge(req.params.projectId);
       const body: ApiResponse<FeedbackItem> = { data: item };

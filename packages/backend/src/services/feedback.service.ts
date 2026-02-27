@@ -1107,8 +1107,14 @@ export class FeedbackService {
   /**
    * Re-categorize a single feedback item (resets to pending, enqueues for Analyst).
    * Used for manual retry from the UI. Orchestrator will process from inbox.
+   * When answer is provided (e.g. from open-question resolution), appends it to feedback text
+   * so the Analyst receives the clarification.
    */
-  async recategorizeFeedback(projectId: string, feedbackId: string): Promise<FeedbackItem> {
+  async recategorizeFeedback(
+    projectId: string,
+    feedbackId: string,
+    options?: { answer?: string }
+  ): Promise<FeedbackItem> {
     const item = await this.getFeedback(projectId, feedbackId);
     item.status = "pending";
     item.category = "bug";
@@ -1118,6 +1124,12 @@ export class FeedbackService {
     item.createdTaskIds = [];
     item.taskTitles = undefined;
     item.proposedTasks = undefined;
+
+    if (options?.answer?.trim()) {
+      const separator = "\n\n---\n\n**Clarification:** ";
+      item.text = `${item.text}${separator}${options.answer.trim()}`;
+    }
+
     await this.saveFeedback(projectId, item);
 
     await this.enqueueForCategorization(projectId, feedbackId);

@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useMemo, useEffect, useLayoutEffect, memo } from "react";
-import type { FeedbackItem } from "@opensprint/shared";
+import type { FeedbackItem, Notification } from "@opensprint/shared";
 import { PRIORITY_LABELS } from "@opensprint/shared";
 import {
   loadFeedbackFormDraft,
@@ -13,6 +13,7 @@ import {
   cancelFeedback,
   removeFeedbackItem,
   fetchMoreFeedback,
+  recategorizeFeedback,
 } from "../../store/slices/evalSlice";
 import {
   fetchTasks,
@@ -29,6 +30,7 @@ import { useImageDragOverPage } from "../../hooks/useImageDragOverPage";
 import { useSubmitShortcut } from "../../hooks/useSubmitShortcut";
 import { useScrollToQuestion } from "../../hooks/useScrollToQuestion";
 import { useOpenQuestionNotifications } from "../../hooks/useOpenQuestionNotifications";
+import { api } from "../../api/client";
 import { CONTENT_CONTAINER_CLASS } from "../../lib/constants";
 
 /** Reply icon (message turn / corner up-right) */
@@ -239,6 +241,16 @@ interface FeedbackCardProps {
   questionId?: string | null;
   /** Map of feedbackId -> notificationId for nested feedback cards */
   questionIdByFeedbackId?: Record<string, string>;
+  /** Open-question notification for this feedback (when Analyst needs clarification) */
+  notification?: Notification | null;
+  /** Map of feedbackId -> notification for nested cards to look up their notification */
+  notificationByFeedbackId?: Record<string, Notification>;
+  /** Resolve notification and re-enqueue feedback for Analyst retry with answer */
+  onAnswerOpenQuestion?: (feedbackId: string, notificationId: string, answer: string) => void;
+  /** Resolve notification without re-enqueueing (dismiss) */
+  onDismissOpenQuestion?: (feedbackId: string, notificationId: string) => void;
+  /** Whether answer/dismiss is in progress */
+  answeringOpenQuestion?: boolean;
 }
 
 const FADE_OUT_DURATION_MS = 500;
@@ -264,9 +276,15 @@ const FeedbackCard = memo(
     tasks,
     questionId,
     questionIdByFeedbackId,
+    notification,
+    notificationByFeedbackId,
+    onAnswerOpenQuestion,
+    onDismissOpenQuestion,
+    answeringOpenQuestion = false,
   }: FeedbackCardProps) {
     const { item, children } = node;
     const [replyText, setReplyText] = useState("");
+    const [answerText, setAnswerText] = useState("");
     const replyImages = useImageAttachment();
     const isReplying = replyingToId === item.id;
     const isCollapsed = collapsedIds.has(item.id);
@@ -418,6 +436,60 @@ const FeedbackCard = memo(
                   className="h-16 w-16 object-cover rounded border border-theme-border"
                 />
               ))}
+            </div>
+          )}
+
+          {/* Open questions (Analyst needs clarification) — Answer/Dismiss controls */}
+          {notification && notification.questions.length > 0 && (
+            <div
+              className="mt-3 p-3 rounded-lg border border-theme-border bg-theme-border-subtle/30"
+              data-testid="feedback-open-questions"
+            >
+              <p className="text-xs font-medium text-theme-muted mb-2">
+                The Analyst needs clarification before categorizing:
+              </p>
+              <ul className="list-disc list-inside text-sm text-theme-text space-y-1 mb-3">
+                {notification.questions.map((q) => (
+                  <li key={q.id}>{q.text}</li>
+                ))}
+              </ul>
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="flex-1 min-w-[200px]">
+                  <textarea
+                    className="input text-sm min-h-[60px] w-full"
+                    value={answerText}
+                    onChange={(e) => setAnswerText(e.target.value)}
+                    placeholder="Type your answer..."
+                    disabled={answeringOpenQuestion}
+                    data-testid="feedback-answer-input"
+                  />
+                </div>
+                <div className="flex gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (answerText.trim() && onAnswerOpenQuestion) {
+                        onAnswerOpenQuestion(item.id, notification.id, answerText.trim());
+                        setAnswerText("");
+                      }
+                    }}
+                    disabled={!answerText.trim() || answeringOpenQuestion}
+                    className="btn-primary text-sm py-1.5 px-3 disabled:opacity-50"
+                    data-testid="feedback-answer-submit"
+                  >
+                    {answeringOpenQuestion ? "Submitting..." : "Answer"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDismissOpenQuestion?.(item.id, notification.id)}
+                    disabled={answeringOpenQuestion}
+                    className="btn-secondary text-sm py-1.5 px-3 disabled:opacity-50"
+                    data-testid="feedback-dismiss-question"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -582,6 +654,11 @@ const FeedbackCard = memo(
               tasks={tasks}
               questionId={questionIdByFeedbackId?.[child.item.id]}
               questionIdByFeedbackId={questionIdByFeedbackId}
+              notification={notificationByFeedbackId?.[child.item.id]}
+              notificationByFeedbackId={notificationByFeedbackId}
+              onAnswerOpenQuestion={onAnswerOpenQuestion}
+              onDismissOpenQuestion={onDismissOpenQuestion}
+              answeringOpenQuestion={answeringOpenQuestion}
             />
           ))}
       </div>
@@ -597,6 +674,9 @@ const FeedbackCard = memo(
     if (prev.tasks !== next.tasks) return false;
     if (prev.questionId !== next.questionId) return false;
     if (prev.questionIdByFeedbackId !== next.questionIdByFeedbackId) return false;
+    if (prev.notification !== next.notification) return false;
+    if (prev.notificationByFeedbackId !== next.notificationByFeedbackId) return false;
+    if (prev.answeringOpenQuestion !== next.answeringOpenQuestion) return false;
     return true;
   }
 );
@@ -886,6 +966,46 @@ export function EvalPhase({
     }
     return map;
   }, [openQuestionNotifications]);
+  const notificationByFeedbackId = useMemo(() => {
+    const map: Record<string, Notification> = {};
+    for (const n of openQuestionNotifications) {
+      if (n.source === "eval" && n.sourceId) {
+        map[n.sourceId] = n;
+      }
+    }
+    return map;
+  }, [openQuestionNotifications]);
+
+  const [answerNotificationId, setAnswerNotificationId] = useState<string | null>(null);
+  const answeringOpenQuestion = answerNotificationId != null;
+
+  const handleAnswerOpenQuestion = useCallback(
+    async (feedbackId: string, notificationId: string, answer: string) => {
+      if (!answer.trim()) return;
+      setAnswerNotificationId(notificationId);
+      try {
+        await api.notifications.resolve(projectId, notificationId);
+        await dispatch(
+          recategorizeFeedback({ projectId, feedbackId, answer: answer.trim() })
+        ).unwrap();
+      } finally {
+        setAnswerNotificationId(null);
+      }
+    },
+    [dispatch, projectId]
+  );
+
+  const handleDismissOpenQuestion = useCallback(
+    async (feedbackId: string, notificationId: string) => {
+      setAnswerNotificationId(notificationId);
+      try {
+        await api.notifications.resolve(projectId, notificationId);
+      } finally {
+        setAnswerNotificationId(null);
+      }
+    },
+    [projectId]
+  );
 
   return (
     <div className="h-full flex flex-col min-h-0">
@@ -1073,6 +1193,11 @@ export function EvalPhase({
                     tasks={tasks}
                     questionId={questionIdByFeedbackId[node.item.id]}
                     questionIdByFeedbackId={questionIdByFeedbackId}
+                    notification={notificationByFeedbackId[node.item.id]}
+                    notificationByFeedbackId={notificationByFeedbackId}
+                    onAnswerOpenQuestion={handleAnswerOpenQuestion}
+                    onDismissOpenQuestion={handleDismissOpenQuestion}
+                    answeringOpenQuestion={answeringOpenQuestion}
                   />
                 ))}
               </div>

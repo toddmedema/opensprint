@@ -318,4 +318,32 @@ describe("Feedback REST API", () => {
     expect(res.status).toBe(404);
     expect(res.body.error?.code).toBe("FEEDBACK_NOT_FOUND");
   });
+
+  it("POST /projects/:id/feedback/:feedbackId/recategorize should accept answer and append to feedback text", async () => {
+    await feedbackStore.insertFeedback(
+      projectId,
+      {
+        id: "fb-recat-1",
+        text: "Vague feedback",
+        category: "bug",
+        mappedPlanId: null,
+        createdTaskIds: [],
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      },
+      null
+    );
+
+    const res = await request(app)
+      .post(`${API_PREFIX}/projects/${projectId}/feedback/fb-recat-1/recategorize`)
+      .send({ answer: "It happens on the login screen" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.id).toBe("fb-recat-1");
+    expect(res.body.data.status).toBe("pending");
+
+    const saved = await feedbackStore.getFeedback(projectId, "fb-recat-1");
+    expect(saved.text).toContain("Vague feedback");
+    expect(saved.text).toContain("**Clarification:** It happens on the login screen");
+  });
 });

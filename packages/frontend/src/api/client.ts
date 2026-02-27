@@ -391,9 +391,10 @@ export const api = {
       }),
     get: (projectId: string, feedbackId: string) =>
       request<FeedbackItem>(`/projects/${projectId}/feedback/${feedbackId}`),
-    recategorize: (projectId: string, feedbackId: string) =>
+    recategorize: (projectId: string, feedbackId: string, answer?: string) =>
       request<FeedbackItem>(`/projects/${projectId}/feedback/${feedbackId}/recategorize`, {
         method: "POST",
+        body: answer != null ? JSON.stringify({ answer }) : undefined,
       }),
     resolve: (projectId: string, feedbackId: string) =>
       request<FeedbackItem>(`/projects/${projectId}/feedback/${feedbackId}/resolve`, {

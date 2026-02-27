@@ -95,8 +95,16 @@ export const submitFeedback = createAsyncThunk(
 
 export const recategorizeFeedback = createAsyncThunk(
   "eval/recategorizeFeedback",
-  async ({ projectId, feedbackId }: { projectId: string; feedbackId: string }) => {
-    return api.feedback.recategorize(projectId, feedbackId);
+  async ({
+    projectId,
+    feedbackId,
+    answer,
+  }: {
+    projectId: string;
+    feedbackId: string;
+    answer?: string;
+  }) => {
+    return api.feedback.recategorize(projectId, feedbackId, answer);
   }
 );
 

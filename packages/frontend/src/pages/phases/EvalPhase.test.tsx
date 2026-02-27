@@ -57,9 +57,22 @@ vi.mock("../../api/client", () => ({
           createdAt: new Date().toISOString(),
         })
       ),
+      recategorize: vi.fn().mockImplementation(
+        (_projectId: string, feedbackId: string, answer?: string) =>
+          Promise.resolve({
+            id: feedbackId,
+            text: answer ? `Feedback with answer: ${answer}` : "Recategorized feedback",
+            category: "bug",
+            mappedPlanId: null,
+            createdTaskIds: [],
+            status: "pending",
+            createdAt: new Date().toISOString(),
+          })
+      ),
     },
     notifications: {
       listByProject: vi.fn().mockResolvedValue([]),
+      resolve: vi.fn().mockResolvedValue({ id: "oq-1", status: "resolved" }),
     },
     tasks: {
       list: vi.fn().mockResolvedValue([]),
@@ -552,6 +565,99 @@ describe("EvalPhase feedback form", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("feedback-priority-select")).not.toBeDisabled();
+    });
+  });
+
+  describe("open questions (Analyst clarification)", () => {
+    const openQuestionNotification = {
+      id: "oq-1",
+      projectId: "proj-1",
+      source: "eval" as const,
+      sourceId: "fb-1",
+      questions: [
+        { id: "q1", text: "Which screen does this happen on?", createdAt: "2024-01-01T00:00:00Z" },
+      ],
+      status: "open" as const,
+      createdAt: "2024-01-01T00:00:00Z",
+      resolvedAt: null,
+    };
+
+    it("renders open questions when notification exists for feedback", async () => {
+      const { api } = await import("../../api/client");
+      vi.mocked(api.notifications.listByProject).mockResolvedValue([openQuestionNotification]);
+
+      const store = createStore({ evalFeedback: mockFeedbackItems });
+      render(
+        <MemoryRouter>
+          <Provider store={store}>
+            <EvalPhase projectId="proj-1" />
+          </Provider>
+        </MemoryRouter>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("feedback-open-questions")).toBeInTheDocument();
+      });
+
+      expect(screen.getByText(/The Analyst needs clarification before categorizing/)).toBeInTheDocument();
+      expect(screen.getByText("Which screen does this happen on?")).toBeInTheDocument();
+      expect(screen.getByTestId("feedback-answer-input")).toBeInTheDocument();
+      expect(screen.getByTestId("feedback-answer-submit")).toBeInTheDocument();
+      expect(screen.getByTestId("feedback-dismiss-question")).toBeInTheDocument();
+    });
+
+    it("Answer button resolves notification and recategorizes with answer", async () => {
+      const { api } = await import("../../api/client");
+      vi.mocked(api.notifications.listByProject).mockResolvedValue([openQuestionNotification]);
+
+      const store = createStore({ evalFeedback: mockFeedbackItems });
+      const user = userEvent.setup();
+      render(
+        <MemoryRouter>
+          <Provider store={store}>
+            <EvalPhase projectId="proj-1" />
+          </Provider>
+        </MemoryRouter>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("feedback-open-questions")).toBeInTheDocument();
+      });
+
+      const answerInput = screen.getByTestId("feedback-answer-input");
+      await user.type(answerInput, "Login screen");
+      await user.click(screen.getByTestId("feedback-answer-submit"));
+
+      await waitFor(() => {
+        expect(api.notifications.resolve).toHaveBeenCalledWith("proj-1", "oq-1");
+      });
+      expect(api.feedback.recategorize).toHaveBeenCalledWith("proj-1", "fb-1", "Login screen");
+    });
+
+    it("Dismiss button resolves notification without recategorizing", async () => {
+      const { api } = await import("../../api/client");
+      vi.mocked(api.notifications.listByProject).mockResolvedValue([openQuestionNotification]);
+
+      const store = createStore({ evalFeedback: mockFeedbackItems });
+      const user = userEvent.setup();
+      render(
+        <MemoryRouter>
+          <Provider store={store}>
+            <EvalPhase projectId="proj-1" />
+          </Provider>
+        </MemoryRouter>
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId("feedback-open-questions")).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByTestId("feedback-dismiss-question"));
+
+      await waitFor(() => {
+        expect(api.notifications.resolve).toHaveBeenCalledWith("proj-1", "oq-1");
+      });
+      expect(api.feedback.recategorize).not.toHaveBeenCalled();
     });
   });
 
