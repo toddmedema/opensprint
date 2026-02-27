@@ -167,7 +167,7 @@ html[data-theme="dark"] {
   }
 
   body {
-    @apply antialiased;
+    @apply font-sans antialiased;
   }
 }
 

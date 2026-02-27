@@ -135,7 +135,7 @@ export function Navbar({
               <polygon points="22,10 54,40 22,70" fill="#818cf8" />
               <polygon points="40,10 72,40 40,70" fill="#4f46e5" />
             </svg>
-            <span className="font-semibold text-lg text-theme-text">Open Sprint</span>
+            <span className="font-serif font-semibold text-lg text-theme-text">Open Sprint</span>
           </Link>
 
           <div className="relative flex items-center" ref={dropdownRef}>
