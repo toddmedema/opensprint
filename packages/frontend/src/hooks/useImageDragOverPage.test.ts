@@ -27,7 +27,8 @@ describe("useImageDragOverPage", () => {
 
   it("returns false initially", () => {
     const { result } = renderHook(() => useImageDragOverPage());
-    expect(result.current).toBe(false);
+    expect(result.current.isDraggingImage).toBe(false);
+    expect(typeof result.current.clearDragState).toBe("function");
   });
 
   it("returns true after dragenter with image files", () => {
@@ -45,7 +46,7 @@ describe("useImageDragOverPage", () => {
       dragEnterHandler(event);
     });
 
-    expect(result.current).toBe(true);
+    expect(result.current.isDraggingImage).toBe(true);
   });
 
   it("stays false when dragenter has no image files", () => {
@@ -63,7 +64,7 @@ describe("useImageDragOverPage", () => {
       dragEnterHandler(event);
     });
 
-    expect(result.current).toBe(false);
+    expect(result.current.isDraggingImage).toBe(false);
   });
 
   it("returns false after dragleave when pointer leaves drop zone", () => {
@@ -80,13 +81,13 @@ describe("useImageDragOverPage", () => {
     act(() => {
       dragEnterHandler(enterEvent);
     });
-    expect(result.current).toBe(true);
+    expect(result.current.isDraggingImage).toBe(true);
 
     const leaveEvent = new Event("dragleave", { bubbles: true }) as DragEvent;
     act(() => {
       dragLeaveHandler(leaveEvent);
     });
-    expect(result.current).toBe(false);
+    expect(result.current.isDraggingImage).toBe(false);
   });
 
   it("returns false after dragend", () => {
@@ -103,12 +104,12 @@ describe("useImageDragOverPage", () => {
     act(() => {
       dragEnterHandler(enterEvent);
     });
-    expect(result.current).toBe(true);
+    expect(result.current.isDraggingImage).toBe(true);
 
     act(() => {
       dragEndHandler();
     });
-    expect(result.current).toBe(false);
+    expect(result.current.isDraggingImage).toBe(false);
   });
 
   it("returns false after drop", () => {
@@ -125,12 +126,34 @@ describe("useImageDragOverPage", () => {
     act(() => {
       dragEnterHandler(enterEvent);
     });
-    expect(result.current).toBe(true);
+    expect(result.current.isDraggingImage).toBe(true);
 
     act(() => {
       dropHandler();
     });
-    expect(result.current).toBe(false);
+    expect(result.current.isDraggingImage).toBe(false);
+  });
+
+  it("returns false after clearDragState", () => {
+    const { result } = renderHook(() => useImageDragOverPage());
+
+    const dataTransfer = {
+      types: ["Files"],
+      items: [{ kind: "file", type: "image/png" }] as unknown as DataTransferItemList,
+    } as DataTransfer;
+
+    const enterEvent = new Event("dragenter", { bubbles: true }) as DragEvent;
+    Object.defineProperty(enterEvent, "dataTransfer", { value: dataTransfer, writable: false });
+
+    act(() => {
+      dragEnterHandler(enterEvent);
+    });
+    expect(result.current.isDraggingImage).toBe(true);
+
+    act(() => {
+      result.current.clearDragState();
+    });
+    expect(result.current.isDraggingImage).toBe(false);
   });
 
   it("returns false after mouseup (fallback when dragend does not fire, e.g. external drag)", () => {
@@ -147,11 +170,11 @@ describe("useImageDragOverPage", () => {
     act(() => {
       dragEnterHandler(enterEvent);
     });
-    expect(result.current).toBe(true);
+    expect(result.current.isDraggingImage).toBe(true);
 
     act(() => {
       mouseUpHandler();
     });
-    expect(result.current).toBe(false);
+    expect(result.current.isDraggingImage).toBe(false);
   });
 });

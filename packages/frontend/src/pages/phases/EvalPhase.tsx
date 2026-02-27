@@ -224,6 +224,7 @@ interface FeedbackCardProps {
   onToggleCollapse: (id: string) => void;
   submitting: boolean;
   isDraggingImage: boolean;
+  clearDragState: () => void;
   tasks: Array<{ id: string; kanbanColumn: string }>;
 }
 
@@ -246,6 +247,7 @@ const FeedbackCard = memo(
     onToggleCollapse,
     submitting,
     isDraggingImage,
+    clearDragState,
     tasks,
   }: FeedbackCardProps) {
     const { item, children } = node;
@@ -458,7 +460,10 @@ const FeedbackCard = memo(
             variant="reply"
             isDraggingImage={isDraggingImage}
             onDragOver={replyImages.handleDragOver}
-            onDrop={replyImages.handleDrop}
+            onDrop={async (e) => {
+              clearDragState();
+              await replyImages.handleDrop(e);
+            }}
             className="mt-2 ml-0 card p-3"
             data-testid="reply-drop-zone"
           >
@@ -528,6 +533,7 @@ const FeedbackCard = memo(
               onToggleCollapse={onToggleCollapse}
               submitting={submitting}
               isDraggingImage={isDraggingImage}
+              clearDragState={clearDragState}
               tasks={tasks}
             />
           ))}
@@ -541,6 +547,7 @@ const FeedbackCard = memo(
     if (prev.replyingToId !== next.replyingToId) return false;
     if (prev.submitting !== next.submitting) return false;
     if (prev.isDraggingImage !== next.isDraggingImage) return false;
+    if (prev.clearDragState !== next.clearDragState) return false;
     if (prev.tasks !== next.tasks) return false;
     return true;
   }
@@ -579,7 +586,7 @@ export function EvalPhase({
   const initialDraft = useMemo(() => loadFeedbackFormDraft(projectId), [projectId]);
   const [input, setInput] = useState(initialDraft.text);
   const imageAttachment = useImageAttachment(initialDraft.images);
-  const isDraggingImage = useImageDragOverPage();
+  const { isDraggingImage, clearDragState } = useImageDragOverPage();
   const [priority, setPriority] = useState<number | null>(initialDraft.priority);
 
   /* Sync state when projectId changes (e.g. navigate to different project) */
@@ -814,7 +821,10 @@ export function EvalPhase({
             variant="main"
             isDraggingImage={isDraggingImage}
             onDragOver={imageAttachment.handleDragOver}
-            onDrop={imageAttachment.handleDrop}
+            onDrop={async (e) => {
+              clearDragState();
+              await imageAttachment.handleDrop(e);
+            }}
             className="card p-5 mb-8"
             data-testid="main-feedback-drop-zone"
           >
@@ -980,6 +990,7 @@ export function EvalPhase({
                     onToggleCollapse={handleToggleCollapse}
                     submitting={submitting}
                     isDraggingImage={isDraggingImage}
+                    clearDragState={clearDragState}
                     tasks={tasks}
                   />
                 ))}

@@ -16,11 +16,18 @@ function hasImageFiles(dataTransfer: DataTransfer | null): boolean {
   return false;
 }
 
+export interface UseImageDragOverPageReturn {
+  /** Whether an image is currently being dragged over the page */
+  isDraggingImage: boolean;
+  /** Call when a drop is handled on a drop zone — ensures overlay hides immediately (belt-and-suspenders with document-level drop) */
+  clearDragState: () => void;
+}
+
 /**
  * Tracks when the user is dragging image files over the document.
  * Used to show drop zone overlays on the Evaluate page.
  */
-export function useImageDragOverPage(): boolean {
+export function useImageDragOverPage(): UseImageDragOverPageReturn {
   const [isDragging, setIsDragging] = useState(false);
   const dragCounterRef = { current: 0 };
 
@@ -56,20 +63,26 @@ export function useImageDragOverPage(): boolean {
     setIsDragging(false);
   }, []);
 
+  const clearDragState = useCallback(() => {
+    dragCounterRef.current = 0;
+    setIsDragging(false);
+  }, []);
+
   useEffect(() => {
     document.addEventListener("dragenter", handleDragEnter);
     document.addEventListener("dragleave", handleDragLeave);
     document.addEventListener("dragend", handleDragEnd);
-    document.addEventListener("drop", handleDrop);
+    // Use capture so we receive drop before ImageDropZone's stopPropagation prevents bubbling
+    document.addEventListener("drop", handleDrop, { capture: true });
     document.addEventListener("mouseup", handleMouseUp);
     return () => {
       document.removeEventListener("dragenter", handleDragEnter);
       document.removeEventListener("dragleave", handleDragLeave);
       document.removeEventListener("dragend", handleDragEnd);
-      document.removeEventListener("drop", handleDrop);
+      document.removeEventListener("drop", handleDrop, { capture: true });
       document.removeEventListener("mouseup", handleMouseUp);
     };
   }, [handleDragEnter, handleDragLeave, handleDragEnd, handleDrop, handleMouseUp]);
 
-  return isDragging;
+  return { isDraggingImage: isDragging, clearDragState };
 }

@@ -2485,5 +2485,47 @@ describe("EvalPhase feedback form", () => {
       const replyZone = screen.getByTestId("reply-drop-zone");
       expect(replyZone).toBeInTheDocument();
     });
+
+    it("drop target hides immediately when image is dropped onto it", async () => {
+      const store = createStore();
+      render(
+        <Provider store={store}>
+          <EvalPhase projectId="proj-1" />
+        </Provider>
+      );
+
+      await waitFor(() => expect(screen.getByTestId("main-feedback-drop-zone")).toBeInTheDocument());
+
+      const dataTransfer = {
+        types: ["Files"],
+        items: [{ kind: "file", type: "image/png" }] as unknown as DataTransferItemList,
+        files: [] as FileList,
+      } as DataTransfer;
+
+      const dragEnterEvent = new Event("dragenter", { bubbles: true }) as DragEvent;
+      Object.defineProperty(dragEnterEvent, "dataTransfer", { value: dataTransfer, writable: false });
+
+      await act(async () => {
+        document.dispatchEvent(dragEnterEvent);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("Drop here for new feedback")).toBeInTheDocument();
+      });
+
+      const dropEvent = new Event("drop", { bubbles: true }) as DragEvent;
+      Object.defineProperty(dropEvent, "dataTransfer", { value: dataTransfer, writable: false });
+      Object.defineProperty(dropEvent, "preventDefault", { value: vi.fn(), writable: false });
+      Object.defineProperty(dropEvent, "stopPropagation", { value: vi.fn(), writable: false });
+
+      const mainZone = screen.getByTestId("main-feedback-drop-zone");
+      await act(async () => {
+        mainZone.dispatchEvent(dropEvent);
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByText("Drop here for new feedback")).not.toBeInTheDocument();
+      });
+    });
   });
 });
