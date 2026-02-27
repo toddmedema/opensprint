@@ -181,12 +181,13 @@ export function ExecutePhase({
   );
 
   useScrollToQuestion();
-  const openQuestionNotifications = useOpenQuestionNotifications(projectId);
-  const taskNotificationId =
-    effectiveSelectedTask &&
-    openQuestionNotifications.find(
-      (n) => n.source === "execute" && n.sourceId === effectiveSelectedTask
-    )?.id;
+  const { notifications: openQuestionNotifications, refetch: refetchNotifications } =
+    useOpenQuestionNotifications(projectId);
+  const taskNotification =
+    (effectiveSelectedTask &&
+      openQuestionNotifications.find(
+        (n) => n.source === "execute" && n.sourceId === effectiveSelectedTask
+      )) ?? null;
 
   return (
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
@@ -311,7 +312,8 @@ export function ExecutePhase({
               projectId={projectId}
               selectedTask={effectiveSelectedTask}
               selectedTaskData={selectedTaskData ?? null}
-              questionId={taskNotificationId}
+              openQuestionNotification={taskNotification}
+              onOpenQuestionResolved={refetchNotifications}
               taskDetailLoading={taskDetailLoading}
               taskDetailError={taskDetailError}
               agentOutput={selectedAgentOutput}

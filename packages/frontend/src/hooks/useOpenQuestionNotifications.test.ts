@@ -16,9 +16,10 @@ describe("useOpenQuestionNotifications", () => {
     vi.mocked(api.notifications.listByProject).mockResolvedValue([]);
   });
 
-  it("returns empty array when projectId is null", () => {
+  it("returns empty notifications and refetch when projectId is null", () => {
     const { result } = renderHook(() => useOpenQuestionNotifications(null));
-    expect(result.current).toEqual([]);
+    expect(result.current.notifications).toEqual([]);
+    expect(typeof result.current.refetch).toBe("function");
     expect(api.notifications.listByProject).not.toHaveBeenCalled();
   });
 
@@ -40,7 +41,7 @@ describe("useOpenQuestionNotifications", () => {
     const { result } = renderHook(() => useOpenQuestionNotifications("p1"));
 
     await waitFor(() => {
-      expect(result.current).toEqual(mockNotifications);
+      expect(result.current.notifications).toEqual(mockNotifications);
     });
     expect(api.notifications.listByProject).toHaveBeenCalledWith("p1");
   });
@@ -51,7 +52,7 @@ describe("useOpenQuestionNotifications", () => {
     const { result } = renderHook(() => useOpenQuestionNotifications("p1"));
 
     await waitFor(() => {
-      expect(result.current).toEqual([]);
+      expect(result.current.notifications).toEqual([]);
     });
   });
 });

@@ -8,7 +8,10 @@ const POLL_INTERVAL_MS = 5000;
  * Fetches open-question notifications for a project.
  * Used by phases to add data-question-id to question blocks for scroll-to-target.
  */
-export function useOpenQuestionNotifications(projectId: string | null): Notification[] {
+export function useOpenQuestionNotifications(projectId: string | null): {
+  notifications: Notification[];
+  refetch: () => void;
+} {
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const fetchNotifications = useCallback(() => {
@@ -23,5 +26,5 @@ export function useOpenQuestionNotifications(projectId: string | null): Notifica
     return () => clearInterval(interval);
   }, [fetchNotifications, projectId]);
 
-  return notifications;
+  return { notifications, refetch: fetchNotifications };
 }

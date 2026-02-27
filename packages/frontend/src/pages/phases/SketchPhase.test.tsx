@@ -36,7 +36,7 @@ const mockPrdUpload = vi.fn();
 const mockPlansDecompose = vi.fn();
 
 vi.mock("../../hooks/useOpenQuestionNotifications", () => ({
-  useOpenQuestionNotifications: () => [],
+  useOpenQuestionNotifications: () => ({ notifications: [], refetch: () => {} }),
 }));
 vi.mock("../../components/prd/PrdSectionEditor", () => ({
   PrdSectionEditor: ({

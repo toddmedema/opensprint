@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState } from "react";
 import { useAutoScroll } from "../../hooks/useAutoScroll";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { AgentSession, Plan, Task } from "@opensprint/shared";
+import type { AgentSession, Notification, Plan, Task } from "@opensprint/shared";
 import { PRIORITY_LABELS, AGENT_ROLE_LABELS } from "@opensprint/shared";
 import type { ActiveTaskInfo } from "../../store/slices/executeSlice";
 import { useAppDispatch } from "../../store";
@@ -20,6 +20,8 @@ import { ArchivedSessionView } from "./ArchivedSessionView";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { SourceFeedbackSection } from "./SourceFeedbackSection";
 import { AddLinkFlow } from "./AddLinkFlow";
+import { OpenQuestionsBlock } from "../OpenQuestionsBlock";
+import { api } from "../../api/client";
 
 export interface TaskDetailSidebarProps {
   projectId: string;
@@ -53,8 +55,10 @@ export interface TaskDetailSidebarProps {
   setArtifactsSectionExpanded: React.Dispatch<React.SetStateAction<boolean>>;
   onNavigateToPlan?: (planId: string) => void;
   onClose: () => void;
-  /** Notification ID for scroll-to-question when this task has open questions */
-  questionId?: string | null;
+  /** Open question notification for this task (renders block with Answer/Dismiss) */
+  openQuestionNotification?: Notification | null;
+  /** Called when open question is resolved (refetch notifications) */
+  onOpenQuestionResolved?: () => void;
   onMarkDone: () => void;
   onUnblock: () => void;
   onSelectTask: (taskId: string) => void;
@@ -94,7 +98,8 @@ export function TaskDetailSidebar({
   setArtifactsSectionExpanded,
   onNavigateToPlan,
   onClose,
-  questionId,
+  openQuestionNotification,
+  onOpenQuestionResolved,
   onMarkDone,
   onUnblock,
   onSelectTask,
@@ -240,10 +245,21 @@ export function TaskDetailSidebar({
         </div>
       </div>
 
-      <div
-        className="flex-1 overflow-y-auto min-h-0"
-        {...(questionId && { "data-question-id": questionId })}
-      >
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {/* Open questions block — when coder needs clarification */}
+        {openQuestionNotification && task && (
+          <OpenQuestionsBlock
+            notification={openQuestionNotification}
+            projectId={projectId}
+            source="execute"
+            sourceId={selectedTask}
+            onResolved={onOpenQuestionResolved ?? (() => {})}
+            onAnswerSent={async (message) => {
+              await api.chat.send(projectId, message, `execute:${selectedTask}`);
+            }}
+          />
+        )}
+
         <div className="p-4 border-b border-theme-border has-[+_[data-section=view-plan-deps-addlink]]:border-b-0">
           {task && (
             <>

@@ -956,7 +956,7 @@ export function EvalPhase({
   const feedbackTree = useMemo(() => buildFeedbackTree(filteredFeedback), [filteredFeedback]);
 
   useScrollToQuestion();
-  const openQuestionNotifications = useOpenQuestionNotifications(projectId);
+  const { notifications: openQuestionNotifications } = useOpenQuestionNotifications(projectId);
   const questionIdByFeedbackId = useMemo(() => {
     const map: Record<string, string> = {};
     for (const n of openQuestionNotifications) {

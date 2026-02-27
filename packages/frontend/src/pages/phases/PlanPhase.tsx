@@ -33,6 +33,7 @@ import { PlanFilterToolbar, type PlanViewMode } from "../../components/plan/Plan
 import { EpicCard } from "../../components/EpicCard";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
 import { ChatInput } from "../../components/ChatInput";
+import { OpenQuestionsBlock } from "../../components/OpenQuestionsBlock";
 import { fetchTasks, selectTasksForEpic } from "../../store/slices/executeSlice";
 import { usePlanFilter } from "../../hooks/usePlanFilter";
 import { useScrollToQuestion } from "../../hooks/useScrollToQuestion";
@@ -135,12 +136,13 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
     handleSearchKeyDown,
   } = usePlanFilter();
   useScrollToQuestion();
-  const openQuestionNotifications = useOpenQuestionNotifications(projectId);
-  const planNotificationId =
-    selectedPlanId &&
-    openQuestionNotifications.find(
-      (n) => n.source === "plan" && n.sourceId === selectedPlanId
-    )?.id;
+  const { notifications: openQuestionNotifications, refetch: refetchNotifications } =
+    useOpenQuestionNotifications(projectId);
+  const planNotification =
+    (selectedPlanId &&
+      openQuestionNotifications.find(
+        (n) => n.source === "plan" && n.sourceId === selectedPlanId
+      )) ?? null;
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
   const prevChatMessageCountRef = useRef(0);
 
@@ -898,11 +900,42 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                       )}
                     </div>
 
+                    {/* Open questions block — when planner needs clarification */}
+                    {planNotification && (
+                      <OpenQuestionsBlock
+                        notification={planNotification}
+                        projectId={projectId}
+                        source="plan"
+                        sourceId={selectedPlan.metadata.planId}
+                        onResolved={refetchNotifications}
+                        onAnswerSent={async (message) => {
+                          const result = await dispatch(
+                            sendPlanMessage({
+                              projectId,
+                              message,
+                              context: planContext!,
+                            })
+                          );
+                          if (sendPlanMessage.fulfilled.match(result)) {
+                            dispatch(fetchPlans({ projectId, background: true }));
+                            if (selectedPlanId) {
+                              dispatch(fetchSinglePlan({ projectId, planId: selectedPlanId }));
+                            }
+                            dispatch(
+                              fetchPlanChat({ projectId, context: planContext!, forceReplace: true })
+                            );
+                          } else {
+                            throw new Error(result.error?.message ?? "Failed to send");
+                          }
+                        }}
+                      />
+                    )}
+
                     {/* Chat messages */}
                     <div
                       className="p-4"
                       data-testid="plan-chat-messages"
-                      {...(planNotificationId && { "data-question-id": planNotificationId })}
+                      {...(planNotification && { "data-question-id": planNotification.id })}
                     >
                       <h4 className="text-xs font-medium text-theme-muted uppercase tracking-wide mb-3">
                         Refine with AI
@@ -963,7 +996,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                 <div
                   className="p-4"
                   data-testid="plan-chat-messages"
-                  {...(planNotificationId && { "data-question-id": planNotificationId })}
+                  {...(planNotification && { "data-question-id": planNotification.id })}
                 >
                   <h4 className="text-xs font-medium text-theme-muted uppercase tracking-wide mb-3">
                     Refine with AI

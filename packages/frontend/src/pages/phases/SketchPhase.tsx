@@ -156,7 +156,7 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
   }, []);
 
   useScrollToQuestion();
-  const openQuestionNotifications = useOpenQuestionNotifications(projectId);
+  const { notifications: openQuestionNotifications } = useOpenQuestionNotifications(projectId);
   const questionIdBySection = React.useMemo(() => {
     const map: Record<string, string> = {};
     for (const n of openQuestionNotifications) {
