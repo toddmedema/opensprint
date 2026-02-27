@@ -8,6 +8,7 @@ import {
   executePlan,
   reExecutePlan,
   planTasks,
+  fetchPlans,
   archivePlan,
   deletePlan,
   sendPlanMessage,
@@ -340,8 +341,8 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
         const planId = planQueueRef.current[0];
         const result = await dispatch(planTasks({ projectId, planId }));
         planQueueRef.current = planQueueRef.current.slice(1);
-        void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
+        dispatch(fetchPlans({ projectId, background: true }));
+        // planTasksListener dispatches fetchTasks on planTasks.fulfilled for live updates
         const currentSelected = store.getState().plan.selectedPlanId;
         if (currentSelected === planId) {
           void queryClient.invalidateQueries({ queryKey: queryKeys.plans.detail(projectId, planId) });
