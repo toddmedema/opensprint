@@ -11,6 +11,7 @@ import planReducer from "../store/slices/planSlice";
 
 const mockProjectsList = vi.fn().mockResolvedValue([]);
 const mockAgentsActive = vi.fn().mockResolvedValue([]);
+const mockAgentsKill = vi.fn().mockResolvedValue({ killed: true });
 
 vi.mock("../api/client", () => ({
   api: {
@@ -19,6 +20,7 @@ vi.mock("../api/client", () => ({
     },
     agents: {
       active: (...args: unknown[]) => mockAgentsActive(...args),
+      kill: (...args: unknown[]) => mockAgentsKill(...args),
     },
   },
 }));
@@ -46,6 +48,7 @@ describe("GlobalActiveAgentsList", () => {
     vi.clearAllMocks();
     mockProjectsList.mockResolvedValue([]);
     mockAgentsActive.mockResolvedValue([]);
+    mockAgentsKill.mockResolvedValue({ killed: true });
   });
 
   it("renders button agent icons at 1.5rem with 2px left margin when display mode is both", async () => {
@@ -289,5 +292,96 @@ describe("GlobalActiveAgentsList", () => {
         startedAt: "2026-02-16T12:00:00.000Z",
       },
     ]);
+  });
+
+  it("shows confirmation dialog when Kill button is clicked", async () => {
+    mockProjectsList.mockResolvedValue([{ id: "proj-1", name: "Project A" }]);
+    mockAgentsActive.mockResolvedValue([
+      {
+        id: "task-1",
+        phase: "coding",
+        role: "coder",
+        label: "Task 1",
+        startedAt: "2026-02-16T12:00:00.000Z",
+      },
+    ]);
+
+    renderGlobalActiveAgentsList();
+    await waitFor(() => {
+      expect(screen.getByText("1 agent running")).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTitle("Active agents"));
+
+    const killButton = screen.getByRole("button", { name: "Kill agent" });
+    await user.click(killButton);
+
+    expect(screen.getByRole("dialog", { name: /kill agent/i })).toBeInTheDocument();
+    expect(screen.getByText("Are you sure you want to kill this agent?")).toBeInTheDocument();
+  });
+
+  it("calls kill API when Confirm is clicked in dialog", async () => {
+    mockProjectsList.mockResolvedValue([{ id: "proj-1", name: "Project A" }]);
+    mockAgentsActive.mockResolvedValue([
+      {
+        id: "task-1",
+        phase: "coding",
+        role: "coder",
+        label: "Task 1",
+        startedAt: "2026-02-16T12:00:00.000Z",
+      },
+    ]);
+
+    renderGlobalActiveAgentsList();
+    await waitFor(() => {
+      expect(screen.getByText("1 agent running")).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTitle("Active agents"));
+
+    const killButton = screen.getByRole("button", { name: "Kill agent" });
+    await user.click(killButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: /kill agent/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => {
+      expect(mockAgentsKill).toHaveBeenCalledWith("proj-1", "task-1");
+    });
+  });
+
+  it("skips confirmation dialog when opensprint.killAgentConfirmDisabled is true", async () => {
+    localStorage.setItem("opensprint.killAgentConfirmDisabled", "true");
+    mockProjectsList.mockResolvedValue([{ id: "proj-1", name: "Project A" }]);
+    mockAgentsActive.mockResolvedValue([
+      {
+        id: "task-1",
+        phase: "coding",
+        role: "coder",
+        label: "Task 1",
+        startedAt: "2026-02-16T12:00:00.000Z",
+      },
+    ]);
+
+    renderGlobalActiveAgentsList();
+    await waitFor(() => {
+      expect(screen.getByText("1 agent running")).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTitle("Active agents"));
+
+    const killButton = screen.getByRole("button", { name: "Kill agent" });
+    await user.click(killButton);
+
+    expect(screen.queryByRole("dialog", { name: /kill agent/i })).not.toBeInTheDocument();
+    expect(mockAgentsKill).toHaveBeenCalledWith("proj-1", "task-1");
+
+    localStorage.removeItem("opensprint.killAgentConfirmDisabled");
   });
 });

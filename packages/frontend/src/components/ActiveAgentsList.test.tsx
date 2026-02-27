@@ -525,7 +525,7 @@ describe("ActiveAgentsList", () => {
     expect(killButton).toBeInTheDocument();
   });
 
-  it("calls kill API when Kill button is clicked", async () => {
+  it("shows confirmation dialog when Kill button is clicked", async () => {
     const startedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     mockAgentsActive.mockResolvedValue([
       {
@@ -548,6 +548,71 @@ describe("ActiveAgentsList", () => {
     const killButton = screen.getByRole("button", { name: "Kill agent" });
     await user.click(killButton);
 
+    expect(screen.getByRole("dialog", { name: /kill agent/i })).toBeInTheDocument();
+    expect(screen.getByText("Are you sure you want to kill this agent?")).toBeInTheDocument();
+  });
+
+  it("calls kill API when Confirm is clicked in dialog", async () => {
+    const startedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    mockAgentsActive.mockResolvedValue([
+      {
+        id: "task-1",
+        phase: "coding",
+        role: "coder",
+        label: "Task 1",
+        startedAt,
+      },
+    ]);
+
+    renderActiveAgentsList();
+    await waitFor(() => {
+      expect(screen.getByText("1 agent running")).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTitle("Active agents"));
+
+    const killButton = screen.getByRole("button", { name: "Kill agent" });
+    await user.click(killButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: /kill agent/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => {
+      expect(mockAgentsKill).toHaveBeenCalledWith("proj-1", "task-1");
+    });
+  });
+
+  it("skips confirmation dialog when opensprint.killAgentConfirmDisabled is true", async () => {
+    localStorage.setItem("opensprint.killAgentConfirmDisabled", "true");
+    const startedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    mockAgentsActive.mockResolvedValue([
+      {
+        id: "task-1",
+        phase: "coding",
+        role: "coder",
+        label: "Task 1",
+        startedAt,
+      },
+    ]);
+
+    renderActiveAgentsList();
+    await waitFor(() => {
+      expect(screen.getByText("1 agent running")).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTitle("Active agents"));
+
+    const killButton = screen.getByRole("button", { name: "Kill agent" });
+    await user.click(killButton);
+
+    expect(screen.queryByRole("dialog", { name: /kill agent/i })).not.toBeInTheDocument();
     expect(mockAgentsKill).toHaveBeenCalledWith("proj-1", "task-1");
+
+    localStorage.removeItem("opensprint.killAgentConfirmDisabled");
   });
 });

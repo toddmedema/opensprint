@@ -18,6 +18,8 @@ import { setSelectedPlanId } from "../store/slices/planSlice";
 import { useDisplayPreferences } from "../contexts/DisplayPreferencesContext";
 import { UptimeDisplay } from "./UptimeDisplay";
 import { api } from "../api/client";
+import { getKillAgentConfirmDisabled } from "../lib/killAgentConfirmStorage";
+import { KillAgentConfirmDialog } from "./KillAgentConfirmDialog";
 
 /** Circled X icon (⊗) for Kill button */
 function KillAgentCircledXIcon({ className = "w-4 h-4" }: { className?: string }) {
@@ -110,22 +112,38 @@ const GlobalAgentDropdownItem = memo(function GlobalAgentDropdownItem({
   onKillSuccess: () => void;
 }) {
   const [killing, setKilling] = useState(false);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const roleForDesc = getAgentRoleForDescription(agent);
   const description = roleForDesc ? AGENT_ROLE_DESCRIPTIONS[roleForDesc] : undefined;
+
+  const performKill = useCallback(() => {
+    setKilling(true);
+    api.agents
+      .kill(project.id, agent.id)
+      .then(() => onKillSuccess())
+      .finally(() => {
+        setKilling(false);
+        setShowConfirmDialog(false);
+      });
+  }, [project.id, agent.id, onKillSuccess]);
 
   const handleKill = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
       e.preventDefault();
       if (killing) return;
-      setKilling(true);
-      api.agents
-        .kill(project.id, agent.id)
-        .then(() => onKillSuccess())
-        .finally(() => setKilling(false));
+      if (getKillAgentConfirmDisabled()) {
+        performKill();
+      } else {
+        setShowConfirmDialog(true);
+      }
     },
-    [project.id, agent.id, killing, onKillSuccess]
+    [killing, performKill]
   );
+
+  const handleConfirm = useCallback(() => {
+    performKill();
+  }, [performKill]);
 
   return (
     <li role="option" className="group flex items-stretch">
@@ -164,6 +182,15 @@ const GlobalAgentDropdownItem = memo(function GlobalAgentDropdownItem({
       >
         <KillAgentCircledXIcon className="w-4 h-4" />
       </button>
+      {showConfirmDialog &&
+        createPortal(
+          <KillAgentConfirmDialog
+            onConfirm={handleConfirm}
+            onCancel={() => setShowConfirmDialog(false)}
+            confirming={killing}
+          />,
+          document.body
+        )}
     </li>
   );
 });
@@ -234,6 +261,7 @@ export function GlobalActiveAgentsList() {
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       const target = event.target as Node;
+      if ((target as Element).closest?.("[data-kill-agent-dialog]")) return;
       if (
         dropdownRef.current &&
         !dropdownRef.current.contains(target) &&
