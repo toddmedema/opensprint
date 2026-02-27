@@ -115,6 +115,21 @@ export interface FeedbackResolvedEvent {
   item: FeedbackItem;
 }
 
+/** Emitted when an agent emits open questions (e.g. Analyst fail-early for vague feedback) */
+export interface NotificationAddedEvent {
+  type: "notification.added";
+  notification: {
+    id: string;
+    projectId: string;
+    source: "plan" | "prd" | "execute" | "eval";
+    sourceId: string;
+    questions: Array<{ id: string; text: string; createdAt?: string }>;
+    status: "open";
+    createdAt: string;
+    resolvedAt: string | null;
+  };
+}
+
 export interface PlanUpdatedEvent {
   type: "plan.updated";
   planId: string;
@@ -170,6 +185,7 @@ export type ServerEvent =
   | FeedbackMappedEvent
   | FeedbackUpdatedEvent
   | FeedbackResolvedEvent
+  | NotificationAddedEvent
   | PlanUpdatedEvent
   | PlanGeneratedEvent;
 

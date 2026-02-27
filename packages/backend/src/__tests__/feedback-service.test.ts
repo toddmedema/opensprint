@@ -797,6 +797,52 @@ describe("FeedbackService", () => {
     });
   });
 
+  it("should emit notification and re-enqueue when Analyst returns open_questions (fail-early for vague feedback)", async () => {
+    mockInvoke.mockResolvedValue({
+      content: JSON.stringify({
+        category: "ux",
+        mapped_plan_id: null,
+        proposed_tasks: [],
+        open_questions: [
+          { id: "q1", text: "Which screen or flow does this refer to?" },
+          { id: "q2", text: "What specific behavior do you want changed?" },
+        ],
+      }),
+    });
+
+    const item = await feedbackService.submitFeedback(projectId, {
+      text: "fix it",
+    });
+
+    await feedbackService.processFeedbackWithAnalyst(projectId, item.id);
+
+    const updated = await feedbackService.getFeedback(projectId, item.id);
+    expect(updated.createdTaskIds).toEqual([]);
+    expect(mockTaskStoreCreate).not.toHaveBeenCalled();
+    expect(mockTaskStoreCreateWithRetry).not.toHaveBeenCalled();
+
+    const { broadcastToProject } = await import("../websocket/index.js");
+    expect(broadcastToProject).toHaveBeenCalledWith(
+      projectId,
+      expect.objectContaining({
+        type: "notification.added",
+        notification: expect.objectContaining({
+          projectId,
+          source: "eval",
+          sourceId: item.id,
+          status: "open",
+          questions: expect.arrayContaining([
+            expect.objectContaining({ id: "q1", text: "Which screen or flow does this refer to?" }),
+            expect.objectContaining({ id: "q2", text: "What specific behavior do you want changed?" }),
+          ]),
+        }),
+      })
+    );
+
+    const pending = await feedbackService.listPendingFeedbackIds(projectId);
+    expect(pending).toContain(item.id);
+  });
+
   it("should fall through to create when similar_existing_task_id is invalid", async () => {
     mockTaskStoreListAll.mockResolvedValue([]);
     mockInvoke.mockResolvedValue({

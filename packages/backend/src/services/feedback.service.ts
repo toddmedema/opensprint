@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import type {
   FeedbackItem,
   FeedbackSubmitRequest,
@@ -18,6 +19,7 @@ import { taskStore as taskStoreSingleton } from "./task-store.service.js";
 import { planComplexityToTask } from "./plan-complexity.js";
 import { feedbackStore } from "./feedback-store.service.js";
 import { writeFeedbackImages } from "./feedback-store.service.js";
+import { notificationService } from "./notification.service.js";
 import { broadcastToProject } from "../websocket/index.js";
 import { extractJsonFromAgentResponse } from "../utils/json-extract.js";
 import { JSON_OUTPUT_PREAMBLE } from "../utils/agent-prompts.js";
@@ -42,6 +44,8 @@ const FEEDBACK_CATEGORIZATION_PROMPT = `You are an AI assistant that categorizes
 ${JSON_OUTPUT_PREAMBLE}
 
 **Category guide:** bug = broken/incorrect behavior; feature = new capability request; ux = usability/copy/layout improvement; scope = fundamental requirement change requiring PRD update.
+
+**Fail-early when feedback is too vague:** When the feedback is too vague, ambiguous, or insufficient to categorize or create tasks (e.g. single word, unclear intent, missing context), return a non-empty \`open_questions\` array instead of categorizing. Do NOT create tasks or link to existing. The user will answer these questions before the Analyst proceeds. Use open_questions only when you genuinely cannot proceed; otherwise categorize normally.
 
 **Plan/epic association:** Associate feedback to a plan/epic ONLY when there is a VERY CLEAR link. When feedback does not clearly map to work in an existing plan/epic, use mapped_plan_id: null and mapped_epic_id: null. In that case, proposed_tasks create top-level (standalone) tasks — do not force feedback into an existing plan when the link is ambiguous.
 
@@ -75,8 +79,11 @@ JSON format:
   ],
   "link_to_existing_task_ids": ["task-id-1", "task-id-2"],
   "similar_existing_task_id": "task-id or null",
-  "update_existing_tasks": { "task-id": { "title": "...", "description": "..." } }
+  "update_existing_tasks": { "task-id": { "title": "...", "description": "..." } },
+  "open_questions": [{ "id": "q1", "text": "Clarification question..." }]
 }
+
+When feedback is too vague: return non-empty open_questions with id and text per question. Do not set proposed_tasks or link_to_existing_task_ids. When open_questions is non-empty, the system will not create tasks or link to existing. Omit open_questions (or use empty array) when you can categorize normally.
 
 priority: 0 (highest) to 4 (lowest). depends_on: array of task indices (0-based) this task is blocked by. complexity: simple or complex — assign per task based on implementation difficulty.`;
 
@@ -513,6 +520,47 @@ export class FeedbackService {
           !Array.isArray(rawUpdates)
             ? (rawUpdates as Record<string, { title?: string; description?: string }>)
             : {};
+
+        // open_questions (Analyst fail-early): when feedback is too vague, emit notification and re-enqueue — do NOT create tasks or link
+        const rawOpenQuestions = parsed.open_questions ?? parsed.openQuestions;
+        const openQuestions: Array<{ id: string; text: string }> = Array.isArray(rawOpenQuestions)
+          ? rawOpenQuestions
+              .filter(
+                (q: unknown) =>
+                  q && typeof q === "object" && typeof (q as { text?: unknown }).text === "string"
+              )
+              .map((q: unknown) => {
+                const qq = q as { id?: string; text: string };
+                return {
+                  id:
+                    typeof qq.id === "string" ? qq.id : `q-${crypto.randomBytes(4).toString("hex")}`,
+                  text: String(qq.text).trim(),
+                };
+              })
+          : [];
+        if (openQuestions.length > 0) {
+          const notification = await notificationService.create({
+            projectId,
+            source: "eval",
+            sourceId: item.id,
+            questions: openQuestions.map((q) => ({ id: q.id, text: q.text })),
+          });
+          broadcastToProject(projectId, {
+            type: "notification.added",
+            notification: {
+              id: notification.id,
+              projectId: notification.projectId,
+              source: notification.source,
+              sourceId: notification.sourceId,
+              questions: notification.questions,
+              status: notification.status,
+              createdAt: notification.createdAt,
+              resolvedAt: notification.resolvedAt,
+            },
+          });
+          await this.enqueueForCategorization(projectId, item.id);
+          return;
+        }
 
         // Handle scope changes with HIL (PRD §7.4.2, §15.1) — category=scope OR is_scope_change=true
         if (item.category === "scope" || item.isScopeChange) {
