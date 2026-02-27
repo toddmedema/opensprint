@@ -14,6 +14,7 @@ import executeReducer, {
   taskUpdated,
   fetchTasks,
   fetchTasksByIds,
+  toTasksByIdAndOrder,
 } from "../../store/slices/executeSlice";
 import evalReducer, { updateFeedbackItem } from "../../store/slices/evalSlice";
 import deliverReducer from "../../store/slices/deliverSlice";
@@ -129,7 +130,7 @@ function createStore(overrides?: { evalFeedback?: FeedbackItem[]; executeTasks?:
   }
   if (overrides?.executeTasks !== undefined) {
     preloadedState.execute = {
-      tasks: overrides.executeTasks,
+      ...toTasksByIdAndOrder(overrides.executeTasks),
       tasksInFlightCount: 0,
       orchestratorRunning: false,
       awaitingApproval: false,

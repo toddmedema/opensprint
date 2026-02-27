@@ -14,7 +14,7 @@ import {
   removeFeedbackItem,
   fetchMoreFeedback,
 } from "../../store/slices/evalSlice";
-import { fetchTasks } from "../../store/slices/executeSlice";
+import { fetchTasks, selectTasks } from "../../store/slices/executeSlice";
 import { FeedbackTaskChip } from "../../components/FeedbackTaskChip";
 import { KeyboardShortcutTooltip } from "../../components/KeyboardShortcutTooltip";
 import { PriorityIcon } from "../../components/PriorityIcon";
@@ -556,7 +556,7 @@ export function EvalPhase({
   /* ── Redux state ── */
   const feedback = useAppSelector((s) => s.eval.feedback);
   const tasks = useAppSelector((s) =>
-    s.execute.tasks.map((t) => ({ id: t.id, kanbanColumn: t.kanbanColumn }))
+    selectTasks(s).map((t) => ({ id: t.id, kanbanColumn: t.kanbanColumn }))
   );
   const tasksCount = tasks.length;
   const loading = useAppSelector((s) => s.eval?.async?.feedback?.loading ?? false);

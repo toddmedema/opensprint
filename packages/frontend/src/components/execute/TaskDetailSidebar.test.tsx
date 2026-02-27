@@ -9,6 +9,7 @@ import executeReducer, {
   fetchTaskDetail,
   setSelectedTaskId,
   initialExecuteState,
+  selectTasks,
 } from "../../store/slices/executeSlice";
 import evalReducer from "../../store/slices/evalSlice";
 import planReducer from "../../store/slices/planSlice";
@@ -1048,7 +1049,7 @@ describe("TaskDetailSidebar", () => {
       );
       function Wrapper() {
         const selectedTaskId = useSelector((s: RootState) => s.execute.selectedTaskId);
-        const tasks = useSelector((s: RootState) => s.execute.tasks);
+        const tasks = useSelector(selectTasks);
         const selectedTaskData = selectedTaskId
           ? (tasks.find((t) => t.id === selectedTaskId) ?? null)
           : null;

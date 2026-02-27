@@ -24,6 +24,7 @@ import executeReducer, {
   setExecuteError,
   resetExecute,
   setAgentOutputBackfill,
+  selectTasks,
   selectTasksForEpic,
   type ExecuteState,
 } from "./executeSlice";
@@ -125,7 +126,8 @@ describe("executeSlice", () => {
     it("has correct initial state", () => {
       const store = createStore();
       const state = store.getState().execute as ExecuteState;
-      expect(state.tasks).toEqual([]);
+      expect(state.tasksById).toEqual({});
+      expect(state.taskIdsOrder).toEqual([]);
       expect(state.orchestratorRunning).toBe(false);
       expect(state.awaitingApproval).toBe(false);
       expect(state.selectedTaskId).toBeNull();
@@ -282,7 +284,7 @@ describe("executeSlice", () => {
       const store = createStore();
       store.dispatch(setTasks([mockTask]));
       store.dispatch(taskUpdated({ taskId: "task-1", status: "in_progress", assignee: "Frodo" }));
-      const task = store.getState().execute.tasks[0];
+      const task = selectTasks(store.getState())[0];
       expect(task.kanbanColumn).toBe("in_progress");
       expect(task.assignee).toBe("Frodo");
     });
@@ -291,7 +293,7 @@ describe("executeSlice", () => {
       const store = createStore();
       store.dispatch(setTasks([mockTask]));
       store.dispatch(taskUpdated({ taskId: "task-1", status: "blocked" }));
-      const task = store.getState().execute.tasks[0];
+      const task = selectTasks(store.getState())[0];
       expect(task.kanbanColumn).toBe("blocked");
     });
 
@@ -301,7 +303,7 @@ describe("executeSlice", () => {
       store.dispatch(
         taskUpdated({ taskId: "task-1", status: "blocked", blockReason: "Merge Failure" })
       );
-      const task = store.getState().execute.tasks[0];
+      const task = selectTasks(store.getState())[0];
       expect(task.kanbanColumn).toBe("blocked");
       expect(task.blockReason).toBe("Merge Failure");
     });
@@ -315,16 +317,16 @@ describe("executeSlice", () => {
         fetchTaskDetail.fulfilled(taskWithDetail, "", { projectId: "p1", taskId: "task-1" })
       );
       store.dispatch(taskUpdated({ taskId: "task-1", priority: 0 }));
-      const task = store.getState().execute.tasks[0];
+      const task = selectTasks(store.getState())[0];
       expect(task.priority).toBe(0);
     });
 
     it("setTasks replaces tasks", () => {
       const store = createStore();
       store.dispatch(setTasks([mockTask]));
-      expect(store.getState().execute.tasks).toHaveLength(1);
+      expect(selectTasks(store.getState())).toHaveLength(1);
       store.dispatch(setTasks([]));
-      expect(store.getState().execute.tasks).toEqual([]);
+      expect(selectTasks(store.getState())).toEqual([]);
     });
 
     it("setExecuteError sets error", () => {
@@ -339,7 +341,8 @@ describe("executeSlice", () => {
       store.dispatch(setSelectedTaskId("task-1"));
       store.dispatch(resetExecute());
       const state = store.getState().execute as ExecuteState;
-      expect(state.tasks).toEqual([]);
+      expect(state.tasksById).toEqual({});
+      expect(state.taskIdsOrder).toEqual([]);
       expect(state.selectedTaskId).toBeNull();
     });
   });
@@ -349,7 +352,7 @@ describe("executeSlice", () => {
       vi.mocked(api.tasks.list).mockResolvedValue([mockTask] as never);
       const store = createStore();
       await store.dispatch(fetchTasks("proj-1"));
-      expect(store.getState().execute.tasks).toEqual([mockTask]);
+      expect(selectTasks(store.getState())).toEqual([mockTask]);
       expect(api.tasks.list).toHaveBeenCalledWith("proj-1");
     });
 
@@ -361,7 +364,7 @@ describe("executeSlice", () => {
       const store = createStore();
       await store.dispatch(fetchTasks({ projectId: "proj-1", limit: 100, offset: 0 }));
       const state = store.getState().execute;
-      expect(state.tasks).toEqual([mockTask]);
+      expect(selectTasks(store.getState())).toEqual([mockTask]);
       expect(state.tasksTotalCount).toBe(150);
       expect(state.hasMoreTasks).toBe(true);
       expect(api.tasks.list).toHaveBeenCalledWith("proj-1", { limit: 100, offset: 0 });
@@ -376,6 +379,23 @@ describe("executeSlice", () => {
   });
 
   describe("fetchMoreTasks thunk", () => {
+    it("deduplicates when paginated pages overlap (same task ID in multiple pages)", async () => {
+      const task2 = { ...mockTask, id: "task-2", title: "Task 2" };
+      const task3 = { ...mockTask, id: "task-3", title: "Task 3" };
+      vi.mocked(api.tasks.list)
+        .mockResolvedValueOnce({ items: [mockTask, task2], total: 4 } as never)
+        .mockResolvedValueOnce({ items: [task2, task3], total: 4 } as never);
+      const store = createStore();
+      await store.dispatch(fetchTasks({ projectId: "proj-1", limit: 100, offset: 0 }));
+      expect(selectTasks(store.getState())).toHaveLength(2);
+      await store.dispatch(fetchMoreTasks("proj-1"));
+      const tasks = selectTasks(store.getState());
+      expect(tasks).toHaveLength(3);
+      const ids = tasks.map((t) => t.id);
+      expect(ids).toEqual(["task-1", "task-2", "task-3"]);
+      expect(new Set(ids).size).toBe(3);
+    });
+
     it("appends next page and updates hasMoreTasks", async () => {
       const task2 = { ...mockTask, id: "task-2", title: "Task 2" };
       vi.mocked(api.tasks.list)
@@ -383,11 +403,12 @@ describe("executeSlice", () => {
         .mockResolvedValueOnce({ items: [task2], total: 150 } as never);
       const store = createStore();
       await store.dispatch(fetchTasks({ projectId: "proj-1", limit: 100, offset: 0 }));
-      expect(store.getState().execute.tasks).toHaveLength(1);
+      expect(selectTasks(store.getState())).toHaveLength(1);
       await store.dispatch(fetchMoreTasks("proj-1"));
+      const tasks = selectTasks(store.getState());
       const state = store.getState().execute;
-      expect(state.tasks).toHaveLength(2);
-      expect(state.tasks).toEqual(
+      expect(tasks).toHaveLength(2);
+      expect(tasks).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ id: "task-1" }),
           expect.objectContaining({ id: "task-2" }),
@@ -407,7 +428,7 @@ describe("executeSlice", () => {
       const store = createStore();
       store.dispatch(setTasks([{ ...mockTask, id: "existing", title: "Existing" }]));
       await store.dispatch(fetchTasksByIds({ projectId: "proj-1", taskIds: ["task-1", "task-2"] }));
-      const tasks = store.getState().execute.tasks;
+      const tasks = selectTasks(store.getState());
       expect(tasks).toHaveLength(3);
       expect(tasks.map((t) => t.id)).toEqual(
         expect.arrayContaining(["existing", "task-1", "task-2"])
@@ -420,7 +441,7 @@ describe("executeSlice", () => {
       const store = createStore();
       store.dispatch(setTasks([mockTask]));
       await store.dispatch(fetchTasksByIds({ projectId: "proj-1", taskIds: [] }));
-      expect(store.getState().execute.tasks).toEqual([mockTask]);
+      expect(selectTasks(store.getState())).toEqual([mockTask]);
       expect(api.tasks.get).not.toHaveBeenCalled();
     });
   });
@@ -533,7 +554,7 @@ describe("executeSlice", () => {
       const store = createStore();
       store.dispatch(setTasks([{ ...mockTask, id: "task-1" }]));
       await store.dispatch(fetchTaskDetail({ projectId: "proj-1", taskId: "task-1" }));
-      expect(store.getState().execute.tasks[0]).toEqual(fullTask);
+      expect(selectTasks(store.getState())[0]).toEqual(fullTask);
       expect(store.getState().execute.async.taskDetail.error).toBeNull();
     });
 
@@ -608,7 +629,7 @@ describe("executeSlice", () => {
       vi.mocked(api.plans.list).mockResolvedValue(mockGraph as never);
       const store = createStore();
       await store.dispatch(markTaskDone({ projectId: "proj-1", taskId: "task-1" }));
-      expect(store.getState().execute.tasks[0].kanbanColumn).toBe("done");
+      expect(selectTasks(store.getState())[0].kanbanColumn).toBe("done");
       expect(api.tasks.markDone).toHaveBeenCalledWith("proj-1", "task-1");
     });
   });
@@ -624,7 +645,7 @@ describe("executeSlice", () => {
       store.dispatch(setTasks([{ ...mockTask, kanbanColumn: "blocked" }]));
       store.dispatch(setSelectedTaskId("task-1"));
       await store.dispatch(unblockTask({ projectId: "proj-1", taskId: "task-1" }));
-      expect(store.getState().execute.tasks[0].kanbanColumn).toBe("backlog");
+      expect(selectTasks(store.getState())[0].kanbanColumn).toBe("backlog");
       expect(api.tasks.unblock).toHaveBeenCalledWith("proj-1", "task-1", {});
     });
 
@@ -664,10 +685,10 @@ describe("executeSlice", () => {
         })
       );
       // Optimistic update applied immediately to tasks
-      expect(store.getState().execute.tasks[0].priority).toBe(0);
+      expect(selectTasks(store.getState())[0].priority).toBe(0);
       await promise;
       expect(api.tasks.updatePriority).toHaveBeenCalledWith("proj-1", "task-1", 0);
-      expect(store.getState().execute.tasks[0].priority).toBe(0);
+      expect(selectTasks(store.getState())[0].priority).toBe(0);
     });
 
     it("reverts priority and shows toast on rejected", async () => {
@@ -689,7 +710,7 @@ describe("executeSlice", () => {
           previousPriority: 1,
         })
       );
-      expect(store.getState().execute.tasks[0].priority).toBe(1);
+      expect(selectTasks(store.getState())[0].priority).toBe(1);
       expect(store.getState().websocket.deliverToast).toEqual({
         message: "Failed to update priority",
         variant: "failed",

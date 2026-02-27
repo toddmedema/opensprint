@@ -8,7 +8,11 @@ import { PlanPhase, getPlanChatMessageDisplay } from "./PlanPhase";
 import { api } from "../../api/client";
 import projectReducer from "../../store/slices/projectSlice";
 import planReducer, { setPlansAndGraph } from "../../store/slices/planSlice";
-import executeReducer, { fetchTasks, taskUpdated } from "../../store/slices/executeSlice";
+import executeReducer, {
+  fetchTasks,
+  taskUpdated,
+  toTasksByIdAndOrder,
+} from "../../store/slices/executeSlice";
 import notificationReducer from "../../store/slices/notificationSlice";
 
 beforeAll(() => {
@@ -207,8 +211,7 @@ function createStore(
         backgroundError: null,
       },
       execute: {
-        tasks: executeTasks,
-        plans: [],
+        ...toTasksByIdAndOrder(executeTasks),
         orchestratorRunning: false,
         awaitingApproval: false,
         activeTasks: [],
@@ -2301,16 +2304,13 @@ describe("PlanPhase Generate Plan", () => {
           backgroundError: null,
         },
         execute: {
-          tasks: [],
-          plans: [],
+          ...toTasksByIdAndOrder([]),
           orchestratorRunning: false,
           awaitingApproval: false,
-          currentTaskId: null,
-          currentPhase: null,
           selectedTaskId: null,
           taskDetailLoading: false,
           taskDetailError: null,
-          agentOutput: [],
+          agentOutput: {},
           completionState: null,
           archivedSessions: [],
           archivedLoading: false,

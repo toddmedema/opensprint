@@ -7,10 +7,33 @@ import { EpicCard } from "./EpicCard";
 import executeReducer from "../store/slices/executeSlice";
 import type { Plan, Task } from "@opensprint/shared";
 
+function toTasksByIdAndOrder(tasks: Task[]): { tasksById: Record<string, Task>; taskIdsOrder: string[] } {
+  const tasksById: Record<string, Task> = {};
+  const taskIdsOrder: string[] = [];
+  const seen = new Set<string>();
+  for (const t of tasks) {
+    tasksById[t.id] = t;
+    if (!seen.has(t.id)) {
+      seen.add(t.id);
+      taskIdsOrder.push(t.id);
+    }
+  }
+  return { tasksById, taskIdsOrder };
+}
+
 function renderWithStore(ui: React.ReactElement, preloadedState?: { execute?: { tasks: Task[] } }) {
+  const executePreload =
+    preloadedState?.execute?.tasks != null
+      ? {
+          execute: {
+            ...preloadedState.execute,
+            ...toTasksByIdAndOrder(preloadedState.execute.tasks),
+          },
+        }
+      : preloadedState;
   const store = configureStore({
     reducer: { execute: executeReducer },
-    preloadedState: preloadedState as never,
+    preloadedState: executePreload as never,
   });
   return render(<Provider store={store}>{ui}</Provider>);
 }

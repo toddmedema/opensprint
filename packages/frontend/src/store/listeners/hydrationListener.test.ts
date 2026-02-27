@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { waitFor } from "@testing-library/react";
 import { configureStore } from "@reduxjs/toolkit";
 import { hydrationListener } from "./hydrationListener";
-import executeReducer, { fetchTasks, fetchMoreTasks } from "../slices/executeSlice";
+import executeReducer, { fetchTasks, fetchMoreTasks, selectTasks } from "../slices/executeSlice";
 import evalReducer, { fetchFeedback, fetchMoreFeedback } from "../slices/evalSlice";
 import planReducer from "../slices/planSlice";
 import websocketReducer from "../slices/websocketSlice";
@@ -78,7 +78,7 @@ describe("hydrationListener", () => {
         .mockResolvedValueOnce({ items: [task2], total: 2 } as never);
       const store = createStore();
       await store.dispatch(fetchTasks({ projectId: "proj-1", limit: 100, offset: 0 }));
-      await waitFor(() => expect(store.getState().execute.tasks).toHaveLength(2));
+      await waitFor(() => expect(selectTasks(store.getState())).toHaveLength(2));
       expect(api.tasks.list).toHaveBeenCalledTimes(2);
       expect(api.tasks.list).toHaveBeenNthCalledWith(1, "proj-1", { limit: 100, offset: 0 });
       expect(api.tasks.list).toHaveBeenNthCalledWith(2, "proj-1", { limit: 100, offset: 1 });
@@ -101,7 +101,7 @@ describe("hydrationListener", () => {
         .mockResolvedValueOnce({ items: batches[1], total: 150 } as never);
       const store = createStore();
       await store.dispatch(fetchTasks({ projectId: "proj-1", limit: 100, offset: 0 }));
-      await waitFor(() => expect(store.getState().execute.tasks).toHaveLength(150));
+      await waitFor(() => expect(selectTasks(store.getState())).toHaveLength(150));
       const state = store.getState().execute;
       expect(state.hasMoreTasks).toBe(false);
       expect(api.tasks.list).toHaveBeenCalledTimes(2);

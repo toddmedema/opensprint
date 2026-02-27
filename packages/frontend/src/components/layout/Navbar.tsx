@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import type { Project, ProjectPhase } from "@opensprint/shared";
 import { NAVBAR_HEIGHT } from "../../lib/constants";
 import { useAppSelector, useAppDispatch } from "../../store";
+import { selectTasks } from "../../store/slices/executeSlice";
 import { wsConnectHome } from "../../store/middleware/websocketMiddleware";
 import { getProjectPhasePath } from "../../lib/phaseRouting";
 import { api } from "../../api/client";
@@ -52,7 +53,7 @@ export function Navbar({
 
   const dispatch = useAppDispatch();
   const executeBlockedCount = useAppSelector((s) => {
-    const implTasks = s.execute.tasks.filter((t) => t.type !== "epic");
+    const implTasks = selectTasks(s).filter((t) => t.type !== "epic");
     return implTasks.filter((t) => t.kanbanColumn === "blocked").length;
   });
 

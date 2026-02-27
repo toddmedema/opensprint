@@ -48,7 +48,10 @@ const EXECUTE_ASYNC_KEYS = [
 type ExecuteAsyncKey = (typeof EXECUTE_ASYNC_KEYS)[number];
 
 export interface ExecuteState {
-  tasks: Task[];
+  /** Tasks keyed by ID — duplicates impossible; pagination merges by overwriting. */
+  tasksById: Record<string, Task>;
+  /** Ordered task IDs for display (reflects pagination order). */
+  taskIdsOrder: string[];
   [TASKS_IN_FLIGHT_KEY]: number;
   orchestratorRunning: boolean;
   awaitingApproval: boolean;
@@ -82,7 +85,8 @@ export interface ExecuteState {
 }
 
 export const initialExecuteState: ExecuteState = {
-  tasks: [],
+  tasksById: {},
+  taskIdsOrder: [],
   [TASKS_IN_FLIGHT_KEY]: 0,
   orchestratorRunning: false,
   awaitingApproval: false,
@@ -138,13 +142,13 @@ export const fetchTasks = createAsyncThunk<
   }
 );
 
-/** Fetch next page of tasks and append. Uses current tasks length as offset. */
+/** Fetch next page of tasks and append. Uses current task count as offset. */
 export const fetchMoreTasks = createAsyncThunk<
   { items: Task[]; total: number },
   string
 >("execute/fetchMoreTasks", async (projectId: string, { getState }) => {
   const root = getState() as { execute: ExecuteState };
-  const offset = root.execute.tasks.length;
+  const offset = root.execute.taskIdsOrder.length;
   return api.tasks.list(projectId, {
     limit: TASKS_PAGE_SIZE,
     offset,
@@ -277,11 +281,35 @@ export const unblockTask = createAsyncThunk(
 
 const MAX_AGENT_OUTPUT = 5000;
 
+/** Converts task array to tasksById + taskIdsOrder (deduped by id). Exported for tests. */
+export function toTasksByIdAndOrder(tasks: Task[]): {
+  tasksById: Record<string, Task>;
+  taskIdsOrder: string[];
+} {
+  const tasksById: Record<string, Task> = {};
+  const taskIdsOrder: string[] = [];
+  const seen = new Set<string>();
+  for (const t of tasks) {
+    tasksById[t.id] = t;
+    if (!seen.has(t.id)) {
+      seen.add(t.id);
+      taskIdsOrder.push(t.id);
+    }
+  }
+  return { tasksById, taskIdsOrder };
+}
+
 /** Ensures state.async exists when tests use partial preloadedState */
 function ensureAsync(state: ExecuteState): void {
   if (!state.async) {
     (state as ExecuteState).async = createInitialAsyncStates(EXECUTE_ASYNC_KEYS);
   }
+}
+
+/** Ensures tasksById and taskIdsOrder exist (handles preloadedState with old tasks array shape). */
+function ensureTasksState(state: ExecuteState): void {
+  if (!state.tasksById) (state as ExecuteState).tasksById = {};
+  if (!state.taskIdsOrder) (state as ExecuteState).taskIdsOrder = [];
 }
 
 const executeSlice = createSlice({
@@ -351,8 +379,9 @@ const executeSlice = createSlice({
         blockReason?: string | null;
       }>
     ) {
+      ensureTasksState(state);
       const { taskId, status, assignee, priority, blockReason } = action.payload;
-      const task = state.tasks.find((t) => t.id === taskId);
+      const task = state.tasksById[taskId];
       if (task) {
         if (status !== undefined) {
           task.kanbanColumn = mapStatusToKanban(status);
@@ -366,7 +395,9 @@ const executeSlice = createSlice({
       }
     },
     setTasks(state, action: PayloadAction<Task[]>) {
-      state.tasks = action.payload;
+      const { tasksById, taskIdsOrder } = toTasksByIdAndOrder(action.payload);
+      state.tasksById = tasksById;
+      state.taskIdsOrder = taskIdsOrder;
     },
     setExecuteError(state, action: PayloadAction<string | null>) {
       state.error = action.payload;
@@ -390,6 +421,7 @@ const executeSlice = createSlice({
       })
       .addCase(fetchTasks.fulfilled, (state, action) => {
         ensureAsync(state);
+        ensureTasksState(state);
         const payload = action.payload;
         const isPaginated =
           payload != null &&
@@ -404,8 +436,11 @@ const executeSlice = createSlice({
           : incoming.length;
         const offset = isPaginated ? (action.meta.arg as { offset?: number })?.offset ?? 0 : 0;
 
+        const existingById = state.tasksById;
         const doneIds = new Set(
-          state.tasks.filter((t) => t.kanbanColumn === "done").map((t) => t.id)
+          Object.values(existingById)
+            .filter((t) => t.kanbanColumn === "done")
+            .map((t) => t.id)
         );
         const merged = incoming.map((t) => {
           if (doneIds.has(t.id) && t.kanbanColumn !== "done") {
@@ -414,12 +449,14 @@ const executeSlice = createSlice({
           return t;
         });
 
-        state.tasks = merged;
+        const { tasksById, taskIdsOrder } = toTasksByIdAndOrder(merged);
+        state.tasksById = tasksById;
+        state.taskIdsOrder = taskIdsOrder;
         state.tasksTotalCount = isPaginated ? total : null;
         state.hasMoreTasks = isPaginated ? offset + merged.length < total : false;
         state.async.tasks.loading = false;
         state[TASKS_IN_FLIGHT_KEY] = Math.max(0, (state[TASKS_IN_FLIGHT_KEY] ?? 1) - 1);
-        const taskIds = new Set(merged.map((t) => t.id));
+        const taskIds = new Set(taskIdsOrder);
         if (state.selectedTaskId && !taskIds.has(state.selectedTaskId)) {
           state.selectedTaskId = null;
           state.async.taskDetail.error = null;
@@ -442,9 +479,14 @@ const executeSlice = createSlice({
       })
       .addCase(fetchMoreTasks.fulfilled, (state, action) => {
         ensureAsync(state);
+        ensureTasksState(state);
         const { items, total } = action.payload;
+        const tasksById = state.tasksById;
+        const taskIdsOrder = state.taskIdsOrder;
         const doneIds = new Set(
-          state.tasks.filter((t) => t.kanbanColumn === "done").map((t) => t.id)
+          Object.values(tasksById)
+            .filter((t) => t.kanbanColumn === "done")
+            .map((t) => t.id)
         );
         const merged = items.map((t) => {
           if (doneIds.has(t.id) && t.kanbanColumn !== "done") {
@@ -452,9 +494,16 @@ const executeSlice = createSlice({
           }
           return t;
         });
-        state.tasks = [...state.tasks, ...merged];
+        const existingIds = new Set(taskIdsOrder);
+        for (const t of merged) {
+          state.tasksById[t.id] = t;
+          if (!existingIds.has(t.id)) {
+            existingIds.add(t.id);
+            state.taskIdsOrder.push(t.id);
+          }
+        }
         state.tasksTotalCount = total;
-        state.hasMoreTasks = state.tasks.length < total;
+        state.hasMoreTasks = state.taskIdsOrder.length < total;
         state.async.tasks.loading = false;
       })
       .addCase(fetchMoreTasks.rejected, (state) => {
@@ -464,13 +513,15 @@ const executeSlice = createSlice({
 
     // fetchTasksByIds — merge only fetched tasks (no loading state, minimal re-renders)
     builder.addCase(fetchTasksByIds.fulfilled, (state, action) => {
+      ensureTasksState(state);
       const incoming = (action.payload ?? []) as Task[];
       if (incoming.length === 0) return;
-      const byId = new Map(state.tasks.map((t) => [t.id, t]));
       for (const t of incoming) {
-        byId.set(t.id, t);
+        state.tasksById[t.id] = t;
+        if (!state.taskIdsOrder.includes(t.id)) {
+          state.taskIdsOrder.push(t.id);
+        }
       }
-      state.tasks = Array.from(byId.values());
     });
 
     createAsyncHandlers("status", fetchExecuteStatus, builder, {
@@ -509,12 +560,12 @@ const executeSlice = createSlice({
       })
       .addCase(fetchTaskDetail.fulfilled, (state, action) => {
         ensureAsync(state);
+        ensureTasksState(state);
         const task = action.payload as Task;
-        const idx = state.tasks.findIndex((t) => t.id === task.id);
-        if (idx >= 0) {
-          state.tasks[idx] = task;
-        } else {
-          state.tasks.push(task);
+        const existed = task.id in state.tasksById;
+        state.tasksById[task.id] = task;
+        if (!existed && !state.taskIdsOrder.includes(task.id)) {
+          state.taskIdsOrder.push(task.id);
         }
         state.async.taskDetail.loading = false;
         state.async.taskDetail.error = null;
@@ -581,7 +632,11 @@ const executeSlice = createSlice({
         state.error = null;
       },
       onFulfilled: (state, action) => {
-        state.tasks = (action.payload as { tasks: Task[] }).tasks;
+        const { tasksById, taskIdsOrder } = toTasksByIdAndOrder(
+          (action.payload as { tasks: Task[] }).tasks
+        );
+        state.tasksById = tasksById;
+        state.taskIdsOrder = taskIdsOrder;
       },
       onRejected: (state, action) => {
         state.error = action.error?.message ?? "Failed to mark done";
@@ -596,7 +651,11 @@ const executeSlice = createSlice({
         state.error = null;
       },
       onFulfilled: (state, action) => {
-        state.tasks = (action.payload as { tasks: Task[] }).tasks;
+        const { tasksById, taskIdsOrder } = toTasksByIdAndOrder(
+          (action.payload as { tasks: Task[] }).tasks
+        );
+        state.tasksById = tasksById;
+        state.taskIdsOrder = taskIdsOrder;
       },
       onRejected: (state, action) => {
         state.error = action.error?.message ?? "Failed to unblock";
@@ -607,23 +666,26 @@ const executeSlice = createSlice({
     // updateTaskPriority — optimistic update, revert on error
     builder
       .addCase(updateTaskPriority.pending, (state, action) => {
+        ensureTasksState(state);
         const { taskId, priority } = action.meta.arg;
         const p = priority as TaskPriority;
-        const task = state.tasks.find((t) => t.id === taskId);
+        const task = state.tasksById[taskId];
         if (task) task.priority = p;
       })
       .addCase(updateTaskPriority.fulfilled, (state, action) => {
+        ensureTasksState(state);
         const { task } = action.payload;
-        const t = state.tasks.find((x) => x.id === task.id);
+        const t = state.tasksById[task.id];
         if (t) {
           t.priority = task.priority;
         }
       })
       .addCase(updateTaskPriority.rejected, (state, action) => {
+        ensureTasksState(state);
         const payload = action.payload as { previousPriority: TaskPriority } | undefined;
         if (!payload) return;
         const { taskId } = action.meta.arg;
-        const task = state.tasks.find((t) => t.id === taskId);
+        const task = state.tasksById[taskId];
         if (task) task.priority = payload.previousPriority;
       });
   },
@@ -646,7 +708,17 @@ export const {
 /** State shape for selectors (execute may be missing in tests). */
 export type ExecuteRootState = { execute?: ExecuteState };
 
-const selectTasks = (state: ExecuteRootState): Task[] => state.execute?.tasks ?? [];
+/** Ordered tasks derived from tasksById + taskIdsOrder (no duplicates). */
+export const selectTasks = createSelector(
+  [
+    (state: ExecuteRootState) => state.execute?.tasksById ?? {},
+    (state: ExecuteRootState) => state.execute?.taskIdsOrder ?? [],
+  ],
+  (tasksById, taskIdsOrder): Task[] =>
+    taskIdsOrder
+      .map((id) => tasksById[id])
+      .filter((t): t is Task => t != null)
+);
 
 /** Task summaries derived from execute.tasks (single source of truth for current project). Memoized to avoid unnecessary rerenders. */
 export const selectTaskSummaries = createSelector(
@@ -662,7 +734,7 @@ export const selectTaskSummaries = createSelector(
 
 /** Task title by id from execute.tasks. */
 export function selectTaskTitle(state: ExecuteRootState, taskId: string): string | undefined {
-  return state.execute?.tasks?.find((t) => t.id === taskId)?.title;
+  return state.execute?.tasksById?.[taskId]?.title;
 }
 
 /** Task summary (title, kanbanColumn, priority) for a single task. Used by FeedbackTaskChip for isolated re-renders. */

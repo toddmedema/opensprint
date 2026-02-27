@@ -3,7 +3,11 @@ import { render, screen, waitFor, act } from "@testing-library/react";
 import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
 import { FeedbackTaskChip } from "./FeedbackTaskChip";
-import executeReducer, { taskUpdated, initialExecuteState } from "../store/slices/executeSlice";
+import executeReducer, {
+  taskUpdated,
+  initialExecuteState,
+  toTasksByIdAndOrder,
+} from "../store/slices/executeSlice";
 import type { Task } from "@opensprint/shared";
 
 function createMockTask(overrides: Partial<Task> = {}): Task {
@@ -32,7 +36,9 @@ describe("FeedbackTaskChip", () => {
       preloadedState: {
         execute: {
           ...initialExecuteState,
-          tasks: [createMockTask({ id: "task-1", kanbanColumn: "backlog", status: "open" })],
+          ...toTasksByIdAndOrder([
+            createMockTask({ id: "task-1", kanbanColumn: "backlog", status: "open" }),
+          ]),
         },
       },
     });
@@ -63,7 +69,9 @@ describe("FeedbackTaskChip", () => {
       preloadedState: {
         execute: {
           ...initialExecuteState,
-          tasks: [createMockTask({ id: "task-1", kanbanColumn: "backlog", title: "Fix bug" })],
+          ...toTasksByIdAndOrder([
+            createMockTask({ id: "task-1", kanbanColumn: "backlog", title: "Fix bug" }),
+          ]),
         },
       },
     });
@@ -99,10 +107,10 @@ describe("FeedbackTaskChip", () => {
       preloadedState: {
         execute: {
           ...initialExecuteState,
-          tasks: [
+          ...toTasksByIdAndOrder([
             createMockTask({ id: "task-1", kanbanColumn: "backlog", title: "Task A" }),
             createMockTask({ id: "task-2", kanbanColumn: "in_progress", title: "Task B" }),
-          ],
+          ]),
         },
       },
     });

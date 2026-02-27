@@ -5,7 +5,7 @@ import projectReducer from "../slices/projectSlice";
 import websocketReducer from "../slices/websocketSlice";
 import sketchReducer from "../slices/sketchSlice";
 import planReducer from "../slices/planSlice";
-import executeReducer from "../slices/executeSlice";
+import executeReducer, { selectTasks } from "../slices/executeSlice";
 import evalReducer, { setFeedback } from "../slices/evalSlice";
 import deliverReducer from "../slices/deliverSlice";
 
@@ -385,9 +385,10 @@ describe("websocketMiddleware", () => {
       wsInstance!.simulateMessage({ type: "plan.updated", planId: "plan-123" });
 
       await vi.waitFor(() => {
-        expect(store.getState().execute.tasks).toHaveLength(2);
-        expect(store.getState().execute.tasks[0]?.title).toBe("Task A");
-        expect(store.getState().execute.tasks[1]?.title).toBe("Task B");
+        const tasks = selectTasks(store.getState());
+        expect(tasks).toHaveLength(2);
+        expect(tasks[0]?.title).toBe("Task A");
+        expect(tasks[1]?.title).toBe("Task B");
       });
     });
 
@@ -426,7 +427,7 @@ describe("websocketMiddleware", () => {
       });
 
       await vi.waitFor(() => {
-        expect(store.getState().execute.tasks[0]?.kanbanColumn).toBe("in_progress");
+        expect(selectTasks(store.getState())[0]?.kanbanColumn).toBe("in_progress");
       });
       expect(api.tasks.get).not.toHaveBeenCalled();
     });
@@ -466,8 +467,9 @@ describe("websocketMiddleware", () => {
         expect(api.tasks.get).toHaveBeenCalledWith("proj-1", "epic-1.1");
       });
       await vi.waitFor(() => {
-        expect(store.getState().execute.tasks).toHaveLength(1);
-        expect(store.getState().execute.tasks[0]?.title).toBe("Newly created task");
+        const tasks = selectTasks(store.getState());
+        expect(tasks).toHaveLength(1);
+        expect(tasks[0]?.title).toBe("Newly created task");
       });
     });
 
@@ -616,7 +618,7 @@ describe("websocketMiddleware", () => {
       });
 
       await vi.waitFor(() => {
-        const task = store.getState().execute.tasks.find((t) => t.id === "task-1");
+        const task = selectTasks(store.getState()).find((t) => t.id === "task-1");
         expect(task?.kanbanColumn).toBe("in_progress");
         expect(task?.assignee).toBe("Frodo");
       });
@@ -967,7 +969,7 @@ describe("websocketMiddleware", () => {
       expect(api.tasks.get).toHaveBeenCalledWith("proj-1", "task-1");
       expect(api.tasks.get).toHaveBeenCalledWith("proj-1", "task-2");
       await vi.waitFor(() => {
-        const tasks = store.getState().execute.tasks;
+        const tasks = selectTasks(store.getState());
         expect(tasks).toHaveLength(2);
         expect(tasks.map((t) => t.id)).toEqual(expect.arrayContaining(["task-1", "task-2"]));
       });
@@ -1018,10 +1020,10 @@ describe("websocketMiddleware", () => {
       });
 
       await vi.waitFor(() => {
-        const tasks = store.getState().execute.tasks;
+        const tasks = selectTasks(store.getState());
         expect(tasks.some((t) => t.id === "task-auth")).toBe(true);
       });
-      expect(store.getState().execute.tasks.find((t) => t.id === "task-auth")?.kanbanColumn).toBe(
+      expect(selectTasks(store.getState()).find((t) => t.id === "task-auth")?.kanbanColumn).toBe(
         "backlog"
       );
 
@@ -1033,7 +1035,7 @@ describe("websocketMiddleware", () => {
       });
 
       await vi.waitFor(() => {
-        const task = store.getState().execute.tasks.find((t) => t.id === "task-auth");
+        const task = selectTasks(store.getState()).find((t) => t.id === "task-auth");
         expect(task?.kanbanColumn).toBe("done");
       });
     });

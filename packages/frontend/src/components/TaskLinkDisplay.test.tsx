@@ -16,8 +16,23 @@ vi.mock("../api/client", () => ({
   },
 }));
 
+function toTasksByIdAndOrder(tasks: Task[]): { tasksById: Record<string, Task>; taskIdsOrder: string[] } {
+  const tasksById: Record<string, Task> = {};
+  const taskIdsOrder: string[] = [];
+  const seen = new Set<string>();
+  for (const t of tasks) {
+    tasksById[t.id] = t;
+    if (!seen.has(t.id)) {
+      seen.add(t.id);
+      taskIdsOrder.push(t.id);
+    }
+  }
+  return { tasksById, taskIdsOrder };
+}
+
 const defaultExecuteState = {
-  tasks: [] as Task[],
+  tasksById: {} as Record<string, Task>,
+  taskIdsOrder: [] as string[],
   tasksInFlightCount: 0,
   orchestratorRunning: false,
   awaitingApproval: false,
@@ -41,7 +56,7 @@ function createStore(preloadedExecute?: { tasks: Task[] }) {
     reducer: { execute: executeReducer },
     preloadedState:
       preloadedExecute != null
-        ? { execute: { ...defaultExecuteState, tasks: preloadedExecute.tasks } }
+        ? { execute: { ...defaultExecuteState, ...toTasksByIdAndOrder(preloadedExecute.tasks) } }
         : undefined,
   });
 }

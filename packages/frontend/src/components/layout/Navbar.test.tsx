@@ -10,7 +10,7 @@ import { ThemeProvider } from "../../contexts/ThemeContext";
 import { DisplayPreferencesProvider } from "../../contexts/DisplayPreferencesContext";
 import { NAVBAR_HEIGHT } from "../../lib/constants";
 import { Navbar } from "./Navbar";
-import executeReducer from "../../store/slices/executeSlice";
+import executeReducer, { toTasksByIdAndOrder } from "../../store/slices/executeSlice";
 import planReducer from "../../store/slices/planSlice";
 import websocketReducer from "../../store/slices/websocketSlice";
 
@@ -86,8 +86,7 @@ function createStore(executeTasks: Task[] = []) {
     },
     preloadedState: {
       execute: {
-        tasks: executeTasks,
-        plans: [],
+        ...toTasksByIdAndOrder(executeTasks),
         awaitingApproval: false,
         orchestratorRunning: false,
         activeTasks: [],

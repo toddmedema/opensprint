@@ -9,6 +9,7 @@ import {
   markTaskDone,
   unblockTask,
   setSelectedTaskId,
+  selectTasks,
 } from "../../store/slices/executeSlice";
 import { wsSend } from "../../store/middleware/websocketMiddleware";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
@@ -61,7 +62,7 @@ export function ExecutePhase({
     handleSearchKeyDown,
   } = useTaskFilter();
 
-  const tasks = useAppSelector((s) => s.execute.tasks);
+  const tasks = useAppSelector(selectTasks);
   const plans = useAppSelector((s) => s.plan.plans);
   const awaitingApproval = useAppSelector((s) => s.execute.awaitingApproval);
   const selectedTask = useAppSelector((s) => s.execute.selectedTaskId);

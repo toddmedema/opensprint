@@ -230,8 +230,8 @@ export const websocketMiddleware: Middleware = (storeApi) => {
           })
         );
         // For newly created tasks, taskUpdated is a no-op (task not in state). Fetch and merge so Plan page shows them in real time.
-        const root = getState() as { execute: { tasks: Array<{ id: string }> } };
-        const taskExists = root.execute?.tasks?.some((t) => t.id === event.taskId);
+        const root = getState() as { execute?: { tasksById?: Record<string, unknown> } };
+        const taskExists = root.execute?.tasksById != null && event.taskId in root.execute.tasksById;
         if (!taskExists) {
           d(fetchTasksByIds({ projectId, taskIds: [event.taskId] }));
         }

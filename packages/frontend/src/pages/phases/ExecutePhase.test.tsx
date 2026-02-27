@@ -8,6 +8,7 @@ import {
   setSelectedTaskId,
   taskUpdated,
   initialExecuteState,
+  toTasksByIdAndOrder,
 } from "../../store/slices/executeSlice";
 import projectReducer from "../../store/slices/projectSlice";
 import planReducer from "../../store/slices/planSlice";
@@ -116,7 +117,7 @@ function createStore(
         const { taskDetailError, ...rest } = overrides;
         const execute: typeof initialExecuteState = {
           ...initialExecuteState,
-          tasks,
+          ...toTasksByIdAndOrder(tasks as Parameters<typeof toTasksByIdAndOrder>[0]),
           ...rest,
         };
         if (taskDetailError !== undefined) {
@@ -1144,13 +1145,11 @@ describe("ExecutePhase expandable search bar", () => {
           error: null,
         },
         execute: {
-          tasks,
-          plans: [],
+          ...toTasksByIdAndOrder(tasks as Parameters<typeof toTasksByIdAndOrder>[0]),
           awaitingApproval: false,
           orchestratorRunning: false,
           activeTasks: [],
           selectedTaskId: null,
-          taskDetail: null,
           taskDetailLoading: false,
           taskDetailError: null,
           agentOutput: {},
