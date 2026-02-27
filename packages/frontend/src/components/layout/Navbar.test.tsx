@@ -321,6 +321,45 @@ describe("Navbar", () => {
     });
   });
 
+  it("homepage shows settings icon when no projects", () => {
+    mockProjectsList.mockResolvedValue([]);
+    renderNavbar(<Navbar project={null} />);
+
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+  });
+
+  it("homepage shows settings icon when projects exist", async () => {
+    const projects = [
+      {
+        id: "proj-1",
+        name: "Project A",
+        repoPath: "/path/a",
+        currentPhase: "sketch" as const,
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      },
+    ];
+    mockProjectsList.mockResolvedValue(projects);
+    renderNavbar(<Navbar project={null} />);
+
+    await screen.findByRole("button", { name: "Settings" });
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
+  });
+
+  it("homepage: clicking settings icon opens DisplaySettingsModal", async () => {
+    mockProjectsList.mockResolvedValue([]);
+    const user = userEvent.setup();
+    renderNavbar(<Navbar project={null} />);
+
+    const settingsButton = screen.getByRole("button", { name: "Settings" });
+    await user.click(settingsButton);
+
+    expect(screen.getByTestId("display-settings-modal")).toBeInTheDocument();
+    expect(screen.getByText("Settings")).toBeInTheDocument();
+    expect(screen.getByTestId("display-section")).toBeInTheDocument();
+    expect(screen.getByTestId("theme-option-light")).toBeInTheDocument();
+  });
+
   it("theme is configurable from project settings Display section", async () => {
     const user = userEvent.setup();
     const mockProject = {
