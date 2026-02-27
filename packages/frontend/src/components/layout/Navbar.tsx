@@ -11,6 +11,7 @@ import { GlobalActiveAgentsList } from "../GlobalActiveAgentsList";
 import { ConnectionIndicator } from "../ConnectionIndicator";
 import { ProjectSettingsModal } from "../ProjectSettingsModal";
 import { HelpModal } from "../HelpModal";
+import { ApiKeySetupModal } from "../ApiKeySetupModal";
 
 interface NavbarProps {
   project?: Project | null;
@@ -43,6 +44,7 @@ export function Navbar({
   const [projects, setProjects] = useState<Project[]>([]);
   const [internalSettingsOpen, setInternalSettingsOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [apiKeyModalRoute, setApiKeyModalRoute] = useState<string | null>(null);
   const settingsOpen = controlledSettingsOpen ?? internalSettingsOpen;
   const setSettingsOpen = onSettingsOpenChange ?? setInternalSettingsOpen;
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -93,6 +95,22 @@ export function Navbar({
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }
   }, [dropdownOpen]);
+
+  const handleCreateOrAddClick = async (
+    route: "/projects/create-new" | "/projects/add-existing"
+  ) => {
+    setDropdownOpen(false);
+    try {
+      const { hasAnyKey, useCustomCli } = await api.env.getGlobalStatus();
+      if (hasAnyKey || useCustomCli) {
+        navigate(route);
+      } else {
+        setApiKeyModalRoute(route);
+      }
+    } catch {
+      navigate(route);
+    }
+  };
 
   return (
     <nav
@@ -172,20 +190,14 @@ export function Navbar({
                 <div className="border-t border-theme-border-subtle mt-1 pt-1 space-y-0.5">
                   <button
                     type="button"
-                    onClick={() => {
-                      setDropdownOpen(false);
-                      navigate("/projects/add-existing");
-                    }}
+                    onClick={() => handleCreateOrAddClick("/projects/add-existing")}
                     className="w-full text-left px-4 py-2 text-sm text-theme-text font-medium hover:bg-theme-info-bg transition-colors"
                   >
                     Add Existing Project
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setDropdownOpen(false);
-                      navigate("/projects/create-new");
-                    }}
+                    onClick={() => handleCreateOrAddClick("/projects/create-new")}
                     className="w-full text-left px-4 py-2 text-sm text-theme-text font-medium hover:bg-theme-info-bg transition-colors"
                   >
                     Create New Project
@@ -289,6 +301,16 @@ export function Navbar({
             setSettingsOpen(false);
             onProjectSaved?.();
           }}
+        />
+      )}
+      {apiKeyModalRoute && (
+        <ApiKeySetupModal
+          onComplete={() => {
+            setApiKeyModalRoute(null);
+            navigate(apiKeyModalRoute);
+          }}
+          onCancel={() => setApiKeyModalRoute(null)}
+          intendedRoute={apiKeyModalRoute}
         />
       )}
     </nav>

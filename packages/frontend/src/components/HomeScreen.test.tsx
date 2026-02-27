@@ -12,6 +12,7 @@ import notificationReducer from "../store/slices/notificationSlice";
 const mockProjectsList = vi.fn();
 const mockArchive = vi.fn();
 const mockDelete = vi.fn();
+const mockGetGlobalStatus = vi.fn();
 
 vi.mock("../api/client", () => ({
   api: {
@@ -19,6 +20,9 @@ vi.mock("../api/client", () => ({
       list: (...args: unknown[]) => mockProjectsList(...args),
       archive: (...args: unknown[]) => mockArchive(...args),
       delete: (...args: unknown[]) => mockDelete(...args),
+    },
+    env: {
+      getGlobalStatus: (...args: unknown[]) => mockGetGlobalStatus(...args),
     },
   },
 }));
@@ -56,6 +60,8 @@ describe("HomeScreen", () => {
     mockProjectsList.mockReset();
     mockArchive.mockReset();
     mockDelete.mockReset();
+    mockGetGlobalStatus.mockReset();
+    mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: true, useCustomCli: false });
   });
 
   it("shows loading state while fetching projects", async () => {
@@ -162,6 +168,31 @@ describe("HomeScreen", () => {
     await user.click(screen.getByTestId("add-existing-button"));
 
     expect(screen.getByTestId("location")).toHaveTextContent("/projects/add-existing");
+  });
+
+  it("shows ApiKeySetupModal when Create New clicked and no API keys", async () => {
+    mockProjectsList.mockResolvedValue([]);
+    mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: false, useCustomCli: false });
+    const user = userEvent.setup();
+
+    renderHomeScreen();
+    await screen.findByTestId("create-new-button");
+    await user.click(screen.getByTestId("create-new-button"));
+
+    expect(screen.getByTestId("api-key-setup-modal")).toBeInTheDocument();
+    expect(screen.getByText("Enter agent API key")).toBeInTheDocument();
+  });
+
+  it("shows ApiKeySetupModal when Add Existing clicked and no API keys", async () => {
+    mockProjectsList.mockResolvedValue([]);
+    mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: false, useCustomCli: false });
+    const user = userEvent.setup();
+
+    renderHomeScreen();
+    await screen.findByTestId("add-existing-button");
+    await user.click(screen.getByTestId("add-existing-button"));
+
+    expect(screen.getByTestId("api-key-setup-modal")).toBeInTheDocument();
   });
 
   it("clicking project card navigates to project sketch", async () => {

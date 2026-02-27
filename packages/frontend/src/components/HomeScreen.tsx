@@ -7,6 +7,7 @@ import { getProjectPhasePath } from "../lib/phaseRouting";
 import { useAppDispatch } from "../store";
 import { addNotification } from "../store/slices/notificationSlice";
 import { CloseButton } from "./CloseButton";
+import { ApiKeySetupModal } from "./ApiKeySetupModal";
 import { GITHUB_REPO_URL, HOMEPAGE_CONTAINER_CLASS } from "../lib/constants";
 import type { Project } from "@opensprint/shared";
 
@@ -90,9 +91,23 @@ export function HomeScreen() {
   const [menuAnchorRect, setMenuAnchorRect] = useState<DOMRect | null>(null);
   const [archiveModal, setArchiveModal] = useState<Project | null>(null);
   const [deleteModal, setDeleteModal] = useState<Project | null>(null);
+  const [apiKeyModalRoute, setApiKeyModalRoute] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleCreateOrAddClick = async (route: "/projects/create-new" | "/projects/add-existing") => {
+    try {
+      const { hasAnyKey, useCustomCli } = await api.env.getGlobalStatus();
+      if (hasAnyKey || useCustomCli) {
+        navigate(route);
+      } else {
+        setApiKeyModalRoute(route);
+      }
+    } catch {
+      navigate(route);
+    }
+  };
 
   const refreshProjects = () => {
     api.projects.list().then(setProjects).catch(console.error);
@@ -188,7 +203,7 @@ export function HomeScreen() {
           <div className="flex gap-4 shrink-0">
             <button
               type="button"
-              onClick={() => navigate("/projects/add-existing")}
+              onClick={() => handleCreateOrAddClick("/projects/add-existing")}
               className="btn-secondary hover:bg-theme-info-bg"
               data-testid="add-existing-button"
             >
@@ -196,7 +211,7 @@ export function HomeScreen() {
             </button>
             <button
               type="button"
-              onClick={() => navigate("/projects/create-new")}
+              onClick={() => handleCreateOrAddClick("/projects/create-new")}
               className="btn-primary"
               data-testid="create-new-button"
             >
@@ -336,6 +351,17 @@ export function HomeScreen() {
           onConfirm={handleDelete}
           onCancel={() => setDeleteModal(null)}
           confirming={confirming}
+        />
+      )}
+
+      {apiKeyModalRoute && (
+        <ApiKeySetupModal
+          onComplete={() => {
+            setApiKeyModalRoute(null);
+            navigate(apiKeyModalRoute);
+          }}
+          onCancel={() => setApiKeyModalRoute(null)}
+          intendedRoute={apiKeyModalRoute}
         />
       )}
 

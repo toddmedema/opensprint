@@ -30,6 +30,7 @@ vi.mock("../../api/client", () => ({
         claudeCli: true,
         useCustomCli: false,
       }),
+      getGlobalStatus: vi.fn().mockResolvedValue({ hasAnyKey: true, useCustomCli: false }),
     },
   },
 }));
