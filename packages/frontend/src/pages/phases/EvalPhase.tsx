@@ -265,7 +265,9 @@ const FeedbackCard = memo(
     const hasChildren = children.length > 0;
 
     const innerRef = useRef<HTMLDivElement>(null);
+    const collapseRef = useRef<HTMLDivElement>(null);
     const [isAnimatingOut, setIsAnimatingOut] = useState(false);
+    const [collapseHeight, setCollapseHeight] = useState<number | null>(null);
     const prevStatusRef = useRef(item.status);
 
     useEffect(() => {
@@ -279,13 +281,29 @@ const FeedbackCard = memo(
       setIsAnimatingOut(true);
     }, [item.status, isAnimatingOut]);
 
+    useLayoutEffect(() => {
+      if (!isAnimatingOut || collapseRef.current == null) return;
+      const el = collapseRef.current;
+      const measured = el.scrollHeight;
+      setCollapseHeight(measured);
+      const id = requestAnimationFrame(() => {
+        setCollapseHeight(0);
+      });
+      return () => cancelAnimationFrame(id);
+    }, [isAnimatingOut]);
+
     const removeRef = useRef<(() => void) | undefined>(undefined);
     removeRef.current = () => onRemoveAfterAnimation(item.id);
 
-    const handleTransitionEnd = useCallback((e: React.TransitionEvent) => {
-      if (e.propertyName !== "opacity") return;
-      removeRef.current?.();
-    }, []);
+    const handleTransitionEnd = useCallback(
+      (e: React.TransitionEvent) => {
+        if (e.target !== collapseRef.current) return;
+        if (e.propertyName === "max-height") {
+          removeRef.current?.();
+        }
+      },
+      []
+    );
 
     useEffect(() => {
       if (!isAnimatingOut) return;
@@ -319,16 +337,26 @@ const FeedbackCard = memo(
         }
       : {};
 
+    const rootStyle: React.CSSProperties =
+      collapseHeight !== null
+        ? {
+            overflow: "hidden",
+            maxHeight: collapseHeight,
+            marginTop: 0,
+            marginBottom: 0,
+            transition: `max-height ${FADE_OUT_DURATION_MS}ms ease-out, margin ${FADE_OUT_DURATION_MS}ms ease-out`,
+          }
+        : {};
+
     return (
       <div
+        ref={collapseRef}
         className={depth > 0 ? "ml-4 mt-2 border-l-2 border-theme-border pl-4" : ""}
         data-feedback-id={item.id}
+        style={rootStyle}
+        onTransitionEnd={handleTransitionEnd}
       >
-        <div
-          ref={innerRef}
-          style={innerStyle}
-          onTransitionEnd={handleTransitionEnd}
-        >
+        <div ref={innerRef} style={innerStyle}>
           <div className="card p-4">
           {/* Category badge/spinner floats top-right */}
           <div className="mb-2 overflow-hidden">
@@ -460,6 +488,7 @@ const FeedbackCard = memo(
             </div>
           </div>
         </div>
+        </div>
 
         {/* Inline reply composer (PRD §7.4.1: quote snippet of parent above text input) */}
         {isReplying && (
@@ -544,7 +573,6 @@ const FeedbackCard = memo(
               tasks={tasks}
             />
           ))}
-        </div>
       </div>
     );
   },

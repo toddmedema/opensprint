@@ -1994,7 +1994,7 @@ describe("EvalPhase feedback form", () => {
       });
     });
 
-    it("preserves top margin during resolve fade-out animation (no jump)", async () => {
+    it("collapses height during resolve fade-out animation (no empty gap)", async () => {
       const store = createStore({ evalFeedback: mockFeedbackItems });
       const user = userEvent.setup();
       render(
@@ -2006,17 +2006,18 @@ describe("EvalPhase feedback form", () => {
       await waitFor(() => expect(screen.getByText("Bug 3")).toBeInTheDocument());
 
       const bug3Card = screen.getByText("Bug 3").closest(".card");
-      const wrapper = bug3Card?.parentElement;
-      expect(wrapper).toBeTruthy();
+      const root = bug3Card?.closest("[data-feedback-id]");
+      expect(root).toBeTruthy();
 
       await user.click(within(bug3Card!).getByRole("button", { name: /^Resolve$/ }));
 
-      // During fade-out animation, wrapper has opacity/transition but must NOT set margin: 0
-      // (which would remove top margin from space-y-3 and cause the card to jump upward)
+      // During fade-out, root collapses: overflow hidden, max-height transition, margin 0
+      // so no empty vertical gap remains during or after animation
       await waitFor(() => {
-        const style = (wrapper as HTMLElement).getAttribute("style") ?? "";
-        expect(style).toMatch(/opacity|transition/);
-        expect(style).not.toMatch(/margin\s*:\s*0/);
+        const style = (root as HTMLElement).getAttribute("style") ?? "";
+        expect(style).toMatch(/overflow:\s*hidden/);
+        expect(style).toMatch(/max-height|maxHeight/);
+        expect(style).toMatch(/transition/);
       });
     });
 
