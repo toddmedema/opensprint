@@ -4,6 +4,8 @@ import path from "path";
 import os from "os";
 import { ProjectService } from "../services/project.service.js";
 
+let expoInstallShouldFail = false;
+
 vi.mock("child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("child_process")>();
   return {
@@ -34,6 +36,12 @@ vi.mock("child_process", async (importOriginal) => {
           .catch((err) => callback(err as Error, "", ""));
       } else if (cmd.includes("npm install")) {
         callback(null, "", "");
+      } else if (cmd.includes("expo install") && cmd.includes("react-dom") && cmd.includes("react-native-web")) {
+        if (expoInstallShouldFail) {
+          callback(new Error("expo: command not found"), "", "expo: command not found");
+        } else {
+          callback(null, "", "");
+        }
       } else {
         (actual.exec as (a: string, b: unknown, c: (err: Error | null, stdout?: string, stderr?: string) => void) => void)(
           cmd,
@@ -135,5 +143,24 @@ describe("ProjectService.scaffoldProject", () => {
 
     expect(result.project).toBeDefined();
     expect(result.project.name).toBe("default-agents");
+  });
+
+  it("surfaces clear error when expo install step fails", async () => {
+    expoInstallShouldFail = true;
+    try {
+      const err = await projectService
+        .scaffoldProject({
+          name: "expo-fail",
+          parentPath: tempDir,
+          template: "web-app-expo-react",
+        })
+        .catch((e) => e);
+      expect(err).toMatchObject({ code: "SCAFFOLD_INIT_FAILED" });
+      expect(err.message).toContain("Expo web dependencies could not be installed");
+      expect(err.message).toContain("expo: command not found");
+      expect(err.message).toContain("Ensure Expo CLI is available");
+    } finally {
+      expoInstallShouldFail = false;
+    }
   });
 });

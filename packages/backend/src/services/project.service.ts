@@ -472,6 +472,22 @@ export class ProjectService {
           { repoPath, recovery: installResult.recovery ?? recovery },
         );
       }
+
+      // Step 3: install web dependencies for Expo Web template
+      try {
+        await execAsync("npx expo install react-dom react-native-web", { cwd: repoPath });
+      } catch (expoInstallErr) {
+        const msg = getErrorMessage(
+          expoInstallErr,
+          "Failed to install Expo web dependencies (react-dom, react-native-web)"
+        );
+        throw new AppError(
+          500,
+          ErrorCodes.SCAFFOLD_INIT_FAILED,
+          `Expo web dependencies could not be installed: ${msg}. Ensure Expo CLI is available and try again.`,
+          { repoPath, recovery },
+        );
+      }
     }
 
     const simpleInput = input.simpleComplexityAgent ?? DEFAULT_AGENT_CONFIG;
