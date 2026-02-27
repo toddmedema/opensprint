@@ -87,3 +87,28 @@ export async function updateGlobalSettings(
   await save(merged);
   return merged;
 }
+
+/** Serialization lock for atomic updates */
+let atomicLock: Promise<void> = Promise.resolve();
+
+/**
+ * Atomically update global settings via read-modify-write with serialization.
+ * Prevents concurrent updates from clobbering each other (same pattern as updateSettingsInStore).
+ */
+export async function atomicUpdateGlobalSettings(
+  updater: (settings: GlobalSettings) => GlobalSettings
+): Promise<void> {
+  const prev = atomicLock;
+  let resolve: () => void;
+  atomicLock = prev.then(
+    () => new Promise<void>((r) => { resolve = r; })
+  );
+  await prev;
+  try {
+    const current = await load();
+    const updated = updater(current);
+    await save(updated);
+  } finally {
+    resolve!();
+  }
+}

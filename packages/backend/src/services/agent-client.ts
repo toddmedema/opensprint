@@ -13,6 +13,7 @@ import {
   recordLimitHit,
   clearLimitHit,
   ENV_FALLBACK_KEY_ID,
+  type KeySource,
 } from "./api-key-resolver.service.js";
 import { registerAgentProcess, unregisterAgentProcess } from "./agent-process-registry.js";
 import { createLogger } from "../utils/logger.js";
@@ -230,14 +231,14 @@ export class AgentClient {
         Promise.resolve(onExit(1)).catch((e) => log.error("onExit failed", { err: e }));
         return;
       }
-      const { key, keyId } = resolved;
+      const { key, keyId, source } = resolved;
 
       const stderrCollector = { stderr: "" };
 
       const wrappedOnExit = async (code: number | null) => {
         if (code === 0) {
           if (keyId !== ENV_FALLBACK_KEY_ID) {
-            await clearLimitHit(projectId, "CURSOR_API_KEY", keyId);
+            await clearLimitHit(projectId, "CURSOR_API_KEY", keyId, source);
           }
           return Promise.resolve(onExit(0));
         }
@@ -253,7 +254,7 @@ export class AgentClient {
           output = stderrCollector.stderr;
         }
         if (isLimitError({ stderr: output }) && keyId !== ENV_FALLBACK_KEY_ID) {
-          await recordLimitHit(projectId, "CURSOR_API_KEY", keyId);
+          await recordLimitHit(projectId, "CURSOR_API_KEY", keyId, source);
           const next = await getNextKey(projectId, "CURSOR_API_KEY");
           if (next) {
             return trySpawn();
@@ -735,7 +736,7 @@ export class AgentClient {
     for (;;) {
       const resolved = projectId
         ? await getNextKey(projectId, "CURSOR_API_KEY")
-        : { key: process.env.CURSOR_API_KEY || "", keyId: ENV_FALLBACK_KEY_ID };
+        : { key: process.env.CURSOR_API_KEY || "", keyId: ENV_FALLBACK_KEY_ID, source: "env" as KeySource };
 
       if (!resolved || !resolved.key.trim()) {
         const msg = lastError ? getErrorMessage(lastError) : "No Cursor API key available";
@@ -749,7 +750,7 @@ export class AgentClient {
         );
       }
 
-      const { key, keyId } = resolved;
+      const { key, keyId, source } = resolved;
       if (triedKeyIds.has(keyId)) {
         const msg = getErrorMessage(lastError);
         throw new AppError(
@@ -772,7 +773,7 @@ export class AgentClient {
         const content = await this.runCursorAgentSpawn(args, cwd, key);
         log.info("Cursor CLI completed", { outputLen: content.length });
         if (projectId && keyId !== ENV_FALLBACK_KEY_ID) {
-          await clearLimitHit(projectId, "CURSOR_API_KEY", keyId);
+          await clearLimitHit(projectId, "CURSOR_API_KEY", keyId, source);
         }
         if (options.onChunk) {
           options.onChunk(content);
@@ -781,7 +782,7 @@ export class AgentClient {
       } catch (error: unknown) {
         lastError = error;
         if (isLimitError(error) && keyId !== ENV_FALLBACK_KEY_ID) {
-          await recordLimitHit(projectId!, "CURSOR_API_KEY", keyId);
+          await recordLimitHit(projectId!, "CURSOR_API_KEY", keyId, source);
           continue;
         }
         // Non-limit error or env fallback with limit: throw

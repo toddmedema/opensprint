@@ -13,6 +13,7 @@ import {
   recordLimitHit,
   clearLimitHit,
   ENV_FALLBACK_KEY_ID,
+  type KeySource,
 } from "./api-key-resolver.service.js";
 
 /** Message for planning agent (user or assistant) */
@@ -423,7 +424,7 @@ A git merge or rebase has encountered conflicts. The working directory contains 
         );
       }
 
-      const { key, keyId } = resolved;
+      const { key, keyId, source } = resolved;
       if (triedKeyIds.has(keyId)) {
         // Already tried this key (env fallback with limit - can't mark, would loop)
         const msg = getErrorMessage(lastError);
@@ -481,7 +482,7 @@ A git merge or rebase has encountered conflicts. The working directory contains 
               : "";
         }
 
-        await clearLimitHit(projectId, "ANTHROPIC_API_KEY", keyId);
+        await clearLimitHit(projectId, "ANTHROPIC_API_KEY", keyId, source);
         return { content };
       } catch (error: unknown) {
         lastError = error;
@@ -495,7 +496,7 @@ A git merge or rebase has encountered conflicts. The working directory contains 
               { agentType: "claude", raw: msg, isLimitError: true }
             );
           }
-          await recordLimitHit(projectId, "ANTHROPIC_API_KEY", keyId);
+          await recordLimitHit(projectId, "ANTHROPIC_API_KEY", keyId, source);
           continue;
         }
         const msg = getErrorMessage(error);

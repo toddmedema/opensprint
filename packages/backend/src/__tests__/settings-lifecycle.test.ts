@@ -351,7 +351,7 @@ describe("Settings API lifecycle", () => {
       .send({ apiKeys });
 
     const resolved = await getNextKey(projectId, "ANTHROPIC_API_KEY");
-    expect(resolved).toEqual({ key: "sk-ant-from-api", keyId: "a1" });
+    expect(resolved).toEqual({ key: "sk-ant-from-api", keyId: "a1", source: "project" });
   });
 
   it("PUT /api/v1/projects/:id/settings rejects empty apiKeys when provider in use", async () => {

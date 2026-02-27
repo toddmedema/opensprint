@@ -158,7 +158,7 @@ describe("AgentClient", () => {
     });
 
     it("should use ApiKeyResolver when projectId provided for cursor", async () => {
-      mockGetNextKey.mockResolvedValue({ key: "cursor-key-from-resolver", keyId: "k1" });
+      mockGetNextKey.mockResolvedValue({ key: "cursor-key-from-resolver", keyId: "k1", source: "global" });
       const mockChild = {
         killed: false,
         kill: vi.fn(),
@@ -181,7 +181,7 @@ describe("AgentClient", () => {
       });
 
       expect(mockGetNextKey).toHaveBeenCalledWith("proj-123", "CURSOR_API_KEY");
-      expect(mockClearLimitHit).toHaveBeenCalledWith("proj-123", "CURSOR_API_KEY", "k1");
+      expect(mockClearLimitHit).toHaveBeenCalledWith("proj-123", "CURSOR_API_KEY", "k1", "global");
       expect(mockSpawn).toHaveBeenCalledWith(
         "agent",
         expect.any(Array),
@@ -195,8 +195,8 @@ describe("AgentClient", () => {
 
     it("should recordLimitHit and retry on limit error when projectId provided", async () => {
       mockGetNextKey
-        .mockResolvedValueOnce({ key: "key1", keyId: "k1" })
-        .mockResolvedValueOnce({ key: "key2", keyId: "k2" });
+        .mockResolvedValueOnce({ key: "key1", keyId: "k1", source: "project" })
+        .mockResolvedValueOnce({ key: "key2", keyId: "k2", source: "project" });
       let callCount = 0;
       mockSpawn.mockImplementation(() => {
         callCount++;
@@ -239,8 +239,8 @@ describe("AgentClient", () => {
       });
 
       expect(mockGetNextKey).toHaveBeenCalledTimes(2);
-      expect(mockRecordLimitHit).toHaveBeenCalledWith("proj-123", "CURSOR_API_KEY", "k1");
-      expect(mockClearLimitHit).toHaveBeenCalledWith("proj-123", "CURSOR_API_KEY", "k2");
+      expect(mockRecordLimitHit).toHaveBeenCalledWith("proj-123", "CURSOR_API_KEY", "k1", "project");
+      expect(mockClearLimitHit).toHaveBeenCalledWith("proj-123", "CURSOR_API_KEY", "k2", "project");
       expect(result.content).toContain("Success");
     });
 

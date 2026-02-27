@@ -148,7 +148,7 @@ describe("AgentService", () => {
     const claudeConfig: AgentConfig = { type: "claude", model: "claude-sonnet-4", cliCommand: null };
 
     it("uses getNextKey and clearLimitHit on success", async () => {
-      mockGetNextKey.mockResolvedValue({ key: "sk-ant-test", keyId: "k1" });
+      mockGetNextKey.mockResolvedValue({ key: "sk-ant-test", keyId: "k1", source: "global" });
       mockMessagesCreate.mockResolvedValue({
         content: [{ type: "text", text: "Hello" }],
       });
@@ -160,15 +160,15 @@ describe("AgentService", () => {
       });
 
       expect(mockGetNextKey).toHaveBeenCalledWith(projectId, "ANTHROPIC_API_KEY");
-      expect(mockClearLimitHit).toHaveBeenCalledWith(projectId, "ANTHROPIC_API_KEY", "k1");
+      expect(mockClearLimitHit).toHaveBeenCalledWith(projectId, "ANTHROPIC_API_KEY", "k1", "global");
       expect(mockRecordLimitHit).not.toHaveBeenCalled();
       expect(result.content).toBe("Hello");
     });
 
     it("on limit error: recordLimitHit, retry with next key, succeeds on second key", async () => {
       mockGetNextKey
-        .mockResolvedValueOnce({ key: "sk-ant-key1", keyId: "k1" })
-        .mockResolvedValueOnce({ key: "sk-ant-key2", keyId: "k2" });
+        .mockResolvedValueOnce({ key: "sk-ant-key1", keyId: "k1", source: "project" })
+        .mockResolvedValueOnce({ key: "sk-ant-key2", keyId: "k2", source: "project" });
       mockMessagesCreate
         .mockRejectedValueOnce(new Error("Rate limit exceeded"))
         .mockResolvedValueOnce({ content: [{ type: "text", text: "Success" }] });
@@ -180,13 +180,13 @@ describe("AgentService", () => {
       });
 
       expect(mockGetNextKey).toHaveBeenCalledTimes(2);
-      expect(mockRecordLimitHit).toHaveBeenCalledWith(projectId, "ANTHROPIC_API_KEY", "k1");
-      expect(mockClearLimitHit).toHaveBeenCalledWith(projectId, "ANTHROPIC_API_KEY", "k2");
+      expect(mockRecordLimitHit).toHaveBeenCalledWith(projectId, "ANTHROPIC_API_KEY", "k1", "project");
+      expect(mockClearLimitHit).toHaveBeenCalledWith(projectId, "ANTHROPIC_API_KEY", "k2", "project");
       expect(result.content).toBe("Success");
     });
 
     it("on limit error with env fallback: throws without retry", async () => {
-      mockGetNextKey.mockResolvedValue({ key: "sk-ant-env", keyId: "__env__" });
+      mockGetNextKey.mockResolvedValue({ key: "sk-ant-env", keyId: "__env__", source: "env" });
       mockMessagesCreate.mockRejectedValue(new Error("Rate limit exceeded"));
 
       await expect(
@@ -216,7 +216,7 @@ describe("AgentService", () => {
     });
 
     it("streaming path: uses getNextKey and clearLimitHit on success", async () => {
-      mockGetNextKey.mockResolvedValue({ key: "sk-ant-test", keyId: "k1" });
+      mockGetNextKey.mockResolvedValue({ key: "sk-ant-test", keyId: "k1", source: "global" });
       const onChunk = vi.fn();
       mockMessagesStream.mockImplementation(() => {
         const stream = {
@@ -238,7 +238,7 @@ describe("AgentService", () => {
       });
 
       expect(mockGetNextKey).toHaveBeenCalledWith(projectId, "ANTHROPIC_API_KEY");
-      expect(mockClearLimitHit).toHaveBeenCalledWith(projectId, "ANTHROPIC_API_KEY", "k1");
+      expect(mockClearLimitHit).toHaveBeenCalledWith(projectId, "ANTHROPIC_API_KEY", "k1", "global");
       expect(result.content).toBe("Hello world");
     });
   });
