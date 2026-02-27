@@ -954,7 +954,8 @@ export function EvalPhase({
   const feedbackTree = useMemo(() => buildFeedbackTree(filteredFeedback), [filteredFeedback]);
 
   useScrollToQuestion();
-  const { notifications: openQuestionNotifications } = useOpenQuestionNotifications(projectId);
+  const { notifications: openQuestionNotifications, refetch: refetchNotifications } =
+    useOpenQuestionNotifications(projectId);
   const questionIdByFeedbackId = useMemo(() => {
     const map: Record<string, string> = {};
     for (const n of openQuestionNotifications) {
@@ -986,11 +987,12 @@ export function EvalPhase({
         await dispatch(
           recategorizeFeedback({ projectId, feedbackId, answer: answer.trim() })
         ).unwrap();
+        refetchNotifications();
       } finally {
         setAnswerNotificationId(null);
       }
     },
-    [dispatch, projectId]
+    [dispatch, projectId, refetchNotifications]
   );
 
   const handleDismissOpenQuestion = useCallback(
@@ -998,11 +1000,12 @@ export function EvalPhase({
       setAnswerNotificationId(notificationId);
       try {
         await api.notifications.resolve(projectId, notificationId);
+        refetchNotifications();
       } finally {
         setAnswerNotificationId(null);
       }
     },
-    [projectId]
+    [projectId, refetchNotifications]
   );
 
   return (
