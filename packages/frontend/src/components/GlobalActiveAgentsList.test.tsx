@@ -221,7 +221,7 @@ describe("GlobalActiveAgentsList", () => {
     expect(screen.queryByText(/Coder \(/)).not.toBeInTheDocument();
   });
 
-  it("dropdown agent items have hover background and cursor pointer for clickability feedback", async () => {
+  it("dropdown agent items have visible hover background and cursor pointer for clickability feedback", async () => {
     mockProjectsList.mockResolvedValue([{ id: "proj-1", name: "Project A" }]);
     mockAgentsActive.mockResolvedValue([
       {
@@ -242,8 +242,8 @@ describe("GlobalActiveAgentsList", () => {
     await user.click(screen.getByTitle("Active agents"));
 
     const agentButton = within(screen.getByRole("listbox")).getByRole("button", { name: /Task 1/ });
-    expect(agentButton).toHaveClass("hover:bg-theme-border-subtle");
-    expect(agentButton).toHaveClass("group-hover:bg-theme-border-subtle");
+    expect(agentButton).toHaveClass("hover:bg-theme-border");
+    expect(agentButton).toHaveClass("group-hover:bg-theme-border");
     expect(agentButton).toHaveClass("cursor-pointer");
   });
 

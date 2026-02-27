@@ -149,7 +149,7 @@ const GlobalAgentDropdownItem = memo(function GlobalAgentDropdownItem({
     <li role="option" className="group flex items-stretch">
       <button
         type="button"
-        className="flex-1 min-w-0 px-4 py-2.5 text-sm text-left hover:bg-theme-border-subtle group-hover:bg-theme-border-subtle transition-colors flex items-start gap-3 cursor-pointer"
+        className="flex-1 min-w-0 px-4 py-2.5 text-sm text-left hover:bg-theme-border group-hover:bg-theme-border focus-visible:bg-theme-border transition-colors flex items-start gap-3 cursor-pointer"
         onClick={() => onClick(project.id, agent)}
         title={description}
       >
@@ -176,7 +176,7 @@ const GlobalAgentDropdownItem = memo(function GlobalAgentDropdownItem({
         type="button"
         onClick={handleKill}
         disabled={killing}
-        className="shrink-0 px-2 flex items-center justify-center text-theme-muted hover:text-red-600 hover:bg-theme-border-subtle group-hover:bg-theme-border-subtle transition-colors disabled:opacity-50 opacity-0 group-hover:opacity-100 cursor-pointer"
+        className="shrink-0 px-2 flex items-center justify-center text-theme-muted hover:text-red-600 hover:bg-theme-border group-hover:bg-theme-border transition-colors disabled:opacity-50 opacity-0 group-hover:opacity-100 cursor-pointer"
         title="Kill agent"
         aria-label="Kill agent"
       >
