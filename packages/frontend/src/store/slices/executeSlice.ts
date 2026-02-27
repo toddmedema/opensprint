@@ -256,6 +256,28 @@ export const updateTaskPriority = createAsyncThunk(
   }
 );
 
+export const addTaskDependency = createAsyncThunk(
+  "execute/addTaskDependency",
+  async (
+    {
+      projectId,
+      taskId,
+      parentTaskId,
+      type,
+    }: {
+      projectId: string;
+      taskId: string;
+      parentTaskId: string;
+      type?: "blocks" | "parent-child" | "related";
+    },
+    { dispatch }
+  ) => {
+    await api.tasks.addDependency(projectId, taskId, parentTaskId, type);
+    const task = await api.tasks.get(projectId, taskId);
+    return { task, taskId };
+  }
+);
+
 export const unblockTask = createAsyncThunk(
   "execute/unblockTask",
   async (
@@ -688,6 +710,13 @@ const executeSlice = createSlice({
         const task = state.tasksById[taskId];
         if (task) task.priority = payload.previousPriority;
       });
+
+    // addTaskDependency — refresh task in state after adding dependency
+    builder.addCase(addTaskDependency.fulfilled, (state, action) => {
+      ensureTasksState(state);
+      const { task } = action.payload;
+      state.tasksById[task.id] = task;
+    });
   },
 });
 

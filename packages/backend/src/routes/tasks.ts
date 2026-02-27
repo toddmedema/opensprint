@@ -66,6 +66,31 @@ tasksRouter.post("/:taskId/done", async (req: Request<TaskParams>, res, next) =>
   }
 });
 
+// POST /projects/:projectId/tasks/:taskId/dependencies — Add dependency (child depends on parent)
+tasksRouter.post("/:taskId/dependencies", async (req: Request<TaskParams>, res, next) => {
+  try {
+    const { parentTaskId, type } = req.body ?? {};
+    if (typeof parentTaskId !== "string" || !parentTaskId.trim()) {
+      return res.status(400).json({
+        error: { code: "BAD_REQUEST", message: "parentTaskId is required" },
+      });
+    }
+    const depType =
+      type === "blocks" || type === "parent-child" || type === "related"
+        ? type
+        : "blocks";
+    await taskService.addDependency(
+      req.params.projectId,
+      req.params.taskId,
+      parentTaskId.trim(),
+      depType
+    );
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+});
+
 // PATCH /projects/:projectId/tasks/:taskId — Update task (e.g. priority)
 tasksRouter.patch("/:taskId", async (req: Request<TaskParams>, res, next) => {
   try {

@@ -76,6 +76,17 @@ export class TaskService {
     return readyIssues.map((issue) => this.storedTaskToTask(issue, readyIds, idToIssue));
   }
 
+  /** Add a dependency from childTaskId to parentTaskId (child depends on parent). */
+  async addDependency(
+    projectId: string,
+    childTaskId: string,
+    parentTaskId: string,
+    type: "blocks" | "related" | "parent-child" = "blocks"
+  ): Promise<void> {
+    await this.projectService.getProject(projectId);
+    await this.taskStore.addDependency(projectId, childTaskId, parentTaskId, type);
+  }
+
   /** Get a single task with full details. */
   async getTask(projectId: string, taskId: string): Promise<Task> {
     await this.projectService.getProject(projectId);

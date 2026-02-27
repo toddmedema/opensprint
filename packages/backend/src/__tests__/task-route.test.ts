@@ -577,4 +577,39 @@ Test review prompt generation.
     expect(res.status).toBe(400);
     expect(res.body.error?.message).toMatch(/0–4/i);
   });
+
+  it("POST /tasks/:taskId/dependencies adds dependency and returns 204", async () => {
+    const parentTask = await taskStore.create(projectId, "Parent Task", {
+      type: "task",
+      priority: 1,
+    });
+    const childTask = await taskStore.create(projectId, "Child Task", {
+      type: "task",
+      priority: 1,
+    });
+
+    const res = await request(app)
+      .post(`${API_PREFIX}/projects/${projectId}/tasks/${childTask.id}/dependencies`)
+      .set("Content-Type", "application/json")
+      .send({ parentTaskId: parentTask.id, type: "blocks" });
+
+    expect(res.status).toBe(204);
+
+    const childAfter = await taskStore.show(projectId, childTask.id);
+    const deps = (childAfter as { dependencies?: Array<{ depends_on_id: string; type: string }> })
+      .dependencies ?? [];
+    expect(deps.some((d) => d.depends_on_id === parentTask.id && d.type === "blocks")).toBe(true);
+  });
+
+  it("POST /tasks/:taskId/dependencies returns 400 when parentTaskId missing", async () => {
+    const task = await taskStore.create(projectId, "Task", { type: "task", priority: 1 });
+
+    const res = await request(app)
+      .post(`${API_PREFIX}/projects/${projectId}/tasks/${task.id}/dependencies`)
+      .set("Content-Type", "application/json")
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.error?.message).toMatch(/parentTaskId/i);
+  });
 });

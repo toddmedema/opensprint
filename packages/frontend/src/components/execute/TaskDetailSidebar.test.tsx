@@ -18,6 +18,8 @@ import websocketReducer from "../../store/slices/websocketSlice";
 
 const mockGet = vi.fn();
 const mockUpdatePriority = vi.fn();
+const mockAddDependency = vi.fn();
+const mockTasksGet = vi.fn();
 vi.mock("../../api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../api/client")>();
   return {
@@ -27,7 +29,9 @@ vi.mock("../../api/client", async (importOriginal) => {
       feedback: { get: (...args: unknown[]) => mockGet(...args) },
       tasks: {
         ...((actual.api as { tasks?: Record<string, unknown> }).tasks ?? {}),
+        get: (...args: unknown[]) => mockTasksGet(...args),
         updatePriority: (...args: unknown[]) => mockUpdatePriority(...args),
+        addDependency: (...args: unknown[]) => mockAddDependency(...args),
       },
     },
   };
@@ -132,6 +136,8 @@ describe("TaskDetailSidebar", () => {
     vi.clearAllMocks();
     mockGet.mockResolvedValue(null);
     mockUpdatePriority.mockResolvedValue({});
+    mockAddDependency.mockResolvedValue(undefined);
+    mockTasksGet.mockResolvedValue({});
   });
 
   it("renders task title from selectedTaskData", () => {
@@ -744,6 +750,101 @@ describe("TaskDetailSidebar", () => {
 
     expect(screen.getByText("Depends on:")).toBeInTheDocument();
     expect(screen.getByText("Other Task")).toBeInTheDocument();
+  });
+
+  describe("Add link", () => {
+    it("shows Add link button in Execute sidebar", () => {
+      const props = createMinimalProps({ tasks: [{ id: "epic-1.2", title: "Task B" }] });
+      render(
+        <Provider store={createStore()}>
+          <TaskDetailSidebar {...props} />
+        </Provider>
+      );
+      expect(screen.getByTestId("sidebar-add-link-btn")).toBeInTheDocument();
+      expect(screen.getByTestId("sidebar-add-link-btn")).toHaveTextContent("Add link");
+    });
+
+    it("opens Add link flow with dropdown, input, save and cancel when Add link clicked", async () => {
+      const user = userEvent.setup();
+      const props = createMinimalProps({
+        tasks: [
+          { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "in_progress" as const, priority: 0, assignee: null, type: "task" as const, status: "in_progress" as const, labels: [], dependencies: [], description: "", createdAt: "", updatedAt: "" },
+          { id: "epic-1.2", title: "Task B", epicId: "epic-1", kanbanColumn: "in_progress" as const, priority: 0, assignee: null, type: "task" as const, status: "in_progress" as const, labels: [], dependencies: [], description: "", createdAt: "", updatedAt: "" },
+        ],
+      });
+      render(
+        <Provider store={createStore()}>
+          <TaskDetailSidebar {...props} />
+        </Provider>
+      );
+      await user.click(screen.getByTestId("sidebar-add-link-btn"));
+      expect(screen.getByTestId("add-link-flow")).toBeInTheDocument();
+      expect(screen.getByTestId("add-link-type-select")).toBeInTheDocument();
+      expect(screen.getByTestId("add-link-input")).toBeInTheDocument();
+      expect(screen.getByTestId("add-link-save-btn")).toBeInTheDocument();
+      expect(screen.getByTestId("add-link-cancel-btn")).toBeInTheDocument();
+      const select = screen.getByTestId("add-link-type-select");
+      expect(select).toHaveValue("blocks");
+      const options = within(select).getAllByRole("option");
+      expect(options.map((o) => o.textContent)).toContain("Blocks");
+      expect(options.map((o) => o.textContent)).toContain("Parent-child");
+      expect(options.map((o) => o.textContent)).toContain("Related");
+    });
+
+    it("cancel dismisses Add link flow without changes", async () => {
+      const user = userEvent.setup();
+      const props = createMinimalProps({ tasks: [{ id: "epic-1.2", title: "Task B" }] });
+      render(
+        <Provider store={createStore()}>
+          <TaskDetailSidebar {...props} />
+        </Provider>
+      );
+      await user.click(screen.getByTestId("sidebar-add-link-btn"));
+      expect(screen.getByTestId("add-link-flow")).toBeInTheDocument();
+      await user.click(screen.getByTestId("add-link-cancel-btn"));
+      expect(screen.queryByTestId("add-link-flow")).not.toBeInTheDocument();
+      expect(screen.getByTestId("sidebar-add-link-btn")).toBeInTheDocument();
+      expect(mockAddDependency).not.toHaveBeenCalled();
+    });
+
+    it("save persists link via addDependency when task selected from suggestions", async () => {
+      const user = userEvent.setup();
+      mockTasksGet.mockResolvedValue({
+        id: "epic-1.1",
+        title: "Task A",
+        epicId: "epic-1",
+        kanbanColumn: "in_progress" as const,
+        priority: 0,
+        assignee: null,
+        type: "task" as const,
+        status: "in_progress" as const,
+        labels: [],
+        dependencies: [{ targetId: "epic-1.2", type: "blocks" }],
+        description: "",
+        createdAt: "",
+        updatedAt: "",
+      });
+      const props = createMinimalProps({
+        tasks: [
+          { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "in_progress" as const, priority: 0, assignee: null, type: "task" as const, status: "in_progress" as const, labels: [], dependencies: [], description: "", createdAt: "", updatedAt: "" },
+          { id: "epic-1.2", title: "Task B", epicId: "epic-1", kanbanColumn: "in_progress" as const, priority: 0, assignee: null, type: "task" as const, status: "in_progress" as const, labels: [], dependencies: [], description: "", createdAt: "", updatedAt: "" },
+        ],
+      });
+      render(
+        <Provider store={createStore()}>
+          <TaskDetailSidebar {...props} />
+        </Provider>
+      );
+      await user.click(screen.getByTestId("sidebar-add-link-btn"));
+      await user.type(screen.getByTestId("add-link-input"), "b");
+      const suggestion = await screen.findByTestId("add-link-suggestions");
+      expect(suggestion).toBeInTheDocument();
+      const taskBOption = within(suggestion).getByText("Task B");
+      await user.click(taskBOption);
+      await waitFor(() => {
+        expect(mockAddDependency).toHaveBeenCalledWith("proj-1", "epic-1.1", "epic-1.2", "blocks");
+      });
+    });
   });
 
   it("renders task description markdown when selectedTaskData has description", () => {

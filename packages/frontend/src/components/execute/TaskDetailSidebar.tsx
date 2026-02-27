@@ -6,7 +6,7 @@ import type { AgentSession, Plan, Task } from "@opensprint/shared";
 import { PRIORITY_LABELS, AGENT_ROLE_LABELS } from "@opensprint/shared";
 import type { ActiveTaskInfo } from "../../store/slices/executeSlice";
 import { useAppDispatch } from "../../store";
-import { updateTaskPriority } from "../../store/slices/executeSlice";
+import { updateTaskPriority, addTaskDependency } from "../../store/slices/executeSlice";
 import { wsConnect } from "../../store/middleware/websocketMiddleware";
 import { CloseButton } from "../CloseButton";
 import { PriorityIcon } from "../PriorityIcon";
@@ -19,6 +19,7 @@ import { filterAgentOutput } from "../../utils/agentOutputFilter";
 import { ArchivedSessionView } from "./ArchivedSessionView";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { SourceFeedbackSection } from "./SourceFeedbackSection";
+import { AddLinkFlow } from "./AddLinkFlow";
 
 export interface TaskDetailSidebarProps {
   projectId: string;
@@ -112,6 +113,7 @@ export function TaskDetailSidebar({
   const actionsMenuRef = useRef<HTMLDivElement>(null);
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const [showLoadingPlaceholder, setShowLoadingPlaceholder] = useState(false);
+  const [addLinkOpen, setAddLinkOpen] = useState(false);
   const task = selectedTaskData;
 
   const hasActions = isBlockedTask || (!isDoneTask && !isBlockedTask);
@@ -236,7 +238,7 @@ export function TaskDetailSidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0">
-        <div className="p-4 border-b border-theme-border has-[+_[data-section=depends-on]]:border-b-0">
+        <div className="p-4 border-b border-theme-border has-[+_[data-section=view-plan-deps-addlink]]:border-b-0">
           {task && (
             <>
               {/* Row 1: Status and priority on a single row */}
@@ -375,26 +377,105 @@ export function TaskDetailSidebar({
           ) : null}
         </div>
 
-        {/* View plan link: above Dependencies subsection */}
-        {task?.epicId &&
-          (() => {
-            const plan = plans.find((p) => p.metadata.epicId === task.epicId);
-            if (!plan || !onNavigateToPlan) return null;
-            const planTitle = getEpicTitleFromPlan(plan);
-            return (
-              <div className="p-4 border-b border-theme-border has-[+_[data-section=depends-on]]:border-b-0 has-[+_[data-section=depends-on]]:pb-2">
-                <button
-                  type="button"
-                  onClick={() => onNavigateToPlan(plan.metadata.planId)}
-                  className="text-xs text-brand-600 hover:text-brand-700 hover:underline text-left"
-                  title={`View plan: ${planTitle}`}
-                  data-testid="sidebar-view-plan-btn"
-                >
-                  View plan: {planTitle}
-                </button>
-              </div>
-            );
-          })()}
+        {/* View plan, Dependencies, Add link — same section */}
+        {task && (
+          <div className="p-4 border-b border-theme-border" data-section="view-plan-deps-addlink">
+            {/* View plan link */}
+            {task.epicId &&
+              (() => {
+                const plan = plans.find((p) => p.metadata.epicId === task.epicId);
+                if (!plan || !onNavigateToPlan) return null;
+                const planTitle = getEpicTitleFromPlan(plan);
+                return (
+                  <button
+                    type="button"
+                    onClick={() => onNavigateToPlan(plan.metadata.planId)}
+                    className="text-xs text-brand-600 hover:text-brand-700 hover:underline text-left block"
+                    title={`View plan: ${planTitle}`}
+                    data-testid="sidebar-view-plan-btn"
+                  >
+                    View plan: {planTitle}
+                  </button>
+                );
+              })()}
+
+            {/* Dependencies */}
+            {(() => {
+              const nonEpicDeps = (task.dependencies ?? []).filter(
+                (d) =>
+                  d.targetId &&
+                  d.type !== "discovered-from" &&
+                  d.targetId !== task.epicId
+              );
+              const hasDeps = nonEpicDeps.length > 0;
+              if (!hasDeps) return null;
+              return (
+                <div className="text-xs mt-1.5">
+                  <span className="text-theme-muted">Depends on:</span>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-1.5">
+                    {nonEpicDeps.map((d) => {
+                      const depTask = tasks.find((t) => t.id === d.targetId);
+                      const label = depTask?.title ?? d.targetId;
+                      const col = depTask?.kanbanColumn ?? "backlog";
+                      return (
+                        <button
+                          key={d.targetId}
+                          type="button"
+                          onClick={() => onSelectTask(d.targetId!)}
+                          className="inline-flex items-center gap-1.5 text-left hover:underline text-brand-600 hover:text-brand-500 transition-colors"
+                        >
+                          <TaskStatusBadge
+                            column={col}
+                            size="xs"
+                            title={COLUMN_LABELS[col]}
+                          />
+                          <span className="truncate max-w-[200px]" title={label}>
+                            {label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Add link button / flow */}
+            {addLinkOpen ? (
+              <AddLinkFlow
+                projectId={projectId}
+                childTaskId={selectedTask}
+                tasks={tasks}
+                excludeIds={new Set([
+                  selectedTask,
+                  ...(task.dependencies ?? [])
+                    .filter((d) => d.targetId)
+                    .map((d) => d.targetId!),
+                ])}
+                onSave={async (parentTaskId, type) => {
+                  await dispatch(
+                    addTaskDependency({
+                      projectId,
+                      taskId: selectedTask,
+                      parentTaskId,
+                      type,
+                    })
+                  ).unwrap();
+                }}
+                onCancel={() => setAddLinkOpen(false)}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAddLinkOpen(true)}
+                className="text-xs text-brand-600 hover:text-brand-700 hover:underline text-left mt-1.5"
+                data-testid="sidebar-add-link-btn"
+              >
+                Add link
+              </button>
+            )}
+          </div>
+        )}
 
         {task &&
           (() => {
@@ -403,59 +484,11 @@ export function TaskDetailSidebar({
             const hasSourceFeedback =
               (task.sourceFeedbackIds?.length ?? (task.sourceFeedbackId ? 1 : 0)) > 0;
             const displayDesc = hasSourceFeedback && isOnlyFeedbackId ? "" : desc;
-            // Exclude epic (parent) from Depends on — show only non-epic dependencies
-            const nonEpicDeps = (task.dependencies ?? []).filter(
-              (d) =>
-                d.targetId &&
-                d.type !== "discovered-from" &&
-                d.targetId !== task.epicId
-            );
-            const hasDeps = nonEpicDeps.length > 0;
-            if (!displayDesc && !hasDeps) return null;
-
-            const viewPlanRenders =
-              task?.epicId &&
-              plans.find((p) => p.metadata.epicId === task.epicId) &&
-              onNavigateToPlan;
+            if (!displayDesc) return null;
 
             return (
               <>
-                {/* Depends on (above Description) — hidden when epic is the only dependency */}
-                {hasDeps && (
-                  <div
-                    className={`p-4 border-b border-theme-border ${viewPlanRenders ? "pt-2" : ""}`}
-                    data-section="depends-on"
-                  >
-                    <div className="text-xs">
-                      <span className="text-theme-muted">Depends on:</span>
-                      <div className="flex flex-wrap gap-x-3 gap-y-1.5 mt-1.5">
-                        {nonEpicDeps.map((d) => {
-                            const depTask = tasks.find((t) => t.id === d.targetId);
-                            const label = depTask?.title ?? d.targetId;
-                            const col = depTask?.kanbanColumn ?? "backlog";
-                            return (
-                              <button
-                                key={d.targetId}
-                                type="button"
-                                onClick={() => onSelectTask(d.targetId!)}
-                                className="inline-flex items-center gap-1.5 text-left hover:underline text-brand-600 hover:text-brand-500 transition-colors"
-                              >
-                                <TaskStatusBadge
-                                  column={col}
-                                  size="xs"
-                                  title={COLUMN_LABELS[col]}
-                                />
-                                <span className="truncate max-w-[200px]" title={label}>
-                                  {label}
-                                </span>
-                              </button>
-                            );
-                          })}
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {/* Row 4: Description (below Depends on) */}
+                {/* Description */}
                 {displayDesc && (
                   <CollapsibleSection
                     title="Description"

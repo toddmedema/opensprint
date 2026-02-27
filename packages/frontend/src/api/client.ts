@@ -301,6 +301,16 @@ export const api = {
         method: "POST",
         body: JSON.stringify(options ?? {}),
       }),
+    addDependency: (
+      projectId: string,
+      taskId: string,
+      parentTaskId: string,
+      type?: "blocks" | "parent-child" | "related"
+    ) =>
+      request<void>(`/projects/${projectId}/tasks/${taskId}/dependencies`, {
+        method: "POST",
+        body: JSON.stringify({ parentTaskId, type: type ?? "blocks" }),
+      }),
   },
 
   // ─── Execute ───
