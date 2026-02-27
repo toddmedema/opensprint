@@ -142,7 +142,7 @@ export function AgentsMdSection({ projectId }: AgentsMdSectionProps) {
       ) : (
         <div className="space-y-2">
           <div
-            className="prose prose-sm prose-neutral dark:prose-invert max-w-none text-theme-text prose-headings:text-theme-text prose-p:text-theme-text prose-li:text-theme-text prose-code:text-theme-text prose-pre:bg-theme-code-bg prose-pre:text-theme-code-text prose-pre:border prose-pre:border-theme-border prose-pre:rounded-lg prose-a:text-brand-600 hover:prose-a:text-brand-700 p-3 rounded-lg bg-theme-bg-elevated border border-theme-border min-h-[80px]"
+            className="prose prose-sm prose-neutral dark:prose-invert max-w-none text-theme-text prose-headings:text-theme-text prose-p:text-theme-text prose-li:text-theme-text prose-code:text-theme-text prose-pre:bg-theme-code-bg prose-pre:text-theme-code-text prose-pre:border prose-pre:border-theme-border prose-pre:rounded-lg prose-a:text-brand-600 hover:prose-a:text-brand-700 p-3 rounded-lg bg-theme-bg-elevated border border-theme-border min-h-[80px] max-h-[400px] overflow-y-auto"
             data-testid="agents-md-view"
           >
             {content && content.trim() ? (
@@ -153,14 +153,21 @@ export function AgentsMdSection({ projectId }: AgentsMdSectionProps) {
               </p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="btn-secondary text-sm"
-            data-testid="agents-md-edit"
-          >
-            Edit
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="btn-secondary text-sm"
+              data-testid="agents-md-edit"
+            >
+              Edit
+            </button>
+            {saveFeedback === "saved" && (
+              <span className="text-sm text-theme-success-muted" data-testid="agents-md-saved">
+                Saved
+              </span>
+            )}
+          </div>
         </div>
       )}
     </div>

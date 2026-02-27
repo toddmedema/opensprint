@@ -105,6 +105,7 @@ describe("AgentsMdSection", () => {
 
     expect(mockUpdateAgentsInstructions).toHaveBeenCalledWith(projectId, "# Updated\n\nNew content.");
 
+    expect(screen.getByTestId("agents-md-saved")).toHaveTextContent("Saved");
     await screen.findByTestId("agents-md-view");
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Updated");
     expect(screen.getByText("New content.")).toBeInTheDocument();
