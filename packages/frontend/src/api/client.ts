@@ -175,7 +175,7 @@ export const api = {
     getAgentsInstructions: (id: string) =>
       request<{ content: string }>(`/projects/${id}/agents/instructions`),
     updateAgentsInstructions: (id: string, content: string) =>
-      request<{ ok: boolean }>(`/projects/${id}/agents/instructions`, {
+      request<{ saved: boolean }>(`/projects/${id}/agents/instructions`, {
         method: "PUT",
         body: JSON.stringify({ content }),
       }),

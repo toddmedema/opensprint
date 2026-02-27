@@ -13,6 +13,7 @@ const mockGetSettings = vi.fn();
 const mockUpdate = vi.fn();
 const mockUpdateSettings = vi.fn();
 const mockGetAgentsInstructions = vi.fn();
+const mockUpdateAgentsInstructions = vi.fn();
 const mockGetKeys = vi.fn();
 const mockModelsList = vi.fn();
 
@@ -23,6 +24,7 @@ vi.mock("../api/client", () => ({
       update: (...args: unknown[]) => mockUpdate(...args),
       updateSettings: (...args: unknown[]) => mockUpdateSettings(...args),
       getAgentsInstructions: (...args: unknown[]) => mockGetAgentsInstructions(...args),
+      updateAgentsInstructions: (...args: unknown[]) => mockUpdateAgentsInstructions(...args),
     },
     env: {
       getKeys: (...args: unknown[]) => mockGetKeys(...args),
@@ -62,6 +64,7 @@ describe("ProjectSettingsModal", () => {
     vi.clearAllMocks();
     mockGetSettings.mockResolvedValue(mockSettings);
     mockGetAgentsInstructions.mockResolvedValue({ content: "# Agent Instructions\n\nUse bd for tasks." });
+    mockUpdateAgentsInstructions.mockResolvedValue({ saved: true });
     mockGetKeys.mockResolvedValue({
       anthropic: true,
       cursor: true,

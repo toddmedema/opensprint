@@ -123,7 +123,7 @@ describe("Agents API", () => {
         .send({ content: "# New Instructions\n\nHello world." });
 
       expect(res.status).toBe(200);
-      expect(res.body.data).toEqual({ ok: true });
+      expect(res.body.data).toEqual({ saved: true });
 
       const written = await fs.readFile(path.join(repoPath, "AGENTS.md"), "utf-8");
       expect(written).toBe("# New Instructions\n\nHello world.");

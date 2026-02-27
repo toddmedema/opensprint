@@ -43,7 +43,7 @@ agentsRouter.put("/instructions", async (req: Request<ProjectParams>, res, next)
     const project = await projectService.getProject(req.params.projectId);
     const filePath = path.join(project.repoPath, "AGENTS.md");
     await fs.writeFile(filePath, String(req.body.content), "utf-8");
-    res.status(200).json({ data: { ok: true } });
+    res.status(200).json({ data: { saved: true } });
   } catch (err) {
     next(err);
   }
