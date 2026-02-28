@@ -164,17 +164,22 @@ describe("executeSlice", () => {
       expect(store.getState().execute.async.taskDetail.error).toBeNull();
     });
 
-    it("appendAgentOutput appends filtered chunk keyed by taskId", () => {
+    it("appendAgentOutput appends filtered chunk keyed by taskId (batched)", () => {
+      vi.useFakeTimers();
       const store = createStore();
       store.dispatch(setSelectedTaskId("task-1"));
       store.dispatch(appendAgentOutput({ taskId: "task-1", chunk: "Hello \n" }));
       store.dispatch(appendAgentOutput({ taskId: "task-1", chunk: "world\n" }));
-      expect(store.getState().execute.agentOutput["task-1"]).toEqual(["Hello \n", "world\n"]);
+      vi.advanceTimersByTime(200);
+      expect(store.getState().execute.agentOutput["task-1"]).toEqual(["Hello \nworld\n"]);
       store.dispatch(appendAgentOutput({ taskId: "task-2", chunk: "other\n" }));
+      vi.advanceTimersByTime(200);
       expect(store.getState().execute.agentOutput["task-2"]).toEqual(["other\n"]);
+      vi.useRealTimers();
     });
 
     it("appendAgentOutput filters JSON metadata and shows only message content", () => {
+      vi.useFakeTimers();
       const store = createStore();
       store.dispatch(setSelectedTaskId("task-1"));
       store.dispatch(
@@ -183,6 +188,7 @@ describe("executeSlice", () => {
           chunk: '{"type":"tool_use","name":"edit","input":{}}\n',
         })
       );
+      vi.advanceTimersByTime(200);
       expect(store.getState().execute.agentOutput["task-1"]).toBeUndefined();
       store.dispatch(
         appendAgentOutput({
@@ -190,10 +196,13 @@ describe("executeSlice", () => {
           chunk: '{"type":"text","text":"Creating file..."}\n',
         })
       );
+      vi.advanceTimersByTime(200);
       expect(store.getState().execute.agentOutput["task-1"]).toEqual(["Creating file..."]);
+      vi.useRealTimers();
     });
 
     it("appendAgentOutput extracts actual thinking text from type:thinking JSON", () => {
+      vi.useFakeTimers();
       const store = createStore();
       store.dispatch(setSelectedTaskId("task-1"));
       store.dispatch(
@@ -202,7 +211,19 @@ describe("executeSlice", () => {
           chunk: '{"type":"thinking","content":"internal reasoning..."}\n',
         })
       );
+      vi.advanceTimersByTime(200);
       expect(store.getState().execute.agentOutput["task-1"]).toEqual(["internal reasoning...\n"]);
+      vi.useRealTimers();
+    });
+
+    it("appendAgentOutput flushes pending chunks on setSelectedTaskId", () => {
+      const store = createStore();
+      store.dispatch(setSelectedTaskId("task-1"));
+      store.dispatch(appendAgentOutput({ taskId: "task-1", chunk: "buffered " }));
+      store.dispatch(appendAgentOutput({ taskId: "task-1", chunk: "content\n" }));
+      expect(store.getState().execute.agentOutput["task-1"]).toBeUndefined();
+      store.dispatch(setSelectedTaskId("task-2"));
+      expect(store.getState().execute.agentOutput["task-1"]).toEqual(["buffered content\n"]);
     });
 
     it("setAgentOutputBackfill filters NDJSON backfill output before storing", () => {
