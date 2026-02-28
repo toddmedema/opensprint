@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { Provider } from "react-redux";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { configureStore } from "@reduxjs/toolkit";
 import { ThemeProvider } from "../contexts/ThemeContext";
 import { DisplayPreferencesProvider } from "../contexts/DisplayPreferencesContext";
@@ -48,7 +49,8 @@ vi.mock("../store/middleware/websocketMiddleware", () => ({
 vi.mock("../api/client", () => ({
   api: {
     projects: {
-      get: vi.fn().mockResolvedValue({ id: "proj-1", name: "Test", currentPhase: "sketch" }),
+      get: vi.fn().mockResolvedValue({ id: "proj-1", name: "Test Project", currentPhase: "sketch" }),
+      list: vi.fn().mockResolvedValue([]),
       getSettings: vi.fn().mockResolvedValue({ deployment: {} }),
       getSketchContext: vi.fn().mockResolvedValue({ hasExistingCode: false }),
     },
@@ -120,19 +122,29 @@ function createStore() {
   });
 }
 
-function renderWithRouter(initialPath: string, store = createStore()) {
+function createQueryClient() {
+  return new QueryClient({
+    defaultOptions: {
+      queries: { staleTime: 60_000, retry: false },
+    },
+  });
+}
+
+function renderWithRouter(initialPath: string, store = createStore(), queryClient = createQueryClient()) {
   return render(
     <Provider store={store}>
-      <ThemeProvider>
-        <DisplayPreferencesProvider>
-          <MemoryRouter initialEntries={[initialPath]}>
-            <LocationDisplay />
-            <Routes>
-              <Route path="/projects/:projectId/:phase?" element={<ProjectView />} />
-            </Routes>
-          </MemoryRouter>
-        </DisplayPreferencesProvider>
-      </ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <DisplayPreferencesProvider>
+            <MemoryRouter initialEntries={[initialPath]}>
+              <LocationDisplay />
+              <Routes>
+                <Route path="/projects/:projectId/:phase?" element={<ProjectView />} />
+              </Routes>
+            </MemoryRouter>
+          </DisplayPreferencesProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
     </Provider>
   );
 }
@@ -261,19 +273,19 @@ describe("ProjectView upfront loading and mount-all", () => {
     expect(mockWsDisconnect).toHaveBeenCalled();
   });
 
-  it("renders all 5 phase components with CSS display toggle", async () => {
+  it("renders only active phase (mount-on-demand, lazy-loaded)", async () => {
     renderWithRouter("/projects/proj-1/execute");
 
     await waitFor(() => {
       expect(screen.getByText("Test Project")).toBeInTheDocument();
     });
 
-    // All 4 phase wrappers should be mounted; execute is visible (flex), others hidden (none)
-    expect(screen.getByTestId("phase-sketch")).toBeInTheDocument();
-    expect(screen.getByTestId("phase-plan")).toBeInTheDocument();
+    // Only the active phase wrapper is mounted; inactive phases are unmounted
     expect(screen.getByTestId("phase-execute")).toBeInTheDocument();
-    expect(screen.getByTestId("phase-eval")).toBeInTheDocument();
-    expect(screen.getByTestId("phase-deliver")).toBeInTheDocument();
+    expect(screen.queryByTestId("phase-sketch")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("phase-plan")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("phase-eval")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("phase-deliver")).not.toBeInTheDocument();
   });
 
   it("active phase wrapper has flex-1 min-h-0 for bounded height and independent page/sidebar scroll", async () => {
@@ -338,16 +350,23 @@ describe("ProjectView URL deep linking for Plan and Build detail panes", () => {
     const store = createStore();
     renderWithRouter("/projects/proj-1/plan?plan=opensprint.dev-abc", store);
 
-    await waitFor(() => {
-      expect(mockHistory).toHaveBeenCalledWith("proj-1", "plan:opensprint.dev-abc");
-    });
+    // Wait for Plan phase to load (lazy) and fetch plan chat
+    await waitFor(
+      () => {
+        expect(mockHistory).toHaveBeenCalledWith("proj-1", "plan:opensprint.dev-abc");
+      },
+      { timeout: 8000 }
+    );
 
-    await waitFor(() => {
-      const msgs = store.getState().plan.chatMessages["plan:opensprint.dev-abc"];
-      expect(msgs).toHaveLength(2);
-      expect(msgs[0].content).toBe("Add more detail");
-      expect(msgs[1].content).toBe("Sure, I can help.");
-    });
+    await waitFor(
+      () => {
+        const msgs = store.getState().plan.chatMessages["plan:opensprint.dev-abc"];
+        expect(msgs).toHaveLength(2);
+        expect(msgs[0].content).toBe("Add more detail");
+        expect(msgs[1].content).toBe("Sure, I can help.");
+      },
+      { timeout: 3000 }
+    );
   });
 
   it("dispatches setSelectedTaskId when loading execute phase with task param", async () => {
@@ -403,6 +422,7 @@ describe("ProjectView URL deep linking for Plan and Build detail panes", () => {
       reducer: {
         project: projectReducer,
         websocket: websocketReducer,
+        connection: connectionReducer,
         sketch: sketchReducer,
         plan: planReducer,
         execute: executeReducer,
@@ -470,6 +490,7 @@ describe("ProjectView URL deep linking for Plan and Build detail panes", () => {
       reducer: {
         project: projectReducer,
         websocket: websocketReducer,
+        connection: connectionReducer,
         sketch: sketchReducer,
         plan: planReducer,
         execute: executeReducer,

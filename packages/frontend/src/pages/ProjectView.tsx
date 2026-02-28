@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, lazy, Suspense } from "react";
 import { useParams, useNavigate, useLocation, Navigate, Link } from "react-router-dom";
 import type { ProjectPhase } from "@opensprint/shared";
 import {
@@ -6,7 +6,6 @@ import {
   getProjectPhasePath,
   isValidPhaseSlug,
   parseDetailParams,
-  VALID_PHASES,
 } from "../lib/phaseRouting";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppDispatch, useAppSelector } from "../store";
@@ -52,11 +51,23 @@ import {
 } from "../api/hooks";
 import { queryKeys } from "../api/queryKeys";
 import { Layout } from "../components/layout/Layout";
-import { SketchPhase } from "./phases/SketchPhase";
-import { PlanPhase } from "./phases/PlanPhase";
-import { ExecutePhase } from "./phases/ExecutePhase";
-import { EvalPhase } from "./phases/EvalPhase";
-import { DeliverPhase } from "./phases/DeliverPhase";
+import { PhaseLoadingFallback } from "../components/PhaseLoadingFallback";
+
+const LazySketchPhase = lazy(() =>
+  import("./phases/SketchPhase").then((m) => ({ default: m.SketchPhase }))
+);
+const LazyPlanPhase = lazy(() =>
+  import("./phases/PlanPhase").then((m) => ({ default: m.PlanPhase }))
+);
+const LazyExecutePhase = lazy(() =>
+  import("./phases/ExecutePhase").then((m) => ({ default: m.ExecutePhase }))
+);
+const LazyEvalPhase = lazy(() =>
+  import("./phases/EvalPhase").then((m) => ({ default: m.EvalPhase }))
+);
+const LazyDeliverPhase = lazy(() =>
+  import("./phases/DeliverPhase").then((m) => ({ default: m.DeliverPhase }))
+);
 
 export function ProjectView() {
   const { projectId, phase: phaseSlug } = useParams<{ projectId: string; phase?: string }>();
@@ -328,35 +339,30 @@ export function ProjectView() {
         settingsOpen={settingsOpen}
         onSettingsOpenChange={setSettingsOpen}
       >
-        {/* Mount ALL phases simultaneously, toggle visibility with CSS.
-            Active phase uses flex container with flex-1 min-h-0 to establish bounded height
-            so main content and sidebar can scroll independently. */}
-        {VALID_PHASES.map((phase) => (
-          <div
-            key={phase}
-            data-testid={`phase-${phase}`}
-            style={{ display: phase === currentPhase ? "flex" : "none" }}
-            className={
-              phase === currentPhase
-                ? "flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col"
-                : undefined
-            }
-          >
-            {phase === "sketch" && (
-              <SketchPhase
+        {/* Mount only active phase; lazy-load phase content. Layout and phase shell render eagerly.
+            Phase data stays in global store (Redux + TanStack Query) so switching phases shows cached data. */}
+        <div
+          key={currentPhase}
+          data-testid={`phase-${currentPhase}`}
+          className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col"
+        >
+          <Suspense fallback={<PhaseLoadingFallback phase={currentPhase} />}>
+            {currentPhase === "sketch" && (
+              <LazySketchPhase
                 projectId={projectId}
                 onNavigateToPlan={() => handlePhaseChange("plan")}
               />
             )}
-            {phase === "plan" && (
-              <PlanPhase projectId={projectId} onNavigateToBuildTask={handleNavigateToBuildTask} />
-            )}
-            {phase === "execute" && (
-              <ExecutePhase
+            {currentPhase === "plan" && (
+              <LazyPlanPhase
                 projectId={projectId}
-                initialTaskIdFromUrl={
-                  currentPhase === "execute" ? parseDetailParams(location.search).task : undefined
-                }
+                onNavigateToBuildTask={handleNavigateToBuildTask}
+              />
+            )}
+            {currentPhase === "execute" && (
+              <LazyExecutePhase
+                projectId={projectId}
+                initialTaskIdFromUrl={parseDetailParams(location.search).task ?? undefined}
                 onNavigateToPlan={handleNavigateToPlan}
                 onClose={() => {
                   dispatch(setSelectedTaskId(null));
@@ -364,18 +370,21 @@ export function ProjectView() {
                 }}
               />
             )}
-            {phase === "eval" && (
-              <EvalPhase
+            {currentPhase === "eval" && (
+              <LazyEvalPhase
                 projectId={projectId}
                 onNavigateToBuildTask={handleNavigateToBuildTask}
-                feedbackIdFromUrl={parseDetailParams(location.search).feedback}
+                feedbackIdFromUrl={parseDetailParams(location.search).feedback ?? undefined}
               />
             )}
-            {phase === "deliver" && (
-              <DeliverPhase projectId={projectId} onOpenSettings={() => setSettingsOpen(true)} />
+            {currentPhase === "deliver" && (
+              <LazyDeliverPhase
+                projectId={projectId}
+                onOpenSettings={() => setSettingsOpen(true)}
+              />
             )}
-          </div>
-        ))}
+          </Suspense>
+        </div>
       </Layout>
       <DeliverToast toast={deliverToast} onDismiss={handleDismissDeliverToast} />
       {!connectionError && (
