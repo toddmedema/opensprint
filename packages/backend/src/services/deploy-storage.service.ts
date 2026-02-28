@@ -153,6 +153,31 @@ export class DeployStorageService {
     const history = await this.listHistory(projectId, 1);
     return history[0] ?? null;
   }
+
+  /**
+   * Get the last successful deployment for a project and target.
+   * Excludes failed and rolled_back deployments (do not use failed deployment as baseline).
+   */
+  async getLastSuccessfulDeployForTarget(
+    projectId: string,
+    targetName: string
+  ): Promise<DeploymentRecord | null> {
+    const db = await taskStore.getDb();
+    const stmt = db.prepare(
+      `SELECT * FROM deployments
+       WHERE project_id = ? AND target = ? AND status = 'success'
+       ORDER BY COALESCE(completed_at, started_at) DESC
+       LIMIT 1`
+    );
+    stmt.bind([projectId, targetName]);
+    if (!stmt.step()) {
+      stmt.free();
+      return null;
+    }
+    const row = stmt.getAsObject() as Record<string, unknown>;
+    stmt.free();
+    return rowToRecord(row);
+  }
 }
 
 export const deployStorageService = new DeployStorageService();

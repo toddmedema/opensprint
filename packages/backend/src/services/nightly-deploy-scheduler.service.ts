@@ -1,11 +1,30 @@
+import { execSync } from "child_process";
 import cron from "node-cron";
 import { ProjectService } from "./project.service.js";
 import { triggerDeploy } from "./deploy-trigger.service.js";
+import { deployStorageService } from "./deploy-storage.service.js";
 import { getTargetsForNightlyDeploy } from "@opensprint/shared";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("nightly-deploy");
 const DEFAULT_NIGHTLY_TIME = "02:00";
+
+/**
+ * Check if main branch has commits after the given ISO timestamp.
+ * Returns true if commits exist, false if none or on error (treat error as "proceed" for first-deploy safety).
+ */
+function hasMainCommitsAfter(repoPath: string, afterTimestamp: string): boolean {
+  try {
+    const out = execSync(
+      `git rev-list main --after="${afterTimestamp}" --count`,
+      { cwd: repoPath, encoding: "utf-8" }
+    );
+    const count = parseInt(out.trim(), 10);
+    return !Number.isNaN(count) && count > 0;
+  } catch {
+    return true; // On error (e.g. no main branch), proceed with deploy
+  }
+}
 
 /** Parse HH:mm to { hour, minute } or null if invalid. */
 function parseTime(hhmm: string): { hour: number; minute: number } | null {
@@ -58,6 +77,24 @@ export async function runNightlyTick(
       lastRunByProject.set(project.id, today);
 
       for (const targetName of nightlyTargets) {
+        const lastSuccess = await deployStorageService.getLastSuccessfulDeployForTarget(
+          project.id,
+          targetName
+        );
+        const baselineTimestamp =
+          lastSuccess?.completedAt ?? lastSuccess?.startedAt ?? null;
+        if (baselineTimestamp) {
+          const hasNewCommits = hasMainCommitsAfter(project.repoPath, baselineTimestamp);
+          if (!hasNewCommits) {
+            log.info("Skipping nightly deploy: no new commits on main since last successful deploy", {
+              projectId: project.id,
+              projectName: project.name,
+              targetName,
+            });
+            results.push({ projectId: project.id, targetName, deployId: null });
+            continue;
+          }
+        }
         const deployId = await triggerDeploy(project.id, targetName);
         results.push({ projectId: project.id, targetName, deployId });
         if (deployId) {

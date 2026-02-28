@@ -100,4 +100,126 @@ describe("DeployStorageService", () => {
     expect(updated!.status).toBe("rolled_back");
     expect(updated!.rolledBackBy).toBe(rollbackDeployId);
   });
+
+  describe("getLastSuccessfulDeployForTarget", () => {
+    it("returns null when no successful deployment for target", async () => {
+      const result = await deployStorageService.getLastSuccessfulDeployForTarget(
+        projectId,
+        "staging"
+      );
+      expect(result).toBeNull();
+    });
+
+    it("returns last successful deployment for target, excludes failed", async () => {
+      const r1 = await deployStorageService.createRecord(projectId, null, {
+        target: "staging",
+      });
+      await deployStorageService.updateRecord(projectId, r1.id, {
+        status: "failed",
+        completedAt: "2025-02-15T01:00:00.000Z",
+      });
+
+      const r2 = await deployStorageService.createRecord(projectId, null, {
+        target: "staging",
+      });
+      await deployStorageService.updateRecord(projectId, r2.id, {
+        status: "success",
+        completedAt: "2025-02-15T02:00:00.000Z",
+      });
+
+      const result = await deployStorageService.getLastSuccessfulDeployForTarget(
+        projectId,
+        "staging"
+      );
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe(r2.id);
+      expect(result!.status).toBe("success");
+      expect(result!.completedAt).toBe("2025-02-15T02:00:00.000Z");
+    });
+
+    it("returns most recent successful deployment when multiple exist", async () => {
+      const r1 = await deployStorageService.createRecord(projectId, null, {
+        target: "staging",
+      });
+      await deployStorageService.updateRecord(projectId, r1.id, {
+        status: "success",
+        completedAt: "2025-02-15T01:00:00.000Z",
+      });
+
+      const r2 = await deployStorageService.createRecord(projectId, null, {
+        target: "staging",
+      });
+      await deployStorageService.updateRecord(projectId, r2.id, {
+        status: "success",
+        completedAt: "2025-02-15T03:00:00.000Z",
+      });
+
+      const result = await deployStorageService.getLastSuccessfulDeployForTarget(
+        projectId,
+        "staging"
+      );
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe(r2.id);
+      expect(result!.completedAt).toBe("2025-02-15T03:00:00.000Z");
+    });
+
+    it("returns deployment for correct target only", async () => {
+      const rStaging = await deployStorageService.createRecord(projectId, null, {
+        target: "staging",
+      });
+      await deployStorageService.updateRecord(projectId, rStaging.id, {
+        status: "success",
+        completedAt: "2025-02-15T02:00:00.000Z",
+      });
+
+      const rProd = await deployStorageService.createRecord(projectId, null, {
+        target: "production",
+      });
+      await deployStorageService.updateRecord(projectId, rProd.id, {
+        status: "success",
+        completedAt: "2025-02-15T03:00:00.000Z",
+      });
+
+      const stagingResult = await deployStorageService.getLastSuccessfulDeployForTarget(
+        projectId,
+        "staging"
+      );
+      const prodResult = await deployStorageService.getLastSuccessfulDeployForTarget(
+        projectId,
+        "production"
+      );
+
+      expect(stagingResult!.id).toBe(rStaging.id);
+      expect(prodResult!.id).toBe(rProd.id);
+    });
+
+    it("excludes rolled_back deployments (do not use as baseline)", async () => {
+      const r1 = await deployStorageService.createRecord(projectId, null, {
+        target: "staging",
+      });
+      await deployStorageService.updateRecord(projectId, r1.id, {
+        status: "success",
+        completedAt: "2025-02-15T02:00:00.000Z",
+      });
+
+      const r2 = await deployStorageService.createRecord(projectId, null, {
+        target: "staging",
+      });
+      await deployStorageService.updateRecord(projectId, r2.id, {
+        status: "success",
+        completedAt: "2025-02-15T03:00:00.000Z",
+      });
+      await deployStorageService.updateRecord(projectId, r2.id, {
+        status: "rolled_back",
+        rolledBackBy: "rollback-123",
+      });
+
+      const result = await deployStorageService.getLastSuccessfulDeployForTarget(
+        projectId,
+        "staging"
+      );
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe(r1.id);
+    });
+  });
 });
