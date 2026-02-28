@@ -189,6 +189,39 @@ describe("Plan REST endpoints - task decomposition", () => {
     }
   );
 
+  it("POST /projects/:id/plans with task complexity creates tasks with integer complexity", async () => {
+    const planBody = {
+      title: "Feature With Complexity",
+      content: "# Feature\n\n## Overview\n\nTest.",
+      complexity: "medium",
+      tasks: [
+        { title: "Simple task", description: "Easy", priority: 0, dependsOn: [], complexity: 2 },
+        { title: "Complex task", description: "Hard", priority: 1, dependsOn: ["Simple task"], complexity: 8 },
+      ],
+    };
+
+    const res = await request(app)
+      .post(`${API_PREFIX}/projects/${projectId}/plans`)
+      .send(planBody);
+
+    expect(res.status).toBe(201);
+    const plan = res.body.data;
+    expect(plan.taskCount).toBe(2);
+    const allIssues = await taskStore.listAll(projectId);
+    const epicId = plan.metadata.epicId;
+    const epic = await taskStore.show(projectId, epicId);
+    expect((epic as { complexity?: number }).complexity).toBe(3); // medium -> 3
+
+    const childTasks = allIssues.filter(
+      (i: { id: string; issue_type?: string; type?: string }) =>
+        i.id.startsWith(epicId + ".") && (i.issue_type ?? i.type) !== "epic"
+    );
+    const simpleTask = childTasks.find((t: { title: string }) => t.title === "Simple task");
+    const complexTask = childTasks.find((t: { title: string }) => t.title === "Complex task");
+    expect((simpleTask as { complexity?: number }).complexity).toBe(2);
+    expect((complexTask as { complexity?: number }).complexity).toBe(8);
+  });
+
   it("POST /projects/:id/plans accepts snake_case depends_on and creates inter-task deps", async () => {
     const planBody = {
       title: "Snake Case Plan",

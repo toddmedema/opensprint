@@ -80,8 +80,8 @@ interface NormalizedPlannerTask {
   description: string;
   priority: number;
   dependsOn: string[];
-  /** Task-level complexity (simple|complex). When absent, inferred from plan. */
-  complexity?: "simple" | "complex";
+  /** Task-level complexity (integer 1-10). When absent, inferred from plan. */
+  complexity?: number;
 }
 
 /**
@@ -101,7 +101,13 @@ function normalizePlannerTask(
     task,
     tasksArray as Array<{ title?: string; [k: string]: unknown }> | undefined
   );
-  const complexity = clampTaskComplexity(task.complexity);
+  // Accept integer 1-10 or legacy "simple"|"complex" (map to 3, 7)
+  const raw = task.complexity;
+  let complexity: number | undefined = clampTaskComplexity(raw);
+  if (complexity === undefined && typeof raw === "string") {
+    if (raw === "simple") complexity = 3;
+    else if (raw === "complex") complexity = 7;
+  }
   return { title, description, priority, dependsOn, complexity };
 }
 
@@ -646,7 +652,11 @@ export class PlanService {
     }
 
     // Create plan epic with status blocked (Execute! will set open)
-    const epicResult = await this.taskStore.create(projectId, title, { type: "epic" });
+    const epicComplexity = planComplexityToTask(complexity);
+    const epicResult = await this.taskStore.create(projectId, title, {
+      type: "epic",
+      complexity: epicComplexity,
+    });
     const epicId = epicResult.id;
 
     // Set epic description to plan ID (canonical link is plans table epic_id)
@@ -893,7 +903,13 @@ export class PlanService {
 
     if (!epicId) {
       const title = getEpicTitleFromPlanContent(plan.content, planId);
-      const epicResult = await this.taskStore.create(projectId, title, { type: "epic" });
+      const epicComplexity = plan.metadata.complexity
+        ? planComplexityToTask(plan.metadata.complexity)
+        : undefined;
+      const epicResult = await this.taskStore.create(projectId, title, {
+        type: "epic",
+        ...(epicComplexity != null && { complexity: epicComplexity }),
+      });
       epicId = epicResult.id;
       await this.taskStore.update(projectId, epicId, { description: planId });
       await this.taskStore.update(projectId, epicId, { status: "blocked" });

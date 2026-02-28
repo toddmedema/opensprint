@@ -94,19 +94,36 @@ tasksRouter.post("/:taskId/dependencies", async (req: Request<TaskParams>, res, 
   }
 });
 
-// PATCH /projects/:projectId/tasks/:taskId — Update task (e.g. priority)
+// PATCH /projects/:projectId/tasks/:taskId — Update task (priority, complexity)
 tasksRouter.patch("/:taskId", async (req: Request<TaskParams>, res, next) => {
   try {
-    const { priority } = req.body ?? {};
-    if (typeof priority !== "number" || priority < 0 || priority > 4) {
+    const { priority, complexity } = req.body ?? {};
+    const updates: { priority?: number; complexity?: number } = {};
+    if (priority !== undefined) {
+      if (typeof priority !== "number" || priority < 0 || priority > 4) {
+        return res.status(400).json({
+          error: { code: "BAD_REQUEST", message: "priority must be a number 0–4" },
+        });
+      }
+      updates.priority = priority;
+    }
+    if (complexity !== undefined) {
+      if (typeof complexity !== "number" || !Number.isInteger(complexity) || complexity < 1 || complexity > 10) {
+        return res.status(400).json({
+          error: { code: "BAD_REQUEST", message: "complexity must be an integer 1–10" },
+        });
+      }
+      updates.complexity = complexity;
+    }
+    if (Object.keys(updates).length === 0) {
       return res.status(400).json({
-        error: { code: "BAD_REQUEST", message: "priority must be a number 0–4" },
+        error: { code: "BAD_REQUEST", message: "At least one of priority or complexity is required" },
       });
     }
-    const task = await taskService.updatePriority(
+    const task = await taskService.updateTask(
       req.params.projectId,
       req.params.taskId,
-      priority
+      updates
     );
     const body: ApiResponse<Task> = { data: task };
     res.json(body);

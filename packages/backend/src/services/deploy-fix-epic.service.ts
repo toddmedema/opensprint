@@ -127,7 +127,10 @@ Output your response as JSON with status and tasks array.`;
 
   // Create epic with status open (fix epics are auto-approved)
   const epicTitle = "Fix: pre-deploy test failures";
-  const epicResult = await taskStore.create(projectId, epicTitle, { type: "epic" });
+  const epicResult = await taskStore.create(projectId, epicTitle, {
+    type: "epic",
+    complexity: 3, // medium
+  });
   if (!epicResult) {
     log.error("Failed to create fix epic");
     return null;

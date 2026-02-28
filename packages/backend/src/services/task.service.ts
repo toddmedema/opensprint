@@ -422,13 +422,33 @@ export class TaskService {
     return { taskUnblocked: true };
   }
 
-  /** Update a task's priority (0–4). */
-  async updatePriority(projectId: string, taskId: string, priority: number): Promise<Task> {
-    if (priority < 0 || priority > 4) {
-      throw new AppError(400, ErrorCodes.INVALID_INPUT, "Priority must be 0–4");
-    }
+  /** Update a task's priority (0–4) and/or complexity (1–10). */
+  async updateTask(
+    projectId: string,
+    taskId: string,
+    updates: { priority?: number; complexity?: number }
+  ): Promise<Task> {
     await this.projectService.getProject(projectId);
-    await this.taskStore.update(projectId, taskId, { priority });
+    if (updates.priority !== undefined) {
+      if (updates.priority < 0 || updates.priority > 4) {
+        throw new AppError(400, ErrorCodes.INVALID_INPUT, "Priority must be 0–4");
+      }
+    }
+    if (updates.complexity !== undefined) {
+      const c = clampTaskComplexity(updates.complexity);
+      if (c === undefined) {
+        throw new AppError(400, ErrorCodes.INVALID_INPUT, "Complexity must be an integer 1–10");
+      }
+    }
+    const updatePayload: { priority?: number; complexity?: number | null } = {};
+    if (updates.priority !== undefined) updatePayload.priority = updates.priority;
+    if (updates.complexity !== undefined) {
+      updatePayload.complexity = clampTaskComplexity(updates.complexity) ?? null;
+    }
+    if (Object.keys(updatePayload).length === 0) {
+      return this.getTask(projectId, taskId);
+    }
+    await this.taskStore.update(projectId, taskId, updatePayload);
     return this.getTask(projectId, taskId);
   }
 

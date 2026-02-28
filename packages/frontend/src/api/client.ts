@@ -283,6 +283,15 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify({ priority }),
       }),
+    updateTask: (
+      projectId: string,
+      taskId: string,
+      updates: { priority?: number; complexity?: number }
+    ) =>
+      request<Task>(`/projects/${projectId}/tasks/${taskId}`, {
+        method: "PATCH",
+        body: JSON.stringify(updates),
+      }),
     sessions: (projectId: string, taskId: string) =>
       request<AgentSession[]>(`/projects/${projectId}/tasks/${taskId}/sessions`),
     session: (projectId: string, taskId: string, attempt: number) =>

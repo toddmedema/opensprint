@@ -578,6 +578,86 @@ Test review prompt generation.
     expect(res.body.error?.message).toMatch(/0–4/i);
   });
 
+  it("PATCH /tasks/:taskId updates task complexity", async () => {
+    const _project = await projectService.getProject(projectId);
+
+    const task = await taskStore.create(projectId, "Complexity Update Test Task", {
+      type: "task",
+      priority: 1,
+    });
+
+    const res = await request(app)
+      .patch(`${API_PREFIX}/projects/${projectId}/tasks/${task.id}`)
+      .set("Content-Type", "application/json")
+      .send({ complexity: 7 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toBeDefined();
+    expect(res.body.data.id).toBe(task.id);
+    expect(res.body.data.complexity).toBe(7);
+
+    const showAfter = await taskStore.show(projectId, task.id);
+    expect((showAfter as { complexity?: number }).complexity).toBe(7);
+  });
+
+  it("PATCH /tasks/:taskId updates both priority and complexity", async () => {
+    const _project = await projectService.getProject(projectId);
+
+    const task = await taskStore.create(projectId, "Both Update Test Task", {
+      type: "task",
+      priority: 2,
+      complexity: 3,
+    });
+
+    const res = await request(app)
+      .patch(`${API_PREFIX}/projects/${projectId}/tasks/${task.id}`)
+      .set("Content-Type", "application/json")
+      .send({ priority: 0, complexity: 4 });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.priority).toBe(0);
+    expect(res.body.data.complexity).toBe(4);
+  });
+
+  it("PATCH /tasks/:taskId returns 400 when complexity is invalid", async () => {
+    const _project = await projectService.getProject(projectId);
+    const task = await taskStore.create(projectId, "Task", { type: "task", priority: 1 });
+
+    const res = await request(app)
+      .patch(`${API_PREFIX}/projects/${projectId}/tasks/${task.id}`)
+      .set("Content-Type", "application/json")
+      .send({ complexity: 11 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error?.message).toMatch(/1–10/i);
+  });
+
+  it("PATCH /tasks/:taskId returns 400 when neither priority nor complexity provided", async () => {
+    const _project = await projectService.getProject(projectId);
+    const task = await taskStore.create(projectId, "Task", { type: "task", priority: 1 });
+
+    const res = await request(app)
+      .patch(`${API_PREFIX}/projects/${projectId}/tasks/${task.id}`)
+      .set("Content-Type", "application/json")
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.error?.message).toMatch(/priority or complexity/i);
+  });
+
+  it("GET /tasks/:taskId returns complexity when task has it", async () => {
+    const _project = await projectService.getProject(projectId);
+    const task = await taskStore.create(projectId, "Task with complexity", {
+      type: "task",
+      priority: 1,
+      complexity: 5,
+    });
+
+    const res = await request(app).get(`${API_PREFIX}/projects/${projectId}/tasks/${task.id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.complexity).toBe(5);
+  });
+
   it("POST /tasks/:taskId/dependencies adds dependency and returns 204", async () => {
     const parentTask = await taskStore.create(projectId, "Parent Task", {
       type: "task",
