@@ -10,14 +10,34 @@ vi.mock("../services/task-store.service.js", () => ({
   taskStore: {},
 }));
 
-vi.mock("../services/branch-manager.js", () => ({
-  RebaseConflictError: class RebaseConflictError extends Error {
+vi.mock("../services/branch-manager.js", () => {
+  const RebaseConflictError = class RebaseConflictError extends Error {
     constructor(public readonly conflictedFiles: string[]) {
       super(`Rebase conflict`);
       this.name = "RebaseConflictError";
     }
-  },
-}));
+  };
+  return {
+    RebaseConflictError,
+    BranchManager: vi.fn().mockImplementation(() => ({
+      waitForGitReady: vi.fn(),
+      commitWip: vi.fn(),
+      removeTaskWorktree: vi.fn(),
+      deleteBranch: vi.fn(),
+      getChangedFiles: vi.fn(),
+      pushMain: vi.fn(),
+      pushMainToOrigin: vi.fn(),
+      isMergeInProgress: vi.fn(),
+      mergeAbort: vi.fn(),
+      mergeContinue: vi.fn(),
+      rebaseAbort: vi.fn(),
+      rebaseContinue: vi.fn(),
+      updateMainFromOrigin: vi.fn(),
+      rebaseOntoMain: vi.fn(),
+      getDiff: vi.fn(),
+    })),
+  };
+});
 
 const mockRemoveTaskWorktree = vi.fn();
 const mockDeleteBranch = vi.fn();
@@ -46,6 +66,17 @@ vi.mock("../services/event-log.service.js", () => ({
 
 vi.mock("../websocket/index.js", () => ({
   broadcastToProject: vi.fn(),
+}));
+
+vi.mock("../services/deploy-trigger.service.js", () => ({
+  triggerDeployForEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../services/final-review.service.js", () => ({
+  finalReviewService: {
+    runFinalReview: vi.fn(),
+    createTasksFromReview: vi.fn(),
+  },
 }));
 
 describe("MergeCoordinatorService", () => {
@@ -287,5 +318,72 @@ describe("MergeCoordinatorService", () => {
     expect(rebaseContinue).toHaveBeenCalledWith("/tmp/worktree");
     expect(mockGitQueueEnqueueAndWait).toHaveBeenCalled();
     expect(mockHost.taskStore.close).toHaveBeenCalledWith(projectId, taskId, expect.any(String));
+  });
+
+  it("runs final review when last task of epic completes and closes epic on pass", async () => {
+    const { finalReviewService } = await import("../services/final-review.service.js");
+    vi.mocked(finalReviewService.runFinalReview).mockResolvedValue({
+      status: "pass",
+      assessment: "Implementation meets plan scope.",
+      proposedTasks: [],
+    });
+    mockHost.taskStore.listAll.mockResolvedValue([
+      { id: "os-abc", title: "Epic", status: "open", issue_type: "epic" } as never,
+      { id: "os-abc.1", title: "Task 1", status: "closed", issue_type: "task" } as never,
+    ]);
+
+    await coordinator.postCompletionAsync(projectId, repoPath, "os-abc.1");
+
+    await vi.waitFor(() => {
+      expect(finalReviewService.runFinalReview).toHaveBeenCalledWith(
+        projectId,
+        "os-abc",
+        repoPath
+      );
+    });
+    expect(mockHost.taskStore.close).toHaveBeenCalledWith(
+      projectId,
+      "os-abc",
+      "All tasks done; final review passed"
+    );
+  });
+
+  it("creates tasks and nudges when final review finds issues", async () => {
+    const { finalReviewService } = await import("../services/final-review.service.js");
+    vi.mocked(finalReviewService.runFinalReview).mockResolvedValue({
+      status: "issues",
+      assessment: "Missing error handling.",
+      proposedTasks: [
+        { title: "Add error handling", description: "Handle edge cases", priority: 1 },
+      ],
+    });
+    vi.mocked(finalReviewService.createTasksFromReview).mockResolvedValue(["os-abc.2"]);
+    mockHost.taskStore.listAll.mockResolvedValue([
+      { id: "os-abc", title: "Epic", status: "open", issue_type: "epic" } as never,
+      { id: "os-abc.1", title: "Task 1", status: "closed", issue_type: "task" } as never,
+    ]);
+    const nudge = vi.fn();
+    mockHost.nudge = nudge;
+
+    await coordinator.postCompletionAsync(projectId, repoPath, "os-abc.1");
+
+    await vi.waitFor(() => {
+      expect(finalReviewService.runFinalReview).toHaveBeenCalledWith(
+        projectId,
+        "os-abc",
+        repoPath
+      );
+    });
+    expect(finalReviewService.createTasksFromReview).toHaveBeenCalledWith(
+      projectId,
+      "os-abc",
+      [{ title: "Add error handling", description: "Handle edge cases", priority: 1 }]
+    );
+    expect(mockHost.taskStore.close).not.toHaveBeenCalledWith(
+      projectId,
+      "os-abc",
+      expect.any(String)
+    );
+    expect(nudge).toHaveBeenCalled();
   });
 });

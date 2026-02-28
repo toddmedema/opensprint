@@ -17,6 +17,7 @@ import { gitCommitQueue } from "./git-commit-queue.service.js";
 import { agentIdentityService } from "./agent-identity.service.js";
 import { eventLogService } from "./event-log.service.js";
 import { triggerDeployForEvent } from "./deploy-trigger.service.js";
+import { finalReviewService } from "./final-review.service.js";
 import { broadcastToProject } from "../websocket/index.js";
 import type { TimerRegistry } from "./timer-registry.js";
 import { createLogger } from "../utils/logger.js";
@@ -440,11 +441,81 @@ export class MergeCoordinatorService {
       const allClosed =
         implTasks.length > 0 && implTasks.every((i) => (i.status as string) === "closed");
       if (allClosed) {
-        triggerDeployForEvent(projectId, "each_epic").catch((err) => {
-          log.warn("Auto-deploy on epic completion failed", { projectId, err });
-        });
+        const epicIssue = allIssues.find((i) => i.id === epicId);
+        if (epicIssue && (epicIssue.status as string) !== "closed") {
+          this.runFinalReviewAndCloseOrCreateTasks(projectId, repoPath, epicId).catch(
+            (err) => log.warn("Final review flow failed", { projectId, epicId, err })
+          );
+        } else {
+          triggerDeployForEvent(projectId, "each_epic").catch((err) => {
+            log.warn("Auto-deploy on epic completion failed", { projectId, err });
+          });
+        }
       }
     }
+  }
+
+  /**
+   * Run final review agent when last task of epic is done.
+   * If pass: close epic, trigger deploy. If issues: create tasks, epic stays open, nudge.
+   */
+  private async runFinalReviewAndCloseOrCreateTasks(
+    projectId: string,
+    repoPath: string,
+    epicId: string
+  ): Promise<void> {
+    const result = await finalReviewService.runFinalReview(projectId, epicId, repoPath);
+
+    if (result === null) {
+      // No plan (deploy-fix epic) or agent failed — close epic and deploy
+      await this.host.taskStore.close(projectId, epicId, "All tasks done");
+      broadcastToProject(projectId, {
+        type: "task.updated",
+        taskId: epicId,
+        status: "closed",
+        assignee: null,
+      });
+      triggerDeployForEvent(projectId, "each_epic").catch((err) => {
+        log.warn("Auto-deploy on epic completion failed", { projectId, err });
+      });
+      return;
+    }
+
+    if (result.status === "pass") {
+      await this.host.taskStore.close(projectId, epicId, "All tasks done; final review passed");
+      broadcastToProject(projectId, {
+        type: "task.updated",
+        taskId: epicId,
+        status: "closed",
+        assignee: null,
+      });
+      triggerDeployForEvent(projectId, "each_epic").catch((err) => {
+        log.warn("Auto-deploy on epic completion failed", { projectId, err });
+      });
+      return;
+    }
+
+    // Issues found — create tasks, epic stays open
+    const createdIds = await finalReviewService.createTasksFromReview(
+      projectId,
+      epicId,
+      result.proposedTasks
+    );
+    for (const id of createdIds) {
+      broadcastToProject(projectId, {
+        type: "task.updated",
+        taskId: id,
+        status: "open",
+        assignee: null,
+      });
+    }
+    log.info("Final review found issues, created tasks", {
+      projectId,
+      epicId,
+      assessment: result.assessment,
+      createdCount: createdIds.length,
+    });
+    this.host.nudge(projectId);
   }
 
   async waitForPushComplete(projectId: string): Promise<void> {
