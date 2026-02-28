@@ -685,6 +685,94 @@ describe("TaskDetailSidebar", () => {
     expect(screen.queryByText("Links:")).not.toBeInTheDocument();
   });
 
+  it("shows Plan as first item in Links when task has epicId, plan, onNavigateToPlan, and no other deps", () => {
+    const onNavigateToPlan = vi.fn();
+    const props = createMinimalProps({
+      selectedTaskData: {
+        id: "epic-1.1",
+        title: "Task A",
+        epicId: "epic-1",
+        kanbanColumn: "in_progress" as const,
+        priority: 0,
+        assignee: null,
+        type: "task" as const,
+        status: "in_progress" as const,
+        labels: [],
+        dependencies: [],
+        description: "",
+        createdAt: "",
+        updatedAt: "",
+      },
+      tasks: [],
+      onNavigateToPlan,
+      descriptionSectionExpanded: true,
+    });
+
+    render(
+      <Provider store={createStore()}>
+        <TaskDetailSidebar {...props} />
+      </Provider>
+    );
+
+    expect(screen.getByText("Links:")).toBeInTheDocument();
+    const planLink = screen.getByTestId("sidebar-view-plan-btn");
+    expect(planLink).toBeInTheDocument();
+    expect(planLink).toHaveTextContent(/plan:\s*plan/i);
+  });
+
+  it("shows Plan as first item in Links before Blocked on, Parent, Related", () => {
+    const blockedTask = {
+      id: "epic-1.2",
+      title: "Remove pagination",
+      epicId: "epic-1",
+      kanbanColumn: "done" as const,
+      priority: 1,
+      assignee: null,
+      type: "task" as const,
+      status: "closed" as const,
+      labels: [],
+      dependencies: [],
+      description: "",
+      createdAt: "",
+      updatedAt: "",
+    };
+    const onNavigateToPlan = vi.fn();
+    const props = createMinimalProps({
+      selectedTaskData: {
+        id: "epic-1.1",
+        title: "Task A",
+        epicId: "epic-1",
+        kanbanColumn: "in_progress" as const,
+        priority: 0,
+        assignee: null,
+        type: "task" as const,
+        status: "in_progress" as const,
+        labels: [],
+        dependencies: [{ targetId: "epic-1.2", type: "blocks" }],
+        description: "",
+        createdAt: "",
+        updatedAt: "",
+      },
+      tasks: [blockedTask],
+      onNavigateToPlan,
+      descriptionSectionExpanded: true,
+    });
+
+    render(
+      <Provider store={createStore()}>
+        <TaskDetailSidebar {...props} />
+      </Provider>
+    );
+
+    expect(screen.getByText("Links:")).toBeInTheDocument();
+    const planLink = screen.getByTestId("sidebar-view-plan-btn");
+    expect(planLink).toBeInTheDocument();
+    expect(planLink).toHaveTextContent(/plan:\s*plan/i);
+    const linkButtons = screen.getAllByRole("button", { name: /plan|Remove pagination/i });
+    expect(linkButtons[0]).toHaveAttribute("data-testid", "sidebar-view-plan-btn");
+    expect(linkButtons[1].textContent).toContain("Remove pagination");
+  });
+
   it("shows Links only non-epic dependencies when epic and others exist", () => {
     const depTask = {
       id: "epic-1.2",

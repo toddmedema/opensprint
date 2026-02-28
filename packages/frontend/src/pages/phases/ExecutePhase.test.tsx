@@ -2674,7 +2674,7 @@ describe("ExecutePhase task detail plan link", () => {
 
     const planLink = await screen.findByTestId("sidebar-view-plan-btn");
     expect(planLink).toBeInTheDocument();
-    expect(planLink).toHaveTextContent(/view plan: build test/i);
+    expect(planLink).toHaveTextContent(/plan:\s*build test/i);
   });
 
   it("does not show plan link when onNavigateToPlan is not provided", async () => {

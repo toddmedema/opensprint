@@ -399,38 +399,23 @@ export function TaskDetailSidebar({
           ) : null}
         </div>
 
-        {/* View plan, Dependencies, Add link — same section */}
+        {/* Links (Plan first, then blocked/parent/related) and Add link */}
         {task && (
           <div className="p-4 border-b border-theme-border" data-section="view-plan-deps-addlink">
-            {/* View plan link */}
-            {task.epicId &&
-              (() => {
-                const plan = plans.find((p) => p.metadata.epicId === task.epicId);
-                if (!plan || !onNavigateToPlan) return null;
-                const planTitle = getEpicTitleFromPlan(plan);
-                return (
-                  <button
-                    type="button"
-                    onClick={() => onNavigateToPlan(plan.metadata.planId)}
-                    className="text-xs text-brand-600 hover:text-brand-700 hover:underline text-left block"
-                    title={`View plan: ${planTitle}`}
-                    data-testid="sidebar-view-plan-btn"
-                  >
-                    View plan: {planTitle}
-                  </button>
-                );
-              })()}
-
-            {/* Links */}
+            {/* Links: Plan first, then blocked/parent/related */}
             {(() => {
+              const plan =
+                task.epicId && onNavigateToPlan
+                  ? plans.find((p) => p.metadata.epicId === task.epicId)
+                  : null;
+              const planTitle = plan ? getEpicTitleFromPlan(plan) : null;
+
               const nonEpicDeps = (task.dependencies ?? []).filter(
                 (d) =>
                   d.targetId &&
                   d.type !== "discovered-from" &&
                   d.targetId !== task.epicId
               );
-              const hasDeps = nonEpicDeps.length > 0;
-              if (!hasDeps) return null;
 
               const TYPE_ORDER: Record<string, number> = {
                 blocks: 0,
@@ -447,10 +432,29 @@ export function TaskDetailSidebar({
                   (TYPE_ORDER[a.type] ?? 3) - (TYPE_ORDER[b.type] ?? 3)
               );
 
+              const hasPlanLink = !!plan && !!planTitle;
+              const hasDeps = nonEpicDeps.length > 0;
+              if (!hasPlanLink && !hasDeps) return null;
+
               return (
-                <div className="text-xs mt-1.5">
+                <div className="text-xs">
                   <span className="text-theme-muted">Links:</span>
                   <div className="flex flex-col gap-y-1.5 mt-1.5">
+                    {/* Plan link as first item */}
+                    {hasPlanLink && (
+                      <button
+                        type="button"
+                        onClick={() => onNavigateToPlan!(plan!.metadata.planId)}
+                        className="inline-flex items-center gap-1.5 text-left hover:underline text-brand-600 hover:text-brand-500 transition-colors"
+                        title={`View plan: ${planTitle}`}
+                        data-testid="sidebar-view-plan-btn"
+                      >
+                        <span className="text-theme-muted shrink-0">Plan:</span>
+                        <span className="truncate max-w-[200px]" title={planTitle!}>
+                          {planTitle}
+                        </span>
+                      </button>
+                    )}
                     {sorted.map((d) => {
                       const depTask = tasks.find((t) => t.id === d.targetId);
                       const label = depTask?.title ?? d.targetId;
