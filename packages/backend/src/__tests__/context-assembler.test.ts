@@ -2,9 +2,41 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
-import { ContextAssembler } from "../services/context-assembler.js";
+import {
+  ContextAssembler,
+  buildAutonomyDescription,
+} from "../services/context-assembler.js";
 import { OPENSPRINT_PATHS } from "@opensprint/shared";
 import { ensureRuntimeDir, getRuntimePath } from "../utils/runtime-dir.js";
+
+describe("buildAutonomyDescription", () => {
+  it("returns confirm_all rule when aiAutonomyLevel is confirm_all", () => {
+    const desc = buildAutonomyDescription("confirm_all", undefined);
+    expect(desc).toContain("Confirm all scope changes");
+    expect(desc).toContain("open_questions");
+  });
+
+  it("returns major_only rule when aiAutonomyLevel is major_only", () => {
+    const desc = buildAutonomyDescription("major_only", undefined);
+    expect(desc).toContain("Major scope changes only");
+    expect(desc).toContain("scope or architecture");
+  });
+
+  it("returns full autonomy rule when aiAutonomyLevel is full", () => {
+    const desc = buildAutonomyDescription("full", undefined);
+    expect(desc).toContain("Full autonomy");
+    expect(desc).toContain("genuinely blocked");
+  });
+
+  it("falls back to hilConfig when aiAutonomyLevel is absent", () => {
+    const desc = buildAutonomyDescription(undefined, {
+      scopeChanges: "automated",
+      architectureDecisions: "automated",
+      dependencyModifications: "automated",
+    });
+    expect(desc).toContain("Full autonomy");
+  });
+});
 
 describe("ContextAssembler", () => {
   let assembler: ContextAssembler;
@@ -572,5 +604,45 @@ User authentication.
     expect(prompt).toContain("previously identified problems have actually been fixed");
     expect(prompt).toContain("### Attempt 1 — Rejected");
     expect(prompt).toContain("Missing error handling for invalid JWT tokens");
+  });
+
+  it("should include AI Autonomy Level section when aiAutonomyLevel or hilConfig is provided", async () => {
+    const prdDir = path.join(repoPath, path.dirname(OPENSPRINT_PATHS.prd));
+    await fs.mkdir(prdDir, { recursive: true });
+    await fs.writeFile(
+      path.join(repoPath, OPENSPRINT_PATHS.prd),
+      JSON.stringify({ sections: { executive_summary: { content: "Test" } } })
+    );
+    const plansDir = path.join(repoPath, OPENSPRINT_PATHS.plans);
+    await fs.mkdir(plansDir, { recursive: true });
+    await fs.writeFile(path.join(plansDir, "auth.md"), "# Auth\n\n## Overview\n\nAuth.\n");
+
+    const configWithAutonomy = {
+      invocation_id: "task-1",
+      agent_role: "coder" as const,
+      taskId: "task-1",
+      repoPath,
+      branch: "opensprint/task-1",
+      testCommand: "npm test",
+      attempt: 1,
+      phase: "coding" as const,
+      previousFailure: null as string | null,
+      reviewFeedback: null as string | null,
+      aiAutonomyLevel: "confirm_all" as const,
+    };
+
+    const taskDir = await assembler.assembleTaskDirectory(repoPath, "task-1", configWithAutonomy, {
+      taskId: "task-1",
+      title: "Test task",
+      description: "Test",
+      planContent: "# Auth\n\nOverview.",
+      prdExcerpt: "# PRD\n\nTest.",
+      dependencyOutputs: [],
+    });
+
+    const prompt = await fs.readFile(path.join(taskDir, "prompt.md"), "utf-8");
+    expect(prompt).toContain("## AI Autonomy Level");
+    expect(prompt).toContain("Confirm all scope changes");
+    expect(prompt).toContain("open_questions");
   });
 });

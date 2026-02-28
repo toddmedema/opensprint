@@ -178,6 +178,8 @@ export interface ActiveTaskConfig {
     architectureDecisions: string;
     dependencyModifications: string;
   };
+  /** AI Autonomy level (confirm_all | major_only | full): human-readable rule for when to emit open_questions */
+  aiAutonomyLevel?: "confirm_all" | "major_only" | "full";
 }
 
 /** Agent session record (.opensprint/sessions/<task-id>-<attempt>.json) */

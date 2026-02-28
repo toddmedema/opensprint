@@ -154,6 +154,7 @@ export class PhaseExecutorService {
         previousDiff: retryContext?.previousDiff ?? null,
         useExistingBranch: retryContext?.useExistingBranch ?? false,
         hilConfig: settings.hilConfig,
+        aiAutonomyLevel: settings.aiAutonomyLevel,
       };
 
       await this.host.contextAssembler.assembleTaskDirectory(wtPath, task.id, config, context);
@@ -271,6 +272,8 @@ export class PhaseExecutorService {
         phase: "review",
         previousFailure: null,
         reviewFeedback: null,
+        hilConfig: settings.hilConfig,
+        aiAutonomyLevel: settings.aiAutonomyLevel,
       };
 
       const taskDir = this.host.sessionManager.getActiveDir(wtPath, task.id);

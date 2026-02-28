@@ -29,6 +29,7 @@ import {
   parseHarmonizerResultFull,
   type HarmonizerPrdUpdate,
 } from "./harmonizer.service.js";
+import { buildAutonomyDescription } from "./context-assembler.js";
 
 const log = createLogger("chat");
 const ARCHITECTURE_SECTIONS = ["technical_architecture", "data_model", "api_contracts"] as const;
@@ -315,6 +316,11 @@ export class ChatService {
     } else {
       const prdContext = await this.buildPrdContext(projectId);
       systemPrompt = DREAM_SYSTEM_PROMPT + "\n\n" + prdContext;
+    }
+
+    const autonomyDesc = buildAutonomyDescription(settings.aiAutonomyLevel, settings.hilConfig);
+    if (autonomyDesc) {
+      systemPrompt += `\n\n## AI Autonomy Level\n\n${autonomyDesc}\n\n`;
     }
 
     // Assemble messages for AgentService.invokePlanningAgent

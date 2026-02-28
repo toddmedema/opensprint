@@ -24,6 +24,7 @@ import { broadcastToProject } from "../websocket/index.js";
 import { extractJsonFromAgentResponse } from "../utils/json-extract.js";
 import { JSON_OUTPUT_PREAMBLE } from "../utils/agent-prompts.js";
 import { triggerDeployForEvent } from "./deploy-trigger.service.js";
+import { buildAutonomyDescription } from "./context-assembler.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("feedback");
@@ -83,7 +84,7 @@ JSON format:
   "open_questions": [{ "id": "q1", "text": "Clarification question..." }]
 }
 
-When feedback is too vague: return non-empty open_questions with id and text per question. Do not set proposed_tasks or link_to_existing_task_ids. When open_questions is non-empty, the system will not create tasks or link to existing. Omit open_questions (or use empty array) when you can categorize normally.
+When feedback is too vague: return non-empty open_questions in the standard protocol format: [{ "id": "q1", "text": "Clarification question..." }]. The server surfaces these via the Human Notification System. Do not set proposed_tasks or link_to_existing_task_ids. When open_questions is non-empty, the system will not create tasks or link to existing. Omit open_questions (or use empty array) when you can categorize normally.
 
 priority: 0 (highest) to 4 (lowest). depends_on: array of task indices (0-based) this task is blocked by. complexity: simple or complex — assign per task based on implementation difficulty.`;
 
@@ -373,7 +374,12 @@ export class FeedbackService {
             content: `# PRD\n\n${prdContext}\n\n# Plans\n\n${planContext}\n\n# Existing OPEN tasks\n\n${openTasksContext}${parentContext}\n\n# Feedback to categorize\n\n"${item.text}"`,
           },
         ],
-        systemPrompt: FEEDBACK_CATEGORIZATION_PROMPT,
+        systemPrompt: (() => {
+          const autonomyDesc = buildAutonomyDescription(settings.aiAutonomyLevel, settings.hilConfig);
+          return autonomyDesc
+            ? `${FEEDBACK_CATEGORIZATION_PROMPT}\n\n## AI Autonomy Level\n\n${autonomyDesc}\n\n`
+            : FEEDBACK_CATEGORIZATION_PROMPT;
+        })(),
         images: item.images,
         cwd: project.repoPath,
         tracking: {

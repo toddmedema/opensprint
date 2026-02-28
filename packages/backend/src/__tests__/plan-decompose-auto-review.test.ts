@@ -321,6 +321,8 @@ describe("Plan decompose with auto-review", () => {
         "Feature decomposition",
         expect.any(String),
         undefined,
+        undefined,
+        undefined,
         undefined
       );
       expect(mockUnregister).toHaveBeenCalledWith(mockRegister.mock.calls[0][0]);
@@ -371,6 +373,8 @@ describe("Plan decompose with auto-review", () => {
           expect.any(String),
           undefined,
           undefined,
+          undefined,
+          undefined,
         ]);
         expect(autoReviewCall).toBeDefined();
         expect(autoReviewCall).toEqual([
@@ -380,6 +384,8 @@ describe("Plan decompose with auto-review", () => {
           "planner",
           "Plan auto-review",
           expect.any(String),
+          undefined,
+          undefined,
           undefined,
           undefined,
         ]);

@@ -7,6 +7,34 @@ import type { TaskStoreService } from "./task-store.service.js";
 import type { StoredTask } from "./task-store.service.js";
 import { getRuntimePath } from "../utils/runtime-dir.js";
 
+/** Build human-readable autonomy description for agent prompts (agent question protocol). Exported for use by chat, feedback, plan services. */
+export function buildAutonomyDescription(
+  aiAutonomyLevel?: "confirm_all" | "major_only" | "full",
+  hilConfig?: ActiveTaskConfig["hilConfig"]
+): string {
+  if (aiAutonomyLevel) {
+    switch (aiAutonomyLevel) {
+      case "confirm_all":
+        return `**Confirm all scope changes.** Emit \`open_questions\` for any scope, architecture, or dependency change before proceeding. Wait for user answers via the Human Notification System.`;
+      case "major_only":
+        return `**Major scope changes only.** Emit \`open_questions\` for scope or architecture changes; proceed autonomously for dependency modifications. Wait for user answers before proceeding on major changes.`;
+      case "full":
+        return `**Full autonomy.** Proceed without confirmation. Only emit \`open_questions\` when genuinely blocked (e.g. ambiguous task spec); do not ask for routine scope changes.`;
+      default:
+        break;
+    }
+  }
+  if (hilConfig) {
+    const modes = Object.values(hilConfig);
+    return modes.every((m) => m === "automated")
+      ? `**Full autonomy.** Proceed without confirmation. Only emit \`open_questions\` when genuinely blocked.`
+      : modes.some((m) => m === "requires_approval")
+        ? `**Confirm major changes before proceeding.** Emit \`open_questions\` for scope/architecture changes; wait for user answers.`
+        : `**Notify user but proceed.** Emit \`open_questions\` when appropriate; you may proceed after notifying.`;
+  }
+  return "";
+}
+
 export interface TaskContext {
   taskId: string;
   title: string;
@@ -331,17 +359,13 @@ export class ContextAssembler {
     prompt += `   \`\`\`\n`;
     prompt += `   Use \`"status": "success"\` when the task is done, or \`"status": "failed"\` if you could not finish it.\n`;
     prompt += `   The \`status\` field MUST be exactly \`"success"\` or \`"failed"\` — no other values.\n`;
-    prompt += `   **When the task spec is ambiguous:** Instead of guessing, return \`"status": "failed"\` with \`open_questions\`: [{ "id": "q1", "text": "Your clarification question" }]. The user will answer; do not proceed until clarified.\n`;
+    prompt += `   **When the task spec is ambiguous:** Instead of guessing, return \`"status": "failed"\` with \`open_questions\` in the standard protocol format: [{ "id": "q1", "text": "Your clarification question" }]. The server will surface these via the Human Notification System; do not proceed until the user answers.\n`;
     prompt += `   After writing result.json, exit the process immediately so the orchestrator can continue (exit code 0 on success).\n\n`;
     prompt += `If tests fail after implementation, fix them before writing result.json. Do not report success with failing tests.\n\n`;
 
-    if (config.hilConfig) {
-      const modes = Object.values(config.hilConfig);
-      const autonomyDesc =
-        modes.every((m) => m === "automated") ? "Full autonomy: proceed without confirmation." :
-        modes.some((m) => m === "requires_approval") ? "Confirm major changes before proceeding." :
-        "Notify user but proceed with changes.";
-      prompt += `## Autonomy Level\n\n${autonomyDesc}\n\n`;
+    const autonomyDesc = buildAutonomyDescription(config.aiAutonomyLevel, config.hilConfig);
+    if (autonomyDesc) {
+      prompt += `## AI Autonomy Level\n\n${autonomyDesc}\n\n`;
     }
 
     if (config.previousFailure) {

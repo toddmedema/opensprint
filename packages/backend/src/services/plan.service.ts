@@ -28,6 +28,7 @@ import { ChatService } from "./chat.service.js";
 import { PrdService } from "./prd.service.js";
 import { agentService } from "./agent.service.js";
 import { buildAuditorPrompt, parseAuditorResult } from "./auditor.service.js";
+import { buildAutonomyDescription } from "./context-assembler.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import { broadcastToProject } from "../websocket/index.js";
@@ -788,11 +789,17 @@ export class PlanService {
 
     const agentId = `plan-task-gen-${projectId}-${Date.now()}`;
 
+    const taskGenPrompt = (() => {
+      const autonomyDesc = buildAutonomyDescription(settings.aiAutonomyLevel, settings.hilConfig);
+      return autonomyDesc
+        ? `${TASK_GENERATION_SYSTEM_PROMPT}\n\n## AI Autonomy Level\n\n${autonomyDesc}\n\n`
+        : TASK_GENERATION_SYSTEM_PROMPT;
+    })();
     const response = await agentService.invokePlanningAgent({
       projectId,
       config: getAgentForPlanningRole(settings, "planner", plan.metadata.complexity),
       messages: [{ role: "user", content: prompt }],
-      systemPrompt: TASK_GENERATION_SYSTEM_PROMPT,
+      systemPrompt: taskGenPrompt,
       cwd: repoPath,
       tracking: {
         id: agentId,
@@ -1791,7 +1798,14 @@ Tasks should be atomic, implementable in one agent session, with clear acceptanc
 
 MOCKUPS: Include at least one mockup (ASCII wireframe or text diagram) illustrating key UI for the feature.
 
-Field rules: complexity: low, medium, high, or very_high (plan-level). Task-level complexity: simple or complex — assign per task based on implementation difficulty. priority: 0=highest. dependsOn: array of other task titles this task depends on.`;
+Field rules: complexity: low, medium, high, or very_high (plan-level). Task-level complexity: simple or complex — assign per task based on implementation difficulty. priority: 0=highest. dependsOn: array of other task titles this task depends on.
+
+**When requirements are unclear:** If the feature idea is too vague to decompose, return JSON with \`open_questions\`: [{ "id": "q1", "text": "Clarification question" }] instead of a plan. The server surfaces these via the Human Notification System; wait for user answers before proceeding.`;
+
+    const autonomyDesc = buildAutonomyDescription(settings.aiAutonomyLevel, settings.hilConfig);
+    const systemPromptWithAutonomy = autonomyDesc
+      ? `${systemPrompt}\n\n## AI Autonomy Level\n\n${autonomyDesc}\n\n`
+      : systemPrompt;
 
     const prompt = `Generate a complete feature plan for the following idea.\n\n## Feature Idea\n\n${description}\n\n## PRD Context\n\n${prdContext}`;
 
@@ -1801,7 +1815,7 @@ Field rules: complexity: low, medium, high, or very_high (plan-level). Task-leve
       projectId,
       config: getAgentForPlanningRole(settings, "planner"),
       messages: [{ role: "user", content: prompt }],
-      systemPrompt,
+      systemPrompt: systemPromptWithAutonomy,
       cwd: repoPath,
       tracking: {
         id: agentId,
@@ -1876,11 +1890,17 @@ Field rules: complexity: low, medium, high, or very_high (plan-level). Task-leve
 
     const agentId = `plan-suggest-${projectId}-${Date.now()}`;
 
+    const baseSystemPrompt = DECOMPOSE_SYSTEM_PROMPT + "\n\n## Current PRD\n\n" + prdContext;
+    const autonomyDesc = buildAutonomyDescription(settings.aiAutonomyLevel, settings.hilConfig);
+    const systemPrompt = autonomyDesc
+      ? `${baseSystemPrompt}\n\n## AI Autonomy Level\n\n${autonomyDesc}\n\n`
+      : baseSystemPrompt;
+
     const response = await agentService.invokePlanningAgent({
       projectId,
       config: getAgentForPlanningRole(settings, "planner"),
       messages: [{ role: "user", content: prompt }],
-      systemPrompt: DECOMPOSE_SYSTEM_PROMPT + "\n\n## Current PRD\n\n" + prdContext,
+      systemPrompt,
       cwd: repoPath,
       tracking: {
         id: agentId,
@@ -1956,11 +1976,17 @@ Field rules: complexity: low, medium, high, or very_high (plan-level). Task-leve
 
     const agentId = `plan-decompose-${projectId}-${Date.now()}`;
 
+    const baseSystemPrompt = DECOMPOSE_SYSTEM_PROMPT + "\n\n## Current PRD\n\n" + prdContext;
+    const autonomyDesc = buildAutonomyDescription(settings.aiAutonomyLevel, settings.hilConfig);
+    const systemPrompt = autonomyDesc
+      ? `${baseSystemPrompt}\n\n## AI Autonomy Level\n\n${autonomyDesc}\n\n`
+      : baseSystemPrompt;
+
     const response = await agentService.invokePlanningAgent({
       projectId,
       config: getAgentForPlanningRole(settings, "planner"),
       messages: [{ role: "user", content: prompt }],
-      systemPrompt: DECOMPOSE_SYSTEM_PROMPT + "\n\n## Current PRD\n\n" + prdContext,
+      systemPrompt,
       cwd: repoPath,
       tracking: {
         id: agentId,
