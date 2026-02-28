@@ -454,7 +454,7 @@ describe("FeedbackService", () => {
     const createCalls = mockTaskStoreCreateWithRetry.mock.calls;
     const replyTaskCall = createCalls.find((c) => c[1] === "Fix mobile too");
     expect(replyTaskCall).toBeDefined();
-    expect((replyTaskCall![2] as { complexity?: string }).complexity).toBe("complex");
+    expect((replyTaskCall![2] as { complexity?: number }).complexity).toBe(7);
   });
 
   it("should set complexity to complex for tasks created from reply feedback (task_titles legacy path)", async () => {
@@ -488,7 +488,7 @@ describe("FeedbackService", () => {
     const createCalls = mockTaskStoreCreateWithRetry.mock.calls;
     const replyTaskCall = createCalls.find((c) => c[1] === "Fix mobile too");
     expect(replyTaskCall).toBeDefined();
-    expect((replyTaskCall![2] as { complexity?: string }).complexity).toBe("complex");
+    expect((replyTaskCall![2] as { complexity?: number }).complexity).toBe(7);
   });
 
   it("should assign short 6-char alphanumeric feedback IDs", async () => {

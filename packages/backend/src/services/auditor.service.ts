@@ -4,6 +4,7 @@
  * then compares old and new Plan versions to generate only the delta tasks needed.
  */
 
+import { clampTaskComplexity } from "@opensprint/shared";
 import { extractJsonFromAgentResponse } from "../utils/json-extract.js";
 import { JSON_OUTPUT_PREAMBLE } from "../utils/agent-prompts.js";
 
@@ -14,8 +15,8 @@ export interface DeltaTask {
   description: string;
   priority?: number;
   depends_on?: number[];
-  /** Task-level complexity (simple|complex). When absent, inferred from plan. */
-  complexity?: "simple" | "complex";
+  /** Task-level complexity (1-10). Accepts legacy "simple"/"complex" mapped to 3/7. */
+  complexity?: number | "simple" | "complex";
 }
 
 /** Auditor result.json format per PRD 12.3.6 */
@@ -128,15 +129,10 @@ export function parseAuditorResult(content: string): AuditorResult | null {
 
     if (Array.isArray(rawTasks) && rawTasks.length > 0) {
       result.tasks = rawTasks.map((t) => {
-        const rawComplexity = typeof t.complexity === "string" ? t.complexity : undefined;
+        const raw = t.complexity;
         const complexity =
-          rawComplexity === "simple" || rawComplexity === "complex"
-            ? rawComplexity
-            : rawComplexity === "low"
-              ? "simple"
-              : rawComplexity === "high"
-                ? "complex"
-                : undefined;
+          clampTaskComplexity(raw) ??
+          (raw === "simple" || raw === "low" ? 3 : raw === "complex" || raw === "high" ? 7 : undefined);
         const task: DeltaTask = {
           index: typeof t.index === "number" ? t.index : 0,
           title: String(t.title ?? t.task_title ?? "").trim(),
@@ -147,7 +143,7 @@ export function parseAuditorResult(content: string): AuditorResult | null {
               : 2,
           depends_on: normalizeTaskDeps(t),
         };
-        if (complexity) task.complexity = complexity;
+        if (complexity != null) task.complexity = complexity;
         return task;
       });
     }

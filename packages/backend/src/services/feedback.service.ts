@@ -5,7 +5,7 @@ import type {
   FeedbackCategory,
   ProposedTask,
 } from "@opensprint/shared";
-import { getAgentForPlanningRole } from "@opensprint/shared";
+import { getAgentForPlanningRole, clampTaskComplexity } from "@opensprint/shared";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import { ProjectService } from "./project.service.js";
@@ -460,16 +460,11 @@ export class FeedbackService {
                 const deps = (t.depends_on ?? t.dependsOn ?? []) as unknown[];
                 const rawComplexity = t.complexity;
                 let complexity =
-                  rawComplexity === "simple" || rawComplexity === "complex"
-                    ? rawComplexity
-                    : rawComplexity === "low"
-                      ? "simple"
-                      : rawComplexity === "high"
-                        ? "complex"
-                        : undefined;
+                  clampTaskComplexity(rawComplexity) ??
+                  (rawComplexity === "simple" || rawComplexity === "low" ? 3 : rawComplexity === "complex" || rawComplexity === "high" ? 7 : undefined);
                 // Reply-derived tasks: always complex (default agent could not resolve)
                 if (item.parent_id) {
-                  complexity = "complex";
+                  complexity = 7;
                 }
                 return {
                   index: typeof t.index === "number" ? t.index : 0,
@@ -485,7 +480,7 @@ export class FeedbackService {
                   depends_on: Array.isArray(deps)
                     ? deps.filter((d): d is number => typeof d === "number")
                     : [],
-                  complexity: complexity as ProposedTask["complexity"],
+                  ...(complexity != null && { complexity }),
                 };
               }
             );
@@ -975,9 +970,12 @@ export class FeedbackService {
             ? await this.resolvePlanComplexityForEpic(projectId, parentEpicId)
             : undefined;
           // Reply-derived tasks: always complex (default agent could not resolve)
+          const raw = task.complexity;
           const taskComplexity = item.parent_id
-            ? "complex"
-            : task.complexity ?? (planComplexity ? planComplexityToTask(planComplexity) : "simple");
+            ? 7
+            : clampTaskComplexity(raw) ??
+              (raw === "simple" || raw === "low" ? 3 : raw === "complex" || raw === "high" ? 7 : undefined) ??
+              (planComplexity ? planComplexityToTask(planComplexity) : 3);
           const issue = await this.taskStore.createWithRetry(
             project.id,
             task.title,
@@ -1043,7 +1041,7 @@ export class FeedbackService {
         try {
           const priority = userPriorityOverride ?? (item.category === "bug" ? 0 : 2);
           // Reply-derived tasks: always complex (default agent could not resolve)
-          const complexity = item.parent_id ? "complex" : undefined;
+          const complexity = item.parent_id ? 7 : undefined;
           const issue = await this.taskStore.createWithRetry(
             project.id,
             title,

@@ -1,9 +1,8 @@
-import type { TaskComplexity } from "@opensprint/shared";
 import type { PlanComplexity } from "@opensprint/shared";
 
 export interface ComplexityIconProps {
-  /** Task-level complexity (simple|complex) or plan-level (low|medium|high|very_high). Simple = low/simple; Complex = medium/high/very_high/complex. */
-  complexity: TaskComplexity | PlanComplexity | undefined;
+  /** Task-level complexity (1-10) or plan-level (low|medium|high|very_high). Legacy "simple"/"complex" accepted for display. */
+  complexity: number | PlanComplexity | "simple" | "complex" | undefined;
   size?: "xs" | "sm" | "md";
   className?: string;
 }
@@ -14,18 +13,29 @@ const SIZE_CLASSES: Record<"xs" | "sm" | "md", string> = {
   md: "w-5 h-5",
 };
 
-/** Simple (low): one dot, blue. Complex (medium/high/very_high): three dots in triangle, yellow. */
+/** Simple (low/1-5): one dot, blue. Complex (high/6-10): three dots in triangle, yellow. */
 export function ComplexityIcon({
   complexity,
   size = "sm",
   className = "",
 }: ComplexityIconProps) {
-  if (!complexity) return null;
+  if (complexity === undefined || complexity === null) return null;
 
   const sizeClass = SIZE_CLASSES[size];
   const isSimple =
-    complexity === "simple" || complexity === "low";
-  const ariaLabel = isSimple ? "Simple complexity" : complexity === "complex" || complexity === "high" ? "Complex complexity" : `${complexity} complexity`;
+    typeof complexity === "number"
+      ? complexity >= 1 && complexity <= 5
+      : complexity === "low" || complexity === "simple";
+  const ariaLabel =
+    typeof complexity === "string" && ["low", "medium", "high", "very_high"].includes(complexity)
+      ? `${complexity} complexity`
+      : isSimple
+        ? "Simple complexity"
+        : typeof complexity === "number"
+          ? `Complexity ${complexity}`
+          : complexity === "complex"
+            ? "Complex complexity"
+            : `${complexity} complexity`;
 
   return (
     <svg

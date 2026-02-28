@@ -2,7 +2,8 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import initSqlJs, { type Database } from "sql.js";
-import type { TaskType, TaskPriority, TaskComplexity } from "@opensprint/shared";
+import type { TaskType, TaskPriority } from "@opensprint/shared";
+import { clampTaskComplexity } from "@opensprint/shared";
 import {
   isAgentAssignee,
   isBlockedByTechnicalError,
@@ -45,6 +46,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     close_reason  TEXT,
     started_at    TEXT,
     completed_at  TEXT,
+    complexity    INTEGER,
     extra         TEXT DEFAULT '{}'
 );
 
@@ -242,8 +244,8 @@ export interface CreateOpts {
   priority?: TaskPriority | number;
   description?: string;
   parentId?: string;
-  /** Task-level complexity (low|high). Persisted in extra JSON. */
-  complexity?: TaskComplexity;
+  /** Task-level complexity (1-10). Persisted in complexity column. */
+  complexity?: number;
   /** Merge into extra JSON (e.g. sourceFeedbackIds) */
   extra?: Record<string, unknown>;
 }
@@ -254,8 +256,8 @@ export interface CreateInput {
   priority?: TaskPriority | number;
   description?: string;
   parentId?: string;
-  /** Task-level complexity (low|high). Persisted in extra JSON. */
-  complexity?: TaskComplexity;
+  /** Task-level complexity (1-10). Persisted in complexity column. */
+  complexity?: number;
 }
 
 /** Plan row returned from plans table (metadata is JSON string; parse as PlanMetadata). */
@@ -427,6 +429,7 @@ export class TaskStoreService {
 
     this.db.run(SCHEMA_SQL);
     this.migrateTaskDurationColumns();
+    this.migrateTaskComplexityColumn();
     this.migrateOpenQuestionsKind();
     await this.migratePlansWithGateTasks();
     await this.withWriteLock(async () => {
@@ -473,6 +476,25 @@ export class TaskStoreService {
     if (!hasCompletedAt) {
       db.run("ALTER TABLE tasks ADD COLUMN completed_at TEXT");
       log.info("Added completed_at column to tasks");
+    }
+  }
+
+  /**
+   * Migration: Add complexity column (integer 1-10) for tasks and epics.
+   * Replaces legacy simple/complex stored in extra JSON.
+   */
+  private migrateTaskComplexityColumn(): void {
+    const db = this.ensureDb();
+    const stmt = db.prepare(
+      "SELECT COUNT(*) as cnt FROM pragma_table_info('tasks') WHERE name = ?"
+    );
+    stmt.bind(["complexity"]);
+    const hasComplexity = stmt.step() && (stmt.getAsObject().cnt as number) > 0;
+    stmt.free();
+
+    if (!hasComplexity) {
+      db.run("ALTER TABLE tasks ADD COLUMN complexity INTEGER");
+      log.info("Added complexity column to tasks");
     }
   }
 
@@ -793,15 +815,7 @@ export class TaskStoreService {
 
     const blockReason = (extra.block_reason as string) ?? null;
     const lastAutoRetryAt = (extra.last_auto_retry_at as string) ?? null;
-    const rawComplexity = extra.complexity as string | undefined;
-    const complexity =
-      rawComplexity === "simple" || rawComplexity === "complex"
-        ? rawComplexity
-        : rawComplexity === "low"
-          ? "simple"
-          : rawComplexity === "high"
-            ? "complex"
-            : undefined;
+    const complexity = clampTaskComplexity(row.complexity);
     return {
       ...extra,
       ...(complexity != null && { complexity }),
@@ -1052,19 +1066,14 @@ export class TaskStoreService {
       const now = new Date().toISOString();
       const type = (options.type as string) ?? "task";
       const priority = options.priority ?? 2;
-      const baseExtra: Record<string, unknown> = {
-        ...options.extra,
-        ...(options.complexity &&
-        (options.complexity === "simple" || options.complexity === "complex")
-          ? { complexity: options.complexity }
-          : {}),
-      };
+      const complexity = clampTaskComplexity(options.complexity);
+      const baseExtra: Record<string, unknown> = { ...options.extra };
       const extra = JSON.stringify(baseExtra);
 
       db.run(
-        `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, extra)
-         VALUES (?, ?, ?, ?, ?, 'open', ?, NULL, '[]', ?, ?, ?)`,
-        [id, projectId, title, options.description ?? null, type, priority, now, now, extra]
+        `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, complexity, extra)
+         VALUES (?, ?, ?, ?, ?, 'open', ?, NULL, '[]', ?, ?, ?, ?)`,
+        [id, projectId, title, options.description ?? null, type, priority, now, now, complexity ?? null, extra]
       );
 
       if (options.parentId) {
@@ -1162,15 +1171,12 @@ export class TaskStoreService {
           const id = ids[i]!;
           const type = (input.type as string) ?? "task";
           const priority = input.priority ?? 2;
-          const extra =
-            input.complexity && (input.complexity === "simple" || input.complexity === "complex")
-              ? JSON.stringify({ complexity: input.complexity })
-              : "{}";
+          const complexity = clampTaskComplexity(input.complexity);
 
           db.run(
-            `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, extra)
-             VALUES (?, ?, ?, ?, ?, 'open', ?, NULL, '[]', ?, ?, ?)`,
-            [id, projectId, input.title, input.description ?? null, type, priority, now, now, extra]
+            `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, complexity, extra)
+             VALUES (?, ?, ?, ?, ?, 'open', ?, NULL, '[]', ?, ?, ?, ?)`,
+            [id, projectId, input.title, input.description ?? null, type, priority, now, now, complexity ?? null, "{}"]
           );
 
           if (input.parentId) {
@@ -1204,10 +1210,10 @@ export class TaskStoreService {
       description?: string;
       priority?: number;
       claim?: boolean;
-      /** Merge into extra JSON (e.g. sourceFeedbackIds, complexity) */
+      /** Merge into extra JSON (e.g. sourceFeedbackIds) */
       extra?: Record<string, unknown>;
-      /** Task-level complexity (low|high). Stored in extra. */
-      complexity?: TaskComplexity;
+      /** Task-level complexity (1-10). Stored in complexity column. */
+      complexity?: number;
       /** Reason task was blocked. Persisted when status becomes blocked; cleared when unblocked. */
       block_reason?: string | null;
       /** ISO timestamp of last auto-retry. Stored in extra. */
@@ -1268,10 +1274,14 @@ export class TaskStoreService {
         sets.push("priority = ?");
         vals.push(options.priority);
       }
+      if (options.complexity !== undefined) {
+        const c = clampTaskComplexity(options.complexity);
+        sets.push("complexity = ?");
+        vals.push(c ?? null);
+      }
 
       if (
         options.extra != null ||
-        options.complexity != null ||
         options.block_reason !== undefined ||
         options.last_auto_retry_at !== undefined
       ) {
@@ -1285,7 +1295,6 @@ export class TaskStoreService {
           const merged: Record<string, unknown> = {
             ...existing,
             ...options.extra,
-            ...(options.complexity != null ? { complexity: options.complexity } : {}),
           };
           if (options.block_reason !== undefined) {
             if (options.block_reason == null || options.block_reason === "") {

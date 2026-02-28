@@ -17,8 +17,19 @@ export type KanbanColumn =
 /** Task priority (0 = highest, 4 = lowest) */
 export type TaskPriority = 0 | 1 | 2 | 3 | 4;
 
-/** Task-level complexity (simple|complex). Simpler than plan complexity; used for agent selection. */
-export type TaskComplexity = "simple" | "complex";
+/** Task-level complexity (integer 1-10). 1=simplest, 10=most complex. Used for agent selection. */
+export type TaskComplexity = number;
+
+/** Valid range for task complexity */
+export const TASK_COMPLEXITY_MIN = 1;
+export const TASK_COMPLEXITY_MAX = 10;
+
+/** Clamp and validate complexity to 1-10. Returns undefined if invalid. */
+export function clampTaskComplexity(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isInteger(value)) return undefined;
+  if (value < TASK_COMPLEXITY_MIN || value > TASK_COMPLEXITY_MAX) return undefined;
+  return value;
+}
 
 /** Minimal task fields stored in the global task registry (cross-phase cache). */
 export interface TaskSummary {
@@ -70,7 +81,7 @@ export interface Task {
   sourceFeedbackId?: string;
   /** Feedback item IDs linked to this task (from discovered-from dependencies). Use this for multiple feedback. */
   sourceFeedbackIds?: string[];
-  /** Task-level complexity (simple|complex). When absent, inferred from epic's plan. */
+  /** Task-level complexity (1-10). When absent, inferred from epic's plan. */
   complexity?: TaskComplexity;
   /** Reason task was blocked (e.g. Coding Failure, Merge Failure). Set when status becomes blocked. */
   blockReason?: string | null;

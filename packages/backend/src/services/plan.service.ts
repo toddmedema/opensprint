@@ -19,6 +19,7 @@ import {
   PLAN_MARKDOWN_SECTIONS,
   validatePlanContent,
   parsePlanTasks,
+  clampTaskComplexity,
 } from "@opensprint/shared";
 import { syncPlanTasksFromContent } from "./plan-task-sync.service.js";
 import { ProjectService } from "./project.service.js";
@@ -100,15 +101,7 @@ function normalizePlannerTask(
     task,
     tasksArray as Array<{ title?: string; [k: string]: unknown }> | undefined
   );
-  const rawComplexity = task.complexity as string | undefined;
-  const complexity =
-    rawComplexity === "simple" || rawComplexity === "complex"
-      ? rawComplexity
-      : rawComplexity === "low"
-        ? "simple"
-        : rawComplexity === "high"
-          ? "complex"
-          : undefined;
+  const complexity = clampTaskComplexity(task.complexity);
   return { title, description, priority, dependsOn, complexity };
 }
 

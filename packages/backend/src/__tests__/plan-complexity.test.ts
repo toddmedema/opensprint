@@ -156,31 +156,31 @@ describe("getPlanComplexityForTask", () => {
 });
 
 describe("planComplexityToTask", () => {
-  it("maps low and medium to simple", () => {
-    expect(planComplexityToTask("low")).toBe("simple");
-    expect(planComplexityToTask("medium")).toBe("simple");
+  it("maps low and medium to 3", () => {
+    expect(planComplexityToTask("low")).toBe(3);
+    expect(planComplexityToTask("medium")).toBe(3);
   });
-  it("maps high and very_high to complex", () => {
-    expect(planComplexityToTask("high")).toBe("complex");
-    expect(planComplexityToTask("very_high")).toBe("complex");
+  it("maps high and very_high to 7", () => {
+    expect(planComplexityToTask("high")).toBe(7);
+    expect(planComplexityToTask("very_high")).toBe(7);
   });
 });
 
 describe("getTaskComplexity", () => {
-  it("returns task own complexity when set (migrates legacy high->complex)", () => {
-    const task = { complexity: "high" } as { complexity?: string };
-    expect(getTaskComplexity(task, "low")).toBe("complex");
-    expect(getTaskComplexity(task, undefined)).toBe("complex");
+  it("returns task own complexity when set (1-10)", () => {
+    const task = { complexity: 7 } as { complexity?: number };
+    expect(getTaskComplexity(task, "low")).toBe(7);
+    expect(getTaskComplexity(task, undefined)).toBe(7);
   });
   it("infers from plan when task has no complexity", () => {
-    const task = {} as { complexity?: string };
-    expect(getTaskComplexity(task, "low")).toBe("simple");
-    expect(getTaskComplexity(task, "medium")).toBe("simple");
-    expect(getTaskComplexity(task, "high")).toBe("complex");
-    expect(getTaskComplexity(task, "very_high")).toBe("complex");
+    const task = {} as { complexity?: number };
+    expect(getTaskComplexity(task, "low")).toBe(3);
+    expect(getTaskComplexity(task, "medium")).toBe(3);
+    expect(getTaskComplexity(task, "high")).toBe(7);
+    expect(getTaskComplexity(task, "very_high")).toBe(7);
   });
   it("returns undefined when neither task nor plan has valid complexity", () => {
-    const task = {} as { complexity?: string };
+    const task = {} as { complexity?: number };
     expect(getTaskComplexity(task, undefined)).toBeUndefined();
   });
 });
@@ -228,7 +228,7 @@ describe("getComplexityForAgent", () => {
     const child = await taskStore.create(TEST_PROJECT_ID, "Child", {
       type: "task",
       parentId: epic.id,
-      complexity: "simple",
+      complexity: 3,
     });
     const task = await taskStore.show(TEST_PROJECT_ID, child.id);
     const complexity = await getComplexityForAgent(TEST_PROJECT_ID, tempDir, task, taskStore);
@@ -254,7 +254,7 @@ describe("getComplexityForAgent", () => {
     const child = await taskStore.create(TEST_PROJECT_ID, "Child", {
       type: "task",
       parentId: epic.id,
-      complexity: "complex",
+      complexity: 7,
     });
     const task = await taskStore.show(TEST_PROJECT_ID, child.id);
     const complexity = await getComplexityForAgent(TEST_PROJECT_ID, tempDir, task, taskStore);
@@ -280,7 +280,7 @@ describe("getComplexityForAgent", () => {
     const child = await taskStore.create(TEST_PROJECT_ID, "Child", {
       type: "task",
       parentId: epic.id,
-      complexity: "simple",
+      complexity: 3,
     });
     const task = await taskStore.show(TEST_PROJECT_ID, child.id);
     const complexity = await getComplexityForAgent(TEST_PROJECT_ID, tempDir, task, taskStore);

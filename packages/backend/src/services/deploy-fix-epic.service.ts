@@ -168,17 +168,14 @@ ${testOutput.slice(0, 15000)}
   // Create child tasks (no gate — epic is open so tasks appear in ready)
   const taskIdMap = new Map<number, string>();
 
+  const { clampTaskComplexity } = await import("@opensprint/shared");
   for (const task of tasks) {
     const idx = task.index ?? tasks.indexOf(task);
     const priority = Math.min(4, Math.max(0, task.priority ?? 2));
+    const raw = task.complexity;
     const taskComplexity =
-      task.complexity === "simple" || task.complexity === "complex"
-        ? task.complexity
-        : task.complexity === "low"
-          ? "simple"
-          : task.complexity === "high"
-            ? "complex"
-            : "simple";
+      clampTaskComplexity(raw) ??
+      (raw === "simple" || raw === "low" ? 3 : raw === "complex" || raw === "high" ? 7 : 3);
     const taskResult = await taskStore.createWithRetry(projectId, task.title, {
       type: "task",
       description: task.description ?? "",

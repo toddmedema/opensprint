@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
-import type { Task, AgentSession, KanbanColumn, TaskDependency, TaskComplexity } from "@opensprint/shared";
-import { resolveTestCommand } from "@opensprint/shared";
+import type { Task, AgentSession, KanbanColumn, TaskDependency } from "@opensprint/shared";
+import { resolveTestCommand, clampTaskComplexity } from "@opensprint/shared";
 import { ProjectService } from "./project.service.js";
 import { taskStore as taskStoreSingleton } from "./task-store.service.js";
 import { AppError } from "../middleware/error-handler.js";
@@ -220,15 +220,7 @@ export class TaskService {
       if (derived.length > 0) sourceFeedbackIds = derived;
     }
 
-    const raw = (issue as { complexity?: string }).complexity;
-    const taskComplexity: TaskComplexity | undefined =
-      raw === "simple" || raw === "complex"
-        ? raw
-        : raw === "low"
-          ? "simple"
-          : raw === "high"
-            ? "complex"
-            : undefined;
+    const taskComplexity = clampTaskComplexity((issue as { complexity?: number }).complexity);
 
     const blockReason =
       (issue as { block_reason?: string | null }).block_reason ?? null;
