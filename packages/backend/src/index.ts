@@ -24,6 +24,10 @@ import {
   stopNightlyDeployScheduler,
 } from "./services/nightly-deploy-scheduler.service.js";
 import {
+  startBlockedAutoRetry,
+  stopBlockedAutoRetry,
+} from "./services/blocked-auto-retry.service.js";
+import {
   killAllTrackedAgentProcesses,
   clearAgentProcessRegistry,
 } from "./services/agent-process-registry.js";
@@ -161,6 +165,13 @@ async function initAlwaysOnOrchestrator(): Promise<void> {
         .map((p) => ({ projectId: p.id, repoPath: p.repoPath }));
     });
 
+    startBlockedAutoRetry(async () => {
+      const projects = await projectServiceForWatchdog.listProjects();
+      return projects
+        .filter((p) => fs.existsSync(p.repoPath) && fs.existsSync(path.join(p.repoPath, ".git")))
+        .map((p) => ({ projectId: p.id, repoPath: p.repoPath }));
+    });
+
     for (const project of validProjects) {
       try {
         // Auto-start always-on orchestrator for each project (PRDv2 §5.7)
@@ -231,6 +242,7 @@ const shutdown = async () => {
   stopProcessReaper();
   sessionRetentionService.stop();
   stopNightlyDeployScheduler();
+  stopBlockedAutoRetry();
   watchdogService.stop();
   orchestratorService.stopAll();
 

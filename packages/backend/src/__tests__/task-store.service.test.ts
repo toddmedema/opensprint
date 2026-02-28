@@ -229,6 +229,74 @@ describe("TaskStoreService", () => {
       expect(result.status).toBe("open");
       expect([null, undefined]).toContain((result as { block_reason?: string | null }).block_reason);
     });
+
+    it("should persist last_auto_retry_at when set", async () => {
+      const created = await store.create(TEST_PROJECT_ID, "My Task");
+      const ts = "2026-02-27T12:00:00.000Z";
+      const result = await store.update(TEST_PROJECT_ID, created.id, {
+        last_auto_retry_at: ts,
+      });
+      expect((result as { last_auto_retry_at?: string }).last_auto_retry_at).toBe(ts);
+      const refetched = store.show(TEST_PROJECT_ID, created.id);
+      expect((refetched as { last_auto_retry_at?: string }).last_auto_retry_at).toBe(ts);
+    });
+  });
+
+  describe("listBlockedByTechnicalErrorEligibleForRetry", () => {
+    it("returns tasks blocked by Merge Failure or Coding Failure with no last_auto_retry_at", async () => {
+      const t1 = await store.create(TEST_PROJECT_ID, "Task 1");
+      const t2 = await store.create(TEST_PROJECT_ID, "Task 2");
+      const t3 = await store.create(TEST_PROJECT_ID, "Task 3");
+      await store.update(TEST_PROJECT_ID, t1.id, {
+        status: "blocked",
+        block_reason: "Merge Failure",
+      });
+      await store.update(TEST_PROJECT_ID, t2.id, {
+        status: "blocked",
+        block_reason: "Coding Failure",
+      });
+      await store.update(TEST_PROJECT_ID, t3.id, {
+        status: "blocked",
+        block_reason: "Open Question",
+      });
+      const eligible = await store.listBlockedByTechnicalErrorEligibleForRetry(TEST_PROJECT_ID);
+      const ids = eligible.map((t) => t.id).sort();
+      expect(ids).toEqual([t1.id, t2.id].sort());
+    });
+
+    it("excludes tasks blocked by human-feedback reasons", async () => {
+      const t = await store.create(TEST_PROJECT_ID, "Human blocked");
+      await store.update(TEST_PROJECT_ID, t.id, {
+        status: "blocked",
+        block_reason: "Open Question",
+      });
+      const eligible = await store.listBlockedByTechnicalErrorEligibleForRetry(TEST_PROJECT_ID);
+      expect(eligible.map((e) => e.id)).not.toContain(t.id);
+    });
+
+    it("excludes technical-error tasks retried within 8 hours", async () => {
+      const t = await store.create(TEST_PROJECT_ID, "Recently retried");
+      const recent = new Date(Date.now() - 60 * 60 * 1000).toISOString(); // 1 hour ago
+      await store.update(TEST_PROJECT_ID, t.id, {
+        status: "blocked",
+        block_reason: "Merge Failure",
+        last_auto_retry_at: recent,
+      });
+      const eligible = await store.listBlockedByTechnicalErrorEligibleForRetry(TEST_PROJECT_ID);
+      expect(eligible.map((e) => e.id)).not.toContain(t.id);
+    });
+
+    it("includes technical-error tasks retried more than 8 hours ago", async () => {
+      const t = await store.create(TEST_PROJECT_ID, "Old retry");
+      const old = new Date(Date.now() - 9 * 60 * 60 * 1000).toISOString(); // 9 hours ago
+      await store.update(TEST_PROJECT_ID, t.id, {
+        status: "blocked",
+        block_reason: "Coding Failure",
+        last_auto_retry_at: old,
+      });
+      const eligible = await store.listBlockedByTechnicalErrorEligibleForRetry(TEST_PROJECT_ID);
+      expect(eligible.map((e) => e.id)).toContain(t.id);
+    });
   });
 
   describe("close", () => {

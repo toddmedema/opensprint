@@ -31,6 +31,18 @@ export const BACKOFF_FAILURE_THRESHOLD = 3;
 /** Maximum task priority value; tasks at this level get blocked on next demotion (PRDv2 §9.1) */
 export const MAX_PRIORITY_BEFORE_BLOCK = 4;
 
+/** Block reasons that indicate technical errors (merge failure, coding failure). Tasks with these can be auto-retried. */
+export const TECHNICAL_BLOCK_REASONS = ["Merge Failure", "Coding Failure"] as const;
+
+/** Interval for auto-retrying tasks blocked by technical errors (8 hours) */
+export const AUTO_RETRY_BLOCKED_INTERVAL_MS = 8 * 60 * 60 * 1000;
+
+/** True if block_reason indicates a technical error (auto-retriable); false for human-feedback blocks. */
+export function isBlockedByTechnicalError(blockReason: string | null | undefined): boolean {
+  if (!blockReason || typeof blockReason !== "string") return false;
+  return (TECHNICAL_BLOCK_REASONS as readonly string[]).includes(blockReason);
+}
+
 /**
  * Summarizer: invoke when task has more than this many dependencies (PRD §7.3.2, §12.3.5).
  */

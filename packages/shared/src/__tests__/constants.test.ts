@@ -5,6 +5,9 @@ import {
   getAgentName,
   getAgentNameForRole,
   isAgentAssignee,
+  isBlockedByTechnicalError,
+  TECHNICAL_BLOCK_REASONS,
+  AUTO_RETRY_BLOCKED_INTERVAL_MS,
 } from "../constants/index.js";
 
 describe("getTestCommandForFramework", () => {
@@ -80,5 +83,32 @@ describe("isAgentAssignee", () => {
     expect(isAgentAssignee(null)).toBe(false);
     expect(isAgentAssignee(undefined)).toBe(false);
     expect(isAgentAssignee("")).toBe(false);
+  });
+});
+
+describe("isBlockedByTechnicalError", () => {
+  it("returns true for Merge Failure and Coding Failure", () => {
+    expect(isBlockedByTechnicalError("Merge Failure")).toBe(true);
+    expect(isBlockedByTechnicalError("Coding Failure")).toBe(true);
+  });
+  it("returns false for human-feedback block reasons", () => {
+    expect(isBlockedByTechnicalError("Open Question")).toBe(false);
+    expect(isBlockedByTechnicalError("API Blocked")).toBe(false);
+    expect(isBlockedByTechnicalError("Waiting for Human")).toBe(false);
+  });
+  it("returns false for null/undefined/empty", () => {
+    expect(isBlockedByTechnicalError(null)).toBe(false);
+    expect(isBlockedByTechnicalError(undefined)).toBe(false);
+    expect(isBlockedByTechnicalError("")).toBe(false);
+  });
+});
+
+describe("TECHNICAL_BLOCK_REASONS and AUTO_RETRY_BLOCKED_INTERVAL_MS", () => {
+  it("TECHNICAL_BLOCK_REASONS includes Merge Failure and Coding Failure", () => {
+    expect(TECHNICAL_BLOCK_REASONS).toContain("Merge Failure");
+    expect(TECHNICAL_BLOCK_REASONS).toContain("Coding Failure");
+  });
+  it("AUTO_RETRY_BLOCKED_INTERVAL_MS is 8 hours", () => {
+    expect(AUTO_RETRY_BLOCKED_INTERVAL_MS).toBe(8 * 60 * 60 * 1000);
   });
 });

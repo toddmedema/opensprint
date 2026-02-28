@@ -3,7 +3,11 @@ import path from "path";
 import crypto from "crypto";
 import initSqlJs, { type Database } from "sql.js";
 import type { TaskType, TaskPriority, TaskComplexity } from "@opensprint/shared";
-import { isAgentAssignee } from "@opensprint/shared";
+import {
+  isAgentAssignee,
+  isBlockedByTechnicalError,
+  AUTO_RETRY_BLOCKED_INTERVAL_MS,
+} from "@opensprint/shared";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import { createLogger } from "../utils/logger.js";
@@ -228,6 +232,8 @@ export interface StoredTask {
   dependent_count?: number;
   /** Reason task was blocked (e.g. Coding Failure, Merge Failure). Stored in extra when status is blocked. */
   block_reason?: string | null;
+  /** ISO timestamp of last auto-retry (technical-error unblock). Stored in extra. */
+  last_auto_retry_at?: string | null;
   [key: string]: unknown;
 }
 
@@ -768,6 +774,7 @@ export class TaskStoreService {
     }
 
     const blockReason = (extra.block_reason as string) ?? null;
+    const lastAutoRetryAt = (extra.last_auto_retry_at as string) ?? null;
     const rawComplexity = extra.complexity as string | undefined;
     const complexity =
       rawComplexity === "simple" || rawComplexity === "complex"
@@ -781,6 +788,7 @@ export class TaskStoreService {
       ...extra,
       ...(complexity != null && { complexity }),
       block_reason: blockReason,
+      last_auto_retry_at: lastAutoRetryAt,
       id: row.id as string,
       project_id: row.project_id as string | undefined,
       title: row.title as string,
@@ -894,6 +902,31 @@ export class TaskStoreService {
   async listInProgressWithAgentAssignee(projectId: string): Promise<StoredTask[]> {
     const all = await this.list(projectId);
     return all.filter((t) => t.status === "in_progress" && isAgentAssignee(t.assignee));
+  }
+
+  /**
+   * List tasks blocked by technical errors (Merge Failure, Coding Failure) that are eligible
+   * for auto-retry. Excludes human-feedback blocks. Only returns tasks whose last_auto_retry_at
+   * is null or older than AUTO_RETRY_BLOCKED_INTERVAL_MS (8 hours).
+   */
+  async listBlockedByTechnicalErrorEligibleForRetry(
+    projectId: string
+  ): Promise<StoredTask[]> {
+    await this.ensureInitialized();
+    const blocked = this.execAndHydrateWithDeps(
+      projectId,
+      "SELECT * FROM tasks WHERE project_id = ? AND status = ? ORDER BY priority ASC, created_at ASC",
+      [projectId, "blocked"]
+    );
+    const now = Date.now();
+    const cutoff = now - AUTO_RETRY_BLOCKED_INTERVAL_MS;
+    return blocked.filter((t) => {
+      if (!isBlockedByTechnicalError(t.block_reason)) return false;
+      const lastRetry = t.last_auto_retry_at;
+      if (!lastRetry) return true;
+      const lastRetryMs = new Date(lastRetry).getTime();
+      return !isNaN(lastRetryMs) && lastRetryMs <= cutoff;
+    });
   }
 
   getBlockersFromIssue(issue: StoredTask): string[] {
@@ -1153,6 +1186,8 @@ export class TaskStoreService {
       complexity?: TaskComplexity;
       /** Reason task was blocked. Persisted when status becomes blocked; cleared when unblocked. */
       block_reason?: string | null;
+      /** ISO timestamp of last auto-retry. Stored in extra. */
+      last_auto_retry_at?: string | null;
     } = {}
   ): Promise<StoredTask> {
     return this.withWriteLock(async () => {
@@ -1213,7 +1248,8 @@ export class TaskStoreService {
       if (
         options.extra != null ||
         options.complexity != null ||
-        options.block_reason !== undefined
+        options.block_reason !== undefined ||
+        options.last_auto_retry_at !== undefined
       ) {
         const stmt = db.prepare("SELECT extra FROM tasks WHERE id = ? AND project_id = ?");
         stmt.bind([id, projectId]);
@@ -1232,6 +1268,13 @@ export class TaskStoreService {
               delete merged.block_reason;
             } else {
               merged.block_reason = options.block_reason;
+            }
+          }
+          if (options.last_auto_retry_at !== undefined) {
+            if (options.last_auto_retry_at == null || options.last_auto_retry_at === "") {
+              delete merged.last_auto_retry_at;
+            } else {
+              merged.last_auto_retry_at = options.last_auto_retry_at;
             }
           }
           sets.push("extra = ?");
