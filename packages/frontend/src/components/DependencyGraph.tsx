@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import * as d3 from "d3";
 import type { Plan, PlanDependencyGraph } from "@opensprint/shared";
+import type * as D3 from "d3";
 
 interface DependencyGraphProps {
   graph: PlanDependencyGraph | null;
@@ -97,12 +97,13 @@ function computeCriticalPathEdges(
  * Pan by half the dimension delta: e.g. if width halves, pan by 1/4 so center stays centered.
  */
 export function adjustTransformForResize(
-  t: d3.ZoomTransform,
+  d3: typeof import("d3"),
+  t: D3.ZoomTransform,
   prevWidth: number,
   prevHeight: number,
   newWidth: number,
   newHeight: number
-): d3.ZoomTransform {
+): D3.ZoomTransform {
   const deltaX = (newWidth - prevWidth) / 2;
   const deltaY = (newHeight - prevHeight) / 2;
   return d3.zoomIdentity.translate(t.x + deltaX, t.y + deltaY).scale(t.k);
@@ -114,12 +115,18 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
   const svgRef = useRef<SVGSVGElement>(null);
   const dimensionsRef = useRef<Dimensions | null>(null);
   const readyRef = useRef(false);
-  const zoomRef = useRef<d3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const zoomRef = useRef<D3.ZoomBehavior<SVGSVGElement, unknown> | null>(null);
+  const [d3Module, setD3Module] = useState<typeof import("d3") | null>(null);
   const [ready, setReady] = useState(false);
   /** Set when fallback dimensions were used; cleared when we get real dimensions and re-run layout. */
   const hadFallbackDimensionsRef = useRef(false);
   /** Bumped once when transitioning from fallback to real dimensions so layout re-runs (fixes initial top-left clustering). */
   const [layoutKey, setLayoutKey] = useState(0);
+
+  // Lazy-load D3 to reduce initial bundle size and memory
+  useEffect(() => {
+    import("d3").then((m) => setD3Module(m));
+  }, []);
 
   // Track container size in a ref. Only signal readiness once for the initial D3 render.
   // Subsequent size changes update SVG attributes directly without rebuilding the graph.
@@ -172,8 +179,8 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
       }
 
       const svg = svgRef.current;
-      if (svg && svg.childNodes.length > 0) {
-        d3.select(svg)
+      if (svg && svg.childNodes.length > 0 && d3Module) {
+        d3Module.select(svg)
           .attr("width", width)
           .attr("height", height)
           .attr("viewBox", [0, 0, width, height]);
@@ -182,9 +189,9 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
         const zoom = zoomRef.current;
         if (zoom && prev) {
           try {
-            const t = d3.zoomTransform(svg);
-            const next = adjustTransformForResize(t, prev.width, prev.height, width, height);
-            d3.select(svg).call(zoom.transform, next);
+            const t = d3Module.zoomTransform(svg);
+            const next = adjustTransformForResize(d3Module, t, prev.width, prev.height, width, height);
+            d3Module.select(svg).call(zoom.transform, next);
           } catch {
             // JSDOM/headless may lack SVG dimensions; skip transform adjustment
           }
@@ -220,7 +227,7 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
       ro.disconnect();
       clearTimeout(fallbackId);
     };
-  }, [graph?.plans.length, fillHeight]);
+  }, [graph?.plans.length, fillHeight, d3Module]);
 
   // Run layout/re-render once on first load when container has real dimensions.
   // Fixes: plans stack in top-left until a plan is clicked (click triggers ResizeObserver).
@@ -263,6 +270,7 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
 
   useEffect(() => {
     if (
+      !d3Module ||
       !graph ||
       graph.plans.length === 0 ||
       !containerRef.current ||
@@ -271,6 +279,7 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
     )
       return;
 
+    const d3 = d3Module;
     const dims = dimensionsRef.current;
     if (!dims) return;
 
@@ -483,12 +492,20 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
     return () => {
       simulation.stop();
     };
-  }, [graph, onPlanClick, ready, layoutKey]);
+  }, [d3Module, graph, onPlanClick, ready, layoutKey]);
 
   if (!graph || graph.plans.length === 0) {
     return (
       <div className="h-40 flex items-center justify-center text-theme-muted text-sm border-2 border-dashed border-theme-border rounded-lg">
         No plans to display
+      </div>
+    );
+  }
+
+  if (!d3Module) {
+    return (
+      <div className="h-40 flex items-center justify-center text-theme-muted text-sm border border-theme-border rounded-lg bg-theme-surface">
+        Loading graph...
       </div>
     );
   }

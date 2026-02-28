@@ -425,7 +425,7 @@ describe("DependencyGraph", () => {
   describe("adjustTransformForResize", () => {
     it("pans by half the dimension delta so view center stays centered", () => {
       const identity = d3.zoomIdentity;
-      const result = adjustTransformForResize(identity, 600, 300, 800, 500);
+      const result = adjustTransformForResize(d3, identity, 600, 300, 800, 500);
       expect(result.x).toBe(100); // (800 - 600) / 2
       expect(result.y).toBe(100); // (500 - 300) / 2
       expect(result.k).toBe(1);
@@ -433,7 +433,7 @@ describe("DependencyGraph", () => {
 
     it("preserves existing pan and scale when resizing", () => {
       const t = d3.zoomIdentity.translate(50, 75).scale(1.5);
-      const result = adjustTransformForResize(t, 400, 400, 600, 200);
+      const result = adjustTransformForResize(d3, t, 400, 400, 600, 200);
       expect(result.x).toBe(150); // 50 + (600 - 400) / 2
       expect(result.y).toBe(-25); // 75 + (200 - 400) / 2
       expect(result.k).toBe(1.5);
@@ -441,7 +441,7 @@ describe("DependencyGraph", () => {
 
     it("handles shrink (negative delta) correctly", () => {
       const t = d3.zoomIdentity.translate(100, 100);
-      const result = adjustTransformForResize(t, 800, 600, 400, 300);
+      const result = adjustTransformForResize(d3, t, 800, 600, 400, 300);
       expect(result.x).toBe(-100); // 100 + (400 - 800) / 2 = 100 - 200
       expect(result.y).toBe(-50); // 100 + (300 - 600) / 2 = 100 - 150
     });
