@@ -1,20 +1,50 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import initSqlJs from "sql.js";
+import { describe, it, expect, beforeEach, beforeAll, afterAll, afterEach } from "vitest";
 import fs from "fs/promises";
-import path from "path";
 import os from "os";
+import path from "path";
+import type { Pool } from "pg";
+import {
+  createPostgresDbClientFromUrl,
+  runSchema,
+  toPgParams,
+  type DbClient,
+} from "../db/index.js";
 import { TaskStoreService } from "../services/task-store.service.js";
 
 const TEST_PROJECT_ID = "test-project";
 
+const url =
+  process.env.TEST_DATABASE_URL ?? "postgresql://opensprint:opensprint@localhost:5432/opensprint";
+
 describe("TaskStoreService", () => {
   let store: TaskStoreService;
+  let client: DbClient | null = null;
+  let pool: Pool | null = null;
+
+  beforeAll(async () => {
+    try {
+      const result = await createPostgresDbClientFromUrl(url);
+      client = result.client;
+      pool = result.pool;
+      await client.query("SELECT 1");
+    } catch {
+      client = null;
+      pool = null;
+    }
+  });
+
+  afterAll(async () => {
+    if (pool) await pool.end();
+  });
 
   beforeEach(async () => {
-    const SQL = await initSqlJs();
-    const db = new SQL.Database();
-    store = new TaskStoreService(db);
+    if (!client) {
+      throw new Error("Postgres not available - set TEST_DATABASE_URL or run docker compose up -d");
+    }
+    await runSchema(client);
+    store = new TaskStoreService(client);
     await store.init();
+    await store.deleteByProjectId(TEST_PROJECT_ID);
   });
 
   describe("create", () => {
@@ -65,7 +95,7 @@ describe("TaskStoreService", () => {
         complexity: 7,
       });
       expect((result as { complexity?: number }).complexity).toBe(7);
-      const refetched = store.show(TEST_PROJECT_ID, result.id);
+      const refetched = await store.show(TEST_PROJECT_ID, result.id);
       expect((refetched as { complexity?: number }).complexity).toBe(7);
     });
 
@@ -75,7 +105,7 @@ describe("TaskStoreService", () => {
         extra: { sourceFeedbackIds: ["fb-123"] },
       });
       expect((result as { sourceFeedbackIds?: string[] }).sourceFeedbackIds).toEqual(["fb-123"]);
-      const refetched = store.show(TEST_PROJECT_ID, result.id);
+      const refetched = await store.show(TEST_PROJECT_ID, result.id);
       expect((refetched as { sourceFeedbackIds?: string[] }).sourceFeedbackIds).toEqual([
         "fb-123",
       ]);
@@ -238,7 +268,7 @@ describe("TaskStoreService", () => {
         complexity: 7,
       });
       expect((result as { complexity?: number }).complexity).toBe(7);
-      const refetched = store.show(TEST_PROJECT_ID, created.id);
+      const refetched = await store.show(TEST_PROJECT_ID, created.id);
       expect((refetched as { complexity?: number }).complexity).toBe(7);
     });
 
@@ -251,7 +281,7 @@ describe("TaskStoreService", () => {
         "fb-1",
         "fb-2",
       ]);
-      const refetched = store.show(TEST_PROJECT_ID, created.id);
+      const refetched = await store.show(TEST_PROJECT_ID, created.id);
       expect((refetched as { sourceFeedbackIds?: string[] }).sourceFeedbackIds).toEqual([
         "fb-1",
         "fb-2",
@@ -267,7 +297,7 @@ describe("TaskStoreService", () => {
       });
       expect(result.status).toBe("blocked");
       expect((result as { block_reason?: string }).block_reason).toBe("Merge Failure");
-      const refetched = store.show(TEST_PROJECT_ID, created.id);
+      const refetched = await store.show(TEST_PROJECT_ID, created.id);
       expect((refetched as { block_reason?: string }).block_reason).toBe("Merge Failure");
     });
 
@@ -292,7 +322,7 @@ describe("TaskStoreService", () => {
         last_auto_retry_at: ts,
       });
       expect((result as { last_auto_retry_at?: string }).last_auto_retry_at).toBe(ts);
-      const refetched = store.show(TEST_PROJECT_ID, created.id);
+      const refetched = await store.show(TEST_PROJECT_ID, created.id);
       expect((refetched as { last_auto_retry_at?: string }).last_auto_retry_at).toBe(ts);
     });
   });
@@ -501,21 +531,21 @@ describe("TaskStoreService", () => {
         description: "Add JWT auth",
         priority: 1,
       });
-      const result = store.show(TEST_PROJECT_ID, created.id);
+      const result = await store.show(TEST_PROJECT_ID, created.id);
       expect(result.id).toBe(created.id);
       expect(result.title).toBe("Implement login");
       expect(result.description).toBe("Add JWT auth");
     });
 
-    it("should throw when task not found", () => {
-      expect(() => store.show(TEST_PROJECT_ID, "nonexistent")).toThrow(
+    it("should throw when task not found", async () => {
+      await expect(store.show(TEST_PROJECT_ID, "nonexistent")).rejects.toThrow(
         /Task nonexistent not found/
       );
     });
 
     it("should accept projectId as first argument for show", async () => {
       const created = await store.create(TEST_PROJECT_ID, "Task");
-      const result = store.show(TEST_PROJECT_ID, created.id);
+      const result = await store.show(TEST_PROJECT_ID, created.id);
       expect(result.id).toBe(created.id);
     });
   });
@@ -686,7 +716,7 @@ describe("TaskStoreService", () => {
     it("should remove the task", async () => {
       const created = await store.create(TEST_PROJECT_ID, "To Delete");
       await store.delete(TEST_PROJECT_ID, created.id);
-      expect(() => store.show(TEST_PROJECT_ID, created.id)).toThrow(/not found/);
+      await expect(store.show(TEST_PROJECT_ID, created.id)).rejects.toThrow(/not found/);
     });
 
     it("should remove associated dependencies", async () => {
@@ -695,7 +725,7 @@ describe("TaskStoreService", () => {
       await store.addDependency(TEST_PROJECT_ID, child.id, parent.id, "blocks");
       await store.delete(TEST_PROJECT_ID, child.id);
 
-      const parentTask = store.show(TEST_PROJECT_ID, parent.id);
+      const parentTask = await store.show(TEST_PROJECT_ID, parent.id);
       expect(parentTask.dependent_count).toBe(0);
     });
   });
@@ -707,9 +737,9 @@ describe("TaskStoreService", () => {
       const t3 = await store.create(TEST_PROJECT_ID, "Task 3");
       await store.deleteMany(TEST_PROJECT_ID, [t1.id, t3.id]);
 
-      expect(() => store.show(TEST_PROJECT_ID, t1.id)).toThrow(/not found/);
-      expect(() => store.show(TEST_PROJECT_ID, t3.id)).toThrow(/not found/);
-      expect(store.show(TEST_PROJECT_ID, t2.id)).toBeDefined();
+      await expect(store.show(TEST_PROJECT_ID, t1.id)).rejects.toThrow(/not found/);
+      await expect(store.show(TEST_PROJECT_ID, t3.id)).rejects.toThrow(/not found/);
+      expect(await store.show(TEST_PROJECT_ID, t2.id)).toBeDefined();
     });
 
     it("should not throw when given empty array", async () => {
@@ -719,7 +749,7 @@ describe("TaskStoreService", () => {
     it("should deduplicate ids", async () => {
       const t1 = await store.create(TEST_PROJECT_ID, "Task 1");
       await store.deleteMany(TEST_PROJECT_ID, [t1.id, t1.id]);
-      expect(() => store.show(TEST_PROJECT_ID, t1.id)).toThrow(/not found/);
+      await expect(store.show(TEST_PROJECT_ID, t1.id)).rejects.toThrow(/not found/);
     });
   });
 
@@ -729,7 +759,7 @@ describe("TaskStoreService", () => {
       const t2 = await store.create(TEST_PROJECT_ID, "Blocked");
       await store.addDependency(TEST_PROJECT_ID, t2.id, t1.id, "blocks");
 
-      const updated = store.show(TEST_PROJECT_ID, t2.id);
+      const updated = await store.show(TEST_PROJECT_ID, t2.id);
       expect(
         updated.dependencies?.some((d) => d.depends_on_id === t1.id && d.type === "blocks")
       ).toBe(true);
@@ -741,7 +771,7 @@ describe("TaskStoreService", () => {
       await store.addDependency(TEST_PROJECT_ID, t2.id, t1.id, "blocks");
       await store.addDependency(TEST_PROJECT_ID, t2.id, t1.id, "blocks");
 
-      const updated = store.show(TEST_PROJECT_ID, t2.id);
+      const updated = await store.show(TEST_PROJECT_ID, t2.id);
       expect(updated.dependencies).toHaveLength(1);
     });
   });
@@ -756,7 +786,7 @@ describe("TaskStoreService", () => {
         { childId: t3.id, parentId: t2.id, type: "blocks" },
       ]);
 
-      const updated = store.show(TEST_PROJECT_ID, t3.id);
+      const updated = await store.show(TEST_PROJECT_ID, t3.id);
       expect(updated.dependencies).toHaveLength(2);
     });
   });
@@ -765,7 +795,7 @@ describe("TaskStoreService", () => {
     it("should add a label to a task", async () => {
       const created = await store.create(TEST_PROJECT_ID, "Task");
       await store.addLabel(TEST_PROJECT_ID, created.id, "attempts:2");
-      const updated = store.show(TEST_PROJECT_ID, created.id);
+      const updated = await store.show(TEST_PROJECT_ID, created.id);
       expect(updated.labels?.includes("attempts:2")).toBe(true);
     });
 
@@ -773,7 +803,7 @@ describe("TaskStoreService", () => {
       const created = await store.create(TEST_PROJECT_ID, "Task");
       await store.addLabel(TEST_PROJECT_ID, created.id, "attempts:2");
       await store.removeLabel(TEST_PROJECT_ID, created.id, "attempts:2");
-      const updated = store.show(TEST_PROJECT_ID, created.id);
+      const updated = await store.show(TEST_PROJECT_ID, created.id);
       expect(updated.labels?.includes("attempts:2")).toBe(false);
     });
 
@@ -781,7 +811,7 @@ describe("TaskStoreService", () => {
       const created = await store.create(TEST_PROJECT_ID, "Task");
       await store.addLabel(TEST_PROJECT_ID, created.id, "foo");
       await store.addLabel(TEST_PROJECT_ID, created.id, "foo");
-      const updated = store.show(TEST_PROJECT_ID, created.id);
+      const updated = await store.show(TEST_PROJECT_ID, created.id);
       expect(updated.labels?.filter((l) => l === "foo")).toHaveLength(1);
     });
   });
@@ -803,7 +833,7 @@ describe("TaskStoreService", () => {
     it("adds attempts:N label when none exists", async () => {
       const created = await store.create(TEST_PROJECT_ID, "Task");
       await store.setCumulativeAttempts(TEST_PROJECT_ID, created.id, 2);
-      const issue = store.show(TEST_PROJECT_ID, created.id);
+      const issue = await store.show(TEST_PROJECT_ID, created.id);
       expect(issue.labels?.includes("attempts:2")).toBe(true);
     });
 
@@ -811,7 +841,7 @@ describe("TaskStoreService", () => {
       const created = await store.create(TEST_PROJECT_ID, "Task");
       await store.setCumulativeAttempts(TEST_PROJECT_ID, created.id, 1);
       await store.setCumulativeAttempts(TEST_PROJECT_ID, created.id, 2);
-      const issue = store.show(TEST_PROJECT_ID, created.id);
+      const issue = await store.show(TEST_PROJECT_ID, created.id);
       const attemptsLabels = (issue.labels ?? []).filter((l: string) => l.startsWith("attempts:"));
       expect(attemptsLabels).toEqual(["attempts:2"]);
     });
@@ -855,7 +885,7 @@ describe("TaskStoreService", () => {
     it("should return true if label exists", async () => {
       const task = await store.create(TEST_PROJECT_ID, "Task");
       await store.addLabel(TEST_PROJECT_ID, task.id, "blocked");
-      const updated = store.show(TEST_PROJECT_ID, task.id);
+      const updated = await store.show(TEST_PROJECT_ID, task.id);
       expect(store.hasLabel(updated, "blocked")).toBe(true);
     });
 
@@ -870,7 +900,7 @@ describe("TaskStoreService", () => {
       const task = await store.create(TEST_PROJECT_ID, "Task");
       const scope = { modify: ["src/a.ts"], create: ["src/b.ts"] };
       await store.addLabel(TEST_PROJECT_ID, task.id, `files:${JSON.stringify(scope)}`);
-      const updated = store.show(TEST_PROJECT_ID, task.id);
+      const updated = await store.show(TEST_PROJECT_ID, task.id);
       expect(store.getFileScopeLabels(updated)).toEqual(scope);
     });
 
@@ -884,7 +914,7 @@ describe("TaskStoreService", () => {
     it("should store actual files as label", async () => {
       const task = await store.create(TEST_PROJECT_ID, "Task");
       await store.setActualFiles(TEST_PROJECT_ID, task.id, ["src/a.ts", "src/b.ts"]);
-      const updated = store.show(TEST_PROJECT_ID, task.id);
+      const updated = await store.show(TEST_PROJECT_ID, task.id);
       const label = updated.labels?.find((l) => l.startsWith("actual_files:"));
       expect(label).toBeTruthy();
       expect(JSON.parse(label!.slice("actual_files:".length))).toEqual(["src/a.ts", "src/b.ts"]);
@@ -894,7 +924,7 @@ describe("TaskStoreService", () => {
       const task = await store.create(TEST_PROJECT_ID, "Task");
       await store.setActualFiles(TEST_PROJECT_ID, task.id, ["src/a.ts"]);
       await store.setActualFiles(TEST_PROJECT_ID, task.id, ["src/b.ts"]);
-      const updated = store.show(TEST_PROJECT_ID, task.id);
+      const updated = await store.show(TEST_PROJECT_ID, task.id);
       const labels = updated.labels?.filter((l) => l.startsWith("actual_files:")) ?? [];
       expect(labels).toHaveLength(1);
       expect(JSON.parse(labels[0].slice("actual_files:".length))).toEqual(["src/b.ts"]);
@@ -1069,46 +1099,46 @@ describe("TaskStoreService", () => {
       const keepTask = await store.create(otherPid, "Keep Me", { type: "task" });
 
       const db = await store.getDb();
-      db.run(
-        `INSERT INTO feedback (id, project_id, text, category, status, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      await db.execute(
+        toPgParams(`INSERT INTO feedback (id, project_id, text, category, status, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
         ["fb-1", pid, "Fix bug", "bug", "open", now]
       );
-      db.run(
-        `INSERT INTO feedback (id, project_id, text, category, status, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+      await db.execute(
+        toPgParams(`INSERT INTO feedback (id, project_id, text, category, status, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
         ["fb-2", otherPid, "Other bug", "bug", "open", now]
       );
-      db.run(
-        `INSERT INTO feedback_inbox (project_id, feedback_id, enqueued_at) VALUES (?, ?, ?)`,
+      await db.execute(
+        toPgParams(`INSERT INTO feedback_inbox (project_id, feedback_id, enqueued_at) VALUES (?, ?, ?)`),
         [pid, "fb-1", now]
       );
-      db.run(
-        `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      await db.execute(
+        toPgParams(`INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
         [pid, task.id, 1, "coder", "claude", now, "completed", "opensprint/test"]
       );
-      db.run(
-        `INSERT INTO agent_stats (project_id, task_id, agent_id, model, attempt, started_at, completed_at, outcome, duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      await db.execute(
+        toPgParams(`INSERT INTO agent_stats (project_id, task_id, agent_id, model, attempt, started_at, completed_at, outcome, duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`),
         [pid, task.id, "agent-1", "claude", 1, now, now, "success", 1000]
       );
-      db.run(
-        `INSERT INTO orchestrator_events (project_id, task_id, timestamp, event) VALUES (?, ?, ?, ?)`,
+      await db.execute(
+        toPgParams(`INSERT INTO orchestrator_events (project_id, task_id, timestamp, event) VALUES (?, ?, ?, ?)`),
         [pid, task.id, now, "assigned"]
       );
-      db.run(
-        `INSERT INTO orchestrator_counters (project_id, total_done, total_failed, queue_depth, updated_at) VALUES (?, ?, ?, ?, ?)`,
+      await db.execute(
+        toPgParams(`INSERT INTO orchestrator_counters (project_id, total_done, total_failed, queue_depth, updated_at) VALUES (?, ?, ?, ?, ?)`),
         [pid, 5, 1, 3, now]
       );
-      db.run(
-        `INSERT INTO deployments (id, project_id, status, started_at) VALUES (?, ?, ?, ?)`,
+      await db.execute(
+        toPgParams(`INSERT INTO deployments (id, project_id, status, started_at) VALUES (?, ?, ?, ?)`),
         ["dep-1", pid, "completed", now]
       );
-      db.run(
-        `INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      await db.execute(
+        toPgParams(`INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
         ["oq-1", pid, "execute", "task-1", "[]", "open", now, "open_question"]
       );
-      db.run(
-        `INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      await db.execute(
+        toPgParams(`INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
         ["oq-other", otherPid, "execute", "task-2", "[]", "open", now, "open_question"]
       );
       await store.planInsert(pid, "plan-1", {
@@ -1126,34 +1156,31 @@ describe("TaskStoreService", () => {
       expect(kept).toHaveLength(1);
       expect(kept[0].id).toBe(keepTask.id);
 
-      const countRow = (table: string, projId: string): number => {
-        const stmt = db.prepare(`SELECT COUNT(*) as cnt FROM ${table} WHERE project_id = ?`);
-        stmt.bind([projId]);
-        stmt.step();
-        const cnt = stmt.getAsObject().cnt as number;
-        stmt.free();
-        return cnt;
+      const countRow = async (table: string, projId: string): Promise<number> => {
+        const row = await db.queryOne(
+          `SELECT COUNT(*)::int as cnt FROM ${table} WHERE project_id = $1`,
+          [projId]
+        );
+        return (row?.cnt as number) ?? 0;
       };
 
-      expect(countRow("feedback", pid)).toBe(0);
-      expect(countRow("feedback", otherPid)).toBe(1);
-      expect(countRow("feedback_inbox", pid)).toBe(0);
-      expect(countRow("agent_sessions", pid)).toBe(0);
-      expect(countRow("agent_stats", pid)).toBe(0);
-      expect(countRow("orchestrator_events", pid)).toBe(0);
-      expect(countRow("orchestrator_counters", pid)).toBe(0);
-      expect(countRow("deployments", pid)).toBe(0);
-      expect(countRow("plans", pid)).toBe(0);
-      expect(countRow("open_questions", pid)).toBe(0);
-      expect(countRow("open_questions", otherPid)).toBe(1);
+      expect(await countRow("feedback", pid)).toBe(0);
+      expect(await countRow("feedback", otherPid)).toBe(1);
+      expect(await countRow("feedback_inbox", pid)).toBe(0);
+      expect(await countRow("agent_sessions", pid)).toBe(0);
+      expect(await countRow("agent_stats", pid)).toBe(0);
+      expect(await countRow("orchestrator_events", pid)).toBe(0);
+      expect(await countRow("orchestrator_counters", pid)).toBe(0);
+      expect(await countRow("deployments", pid)).toBe(0);
+      expect(await countRow("plans", pid)).toBe(0);
+      expect(await countRow("open_questions", pid)).toBe(0);
+      expect(await countRow("open_questions", otherPid)).toBe(1);
 
-      const depStmt = db.prepare(
-        "SELECT COUNT(*) as cnt FROM task_dependencies WHERE task_id = ? OR depends_on_id = ?"
+      const depRow = await db.queryOne(
+        "SELECT COUNT(*)::int as cnt FROM task_dependencies WHERE task_id = $1 OR depends_on_id = $2",
+        [task.id, task.id]
       );
-      depStmt.bind([task.id, task.id]);
-      depStmt.step();
-      expect(depStmt.getAsObject().cnt).toBe(0);
-      depStmt.free();
+      expect(depRow?.cnt).toBe(0);
     });
 
     it("should be idempotent — second call on same project does not error", async () => {
@@ -1173,34 +1200,33 @@ describe("TaskStoreService", () => {
       const now = new Date().toISOString();
 
       const db = await store.getDb();
-      db.run(
-        `INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      await db.execute(
+        toPgParams(`INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
         ["oq-a", pid, "execute", "task-1", "[]", "open", now, "open_question"]
       );
-      db.run(
-        `INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      await db.execute(
+        toPgParams(`INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
         ["oq-b", pid, "plan", "plan-1", "[]", "open", now, "open_question"]
       );
-      db.run(
-        `INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      await db.execute(
+        toPgParams(`INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
         ["oq-keep", otherPid, "execute", "task-2", "[]", "open", now, "open_question"]
       );
 
       await store.deleteOpenQuestionsByProjectId(pid);
 
-      const countRow = (table: string, projId: string): number => {
-        const stmt = db.prepare(`SELECT COUNT(*) as cnt FROM ${table} WHERE project_id = ?`);
-        stmt.bind([projId]);
-        stmt.step();
-        const cnt = stmt.getAsObject().cnt as number;
-        stmt.free();
-        return cnt;
+      const countRow = async (table: string, projId: string): Promise<number> => {
+        const row = await db.queryOne(
+          `SELECT COUNT(*)::int as cnt FROM ${table} WHERE project_id = $1`,
+          [projId]
+        );
+        return (row?.cnt as number) ?? 0;
       };
-      expect(countRow("open_questions", pid)).toBe(0);
-      expect(countRow("open_questions", otherPid)).toBe(1);
+      expect(await countRow("open_questions", pid)).toBe(0);
+      expect(await countRow("open_questions", otherPid)).toBe(1);
     });
   });
 
@@ -1228,20 +1254,20 @@ describe("TaskStoreService", () => {
       const epicId = "os-auth";
       const gateId = "os-auth.0";
 
-      await store1.runWrite(async (db) => {
-        db.run(
-          `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, extra)
-           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, '[]', ?, ?, '{}')`,
+      await store1.runWrite(async (client) => {
+        await client.execute(
+          toPgParams(`INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, extra)
+           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, '[]', ?, ?, '{}')`),
           [epicId, projectId, "Auth Epic", null, "epic", "blocked", 2, now, now]
         );
-        db.run(
-          `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, extra)
-           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, '[]', ?, ?, '{}')`,
+        await client.execute(
+          toPgParams(`INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, extra)
+           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, '[]', ?, ?, '{}')`),
           [gateId, projectId, "Plan approval gate", null, "task", "closed", 2, now, now]
         );
-        db.run(
-          `INSERT INTO plans (project_id, plan_id, epic_id, gate_task_id, re_execute_gate_task_id, content, metadata, shipped_content, updated_at)
-           VALUES (?, ?, ?, ?, NULL, ?, ?, NULL, ?)`,
+        await client.execute(
+          toPgParams(`INSERT INTO plans (project_id, plan_id, epic_id, gate_task_id, re_execute_gate_task_id, content, metadata, shipped_content, updated_at)
+           VALUES (?, ?, ?, ?, NULL, ?, ?, NULL, ?)`),
           [
             projectId,
             "auth-plan",
@@ -1253,15 +1279,14 @@ describe("TaskStoreService", () => {
           ]
         );
       });
-      await store1.flushPersist(); // ensure debounced save is written before store2 loads from disk
 
       const store2 = new TaskStoreService();
       await store2.init();
 
-      const epic = store2.show(projectId, epicId);
+      const epic = await store2.show(projectId, epicId);
       expect((epic as { status?: string }).status).toBe("open");
 
-      expect(() => store2.show(projectId, gateId)).toThrow();
+      await expect(store2.show(projectId, gateId)).rejects.toThrow();
 
       const row = await store2.planGet(projectId, "auth-plan");
       expect(row).not.toBeNull();
@@ -1277,20 +1302,20 @@ describe("TaskStoreService", () => {
       const epicId = "os-dash";
       const gateId = "os-dash.0";
 
-      await store1.runWrite(async (db) => {
-        db.run(
-          `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, extra)
-           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, '[]', ?, ?, '{}')`,
+      await store1.runWrite(async (client) => {
+        await client.execute(
+          toPgParams(`INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, extra)
+           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, '[]', ?, ?, '{}')`),
           [epicId, projectId, "Dashboard Epic", null, "epic", "blocked", 2, now, now]
         );
-        db.run(
-          `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, extra)
-           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, '[]', ?, ?, '{}')`,
+        await client.execute(
+          toPgParams(`INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, extra)
+           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, '[]', ?, ?, '{}')`),
           [gateId, projectId, "Plan approval gate", null, "task", "open", 2, now, now]
         );
-        db.run(
-          `INSERT INTO plans (project_id, plan_id, epic_id, gate_task_id, re_execute_gate_task_id, content, metadata, shipped_content, updated_at)
-           VALUES (?, ?, ?, ?, NULL, ?, ?, NULL, ?)`,
+        await client.execute(
+          toPgParams(`INSERT INTO plans (project_id, plan_id, epic_id, gate_task_id, re_execute_gate_task_id, content, metadata, shipped_content, updated_at)
+           VALUES (?, ?, ?, ?, NULL, ?, ?, NULL, ?)`),
           [
             projectId,
             "dash-plan",
@@ -1302,25 +1327,24 @@ describe("TaskStoreService", () => {
           ]
         );
       });
-      await store1.flushPersist(); // ensure debounced save is written before store2 loads from disk
 
       const store2 = new TaskStoreService();
       await store2.init();
 
-      const epic = store2.show(projectId, epicId);
+      const epic = await store2.show(projectId, epicId);
       expect((epic as { status?: string }).status).toBe("blocked");
 
-      expect(() => store2.show(projectId, gateId)).toThrow();
+      await expect(store2.show(projectId, gateId)).rejects.toThrow();
     });
   });
 
   describe("pruneAgentSessions", () => {
     it("returns 0 when <= 100 sessions", async () => {
-      await store.runWrite(async (db) => {
+      await store.runWrite(async (client) => {
         const now = new Date().toISOString();
         for (let i = 0; i < 50; i++) {
-          db.run(
-            `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          await client.execute(
+            toPgParams(`INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
             ["proj", `task-${i}`, 1, "coder", "claude", now, "success", "branch"]
           );
         }
@@ -1329,18 +1353,16 @@ describe("TaskStoreService", () => {
       expect(pruned).toBe(0);
 
       const db = await store.getDb();
-      const stmt = db.prepare("SELECT COUNT(*) as cnt FROM agent_sessions");
-      stmt.step();
-      expect(stmt.getAsObject().cnt).toBe(50);
-      stmt.free();
+      const row = await db.queryOne("SELECT COUNT(*)::int as cnt FROM agent_sessions");
+      expect(row?.cnt).toBe(50);
     });
 
     it("keeps 100 most recent and prunes older", async () => {
-      await store.runWrite(async (db) => {
+      await store.runWrite(async (client) => {
         const now = new Date().toISOString();
         for (let i = 0; i < 150; i++) {
-          db.run(
-            `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          await client.execute(
+            toPgParams(`INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
             ["proj", `task-${i}`, 1, "coder", "claude", now, "success", "branch"]
           );
         }
@@ -1350,28 +1372,22 @@ describe("TaskStoreService", () => {
       expect(pruned).toBe(50);
 
       const db = await store.getDb();
-      const stmt = db.prepare("SELECT COUNT(*) as cnt FROM agent_sessions");
-      stmt.step();
-      expect(stmt.getAsObject().cnt).toBe(100);
-      stmt.free();
+      const row = await db.queryOne("SELECT COUNT(*)::int as cnt FROM agent_sessions");
+      expect(row?.cnt).toBe(100);
 
-      const idsStmt = db.prepare("SELECT id FROM agent_sessions ORDER BY id ASC");
-      const ids: number[] = [];
-      while (idsStmt.step()) {
-        ids.push(idsStmt.getAsObject().id as number);
-      }
-      idsStmt.free();
+      const idsRows = await db.query("SELECT id FROM agent_sessions ORDER BY id ASC");
+      const ids = idsRows.map((r) => r.id as number);
       expect(ids).toHaveLength(100);
       expect(Math.min(...ids)).toBe(51);
       expect(Math.max(...ids)).toBe(150);
     });
 
     it("runs VACUUM after pruning without error", async () => {
-      await store.runWrite(async (db) => {
+      await store.runWrite(async (client) => {
         const now = new Date().toISOString();
         for (let i = 0; i < 120; i++) {
-          db.run(
-            `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          await client.execute(
+            toPgParams(`INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
             ["proj", `task-${i}`, 1, "coder", "claude", now, "success", "branch"]
           );
         }

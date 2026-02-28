@@ -22,19 +22,14 @@ export async function migrateComplexitySimpleToComplex(): Promise<{
   const details: Array<{ id: string; projectId: string; from: string; to: number }> = [];
   let migratedCount = 0;
 
-  await taskStore.runWrite(async (db) => {
-    const taskStmt = db.prepare("SELECT id, project_id, extra FROM tasks");
-    const taskRows: Array<{ id: string; project_id: string; extra: string }> = [];
-    while (taskStmt.step()) {
-      const row = taskStmt.getAsObject() as { id: string; project_id: string; extra: string };
-      taskRows.push(row);
-    }
-    taskStmt.free();
+  await taskStore.runWrite(async (client) => {
+    const taskRows = await client.query("SELECT id, project_id, extra FROM tasks");
 
     for (const row of taskRows) {
+      const r = row as { id: string; project_id: string; extra: string };
       let extra: Record<string, unknown>;
       try {
-        extra = JSON.parse(row.extra || "{}");
+        extra = JSON.parse(r.extra || "{}");
       } catch {
         continue;
       }
@@ -45,12 +40,12 @@ export async function migrateComplexitySimpleToComplex(): Promise<{
       const { complexity: _removed, ...rest } = extra;
       const newExtra = JSON.stringify(rest);
 
-      db.run(
-        "UPDATE tasks SET complexity = ?, extra = ? WHERE id = ? AND project_id = ?",
-        [to, newExtra, row.id, row.project_id]
+      await client.execute(
+        "UPDATE tasks SET complexity = $1, extra = $2 WHERE id = $3 AND project_id = $4",
+        [to, newExtra, r.id, r.project_id]
       );
       migratedCount++;
-      details.push({ id: row.id, projectId: row.project_id, from: raw, to });
+      details.push({ id: r.id, projectId: r.project_id, from: raw, to });
     }
   });
 

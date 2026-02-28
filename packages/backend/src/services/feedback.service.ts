@@ -861,7 +861,7 @@ export class FeedbackService {
       if (validIds.has(similar_existing_task_id)) {
         try {
           const existing = await Promise.resolve(
-            this.taskStore.show(projectId, similar_existing_task_id)
+            await this.taskStore.show(projectId, similar_existing_task_id)
           );
           const existingIds =
             ((existing as { sourceFeedbackIds?: string[] }).sourceFeedbackIds ?? []) as string[];

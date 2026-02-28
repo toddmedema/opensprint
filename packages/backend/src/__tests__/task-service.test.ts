@@ -12,16 +12,9 @@ const { mockTaskStoreState, mockBranchManagerInstance } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../services/task-store.service.js", () => {
-  const mockDb = {
-    prepare: vi.fn().mockReturnValue({
-      bind: vi.fn(),
-      step: vi.fn().mockReturnValue(false),
-      getAsObject: vi.fn(),
-      free: vi.fn(),
-    }),
-    run: vi.fn(),
-  };
+vi.mock("../services/task-store.service.js", async () => {
+  const { createMockDbClient } = await import("./test-db-helper.js");
+  const mockDb = createMockDbClient();
   return {
     taskStore: {
       listAll: vi.fn().mockImplementation(async () => mockTaskStoreState.listAll),
@@ -35,6 +28,9 @@ vi.mock("../services/task-store.service.js", () => {
         return [];
       }),
       getDb: vi.fn().mockResolvedValue(mockDb),
+      runWrite: vi.fn().mockImplementation(async (fn: (db: typeof mockDb) => void) => {
+        await fn(mockDb);
+      }),
       update: vi.fn(),
       close: vi.fn(),
       create: vi.fn(),

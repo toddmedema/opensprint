@@ -1,4 +1,4 @@
-import type { Database } from "sql.js";
+import type { DbClient } from "../db/client.js";
 
 /** Default threshold (100KB) when no existing entries to compute 95th percentile. */
 export const DEFAULT_LOG_DIFF_THRESHOLD = 102_400;
@@ -10,28 +10,24 @@ const MIN_THRESHOLD = 1024;
  * Compute the 95th percentile of output_log and git_diff sizes from agent_sessions.
  * Uses combined sizes from both columns. Returns default when table is empty.
  */
-export function computeLogDiff95thPercentile(db: Database): number {
+export async function computeLogDiff95thPercentile(client: DbClient): Promise<number> {
   const sizes: number[] = [];
 
-  const outputStmt = db.prepare(
-    "SELECT LENGTH(output_log) as len FROM agent_sessions WHERE output_log IS NOT NULL AND output_log != ''"
+  const outputRows = await client.query(
+    "SELECT LENGTH(output_log)::int as len FROM agent_sessions WHERE output_log IS NOT NULL AND output_log != ''"
   );
-  while (outputStmt.step()) {
-    const row = outputStmt.getAsObject();
+  for (const row of outputRows) {
     const len = row.len as number;
     if (typeof len === "number" && len > 0) sizes.push(len);
   }
-  outputStmt.free();
 
-  const diffStmt = db.prepare(
-    "SELECT LENGTH(git_diff) as len FROM agent_sessions WHERE git_diff IS NOT NULL AND git_diff != ''"
+  const diffRows = await client.query(
+    "SELECT LENGTH(git_diff)::int as len FROM agent_sessions WHERE git_diff IS NOT NULL AND git_diff != ''"
   );
-  while (diffStmt.step()) {
-    const row = diffStmt.getAsObject();
+  for (const row of diffRows) {
     const len = row.len as number;
     if (typeof len === "number" && len > 0) sizes.push(len);
   }
-  diffStmt.free();
 
   if (sizes.length === 0) return DEFAULT_LOG_DIFF_THRESHOLD;
 

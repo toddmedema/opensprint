@@ -33,21 +33,15 @@ vi.mock("../websocket/index.js", () => ({
 vi.mock("../services/task-store.service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../services/task-store.service.js")>();
   const initSqlJs = (await import("sql.js")).default;
+  const { createSqliteDbClient, SCHEMA_SQL_SQLITE } = await import("./test-db-helper.js");
   const SQL = await initSqlJs();
   const sharedDb = new SQL.Database();
-  sharedDb.run(actual.SCHEMA_SQL);
+  sharedDb.run(SCHEMA_SQL_SQLITE);
+  const sharedClient = createSqliteDbClient(sharedDb);
 
   class MockTaskStoreService extends actual.TaskStoreService {
-    async init(): Promise<void> {
-      (this as unknown as { db: unknown }).db = sharedDb;
-      (this as unknown as { injectedDb: unknown }).injectedDb = sharedDb;
-    }
-    protected ensureDb() {
-      if (!(this as unknown as { db: unknown }).db) {
-        (this as unknown as { db: unknown }).db = sharedDb;
-        (this as unknown as { injectedDb: unknown }).injectedDb = sharedDb;
-      }
-      return super.ensureDb();
+    constructor() {
+      super(sharedClient);
     }
   }
 
@@ -105,6 +99,7 @@ describe("Plan REST endpoints - task decomposition", () => {
 
     projectService = new ProjectService();
     taskStore = new TaskStoreService();
+    await taskStore.init();
     const repoPath = path.join(tempDir, "test-project");
     const project = await projectService.createProject({
       name: "Plan Test Project",
@@ -249,7 +244,7 @@ describe("Plan REST endpoints - task decomposition", () => {
     const t2 = childTasks.find((t: { title: string }) => t.title === "Task Two");
     expect(t1).toBeDefined();
     expect(t2).toBeDefined();
-    const task2 = taskStore.show(projectId, t2!.id);
+    const task2 = await taskStore.show(projectId, t2!.id);
     const blockers = (task2?.dependencies ?? []).filter(
       (d: { type: string }) => d.type === "blocks"
     );

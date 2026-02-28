@@ -4,24 +4,27 @@ import path from "path";
 import os from "os";
 import initSqlJs from "sql.js";
 import { EventLogService, type OrchestratorEvent } from "../services/event-log.service.js";
-import type { Database } from "sql.js";
+import type { DbClient } from "../db/client.js";
+import { createSqliteDbClient, SCHEMA_SQL_SQLITE } from "./test-db-helper.js";
 
-let testDb: Database;
-vi.mock("../services/task-store.service.js", async (importOriginal) => {
-  const mod = await importOriginal<typeof import("../services/task-store.service.js")>();
+let testClient: DbClient;
+vi.mock("../services/task-store.service.js", async () => {
+  const { createSqliteDbClient, SCHEMA_SQL_SQLITE } = await import("./test-db-helper.js");
   return {
-    ...mod,
     taskStore: {
       init: vi.fn().mockImplementation(async () => {
         const SQL = await initSqlJs();
-        testDb = new SQL.Database();
-        testDb.run(mod.SCHEMA_SQL);
+        const db = new SQL.Database();
+        db.run(SCHEMA_SQL_SQLITE);
+        testClient = createSqliteDbClient(db);
       }),
-      getDb: vi.fn().mockImplementation(async () => testDb),
+      getDb: vi.fn().mockImplementation(async () => testClient),
       runWrite: vi
         .fn()
-        .mockImplementation(async (fn: (db: Database) => Promise<unknown>) => fn(testDb)),
+        .mockImplementation(async (fn: (client: DbClient) => Promise<unknown>) => fn(testClient)),
     },
+    TaskStoreService: vi.fn(),
+    SCHEMA_SQL: "",
   };
 });
 

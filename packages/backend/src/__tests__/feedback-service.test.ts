@@ -7,7 +7,8 @@ import { FeedbackService } from "../services/feedback.service.js";
 import { ProjectService } from "../services/project.service.js";
 import { DEFAULT_HIL_CONFIG } from "@opensprint/shared";
 import { feedbackStore } from "../services/feedback-store.service.js";
-import type { Database } from "sql.js";
+import type { DbClient } from "../db/client.js";
+import { createSqliteDbClient, SCHEMA_SQL_SQLITE } from "./test-db-helper.js";
 
 const mockInvoke = vi.fn();
 vi.mock("../services/agent-client.js", () => ({
@@ -119,19 +120,21 @@ vi.mock("../utils/feedback-id.js", () => ({
 
 const mockTaskStoreListAll = vi.fn().mockResolvedValue([]);
 const mockTaskStoreReady = vi.fn().mockResolvedValue([]);
-let testDb: Database;
-vi.mock("../services/task-store.service.js", async (importOriginal) => {
-  const mod = await importOriginal<typeof import("../services/task-store.service.js")>();
+
+let testClient: DbClient;
+vi.mock("../services/task-store.service.js", async () => {
+  const { createSqliteDbClient, SCHEMA_SQL_SQLITE } = await import("./test-db-helper.js");
   const mockInstance = {
     init: vi.fn().mockImplementation(async () => {
       const SQL = await initSqlJs();
-      testDb = new SQL.Database();
-      testDb.run(mod.SCHEMA_SQL);
+      const db = new SQL.Database();
+      db.run(SCHEMA_SQL_SQLITE);
+      testClient = createSqliteDbClient(db);
     }),
-    getDb: vi.fn().mockImplementation(async () => testDb),
+    getDb: vi.fn().mockImplementation(async () => testClient),
     runWrite: vi
       .fn()
-      .mockImplementation(async (fn: (db: Database) => Promise<unknown>) => fn(testDb)),
+      .mockImplementation(async (fn: (client: DbClient) => Promise<unknown>) => fn(testClient)),
     create: (...args: unknown[]) => mockTaskStoreCreate(...args),
     createWithRetry: (...args: unknown[]) => mockTaskStoreCreateWithRetry(...args),
     addDependency: (...args: unknown[]) => mockTaskStoreAddDependency(...args),
@@ -150,6 +153,7 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
   return {
     TaskStoreService: vi.fn().mockImplementation(() => mockInstance),
     taskStore: mockInstance,
+    SCHEMA_SQL: "",
   };
 });
 
@@ -195,10 +199,10 @@ describe("FeedbackService", () => {
 
   it("should list feedback items with createdTaskIds for Build tab navigation", async () => {
     const { taskStore } = await import("../services/task-store.service.js");
-    const db = await taskStore.getDb();
-    db.run(
+    const client = await taskStore.getDb();
+    await client.execute(
       `INSERT INTO feedback (id, project_id, text, category, mapped_plan_id, created_task_ids, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         "fb-1",
         projectId,
@@ -221,10 +225,10 @@ describe("FeedbackService", () => {
 
   it("should return empty createdTaskIds for pending feedback", async () => {
     const { taskStore } = await import("../services/task-store.service.js");
-    const db = await taskStore.getDb();
-    db.run(
+    const client = await taskStore.getDb();
+    await client.execute(
       `INSERT INTO feedback (id, project_id, text, category, mapped_plan_id, created_task_ids, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         "fb-2",
         projectId,
@@ -246,16 +250,16 @@ describe("FeedbackService", () => {
 
   it("should not enqueue pending feedback that already has linked tasks (retryPendingCategorizations)", async () => {
     const { taskStore } = await import("../services/task-store.service.js");
-    const db = await taskStore.getDb();
+    const client = await taskStore.getDb();
     const now = new Date().toISOString();
-    db.run(
+    await client.execute(
       `INSERT INTO feedback (id, project_id, text, category, mapped_plan_id, created_task_ids, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       ["pending-no-tasks", projectId, "Not yet analyzed", "bug", null, "[]", "pending", now]
     );
-    db.run(
+    await client.execute(
       `INSERT INTO feedback (id, project_id, text, category, mapped_plan_id, created_task_ids, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         "pending-with-tasks",
         projectId,
@@ -624,11 +628,11 @@ describe("FeedbackService", () => {
 
   it("should retry with new ID on collision", async () => {
     const { taskStore } = await import("../services/task-store.service.js");
-    const db = await taskStore.getDb();
+    const client = await taskStore.getDb();
     const existingId = "aaaaaa";
-    db.run(
+    await client.execute(
       `INSERT INTO feedback (id, project_id, text, category, mapped_plan_id, created_task_ids, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [existingId, projectId, "Existing", "bug", null, "[]", "pending", new Date().toISOString()]
     );
 
@@ -1150,11 +1154,11 @@ describe("FeedbackService", () => {
 
   it("should skip Analyst when feedback already has at least one linked task", async () => {
     const { taskStore } = await import("../services/task-store.service.js");
-    const db = await taskStore.getDb();
+    const client = await taskStore.getDb();
     const feedbackId = "already-linked";
-    db.run(
+    await client.execute(
       `INSERT INTO feedback (id, project_id, text, category, mapped_plan_id, created_task_ids, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         feedbackId,
         projectId,
@@ -1175,11 +1179,11 @@ describe("FeedbackService", () => {
 
   it("should not log when skipping Analyst for feedback that already has linked tasks", async () => {
     const { taskStore } = await import("../services/task-store.service.js");
-    const db = await taskStore.getDb();
+    const client = await taskStore.getDb();
     const feedbackId = "already-linked-no-log";
-    db.run(
+    await client.execute(
       `INSERT INTO feedback (id, project_id, text, category, mapped_plan_id, created_task_ids, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         feedbackId,
         projectId,

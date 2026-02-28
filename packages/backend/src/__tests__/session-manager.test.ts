@@ -7,14 +7,15 @@ import initSqlJs from "sql.js";
 import { SessionManager } from "../services/session-manager.js";
 import { OPENSPRINT_PATHS } from "@opensprint/shared";
 import { ensureRuntimeDir, getRuntimePath } from "../utils/runtime-dir.js";
-import type { Database } from "sql.js";
+import type { DbClient } from "../db/client.js";
+import { createSqliteDbClient, SCHEMA_SQL_SQLITE } from "./test-db-helper.js";
 
 function repoPathToProjectId(repoPath: string): string {
   return "repo:" + crypto.createHash("sha256").update(repoPath).digest("hex").slice(0, 12);
 }
 
 async function insertSession(
-  db: Database,
+  client: DbClient,
   projectId: string,
   session: {
     taskId: string;
@@ -32,9 +33,9 @@ async function insertSession(
     summary?: string;
   }
 ): Promise<void> {
-  db.run(
+  await client.execute(
     `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, completed_at, status, output_log, git_branch, git_diff, test_results, failure_reason, summary)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
     [
       projectId,
       session.taskId,
@@ -54,22 +55,24 @@ async function insertSession(
   );
 }
 
-let testDb: Database;
-vi.mock("../services/task-store.service.js", async (importOriginal) => {
-  const mod = await importOriginal<typeof import("../services/task-store.service.js")>();
+let testClient: DbClient;
+vi.mock("../services/task-store.service.js", async () => {
+  const { createSqliteDbClient, SCHEMA_SQL_SQLITE } = await import("./test-db-helper.js");
   return {
-    ...mod,
     taskStore: {
       init: vi.fn().mockImplementation(async () => {
         const SQL = await initSqlJs();
-        testDb = new SQL.Database();
-        testDb.run(mod.SCHEMA_SQL);
+        const db = new SQL.Database();
+        db.run(SCHEMA_SQL_SQLITE);
+        testClient = createSqliteDbClient(db);
       }),
-      getDb: vi.fn().mockImplementation(async () => testDb),
+      getDb: vi.fn().mockImplementation(async () => testClient),
       runWrite: vi
         .fn()
-        .mockImplementation(async (fn: (db: Database) => Promise<unknown>) => fn(testDb)),
+        .mockImplementation(async (fn: (client: DbClient) => Promise<unknown>) => fn(testClient)),
     },
+    TaskStoreService: vi.fn(),
+    SCHEMA_SQL: "",
   };
 });
 
@@ -111,9 +114,9 @@ describe("SessionManager", () => {
     it("groups sessions by task ID from DB", async () => {
       const projectId = repoPathToProjectId(repoPath);
       const { taskStore } = await import("../services/task-store.service.js");
-      const db = await taskStore.getDb();
+      const client = await taskStore.getDb();
 
-      await insertSession(db, projectId, {
+      await insertSession(client, projectId, {
         taskId: "task-a",
         attempt: 1,
         agentType: "cursor",
@@ -127,7 +130,7 @@ describe("SessionManager", () => {
         testResults: { passed: 5, failed: 0, skipped: 0, total: 5, details: [] },
         failureReason: null,
       });
-      await insertSession(db, projectId, {
+      await insertSession(client, projectId, {
         taskId: "task-a",
         attempt: 2,
         agentType: "cursor",
@@ -141,7 +144,7 @@ describe("SessionManager", () => {
         testResults: { passed: 6, failed: 0, skipped: 0, total: 6, details: [] },
         failureReason: null,
       });
-      await insertSession(db, projectId, {
+      await insertSession(client, projectId, {
         taskId: "task-b",
         attempt: 1,
         agentType: "cursor",
@@ -168,8 +171,8 @@ describe("SessionManager", () => {
     it("parses task IDs with hyphens correctly (e.g. opensprint.dev-q0h6)", async () => {
       const projectId = repoPathToProjectId(repoPath);
       const { taskStore } = await import("../services/task-store.service.js");
-      const db = await taskStore.getDb();
-      await insertSession(db, projectId, {
+      const client = await taskStore.getDb();
+      await insertSession(client, projectId, {
         taskId: "opensprint.dev-q0h6",
         attempt: 1,
         agentType: "cursor",
@@ -193,8 +196,8 @@ describe("SessionManager", () => {
     it("returns one task when one session exists", async () => {
       const projectId = repoPathToProjectId(repoPath);
       const { taskStore } = await import("../services/task-store.service.js");
-      const db = await taskStore.getDb();
-      await insertSession(db, projectId, {
+      const client = await taskStore.getDb();
+      await insertSession(client, projectId, {
         taskId: "valid-task",
         attempt: 1,
         agentType: "cursor",
@@ -217,8 +220,8 @@ describe("SessionManager", () => {
     it("returns session by task and attempt from DB", async () => {
       const projectId = repoPathToProjectId(repoPath);
       const { taskStore } = await import("../services/task-store.service.js");
-      const db = await taskStore.getDb();
-      await insertSession(db, projectId, {
+      const client = await taskStore.getDb();
+      await insertSession(client, projectId, {
         taskId: "task",
         attempt: 2,
         agentType: "cursor",
@@ -244,7 +247,7 @@ describe("SessionManager", () => {
     it("returns session when row exists in DB", async () => {
       const projectId = repoPathToProjectId(repoPath);
       const { taskStore } = await import("../services/task-store.service.js");
-      const db = await taskStore.getDb();
+      const client = await taskStore.getDb();
       const sessionData = {
         taskId: "task-x",
         attempt: 1,
@@ -259,7 +262,7 @@ describe("SessionManager", () => {
         testResults: null,
         failureReason: null,
       };
-      await insertSession(db, projectId, sessionData);
+      await insertSession(client, projectId, sessionData);
 
       const result = await manager.readSession(repoPath, "task-x", 1);
       expect(result).toMatchObject(sessionData);
@@ -306,10 +309,10 @@ describe("SessionManager", () => {
     it("truncates output_log and git_diff to 95th percentile threshold when archiving", async () => {
       const projectId = repoPathToProjectId(repoPath);
       const { taskStore } = await import("../services/task-store.service.js");
-      const db = await taskStore.getDb();
+      const client = await taskStore.getDb();
 
       // Seed agent_sessions with sizes to establish 95th percentile of 500
-      await insertSession(db, projectId, {
+      await insertSession(client, projectId, {
         taskId: "seed-1",
         attempt: 1,
         agentType: "cursor",
@@ -323,7 +326,7 @@ describe("SessionManager", () => {
         testResults: null,
         failureReason: null,
       });
-      await insertSession(db, projectId, {
+      await insertSession(client, projectId, {
         taskId: "seed-2",
         attempt: 1,
         agentType: "cursor",
@@ -399,8 +402,8 @@ describe("SessionManager", () => {
     it("returns sessions for a task in attempt order", async () => {
       const projectId = repoPathToProjectId(repoPath);
       const { taskStore } = await import("../services/task-store.service.js");
-      const db = await taskStore.getDb();
-      await insertSession(db, projectId, {
+      const client = await taskStore.getDb();
+      await insertSession(client, projectId, {
         taskId: "my-task",
         attempt: 2,
         agentType: "cursor",
@@ -414,7 +417,7 @@ describe("SessionManager", () => {
         testResults: null,
         failureReason: null,
       });
-      await insertSession(db, projectId, {
+      await insertSession(client, projectId, {
         taskId: "my-task",
         attempt: 1,
         agentType: "cursor",

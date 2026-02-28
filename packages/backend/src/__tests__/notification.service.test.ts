@@ -1,38 +1,35 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import initSqlJs from "sql.js";
-import { TaskStoreService } from "../services/task-store.service.js";
 import { NotificationService } from "../services/notification.service.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
-import type { Database } from "sql.js";
+import type { DbClient } from "../db/client.js";
+import { createSqliteDbClient, SCHEMA_SQL_SQLITE } from "./test-db-helper.js";
 
-let sharedDb: Database;
-vi.mock("../services/task-store.service.js", async (importOriginal) => {
-  const mod = await importOriginal<typeof import("../services/task-store.service.js")>();
-  return {
-    ...mod,
-    taskStore: {
-      async getDb() {
-        if (!sharedDb) throw new Error("sharedDb not initialized");
-        return sharedDb;
-      },
-      async runWrite<T>(fn: (db: Database) => Promise<T>): Promise<T> {
-        if (!sharedDb) throw new Error("sharedDb not initialized");
-        return fn(sharedDb);
-      },
+let sharedClient: DbClient;
+vi.mock("../services/task-store.service.js", async () => ({
+  taskStore: {
+    async getDb() {
+      if (!sharedClient) throw new Error("sharedClient not initialized");
+      return sharedClient;
     },
-  };
-});
+    async runWrite<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
+      if (!sharedClient) throw new Error("sharedClient not initialized");
+      return fn(sharedClient);
+    },
+  },
+  TaskStoreService: vi.fn(),
+  SCHEMA_SQL: "",
+}));
 
 describe("NotificationService", () => {
-  let store: TaskStoreService;
   let service: NotificationService;
 
   beforeEach(async () => {
     const SQL = await initSqlJs();
-    sharedDb = new SQL.Database();
-    store = new TaskStoreService(sharedDb);
-    await store.init();
+    const db = new SQL.Database();
+    db.run(SCHEMA_SQL_SQLITE);
+    sharedClient = createSqliteDbClient(db);
     service = new NotificationService();
   });
 

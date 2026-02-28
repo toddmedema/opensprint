@@ -61,10 +61,10 @@ const MODEL_ESCALATION: string[] = ["claude-sonnet-4-20250514", "claude-opus-4-2
 export class AgentIdentityService {
   async recordAttempt(repoPath: string, record: TaskAttemptRecord): Promise<void> {
     const projectId = await repoPathToProjectId(repoPath);
-    await taskStore.runWrite(async (db) => {
-      db.run(
+    await taskStore.runWrite(async (client) => {
+      await client.execute(
         `INSERT INTO agent_stats (project_id, task_id, agent_id, model, attempt, started_at, completed_at, outcome, duration_ms)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           projectId,
           record.taskId,
@@ -77,21 +77,18 @@ export class AgentIdentityService {
           record.durationMs,
         ]
       );
-      // Cap at 500 rows per project: delete oldest by id (keep latest 500)
-      const countStmt = db.prepare("SELECT COUNT(*) as c FROM agent_stats WHERE project_id = ?");
-      countStmt.bind([projectId]);
-      countStmt.step();
-      const count = (countStmt.getAsObject().c as number) ?? 0;
-      countStmt.free();
+      const countRow = await client.queryOne(
+        "SELECT COUNT(*)::int as c FROM agent_stats WHERE project_id = $1",
+        [projectId]
+      );
+      const count = (countRow?.c as number) ?? 0;
       if (count > 500) {
-        const delStmt = db.prepare(
+        await client.execute(
           `DELETE FROM agent_stats WHERE id IN (
-            SELECT id FROM agent_stats WHERE project_id = ? ORDER BY id ASC LIMIT ?
-          )`
+            SELECT id FROM agent_stats WHERE project_id = $1 ORDER BY id ASC LIMIT $2
+          )`,
+          [projectId, count - 500]
         );
-        delStmt.bind([projectId, count - 500]);
-        delStmt.step();
-        delStmt.free();
       }
     });
   }
@@ -181,27 +178,21 @@ export class AgentIdentityService {
   }
 
   private async loadAttempts(projectId: string): Promise<TaskAttemptRecord[]> {
-    const db = await taskStore.getDb();
-    const stmt = db.prepare(
-      "SELECT task_id, agent_id, model, attempt, started_at, completed_at, outcome, duration_ms FROM agent_stats WHERE project_id = ? ORDER BY id ASC"
+    const client = await taskStore.getDb();
+    const rows = await client.query(
+      "SELECT task_id, agent_id, model, attempt, started_at, completed_at, outcome, duration_ms FROM agent_stats WHERE project_id = $1 ORDER BY id ASC",
+      [projectId]
     );
-    stmt.bind([projectId]);
-    const rows: TaskAttemptRecord[] = [];
-    while (stmt.step()) {
-      const r = stmt.getAsObject();
-      rows.push({
-        taskId: r.task_id as string,
-        agentId: r.agent_id as string,
-        model: r.model as string,
-        attempt: r.attempt as number,
-        startedAt: r.started_at as string,
-        completedAt: r.completed_at as string,
-        outcome: r.outcome as AttemptOutcome,
-        durationMs: r.duration_ms as number,
-      });
-    }
-    stmt.free();
-    return rows;
+    return rows.map((r) => ({
+      taskId: r.task_id as string,
+      agentId: r.agent_id as string,
+      model: r.model as string,
+      attempt: r.attempt as number,
+      startedAt: r.started_at as string,
+      completedAt: r.completed_at as string,
+      outcome: r.outcome as AttemptOutcome,
+      durationMs: r.duration_ms as number,
+    }));
   }
 
   private escalateModel(currentModel: string): string | null {

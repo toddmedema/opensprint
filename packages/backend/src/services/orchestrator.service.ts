@@ -403,10 +403,10 @@ export class OrchestratorService {
     const state = this.getState(projectId);
     const now = new Date().toISOString();
     try {
-      await taskStoreSingleton.runWrite(async (db) => {
-        db.run(
+      await taskStoreSingleton.runWrite(async (client) => {
+        await client.execute(
           `INSERT INTO orchestrator_counters (project_id, total_done, total_failed, queue_depth, updated_at)
-           VALUES (?, ?, ?, ?, ?)
+           VALUES ($1, $2, $3, $4, $5)
            ON CONFLICT(project_id) DO UPDATE SET
              total_done = excluded.total_done,
              total_failed = excluded.total_failed,
@@ -429,17 +429,12 @@ export class OrchestratorService {
   private async loadCounters(repoPath: string): Promise<OrchestratorCounters | null> {
     const project = await this.projectService.getProjectByRepoPath(repoPath);
     if (!project) return null;
-    const db = await taskStoreSingleton.getDb();
-    const stmt = db.prepare(
-      "SELECT total_done, total_failed, queue_depth FROM orchestrator_counters WHERE project_id = ?"
+    const client = await taskStoreSingleton.getDb();
+    const row = await client.queryOne(
+      "SELECT total_done, total_failed, queue_depth FROM orchestrator_counters WHERE project_id = $1",
+      [project.id]
     );
-    stmt.bind([project.id]);
-    if (!stmt.step()) {
-      stmt.free();
-      return null;
-    }
-    const row = stmt.getAsObject();
-    stmt.free();
+    if (!row) return null;
     return {
       totalDone: row.total_done as number,
       totalFailed: row.total_failed as number,

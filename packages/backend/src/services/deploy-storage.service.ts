@@ -43,12 +43,12 @@ export class DeployStorageService {
       mode: options?.mode ?? "custom",
     };
 
-    await taskStore.runWrite(async (db) => {
-      db.run(
+    await taskStore.runWrite(async (client) => {
+      await client.execute(
         `INSERT INTO deployments (
           id, project_id, status, started_at, completed_at, commit_hash, target, mode,
           url, error, log, previous_deploy_id, rolled_back_by, fix_epic_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
         [
           record.id,
           record.projectId,
@@ -71,16 +71,13 @@ export class DeployStorageService {
   }
 
   async getRecord(projectId: string, deployId: string): Promise<DeploymentRecord | null> {
-    const db = await taskStore.getDb();
-    const stmt = db.prepare("SELECT * FROM deployments WHERE id = ? AND project_id = ?");
-    stmt.bind([deployId, projectId]);
-    if (!stmt.step()) {
-      stmt.free();
-      return null;
-    }
-    const row = stmt.getAsObject() as Record<string, unknown>;
-    stmt.free();
-    return rowToRecord(row);
+    const client = await taskStore.getDb();
+    const row = await client.queryOne(
+      "SELECT * FROM deployments WHERE id = $1 AND project_id = $2",
+      [deployId, projectId]
+    );
+    if (!row) return null;
+    return rowToRecord(row as Record<string, unknown>);
   }
 
   async updateRecord(
@@ -102,12 +99,12 @@ export class DeployStorageService {
       log: updates.log !== undefined ? updates.log : existing.log,
     };
 
-    await taskStore.runWrite(async (db) => {
-      db.run(
+    await taskStore.runWrite(async (client) => {
+      await client.execute(
         `UPDATE deployments SET
-          status = ?, completed_at = ?, url = ?, error = ?, log = ?,
-          rolled_back_by = ?, fix_epic_id = ?
-        WHERE id = ? AND project_id = ?`,
+          status = $1, completed_at = $2, url = $3, error = $4, log = $5,
+          rolled_back_by = $6, fix_epic_id = $7
+        WHERE id = $8 AND project_id = $9`,
         [
           updated.status,
           updated.completedAt ?? null,
@@ -136,17 +133,12 @@ export class DeployStorageService {
   }
 
   async listHistory(projectId: string, limit: number = 50): Promise<DeploymentRecord[]> {
-    const db = await taskStore.getDb();
-    const stmt = db.prepare(
-      "SELECT * FROM deployments WHERE project_id = ? ORDER BY started_at DESC LIMIT ?"
+    const client = await taskStore.getDb();
+    const rows = await client.query(
+      "SELECT * FROM deployments WHERE project_id = $1 ORDER BY started_at DESC LIMIT $2",
+      [projectId, limit]
     );
-    stmt.bind([projectId, limit]);
-    const records: DeploymentRecord[] = [];
-    while (stmt.step()) {
-      records.push(rowToRecord(stmt.getAsObject() as Record<string, unknown>));
-    }
-    stmt.free();
-    return records;
+    return rows.map((r) => rowToRecord(r as Record<string, unknown>));
   }
 
   async getLatestDeploy(projectId: string): Promise<DeploymentRecord | null> {
@@ -162,21 +154,16 @@ export class DeployStorageService {
     projectId: string,
     targetName: string
   ): Promise<DeploymentRecord | null> {
-    const db = await taskStore.getDb();
-    const stmt = db.prepare(
+    const client = await taskStore.getDb();
+    const row = await client.queryOne(
       `SELECT * FROM deployments
-       WHERE project_id = ? AND target = ? AND status = 'success'
+       WHERE project_id = $1 AND target = $2 AND status = 'success'
        ORDER BY COALESCE(completed_at, started_at) DESC
-       LIMIT 1`
+       LIMIT 1`,
+      [projectId, targetName]
     );
-    stmt.bind([projectId, targetName]);
-    if (!stmt.step()) {
-      stmt.free();
-      return null;
-    }
-    const row = stmt.getAsObject() as Record<string, unknown>;
-    stmt.free();
-    return rowToRecord(row);
+    if (!row) return null;
+    return rowToRecord(row as Record<string, unknown>);
   }
 }
 

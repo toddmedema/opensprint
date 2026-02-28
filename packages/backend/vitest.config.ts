@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@opensprint/shared": path.resolve(__dirname, "../shared/src/index.ts"),
+      pg: path.resolve(__dirname, "../../node_modules/pg/lib/index.js"),
     },
   },
   test: {

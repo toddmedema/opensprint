@@ -92,10 +92,10 @@ export class NotificationService {
       createdAt: q.createdAt ?? createdAt,
     }));
 
-    await taskStore.runWrite(async (db) => {
-      db.run(
+    await taskStore.runWrite(async (client) => {
+      await client.execute(
         `INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind)
-         VALUES (?, ?, ?, ?, ?, 'open', ?, 'open_question')`,
+         VALUES ($1, $2, $3, $4, $5, 'open', $6, 'open_question')`,
         [
           id,
           input.projectId,
@@ -143,10 +143,10 @@ export class NotificationService {
       },
     ];
 
-    await taskStore.runWrite(async (db) => {
-      db.run(
+    await taskStore.runWrite(async (client) => {
+      await client.execute(
         `INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind, error_code)
-         VALUES (?, ?, ?, ?, ?, 'open', ?, 'api_blocked', ?)`,
+         VALUES ($1, $2, $3, $4, $5, 'open', $6, 'api_blocked', $7)`,
         [
           id,
           input.projectId,
@@ -196,10 +196,10 @@ export class NotificationService {
       },
     ];
 
-    await taskStore.runWrite(async (db) => {
-      db.run(
+    await taskStore.runWrite(async (client) => {
+      await client.execute(
         `INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind)
-         VALUES (?, ?, ?, ?, ?, 'open', ?, 'hil_approval')`,
+         VALUES ($1, $2, $3, $4, $5, 'open', $6, 'hil_approval')`,
         [
           id,
           input.projectId,
@@ -236,46 +236,34 @@ export class NotificationService {
    * List unresolved notifications for a project.
    */
   async listByProject(projectId: string): Promise<Notification[]> {
-    const db = await taskStore.getDb();
-    const stmt = db.prepare(
-      "SELECT * FROM open_questions WHERE project_id = ? AND status = 'open' ORDER BY created_at DESC"
+    const client = await taskStore.getDb();
+    const rows = await client.query(
+      "SELECT * FROM open_questions WHERE project_id = $1 AND status = 'open' ORDER BY created_at DESC",
+      [projectId]
     );
-    stmt.bind([projectId]);
-    const rows: Record<string, unknown>[] = [];
-    while (stmt.step()) {
-      rows.push(stmt.getAsObject() as Record<string, unknown>);
-    }
-    stmt.free();
-    return rows.map(rowToNotification);
+    return rows.map((r) => rowToNotification(r as Record<string, unknown>));
   }
 
   /**
    * List unresolved notifications across all projects (global).
    */
   async listGlobal(): Promise<Notification[]> {
-    const db = await taskStore.getDb();
-    const stmt = db.prepare(
+    const client = await taskStore.getDb();
+    const rows = await client.query(
       "SELECT * FROM open_questions WHERE status = 'open' ORDER BY created_at DESC"
     );
-    const rows: Record<string, unknown>[] = [];
-    while (stmt.step()) {
-      rows.push(stmt.getAsObject() as Record<string, unknown>);
-    }
-    stmt.free();
-    return rows.map(rowToNotification);
+    return rows.map((r) => rowToNotification(r as Record<string, unknown>));
   }
 
   /**
    * Resolve a notification by ID. Project ID is required for scoping.
    */
   async resolve(projectId: string, notificationId: string): Promise<Notification> {
-    const db = await taskStore.getDb();
-    const stmt = db.prepare(
-      "SELECT * FROM open_questions WHERE id = ? AND project_id = ?"
+    const client = await taskStore.getDb();
+    const row = await client.queryOne(
+      "SELECT * FROM open_questions WHERE id = $1 AND project_id = $2",
+      [notificationId, projectId]
     );
-    stmt.bind([notificationId, projectId]);
-    const row = stmt.step() ? (stmt.getAsObject() as Record<string, unknown>) : null;
-    stmt.free();
 
     if (!row) {
       throw new AppError(
@@ -288,9 +276,9 @@ export class NotificationService {
 
     const resolvedAt = new Date().toISOString();
 
-    await taskStore.runWrite(async (db) => {
-      db.run(
-        "UPDATE open_questions SET status = 'resolved', resolved_at = ? WHERE id = ? AND project_id = ?",
+    await taskStore.runWrite(async (tx) => {
+      await tx.execute(
+        "UPDATE open_questions SET status = 'resolved', resolved_at = $1 WHERE id = $2 AND project_id = $3",
         [resolvedAt, notificationId, projectId]
       );
     });

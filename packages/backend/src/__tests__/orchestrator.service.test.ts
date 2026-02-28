@@ -130,16 +130,11 @@ vi.mock("../websocket/index.js", () => ({
   sendAgentOutputToProject: (...args: unknown[]) => mockSendAgentOutputToProject(...args),
 }));
 
-vi.mock("../services/task-store.service.js", () => {
-  const mockDb = {
-    prepare: vi.fn().mockReturnValue({
-      bind: vi.fn(),
-      step: vi.fn().mockReturnValue(true),
-      getAsObject: vi.fn().mockReturnValue({ total_done: 0, total_failed: 0, queue_depth: 0 }),
-      free: vi.fn(),
-    }),
-    run: vi.fn(),
-  };
+vi.mock("../services/task-store.service.js", async () => {
+  const { createMockDbClient } = await import("./test-db-helper.js");
+  const mockDb = createMockDbClient({
+    queryOne: vi.fn().mockResolvedValue({ total_done: 0, total_failed: 0, queue_depth: 0 }),
+  });
   const mockInstance = {
     ready: mockTaskStoreReady,
     readyWithStatusMap: vi

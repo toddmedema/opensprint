@@ -114,14 +114,14 @@ export class SessionManager {
     worktreePath?: string
   ): Promise<void> {
     const projectId = await repoPathToProjectId(repoPath);
-    await taskStore.runWrite(async (db) => {
-      const threshold = computeLogDiff95thPercentile(db);
+    await taskStore.runWrite(async (client) => {
+      const threshold = await computeLogDiff95thPercentile(client);
       const truncatedOutputLog = truncateToThreshold(session.outputLog, threshold);
       const truncatedGitDiff = truncateToThreshold(session.gitDiff, threshold);
 
-      db.run(
+      await client.execute(
         `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, completed_at, status, output_log, git_branch, git_diff, test_results, failure_reason, summary)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
         [
           projectId,
           taskId,
@@ -203,18 +203,13 @@ export class SessionManager {
     attempt: number
   ): Promise<AgentSession | null> {
     const projectId = await repoPathToProjectId(repoPath);
-    const db = await taskStore.getDb();
-    const stmt = db.prepare(
-      "SELECT task_id, attempt, agent_type, agent_model, started_at, completed_at, status, output_log, git_branch, git_diff, test_results, failure_reason, summary FROM agent_sessions WHERE project_id = ? AND task_id = ? AND attempt = ?"
+    const client = await taskStore.getDb();
+    const row = await client.queryOne(
+      "SELECT task_id, attempt, agent_type, agent_model, started_at, completed_at, status, output_log, git_branch, git_diff, test_results, failure_reason, summary FROM agent_sessions WHERE project_id = $1 AND task_id = $2 AND attempt = $3",
+      [projectId, taskId, attempt]
     );
-    stmt.bind([projectId, taskId, attempt]);
-    if (!stmt.step()) {
-      stmt.free();
-      return null;
-    }
-    const row = stmt.getAsObject();
-    stmt.free();
-    return rowToSession(row);
+    if (!row) return null;
+    return rowToSession(row as Record<string, unknown>);
   }
 
   /**
@@ -222,17 +217,12 @@ export class SessionManager {
    */
   async listSessions(repoPath: string, taskId: string): Promise<AgentSession[]> {
     const projectId = await repoPathToProjectId(repoPath);
-    const db = await taskStore.getDb();
-    const stmt = db.prepare(
-      "SELECT task_id, attempt, agent_type, agent_model, started_at, completed_at, status, output_log, git_branch, git_diff, test_results, failure_reason, summary FROM agent_sessions WHERE project_id = ? AND task_id = ? ORDER BY attempt ASC"
+    const client = await taskStore.getDb();
+    const rows = await client.query(
+      "SELECT task_id, attempt, agent_type, agent_model, started_at, completed_at, status, output_log, git_branch, git_diff, test_results, failure_reason, summary FROM agent_sessions WHERE project_id = $1 AND task_id = $2 ORDER BY attempt ASC",
+      [projectId, taskId]
     );
-    stmt.bind([projectId, taskId]);
-    const sessions: AgentSession[] = [];
-    while (stmt.step()) {
-      sessions.push(rowToSession(stmt.getAsObject()));
-    }
-    stmt.free();
-    return sessions;
+    return rows.map((r) => rowToSession(r as Record<string, unknown>));
   }
 
   /**
@@ -240,14 +230,14 @@ export class SessionManager {
    */
   async loadSessionsGroupedByTaskId(repoPath: string): Promise<Map<string, AgentSession[]>> {
     const projectId = await repoPathToProjectId(repoPath);
-    const db = await taskStore.getDb();
-    const stmt = db.prepare(
-      "SELECT task_id, attempt, agent_type, agent_model, started_at, completed_at, status, output_log, git_branch, git_diff, test_results, failure_reason, summary FROM agent_sessions WHERE project_id = ? ORDER BY task_id, attempt ASC"
+    const client = await taskStore.getDb();
+    const rows = await client.query(
+      "SELECT task_id, attempt, agent_type, agent_model, started_at, completed_at, status, output_log, git_branch, git_diff, test_results, failure_reason, summary FROM agent_sessions WHERE project_id = $1 ORDER BY task_id, attempt ASC",
+      [projectId]
     );
-    stmt.bind([projectId]);
     const result = new Map<string, AgentSession[]>();
-    while (stmt.step()) {
-      const session = rowToSession(stmt.getAsObject());
+    for (const row of rows) {
+      const session = rowToSession(row as Record<string, unknown>);
       const taskId = session.taskId;
       let arr = result.get(taskId);
       if (!arr) {
@@ -256,7 +246,6 @@ export class SessionManager {
       }
       arr.push(session);
     }
-    stmt.free();
     return result;
   }
 
@@ -268,29 +257,27 @@ export class SessionManager {
     repoPath: string
   ): Promise<Map<string, Array<{ testResults: TestResults | null }>>> {
     const projectId = await repoPathToProjectId(repoPath);
-    const db = await taskStore.getDb();
-    const stmt = db.prepare(
+    const client = await taskStore.getDb();
+    const rows = await client.query(
       `SELECT a.task_id, a.attempt, a.test_results
        FROM agent_sessions a
        INNER JOIN (
          SELECT project_id, task_id, MAX(attempt) AS max_attempt
          FROM agent_sessions
-         WHERE project_id = ?
+         WHERE project_id = $1
          GROUP BY project_id, task_id
        ) b ON a.project_id = b.project_id AND a.task_id = b.task_id AND a.attempt = b.max_attempt
-       WHERE a.project_id = ?`
+       WHERE a.project_id = $2`,
+      [projectId, projectId]
     );
-    stmt.bind([projectId, projectId]);
     const result = new Map<string, Array<{ testResults: TestResults | null }>>();
-    while (stmt.step()) {
-      const row = stmt.getAsObject();
+    for (const row of rows) {
       const taskId = row.task_id as string;
       const testResults = row.test_results
         ? (JSON.parse(row.test_results as string) as TestResults)
         : null;
       result.set(taskId, [{ testResults }]);
     }
-    stmt.free();
     return result;
   }
 }

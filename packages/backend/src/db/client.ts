@@ -29,6 +29,11 @@ export interface DbClient {
   queryOne(sql: string, params?: unknown[]): Promise<DbRow | undefined>;
 
   /**
+   * Execute a statement (INSERT/UPDATE/DELETE) and return the number of rows affected.
+   */
+  execute(sql: string, params?: unknown[]): Promise<number>;
+
+  /**
    * Run a function inside a transaction. The function receives a client
    * scoped to the transaction (same query/queryOne API).
    * On success, the transaction is committed. On throw, it is rolled back.
@@ -51,6 +56,10 @@ export function createPostgresDbClient(pool: Pool): DbClient {
       const rows = result.rows as DbRow[];
       return rows.length > 0 ? rows[0] : undefined;
     },
+    async execute(sql: string, params?: unknown[]): Promise<number> {
+      const result = await client.query(sql, params ?? []);
+      return result.rowCount ?? 0;
+    },
     async runInTransaction<T>(fn: (txClient: DbClient) => Promise<T>): Promise<T> {
       // Already in a transaction; reuse this client
       return fn(clientFromPool(client));
@@ -66,6 +75,10 @@ export function createPostgresDbClient(pool: Pool): DbClient {
       const result = await pool.query(sql, params ?? []);
       const rows = result.rows as DbRow[];
       return rows.length > 0 ? rows[0] : undefined;
+    },
+    async execute(sql: string, params?: unknown[]): Promise<number> {
+      const result = await pool.query(sql, params ?? []);
+      return result.rowCount ?? 0;
     },
     async runInTransaction<T>(fn: (txClient: DbClient) => Promise<T>): Promise<T> {
       const client = await pool.connect();

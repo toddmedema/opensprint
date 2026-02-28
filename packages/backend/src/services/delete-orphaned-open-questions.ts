@@ -18,27 +18,22 @@ export async function deleteOrphanedOpenQuestions(): Promise<{
   const projects = await getProjects();
   const validProjectIds = new Set(projects.map((p) => p.id));
 
-  const db = await taskStore.getDb();
-  const stmt = db.prepare("SELECT id, project_id FROM open_questions");
-  const rows: { id: string; project_id: string }[] = [];
-  while (stmt.step()) {
-    const row = stmt.getAsObject() as { id: string; project_id: string };
-    rows.push(row);
-  }
-  stmt.free();
+  const client = await taskStore.getDb();
+  const rows = await client.query("SELECT id, project_id FROM open_questions");
+  const allRows = rows as { id: string; project_id: string }[];
 
-  const orphaned = rows.filter((r) => !validProjectIds.has(r.project_id));
+  const orphaned = allRows.filter((r) => !validProjectIds.has(r.project_id));
 
   if (orphaned.length === 0) {
     return { deletedCount: 0, deletedIds: [] };
   }
 
-  await taskStore.runWrite(async (db) => {
+  await taskStore.runWrite(async (tx) => {
     for (const row of orphaned) {
-      db.run("DELETE FROM open_questions WHERE id = ? AND project_id = ?", [
-        row.id,
-        row.project_id,
-      ]);
+      await tx.execute(
+        "DELETE FROM open_questions WHERE id = $1 AND project_id = $2",
+        [row.id, row.project_id]
+      );
     }
   });
 

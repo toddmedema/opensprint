@@ -11,6 +11,7 @@ import { taskStore } from "./task-store.service.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import { createLogger } from "../utils/logger.js";
+import { toPgParams } from "../db/sql-params.js";
 
 const log = createLogger("feedback-store");
 
@@ -186,12 +187,12 @@ export class FeedbackStoreService {
     const MAX_RETRIES = 10;
     for (let i = 0; i < MAX_RETRIES; i++) {
       const id = generateShortFeedbackId();
-      const db = await taskStore.getDb();
-      const stmt = db.prepare("SELECT 1 FROM feedback WHERE id = ? AND project_id = ? LIMIT 1");
-      stmt.bind([id, projectId]);
-      const exists = stmt.step();
-      stmt.free();
-      if (!exists) return id;
+      const client = await taskStore.getDb();
+      const row = await client.queryOne(
+        toPgParams("SELECT 1 FROM feedback WHERE id = ? AND project_id = ? LIMIT 1"),
+        [id, projectId]
+      );
+      if (!row) return id;
     }
     throw new Error("Failed to generate unique feedback ID after retries");
   }
@@ -206,13 +207,15 @@ export class FeedbackStoreService {
     };
     row.image_paths = imagePaths ? JSON.stringify(imagePaths) : null;
 
-    await taskStore.runWrite(async (db) => {
-      db.run(
-        `INSERT INTO feedback (
+    await taskStore.runWrite(async (client) => {
+      await client.execute(
+        toPgParams(
+          `INSERT INTO feedback (
           id, project_id, text, category, mapped_plan_id, created_task_ids, status, created_at,
           task_titles, proposed_tasks, mapped_epic_id, is_scope_change, feedback_source_task_id,
           parent_id, depth, user_priority, image_paths, extra
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ),
         [
           row.id,
           row.project_id,
@@ -239,23 +242,21 @@ export class FeedbackStoreService {
 
   async updateFeedback(projectId: string, item: FeedbackItem): Promise<void> {
     const row = itemToRow(item, projectId);
-    const db = await taskStore.getDb();
-    const existing = db.prepare("SELECT image_paths FROM feedback WHERE id = ? AND project_id = ?");
-    existing.bind([item.id, projectId]);
-    let _imagePaths: string | null = null;
-    if (existing.step()) {
-      const o = existing.getAsObject();
-      _imagePaths = (o.image_paths as string) ?? null;
-    }
-    existing.free();
+    const client = await taskStore.getDb();
+    await client.queryOne(
+      toPgParams("SELECT image_paths FROM feedback WHERE id = ? AND project_id = ?"),
+      [item.id, projectId]
+    );
 
-    await taskStore.runWrite(async (db) => {
-      db.run(
-        `UPDATE feedback SET
+    await taskStore.runWrite(async (tx) => {
+      await tx.execute(
+        toPgParams(
+          `UPDATE feedback SET
           text = ?, category = ?, mapped_plan_id = ?, created_task_ids = ?, status = ?,
           task_titles = ?, proposed_tasks = ?, mapped_epic_id = ?, is_scope_change = ?,
           feedback_source_task_id = ?, parent_id = ?, depth = ?, user_priority = ?, extra = ?
-        WHERE id = ? AND project_id = ?`,
+        WHERE id = ? AND project_id = ?`
+        ),
         [
           row.text,
           row.category,
@@ -279,12 +280,12 @@ export class FeedbackStoreService {
   }
 
   async getFeedbackRow(projectId: string, feedbackId: string): Promise<FeedbackRow | null> {
-    const db = await taskStore.getDb();
-    const stmt = db.prepare("SELECT * FROM feedback WHERE id = ? AND project_id = ?");
-    stmt.bind([feedbackId, projectId]);
-    const row = stmt.step() ? (stmt.getAsObject() as unknown as FeedbackRow) : null;
-    stmt.free();
-    return row;
+    const client = await taskStore.getDb();
+    const row = await client.queryOne(
+      toPgParams("SELECT * FROM feedback WHERE id = ? AND project_id = ?"),
+      [feedbackId, projectId]
+    );
+    return row ? (row as unknown as FeedbackRow) : null;
   }
 
   async getFeedback(projectId: string, feedbackId: string): Promise<FeedbackItem> {
@@ -309,50 +310,41 @@ export class FeedbackStoreService {
     projectId: string,
     options?: { limit?: number; offset?: number }
   ): Promise<FeedbackItem[] | { items: FeedbackItem[]; total: number }> {
-    const db = await taskStore.getDb();
+    const client = await taskStore.getDb();
     const limit = options?.limit;
     const offset = options?.offset ?? 0;
 
     if (limit != null) {
-      const countStmt = db.prepare(
-        "SELECT COUNT(*) as cnt FROM feedback WHERE project_id = ?"
+      const countRow = await client.queryOne(
+        toPgParams("SELECT COUNT(*)::int as cnt FROM feedback WHERE project_id = ?"),
+        [projectId]
       );
-      countStmt.bind([projectId]);
-      const total = (countStmt.step() ? countStmt.getAsObject() : { cnt: 0 }) as { cnt: number };
-      countStmt.free();
+      const total = (countRow?.cnt as number) ?? 0;
 
       const safeLimit = Math.max(1, Math.min(500, limit));
       const safeOffset = Math.max(0, offset);
-      const stmt = db.prepare(
-        "SELECT * FROM feedback WHERE project_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?"
+      const rows = await client.query(
+        toPgParams("SELECT * FROM feedback WHERE project_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?"),
+        [projectId, safeLimit, safeOffset]
       );
-      stmt.bind([projectId, safeLimit, safeOffset]);
-      const rows: FeedbackRow[] = [];
-      while (stmt.step()) {
-        rows.push(stmt.getAsObject() as unknown as FeedbackRow);
-      }
-      stmt.free();
 
       const items: FeedbackItem[] = [];
-      for (const row of rows) {
+      for (const row of rows as unknown as FeedbackRow[]) {
         const item = rowToItem(row);
         const paths: string[] = row.image_paths ? JSON.parse(row.image_paths) : [];
         item.images = await loadFeedbackImages(projectId, row.id, paths.length ? paths : null);
         items.push(item);
       }
-      return { items, total: total.cnt };
+      return { items, total };
     }
 
-    const stmt = db.prepare("SELECT * FROM feedback WHERE project_id = ? ORDER BY created_at DESC");
-    stmt.bind([projectId]);
-    const rows: FeedbackRow[] = [];
-    while (stmt.step()) {
-      rows.push(stmt.getAsObject() as unknown as FeedbackRow);
-    }
-    stmt.free();
+    const rows = await client.query(
+      toPgParams("SELECT * FROM feedback WHERE project_id = ? ORDER BY created_at DESC"),
+      [projectId]
+    );
 
     const items: FeedbackItem[] = [];
-    for (const row of rows) {
+    for (const row of rows as unknown as FeedbackRow[]) {
       const item = rowToItem(row);
       const paths: string[] = row.image_paths ? JSON.parse(row.image_paths) : [];
       item.images = await loadFeedbackImages(projectId, row.id, paths.length ? paths : null);
@@ -366,9 +358,11 @@ export class FeedbackStoreService {
   async enqueueForCategorization(projectId: string, feedbackId: string): Promise<void> {
     const existing = await this.listPendingFeedbackIds(projectId);
     if (existing.includes(feedbackId)) return;
-    await taskStore.runWrite(async (db) => {
-      db.run(
-        "INSERT OR IGNORE INTO feedback_inbox (project_id, feedback_id, enqueued_at) VALUES (?, ?, ?)",
+    await taskStore.runWrite(async (client) => {
+      await client.execute(
+        toPgParams(
+          "INSERT INTO feedback_inbox (project_id, feedback_id, enqueued_at) VALUES (?, ?, ?) ON CONFLICT (project_id, feedback_id) DO NOTHING"
+        ),
         [projectId, feedbackId, new Date().toISOString()]
       );
     });
@@ -376,13 +370,13 @@ export class FeedbackStoreService {
   }
 
   async getNextPendingFeedbackId(projectId: string): Promise<string | null> {
-    const db = await taskStore.getDb();
-    const stmt = db.prepare(
-      "SELECT feedback_id FROM feedback_inbox WHERE project_id = ? ORDER BY enqueued_at ASC LIMIT 1"
+    const client = await taskStore.getDb();
+    const row = await client.queryOne(
+      toPgParams(
+        "SELECT feedback_id FROM feedback_inbox WHERE project_id = ? ORDER BY enqueued_at ASC LIMIT 1"
+      ),
+      [projectId]
     );
-    stmt.bind([projectId]);
-    const row = stmt.step() ? stmt.getAsObject() : null;
-    stmt.free();
     return row ? (row.feedback_id as string) : null;
   }
 
@@ -393,19 +387,19 @@ export class FeedbackStoreService {
    */
   async claimNextPendingFeedbackId(projectId: string): Promise<string | null> {
     let claimedId: string | null = null;
-    await taskStore.runWrite(async (db) => {
-      const stmt = db.prepare(
-        "SELECT feedback_id FROM feedback_inbox WHERE project_id = ? ORDER BY enqueued_at ASC LIMIT 1"
+    await taskStore.runWrite(async (client) => {
+      const row = await client.queryOne(
+        toPgParams(
+          "SELECT feedback_id FROM feedback_inbox WHERE project_id = ? ORDER BY enqueued_at ASC LIMIT 1"
+        ),
+        [projectId]
       );
-      stmt.bind([projectId]);
-      const row = stmt.step() ? stmt.getAsObject() : null;
-      stmt.free();
       if (row) {
         claimedId = row.feedback_id as string;
-        db.run("DELETE FROM feedback_inbox WHERE project_id = ? AND feedback_id = ?", [
-          projectId,
-          claimedId,
-        ]);
+        await client.execute(
+          toPgParams("DELETE FROM feedback_inbox WHERE project_id = ? AND feedback_id = ?"),
+          [projectId, claimedId]
+        );
         log.info("Claimed feedback from inbox for Analyst", { projectId, feedbackId: claimedId });
       }
     });
@@ -413,27 +407,22 @@ export class FeedbackStoreService {
   }
 
   async removeFromInbox(projectId: string, feedbackId: string): Promise<void> {
-    await taskStore.runWrite(async (db) => {
-      db.run("DELETE FROM feedback_inbox WHERE project_id = ? AND feedback_id = ?", [
-        projectId,
-        feedbackId,
-      ]);
+    await taskStore.runWrite(async (client) => {
+      await client.execute(
+        toPgParams("DELETE FROM feedback_inbox WHERE project_id = ? AND feedback_id = ?"),
+        [projectId, feedbackId]
+      );
     });
     log.info("Removed feedback from inbox (processed)", { projectId, feedbackId });
   }
 
   async listPendingFeedbackIds(projectId: string): Promise<string[]> {
-    const db = await taskStore.getDb();
-    const stmt = db.prepare(
-      "SELECT feedback_id FROM feedback_inbox WHERE project_id = ? ORDER BY enqueued_at ASC"
+    const client = await taskStore.getDb();
+    const rows = await client.query(
+      toPgParams("SELECT feedback_id FROM feedback_inbox WHERE project_id = ? ORDER BY enqueued_at ASC"),
+      [projectId]
     );
-    stmt.bind([projectId]);
-    const ids: string[] = [];
-    while (stmt.step()) {
-      ids.push(stmt.getAsObject().feedback_id as string);
-    }
-    stmt.free();
-    return ids;
+    return rows.map((r) => r.feedback_id as string);
   }
 }
 

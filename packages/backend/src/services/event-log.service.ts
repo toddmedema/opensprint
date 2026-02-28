@@ -31,10 +31,10 @@ export class EventLogService {
   async append(repoPath: string, event: OrchestratorEvent): Promise<void> {
     const projectId = await repoPathToProjectId(repoPath);
     try {
-      await taskStore.runWrite(async (db) => {
-        db.run(
+      await taskStore.runWrite(async (client) => {
+        await client.execute(
           `INSERT INTO orchestrator_events (project_id, task_id, timestamp, event, data)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES ($1, $2, $3, $4, $5)`,
           [
             projectId,
             event.taskId,
@@ -51,57 +51,51 @@ export class EventLogService {
 
   async readSince(repoPath: string, since: string): Promise<OrchestratorEvent[]> {
     const projectId = await repoPathToProjectId(repoPath);
-    const db = await taskStore.getDb();
-    const stmt = db.prepare(
-      "SELECT task_id, timestamp, event, data FROM orchestrator_events WHERE project_id = ? AND timestamp >= ? ORDER BY id ASC"
+    const client = await taskStore.getDb();
+    const rows = await client.query(
+      "SELECT task_id, timestamp, event, data FROM orchestrator_events WHERE project_id = $1 AND timestamp >= $2 ORDER BY id ASC",
+      [projectId, since]
     );
-    stmt.bind([projectId, since]);
-    const events = hydrateEvents(stmt, projectId);
-    stmt.free();
-    return events;
-  }
-
-  async readForTask(repoPath: string, taskId: string): Promise<OrchestratorEvent[]> {
-    const projectId = await repoPathToProjectId(repoPath);
-    const db = await taskStore.getDb();
-    const stmt = db.prepare(
-      "SELECT task_id, timestamp, event, data FROM orchestrator_events WHERE project_id = ? AND task_id = ? ORDER BY id ASC"
-    );
-    stmt.bind([projectId, taskId]);
-    const events = hydrateEvents(stmt, projectId);
-    stmt.free();
-    return events;
-  }
-
-  async readRecent(repoPath: string, count = 50): Promise<OrchestratorEvent[]> {
-    const projectId = await repoPathToProjectId(repoPath);
-    const db = await taskStore.getDb();
-    const stmt = db.prepare(
-      "SELECT task_id, timestamp, event, data FROM orchestrator_events WHERE project_id = ? ORDER BY id DESC LIMIT ?"
-    );
-    stmt.bind([projectId, count]);
-    const events = hydrateEvents(stmt, projectId);
-    stmt.free();
-    return events.reverse();
-  }
-}
-
-function hydrateEvents(
-  stmt: { step: () => boolean; getAsObject: () => Record<string, unknown> },
-  projectId: string
-): OrchestratorEvent[] {
-  const out: OrchestratorEvent[] = [];
-  while (stmt.step()) {
-    const r = stmt.getAsObject();
-    out.push({
+    return rows.map((r) => ({
       timestamp: r.timestamp as string,
       projectId,
       taskId: r.task_id as string,
       event: r.event as string,
       data: r.data ? (JSON.parse(r.data as string) as Record<string, unknown>) : undefined,
-    });
+    }));
   }
-  return out;
+
+  async readForTask(repoPath: string, taskId: string): Promise<OrchestratorEvent[]> {
+    const projectId = await repoPathToProjectId(repoPath);
+    const client = await taskStore.getDb();
+    const rows = await client.query(
+      "SELECT task_id, timestamp, event, data FROM orchestrator_events WHERE project_id = $1 AND task_id = $2 ORDER BY id ASC",
+      [projectId, taskId]
+    );
+    return rows.map((r) => ({
+      timestamp: r.timestamp as string,
+      projectId,
+      taskId: r.task_id as string,
+      event: r.event as string,
+      data: r.data ? (JSON.parse(r.data as string) as Record<string, unknown>) : undefined,
+    }));
+  }
+
+  async readRecent(repoPath: string, count = 50): Promise<OrchestratorEvent[]> {
+    const projectId = await repoPathToProjectId(repoPath);
+    const client = await taskStore.getDb();
+    const rows = await client.query(
+      "SELECT task_id, timestamp, event, data FROM orchestrator_events WHERE project_id = $1 ORDER BY id DESC LIMIT $2",
+      [projectId, count]
+    );
+    return rows.reverse().map((r) => ({
+      timestamp: r.timestamp as string,
+      projectId,
+      taskId: r.task_id as string,
+      event: r.event as string,
+      data: r.data ? (JSON.parse(r.data as string) as Record<string, unknown>) : undefined,
+    }));
+  }
 }
 
 export const eventLogService = new EventLogService();

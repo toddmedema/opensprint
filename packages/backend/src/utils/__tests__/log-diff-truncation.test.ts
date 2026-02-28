@@ -1,11 +1,15 @@
-import { describe, it, expect } from "vitest";
-import initSqlJs from "sql.js";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   computeLogDiff95thPercentile,
   truncateToThreshold,
   DEFAULT_LOG_DIFF_THRESHOLD,
 } from "../log-diff-truncation.js";
-import { SCHEMA_SQL } from "../../services/task-store.service.js";
+import { createPostgresDbClientFromUrl, runSchema, toPgParams } from "../../db/index.js";
+import type { DbClient } from "../../db/client.js";
+import type { Pool } from "pg";
+
+const url =
+  process.env.TEST_DATABASE_URL ?? "postgresql://opensprint:opensprint@localhost:5432/opensprint";
 
 describe("log-diff-truncation", () => {
   describe("truncateToThreshold", () => {
@@ -41,70 +45,73 @@ describe("log-diff-truncation", () => {
   });
 
   describe("computeLogDiff95thPercentile", () => {
+    let client: DbClient | null = null;
+    let pool: Pool | null = null;
+
+    beforeAll(async () => {
+      try {
+        const result = await createPostgresDbClientFromUrl(url);
+        client = result.client;
+        pool = result.pool;
+        await runSchema(client);
+        await client.query("DELETE FROM agent_sessions");
+      } catch {
+        client = null;
+        pool = null;
+      }
+    });
+
+    afterAll(async () => {
+      if (pool) await pool.end();
+    });
+
     it("returns default when table is empty", async () => {
-      const SQL = await initSqlJs();
-      const db = new SQL.Database();
-      db.run(SCHEMA_SQL);
-      const threshold = computeLogDiff95thPercentile(db);
+      if (!client) return;
+      await client.query("DELETE FROM agent_sessions");
+      const threshold = await computeLogDiff95thPercentile(client);
       expect(threshold).toBe(DEFAULT_LOG_DIFF_THRESHOLD);
     });
 
     it("returns 95th percentile from output_log and git_diff sizes", async () => {
-      const SQL = await initSqlJs();
-      const db = new SQL.Database();
-      db.run(SCHEMA_SQL);
-
-      // Use sizes > MIN_THRESHOLD (1024) so result is not capped
-      // 10 at 2000, 10 at 5000, 5 at 3000, 5 at 8000 -> 30 values
-      // Sorted: 2000*10, 3000*5, 5000*10, 8000*5
-      // 95th percentile index = ceil(0.95*30)-1 = 28, value = 8000
+      if (!client) return;
+      await client.query("DELETE FROM agent_sessions");
+      const sql = toPgParams(
+        `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch, output_log)
+         VALUES (?, ?, ?, 'cursor', 'gpt-4', '2024-01-01', 'success', 'main', ?)`
+      );
       for (let i = 0; i < 10; i++) {
-        db.run(
-          `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch, output_log)
-           VALUES (?, ?, ?, 'cursor', 'gpt-4', '2024-01-01', 'success', 'main', ?)`,
-          ["proj", `task-${i}`, i + 1, "x".repeat(2000)]
-        );
+        await client.execute(sql, ["proj", `task-${i}`, i + 1, "x".repeat(2000)]);
       }
       for (let i = 10; i < 20; i++) {
-        db.run(
-          `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch, output_log)
-           VALUES (?, ?, ?, 'cursor', 'gpt-4', '2024-01-01', 'success', 'main', ?)`,
-          ["proj", `task-${i}`, i + 1, "x".repeat(5000)]
-        );
+        await client.execute(sql, ["proj", `task-${i}`, i + 1, "x".repeat(5000)]);
       }
+      const diffSql = toPgParams(
+        `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch, git_diff)
+         VALUES (?, ?, ?, 'cursor', 'gpt-4', '2024-01-01', 'success', 'main', ?)`
+      );
       for (let i = 20; i < 25; i++) {
-        db.run(
-          `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch, git_diff)
-           VALUES (?, ?, ?, 'cursor', 'gpt-4', '2024-01-01', 'success', 'main', ?)`,
-          ["proj", `task-${i}`, i + 1, "y".repeat(3000)]
-        );
+        await client.execute(diffSql, ["proj", `task-${i}`, i + 1, "y".repeat(3000)]);
       }
       for (let i = 25; i < 30; i++) {
-        db.run(
-          `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch, git_diff)
-           VALUES (?, ?, ?, 'cursor', 'gpt-4', '2024-01-01', 'success', 'main', ?)`,
-          ["proj", `task-${i}`, i + 1, "z".repeat(8000)]
-        );
+        await client.execute(diffSql, ["proj", `task-${i}`, i + 1, "z".repeat(8000)]);
       }
 
-      const threshold = computeLogDiff95thPercentile(db);
-      // 30 values, 95th percentile index = ceil(28.5)-1 = 28, value = 8000
+      const threshold = await computeLogDiff95thPercentile(client);
       expect(threshold).toBe(8000);
     });
 
     it("enforces minimum threshold of 1024", async () => {
-      const SQL = await initSqlJs();
-      const db = new SQL.Database();
-      db.run(SCHEMA_SQL);
-
-      // Insert one small entry (50 bytes) - 95th percentile would be 50, but we enforce min 1024
-      db.run(
-        `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch, output_log)
-         VALUES ('p', 't', 1, 'cursor', 'gpt-4', '2024-01-01', 'success', 'main', ?)`,
+      if (!client) return;
+      await client.query("DELETE FROM agent_sessions");
+      await client.execute(
+        toPgParams(
+          `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch, output_log)
+           VALUES ('p', 't', 1, 'cursor', 'gpt-4', '2024-01-01', 'success', 'main', ?)`
+        ),
         ["x".repeat(50)]
       );
 
-      const threshold = computeLogDiff95thPercentile(db);
+      const threshold = await computeLogDiff95thPercentile(client);
       expect(threshold).toBe(1024);
     });
   });

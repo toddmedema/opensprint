@@ -8,24 +8,27 @@ import {
   type TaskAttemptRecord,
 } from "../services/agent-identity.service.js";
 import type { ProjectSettings } from "@opensprint/shared";
-import type { Database } from "sql.js";
+import type { DbClient } from "../db/client.js";
+import { createSqliteDbClient, SCHEMA_SQL_SQLITE } from "./test-db-helper.js";
 
-let testDb: Database;
-vi.mock("../services/task-store.service.js", async (importOriginal) => {
-  const mod = await importOriginal<typeof import("../services/task-store.service.js")>();
+let testClient: DbClient;
+vi.mock("../services/task-store.service.js", async () => {
+  const { createSqliteDbClient, SCHEMA_SQL_SQLITE } = await import("./test-db-helper.js");
   return {
-    ...mod,
     taskStore: {
       init: vi.fn().mockImplementation(async () => {
         const SQL = await initSqlJs();
-        testDb = new SQL.Database();
-        testDb.run(mod.SCHEMA_SQL);
+        const db = new SQL.Database();
+        db.run(SCHEMA_SQL_SQLITE);
+        testClient = createSqliteDbClient(db);
       }),
-      getDb: vi.fn().mockImplementation(async () => testDb),
+      getDb: vi.fn().mockImplementation(async () => testClient),
       runWrite: vi
         .fn()
-        .mockImplementation(async (fn: (db: Database) => Promise<unknown>) => fn(testDb)),
+        .mockImplementation(async (fn: (client: DbClient) => Promise<unknown>) => fn(testClient)),
     },
+    TaskStoreService: vi.fn(),
+    SCHEMA_SQL: "",
   };
 });
 
@@ -113,11 +116,11 @@ describe("AgentIdentityService", () => {
     }
 
     const { taskStore } = await import("../services/task-store.service.js");
-    const db = await taskStore.getDb();
-    const stmt = db.prepare("SELECT COUNT(*) as c FROM agent_stats WHERE project_id LIKE 'repo:%'");
-    stmt.step();
-    const count = (stmt.getAsObject().c as number) ?? 0;
-    stmt.free();
+    const client = await taskStore.getDb();
+    const row = await client.queryOne(
+      "SELECT COUNT(*) as c FROM agent_stats WHERE project_id LIKE 'repo:%'"
+    );
+    const count = (row?.c as number) ?? 0;
     expect(count).toBeLessThanOrEqual(500);
   });
 
