@@ -41,7 +41,7 @@ Respond with ONLY valid JSON in this exact format (you may wrap in a markdown js
       "description": "Detailed spec: what to fix, which files, acceptance criteria",
       "priority": 1,
       "depends_on": [],
-      "complexity": "simple"
+      "complexity": 3
     },
     {
       "index": 1,
@@ -49,12 +49,12 @@ Respond with ONLY valid JSON in this exact format (you may wrap in a markdown js
       "description": "...",
       "priority": 1,
       "depends_on": [0],
-      "complexity": "simple"
+      "complexity": 3
     }
   ]
 }
 
-priority: 0 (highest) to 4 (lowest). depends_on: array of task indices (0-based) this task is blocked by. complexity: simple or complex — assign per task based on fix difficulty (simple: routine; complex: challenging).
+priority: 0 (highest) to 4 (lowest). depends_on: array of task indices (0-based) this task is blocked by. complexity: integer 1-10 (1=simplest, 10=most complex) — assign per task based on fix difficulty.
 If you cannot parse meaningful fix tasks from the output, return: {"status": "failed", "tasks": []}`;
 
 export interface CreateFixEpicResult {
@@ -110,7 +110,7 @@ Output your response as JSON with status and tasks array.`;
       description?: string;
       priority?: number;
       depends_on?: number[];
-      complexity?: "simple" | "complex";
+      complexity?: number;
     }>;
   }>(response.content, "tasks");
   if (!parsed) {

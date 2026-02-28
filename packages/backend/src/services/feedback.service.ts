@@ -55,7 +55,7 @@ Given the user's feedback (and any attached images), the PRD, available plans, a
 2. Which feature/plan it relates to (if clearly identifiable) — use the planId from the available plans list, or null when the link is not clear
 3. The mapped epic ID — use the epicId from the plan you mapped to (or null if no plan or link unclear)
 4. Whether this is a scope change — true if the feedback fundamentally alters requirements/PRD; false otherwise
-5. Proposed tasks in indexed Planner format — same structure as Planner output: index, title, description, priority, depends_on, complexity (simple|complex — assign per task based on implementation difficulty). When mapped_plan_id is null, create top-level tasks (no parent epic).
+5. Proposed tasks in indexed Planner format — same structure as Planner output: index, title, description, priority, depends_on, complexity (integer 1-10 — assign per task based on implementation difficulty, 1=simplest, 10=most complex). When mapped_plan_id is null, create top-level tasks (no parent epic).
 
 **Linking to existing tasks:** When feedback is clearly covered by one or more existing OPEN tasks, prefer linking instead of creating new tasks:
 - \`link_to_existing_task_ids\`: string[]. If non-empty, do NOT create new tasks; link feedback to these existing task IDs. All IDs must appear in the Existing OPEN/READY tasks list.
@@ -67,7 +67,7 @@ When feedback lacks a clear plan/epic link, use mapped_plan_id: null, mapped_epi
 
 For replies (parent_id present), consider the parent's category and mapped plan — the reply often refines or adds to the parent. If the feedback is a single word or too vague to categorize, default to "ux" and propose_tasks: [] with a generic title.
 
-**Reply-derived complexity:** When feedback is a reply (parent_id present), always set complexity to "complex" for every proposed task. Rationale: a reply indicates the default agent could not resolve it, so the work merits a complex agent.
+**Reply-derived complexity:** When feedback is a reply (parent_id present), always set complexity to 7 for every proposed task. Rationale: a reply indicates the default agent could not resolve it, so the work merits a higher-complexity agent.
 
 JSON format:
 {
@@ -76,7 +76,7 @@ JSON format:
   "mapped_epic_id": "epicId-from-plan or null",
   "is_scope_change": true | false,
   "proposed_tasks": [
-    { "index": 0, "title": "Task title", "description": "Detailed spec with acceptance criteria", "priority": 1, "depends_on": [], "complexity": "simple" }
+    { "index": 0, "title": "Task title", "description": "Detailed spec with acceptance criteria", "priority": 1, "depends_on": [], "complexity": 3 }
   ],
   "link_to_existing_task_ids": ["task-id-1", "task-id-2"],
   "similar_existing_task_id": "task-id or null",
@@ -86,7 +86,7 @@ JSON format:
 
 When feedback is too vague: return non-empty open_questions in the standard protocol format: [{ "id": "q1", "text": "Clarification question..." }]. The server surfaces these via the Human Notification System. Do not set proposed_tasks or link_to_existing_task_ids. When open_questions is non-empty, the system will not create tasks or link to existing. Omit open_questions (or use empty array) when you can categorize normally.
 
-priority: 0 (highest) to 4 (lowest). depends_on: array of task indices (0-based) this task is blocked by. complexity: simple or complex — assign per task based on implementation difficulty.`;
+priority: 0 (highest) to 4 (lowest). depends_on: array of task indices (0-based) this task is blocked by. complexity: integer 1-10 (1=simplest, 10=most complex) — assign per task based on implementation difficulty.`;
 
 export class FeedbackService {
   private projectService = new ProjectService();

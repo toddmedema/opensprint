@@ -74,7 +74,7 @@ For depends_on: use 0-based indices into YOUR tasks array. Ensure no circular de
 ${JSON_OUTPUT_PREAMBLE}
 
 **If delta tasks are needed:**
-{"status":"success","capability_summary":"<markdown>","tasks":[{"index":0,"title":"Task title","description":"Detailed spec","priority":1,"depends_on":[],"complexity":"simple"}]}
+{"status":"success","capability_summary":"<markdown>","tasks":[{"index":0,"title":"Task title","description":"Detailed spec","priority":1,"depends_on":[],"complexity":3}]}
 
 - capability_summary: markdown summary of current capabilities (use ## headers for sections)
 - tasks: array of delta tasks
@@ -83,7 +83,7 @@ ${JSON_OUTPUT_PREAMBLE}
   - description: Detailed spec with acceptance criteria
   - priority: 0 (highest) to 4 (lowest)
   - depends_on: array of indices (0-based) this task depends on — use [] if none
-  - complexity: simple or complex — assign per task based on implementation difficulty (simple: routine; complex: challenging)
+  - complexity: integer 1-10 (1=simplest, 10=most complex) — assign per task based on implementation difficulty
 
 **If no work is needed (plan unchanged or fully satisfied):**
 {"status":"no_changes_needed","capability_summary":"<markdown>"}
