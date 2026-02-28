@@ -34,6 +34,9 @@ export const MAX_PRIORITY_BEFORE_BLOCK = 4;
 /** Block reasons that indicate technical errors (merge failure, coding failure). Tasks with these can be auto-retried. */
 export const TECHNICAL_BLOCK_REASONS = ["Merge Failure", "Coding Failure"] as const;
 
+/** Block reason when Coder emits open_questions (human clarification needed) */
+export const OPEN_QUESTION_BLOCK_REASON = "Open Question";
+
 /** Interval for auto-retrying tasks blocked by technical errors (8 hours) */
 export const AUTO_RETRY_BLOCKED_INTERVAL_MS = 8 * 60 * 60 * 1000;
 

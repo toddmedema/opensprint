@@ -9,6 +9,7 @@ import type {
   FeedbackUpdatedEvent,
   FeedbackResolvedEvent,
   TaskPriority,
+  Notification,
 } from "@opensprint/shared";
 import {
   setConnected,
@@ -16,6 +17,7 @@ import {
   setHilNotification,
   setDeliverToast,
 } from "../slices/websocketSlice";
+import { addNotification, removeNotification } from "../slices/openQuestionsSlice";
 import { setConnectionError } from "../slices/connectionSlice";
 import {
   appendAgentOutput,
@@ -332,6 +334,24 @@ export const websocketMiddleware: Middleware = (storeApi) => {
         void qc.invalidateQueries({ queryKey: queryKeys.deliver.status(projectId) });
         void qc.invalidateQueries({ queryKey: queryKeys.deliver.history(projectId) });
         break;
+
+      case "notification.added": {
+        const ev = event as { type: "notification.added"; notification: Notification };
+        if (ev.notification) {
+          d(addNotification(ev.notification));
+        }
+        break;
+      }
+
+      case "notification.resolved": {
+        const ev = event as {
+          type: "notification.resolved";
+          notificationId: string;
+          projectId: string;
+        };
+        d(removeNotification({ projectId: ev.projectId, notificationId: ev.notificationId }));
+        break;
+      }
     }
   }
 

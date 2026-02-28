@@ -10,6 +10,7 @@ import executeReducer from "./slices/executeSlice";
 import evalReducer from "./slices/evalSlice";
 import deliverReducer from "./slices/deliverSlice";
 import notificationReducer from "./slices/notificationSlice";
+import openQuestionsReducer from "./slices/openQuestionsSlice";
 import { websocketMiddleware } from "./middleware/websocketMiddleware";
 import { agentOutputFilterMiddleware } from "./middleware/agentOutputFilterMiddleware";
 import { notificationListener } from "./listeners/notificationListener";
@@ -27,6 +28,7 @@ export const store = configureStore({
     eval: evalReducer,
     deliver: deliverReducer,
     notification: notificationReducer,
+    openQuestions: openQuestionsReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

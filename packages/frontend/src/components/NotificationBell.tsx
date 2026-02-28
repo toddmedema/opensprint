@@ -5,8 +5,8 @@ import type { Notification, NotificationSource, ApiBlockedErrorCode } from "@ope
 import { getProjectPhasePath } from "../lib/phaseRouting";
 import { setSelectedPlanId } from "../store/slices/planSlice";
 import { setSelectedTaskId } from "../store/slices/executeSlice";
-import { useAppDispatch } from "../store";
-import { api } from "../api/client";
+import { fetchProjectNotifications } from "../store/slices/openQuestionsSlice";
+import { useAppDispatch, useAppSelector } from "../store";
 
 const POLL_INTERVAL_MS = 5000;
 
@@ -50,8 +50,13 @@ interface NotificationBellProps {
   projectId: string;
 }
 
+const EMPTY_NOTIFICATIONS: Notification[] = [];
+
 export function NotificationBell({ projectId }: NotificationBellProps) {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const notifications = useAppSelector((s) => {
+    const list = s.openQuestions?.byProject?.[projectId];
+    return list ?? EMPTY_NOTIFICATIONS;
+  });
   const [open, setOpen] = useState(false);
   const [dropdownRect, setDropdownRect] = useState<DOMRect | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -59,15 +64,14 @@ export function NotificationBell({ projectId }: NotificationBellProps) {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
 
-  const fetchNotifications = useCallback(() => {
-    api.notifications.listByProject(projectId).then(setNotifications).catch(console.error);
-  }, [projectId]);
-
   useEffect(() => {
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, POLL_INTERVAL_MS);
+    dispatch(fetchProjectNotifications(projectId));
+    const interval = setInterval(
+      () => dispatch(fetchProjectNotifications(projectId)),
+      POLL_INTERVAL_MS
+    );
     return () => clearInterval(interval);
-  }, [fetchNotifications]);
+  }, [projectId, dispatch]);
 
   useEffect(() => {
     if (open && buttonRef.current) {
@@ -79,8 +83,8 @@ export function NotificationBell({ projectId }: NotificationBellProps) {
 
   useEffect(() => {
     if (!open) return;
-    fetchNotifications();
-  }, [open, fetchNotifications]);
+    dispatch(fetchProjectNotifications(projectId));
+  }, [open, projectId, dispatch]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {

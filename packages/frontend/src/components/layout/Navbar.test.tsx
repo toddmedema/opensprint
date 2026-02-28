@@ -14,6 +14,7 @@ import { Navbar } from "./Navbar";
 import executeReducer, { toTasksByIdAndOrder } from "../../store/slices/executeSlice";
 import planReducer from "../../store/slices/planSlice";
 import websocketReducer from "../../store/slices/websocketSlice";
+import openQuestionsReducer from "../../store/slices/openQuestionsSlice";
 
 const mockGetSettings = vi.fn();
 const mockProjectsList = vi.fn();
@@ -92,6 +93,7 @@ function createStore(executeTasks: Task[] = []) {
       execute: executeReducer,
       plan: planReducer,
       websocket: websocketReducer,
+      openQuestions: openQuestionsReducer,
     },
     preloadedState: {
       execute: {

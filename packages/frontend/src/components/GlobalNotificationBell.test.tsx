@@ -7,6 +7,7 @@ import { configureStore } from "@reduxjs/toolkit";
 import { GlobalNotificationBell } from "./GlobalNotificationBell";
 import executeReducer from "../store/slices/executeSlice";
 import planReducer from "../store/slices/planSlice";
+import openQuestionsReducer from "../store/slices/openQuestionsSlice";
 
 const mockListGlobal = vi.fn();
 const mockProjectsList = vi.fn();
@@ -47,7 +48,11 @@ function renderGlobalNotificationBell(
   mockListGlobal.mockResolvedValue(notifications);
   mockProjectsList.mockResolvedValue(projects);
   const store = configureStore({
-    reducer: { execute: executeReducer, plan: planReducer },
+    reducer: {
+      execute: executeReducer,
+      plan: planReducer,
+      openQuestions: openQuestionsReducer,
+    },
   });
   return render(
     <Provider store={store}>

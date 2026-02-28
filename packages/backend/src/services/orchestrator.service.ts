@@ -18,6 +18,7 @@ import {
   getAgentNameForRole,
   AGENT_NAMES,
   AGENT_NAMES_BY_ROLE,
+  OPEN_QUESTION_BLOCK_REASON,
   type PlanComplexity,
 } from "@opensprint/shared";
 import { taskStore as taskStoreSingleton, type StoredTask } from "./task-store.service.js";
@@ -32,6 +33,7 @@ import { TestRunner } from "./test-runner.js";
 import { activeAgentsService } from "./active-agents.service.js";
 import { recoveryService, type RecoveryHost, type GuppAssignment } from "./recovery.service.js";
 import { FeedbackService } from "./feedback.service.js";
+import { notificationService } from "./notification.service.js";
 import { broadcastToProject } from "../websocket/index.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { extractJsonFromAgentResponse } from "../utils/json-extract.js";
@@ -1316,6 +1318,76 @@ export class OrchestratorService {
         await this.executeReviewPhase(projectId, repoPath, task, branchName);
       }
     } else {
+      // Agent question protocol: when Coder returns failed + open_questions, create notification and block task
+      const rawOpenQuestions = result.open_questions ?? result.openQuestions;
+      const openQuestions: Array<{ id: string; text: string }> = Array.isArray(rawOpenQuestions)
+        ? rawOpenQuestions
+            .filter(
+              (q: unknown) =>
+                q && typeof q === "object" && typeof (q as { text?: unknown }).text === "string"
+            )
+            .map((q: unknown) => {
+              const qq = q as { id?: string; text: string };
+              return {
+                id: typeof qq.id === "string" ? qq.id : `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                text: String(qq.text).trim(),
+              };
+            })
+        : [];
+
+      if (openQuestions.length > 0) {
+        const notification = await notificationService.create({
+          projectId,
+          source: "execute",
+          sourceId: task.id,
+          questions: openQuestions.map((q) => ({ id: q.id, text: q.text })),
+        });
+        broadcastToProject(projectId, {
+          type: "notification.added",
+          notification: {
+            id: notification.id,
+            projectId: notification.projectId,
+            source: notification.source,
+            sourceId: notification.sourceId,
+            questions: notification.questions,
+            status: notification.status,
+            createdAt: notification.createdAt,
+            resolvedAt: notification.resolvedAt,
+            kind: "open_question",
+          },
+        });
+        await this.taskStore.update(projectId, task.id, {
+          assignee: "",
+          status: "blocked",
+          block_reason: OPEN_QUESTION_BLOCK_REASON,
+        });
+        broadcastToProject(projectId, {
+          type: "task.updated",
+          taskId: task.id,
+          status: "blocked",
+          assignee: null,
+          blockReason: OPEN_QUESTION_BLOCK_REASON,
+        });
+        const wtPath = slot.worktreePath ?? repoPath;
+        await heartbeatService.deleteHeartbeat(wtPath, task.id).catch(() => {});
+        if (slot.worktreePath && slot.worktreePath !== repoPath) {
+          try {
+            await this.branchManager.removeTaskWorktree(repoPath, task.id, slot.worktreePath);
+          } catch {
+            // Best effort
+          }
+        }
+        await this.deleteAssignment(repoPath, task.id);
+        this.removeSlot(state, task.id);
+        broadcastToProject(projectId, {
+          type: "execute.status",
+          activeTasks: this.buildActiveTasks(state),
+          queueDepth: state.status.queueDepth,
+        });
+        await this.persistCounters(projectId, repoPath);
+        return;
+      }
+
       const reason = result.summary || `Agent exited with code ${exitCode}`;
       await this.failureHandler.handleTaskFailure(
         projectId,

@@ -172,6 +172,12 @@ export interface ActiveTaskConfig {
   previousDiff?: string | null;
   /** Whether this retry reuses an existing branch with prior commits */
   useExistingBranch?: boolean;
+  /** Human-in-the-loop config: agents use this to know when to ask (confirm all vs major only vs full autonomy) */
+  hilConfig?: {
+    scopeChanges: string;
+    architectureDecisions: string;
+    dependencyModifications: string;
+  };
 }
 
 /** Agent session record (.opensprint/sessions/<task-id>-<attempt>.json) */
@@ -209,6 +215,13 @@ export interface TestResultDetail {
   error?: string;
 }
 
+/** Open question item in agent output (agent question protocol) */
+export interface AgentOpenQuestion {
+  id: string;
+  text: string;
+  createdAt?: string;
+}
+
 /** Coding agent result (result.json) */
 export interface CodingAgentResult {
   status: "success" | "failed" | "partial";
@@ -217,6 +230,9 @@ export interface CodingAgentResult {
   testsWritten: number;
   testsPassed: number;
   notes: string;
+  /** When task spec is ambiguous: emit questions and pause rather than guessing (agent question protocol) */
+  open_questions?: AgentOpenQuestion[];
+  openQuestions?: AgentOpenQuestion[];
 }
 
 /** Review agent result (result.json) */

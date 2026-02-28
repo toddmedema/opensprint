@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { Provider } from "react-redux";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { configureStore } from "@reduxjs/toolkit";
 import { MemoryRouter } from "react-router";
 import { ThemeProvider } from "../../contexts/ThemeContext";
@@ -12,6 +13,7 @@ import notificationReducer from "../../store/slices/notificationSlice";
 import executeReducer from "../../store/slices/executeSlice";
 import planReducer from "../../store/slices/planSlice";
 import websocketReducer from "../../store/slices/websocketSlice";
+import openQuestionsReducer from "../../store/slices/openQuestionsSlice";
 
 vi.mock("../../api/client", () => ({
   api: {
@@ -58,18 +60,23 @@ function createTestStore() {
       execute: executeReducer,
       plan: planReducer,
       websocket: websocketReducer,
+      openQuestions: openQuestionsReducer,
     },
   });
 }
 
+const queryClient = new QueryClient();
+
 function renderLayout(ui: ReactElement) {
   return render(
     <Provider store={createTestStore()}>
-      <MemoryRouter>
-        <ThemeProvider>
-          <DisplayPreferencesProvider>{ui}</DisplayPreferencesProvider>
-        </ThemeProvider>
-      </MemoryRouter>
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <ThemeProvider>
+            <DisplayPreferencesProvider>{ui}</DisplayPreferencesProvider>
+          </ThemeProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
     </Provider>
   );
 }

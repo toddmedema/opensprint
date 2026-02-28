@@ -5,7 +5,8 @@ import type { Notification, NotificationSource, Project } from "@opensprint/shar
 import { getProjectPhasePath } from "../lib/phaseRouting";
 import { setSelectedPlanId } from "../store/slices/planSlice";
 import { setSelectedTaskId } from "../store/slices/executeSlice";
-import { useAppDispatch } from "../store";
+import { fetchGlobalNotifications } from "../store/slices/openQuestionsSlice";
+import { useAppDispatch, useAppSelector } from "../store";
 import { api } from "../api/client";
 
 const POLL_INTERVAL_MS = 5000;
@@ -39,8 +40,10 @@ function formatTimestamp(createdAt: string): string {
   return date.toLocaleDateString();
 }
 
+const EMPTY_NOTIFICATIONS: Notification[] = [];
+
 export function GlobalNotificationBell() {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const notifications = useAppSelector((s) => s.openQuestions?.global ?? EMPTY_NOTIFICATIONS);
   const [projects, setProjects] = useState<Project[]>([]);
   const [open, setOpen] = useState(false);
   const [dropdownRect, setDropdownRect] = useState<DOMRect | null>(null);
@@ -49,20 +52,18 @@ export function GlobalNotificationBell() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
 
-  const fetchData = useCallback(() => {
-    Promise.all([api.notifications.listGlobal(), api.projects.list()])
-      .then(([notifs, projs]) => {
-        setNotifications(notifs);
-        setProjects(projs);
-      })
-      .catch(console.error);
-  }, []);
+  useEffect(() => {
+    dispatch(fetchGlobalNotifications());
+    const interval = setInterval(
+      () => dispatch(fetchGlobalNotifications()),
+      POLL_INTERVAL_MS
+    );
+    return () => clearInterval(interval);
+  }, [dispatch]);
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+    api.projects.list().then(setProjects).catch(console.error);
+  }, []);
 
   useEffect(() => {
     if (open && buttonRef.current) {
@@ -74,8 +75,8 @@ export function GlobalNotificationBell() {
 
   useEffect(() => {
     if (!open) return;
-    fetchData();
-  }, [open, fetchData]);
+    dispatch(fetchGlobalNotifications());
+  }, [open, dispatch]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {

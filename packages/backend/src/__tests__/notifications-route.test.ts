@@ -102,4 +102,30 @@ describe("Notifications REST API", () => {
     const listRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/notifications`);
     expect(listRes.body.data).toHaveLength(0);
   });
+
+  it("PATCH resolve execute notification unblocks the task", async () => {
+    const task = await taskStore.create(projectId, "Test task", { type: "task" });
+    await taskStore.update(projectId, task.id, {
+      status: "blocked",
+      block_reason: "Open Question",
+    });
+
+    const created = await notificationService.create({
+      projectId,
+      source: "execute",
+      sourceId: task.id,
+      questions: [{ id: "q1", text: "Clarify scope?" }],
+    });
+
+    const res = await request(app).patch(
+      `${API_PREFIX}/projects/${projectId}/notifications/${created.id}`
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe("resolved");
+
+    const updated = await taskStore.show(projectId, task.id);
+    expect(updated.status).toBe("open");
+    expect((updated as { block_reason?: string | null }).block_reason ?? null).toBeFalsy();
+  });
 });

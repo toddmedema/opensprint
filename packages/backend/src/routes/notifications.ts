@@ -1,5 +1,7 @@
 import { Router, Request } from "express";
 import { notificationService } from "../services/notification.service.js";
+import { taskStore } from "../services/task-store.service.js";
+import { broadcastToProject } from "../websocket/index.js";
 import type { ApiResponse } from "@opensprint/shared";
 import type { Notification } from "../services/notification.service.js";
 
@@ -25,10 +27,36 @@ projectNotificationsRouter.patch(
   "/:notificationId",
   async (req: Request<NotificationParams>, res, next) => {
     try {
-      const notification = await notificationService.resolve(
-        req.params.projectId,
-        req.params.notificationId
-      );
+      const { projectId, notificationId } = req.params;
+      const notification = await notificationService.resolve(projectId, notificationId);
+
+      broadcastToProject(projectId, {
+        type: "notification.resolved",
+        notificationId,
+        projectId,
+        source: notification.source,
+        sourceId: notification.sourceId,
+      });
+
+      // When source=execute, unblock the task so orchestrator can re-pick it
+      if (notification.source === "execute" && notification.sourceId) {
+        const taskId = notification.sourceId;
+        try {
+          await taskStore.update(projectId, taskId, {
+            status: "open",
+            block_reason: null,
+          });
+          broadcastToProject(projectId, {
+            type: "task.updated",
+            taskId,
+            status: "open",
+            blockReason: null,
+          });
+        } catch {
+          // Task may not exist or already unblocked
+        }
+      }
+
       const body: ApiResponse<Notification> = { data: notification };
       res.json(body);
     } catch (err) {

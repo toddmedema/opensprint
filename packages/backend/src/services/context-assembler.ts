@@ -331,8 +331,18 @@ export class ContextAssembler {
     prompt += `   \`\`\`\n`;
     prompt += `   Use \`"status": "success"\` when the task is done, or \`"status": "failed"\` if you could not finish it.\n`;
     prompt += `   The \`status\` field MUST be exactly \`"success"\` or \`"failed"\` — no other values.\n`;
+    prompt += `   **When the task spec is ambiguous:** Instead of guessing, return \`"status": "failed"\` with \`open_questions\`: [{ "id": "q1", "text": "Your clarification question" }]. The user will answer; do not proceed until clarified.\n`;
     prompt += `   After writing result.json, exit the process immediately so the orchestrator can continue (exit code 0 on success).\n\n`;
     prompt += `If tests fail after implementation, fix them before writing result.json. Do not report success with failing tests.\n\n`;
+
+    if (config.hilConfig) {
+      const modes = Object.values(config.hilConfig);
+      const autonomyDesc =
+        modes.every((m) => m === "automated") ? "Full autonomy: proceed without confirmation." :
+        modes.some((m) => m === "requires_approval") ? "Confirm major changes before proceeding." :
+        "Notify user but proceed with changes.";
+      prompt += `## Autonomy Level\n\n${autonomyDesc}\n\n`;
+    }
 
     if (config.previousFailure) {
       prompt += `## Previous Attempt\n\n`;

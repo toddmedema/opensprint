@@ -136,6 +136,15 @@ export interface NotificationAddedEvent {
   };
 }
 
+/** Emitted when a notification is resolved (user answered or dismissed) */
+export interface NotificationResolvedEvent {
+  type: "notification.resolved";
+  notificationId: string;
+  projectId: string;
+  source: "plan" | "prd" | "execute" | "eval";
+  sourceId: string;
+}
+
 export interface PlanUpdatedEvent {
   type: "plan.updated";
   planId: string;
@@ -192,6 +201,7 @@ export type ServerEvent =
   | FeedbackUpdatedEvent
   | FeedbackResolvedEvent
   | NotificationAddedEvent
+  | NotificationResolvedEvent
   | PlanUpdatedEvent
   | PlanGeneratedEvent;
 

@@ -153,6 +153,7 @@ export class PhaseExecutorService {
         previousTestOutput: retryContext?.previousTestOutput ?? null,
         previousDiff: retryContext?.previousDiff ?? null,
         useExistingBranch: retryContext?.useExistingBranch ?? false,
+        hilConfig: settings.hilConfig,
       };
 
       await this.host.contextAssembler.assembleTaskDirectory(wtPath, task.id, config, context);
