@@ -31,6 +31,13 @@ export function clampTaskComplexity(value: unknown): number | undefined {
   return value;
 }
 
+/** Map integer complexity (1-10) to display label. 5 or less = Simple, 6+ = Complex. */
+export function complexityToDisplay(complexity: number | undefined): "Simple" | "Complex" | null {
+  if (complexity == null || typeof complexity !== "number") return null;
+  if (complexity >= 1 && complexity <= 10) return complexity <= 5 ? "Simple" : "Complex";
+  return null;
+}
+
 /** Minimal task fields stored in the global task registry (cross-phase cache). */
 export interface TaskSummary {
   title: string;

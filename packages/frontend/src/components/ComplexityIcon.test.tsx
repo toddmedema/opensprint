@@ -15,7 +15,7 @@ describe("ComplexityIcon", () => {
   it("renders three yellow dots for high (task complexity 7)", () => {
     const { container } = render(<ComplexityIcon complexity={7} />);
 
-    expect(screen.getByRole("img", { name: "Complexity 7" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Complex complexity" })).toBeInTheDocument();
     const circles = container.querySelectorAll("circle");
     expect(circles).toHaveLength(3);
     circles.forEach((c) => expect(c).toHaveAttribute("fill", "#FFAB00"));

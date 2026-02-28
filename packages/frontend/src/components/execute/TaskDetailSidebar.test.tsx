@@ -1560,7 +1560,7 @@ describe("TaskDetailSidebar", () => {
   });
 
   describe("Task complexity", () => {
-    it("shows complexity number when task has complexity 3", () => {
+    it("shows Simple when task has complexity 3", () => {
       const props = createMinimalProps({
         selectedTaskData: {
           ...createMinimalProps().selectedTaskData,
@@ -1573,12 +1573,12 @@ describe("TaskDetailSidebar", () => {
         </Provider>
       );
       const complexity = screen.getByTestId("task-complexity");
-      expect(complexity).toHaveTextContent("3");
-      expect(complexity).toHaveAttribute("aria-label", "Complexity: 3");
+      expect(complexity).toHaveTextContent("Simple");
+      expect(complexity).toHaveAttribute("aria-label", "Complexity: Simple");
       expect(screen.getByRole("img", { name: "Simple complexity" })).toBeInTheDocument();
     });
 
-    it("shows complexity number when task has complexity 7", () => {
+    it("shows Complex when task has complexity 7", () => {
       const props = createMinimalProps({
         selectedTaskData: {
           ...createMinimalProps().selectedTaskData,
@@ -1591,8 +1591,8 @@ describe("TaskDetailSidebar", () => {
         </Provider>
       );
       const complexity = screen.getByTestId("task-complexity");
-      expect(complexity).toHaveTextContent("7");
-      expect(complexity).toHaveAttribute("aria-label", "Complexity: 7");
+      expect(complexity).toHaveTextContent("Complex");
+      expect(complexity).toHaveAttribute("aria-label", "Complexity: Complex");
       expect(screen.getByRole("img", { name: "Complex complexity" })).toBeInTheDocument();
     });
 
@@ -1627,7 +1627,7 @@ describe("TaskDetailSidebar", () => {
       );
       const row = screen.getByTestId("task-detail-priority-state-row");
       expect(row).toContainElement(screen.getByTestId("task-complexity"));
-      expect(row).toHaveTextContent("7");
+      expect(row).toHaveTextContent("Complex");
       expect(row).toHaveTextContent("In Progress");
     });
   });

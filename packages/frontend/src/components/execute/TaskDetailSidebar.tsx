@@ -3,7 +3,7 @@ import { useAutoScroll } from "../../hooks/useAutoScroll";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { AgentSession, Notification, Plan, Task } from "@opensprint/shared";
-import { PRIORITY_LABELS, AGENT_ROLE_LABELS } from "@opensprint/shared";
+import { PRIORITY_LABELS, AGENT_ROLE_LABELS, complexityToDisplay } from "@opensprint/shared";
 import type { ActiveTaskInfo } from "../../store/slices/executeSlice";
 import { useAppDispatch } from "../../store";
 import { updateTaskPriority, addTaskDependency } from "../../store/slices/executeSlice";
@@ -123,6 +123,7 @@ export function TaskDetailSidebar({
   const [showLoadingPlaceholder, setShowLoadingPlaceholder] = useState(false);
   const [addLinkOpen, setAddLinkOpen] = useState(false);
   const task = selectedTaskData;
+  const displayLabel = task ? complexityToDisplay(task.complexity) : null;
 
   const hasActions = isBlockedTask || (!isDoneTask && !isBlockedTask);
 
@@ -332,12 +333,14 @@ export function TaskDetailSidebar({
                 <span
                   className="inline-flex items-center gap-1.5 text-theme-muted/80"
                   data-testid="task-complexity"
-                  aria-label={task.complexity != null ? `Complexity: ${task.complexity}` : "Complexity: not set"}
+                  aria-label={
+                    displayLabel
+                      ? `Complexity: ${displayLabel}`
+                      : "Complexity: not set"
+                  }
                 >
                   <ComplexityIcon complexity={task.complexity} size="sm" />
-                  {typeof task.complexity === "number" && task.complexity >= 1 && task.complexity <= 10
-                    ? String(task.complexity)
-                    : "—"}
+                  {displayLabel ?? "—"}
                 </span>
                 {isDoneTask && (() => {
                   const duration = formatTaskDuration(task.startedAt, task.completedAt);

@@ -31,11 +31,7 @@ export function ComplexityIcon({
       ? `${complexity} complexity`
       : isSimple
         ? "Simple complexity"
-        : typeof complexity === "number"
-          ? `Complexity ${complexity}`
-          : complexity === "complex"
-            ? "Complex complexity"
-            : `${complexity} complexity`;
+        : "Complex complexity";
 
   return (
     <svg
