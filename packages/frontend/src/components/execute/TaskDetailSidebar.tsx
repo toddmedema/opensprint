@@ -3,6 +3,7 @@ import { useAutoScroll } from "../../hooks/useAutoScroll";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { AgentSession, Notification, Plan, Task } from "@opensprint/shared";
+import { VirtualizedAgentOutput } from "./VirtualizedAgentOutput";
 import { PRIORITY_LABELS, AGENT_ROLE_LABELS, complexityToDisplay } from "@opensprint/shared";
 import type { ActiveTaskInfo } from "../../store/slices/executeSlice";
 import { useAppDispatch } from "../../store";
@@ -158,8 +159,24 @@ function TaskDetailSidebarInner({
   const dispatch = useAppDispatch();
   const roleLabel = activeRoleLabel(selectedTask, activeTasks);
   const [priorityDropdownOpen, setPriorityDropdownOpen] = useState(false);
+  const [showLoadingPlaceholder, setShowLoadingPlaceholder] = useState(false);
 
   const agentOutputText = useMemo(() => agentOutput.join(""), [agentOutput]);
+
+  const liveOutputContent = useMemo(() => {
+    if (agentOutputText.length > 0) return agentOutputText;
+    if (archivedSessions.length > 0) {
+      return (
+        filterAgentOutput(archivedSessions[archivedSessions.length - 1]?.outputLog ?? "") ||
+        "Waiting for agent output..."
+      );
+    }
+    return showLoadingPlaceholder ? "Loading output…" : "Waiting for agent output...";
+  }, [
+    agentOutputText,
+    archivedSessions,
+    showLoadingPlaceholder,
+  ]);
 
   const {
     containerRef: liveOutputRef,
@@ -167,13 +184,12 @@ function TaskDetailSidebarInner({
     jumpToBottom,
     handleScroll: handleLiveOutputScroll,
   } = useAutoScroll({
-    contentLength: agentOutputText.length,
+    contentLength: liveOutputContent.length,
     resetKey: selectedTask,
   });
   const priorityDropdownRef = useRef<HTMLDivElement>(null);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
-  const [showLoadingPlaceholder, setShowLoadingPlaceholder] = useState(false);
   const [addLinkOpen, setAddLinkOpen] = useState(false);
   const task = selectedTaskData;
   const displayLabel = task ? complexityToDisplay(task.complexity) : null;
@@ -688,24 +704,13 @@ function TaskDetailSidebarInner({
                   </div>
                 ) : (
                   <div className="relative flex-1 min-h-0 flex flex-col">
-                    <div
-                      ref={liveOutputRef}
-                      className="p-4 text-xs min-h-[120px] overflow-y-auto flex-1 min-h-0 prose prose-sm prose-neutral dark:prose-invert prose-execute-task max-w-none text-theme-success-muted prose-pre:bg-theme-code-bg prose-pre:text-theme-code-text prose-pre:border prose-pre:border-theme-border prose-pre:rounded-lg"
-                      data-testid="live-agent-output"
+                    <VirtualizedAgentOutput
+                      content={liveOutputContent}
+                      useMarkdown={true}
+                      containerRef={liveOutputRef}
                       onScroll={handleLiveOutputScroll}
-                    >
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                        {agentOutputText.length > 0
-                          ? agentOutputText
-                          : archivedSessions.length > 0
-                            ? filterAgentOutput(
-                                archivedSessions[archivedSessions.length - 1]?.outputLog ?? ""
-                              ) || "Waiting for agent output..."
-                            : showLoadingPlaceholder
-                              ? "Loading output…"
-                              : "Waiting for agent output..."}
-                      </ReactMarkdown>
-                    </div>
+                      data-testid="live-agent-output"
+                    />
                     {showJumpToBottom && (
                       <button
                         type="button"
