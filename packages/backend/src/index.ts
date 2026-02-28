@@ -33,6 +33,8 @@ import {
   clearAgentProcessRegistry,
 } from "./services/agent-process-registry.js";
 import { createLogger } from "./utils/logger.js";
+import { getDatabaseUrl } from "./services/global-settings.service.js";
+import { ensureDockerPostgresRunning } from "./services/postgres-bootstrap.service.js";
 
 const logStartup = createLogger("startup");
 const logOrchestrator = createLogger("orchestrator");
@@ -119,6 +121,10 @@ setupWebSocket(server, {
 
 // Wire TaskStoreService to emit task create/update/close events via WebSocket
 wireTaskStoreEvents(broadcastToProject);
+
+// Ensure local Docker Postgres is running before connecting (skips for remote URLs)
+const databaseUrl = await getDatabaseUrl();
+await ensureDockerPostgresRunning(databaseUrl);
 
 // Warm task store so first request (e.g. task list) doesn't pay init cost
 taskStore.init().catch((err) => {
