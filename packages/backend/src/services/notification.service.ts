@@ -304,6 +304,29 @@ export class NotificationService {
       resolvedAt,
     };
   }
+
+  /**
+   * Delete all HIL notifications (open_questions) from storage.
+   * Manual utility for testing/cleanup. Returns the number of rows deleted.
+   */
+  async deleteAll(): Promise<number> {
+    const db = await taskStore.getDb();
+    const countStmt = db.prepare("SELECT COUNT(*) as cnt FROM open_questions");
+    countStmt.step();
+    const count = (countStmt.getAsObject() as { cnt: number }).cnt;
+    countStmt.free();
+
+    if (count === 0) {
+      return 0;
+    }
+
+    await taskStore.runWrite(async (db) => {
+      db.run("DELETE FROM open_questions");
+    });
+
+    log.info("Deleted all HIL notifications", { deletedCount: count });
+    return count;
+  }
 }
 
 export const notificationService = new NotificationService();

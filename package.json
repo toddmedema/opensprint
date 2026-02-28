@@ -27,7 +27,8 @@
     "setup": "bash scripts/setup.sh",
     "perf": "npx tsx scripts/perf.ts",
     "perf:baseline": "npx tsx scripts/perf.ts --baseline",
-    "perf:compare": "npx tsx scripts/perf.ts --compare"
+    "perf:compare": "npx tsx scripts/perf.ts --compare",
+    "delete-hil-notifications": "npx tsx scripts/delete-hil-notifications.ts"
   },
   "engines": {
     "node": ">=20.0.0"

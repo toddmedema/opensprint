@@ -239,4 +239,46 @@ describe("NotificationService", () => {
       expect((err as AppError).statusCode).toBe(404);
     });
   });
+
+  describe("deleteAll", () => {
+    it("deletes all notifications and returns count", async () => {
+      await service.create({
+        projectId: "proj-1",
+        source: "plan",
+        sourceId: "p1",
+        questions: [{ id: "q1", text: "Q1" }],
+      });
+      await service.create({
+        projectId: "proj-2",
+        source: "execute",
+        sourceId: "t1",
+        questions: [{ id: "q2", text: "Q2" }],
+      });
+
+      const deleted = await service.deleteAll();
+
+      expect(deleted).toBe(2);
+      expect(await service.listGlobal()).toHaveLength(0);
+    });
+
+    it("returns 0 when no notifications exist", async () => {
+      const deleted = await service.deleteAll();
+      expect(deleted).toBe(0);
+    });
+
+    it("is idempotent — second call returns 0", async () => {
+      await service.create({
+        projectId: "proj-1",
+        source: "plan",
+        sourceId: "p1",
+        questions: [{ id: "q1", text: "Q1" }],
+      });
+
+      const first = await service.deleteAll();
+      expect(first).toBe(1);
+
+      const second = await service.deleteAll();
+      expect(second).toBe(0);
+    });
+  });
 });
