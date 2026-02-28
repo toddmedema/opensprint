@@ -1,8 +1,8 @@
 /** Task issue types */
 export type TaskType = "bug" | "feature" | "task" | "epic" | "chore";
 
-/** Task status values */
-export type TaskStatus = "open" | "in_progress" | "closed";
+/** Task status values. Epics: blocked = plan not approved; open = approved; closed = complete. */
+export type TaskStatus = "open" | "in_progress" | "closed" | "blocked";
 
 /** Display status on the kanban board */
 export type KanbanColumn =

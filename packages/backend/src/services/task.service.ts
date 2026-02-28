@@ -230,7 +230,7 @@ export class TaskService {
       title: issue.title ?? "",
       description: (issue.description as string) ?? "",
       type: this.normalizeType((issue.issue_type ?? issue.type) as string | undefined),
-      status: (issue.status as "open" | "in_progress" | "closed") ?? "open",
+      status: (issue.status as "open" | "in_progress" | "closed" | "blocked") ?? "open",
       priority: Math.min(4, Math.max(0, (issue.priority as number) ?? 1)) as 0 | 1 | 2 | 3 | 4,
       assignee: (issue.assignee as string) ?? null,
       labels: (issue.labels as string[]) ?? [],
