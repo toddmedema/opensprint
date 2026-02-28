@@ -124,6 +124,24 @@ Task data: `~/.opensprint/tasks.db`. See [AGENTS.md](AGENTS.md) for orchestrator
 
 **Backend:** Node.js, Express, WebSocket (ws), TypeScript, Vitest · **Frontend:** React 19, React Router, Vite, Tailwind, TypeScript · **Task store:** sql.js (WASM SQLite) at `~/.opensprint/tasks.db`
 
+### Docker Postgres (optional)
+
+OpenSprint can use PostgreSQL instead of SQLite. A Docker Compose setup is provided:
+
+```bash
+docker compose up -d
+```
+
+This starts Postgres 16 (Alpine) on port 5432 with:
+
+- **User:** `opensprint`
+- **Password:** `opensprint`
+- **Database:** `opensprint`
+- **Volume:** `opensprint-postgres-data` for persistence
+- **Health check:** `pg_isready` every 5s
+
+Connection URL: `postgresql://opensprint:opensprint@localhost:5432/opensprint`
+
 ### Environment variables
 
 | Variable                     | Default | Description                                                                                  |
