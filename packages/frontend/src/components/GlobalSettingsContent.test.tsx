@@ -18,12 +18,15 @@ vi.mock("../contexts/DisplayPreferencesContext", () => ({
 
 const mockGlobalSettingsGet = vi.fn();
 const mockGlobalSettingsPut = vi.fn();
+const mockRevealKey = vi.fn();
 
 vi.mock("../api/client", () => ({
   api: {
     globalSettings: {
       get: () => mockGlobalSettingsGet(),
       put: (...args: unknown[]) => mockGlobalSettingsPut(...args),
+      revealKey: (provider: string, id: string) =>
+        mockRevealKey(provider, id).then((v: { value: string }) => v),
     },
   },
   isConnectionError: () => false,
@@ -71,6 +74,34 @@ describe("GlobalSettingsContent", () => {
     expect(cursorInputs.length).toBe(1);
     expect(anthropicInputs[0]).toHaveValue("••••••••");
     expect(cursorInputs[0]).toHaveValue("••••••••");
+  });
+
+  it("reveals API key when eyeball clicked after refresh (calls revealKey API)", async () => {
+    mockGlobalSettingsGet.mockResolvedValue({
+      databaseUrl: "postgresql://user:***@localhost:5432/opensprint",
+      apiKeys: {
+        ANTHROPIC_API_KEY: [{ id: "k1", masked: "••••••••" }],
+      },
+    });
+    mockRevealKey.mockResolvedValue({ value: "sk-ant-revealed-secret" });
+
+    render(<GlobalSettingsContent />);
+
+    await screen.findByTestId("api-keys-section");
+    const input = screen.getByTestId(/api-key-input-ANTHROPIC_API_KEY-/);
+    expect(input).toHaveValue("••••••••");
+
+    const eyeBtn = screen.getByTestId(/api-key-eye-ANTHROPIC_API_KEY-/);
+    await act(async () => {
+      fireEvent.click(eyeBtn);
+    });
+
+    await waitFor(() => {
+      expect(mockRevealKey).toHaveBeenCalledWith("ANTHROPIC_API_KEY", "k1");
+    });
+    await waitFor(() => {
+      expect(input).toHaveValue("sk-ant-revealed-secret");
+    });
   });
 
   it("shows limitHitAt sub-label when key is rate-limited (global store)", async () => {

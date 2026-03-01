@@ -431,6 +431,23 @@ describe("api client", () => {
         })
       );
     });
+
+    it("revealKey fetches raw value for provider and id", async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({
+          data: { value: "sk-ant-revealed-secret" },
+        }),
+      } as Response);
+
+      const result = await api.globalSettings.revealKey("ANTHROPIC_API_KEY", "k1");
+      expect(result).toEqual({ value: "sk-ant-revealed-secret" });
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/api/v1/global-settings/reveal-key/ANTHROPIC_API_KEY/k1"),
+        expect.any(Object)
+      );
+    });
   });
 
   describe("isConnectionError", () => {

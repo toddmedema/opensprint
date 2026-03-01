@@ -176,6 +176,9 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
           apiKeys={apiKeys}
           providers={API_KEY_PROVIDERS}
           variant="global"
+          onRevealKey={(provider, id) =>
+            api.globalSettings.revealKey(provider, id).then((r) => r.value)
+          }
           onApiKeysChange={handleApiKeysChange}
         />
         {apiKeysError && (

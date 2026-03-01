@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { ApiKeysSection } from "./ApiKeysSection";
@@ -208,6 +208,38 @@ describe("ApiKeysSection", () => {
     const cursorInput = screen.getByTestId(/api-key-input-CURSOR_API_KEY-/);
     expect(anthropicInput).toHaveValue("••••••••");
     expect(cursorInput).toHaveValue("••••••••");
+  });
+
+  it("reveals and fetches actual key value when eyeball clicked (global variant with onRevealKey)", async () => {
+    const onRevealKey = vi.fn().mockResolvedValue("sk-ant-actual-secret");
+    render(
+      <ApiKeysSection
+        apiKeys={{
+          ANTHROPIC_API_KEY: [{ id: "k1", masked: "••••••••" }],
+        }}
+        providers={["ANTHROPIC_API_KEY"]}
+        variant="global"
+        onRevealKey={onRevealKey}
+        onApiKeysChange={onApiKeysChange}
+      />
+    );
+
+    const input = screen.getByTestId(/api-key-input-ANTHROPIC_API_KEY-/);
+    expect(input).toHaveValue("••••••••");
+    expect(input).toHaveAttribute("type", "password");
+
+    const eyeBtn = screen.getByTestId(/api-key-eye-ANTHROPIC_API_KEY-/);
+    await act(async () => {
+      fireEvent.click(eyeBtn);
+    });
+
+    await waitFor(() => {
+      expect(onRevealKey).toHaveBeenCalledWith("ANTHROPIC_API_KEY", "k1");
+    });
+    await waitFor(() => {
+      expect(input).toHaveValue("sk-ant-actual-secret");
+    });
+    expect(input).toHaveAttribute("type", "text");
   });
 
   it("renders both providers in global mode with apiKeys and providers props", () => {

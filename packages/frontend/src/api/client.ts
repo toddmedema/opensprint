@@ -124,6 +124,8 @@ export const api = {
         method: "PUT",
         body: JSON.stringify(updates),
       }),
+    revealKey: (provider: string, id: string) =>
+      request<{ value: string }>(`/global-settings/reveal-key/${encodeURIComponent(provider)}/${encodeURIComponent(id)}`),
   },
   env: {
     getKeys: () =>

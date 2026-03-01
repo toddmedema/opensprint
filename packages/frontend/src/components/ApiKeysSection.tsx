@@ -63,6 +63,8 @@ interface ApiKeysSectionProps {
   providers?: ApiKeyProvider[];
   /** "global" = keys in global settings; "project" = project keys (deprecated). */
   variant?: ApiKeysSectionVariant;
+  /** When provided (global variant), fetches actual key value for reveal-on-click after refresh. */
+  onRevealKey?: (provider: ApiKeyProvider, id: string) => Promise<string>;
   onApiKeysChange: (apiKeys: Partial<Record<ApiKeyProvider, Array<{ id: string; value?: string; limitHitAt?: string }>>>) => void;
 }
 
@@ -71,11 +73,14 @@ export function ApiKeysSection({
   apiKeys: apiKeysProp,
   providers: providersProp,
   variant = "project",
+  onRevealKey,
   onApiKeysChange,
 }: ApiKeysSectionProps) {
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [newKeys, setNewKeys] = useState<Partial<Record<ApiKeyProvider, Array<{ id: string; value: string }>>>>({});
+  const [revealedValues, setRevealedValues] = useState<Record<string, string>>({});
+  const [revealingId, setRevealingId] = useState<string | null>(null);
 
   const providers =
     providersProp ??
@@ -84,14 +89,35 @@ export function ApiKeysSection({
 
   if (providers.length === 0) return null;
 
-  const toggleVisible = useCallback((id: string) => {
-    setVisibleKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+  const toggleVisible = useCallback(
+    async (provider: ApiKeyProvider, id: string, currentValue: string) => {
+      const isCurrentlyVisible = visibleKeys.has(id);
+      if (isCurrentlyVisible) {
+        setVisibleKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        return;
+      }
+      if (
+        onRevealKey &&
+        (currentValue === MASKED_PLACEHOLDER || currentValue === "")
+      ) {
+        setRevealingId(id);
+        try {
+          const value = await onRevealKey(provider, id);
+          setRevealedValues((prev) => ({ ...prev, [id]: value }));
+          setVisibleKeys((prev) => new Set(prev).add(id));
+        } finally {
+          setRevealingId(null);
+        }
+      } else {
+        setVisibleKeys((prev) => new Set(prev).add(id));
+      }
+    },
+    [onRevealKey, visibleKeys]
+  );
 
   const getEntriesForProvider = useCallback(
     (provider: ApiKeyProvider): Array<{ id: string; value: string; limitHitAt?: string }> => {
@@ -103,7 +129,11 @@ export function ApiKeysSection({
         ...existing.map((e) => {
           const raw = e as ApiKeyEntry & MaskedApiKeyEntry;
           const value =
-            editedValues[e.id] ?? raw.value ?? raw.masked ?? "";
+            editedValues[e.id] ??
+            raw.value ??
+            revealedValues[e.id] ??
+            raw.masked ??
+            "";
           return {
             id: e.id,
             value,
@@ -117,7 +147,7 @@ export function ApiKeysSection({
         })),
       ];
     },
-    [apiKeys, newKeys, editedValues]
+    [apiKeys, newKeys, editedValues, revealedValues]
   );
 
   const emitApiKeysForProvider = useCallback(
@@ -274,8 +304,9 @@ export function ApiKeysSection({
                             />
                             <button
                               type="button"
-                              onClick={() => toggleVisible(entry.id)}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 text-theme-muted hover:text-theme-text p-1"
+                              onClick={() => toggleVisible(provider, entry.id, displayValue)}
+                              disabled={revealingId === entry.id}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-theme-muted hover:text-theme-text p-1 disabled:opacity-50 disabled:cursor-wait"
                               aria-label={isVisible ? "Hide key" : "Show key"}
                               data-testid={`api-key-eye-${provider}-${entry.id}`}
                             >

@@ -5,7 +5,9 @@ import {
   maskApiKeysForResponse,
   validateDatabaseUrl,
   DEFAULT_DATABASE_URL,
+  API_KEY_PROVIDERS,
   type GlobalSettingsResponse,
+  type ApiKeyProvider,
 } from "@opensprint/shared";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
@@ -24,6 +26,26 @@ function buildResponse(settings: GlobalSettings) {
     ...(settings.apiKeys && { apiKeys: maskApiKeysForResponse(settings.apiKeys) }),
   };
 }
+
+// GET /global-settings/reveal-key/:provider/:id — Returns the raw value for a single API key (for reveal-on-click after refresh).
+globalSettingsRouter.get("/reveal-key/:provider/:id", async (req, res, next) => {
+  try {
+    const provider = req.params.provider as ApiKeyProvider;
+    const id = req.params.id;
+    if (!API_KEY_PROVIDERS.includes(provider) || !id || typeof id !== "string") {
+      throw new AppError(400, ErrorCodes.INVALID_INPUT, "Invalid provider or id");
+    }
+    const settings = await getGlobalSettings();
+    const entries = settings.apiKeys?.[provider];
+    const entry = entries?.find((e) => e.id === id);
+    if (!entry?.value) {
+      throw new AppError(404, ErrorCodes.NOT_FOUND, "API key not found");
+    }
+    res.json({ data: { value: entry.value } } as ApiResponse<{ value: string }>);
+  } catch (err) {
+    next(err);
+  }
+});
 
 // GET /global-settings — Returns databaseUrl masked (host/port visible, password redacted), apiKeys masked.
 globalSettingsRouter.get("/", async (_req, res, next) => {

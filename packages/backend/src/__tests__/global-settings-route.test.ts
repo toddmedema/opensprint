@@ -295,4 +295,39 @@ describe("Global Settings API", () => {
       ]);
     });
   });
+
+  describe("GET /global-settings/reveal-key/:provider/:id", () => {
+    it("returns the raw key value for a stored API key", async () => {
+      await setGlobalSettings({
+        apiKeys: {
+          ANTHROPIC_API_KEY: [{ id: "k1", value: "sk-ant-secret-123" }],
+        },
+      });
+
+      const res = await request(app).get(
+        `${API_PREFIX}/global-settings/reveal-key/ANTHROPIC_API_KEY/k1`
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual({ value: "sk-ant-secret-123" });
+    });
+
+    it("returns 404 when key not found", async () => {
+      const res = await request(app).get(
+        `${API_PREFIX}/global-settings/reveal-key/ANTHROPIC_API_KEY/nonexistent`
+      );
+
+      expect(res.status).toBe(404);
+      expect(res.body.error?.code).toBe("NOT_FOUND");
+    });
+
+    it("returns 400 for invalid provider", async () => {
+      const res = await request(app).get(
+        `${API_PREFIX}/global-settings/reveal-key/INVALID_PROVIDER/k1`
+      );
+
+      expect(res.status).toBe(400);
+      expect(res.body.error?.code).toBe("INVALID_INPUT");
+    });
+  });
 });
