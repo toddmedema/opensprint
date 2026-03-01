@@ -225,8 +225,8 @@ describe("Models API", () => {
       expect(res.body.error?.message).toContain("30 minutes");
     });
 
-    it("uses project-level API key when projectId is provided", async () => {
-      mockGetNextKey.mockResolvedValue({ key: "sk-ant-project-key", keyId: "k1" });
+    it("uses API key from global store when projectId is provided (projectId passed for API compatibility, key resolution is global-only)", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "sk-ant-global-key", keyId: "k1", source: "global" });
       async function* gen() {
         yield { id: "claude-sonnet-4", display_name: "Claude Sonnet 4" };
       }
@@ -240,6 +240,22 @@ describe("Models API", () => {
       expect(res.status).toBe(200);
       expect(res.body.data).toEqual([{ id: "claude-sonnet-4", displayName: "Claude Sonnet 4" }]);
       expect(mockGetNextKey).toHaveBeenCalledWith("proj-123", "ANTHROPIC_API_KEY");
+      expect(mockModelsList).toHaveBeenCalledTimes(1);
+    });
+
+    it("resolves API key from global store when projectId is omitted", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "sk-ant-global-key", keyId: "k1", source: "global" });
+      async function* gen() {
+        yield { id: "claude-sonnet-4", display_name: "Claude Sonnet 4" };
+      }
+      mockModelsList.mockReturnValue(gen());
+
+      delete process.env.ANTHROPIC_API_KEY;
+      const res = await request(app).get(`${API_PREFIX}/models?provider=claude`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual([{ id: "claude-sonnet-4", displayName: "Claude Sonnet 4" }]);
+      expect(mockGetNextKey).toHaveBeenCalledWith("", "ANTHROPIC_API_KEY");
       expect(mockModelsList).toHaveBeenCalledTimes(1);
     });
 

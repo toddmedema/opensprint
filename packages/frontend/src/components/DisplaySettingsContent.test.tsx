@@ -69,6 +69,23 @@ describe("DisplaySettingsContent", () => {
     expect(cursorInputs.length).toBe(1);
   });
 
+  it("shows limitHitAt sub-label when key is rate-limited (global store)", async () => {
+    mockGlobalSettingsGet.mockResolvedValue({
+      databaseUrl: "postgresql://user:***@localhost:5432/opensprint",
+      apiKeys: {
+        ANTHROPIC_API_KEY: [
+          { id: "k1", masked: "••••••••", limitHitAt: "2025-02-25T12:00:00Z" },
+        ],
+      },
+    });
+
+    render(<DisplaySettingsContent />);
+
+    await screen.findByTestId("api-keys-section");
+    expect(screen.getByText(/Limit hit at/)).toBeInTheDocument();
+    expect(screen.getByText(/retry after 24h/)).toBeInTheDocument();
+  });
+
   it("renders Theme section", async () => {
     render(<DisplaySettingsContent />);
 

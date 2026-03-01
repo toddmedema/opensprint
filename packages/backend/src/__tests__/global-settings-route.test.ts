@@ -210,6 +210,24 @@ describe("Global Settings API", () => {
       expect(res.body.data.databaseUrl).toBeDefined();
       expect(res.body.data.apiKeys).toBeUndefined();
     });
+
+    it("returns limitHitAt in masked apiKeys when key is rate-limited", async () => {
+      const limitHitAt = new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString();
+      await setGlobalSettings({
+        apiKeys: {
+          ANTHROPIC_API_KEY: [
+            { id: "k1", value: "sk-ant-secret", limitHitAt },
+          ],
+        },
+      });
+
+      const res = await request(app).get(`${API_PREFIX}/global-settings`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.apiKeys.ANTHROPIC_API_KEY).toEqual([
+        { id: "k1", masked: "••••••••", limitHitAt },
+      ]);
+      expect(res.body.data.apiKeys.ANTHROPIC_API_KEY[0]).not.toHaveProperty("value");
+    });
   });
 
   describe("PUT /global-settings with apiKeys", () => {

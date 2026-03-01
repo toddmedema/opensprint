@@ -346,7 +346,7 @@ describe("Settings API lifecycle", () => {
     expect(settings.complexComplexityAgent.model).toBe("claude-opus-4");
   });
 
-  it("GET/PUT /api/v1/projects/:id/settings do not accept or return apiKeys", async () => {
+  it("GET/PUT /api/v1/projects/:id/settings do not accept or return apiKeys (global-only)", async () => {
     const res = await request(app)
       .put(`${API_PREFIX}/projects/${projectId}/settings`)
       .send({
@@ -361,6 +361,9 @@ describe("Settings API lifecycle", () => {
     const getRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/settings`);
     expect(getRes.status).toBe(200);
     expect(getRes.body.data).not.toHaveProperty("apiKeys");
+
+    const persisted = await readProjectFromGlobalStore(tempDir, projectId);
+    expect(persisted).not.toHaveProperty("apiKeys");
   });
 
   it("PUT /api/v1/projects/:id/settings returns 400 when agent config requires API keys but global store has none", async () => {

@@ -218,6 +218,34 @@ describe("ProjectSettingsModal", () => {
     expect(screen.queryByPlaceholderText("key_...")).not.toBeInTheDocument();
   });
 
+  it("Agent Config tab does not show ApiKeysSection (API keys managed in Global Settings only)", async () => {
+    renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
+    await screen.findByText("Settings");
+
+    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
+    await userEvent.click(agentConfigTab);
+
+    await screen.findByText("Task Complexity");
+    expect(screen.queryByTestId("api-keys-section")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("api-key-add-ANTHROPIC_API_KEY")).not.toBeInTheDocument();
+  });
+
+  it("Display mode shows ApiKeysSection for global key management", async () => {
+    mockGlobalSettingsGet.mockResolvedValue({
+      databaseUrl: "postgresql://user:***@localhost:5432/opensprint",
+      apiKeys: undefined,
+    });
+
+    renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
+    await screen.findByText("Settings");
+
+    await userEvent.click(screen.getByTestId("display-mode-button"));
+
+    await screen.findByTestId("api-keys-section");
+    expect(screen.getByText("API Keys")).toBeInTheDocument();
+    expect(screen.getByTestId("api-key-add-ANTHROPIC_API_KEY")).toBeInTheDocument();
+  });
+
   it("shows Code Review section with updated helptext and default review mode", async () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await screen.findByText("Settings");
