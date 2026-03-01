@@ -1,4 +1,5 @@
-import { Link, useParams } from "react-router-dom";
+import type { ProjectPhase } from "@opensprint/shared";
+import { Link, useParams, useNavigate } from "react-router-dom";
 import { Layout } from "../components/layout/Layout";
 import { HelpContent } from "../components/HelpContent";
 import { getProjectPhasePath } from "../lib/phaseRouting";
@@ -9,13 +10,22 @@ import { useProject } from "../api/hooks";
  */
 export function HelpPage() {
   const { projectId } = useParams<{ projectId?: string }>();
+  const navigate = useNavigate();
   const { data: project } = useProject(projectId);
 
   const backTo = projectId ? getProjectPhasePath(projectId, "sketch") : "/";
   const projectContext = project ? { id: project.id, name: project.name } : undefined;
 
+  const handlePhaseChange = (phase: ProjectPhase) => {
+    if (projectId) navigate(getProjectPhasePath(projectId, phase));
+  };
+
   return (
-    <Layout project={project}>
+    <Layout
+      project={project}
+      currentPhase={projectId ? "sketch" : undefined}
+      onPhaseChange={projectId ? handlePhaseChange : undefined}
+    >
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden" data-testid="help-page">
         <div className="max-w-4xl mx-auto w-full px-6 py-6 flex flex-col min-h-0">
           <div className="flex items-center gap-4 mb-4 shrink-0">

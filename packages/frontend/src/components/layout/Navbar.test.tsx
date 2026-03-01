@@ -306,9 +306,10 @@ describe("Navbar", () => {
     expect(screen.queryByRole("button", { name: "⚠️ Execute" })).not.toBeInTheDocument();
   });
 
-  describe("integration: (?) opens Help modal (preserves project context)", () => {
-    it("homepage (project=null): Help button opens modal without navigating", async () => {
+  describe("integration: (?) navigates to Help page (full page, project-specific when in project)", () => {
+    it("homepage (project=null): Help link navigates to Help page", async () => {
       const user = userEvent.setup();
+      const { HelpPage } = await import("../../pages/HelpPage");
       render(
         <ThemeProvider>
           <DisplayPreferencesProvider>
@@ -317,6 +318,7 @@ describe("Navbar", () => {
                 <MemoryRouter initialEntries={["/"]}>
                   <Routes>
                     <Route path="/" element={<Navbar project={null} />} />
+                    <Route path="/help" element={<HelpPage />} />
                   </Routes>
                 </MemoryRouter>
               </QueryClientProvider>
@@ -325,18 +327,19 @@ describe("Navbar", () => {
         </ThemeProvider>
       );
 
-      const helpButton = await screen.findByRole("button", { name: "Help" });
-      await user.click(helpButton);
+      const helpLink = await screen.findByRole("link", { name: "Help" });
+      expect(helpLink).toHaveAttribute("href", "/help");
+      await user.click(helpLink);
 
-      expect(screen.getByRole("dialog", { name: /help/i })).toBeInTheDocument();
+      expect(screen.getByTestId("help-page")).toBeInTheDocument();
       expect(screen.getByRole("tab", { name: "Ask a Question" })).toBeInTheDocument();
       expect(screen.getByRole("tab", { name: "Meet your Team" })).toBeInTheDocument();
       expect(screen.getByText(/Ask about your projects/)).toBeInTheDocument();
     });
 
-    it("project view (project set): Help button opens modal with project context", async () => {
+    it("project view (project set): Help link navigates to project Help page with project context", async () => {
       const user = userEvent.setup();
-      const { api } = await import("../../api/client");
+      const { HelpPage } = await import("../../pages/HelpPage");
       const mockProject = {
         id: "proj-1",
         name: "Test",
@@ -345,33 +348,16 @@ describe("Navbar", () => {
         createdAt: "2025-01-01T00:00:00Z",
         updatedAt: "2025-01-01T00:00:00Z",
       };
-      renderNavbar(<Navbar project={mockProject} currentPhase="sketch" onPhaseChange={vi.fn()} />);
-
-      const helpButton = screen.getByRole("button", { name: "Help" });
-      await user.click(helpButton);
-
-      expect(screen.getByRole("dialog", { name: /help/i })).toBeInTheDocument();
-      expect(api.help.history).toHaveBeenCalledWith("proj-1");
-    });
-
-    it("Help modal preserves route and project view (does not navigate)", async () => {
-      const user = userEvent.setup();
-      const mockProject = {
-        id: "proj-1",
-        name: "Test Project",
-        repoPath: "/path",
-        currentPhase: "sketch" as const,
-        createdAt: "2025-01-01T00:00:00Z",
-        updatedAt: "2025-01-01T00:00:00Z",
-      };
+      mockProjectsGet.mockResolvedValue(mockProject);
       render(
         <ThemeProvider>
           <DisplayPreferencesProvider>
             <Provider store={createStore()}>
               <QueryClientProvider client={queryClient}>
-                <MemoryRouter initialEntries={["/projects/proj-1/execute"]}>
+                <MemoryRouter initialEntries={["/projects/proj-1/sketch"]}>
                   <Routes>
-                    <Route path="/projects/:projectId/:phase?" element={<Navbar project={mockProject} currentPhase="execute" onPhaseChange={vi.fn()} />} />
+                    <Route path="/projects/:projectId/:phase?" element={<Navbar project={mockProject} currentPhase="sketch" onPhaseChange={vi.fn()} />} />
+                    <Route path="/projects/:projectId/help" element={<HelpPage />} />
                   </Routes>
                 </MemoryRouter>
               </QueryClientProvider>
@@ -380,18 +366,72 @@ describe("Navbar", () => {
         </ThemeProvider>
       );
 
-      const helpButton = screen.getByRole("button", { name: "Help" });
-      await user.click(helpButton);
+      const helpLink = screen.getByRole("link", { name: "Help" });
+      expect(helpLink).toHaveAttribute("href", "/projects/proj-1/help");
+      await user.click(helpLink);
 
-      expect(screen.getByRole("dialog", { name: /help/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /Test Project/i })).toBeInTheDocument();
+      expect(screen.getByTestId("help-page")).toBeInTheDocument();
+      const { api } = await import("../../api/client");
+      expect(api.help.history).toHaveBeenCalledWith("proj-1");
     });
 
-    it("Meet your Team tab shows agent grid when Help modal is open", async () => {
-      const user = userEvent.setup();
-      renderNavbar(<Navbar project={null} />);
+    it("project Help page shows SPEED nav buttons in header", async () => {
+      const { HelpPage } = await import("../../pages/HelpPage");
+      const mockProject = {
+        id: "proj-1",
+        name: "Test Project",
+        repoPath: "/path",
+        currentPhase: "sketch" as const,
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      };
+      mockProjectsGet.mockResolvedValue(mockProject);
+      render(
+        <ThemeProvider>
+          <DisplayPreferencesProvider>
+            <Provider store={createStore()}>
+              <QueryClientProvider client={queryClient}>
+                <MemoryRouter initialEntries={["/projects/proj-1/help"]}>
+                  <Routes>
+                    <Route path="/projects/:projectId/help" element={<HelpPage />} />
+                  </Routes>
+                </MemoryRouter>
+              </QueryClientProvider>
+            </Provider>
+          </DisplayPreferencesProvider>
+        </ThemeProvider>
+      );
 
-      await user.click(screen.getByRole("button", { name: "Help" }));
+      await screen.findByTestId("help-page");
+      expect(screen.getByRole("button", { name: "Sketch" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Plan" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Execute" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Evaluate" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Deliver" })).toBeInTheDocument();
+    });
+
+    it("Help page shows Meet your Team tab with agent grid", async () => {
+      const user = userEvent.setup();
+      const { HelpPage } = await import("../../pages/HelpPage");
+      render(
+        <ThemeProvider>
+          <DisplayPreferencesProvider>
+            <Provider store={createStore()}>
+              <QueryClientProvider client={queryClient}>
+                <MemoryRouter initialEntries={["/"]}>
+                  <Routes>
+                    <Route path="/" element={<Navbar project={null} />} />
+                    <Route path="/help" element={<HelpPage />} />
+                  </Routes>
+                </MemoryRouter>
+              </QueryClientProvider>
+            </Provider>
+          </DisplayPreferencesProvider>
+        </ThemeProvider>
+      );
+
+      await user.click(screen.getByRole("link", { name: "Help" }));
+      await screen.findByTestId("help-page");
       await user.click(screen.getByRole("tab", { name: "Meet your Team" }));
 
       expect(screen.getByRole("tab", { name: "Meet your Team" })).toHaveAttribute(
@@ -404,14 +444,14 @@ describe("Navbar", () => {
       expect(screen.getAllByRole("listitem")).toHaveLength(9);
     });
 
-    it("Help button uses text color (visible in light and dark themes)", () => {
+    it("Help link uses text color (visible in light and dark themes)", () => {
       renderNavbar(<Navbar project={null} />);
-      const helpButton = screen.getByRole("button", { name: "Help" });
-      expect(helpButton).toHaveClass("text-theme-muted");
-      expect(helpButton).not.toHaveClass("text-brand-600");
+      const helpLink = screen.getByRole("link", { name: "Help" });
+      expect(helpLink).toHaveClass("text-theme-muted");
+      expect(helpLink).not.toHaveClass("text-brand-600");
     });
 
-    it("Help button uses text color in project view", () => {
+    it("Help link uses text color in project view", () => {
       const mockProject = {
         id: "proj-1",
         name: "Test",
@@ -421,9 +461,9 @@ describe("Navbar", () => {
         updatedAt: "2025-01-01T00:00:00Z",
       };
       renderNavbar(<Navbar project={mockProject} currentPhase="sketch" onPhaseChange={vi.fn()} />);
-      const helpButton = screen.getByRole("button", { name: "Help" });
-      expect(helpButton).toHaveClass("text-theme-muted");
-      expect(helpButton).not.toHaveClass("text-brand-600");
+      const helpLink = screen.getByRole("link", { name: "Help" });
+      expect(helpLink).toHaveClass("text-theme-muted");
+      expect(helpLink).not.toHaveClass("text-brand-600");
     });
   });
 

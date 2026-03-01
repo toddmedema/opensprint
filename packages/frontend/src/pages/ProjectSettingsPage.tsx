@@ -1,3 +1,4 @@
+import type { ProjectPhase } from "@opensprint/shared";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { Layout } from "../components/layout/Layout";
 import { ProjectSettingsModal } from "../components/ProjectSettingsModal";
@@ -26,6 +27,10 @@ export function ProjectSettingsPage() {
     handleClose();
   };
 
+  const handlePhaseChange = (phase: ProjectPhase) => {
+    navigate(getProjectPhasePath(projectId!, phase));
+  };
+
   if (!projectId) return null;
   if (isLoading && !project) {
     return (
@@ -50,7 +55,11 @@ export function ProjectSettingsPage() {
   }
 
   return (
-    <Layout project={project} currentPhase="sketch">
+    <Layout
+      project={project}
+      currentPhase="sketch"
+      onPhaseChange={handlePhaseChange}
+    >
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col px-6 py-6" data-testid="project-settings-page">
         <ProjectSettingsModal
           project={project}

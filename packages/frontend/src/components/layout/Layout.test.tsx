@@ -131,4 +131,25 @@ describe("Layout", () => {
     expect(main).toHaveClass("min-h-0");
     expect(main).toHaveClass("overflow-hidden");
   });
+
+  it("shows SPEED nav buttons when project, currentPhase, and onPhaseChange are provided", () => {
+    const mockProject = {
+      id: "proj-1",
+      name: "Test",
+      repoPath: "/path",
+      currentPhase: "sketch" as const,
+      createdAt: "2025-01-01T00:00:00Z",
+      updatedAt: "2025-01-01T00:00:00Z",
+    };
+    renderLayout(
+      <Layout project={mockProject} currentPhase="sketch" onPhaseChange={() => {}}>
+        <span>Settings or Help content</span>
+      </Layout>
+    );
+    expect(screen.getByRole("button", { name: "Sketch" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Plan" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Execute" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Evaluate" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Deliver" })).toBeInTheDocument();
+  });
 });
