@@ -5,6 +5,7 @@ import { CloseButton } from "./CloseButton";
 import { ModelSelect } from "./ModelSelect";
 import { GlobalSettingsContent } from "./GlobalSettingsContent";
 import { AgentsMdSection } from "./AgentsMdSection";
+import { SaveIndicator, type SaveStatus } from "./SaveIndicator";
 import { api } from "../api/client";
 import type {
   Project,
@@ -66,9 +67,23 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
     }
   }, [fullScreen, tabFromUrl, activeTab]);
   const [saving, setSaving] = useState(false);
+  const [displaySaveStatus, setDisplaySaveStatus] = useState<SaveStatus>("saved");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
+
+  const effectiveSaveStatus: SaveStatus =
+    mode === "project" ? (saving ? "saving" : "saved") : displaySaveStatus;
+
+  useEffect(() => {
+    if (effectiveSaveStatus !== "saving") return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [effectiveSaveStatus]);
 
   // Project basics
   const [name, setName] = useState(project.name);
@@ -138,56 +153,78 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
   const aiAutonomyLevel = settings?.aiAutonomyLevel ?? DEFAULT_AI_AUTONOMY_LEVEL;
   const gitWorkingMode = settings?.gitWorkingMode ?? "worktree";
 
+  type PersistOverrides = Partial<{
+    name: string;
+    repoPath: string;
+    simpleComplexityAgent: typeof simpleComplexityAgent;
+    complexComplexityAgent: typeof complexComplexityAgent;
+    deployment: typeof deployment;
+    aiAutonomyLevel: AiAutonomyLevel;
+    gitWorkingMode: GitWorkingMode;
+    testCommand: string | null;
+    reviewMode: ReviewMode;
+    maxConcurrentCoders: number;
+    unknownScopeStrategy: UnknownScopeStrategy;
+  }>;
+
   const persistSettings = useCallback(
-    async (notifyOnComplete?: boolean) => {
+    async (notifyOnComplete?: boolean, overrides?: PersistOverrides) => {
       if (loading || !settings) return;
+      const effName = overrides?.name ?? name;
+      const effRepoPath = overrides?.repoPath ?? repoPath;
+      const effSimple = overrides?.simpleComplexityAgent ?? simpleComplexityAgent;
+      const effComplex = overrides?.complexComplexityAgent ?? complexComplexityAgent;
+      const effDeployment = overrides?.deployment ?? deployment;
+      const effAiAutonomy = overrides?.aiAutonomyLevel ?? aiAutonomyLevel;
+      const effGitMode = overrides?.gitWorkingMode ?? gitWorkingMode;
+      const effSettings = overrides ? { ...settings } : settings;
       if (
-        simpleComplexityAgent.type === "custom" &&
-        !(simpleComplexityAgent.cliCommand ?? "").trim()
+        effSimple.type === "custom" &&
+        !(effSimple.cliCommand ?? "").trim()
       )
         return;
       if (
-        complexComplexityAgent.type === "custom" &&
-        !(complexComplexityAgent.cliCommand ?? "").trim()
+        effComplex.type === "custom" &&
+        !(effComplex.cliCommand ?? "").trim()
       )
         return;
       setSaving(true);
       setError(null);
       try {
         await Promise.all([
-          api.projects.update(project.id, { name, repoPath }),
+          api.projects.update(project.id, { name: effName, repoPath: effRepoPath }),
           api.projects.updateSettings(project.id, {
             simpleComplexityAgent: {
-              type: simpleComplexityAgent.type,
-              model: simpleComplexityAgent.model || null,
-              cliCommand: simpleComplexityAgent.cliCommand || null,
+              type: effSimple.type,
+              model: effSimple.model || null,
+              cliCommand: effSimple.cliCommand || null,
             },
             complexComplexityAgent: {
-              type: complexComplexityAgent.type,
-              model: complexComplexityAgent.model || null,
-              cliCommand: complexComplexityAgent.cliCommand || null,
+              type: effComplex.type,
+              model: effComplex.model || null,
+              cliCommand: effComplex.cliCommand || null,
             },
             deployment: {
-              mode: deployment.mode,
+              mode: effDeployment.mode,
               expoConfig:
-                deployment.mode === "expo"
-                  ? { channel: deployment.expoConfig?.channel ?? "preview" }
+                effDeployment.mode === "expo"
+                  ? { channel: effDeployment.expoConfig?.channel ?? "preview" }
                   : undefined,
-              customCommand: deployment.customCommand ?? undefined,
-              webhookUrl: deployment.webhookUrl ?? undefined,
-              rollbackCommand: deployment.rollbackCommand ?? undefined,
-              targets: deployment.targets,
-              envVars: deployment.envVars,
+              customCommand: effDeployment.customCommand ?? undefined,
+              webhookUrl: effDeployment.webhookUrl ?? undefined,
+              rollbackCommand: effDeployment.rollbackCommand ?? undefined,
+              targets: effDeployment.targets,
+              envVars: effDeployment.envVars,
               autoResolveFeedbackOnTaskCompletion:
-                deployment.autoResolveFeedbackOnTaskCompletion ?? false,
+                effDeployment.autoResolveFeedbackOnTaskCompletion ?? false,
             },
-            aiAutonomyLevel,
-            testCommand: settings?.testCommand ?? undefined,
-            reviewMode: settings?.reviewMode ?? DEFAULT_REVIEW_MODE,
+            aiAutonomyLevel: effAiAutonomy,
+            testCommand: overrides?.testCommand ?? effSettings?.testCommand ?? undefined,
+            reviewMode: overrides?.reviewMode ?? effSettings?.reviewMode ?? DEFAULT_REVIEW_MODE,
             maxConcurrentCoders:
-              gitWorkingMode === "branches" ? 1 : (settings?.maxConcurrentCoders ?? 1),
-            unknownScopeStrategy: settings?.unknownScopeStrategy ?? "optimistic",
-            gitWorkingMode,
+              effGitMode === "branches" ? 1 : (overrides?.maxConcurrentCoders ?? effSettings?.maxConcurrentCoders ?? 1),
+            unknownScopeStrategy: overrides?.unknownScopeStrategy ?? effSettings?.unknownScopeStrategy ?? "optimistic",
+            gitWorkingMode: effGitMode,
           }),
         ]);
         if (notifyOnComplete) onSaved?.();
@@ -253,40 +290,46 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
 
   const defaultAgent = { type: "cursor" as AgentType, model: null, cliCommand: null };
 
-  const updateSimpleComplexityAgent = (updates: Partial<typeof simpleComplexityAgent>) => {
+  const updateSimpleComplexityAgent = (
+    updates: Partial<typeof simpleComplexityAgent>,
+    options?: { immediate?: boolean }
+  ) => {
+    const next = { ...(simpleComplexityAgent ?? defaultAgent), ...updates };
     setSettings((s) =>
-      s
-        ? {
-            ...s,
-            simpleComplexityAgent: {
-              ...(s.simpleComplexityAgent ?? s.simpleComplexityAgent ?? defaultAgent),
-              ...updates,
-            },
-          }
-        : null
+      s ? { ...s, simpleComplexityAgent: next } : null
     );
+    if (options?.immediate !== false) {
+      void persistSettings(undefined, { simpleComplexityAgent: next });
+    }
   };
 
-  const updateComplexComplexityAgent = (updates: Partial<typeof complexComplexityAgent>) => {
+  const updateComplexComplexityAgent = (
+    updates: Partial<typeof complexComplexityAgent>,
+    options?: { immediate?: boolean }
+  ) => {
+    const next = { ...(complexComplexityAgent ?? defaultAgent), ...updates };
     setSettings((s) =>
-      s
-        ? {
-            ...s,
-            complexComplexityAgent: {
-              ...(s.complexComplexityAgent ?? s.complexComplexityAgent ?? defaultAgent),
-              ...updates,
-            },
-          }
-        : null
+      s ? { ...s, complexComplexityAgent: next } : null
     );
+    if (options?.immediate !== false) {
+      void persistSettings(undefined, { complexComplexityAgent: next });
+    }
   };
 
-  const updateDeployment = (updates: Partial<typeof deployment>) => {
-    setSettings((s) => (s ? { ...s, deployment: { ...s.deployment, ...updates } } : null));
+  const updateDeployment = (
+    updates: Partial<typeof deployment>,
+    options?: { immediate?: boolean }
+  ) => {
+    const next = { ...deployment, ...updates };
+    setSettings((s) => (s ? { ...s, deployment: next } : null));
+    if (options?.immediate !== false) {
+      void persistSettings(undefined, { deployment: next });
+    }
   };
 
   const updateAiAutonomyLevel = (level: AiAutonomyLevel) => {
     setSettings((s) => (s ? { ...s, aiAutonomyLevel: level } : null));
+    void persistSettings(undefined, { aiAutonomyLevel: level });
   };
 
   const wrapperClass = fullScreen
@@ -312,7 +355,10 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
           data-testid="settings-modal-header"
         >
           <h2 className="text-lg font-semibold text-theme-text">Settings</h2>
-          <CloseButton onClick={() => void handleClose()} ariaLabel="Close settings modal" />
+          <div className="flex items-center gap-3">
+            <SaveIndicator status={effectiveSaveStatus} data-testid="settings-save-indicator" />
+            <CloseButton onClick={() => void handleClose()} ariaLabel="Close settings modal" />
+          </div>
         </div>
 
         {/* Mode switcher: Project (per-project) vs Global */}
@@ -373,7 +419,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
           data-testid="settings-modal-content"
         >
           {mode === "display" ? (
-            <GlobalSettingsContent />
+            <GlobalSettingsContent onSaveStateChange={setDisplaySaveStatus} />
           ) : loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
@@ -541,7 +587,10 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
                               placeholder="e.g. my-agent or /usr/local/bin/my-agent --model gpt-4"
                               value={simpleComplexityAgent.cliCommand ?? ""}
                               onChange={(e) =>
-                                updateSimpleComplexityAgent({ cliCommand: e.target.value || null })
+                                updateSimpleComplexityAgent(
+                                  { cliCommand: e.target.value || null },
+                                  { immediate: false }
+                                )
                               }
                               onBlur={scheduleSaveOnBlur}
                             />
@@ -596,7 +645,10 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
                               placeholder="e.g. my-agent or /usr/local/bin/my-agent --model gpt-4"
                               value={complexComplexityAgent.cliCommand ?? ""}
                               onChange={(e) =>
-                                updateComplexComplexityAgent({ cliCommand: e.target.value || null })
+                                updateComplexComplexityAgent(
+                                  { cliCommand: e.target.value || null },
+                                  { immediate: false }
+                                )
                               }
                               onBlur={scheduleSaveOnBlur}
                             />
@@ -640,12 +692,11 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
                       data-testid="review-mode-select"
                       className="input w-48 shrink-0"
                       value={settings?.reviewMode ?? DEFAULT_REVIEW_MODE}
-                      onChange={(e) =>
-                        setSettings((s) =>
-                          s ? { ...s, reviewMode: e.target.value as ReviewMode } : null
-                        )
-                      }
-                      onBlur={scheduleSaveOnBlur}
+                      onChange={(e) => {
+                        const mode = e.target.value as ReviewMode;
+                        setSettings((s) => (s ? { ...s, reviewMode: mode } : null));
+                        void persistSettings(undefined, { reviewMode: mode });
+                      }}
                     >
                       <option value="never">Never</option>
                       <option value="always">Always</option>
@@ -665,12 +716,11 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
                     <select
                       className="input w-48 shrink-0"
                       value={gitWorkingMode}
-                      onChange={(e) =>
-                        setSettings((s) =>
-                          s ? { ...s, gitWorkingMode: e.target.value as GitWorkingMode } : null
-                        )
-                      }
-                      onBlur={scheduleSaveOnBlur}
+                      onChange={(e) => {
+                        const mode = e.target.value as GitWorkingMode;
+                        setSettings((s) => (s ? { ...s, gitWorkingMode: mode } : null));
+                        void persistSettings(undefined, { gitWorkingMode: mode });
+                      }}
                       data-testid="git-working-mode-select"
                     >
                       <option value="worktree">Worktree</option>
@@ -727,18 +777,13 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
                             <select
                               className="input"
                               value={settings?.unknownScopeStrategy ?? "optimistic"}
-                              onChange={(e) =>
+                              onChange={(e) => {
+                                const strategy = e.target.value as UnknownScopeStrategy;
                                 setSettings((s) =>
-                                  s
-                                    ? {
-                                        ...s,
-                                        unknownScopeStrategy: e.target
-                                          .value as UnknownScopeStrategy,
-                                      }
-                                    : null
-                                )
-                              }
-                              onBlur={scheduleSaveOnBlur}
+                                  s ? { ...s, unknownScopeStrategy: strategy } : null
+                                );
+                                void persistSettings(undefined, { unknownScopeStrategy: strategy });
+                              }}
                               data-testid="unknown-scope-strategy-select"
                             >
                               <option value="optimistic">
@@ -785,7 +830,6 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
                             });
                             updateDeployment({ targets: updated });
                           }}
-                          onBlur={scheduleSaveOnBlur}
                           className="rounded border border-theme-border bg-theme-surface px-2 py-1 text-sm"
                           data-testid={`auto-deploy-trigger-${target.name}`}
                         >
@@ -809,7 +853,6 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
                             autoResolveFeedbackOnTaskCompletion: e.target.checked,
                           })
                         }
-                        onBlur={scheduleSaveOnBlur}
                         className="rounded"
                         data-testid="auto-resolve-feedback-toggle"
                       />
@@ -830,9 +873,9 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
                           name="deployment"
                           value="expo"
                           checked={deployment.mode === "expo"}
-                          onChange={() =>
-                            updateDeployment({ mode: "expo", expoConfig: { channel: "preview" } })
-                          }
+                          onChange={() => {
+                            updateDeployment({ mode: "expo", expoConfig: { channel: "preview" } });
+                          }}
                           className="mt-0.5"
                         />
                         <div>
@@ -848,7 +891,9 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
                           name="deployment"
                           value="custom"
                           checked={deployment.mode === "custom"}
-                          onChange={() => updateDeployment({ mode: "custom" })}
+                          onChange={() => {
+                            updateDeployment({ mode: "custom" });
+                          }}
                           className="mt-0.5"
                         />
                         <div>
@@ -883,7 +928,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
                                 onChange={(e) => {
                                   const next = [...(deployment.targets ?? [])];
                                   next[i] = { ...t, name: e.target.value };
-                                  updateDeployment({ targets: next });
+                                  updateDeployment({ targets: next }, { immediate: false });
                                 }}
                                 onBlur={scheduleSaveOnBlur}
                               />
@@ -921,7 +966,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
                               onChange={(e) => {
                                 const next = [...(deployment.targets ?? [])];
                                 next[i] = { ...t, command: e.target.value || undefined };
-                                updateDeployment({ targets: next });
+                                updateDeployment({ targets: next }, { immediate: false });
                               }}
                               onBlur={scheduleSaveOnBlur}
                             />
@@ -933,7 +978,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
                               onChange={(e) => {
                                 const next = [...(deployment.targets ?? [])];
                                 next[i] = { ...t, webhookUrl: e.target.value || undefined };
-                                updateDeployment({ targets: next });
+                                updateDeployment({ targets: next }, { immediate: false });
                               }}
                               onBlur={scheduleSaveOnBlur}
                             />
@@ -945,7 +990,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
                               onChange={(e) => {
                                 const next = [...(deployment.targets ?? [])];
                                 next[i] = { ...t, rollbackCommand: e.target.value || undefined };
-                                updateDeployment({ targets: next });
+                                updateDeployment({ targets: next }, { immediate: false });
                               }}
                               onBlur={scheduleSaveOnBlur}
                             />
@@ -983,9 +1028,10 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
                                 const next = { ...(deployment.envVars ?? {}) };
                                 delete next[k];
                                 if (e.target.value) next[e.target.value] = v;
-                                updateDeployment({
-                                  envVars: Object.keys(next).length ? next : undefined,
-                                });
+                                updateDeployment(
+                                  { envVars: Object.keys(next).length ? next : undefined },
+                                  { immediate: false }
+                                );
                               }}
                             />
                             <input
@@ -995,7 +1041,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
                               value={v}
                               onChange={(e) => {
                                 const next = { ...(deployment.envVars ?? {}), [k]: e.target.value };
-                                updateDeployment({ envVars: next });
+                                updateDeployment({ envVars: next }, { immediate: false });
                               }}
                             />
                             <button

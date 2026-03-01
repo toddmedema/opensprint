@@ -343,10 +343,10 @@ describe("ProjectSettingsModal", () => {
     expect(screen.getByTestId("auto-deploy-trigger-production")).toHaveValue("none");
   });
 
-  it("saves auto-deploy trigger when changed on blur", async () => {
+  it("saves deployment mode and auto-deploy trigger immediately on change (no blur)", async () => {
     mockGetSettings.mockResolvedValueOnce({
       ...mockSettings,
-      deployment: { mode: "expo" as const },
+      deployment: { mode: "custom" as const },
     });
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
     await screen.findByText("Settings");
@@ -354,9 +354,24 @@ describe("ProjectSettingsModal", () => {
     const deploymentTab = screen.getByRole("button", { name: "Deliver" });
     await userEvent.click(deploymentTab);
 
+    // Switch to Expo mode — should persist immediately without blur
+    const expoRadio = screen.getByRole("radio", { name: /Expo\.dev/i });
+    await userEvent.click(expoRadio);
+
+    await waitFor(() =>
+      expect(mockUpdateSettings).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({
+          deployment: expect.objectContaining({ mode: "expo" }),
+        })
+      )
+    );
+
+    mockUpdateSettings.mockClear();
+
+    // Change auto-deploy trigger — should persist immediately without blur
     const stagingSelect = screen.getByTestId("auto-deploy-trigger-staging");
     await userEvent.selectOptions(stagingSelect, "each_epic");
-    fireEvent.blur(stagingSelect);
 
     await waitFor(() =>
       expect(mockUpdateSettings).toHaveBeenCalledWith(

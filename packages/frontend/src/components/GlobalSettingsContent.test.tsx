@@ -154,7 +154,7 @@ describe("GlobalSettingsContent", () => {
     expect(input).toHaveValue("postgresql://user:***@localhost:5432/opensprint");
   });
 
-  it("saves database URL on blur", async () => {
+  it("saves database URL after debounce on change", async () => {
     mockGlobalSettingsPut.mockResolvedValue({
       databaseUrl: "postgresql://user:***@db.example.com:5432/opensprint",
     });
@@ -168,14 +168,13 @@ describe("GlobalSettingsContent", () => {
         target: { value: "postgresql://user:secret@db.example.com:5432/opensprint" },
       });
     });
-    await act(async () => {
-      fireEvent.blur(input);
-    });
 
-    await waitFor(() =>
-      expect(mockGlobalSettingsPut).toHaveBeenCalledWith({
-        databaseUrl: "postgresql://user:secret@db.example.com:5432/opensprint",
-      })
+    await waitFor(
+      () =>
+        expect(mockGlobalSettingsPut).toHaveBeenCalledWith({
+          databaseUrl: "postgresql://user:secret@db.example.com:5432/opensprint",
+        }),
+      { timeout: 1000 }
     );
     await waitFor(() => {
       expect(input).toHaveValue("postgresql://user:***@db.example.com:5432/opensprint");

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useDisplayPreferences } from "../contexts/DisplayPreferencesContext";
 import type { RunningAgentsDisplayMode } from "../lib/displayPrefs";
@@ -6,6 +6,7 @@ import { api, isConnectionError } from "../api/client";
 import { ApiKeysSection } from "./ApiKeysSection";
 import type { ApiKeys, MaskedApiKeys } from "@opensprint/shared";
 import { API_KEY_PROVIDERS } from "@opensprint/shared";
+import type { SaveStatus } from "./SaveIndicator";
 
 const THEME_OPTIONS: { value: "light" | "dark" | "system"; label: string }[] = [
   { value: "light", label: "Light" },
@@ -56,12 +57,17 @@ function EyeOffIcon({ className }: { className?: string }) {
   );
 }
 
+export interface GlobalSettingsContentProps {
+  /** Called when save state changes (for indicator and beforeunload) */
+  onSaveStateChange?: (status: SaveStatus) => void;
+}
+
 /**
  * Single source component for global settings: API keys, database URL, theme, running agents display mode.
  * Used by both the homepage Settings page and the project-view Global settings tab.
  * All settings and inputs are defined here; adding a new setting requires changes in only one location.
  */
-export function GlobalSettingsContent() {
+export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsContentProps = {}) {
   const { preference: themePreference, setTheme } = useTheme();
   const { runningAgentsDisplayMode, setRunningAgentsDisplayMode } = useDisplayPreferences();
 
@@ -74,6 +80,14 @@ export function GlobalSettingsContent() {
   const [databaseUrlSaving, setDatabaseUrlSaving] = useState(false);
   const [databaseUrlError, setDatabaseUrlError] = useState<string | null>(null);
   const [showDatabaseUrl, setShowDatabaseUrl] = useState(false);
+  const initialLoadRef = useRef(true);
+
+  const notifySaveState = useCallback(
+    (status: SaveStatus) => {
+      onSaveStateChange?.(status);
+    },
+    [onSaveStateChange]
+  );
 
   useEffect(() => {
     setDatabaseUrlLoading(true);
@@ -87,13 +101,50 @@ export function GlobalSettingsContent() {
         setDatabaseUrl("");
         setApiKeys(undefined);
       })
-      .finally(() => setDatabaseUrlLoading(false));
+      .finally(() => {
+        setDatabaseUrlLoading(false);
+        initialLoadRef.current = false;
+      });
   }, []);
+
+  // Debounced save for database URL when value changes (immediate save on change)
+  useEffect(() => {
+    if (databaseUrlLoading || initialLoadRef.current) return;
+    const trimmed = databaseUrl.trim();
+    if (!trimmed || trimmed.includes("***")) return;
+
+    const t = setTimeout(() => {
+      setDatabaseUrlError(null);
+      setDatabaseUrlSaving(true);
+      notifySaveState("saving");
+      api.globalSettings
+        .put({ databaseUrl: trimmed })
+        .then((res) => {
+          setDatabaseUrl(res.databaseUrl);
+          notifySaveState("saved");
+        })
+        .catch((err) => {
+          setDatabaseUrlError(
+            isConnectionError(err)
+              ? "Unable to connect. Please check your network and try again."
+              : err instanceof Error
+                ? err.message
+                : "Failed to save"
+          );
+          notifySaveState("saved");
+        })
+        .finally(() => {
+          setDatabaseUrlSaving(false);
+        });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [databaseUrl, databaseUrlLoading]);
 
   const handleApiKeysChange = async (
     updates: Partial<Record<"ANTHROPIC_API_KEY" | "CURSOR_API_KEY", Array<{ id: string; value?: string; limitHitAt?: string }>>>
   ) => {
     setApiKeysError(null);
+    notifySaveState("saving");
     const merged: ApiKeys = {
       ...(apiKeys as ApiKeys),
       ...updates,
@@ -101,6 +152,7 @@ export function GlobalSettingsContent() {
     try {
       const res = await api.globalSettings.put({ apiKeys: merged });
       setApiKeys(res.apiKeys);
+      notifySaveState("saved");
     } catch (err) {
       const message = isConnectionError(err)
         ? "Unable to connect. Please check your network and try again."
@@ -108,6 +160,7 @@ export function GlobalSettingsContent() {
           ? err.message
           : "Failed to save";
       setApiKeysError(message);
+      notifySaveState("saved");
     }
   };
 
@@ -144,28 +197,12 @@ export function GlobalSettingsContent() {
                   setDatabaseUrl(e.target.value);
                   setDatabaseUrlError(null);
                 }}
-                onBlur={async () => {
+                onBlur={() => {
                   const trimmed = databaseUrlRef.current.trim();
-                  if (!trimmed) return;
-                  if (trimmed.includes("***")) {
+                  if (trimmed && trimmed.includes("***")) {
                     setDatabaseUrlError("Enter the full connection URL to save changes");
-                    return;
-                  }
-                  setDatabaseUrlError(null);
-                  setDatabaseUrlSaving(true);
-                  try {
-                    const res = await api.globalSettings.put({ databaseUrl: trimmed });
-                    setDatabaseUrl(res.databaseUrl);
-                  } catch (err) {
-                    setDatabaseUrlError(
-                      isConnectionError(err)
-                        ? "Unable to connect. Please check your network and try again."
-                        : err instanceof Error
-                          ? err.message
-                          : "Failed to save"
-                    );
-                  } finally {
-                    setDatabaseUrlSaving(false);
+                  } else {
+                    setDatabaseUrlError(null);
                   }
                 }}
                 disabled={databaseUrlLoading}

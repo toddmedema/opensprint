@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "../contexts/ThemeContext";
 import { DisplayPreferencesProvider } from "../contexts/DisplayPreferencesContext";
@@ -9,6 +9,8 @@ import { SettingsPage } from "./SettingsPage";
 const mockGetKeys = vi.fn();
 const mockGlobalSettingsGet = vi.fn();
 
+const mockGlobalSettingsPut = vi.fn();
+
 vi.mock("../api/client", () => ({
   api: {
     env: {
@@ -16,6 +18,7 @@ vi.mock("../api/client", () => ({
     },
     globalSettings: {
       get: () => mockGlobalSettingsGet(),
+      put: (...args: unknown[]) => mockGlobalSettingsPut(...args),
     },
   },
 }));
@@ -89,5 +92,69 @@ describe("SettingsPage", () => {
     });
 
     expect(screen.queryByRole("link", { name: "Back to home" })).not.toBeInTheDocument();
+  });
+
+  it("shows save indicator with Saved by default", async () => {
+    renderSettingsPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("settings-save-indicator")).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId("settings-save-indicator")).toHaveTextContent("Saved");
+  });
+
+  it("registers beforeunload when save in progress", async () => {
+    const addSpy = vi.spyOn(window, "addEventListener");
+    const removeSpy = vi.spyOn(window, "removeEventListener");
+
+    mockGlobalSettingsGet.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(
+            () =>
+              resolve({
+                databaseUrl: "postgresql://user:***@localhost:5432/opensprint",
+                apiKeys: undefined,
+              }),
+            0
+          );
+        })
+    );
+    mockGlobalSettingsPut.mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve({ databaseUrl: "", apiKeys: undefined }), 100))
+    );
+
+    renderSettingsPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("database-url-input")).toBeInTheDocument();
+    });
+
+    const input = screen.getByTestId("database-url-input");
+    fireEvent.change(input, {
+      target: { value: "postgresql://user:secret@localhost:5432/opensprint" },
+    });
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("settings-save-indicator")).toHaveTextContent("Saving");
+      },
+      { timeout: 1000 }
+    );
+
+    expect(addSpy).toHaveBeenCalledWith("beforeunload", expect.any(Function));
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId("settings-save-indicator")).toHaveTextContent("Saved");
+      },
+      { timeout: 1500 }
+    );
+
+    expect(removeSpy).toHaveBeenCalledWith("beforeunload", expect.any(Function));
+
+    addSpy.mockRestore();
+    removeSpy.mockRestore();
   });
 });
