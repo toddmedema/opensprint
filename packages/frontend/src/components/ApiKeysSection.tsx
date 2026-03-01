@@ -4,7 +4,9 @@ import type {
   ApiKeyProvider,
   ApiKeys,
   MaskedApiKeyEntry,
+  MaskedApiKeys,
 } from "@opensprint/shared";
+import { API_KEY_PROVIDERS } from "@opensprint/shared";
 
 const MASKED_PLACEHOLDER = "••••••••";
 
@@ -47,17 +49,36 @@ const PROVIDER_LABELS: Record<ApiKeyProvider, string> = {
   CURSOR_API_KEY: "CURSOR_API_KEY",
 };
 
+export type ApiKeysSectionVariant = "project" | "global";
+
 interface ApiKeysSectionProps {
-  settings: ApiKeysSectionSettings | null;
+  /** Project settings (agent config + apiKeys). Used when variant is "project". */
+  settings?: ApiKeysSectionSettings | null;
+  /** Global apiKeys (masked from GET /global-settings). Used when variant is "global". */
+  apiKeys?: ApiKeys | MaskedApiKeys;
+  /** Providers to show. When "global", pass API_KEY_PROVIDERS to show all. */
+  providers?: ApiKeyProvider[];
+  /** "global" = keys in global settings; "project" = project keys (deprecated). */
+  variant?: ApiKeysSectionVariant;
   onApiKeysChange: (apiKeys: Partial<Record<ApiKeyProvider, Array<{ id: string; value?: string; limitHitAt?: string }>>>) => void;
 }
 
-export function ApiKeysSection({ settings, onApiKeysChange }: ApiKeysSectionProps) {
+export function ApiKeysSection({
+  settings = null,
+  apiKeys: apiKeysProp,
+  providers: providersProp,
+  variant = "project",
+  onApiKeysChange,
+}: ApiKeysSectionProps) {
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(new Set());
   const [editedValues, setEditedValues] = useState<Record<string, string>>({});
   const [newKeys, setNewKeys] = useState<Partial<Record<ApiKeyProvider, Array<{ id: string; value: string }>>>>({});
 
-  const providers = settings ? getApiKeyProvidersForSection(settings) : [];
+  const providers =
+    providersProp ??
+    (settings ? getApiKeyProvidersForSection(settings) : []);
+  const apiKeys = apiKeysProp ?? settings?.apiKeys;
+
   if (providers.length === 0) return null;
 
   const toggleVisible = useCallback((id: string) => {
@@ -71,7 +92,7 @@ export function ApiKeysSection({ settings, onApiKeysChange }: ApiKeysSectionProp
 
   const getEntriesForProvider = useCallback(
     (provider: ApiKeyProvider): Array<{ id: string; value: string; limitHitAt?: string }> => {
-      const existing = (settings?.apiKeys as Record<string, MaskedApiKeyEntry[]> | undefined)?.[provider] ?? [];
+      const existing = (apiKeys as Record<string, MaskedApiKeyEntry[]> | undefined)?.[provider] ?? [];
       const added = newKeys[provider] ?? [];
       const existingIds = new Set(existing.map((e) => e.id));
       const addedOnly = added.filter((e) => !existingIds.has(e.id));
@@ -88,7 +109,7 @@ export function ApiKeysSection({ settings, onApiKeysChange }: ApiKeysSectionProp
         })),
       ];
     },
-    [settings?.apiKeys, newKeys, editedValues]
+    [apiKeys, newKeys, editedValues]
   );
 
   const emitApiKeysForProvider = useCallback(
@@ -187,8 +208,9 @@ export function ApiKeysSection({ settings, onApiKeysChange }: ApiKeysSectionProp
       <div>
         <h3 className="text-sm font-semibold text-theme-text mb-1">API Keys</h3>
         <p className="text-xs text-theme-muted mb-3">
-          Add multiple keys per provider for automatic rotation when limits are hit. Project keys
-          take precedence over keys in .env when both are configured.
+          {variant === "global"
+            ? "Add multiple keys per provider for automatic rotation when limits are hit. Keys are stored globally and used across all projects."
+            : "Add multiple keys per provider for automatic rotation when limits are hit. Project keys take precedence over keys in .env when both are configured."}
         </p>
         {providers.map((provider) => {
           const entries = getEntriesForProvider(provider);

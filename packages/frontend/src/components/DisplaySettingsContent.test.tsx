@@ -16,19 +16,11 @@ vi.mock("../contexts/DisplayPreferencesContext", () => ({
   }),
 }));
 
-const mockGetKeys = vi.fn();
-const mockValidateKey = vi.fn();
-const mockSaveKey = vi.fn();
 const mockGlobalSettingsGet = vi.fn();
 const mockGlobalSettingsPut = vi.fn();
 
 vi.mock("../api/client", () => ({
   api: {
-    env: {
-      getKeys: () => mockGetKeys(),
-      validateKey: (...args: unknown[]) => mockValidateKey(...args),
-      saveKey: (...args: unknown[]) => mockSaveKey(...args),
-    },
     globalSettings: {
       get: () => mockGlobalSettingsGet(),
       put: (...args: unknown[]) => mockGlobalSettingsPut(...args),
@@ -40,59 +32,41 @@ vi.mock("../api/client", () => ({
 describe("DisplaySettingsContent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetKeys.mockResolvedValue({
-      anthropic: false,
-      cursor: false,
-      claudeCli: false,
-      useCustomCli: false,
-    });
     mockGlobalSettingsGet.mockResolvedValue({
       databaseUrl: "postgresql://user:***@localhost:5432/opensprint",
+      apiKeys: undefined,
     });
   });
 
-  it("renders Agent API Keys section with add inputs when keys not configured", async () => {
+  it("renders ApiKeysSection with both providers when keys not configured", async () => {
     render(<DisplaySettingsContent />);
 
-    expect(screen.getByText("Agent API Keys")).toBeInTheDocument();
-    expect(screen.getByText(/Configure API keys for Claude and Cursor/)).toBeInTheDocument();
-    expect(await screen.findByTestId("global-api-key-anthropic-input")).toBeInTheDocument();
-    expect(screen.getByTestId("global-api-key-cursor-input")).toBeInTheDocument();
-    expect(screen.getByTestId("global-api-key-anthropic-save")).toBeInTheDocument();
-    expect(screen.getByTestId("global-api-key-cursor-save")).toBeInTheDocument();
+    await screen.findByTestId("api-keys-section-wrapper");
+    expect(screen.getByTestId("api-keys-section")).toBeInTheDocument();
+    expect(screen.getByText("API Keys")).toBeInTheDocument();
+    expect(screen.getByText(/Keys are stored globally and used across all projects/)).toBeInTheDocument();
+    expect(screen.getByText("ANTHROPIC_API_KEY (Claude API)")).toBeInTheDocument();
+    expect(screen.getByText("CURSOR_API_KEY")).toBeInTheDocument();
+    expect(screen.getByTestId("api-key-add-ANTHROPIC_API_KEY")).toBeInTheDocument();
+    expect(screen.getByTestId("api-key-add-CURSOR_API_KEY")).toBeInTheDocument();
   });
 
-  it("shows configured status when keys exist", async () => {
-    mockGetKeys.mockResolvedValue({
-      anthropic: true,
-      cursor: true,
-      claudeCli: false,
-      useCustomCli: false,
-    });
-
-    render(<DisplaySettingsContent />);
-
-    await screen.findByText("Agent API Keys");
-    expect(screen.getByText("Claude: configured")).toBeInTheDocument();
-    expect(screen.getByText("Cursor: configured")).toBeInTheDocument();
-    expect(screen.queryByTestId("global-api-key-anthropic-input")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("global-api-key-cursor-input")).not.toBeInTheDocument();
-  });
-
-  it("shows Claude input only when anthropic not configured", async () => {
-    mockGetKeys.mockResolvedValue({
-      anthropic: false,
-      cursor: true,
-      claudeCli: false,
-      useCustomCli: false,
+  it("shows existing keys when apiKeys from global settings", async () => {
+    mockGlobalSettingsGet.mockResolvedValue({
+      databaseUrl: "postgresql://user:***@localhost:5432/opensprint",
+      apiKeys: {
+        ANTHROPIC_API_KEY: [{ id: "k1", masked: "••••••••" }],
+        CURSOR_API_KEY: [{ id: "c1", masked: "••••••••" }],
+      },
     });
 
     render(<DisplaySettingsContent />);
 
-    await screen.findByText("Agent API Keys");
-    expect(screen.getByTestId("global-api-key-anthropic-input")).toBeInTheDocument();
-    expect(screen.queryByTestId("global-api-key-cursor-input")).not.toBeInTheDocument();
-    expect(screen.getByText("Cursor: configured")).toBeInTheDocument();
+    await screen.findByTestId("api-keys-section");
+    const anthropicInputs = screen.getAllByTestId(/api-key-input-ANTHROPIC_API_KEY-/);
+    const cursorInputs = screen.getAllByTestId(/api-key-input-CURSOR_API_KEY-/);
+    expect(anthropicInputs.length).toBe(1);
+    expect(cursorInputs.length).toBe(1);
   });
 
   it("renders Theme section", async () => {
@@ -110,6 +84,43 @@ describe("DisplaySettingsContent", () => {
 
     await screen.findByText("Running agents display mode");
     expect(screen.getByTestId("running-agents-display-mode")).toBeInTheDocument();
+  });
+
+  it("calls globalSettings.put when apiKeys change", async () => {
+    mockGlobalSettingsPut.mockResolvedValue({
+      databaseUrl: "postgresql://user:***@localhost:5432/opensprint",
+      apiKeys: {
+        ANTHROPIC_API_KEY: [{ id: "new-id", masked: "••••••••" }],
+      },
+    });
+
+    render(<DisplaySettingsContent />);
+
+    await screen.findByTestId("api-key-add-ANTHROPIC_API_KEY");
+    const addBtn = screen.getByTestId("api-key-add-ANTHROPIC_API_KEY");
+    await act(async () => {
+      fireEvent.click(addBtn);
+    });
+
+    const input = await screen.findByTestId(/api-key-input-ANTHROPIC_API_KEY-/);
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "sk-ant-new-key" } });
+    });
+    await act(async () => {
+      fireEvent.blur(input);
+    });
+
+    await waitFor(() => {
+      expect(mockGlobalSettingsPut).toHaveBeenCalledWith(
+        expect.objectContaining({
+          apiKeys: expect.objectContaining({
+            ANTHROPIC_API_KEY: expect.arrayContaining([
+              expect.objectContaining({ id: expect.any(String), value: "sk-ant-new-key" }),
+            ]),
+          }),
+        })
+      );
+    });
   });
 
   it("renders Database URL section with masked value", async () => {

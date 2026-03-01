@@ -3,6 +3,9 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useDisplayPreferences } from "../contexts/DisplayPreferencesContext";
 import type { RunningAgentsDisplayMode } from "../lib/displayPrefs";
 import { api, isConnectionError } from "../api/client";
+import { ApiKeysSection } from "./ApiKeysSection";
+import type { ApiKeys, MaskedApiKeys } from "@opensprint/shared";
+import { API_KEY_PROVIDERS } from "@opensprint/shared";
 
 const THEME_OPTIONS: { value: "light" | "dark" | "system"; label: string }[] = [
   { value: "light", label: "Light" },
@@ -62,20 +65,8 @@ export function DisplaySettingsContent() {
   const { preference: themePreference, setTheme } = useTheme();
   const { runningAgentsDisplayMode, setRunningAgentsDisplayMode } = useDisplayPreferences();
 
-  const [envKeys, setEnvKeys] = useState<{
-    anthropic: boolean;
-    cursor: boolean;
-    claudeCli: boolean;
-    useCustomCli: boolean;
-  } | null>(null);
-  const [keyInput, setKeyInput] = useState<{ anthropic: string; cursor: string }>({
-    anthropic: "",
-    cursor: "",
-  });
-  const [showKey, setShowKey] = useState<"anthropic" | "cursor" | null>(null);
-  const [savingKey, setSavingKey] = useState<"ANTHROPIC_API_KEY" | "CURSOR_API_KEY" | null>(null);
-  const [keyError, setKeyError] = useState<string | null>(null);
-
+  const [apiKeys, setApiKeys] = useState<ApiKeys | MaskedApiKeys | undefined>(undefined);
+  const [apiKeysError, setApiKeysError] = useState<string | null>(null);
   const [databaseUrl, setDatabaseUrl] = useState<string>("");
   const databaseUrlRef = useRef(databaseUrl);
   databaseUrlRef.current = databaseUrl;
@@ -85,164 +76,55 @@ export function DisplaySettingsContent() {
   const [showDatabaseUrl, setShowDatabaseUrl] = useState(false);
 
   useEffect(() => {
-    api.env.getKeys().then(setEnvKeys).catch(() => setEnvKeys(null));
-  }, []);
-
-  useEffect(() => {
     setDatabaseUrlLoading(true);
     api.globalSettings
       .get()
-      .then((res) => setDatabaseUrl(res.databaseUrl ?? ""))
-      .catch(() => setDatabaseUrl(""))
+      .then((res) => {
+        setDatabaseUrl(res.databaseUrl ?? "");
+        setApiKeys(res.apiKeys);
+      })
+      .catch(() => {
+        setDatabaseUrl("");
+        setApiKeys(undefined);
+      })
       .finally(() => setDatabaseUrlLoading(false));
   }, []);
 
-  const handleSaveKey = async (envKey: "ANTHROPIC_API_KEY" | "CURSOR_API_KEY") => {
-    const value =
-      envKey === "ANTHROPIC_API_KEY" ? keyInput.anthropic.trim() : keyInput.cursor.trim();
-    if (!value) return;
-    setKeyError(null);
-    setSavingKey(envKey);
+  const handleApiKeysChange = async (
+    updates: Partial<Record<"ANTHROPIC_API_KEY" | "CURSOR_API_KEY", Array<{ id: string; value?: string; limitHitAt?: string }>>>
+  ) => {
+    setApiKeysError(null);
+    const merged: ApiKeys = {
+      ...(apiKeys as ApiKeys),
+      ...updates,
+    };
     try {
-      const provider = envKey === "ANTHROPIC_API_KEY" ? "claude" : "cursor";
-      const { valid, error: validateError } = await api.env.validateKey(provider, value);
-      if (!valid) {
-        setKeyError(validateError ?? "Invalid API key");
-        setSavingKey(null);
-        return;
-      }
-      await api.env.saveKey(envKey, value);
-      setEnvKeys((prev) =>
-        prev ? { ...prev, [envKey === "ANTHROPIC_API_KEY" ? "anthropic" : "cursor"]: true } : null
-      );
-      setKeyInput((prev) => ({
-        ...prev,
-        [envKey === "ANTHROPIC_API_KEY" ? "anthropic" : "cursor"]: "",
-      }));
+      const res = await api.globalSettings.put({ apiKeys: merged });
+      setApiKeys(res.apiKeys);
     } catch (err) {
       const message = isConnectionError(err)
         ? "Unable to connect. Please check your network and try again."
         : err instanceof Error
           ? err.message
           : "Failed to save";
-      setKeyError(message);
-    } finally {
-      setSavingKey(null);
+      setApiKeysError(message);
     }
   };
 
   return (
     <div className="space-y-6" data-testid="display-section">
-      <div>
-        <h3 className="text-sm font-semibold text-theme-text">Agent API Keys</h3>
-        <p className="text-xs text-theme-muted mb-3">
-          Configure API keys for Claude and Cursor. Keys are stored globally and used across all
-          projects.
-        </p>
-        <div className="space-y-3">
-          {envKeys && !envKeys.anthropic && (
-            <div className="flex gap-2 items-end">
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-theme-muted mb-1">
-                  Claude (ANTHROPIC_API_KEY)
-                </label>
-                <div className="relative flex">
-                  <input
-                    type={showKey === "anthropic" ? "text" : "password"}
-                    className="input font-mono text-sm w-full pr-10"
-                    placeholder="sk-ant-..."
-                    value={keyInput.anthropic}
-                    onChange={(e) => {
-                      setKeyInput((p) => ({ ...p, anthropic: e.target.value }));
-                      setKeyError(null);
-                    }}
-                    autoComplete="off"
-                    data-testid="global-api-key-anthropic-input"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowKey((v) => (v === "anthropic" ? null : "anthropic"))}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-theme-muted hover:text-theme-text p-1"
-                    aria-label={showKey === "anthropic" ? "Hide key" : "Show key"}
-                  >
-                    {showKey === "anthropic" ? (
-                      <EyeOffIcon className="w-4 h-4" />
-                    ) : (
-                      <EyeIcon className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleSaveKey("ANTHROPIC_API_KEY")}
-                disabled={!keyInput.anthropic.trim() || savingKey !== null}
-                className="btn-primary text-sm disabled:opacity-50"
-                data-testid="global-api-key-anthropic-save"
-              >
-                {savingKey === "ANTHROPIC_API_KEY" ? "Saving…" : "Add"}
-              </button>
-            </div>
-          )}
-          {envKeys?.anthropic && (
-            <p className="text-sm text-theme-muted">Claude: configured</p>
-          )}
-          {envKeys && !envKeys.cursor && (
-            <div className="flex gap-2 items-end">
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-theme-muted mb-1">
-                  Cursor (CURSOR_API_KEY)
-                </label>
-                <div className="relative flex">
-                  <input
-                    type={showKey === "cursor" ? "text" : "password"}
-                    className="input font-mono text-sm w-full pr-10"
-                    placeholder="key_..."
-                    value={keyInput.cursor}
-                    onChange={(e) => {
-                      setKeyInput((p) => ({ ...p, cursor: e.target.value }));
-                      setKeyError(null);
-                    }}
-                    autoComplete="off"
-                    data-testid="global-api-key-cursor-input"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowKey((v) => (v === "cursor" ? null : "cursor"))}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-theme-muted hover:text-theme-text p-1"
-                    aria-label={showKey === "cursor" ? "Hide key" : "Show key"}
-                  >
-                    {showKey === "cursor" ? (
-                      <EyeOffIcon className="w-4 h-4" />
-                    ) : (
-                      <EyeIcon className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleSaveKey("CURSOR_API_KEY")}
-                disabled={!keyInput.cursor.trim() || savingKey !== null}
-                className="btn-primary text-sm disabled:opacity-50"
-                data-testid="global-api-key-cursor-save"
-              >
-                {savingKey === "CURSOR_API_KEY" ? "Saving…" : "Add"}
-              </button>
-            </div>
-          )}
-          {envKeys?.cursor && (
-            <p className="text-sm text-theme-muted">Cursor: configured</p>
-          )}
-          {envKeys?.claudeCli && (
-            <p className="text-sm text-theme-muted">Claude CLI: available</p>
-          )}
-          {keyError && (
-            <p className="text-sm text-theme-error-text" role="alert">
-              {keyError}
-            </p>
-          )}
-        </div>
+      <div data-testid="api-keys-section-wrapper">
+        <ApiKeysSection
+          apiKeys={apiKeys}
+          providers={API_KEY_PROVIDERS}
+          variant="global"
+          onApiKeysChange={handleApiKeysChange}
+        />
+        {apiKeysError && (
+          <p className="text-sm text-theme-error-text mt-2" role="alert">
+            {apiKeysError}
+          </p>
+        )}
       </div>
       <div data-testid="database-url-section">
         <h3 className="text-sm font-semibold text-theme-text">Database URL</h3>

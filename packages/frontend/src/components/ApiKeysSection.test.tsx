@@ -178,4 +178,19 @@ describe("ApiKeysSection", () => {
     );
     expect(container.firstChild).toBeNull();
   });
+
+  it("renders both providers in global mode with apiKeys and providers props", () => {
+    render(
+      <ApiKeysSection
+        apiKeys={{}}
+        providers={["ANTHROPIC_API_KEY", "CURSOR_API_KEY"]}
+        variant="global"
+        onApiKeysChange={onApiKeysChange}
+      />
+    );
+    expect(screen.getByTestId("api-keys-section")).toBeInTheDocument();
+    expect(screen.getByText(/Keys are stored globally and used across all projects/)).toBeInTheDocument();
+    expect(screen.getByText("ANTHROPIC_API_KEY (Claude API)")).toBeInTheDocument();
+    expect(screen.getByText("CURSOR_API_KEY")).toBeInTheDocument();
+  });
 });
