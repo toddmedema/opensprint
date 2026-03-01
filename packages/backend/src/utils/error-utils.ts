@@ -30,9 +30,10 @@ export function getExecErrorShape(err: unknown): ExecErrorShape {
   };
 }
 
-/** Limit-error patterns for Anthropic and Cursor (429, rate limit, overloaded, add more tokens, quota exceeded). */
+/** Limit-error patterns for Anthropic, Cursor, and OpenAI (429, rate_limit_exceeded, rate limit, overloaded, add more tokens, quota exceeded). */
 const LIMIT_ERROR_PATTERNS = [
   /429/,
+  /rate_limit_exceeded/i,
   /rate\s*limit/i,
   /overloaded/i,
   /add\s+more\s+tokens/i,

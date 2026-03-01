@@ -17,6 +17,10 @@ const { mockMessagesCreate, mockMessagesStream } = vi.hoisted(() => ({
   mockMessagesStream: vi.fn(),
 }));
 
+const { mockOpenAICreate } = vi.hoisted(() => ({
+  mockOpenAICreate: vi.fn(),
+}));
+
 vi.mock("../services/agent-client.js", () => ({
   AgentClient: vi.fn().mockImplementation(() => ({
     spawnWithTaskFile: mockSpawnWithTaskFile,
@@ -35,6 +39,16 @@ vi.mock("@anthropic-ai/sdk", () => ({
     messages: {
       create: (...args: unknown[]) => mockMessagesCreate(...args),
       stream: (...args: unknown[]) => mockMessagesStream(...args),
+    },
+  })),
+}));
+
+vi.mock("openai", () => ({
+  default: vi.fn().mockImplementation(() => ({
+    chat: {
+      completions: {
+        create: (...args: unknown[]) => mockOpenAICreate(...args),
+      },
     },
   })),
 }));
@@ -239,6 +253,85 @@ describe("AgentService", () => {
 
       expect(mockGetNextKey).toHaveBeenCalledWith(projectId, "ANTHROPIC_API_KEY");
       expect(mockClearLimitHit).toHaveBeenCalledWith(projectId, "ANTHROPIC_API_KEY", "k1", "global");
+      expect(result.content).toBe("Hello world");
+    });
+  });
+
+  describe("invokePlanningAgent (OpenAI + ApiKeyResolver)", () => {
+    const projectId = "proj-456";
+    const openaiConfig: AgentConfig = { type: "openai", model: "gpt-4o", cliCommand: null };
+
+    it("uses getNextKey and clearLimitHit on success", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "sk-openai-test", keyId: "k1", source: "global" });
+      mockOpenAICreate.mockResolvedValue({
+        choices: [{ message: { content: "Hello from OpenAI" } }],
+      });
+
+      const result = await service.invokePlanningAgent({
+        projectId,
+        config: openaiConfig,
+        messages: [{ role: "user", content: "Hi" }],
+      });
+
+      expect(mockGetNextKey).toHaveBeenCalledWith(projectId, "OPENAI_API_KEY");
+      expect(mockClearLimitHit).toHaveBeenCalledWith(projectId, "OPENAI_API_KEY", "k1", "global");
+      expect(mockRecordLimitHit).not.toHaveBeenCalled();
+      expect(result.content).toBe("Hello from OpenAI");
+    });
+
+    it("on limit error: recordLimitHit, retry with next key, succeeds on second key", async () => {
+      mockGetNextKey
+        .mockResolvedValueOnce({ key: "sk-openai-key1", keyId: "k1", source: "global" })
+        .mockResolvedValueOnce({ key: "sk-openai-key2", keyId: "k2", source: "global" });
+      mockOpenAICreate
+        .mockRejectedValueOnce(new Error("rate_limit_exceeded"))
+        .mockResolvedValueOnce({ choices: [{ message: { content: "Success" } }] });
+
+      const result = await service.invokePlanningAgent({
+        projectId,
+        config: openaiConfig,
+        messages: [{ role: "user", content: "Hi" }],
+      });
+
+      expect(mockGetNextKey).toHaveBeenCalledTimes(2);
+      expect(mockRecordLimitHit).toHaveBeenCalledWith(projectId, "OPENAI_API_KEY", "k1", "global");
+      expect(mockClearLimitHit).toHaveBeenCalledWith(projectId, "OPENAI_API_KEY", "k2", "global");
+      expect(result.content).toBe("Success");
+    });
+
+    it("when no keys available: throws OPENAI_API_ERROR", async () => {
+      mockGetNextKey.mockResolvedValue(null);
+
+      await expect(
+        service.invokePlanningAgent({
+          projectId,
+          config: openaiConfig,
+          messages: [{ role: "user", content: "Hi" }],
+        })
+      ).rejects.toMatchObject({
+        code: "OPENAI_API_ERROR",
+      });
+    });
+
+    it("streaming path: uses getNextKey and clearLimitHit on success", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "sk-openai-test", keyId: "k1", source: "global" });
+      const onChunk = vi.fn();
+      mockOpenAICreate.mockResolvedValue(
+        (async function* () {
+          yield { choices: [{ delta: { content: "Hello " } }] };
+          yield { choices: [{ delta: { content: "world" } }] };
+        })()
+      );
+
+      const result = await service.invokePlanningAgent({
+        projectId,
+        config: openaiConfig,
+        messages: [{ role: "user", content: "Hi" }],
+        onChunk,
+      });
+
+      expect(mockGetNextKey).toHaveBeenCalledWith(projectId, "OPENAI_API_KEY");
+      expect(mockClearLimitHit).toHaveBeenCalledWith(projectId, "OPENAI_API_KEY", "k1", "global");
       expect(result.content).toBe("Hello world");
     });
   });

@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import type { AgentConfig, AgentRole } from "@opensprint/shared";
 import { AgentClient } from "./agent-client.js";
 import { AppError } from "../middleware/error-handler.js";
@@ -146,6 +147,10 @@ export class AgentService {
 
     if (config.type === "claude") {
       return this.invokeClaudePlanningAgent(options);
+    }
+
+    if (config.type === "openai") {
+      return this.invokeOpenAIPlanningAgent(options);
     }
 
     // Cursor and custom: use AgentClient (CLI-based). Images are written to temp files
@@ -505,6 +510,128 @@ A git merge or rebase has encountered conflicts. The working directory contains 
           ErrorCodes.AGENT_INVOKE_FAILED,
           `Claude API error: ${msg}. Check Settings (API key, model).`,
           { agentType: "claude", raw: msg, isLimitError: false }
+        );
+      }
+    }
+  }
+
+  /**
+   * OpenAI API integration using openai SDK.
+   * Uses ApiKeyResolver for key rotation: on limit error, recordLimitHit and retry with next key.
+   * On success, clearLimitHit. Supports streaming via onChunk and images.
+   * Maps PlanningMessage (user/assistant) to OpenAI chat format.
+   */
+  private async invokeOpenAIPlanningAgent(
+    options: InvokePlanningAgentOptions
+  ): Promise<PlanningAgentResponse> {
+    const { projectId, config, messages, systemPrompt, images, onChunk } = options;
+
+    const model = config.model ?? "gpt-4o-mini";
+
+    // Map PlanningMessage (user/assistant) to OpenAI messages. OpenAI uses system, user, assistant.
+    const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
+    if (systemPrompt?.trim()) {
+      openaiMessages.push({ role: "system", content: systemPrompt.trim() });
+    }
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      const isLastUser = m.role === "user" && i === messages.length - 1;
+      const hasImages = isLastUser && images && images.length > 0;
+      if (hasImages) {
+        const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [
+          { type: "text", text: m.content },
+        ];
+        for (const img of images!) {
+          const dataUrl = img.startsWith("data:") ? img : `data:image/png;base64,${img}`;
+          content.push({ type: "image_url", image_url: { url: dataUrl } });
+        }
+        openaiMessages.push({ role: "user", content });
+      } else {
+        openaiMessages.push({ role: m.role, content: m.content });
+      }
+    }
+
+    const triedKeyIds = new Set<string>();
+    let lastError: unknown;
+
+    for (;;) {
+      const resolved = await getNextKey(projectId, "OPENAI_API_KEY");
+      if (!resolved) {
+        const msg = lastError ? getErrorMessage(lastError) : "No API key available";
+        throw new AppError(
+          400,
+          ErrorCodes.OPENAI_API_ERROR,
+          lastError && isLimitError(lastError)
+            ? `All OpenAI API keys hit rate limits. ${msg} Add more keys in Settings, or retry after 24h.`
+            : "OPENAI_API_KEY is not set. Add it to your .env file or Settings. Get a key from https://platform.openai.com/.",
+          lastError ? { agentType: "openai", raw: msg, isLimitError: isLimitError(lastError) } : undefined
+        );
+      }
+
+      const { key, keyId, source } = resolved;
+      if (triedKeyIds.has(keyId)) {
+        const msg = getErrorMessage(lastError);
+        throw new AppError(
+          502,
+          ErrorCodes.AGENT_INVOKE_FAILED,
+          `OpenAI API error: ${msg}. Check Settings (API key, model).`,
+          { agentType: "openai", raw: msg, isLimitError: true }
+        );
+      }
+      triedKeyIds.add(keyId);
+
+      const client = new OpenAI({ apiKey: key });
+
+      try {
+        let content: string;
+        if (onChunk) {
+          const stream = await client.chat.completions.create({
+            model,
+            messages: openaiMessages,
+            max_tokens: 8192,
+            stream: true,
+          });
+          let fullContent = "";
+          for await (const chunk of stream) {
+            const delta = chunk.choices[0]?.delta?.content;
+            if (delta) {
+              fullContent += delta;
+              onChunk(delta);
+            }
+          }
+          content = fullContent;
+        } else {
+          const response = await client.chat.completions.create({
+            model,
+            messages: openaiMessages,
+            max_tokens: 8192,
+          });
+          content = response.choices[0]?.message?.content ?? "";
+        }
+
+        await clearLimitHit(projectId, "OPENAI_API_KEY", keyId, source);
+        return { content };
+      } catch (error: unknown) {
+        lastError = error;
+        if (isLimitError(error)) {
+          if (keyId === ENV_FALLBACK_KEY_ID) {
+            const msg = getErrorMessage(error);
+            throw new AppError(
+              502,
+              ErrorCodes.AGENT_INVOKE_FAILED,
+              `OpenAI API rate limit: ${msg}. Add more keys in Settings for automatic rotation.`,
+              { agentType: "openai", raw: msg, isLimitError: true }
+            );
+          }
+          await recordLimitHit(projectId, "OPENAI_API_KEY", keyId, source);
+          continue;
+        }
+        const msg = getErrorMessage(error);
+        throw new AppError(
+          502,
+          ErrorCodes.AGENT_INVOKE_FAILED,
+          `OpenAI API error: ${msg}. Check Settings (API key, model).`,
+          { agentType: "openai", raw: msg, isLimitError: false }
         );
       }
     }

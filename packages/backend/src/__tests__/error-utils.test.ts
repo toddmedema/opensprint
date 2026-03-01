@@ -59,6 +59,7 @@ describe("isLimitError", () => {
     expect(isLimitError(new Error("Rate limit exceeded"))).toBe(true);
     expect(isLimitError(new Error("rate limit hit"))).toBe(true);
     expect(isLimitError(new Error("rate limit"))).toBe(true);
+    expect(isLimitError(new Error("rate_limit_exceeded"))).toBe(true);
   });
 
   it("returns true for overloaded in message", () => {
