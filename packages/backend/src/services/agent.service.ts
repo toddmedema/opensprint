@@ -418,8 +418,8 @@ A git merge or rebase has encountered conflicts. The working directory contains 
           400,
           ErrorCodes.ANTHROPIC_API_KEY_MISSING,
           lastError && isLimitError(lastError)
-            ? `All Claude API keys hit rate limits. ${msg} Add more keys in Project Settings → Agent Config → API Keys, or retry after 24h.`
-            : "ANTHROPIC_API_KEY is not set. Add it to your .env file or Project Settings → Agent Config. Get a key from https://console.anthropic.com/. Alternatively, switch to Claude (CLI) in Agent Config to use the locally-installed claude CLI instead.",
+            ? `All Claude API keys hit rate limits. ${msg} Add more keys in Settings, or retry after 24h.`
+            : "ANTHROPIC_API_KEY is not set. Add it to your .env file or Settings. Get a key from https://console.anthropic.com/. Alternatively, switch to Claude (CLI) in Agent Config to use the locally-installed claude CLI instead.",
           lastError ? { agentType: "claude", raw: msg, isLimitError: isLimitError(lastError) } : undefined
         );
       }
@@ -431,7 +431,7 @@ A git merge or rebase has encountered conflicts. The working directory contains 
         throw new AppError(
           502,
           ErrorCodes.AGENT_INVOKE_FAILED,
-          `Claude API error: ${msg}. Check Project Settings → Agent Config (API key, model).`,
+          `Claude API error: ${msg}. Check Settings (API key, model).`,
           { agentType: "claude", raw: msg, isLimitError: true }
         );
       }
@@ -492,7 +492,7 @@ A git merge or rebase has encountered conflicts. The working directory contains 
             throw new AppError(
               502,
               ErrorCodes.AGENT_INVOKE_FAILED,
-              `Claude API rate limit: ${msg}. Add project-level API keys in Project Settings → Agent Config → API Keys for automatic rotation.`,
+              `Claude API rate limit: ${msg}. Add more keys in Settings for automatic rotation.`,
               { agentType: "claude", raw: msg, isLimitError: true }
             );
           }
@@ -503,7 +503,7 @@ A git merge or rebase has encountered conflicts. The working directory contains 
         throw new AppError(
           502,
           ErrorCodes.AGENT_INVOKE_FAILED,
-          `Claude API error: ${msg}. Check Project Settings → Agent Config (API key, model).`,
+          `Claude API error: ${msg}. Check Settings (API key, model).`,
           { agentType: "claude", raw: msg, isLimitError: false }
         );
       }

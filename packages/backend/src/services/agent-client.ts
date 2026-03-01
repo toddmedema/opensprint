@@ -89,7 +89,7 @@ function formatAgentError(
     lower.includes("model") &&
     (lower.includes("invalid") || lower.includes("not found") || lower.includes("unknown"))
   ) {
-    return `${raw} If using Cursor, run \`agent models\` in your terminal to list available models, then update the model in Project Settings → Agent Config.`;
+    return `${raw} If using Cursor, run \`agent models\` in your terminal to list available models, then update the model in Settings.`;
   }
 
   // Timeout
@@ -744,8 +744,8 @@ export class AgentClient {
           400,
           ErrorCodes.AGENT_INVOKE_FAILED,
           lastError && isLimitError(lastError)
-            ? `All Cursor API keys hit rate limits. ${msg} Add more keys in Project Settings → Agent Config → API Keys, or retry after 24h.`
-            : "CURSOR_API_KEY is not set. Add it to your .env file or Project Settings → Agent Config. Get a key from Cursor → Settings → Integrations → User API Keys.",
+            ? `All Cursor API keys hit rate limits. ${msg} Add more keys in Settings, or retry after 24h.`
+            : "CURSOR_API_KEY is not set. Add it to your .env file or Settings. Get a key from Cursor → Settings → Integrations → User API Keys.",
           lastError ? { agentType: "cursor", raw: msg, isLimitError: isLimitError(lastError) } : undefined
         );
       }
@@ -756,7 +756,7 @@ export class AgentClient {
         throw new AppError(
           502,
           ErrorCodes.AGENT_INVOKE_FAILED,
-          `Cursor API error: ${msg}. Check Project Settings → Agent Config (API key, model).`,
+          `Cursor API error: ${msg}. Check Settings (API key, model).`,
           { agentType: "cursor", raw: msg, isLimitError: true }
         );
       }
@@ -796,7 +796,7 @@ export class AgentClient {
           : Boolean(execShape.killed && execShape.signal === "SIGTERM");
 
         const raw = isTimeout
-          ? `The Cursor agent timed out after 5 minutes. Try a faster model (e.g. sonnet-4.6-thinking) in Project Settings, or use Claude instead.`
+          ? `The Cursor agent timed out after 5 minutes. Try a faster model (e.g. sonnet-4.6-thinking) in Settings, or use Claude instead.`
           : isAppErr
             ? error.message
             : execShape.stderr ||
