@@ -4,6 +4,7 @@ import path from "path";
 import os from "os";
 import { ProjectService } from "../services/project.service.js";
 import { notificationService } from "../services/notification.service.js";
+import { setGlobalSettings } from "../services/global-settings.service.js";
 import { DEFAULT_HIL_CONFIG, DEFAULT_REVIEW_MODE } from "@opensprint/shared";
 
 vi.mock("../services/task-store.service.js", async (importOriginal) => {
@@ -43,6 +44,12 @@ describe.skipIf(!projectServicePostgresOk)("ProjectService", () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-project-test-"));
     originalHome = process.env.HOME;
     process.env.HOME = tempDir;
+    await setGlobalSettings({
+      apiKeys: {
+        ANTHROPIC_API_KEY: [{ id: "test-ant", value: "sk-ant-test" }],
+        CURSOR_API_KEY: [{ id: "test-cur", value: "cursor-test" }],
+      },
+    });
   });
 
   afterEach(async () => {
@@ -651,6 +658,93 @@ describe.skipIf(!projectServicePostgresOk)("ProjectService", () => {
         simpleComplexityAgent: { type: "invalid" as "claude", model: null, cliCommand: null },
       })
     ).rejects.toMatchObject({ code: "INVALID_AGENT_CONFIG" });
+  });
+
+  it("should reject updateSettings when agent config requires API keys but global store has none", async () => {
+    const repoPath = path.join(tempDir, "api-keys-validation");
+    const project = await projectService.createProject({
+      name: "Test",
+      repoPath,
+      simpleComplexityAgent: { type: "claude-cli", model: null, cliCommand: "claude" },
+      complexComplexityAgent: { type: "claude-cli", model: null, cliCommand: null },
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+    });
+
+    await setGlobalSettings({ apiKeys: {} });
+
+    await expect(
+      projectService.updateSettings(project.id, {
+        simpleComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+      })
+    ).rejects.toMatchObject({
+      code: "INVALID_AGENT_CONFIG",
+      message: "Configure API keys in Settings.",
+    });
+  });
+
+  it("should reject updateSettings when switching to cursor without CURSOR_API_KEY in global store", async () => {
+    const repoPath = path.join(tempDir, "cursor-validation");
+    const project = await projectService.createProject({
+      name: "Test",
+      repoPath,
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+    });
+
+    await setGlobalSettings({
+      apiKeys: {
+        ANTHROPIC_API_KEY: [{ id: "k1", value: "sk-ant-test" }],
+      },
+    });
+
+    await expect(
+      projectService.updateSettings(project.id, {
+        complexComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+      })
+    ).rejects.toMatchObject({
+      code: "INVALID_AGENT_CONFIG",
+      message: "Configure API keys in Settings.",
+    });
+  });
+
+  it("should allow updateSettings when global store has required API keys", async () => {
+    const repoPath = path.join(tempDir, "api-keys-ok");
+    const project = await projectService.createProject({
+      name: "Test",
+      repoPath,
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+    });
+
+    const updated = await projectService.updateSettings(project.id, {
+      simpleComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+    });
+    expect(updated.simpleComplexityAgent.model).toBe("claude-sonnet-4");
+  });
+
+  it("should allow updateSettings to claude-cli without API keys (CLI uses local auth)", async () => {
+    const repoPath = path.join(tempDir, "claude-cli-no-keys");
+    const project = await projectService.createProject({
+      name: "Test",
+      repoPath,
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+    });
+
+    await setGlobalSettings({ apiKeys: {} });
+
+    const updated = await projectService.updateSettings(project.id, {
+      simpleComplexityAgent: { type: "claude-cli", model: null, cliCommand: "claude" },
+      complexComplexityAgent: { type: "claude-cli", model: null, cliCommand: null },
+    });
+    expect(updated.simpleComplexityAgent.type).toBe("claude-cli");
   });
 
   it("archiveProject removes from index only, leaves .opensprint intact", async () => {

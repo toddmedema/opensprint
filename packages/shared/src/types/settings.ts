@@ -662,6 +662,20 @@ export function getProvidersInUse(settings: ProjectSettings): ApiKeyProvider[] {
 }
 
 /**
+ * Get API key providers required when using Claude API or Cursor (validation only).
+ * claude → ANTHROPIC_API_KEY; cursor → CURSOR_API_KEY.
+ * claude-cli and custom do not require API keys (CLI uses local auth).
+ */
+export function getProvidersRequiringApiKeys(agents: AgentConfig[]): ApiKeyProvider[] {
+  const providers: Set<ApiKeyProvider> = new Set();
+  for (const a of agents) {
+    if (a.type === "claude") providers.add("ANTHROPIC_API_KEY");
+    if (a.type === "cursor") providers.add("CURSOR_API_KEY");
+  }
+  return Array.from(providers);
+}
+
+/**
  * Check if limitHitAt is older than 24 hours (key is available again).
  */
 export function isLimitHitExpired(limitHitAt: string | undefined): boolean {

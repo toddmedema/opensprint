@@ -5,6 +5,7 @@ import path from "path";
 import os from "os";
 import { createApp } from "../app.js";
 import { ProjectService } from "../services/project.service.js";
+import { setGlobalSettings } from "../services/global-settings.service.js";
 import { API_PREFIX, DEFAULT_HIL_CONFIG, OPENSPRINT_DIR } from "@opensprint/shared";
 
 vi.mock("../services/task-store.service.js", async (importOriginal) => {
@@ -44,6 +45,13 @@ describe.skipIf(!projectsPostgresOk)("Projects REST API — spec/sketch phase ro
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-projects-route-test-"));
     originalHome = process.env.HOME;
     process.env.HOME = tempDir;
+
+    await setGlobalSettings({
+      apiKeys: {
+        ANTHROPIC_API_KEY: [{ id: "test-ant", value: "sk-ant-test" }],
+        CURSOR_API_KEY: [{ id: "test-cur", value: "cursor-test" }],
+      },
+    });
 
     const repoPath = path.join(tempDir, "my-project");
     await fs.mkdir(repoPath, { recursive: true });
@@ -135,6 +143,13 @@ describe("Projects REST API — create and settings", () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-projects-create-test-"));
     originalHome = process.env.HOME;
     process.env.HOME = tempDir;
+
+    await setGlobalSettings({
+      apiKeys: {
+        ANTHROPIC_API_KEY: [{ id: "test-ant", value: "sk-ant-test" }],
+        CURSOR_API_KEY: [{ id: "test-cur", value: "cursor-test" }],
+      },
+    });
 
     const repoPath = path.join(tempDir, "my-project");
     await fs.mkdir(repoPath, { recursive: true });

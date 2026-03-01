@@ -21,7 +21,10 @@ import {
   getTestCommandForFramework,
   hilConfigFromAiAutonomyLevel,
   parseSettings,
+  getProvidersRequiringApiKeys,
 } from "@opensprint/shared";
+import type { ApiKeyProvider } from "@opensprint/shared";
+import { getGlobalSettings } from "./global-settings.service.js";
 import type { AiAutonomyLevel, DeploymentConfig, HilConfig } from "@opensprint/shared";
 import { taskStore as taskStoreSingleton } from "./task-store.service.js";
 import {
@@ -689,6 +692,29 @@ export class ProjectService {
       } catch (err) {
         const msg = getErrorMessage(err, "Invalid complex complexity agent configuration");
         throw new AppError(400, ErrorCodes.INVALID_AGENT_CONFIG, msg);
+      }
+    }
+
+    // Validate API keys in global store when agent config requires them (Claude API or Cursor)
+    const requiredProviders = getProvidersRequiringApiKeys([
+      simpleComplexityAgent,
+      complexComplexityAgent,
+    ]);
+    if (requiredProviders.length > 0) {
+      const gs = await getGlobalSettings();
+      const missing: ApiKeyProvider[] = [];
+      for (const provider of requiredProviders) {
+        const entries = gs.apiKeys?.[provider];
+        if (!Array.isArray(entries) || entries.length === 0) {
+          missing.push(provider);
+        }
+      }
+      if (missing.length > 0) {
+        throw new AppError(
+          400,
+          ErrorCodes.INVALID_AGENT_CONFIG,
+          "Configure API keys in Settings."
+        );
       }
     }
 

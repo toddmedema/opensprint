@@ -20,6 +20,7 @@ import {
   isLimitHitExpired,
   maskApiKeysForResponse,
   getProvidersInUse,
+  getProvidersRequiringApiKeys,
 } from "../types/settings.js";
 import type { ProjectSettings, AgentConfig, DeploymentConfig, ApiKeys } from "../types/settings.js";
 
@@ -824,5 +825,39 @@ describe("getProvidersInUse", () => {
       complexComplexityAgent: { type: "claude-cli", model: null, cliCommand: null },
     });
     expect(getProvidersInUse(settings)).toEqual(["ANTHROPIC_API_KEY"]);
+  });
+});
+
+describe("getProvidersRequiringApiKeys", () => {
+  it("returns ANTHROPIC_API_KEY for claude only (not claude-cli)", () => {
+    const agents = [
+      { type: "claude" as const, model: "x", cliCommand: null },
+      { type: "claude-cli" as const, model: null, cliCommand: "claude" },
+    ];
+    expect(getProvidersRequiringApiKeys(agents)).toEqual(["ANTHROPIC_API_KEY"]);
+  });
+
+  it("returns CURSOR_API_KEY when cursor in use", () => {
+    const agents = [
+      { type: "cursor" as const, model: null, cliCommand: null },
+      { type: "cursor" as const, model: null, cliCommand: null },
+    ];
+    expect(getProvidersRequiringApiKeys(agents)).toEqual(["CURSOR_API_KEY"]);
+  });
+
+  it("returns both when claude and cursor in use", () => {
+    const agents = [
+      { type: "claude" as const, model: "x", cliCommand: null },
+      { type: "cursor" as const, model: null, cliCommand: null },
+    ];
+    expect(getProvidersRequiringApiKeys(agents)).toEqual(["ANTHROPIC_API_KEY", "CURSOR_API_KEY"]);
+  });
+
+  it("returns empty for claude-cli and custom only", () => {
+    const agents = [
+      { type: "claude-cli" as const, model: null, cliCommand: "claude" },
+      { type: "custom" as const, model: null, cliCommand: "my-agent" },
+    ];
+    expect(getProvidersRequiringApiKeys(agents)).toEqual([]);
   });
 });

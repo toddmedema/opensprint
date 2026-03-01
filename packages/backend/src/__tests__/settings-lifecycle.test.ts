@@ -11,6 +11,7 @@ import path from "path";
 import os from "os";
 import { createApp } from "../app.js";
 import { ProjectService } from "../services/project.service.js";
+import { setGlobalSettings } from "../services/global-settings.service.js";
 import { API_PREFIX, DEFAULT_HIL_CONFIG, DEFAULT_REVIEW_MODE } from "@opensprint/shared";
 import type { DbClient } from "../db/client.js";
 
@@ -82,6 +83,12 @@ describe("Settings lifecycle — service-level", () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-settings-lifecycle-"));
     originalHome = process.env.HOME;
     process.env.HOME = tempDir;
+    await setGlobalSettings({
+      apiKeys: {
+        ANTHROPIC_API_KEY: [{ id: "test-ant", value: "sk-ant-test" }],
+        CURSOR_API_KEY: [{ id: "test-cur", value: "cursor-test" }],
+      },
+    });
   });
 
   afterEach(async () => {
@@ -199,6 +206,13 @@ describe("Settings API lifecycle", () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-settings-api-"));
     originalHome = process.env.HOME;
     process.env.HOME = tempDir;
+
+    await setGlobalSettings({
+      apiKeys: {
+        ANTHROPIC_API_KEY: [{ id: "test-ant", value: "sk-ant-test" }],
+        CURSOR_API_KEY: [{ id: "test-cur", value: "cursor-test" }],
+      },
+    });
 
     const repoPath = path.join(tempDir, "api-project");
     await fs.mkdir(repoPath, { recursive: true });
@@ -347,6 +361,19 @@ describe("Settings API lifecycle", () => {
     const getRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/settings`);
     expect(getRes.status).toBe(200);
     expect(getRes.body.data).not.toHaveProperty("apiKeys");
+  });
+
+  it("PUT /api/v1/projects/:id/settings returns 400 when agent config requires API keys but global store has none", async () => {
+    await setGlobalSettings({ apiKeys: {} });
+
+    const res = await request(app)
+      .put(`${API_PREFIX}/projects/${projectId}/settings`)
+      .send({
+        simpleComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error?.message).toBe("Configure API keys in Settings.");
   });
 
   it("Create project with gitWorkingMode branches → global store persists it", async () => {
