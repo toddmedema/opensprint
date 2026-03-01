@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://opensprint.dev/schemas/prd.json",
   "title": "OpenSprint PRD",
-  "description": "Living PRD document stored at .opensprint/prd.json. Each section contains markdown content with independent versioning.",
+  "description": "Living PRD document stored as SPEC.md at repo root (flat markdown) with metadata in .opensprint/spec-metadata.json.",
   "type": "object",
   "required": ["version", "sections", "changeLog"],
   "properties": {

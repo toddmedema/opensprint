@@ -6,7 +6,14 @@ import os from "os";
 import { createApp } from "../app.js";
 import { ProjectService } from "../services/project.service.js";
 import { taskStore } from "../services/task-store.service.js";
-import { API_PREFIX, DEFAULT_HIL_CONFIG, OPENSPRINT_PATHS } from "@opensprint/shared";
+import {
+  API_PREFIX,
+  DEFAULT_HIL_CONFIG,
+  OPENSPRINT_PATHS,
+  SPEC_MD,
+  SPEC_METADATA_PATH,
+  specMarkdownToPrd,
+} from "@opensprint/shared";
 
 // Stub for legacy beads.service path (module removed; task store used instead). No importOriginal — file is gone.
 vi.mock("../services/beads.service.js", () => ({
@@ -372,10 +379,11 @@ Let me know if you'd like to refine this further.`;
       expect.objectContaining({ type: "prd.updated", section: "executive_summary" })
     );
 
-    // Verify PRD persisted to storage (.opensprint/prd.json)
-    const prdPath = path.join(repoPath, OPENSPRINT_PATHS.prd);
-    const prdOnDisk = JSON.parse(await fs.readFile(prdPath, "utf-8"));
-    expect(prdOnDisk.sections.executive_summary.content).toContain(
+    // Verify PRD persisted to storage (SPEC.md)
+    const specPath = path.join(repoPath, SPEC_MD);
+    const specRaw = await fs.readFile(specPath, "utf-8");
+    const prdOnDisk = specMarkdownToPrd(specRaw);
+    expect(prdOnDisk.sections.executive_summary?.content).toContain(
       "OpenSprint is a web application that guides users through the full software development lifecycle using AI agents"
     );
   });
@@ -504,17 +512,20 @@ Let me know if you'd like to expand this.`,
       "Our main competitors are X, Y, and Z"
     );
 
-    // Verify persisted to .opensprint/prd.json
-    const prdPath = path.join(repoPath, OPENSPRINT_PATHS.prd);
-    const prdOnDisk = JSON.parse(await fs.readFile(prdPath, "utf-8"));
-    expect(prdOnDisk.sections.competitive_landscape.content).toContain(
+    // Verify persisted to SPEC.md
+    const specPath = path.join(repoPath, SPEC_MD);
+    const specRaw = await fs.readFile(specPath, "utf-8");
+    const prdOnDisk = specMarkdownToPrd(specRaw);
+    expect(prdOnDisk.sections.competitive_landscape?.content).toContain(
       "We differentiate by offering simpler onboarding"
     );
   });
 
-  it("POST /chat applies PRD_UPDATE and creates prd.json when file was missing (e.g. adopted repo)", async () => {
-    const prdPath = path.join(repoPath, OPENSPRINT_PATHS.prd);
-    await fs.unlink(prdPath);
+  it("POST /chat applies PRD_UPDATE and creates SPEC.md when file was missing (e.g. adopted repo)", async () => {
+    const specPath = path.join(repoPath, SPEC_MD);
+    const metaPath = path.join(repoPath, SPEC_METADATA_PATH);
+    await fs.unlink(specPath).catch(() => {});
+    await fs.unlink(metaPath).catch(() => {});
 
     mockInvokePlanningAgent.mockResolvedValue({
       content: `Here are some sections for your marketing site.

@@ -5,10 +5,40 @@ import path from "path";
 import os from "os";
 import { createApp } from "../app.js";
 import { ProjectService } from "../services/project.service.js";
-import { API_PREFIX, OPENSPRINT_PATHS } from "@opensprint/shared";
+import {
+  API_PREFIX,
+  OPENSPRINT_PATHS,
+  SPEC_MD,
+  SPEC_METADATA_PATH,
+  prdToSpecMarkdown,
+} from "@opensprint/shared";
 import { DEFAULT_HIL_CONFIG } from "@opensprint/shared";
 
 const mockDecomposeInvoke = vi.fn();
+
+async function writeSpec(
+  repoPath: string,
+  sections: Record<string, { content: string; version?: number; updatedAt?: string }>
+): Promise<void> {
+  const now = new Date().toISOString();
+  const prd = {
+    version: 1,
+    sections: Object.fromEntries(
+      Object.entries(sections).map(([k, v]) => [
+        k,
+        { content: v.content, version: v.version ?? 1, updatedAt: v.updatedAt ?? now },
+      ])
+    ),
+    changeLog: [],
+  };
+  await fs.writeFile(path.join(repoPath, SPEC_MD), prdToSpecMarkdown(prd as never), "utf-8");
+  await fs.mkdir(path.join(repoPath, path.dirname(SPEC_METADATA_PATH)), { recursive: true });
+  await fs.writeFile(
+    path.join(repoPath, SPEC_METADATA_PATH),
+    JSON.stringify({ version: 1, changeLog: [] }, null, 2),
+    "utf-8"
+  );
+}
 
 vi.mock("../services/task-store.service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../services/task-store.service.js")>();
@@ -87,23 +117,7 @@ describe.skipIf(!planStatusPostgresOk)("Plan status endpoint and planning run cr
 
   it("GET /projects/:id/plan-status returns action plan when no planning run exists", async () => {
     const project = await projectService.getProject(projectId);
-    const prdPath = path.join(project.repoPath, OPENSPRINT_PATHS.prd);
-    await fs.mkdir(path.dirname(prdPath), { recursive: true });
-    await fs.writeFile(
-      prdPath,
-      JSON.stringify({
-        version: 1,
-        sections: {
-          executive_summary: {
-            content: "A todo app",
-            version: 1,
-            updated_at: new Date().toISOString(),
-          },
-        },
-        changeLog: [],
-      }),
-      "utf-8"
-    );
+    await writeSpec(project.repoPath, { executive_summary: { content: "A todo app" } });
 
     const app = createApp();
     const res = await request(app).get(`${API_PREFIX}/projects/${projectId}/plan-status`);
@@ -139,23 +153,7 @@ describe.skipIf(!planStatusPostgresOk)("Plan status endpoint and planning run cr
       });
 
       const project = await projectService.getProject(projectId);
-      const prdPath = path.join(project.repoPath, OPENSPRINT_PATHS.prd);
-      await fs.mkdir(path.dirname(prdPath), { recursive: true });
-      await fs.writeFile(
-        prdPath,
-        JSON.stringify({
-          version: 1,
-          sections: {
-            executive_summary: {
-              content: "A todo app",
-              version: 1,
-              updated_at: new Date().toISOString(),
-            },
-          },
-          changeLog: [],
-        }),
-        "utf-8"
-      );
+      await writeSpec(project.repoPath, { executive_summary: { content: "A todo app" } });
 
       const app = createApp();
 
@@ -197,42 +195,14 @@ describe.skipIf(!planStatusPostgresOk)("Plan status endpoint and planning run cr
     });
 
     const project = await projectService.getProject(projectId);
-    const prdPath = path.join(project.repoPath, OPENSPRINT_PATHS.prd);
-    await fs.mkdir(path.dirname(prdPath), { recursive: true });
-    await fs.writeFile(
-      prdPath,
-      JSON.stringify({
-        version: 1,
-        sections: {
-          executive_summary: {
-            content: "A todo app",
-            version: 1,
-            updated_at: new Date().toISOString(),
-          },
-        },
-        changeLog: [],
-      }),
-      "utf-8"
-    );
+    await writeSpec(project.repoPath, { executive_summary: { content: "A todo app" } });
 
     const app = createApp();
     await request(app).post(`${API_PREFIX}/projects/${projectId}/plans/decompose`);
 
-    await fs.writeFile(
-      prdPath,
-      JSON.stringify({
-        version: 1,
-        sections: {
-          executive_summary: {
-            content: "A todo app with new features",
-            version: 2,
-            updated_at: new Date().toISOString(),
-          },
-        },
-        changeLog: [],
-      }),
-      "utf-8"
-    );
+    await writeSpec(project.repoPath, {
+      executive_summary: { content: "A todo app with new features" },
+    });
 
     const statusRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/plan-status`);
     expect(statusRes.status).toBe(200);
@@ -264,20 +234,9 @@ describe.skipIf(!planStatusPostgresOk)("Plan status endpoint and planning run cr
       });
 
       const project = await projectService.getProject(projectId);
-      const prdPath = path.join(project.repoPath, OPENSPRINT_PATHS.prd);
-      await fs.mkdir(path.dirname(prdPath), { recursive: true });
-      const prdContent = {
-        version: 1,
-        sections: {
-          executive_summary: {
-            content: "Original PRD",
-            version: 1,
-            updated_at: new Date().toISOString(),
-          },
-        },
-        changeLog: [],
-      };
-      await fs.writeFile(prdPath, JSON.stringify(prdContent), "utf-8");
+      await writeSpec(project.repoPath, {
+        executive_summary: { content: "Original PRD" },
+      });
 
       const app = createApp();
       const decomposeRes = await request(app).post(
@@ -289,7 +248,7 @@ describe.skipIf(!planStatusPostgresOk)("Plan status endpoint and planning run cr
       const runFiles = await fs.readdir(runsDir);
       expect(runFiles.length).toBe(1);
 
-      const runData = JSON.parse(await fs.readFile(path.join(runsDir, runFiles[0]), "utf-8"));
+      const runData = JSON.parse(await fs.readFile(path.join(runsDir, runFiles[0]!), "utf-8"));
       expect(runData).toMatchObject({
         id: expect.any(String),
         created_at: expect.any(String),
@@ -325,52 +284,18 @@ describe.skipIf(!planStatusPostgresOk)("Plan status endpoint and planning run cr
       });
 
       const project = await projectService.getProject(projectId);
-      const prdPath = path.join(project.repoPath, OPENSPRINT_PATHS.prd);
-      await fs.mkdir(path.dirname(prdPath), { recursive: true });
-      await fs.writeFile(
-        prdPath,
-        JSON.stringify({
-          version: 1,
-          sections: {
-            executive_summary: {
-              content: "Section A",
-              version: 1,
-              updated_at: new Date().toISOString(),
-            },
-            goals_and_metrics: {
-              content: "Section B",
-              version: 1,
-              updated_at: new Date().toISOString(),
-            },
-          },
-          changeLog: [],
-        }),
-        "utf-8"
-      );
+      await writeSpec(project.repoPath, {
+        executive_summary: { content: "Section A" },
+        goals_and_metrics: { content: "Section B" },
+      });
 
       const app = createApp();
       await request(app).post(`${API_PREFIX}/projects/${projectId}/plans/decompose`);
 
-      await fs.writeFile(
-        prdPath,
-        JSON.stringify({
-          version: 1,
-          sections: {
-            executive_summary: {
-              content: "Section A modified",
-              version: 2,
-              updated_at: new Date().toISOString(),
-            },
-            goals_and_metrics: {
-              content: "Section B",
-              version: 1,
-              updated_at: new Date().toISOString(),
-            },
-          },
-          changeLog: [],
-        }),
-        "utf-8"
-      );
+      await writeSpec(project.repoPath, {
+        executive_summary: { content: "Section A modified" },
+        goals_and_metrics: { content: "Section B" },
+      });
 
       const statusRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/plan-status`);
       expect(statusRes.status).toBe(200);
@@ -381,19 +306,30 @@ describe.skipIf(!planStatusPostgresOk)("Plan status endpoint and planning run cr
 
   it("plan-status uses latest run when multiple runs exist", async () => {
     const project = await projectService.getProject(projectId);
-    const prdPath = path.join(project.repoPath, OPENSPRINT_PATHS.prd);
     const runsDir = path.join(project.repoPath, OPENSPRINT_PATHS.planningRuns);
-    await fs.mkdir(path.dirname(prdPath), { recursive: true });
+    await writeSpec(project.repoPath, { executive_summary: { content: "v1" } });
     await fs.mkdir(runsDir, { recursive: true });
 
     const prdContent = {
       version: 1,
       sections: {
-        executive_summary: { content: "v1", version: 1, updated_at: new Date().toISOString() },
+        executive_summary: { content: "v1", version: 1, updatedAt: new Date().toISOString() },
+        problem_statement: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        user_personas: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        goals_and_metrics: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        feature_list: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        technical_architecture: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        data_model: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        api_contracts: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        non_functional_requirements: {
+          content: "",
+          version: 0,
+          updatedAt: new Date().toISOString(),
+        },
+        open_questions: { content: "", version: 0, updatedAt: new Date().toISOString() },
       },
       changeLog: [],
     };
-    await fs.writeFile(prdPath, JSON.stringify(prdContent), "utf-8");
 
     const olderRun = {
       id: "run-older",

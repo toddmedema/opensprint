@@ -5,7 +5,13 @@ import path from "path";
 import os from "os";
 import { createApp } from "../app.js";
 import { ProjectService } from "../services/project.service.js";
-import { API_PREFIX, DEFAULT_HIL_CONFIG, OPENSPRINT_PATHS } from "@opensprint/shared";
+import {
+  API_PREFIX,
+  DEFAULT_HIL_CONFIG,
+  SPEC_MD,
+  SPEC_METADATA_PATH,
+  prdToSpecMarkdown,
+} from "@opensprint/shared";
 
 // Mock TaskStoreService so tests don't require bd CLI or shell
 vi.mock("../services/task-store.service.js", async (importOriginal) => {
@@ -121,14 +127,38 @@ describe.skipIf(!prdPostgresOk)("PRD REST API", () => {
   });
 
   it("GET /projects/:id/prd/:section should return specific section", async () => {
-    const prdPath = path.join(tempDir, "my-project", OPENSPRINT_PATHS.prd);
-    const prd = JSON.parse(await fs.readFile(prdPath, "utf-8"));
-    prd.sections.executive_summary = {
-      content: "Our product solves X",
-      version: 1,
-      updatedAt: new Date().toISOString(),
+    const repoPath = path.join(tempDir, "my-project");
+    const prd = {
+      version: 0,
+      sections: {
+        executive_summary: {
+          content: "Our product solves X",
+          version: 1,
+          updatedAt: new Date().toISOString(),
+        },
+        problem_statement: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        user_personas: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        goals_and_metrics: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        feature_list: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        technical_architecture: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        data_model: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        api_contracts: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        non_functional_requirements: {
+          content: "",
+          version: 0,
+          updatedAt: new Date().toISOString(),
+        },
+        open_questions: { content: "", version: 0, updatedAt: new Date().toISOString() },
+      },
+      changeLog: [],
     };
-    await fs.writeFile(prdPath, JSON.stringify(prd));
+    await fs.writeFile(path.join(repoPath, SPEC_MD), prdToSpecMarkdown(prd as never), "utf-8");
+    await fs.mkdir(path.join(repoPath, path.dirname(SPEC_METADATA_PATH)), { recursive: true });
+    await fs.writeFile(
+      path.join(repoPath, SPEC_METADATA_PATH),
+      JSON.stringify({ version: 0, changeLog: [] }, null, 2),
+      "utf-8"
+    );
 
     const res = await request(app).get(`${API_PREFIX}/projects/${projectId}/prd/executive_summary`);
 

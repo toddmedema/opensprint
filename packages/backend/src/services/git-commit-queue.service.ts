@@ -237,7 +237,7 @@ class GitCommitQueueImpl implements GitCommitQueueService {
     switch (job.type) {
       case "prd_update": {
         const msg = formatPrdCommitMessage(job.source, job.planId);
-        await this.addAndCommit(repoPath, [".opensprint/prd.json"], msg);
+        await this.addAndCommit(repoPath, ["SPEC.md", ".opensprint/spec-metadata.json"], msg);
         break;
       }
       case "worktree_merge": {

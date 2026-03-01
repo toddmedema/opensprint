@@ -1039,20 +1039,42 @@ Updated description for task two.`;
     beforeEach(async () => {
       mockPlanningAgentInvoke.mockClear();
       const project = await projectService.getProject(projectId);
-      const prdPath = path.join(project.repoPath, OPENSPRINT_PATHS.prd);
-      await fs.mkdir(path.dirname(prdPath), { recursive: true });
-      await fs.writeFile(
-        prdPath,
-        JSON.stringify({
-          version: 1,
-          sections: {
-            executive_summary: {
-              content: "A todo app with user auth",
-              version: 1,
-              updated_at: new Date().toISOString(),
-            },
+      const prd = {
+        version: 1,
+        sections: {
+          executive_summary: {
+            content: "A todo app with user auth",
+            version: 1,
+            updatedAt: new Date().toISOString(),
           },
-        }),
+          problem_statement: { content: "", version: 0, updatedAt: new Date().toISOString() },
+          user_personas: { content: "", version: 0, updatedAt: new Date().toISOString() },
+          goals_and_metrics: { content: "", version: 0, updatedAt: new Date().toISOString() },
+          feature_list: { content: "", version: 0, updatedAt: new Date().toISOString() },
+          technical_architecture: { content: "", version: 0, updatedAt: new Date().toISOString() },
+          data_model: { content: "", version: 0, updatedAt: new Date().toISOString() },
+          api_contracts: { content: "", version: 0, updatedAt: new Date().toISOString() },
+          non_functional_requirements: {
+            content: "",
+            version: 0,
+            updatedAt: new Date().toISOString(),
+          },
+          open_questions: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        },
+        changeLog: [],
+      };
+      const { SPEC_MD, SPEC_METADATA_PATH, prdToSpecMarkdown } = await import("@opensprint/shared");
+      await fs.writeFile(
+        path.join(project.repoPath, SPEC_MD),
+        prdToSpecMarkdown(prd as never),
+        "utf-8"
+      );
+      await fs.mkdir(path.join(project.repoPath, path.dirname(SPEC_METADATA_PATH)), {
+        recursive: true,
+      });
+      await fs.writeFile(
+        path.join(project.repoPath, SPEC_METADATA_PATH),
+        JSON.stringify({ version: 1, changeLog: [] }, null, 2),
         "utf-8"
       );
     });
@@ -1238,20 +1260,42 @@ Updated description for task two.`;
     beforeEach(async () => {
       mockPlanningAgentInvoke.mockClear();
       const project = await projectService.getProject(projectId);
-      const prdPath = path.join(project.repoPath, OPENSPRINT_PATHS.prd);
-      await fs.mkdir(path.dirname(prdPath), { recursive: true });
-      await fs.writeFile(
-        prdPath,
-        JSON.stringify({
-          version: 1,
-          sections: {
-            executive_summary: {
-              content: "A todo app",
-              version: 1,
-              updated_at: new Date().toISOString(),
-            },
+      const prd = {
+        version: 1,
+        sections: {
+          executive_summary: {
+            content: "A todo app",
+            version: 1,
+            updatedAt: new Date().toISOString(),
           },
-        }),
+          problem_statement: { content: "", version: 0, updatedAt: new Date().toISOString() },
+          user_personas: { content: "", version: 0, updatedAt: new Date().toISOString() },
+          goals_and_metrics: { content: "", version: 0, updatedAt: new Date().toISOString() },
+          feature_list: { content: "", version: 0, updatedAt: new Date().toISOString() },
+          technical_architecture: { content: "", version: 0, updatedAt: new Date().toISOString() },
+          data_model: { content: "", version: 0, updatedAt: new Date().toISOString() },
+          api_contracts: { content: "", version: 0, updatedAt: new Date().toISOString() },
+          non_functional_requirements: {
+            content: "",
+            version: 0,
+            updatedAt: new Date().toISOString(),
+          },
+          open_questions: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        },
+        changeLog: [],
+      };
+      const { SPEC_MD, SPEC_METADATA_PATH, prdToSpecMarkdown } = await import("@opensprint/shared");
+      await fs.writeFile(
+        path.join(project.repoPath, SPEC_MD),
+        prdToSpecMarkdown(prd as never),
+        "utf-8"
+      );
+      await fs.mkdir(path.join(project.repoPath, path.dirname(SPEC_METADATA_PATH)), {
+        recursive: true,
+      });
+      await fs.writeFile(
+        path.join(project.repoPath, SPEC_METADATA_PATH),
+        JSON.stringify({ version: 1, changeLog: [] }, null, 2),
         "utf-8"
       );
     });

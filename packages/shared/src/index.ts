@@ -18,6 +18,9 @@ export * from "./types/workflow.js";
 // Constants
 export * from "./constants/index.js";
 
+// SPEC.md serialization (Sketch phase output)
+export * from "./spec-serializer.js";
+
 // Plan template (PRD §7.2.3)
 export * from "./plan-template.js";
 

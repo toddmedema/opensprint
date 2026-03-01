@@ -95,9 +95,11 @@ describe.skipIf(!gitQueuePostgresOk)("GitCommitQueue", () => {
 
   it("should enqueue and process prd_update job", async () => {
     await fs.mkdir(path.join(repoPath, ".opensprint"), { recursive: true });
+    await fs.writeFile(path.join(repoPath, "SPEC.md"), "# Product Specification\n\n", "utf-8");
     await fs.writeFile(
-      path.join(repoPath, ".opensprint/prd.json"),
-      JSON.stringify({ version: 0, sections: {}, changeLog: [] })
+      path.join(repoPath, ".opensprint", "spec-metadata.json"),
+      JSON.stringify({ version: 0, changeLog: [] }),
+      "utf-8"
     );
 
     await gitCommitQueue.enqueueAndWait({
@@ -112,9 +114,11 @@ describe.skipIf(!gitQueuePostgresOk)("GitCommitQueue", () => {
 
   it("should process jobs in FIFO order", async () => {
     await fs.mkdir(path.join(repoPath, ".opensprint"), { recursive: true });
+    await fs.writeFile(path.join(repoPath, "SPEC.md"), "# Product Specification\n\n", "utf-8");
     await fs.writeFile(
-      path.join(repoPath, ".opensprint/prd.json"),
-      JSON.stringify({ version: 0, sections: {}, changeLog: [] })
+      path.join(repoPath, ".opensprint", "spec-metadata.json"),
+      JSON.stringify({ version: 0, changeLog: [] }),
+      "utf-8"
     );
 
     gitCommitQueue.enqueue({
@@ -130,9 +134,11 @@ describe.skipIf(!gitQueuePostgresOk)("GitCommitQueue", () => {
 
   it("should support drain for tests", async () => {
     await fs.mkdir(path.join(repoPath, ".opensprint"), { recursive: true });
+    await fs.writeFile(path.join(repoPath, "SPEC.md"), "# Product Specification\n\n", "utf-8");
     await fs.writeFile(
-      path.join(repoPath, ".opensprint/prd.json"),
-      JSON.stringify({ version: 0, sections: {}, changeLog: [] })
+      path.join(repoPath, ".opensprint", "spec-metadata.json"),
+      JSON.stringify({ version: 0, changeLog: [] }),
+      "utf-8"
     );
 
     gitCommitQueue.enqueue({
@@ -230,9 +236,11 @@ describe.skipIf(!gitQueuePostgresOk)("GitCommitQueue", () => {
       await createMergeConflict(repoPath);
 
       await fs.mkdir(path.join(repoPath, ".opensprint"), { recursive: true });
+      await fs.writeFile(path.join(repoPath, "SPEC.md"), "# Product Specification\n\n", "utf-8");
       await fs.writeFile(
-        path.join(repoPath, ".opensprint/prd.json"),
-        JSON.stringify({ version: 1 })
+        path.join(repoPath, ".opensprint", "spec-metadata.json"),
+        JSON.stringify({ version: 1, changeLog: [] }),
+        "utf-8"
       );
 
       await expect(

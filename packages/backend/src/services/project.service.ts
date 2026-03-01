@@ -14,6 +14,9 @@ import type {
 import {
   OPENSPRINT_DIR,
   OPENSPRINT_PATHS,
+  SPEC_MD,
+  SPEC_METADATA_PATH,
+  prdToSpecMarkdown,
   DEFAULT_HIL_CONFIG,
   DEFAULT_AI_AUTONOMY_LEVEL,
   DEFAULT_DEPLOYMENT_CONFIG,
@@ -295,10 +298,9 @@ export class ProjectService {
     await fs.mkdir(path.join(opensprintDir, "feedback"), { recursive: true });
     await fs.mkdir(path.join(opensprintDir, "active"), { recursive: true });
 
-    // Write initial PRD with all sections
-    const prdPath = path.join(repoPath, OPENSPRINT_PATHS.prd);
+    // Write initial SPEC.md (Sketch phase output) with all sections
     const emptySection = () => ({ content: "", version: 0, updatedAt: now });
-    await writeJsonAtomic(prdPath, {
+    const initialPrd = {
       version: 0,
       sections: {
         executive_summary: emptySection(),
@@ -313,7 +315,16 @@ export class ProjectService {
         open_questions: emptySection(),
       },
       changeLog: [],
-    });
+    };
+    const specPath = path.join(repoPath, SPEC_MD);
+    await fs.writeFile(specPath, prdToSpecMarkdown(initialPrd), "utf-8");
+    const metaPath = path.join(repoPath, SPEC_METADATA_PATH);
+    await fs.mkdir(path.dirname(metaPath), { recursive: true });
+    await fs.writeFile(
+      metaPath,
+      JSON.stringify({ version: 0, changeLog: [] }, null, 2),
+      "utf-8"
+    );
 
     // Write settings (deployment and HIL normalized per PRD §6.4, §6.5)
     const deployment = normalizeDeployment(input.deployment);

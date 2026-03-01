@@ -4,7 +4,14 @@ import path from "path";
 import os from "os";
 import { ChatService } from "../services/chat.service.js";
 import { ProjectService } from "../services/project.service.js";
-import { DEFAULT_HIL_CONFIG, OPENSPRINT_PATHS } from "@opensprint/shared";
+import {
+  DEFAULT_HIL_CONFIG,
+  OPENSPRINT_PATHS,
+  SPEC_MD,
+  SPEC_METADATA_PATH,
+  specMarkdownToPrd,
+  prdToSpecMarkdown,
+} from "@opensprint/shared";
 import type { DbClient } from "../db/client.js";
 
 const { testClientRef } = vi.hoisted(() => ({ testClientRef: { current: null as DbClient | null } }));
@@ -134,21 +141,36 @@ describe("ChatService - Plan phase agent registry", () => {
     });
     projectId = project.id;
 
-    // Create PRD so syncPrdFromPlanShip can build context
-    const prdPath = path.join(repoPath, OPENSPRINT_PATHS.prd);
-    await fs.mkdir(path.dirname(prdPath), { recursive: true });
-    await fs.writeFile(
-      prdPath,
-      JSON.stringify({
-        version: 1,
-        sections: {
-          executive_summary: {
-            content: "Test app",
-            version: 1,
-            updated_at: new Date().toISOString(),
-          },
+    // Create SPEC.md so syncPrdFromPlanShip can build context
+    const prd = {
+      version: 1,
+      sections: {
+        executive_summary: {
+          content: "Test app",
+          version: 1,
+          updatedAt: new Date().toISOString(),
         },
-      }),
+        problem_statement: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        user_personas: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        goals_and_metrics: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        feature_list: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        technical_architecture: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        data_model: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        api_contracts: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        non_functional_requirements: {
+          content: "",
+          version: 0,
+          updatedAt: new Date().toISOString(),
+        },
+        open_questions: { content: "", version: 0, updatedAt: new Date().toISOString() },
+      },
+      changeLog: [],
+    };
+    await fs.writeFile(path.join(repoPath, SPEC_MD), prdToSpecMarkdown(prd as never), "utf-8");
+    await fs.mkdir(path.join(repoPath, path.dirname(SPEC_METADATA_PATH)), { recursive: true });
+    await fs.writeFile(
+      path.join(repoPath, SPEC_METADATA_PATH),
+      JSON.stringify({ version: 1, changeLog: [] }, null, 2),
       "utf-8"
     );
   });
@@ -189,12 +211,14 @@ describe("ChatService - Plan phase agent registry", () => {
         content: '{"status":"no_changes_needed"}',
       });
 
-      const prdPath = path.join(repoPath, OPENSPRINT_PATHS.prd);
-      const prdBefore = JSON.parse(await fs.readFile(prdPath, "utf-8"));
+      const specPath = path.join(repoPath, SPEC_MD);
+      const specBefore = await fs.readFile(specPath, "utf-8");
+      const prdBefore = specMarkdownToPrd(specBefore);
 
       await chatService.syncPrdFromPlanShip(projectId, "auth-plan", "# Auth Plan\n\nContent.");
 
-      const prdAfter = JSON.parse(await fs.readFile(prdPath, "utf-8"));
+      const specAfter = await fs.readFile(specPath, "utf-8");
+      const prdAfter = specMarkdownToPrd(specAfter);
       expect(prdAfter).toEqual(prdBefore);
       expect(mockBroadcast).not.toHaveBeenCalled();
     });
@@ -233,13 +257,15 @@ describe("ChatService - Plan phase agent registry", () => {
         content: "No updates needed. The PRD already reflects this scope.",
       });
 
-      const prdPath = path.join(repoPath, OPENSPRINT_PATHS.prd);
-      const prdBefore = JSON.parse(await fs.readFile(prdPath, "utf-8"));
+      const specPath = path.join(repoPath, SPEC_MD);
+      const specBefore = await fs.readFile(specPath, "utf-8");
+      const prdBefore = specMarkdownToPrd(specBefore);
 
       await chatService.syncPrdFromScopeChangeFeedback(projectId, "Minor feedback");
 
-      const prdAfter = JSON.parse(await fs.readFile(prdPath, "utf-8"));
-      expect(prdAfter).toEqual(prdBefore);
+      const specAfter = await fs.readFile(specPath, "utf-8");
+      const prdAfter = specMarkdownToPrd(specAfter);
+      expect(prdAfter.sections).toEqual(prdBefore.sections);
     });
 
     it("should do nothing when agent returns no_changes_needed JSON", async () => {
@@ -247,13 +273,15 @@ describe("ChatService - Plan phase agent registry", () => {
         content: '{"status":"no_changes_needed"}',
       });
 
-      const prdPath = path.join(repoPath, OPENSPRINT_PATHS.prd);
-      const prdBefore = JSON.parse(await fs.readFile(prdPath, "utf-8"));
+      const specPath = path.join(repoPath, SPEC_MD);
+      const specBefore = await fs.readFile(specPath, "utf-8");
+      const prdBefore = specMarkdownToPrd(specBefore);
 
       await chatService.syncPrdFromScopeChangeFeedback(projectId, "Minor feedback");
 
-      const prdAfter = JSON.parse(await fs.readFile(prdPath, "utf-8"));
-      expect(prdAfter).toEqual(prdBefore);
+      const specAfter = await fs.readFile(specPath, "utf-8");
+      const prdAfter = specMarkdownToPrd(specAfter);
+      expect(prdAfter.sections).toEqual(prdBefore.sections);
       expect(mockBroadcast).not.toHaveBeenCalled();
     });
 
@@ -273,9 +301,10 @@ describe("ChatService - Plan phase agent registry", () => {
 
       await chatService.syncPrdFromScopeChangeFeedback(projectId, "Add mobile app");
 
-      const prdPath = path.join(repoPath, OPENSPRINT_PATHS.prd);
-      const prd = JSON.parse(await fs.readFile(prdPath, "utf-8"));
-      expect(prd.sections.feature_list.content).toContain(
+      const specPath = path.join(repoPath, SPEC_MD);
+      const specRaw = await fs.readFile(specPath, "utf-8");
+      const prd = specMarkdownToPrd(specRaw);
+      expect(prd.sections.feature_list?.content).toContain(
         "Updated feature list with mobile support"
       );
       expect(mockBroadcast).toHaveBeenCalledWith(

@@ -1,8 +1,13 @@
 /** OpenSprint directory within project repos */
 export const OPENSPRINT_DIR = ".opensprint";
 
+/** Sketch phase output: flat markdown at repo root. Metadata (version, changeLog) in .opensprint. */
+export const SPEC_MD = "SPEC.md";
+export const SPEC_METADATA_PATH = `${OPENSPRINT_DIR}/spec-metadata.json`;
+
 /** Paths within the .opensprint directory (repo and runtime). Settings live in global store (~/.opensprint/settings.json). Feedback, inbox, agent stats, event log, orchestrator counters, and deployments are now DB-only; no file paths. */
 export const OPENSPRINT_PATHS = {
+  /** @deprecated Use SPEC_MD. Legacy path for migration from prd.json. */
   prd: `${OPENSPRINT_DIR}/prd.json`,
   plans: `${OPENSPRINT_DIR}/plans`,
   planningRuns: `${OPENSPRINT_DIR}/planning-runs`,

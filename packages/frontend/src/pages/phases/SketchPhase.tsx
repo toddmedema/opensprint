@@ -210,7 +210,7 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
   const refreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* ── Derived ── */
-  // Show empty-state prompt when no section has substantive content (new projects get prd.json with all sections empty)
+  // Show empty-state prompt when no section has substantive content (new projects get SPEC.md with all sections empty)
   const hasPrdContent = Object.values(prdContent).some((c) => String(c ?? "").trim().length > 0);
   const prdEmpty = !Object.values(prdData ?? {}).some((c) => String(c ?? "").trim().length > 0);
   const { showSpinner: showPrdSpinner, showEmptyState: showPrdEmptyState } = usePhaseLoadingState(

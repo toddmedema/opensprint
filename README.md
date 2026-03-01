@@ -116,7 +116,8 @@ opensprint.dev/
 │   ├── backend/   # Node.js + Express API (TypeScript)
 │   ├── frontend/  # React + Vite (TypeScript, Tailwind)
 │   └── shared/    # Shared types and constants
-├── PRD.md
+├── PRD.md          # OpenSprint product requirements
+├── SPEC.md         # Sketch phase output (per-project, at repo root)
 └── package.json   # npm workspaces
 ```
 

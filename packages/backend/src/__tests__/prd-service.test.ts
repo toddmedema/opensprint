@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import fs from "fs/promises";
 import path from "path";
 import { PrdService } from "../services/prd.service.js";
+import { SPEC_MD, SPEC_METADATA_PATH, prdToSpecMarkdown } from "@opensprint/shared";
 
 vi.mock("../services/project.service.js", () => ({
   ProjectService: vi.fn().mockImplementation(() => ({
@@ -24,7 +25,8 @@ vi.mock("../services/git-commit-queue.service.js", () => ({
 describe("PrdService", () => {
   let prdService: PrdService;
   const repoPath = "/tmp/opensprint-test-prd";
-  const prdPath = path.join(repoPath, ".opensprint", "prd.json");
+  const specPath = path.join(repoPath, SPEC_MD);
+  const metaPath = path.join(repoPath, SPEC_METADATA_PATH);
 
   const mockPrd = {
     version: 1,
@@ -53,8 +55,21 @@ describe("PrdService", () => {
 
   beforeEach(async () => {
     prdService = new PrdService();
-    await fs.mkdir(path.dirname(prdPath), { recursive: true });
-    await fs.writeFile(prdPath, JSON.stringify(mockPrd, null, 2));
+    await fs.mkdir(path.dirname(metaPath), { recursive: true });
+    await fs.writeFile(specPath, prdToSpecMarkdown(mockPrd as never), "utf-8");
+    const sectionVersions: Record<string, number> = {};
+    for (const [k, s] of Object.entries(mockPrd.sections)) {
+      sectionVersions[k] = s.version;
+    }
+    await fs.writeFile(
+      metaPath,
+      JSON.stringify(
+        { version: mockPrd.version, changeLog: mockPrd.changeLog, sectionVersions },
+        null,
+        2
+      ),
+      "utf-8"
+    );
   });
 
   afterEach(async () => {
@@ -156,7 +171,20 @@ describe("PrdService", () => {
   it("should handle PRD without changeLog (backward compatibility)", async () => {
     const prdWithoutChangeLog = { ...mockPrd };
     delete (prdWithoutChangeLog as { changeLog?: unknown }).changeLog;
-    await fs.writeFile(prdPath, JSON.stringify(prdWithoutChangeLog, null, 2));
+    await fs.writeFile(specPath, prdToSpecMarkdown(prdWithoutChangeLog as never), "utf-8");
+    const sectionVersions: Record<string, number> = {};
+    for (const [k, s] of Object.entries(mockPrd.sections)) {
+      sectionVersions[k] = s.version;
+    }
+    await fs.writeFile(
+      metaPath,
+      JSON.stringify(
+        { version: mockPrd.version, changeLog: [], sectionVersions },
+        null,
+        2
+      ),
+      "utf-8"
+    );
 
     const result = await prdService.updateSection(
       "test-project",

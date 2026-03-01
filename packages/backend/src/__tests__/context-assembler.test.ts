@@ -6,7 +6,7 @@ import {
   ContextAssembler,
   buildAutonomyDescription,
 } from "../services/context-assembler.js";
-import { OPENSPRINT_PATHS } from "@opensprint/shared";
+import { OPENSPRINT_PATHS, SPEC_MD } from "@opensprint/shared";
 import { ensureRuntimeDir, getRuntimePath } from "../utils/runtime-dir.js";
 
 vi.mock("../services/task-store.service.js", () => ({
@@ -75,17 +75,17 @@ describe("ContextAssembler", () => {
     }
   });
 
-  it("should assemble task directory with PRD excerpt, plan, and deps", async () => {
-    // Setup PRD
-    const prdDir = path.join(repoPath, path.dirname(OPENSPRINT_PATHS.prd));
-    await fs.mkdir(prdDir, { recursive: true });
+  it("should assemble task directory with SPEC excerpt, plan, and deps", async () => {
+    // Setup SPEC.md (Sketch phase output)
     await fs.writeFile(
-      path.join(repoPath, OPENSPRINT_PATHS.prd),
-      JSON.stringify({
-        sections: {
-          executive_summary: { content: "## Summary\n\nTest product." },
-        },
-      })
+      path.join(repoPath, SPEC_MD),
+      `# Product Specification
+
+## Executive Summary
+
+Test product.
+`,
+      "utf-8"
     );
 
     // Setup plan
@@ -141,8 +141,8 @@ User authentication.
     expect(configJson.taskId).toBe("bd-a3f8.1");
     expect(configJson.phase).toBe("coding");
 
-    const prdExcerpt = await fs.readFile(path.join(contextDir, "prd_excerpt.md"), "utf-8");
-    expect(prdExcerpt).toContain("Test product.");
+    const specMd = await fs.readFile(path.join(contextDir, "spec.md"), "utf-8");
+    expect(specMd).toContain("Test product.");
 
     const planMd = await fs.readFile(path.join(contextDir, "plan.md"), "utf-8");
     expect(planMd).toContain("User authentication");
@@ -160,7 +160,7 @@ User authentication.
     expect(prompt).toContain("## Technical Approach");
     expect(prompt).toContain("Use bcrypt for password hashing");
     expect(prompt).toContain("context/plan.md");
-    expect(prompt).toContain("context/prd_excerpt.md");
+    expect(prompt).toContain("context/spec.md");
     expect(prompt).toContain("context/deps/");
     expect(prompt).toContain("Commit after each logical unit");
     expect(prompt).toContain("Do not wait until the end to commit");
@@ -171,15 +171,15 @@ User authentication.
   });
 
   it("should include Review Feedback section in coding prompt when reviewFeedback is provided", async () => {
-    const prdDir = path.join(repoPath, path.dirname(OPENSPRINT_PATHS.prd));
-    await fs.mkdir(prdDir, { recursive: true });
     await fs.writeFile(
-      path.join(repoPath, OPENSPRINT_PATHS.prd),
-      JSON.stringify({
-        sections: {
-          executive_summary: { content: "## Summary\n\nTest product." },
-        },
-      })
+      path.join(repoPath, SPEC_MD),
+      `# Product Specification
+
+## Executive Summary
+
+Test product.
+`,
+      "utf-8"
     );
 
     const plansDir = path.join(repoPath, OPENSPRINT_PATHS.plans);
@@ -228,26 +228,26 @@ User authentication.
     expect(prompt).toContain("Missing error handling for invalid input.");
   });
 
-  it("should extract PRD excerpt when prd.json exists", async () => {
-    const prdDir = path.join(repoPath, path.dirname(OPENSPRINT_PATHS.prd));
-    await fs.mkdir(prdDir, { recursive: true });
+  it("should extract SPEC when SPEC.md exists", async () => {
     await fs.writeFile(
-      path.join(repoPath, OPENSPRINT_PATHS.prd),
-      JSON.stringify({
-        sections: {
-          problem_statement: { content: "Users face fragmentation." },
-        },
-      })
+      path.join(repoPath, SPEC_MD),
+      `# Product Specification
+
+## Problem Statement
+
+Users face fragmentation.
+`,
+      "utf-8"
     );
 
     const excerpt = await assembler.extractPrdExcerpt(repoPath);
-    expect(excerpt).toContain("Product Requirements");
+    expect(excerpt).toContain("Product Specification");
     expect(excerpt).toContain("Users face fragmentation.");
   });
 
-  it("should return fallback when PRD missing", async () => {
+  it("should return fallback when SPEC missing", async () => {
     const excerpt = await assembler.extractPrdExcerpt(repoPath);
-    expect(excerpt).toContain("No PRD available");
+    expect(excerpt).toContain("No SPEC available");
   });
 
   it("should getPlanContent return plan content from task store", async () => {
@@ -388,18 +388,18 @@ User authentication.
     expect(outputs).toHaveLength(0);
   });
 
-  it("should buildContext given taskId: Plan from epic, PRD sections, dependency diffs", async () => {
+  it("should buildContext given taskId: Plan from epic, SPEC sections, dependency diffs", async () => {
     const projectId = "test-project";
-    // Setup PRD
-    const prdDir = path.join(repoPath, path.dirname(OPENSPRINT_PATHS.prd));
-    await fs.mkdir(prdDir, { recursive: true });
+    // Setup SPEC.md
     await fs.writeFile(
-      path.join(repoPath, OPENSPRINT_PATHS.prd),
-      JSON.stringify({
-        sections: {
-          executive_summary: { content: "## Summary\n\nTest product." },
-        },
-      })
+      path.join(repoPath, SPEC_MD),
+      `# Product Specification
+
+## Executive Summary
+
+Test product.
+`,
+      "utf-8"
     );
 
     const planContent = "# Auth Plan\n\nUser authentication.";
@@ -543,7 +543,7 @@ User authentication.
     // Context file references
     expect(prompt).toContain("## Context");
     expect(prompt).toContain("context/plan.md");
-    expect(prompt).toContain("context/prd_excerpt.md");
+    expect(prompt).toContain("context/spec.md");
 
     // Implementation section
     expect(prompt).toContain("## Implementation");
@@ -626,11 +626,15 @@ User authentication.
   });
 
   it("should include AI Autonomy Level section when aiAutonomyLevel or hilConfig is provided", async () => {
-    const prdDir = path.join(repoPath, path.dirname(OPENSPRINT_PATHS.prd));
-    await fs.mkdir(prdDir, { recursive: true });
     await fs.writeFile(
-      path.join(repoPath, OPENSPRINT_PATHS.prd),
-      JSON.stringify({ sections: { executive_summary: { content: "Test" } } })
+      path.join(repoPath, SPEC_MD),
+      `# Product Specification
+
+## Executive Summary
+
+Test
+`,
+      "utf-8"
     );
     const plansDir = path.join(repoPath, OPENSPRINT_PATHS.plans);
     await fs.mkdir(plansDir, { recursive: true });

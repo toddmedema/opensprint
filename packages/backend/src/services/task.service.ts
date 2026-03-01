@@ -524,7 +524,7 @@ export class TaskService {
 
   /**
    * Prepare the task directory at .opensprint/active/<task-id>/ with prompt.md, config.json,
-   * and context/ (prd_excerpt.md, plan.md, deps/). Creates the task branch if createBranch is true.
+   * and context/ (spec.md, plan.md, deps/). Creates the task branch if createBranch is true.
    * Returns the absolute path to the task directory.
    */
   async prepareTaskDirectory(

@@ -162,7 +162,7 @@ Serialized commit queue for main-branch ops. Task data in global store; orchestr
 ```
 User (implicit)
   └── Project (1:many)
-        ├── PRD (1:1, .opensprint/prd.json)
+        ├── PRD (1:1, SPEC.md at repo root)
         ├── Conversation (1:many, per phase)
         ├── Plan (1:many, .opensprint/plans/*.md)
         │     └── Task (TaskService, parent-child IDs e.g. os-xxxx.1)

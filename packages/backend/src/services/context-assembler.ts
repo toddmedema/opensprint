@@ -1,8 +1,9 @@
 import fs from "fs/promises";
 import path from "path";
-import { OPENSPRINT_PATHS } from "@opensprint/shared";
+import { OPENSPRINT_PATHS, SPEC_MD, prdToSpecMarkdown } from "@opensprint/shared";
 import type { ActiveTaskConfig } from "@opensprint/shared";
 import { BranchManager } from "./branch-manager.js";
+import { PrdService } from "./prd.service.js";
 import type { TaskStoreService } from "./task-store.service.js";
 import type { StoredTask } from "./task-store.service.js";
 import { getRuntimePath } from "../utils/runtime-dir.js";
@@ -77,7 +78,7 @@ export class ContextAssembler {
     await fs.writeFile(path.join(taskDir, "config.json"), JSON.stringify(config, null, 2));
 
     // Write context files
-    await fs.writeFile(path.join(contextDir, "prd_excerpt.md"), context.prdExcerpt);
+    await fs.writeFile(path.join(contextDir, "spec.md"), context.prdExcerpt);
 
     await fs.writeFile(path.join(contextDir, "plan.md"), context.planContent);
 
@@ -103,25 +104,20 @@ export class ContextAssembler {
   }
 
   /**
-   * Read the PRD and extract relevant sections.
+   * Read the SPEC (Sketch phase output) and return its content for agent context.
+   * Migrates from prd.json or PRD.md if present.
    */
   async extractPrdExcerpt(repoPath: string): Promise<string> {
     try {
-      const prdPath = path.join(repoPath, OPENSPRINT_PATHS.prd);
-      const raw = await fs.readFile(prdPath, "utf-8");
-      const prd = JSON.parse(raw);
-
-      let excerpt = "# Product Requirements (Excerpt)\n\n";
-      for (const [key, section] of Object.entries(prd.sections || {})) {
-        const sec = section as { content: string };
-        if (sec.content) {
-          excerpt += `## ${key.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())}\n\n`;
-          excerpt += sec.content + "\n\n";
-        }
-      }
-      return excerpt;
+      const specPath = path.join(repoPath, SPEC_MD);
+      const raw = await fs.readFile(specPath, "utf-8");
+      if (raw.trim()) return raw;
+      return "# Product Specification\n\nNo content yet.";
     } catch {
-      return "# Product Requirements\n\nNo PRD available.";
+      const prdService = new PrdService();
+      const migrated = await prdService.migrateFromLegacy(repoPath);
+      if (migrated) return prdToSpecMarkdown(migrated);
+      return "# Product Specification\n\nNo SPEC available.";
     }
   }
 
@@ -327,7 +323,7 @@ export class ContextAssembler {
     prompt += `## Context\n\n`;
     prompt += `You are implementing a task as part of a larger feature. If the task description specifies file paths, use them. If not, infer from the plan's Technical Approach and project structure. Review the provided context files:\n\n`;
     prompt += `- \`context/plan.md\` — the full feature specification\n`;
-    prompt += `- \`context/prd_excerpt.md\` — relevant product requirements\n`;
+    prompt += `- \`context/spec.md\` — relevant product requirements\n`;
     prompt += `- \`context/deps/\` — output from tasks this depends on\n\n`;
 
     const acceptanceCriteria = this.extractPlanSection(context.planContent, "Acceptance Criteria");
@@ -488,7 +484,7 @@ export class ContextAssembler {
     prompt += `## Context\n\n`;
     prompt += `Review the provided context files for full requirements and design:\n\n`;
     prompt += `- \`context/plan.md\` — the full feature specification and plan\n`;
-    prompt += `- \`context/prd_excerpt.md\` — relevant product requirements\n`;
+    prompt += `- \`context/spec.md\` — relevant product requirements\n`;
     prompt += `- \`context/deps/\` — output from dependency tasks this builds on\n\n`;
 
     if (context.reviewHistory) {

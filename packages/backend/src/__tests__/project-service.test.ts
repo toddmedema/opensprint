@@ -94,12 +94,11 @@ describe.skipIf(!projectServicePostgresOk)("ProjectService", () => {
     expect(settings.testFramework).toBeNull();
     expect(settings.reviewMode).toBe(DEFAULT_REVIEW_MODE);
 
-    // Verify prd.json
-    const prdPath = path.join(repoPath, ".opensprint", "prd.json");
-    const prdRaw = await fs.readFile(prdPath, "utf-8");
-    const prd = JSON.parse(prdRaw);
-    expect(prd.sections).toBeDefined();
-    expect(prd.sections.executive_summary).toBeDefined();
+    // Verify SPEC.md (Sketch phase output)
+    const specPath = path.join(repoPath, "SPEC.md");
+    const specRaw = await fs.readFile(specPath, "utf-8");
+    expect(specRaw).toContain("# Product Specification");
+    expect(specRaw).toContain("## Executive Summary");
 
     // Verify git repo
     const gitDir = path.join(repoPath, ".git");

@@ -40,7 +40,7 @@ export interface PrdUploadResult {
   filename: string;
 }
 
-/** Full PRD document stored at .opensprint/prd.json */
+/** Full PRD document stored as SPEC.md at repo root (flat markdown) with metadata in .opensprint/spec-metadata.json */
 export interface Prd {
   version: number;
   /** Sections keyed by identifier. Sketch agent may add dynamic sections (e.g. competitive_landscape). */

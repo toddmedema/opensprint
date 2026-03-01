@@ -301,21 +301,21 @@ Test task directory creation.
 
       const promptPath = path.join(taskDir, "prompt.md");
       const configPath = path.join(taskDir, "config.json");
-      const prdPath = path.join(taskDir, "context", "prd_excerpt.md");
+      const specPath = path.join(taskDir, "context", "spec.md");
       const planPath = path.join(taskDir, "context", "plan.md");
 
       const prompt = await fs.readFile(promptPath, "utf-8");
       expect(prompt).toContain("# Task: Task X");
       expect(prompt).toContain("Implement X");
       expect(prompt).toContain("context/plan.md");
-      expect(prompt).toContain("context/prd_excerpt.md");
+      expect(prompt).toContain("context/spec.md");
 
       const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
       expect(config.taskId).toBe(taskX.id);
       expect(config.phase).toBe("coding");
       expect(config.branch).toContain(taskX.id);
 
-      await fs.access(prdPath);
+      await fs.access(specPath);
       await fs.access(planPath);
     }
   );

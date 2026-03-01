@@ -4,7 +4,7 @@ Task tracking is handled internally by `TaskStoreService` backed by PostgreSQL. 
 
 ## Project Overview
 
-OpenSprint is a web application that guides users through the full software development lifecycle using AI agents. It has five phases — SPEED: Sketch, Plan, Execute, Evaluate, and Deliver. The PRD is at `PRD.md`.
+OpenSprint is a web application that guides users through the full software development lifecycle using AI agents. It has five phases — SPEED: Sketch, Plan, Execute, Evaluate, and Deliver. The product spec is at `PRD.md`; the Sketch phase output is `SPEC.md` at project repo root.
 
 **Tech stack:** Node.js + TypeScript (backend), React + TypeScript (frontend).
 

@@ -133,7 +133,7 @@ The **task store** (TaskStoreService backed by sql.js at `~/.opensprint/tasks.db
 | Triggering the next agent    | All            | Agents have no mechanism to invoke the orchestrator; workflow progression is orchestrator-driven                                                     |
 | Task store state transitions | Execute        | `TaskStoreService.update`, `close` — invoked by orchestrator based on agent _output_, not agent _actions_                                            |
 | Task creation                | Plan, Evaluate | `TaskStoreService.create` / `createMany`, `addDependency` / `addDependencies` — agents propose as structured data; orchestrator creates actual tasks |
-| PRD file updates             | Plan, Evaluate | Agents propose updates; orchestrator writes and commits. **Exception:** Dreamer writes `prd.json` directly (user-supervised)                         |
+| PRD file updates             | Plan, Evaluate | Agents propose updates; orchestrator writes and commits. **Exception:** Dreamer writes `SPEC.md` directly (user-supervised)                         |
 | Epic unblock on Execute!     | Plan           | "Execute!" sets epic `status: "open"` via `TaskStoreService.update` — a scripted action triggered by UI button                                       |
 
 **Agent responsibilities:** Agents produce _outputs_ — code files, `result.json`, structured data (task proposals, PRD updates, feedback categorizations). The orchestrator reads these outputs and performs all corresponding critical operations. Agents never touch git or the task store directly.
@@ -188,10 +188,10 @@ Multiple concurrent agents trigger operations that commit to git on the main bra
 | ----------------------- | ----------------------------------------------------------------- | -------------------------------------------- |
 | Task store save         | After task creation batch, status transitions, dependency changes | In-process; no git commit for task data      |
 | PRD update (Harmonizer) | After orchestrator writes Harmonizer's proposed updates           | `prd: updated after Plan <plan-id> built`    |
-| PRD update (Dreamer)    | After Dreamer modifies `prd.json` during conversation             | `prd: Sketch session update`                 |
+| PRD update (Dreamer)    | After Dreamer modifies `SPEC.md` during conversation             | `prd: Sketch session update`                 |
 | Worktree merge          | After Reviewer approves a task                                    | `merge: opensprint/<task-id> — <task title>` |
 
-The Dreamer writes `prd.json` directly but does not commit; the orchestrator detects the change and enqueues a commit job. If a commit job fails, it is retried once; if it fails again, the error is logged and the next job proceeds — in-memory state is still correct, and the next successful commit captures accumulated changes.
+The Dreamer writes `SPEC.md` directly but does not commit; the orchestrator detects the change and enqueues a commit job. If a commit job fails, it is retried once; if it fails again, the error is logged and the next job proceeds — in-memory state is still correct, and the next successful commit captures accumulated changes.
 
 ---
 
@@ -291,7 +291,7 @@ The Sketch phase is where the user collaborates with the **Dreamer** agent to de
 
 #### 7.1.2 Key Capabilities
 
-- **Conversational PRD creation:** The user describes their product vision in natural language. The **Dreamer** asks clarifying questions, challenges assumptions, identifies edge cases, and builds out the PRD. The Dreamer updates `prd.json` directly during conversation (Section 5.5 trust boundary exception — acceptable because the user supervises every change in real-time).
+- **Conversational PRD creation:** The user describes their product vision in natural language. The **Dreamer** asks clarifying questions, challenges assumptions, identifies edge cases, and builds out the PRD. The Dreamer updates `SPEC.md` directly during conversation (Section 5.5 trust boundary exception — acceptable because the user supervises every change in real-time).
 - **Living document:** The PRD is version-controlled and updated whenever changes are made in any phase. Users can view the full change history.
 - **Architecture definition:** The Dreamer helps define the technical architecture, including tech stack, system components, data models, and API contracts.
 - **Mockup generation:** The Dreamer generates UI mockups or wireframes, which the user can iterate on within the conversation.
@@ -303,7 +303,7 @@ The living PRD generated in this phase includes the following sections: Executiv
 
 #### 7.1.4 PRD Storage
 
-The PRD is stored as `.opensprint/prd.json` — a structured JSON file with each section as a top-level key containing markdown content. This enables independent section versioning, targeted updates from different phases, and section-level diffing. Git history provides the full version timeline. Section content should NOT include a top-level header (the UI displays section titles).
+The PRD is stored as `.opensprint/SPEC.md` — a structured JSON file with each section as a top-level key containing markdown content. This enables independent section versioning, targeted updates from different phases, and section-level diffing. Git history provides the full version timeline. Section content should NOT include a top-level header (the UI displays section titles).
 
 #### 7.1.5 User Interface
 
@@ -331,7 +331,7 @@ The Plan phase breaks the high-level PRD into discrete, implementable features. 
   1. **Unblock the epic:** `TaskStoreService.update(projectId, epicId, { status: "open" })` — child tasks become eligible for `ready()`.
   2. **Record the timestamp:** Update Plan metadata with `shipped_at`.
   3. **Invoke the Harmonizer** to review the shipped Plan against the current PRD and propose section updates (Section 5.5).
-  4. **Apply PRD updates:** The orchestrator writes the Harmonizer's proposed updates to `.opensprint/prd.json`.
+  4. **Apply PRD updates:** The orchestrator writes the Harmonizer's proposed updates to `.opensprint/SPEC.md`.
   5. **Commit changes:** The orchestrator enqueues a git commit job (Section 5.9) for PRD and other repo changes. Task state is already persisted in the global store.
   6. **Tasks become available:** Child tasks with no other unresolved dependencies now appear in `ready()` and are picked up by the orchestrator loop automatically.
 
@@ -555,7 +555,7 @@ User (implicit, single-user)
 
 #### PRD (PRDDocument)
 
-Stored as `.opensprint/prd.json`. Top-level fields:
+Stored as `.opensprint/SPEC.md`. Top-level fields:
 
 | Field      | Type   | Description                                                                                                                         |
 | ---------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------- |
@@ -753,15 +753,15 @@ For all agent invocations, the orchestrator creates a task directory at `.opensp
 
 **Purpose:** Multi-turn conversational PRD creation and refinement.
 
-The Dreamer is unique — it runs as a persistent, interactive session (not a one-shot task). Each turn receives `context/prd.json`, `context/conversation_history.json`, and the user's new message. When used for Plan sidebar chat, `config.json` includes `scope: "plan"` and a `plan_path` field.
+The Dreamer is unique — it runs as a persistent, interactive session (not a one-shot task). Each turn receives `context/SPEC.md`, `context/conversation_history.json`, and the user's new message. When used for Plan sidebar chat, `config.json` includes `scope: "plan"` and a `plan_path` field.
 
-**Output:** Streams conversational responses to stdout (relayed via WebSocket) and **updates `prd.json` directly** — the one trust boundary exception (Section 5.5), acceptable because the user observes every change in real-time.
+**Output:** Streams conversational responses to stdout (relayed via WebSocket) and **updates `SPEC.md` directly** — the one trust boundary exception (Section 5.5), acceptable because the user observes every change in real-time.
 
 #### 12.3.2 Planner
 
 **Purpose:** Decompose a Plan into features and tasks.
 
-**Input:** `context/prd.json`, `context/plan.md`. **Additional config:** `plan_id`, `epic_id`.
+**Input:** `context/SPEC.md`, `context/plan.md`. **Additional config:** `plan_id`, `epic_id`.
 
 **Output (`result.json`):**
 
@@ -800,7 +800,7 @@ The orchestrator creates tasks from this output, resolving ordinal indices to ac
 
 **Purpose:** Review a shipped Plan against the PRD and propose section updates.
 
-**Input:** `context/prd.json`, `context/plan.md`. **Additional config:** `plan_id`, `trigger` (`"build_it"` or `"scope_change"`).
+**Input:** `context/SPEC.md`, `context/plan.md`. **Additional config:** `plan_id`, `trigger` (`"build_it"` or `"scope_change"`).
 
 **Output (`result.json`):** `{ "status": "success", "prd_updates": [{ "section": "<name>", "action": "update", "content": "<markdown>", "change_log_entry": "<description>" }] }`. **Additional status:** `no_changes_needed`.
 
@@ -812,7 +812,7 @@ The orchestrator creates tasks from this output, resolving ordinal indices to ac
 
 **Large-scope routing:** When feedback has large scope (whole epic/plan, architecture changes, significant tradeoffs), set `is_large_scope: true` and omit `proposed_tasks`. The orchestrator routes to the Planner to create a new Epic/Plan and links the feedback to it. Autonomy-aware execution: for "Confirm all" or "Major only" — HIL prompts the user to review the plan before execution; for "Full Autonomy" — auto-execute.
 
-**Input:** `context/prd.json`, `context/plans_index.json`, `context/feedback.txt`, open tasks list. **Additional config:** `feedback_id`.
+**Input:** `context/SPEC.md`, `context/plans_index.json`, `context/feedback.txt`, open tasks list. **Additional config:** `feedback_id`.
 
 **Output (`result.json`):** `{ "status": "success", "category": "<bug|feature|ux|scope>", "mapped_plan_id": "<id>|null", "mapped_epic_id": "<id>|null", "is_scope_change": <bool>, "is_large_scope": <bool>, "proposed_tasks": [<indexed task list, same format as Planner>], "link_to_existing_task_ids": ["task-id"], "update_existing_tasks": {...} }`. When `is_scope_change` is `true` (and not `is_large_scope`), the orchestrator invokes the Harmonizer with `trigger: "scope_change"`. When `is_large_scope` is `true`, the orchestrator invokes the Planner to create a new plan and links feedback to it. When `link_to_existing_task_ids` is non-empty, no new tasks are created; feedback is linked to those existing tasks.
 
@@ -820,7 +820,7 @@ The orchestrator creates tasks from this output, resolving ordinal indices to ac
 
 **Purpose:** Condense context into a focused summary when thresholds are exceeded (>2 dependencies or >2,000-word Plan).
 
-**Input:** `context/prd_excerpt.md`, `context/plan.md`, `context/deps/`. **Additional config:** `task_id`, `dependency_count`, `plan_word_count`.
+**Input:** `context/spec.md`, `context/plan.md`, `context/deps/`. **Additional config:** `task_id`, `dependency_count`, `plan_word_count`.
 
 **Output (`result.json`):** `{ "status": "success", "summary": "<markdown>" }` — a condensed context preserving architectural decisions, interface contracts, and key implementation details. The orchestrator replaces the raw context files with this summary when assembling the Coder's prompt.
 
@@ -836,7 +836,7 @@ The orchestrator creates tasks from this output, resolving ordinal indices to ac
 
 **Purpose:** Implement a task and write tests.
 
-**Input:** `context/plan.md` (or Summarizer output), `context/prd_excerpt.md`, `context/deps/`. **Additional config:** `task_id`, `branch`, `worktree_path`, `test_command`, `attempt`, `previous_failure`, `review_feedback`.
+**Input:** `context/plan.md` (or Summarizer output), `context/spec.md`, `context/deps/`. **Additional config:** `task_id`, `branch`, `worktree_path`, `test_command`, `attempt`, `previous_failure`, `review_feedback`.
 
 **Prompt (`prompt.md`):**
 
@@ -852,7 +852,7 @@ The orchestrator creates tasks from this output, resolving ordinal indices to ac
 You are implementing a task as part of a larger feature. Review the provided context files:
 
 - `context/plan.md` — the full feature specification
-- `context/prd_excerpt.md` — relevant product requirements
+- `context/spec.md` — relevant product requirements
 - `context/deps/` — output from tasks this depends on
 
 ## Acceptance Criteria
@@ -1006,7 +1006,7 @@ This table records architectural decisions where the rationale isn't self-eviden
 | Decision                       | Resolution                                                                                                                    | Rationale                                                                                                   |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | Backend language               | Node.js + TypeScript                                                                                                          | Shared language with React frontend; strong subprocess and WebSocket support                                |
-| PRD storage                    | JSON file in git (`.opensprint/prd.json`) with markdown inside section wrappers                                               | Structured for section-level diffing and versioning; git-versioned; offline-compatible                      |
+| PRD storage                    | JSON file in git (`.opensprint/SPEC.md`) with markdown inside section wrappers                                               | Structured for section-level diffing and versioning; git-versioned; offline-compatible                      |
 | Agent selection                | Pluggable: Claude, Cursor, OpenAI, or Custom CLI command                                                                     | Maximizes flexibility; Custom option future-proofs for new agents                                           |
 | Named agent taxonomy           | Two slots (Planning, Coding) with 8 named roles                                                                               | Each role gets a specialized prompt and output schema; slots allow cost optimization per phase              |
 | Human-in-the-loop threshold    | 3 configurable categories with 3 notification modes each; error recovery always automatic                                     | Gives users control over product decisions while keeping the flywheel running through errors                |
