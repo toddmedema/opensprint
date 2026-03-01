@@ -136,12 +136,6 @@ export class TaskStoreService {
       return;
     }
 
-    // #region agent log — init falling through to runInitInternal (no appDb)
-    const _stack = new Error().stack ?? "";
-    const _caller = _stack.split("\n").slice(2, 6).join(" | ");
-    fetch("http://127.0.0.1:7244/ingest/7b4dbb83-aede-4af0-b5cc-f2f84134fedd",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"743c0d"},body:JSON.stringify({sessionId:"743c0d",location:"task-store.service.ts:init",message:"init_no_appDb_fallthrough",data:{pid:process.pid,hasInitPromise:!!this.initPromise,hasDatabaseUrl:!!databaseUrl,caller:_caller},timestamp:Date.now(),hypothesisId:"H1"})}).catch(()=>{});
-    // #endregion
-
     if (this.initPromise) {
       await this.initPromise;
       return;
@@ -166,14 +160,6 @@ export class TaskStoreService {
 
   private async runInitInternal(databaseUrl?: string): Promise<void> {
     const url = databaseUrl ?? (await getDatabaseUrl());
-
-    // #region agent log — runInitInternal creating raw pool
-    const _stack = new Error().stack ?? "";
-    const _caller = _stack.split("\n").slice(2, 6).join(" | ");
-    let _parsedDb = "?";
-    try { _parsedDb = new URL(url).pathname.replace(/^\/+|\/+$/g, "") || "opensprint"; } catch {}
-    fetch("http://127.0.0.1:7244/ingest/7b4dbb83-aede-4af0-b5cc-f2f84134fedd",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"743c0d"},body:JSON.stringify({sessionId:"743c0d",location:"task-store.service.ts:runInitInternal",message:"runInitInternal_raw_pool",data:{pid:process.pid,database:_parsedDb,vitest:!!process.env.VITEST,urlProvided:!!databaseUrl,hasAppName:url.includes("application_name"),caller:_caller},timestamp:Date.now(),hypothesisId:"H1"})}).catch(()=>{});
-    // #endregion
 
     if (process.env.VITEST) {
       try {
@@ -1055,12 +1041,6 @@ export class TaskStoreService {
     return this.withWriteLock(async () => {
       await this.ensureInitialized();
       const client = this.ensureClient();
-      // #region agent log — deleteByProjectId caller trace
-      const _stack = new Error().stack ?? "";
-      const _caller = _stack.split("\n").slice(2, 8).join(" | ");
-      const _dbRow = await client.queryOne("SELECT current_database() AS name, current_setting('application_name', true) AS app_name");
-      fetch("http://127.0.0.1:7244/ingest/7b4dbb83-aede-4af0-b5cc-f2f84134fedd",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"743c0d"},body:JSON.stringify({sessionId:"743c0d",location:"task-store.service.ts:deleteByProjectId",message:"deleteByProjectId_called",data:{pid:process.pid,projectId,database:(_dbRow?.name as string)??"?",appName:(_dbRow?.app_name as string)??"?",hasAppDb:!!this.appDb,caller:_caller},timestamp:Date.now(),hypothesisId:"H_PROD_DELETE"})}).catch(()=>{});
-      // #endregion
       const rows = await client.query(
         toPgParams("SELECT id FROM tasks WHERE project_id = ?"),
         [projectId]
@@ -1283,11 +1263,6 @@ export class TaskStoreService {
 
   private async ensureInitialized(): Promise<void> {
     if (!this.client) {
-      // #region agent log — ensureInitialized with null client
-      const _stack = new Error().stack ?? "";
-      const _caller = _stack.split("\n").slice(2, 5).join(" | ") || "?";
-      fetch("http://127.0.0.1:7244/ingest/7b4dbb83-aede-4af0-b5cc-f2f84134fedd",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"743c0d"},body:JSON.stringify({sessionId:"743c0d",location:"task-store.service.ts:ensureInitialized",message:"ensureInitialized_null_client",data:{pid:process.pid,vitest:!!process.env.VITEST,hasAppDb:!!this.appDb,caller:_caller},timestamp:Date.now(),hypothesisId:"H1"})}).catch(()=>{});
-      // #endregion
       await this.init();
     }
   }

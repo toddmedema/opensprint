@@ -51,7 +51,7 @@ function ensureTestDatabaseUrl(url: string): string {
   return url;
 }
 
-/** Tag test connections in task_delete_audit so we can tell app (opensprint-app) vs test (opensprint-test). */
+/** Tag test connections so PG logs distinguish app (opensprint-app) from test (opensprint-test). */
 function addTestApplicationName(url: string): string {
   try {
     const u = new URL(url);
@@ -59,6 +59,46 @@ function addTestApplicationName(url: string): string {
     return u.toString();
   } catch {
     return url;
+  }
+}
+
+/** Get a stable vitest worker id (fork/thread pool id). */
+function getVitestWorkerId(): string | null {
+  const poolId = process.env.VITEST_POOL_ID?.trim();
+  if (poolId) return poolId;
+  const workerId = process.env.VITEST_WORKER_ID?.trim();
+  if (workerId) return workerId;
+  return null;
+}
+
+/** Keep schema names safe for SQL identifiers and reasonably short. */
+function sanitizeSchemaPart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_]+/g, "_").slice(0, 32);
+}
+
+function quoteIdent(ident: string): string {
+  return `"${ident.replace(/"/g, "\"\"")}"`;
+}
+
+/**
+ * Isolate each Vitest worker to its own schema so parallel workers do not race
+ * on DELETE/TRUNCATE setup hooks against shared tables.
+ */
+function withWorkerScopedSchema(url: string): { url: string; schema: string | null } {
+  const workerId = getVitestWorkerId();
+  if (!workerId) return { url, schema: null };
+
+  try {
+    const schema = `vitest_${sanitizeSchemaPart(workerId)}`;
+    const u = new URL(url);
+    const options = u.searchParams.get("options") ?? "";
+    if (!options.includes("search_path=")) {
+      const nextOptions = `${options} -c search_path=${schema},public`.trim();
+      u.searchParams.set("options", nextOptions);
+    }
+    return { url: u.toString(), schema };
+  } catch {
+    return { url, schema: null };
   }
 }
 
@@ -108,8 +148,12 @@ export async function createTestPostgresClient(): Promise<{
   pool: Pool;
 } | null> {
   try {
-    const url = await getTestDatabaseUrl();
+    const baseUrl = await getTestDatabaseUrl();
+    const { url, schema } = withWorkerScopedSchema(baseUrl);
     const result = await createPostgresDbClientFromUrl(url);
+    if (schema) {
+      await result.client.execute(`CREATE SCHEMA IF NOT EXISTS ${quoteIdent(schema)}`);
+    }
     await result.client.query("SELECT 1");
     const dbRow = await result.client.queryOne("SELECT current_database() AS name");
     const dbName = (dbRow?.name as string) ?? "";
@@ -119,7 +163,8 @@ export async function createTestPostgresClient(): Promise<{
     // Log once per process so test runs show which DB is used (confirms isolation from app DB).
     if (!process.env.OPENSPRINT_TEST_DB_LOGGED) {
       (process.env as NodeJS.ProcessEnv).OPENSPRINT_TEST_DB_LOGGED = "1";
-      console.warn(`[test-db-helper] Tests using database: ${dbName}`);
+      const scope = schema ? ` schema=${schema}` : "";
+      console.warn(`[test-db-helper] Tests using database: ${dbName}${scope}`);
     }
     await runSchema(result.client);
     return { client: result.client, pool: result.pool };
