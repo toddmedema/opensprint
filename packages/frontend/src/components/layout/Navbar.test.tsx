@@ -10,6 +10,7 @@ import type { Task } from "@opensprint/shared";
 import { ThemeProvider } from "../../contexts/ThemeContext";
 import { DisplayPreferencesProvider } from "../../contexts/DisplayPreferencesContext";
 import { NAVBAR_HEIGHT } from "../../lib/constants";
+import { queryKeys } from "../../api/queryKeys";
 import { Navbar } from "./Navbar";
 import executeReducer, { toTasksByIdAndOrder } from "../../store/slices/executeSlice";
 import planReducer from "../../store/slices/planSlice";
@@ -19,11 +20,13 @@ import notificationReducer from "../../store/slices/notificationSlice";
 
 const mockGetSettings = vi.fn();
 const mockProjectsList = vi.fn();
+const mockProjectsGet = vi.fn();
 const mockGetGlobalStatus = vi.fn();
 vi.mock("../../api/client", () => ({
   api: {
     projects: {
       list: (...args: unknown[]) => mockProjectsList(...args),
+      get: (...args: unknown[]) => mockProjectsGet(...args),
       getSettings: (...args: unknown[]) => mockGetSettings(...args),
     },
     agents: { active: vi.fn().mockResolvedValue([]) },
@@ -54,6 +57,7 @@ vi.mock("../../api/client", () => ({
 const storage: Record<string, string> = {};
 beforeEach(() => {
   mockProjectsList.mockResolvedValue([]);
+  mockProjectsGet.mockResolvedValue(undefined);
   mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: true, useCustomCli: false });
   vi.stubGlobal("localStorage", {
     getItem: (key: string) => storage[key] ?? null,
@@ -325,6 +329,40 @@ describe("Navbar", () => {
       };
       renderNavbar(<Navbar project={mockProject} currentPhase="sketch" onPhaseChange={vi.fn()} />);
 
+      const helpLink = screen.getByRole("link", { name: "Help" });
+      expect(helpLink).toHaveAttribute("href", "/projects/proj-1/help");
+    });
+
+    it("project help page: Help link stays project-scoped (does not navigate to homepage)", async () => {
+      const mockProject = {
+        id: "proj-1",
+        name: "Test Project",
+        repoPath: "/path",
+        currentPhase: "sketch" as const,
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      };
+      mockProjectsGet.mockResolvedValue(mockProject);
+      const client = new QueryClient();
+      client.setQueryData(queryKeys.projects.detail("proj-1"), mockProject);
+      const { HelpPage } = await import("../../pages/HelpPage");
+      render(
+        <ThemeProvider>
+          <DisplayPreferencesProvider>
+            <Provider store={createStore()}>
+              <QueryClientProvider client={client}>
+                <MemoryRouter initialEntries={["/projects/proj-1/help"]}>
+                  <Routes>
+                    <Route path="/projects/:projectId/help" element={<HelpPage />} />
+                  </Routes>
+                </MemoryRouter>
+              </QueryClientProvider>
+            </Provider>
+          </DisplayPreferencesProvider>
+        </ThemeProvider>
+      );
+
+      await screen.findByTestId("help-page");
       const helpLink = screen.getByRole("link", { name: "Help" });
       expect(helpLink).toHaveAttribute("href", "/projects/proj-1/help");
     });
