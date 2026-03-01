@@ -273,7 +273,7 @@ export function ExecutePhase({
           onViewModeChange={setViewMode}
         />
 
-        <div ref={executeScrollRef} className="flex-1 min-h-0 overflow-auto p-6">
+        <div ref={executeScrollRef} className="flex-1 min-h-0 overflow-auto p-6" data-testid="execute-main-scroll">
           {loading ? (
             <TaskListLoadingSkeleton />
           ) : implTasks.length === 0 ? (

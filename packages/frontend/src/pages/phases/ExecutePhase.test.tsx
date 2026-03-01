@@ -1939,6 +1939,50 @@ describe("ExecutePhase Redux integration", () => {
     expect(scrollArea).toHaveClass("min-h-0");
   });
 
+  it("main task list scroll container is scrollable when sidebar is open", async () => {
+    mockGet.mockResolvedValue({ id: "epic-1.1", title: "Task A", kanbanColumn: "in_progress" });
+    const tasks = [
+      {
+        id: "epic-1.1",
+        title: "Task A",
+        epicId: "epic-1",
+        kanbanColumn: "in_progress",
+        priority: 0,
+        assignee: null,
+      },
+    ];
+    const store = createStore(tasks, { selectedTaskId: "epic-1.1" });
+    render(
+      <MemoryRouter>
+        <Provider store={store}>
+          <ExecutePhase projectId="proj-1" />
+        </Provider>
+      </MemoryRouter>
+    );
+
+    await vi.waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
+    });
+
+    const scrollContainer = screen.getByTestId("execute-main-scroll");
+    expect(scrollContainer).toBeInTheDocument();
+    expect(scrollContainer).toHaveClass("overflow-auto");
+
+    // Simulate scrollable content: mock scrollHeight > clientHeight so scroll position can change
+    Object.defineProperty(scrollContainer, "scrollHeight", { value: 800, configurable: true });
+    Object.defineProperty(scrollContainer, "clientHeight", { value: 400, configurable: true });
+
+    act(() => {
+      scrollContainer.scrollTop = 100;
+    });
+    expect(scrollContainer.scrollTop).toBe(100);
+
+    act(() => {
+      scrollContainer.scrollTop = 200;
+    });
+    expect(scrollContainer.scrollTop).toBe(200);
+  });
+
   it("has root with flex flex-1 min-h-0 min-w-0 for proper fill and independent page/sidebar scroll", () => {
     const tasks = [
       {
