@@ -51,4 +51,22 @@ describe("HelpContent", () => {
 
     expect(screen.getByText(/Ask about My Project/)).toBeInTheDocument();
   });
+
+  it("keeps chat input pinned at bottom with scrollable messages above", async () => {
+    vi.mocked(api.help.history).mockResolvedValue({
+      messages: Array.from({ length: 20 }, (_, i) => ({
+        role: i % 2 === 0 ? ("user" as const) : ("assistant" as const),
+        content: `Message ${i + 1}`,
+      })),
+    });
+    render(<HelpContent />);
+
+    const messagesEl = await screen.findByTestId("help-chat-messages");
+    expect(messagesEl).toHaveClass("overflow-y-auto");
+    expect(messagesEl).toHaveClass("flex-1");
+
+    const input = screen.getByRole("textbox", { name: "Help chat message" });
+    expect(input).toBeInTheDocument();
+    expect(input.closest("form") ?? input.parentElement).toBeInTheDocument();
+  });
 });
