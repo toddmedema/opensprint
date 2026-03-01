@@ -237,7 +237,7 @@ describe("ProjectSettingsModal", () => {
     expect(screen.queryByTestId("api-key-add-ANTHROPIC_API_KEY")).not.toBeInTheDocument();
   });
 
-  it("Display mode shows ApiKeysSection for global key management", async () => {
+  it("Display mode does not show ApiKeysSection (keys managed at /settings only)", async () => {
     mockGlobalSettingsGet.mockResolvedValue({
       databaseUrl: "postgresql://user:***@localhost:5432/opensprint",
       apiKeys: undefined,
@@ -248,9 +248,9 @@ describe("ProjectSettingsModal", () => {
 
     await userEvent.click(screen.getByTestId("display-mode-button"));
 
-    await screen.findByTestId("api-keys-section");
-    expect(screen.getByText("API Keys")).toBeInTheDocument();
-    expect(screen.getByTestId("api-key-add-ANTHROPIC_API_KEY")).toBeInTheDocument();
+    expect(screen.queryByTestId("api-keys-section")).not.toBeInTheDocument();
+    expect(screen.queryByText("API Keys")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("api-key-add-ANTHROPIC_API_KEY")).not.toBeInTheDocument();
   });
 
   it("shows Code Review section with updated helptext and default review mode", async () => {
