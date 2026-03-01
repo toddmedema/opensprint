@@ -9,7 +9,6 @@ import type {
   ScaffoldProjectRequest,
   ScaffoldProjectResponse,
 } from "@opensprint/shared";
-import { maskApiKeysForResponse } from "@opensprint/shared";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("projects");
@@ -146,31 +145,24 @@ projectsRouter.delete("/:id", async (req: Request<ProjectParams>, res, next) => 
   }
 });
 
-// GET /projects/:id/settings — Get project settings (apiKeys masked, never raw value)
+// GET /projects/:id/settings — Get project settings (apiKeys not included; stored in global settings only)
 projectsRouter.get("/:id/settings", async (req, res, next) => {
   try {
     const settings = await projectService.getSettings(req.params.id);
-    const masked = {
-      ...settings,
-      apiKeys: maskApiKeysForResponse(settings.apiKeys),
-    };
-    res.json({ data: masked });
+    res.json({ data: settings });
   } catch (err) {
     next(err);
   }
 });
 
-// PUT /projects/:id/settings — Update project settings (apiKeys masked in response)
+// PUT /projects/:id/settings — Update project settings (apiKeys not accepted; use global settings)
 projectsRouter.put("/:id/settings", async (req, res, next) => {
   try {
     const projectId = req.params.id;
-    const settings = await projectService.updateSettings(projectId, req.body);
+    const { apiKeys: _omit, ...bodyWithoutApiKeys } = req.body as Record<string, unknown>;
+    const settings = await projectService.updateSettings(projectId, bodyWithoutApiKeys);
     await orchestratorService.refreshMaxSlotsAndNudge(projectId);
-    const masked = {
-      ...settings,
-      apiKeys: maskApiKeysForResponse(settings.apiKeys),
-    };
-    res.json({ data: masked });
+    res.json({ data: settings });
   } catch (err) {
     next(err);
   }

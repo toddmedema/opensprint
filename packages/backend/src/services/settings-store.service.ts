@@ -2,11 +2,18 @@
  * Global settings store at ~/.opensprint/settings.json.
  * Settings are keyed by project_id. No per-project .opensprint/settings.json usage.
  * Schema: { [projectId]: ProjectSettings }
+ * apiKeys are never read or written; they live in global-settings.json only.
  */
 import fs from "fs/promises";
 import path from "path";
 import type { ProjectSettings } from "@opensprint/shared";
 import { writeJsonAtomic } from "../utils/file-utils.js";
+
+/** Strip apiKeys from settings (project-level keys deprecated; use global store only). */
+function stripApiKeys<T extends Record<string, unknown>>(obj: T): Omit<T, "apiKeys"> {
+  const { apiKeys: _omit, ...rest } = obj;
+  return rest as Omit<T, "apiKeys">;
+}
 
 function getSettingsStorePath(): string {
   const home = process.env.HOME ?? process.env.USERPROFILE ?? "/tmp";
@@ -34,12 +41,12 @@ async function loadStore(): Promise<SettingsStore> {
           const v = val as Record<string, unknown>;
           if ("settings" in v && typeof v.settings === "object") {
             normalized[id] = {
-              settings: v.settings as ProjectSettings,
+              settings: stripApiKeys(v.settings as Record<string, unknown>) as ProjectSettings,
               updatedAt: (v.updatedAt as string) ?? new Date().toISOString(),
             };
           } else {
             normalized[id] = {
-              settings: val as ProjectSettings,
+              settings: stripApiKeys(val as Record<string, unknown>) as ProjectSettings,
               updatedAt: new Date().toISOString(),
             };
           }
@@ -62,6 +69,7 @@ async function saveStore(store: SettingsStore): Promise<void> {
 
 /**
  * Get settings for a project. Returns defaults if not found.
+ * Strips apiKeys from stored data (project-level keys deprecated).
  */
 export async function getSettingsFromStore(
   projectId: string,
@@ -70,13 +78,14 @@ export async function getSettingsFromStore(
   const store = await loadStore();
   const entry = store[projectId];
   if (entry?.settings) {
-    return entry.settings;
+    return stripApiKeys(entry.settings as Record<string, unknown>) as ProjectSettings;
   }
   return defaults;
 }
 
 /**
  * Get settings and updatedAt for a project. Returns { settings: defaults, updatedAt: null } if not found.
+ * Strips apiKeys from stored data (project-level keys deprecated).
  */
 export async function getSettingsWithMetaFromStore(
   projectId: string,
@@ -85,13 +94,16 @@ export async function getSettingsWithMetaFromStore(
   const store = await loadStore();
   const entry = store[projectId];
   if (entry?.settings) {
-    return { settings: entry.settings, updatedAt: entry.updatedAt ?? null };
+    return {
+      settings: stripApiKeys(entry.settings as Record<string, unknown>) as ProjectSettings,
+      updatedAt: entry.updatedAt ?? null,
+    };
   }
   return { settings: defaults, updatedAt: null };
 }
 
 /**
- * Set settings for a project.
+ * Set settings for a project. Strips apiKeys before persisting (project-level keys deprecated).
  */
 export async function setSettingsInStore(
   projectId: string,
@@ -99,7 +111,8 @@ export async function setSettingsInStore(
 ): Promise<void> {
   const store = await loadStore();
   const now = new Date().toISOString();
-  store[projectId] = { settings, updatedAt: now };
+  const toStore = stripApiKeys(settings as Record<string, unknown>) as ProjectSettings;
+  store[projectId] = { settings: toStore, updatedAt: now };
   await saveStore(store);
 }
 
@@ -128,7 +141,8 @@ export async function updateSettingsInStore(
     const current = entry?.settings ?? defaults;
     const updated = updater(current);
     const now = new Date().toISOString();
-    store[projectId] = { settings: updated, updatedAt: now };
+    const toStore = stripApiKeys(updated as Record<string, unknown>) as ProjectSettings;
+    store[projectId] = { settings: toStore, updatedAt: now };
     await saveStore(store);
   } finally {
     resolve!();

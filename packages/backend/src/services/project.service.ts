@@ -11,7 +11,6 @@ import type {
   ScaffoldProjectResponse,
   ScaffoldRecoveryInfo,
 } from "@opensprint/shared";
-import type { ApiKeyEntry, ApiKeys } from "@opensprint/shared";
 import {
   OPENSPRINT_DIR,
   OPENSPRINT_PATHS,
@@ -22,9 +21,6 @@ import {
   getTestCommandForFramework,
   hilConfigFromAiAutonomyLevel,
   parseSettings,
-  sanitizeApiKeys,
-  getProvidersInUse,
-  API_KEY_PROVIDERS,
 } from "@opensprint/shared";
 import type { AiAutonomyLevel, DeploymentConfig, HilConfig } from "@opensprint/shared";
 import { taskStore as taskStoreSingleton } from "./task-store.service.js";
@@ -34,7 +30,6 @@ import {
   deleteSettingsFromStore,
   getSettingsWithMetaFromStore,
 } from "./settings-store.service.js";
-import { getGlobalSettings, updateGlobalSettings } from "./global-settings.service.js";
 import { deleteFeedbackAssetsForProject } from "./feedback-store.service.js";
 import { BranchManager } from "./branch-manager.js";
 import { detectTestFramework } from "./test-framework.service.js";
@@ -100,48 +95,6 @@ function normalizeRepoPath(p: string): string {
   return p.trim().replace(/\/+$/, "") || "";
 }
 
-/**
- * Merge incoming apiKeys with current. When an entry has id but no value (frontend
- * sends masked data), use the existing value from current so we can persist unchanged keys.
- */
-function mergeApiKeysWithCurrent(
-  incoming: unknown,
-  current: ApiKeys | undefined
-): ApiKeys | undefined {
-  if (incoming == null || typeof incoming !== "object" || Array.isArray(incoming)) {
-    return undefined;
-  }
-  const obj = incoming as Record<string, unknown>;
-  const result: ApiKeys = {};
-  for (const provider of API_KEY_PROVIDERS) {
-    const arr = obj[provider];
-    if (arr == null || !Array.isArray(arr)) continue;
-    const currentEntries = current?.[provider] ?? [];
-    const merged: ApiKeyEntry[] = [];
-    for (const item of arr) {
-      if (!item || typeof item !== "object") continue;
-      const e = item as Record<string, unknown>;
-      const id = typeof e.id === "string" ? e.id.trim() : "";
-      if (!id) continue;
-      let value: string;
-      if (typeof e.value === "string" && e.value.trim()) {
-        value = e.value;
-      } else {
-        const existing = currentEntries.find((x) => x.id === id);
-        value = existing?.value ?? "";
-      }
-      if (!value) continue;
-      merged.push({
-        id,
-        value,
-        ...(e.limitHitAt != null && typeof e.limitHitAt === "string" && { limitHitAt: e.limitHitAt }),
-      });
-    }
-    if (merged.length > 0) result[provider] = merged;
-  }
-  return Object.keys(result).length > 0 ? result : undefined;
-}
-
 /** Default agent config used when creating or repairing settings (e.g. adopt path). */
 const DEFAULT_AGENT_CONFIG = {
   type: "cursor" as const,
@@ -179,7 +132,6 @@ function toCanonicalSettings(s: ProjectSettings): ProjectSettings {
     ...(s.maxConcurrentCoders !== undefined && { maxConcurrentCoders: s.maxConcurrentCoders }),
     ...(s.unknownScopeStrategy !== undefined && { unknownScopeStrategy: s.unknownScopeStrategy }),
     gitWorkingMode: s.gitWorkingMode ?? "worktree",
-    ...(s.apiKeys && Object.keys(s.apiKeys).length > 0 && { apiKeys: s.apiKeys }),
   };
 }
 
@@ -370,7 +322,6 @@ export class ProjectService {
     const gitWorkingMode = input.gitWorkingMode === "branches" ? "branches" : "worktree";
     const effectiveMaxConcurrentCoders =
       gitWorkingMode === "branches" ? 1 : (input.maxConcurrentCoders ?? 1);
-    const apiKeys = sanitizeApiKeys(input.apiKeys);
     const settings: ProjectSettings = {
       simpleComplexityAgent,
       complexComplexityAgent,
@@ -386,7 +337,6 @@ export class ProjectService {
         input.unknownScopeStrategy && {
           unknownScopeStrategy: input.unknownScopeStrategy,
         }),
-      ...(apiKeys && Object.keys(apiKeys).length > 0 && { apiKeys }),
     };
     await setSettingsInStore(id, settings);
 
@@ -704,29 +654,11 @@ export class ProjectService {
         testCommand: detected?.testCommand ?? (getTestCommandForFramework(null) || null),
       };
       await setSettingsInStore(projectId, enriched);
-      const withApiKeys = await this.mergeApiKeysForResponse(enriched);
-      return toCanonicalSettings(withApiKeys);
+      return toCanonicalSettings(enriched);
     }
     const normalized = { ...stored };
     const parsed = toCanonicalSettings(parseSettings(normalized));
-    const withApiKeys = await this.mergeApiKeysForResponse(parsed);
-    return withApiKeys;
-  }
-
-  /** Merge global apiKeys with project apiKeys for response (global first, project for backward compat). */
-  private async mergeApiKeysForResponse(settings: ProjectSettings): Promise<ProjectSettings> {
-    const global = await getGlobalSettings();
-    if (!global.apiKeys && !settings.apiKeys) return settings;
-    const merged: ApiKeys = { ...settings.apiKeys };
-    for (const provider of API_KEY_PROVIDERS) {
-      const globalEntries = global.apiKeys?.[provider];
-      if (globalEntries && globalEntries.length > 0) {
-        merged[provider] = globalEntries;
-      } else if (settings.apiKeys?.[provider]) {
-        merged[provider] = settings.apiKeys[provider];
-      }
-    }
-    return { ...settings, apiKeys: Object.keys(merged).length > 0 ? merged : undefined };
+    return parsed;
   }
 
   /** Update project settings (persisted in global store). */
@@ -770,10 +702,6 @@ export class ProjectService {
       updates.gitWorkingMode === "worktree" || updates.gitWorkingMode === "branches"
         ? updates.gitWorkingMode
         : (current.gitWorkingMode ?? "worktree");
-    const apiKeys =
-      updates.apiKeys !== undefined
-        ? sanitizeApiKeys(mergeApiKeysWithCurrent(updates.apiKeys, current.apiKeys)) ?? undefined
-        : current.apiKeys;
     const effectiveSettings: ProjectSettings = {
       ...current,
       ...updates,
@@ -782,35 +710,14 @@ export class ProjectService {
       aiAutonomyLevel,
       hilConfig,
       gitWorkingMode,
-      apiKeys,
     };
-    if (updates.apiKeys !== undefined) {
-      const providersInUse = getProvidersInUse(effectiveSettings);
-      const effectiveApiKeys = apiKeys ?? {};
-      for (const provider of providersInUse) {
-        const entries = effectiveApiKeys[provider];
-        if (!entries || entries.length === 0) {
-          throw new AppError(
-            400,
-            ErrorCodes.INVALID_INPUT,
-            `API keys for ${provider} cannot be empty when this provider is selected in agent config`
-          );
-        }
-      }
-    }
     const updated: ProjectSettings = {
       ...effectiveSettings,
       // Branches mode forces maxConcurrentCoders=1 regardless of stored value
       ...(gitWorkingMode === "branches" && { maxConcurrentCoders: 1 }),
     };
     const toPersist = toCanonicalSettings(updated);
-    if (updates.apiKeys !== undefined) {
-      await updateGlobalSettings({ apiKeys: updated.apiKeys });
-      const { apiKeys: _omit, ...forProjectStore } = toPersist;
-      await setSettingsInStore(projectId, forProjectStore as ProjectSettings);
-    } else {
-      await setSettingsInStore(projectId, toPersist);
-    }
+    await setSettingsInStore(projectId, toPersist);
     return updated;
   }
 

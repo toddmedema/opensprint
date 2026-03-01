@@ -469,55 +469,6 @@ describe("ProjectSettingsModal", () => {
     expect(screen.queryByText(/Planning Agent Slot|Coding Agent Slot/i)).not.toBeInTheDocument();
   });
 
-  it("Agent Config tab shows API Keys section with add button when claude or cursor is selected", async () => {
-    renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
-    await screen.findByText("Settings");
-
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
-
-    await screen.findByText("Task Complexity");
-    expect(screen.getByTestId("api-keys-section")).toBeInTheDocument();
-    expect(screen.getByText("API Keys")).toBeInTheDocument();
-    expect(screen.getByText(/Add multiple keys per provider/)).toBeInTheDocument();
-    expect(screen.getByTestId("api-key-add-ANTHROPIC_API_KEY")).toBeInTheDocument();
-  });
-
-  it("Agent Config tab allows adding multiple API keys per provider", async () => {
-    const user = userEvent.setup();
-    renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
-    await screen.findByText("Settings");
-
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await user.click(agentConfigTab);
-
-    await screen.findByText("Task Complexity");
-    const addBtn = screen.getByTestId("api-key-add-ANTHROPIC_API_KEY");
-    await user.click(addBtn);
-
-    const inputs = screen.getAllByTestId(/api-key-input-ANTHROPIC_API_KEY-/);
-    expect(inputs.length).toBe(1);
-
-    await user.type(inputs[0], "sk-ant-test-key");
-    const basicsTab = screen.getByRole("button", { name: "Project Info" });
-    await user.click(basicsTab);
-
-    await waitFor(
-      () =>
-        expect(mockUpdateSettings).toHaveBeenCalledWith(
-          "proj-1",
-          expect.objectContaining({
-            apiKeys: expect.objectContaining({
-              ANTHROPIC_API_KEY: expect.arrayContaining([
-                expect.objectContaining({ id: expect.any(String), value: "sk-ant-test-key" }),
-              ]),
-            }),
-          })
-        ),
-      { timeout: 500 }
-    );
-  });
-
   it("saves simpleComplexityAgent and complexComplexityAgent on blur", async () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
     await screen.findByText("Settings");

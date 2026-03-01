@@ -638,8 +638,8 @@ describe("isLimitHitExpired", () => {
   });
 });
 
-describe("parseSettings with apiKeys", () => {
-  it("preserves apiKeys when valid", () => {
+describe("parseSettings — apiKeys ignored (stored in global settings only)", () => {
+  it("does not include apiKeys in output (project-level keys removed)", () => {
     const raw = {
       simpleComplexityAgent: lowAgent,
       complexComplexityAgent: highAgent,
@@ -651,12 +651,10 @@ describe("parseSettings with apiKeys", () => {
       },
     };
     const parsed = parseSettings(raw);
-    expect(parsed.apiKeys).toEqual({
-      ANTHROPIC_API_KEY: [{ id: "k1", value: "sk-ant-xxx" }],
-    });
+    expect(parsed).not.toHaveProperty("apiKeys");
   });
 
-  it("sets apiKeys to undefined when absent", () => {
+  it("does not include apiKeys when absent", () => {
     const raw = {
       simpleComplexityAgent: lowAgent,
       complexComplexityAgent: highAgent,
@@ -665,38 +663,7 @@ describe("parseSettings with apiKeys", () => {
       testFramework: null,
     };
     const parsed = parseSettings(raw);
-    expect(parsed.apiKeys).toBeUndefined();
-  });
-
-  it("sanitizes apiKeys and drops invalid entries", () => {
-    const raw = {
-      simpleComplexityAgent: lowAgent,
-      complexComplexityAgent: highAgent,
-      deployment: { mode: "custom" },
-      hilConfig: DEFAULT_HIL_CONFIG,
-      testFramework: null,
-      apiKeys: {
-        ANTHROPIC_API_KEY: [{ id: "k1", value: "valid" }, { id: "", value: "invalid" }],
-      },
-    };
-    const parsed = parseSettings(raw);
-    expect(parsed.apiKeys?.ANTHROPIC_API_KEY).toHaveLength(1);
-    expect(parsed.apiKeys?.ANTHROPIC_API_KEY?.[0]).toEqual({ id: "k1", value: "valid" });
-  });
-
-  it("sets apiKeys to undefined when all entries invalid", () => {
-    const raw = {
-      simpleComplexityAgent: lowAgent,
-      complexComplexityAgent: highAgent,
-      deployment: { mode: "custom" },
-      hilConfig: DEFAULT_HIL_CONFIG,
-      testFramework: null,
-      apiKeys: {
-        ANTHROPIC_API_KEY: [{ id: "", value: "x" }],
-      },
-    };
-    const parsed = parseSettings(raw);
-    expect(parsed.apiKeys).toBeUndefined();
+    expect(parsed).not.toHaveProperty("apiKeys");
   });
 });
 

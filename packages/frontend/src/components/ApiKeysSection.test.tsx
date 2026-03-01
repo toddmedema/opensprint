@@ -3,9 +3,9 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { ApiKeysSection } from "./ApiKeysSection";
-import type { ProjectSettings } from "@opensprint/shared";
+import type { ApiKeysSectionSettings } from "./ApiKeysSection";
 
-const mockSettingsClaude: ProjectSettings = {
+const mockSettingsClaude: ApiKeysSectionSettings = {
   simpleComplexityAgent: { type: "claude", model: "claude-3-5-sonnet", cliCommand: null },
   complexComplexityAgent: { type: "claude", model: "claude-3-5-sonnet", cliCommand: null },
   deployment: { mode: "custom" },
@@ -18,13 +18,13 @@ const mockSettingsClaude: ProjectSettings = {
   gitWorkingMode: "worktree",
 };
 
-const mockSettingsCursor: ProjectSettings = {
+const mockSettingsCursor: ApiKeysSectionSettings = {
   ...mockSettingsClaude,
   simpleComplexityAgent: { type: "cursor", model: "gpt-4", cliCommand: null },
   complexComplexityAgent: { type: "cursor", model: "gpt-4", cliCommand: null },
 };
 
-const mockSettingsWithKeys: ProjectSettings = {
+const mockSettingsWithKeys: ApiKeysSectionSettings = {
   ...mockSettingsClaude,
   apiKeys: {
     ANTHROPIC_API_KEY: [
@@ -42,7 +42,7 @@ describe("ApiKeysSection", () => {
   });
 
   it("returns null when no claude or cursor providers in use", () => {
-    const settings: ProjectSettings = {
+    const settings: ApiKeysSectionSettings = {
       ...mockSettingsClaude,
       simpleComplexityAgent: { type: "claude-cli", model: null, cliCommand: null },
       complexComplexityAgent: { type: "claude-cli", model: null, cliCommand: null },
@@ -109,7 +109,7 @@ describe("ApiKeysSection", () => {
 
   it("calls onApiKeysChange when user types a new key value", async () => {
     const user = userEvent.setup();
-    const settingsWithOneKey: ProjectSettings = {
+    const settingsWithOneKey: ApiKeysSectionSettings = {
       ...mockSettingsClaude,
       apiKeys: {
         ANTHROPIC_API_KEY: [{ id: "k1", value: "sk-ant-existing" }],
@@ -125,7 +125,7 @@ describe("ApiKeysSection", () => {
   });
 
   it("disables remove when only one key remains", () => {
-    const settingsWithOneKey: ProjectSettings = {
+    const settingsWithOneKey: ApiKeysSectionSettings = {
       ...mockSettingsClaude,
       apiKeys: {
         ANTHROPIC_API_KEY: [{ id: "k1", value: "sk-ant-only" }],
@@ -156,7 +156,7 @@ describe("ApiKeysSection", () => {
   });
 
   it("shows both providers when mixed (claude + cursor)", () => {
-    const mixedSettings: ProjectSettings = {
+    const mixedSettings: ApiKeysSectionSettings = {
       ...mockSettingsClaude,
       simpleComplexityAgent: { type: "claude", model: "claude-sonnet", cliCommand: null },
       complexComplexityAgent: { type: "cursor", model: null, cliCommand: null },

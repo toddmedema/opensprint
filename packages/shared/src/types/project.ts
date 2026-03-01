@@ -49,8 +49,6 @@ export interface CreateProjectRequest {
   unknownScopeStrategy?: "conservative" | "optimistic";
   /** Git working mode: "worktree" or "branches". Stored in project settings. Default: "worktree". */
   gitWorkingMode?: "worktree" | "branches";
-  /** Per-project API keys. When absent, backend falls back to process.env (from .env). Project keys take precedence. */
-  apiKeys?: ApiKeys;
 }
 
 /** Project update request (partial fields) */
@@ -91,5 +89,4 @@ import type {
   DeploymentConfigInput,
   HilConfigInput,
   AiAutonomyLevel,
-  ApiKeys,
 } from "./settings.js";

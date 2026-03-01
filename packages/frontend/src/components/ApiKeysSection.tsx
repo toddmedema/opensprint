@@ -1,14 +1,22 @@
 import { useState, useCallback } from "react";
 import type {
-  ProjectSettings,
+  AgentConfig,
   ApiKeyProvider,
+  ApiKeys,
   MaskedApiKeyEntry,
 } from "@opensprint/shared";
 
 const MASKED_PLACEHOLDER = "••••••••";
 
+/** Settings shape for API keys section: agent config + optional apiKeys (e.g. from global settings) */
+export interface ApiKeysSectionSettings {
+  simpleComplexityAgent: AgentConfig;
+  complexComplexityAgent: AgentConfig;
+  apiKeys?: ApiKeys;
+}
+
 /** Providers that use API keys in the UI (claude API and cursor; excludes claude-cli) */
-function getApiKeyProvidersForSection(settings: ProjectSettings): ApiKeyProvider[] {
+function getApiKeyProvidersForSection(settings: ApiKeysSectionSettings): ApiKeyProvider[] {
   const providers: ApiKeyProvider[] = [];
   const agents = [settings.simpleComplexityAgent, settings.complexComplexityAgent];
   for (const a of agents) {
@@ -40,7 +48,7 @@ const PROVIDER_LABELS: Record<ApiKeyProvider, string> = {
 };
 
 interface ApiKeysSectionProps {
-  settings: ProjectSettings | null;
+  settings: ApiKeysSectionSettings | null;
   onApiKeysChange: (apiKeys: Partial<Record<ApiKeyProvider, Array<{ id: string; value?: string; limitHitAt?: string }>>>) => void;
 }
 

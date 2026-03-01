@@ -417,8 +417,6 @@ export interface ProjectSettings {
   unknownScopeStrategy?: UnknownScopeStrategy;
   /** Git working mode: "worktree" (parallel worktrees) or "branches" (single branch in main repo). Default: "worktree". */
   gitWorkingMode?: GitWorkingMode;
-  /** Per-provider API keys for rotation when limits are hit. Falls back to process.env when absent. */
-  apiKeys?: ApiKeys;
 }
 
 /** Planning agent roles — Dreamer/Analyst use fixed tiers; others inherit plan complexity */
@@ -478,7 +476,6 @@ export function parseSettings(raw: unknown): ProjectSettings {
     r?.gitWorkingMode === "worktree" || r?.gitWorkingMode === "branches"
       ? (r.gitWorkingMode as "worktree" | "branches")
       : "worktree";
-  const apiKeys = sanitizeApiKeys(r?.apiKeys);
 
   let aiAutonomyLevel: AiAutonomyLevel = DEFAULT_AI_AUTONOMY_LEVEL;
   const rawLevel = r?.aiAutonomyLevel;
@@ -498,25 +495,25 @@ export function parseSettings(raw: unknown): ProjectSettings {
     hilConfig,
     testFramework: (r?.testFramework as string | null) ?? null,
     gitWorkingMode,
-    apiKeys: apiKeys ?? undefined,
   };
 
+  const { apiKeys: _omitApiKeys, ...rest } = r as Partial<ProjectSettings> & { apiKeys?: unknown };
   if (simpleObj && typeof simpleObj === "object" && complexObj && typeof complexObj === "object") {
     const simple = simpleObj as AgentConfig;
     const complex = complexObj as AgentConfig;
     return {
-      ...(r as Partial<ProjectSettings>),
+      ...rest,
       simpleComplexityAgent: simple,
       complexComplexityAgent: complex,
       ...base,
-    };
+    } as ProjectSettings;
   }
   const simple =
     (simpleObj && typeof simpleObj === "object" ? (simpleObj as AgentConfig) : null) ?? DEFAULT_AGENT;
   const complex =
     (complexObj && typeof complexObj === "object" ? (complexObj as AgentConfig) : null) ?? DEFAULT_AGENT;
   return {
-    ...(r as Partial<ProjectSettings>),
+    ...rest,
     simpleComplexityAgent: simple,
     complexComplexityAgent: complex,
     ...base,

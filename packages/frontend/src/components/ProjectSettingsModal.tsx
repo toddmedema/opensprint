@@ -5,7 +5,6 @@ import { CloseButton } from "./CloseButton";
 import { ModelSelect } from "./ModelSelect";
 import { DisplaySettingsContent } from "./DisplaySettingsContent";
 import { AgentsMdSection } from "./AgentsMdSection";
-import { ApiKeysSection } from "./ApiKeysSection";
 import { api } from "../api/client";
 import type {
   Project,
@@ -183,7 +182,6 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
               gitWorkingMode === "branches" ? 1 : (settings?.maxConcurrentCoders ?? 1),
             unknownScopeStrategy: settings?.unknownScopeStrategy ?? "optimistic",
             gitWorkingMode,
-            ...(settings?.apiKeys && Object.keys(settings.apiKeys).length > 0 && { apiKeys: settings.apiKeys }),
           }),
         ]);
         if (notifyOnComplete) onSaved?.();
@@ -280,14 +278,6 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
   const updateDeployment = (updates: Partial<typeof deployment>) => {
     setSettings((s) => (s ? { ...s, deployment: { ...s.deployment, ...updates } } : null));
   };
-
-  const handleApiKeysChange = useCallback(
-    (apiKeys: Partial<Record<"ANTHROPIC_API_KEY" | "CURSOR_API_KEY", Array<{ id: string; value?: string; limitHitAt?: string }>>>) => {
-      setSettings((s) => (s ? { ...s, apiKeys: { ...s.apiKeys, ...apiKeys } } : null));
-      scheduleSaveOnBlur();
-    },
-    [scheduleSaveOnBlur]
-  );
 
   const updateAiAutonomyLevel = (level: AiAutonomyLevel) => {
     setSettings((s) => (s ? { ...s, aiAutonomyLevel: level } : null));
@@ -603,7 +593,6 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
                       </div>
                     </div>
                   </div>
-                  <ApiKeysSection settings={settings} onApiKeysChange={handleApiKeysChange} />
                   <hr />
                   <div>
                     <h3 className="text-sm font-semibold text-theme-text mb-1">Test Command</h3>
