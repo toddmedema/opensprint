@@ -30,14 +30,17 @@ export function getExecErrorShape(err: unknown): ExecErrorShape {
   };
 }
 
-/** Limit-error patterns for Anthropic, Cursor, and OpenAI (429, rate_limit_exceeded, rate limit, overloaded, add more tokens, quota exceeded). */
+/** Limit-error patterns for Anthropic, Cursor, and OpenAI (429, rate_limit_exceeded, rate limit, RateLimitError, quota_exceeded, insufficient_quota, overloaded, add more tokens). */
 const LIMIT_ERROR_PATTERNS = [
   /429/,
   /rate_limit_exceeded/i,
   /rate\s*limit/i,
+  /ratelimiterror/i,
   /overloaded/i,
   /add\s+more\s+tokens/i,
   /quota\s+exceeded/i,
+  /quota_exceeded/i,
+  /insufficient_quota/i,
   /too\s+many\s+requests/i,
   /resource\s+exhausted/i,
 ];
@@ -56,9 +59,12 @@ function getErrorStrings(err: unknown): string[] {
     if (typeof o.message === "string") strings.push(o.message);
     if (typeof o.stderr === "string") strings.push(o.stderr);
     if (typeof o.statusText === "string") strings.push(o.statusText);
+    if (typeof o.code === "string") strings.push(o.code);
     if (typeof o.error === "string") strings.push(o.error);
-    if (o.error && typeof o.error === "object" && typeof (o.error as Record<string, unknown>).message === "string") {
-      strings.push((o.error as Record<string, unknown>).message as string);
+    if (o.error && typeof o.error === "object") {
+      const errObj = o.error as Record<string, unknown>;
+      if (typeof errObj.message === "string") strings.push(errObj.message);
+      if (typeof errObj.code === "string") strings.push(errObj.code);
     }
   }
   return strings;

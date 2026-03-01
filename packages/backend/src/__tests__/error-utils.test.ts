@@ -159,6 +159,27 @@ describe("isLimitError", () => {
       })
     ).toBe(true);
   });
+
+  it("returns true for OpenAI RateLimitError class name", () => {
+    expect(isLimitError(new Error("RateLimitError"))).toBe(true);
+    expect(isLimitError({ message: "RateLimitError: Rate limit exceeded" })).toBe(true);
+  });
+
+  it("returns true for OpenAI quota_exceeded code", () => {
+    expect(isLimitError(new Error("quota_exceeded"))).toBe(true);
+    expect(isLimitError({ code: "quota_exceeded", message: "You exceeded your current quota" })).toBe(true);
+    expect(isLimitError({ code: "quota_exceeded" })).toBe(true);
+  });
+
+  it("returns true for OpenAI insufficient_quota", () => {
+    expect(isLimitError(new Error("insufficient_quota"))).toBe(true);
+    expect(isLimitError({ code: "insufficient_quota", message: "Insufficient quota" })).toBe(true);
+    expect(
+      isLimitError({
+        error: { code: "insufficient_quota", message: "You have exceeded your quota" },
+      })
+    ).toBe(true);
+  });
 });
 
 describe("isAuthError", () => {
