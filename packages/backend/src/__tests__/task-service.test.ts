@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { TaskService } from "../services/task.service.js";
+import { ProjectService } from "../services/project.service.js";
+import { taskStore } from "../services/task-store.service.js";
+import { FeedbackService } from "../services/feedback.service.js";
 import { SessionManager } from "../services/session-manager.js";
+import { ContextAssembler } from "../services/context-assembler.js";
+import { BranchManager } from "../services/branch-manager.js";
 import type { StoredTask } from "../services/task-store.service.js";
 
 const { mockTaskStoreState, mockBranchManagerInstance } = vi.hoisted(() => ({
@@ -69,6 +74,34 @@ vi.mock("../services/branch-manager.js", () => ({
   BranchManager: vi.fn().mockImplementation(() => mockBranchManagerInstance),
 }));
 
+vi.mock("../services/feedback.service.js", () => ({
+  FeedbackService: vi.fn().mockImplementation(() => ({
+    checkAutoResolveOnTaskDone: vi.fn().mockResolvedValue(undefined),
+  })),
+}));
+
+vi.mock("../services/session-manager.js", () => {
+  const MockSessionManager = vi.fn().mockImplementation(function (this: Record<string, unknown>) {
+    // Rely on prototype methods so vi.spyOn(SessionManager.prototype, ...) is invoked
+  });
+  const proto = (MockSessionManager as unknown as { prototype: Record<string, unknown> }).prototype;
+  proto.loadSessionsTestResultsOnlyGroupedByTaskId = vi.fn().mockResolvedValue(new Map());
+  proto.loadSessionsGroupedByTaskId = vi.fn().mockResolvedValue(new Map());
+  proto.listSessions = vi.fn().mockResolvedValue([]);
+  proto.readSession = vi.fn().mockResolvedValue(null);
+  proto.getActiveDir = vi.fn().mockReturnValue("/tmp/opensprint-worktrees/task-1");
+  return { SessionManager: MockSessionManager };
+});
+
+vi.mock("../services/context-assembler.js", () => ({
+  ContextAssembler: vi.fn().mockImplementation(() => ({
+    extractPrdExcerpt: vi.fn().mockResolvedValue(""),
+    getPlanContentForTask: vi.fn().mockResolvedValue(""),
+    collectDependencyOutputs: vi.fn().mockResolvedValue([]),
+    assembleTaskDirectory: vi.fn().mockResolvedValue("/tmp/test-dir"),
+  })),
+}));
+
 vi.mock("fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("fs/promises")>();
   return {
@@ -99,7 +132,14 @@ describe("TaskService", () => {
   beforeEach(() => {
     mockTaskStoreState.listAll = [...defaultIssues];
     mockTaskStoreState.readyCalls = 0;
-    taskService = new TaskService();
+    taskService = new TaskService(
+      new ProjectService(),
+      taskStore,
+      new FeedbackService(),
+      new SessionManager(),
+      new ContextAssembler(),
+      new BranchManager()
+    );
   });
 
   it("getTask returns task from task store listAll", async () => {
@@ -571,7 +611,14 @@ describe("TaskService", () => {
     vi.mocked(taskStore.update).mockResolvedValue(undefined as never);
     vi.mocked(taskStore.syncForPush).mockResolvedValue(undefined as never);
 
-    const svc = new TaskService();
+    const svc = new TaskService(
+      new ProjectService(),
+      taskStore,
+      new FeedbackService(),
+      new SessionManager(),
+      new ContextAssembler(),
+      new BranchManager()
+    );
     await svc.unblock("proj-1", "task-1");
 
     expect(mockBranchManagerInstance.removeTaskWorktree).toHaveBeenCalledWith(

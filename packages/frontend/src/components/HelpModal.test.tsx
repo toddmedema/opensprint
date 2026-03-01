@@ -1,17 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { renderWithProviders } from "../test/test-utils";
 import { HelpModal } from "./HelpModal";
 import { api } from "../api/client";
-
-const queryClient = new QueryClient();
-
-function renderWithProviders(ui: React.ReactElement) {
-  return render(
-    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
-  );
-}
 
 vi.mock("../api/client", () => ({
   api: {
@@ -119,7 +111,7 @@ describe("HelpModal", () => {
   });
 
   it("has max-height 90vh for viewport-relative sizing on large screens", () => {
-    render(<HelpModal onClose={vi.fn()} />);
+    renderWithProviders(<HelpModal onClose={vi.fn()} />);
 
     const modalContent = screen.getByTestId("help-modal-content");
     expect(modalContent).toHaveClass("max-h-[90vh]");

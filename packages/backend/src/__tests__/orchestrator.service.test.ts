@@ -646,7 +646,7 @@ describe("OrchestratorService (slot-based model)", () => {
     it("reconciles stale slots: removes slot when task no longer in task store", async () => {
       const { task } = setupSingleTaskFlow("task-stale");
       mockTaskStoreReady.mockResolvedValueOnce([task]);
-      // So far listAll returns [] (beforeEach). First getStatus runs reconcileStaleSlots which would remove the slot.
+      // So far listAll returns [] (beforeEach). First getStatus would skip reconciliation when list is empty.
       // Override so listAll includes the task until we simulate archiving.
       mockTaskStoreListAll.mockResolvedValue([task]);
 
@@ -659,8 +659,8 @@ describe("OrchestratorService (slot-based model)", () => {
       expect(statusBefore.activeTasks).toHaveLength(1);
       expect(statusBefore.activeTasks[0].taskId).toBe("task-stale");
 
-      // Simulate task archived: listAll no longer returns it
-      mockTaskStoreListAll.mockResolvedValue([]);
+      // Simulate task archived: listAll returns other tasks but not this one (non-empty list)
+      mockTaskStoreListAll.mockResolvedValue([{ ...task, id: "other-task" }]);
 
       const agents = await orchestrator.getActiveAgents(projectId);
       expect(agents).toEqual([]);
@@ -675,6 +675,27 @@ describe("OrchestratorService (slot-based model)", () => {
           activeTasks: [],
         })
       );
+    });
+
+    it("reconciles stale slots: does not remove slots when listAll returns empty (avoids killing agents on empty list)", async () => {
+      const { task } = setupSingleTaskFlow("task-no-empty-wipe");
+      mockTaskStoreReady.mockResolvedValueOnce([task]);
+      mockTaskStoreListAll.mockResolvedValue([task]);
+
+      await orchestrator.ensureRunning(projectId);
+      await vi.waitFor(() => {
+        expect(mockWriteJsonAtomic).toHaveBeenCalled();
+      });
+
+      const statusBefore = await orchestrator.getStatus(projectId);
+      expect(statusBefore.activeTasks).toHaveLength(1);
+
+      // listAll returns [] (e.g. wrong DB or transient). We must not treat all slots as stale.
+      mockTaskStoreListAll.mockResolvedValue([]);
+
+      const agents = await orchestrator.getActiveAgents(projectId);
+      expect(agents).toHaveLength(1);
+      expect(agents[0].id).toBe("task-no-empty-wipe");
     });
   });
 

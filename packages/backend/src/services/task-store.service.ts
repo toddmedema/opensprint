@@ -12,15 +12,19 @@ import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import { createLogger } from "../utils/logger.js";
 import type { DbClient } from "../db/client.js";
-import { createPostgresDbClient } from "../db/client.js";
-import { SCHEMA_SQL, runSchema } from "../db/schema.js";
+import { createPostgresDbClient, getPoolConfig } from "../db/client.js";
+import { runSchema } from "../db/schema.js";
+import type { AppDb } from "../db/app-db.js";
+import {
+  PlanStore,
+  type PlanInsertData,
+  type StoredPlan,
+} from "./plan-store.service.js";
 import { toPgParams } from "../db/sql-params.js";
 import { getDatabaseUrl } from "./global-settings.service.js";
 
 const log = createLogger("task-store");
 
-/** Re-export for consumers that import SCHEMA_SQL from task-store. */
-export { SCHEMA_SQL };
 
 export interface StoredTask {
   id: string;
@@ -75,26 +79,8 @@ export interface CreateInput {
   complexity?: number;
 }
 
-/** Plan row returned from plans table (metadata is JSON string; parse as PlanMetadata). */
-export interface StoredPlan {
-  project_id: string;
-  plan_id: string;
-  epic_id: string;
-  gate_task_id: string | null;
-  re_execute_gate_task_id: string | null;
-  content: string;
-  metadata: string;
-  shipped_content: string | null;
-  updated_at: string;
-}
-
-export interface PlanInsertData {
-  epic_id: string;
-  gate_task_id?: string | null;
-  re_execute_gate_task_id?: string | null;
-  content: string;
-  metadata?: string | null;
-}
+/** Re-export plan types for consumers that import from task-store. */
+export type { PlanInsertData, StoredPlan } from "./plan-store.service.js";
 
 /** Callback invoked when a task is created, updated, or closed. Used to emit WebSocket events. */
 export type TaskChangeCallback = (
@@ -106,12 +92,15 @@ export type TaskChangeCallback = (
 export class TaskStoreService {
   private client: DbClient | null = null;
   private pool: Pool | null = null;
+  private appDb: AppDb | null = null;
   private writeLock: Promise<void> = Promise.resolve();
   private injectedClient: DbClient | null = null;
   /** Serializes init so only one run runs at a time; concurrent callers await the same promise. */
   private initPromise: Promise<void> | null = null;
   /** Optional callback to emit WebSocket events on task create/update/close. */
   private onTaskChange: TaskChangeCallback | null = null;
+
+  private planStore = new PlanStore(() => this.ensureClient());
 
   constructor(injectedClient?: DbClient) {
     if (injectedClient) {
@@ -129,17 +118,29 @@ export class TaskStoreService {
   }
 
   /**
-   * Initialize the task store. When databaseUrl is provided (e.g. from startup),
-   * use it; otherwise fetch from global settings. Tests may inject a client via constructor.
+   * Initialize the task store. When appDb is provided (e.g. from startup), use it and do not create a pool.
+   * When databaseUrl is provided without appDb, create pool and schema. Tests may inject a client via constructor.
    */
-  async init(databaseUrl?: string): Promise<void> {
+  async init(databaseUrl?: string, appDb?: AppDb): Promise<void> {
     if (this.client) return;
 
     if (this.injectedClient) {
       this.client = this.injectedClient;
-      // Caller is responsible for schema when using injected client (e.g. tests)
       return;
     }
+
+    if (appDb) {
+      this.appDb = appDb;
+      this.client = await appDb.getClient();
+      log.info("Task store initialized with AppDb");
+      return;
+    }
+
+    // #region agent log — init falling through to runInitInternal (no appDb)
+    const _stack = new Error().stack ?? "";
+    const _caller = _stack.split("\n").slice(2, 6).join(" | ");
+    fetch("http://127.0.0.1:7244/ingest/7b4dbb83-aede-4af0-b5cc-f2f84134fedd",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"743c0d"},body:JSON.stringify({sessionId:"743c0d",location:"task-store.service.ts:init",message:"init_no_appDb_fallthrough",data:{pid:process.pid,hasInitPromise:!!this.initPromise,hasDatabaseUrl:!!databaseUrl,caller:_caller},timestamp:Date.now(),hypothesisId:"H1"})}).catch(()=>{});
+    // #endregion
 
     if (this.initPromise) {
       await this.initPromise;
@@ -165,12 +166,55 @@ export class TaskStoreService {
 
   private async runInitInternal(databaseUrl?: string): Promise<void> {
     const url = databaseUrl ?? (await getDatabaseUrl());
-    const pool = new pg.Pool({ connectionString: url });
+
+    // #region agent log — runInitInternal creating raw pool
+    const _stack = new Error().stack ?? "";
+    const _caller = _stack.split("\n").slice(2, 6).join(" | ");
+    let _parsedDb = "?";
+    try { _parsedDb = new URL(url).pathname.replace(/^\/+|\/+$/g, "") || "opensprint"; } catch {}
+    fetch("http://127.0.0.1:7244/ingest/7b4dbb83-aede-4af0-b5cc-f2f84134fedd",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"743c0d"},body:JSON.stringify({sessionId:"743c0d",location:"task-store.service.ts:runInitInternal",message:"runInitInternal_raw_pool",data:{pid:process.pid,database:_parsedDb,vitest:!!process.env.VITEST,urlProvided:!!databaseUrl,hasAppName:url.includes("application_name"),caller:_caller},timestamp:Date.now(),hypothesisId:"H1"})}).catch(()=>{});
+    // #endregion
+
+    if (process.env.VITEST) {
+      try {
+        const dbName = new URL(url).pathname.replace(/^\/+|\/+$/g, "") || "opensprint";
+        if (dbName === "opensprint") {
+          throw new AppError(
+            500,
+            ErrorCodes.TASK_STORE_INIT_FAILED,
+            `TaskStoreService.runInitInternal refused to connect to app database "${dbName}" during tests. ` +
+              "Add vi.mock(\"../services/task-store.service.js\") with createTestPostgresClient() in your test file."
+          );
+        }
+      } catch (err) {
+        if (err instanceof AppError) throw err;
+      }
+    }
+
+    const pool = new pg.Pool(getPoolConfig(url));
     this.pool = pool;
     this.client = createPostgresDbClient(pool);
 
     await runSchema(this.client);
     log.info("Task store initialized with Postgres");
+  }
+
+  /**
+   * Close the database pool. Call on shutdown so connections are released.
+   * When using AppDb, only clears the reference; caller must call appDb.close().
+   * No-op when using an injected client (tests).
+   */
+  async closePool(): Promise<void> {
+    if (this.appDb) {
+      this.appDb = null;
+      this.client = null;
+      return;
+    }
+    if (this.pool) {
+      await this.pool.end();
+      this.pool = null;
+      this.client = null;
+    }
   }
 
   protected ensureClient(): DbClient {
@@ -360,16 +404,34 @@ export class TaskStoreService {
     if (!row) {
       throw new AppError(404, ErrorCodes.ISSUE_NOT_FOUND, `Task ${id} not found`, { issueId: id });
     }
-    return this.hydrateTaskWithDeps(row as Record<string, unknown>);
+    const { z } = await import("zod");
+    const schema = z.object({
+      id: z.string(), project_id: z.string(), title: z.string(),
+      description: z.string().nullable().optional(), issue_type: z.string(),
+      status: z.string(), priority: z.number(),
+      assignee: z.string().nullable().optional(), owner: z.string().nullable().optional(),
+      labels: z.string().optional(), created_at: z.string(), updated_at: z.string(),
+      created_by: z.string().nullable().optional(), close_reason: z.string().nullable().optional(),
+      started_at: z.string().nullable().optional(), completed_at: z.string().nullable().optional(),
+      complexity: z.number().nullable().optional(), extra: z.string().nullable().optional(),
+    });
+    const parsed = schema.safeParse(row);
+    if (!parsed.success) {
+      throw new AppError(500, ErrorCodes.TASK_STORE_PARSE_FAILED, "Invalid task row shape", {
+        zodError: parsed.error,
+      });
+    }
+    return this.hydrateTaskWithDeps(parsed.data as unknown as Record<string, unknown>);
   }
 
   async listAll(projectId: string): Promise<StoredTask[]> {
     await this.ensureInitialized();
-    return this.execAndHydrateWithDeps(
+    const tasks = await this.execAndHydrateWithDeps(
       projectId,
       "SELECT * FROM tasks WHERE project_id = ? ORDER BY priority ASC, created_at ASC",
       [projectId]
     );
+    return tasks;
   }
 
   async list(projectId: string): Promise<StoredTask[]> {
@@ -993,6 +1055,12 @@ export class TaskStoreService {
     return this.withWriteLock(async () => {
       await this.ensureInitialized();
       const client = this.ensureClient();
+      // #region agent log — deleteByProjectId caller trace
+      const _stack = new Error().stack ?? "";
+      const _caller = _stack.split("\n").slice(2, 8).join(" | ");
+      const _dbRow = await client.queryOne("SELECT current_database() AS name, current_setting('application_name', true) AS app_name");
+      fetch("http://127.0.0.1:7244/ingest/7b4dbb83-aede-4af0-b5cc-f2f84134fedd",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"743c0d"},body:JSON.stringify({sessionId:"743c0d",location:"task-store.service.ts:deleteByProjectId",message:"deleteByProjectId_called",data:{pid:process.pid,projectId,database:(_dbRow?.name as string)??"?",appName:(_dbRow?.app_name as string)??"?",hasAppDb:!!this.appDb,caller:_caller},timestamp:Date.now(),hypothesisId:"H_PROD_DELETE"})}).catch(()=>{});
+      // #endregion
       const rows = await client.query(
         toPgParams("SELECT id FROM tasks WHERE project_id = ?"),
         [projectId]
@@ -1012,7 +1080,7 @@ export class TaskStoreService {
       await client.execute(toPgParams("DELETE FROM orchestrator_events WHERE project_id = ?"), [projectId]);
       await client.execute(toPgParams("DELETE FROM orchestrator_counters WHERE project_id = ?"), [projectId]);
       await client.execute(toPgParams("DELETE FROM deployments WHERE project_id = ?"), [projectId]);
-      await client.execute(toPgParams("DELETE FROM plans WHERE project_id = ?"), [projectId]);
+      await this.planStore.planDeleteAllForProject(projectId);
       await client.execute(toPgParams("DELETE FROM open_questions WHERE project_id = ?"), [projectId]);
     });
   }
@@ -1131,33 +1199,15 @@ export class TaskStoreService {
   /** No-op. Dolt sync removed — persistence is handled by Postgres. */
   async syncForPush(_projectId: string): Promise<void> {}
 
-  // ──── Plan storage (SQL-only) ────
+  // ──── Plan storage (delegated to PlanStore) ────
 
   async planInsert(projectId: string, planId: string, data: PlanInsertData): Promise<void> {
     return this.withWriteLock(async () => {
       await this.ensureInitialized();
-      const client = this.ensureClient();
-      const now = new Date().toISOString();
-      await client.execute(
-        toPgParams(
-          `INSERT INTO plans (project_id, plan_id, epic_id, gate_task_id, re_execute_gate_task_id, content, metadata, shipped_content, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`
-        ),
-        [
-          projectId,
-          planId,
-          data.epic_id,
-          data.gate_task_id ?? null,
-          data.re_execute_gate_task_id ?? null,
-          data.content,
-          data.metadata ?? null,
-          now,
-        ]
-      );
+      await this.planStore.planInsert(projectId, planId, data);
     });
   }
 
-  /** Return plan row as { content, metadata (parsed), shipped_content, updated_at } or null. */
   async planGet(
     projectId: string,
     planId: string
@@ -1168,29 +1218,9 @@ export class TaskStoreService {
     updated_at: string;
   } | null> {
     await this.ensureInitialized();
-    const client = this.ensureClient();
-    const row = await client.queryOne(
-      toPgParams(
-        "SELECT content, metadata, shipped_content, updated_at FROM plans WHERE project_id = ? AND plan_id = ?"
-      ),
-      [projectId, planId]
-    );
-    if (!row) return null;
-    let metadata: Record<string, unknown>;
-    try {
-      metadata = JSON.parse((row.metadata as string) || "{}") as Record<string, unknown>;
-    } catch {
-      metadata = {};
-    }
-    return {
-      content: (row.content as string) ?? "",
-      metadata,
-      shipped_content: (row.shipped_content as string) ?? null,
-      updated_at: (row.updated_at as string) ?? "",
-    };
+    return this.planStore.planGet(projectId, planId);
   }
 
-  /** Lookup plan by epic id (epic_id). Returns same shape as planGet or null. */
   async planGetByEpicId(
     projectId: string,
     epicId: string
@@ -1202,55 +1232,18 @@ export class TaskStoreService {
     updated_at: string;
   } | null> {
     await this.ensureInitialized();
-    const client = this.ensureClient();
-    const row = await client.queryOne(
-      toPgParams(
-        "SELECT plan_id, content, metadata, shipped_content, updated_at FROM plans WHERE project_id = ? AND epic_id = ?"
-      ),
-      [projectId, epicId]
-    );
-    if (!row) return null;
-    let metadata: Record<string, unknown>;
-    try {
-      metadata = JSON.parse((row.metadata as string) || "{}") as Record<string, unknown>;
-    } catch {
-      metadata = {};
-    }
-    return {
-      plan_id: (row.plan_id as string) ?? "",
-      content: (row.content as string) ?? "",
-      metadata,
-      shipped_content: (row.shipped_content as string) ?? null,
-      updated_at: (row.updated_at as string) ?? "",
-    };
+    return this.planStore.planGetByEpicId(projectId, epicId);
   }
 
   async planListIds(projectId: string): Promise<string[]> {
     await this.ensureInitialized();
-    const client = this.ensureClient();
-    const rows = await client.query(
-      toPgParams("SELECT plan_id FROM plans WHERE project_id = ? ORDER BY updated_at ASC"),
-      [projectId]
-    );
-    return rows.map((r) => r.plan_id as string);
+    return this.planStore.planListIds(projectId);
   }
 
   async planUpdateContent(projectId: string, planId: string, content: string): Promise<void> {
     return this.withWriteLock(async () => {
       await this.ensureInitialized();
-      const client = this.ensureClient();
-      const existing = await client.queryOne(
-        toPgParams("SELECT 1 FROM plans WHERE project_id = ? AND plan_id = ?"),
-        [projectId, planId]
-      );
-      if (!existing) {
-        throw new AppError(404, ErrorCodes.PLAN_NOT_FOUND, `Plan ${planId} not found`, { planId });
-      }
-      const now = new Date().toISOString();
-      await client.execute(
-        toPgParams("UPDATE plans SET content = ?, updated_at = ? WHERE project_id = ? AND plan_id = ?"),
-        [content, now, projectId, planId]
-      );
+      await this.planStore.planUpdateContent(projectId, planId, content);
     });
   }
 
@@ -1261,20 +1254,7 @@ export class TaskStoreService {
   ): Promise<void> {
     return this.withWriteLock(async () => {
       await this.ensureInitialized();
-      const client = this.ensureClient();
-      const existing = await client.queryOne(
-        toPgParams("SELECT 1 FROM plans WHERE project_id = ? AND plan_id = ?"),
-        [projectId, planId]
-      );
-      if (!existing) {
-        throw new AppError(404, ErrorCodes.PLAN_NOT_FOUND, `Plan ${planId} not found`, { planId });
-      }
-      const metaJson = JSON.stringify(metadata);
-      const now = new Date().toISOString();
-      await client.execute(
-        toPgParams("UPDATE plans SET metadata = ?, updated_at = ? WHERE project_id = ? AND plan_id = ?"),
-        [metaJson, now, projectId, planId]
-      );
+      await this.planStore.planUpdateMetadata(projectId, planId, metadata);
     });
   }
 
@@ -1285,51 +1265,29 @@ export class TaskStoreService {
   ): Promise<void> {
     return this.withWriteLock(async () => {
       await this.ensureInitialized();
-      const client = this.ensureClient();
-      const existing = await client.queryOne(
-        toPgParams("SELECT 1 FROM plans WHERE project_id = ? AND plan_id = ?"),
-        [projectId, planId]
-      );
-      if (!existing) {
-        throw new AppError(404, ErrorCodes.PLAN_NOT_FOUND, `Plan ${planId} not found`, { planId });
-      }
-      await client.execute(
-        toPgParams("UPDATE plans SET shipped_content = ? WHERE project_id = ? AND plan_id = ?"),
-        [shippedContent, projectId, planId]
-      );
+      await this.planStore.planSetShippedContent(projectId, planId, shippedContent);
     });
   }
 
   async planGetShippedContent(projectId: string, planId: string): Promise<string | null> {
     await this.ensureInitialized();
-    const client = this.ensureClient();
-    const row = await client.queryOne(
-      toPgParams("SELECT shipped_content FROM plans WHERE project_id = ? AND plan_id = ?"),
-      [projectId, planId]
-    );
-    return (row?.shipped_content as string) ?? null;
+    return this.planStore.planGetShippedContent(projectId, planId);
   }
 
-  /** Delete a plan by project_id and plan_id. Returns true if a row was deleted. */
   async planDelete(projectId: string, planId: string): Promise<boolean> {
     return this.withWriteLock(async () => {
       await this.ensureInitialized();
-      const client = this.ensureClient();
-      const existing = await client.queryOne(
-        toPgParams("SELECT 1 FROM plans WHERE project_id = ? AND plan_id = ?"),
-        [projectId, planId]
-      );
-      if (!existing) return false;
-      const modified = await client.execute(
-        toPgParams("DELETE FROM plans WHERE project_id = ? AND plan_id = ?"),
-        [projectId, planId]
-      );
-      return modified > 0;
+      return this.planStore.planDelete(projectId, planId);
     });
   }
 
   private async ensureInitialized(): Promise<void> {
     if (!this.client) {
+      // #region agent log — ensureInitialized with null client
+      const _stack = new Error().stack ?? "";
+      const _caller = _stack.split("\n").slice(2, 5).join(" | ") || "?";
+      fetch("http://127.0.0.1:7244/ingest/7b4dbb83-aede-4af0-b5cc-f2f84134fedd",{method:"POST",headers:{"Content-Type":"application/json","X-Debug-Session-Id":"743c0d"},body:JSON.stringify({sessionId:"743c0d",location:"task-store.service.ts:ensureInitialized",message:"ensureInitialized_null_client",data:{pid:process.pid,vitest:!!process.env.VITEST,hasAppDb:!!this.appDb,caller:_caller},timestamp:Date.now(),hypothesisId:"H1"})}).catch(()=>{});
+      // #endregion
       await this.init();
     }
   }
@@ -1384,6 +1342,9 @@ export class TaskStoreService {
   async runWrite<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
     await this.ensureInitialized();
     return this.withWriteLock(async () => {
+      if (this.appDb) {
+        return await this.appDb.runWrite(fn);
+      }
       const client = this.ensureClient();
       return await client.runInTransaction(fn);
     });

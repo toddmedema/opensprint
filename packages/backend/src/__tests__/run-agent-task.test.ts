@@ -3,13 +3,32 @@
  * When the agent process is terminated (SIGTERM), commitWip should be called
  * to preserve any uncommitted work before exiting.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { BranchManager } from "../services/branch-manager.js";
+
+vi.mock("../services/task-store.service.js", () => ({
+  taskStore: {
+    init: vi.fn(),
+    listAll: vi.fn().mockResolvedValue([]),
+    list: vi.fn().mockResolvedValue([]),
+    show: vi.fn().mockResolvedValue(null),
+    create: vi.fn().mockResolvedValue({ id: "os-mock" }),
+    update: vi.fn().mockResolvedValue({}),
+    close: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn(),
+    deleteMany: vi.fn(),
+    deleteByProjectId: vi.fn(),
+    ready: vi.fn().mockResolvedValue([]),
+    setOnTaskChange: vi.fn(),
+    closePool: vi.fn(),
+  },
+  TaskStoreService: vi.fn(),
+}));
 
 const execAsync = promisify(exec);
 

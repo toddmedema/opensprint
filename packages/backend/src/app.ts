@@ -6,10 +6,11 @@ import { projectsRouter } from "./routes/projects.js";
 import { prdRouter } from "./routes/prd.js";
 import { plansRouter } from "./routes/plans.js";
 import { chatRouter } from "./routes/chat.js";
-import { executeRouter } from "./routes/execute.js";
+import { createExecuteRouter } from "./routes/execute.js";
 import { deliverRouter } from "./routes/deliver.js";
 import { agentsRouter } from "./routes/agents.js";
-import { tasksRouter } from "./routes/tasks.js";
+import { createTasksRouter } from "./routes/tasks.js";
+import { createAppServices } from "./composition.js";
 import { feedbackRouter } from "./routes/feedback.js";
 import {
   projectNotificationsRouter,
@@ -21,12 +22,15 @@ import { envRouter } from "./routes/env.js";
 import { globalSettingsRouter } from "./routes/global-settings.js";
 import { helpRouter } from "./routes/help.js";
 import { API_PREFIX } from "@opensprint/shared";
+import { requestIdMiddleware } from "./middleware/request-id.js";
 
 export function createApp() {
   const app = express();
+  const { taskService, projectService } = createAppServices();
 
   app.use(cors());
   app.use(express.json({ limit: "10mb" }));
+  app.use(requestIdMiddleware);
 
   // Health check
   app.get("/health", (_req, res) => {
@@ -42,10 +46,10 @@ export function createApp() {
   app.use(`${API_PREFIX}/projects/:projectId/prd`, prdRouter);
   app.use(`${API_PREFIX}/projects/:projectId/plans`, plansRouter);
   app.use(`${API_PREFIX}/projects/:projectId/chat`, chatRouter);
-  app.use(`${API_PREFIX}/projects/:projectId/execute`, executeRouter);
+  app.use(`${API_PREFIX}/projects/:projectId/execute`, createExecuteRouter(taskService, projectService));
   app.use(`${API_PREFIX}/projects/:projectId/deliver`, deliverRouter);
   app.use(`${API_PREFIX}/projects/:projectId/agents`, agentsRouter);
-  app.use(`${API_PREFIX}/projects/:projectId/tasks`, tasksRouter);
+  app.use(`${API_PREFIX}/projects/:projectId/tasks`, createTasksRouter(taskService));
   app.use(`${API_PREFIX}/projects/:projectId/feedback`, feedbackRouter);
   app.use(`${API_PREFIX}/projects/:projectId/notifications`, projectNotificationsRouter);
   app.use(`${API_PREFIX}/notifications`, globalNotificationsRouter);

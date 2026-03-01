@@ -353,6 +353,17 @@ export class RecoveryService {
 
     const allIssues = await this.taskStore.listAll(projectId);
     const validIds = new Set(allIssues.map((i) => i.id).filter(Boolean) as string[]);
+
+    // Do not remove slots when listAll returned no tasks; avoid killing agents on empty list.
+    if (validIds.size === 0) {
+      log.warn("Skipping slot reconciliation: listAll returned 0 tasks but we have slots", {
+        projectId,
+        slottedCount: slottedIds.length,
+        slottedTaskIds: slottedIds,
+      });
+      return [];
+    }
+
     const stale: string[] = [];
 
     for (const taskId of slottedIds) {

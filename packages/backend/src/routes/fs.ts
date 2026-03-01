@@ -1,9 +1,22 @@
 import { Router, Request } from "express";
 import { readdir, stat, mkdir } from "fs/promises";
+import path from "path";
 import { join, resolve, dirname } from "path";
 import { existsSync } from "fs";
 import type { ApiResponse } from "@opensprint/shared";
+import { AppError } from "../middleware/error-handler.js";
+import { ErrorCodes } from "../middleware/error-codes.js";
 import { detectTestFramework } from "../services/test-framework.service.js";
+
+const FS_ALLOWED_ROOT = process.env.OPENSPRINT_FS_ROOT
+  ? path.resolve(process.env.OPENSPRINT_FS_ROOT)
+  : path.resolve(process.cwd());
+
+function isPathUnderRoot(resolvedPath: string): boolean {
+  const normalized = path.normalize(resolvedPath);
+  const relative = path.relative(FS_ALLOWED_ROOT, normalized);
+  return (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative)));
+}
 
 export const fsRouter = Router();
 
@@ -23,19 +36,16 @@ fsRouter.get(
         ? resolve(rawPath)
         : resolve(process.env.HOME || process.env.USERPROFILE || "/");
 
+      if (!isPathUnderRoot(targetPath)) {
+        throw new AppError(400, ErrorCodes.INVALID_INPUT, "Path is outside the allowed directory.");
+      }
       if (!existsSync(targetPath)) {
-        res.status(400).json({
-          error: { code: "NOT_FOUND", message: "Directory does not exist" },
-        });
-        return;
+        throw new AppError(404, ErrorCodes.NOT_FOUND, "Directory does not exist");
       }
 
       const pathStat = await stat(targetPath);
       if (!pathStat.isDirectory()) {
-        res.status(400).json({
-          error: { code: "NOT_DIRECTORY", message: "Path is not a directory" },
-        });
-        return;
+        throw new AppError(400, ErrorCodes.NOT_DIRECTORY, "Path is not a directory");
       }
 
       const entries = await readdir(targetPath, { withFileTypes: true });
@@ -75,56 +85,35 @@ fsRouter.post(
     try {
       const { parentPath, name } = req.body ?? {};
       if (!parentPath || typeof parentPath !== "string" || !name || typeof name !== "string") {
-        res.status(400).json({
-          error: { code: "INVALID_INPUT", message: "parentPath and name are required" },
-        });
-        return;
+        throw new AppError(400, ErrorCodes.INVALID_INPUT, "parentPath and name are required");
       }
       const trimmedName = name.trim();
       if (!trimmedName || trimmedName === "." || trimmedName === "..") {
-        res.status(400).json({
-          error: { code: "INVALID_INPUT", message: "Invalid folder name" },
-        });
-        return;
+        throw new AppError(400, ErrorCodes.INVALID_INPUT, "Invalid folder name");
       }
       if (trimmedName.includes("/") || trimmedName.includes("\\")) {
-        res.status(400).json({
-          error: { code: "INVALID_INPUT", message: "Folder name cannot contain path separators" },
-        });
-        return;
+        throw new AppError(400, ErrorCodes.INVALID_INPUT, "Folder name cannot contain path separators");
       }
 
       const parentResolved = resolve(parentPath);
       const newPath = join(parentResolved, trimmedName);
       if (!newPath.startsWith(parentResolved)) {
-        res.status(400).json({
-          error: { code: "INVALID_INPUT", message: "Invalid path" },
-        });
-        return;
+        throw new AppError(400, ErrorCodes.INVALID_INPUT, "Invalid path");
+      }
+      if (!isPathUnderRoot(parentResolved) || !isPathUnderRoot(newPath)) {
+        throw new AppError(400, ErrorCodes.INVALID_INPUT, "Path is outside the allowed directory.");
       }
 
       if (!existsSync(parentResolved)) {
-        res.status(400).json({
-          error: { code: "NOT_FOUND", message: "Parent directory does not exist" },
-        });
-        return;
+        throw new AppError(404, ErrorCodes.NOT_FOUND, "Parent directory does not exist");
       }
       const parentStat = await stat(parentResolved);
       if (!parentStat.isDirectory()) {
-        res.status(400).json({
-          error: { code: "NOT_DIRECTORY", message: "Parent path is not a directory" },
-        });
-        return;
+        throw new AppError(400, ErrorCodes.NOT_DIRECTORY, "Parent path is not a directory");
       }
 
       if (existsSync(newPath)) {
-        res.status(409).json({
-          error: {
-            code: "ALREADY_EXISTS",
-            message: "A file or folder with that name already exists",
-          },
-        });
-        return;
+        throw new AppError(409, ErrorCodes.ALREADY_EXISTS, "A file or folder with that name already exists");
       }
 
       await mkdir(newPath, { recursive: false });
@@ -143,18 +132,15 @@ fsRouter.get(
     try {
       const rawPath = req.query.path?.trim();
       if (!rawPath) {
-        res.status(400).json({
-          error: { code: "INVALID_INPUT", message: "Path query parameter is required" },
-        });
-        return;
+        throw new AppError(400, ErrorCodes.INVALID_INPUT, "Path query parameter is required");
       }
 
       const targetPath = resolve(rawPath);
+      if (!isPathUnderRoot(targetPath)) {
+        throw new AppError(400, ErrorCodes.INVALID_INPUT, "Path is outside the allowed directory.");
+      }
       if (!existsSync(targetPath)) {
-        res.status(400).json({
-          error: { code: "NOT_FOUND", message: "Directory does not exist" },
-        });
-        return;
+        throw new AppError(404, ErrorCodes.NOT_FOUND, "Directory does not exist");
       }
 
       const detected = await detectTestFramework(targetPath);

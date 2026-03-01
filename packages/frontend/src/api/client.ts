@@ -34,7 +34,8 @@ import type {
   HelpChatHistory,
 } from "@opensprint/shared";
 
-const BASE_URL = "/api/v1";
+/** API base; set VITE_API_BASE for production/staging (e.g. empty for same-origin, or full origin). */
+const BASE_URL = `${(import.meta.env.VITE_API_BASE as string | undefined) ?? ""}/api/v1`;
 
 /** Error thrown by request() when response is not ok; carries backend code, message, and optional details. */
 export class ApiError extends Error {

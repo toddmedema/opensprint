@@ -8,6 +8,7 @@ import { setQueryClient } from "./queryClient";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { DisplayPreferencesProvider } from "./contexts/DisplayPreferencesContext";
 import { App } from "./App";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { DevProfiler } from "./dev/DevProfiler";
 import "./styles/index.css";
 
@@ -28,9 +29,11 @@ createRoot(document.getElementById("root")!).render(
         <ThemeProvider>
           <DisplayPreferencesProvider>
             <BrowserRouter>
-              <DevProfiler>
-                <App />
-              </DevProfiler>
+              <ErrorBoundary>
+                <DevProfiler>
+                  <App />
+                </DevProfiler>
+              </ErrorBoundary>
             </BrowserRouter>
           </DisplayPreferencesProvider>
         </ThemeProvider>

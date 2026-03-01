@@ -32,11 +32,11 @@ export interface FailureHandlerHost {
     status: { totalFailed: number; queueDepth: number };
   };
   taskStore: {
-    comment(repoPath: string, taskId: string, text: string): Promise<void>;
-    update(repoPath: string, taskId: string, fields: Record<string, unknown>): Promise<void>;
+    comment(projectId: string, taskId: string, text: string): Promise<void>;
+    update(projectId: string, taskId: string, fields: Record<string, unknown>): Promise<void>;
     sync(repoPath: string): Promise<void>;
     setCumulativeAttempts(
-      repoPath: string,
+      projectId: string,
       taskId: string,
       attempts: number,
       opts: { currentLabels: string[] }

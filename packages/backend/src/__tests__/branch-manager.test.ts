@@ -7,6 +7,25 @@ import { promisify } from "util";
 import { BranchManager, WorktreeBranchInUseError } from "../services/branch-manager.js";
 import { heartbeatService } from "../services/heartbeat.service.js";
 
+vi.mock("../services/task-store.service.js", () => ({
+  taskStore: {
+    init: vi.fn(),
+    listAll: vi.fn().mockResolvedValue([]),
+    list: vi.fn().mockResolvedValue([]),
+    show: vi.fn().mockResolvedValue(null),
+    create: vi.fn().mockResolvedValue({ id: "os-mock" }),
+    update: vi.fn().mockResolvedValue({}),
+    close: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn(),
+    deleteMany: vi.fn(),
+    deleteByProjectId: vi.fn(),
+    ready: vi.fn().mockResolvedValue([]),
+    setOnTaskChange: vi.fn(),
+    closePool: vi.fn(),
+  },
+  TaskStoreService: vi.fn(),
+}));
+
 const execAsync = promisify(exec);
 
 describe("BranchManager", () => {

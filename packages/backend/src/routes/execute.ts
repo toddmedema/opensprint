@@ -1,20 +1,21 @@
 import { Router, Request } from "express";
 import { orchestratorService } from "../services/orchestrator.service.js";
-import { TaskService } from "../services/task.service.js";
+import type { TaskService } from "../services/task.service.js";
 import { eventLogService, type OrchestratorEvent } from "../services/event-log.service.js";
-import { ProjectService } from "../services/project.service.js";
+import type { ProjectService } from "../services/project.service.js";
 import type { ApiResponse, OrchestratorStatus } from "@opensprint/shared";
 
-const taskService = new TaskService();
-const projectService = new ProjectService();
-
-export const executeRouter = Router({ mergeParams: true });
+export function createExecuteRouter(
+  taskService: TaskService,
+  projectService: ProjectService
+): Router {
+  const router = Router({ mergeParams: true });
 
 type ProjectParams = { projectId: string };
 type PrepareParams = { projectId: string; taskId: string };
 
-// POST /projects/:projectId/execute/tasks/:taskId/prepare — Create task directory and prompt (PRD §12.2)
-executeRouter.post("/tasks/:taskId/prepare", async (req: Request<PrepareParams>, res, next) => {
+  // POST /projects/:projectId/execute/tasks/:taskId/prepare — Create task directory and prompt (PRD §12.2)
+  router.post("/tasks/:taskId/prepare", async (req: Request<PrepareParams>, res, next) => {
   try {
     const { projectId, taskId } = req.params;
     const taskDir = await taskService.prepareTaskDirectory(projectId, taskId, {
@@ -27,10 +28,10 @@ executeRouter.post("/tasks/:taskId/prepare", async (req: Request<PrepareParams>,
   } catch (err) {
     next(err);
   }
-});
+  });
 
-// POST /projects/:projectId/execute/nudge — Event-driven dispatch trigger (PRDv2 §5.7)
-executeRouter.post("/nudge", async (req: Request<ProjectParams>, res, next) => {
+  // POST /projects/:projectId/execute/nudge — Event-driven dispatch trigger (PRDv2 §5.7)
+  router.post("/nudge", async (req: Request<ProjectParams>, res, next) => {
   try {
     const { projectId } = req.params;
     orchestratorService.nudge(projectId);
@@ -40,10 +41,10 @@ executeRouter.post("/nudge", async (req: Request<ProjectParams>, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+  });
 
-// GET /projects/:projectId/execute/status — Get orchestrator status
-executeRouter.get("/status", async (req: Request<ProjectParams>, res, next) => {
+  // GET /projects/:projectId/execute/status — Get orchestrator status
+  router.get("/status", async (req: Request<ProjectParams>, res, next) => {
   try {
     const status = await orchestratorService.getStatus(req.params.projectId);
     const body: ApiResponse<OrchestratorStatus> = { data: status };
@@ -51,10 +52,10 @@ executeRouter.get("/status", async (req: Request<ProjectParams>, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+  });
 
-// GET /projects/:projectId/execute/tasks/:taskId/output — Get live output for in-progress task (backfill)
-executeRouter.get("/tasks/:taskId/output", async (req: Request<PrepareParams>, res, next) => {
+  // GET /projects/:projectId/execute/tasks/:taskId/output — Get live output for in-progress task (backfill)
+  router.get("/tasks/:taskId/output", async (req: Request<PrepareParams>, res, next) => {
   try {
     const { projectId, taskId } = req.params;
     const output = await orchestratorService.getLiveOutput(projectId, taskId);
@@ -63,10 +64,10 @@ executeRouter.get("/tasks/:taskId/output", async (req: Request<PrepareParams>, r
   } catch (err) {
     next(err);
   }
-});
+  });
 
-// GET /projects/:projectId/execute/events — Query event log for debugging/audit
-executeRouter.get("/events", async (req: Request<ProjectParams>, res, next) => {
+  // GET /projects/:projectId/execute/events — Query event log for debugging/audit
+  router.get("/events", async (req: Request<ProjectParams>, res, next) => {
   try {
     const { projectId } = req.params;
     const repoPath = await projectService.getRepoPath(projectId);
@@ -88,14 +89,17 @@ executeRouter.get("/events", async (req: Request<ProjectParams>, res, next) => {
   } catch (err) {
     next(err);
   }
-});
-
-// POST /projects/:projectId/execute/pause — Pause orchestrator (placeholder; PRD §5.7 always-on)
-executeRouter.post("/pause", async (req: Request<ProjectParams>, res) => {
-  res.status(501).json({
-    error: {
-      code: "NOT_IMPLEMENTED",
-      message: "Pause not yet supported; orchestrator is always-on",
-    },
   });
-});
+
+  // POST /projects/:projectId/execute/pause — Pause orchestrator (placeholder; PRD §5.7 always-on)
+  router.post("/pause", async (req: Request<ProjectParams>, res) => {
+    res.status(501).json({
+      error: {
+        code: "NOT_IMPLEMENTED",
+        message: "Pause not yet supported; orchestrator is always-on",
+      },
+    });
+  });
+
+  return router;
+}

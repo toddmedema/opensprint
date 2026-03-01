@@ -18,6 +18,7 @@ npx tsx scripts/ensure-global-settings.ts
 OS_USER="opensprint"
 OS_PASSWORD="opensprint"
 OS_DB="opensprint"
+OS_TEST_DB="opensprint_test"
 
 install_and_start_postgres_mac() {
   if ! command -v brew >/dev/null 2>&1; then
@@ -53,7 +54,8 @@ install_and_start_postgres_mac() {
   psql -d postgres -c "CREATE ROLE ${OS_USER} WITH LOGIN PASSWORD '${OS_PASSWORD}';" 2>/dev/null || \
     psql -d postgres -c "ALTER ROLE ${OS_USER} WITH PASSWORD '${OS_PASSWORD}';" 2>/dev/null || true
   psql -d postgres -c "CREATE DATABASE ${OS_DB} OWNER ${OS_USER};" 2>/dev/null || true
-  echo "==> PostgreSQL ready (user ${OS_USER}, database ${OS_DB})"
+  psql -d postgres -c "CREATE DATABASE ${OS_TEST_DB} OWNER ${OS_USER};" 2>/dev/null || true
+  echo "==> PostgreSQL ready (user ${OS_USER}, databases ${OS_DB} and ${OS_TEST_DB})"
   return 0
 }
 
@@ -90,7 +92,8 @@ install_and_start_postgres_linux() {
   sudo -u postgres psql -d postgres -c "CREATE ROLE ${OS_USER} WITH LOGIN PASSWORD '${OS_PASSWORD}';" 2>/dev/null || \
     sudo -u postgres psql -d postgres -c "ALTER ROLE ${OS_USER} WITH PASSWORD '${OS_PASSWORD}';" 2>/dev/null || true
   sudo -u postgres psql -d postgres -c "CREATE DATABASE ${OS_DB} OWNER ${OS_USER};" 2>/dev/null || true
-  echo "==> PostgreSQL ready (user ${OS_USER}, database ${OS_DB})"
+  sudo -u postgres psql -d postgres -c "CREATE DATABASE ${OS_TEST_DB} OWNER ${OS_USER};" 2>/dev/null || true
+  echo "==> PostgreSQL ready (user ${OS_USER}, databases ${OS_DB} and ${OS_TEST_DB})"
   return 0
 }
 
@@ -104,7 +107,7 @@ case "$UNAME" in
     ;;
   MINGW*|MSYS*)
     echo "==> On Windows, install PostgreSQL from https://www.postgresql.org/download/windows/ or use Chocolatey: choco install postgresql"
-    echo "    Create user 'opensprint' with password 'opensprint' and database 'opensprint', or set databaseUrl in ~/.opensprint/global-settings.json"
+    echo "    Create user 'opensprint' with password 'opensprint', databases 'opensprint' and 'opensprint_test', or set databaseUrl in ~/.opensprint/global-settings.json"
     ;;
   *)
     echo "==> Unsupported OS. Install PostgreSQL and set databaseUrl in ~/.opensprint/global-settings.json"

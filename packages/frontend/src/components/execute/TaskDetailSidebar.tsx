@@ -33,13 +33,34 @@ const DescriptionMarkdown = React.memo(({ content }: { content: string }) => (
   </div>
 ));
 
-export interface TaskDetailSidebarProps {
-  projectId: string;
-  selectedTask: string;
-  /** Selected task from state.tasks (single source of truth; enriched when fetchTaskDetail completes) */
+export interface TaskDetailTaskDetail {
   selectedTaskData: Task | null;
   taskDetailLoading: boolean;
   taskDetailError: string | null;
+}
+
+export interface TaskDetailSections {
+  descriptionSectionExpanded: boolean;
+  setDescriptionSectionExpanded: React.Dispatch<React.SetStateAction<boolean>>;
+  artifactsSectionExpanded: boolean;
+  setArtifactsSectionExpanded: React.Dispatch<React.SetStateAction<boolean>>;
+  sourceFeedbackExpanded: Record<string, boolean>;
+  setSourceFeedbackExpanded: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+}
+
+export interface TaskDetailCallbacks {
+  onClose: () => void;
+  onMarkDone: () => void;
+  onUnblock: () => void;
+  onSelectTask: (taskId: string) => void;
+  onNavigateToPlan?: (planId: string) => void;
+  onOpenQuestionResolved?: () => void;
+}
+
+export interface TaskDetailSidebarProps {
+  projectId: string;
+  selectedTask: string;
+  taskDetail: TaskDetailTaskDetail;
   agentOutput: string[];
   completionState: {
     status: string;
@@ -57,21 +78,10 @@ export interface TaskDetailSidebarProps {
   wsConnected: boolean;
   isDoneTask: boolean;
   isBlockedTask: boolean;
-  sourceFeedbackExpanded: Record<string, boolean>;
-  setSourceFeedbackExpanded: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
-  descriptionSectionExpanded: boolean;
-  setDescriptionSectionExpanded: React.Dispatch<React.SetStateAction<boolean>>;
-  artifactsSectionExpanded: boolean;
-  setArtifactsSectionExpanded: React.Dispatch<React.SetStateAction<boolean>>;
-  onNavigateToPlan?: (planId: string) => void;
-  onClose: () => void;
+  sections: TaskDetailSections;
   /** Open question notification for this task (renders block with Answer/Dismiss) */
   openQuestionNotification?: Notification | null;
-  /** Called when open question is resolved (refetch notifications) */
-  onOpenQuestionResolved?: () => void;
-  onMarkDone: () => void;
-  onUnblock: () => void;
-  onSelectTask: (taskId: string) => void;
+  callbacks: TaskDetailCallbacks;
 }
 
 const activeRoleLabel = (selectedTask: string, activeTasks: ActiveTaskInfo[]) => {
@@ -85,12 +95,15 @@ function areTaskDetailSidebarPropsEqual(
   prev: TaskDetailSidebarProps,
   next: TaskDetailSidebarProps
 ): boolean {
+  const td = (a: TaskDetailSidebarProps) => a.taskDetail;
+  const sec = (a: TaskDetailSidebarProps) => a.sections;
+  const cb = (a: TaskDetailSidebarProps) => a.callbacks;
   if (
     prev.projectId !== next.projectId ||
     prev.selectedTask !== next.selectedTask ||
-    prev.selectedTaskData !== next.selectedTaskData ||
-    prev.taskDetailLoading !== next.taskDetailLoading ||
-    prev.taskDetailError !== next.taskDetailError ||
+    td(prev).selectedTaskData !== td(next).selectedTaskData ||
+    td(prev).taskDetailLoading !== td(next).taskDetailLoading ||
+    td(prev).taskDetailError !== td(next).taskDetailError ||
     prev.archivedLoading !== next.archivedLoading ||
     prev.markDoneLoading !== next.markDoneLoading ||
     prev.unblockLoading !== next.unblockLoading ||
@@ -101,19 +114,19 @@ function areTaskDetailSidebarPropsEqual(
     prev.wsConnected !== next.wsConnected ||
     prev.isDoneTask !== next.isDoneTask ||
     prev.isBlockedTask !== next.isBlockedTask ||
-    prev.sourceFeedbackExpanded !== next.sourceFeedbackExpanded ||
-    prev.setSourceFeedbackExpanded !== next.setSourceFeedbackExpanded ||
-    prev.descriptionSectionExpanded !== next.descriptionSectionExpanded ||
-    prev.setDescriptionSectionExpanded !== next.setDescriptionSectionExpanded ||
-    prev.artifactsSectionExpanded !== next.artifactsSectionExpanded ||
-    prev.setArtifactsSectionExpanded !== next.setArtifactsSectionExpanded ||
-    prev.onNavigateToPlan !== next.onNavigateToPlan ||
-    prev.onClose !== next.onClose ||
+    sec(prev).sourceFeedbackExpanded !== sec(next).sourceFeedbackExpanded ||
+    sec(prev).setSourceFeedbackExpanded !== sec(next).setSourceFeedbackExpanded ||
+    sec(prev).descriptionSectionExpanded !== sec(next).descriptionSectionExpanded ||
+    sec(prev).setDescriptionSectionExpanded !== sec(next).setDescriptionSectionExpanded ||
+    sec(prev).artifactsSectionExpanded !== sec(next).artifactsSectionExpanded ||
+    sec(prev).setArtifactsSectionExpanded !== sec(next).setArtifactsSectionExpanded ||
+    cb(prev).onNavigateToPlan !== cb(next).onNavigateToPlan ||
+    cb(prev).onClose !== cb(next).onClose ||
     prev.openQuestionNotification !== next.openQuestionNotification ||
-    prev.onOpenQuestionResolved !== next.onOpenQuestionResolved ||
-    prev.onMarkDone !== next.onMarkDone ||
-    prev.onUnblock !== next.onUnblock ||
-    prev.onSelectTask !== next.onSelectTask
+    cb(prev).onOpenQuestionResolved !== cb(next).onOpenQuestionResolved ||
+    cb(prev).onMarkDone !== cb(next).onMarkDone ||
+    cb(prev).onUnblock !== cb(next).onUnblock ||
+    cb(prev).onSelectTask !== cb(next).onSelectTask
   ) {
     return false;
   }
@@ -126,9 +139,7 @@ function areTaskDetailSidebarPropsEqual(
 function TaskDetailSidebarInner({
   projectId,
   selectedTask,
-  selectedTaskData,
-  taskDetailLoading,
-  taskDetailError,
+  taskDetail,
   agentOutput,
   completionState,
   archivedSessions,
@@ -142,20 +153,31 @@ function TaskDetailSidebarInner({
   wsConnected,
   isDoneTask,
   isBlockedTask,
-  sourceFeedbackExpanded,
-  setSourceFeedbackExpanded,
-  descriptionSectionExpanded,
-  setDescriptionSectionExpanded,
-  artifactsSectionExpanded,
-  setArtifactsSectionExpanded,
-  onNavigateToPlan,
-  onClose,
+  sections,
   openQuestionNotification,
-  onOpenQuestionResolved,
-  onMarkDone,
-  onUnblock,
-  onSelectTask,
+  callbacks,
 }: TaskDetailSidebarProps) {
+  const {
+    selectedTaskData,
+    taskDetailLoading,
+    taskDetailError,
+  } = taskDetail;
+  const {
+    sourceFeedbackExpanded,
+    setSourceFeedbackExpanded,
+    descriptionSectionExpanded,
+    setDescriptionSectionExpanded,
+    artifactsSectionExpanded,
+    setArtifactsSectionExpanded,
+  } = sections;
+  const {
+    onNavigateToPlan,
+    onClose,
+    onOpenQuestionResolved,
+    onMarkDone,
+    onUnblock,
+    onSelectTask,
+  } = callbacks;
   const dispatch = useAppDispatch();
   const roleLabel = activeRoleLabel(selectedTask, activeTasks);
   const [priorityDropdownOpen, setPriorityDropdownOpen] = useState(false);

@@ -2,6 +2,9 @@
  * Shared constants for the frontend.
  */
 
+/** Base URL for public assets (Vite BASE_URL); use for agent icons, etc. when app is served from a subpath. */
+export const ASSET_BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/*$/, "/");
+
 /** Navbar height in px — used for fixed positioning (e.g. NotificationBar) and layout consistency. */
 export const NAVBAR_HEIGHT = 56;
 
@@ -55,6 +58,15 @@ export const PRD_SOURCE_COLORS: Record<string, string> = {
   eval: "bg-theme-feedback-feature-bg text-theme-feedback-feature-text",
   deliver: "bg-theme-surface-muted text-theme-text",
 };
+
+/** Poll interval (ms) for active agents dropdown. */
+export const ACTIVE_AGENTS_POLL_INTERVAL_MS = 5000;
+
+/** z-index for agents/notifications dropdown portal — above sidebar and Navbar. */
+export const DROPDOWN_PORTAL_Z_INDEX = 9999;
+
+/** Icon size matching two lines of text-sm in agent dropdown rows. */
+export const AGENT_DROPDOWN_ICON_SIZE = "3.01875rem";
 
 /** Default color for unknown PRD sources. */
 const PRD_SOURCE_DEFAULT = "bg-theme-feedback-feature-bg text-theme-feedback-feature-text";

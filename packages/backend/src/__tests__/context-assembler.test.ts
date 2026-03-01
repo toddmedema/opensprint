@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
@@ -8,6 +8,25 @@ import {
 } from "../services/context-assembler.js";
 import { OPENSPRINT_PATHS } from "@opensprint/shared";
 import { ensureRuntimeDir, getRuntimePath } from "../utils/runtime-dir.js";
+
+vi.mock("../services/task-store.service.js", () => ({
+  taskStore: {
+    init: vi.fn(),
+    listAll: vi.fn().mockResolvedValue([]),
+    list: vi.fn().mockResolvedValue([]),
+    show: vi.fn().mockResolvedValue(null),
+    create: vi.fn().mockResolvedValue({ id: "os-mock" }),
+    update: vi.fn().mockResolvedValue({}),
+    close: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn(),
+    deleteMany: vi.fn(),
+    deleteByProjectId: vi.fn(),
+    ready: vi.fn().mockResolvedValue([]),
+    setOnTaskChange: vi.fn(),
+    closePool: vi.fn(),
+  },
+  TaskStoreService: vi.fn(),
+}));
 
 describe("buildAutonomyDescription", () => {
   it("returns confirm_all rule when aiAutonomyLevel is confirm_all", () => {

@@ -4,9 +4,7 @@ import { useNavigate } from "react-router-dom";
 import type { ActiveAgent, Project } from "@opensprint/shared";
 import {
   AGENT_ROLE_DESCRIPTIONS,
-  AGENT_ROLE_LABELS,
   getRoleDisplayLabel,
-  getSlotForRole,
   sortAgentsByCanonicalOrder,
 } from "@opensprint/shared";
 import type { AgentRole } from "@opensprint/shared";
@@ -18,6 +16,12 @@ import { setSelectedPlanId } from "../store/slices/planSlice";
 import { useDisplayPreferences } from "../contexts/DisplayPreferencesContext";
 import { UptimeDisplay } from "./UptimeDisplay";
 import { api } from "../api/client";
+import {
+  ACTIVE_AGENTS_POLL_INTERVAL_MS,
+  AGENT_DROPDOWN_ICON_SIZE,
+  DROPDOWN_PORTAL_Z_INDEX,
+} from "../lib/constants";
+import { getAgentIconSrc, isPlanningAgent } from "../lib/agentUtils";
 import { getKillAgentConfirmDisabled } from "../lib/killAgentConfirmStorage";
 import { KillAgentConfirmDialog } from "./KillAgentConfirmDialog";
 
@@ -40,17 +44,6 @@ function KillAgentCircledXIcon({ className = "w-4 h-4" }: { className?: string }
   );
 }
 
-const POLL_INTERVAL_MS = 5000;
-
-/** z-index for dropdown portal — above Build sidebar (z-50) and Navbar (z-60) */
-const DROPDOWN_Z_INDEX = 9999;
-
-/** Icon size matching two lines of text-sm in dropdown rows */
-const DROPDOWN_AGENT_ICON_SIZE = "3.01875rem";
-
-/** Base URL for public assets (Vite BASE_URL so icons load when app is served from a subpath) */
-const ASSET_BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/*$/, "/");
-
 export interface AgentWithProject {
   project: Project;
   agent: ActiveAgent;
@@ -66,25 +59,6 @@ function LoadingSpinner({ className = "w-4 h-4" }: { className?: string }) {
     />
   );
 }
-
-/** True when agent is in Plan phase or has a planning-slot role (Planner, Dreamer, etc.). */
-function isPlanningAgent(agent: ActiveAgent): boolean {
-  return (
-    agent.phase === "plan" ||
-    (!!agent.role &&
-      getSlotForRole(agent.role as Parameters<typeof getSlotForRole>[0]) === "planning")
-  );
-}
-
-const getAgentIconSrc = (agent: ActiveAgent): string => {
-  const role = agent.role;
-  if (role && role in AGENT_ROLE_LABELS) {
-    const iconName = role.replace(/_/g, "-");
-    return `${ASSET_BASE}agent-icons/${iconName}.svg`;
-  }
-  if (agent.phase === "review") return `${ASSET_BASE}agent-icons/reviewer.svg`;
-  return `${ASSET_BASE}agent-icons/coder.svg`;
-};
 
 /** Resolve agent to role for description lookup (role or phase-derived). */
 function getAgentRoleForDescription(agent: ActiveAgent): AgentRole | null {
@@ -158,8 +132,8 @@ const GlobalAgentDropdownItem = memo(function GlobalAgentDropdownItem({
           alt=""
           className="shrink-0 object-contain object-center -mt-1 translate-y-1"
           style={{
-            width: DROPDOWN_AGENT_ICON_SIZE,
-            height: DROPDOWN_AGENT_ICON_SIZE,
+            width: AGENT_DROPDOWN_ICON_SIZE,
+            height: AGENT_DROPDOWN_ICON_SIZE,
             marginLeft: "2px",
           }}
           aria-hidden
@@ -218,7 +192,7 @@ export function GlobalActiveAgentsList() {
 
   useEffect(() => {
     dispatch(fetchGlobalActiveAgents());
-    const interval = setInterval(() => dispatch(fetchGlobalActiveAgents()), POLL_INTERVAL_MS);
+    const interval = setInterval(() => dispatch(fetchGlobalActiveAgents()), ACTIVE_AGENTS_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [dispatch]);
 
@@ -287,7 +261,7 @@ export function GlobalActiveAgentsList() {
         style={{
           top: dropdownRect.bottom + 4,
           right: window.innerWidth - dropdownRect.right,
-          zIndex: DROPDOWN_Z_INDEX,
+          zIndex: DROPDOWN_PORTAL_Z_INDEX,
         }}
       >
         {showLoadingInDropdown ? (

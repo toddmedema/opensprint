@@ -1,50 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import type { Notification, NotificationSource, ApiBlockedErrorCode } from "@opensprint/shared";
+import type { Notification } from "@opensprint/shared";
 import { getProjectPhasePath } from "../lib/phaseRouting";
 import { setSelectedPlanId } from "../store/slices/planSlice";
 import { setSelectedTaskId } from "../store/slices/executeSlice";
 import { fetchProjectNotifications } from "../store/slices/openQuestionsSlice";
 import { useAppDispatch, useAppSelector } from "../store";
-
-const POLL_INTERVAL_MS = 5000;
-
-/** z-index for dropdown portal — above Build sidebar (z-50) and Navbar (z-60) */
-const DROPDOWN_Z_INDEX = 9999;
-
-const SOURCE_LABELS: Record<NotificationSource, string> = {
-  plan: "Plan",
-  prd: "PRD/Sketch",
-  execute: "Execute",
-  eval: "Evaluate",
-};
-
-/** Human-readable labels for API-blocked error types — user can distinguish failure types */
-const API_BLOCKED_LABELS: Record<ApiBlockedErrorCode, string> = {
-  rate_limit: "Rate limit",
-  auth: "Invalid API key",
-  out_of_credit: "Out of credit",
-};
-
-function truncatePreview(text: string, maxLen = 60): string {
-  if (text.length <= maxLen) return text;
-  return text.slice(0, maxLen).trim() + "…";
-}
-
-function formatTimestamp(createdAt: string): string {
-  const date = new Date(createdAt);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
-}
+import { DROPDOWN_PORTAL_Z_INDEX } from "../lib/constants";
+import {
+  NOTIFICATION_POLL_INTERVAL_MS,
+  NOTIFICATION_SOURCE_LABELS,
+  API_BLOCKED_LABELS,
+  truncatePreview,
+  formatNotificationTimestamp,
+} from "../lib/notificationUtils";
 
 interface NotificationBellProps {
   projectId: string;
@@ -68,7 +38,7 @@ export function NotificationBell({ projectId }: NotificationBellProps) {
     dispatch(fetchProjectNotifications(projectId));
     const interval = setInterval(
       () => dispatch(fetchProjectNotifications(projectId)),
-      POLL_INTERVAL_MS
+      NOTIFICATION_POLL_INTERVAL_MS
     );
     return () => clearInterval(interval);
   }, [projectId, dispatch]);
@@ -153,7 +123,7 @@ export function NotificationBell({ projectId }: NotificationBellProps) {
         style={{
           top: dropdownRect.bottom + 4,
           right: window.innerWidth - dropdownRect.right,
-          zIndex: DROPDOWN_Z_INDEX,
+          zIndex: DROPDOWN_PORTAL_Z_INDEX,
         }}
       >
         <ul className="divide-y divide-theme-border-subtle">
@@ -167,7 +137,7 @@ export function NotificationBell({ projectId }: NotificationBellProps) {
                 onClick={() => handleNotificationClick(n)}
               >
                 <div className="font-medium text-theme-text flex items-center gap-2">
-                  {SOURCE_LABELS[n.source]}
+                  {NOTIFICATION_SOURCE_LABELS[n.source]}
                   {isApiBlocked(n) && (
                     <span
                       className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400"
@@ -178,7 +148,7 @@ export function NotificationBell({ projectId }: NotificationBellProps) {
                   )}
                 </div>
                 <div className="text-theme-muted mt-0.5">{truncatePreview(preview(n), 80)}</div>
-                <div className="text-theme-muted text-xs mt-1">{formatTimestamp(n.createdAt)}</div>
+                <div className="text-theme-muted text-xs mt-1">{formatNotificationTimestamp(n.createdAt)}</div>
               </button>
             </li>
           ))}

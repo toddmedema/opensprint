@@ -9,6 +9,7 @@ import {
   type DbClient,
   type DbRow,
 } from "../db/client.js";
+import { getTestDatabaseUrl } from "./test-db-helper.js";
 
 describe("DbClient (createPostgresDbClient with mock Pool)", () => {
   function createMockPool(overrides?: {
@@ -135,13 +136,12 @@ describe("DbClient (createPostgresDbClient with mock Pool)", () => {
 });
 
 describe("createPostgresDbClientFromUrl (integration)", () => {
-  const url =
-    process.env.TEST_DATABASE_URL ?? "postgresql://opensprint:opensprint@localhost:5432/opensprint";
   let client: DbClient | null = null;
   let pool: Pool | null = null;
 
   beforeAll(async () => {
     try {
+      const url = await getTestDatabaseUrl();
       const result = await createPostgresDbClientFromUrl(url);
       client = result.client;
       pool = result.pool;

@@ -13,9 +13,7 @@ import {
   AGENT_ROLE_DESCRIPTIONS,
 } from "@opensprint/shared";
 import type { AgentRole } from "@opensprint/shared";
-
-/** Base URL for public assets (Vite BASE_URL) */
-const ASSET_BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/*$/, "/");
+import { ASSET_BASE } from "../../lib/constants";
 
 export interface AgentConfig {
   type: AgentType;

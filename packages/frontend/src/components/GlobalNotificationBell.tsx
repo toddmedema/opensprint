@@ -1,44 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import type { Notification, NotificationSource, Project } from "@opensprint/shared";
+import type { Notification, Project } from "@opensprint/shared";
 import { getProjectPhasePath } from "../lib/phaseRouting";
 import { setSelectedPlanId } from "../store/slices/planSlice";
 import { setSelectedTaskId } from "../store/slices/executeSlice";
 import { fetchGlobalNotifications } from "../store/slices/openQuestionsSlice";
 import { useAppDispatch, useAppSelector } from "../store";
 import { api } from "../api/client";
-
-const POLL_INTERVAL_MS = 5000;
-
-/** z-index for dropdown portal — above Build sidebar (z-50) and Navbar (z-60) */
-const DROPDOWN_Z_INDEX = 9999;
-
-const SOURCE_LABELS: Record<NotificationSource, string> = {
-  plan: "Plan",
-  prd: "PRD/Sketch",
-  execute: "Execute",
-  eval: "Evaluate",
-};
-
-function truncatePreview(text: string, maxLen = 60): string {
-  if (text.length <= maxLen) return text;
-  return text.slice(0, maxLen).trim() + "…";
-}
-
-function formatTimestamp(createdAt: string): string {
-  const date = new Date(createdAt);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  const diffHours = Math.floor(diffMs / 3600000);
-  const diffDays = Math.floor(diffMs / 86400000);
-  if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
-}
+import { DROPDOWN_PORTAL_Z_INDEX } from "../lib/constants";
+import {
+  NOTIFICATION_POLL_INTERVAL_MS,
+  NOTIFICATION_SOURCE_LABELS,
+  truncatePreview,
+  formatNotificationTimestamp,
+} from "../lib/notificationUtils";
 
 const EMPTY_NOTIFICATIONS: Notification[] = [];
 
@@ -56,7 +32,7 @@ export function GlobalNotificationBell() {
     dispatch(fetchGlobalNotifications());
     const interval = setInterval(
       () => dispatch(fetchGlobalNotifications()),
-      POLL_INTERVAL_MS
+      NOTIFICATION_POLL_INTERVAL_MS
     );
     return () => clearInterval(interval);
   }, [dispatch]);
@@ -143,7 +119,7 @@ export function GlobalNotificationBell() {
         style={{
           top: dropdownRect.bottom + 4,
           right: window.innerWidth - dropdownRect.right,
-          zIndex: DROPDOWN_Z_INDEX,
+          zIndex: DROPDOWN_PORTAL_Z_INDEX,
         }}
       >
         <ul className="divide-y divide-theme-border-subtle">
@@ -155,10 +131,10 @@ export function GlobalNotificationBell() {
                 onClick={() => handleNotificationClick(n)}
               >
                 <div className="font-medium text-theme-text">
-                  {projectNameMap.get(n.projectId) ?? n.projectId} · {SOURCE_LABELS[n.source]}
+                  {projectNameMap.get(n.projectId) ?? n.projectId} · {NOTIFICATION_SOURCE_LABELS[n.source]}
                 </div>
                 <div className="text-theme-muted mt-0.5">{truncatePreview(preview(n), 80)}</div>
-                <div className="text-theme-muted text-xs mt-1">{formatTimestamp(n.createdAt)}</div>
+                <div className="text-theme-muted text-xs mt-1">{formatNotificationTimestamp(n.createdAt)}</div>
               </button>
             </li>
           ))}

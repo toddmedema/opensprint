@@ -99,6 +99,40 @@ export function createPostgresDbClient(pool: Pool): DbClient {
 }
 
 /**
+ * Build pool options from connection string and optional env (for production tuning).
+ * Env: PG_POOL_MAX, PG_POOL_IDLE_TIMEOUT_MS, PG_POOL_CONNECTION_TIMEOUT_MS.
+ */
+export function getPoolConfig(connectionString: string): {
+  connectionString: string;
+  max?: number;
+  idleTimeoutMillis?: number;
+  connectionTimeoutMillis?: number;
+} {
+  const config: {
+    connectionString: string;
+    max?: number;
+    idleTimeoutMillis?: number;
+    connectionTimeoutMillis?: number;
+  } = { connectionString };
+  const max = process.env.PG_POOL_MAX;
+  if (max != null && max !== "") {
+    const n = parseInt(max, 10);
+    if (!Number.isNaN(n)) config.max = n;
+  }
+  const idle = process.env.PG_POOL_IDLE_TIMEOUT_MS;
+  if (idle != null && idle !== "") {
+    const n = parseInt(idle, 10);
+    if (!Number.isNaN(n)) config.idleTimeoutMillis = n;
+  }
+  const conn = process.env.PG_POOL_CONNECTION_TIMEOUT_MS;
+  if (conn != null && conn !== "") {
+    const n = parseInt(conn, 10);
+    if (!Number.isNaN(n)) config.connectionTimeoutMillis = n;
+  }
+  return config;
+}
+
+/**
  * Create a PostgresDbClient from a database URL.
  * The pool is created from the URL; caller is responsible for closing it via pool.end().
  */
@@ -106,7 +140,7 @@ export async function createPostgresDbClientFromUrl(
   databaseUrl: string
 ): Promise<{ client: DbClient; pool: Pool }> {
   const { default: pg } = await import("pg");
-  const pool = new pg.Pool({ connectionString: databaseUrl });
+  const pool = new pg.Pool(getPoolConfig(databaseUrl));
   const client = createPostgresDbClient(pool);
   return { client, pool };
 }

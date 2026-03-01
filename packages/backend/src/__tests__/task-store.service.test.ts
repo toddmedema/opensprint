@@ -1070,6 +1070,10 @@ suite("TaskStoreService", () => {
       const otherPid = "proj-keep";
       const now = new Date().toISOString();
 
+      // Clear any leftover data from a previous run so inserts are idempotent
+      await store.deleteByProjectId(pid);
+      await store.deleteByProjectId(otherPid);
+
       const task = await store.create(pid, "Task A", { type: "task" });
       const task2 = await store.create(pid, "Task B", { type: "task" });
       await store.addDependency(pid, task2.id, task.id, "blocks");
@@ -1176,6 +1180,10 @@ suite("TaskStoreService", () => {
       const pid = "proj-oq-test";
       const otherPid = "proj-oq-keep";
       const now = new Date().toISOString();
+
+      // Clear any leftover open_questions so inserts are idempotent
+      await store.deleteOpenQuestionsByProjectId(pid);
+      await store.deleteOpenQuestionsByProjectId(otherPid);
 
       const db = await store.getDb();
       await db.execute(

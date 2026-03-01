@@ -11,7 +11,8 @@ config({ path: path.resolve(process.cwd(), "../../.env") });
 
 import { exec } from "child_process";
 import { setupWebSocket, closeWebSocket, hasClientConnected, broadcastToProject } from "./websocket/index.js";
-import { DEFAULT_API_PORT, DEFAULT_DATABASE_URL } from "@opensprint/shared";
+import { DEFAULT_API_PORT } from "@opensprint/shared";
+import { getDatabaseUrl } from "./services/global-settings.service.js";
 import { ProjectService } from "./services/project.service.js";
 import { taskStore } from "./services/task-store.service.js";
 import { wireTaskStoreEvents } from "./task-store-events.js";
@@ -35,6 +36,7 @@ import {
 import { createLogger } from "./utils/logger.js";
 import { getGlobalSettings } from "./services/global-settings.service.js";
 import { isLocalDatabaseUrl } from "@opensprint/shared";
+import { initAppDb } from "./db/app-db.js";
 
 const logStartup = createLogger("startup");
 const logOrchestrator = createLogger("orchestrator");
@@ -122,18 +124,38 @@ setupWebSocket(server, {
 // Wire TaskStoreService to emit task create/update/close events via WebSocket
 wireTaskStoreEvents(broadcastToProject);
 
-// Read databaseUrl from global settings before any DB init
-const settings = await getGlobalSettings();
-const databaseUrl = settings.databaseUrl ?? DEFAULT_DATABASE_URL;
+// Resolve database URL from env (DATABASE_URL) then global settings then default. Use this
+// single source so we never accidentally use the test DB (e.g. via .env or misconfigured file).
+const databaseUrl = await getDatabaseUrl();
+
+// Refuse to run the app against the test database. Tests run DELETE FROM tasks in setup;
+// if the app used opensprint_test, running tests (e.g. in another terminal) would wipe
+// the app's tasks and cause "all tasks disappear" (see docs/task-disappearance.md).
+const TEST_DB_NAME = "opensprint_test";
+let resolvedDbName = "opensprint";
+try {
+  resolvedDbName = new URL(databaseUrl).pathname.replace(/^\/+|\/+$/g, "") || "opensprint";
+  if (resolvedDbName === TEST_DB_NAME) {
+    logStartup.error("App must not use the test database", {
+      database: resolvedDbName,
+      hint: `Use the app database "opensprint" (default). Unset DATABASE_URL if set to test DB; set databaseUrl in ~/.opensprint/global-settings.json to a non-test database. Tests use ${TEST_DB_NAME} and wipe task data.`,
+    });
+    process.exit(1);
+  }
+} catch {
+  // URL parse failed; initAppDb or getDatabaseUrl validation will fail later
+}
+logStartup.info("Using database", { database: resolvedDbName });
+
 const dbSource = isLocalDatabaseUrl(databaseUrl) ? "local" : "remote";
 logStartup.info("Database source", { source: dbSource });
 
-// Initialize task store with databaseUrl before server handles requests
-await taskStore.init(databaseUrl);
+// Single DB pool owner; task store and other services use it
+const appDb = await initAppDb(databaseUrl);
+await taskStore.init(databaseUrl, appDb);
 
 async function initAlwaysOnOrchestrator(): Promise<void> {
   const projectService = new ProjectService();
-  await taskStore.init();
   const feedbackService = new FeedbackService();
 
   try {
@@ -263,6 +285,9 @@ const shutdown = async () => {
   await Promise.race([flushDone, flushTimeout]).catch((err) => {
     logShutdown.warn("Task store flush timed out or failed", { err: (err as Error).message });
   });
+
+  await taskStore.closePool();
+  await appDb.close();
 
   removePidFile();
   closeWebSocket();

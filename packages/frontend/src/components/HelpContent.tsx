@@ -10,9 +10,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ChatInput } from "./ChatInput";
 import { api } from "../api/client";
-
-/** Base URL for public assets (Vite BASE_URL) */
-const ASSET_BASE = (import.meta.env.BASE_URL ?? "/").replace(/\/*$/, "/");
+import { ASSET_BASE } from "../lib/constants";
 
 export interface HelpContentProps {
   /** Optional project context (per-project view vs homepage) */

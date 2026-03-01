@@ -117,8 +117,14 @@ describe.skipIf(!agentIdentityPostgresOk)("AgentIdentityService", () => {
 
     const { taskStore } = await import("../services/task-store.service.js");
     const client = await taskStore.getDb();
+    const projectRow = await client.queryOne(
+      "SELECT project_id FROM agent_stats ORDER BY id DESC LIMIT 1"
+    );
+    const projectId = projectRow?.project_id as string;
+    expect(projectId).toBeDefined();
     const row = await client.queryOne(
-      "SELECT COUNT(*)::int as c FROM agent_stats WHERE project_id LIKE 'repo:%'"
+      "SELECT COUNT(*)::int as c FROM agent_stats WHERE project_id = $1",
+      [projectId]
     );
     const count = Number(row?.c ?? 0);
     expect(count).toBeLessThanOrEqual(500);

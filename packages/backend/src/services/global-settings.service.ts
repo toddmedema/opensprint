@@ -69,11 +69,19 @@ export async function getGlobalSettings(): Promise<GlobalSettings> {
 }
 
 /**
- * Get the effective database URL. Returns databaseUrl from global settings when set,
- * otherwise the default: postgresql://opensprint:opensprint@localhost:5432/opensprint.
- * Never stored in the database; only in ~/.opensprint/global-settings.json.
+ * Get the effective database URL. Precedence: DATABASE_URL env (12-factor), then
+ * databaseUrl from global settings, then default postgresql://opensprint:opensprint@localhost:5432/opensprint.
+ * Never stored in the database; only in ~/.opensprint/global-settings.json or env.
  */
 export async function getDatabaseUrl(): Promise<string> {
+  const fromEnv = process.env.DATABASE_URL;
+  if (fromEnv != null && fromEnv.trim() !== "") {
+    try {
+      return validateDatabaseUrl(fromEnv.trim());
+    } catch {
+      // Invalid DATABASE_URL ignored; fall through to file/default
+    }
+  }
   const settings = await getGlobalSettings();
   return settings.databaseUrl ?? DEFAULT_DATABASE_URL;
 }

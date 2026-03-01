@@ -183,6 +183,46 @@ CREATE INDEX IF NOT EXISTS idx_open_questions_project_id ON open_questions(proje
 CREATE INDEX IF NOT EXISTS idx_open_questions_status ON open_questions(status);
 `;
 
+/**
+ * Audit table and trigger to log every DELETE on tasks at the Postgres level.
+ * Query task_delete_audit to see which connection (application_name, pg_backend_pid) deleted what.
+ */
+const TASK_DELETE_AUDIT_TABLE = `
+CREATE TABLE IF NOT EXISTS task_delete_audit (
+  id             SERIAL PRIMARY KEY,
+  deleted_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  project_id     TEXT NOT NULL,
+  task_id        TEXT NOT NULL,
+  pg_backend_pid INTEGER,
+  application_name TEXT,
+  usename        TEXT,
+  client_addr    TEXT
+)`;
+
+const TASK_DELETE_AUDIT_FUNCTION = `
+CREATE OR REPLACE FUNCTION audit_task_delete() RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO task_delete_audit (project_id, task_id, pg_backend_pid, application_name, usename, client_addr)
+  VALUES (
+    OLD.project_id,
+    OLD.id,
+    pg_backend_pid(),
+    current_setting('application_name', true),
+    current_user,
+    inet_client_addr()::text
+  );
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql`;
+
+const TASK_DELETE_AUDIT_TRIGGER = `
+DROP TRIGGER IF EXISTS task_delete_audit_trigger ON tasks;
+CREATE TRIGGER task_delete_audit_trigger
+  AFTER DELETE ON tasks
+  FOR EACH ROW
+  EXECUTE PROCEDURE audit_task_delete()
+`;
+
 /** Strip leading comment-only and empty lines so statements starting with "-- Comment\nCREATE ..." are executed. */
 function stripLeadingCommentLines(s: string): string {
   const lines = s.split("\n");
@@ -208,4 +248,8 @@ export async function runSchema(client: {
   for (const stmt of statements) {
     await client.query(stmt);
   }
+  // Postgres-level audit: log every DELETE on tasks (application_name, pg_backend_pid, etc.)
+  await client.query(TASK_DELETE_AUDIT_TABLE);
+  await client.query(TASK_DELETE_AUDIT_FUNCTION);
+  await client.query(TASK_DELETE_AUDIT_TRIGGER);
 }

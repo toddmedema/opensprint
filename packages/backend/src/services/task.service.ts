@@ -3,7 +3,7 @@ import path from "path";
 import type { Task, AgentSession, KanbanColumn, TaskDependency } from "@opensprint/shared";
 import { resolveTestCommand, clampTaskComplexity } from "@opensprint/shared";
 import { ProjectService } from "./project.service.js";
-import { taskStore as taskStoreSingleton } from "./task-store.service.js";
+import type { TaskStoreService } from "./task-store.service.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import { SessionManager } from "./session-manager.js";
@@ -18,12 +18,14 @@ import { createLogger } from "../utils/logger.js";
 const log = createLogger("task");
 
 export class TaskService {
-  private projectService = new ProjectService();
-  private taskStore = taskStoreSingleton;
-  private feedbackService = new FeedbackService();
-  private sessionManager = new SessionManager();
-  private contextAssembler = new ContextAssembler();
-  private branchManager = new BranchManager();
+  constructor(
+    private projectService: ProjectService,
+    private taskStore: TaskStoreService,
+    private feedbackService: FeedbackService,
+    private sessionManager: SessionManager,
+    private contextAssembler: ContextAssembler,
+    private branchManager: BranchManager
+  ) {}
 
   /** List all tasks for a project with computed kanban columns and test results.
    * Uses task store for listAll.

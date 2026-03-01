@@ -2,6 +2,7 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
+import jsxA11y from "eslint-plugin-jsx-a11y";
 import globals from "globals";
 import eslintConfigPrettier from "eslint-config-prettier";
 
@@ -55,6 +56,7 @@ export default [
     plugins: {
       react,
       "react-hooks": reactHooks,
+      "jsx-a11y": jsxA11y,
     },
     languageOptions: {
       globals: {
@@ -74,7 +76,14 @@ export default [
     rules: {
       ...react.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
+      ...jsxA11y.configs.recommended.rules,
       "react/react-in-jsx-scope": "off",
+      // Defer fixes; can enable as "error" once addressed
+      "jsx-a11y/no-autofocus": "warn",
+      "jsx-a11y/no-static-element-interactions": "warn",
+      "jsx-a11y/click-events-have-key-events": "warn",
+      "jsx-a11y/label-has-associated-control": "warn",
+      "jsx-a11y/role-has-required-aria-props": "warn",
     },
   },
   // Root scripts (Node.js)

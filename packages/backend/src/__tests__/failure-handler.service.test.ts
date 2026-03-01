@@ -244,7 +244,7 @@ describe("FailureHandlerService", () => {
 
       const inactivityMinutes = Math.round(AGENT_INACTIVITY_TIMEOUT_MS / (60 * 1000));
       expect(mockComment).toHaveBeenCalledWith(
-        repoPath,
+        projectId,
         taskId,
         `Attempt 1 failed [timeout]: Agent stopped responding (${inactivityMinutes} min inactivity); task requeued.`
       );
@@ -268,7 +268,7 @@ describe("FailureHandlerService", () => {
       );
 
       expect(mockComment).toHaveBeenCalledWith(
-        repoPath,
+        projectId,
         taskId,
         "Attempt 1 failed [test_failure]: Tests failed: 2 failed, 1 passed"
       );

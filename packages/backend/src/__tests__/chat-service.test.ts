@@ -5,6 +5,48 @@ import os from "os";
 import { ChatService } from "../services/chat.service.js";
 import { ProjectService } from "../services/project.service.js";
 import { DEFAULT_HIL_CONFIG, OPENSPRINT_PATHS } from "@opensprint/shared";
+import type { DbClient } from "../db/client.js";
+
+const { testClientRef } = vi.hoisted(() => ({ testClientRef: { current: null as DbClient | null } }));
+vi.mock("../services/task-store.service.js", async () => {
+  const { SCHEMA_SQL, runSchema } = await import("../db/schema.js");
+  const { createTestPostgresClient } = await import("./test-db-helper.js");
+  const dbResult = await createTestPostgresClient();
+  testClientRef.current = dbResult?.client ?? null;
+  if (dbResult) await runSchema(dbResult.client);
+  return {
+    taskStore: {
+      init: vi.fn().mockImplementation(async () => {}),
+      getDb: vi.fn().mockImplementation(async () => testClientRef.current),
+      runWrite: vi.fn().mockImplementation(async (fn: (c: DbClient) => Promise<unknown>) => fn(testClientRef.current!)),
+      listAll: vi.fn().mockResolvedValue([]),
+      list: vi.fn().mockResolvedValue([]),
+      show: vi.fn().mockResolvedValue({}),
+      create: vi.fn().mockResolvedValue({ id: "os-0001" }),
+      createMany: vi.fn().mockResolvedValue([]),
+      update: vi.fn().mockResolvedValue({}),
+      close: vi.fn().mockResolvedValue({}),
+      delete: vi.fn().mockResolvedValue(undefined),
+      deleteByProjectId: vi.fn().mockResolvedValue(undefined),
+      deleteOpenQuestionsByProjectId: vi.fn().mockResolvedValue(undefined),
+      addDependency: vi.fn().mockResolvedValue(undefined),
+      ready: vi.fn().mockResolvedValue([]),
+      setOnTaskChange: vi.fn(),
+      planInsert: vi.fn(),
+      planGet: vi.fn().mockResolvedValue(null),
+      planGetByEpicId: vi.fn().mockResolvedValue(null),
+      planListIds: vi.fn().mockResolvedValue([]),
+      planUpdateContent: vi.fn(),
+      planUpdateMetadata: vi.fn(),
+      planSetShippedContent: vi.fn(),
+      planGetShippedContent: vi.fn().mockResolvedValue(null),
+      planDelete: vi.fn().mockResolvedValue(false),
+    },
+    TaskStoreService: vi.fn(),
+    SCHEMA_SQL,
+    _postgresAvailable: !!dbResult,
+  };
+});
 
 const mockInvokePlanningAgent = vi.fn();
 const mockRegister = vi.fn();

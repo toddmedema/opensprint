@@ -7,9 +7,7 @@ import {
 import { createPostgresDbClientFromUrl, runSchema, toPgParams } from "../../db/index.js";
 import type { DbClient } from "../../db/client.js";
 import type { Pool } from "pg";
-
-const url =
-  process.env.TEST_DATABASE_URL ?? "postgresql://opensprint:opensprint@localhost:5432/opensprint";
+import { getTestDatabaseUrl } from "../../__tests__/test-db-helper.js";
 
 describe("log-diff-truncation", () => {
   describe("truncateToThreshold", () => {
@@ -50,6 +48,7 @@ describe("log-diff-truncation", () => {
 
     beforeAll(async () => {
       try {
+        const url = await getTestDatabaseUrl();
         const result = await createPostgresDbClientFromUrl(url);
         client = result.client;
         pool = result.pool;

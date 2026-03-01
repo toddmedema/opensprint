@@ -1,13 +1,9 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Provider } from "react-redux";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { configureStore } from "@reduxjs/toolkit";
+import { renderWithProviders } from "../../test/test-utils";
 import { SourceFeedbackSection } from "./SourceFeedbackSection";
-import evalReducer from "../../store/slices/evalSlice";
-import notificationReducer from "../../store/slices/notificationSlice";
 
 const mockFeedbackGet = vi.fn();
 
@@ -18,22 +14,6 @@ vi.mock("../../api/client", () => ({
     },
   },
 }));
-
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-
-function createStore() {
-  return configureStore({
-    reducer: { eval: evalReducer, notification: notificationReducer },
-  });
-}
-
-function renderWithProviders(ui: React.ReactElement) {
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <Provider store={createStore()}>{ui}</Provider>
-    </QueryClientProvider>
-  );
-}
 
 describe("SourceFeedbackSection", () => {
   beforeEach(() => {

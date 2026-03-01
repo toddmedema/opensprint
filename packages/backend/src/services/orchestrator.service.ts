@@ -486,6 +486,8 @@ export class OrchestratorService {
    * Remove slots whose task no longer exists in task store (e.g. archived).
    * Called before building active tasks so getStatus/getActiveAgents never report phantom agents.
    * When validTaskIds is provided (e.g. from listTasks), avoids a second listAll call.
+   * When listAll returns no tasks but we have slots, we skip reconciliation to avoid killing
+   * agents on transient empty results (wrong DB, connection issue, or external wipe).
    */
   private async reconcileStaleSlots(
     projectId: string,
@@ -499,6 +501,19 @@ export class OrchestratorService {
       new Set(
         (await this.taskStore.listAll(projectId)).map((i) => i.id).filter(Boolean) as string[]
       );
+
+    // Do not treat slots as stale when the task list is empty. Empty list can mean real deletion
+    // (e.g. another process) or a transient/wrong-DB result; killing agents on empty list causes
+    // "tasks disappeared then orchestrator killed agents" with no way to recover.
+    if (validIds.size === 0) {
+      log.warn("Skipping stale-slot reconciliation: listAll returned 0 tasks but we have slots", {
+        projectId,
+        slotCount: state.slots.size,
+        slotTaskIds: [...state.slots.keys()],
+      });
+      return;
+    }
+
     const repoPath = await this.projectService.getRepoPath(projectId);
     let removed = false;
 

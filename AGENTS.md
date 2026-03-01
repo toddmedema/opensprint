@@ -1,6 +1,6 @@
 # Agent Instructions — OpenSprint
 
-Task tracking is handled internally by `TaskStoreService` backed by PostgreSQL (connection URL in `~/.opensprint/global-settings.json`). There is no external CLI for task management.
+Task tracking is handled internally by `TaskStoreService` backed by PostgreSQL. The connection URL is resolved in order: **`DATABASE_URL`** env (12-factor), then **`databaseUrl`** in `~/.opensprint/global-settings.json`, then the default local URL. There is no external CLI for task management.
 
 ## Project Overview
 
@@ -19,7 +19,11 @@ Work state is persisted before agent spawn via `assignment.json` in `.opensprint
 
 ## Task Store
 
-Tasks are stored in PostgreSQL. The `TaskStoreService` provides:
+Tasks are stored in PostgreSQL. Schema is applied on init via `runSchema` (CREATE TABLE IF NOT EXISTS in `packages/backend/src/db/schema.ts`). For versioned, reversible schema changes in the future, consider adding a migration runner (e.g. node-pg-migrate).
+
+**Tests and production:** Backend tests use a separate test DB (`opensprint_test` or `TEST_DATABASE_URL`). The app never reads `TEST_DATABASE_URL`. For future test-only or prod-only behavior, run tests with `NODE_ENV=test` (or similar) and gate logic so production never runs test-only code.
+
+The `TaskStoreService` provides:
 
 - `create()` / `createMany()` — Create tasks with optional parent IDs
 - `update()` / `updateMany()` — Update task fields (status, assignee, priority, etc.)

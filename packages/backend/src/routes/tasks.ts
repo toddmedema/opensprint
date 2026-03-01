@@ -1,40 +1,58 @@
 import { Router, Request } from "express";
-import { TaskService } from "../services/task.service.js";
+import type { TaskService } from "../services/task.service.js";
 import type { ApiResponse, Task, AgentSession } from "@opensprint/shared";
 import { createLogger } from "../utils/logger.js";
+import {
+  projectIdParamSchema,
+  taskIdParamSchema,
+  paginationQuerySchema,
+  taskPatchBodySchema,
+  dependencyBodySchema,
+} from "../schemas/request-common.js";
+import { validateParams, validateQuery, validateBody } from "../middleware/validate.js";
 
 const log = createLogger("tasks");
-const taskService = new TaskService();
 
-export const tasksRouter = Router({ mergeParams: true });
+export function createTasksRouter(taskService: TaskService): Router {
+  const router = Router({ mergeParams: true });
 
 type ProjectParams = { projectId: string };
 type TaskParams = { projectId: string; taskId: string };
 type SessionParams = { projectId: string; taskId: string; attempt: string };
 
-// GET /projects/:projectId/tasks — List all tasks (supports ?limit=&offset= for pagination)
-tasksRouter.get("/", async (req: Request<ProjectParams>, res, next) => {
-  const start = performance.now();
-  try {
-    const limit = req.query.limit != null ? parseInt(String(req.query.limit), 10) : undefined;
-    const offset = req.query.offset != null ? parseInt(String(req.query.offset), 10) : undefined;
-    const options =
-      limit != null && offset != null && !Number.isNaN(limit) && !Number.isNaN(offset)
-        ? { limit, offset }
-        : undefined;
+  // GET /projects/:projectId/tasks — List all tasks (supports ?limit=&offset= for pagination)
+  router.get(
+  "/",
+  validateParams(projectIdParamSchema),
+  validateQuery(paginationQuerySchema),
+  async (req: Request<ProjectParams>, res, next) => {
+    const start = performance.now();
+    try {
+      const { limit, offset } = req.query as { limit?: number; offset?: number };
+      const options =
+        limit != null && offset != null ? { limit, offset } : undefined;
 
-    const result = await taskService.listTasks(req.params.projectId, options);
+      const result = await taskService.listTasks(req.params.projectId, options);
     const durationMs = Math.round(performance.now() - start);
     res.set("Server-Timing", `list;dur=${durationMs};desc="Task list"`);
+    log.info("GET / list", {
+      requestId: req.requestId,
+      projectId: req.params.projectId,
+      durationMs,
+    });
     const body: ApiResponse<Task[] | { items: Task[]; total: number }> = { data: result };
     res.json(body);
   } catch (err) {
     next(err);
   }
-});
+  }
+);
 
 // GET /projects/:projectId/tasks/ready — Get ready tasks
-tasksRouter.get("/ready", async (req: Request<ProjectParams>, res, next) => {
+  router.get(
+  "/ready",
+  validateParams(projectIdParamSchema),
+  async (req: Request<ProjectParams>, res, next) => {
   try {
     const tasks = await taskService.getReadyTasks(req.params.projectId);
     const body: ApiResponse<Task[]> = { data: tasks };
@@ -42,10 +60,14 @@ tasksRouter.get("/ready", async (req: Request<ProjectParams>, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+  }
+);
 
 // POST /projects/:projectId/tasks/:taskId/unblock — Unblock task (set task status to open)
-tasksRouter.post("/:taskId/unblock", async (req: Request<TaskParams>, res, next) => {
+  router.post(
+  "/:taskId/unblock",
+  validateParams(taskIdParamSchema),
+  async (req: Request<TaskParams>, res, next) => {
   try {
     const resetAttempts = req.body?.resetAttempts === true;
     const result = await taskService.unblock(req.params.projectId, req.params.taskId, {
@@ -56,10 +78,14 @@ tasksRouter.post("/:taskId/unblock", async (req: Request<TaskParams>, res, next)
   } catch (err) {
     next(err);
   }
-});
+  }
+);
 
 // POST /projects/:projectId/tasks/:taskId/done — Manually mark task done (and epic if last)
-tasksRouter.post("/:taskId/done", async (req: Request<TaskParams>, res, next) => {
+  router.post(
+  "/:taskId/done",
+  validateParams(taskIdParamSchema),
+  async (req: Request<TaskParams>, res, next) => {
   try {
     const result = await taskService.markDone(req.params.projectId, req.params.taskId);
     const body: ApiResponse<{ taskClosed: boolean; epicClosed?: boolean }> = { data: result };
@@ -67,59 +93,40 @@ tasksRouter.post("/:taskId/done", async (req: Request<TaskParams>, res, next) =>
   } catch (err) {
     next(err);
   }
-});
+  });
 
-// POST /projects/:projectId/tasks/:taskId/dependencies — Add dependency (child depends on parent)
-tasksRouter.post("/:taskId/dependencies", async (req: Request<TaskParams>, res, next) => {
+  // POST /projects/:projectId/tasks/:taskId/dependencies — Add dependency (child depends on parent)
+  router.post(
+  "/:taskId/dependencies",
+  validateParams(taskIdParamSchema),
+  validateBody(dependencyBodySchema),
+  async (req: Request<TaskParams>, res, next) => {
   try {
-    const { parentTaskId, type } = req.body ?? {};
-    if (typeof parentTaskId !== "string" || !parentTaskId.trim()) {
-      return res.status(400).json({
-        error: { code: "BAD_REQUEST", message: "parentTaskId is required" },
-      });
-    }
-    const depType =
-      type === "blocks" || type === "parent-child" || type === "related"
-        ? type
-        : "blocks";
+    const { parentTaskId, type } = req.body as { parentTaskId: string; type: "blocks" | "parent-child" | "related" };
     await taskService.addDependency(
       req.params.projectId,
       req.params.taskId,
-      parentTaskId.trim(),
-      depType
+      parentTaskId,
+      type
     );
     res.status(204).send();
   } catch (err) {
     next(err);
   }
-});
+  }
+);
 
 // PATCH /projects/:projectId/tasks/:taskId — Update task (priority, complexity)
-tasksRouter.patch("/:taskId", async (req: Request<TaskParams>, res, next) => {
+  router.patch(
+  "/:taskId",
+  validateParams(taskIdParamSchema),
+  validateBody(taskPatchBodySchema),
+  async (req: Request<TaskParams>, res, next) => {
   try {
-    const { priority, complexity } = req.body ?? {};
+    const { priority, complexity } = req.body as { priority?: number; complexity?: number };
     const updates: { priority?: number; complexity?: number } = {};
-    if (priority !== undefined) {
-      if (typeof priority !== "number" || priority < 0 || priority > 4) {
-        return res.status(400).json({
-          error: { code: "BAD_REQUEST", message: "priority must be a number 0–4" },
-        });
-      }
-      updates.priority = priority;
-    }
-    if (complexity !== undefined) {
-      if (typeof complexity !== "number" || !Number.isInteger(complexity) || complexity < 1 || complexity > 10) {
-        return res.status(400).json({
-          error: { code: "BAD_REQUEST", message: "complexity must be an integer 1–10" },
-        });
-      }
-      updates.complexity = complexity;
-    }
-    if (Object.keys(updates).length === 0) {
-      return res.status(400).json({
-        error: { code: "BAD_REQUEST", message: "At least one of priority or complexity is required" },
-      });
-    }
+    if (priority !== undefined) updates.priority = priority;
+    if (complexity !== undefined) updates.complexity = complexity;
     const task = await taskService.updateTask(
       req.params.projectId,
       req.params.taskId,
@@ -130,27 +137,46 @@ tasksRouter.patch("/:taskId", async (req: Request<TaskParams>, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+  }
+);
 
 // GET /projects/:projectId/tasks/:taskId — Get task details
-tasksRouter.get("/:taskId", async (req: Request<TaskParams>, res, next) => {
+  router.get(
+  "/:taskId",
+  validateParams(taskIdParamSchema),
+  async (req: Request<TaskParams>, res, next) => {
   const start = performance.now();
   try {
     const task = await taskService.getTask(req.params.projectId, req.params.taskId);
     const durationMs = Math.round(performance.now() - start);
     res.set("Server-Timing", `task-detail;dur=${durationMs};desc="Task detail load"`);
+    log.info("GET /:taskId", {
+      requestId: req.requestId,
+      projectId: req.params.projectId,
+      taskId: req.params.taskId,
+      durationMs,
+    });
     if (durationMs > 500) {
-      log.warn("GET /:taskId slow", { durationMs, taskId: req.params.taskId });
+      log.warn("GET /:taskId slow", {
+        requestId: req.requestId,
+        projectId: req.params.projectId,
+        durationMs,
+        taskId: req.params.taskId,
+      });
     }
     const body: ApiResponse<Task> = { data: task };
     res.json(body);
   } catch (err) {
     next(err);
   }
-});
+  }
+);
 
 // GET /projects/:projectId/tasks/:taskId/sessions — Get agent sessions
-tasksRouter.get("/:taskId/sessions", async (req: Request<TaskParams>, res, next) => {
+  router.get(
+  "/:taskId/sessions",
+  validateParams(taskIdParamSchema),
+  async (req: Request<TaskParams>, res, next) => {
   try {
     const sessions = await taskService.getTaskSessions(req.params.projectId, req.params.taskId);
     const body: ApiResponse<AgentSession[]> = { data: sessions };
@@ -158,19 +184,23 @@ tasksRouter.get("/:taskId/sessions", async (req: Request<TaskParams>, res, next)
   } catch (err) {
     next(err);
   }
-});
-
-// GET /projects/:projectId/tasks/:taskId/sessions/:attempt — Get specific session
-tasksRouter.get("/:taskId/sessions/:attempt", async (req: Request<SessionParams>, res, next) => {
-  try {
-    const session = await taskService.getTaskSession(
-      req.params.projectId,
-      req.params.taskId,
-      parseInt(req.params.attempt, 10)
-    );
-    const body: ApiResponse<AgentSession> = { data: session };
-    res.json(body);
-  } catch (err) {
-    next(err);
   }
-});
+);
+
+  // GET /projects/:projectId/tasks/:taskId/sessions/:attempt — Get specific session
+  router.get("/:taskId/sessions/:attempt", async (req: Request<SessionParams>, res, next) => {
+    try {
+      const session = await taskService.getTaskSession(
+        req.params.projectId,
+        req.params.taskId,
+        parseInt(req.params.attempt, 10)
+      );
+      const body: ApiResponse<AgentSession> = { data: session };
+      res.json(body);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  return router;
+}

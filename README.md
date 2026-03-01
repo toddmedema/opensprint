@@ -148,16 +148,19 @@ OpenSprint uses PostgreSQL. **`npm run setup`** installs PostgreSQL locally (Hom
 
 Connection URL: `postgresql://opensprint:opensprint@localhost:5432/opensprint`
 
-To use a remote database (e.g. Supabase), set `databaseUrl` in `~/.opensprint/global-settings.json`. To stop local Postgres on Mac: `brew services stop postgresql@16` (or `postgresql`). On Linux: `sudo systemctl stop postgresql`.
+To use a remote database (e.g. Supabase), set **`DATABASE_URL`** (env) or **`databaseUrl`** in `~/.opensprint/global-settings.json`. `DATABASE_URL` takes precedence for 12-factor deploys. To stop local Postgres on Mac: `brew services stop postgresql@16` (or `postgresql`). On Linux: `sudo systemctl stop postgresql`.
 
 ### Environment variables
 
 | Variable                     | Default | Description                                                                                  |
 | ---------------------------- | ------- | -------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`               | —       | PostgreSQL connection URL; overrides `databaseUrl` in global settings (12-factor).            |
 | `ANTHROPIC_API_KEY`          | —       | Claude integration                                                                           |
 | `CURSOR_API_KEY`             | —       | Cursor integration                                                                           |
 | `PORT`                       | `3100`  | Backend port                                                                                 |
 | `OPENSPRINT_PRESERVE_AGENTS` | unset   | Set to `1` in dev so agent processes survive backend restarts; do **not** set in production. |
+| `NODE_ENV`                   | unset   | Optional: set to `test` when running tests; prod should not run test-only logic.             |
+| `VITE_API_BASE`             | (empty) | Frontend: API base URL (e.g. empty for same-origin, or full origin for production/staging). |
 
 ## Developing on Open Sprint (self-hosting)
 

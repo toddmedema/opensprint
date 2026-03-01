@@ -425,15 +425,16 @@ export function ExecutePhase({
             <TaskDetailSidebar
               projectId={projectId}
               selectedTask={effectiveSelectedTask}
-              selectedTaskData={selectedTaskData ?? null}
+              taskDetail={{
+                selectedTaskData: selectedTaskData ?? null,
+                taskDetailLoading,
+                taskDetailError,
+              }}
               openQuestionNotification={
                 taskNotification && typeof taskNotification === "object"
                   ? taskNotification
                   : undefined
               }
-              onOpenQuestionResolved={refetchNotifications}
-              taskDetailLoading={taskDetailLoading}
-              taskDetailError={taskDetailError}
               agentOutput={selectedAgentOutput}
               completionState={completionState}
               archivedSessions={archivedSessions}
@@ -447,17 +448,22 @@ export function ExecutePhase({
               wsConnected={wsConnected}
               isDoneTask={isDoneTask}
               isBlockedTask={isBlockedTask}
-              sourceFeedbackExpanded={sourceFeedbackExpanded}
-              setSourceFeedbackExpanded={setSourceFeedbackExpanded}
-              descriptionSectionExpanded={descriptionSectionExpanded}
-              setDescriptionSectionExpanded={setDescriptionSectionExpanded}
-              artifactsSectionExpanded={artifactsSectionExpanded}
-              setArtifactsSectionExpanded={setArtifactsSectionExpanded}
-              onNavigateToPlan={onNavigateToPlan}
-              onClose={handleClose}
-              onMarkDone={handleMarkDone}
-              onUnblock={handleUnblock}
-              onSelectTask={(taskId) => dispatch(setSelectedTaskId(taskId))}
+              sections={{
+                descriptionSectionExpanded,
+                setDescriptionSectionExpanded,
+                artifactsSectionExpanded,
+                setArtifactsSectionExpanded,
+                sourceFeedbackExpanded,
+                setSourceFeedbackExpanded,
+              }}
+              callbacks={{
+                onClose: handleClose,
+                onMarkDone: handleMarkDone,
+                onUnblock: handleUnblock,
+                onSelectTask: (taskId) => dispatch(setSelectedTaskId(taskId)),
+                onNavigateToPlan,
+                onOpenQuestionResolved: refetchNotifications,
+              }}
             />
           </ResizableSidebar>
         </>

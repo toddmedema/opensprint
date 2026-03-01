@@ -13,7 +13,9 @@
     "outDir": "./dist",
     "declaration": true,
     "sourceMap": true,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": { "@/*": ["src/*"] }
   },
   "exclude": ["src/**/*.test.tsx", "src/**/*.test.ts", "src/test"],
   "include": ["src/**/*"],
