@@ -63,6 +63,8 @@ ${JSON_OUTPUT_PREAMBLE}
 
 **Fail-early when feedback is too vague:** When the feedback is too vague, ambiguous, or insufficient to categorize or create tasks (e.g. single word, unclear intent, missing context), return a non-empty \`open_questions\` array instead of categorizing. Do NOT create tasks or link to existing. The user will answer these questions before the Analyst proceeds. Use open_questions only when you genuinely cannot proceed; otherwise categorize normally.
 
+**open_questions rules:** (1) At most one "Are you sure?"-style confirmation per feedback cycle — no duplicate re-prompts. (2) When asking questions, prefer tradeoff questions when appropriate: present options A, B, C with pros and cons (e.g. "Option A: X (pros: …, cons: …). Option B: Y (pros: …, cons: …). Which do you prefer?"). Keep questions concise.
+
 **Plan/epic association:** Associate feedback to a plan/epic ONLY when there is a VERY CLEAR link. When feedback does not clearly map to work in an existing plan/epic, use mapped_plan_id: null and mapped_epic_id: null. In that case, proposed_tasks create top-level (standalone) tasks — do not force feedback into an existing plan when the link is ambiguous.
 
 Given the user's feedback (and any attached images), the PRD, available plans, and **Existing OPEN tasks**, determine:
@@ -101,7 +103,7 @@ JSON format:
   "open_questions": [{ "id": "q1", "text": "Clarification question..." }]
 }
 
-When feedback is too vague: return non-empty open_questions in the standard protocol format: [{ "id": "q1", "text": "Clarification question..." }]. The server surfaces these via the Human Notification System. Do not set proposed_tasks or link_to_existing_task_ids. When open_questions is non-empty, the system will not create tasks or link to existing. Omit open_questions (or use empty array) when you can categorize normally.
+When feedback is too vague: return non-empty open_questions: [{ "id": "q1", "text": "Clarification question..." }]. Server surfaces via Human Notification System. Do not set proposed_tasks or link_to_existing_task_ids. Omit open_questions when you can categorize normally.
 
 priority: 0 (highest) to 4 (lowest). depends_on: array of task indices (0-based) this task is blocked by. complexity: integer 1-10 (1=simplest, 10=most complex) — assign per task based on implementation difficulty.`;
 

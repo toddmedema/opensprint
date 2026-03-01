@@ -37,7 +37,7 @@ Agents emit questions via a standard JSON field in their output:
 
 ### Fail-Early Behavior
 
-- **Analyst:** When feedback is too vague, return `open_questions` instead of creating tasks. Do not create a ticket until questions are answered.
+- **Analyst:** When feedback is too vague, return `open_questions` instead of creating tasks. Do not create a ticket until questions are answered. At most one "Are you sure?"-style confirmation per feedback cycle; no duplicate re-prompts. Prefer tradeoff questions when appropriate (options A/B/C with pros and cons).
 - **Dreamer/Planner:** When requirements are unclear, emit open questions and wait for clarification before proceeding.
 - **Coder:** When task spec is ambiguous, emit open questions and pause rather than guessing.
 
