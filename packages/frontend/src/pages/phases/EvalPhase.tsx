@@ -560,6 +560,18 @@ const FeedbackCard = memo(
               return null;
             })()}
             <div className="flex gap-2 flex-shrink-0 ml-auto">
+              {hasChildren && (
+                <button
+                  type="button"
+                  onClick={() => onToggleCollapse(item.id)}
+                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-theme-muted hover:bg-theme-border-subtle hover:text-theme-text transition-colors"
+                  aria-label={isCollapsed ? "Expand replies" : "Collapse replies"}
+                  data-testid={`collapse-replies-${item.id}`}
+                >
+                  {isCollapsed ? "Expand" : "Collapse"} ({countTotalReplies(node)}{" "}
+                  {countTotalReplies(node) === 1 ? "reply" : "replies"})
+                </button>
+              )}
               {item.status === "pending" && !isCategorizing(item) && (
                 <>
                   {canShowCancelButton(item, tasks) && (
@@ -603,18 +615,6 @@ const FeedbackCard = memo(
                 <ReplyIcon className="w-4 h-4" />
                 {isReplying ? "Cancel" : "Reply"}
               </button>
-              {hasChildren && (
-                <button
-                  type="button"
-                  onClick={() => onToggleCollapse(item.id)}
-                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-theme-muted hover:bg-theme-border-subtle hover:text-theme-text transition-colors"
-                  aria-label={isCollapsed ? "Expand replies" : "Collapse replies"}
-                  data-testid={`collapse-replies-${item.id}`}
-                >
-                  {isCollapsed ? "Expand" : "Collapse"} ({countTotalReplies(node)}{" "}
-                  {countTotalReplies(node) === 1 ? "reply" : "replies"})
-                </button>
-              )}
             </div>
           </div>
         </div>

@@ -1783,6 +1783,54 @@ describe("EvalPhase feedback form", () => {
     });
   });
 
+  describe("feedback card button order", () => {
+    it("shows Collapse leftmost of Cancel in right-side button group", async () => {
+      const feedbackWithReplies: FeedbackItem[] = [
+        {
+          id: "fb-order-parent",
+          text: "Parent with replies",
+          category: "bug",
+          mappedPlanId: null,
+          createdTaskIds: [],
+          taskTitles: ["Fix something"],
+          status: "pending",
+          createdAt: "2024-01-01T00:00:01Z",
+        },
+        {
+          id: "fb-order-reply",
+          text: "Reply",
+          category: "bug",
+          mappedPlanId: null,
+          createdTaskIds: [],
+          status: "pending",
+          createdAt: "2024-01-01T00:00:02Z",
+          parent_id: "fb-order-parent",
+        },
+      ];
+      const store = createStore({ evalFeedback: feedbackWithReplies });
+      renderWithProviders(
+        <MemoryRouter>
+          <EvalPhase projectId="proj-1" />
+        </MemoryRouter>,
+        { store }
+      );
+
+      await waitFor(() => expect(screen.getByText("Parent with replies")).toBeInTheDocument());
+
+      const collapseBtn = screen.getByTestId("collapse-replies-fb-order-parent");
+      const cancelBtn = screen.getByTestId("feedback-cancel-button");
+      const actionsRow = collapseBtn.closest("[data-testid='feedback-card-actions-row']");
+      expect(actionsRow).toBeInTheDocument();
+      const buttons = within(actionsRow!).getAllByRole("button");
+      const collapseIdx = buttons.indexOf(collapseBtn);
+      const cancelIdx = buttons.indexOf(cancelBtn);
+
+      expect(collapseIdx).toBeGreaterThanOrEqual(0);
+      expect(cancelIdx).toBeGreaterThanOrEqual(0);
+      expect(collapseIdx).toBeLessThan(cancelIdx);
+    });
+  });
+
   describe("feedback card task chips", () => {
     it("shows priority icon in each created-task chip", async () => {
       const feedbackWithTasks: FeedbackItem[] = [
