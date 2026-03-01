@@ -404,10 +404,26 @@ describe("Navbar", () => {
       expect(screen.getAllByRole("listitem")).toHaveLength(9);
     });
 
-    it("Help button has blue styling", () => {
+    it("Help button uses text color (visible in light and dark themes)", () => {
       renderNavbar(<Navbar project={null} />);
       const helpButton = screen.getByRole("button", { name: "Help" });
-      expect(helpButton).toHaveClass("text-brand-600");
+      expect(helpButton).toHaveClass("text-theme-muted");
+      expect(helpButton).not.toHaveClass("text-brand-600");
+    });
+
+    it("Help button uses text color in project view", () => {
+      const mockProject = {
+        id: "proj-1",
+        name: "Test",
+        repoPath: "/path",
+        currentPhase: "sketch" as const,
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      };
+      renderNavbar(<Navbar project={mockProject} currentPhase="sketch" onPhaseChange={vi.fn()} />);
+      const helpButton = screen.getByRole("button", { name: "Help" });
+      expect(helpButton).toHaveClass("text-theme-muted");
+      expect(helpButton).not.toHaveClass("text-brand-600");
     });
   });
 

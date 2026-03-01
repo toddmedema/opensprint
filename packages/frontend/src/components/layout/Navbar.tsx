@@ -51,7 +51,7 @@ export function Navbar({
   const settingsHref = project ? `/projects/${project.id}/settings` : "/settings";
 
   const helpButtonClassName =
-    "p-1.5 rounded-md transition-colors text-brand-600 hover:text-brand-700 hover:bg-theme-info-bg";
+    "p-1.5 rounded-md transition-colors text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle";
 
   const dispatch = useAppDispatch();
   const executeBlockedCount = useAppSelector((s) => {
