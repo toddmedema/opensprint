@@ -764,4 +764,36 @@ describe("Navbar", () => {
     expect(sketchTab).toHaveClass("phase-tab-inactive");
     expect(sketchTab).not.toHaveClass("phase-tab-active");
   });
+
+  it("Help button displays as square when active (aspect-square)", async () => {
+    const { ProjectHelpPage } = await import("../../pages/ProjectHelpPage");
+    const mockProject = {
+      id: "proj-1",
+      name: "Test",
+      repoPath: "/path",
+      currentPhase: "sketch" as const,
+      createdAt: "2025-01-01T00:00:00Z",
+      updatedAt: "2025-01-01T00:00:00Z",
+    };
+    mockProjectsGet.mockResolvedValue(mockProject);
+    render(
+      <ThemeProvider>
+        <DisplayPreferencesProvider>
+          <Provider store={createStore()}>
+            <QueryClientProvider client={queryClient}>
+              <MemoryRouter initialEntries={["/projects/proj-1/help"]}>
+                <Routes>
+                  <Route path="/projects/:projectId/help" element={<ProjectHelpPage />} />
+                </Routes>
+              </MemoryRouter>
+            </QueryClientProvider>
+          </Provider>
+        </DisplayPreferencesProvider>
+      </ThemeProvider>
+    );
+
+    await screen.findByTestId("help-page");
+    const helpLink = screen.getByRole("link", { name: "Help" });
+    expect(helpLink).toHaveClass("aspect-square");
+  });
 });

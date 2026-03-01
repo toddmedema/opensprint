@@ -240,8 +240,8 @@ export function Navbar({
               <ConnectionIndicator />
               <Link
                 to={helpHref}
-                className={`p-1.5 rounded-md transition-colors ${
-                  isHelpActive ? "phase-tab phase-tab-active" : helpButtonClassName
+                className={`p-1.5 rounded-md transition-colors inline-flex items-center justify-center ${
+                  isHelpActive ? "phase-tab phase-tab-active aspect-square shrink-0 !p-2" : helpButtonClassName
                 }`}
                 aria-label="Help"
                 title="Help"
@@ -282,8 +282,8 @@ export function Navbar({
               <GlobalNotificationBell />
               <Link
                 to={helpHref}
-                className={`p-1.5 rounded-md transition-colors ${
-                  isHelpActive ? "phase-tab phase-tab-active" : helpButtonClassName
+                className={`p-1.5 rounded-md transition-colors inline-flex items-center justify-center ${
+                  isHelpActive ? "phase-tab phase-tab-active aspect-square shrink-0 !p-2" : helpButtonClassName
                 }`}
                 aria-label="Help"
                 title="Help"
@@ -322,8 +322,8 @@ export function Navbar({
             <>
               <Link
                 to={helpHref}
-                className={`p-1.5 rounded-md transition-colors ${
-                  isHelpActive ? "phase-tab phase-tab-active" : helpButtonClassName
+                className={`p-1.5 rounded-md transition-colors inline-flex items-center justify-center ${
+                  isHelpActive ? "phase-tab phase-tab-active aspect-square shrink-0 !p-2" : helpButtonClassName
                 }`}
                 aria-label="Help"
                 title="Help"
