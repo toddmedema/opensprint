@@ -257,50 +257,52 @@ export function ApiKeysSection({
                         : MASKED_PLACEHOLDER)
                     : undefined;
                   return (
-                    <div key={entry.id} className="flex gap-2 items-start">
-                      <div className="flex-1 min-w-0">
-                        <div className="relative flex">
-                          <input
-                            type={isVisible ? "text" : "password"}
-                            className="input font-mono text-sm w-full pr-10"
-                            placeholder={placeholder}
-                            value={displayValue}
-                            onChange={(e) =>
-                              updateEntryValue(provider, entry.id, e.target.value)
-                            }
-                            autoComplete="off"
-                            data-testid={`api-key-input-${provider}-${entry.id}`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => toggleVisible(entry.id)}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-theme-muted hover:text-theme-text p-1"
-                            aria-label={isVisible ? "Hide key" : "Show key"}
-                            data-testid={`api-key-eye-${provider}-${entry.id}`}
-                          >
-                            {isVisible ? (
-                              <EyeOffIcon className="w-4 h-4" />
-                            ) : (
-                              <EyeIcon className="w-4 h-4" />
-                            )}
-                          </button>
+                    <div key={entry.id} className="space-y-1">
+                      <div className="flex gap-2 items-center">
+                        <div className="flex-1 min-w-0">
+                          <div className="relative flex">
+                            <input
+                              type={isVisible ? "text" : "password"}
+                              className="input font-mono text-sm w-full pr-10"
+                              placeholder={placeholder}
+                              value={displayValue}
+                              onChange={(e) =>
+                                updateEntryValue(provider, entry.id, e.target.value)
+                              }
+                              autoComplete="off"
+                              data-testid={`api-key-input-${provider}-${entry.id}`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => toggleVisible(entry.id)}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-theme-muted hover:text-theme-text p-1"
+                              aria-label={isVisible ? "Hide key" : "Show key"}
+                              data-testid={`api-key-eye-${provider}-${entry.id}`}
+                            >
+                              {isVisible ? (
+                                <EyeOffIcon className="w-4 h-4" />
+                              ) : (
+                                <EyeIcon className="w-4 h-4" />
+                              )}
+                            </button>
+                          </div>
                         </div>
-                        {entry.limitHitAt && (
-                          <p className="text-xs text-theme-muted mt-1">
-                            Limit hit at {formatLimitHitAt(entry.limitHitAt)} — retry after 24h
-                          </p>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => removeKey(provider, entry.id)}
+                          disabled={!canRemove}
+                          className="text-theme-error-text hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed p-1 shrink-0"
+                          aria-label="Remove key"
+                          data-testid={`api-key-remove-${provider}-${entry.id}`}
+                        >
+                          <RemoveIcon className="w-4 h-4" />
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => removeKey(provider, entry.id)}
-                        disabled={!canRemove}
-                        className="text-theme-error-text hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed p-1 shrink-0"
-                        aria-label="Remove key"
-                        data-testid={`api-key-remove-${provider}-${entry.id}`}
-                      >
-                        <RemoveIcon className="w-4 h-4" />
-                      </button>
+                      {entry.limitHitAt && (
+                        <p className="text-xs text-theme-muted">
+                          Limit hit at {formatLimitHitAt(entry.limitHitAt)} — retry after 24h
+                        </p>
+                      )}
                     </div>
                   );
                 })}
