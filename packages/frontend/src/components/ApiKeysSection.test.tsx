@@ -129,6 +129,7 @@ describe("ApiKeysSection", () => {
     };
     render(<ApiKeysSection settings={settingsWithOneKey} onApiKeysChange={onApiKeysChange} />);
     const input = screen.getByTestId(/api-key-input-ANTHROPIC_API_KEY-/);
+    await user.clear(input);
     await user.type(input, "sk-ant-new-key");
     expect(onApiKeysChange).toHaveBeenCalled();
     const lastCall = onApiKeysChange.mock.calls[onApiKeysChange.mock.calls.length - 1][0];
@@ -189,6 +190,24 @@ describe("ApiKeysSection", () => {
       <ApiKeysSection settings={null} onApiKeysChange={onApiKeysChange} />
     );
     expect(container.firstChild).toBeNull();
+  });
+
+  it("displays masked value for existing keys in global variant (page load/refresh)", () => {
+    render(
+      <ApiKeysSection
+        apiKeys={{
+          ANTHROPIC_API_KEY: [{ id: "k1", masked: "••••••••" }],
+          CURSOR_API_KEY: [{ id: "c1", masked: "••••••••" }],
+        }}
+        providers={["ANTHROPIC_API_KEY", "CURSOR_API_KEY"]}
+        variant="global"
+        onApiKeysChange={onApiKeysChange}
+      />
+    );
+    const anthropicInput = screen.getByTestId(/api-key-input-ANTHROPIC_API_KEY-/);
+    const cursorInput = screen.getByTestId(/api-key-input-CURSOR_API_KEY-/);
+    expect(anthropicInput).toHaveValue("••••••••");
+    expect(cursorInput).toHaveValue("••••••••");
   });
 
   it("renders both providers in global mode with apiKeys and providers props", () => {

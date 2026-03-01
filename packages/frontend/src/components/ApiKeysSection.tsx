@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import type {
   AgentConfig,
+  ApiKeyEntry,
   ApiKeyProvider,
   ApiKeys,
   MaskedApiKeyEntry,
@@ -99,11 +100,16 @@ export function ApiKeysSection({
       const existingIds = new Set(existing.map((e) => e.id));
       const addedOnly = added.filter((e) => !existingIds.has(e.id));
       return [
-        ...existing.map((e) => ({
-          id: e.id,
-          value: editedValues[e.id] ?? (e as { value?: string }).value ?? "",
-          limitHitAt: e.limitHitAt,
-        })),
+        ...existing.map((e) => {
+          const raw = e as ApiKeyEntry & MaskedApiKeyEntry;
+          const value =
+            editedValues[e.id] ?? raw.value ?? raw.masked ?? "";
+          return {
+            id: e.id,
+            value,
+            limitHitAt: e.limitHitAt,
+          };
+        }),
         ...addedOnly.map((e) => ({
           id: e.id,
           value: e.value,
@@ -128,7 +134,7 @@ export function ApiKeysSection({
             : e.value;
         return {
           id: e.id,
-          ...(value ? { value } : {}),
+          ...(value && value !== MASKED_PLACEHOLDER ? { value } : {}),
           ...(e.limitHitAt ? { limitHitAt: e.limitHitAt } : {}),
         };
       });
@@ -197,7 +203,11 @@ export function ApiKeysSection({
         .filter((e) => e.id !== id)
         .map((e) => ({
           ...e,
-          value: editedValues[e.id] ?? newKeys[provider]?.find((x) => x.id === e.id)?.value ?? "",
+          value:
+            editedValues[e.id] ??
+            newKeys[provider]?.find((x) => x.id === e.id)?.value ??
+            e.value ??
+            "",
         }));
       emitApiKeysForProvider(provider, nextEntries);
     },
@@ -226,10 +236,14 @@ export function ApiKeysSection({
                   const isNew = newKeys[provider]?.some((x) => x.id === entry.id);
                   const hasValue = !!(
                     editedValues[entry.id] ??
-                    (isNew ? newKeys[provider]?.find((x) => x.id === entry.id)?.value : null)
+                    (isNew ? newKeys[provider]?.find((x) => x.id === entry.id)?.value : null) ??
+                    entry.value
                   );
                   const displayValue = hasValue
-                    ? (editedValues[entry.id] ?? newKeys[provider]?.find((x) => x.id === entry.id)?.value ?? "")
+                    ? (editedValues[entry.id] ??
+                      newKeys[provider]?.find((x) => x.id === entry.id)?.value ??
+                      entry.value ??
+                      "")
                     : "";
                   const isVisible = visibleKeys.has(entry.id);
                   const canRemove = entries.length > 1;

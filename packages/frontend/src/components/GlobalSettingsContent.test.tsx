@@ -69,6 +69,8 @@ describe("GlobalSettingsContent", () => {
     const cursorInputs = screen.getAllByTestId(/api-key-input-CURSOR_API_KEY-/);
     expect(anthropicInputs.length).toBe(1);
     expect(cursorInputs.length).toBe(1);
+    expect(anthropicInputs[0]).toHaveValue("••••••••");
+    expect(cursorInputs[0]).toHaveValue("••••••••");
   });
 
   it("shows limitHitAt sub-label when key is rate-limited (global store)", async () => {
