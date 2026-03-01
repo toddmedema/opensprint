@@ -217,14 +217,14 @@ describe("Navbar", () => {
     expect(svg).toHaveAttribute("viewBox", "0 0 80 80");
   });
 
-  it("hides Open Sprint title and spacer below md breakpoint (uses hidden md:inline)", () => {
+  it("hides Open Sprint title and spacer below 1000px breakpoint (uses hidden min-[1000px]:inline)", () => {
     renderNavbar(<Navbar project={null} />);
     const titleSpan = screen.getByText("Open Sprint");
     expect(titleSpan).toHaveClass("hidden");
-    expect(titleSpan).toHaveClass("md:inline");
+    expect(titleSpan).toHaveClass("min-[1000px]:inline");
     const spacer = screen.getByText("/");
     expect(spacer).toHaveClass("hidden");
-    expect(spacer).toHaveClass("md:inline");
+    expect(spacer).toHaveClass("min-[1000px]:inline");
   });
 
   it("has fixed height matching NAVBAR_HEIGHT on homepage (project=null)", () => {

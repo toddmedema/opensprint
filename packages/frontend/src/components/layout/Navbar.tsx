@@ -135,11 +135,11 @@ export function Navbar({
               <polygon points="22,10 54,40 22,70" fill="#818cf8" />
               <polygon points="40,10 72,40 40,70" fill="#4f46e5" />
             </svg>
-            <span className="hidden md:inline font-sans font-semibold text-lg text-theme-text">Open Sprint</span>
+            <span className="hidden min-[1000px]:inline font-sans font-semibold text-lg text-theme-text">Open Sprint</span>
           </Link>
 
           <div className="relative flex items-center" ref={dropdownRef}>
-            <span className="hidden md:inline text-theme-muted">/</span>
+            <span className="hidden min-[1000px]:inline text-theme-muted">/</span>
             <button
               type="button"
               onClick={() => setDropdownOpen((o) => !o)}
