@@ -290,6 +290,20 @@ describe("Models API", () => {
       expect(res.body.error?.message).toContain("30 minutes");
     });
 
+    it("returns helpful message on OpenAI 429 rate limit", async () => {
+      process.env.OPENAI_API_KEY = "sk-openai-test";
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 429,
+        text: () => Promise.resolve("Rate limit exceeded"),
+      });
+
+      const res = await request(app).get(`${API_PREFIX}/models?provider=openai`);
+      expect(res.status).toBe(429);
+      expect(res.body.error?.message).toContain("rate limit");
+      expect(res.body.error?.message).toContain("30 minutes");
+    });
+
     it("uses API key from global store when projectId is provided (projectId passed for API compatibility, key resolution is global-only)", async () => {
       mockGetNextKey.mockResolvedValue({ key: "sk-ant-global-key", keyId: "k1", source: "global" });
       async function* gen() {
@@ -322,6 +336,37 @@ describe("Models API", () => {
       expect(res.body.data).toEqual([{ id: "claude-sonnet-4", displayName: "Claude Sonnet 4" }]);
       expect(mockGetNextKey).toHaveBeenCalledWith("", "ANTHROPIC_API_KEY");
       expect(mockModelsList).toHaveBeenCalledTimes(1);
+    });
+
+    it("coalesces concurrent OpenAI requests to avoid rate limits", async () => {
+      process.env.OPENAI_API_KEY = "sk-openai-test";
+      const mockJson = vi.fn().mockResolvedValue({
+        data: [
+          { id: "gpt-4o", object: "model" },
+          { id: "gpt-4o-mini", object: "model" },
+        ],
+      });
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: mockJson,
+        text: () => Promise.resolve(""),
+      });
+
+      const requests = [
+        request(app).get(`${API_PREFIX}/models?provider=openai`),
+        request(app).get(`${API_PREFIX}/models?provider=openai`),
+        request(app).get(`${API_PREFIX}/models?provider=openai`),
+      ];
+
+      const results = await Promise.all(requests);
+      results.forEach((res) => {
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual([
+          { id: "gpt-4o", displayName: "gpt-4o" },
+          { id: "gpt-4o-mini", displayName: "gpt-4o-mini" },
+        ]);
+      });
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     });
 
     it("coalesces concurrent Claude requests to avoid rate limits", async () => {

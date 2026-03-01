@@ -132,6 +132,33 @@ describe("isLimitError", () => {
     expect(isLimitError("quota exceeded")).toBe(true);
     expect(isLimitError("Service overloaded")).toBe(true);
   });
+
+  it("returns true for OpenAI error object with rate_limit_exceeded code", () => {
+    expect(isLimitError({ message: "rate_limit_exceeded", code: "rate_limit_exceeded" })).toBe(true);
+  });
+
+  it("returns true for OpenAI Rate limit message", () => {
+    expect(isLimitError(new Error("Rate limit reached for gpt-4o in organization"))).toBe(true);
+    expect(isLimitError(new Error("Rate limit exceeded. Please retry after 60 seconds."))).toBe(true);
+  });
+
+  it("returns true for OpenAI error body with limit pattern", () => {
+    expect(
+      isLimitError({
+        error: {
+          message: "Rate limit exceeded for default-gpt-4o",
+          type: "rate_limit_error",
+          code: "rate_limit_exceeded",
+        },
+      })
+    ).toBe(true);
+    expect(
+      isLimitError({
+        message: "OpenAI API error 429",
+        error: { message: "rate_limit_exceeded" },
+      })
+    ).toBe(true);
+  });
 });
 
 describe("isAuthError", () => {

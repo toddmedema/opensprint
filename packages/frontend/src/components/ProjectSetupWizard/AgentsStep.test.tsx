@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { AgentsStep } from "./AgentsStep";
 
 vi.mock("../AgentReferenceModal", () => ({
@@ -12,10 +12,11 @@ vi.mock("../AgentReferenceModal", () => ({
   ),
 }));
 
+const mockModelsList = vi.fn();
 vi.mock("../../api/client", () => ({
   api: {
     models: {
-      list: vi.fn().mockResolvedValue([]),
+      list: (...args: unknown[]) => mockModelsList(...args),
     },
   },
 }));
@@ -52,6 +53,10 @@ function renderAgentsStep(overrides: Partial<Parameters<typeof AgentsStep>[0]> =
 }
 
 describe("AgentsStep", () => {
+  beforeEach(() => {
+    mockModelsList.mockResolvedValue([]);
+  });
+
   it("renders agents step with Task Complexity section and Simple/Complex rows", () => {
     renderAgentsStep();
 
@@ -124,6 +129,39 @@ describe("AgentsStep", () => {
 
     expect(screen.getByText(/API key required/)).toBeInTheDocument();
     expect(screen.getByText(/Configure API keys in Settings/)).toBeInTheDocument();
+  });
+
+  it("OpenAI appears as provider option in Simple and Complex dropdowns", () => {
+    renderAgentsStep();
+
+    const openaiOptions = screen.getAllByRole("option", { name: "OpenAI" });
+    expect(openaiOptions).toHaveLength(2);
+  });
+
+  it("when OpenAI selected for Simple, fetches and displays OpenAI models", async () => {
+    mockModelsList.mockImplementation((provider: string) => {
+      if (provider === "openai") {
+        return Promise.resolve([
+          { id: "gpt-4o", displayName: "gpt-4o" },
+          { id: "gpt-4o-mini", displayName: "gpt-4o-mini" },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    renderAgentsStep({
+      simpleComplexityAgent: { type: "openai", model: "", cliCommand: "" },
+      complexComplexityAgent: { type: "cursor", model: "", cliCommand: "" },
+      envKeys: { anthropic: true, cursor: true, openai: true, claudeCli: true },
+    });
+
+    await waitFor(() => {
+      expect(mockModelsList).toHaveBeenCalledWith("openai", undefined);
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "gpt-4o" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "gpt-4o-mini" })).toBeInTheDocument();
+    });
   });
 
   it("does not show API key section when envKeys is null", () => {
