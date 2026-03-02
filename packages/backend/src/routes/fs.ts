@@ -8,13 +8,24 @@ import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import { detectTestFramework } from "../services/test-framework.service.js";
 
-const FS_ALLOWED_ROOT = process.env.OPENSPRINT_FS_ROOT
-  ? path.resolve(process.env.OPENSPRINT_FS_ROOT)
-  : path.resolve(process.cwd());
+function getFsAllowedRoot(): string {
+  const configuredRoot = process.env.OPENSPRINT_FS_ROOT?.trim();
+  if (configuredRoot) {
+    return path.resolve(configuredRoot);
+  }
+
+  const homeDir = process.env.HOME || process.env.USERPROFILE;
+  if (homeDir?.trim()) {
+    return path.resolve(homeDir);
+  }
+
+  return path.resolve(process.cwd());
+}
 
 function isPathUnderRoot(resolvedPath: string): boolean {
+  const allowedRoot = getFsAllowedRoot();
   const normalized = path.normalize(resolvedPath);
-  const relative = path.relative(FS_ALLOWED_ROOT, normalized);
+  const relative = path.relative(allowedRoot, normalized);
   return (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative)));
 }
 
