@@ -252,9 +252,8 @@ describe("DeliverPhase", () => {
     const configureBtn = await screen.findByTestId("deliver-configure-targets-link");
     expect(configureBtn).toBeInTheDocument();
     expect(configureBtn).toHaveTextContent("Configure Targets");
-    const topBar = configureBtn.closest(".flex.items-center.justify-between")!;
-    const rightSection = topBar.querySelector(":scope > div:last-child")!;
-    expect(rightSection).toContainElement(configureBtn);
+    const topBar = screen.getByTestId("deliver-top-bar");
+    expect(topBar).toContainElement(configureBtn);
   });
 
   it("hides Configure Targets when expo mode even with onOpenSettings", async () => {
@@ -276,13 +275,9 @@ describe("DeliverPhase", () => {
     await waitFor(() => expect(mockGetSettings).toHaveBeenCalled());
     const betaBtn = screen.getByTestId("deploy-beta-button");
     const prodBtn = screen.getByTestId("deploy-prod-button");
-    const topBar = betaBtn.closest(".flex.items-center.justify-between")!;
-    const leftSection = topBar.querySelector(":scope > div:first-child")!;
-    const rightSection = topBar.querySelector(":scope > div:last-child")!;
-    expect(leftSection).not.toContainElement(betaBtn);
-    expect(leftSection).not.toContainElement(prodBtn);
-    expect(rightSection).toContainElement(betaBtn);
-    expect(rightSection).toContainElement(prodBtn);
+    const topBar = screen.getByTestId("deliver-top-bar");
+    expect(topBar).toContainElement(betaBtn);
+    expect(topBar).toContainElement(prodBtn);
   });
 
   it("positions Deploy to [Target] buttons on right side of top bar (custom mode)", async () => {
@@ -296,9 +291,8 @@ describe("DeliverPhase", () => {
     renderWithRouter(store);
     await waitFor(() => expect(mockGetSettings).toHaveBeenCalled());
     const deployBtn = screen.getByTestId("deploy-to-production-button");
-    const topBar = deployBtn.closest(".flex.items-center.justify-between")!;
-    const rightSection = topBar.querySelector(":scope > div:last-child")!;
-    expect(rightSection).toContainElement(deployBtn);
+    const topBar = screen.getByTestId("deliver-top-bar");
+    expect(topBar).toContainElement(deployBtn);
   });
 
   it("shows Deploy to Staging (secondary) left of Deploy to Production (primary) when Expo mode", async () => {
@@ -422,12 +416,11 @@ describe("DeliverPhase", () => {
     await waitFor(() => expect(mockGetSettings).toHaveBeenCalled());
     const cancelBtn = screen.getByTestId("cancel-deployment-button");
     const spinner = screen.getByTestId("deploy-spinner");
-    const topBar = cancelBtn.closest(".flex.items-center.justify-between")!;
-    const rightSection = topBar.querySelector(":scope > div:last-child")!;
-    expect(rightSection).toContainElement(cancelBtn);
-    expect(rightSection).toContainElement(spinner);
+    const topBar = screen.getByTestId("deliver-top-bar");
+    expect(topBar).toContainElement(cancelBtn);
+    expect(topBar).toContainElement(spinner);
     const ordered = Array.from(
-      rightSection.querySelectorAll('[data-testid="cancel-deployment-button"], [data-testid="deploy-spinner"]')
+      topBar.querySelectorAll('[data-testid="cancel-deployment-button"], [data-testid="deploy-spinner"]')
     );
     expect(ordered[0]).toBe(cancelBtn);
     expect(ordered[1]).toBe(spinner);

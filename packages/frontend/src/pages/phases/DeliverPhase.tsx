@@ -211,10 +211,11 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
   return (
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
-        <div className="px-6 min-h-[48px] flex items-center py-2 border-b border-theme-border bg-theme-surface shrink-0">
-          <div className="flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-3 flex-wrap" />
-            <div className="flex items-center gap-2 shrink-0">
+        <div
+          className="w-full px-6 min-h-[48px] flex items-center justify-end py-2 border-b border-theme-border bg-theme-surface shrink-0"
+          data-testid="deliver-top-bar"
+        >
+          <div className="flex items-center gap-2 shrink-0">
               {settings?.deployment?.mode === "expo" ? (
                 isDeploying ? (
                   <>
