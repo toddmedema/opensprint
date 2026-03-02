@@ -84,6 +84,23 @@ describe("Models API", () => {
       expect(res.body.data).toEqual([]);
     });
 
+    it("requests a key for model listing even when global key cooldown should be ignored", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "sk-openai-test", keyId: "k1", source: "global" });
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ data: [{ id: "gpt-4o", object: "model" }] }),
+        text: () => Promise.resolve(""),
+      });
+
+      const res = await request(app).get(`${API_PREFIX}/models?provider=openai`);
+
+      expect(res.status).toBe(200);
+      expect(mockGetNextKey).toHaveBeenCalledWith("", "OPENAI_API_KEY", {
+        includeRateLimited: true,
+      });
+      expect(res.body.data).toEqual([{ id: "gpt-4o", displayName: "gpt-4o" }]);
+    });
+
     it("returns empty array for unknown provider", async () => {
       const res = await request(app).get(`${API_PREFIX}/models?provider=unknown`);
       expect(res.status).toBe(200);
@@ -191,6 +208,39 @@ describe("Models API", () => {
           headers: { Authorization: "Bearer sk-openai-test" },
         })
       );
+    });
+
+    it("keeps current OpenAI chat and reasoning models while excluding specialized ones", async () => {
+      process.env.OPENAI_API_KEY = "sk-openai-test";
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            data: [
+              { id: "chatgpt-4o-latest", object: "model" },
+              { id: "gpt-5", object: "model" },
+              { id: "gpt-5-mini", object: "model" },
+              { id: "gpt-5.3-codex", object: "model" },
+              { id: "o3", object: "model" },
+              { id: "o4-mini", object: "model" },
+              { id: "gpt-image-1", object: "model" },
+              { id: "gpt-4o-transcribe", object: "model" },
+              { id: "text-embedding-3-small", object: "model" },
+            ],
+          }),
+      });
+
+      const res = await request(app).get(`${API_PREFIX}/models?provider=openai`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual([
+        { id: "chatgpt-4o-latest", displayName: "chatgpt-4o-latest" },
+        { id: "gpt-5", displayName: "gpt-5" },
+        { id: "gpt-5-mini", displayName: "gpt-5-mini" },
+        { id: "gpt-5.3-codex", displayName: "gpt-5.3-codex" },
+        { id: "o3", displayName: "o3" },
+        { id: "o4-mini", displayName: "o4-mini" },
+      ]);
     });
 
     it("uses cache on second OpenAI request", async () => {
@@ -318,7 +368,9 @@ describe("Models API", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data).toEqual([{ id: "claude-sonnet-4", displayName: "Claude Sonnet 4" }]);
-      expect(mockGetNextKey).toHaveBeenCalledWith("proj-123", "ANTHROPIC_API_KEY");
+      expect(mockGetNextKey).toHaveBeenCalledWith("proj-123", "ANTHROPIC_API_KEY", {
+        includeRateLimited: true,
+      });
       expect(mockModelsList).toHaveBeenCalledTimes(1);
     });
 
@@ -334,7 +386,9 @@ describe("Models API", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data).toEqual([{ id: "claude-sonnet-4", displayName: "Claude Sonnet 4" }]);
-      expect(mockGetNextKey).toHaveBeenCalledWith("", "ANTHROPIC_API_KEY");
+      expect(mockGetNextKey).toHaveBeenCalledWith("", "ANTHROPIC_API_KEY", {
+        includeRateLimited: true,
+      });
       expect(mockModelsList).toHaveBeenCalledTimes(1);
     });
 
@@ -410,8 +464,14 @@ describe("Models API", () => {
     });
 
     it("returns valid: false with error for Claude when API fails", async () => {
-      mockModelsList.mockImplementation(async function* () {
-        throw new Error("Invalid API key");
+      mockModelsList.mockReturnValue({
+        [Symbol.asyncIterator]() {
+          return {
+            next: async () => {
+              throw new Error("Invalid API key");
+            },
+          };
+        },
       });
 
       const result = await validateApiKey("claude", "bad-key");

@@ -5,6 +5,7 @@ import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import * as modelListCache from "../services/model-list-cache.js";
 import { getNextKey } from "../services/api-key-resolver.service.js";
+import { isOpenAITextModel } from "../utils/openai-models.js";
 
 export interface ModelOption {
   id: string;
@@ -15,9 +16,6 @@ export const modelsRouter = Router();
 
 const CURSOR_MODELS_URL = "https://api.cursor.com/v0/models";
 const OPENAI_MODELS_URL = "https://api.openai.com/v1/models";
-
-/** Chat model ID patterns: gpt-*, o1-*, o3-* */
-const OPENAI_CHAT_PATTERN = /^(gpt-|o1-|o3-)/;
 
 /** Validate an API key via minimal API call. Reused by POST /env/keys/validate. */
 export async function validateApiKey(
@@ -137,7 +135,7 @@ async function fetchOpenAIModels(apiKey: string): Promise<ModelOption[]> {
 
   const body = (await response.json()) as { data?: { id: string }[] };
   const models = (body.data ?? [])
-    .filter((m) => m.id && OPENAI_CHAT_PATTERN.test(m.id))
+    .filter((m) => m.id && isOpenAITextModel(m.id))
     .map((m) => ({ id: m.id, displayName: m.id }));
   return models;
 }
@@ -220,7 +218,9 @@ async function resolveApiKey(
   projectId: string | undefined,
   provider: "ANTHROPIC_API_KEY" | "CURSOR_API_KEY" | "OPENAI_API_KEY"
 ): Promise<string | null> {
-  const resolved = await getNextKey(projectId ?? "", provider);
+  // Model-list fetches are lightweight capability discovery and should still work
+  // even if a key is cooling down after an agent rate-limit event.
+  const resolved = await getNextKey(projectId ?? "", provider, { includeRateLimited: true });
   return resolved?.key?.trim() ?? null;
 }
 

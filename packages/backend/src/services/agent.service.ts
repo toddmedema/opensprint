@@ -8,6 +8,12 @@ import { AgentClient } from "./agent-client.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import { getErrorMessage, isLimitError } from "../utils/error-utils.js";
+import {
+  isOpenAIResponsesModel,
+  toOpenAIResponsesInputMessage,
+  type OpenAIResponsesInputContent,
+  type OpenAIResponsesInputMessage,
+} from "../utils/openai-models.js";
 import { shellExec } from "../utils/shell-exec.js";
 import { activeAgentsService } from "./active-agents.service.js";
 import {
@@ -15,7 +21,6 @@ import {
   recordLimitHit,
   clearLimitHit,
   ENV_FALLBACK_KEY_ID,
-  type KeySource,
 } from "./api-key-resolver.service.js";
 
 /** Message for planning agent (user or assistant) */
@@ -64,6 +69,43 @@ export interface InvokePlanningAgentOptions {
 /** Response from planning agent */
 export interface PlanningAgentResponse {
   content: string;
+}
+
+function buildOpenAIPlanningResponsesInput(
+  messages: PlanningMessage[],
+  images?: string[]
+): OpenAIResponsesInputMessage[] {
+  return messages.map((message, index) => {
+    const isLastUserMessage = message.role === "user" && index === messages.length - 1;
+    const hasImages = isLastUserMessage && images && images.length > 0;
+    if (!hasImages) {
+      return toOpenAIResponsesInputMessage(message.role, message.content);
+    }
+
+    const content: OpenAIResponsesInputContent[] = [{ type: "input_text", text: message.content }];
+    for (const image of images) {
+      content.push({
+        type: "input_image",
+        image_url: image.startsWith("data:") ? image : `data:image/png;base64,${image}`,
+        detail: "auto",
+      });
+    }
+    return { role: "user", content };
+  });
+}
+
+async function collectOpenAIResponsesStream(
+  stream: AsyncIterable<{ type?: string; delta?: string }>,
+  onChunk: (chunk: string) => void
+): Promise<string> {
+  let fullContent = "";
+  for await (const event of stream) {
+    if (event.type === "response.output_text.delta" && event.delta) {
+      fullContent += event.delta;
+      onChunk(event.delta);
+    }
+  }
+  return fullContent;
 }
 
 /** Options for invokeCodingAgent (file-based prompt) */
@@ -598,27 +640,30 @@ ${branchDiffStat || "(no output)"}
     const { projectId, config, messages, systemPrompt, images, onChunk } = options;
 
     const model = config.model ?? "gpt-4o-mini";
+    const useResponsesApi = isOpenAIResponsesModel(model);
 
     // Map PlanningMessage (user/assistant) to OpenAI messages. OpenAI uses system, user, assistant.
     const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
-    if (systemPrompt?.trim()) {
+    if (!useResponsesApi && systemPrompt?.trim()) {
       openaiMessages.push({ role: "system", content: systemPrompt.trim() });
     }
-    for (let i = 0; i < messages.length; i++) {
-      const m = messages[i];
-      const isLastUser = m.role === "user" && i === messages.length - 1;
-      const hasImages = isLastUser && images && images.length > 0;
-      if (hasImages) {
-        const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [
-          { type: "text", text: m.content },
-        ];
-        for (const img of images!) {
-          const dataUrl = img.startsWith("data:") ? img : `data:image/png;base64,${img}`;
-          content.push({ type: "image_url", image_url: { url: dataUrl } });
+    if (!useResponsesApi) {
+      for (let i = 0; i < messages.length; i++) {
+        const m = messages[i];
+        const isLastUser = m.role === "user" && i === messages.length - 1;
+        const hasImages = isLastUser && images && images.length > 0;
+        if (hasImages) {
+          const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [
+            { type: "text", text: m.content },
+          ];
+          for (const img of images!) {
+            const dataUrl = img.startsWith("data:") ? img : `data:image/png;base64,${img}`;
+            content.push({ type: "image_url", image_url: { url: dataUrl } });
+          }
+          openaiMessages.push({ role: "user", content });
+        } else {
+          openaiMessages.push({ role: m.role, content: m.content });
         }
-        openaiMessages.push({ role: "user", content });
-      } else {
-        openaiMessages.push({ role: m.role, content: m.content });
       }
     }
 
@@ -655,7 +700,29 @@ ${branchDiffStat || "(no output)"}
 
       try {
         let content: string;
-        if (onChunk) {
+        if (useResponsesApi) {
+          const responseInput = buildOpenAIPlanningResponsesInput(messages, images);
+          if (onChunk) {
+            content = await collectOpenAIResponsesStream(
+              (await client.responses.create({
+                model,
+                instructions: systemPrompt?.trim() || undefined,
+                input: responseInput,
+                max_output_tokens: 8192,
+                stream: true,
+              })) as AsyncIterable<{ type?: string; delta?: string }>,
+              onChunk
+            );
+          } else {
+            const response = await client.responses.create({
+              model,
+              instructions: systemPrompt?.trim() || undefined,
+              input: responseInput,
+              max_output_tokens: 8192,
+            });
+            content = response.output_text;
+          }
+        } else if (onChunk) {
           const stream = await client.chat.completions.create({
             model,
             messages: openaiMessages,

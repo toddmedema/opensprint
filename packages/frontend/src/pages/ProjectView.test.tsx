@@ -9,6 +9,7 @@ import { DisplayPreferencesProvider } from "../contexts/DisplayPreferencesContex
 import { ProjectView } from "./ProjectView";
 import { ProjectShell } from "./ProjectShell";
 import { api } from "../api/client";
+import { queryKeys } from "../api/queryKeys";
 import projectReducer from "../store/slices/projectSlice";
 import websocketReducer, { setDeliverToast } from "../store/slices/websocketSlice";
 import connectionReducer, { setConnectionError } from "../store/slices/connectionSlice";
@@ -18,23 +19,6 @@ import executeReducer from "../store/slices/executeSlice";
 import evalReducer from "../store/slices/evalSlice";
 import deliverReducer from "../store/slices/deliverSlice";
 import notificationReducer from "../store/slices/notificationSlice";
-
-// Task included in list so fetchTasks.fulfilled does not clear selectedTaskId (URL deep link)
-const mockTaskForDeepLink = {
-  id: "opensprint.dev-xyz.1",
-  title: "Build task",
-  description: "",
-  type: "task" as const,
-  status: "open" as const,
-  priority: 1,
-  assignee: null,
-  labels: [],
-  dependencies: [],
-  epicId: null,
-  kanbanColumn: "backlog" as const,
-  createdAt: "",
-  updatedAt: "",
-};
 
 // Mock websocket middleware to prevent connection attempts
 const mockWsConnect = vi.fn((payload: unknown) => ({ type: "ws/connect", payload }));
@@ -373,6 +357,171 @@ describe("ProjectView upfront loading and mount-all", () => {
       expect(state.plan.plans[0].metadata.planId).toBe("p2");
       expect(state.eval.feedback).toHaveLength(1);
       expect(state.eval.feedback[0].id).toBe("f2");
+    });
+  });
+
+  it("keeps cached project data populated after switching projects", async () => {
+    const proj1Tasks = [
+      {
+        id: "t1",
+        title: "Task 1",
+        description: "",
+        type: "task" as const,
+        status: "open" as const,
+        priority: 1,
+        assignee: null,
+        labels: [],
+        dependencies: [],
+        epicId: null,
+        kanbanColumn: "backlog" as const,
+        createdAt: "",
+        updatedAt: "",
+      },
+    ];
+    const proj2Tasks = [
+      {
+        id: "t2",
+        title: "Task 2",
+        description: "",
+        type: "task" as const,
+        status: "open" as const,
+        priority: 1,
+        assignee: null,
+        labels: [],
+        dependencies: [],
+        epicId: null,
+        kanbanColumn: "backlog" as const,
+        createdAt: "",
+        updatedAt: "",
+      },
+    ];
+    const proj1Plans = {
+      plans: [
+        {
+          metadata: {
+            planId: "p1",
+            epicId: "e1",
+            shippedAt: null,
+            complexity: "low" as const,
+          },
+          content: "# P1",
+          status: "planning" as const,
+          taskCount: 1,
+          doneTaskCount: 0,
+          dependencyCount: 0,
+        },
+      ],
+      edges: [],
+    };
+    const proj2Plans = {
+      plans: [
+        {
+          metadata: {
+            planId: "p2",
+            epicId: "e2",
+            shippedAt: null,
+            complexity: "low" as const,
+          },
+          content: "# P2",
+          status: "planning" as const,
+          taskCount: 1,
+          doneTaskCount: 0,
+          dependencyCount: 0,
+        },
+      ],
+      edges: [],
+    };
+    const proj1Feedback = [
+      {
+        id: "f1",
+        text: "Feedback 1",
+        category: "bug" as const,
+        mappedPlanId: null,
+        createdTaskIds: [],
+        status: "pending" as const,
+        createdAt: "2025-01-01",
+      },
+    ];
+    const proj2Feedback = [
+      {
+        id: "f2",
+        text: "Feedback 2",
+        category: "feature" as const,
+        mappedPlanId: null,
+        createdTaskIds: [],
+        status: "pending" as const,
+        createdAt: "2025-01-01",
+      },
+    ];
+
+    vi.mocked(api.projects.get).mockImplementation((id: string) =>
+      Promise.resolve(
+        id === "proj-1"
+          ? { id: "proj-1", name: "Project 1", currentPhase: "sketch" }
+          : { id: "proj-2", name: "Project 2", currentPhase: "sketch" }
+      ) as never
+    );
+    vi.mocked(api.tasks.list).mockImplementation((id: string) =>
+      Promise.resolve(id === "proj-1" ? proj1Tasks : proj2Tasks) as never
+    );
+    vi.mocked(api.plans.list).mockImplementation((id: string) =>
+      Promise.resolve(id === "proj-1" ? proj1Plans : proj2Plans) as never
+    );
+    vi.mocked(api.feedback.list).mockImplementation((id: string) =>
+      Promise.resolve(id === "proj-1" ? proj1Feedback : proj2Feedback) as never
+    );
+
+    function NavToProj2() {
+      const navigate = useNavigate();
+      return (
+        <button
+          type="button"
+          onClick={() => navigate("/projects/proj-2/sketch")}
+          data-testid="nav-to-proj2"
+        >
+          Go to proj-2
+        </button>
+      );
+    }
+
+    const store = createStore();
+    const queryClient = createQueryClient();
+    queryClient.setQueryData(queryKeys.tasks.list("proj-2"), proj2Tasks);
+    queryClient.setQueryData(queryKeys.plans.list("proj-2"), proj2Plans);
+    queryClient.setQueryData(queryKeys.feedback.list("proj-2"), proj2Feedback);
+
+    render(
+      <Provider store={store}>
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider>
+            <DisplayPreferencesProvider>
+              <MemoryRouter initialEntries={["/projects/proj-1/sketch"]}>
+                <LocationDisplay />
+                <NavToProj2 />
+                <Routes>
+                  <Route path="/projects/:projectId" element={<ProjectShell />}>
+                    <Route index element={<Navigate to="sketch" replace />} />
+                    <Route path=":phase" element={<ProjectView />} />
+                  </Route>
+                </Routes>
+              </MemoryRouter>
+            </DisplayPreferencesProvider>
+          </ThemeProvider>
+        </QueryClientProvider>
+      </Provider>
+    );
+
+    await waitFor(() => expect(screen.getByText("Project 1")).toBeInTheDocument());
+    await waitFor(() => expect(store.getState().execute.tasksById["t1"]).toBeDefined());
+
+    screen.getByTestId("nav-to-proj2").click();
+
+    await waitFor(() => expect(screen.getByText("Project 2")).toBeInTheDocument());
+    await waitFor(() => {
+      const state = store.getState();
+      expect(state.execute.tasksById["t2"]).toBeDefined();
+      expect(state.plan.plans[0]?.metadata.planId).toBe("p2");
+      expect(state.eval.feedback[0]?.id).toBe("f2");
     });
   });
 

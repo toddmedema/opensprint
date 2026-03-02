@@ -17,8 +17,9 @@ const { mockMessagesCreate, mockMessagesStream } = vi.hoisted(() => ({
   mockMessagesStream: vi.fn(),
 }));
 
-const { mockOpenAICreate } = vi.hoisted(() => ({
+const { mockOpenAICreate, mockOpenAIResponsesCreate } = vi.hoisted(() => ({
   mockOpenAICreate: vi.fn(),
+  mockOpenAIResponsesCreate: vi.fn(),
 }));
 
 const { mockShellExec } = vi.hoisted(() => ({
@@ -53,6 +54,9 @@ vi.mock("openai", () => ({
       completions: {
         create: (...args: unknown[]) => mockOpenAICreate(...args),
       },
+    },
+    responses: {
+      create: (...args: unknown[]) => mockOpenAIResponsesCreate(...args),
     },
   })),
 }));
@@ -309,6 +313,29 @@ describe("AgentService", () => {
       expect(result.content).toBe("Hello from OpenAI");
     });
 
+    it("routes codex planning models through the Responses API", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "sk-openai-test", keyId: "k1", source: "global" });
+      mockOpenAIResponsesCreate.mockResolvedValue({
+        output_text: "Hello from Codex",
+      });
+
+      const result = await service.invokePlanningAgent({
+        projectId,
+        config: { type: "openai", model: "gpt-5.3-codex", cliCommand: null },
+        messages: [{ role: "user", content: "Hi" }],
+      });
+
+      expect(mockOpenAICreate).not.toHaveBeenCalled();
+      expect(mockOpenAIResponsesCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: "gpt-5.3-codex",
+          input: [expect.objectContaining({ role: "user", content: "Hi" })],
+          max_output_tokens: 8192,
+        })
+      );
+      expect(result.content).toBe("Hello from Codex");
+    });
+
     it("on limit error: recordLimitHit, retry with next key, succeeds on second key", async () => {
       mockGetNextKey
         .mockResolvedValueOnce({ key: "sk-openai-key1", keyId: "k1", source: "global" })
@@ -363,6 +390,37 @@ describe("AgentService", () => {
       expect(mockGetNextKey).toHaveBeenCalledWith(projectId, "OPENAI_API_KEY");
       expect(mockClearLimitHit).toHaveBeenCalledWith(projectId, "OPENAI_API_KEY", "k1", "global");
       expect(result.content).toBe("Hello world");
+    });
+
+    it("streams codex planning models through the Responses API", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "sk-openai-test", keyId: "k1", source: "global" });
+      const onChunk = vi.fn();
+      mockOpenAIResponsesCreate.mockResolvedValue(
+        (async function* () {
+          yield { type: "response.output_text.delta", delta: "Hello " };
+          yield { type: "response.output_text.delta", delta: "codex" };
+        })()
+      );
+
+      const result = await service.invokePlanningAgent({
+        projectId,
+        config: { type: "openai", model: "gpt-5.3-codex", cliCommand: null },
+        messages: [{ role: "user", content: "Hi" }],
+        onChunk,
+      });
+
+      expect(mockOpenAICreate).not.toHaveBeenCalled();
+      expect(mockOpenAIResponsesCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: "gpt-5.3-codex",
+          input: [expect.objectContaining({ role: "user", content: "Hi" })],
+          max_output_tokens: 8192,
+          stream: true,
+        })
+      );
+      expect(onChunk).toHaveBeenCalledWith("Hello ");
+      expect(onChunk).toHaveBeenCalledWith("codex");
+      expect(result.content).toBe("Hello codex");
     });
   });
 });

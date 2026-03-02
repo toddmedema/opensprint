@@ -55,6 +55,21 @@ describe("ApiKeyResolver", () => {
       expect(result).toBeNull();
     });
 
+    it("can include a recently rate-limited global key for read-only operations", async () => {
+      const recent = new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString();
+      await setGlobalSettings({
+        apiKeys: {
+          ANTHROPIC_API_KEY: [{ id: "g1", value: "sk-ant-global", limitHitAt: recent }],
+        },
+      });
+
+      const result = await getNextKey(projectId, "ANTHROPIC_API_KEY", {
+        includeRateLimited: true,
+      });
+
+      expect(result).toEqual({ key: "sk-ant-global", keyId: "g1", source: "global" });
+    });
+
     it("falls back to env when no global keys exist", async () => {
       process.env.ANTHROPIC_API_KEY = "env-key-value";
       await setGlobalSettings({});

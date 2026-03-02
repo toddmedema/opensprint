@@ -10,6 +10,11 @@ import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import { getErrorMessage, getExecErrorShape, isLimitError } from "../utils/error-utils.js";
 import {
+  isOpenAIResponsesModel,
+  toOpenAIResponsesInputMessage,
+  type OpenAIResponsesInputMessage,
+} from "../utils/openai-models.js";
+import {
   getNextKey,
   recordLimitHit,
   clearLimitHit,
@@ -57,6 +62,34 @@ function buildFullPrompt(options: {
   }
   full += `Human: ${options.prompt}\n\nAssistant:`;
   return full;
+}
+
+function buildOpenAIResponsesInput(options: {
+  conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>;
+  prompt: string;
+}): OpenAIResponsesInputMessage[] {
+  const input: OpenAIResponsesInputMessage[] = [];
+  if (options.conversationHistory) {
+    for (const message of options.conversationHistory) {
+      input.push(toOpenAIResponsesInputMessage(message.role, message.content));
+    }
+  }
+  input.push({ role: "user", content: options.prompt });
+  return input;
+}
+
+async function collectOpenAIResponsesStream(
+  stream: AsyncIterable<{ type?: string; delta?: string }>,
+  onChunk: (chunk: string) => void
+): Promise<string> {
+  let fullContent = "";
+  for await (const event of stream) {
+    if (event.type === "response.output_text.delta" && event.delta) {
+      fullContent += event.delta;
+      onChunk(event.delta);
+    }
+  }
+  return fullContent;
 }
 
 /** Format raw agent errors into user-friendly messages with remediation hints */
@@ -403,10 +436,13 @@ export class AgentClient {
 
       const model = config.model ?? "gpt-4o-mini";
       const systemPrompt = `You are a coding agent. Execute the task described in the user message. Output your work directly.`;
-      const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: taskContent },
-      ];
+      const useResponsesApi = isOpenAIResponsesModel(model);
+      const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = useResponsesApi
+        ? []
+        : [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: taskContent },
+          ];
 
       const triedKeyIds = new Set<string>();
       let lastError: unknown;
@@ -498,22 +534,38 @@ export class AgentClient {
 
         const client = new OpenAI({ apiKey: key });
         try {
-          const stream = await client.chat.completions.create({
-            model,
-            messages: openaiMessages,
-            max_tokens: 16384,
-            stream: true,
-          });
+          const fullContent = useResponsesApi
+            ? await collectOpenAIResponsesStream(
+                (await client.responses.create({
+                  model,
+                  instructions: systemPrompt,
+                  input: [{ role: "user", content: taskContent }],
+                  max_output_tokens: 16384,
+                  stream: true,
+                })) as AsyncIterable<{ type?: string; delta?: string }>,
+                (delta) => {
+                  if (!aborted) emit(delta);
+                }
+              )
+            : await (async () => {
+                const stream = await client.chat.completions.create({
+                  model,
+                  messages: openaiMessages,
+                  max_tokens: 16384,
+                  stream: true,
+                });
 
-          let fullContent = "";
-          for await (const chunk of stream) {
-            if (aborted) return;
-            const delta = chunk.choices[0]?.delta?.content;
-            if (delta) {
-              fullContent += delta;
-              emit(delta);
-            }
-          }
+                let streamedContent = "";
+                for await (const chunk of stream) {
+                  if (aborted) return streamedContent;
+                  const delta = chunk.choices[0]?.delta?.content;
+                  if (delta) {
+                    streamedContent += delta;
+                    emit(delta);
+                  }
+                }
+                return streamedContent;
+              })();
 
           if (aborted) return;
 
@@ -1176,17 +1228,20 @@ export class AgentClient {
   private async invokeOpenAIApi(options: AgentInvokeOptions): Promise<AgentResponse> {
     const { config, prompt, systemPrompt, conversationHistory, projectId } = options;
     const model = config.model ?? "gpt-4o-mini";
+    const useResponsesApi = isOpenAIResponsesModel(model);
 
     const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
-    if (systemPrompt?.trim()) {
+    if (!useResponsesApi && systemPrompt?.trim()) {
       openaiMessages.push({ role: "system", content: systemPrompt.trim() });
     }
-    if (conversationHistory) {
+    if (!useResponsesApi && conversationHistory) {
       for (const m of conversationHistory) {
         openaiMessages.push({ role: m.role, content: m.content });
       }
     }
-    openaiMessages.push({ role: "user", content: prompt });
+    if (!useResponsesApi) {
+      openaiMessages.push({ role: "user", content: prompt });
+    }
 
     const triedKeyIds = new Set<string>();
     let lastError: unknown;
@@ -1228,7 +1283,29 @@ export class AgentClient {
 
       try {
         let content: string;
-        if (options.onChunk) {
+        if (useResponsesApi) {
+          const responseInput = buildOpenAIResponsesInput({ conversationHistory, prompt });
+          if (options.onChunk) {
+            content = await collectOpenAIResponsesStream(
+              (await client.responses.create({
+                model,
+                instructions: systemPrompt?.trim() || undefined,
+                input: responseInput,
+                max_output_tokens: 8192,
+                stream: true,
+              })) as AsyncIterable<{ type?: string; delta?: string }>,
+              options.onChunk
+            );
+          } else {
+            const response = await client.responses.create({
+              model,
+              instructions: systemPrompt?.trim() || undefined,
+              input: responseInput,
+              max_output_tokens: 8192,
+            });
+            content = response.output_text;
+          }
+        } else if (options.onChunk) {
           const stream = await client.chat.completions.create({
             model,
             messages: openaiMessages,

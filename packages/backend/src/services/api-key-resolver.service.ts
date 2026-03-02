@@ -2,7 +2,7 @@
  * ApiKeyResolver: resolves API keys with rotation support.
  * Priority: 1) global store apiKeys, 2) process.env
  * Project-level apiKeys removed; keys live in global-settings.json only.
- * - getNextKey(projectId, provider): first available key (projectId kept for API compatibility)
+ * - getNextKey(projectId, provider, options): first available key (projectId kept for API compatibility)
  * - recordLimitHit(projectId, provider, keyId, source): set limitHitAt in global store
  * - clearLimitHit(projectId, provider, keyId, source): clear limitHitAt in global store
  */
@@ -26,11 +26,22 @@ export interface ResolvedKey {
   source: KeySource;
 }
 
-/** Find the first available entry (no recent limitHitAt, non-empty value) */
-function findAvailable(entries: ApiKeyEntry[] | undefined): ApiKeyEntry | undefined {
+interface GetNextKeyOptions {
+  /** Include keys even when limitHitAt is still within the 24h cooldown. */
+  includeRateLimited?: boolean;
+}
+
+/** Find the first available entry, optionally including keys that are still cooling down. */
+function findAvailable(
+  entries: ApiKeyEntry[] | undefined,
+  options: GetNextKeyOptions = {}
+): ApiKeyEntry | undefined {
   if (!entries || entries.length === 0) return undefined;
+  const { includeRateLimited = false } = options;
   return entries.find(
-    (e) => (!e.limitHitAt || isLimitHitExpired(e.limitHitAt)) && e.value.trim()
+    (e) =>
+      Boolean(e.value.trim()) &&
+      (includeRateLimited || !e.limitHitAt || isLimitHitExpired(e.limitHitAt))
   );
 }
 
@@ -42,13 +53,14 @@ function findAvailable(entries: ApiKeyEntry[] | undefined): ApiKeyEntry | undefi
  */
 export async function getNextKey(
   _projectId: string,
-  provider: ApiKeyProvider
+  provider: ApiKeyProvider,
+  options: GetNextKeyOptions = {}
 ): Promise<ResolvedKey | null> {
   // 1) Global store
   const globalSettings = await getGlobalSettings();
   const globalEntries = globalSettings.apiKeys?.[provider];
   if (globalEntries && globalEntries.length > 0) {
-    const available = findAvailable(globalEntries);
+    const available = findAvailable(globalEntries, options);
     if (available) {
       return { key: available.value, keyId: available.id, source: "global" };
     }

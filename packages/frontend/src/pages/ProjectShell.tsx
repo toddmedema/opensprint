@@ -55,6 +55,11 @@ function isPhaseRoute(view: string): view is ProjectPhase {
   return VALID_PHASE_SLUGS.includes(view as ProjectPhase);
 }
 
+interface SyncedProjectData {
+  projectId: string;
+  data: unknown;
+}
+
 /**
  * ProjectShell keeps project state (Redux, WebSocket, TanStack Query sync) alive
  * when navigating between phases, Help, and Settings. Only unmounts when leaving
@@ -67,14 +72,13 @@ export function ProjectShell() {
   const dispatch = useAppDispatch();
   const queryClient = useQueryClient();
   const prevProjectIdRef = useRef<string | null>(null);
-  const lastSyncedRef = useRef<Record<string, unknown>>({});
+  const lastSyncedRef = useRef<Record<string, SyncedProjectData | undefined>>({});
 
   const view = getViewFromPathname(location.pathname);
   const currentPhase: ProjectPhase = isPhaseRoute(view) ? view : "sketch";
   const isSketch = currentPhase === "sketch";
   const isPlan = currentPhase === "plan";
   const isExecute = currentPhase === "execute";
-  const isEval = currentPhase === "eval";
   const isDeliver = currentPhase === "deliver";
 
   const { data: project, isLoading: projectLoading, error: projectError } = useProject(projectId);
@@ -103,82 +107,7 @@ export function ProjectShell() {
     enabled: isSketch || isPlan,
   });
 
-  // Sync TanStack Query → Redux (keeps state populated even when on Help/Settings)
-  useEffect(() => {
-    if (!projectId || !tasksData) return;
-    if (lastSyncedRef.current["tasks"] === tasksData) return;
-    lastSyncedRef.current["tasks"] = tasksData;
-    dispatch(setTasks(tasksData));
-  }, [projectId, tasksData, dispatch]);
-  useEffect(() => {
-    if (!projectId || !plansData) return;
-    if (lastSyncedRef.current["plans"] === plansData) return;
-    lastSyncedRef.current["plans"] = plansData;
-    dispatch(setPlansAndGraph({ plans: plansData.plans, dependencyGraph: plansData }));
-  }, [projectId, plansData, dispatch]);
-  useEffect(() => {
-    if (!projectId || feedbackData == null) return;
-    if (lastSyncedRef.current["feedback"] === feedbackData) return;
-    lastSyncedRef.current["feedback"] = feedbackData;
-    dispatch(setFeedback(feedbackData));
-  }, [projectId, feedbackData, dispatch]);
-  useEffect(() => {
-    if (!projectId || !executeStatusData) return;
-    if (lastSyncedRef.current["executeStatus"] === executeStatusData) return;
-    lastSyncedRef.current["executeStatus"] = executeStatusData;
-    dispatch(
-      setExecuteStatusPayload({
-        activeTasks: executeStatusData.activeTasks ?? [],
-        queueDepth: executeStatusData.queueDepth ?? 0,
-        awaitingApproval: executeStatusData.awaitingApproval,
-        totalDone: executeStatusData.totalDone ?? 0,
-        totalFailed: executeStatusData.totalFailed ?? 0,
-      })
-    );
-  }, [projectId, executeStatusData, dispatch]);
-  useEffect(() => {
-    if (!projectId || !deliverStatusData) return;
-    if (lastSyncedRef.current["deliverStatus"] === deliverStatusData) return;
-    lastSyncedRef.current["deliverStatus"] = deliverStatusData;
-    dispatch(
-      setDeliverStatusPayload({
-        activeDeployId: deliverStatusData.activeDeployId,
-        currentDeploy: deliverStatusData.currentDeploy,
-      })
-    );
-  }, [projectId, deliverStatusData, dispatch]);
-  useEffect(() => {
-    if (!projectId || deliverHistoryData == null) return;
-    if (lastSyncedRef.current["deliverHistory"] === deliverHistoryData) return;
-    lastSyncedRef.current["deliverHistory"] = deliverHistoryData;
-    dispatch(setDeliverHistoryPayload(deliverHistoryData));
-  }, [projectId, deliverHistoryData, dispatch]);
-  useEffect(() => {
-    if (!projectId || prdData == null) return;
-    if (lastSyncedRef.current["prd"] === prdData) return;
-    lastSyncedRef.current["prd"] = prdData;
-    dispatch(setPrdContent(prdData));
-  }, [projectId, prdData, dispatch]);
-  useEffect(() => {
-    if (!projectId || prdHistoryData == null) return;
-    if (lastSyncedRef.current["prdHistory"] === prdHistoryData) return;
-    lastSyncedRef.current["prdHistory"] = prdHistoryData;
-    dispatch(setPrdHistory(prdHistoryData));
-  }, [projectId, prdHistoryData, dispatch]);
-  useEffect(() => {
-    if (!projectId || sketchChatData == null) return;
-    if (lastSyncedRef.current["sketchChat"] === sketchChatData) return;
-    lastSyncedRef.current["sketchChat"] = sketchChatData;
-    dispatch(setSketchMessages(sketchChatData));
-  }, [projectId, sketchChatData, dispatch]);
-  useEffect(() => {
-    if (!projectId || planStatusData == null) return;
-    if (lastSyncedRef.current["planStatus"] === planStatusData) return;
-    lastSyncedRef.current["planStatus"] = planStatusData;
-    dispatch(setPlanStatusPayload(planStatusData));
-  }, [projectId, planStatusData, dispatch]);
-
-  // Project lifecycle: connect WS, reset only when switching projects. Cleanup only on unmount (leave project).
+  // Project lifecycle: reset slices before query-to-Redux syncs run, then connect WS.
   useEffect(() => {
     if (!projectId) return;
 
@@ -193,10 +122,10 @@ export function ProjectShell() {
       dispatch(resetDeliver());
       dispatch(resetProject());
       dispatch(resetWebsocket());
-      queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(projectId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.feedback.list(projectId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(projectId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.feedback.list(projectId) });
     }
     prevProjectIdRef.current = projectId;
     dispatch(wsConnect({ projectId }));
@@ -213,6 +142,91 @@ export function ProjectShell() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
+
+  // Sync TanStack Query → Redux (keeps state populated even when on Help/Settings)
+  useEffect(() => {
+    if (!projectId || !tasksData) return;
+    const previous = lastSyncedRef.current["tasks"];
+    if (previous?.projectId === projectId && previous.data === tasksData) return;
+    lastSyncedRef.current["tasks"] = { projectId, data: tasksData };
+    dispatch(setTasks(tasksData));
+  }, [projectId, tasksData, dispatch]);
+  useEffect(() => {
+    if (!projectId || !plansData) return;
+    const previous = lastSyncedRef.current["plans"];
+    if (previous?.projectId === projectId && previous.data === plansData) return;
+    lastSyncedRef.current["plans"] = { projectId, data: plansData };
+    dispatch(setPlansAndGraph({ plans: plansData.plans, dependencyGraph: plansData }));
+  }, [projectId, plansData, dispatch]);
+  useEffect(() => {
+    if (!projectId || feedbackData == null) return;
+    const previous = lastSyncedRef.current["feedback"];
+    if (previous?.projectId === projectId && previous.data === feedbackData) return;
+    lastSyncedRef.current["feedback"] = { projectId, data: feedbackData };
+    dispatch(setFeedback(feedbackData));
+  }, [projectId, feedbackData, dispatch]);
+  useEffect(() => {
+    if (!projectId || !executeStatusData) return;
+    const previous = lastSyncedRef.current["executeStatus"];
+    if (previous?.projectId === projectId && previous.data === executeStatusData) return;
+    lastSyncedRef.current["executeStatus"] = { projectId, data: executeStatusData };
+    dispatch(
+      setExecuteStatusPayload({
+        activeTasks: executeStatusData.activeTasks ?? [],
+        queueDepth: executeStatusData.queueDepth ?? 0,
+        awaitingApproval: executeStatusData.awaitingApproval,
+        totalDone: executeStatusData.totalDone ?? 0,
+        totalFailed: executeStatusData.totalFailed ?? 0,
+      })
+    );
+  }, [projectId, executeStatusData, dispatch]);
+  useEffect(() => {
+    if (!projectId || !deliverStatusData) return;
+    const previous = lastSyncedRef.current["deliverStatus"];
+    if (previous?.projectId === projectId && previous.data === deliverStatusData) return;
+    lastSyncedRef.current["deliverStatus"] = { projectId, data: deliverStatusData };
+    dispatch(
+      setDeliverStatusPayload({
+        activeDeployId: deliverStatusData.activeDeployId,
+        currentDeploy: deliverStatusData.currentDeploy,
+      })
+    );
+  }, [projectId, deliverStatusData, dispatch]);
+  useEffect(() => {
+    if (!projectId || deliverHistoryData == null) return;
+    const previous = lastSyncedRef.current["deliverHistory"];
+    if (previous?.projectId === projectId && previous.data === deliverHistoryData) return;
+    lastSyncedRef.current["deliverHistory"] = { projectId, data: deliverHistoryData };
+    dispatch(setDeliverHistoryPayload(deliverHistoryData));
+  }, [projectId, deliverHistoryData, dispatch]);
+  useEffect(() => {
+    if (!projectId || prdData == null) return;
+    const previous = lastSyncedRef.current["prd"];
+    if (previous?.projectId === projectId && previous.data === prdData) return;
+    lastSyncedRef.current["prd"] = { projectId, data: prdData };
+    dispatch(setPrdContent(prdData));
+  }, [projectId, prdData, dispatch]);
+  useEffect(() => {
+    if (!projectId || prdHistoryData == null) return;
+    const previous = lastSyncedRef.current["prdHistory"];
+    if (previous?.projectId === projectId && previous.data === prdHistoryData) return;
+    lastSyncedRef.current["prdHistory"] = { projectId, data: prdHistoryData };
+    dispatch(setPrdHistory(prdHistoryData));
+  }, [projectId, prdHistoryData, dispatch]);
+  useEffect(() => {
+    if (!projectId || sketchChatData == null) return;
+    const previous = lastSyncedRef.current["sketchChat"];
+    if (previous?.projectId === projectId && previous.data === sketchChatData) return;
+    lastSyncedRef.current["sketchChat"] = { projectId, data: sketchChatData };
+    dispatch(setSketchMessages(sketchChatData));
+  }, [projectId, sketchChatData, dispatch]);
+  useEffect(() => {
+    if (!projectId || planStatusData == null) return;
+    const previous = lastSyncedRef.current["planStatus"];
+    if (previous?.projectId === projectId && previous.data === planStatusData) return;
+    lastSyncedRef.current["planStatus"] = { projectId, data: planStatusData };
+    dispatch(setPlanStatusPayload(planStatusData));
+  }, [projectId, planStatusData, dispatch]);
 
   const handlePhaseChange = (phase: ProjectPhase) => {
     if (projectId) navigate(getProjectPhasePath(projectId, phase));

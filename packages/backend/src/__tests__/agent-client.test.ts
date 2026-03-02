@@ -26,8 +26,9 @@ const { mockGetNextKey, mockRecordLimitHit, mockClearLimitHit } = vi.hoisted(() 
   mockClearLimitHit: vi.fn(),
 }));
 
-const { mockOpenAICreate } = vi.hoisted(() => ({
+const { mockOpenAICreate, mockOpenAIResponsesCreate } = vi.hoisted(() => ({
   mockOpenAICreate: vi.fn(),
+  mockOpenAIResponsesCreate: vi.fn(),
 }));
 
 vi.mock("openai", () => ({
@@ -36,6 +37,9 @@ vi.mock("openai", () => ({
       completions: {
         create: (...args: unknown[]) => mockOpenAICreate(...args),
       },
+    },
+    responses: {
+      create: (...args: unknown[]) => mockOpenAIResponsesCreate(...args),
     },
   })),
 }));
@@ -285,6 +289,30 @@ describe("AgentClient", () => {
       delete process.env.OPENAI_API_KEY;
     });
 
+    it("should route codex OpenAI models to the Responses API", async () => {
+      process.env.OPENAI_API_KEY = "sk-openai-test";
+      mockOpenAIResponsesCreate.mockResolvedValue({
+        output_text: "Codex coding response",
+      });
+
+      const result = await client.invoke({
+        config: { type: "openai", model: "gpt-5.3-codex", cliCommand: null },
+        prompt: "Implement login",
+        cwd: "/tmp",
+      });
+
+      expect(mockOpenAICreate).not.toHaveBeenCalled();
+      expect(mockOpenAIResponsesCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: "gpt-5.3-codex",
+          input: [expect.objectContaining({ role: "user", content: "Implement login" })],
+          max_output_tokens: 8192,
+        })
+      );
+      expect(result.content).toBe("Codex coding response");
+      delete process.env.OPENAI_API_KEY;
+    });
+
     it("should use ApiKeyResolver when projectId provided for openai", async () => {
       mockGetNextKey.mockResolvedValue({ key: "sk-openai-key", keyId: "k1", source: "global" });
       mockOpenAICreate.mockResolvedValue({
@@ -484,6 +512,63 @@ describe("AgentClient", () => {
       );
       expect(onOutput).toHaveBeenCalled();
       expect(mockClearLimitHit).toHaveBeenCalledWith("proj-openai", "OPENAI_API_KEY", "k1", "global");
+
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it("should run codex OpenAI models in-process via the Responses API", async () => {
+      const fs = await import("fs/promises");
+      const path = await import("path");
+      const os = await import("os");
+      const tmpDir = path.join(os.tmpdir(), `agent-client-openai-codex-${Date.now()}`);
+      const taskDir = path.join(tmpDir, ".opensprint/active/os-abc.1");
+      await fs.mkdir(taskDir, { recursive: true });
+      const taskFilePath = path.join(taskDir, "prompt.md");
+      await fs.writeFile(taskFilePath, "# Task\n\nAdd a button", "utf-8");
+
+      mockGetNextKey.mockResolvedValue({ key: "sk-openai-spawn", keyId: "k1", source: "global" });
+      mockOpenAIResponsesCreate.mockImplementation(async () => {
+        async function* stream() {
+          yield { type: "response.output_text.delta", delta: "Here " };
+          yield { type: "response.output_text.delta", delta: "is " };
+          yield { type: "response.output_text.delta", delta: "the code." };
+        }
+        return stream();
+      });
+
+      const onOutput = vi.fn();
+      const onExit = vi.fn();
+      const config: AgentConfig = { type: "openai", model: "gpt-5.3-codex", cliCommand: null };
+
+      const { pid } = client.spawnWithTaskFile(
+        config,
+        taskFilePath,
+        tmpDir,
+        onOutput,
+        onExit,
+        "coder",
+        undefined,
+        "proj-openai"
+      );
+
+      expect(pid).toBeNull();
+
+      await vi.waitFor(
+        () => {
+          expect(onExit).toHaveBeenCalledWith(0);
+        },
+        { timeout: 2000 }
+      );
+      expect(mockOpenAICreate).not.toHaveBeenCalled();
+      expect(mockOpenAIResponsesCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: "gpt-5.3-codex",
+          instructions: expect.stringContaining("coding agent"),
+          input: [expect.objectContaining({ role: "user", content: "# Task\n\nAdd a button" })],
+          max_output_tokens: 16384,
+          stream: true,
+        })
+      );
 
       await fs.rm(tmpDir, { recursive: true, force: true });
     });
