@@ -72,9 +72,24 @@ describe("SettingsPage", () => {
     });
 
     const page = screen.getByTestId("settings-page");
-    expect(page).toHaveClass("overflow-y-auto");
-    expect(page).toHaveClass("min-h-0");
     expect(page).toHaveClass("flex-1");
+    expect(page).toHaveClass("min-h-0");
+    expect(page).toHaveClass("flex");
+    expect(page).toHaveClass("flex-col");
+    expect(page).toHaveClass("overflow-hidden");
+    // Scrollable content is in a child
+    const scrollArea = page.querySelector(".overflow-y-auto");
+    expect(scrollArea).toBeInTheDocument();
+  });
+
+  it("renders second-level top bar with Global and Project navigation", async () => {
+    renderSettingsPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("settings-top-bar")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("settings-global-tab")).toHaveTextContent("Global");
+    expect(screen.getByTestId("settings-project-tab")).toHaveTextContent("Project");
   });
 
   it("renders global settings content", async () => {

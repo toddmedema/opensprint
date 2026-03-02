@@ -3,9 +3,13 @@ import { useSearchParams, Link } from "react-router-dom";
 import { FolderBrowser } from "./FolderBrowser";
 import { CloseButton } from "./CloseButton";
 import { ModelSelect } from "./ModelSelect";
-import { GlobalSettingsContent } from "./GlobalSettingsContent";
 import { AgentsMdSection } from "./AgentsMdSection";
-import { SaveIndicator, type SaveStatus } from "./SaveIndicator";
+import { SaveIndicator } from "./SaveIndicator";
+import { SettingsTopBar } from "./settings/SettingsTopBar";
+import {
+  SettingsSubTabsBar,
+  type SettingsSubTab,
+} from "./settings/SettingsSubTabsBar";
 import { api } from "../api/client";
 import type {
   Project,
@@ -34,31 +38,20 @@ interface ProjectSettingsModalProps {
   fullScreen?: boolean;
 }
 
-type Tab = "basics" | "agents" | "deployment" | "hil";
-
-const TABS: { key: Tab; label: string }[] = [
-  { key: "basics", label: "Project Info" },
-  { key: "agents", label: "Agent Config" },
-  { key: "deployment", label: "Deliver" },
-  { key: "hil", label: "Autonomy" },
-];
-
-type SettingsMode = "project" | "display";
-
 const TAB_PARAM = "tab";
 
-function parseTabFromSearch(search: string): Tab | null {
+function parseTabFromSearch(search: string): SettingsSubTab | null {
   const params = new URLSearchParams(search);
   const t = params.get(TAB_PARAM);
-  if (t && TABS.some((x) => x.key === t)) return t as Tab;
+  const valid: SettingsSubTab[] = ["basics", "agents", "deployment", "hil"];
+  if (t && valid.includes(t as SettingsSubTab)) return t as SettingsSubTab;
   return null;
 }
 
 export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: ProjectSettingsModalProps) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [mode, setMode] = useState<SettingsMode>("project");
   const tabFromUrl = fullScreen ? parseTabFromSearch(searchParams.toString()) : null;
-  const [activeTab, setActiveTab] = useState<Tab>(tabFromUrl ?? "basics");
+  const [activeTab, setActiveTab] = useState<SettingsSubTab>(tabFromUrl ?? "basics");
 
   // Sync URL -> state when fullScreen (e.g. browser back/forward)
   useEffect(() => {
@@ -66,24 +59,23 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
       setActiveTab(tabFromUrl);
     }
   }, [fullScreen, tabFromUrl, activeTab]);
+
   const [saving, setSaving] = useState(false);
-  const [displaySaveStatus, setDisplaySaveStatus] = useState<SaveStatus>("saved");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
 
-  const effectiveSaveStatus: SaveStatus =
-    mode === "project" ? (saving ? "saving" : "saved") : displaySaveStatus;
+  const saveStatus = saving ? "saving" : "saved";
 
   useEffect(() => {
-    if (effectiveSaveStatus !== "saving") return;
+    if (saveStatus !== "saving") return;
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = "";
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [effectiveSaveStatus]);
+  }, [saveStatus]);
 
   // Project basics
   const [name, setName] = useState(project.name);
@@ -252,11 +244,11 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
   );
 
   const handleClose = useCallback(async () => {
-    if (mode === "project" && settings && !loading) {
+    if (settings && !loading) {
       await persistSettings(true);
     }
     onClose();
-  }, [mode, settings, loading, persistSettings, onClose]);
+  }, [settings, loading, persistSettings, onClose]);
 
   const saveOnBlurRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleSaveOnBlur = useCallback(() => {
@@ -268,8 +260,8 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
   }, [persistSettings]);
 
   const switchTab = useCallback(
-    (tab: Tab) => {
-      if (mode === "project" && settings) void persistSettings();
+    (tab: SettingsSubTab) => {
+      if (settings) void persistSettings();
       setActiveTab(tab);
       if (fullScreen) {
         setSearchParams((prev) => {
@@ -279,15 +271,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
         }, { replace: true });
       }
     },
-    [mode, settings, persistSettings, fullScreen, setSearchParams]
-  );
-
-  const switchMode = useCallback(
-    (newMode: SettingsMode) => {
-      if (mode === "project" && settings) void persistSettings();
-      setMode(newMode);
-    },
-    [mode, settings, persistSettings]
+    [settings, persistSettings, fullScreen, setSearchParams]
   );
 
   const defaultAgent = { type: "cursor" as AgentType, model: null, cliCommand: null };
@@ -351,67 +335,25 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
         className={contentClass}
         data-testid="settings-modal"
       >
-        {/* Header */}
-        <div
-          className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-theme-border"
-          data-testid="settings-modal-header"
-        >
-          <h2 className="text-lg font-semibold text-theme-text">Settings</h2>
-          <div className="flex items-center gap-3">
-            <SaveIndicator status={effectiveSaveStatus} data-testid="settings-save-indicator" />
-            <CloseButton onClick={() => void handleClose()} ariaLabel="Close settings modal" />
-          </div>
-        </div>
-
-        {/* Mode switcher: Project (per-project) vs Global */}
-        <div
-          className="flex-shrink-0 flex flex-nowrap gap-1 px-5 pt-3 pb-2 border-b border-theme-border"
-          data-testid="settings-mode-switcher"
-        >
-          <button
-            type="button"
-            onClick={() => switchMode("project")}
-            className={`px-3 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${
-              mode === "project"
-                ? "bg-brand-600 text-white"
-                : "text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle"
-            }`}
-          >
-            Project
-          </button>
-          <button
-            type="button"
-            onClick={() => switchMode("display")}
-            className={`px-3 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${
-              mode === "display"
-                ? "bg-brand-600 text-white"
-                : "text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle"
-            }`}
-            data-testid="display-mode-button"
-          >
-            Global
-          </button>
-        </div>
-
-        {/* Project tabs (only when mode is project) */}
-        {mode === "project" && (
+        {fullScreen ? (
+          <>
+            <SettingsTopBar projectId={project.id} saveStatus={saveStatus} />
+            <SettingsSubTabsBar activeTab={activeTab} onTabChange={switchTab} />
+          </>
+        ) : (
           <div
-            className="flex-shrink-0 flex flex-nowrap gap-1 px-5 pt-3 pb-2 border-b border-theme-border overflow-x-auto overflow-y-hidden"
-            data-testid="settings-modal-tabs"
+            className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-theme-border"
+            data-testid="settings-modal-header"
           >
-            {TABS.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => switchTab(tab.key)}
-                className={`px-3 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-colors ${
-                  activeTab === tab.key
-                    ? "bg-brand-600 text-white"
-                    : "text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+            <SettingsSubTabsBar
+              activeTab={activeTab}
+              onTabChange={switchTab}
+              variant="inline"
+            />
+            <div className="flex items-center gap-3">
+              <SaveIndicator status={saveStatus} data-testid="settings-save-indicator" />
+              <CloseButton onClick={() => void handleClose()} ariaLabel="Close settings modal" />
+            </div>
           </div>
         )}
 
@@ -420,9 +362,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
           className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-5 py-4 overscroll-contain"
           data-testid="settings-modal-content"
         >
-          {mode === "display" ? (
-            <GlobalSettingsContent onSaveStateChange={setDisplaySaveStatus} />
-          ) : loading ? (
+          {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
             </div>
@@ -1133,8 +1073,8 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
           )}
         </div>
 
-        {/* Error (project mode only) */}
-        {mode === "project" && error && (
+        {/* Error */}
+        {error && (
           <div className="mx-5 mb-3 p-3 bg-theme-error-bg border border-theme-error-border rounded-lg">
             <p className="text-sm text-theme-error-text">{error}</p>
           </div>
