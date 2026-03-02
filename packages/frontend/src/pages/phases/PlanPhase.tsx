@@ -535,6 +535,21 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
     setChatSending(false);
   };
 
+  /* ── RENDER: Loading spinner during fetch (no fake page content) ── */
+  if (showPlansSpinner) {
+    return (
+      <div
+        className="flex flex-1 min-h-0 items-center justify-center bg-theme-bg"
+        data-testid="plan-phase-loading"
+      >
+        <PhaseLoadingSpinner
+          data-testid="plan-phase-loading-spinner"
+          aria-label="Loading plans"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
       {/* Main content */}
@@ -592,12 +607,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
             </div>
           )}
 
-          {showPlansSpinner ? (
-            <PhaseLoadingSpinner
-              data-testid="plan-phase-loading-spinner"
-              aria-label="Loading plans"
-            />
-          ) : viewMode === "graph" ? (
+          {viewMode === "graph" ? (
             /* Graph Mode: dependency graph full screen */
             <div className="h-full min-h-[400px]" data-testid="plan-graph-view">
               {filteredDependencyGraph && filteredDependencyGraph.plans.length === 0 ? (

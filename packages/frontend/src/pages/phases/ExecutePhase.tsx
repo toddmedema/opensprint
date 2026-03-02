@@ -234,6 +234,21 @@ export function ExecutePhase({
         (n) => n.source === "execute" && n.sourceId === effectiveSelectedTask
       )) ?? null;
 
+  /* ── RENDER: Loading spinner during fetch (no fake page content) ── */
+  if (showTasksSpinner) {
+    return (
+      <div
+        className="flex flex-1 min-h-0 items-center justify-center bg-theme-bg"
+        data-testid="execute-phase-loading"
+      >
+        <PhaseLoadingSpinner
+          data-testid="execute-phase-loading-spinner"
+          aria-label="Loading tasks"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
@@ -254,12 +269,7 @@ export function ExecutePhase({
         />
 
         <div ref={executeScrollRef} className="flex-1 min-h-0 overflow-auto p-6" data-testid="execute-main-scroll">
-          {showTasksSpinner ? (
-            <PhaseLoadingSpinner
-              data-testid="execute-phase-loading-spinner"
-              aria-label="Loading tasks"
-            />
-          ) : showTasksEmptyState ? (
+          {showTasksEmptyState ? (
             <div className="text-center py-10 text-theme-muted">
               No tasks yet. Ship a Plan to start generating tasks.
             </div>

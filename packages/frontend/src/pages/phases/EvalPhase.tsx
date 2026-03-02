@@ -1087,6 +1087,21 @@ export function EvalPhase({
     [projectId, refetchNotifications]
   );
 
+  /* ── RENDER: Loading spinner during fetch (no fake page content) ── */
+  if (showFeedbackSpinner) {
+    return (
+      <div
+        className="flex flex-1 min-h-0 items-center justify-center bg-theme-bg"
+        data-testid="feedback-loading"
+      >
+        <PhaseLoadingSpinner
+          data-testid="feedback-loading-spinner"
+          aria-label="Loading feedback"
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col min-h-0">
       <div
@@ -1231,12 +1246,7 @@ export function EvalPhase({
             )}
           </div>
 
-          {showFeedbackSpinner ? (
-            <PhaseLoadingSpinner
-              data-testid="feedback-loading-spinner"
-              aria-label="Loading feedback"
-            />
-          ) : showFeedbackEmptyState ? (
+          {showFeedbackEmptyState ? (
             <div className="text-center py-10 text-theme-muted text-sm">
               No feedback submitted yet. Test your app and report findings above.
             </div>

@@ -101,6 +101,10 @@ export default {
           "0%": { opacity: "0" },
           "100%": { opacity: "1" },
         },
+        "logo-pulse": {
+          "0%, 100%": { opacity: "1" },
+          "50%": { opacity: "0.5" },
+        },
       },
       animation: {
         "slide-up-fade": "slide-up-fade 0.2s ease-out",
@@ -108,6 +112,7 @@ export default {
         "slide-in-right": "slide-in-right 0.2s ease-out",
         "slide-in-left": "slide-in-left 0.2s ease-out",
         "fade-in": "fade-in 0.15s ease-out",
+        "logo-pulse": "logo-pulse 1.2s ease-in-out infinite",
       },
     },
   },

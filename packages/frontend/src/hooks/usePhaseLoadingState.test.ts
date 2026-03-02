@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { usePhaseLoadingState, PHASE_EMPTY_DELAY_MS } from "./usePhaseLoadingState";
+import {
+  usePhaseLoadingState,
+  PHASE_EMPTY_DELAY_MS,
+  PHASE_SPINNER_DELAY_MS,
+} from "./usePhaseLoadingState";
 
 describe("usePhaseLoadingState", () => {
   beforeEach(() => {
@@ -11,8 +15,12 @@ describe("usePhaseLoadingState", () => {
     vi.useRealTimers();
   });
 
-  it("returns showSpinner true when isLoading", () => {
+  it("returns showSpinner true when isLoading (after 300ms delay to avoid flash)", () => {
     const { result } = renderHook(() => usePhaseLoadingState(true, false));
+    expect(result.current.showSpinner).toBe(false);
+    act(() => {
+      vi.advanceTimersByTime(PHASE_SPINNER_DELAY_MS);
+    });
     expect(result.current.showSpinner).toBe(true);
     expect(result.current.showEmptyState).toBe(false);
   });
@@ -29,6 +37,10 @@ describe("usePhaseLoadingState", () => {
       { initialProps: { isLoading: true, isEmpty: true } }
     );
 
+    expect(result.current.showSpinner).toBe(false);
+    act(() => {
+      vi.advanceTimersByTime(PHASE_SPINNER_DELAY_MS);
+    });
     expect(result.current.showSpinner).toBe(true);
     expect(result.current.showEmptyState).toBe(false);
 

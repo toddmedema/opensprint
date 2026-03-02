@@ -1,4 +1,5 @@
-/** Centered loading spinner for phase pages during initial fetch */
+/** Centered animated OpenSprint logo for phase pages during initial fetch.
+ * Three arrows pulse to indicate loading. No fake/placeholder content. */
 export function PhaseLoadingSpinner({
   "data-testid": dataTestId = "phase-loading-spinner",
   "aria-label": ariaLabel = "Loading",
@@ -13,11 +14,28 @@ export function PhaseLoadingSpinner({
       role="status"
       aria-label={ariaLabel}
     >
-      <div
-        className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 80 80"
+        className="w-12 h-12"
         aria-hidden
-      />
-      <span className="text-sm text-theme-muted">Loading...</span>
+      >
+        <polygon
+          points="4,10 36,40 4,70"
+          fill="#c7d2fe"
+          className="animate-logo-pulse [animation-delay:0ms]"
+        />
+        <polygon
+          points="22,10 54,40 22,70"
+          fill="#818cf8"
+          className="animate-logo-pulse [animation-delay:200ms]"
+        />
+        <polygon
+          points="40,10 72,40 40,70"
+          fill="#4f46e5"
+          className="animate-logo-pulse [animation-delay:400ms]"
+        />
+      </svg>
     </div>
   );
 }
