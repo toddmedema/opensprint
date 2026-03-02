@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { DeploymentRecord, DeploymentConfig } from "@opensprint/shared";
 import { getDeploymentTargetConfig } from "@opensprint/shared";
 import { getProjectPhasePath } from "../../lib/phaseRouting";
+import { MOBILE_BREAKPOINT } from "../../lib/constants";
 import { useAppDispatch, useAppSelector } from "../../store";
 import {
   triggerDeliver,
@@ -15,6 +16,7 @@ import {
 import { useDeliverStatus, useDeliverHistory } from "../../api/hooks";
 import { queryKeys } from "../../api/queryKeys";
 import { api } from "../../api/client";
+import { useViewportWidth } from "../../hooks/useViewportWidth";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
 
 /** Normalize target for display (staging → Staging, production → Production, custom as-is) */
@@ -97,6 +99,9 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
   const navigate = useNavigate();
   const { projectId: paramProjectId } = useParams<{ projectId: string }>();
   const effectiveProjectId = projectId ?? paramProjectId ?? "";
+  const viewportWidth = useViewportWidth();
+  const isMobile = viewportWidth < MOBILE_BREAKPOINT;
+  const [mobileHistoryOpen, setMobileHistoryOpen] = useState(true);
   const [settings, setSettings] = useState<{ deployment: DeploymentConfig } | null>(null);
   const [resetLoading, setResetLoading] = useState(false);
   const [envFilter, setEnvFilter] = useState<string>("all");
@@ -314,11 +319,38 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
         </div>
 
         <div className="flex-1 min-h-0 flex overflow-hidden">
+          {/* On mobile with overlay closed: show trigger. Otherwise show sidebar. */}
+          {isMobile && !mobileHistoryOpen ? (
+            <button
+              type="button"
+              onClick={() => setMobileHistoryOpen(true)}
+              className="md:hidden fixed left-0 top-1/2 -translate-y-1/2 z-30 min-h-[44px] min-w-[44px] flex items-center justify-center bg-theme-surface border border-theme-border rounded-r-lg shadow-lg text-theme-muted hover:text-theme-text hover:bg-theme-bg-elevated transition-colors"
+              aria-label="Open delivery history"
+              data-testid="delivery-history-open-button"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </button>
+          ) : (
           <ResizableSidebar
             storageKey="deliver"
             defaultWidth={280}
             side="left"
             resizeHandleLabel="Resize delivery history sidebar"
+            responsive
+            onClose={isMobile ? () => setMobileHistoryOpen(false) : undefined}
           >
             <div className="h-full flex flex-col border-r border-theme-border bg-theme-bg">
               <div className="px-3 py-2 border-b border-theme-border flex items-center justify-between gap-2">
@@ -457,6 +489,7 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
               </div>
             </div>
           </ResizableSidebar>
+          )}
 
           <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-theme-surface">
             <div className="px-4 py-2 border-b border-theme-border flex items-center justify-between shrink-0">

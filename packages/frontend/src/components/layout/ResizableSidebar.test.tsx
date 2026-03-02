@@ -1,8 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ResizableSidebar } from "./ResizableSidebar";
+import { MOBILE_BREAKPOINT } from "../../lib/constants";
 
 const STORAGE_KEY = "opensprint-sidebar-width-test";
+
+function mockViewportWidth(width: number) {
+  const original = window.innerWidth;
+  Object.defineProperty(window, "innerWidth", { value: width, writable: true });
+  return () => {
+    Object.defineProperty(window, "innerWidth", { value: original, writable: true });
+  };
+}
 
 describe("ResizableSidebar", () => {
   let localStorageMock: Record<string, string>;
@@ -193,8 +203,7 @@ describe("ResizableSidebar", () => {
   });
 
   it("clamps persisted width when above max (80% viewport)", () => {
-    const originalInnerWidth = window.innerWidth;
-    Object.defineProperty(window, "innerWidth", { value: 1000, writable: true });
+    const restore = mockViewportWidth(1000);
     localStorageMock[`opensprint-sidebar-width-${STORAGE_KEY}`] = "900"; // above 80% of 1000 = 800
 
     render(
@@ -206,6 +215,102 @@ describe("ResizableSidebar", () => {
     const container = screen.getByText("Content").closest(".relative");
     expect(container).toHaveStyle({ width: "800px" });
 
-    Object.defineProperty(window, "innerWidth", { value: originalInnerWidth, writable: true });
+    restore();
+  });
+
+  describe("mobile overlay (viewport < md, responsive=true)", () => {
+    beforeEach(() => {
+      mockViewportWidth(MOBILE_BREAKPOINT - 1);
+    });
+
+    afterEach(() => {
+      mockViewportWidth(1024);
+    });
+
+    it("renders portal overlay with backdrop and close button when onClose provided", () => {
+      const onClose = vi.fn();
+      render(
+        <ResizableSidebar storageKey={STORAGE_KEY} responsive onClose={onClose}>
+          <span data-testid="sidebar-content">Mobile content</span>
+        </ResizableSidebar>
+      );
+
+      expect(screen.getByTestId("sidebar-content")).toHaveTextContent("Mobile content");
+      expect(screen.getByRole("button", { name: "Close sidebar (backdrop)" })).toBeInTheDocument();
+      const closeBtn = screen.getByRole("button", { name: "Close sidebar" });
+      expect(closeBtn).toBeInTheDocument();
+      expect(closeBtn.parentElement).toHaveClass("min-h-[44px]", "min-w-[44px]");
+    });
+
+    it("calls onClose when backdrop is clicked", async () => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      render(
+        <ResizableSidebar storageKey={STORAGE_KEY} responsive onClose={onClose}>
+          <span>Content</span>
+        </ResizableSidebar>
+      );
+
+      const backdrop = screen.getByRole("button", { name: "Close sidebar (backdrop)" });
+      await user.click(backdrop);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("calls onClose when close button is clicked", async () => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      render(
+        <ResizableSidebar storageKey={STORAGE_KEY} responsive onClose={onClose}>
+          <span>Content</span>
+        </ResizableSidebar>
+      );
+
+      const closeBtn = screen.getByRole("button", { name: "Close sidebar" });
+      await user.click(closeBtn);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it("renders null when visible=false", () => {
+      render(
+        <ResizableSidebar storageKey={STORAGE_KEY} responsive visible={false} onClose={() => {}}>
+          <span data-testid="hidden">Hidden</span>
+        </ResizableSidebar>
+      );
+
+      expect(screen.queryByTestId("hidden")).not.toBeInTheDocument();
+    });
+
+    it("renders overlay with correct side (left)", () => {
+      render(
+        <ResizableSidebar
+          storageKey={STORAGE_KEY}
+          responsive
+          side="left"
+          onClose={() => {}}
+        >
+          <span data-testid="left-content">Left</span>
+        </ResizableSidebar>
+      );
+
+      expect(screen.getByTestId("left-content")).toBeInTheDocument();
+      const panel = screen.getByTestId("left-content").closest(".animate-slide-in-left");
+      expect(panel).toBeInTheDocument();
+    });
+
+    it("renders overlay with correct side (right)", () => {
+      render(
+        <ResizableSidebar
+          storageKey={STORAGE_KEY}
+          responsive
+          side="right"
+          onClose={() => {}}
+        >
+          <span data-testid="right-content">Right</span>
+        </ResizableSidebar>
+      );
+
+      const panel = screen.getByTestId("right-content").closest(".animate-slide-in-right");
+      expect(panel).toBeInTheDocument();
+    });
   });
 });

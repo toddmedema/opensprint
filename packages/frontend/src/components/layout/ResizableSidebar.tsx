@@ -1,4 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { MOBILE_BREAKPOINT } from "../../lib/constants";
+import { useViewportWidth } from "../../hooks/useViewportWidth";
+import { CloseButton } from "../CloseButton";
 
 const STORAGE_PREFIX = "opensprint-sidebar-width-";
 
@@ -7,6 +11,9 @@ const DEFAULT_MIN_WIDTH = 200;
 
 /** Default max width as fraction of viewport (leaves main content visible) */
 const DEFAULT_MAX_WIDTH_PERCENT = 0.8;
+
+/** z-index for mobile overlay — above main content, below modals */
+const SIDEBAR_OVERLAY_Z = 40;
 
 export interface ResizableSidebarProps {
   /** Unique key for localStorage persistence (e.g. "plan", "build") */
@@ -27,8 +34,10 @@ export interface ResizableSidebarProps {
   className?: string;
   /** Whether sidebar is visible (affects resize handle visibility) */
   visible?: boolean;
-  /** When true, on mobile uses w-full max-w-[defaultWidth], on md+ uses persisted width */
+  /** When true, on mobile (< md) renders as fixed overlay with backdrop; on md+ uses inline layout */
   responsive?: boolean;
+  /** Called when user closes overlay (button, backdrop, swipe). Required when responsive=true for overlay close affordance. */
+  onClose?: () => void;
   /** Accessible label for the resize handle (default "Resize sidebar") */
   resizeHandleLabel?: string;
   /** When true, no border is rendered (e.g. for minimal Sketch TOC) */
@@ -65,22 +74,61 @@ function savePersistedWidth(storageKey: string, width: number): void {
   }
 }
 
-function useViewportWidth(): number {
-  const [width, setWidth] = useState(() =>
-    typeof window !== "undefined" ? window.innerWidth : 1024
+/** Minimum swipe distance (px) to trigger close */
+const SWIPE_THRESHOLD = 80;
+
+function useSwipeToClose(
+  side: "left" | "right",
+  onClose: () => void,
+  enabled: boolean
+): {
+  onTouchStart: (e: React.TouchEvent) => void;
+  onTouchMove: (e: React.TouchEvent) => void;
+  onTouchEnd: (e: React.TouchEvent) => void;
+  translateX: number;
+} {
+  const [translateX, setTranslateX] = useState(0);
+  const startXRef = useRef(0);
+
+  const onTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      if (!enabled) return;
+      startXRef.current = e.touches[0].clientX;
+    },
+    [enabled]
   );
-  useEffect(() => {
-    const handleResize = () => setWidth(window.innerWidth);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-  return width;
+
+  const onTouchMove = useCallback(
+    (e: React.TouchEvent) => {
+      if (!enabled) return;
+      const delta = e.touches[0].clientX - startXRef.current;
+      // Right sidebar: swipe right (positive delta) closes
+      // Left sidebar: swipe left (negative delta) closes
+      if (side === "right") {
+        setTranslateX(delta > 0 ? delta : 0);
+      } else {
+        setTranslateX(delta < 0 ? delta : 0);
+      }
+    },
+    [enabled, side]
+  );
+
+  const onTouchEnd = useCallback(() => {
+    if (!enabled) return;
+    const shouldClose =
+      (side === "right" && translateX > SWIPE_THRESHOLD) ||
+      (side === "left" && translateX < -SWIPE_THRESHOLD);
+    setTranslateX(0);
+    if (shouldClose) onClose();
+  }, [enabled, side, translateX, onClose]);
+
+  return { onTouchStart, onTouchMove, onTouchEnd, translateX };
 }
 
 /**
  * A sidebar with a draggable edge for resize. Width is persisted to localStorage.
  * Shared by Plan, Sketch, Execute, and Deliver phases (plan detail, TOC/Discuss, task detail, delivery history).
- * Min 200px, max 80% of viewport by default (per UX best practices).
+ * When responsive=true and viewport < md: renders as fixed overlay with backdrop, close button, and swipe-to-close.
  */
 export function ResizableSidebar({
   storageKey,
@@ -93,6 +141,7 @@ export function ResizableSidebar({
   className = "",
   visible = true,
   responsive = false,
+  onClose,
   resizeHandleLabel = "Resize sidebar",
   noBorder = false,
 }: ResizableSidebarProps) {
@@ -102,6 +151,9 @@ export function ResizableSidebar({
   const [width, setWidth] = useState(() =>
     loadPersistedWidth(storageKey, defaultWidth, minWidth, maxWidth)
   );
+
+  const isMobileOverlay = responsive && viewportWidth < MOBILE_BREAKPOINT;
+  const swipe = useSwipeToClose(side, onClose ?? (() => {}), isMobileOverlay && !!onClose);
 
   // Re-clamp width when viewport changes (e.g. window resize)
   useEffect(() => {
@@ -154,14 +206,16 @@ export function ResizableSidebar({
     [width, storageKey, minWidth, maxWidth, side]
   );
 
-  const widthStyle = responsive
+  const widthStyle = responsive && !isMobileOverlay
     ? {
         ["--sidebar-width" as string]: `${width}px`,
         ["--sidebar-mobile-max" as string]: `${defaultWidth}px`,
       }
-    : { width: visible ? width : 0, minWidth: visible ? width : 0 };
+    : !isMobileOverlay
+      ? { width: visible ? width : 0, minWidth: visible ? width : 0 }
+      : undefined;
 
-  const responsiveClasses = responsive
+  const responsiveClasses = responsive && !isMobileOverlay
     ? "w-full max-w-[var(--sidebar-mobile-max,420px)] md:max-w-none md:w-[var(--sidebar-width)]"
     : "";
 
@@ -176,6 +230,68 @@ export function ResizableSidebar({
     side === "left"
       ? "absolute right-0 top-0 bottom-0 w-2 -mr-1 cursor-col-resize z-10 flex items-center justify-center group hover:bg-brand-500/10"
       : "absolute left-0 top-0 bottom-0 w-2 -ml-1 cursor-col-resize z-10 flex items-center justify-center group hover:bg-brand-500/10";
+
+  // Mobile overlay: fixed panel with backdrop, close button, swipe-to-close
+  if (isMobileOverlay && visible) {
+    const overlay = (
+      <div
+        className="fixed inset-0 z-[var(--sidebar-overlay-z)]"
+        style={{ "--sidebar-overlay-z": SIDEBAR_OVERLAY_Z } as React.CSSProperties}
+        aria-modal="true"
+        role="dialog"
+        aria-label="Sidebar panel"
+      >
+        {/* Semi-transparent backdrop */}
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
+          aria-label="Close sidebar (backdrop)"
+        />
+        {/* Panel */}
+        <div
+          className={`absolute top-0 bottom-0 h-full w-full flex flex-col bg-theme-bg shadow-xl ${
+            side === "right"
+              ? "right-0 animate-slide-in-right"
+              : "left-0 animate-slide-in-left"
+          }`}
+          style={{
+            [side]: 0,
+            width: Math.min(viewportWidth, defaultWidth),
+            maxWidth: "100%",
+            transform: `translateX(${swipe.translateX}px)`,
+            transition: swipe.translateX !== 0 ? "none" : "transform 0.2s ease-out",
+          }}
+          onTouchStart={swipe.onTouchStart}
+          onTouchMove={swipe.onTouchMove}
+          onTouchEnd={swipe.onTouchEnd}
+        >
+          {/* Close button — 44×44px touch target, floating top corner */}
+          {onClose && (
+            <div
+              className={`absolute top-2 z-10 min-h-[44px] min-w-[44px] flex items-center justify-center ${
+                side === "right" ? "right-2" : "left-2"
+              }`}
+            >
+              <CloseButton
+                onClick={onClose}
+                ariaLabel="Close sidebar"
+                className="p-2 rounded-md text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle transition-colors bg-theme-bg/90"
+                size="w-5 h-5"
+              />
+            </div>
+          )}
+          <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">{children}</div>
+        </div>
+      </div>
+    );
+    return createPortal(overlay, document.body);
+  }
+
+  // Desktop or non-responsive: inline sidebar (no overlay)
+  if (isMobileOverlay && !visible) {
+    return null;
+  }
 
   return (
     <div

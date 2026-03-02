@@ -764,7 +764,12 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
 
       {/* Sidebar: Plan Detail + Chat — show when planContext set so chat persists across reloads (e.g. deep link) */}
       {planContext && (
-        <ResizableSidebar storageKey="plan" defaultWidth={420}>
+        <ResizableSidebar
+          storageKey="plan"
+          defaultWidth={420}
+          responsive
+          onClose={handleClosePlan}
+        >
           {/* Sticky header + scrollable body (matches Execute sidebar) */}
           {selectedPlan ? (
             <PlanDetailContent

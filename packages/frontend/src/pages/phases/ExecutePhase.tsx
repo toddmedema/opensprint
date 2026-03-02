@@ -439,6 +439,8 @@ export function ExecutePhase({
           storageKey="execute"
           defaultWidth={420}
           resizeHandleLabel="Resize task detail sidebar"
+          responsive
+          onClose={handleClose}
         >
           <TaskDetailSidebar
             projectId={projectId}
