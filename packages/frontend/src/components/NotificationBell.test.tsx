@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
 import { NotificationBell } from "./NotificationBell";
@@ -21,6 +21,11 @@ vi.mock("../api/client", () => ({
 beforeEach(() => {
   mockListByProject.mockResolvedValue([]);
 });
+
+function LocationCapture() {
+  const loc = useLocation();
+  return <div data-testid="current-location">{loc.pathname}{loc.search}</div>;
+}
 
 function renderNotificationBell(
   notifications: Array<{
@@ -55,6 +60,7 @@ function renderNotificationBell(
   return render(
     <Provider store={store}>
       <MemoryRouter>
+        <LocationCapture />
         <NotificationBell projectId="proj-1" />
       </MemoryRouter>
     </Provider>
@@ -63,8 +69,8 @@ function renderNotificationBell(
 
 describe("NotificationBell", () => {
   it("renders nothing when no notifications", () => {
-    const { container } = renderNotificationBell([]);
-    expect(container.firstChild).toBeNull();
+    renderNotificationBell([]);
+    expect(screen.queryByTitle("Notifications (open questions & API issues)")).not.toBeInTheDocument();
   });
 
   it("shows bell with red dot when notifications exist", async () => {
@@ -133,5 +139,35 @@ describe("NotificationBell", () => {
     await user.click(screen.getByTitle("Notifications (open questions & API issues)"));
     expect(screen.getByText("Rate limit")).toBeInTheDocument();
     expect(screen.getByText(/Rate limit exceeded/)).toBeInTheDocument();
+  });
+
+  it("navigates to project settings with Global tab when clicking rate_limit notification", async () => {
+    const notifications = [
+      {
+        id: "ab-1",
+        projectId: "proj-1",
+        source: "execute" as const,
+        sourceId: "task-1",
+        questions: [{ id: "q1", text: "Rate limit exceeded", createdAt: "2025-01-01T00:00:00Z" }],
+        status: "open" as const,
+        createdAt: "2025-01-01T00:00:00Z",
+        resolvedAt: null,
+        kind: "api_blocked" as const,
+        errorCode: "rate_limit" as const,
+      },
+    ];
+    renderNotificationBell(notifications);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /1 notification/ })).toBeInTheDocument();
+    });
+    const user = userEvent.setup();
+    await user.click(screen.getByTitle("Notifications (open questions & API issues)"));
+    await user.click(screen.getByText(/Rate limit exceeded/));
+
+    await waitFor(() => {
+      const loc = screen.getByTestId("current-location");
+      expect(loc).toHaveTextContent("/projects/proj-1/settings");
+      expect(loc).toHaveTextContent("level=global");
+    });
   });
 });

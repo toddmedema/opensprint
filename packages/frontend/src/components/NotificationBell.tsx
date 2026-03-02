@@ -66,6 +66,12 @@ export function NotificationBell({ projectId }: NotificationBellProps) {
 
   const handleNotificationClick = useCallback(
     (n: Notification) => {
+      // RATE LIMIT: navigate to project settings with Global tab for quick access to API keys
+      if (n.kind === "api_blocked" && n.errorCode === "rate_limit") {
+        navigate(`/projects/${projectId}/settings?level=global`);
+        setOpen(false);
+        return;
+      }
       const phase =
         n.source === "plan"
           ? "plan"

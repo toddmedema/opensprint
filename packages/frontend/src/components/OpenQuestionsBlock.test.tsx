@@ -1,9 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { OpenQuestionsBlock } from "./OpenQuestionsBlock";
 import type { Notification } from "@opensprint/shared";
 import { api } from "../api/client";
+
+function LocationCapture() {
+  const loc = useLocation();
+  return <div data-testid="current-location">{loc.pathname}{loc.search}</div>;
+}
+
+function renderWithRouter(ui: React.ReactElement) {
+  return render(
+    <MemoryRouter>
+      <LocationCapture />
+      {ui}
+    </MemoryRouter>
+  );
+}
 
 vi.mock("../api/client", () => ({
   api: {
@@ -42,7 +57,7 @@ describe("OpenQuestionsBlock", () => {
   });
 
   it("renders open questions with Answer and Dismiss", () => {
-    render(
+    renderWithRouter(
       <OpenQuestionsBlock
         notification={mockNotification}
         projectId="proj-1"
@@ -63,7 +78,7 @@ describe("OpenQuestionsBlock", () => {
   });
 
   it("has data-question-id for scroll-to-target", () => {
-    render(
+    renderWithRouter(
       <OpenQuestionsBlock
         notification={mockNotification}
         projectId="proj-1"
@@ -80,7 +95,7 @@ describe("OpenQuestionsBlock", () => {
 
   it("calls api.notifications.resolve and onResolved when Dismiss clicked", async () => {
     const user = userEvent.setup();
-    render(
+    renderWithRouter(
       <OpenQuestionsBlock
         notification={mockNotification}
         projectId="proj-1"
@@ -102,7 +117,7 @@ describe("OpenQuestionsBlock", () => {
   it("calls onAnswerSent, resolve, and onResolved when Answer submitted", async () => {
     const user = userEvent.setup();
     onAnswerSent.mockResolvedValue(undefined);
-    render(
+    renderWithRouter(
       <OpenQuestionsBlock
         notification={mockNotification}
         projectId="proj-1"
@@ -124,7 +139,7 @@ describe("OpenQuestionsBlock", () => {
   });
 
   it("Answer button is disabled when input is empty", () => {
-    render(
+    renderWithRouter(
       <OpenQuestionsBlock
         notification={mockNotification}
         projectId="proj-1"
@@ -139,7 +154,7 @@ describe("OpenQuestionsBlock", () => {
   });
 
   it("does not render Answer input when onAnswerSent is not provided", () => {
-    render(
+    renderWithRouter(
       <OpenQuestionsBlock
         notification={mockNotification}
         projectId="proj-1"
@@ -165,7 +180,7 @@ describe("OpenQuestionsBlock", () => {
       errorCode: "rate_limit",
     };
 
-    render(
+    renderWithRouter(
       <OpenQuestionsBlock
         notification={apiBlockedNotification}
         projectId="proj-1"
@@ -177,11 +192,41 @@ describe("OpenQuestionsBlock", () => {
     );
 
     expect(screen.getByText("API blocked")).toBeInTheDocument();
-    expect(screen.getByText(/Rate limit: Fix in Project Settings/)).toBeInTheDocument();
+    expect(screen.getByText(/Rate limit: Fix in Global settings/)).toBeInTheDocument();
+    expect(screen.getByTestId("open-global-settings-link")).toHaveTextContent("Open Global settings");
     expect(screen.getByText(/Rate limit exceeded/)).toBeInTheDocument();
     expect(screen.queryByTestId("open-questions-answer-input")).not.toBeInTheDocument();
     expect(screen.getByTestId("open-questions-retry-btn")).toBeInTheDocument();
     expect(screen.getByTestId("open-questions-dismiss-btn")).toBeInTheDocument();
+  });
+
+  it("navigates to project settings with Global tab when Open Global settings clicked on rate_limit", async () => {
+    const apiBlockedNotification: Notification = {
+      ...mockNotification,
+      id: "ab-1",
+      questions: [{ id: "q1", text: "Rate limit exceeded.", createdAt: "2025-01-01T00:00:00Z" }],
+      kind: "api_blocked",
+      errorCode: "rate_limit",
+    };
+
+    renderWithRouter(
+      <OpenQuestionsBlock
+        notification={apiBlockedNotification}
+        projectId="proj-1"
+        source="execute"
+        sourceId="task-1"
+        onResolved={onResolved}
+      />
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("open-global-settings-link"));
+
+    await waitFor(() => {
+      const loc = screen.getByTestId("current-location");
+      expect(loc).toHaveTextContent("/projects/proj-1/settings");
+      expect(loc).toHaveTextContent("level=global");
+    });
   });
 
   it("calls retryRateLimit and onResolved when Retry clicked on rate_limit notification", async () => {
@@ -196,7 +241,7 @@ describe("OpenQuestionsBlock", () => {
       errorCode: "rate_limit",
     };
 
-    render(
+    renderWithRouter(
       <OpenQuestionsBlock
         notification={apiBlockedNotification}
         projectId="proj-1"
@@ -223,7 +268,7 @@ describe("OpenQuestionsBlock", () => {
       errorCode: "auth",
     };
 
-    render(
+    renderWithRouter(
       <OpenQuestionsBlock
         notification={apiBlockedNotification}
         projectId="proj-1"
@@ -252,7 +297,7 @@ describe("OpenQuestionsBlock", () => {
       errorCode: "rate_limit",
     };
 
-    render(
+    renderWithRouter(
       <OpenQuestionsBlock
         notification={apiBlockedNotification}
         projectId="proj-1"
@@ -278,7 +323,7 @@ describe("OpenQuestionsBlock", () => {
       questions: [],
     };
 
-    const { container } = render(
+    renderWithRouter(
       <OpenQuestionsBlock
         notification={emptyNotification}
         projectId="proj-1"
@@ -289,6 +334,6 @@ describe("OpenQuestionsBlock", () => {
       />
     );
 
-    expect(container.firstChild).toBeNull();
+    expect(screen.queryByTestId("open-questions-block")).not.toBeInTheDocument();
   });
 });

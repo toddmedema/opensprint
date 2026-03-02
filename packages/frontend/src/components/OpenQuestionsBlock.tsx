@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import type { Notification, ApiBlockedErrorCode } from "@opensprint/shared";
 import { api } from "../api/client";
 
@@ -39,6 +40,7 @@ export function OpenQuestionsBlock({
   const [dismissLoading, setDismissLoading] = useState(false);
   const [retryLoading, setRetryLoading] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const handleDismiss = useCallback(async () => {
     setDismissLoading(true);
@@ -101,9 +103,25 @@ export function OpenQuestionsBlock({
         {isApiBlocked ? "API blocked" : "Open questions"}
       </h4>
       <p className="text-xs text-theme-muted mb-2">
-        {isApiBlocked
-          ? `${apiBlockedLabel}: Fix in Project Settings → Agent Config (API keys or credits), then Dismiss.`
-          : `The ${source === "plan" ? "planner" : "coder"} needs clarification before proceeding.`}
+        {isApiBlocked ? (
+          notification.errorCode === "rate_limit" ? (
+            <>
+              {apiBlockedLabel}: Fix in Global settings (add keys or retry), then Dismiss.{" "}
+              <button
+                type="button"
+                onClick={() => navigate(`/projects/${projectId}/settings?level=global`)}
+                className="text-theme-info-border hover:text-theme-info-solid hover:underline font-medium"
+                data-testid="open-global-settings-link"
+              >
+                Open Global settings
+              </button>
+            </>
+          ) : (
+            `${apiBlockedLabel}: Fix in Settings (API keys or credits), then Dismiss.`
+          )
+        ) : (
+          `The ${source === "plan" ? "planner" : "coder"} needs clarification before proceeding.`
+        )}
       </p>
       <ul className="space-y-2 mb-3">
         {questions.map((q) => (
