@@ -30,6 +30,16 @@ vi.mock("../services/task-store.service.js", () => ({
   SCHEMA_SQL: "",
 }));
 
+const mockNudge = vi.fn();
+vi.mock("../services/orchestrator.service.js", () => ({
+  orchestratorService: { nudge: (...args: unknown[]) => mockNudge(...args) },
+}));
+
+const mockGetProjects = vi.fn().mockResolvedValue([]);
+vi.mock("../services/project-index.js", () => ({
+  getProjects: () => mockGetProjects(),
+}));
+
 function createGlobalSettingsApp() {
   const app = express();
   app.use(express.json());
@@ -52,6 +62,8 @@ describe("Global Settings API", () => {
     fs.mkdirSync(tmpDir, { recursive: true });
     originalHome = process.env.HOME;
     process.env.HOME = tmpDir;
+    mockNudge.mockClear();
+    mockGetProjects.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -383,6 +395,30 @@ describe("Global Settings API", () => {
       expect(res.body.data.apiKeys.CURSOR_API_KEY).toEqual([
         { id: "c1", masked: "••••••••" },
       ]);
+    });
+
+    it("nudges orchestrator for all projects when retry succeeds", async () => {
+      const limitHitAt = new Date().toISOString();
+      await setGlobalSettings({
+        apiKeys: {
+          ANTHROPIC_API_KEY: [
+            { id: "k1", value: "sk-ant-secret", limitHitAt },
+          ],
+        },
+      });
+      mockGetProjects.mockResolvedValue([
+        { id: "proj-a", name: "A", repoPath: "/a", createdAt: new Date().toISOString() },
+        { id: "proj-b", name: "B", repoPath: "/b", createdAt: new Date().toISOString() },
+      ]);
+
+      const res = await request(app).post(
+        `${API_PREFIX}/global-settings/clear-limit-hit/ANTHROPIC_API_KEY/k1`
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockNudge).toHaveBeenCalledTimes(2);
+      expect(mockNudge).toHaveBeenCalledWith("proj-a");
+      expect(mockNudge).toHaveBeenCalledWith("proj-b");
     });
   });
 

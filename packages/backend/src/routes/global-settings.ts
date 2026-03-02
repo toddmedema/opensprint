@@ -17,6 +17,9 @@ import {
   updateGlobalSettings,
 } from "../services/global-settings.service.js";
 import { clearLimitHit } from "../services/api-key-resolver.service.js";
+import { clearExhaustedForProviderAcrossAllProjects } from "../services/api-key-exhausted.service.js";
+import { orchestratorService } from "../services/orchestrator.service.js";
+import { getProjects } from "../services/project-index.js";
 import { runSchema } from "../db/schema.js";
 import { createPostgresDbClientFromUrl } from "../db/client.js";
 
@@ -51,6 +54,8 @@ globalSettingsRouter.get("/reveal-key/:provider/:id", async (req, res, next) => 
 });
 
 // POST /global-settings/clear-limit-hit/:provider/:id — Clears limitHitAt for a rate-limited key so it can be retried.
+// On success, clears exhausted state for that provider and nudges the orchestrator for all projects
+// so work can resume promptly after API access is restored.
 globalSettingsRouter.post("/clear-limit-hit/:provider/:id", async (req, res, next) => {
   try {
     const provider = req.params.provider as ApiKeyProvider;
@@ -59,6 +64,11 @@ globalSettingsRouter.post("/clear-limit-hit/:provider/:id", async (req, res, nex
       throw new AppError(400, ErrorCodes.INVALID_INPUT, "Invalid provider or id");
     }
     await clearLimitHit("", provider, id, "global");
+    clearExhaustedForProviderAcrossAllProjects(provider);
+    const projects = await getProjects();
+    for (const p of projects) {
+      orchestratorService.nudge(p.id);
+    }
     const settings = await getGlobalSettings();
     res.json({
       data: buildResponse(settings),
