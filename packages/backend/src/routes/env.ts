@@ -19,7 +19,7 @@ import {
 const execFileAsync = promisify(execFile);
 const log = createLogger("env");
 
-const ALLOWED_KEYS = ["ANTHROPIC_API_KEY", "CURSOR_API_KEY", "OPENAI_API_KEY"] as const;
+const ALLOWED_KEYS = ["ANTHROPIC_API_KEY", "CURSOR_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY"] as const;
 
 /** Override for tests when process.chdir is not available (e.g. Vitest workers). Set to null in production. */
 let envPathForTesting: string | null = null;
@@ -102,7 +102,7 @@ function globalStoreHasKeys(apiKeys: { [key: string]: unknown[] } | undefined): 
 /** Check if global store has keys for a given provider */
 function globalStoreHasProvider(
   apiKeys: ApiKeys | undefined,
-  provider: "ANTHROPIC_API_KEY" | "CURSOR_API_KEY" | "OPENAI_API_KEY"
+  provider: "ANTHROPIC_API_KEY" | "CURSOR_API_KEY" | "OPENAI_API_KEY" | "GOOGLE_API_KEY"
 ): boolean {
   const entries = apiKeys?.[provider];
   return Array.isArray(entries) && entries.length > 0;
@@ -117,7 +117,8 @@ envRouter.get("/global-status", async (_req, res, next) => {
     const fromEnv =
       Boolean(process.env.ANTHROPIC_API_KEY?.trim()) ||
       Boolean(process.env.CURSOR_API_KEY?.trim()) ||
-      Boolean(process.env.OPENAI_API_KEY?.trim());
+      Boolean(process.env.OPENAI_API_KEY?.trim()) ||
+      Boolean(process.env.GOOGLE_API_KEY?.trim());
     const hasAnyKey = fromGlobalStore || fromEnv;
     const useCustomCli = settings.useCustomCli ?? false;
 
@@ -166,14 +167,18 @@ envRouter.get("/keys", async (_req, res, next) => {
     const openai =
       Boolean(process.env.OPENAI_API_KEY?.trim()) ||
       globalStoreHasProvider(settings.apiKeys, "OPENAI_API_KEY");
+    const google =
+      Boolean(process.env.GOOGLE_API_KEY?.trim()) ||
+      globalStoreHasProvider(settings.apiKeys, "GOOGLE_API_KEY");
     const claudeCli = await isClaudeCliAvailable();
     const useCustomCli = settings.useCustomCli ?? false;
     res.json({
-      data: { anthropic, cursor, openai, claudeCli, useCustomCli },
+      data: { anthropic, cursor, openai, google, claudeCli, useCustomCli },
     } as ApiResponse<{
       anthropic: boolean;
       cursor: boolean;
       openai: boolean;
+      google: boolean;
       claudeCli: boolean;
       useCustomCli: boolean;
     }>);
@@ -189,15 +194,15 @@ envRouter.post("/keys/validate", async (req: Request, res, next) => {
     if (!provider || typeof value !== "string") {
       throw new AppError(400, ErrorCodes.INVALID_INPUT, "provider and value are required");
     }
-    if (provider !== "claude" && provider !== "cursor" && provider !== "openai") {
+    if (provider !== "claude" && provider !== "cursor" && provider !== "openai" && provider !== "google") {
       throw new AppError(
         400,
         ErrorCodes.INVALID_INPUT,
-        "provider must be 'claude', 'cursor', or 'openai'"
+        "provider must be 'claude', 'cursor', 'openai', or 'google'"
       );
     }
 
-    const result = await validateApiKey(provider as "claude" | "cursor" | "openai", value);
+    const result = await validateApiKey(provider as "claude" | "cursor" | "openai" | "google", value);
     res.json({
       data: result.valid ? { valid: true } : { valid: false, error: result.error },
     } as ApiResponse<{ valid: boolean; error?: string }>);

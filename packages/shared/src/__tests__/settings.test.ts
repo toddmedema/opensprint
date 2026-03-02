@@ -508,6 +508,9 @@ describe("getProviderForAgentType", () => {
   it("returns OPENAI_API_KEY for openai", () => {
     expect(getProviderForAgentType("openai")).toBe("OPENAI_API_KEY");
   });
+  it("returns GOOGLE_API_KEY for google", () => {
+    expect(getProviderForAgentType("google")).toBe("GOOGLE_API_KEY");
+  });
   it("returns null for claude-cli and custom", () => {
     expect(getProviderForAgentType("claude-cli")).toBe(null);
     expect(getProviderForAgentType("custom")).toBe(null);
@@ -515,11 +518,12 @@ describe("getProviderForAgentType", () => {
 });
 
 describe("API_KEY_PROVIDERS", () => {
-  it("includes ANTHROPIC_API_KEY, CURSOR_API_KEY, and OPENAI_API_KEY", () => {
+  it("includes ANTHROPIC_API_KEY, CURSOR_API_KEY, OPENAI_API_KEY, and GOOGLE_API_KEY", () => {
     expect(API_KEY_PROVIDERS).toContain("ANTHROPIC_API_KEY");
     expect(API_KEY_PROVIDERS).toContain("CURSOR_API_KEY");
     expect(API_KEY_PROVIDERS).toContain("OPENAI_API_KEY");
-    expect(API_KEY_PROVIDERS).toHaveLength(3);
+    expect(API_KEY_PROVIDERS).toContain("GOOGLE_API_KEY");
+    expect(API_KEY_PROVIDERS).toHaveLength(4);
   });
 });
 

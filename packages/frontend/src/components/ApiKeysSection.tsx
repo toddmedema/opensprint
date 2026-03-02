@@ -18,7 +18,7 @@ export interface ApiKeysSectionSettings {
   apiKeys?: ApiKeys;
 }
 
-/** Providers that use API keys in the UI (claude API, cursor, openai; excludes claude-cli) */
+/** Providers that use API keys in the UI (claude API, cursor, openai, google; excludes claude-cli) */
 function getApiKeyProvidersForSection(settings: ApiKeysSectionSettings): ApiKeyProvider[] {
   const providers: ApiKeyProvider[] = [];
   const agents = [settings.simpleComplexityAgent, settings.complexComplexityAgent];
@@ -26,6 +26,7 @@ function getApiKeyProvidersForSection(settings: ApiKeysSectionSettings): ApiKeyP
     if (a.type === "claude") providers.push("ANTHROPIC_API_KEY");
     if (a.type === "cursor") providers.push("CURSOR_API_KEY");
     if (a.type === "openai") providers.push("OPENAI_API_KEY");
+    if (a.type === "google") providers.push("GOOGLE_API_KEY");
   }
   return [...new Set(providers)];
 }
@@ -50,6 +51,7 @@ const PROVIDER_LABELS: Record<ApiKeyProvider, string> = {
   ANTHROPIC_API_KEY: "ANTHROPIC_API_KEY (Claude API)",
   CURSOR_API_KEY: "CURSOR_API_KEY",
   OPENAI_API_KEY: "OPENAI_API_KEY (OpenAI API)",
+  GOOGLE_API_KEY: "GOOGLE_API_KEY (Google/Gemini API)",
 };
 
 export type ApiKeysSectionVariant = "project" | "global";
@@ -287,7 +289,9 @@ export function ApiKeysSection({
                           ? "sk-ant-..."
                           : provider === "OPENAI_API_KEY"
                             ? "sk-..."
-                            : "key_..."
+                            : provider === "GOOGLE_API_KEY"
+                              ? "AIza..."
+                              : "key_..."
                         : MASKED_PLACEHOLDER)
                     : undefined;
                   return (

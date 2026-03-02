@@ -52,6 +52,7 @@ export const ErrorCodes = {
   ANTHROPIC_API_KEY_MISSING: "ANTHROPIC_API_KEY_MISSING",
   CURSOR_API_ERROR: "CURSOR_API_ERROR",
   OPENAI_API_ERROR: "OPENAI_API_ERROR",
+  GOOGLE_API_ERROR: "GOOGLE_API_ERROR",
 } as const;
 
 export type ErrorCode = (typeof ErrorCodes)[keyof typeof ErrorCodes];

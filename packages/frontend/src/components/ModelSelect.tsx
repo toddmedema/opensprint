@@ -35,7 +35,8 @@ export function ModelSelect({
       provider !== "claude" &&
       provider !== "claude-cli" &&
       provider !== "cursor" &&
-      provider !== "openai"
+      provider !== "openai" &&
+      provider !== "google"
     ) {
       setModels([]);
       setError(null);
@@ -97,7 +98,9 @@ export function ModelSelect({
             ? "Check CURSOR_API_KEY in .env"
             : provider === "openai"
               ? "Check OPENAI_API_KEY in .env"
-              : "";
+              : provider === "google"
+                ? "Check GOOGLE_API_KEY in .env"
+                : "";
     return (
       <div className="space-y-1" role="group" aria-label="Model selection">
         <select className={className} disabled aria-label="Model selection" aria-invalid="true">

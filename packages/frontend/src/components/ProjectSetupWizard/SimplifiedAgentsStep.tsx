@@ -244,6 +244,7 @@ export function SimplifiedAgentsStep({
                 <option value="claude-cli">Claude (CLI)</option>
                 <option value="cursor">Cursor</option>
                 <option value="openai">OpenAI</option>
+                <option value="google">Google (Gemini)</option>
                 <option value="custom">Custom CLI</option>
               </select>
             </div>
@@ -296,6 +297,7 @@ export function SimplifiedAgentsStep({
                 <option value="claude-cli">Claude (CLI)</option>
                 <option value="cursor">Cursor</option>
                 <option value="openai">OpenAI</option>
+                <option value="google">Google (Gemini)</option>
                 <option value="custom">Custom CLI</option>
               </select>
             </div>

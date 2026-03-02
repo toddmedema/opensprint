@@ -145,7 +145,10 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
   }, [databaseUrl, databaseUrlLoading]);
 
   const handleClearLimitHit = useCallback(
-    async (provider: "ANTHROPIC_API_KEY" | "CURSOR_API_KEY" | "OPENAI_API_KEY", id: string) => {
+    async (
+      provider: "ANTHROPIC_API_KEY" | "CURSOR_API_KEY" | "OPENAI_API_KEY" | "GOOGLE_API_KEY",
+      id: string
+    ) => {
       setApiKeysError(null);
       notifySaveState("saving");
       try {
@@ -168,7 +171,7 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
   const handleApiKeysChange = async (
     updates: Partial<
       Record<
-        "ANTHROPIC_API_KEY" | "CURSOR_API_KEY" | "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY" | "CURSOR_API_KEY" | "OPENAI_API_KEY" | "GOOGLE_API_KEY",
         Array<{ id: string; value?: string; limitHitAt?: string }>
       >
     >

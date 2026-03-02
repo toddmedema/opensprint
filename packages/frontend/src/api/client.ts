@@ -144,6 +144,7 @@ export const api = {
         anthropic: boolean;
         cursor: boolean;
         openai: boolean;
+        google: boolean;
         claudeCli: boolean;
         useCustomCli: boolean;
       }>("/env/keys"),

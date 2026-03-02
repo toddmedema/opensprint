@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
+    "@google/generative-ai": "^0.21.0",
     "@opensprint/shared": "*",
     "cors": "^2.8.5",
     "dotenv": "^17.3.1",

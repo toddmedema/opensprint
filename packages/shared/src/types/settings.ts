@@ -297,7 +297,7 @@ export type UnknownScopeStrategy = "conservative" | "optimistic";
 export type GitWorkingMode = "worktree" | "branches";
 
 /** API key provider env var names (used as keys in apiKeys) */
-export type ApiKeyProvider = "ANTHROPIC_API_KEY" | "CURSOR_API_KEY" | "OPENAI_API_KEY";
+export type ApiKeyProvider = "ANTHROPIC_API_KEY" | "CURSOR_API_KEY" | "OPENAI_API_KEY" | "GOOGLE_API_KEY";
 
 /** Single API key entry with optional limit-hit timestamp */
 export interface ApiKeyEntry {
@@ -580,6 +580,7 @@ export const API_KEY_PROVIDERS: ApiKeyProvider[] = [
   "ANTHROPIC_API_KEY",
   "CURSOR_API_KEY",
   "OPENAI_API_KEY",
+  "GOOGLE_API_KEY",
 ];
 
 /**
@@ -689,7 +690,7 @@ export function sanitizeApiKeys(raw: unknown): ApiKeys | undefined {
 
 /**
  * Get API key providers in use based on agent config (simple + complex).
- * claude/claude-cli → ANTHROPIC_API_KEY; cursor → CURSOR_API_KEY; openai → OPENAI_API_KEY.
+ * claude/claude-cli → ANTHROPIC_API_KEY; cursor → CURSOR_API_KEY; openai → OPENAI_API_KEY; google → GOOGLE_API_KEY.
  */
 export function getProvidersInUse(settings: ProjectSettings): ApiKeyProvider[] {
   const providers: Set<ApiKeyProvider> = new Set();
@@ -698,6 +699,7 @@ export function getProvidersInUse(settings: ProjectSettings): ApiKeyProvider[] {
     if (a.type === "claude" || a.type === "claude-cli") providers.add("ANTHROPIC_API_KEY");
     if (a.type === "cursor") providers.add("CURSOR_API_KEY");
     if (a.type === "openai") providers.add("OPENAI_API_KEY");
+    if (a.type === "google") providers.add("GOOGLE_API_KEY");
   }
   return Array.from(providers);
 }
@@ -715,14 +717,16 @@ export function getProviderForAgentType(
       return "CURSOR_API_KEY";
     case "openai":
       return "OPENAI_API_KEY";
+    case "google":
+      return "GOOGLE_API_KEY";
     default:
       return null;
   }
 }
 
 /**
- * Get API key providers required when using Claude API, Cursor, or OpenAI (validation only).
- * claude → ANTHROPIC_API_KEY; cursor → CURSOR_API_KEY; openai → OPENAI_API_KEY.
+ * Get API key providers required when using Claude API, Cursor, OpenAI, or Google (validation only).
+ * claude → ANTHROPIC_API_KEY; cursor → CURSOR_API_KEY; openai → OPENAI_API_KEY; google → GOOGLE_API_KEY.
  * claude-cli and custom do not require API keys (CLI uses local auth).
  */
 export function getProvidersRequiringApiKeys(agents: AgentConfig[]): ApiKeyProvider[] {
@@ -731,6 +735,7 @@ export function getProvidersRequiringApiKeys(agents: AgentConfig[]): ApiKeyProvi
     if (a.type === "claude") providers.add("ANTHROPIC_API_KEY");
     if (a.type === "cursor") providers.add("CURSOR_API_KEY");
     if (a.type === "openai") providers.add("OPENAI_API_KEY");
+    if (a.type === "google") providers.add("GOOGLE_API_KEY");
   }
   return Array.from(providers);
 }

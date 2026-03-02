@@ -37,6 +37,7 @@ describe("Models API", () => {
   let originalAnthropicKey: string | undefined;
   let originalCursorKey: string | undefined;
   let originalOpenAIKey: string | undefined;
+  let originalGoogleKey: string | undefined;
 
   beforeEach(() => {
     app = createMinimalModelsApp();
@@ -45,6 +46,7 @@ describe("Models API", () => {
     originalAnthropicKey = process.env.ANTHROPIC_API_KEY;
     originalCursorKey = process.env.CURSOR_API_KEY;
     originalOpenAIKey = process.env.OPENAI_API_KEY;
+    originalGoogleKey = process.env.GOOGLE_API_KEY;
     vi.clearAllMocks();
     mockGetNextKey.mockImplementation(async (_projectId: string, provider: string) => {
       const key = process.env[provider];
@@ -57,6 +59,7 @@ describe("Models API", () => {
     process.env.ANTHROPIC_API_KEY = originalAnthropicKey;
     process.env.CURSOR_API_KEY = originalCursorKey;
     process.env.OPENAI_API_KEY = originalOpenAIKey;
+    process.env.GOOGLE_API_KEY = originalGoogleKey;
     globalThis.fetch = originalFetch;
   });
 
@@ -80,6 +83,14 @@ describe("Models API", () => {
       delete process.env.OPENAI_API_KEY;
       mockGetNextKey.mockResolvedValue(null);
       const res = await request(app).get(`${API_PREFIX}/models?provider=openai`);
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual([]);
+    });
+
+    it("returns empty array when provider is google and no API key", async () => {
+      delete process.env.GOOGLE_API_KEY;
+      mockGetNextKey.mockResolvedValue(null);
+      const res = await request(app).get(`${API_PREFIX}/models?provider=google`);
       expect(res.status).toBe(200);
       expect(res.body.data).toEqual([]);
     });

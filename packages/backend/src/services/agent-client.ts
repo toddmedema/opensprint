@@ -4,6 +4,7 @@ import { open as fsOpen, stat as fsStat, readFile } from "fs/promises";
 import path from "path";
 import { promisify } from "util";
 import OpenAI from "openai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { AgentConfig } from "@opensprint/shared";
 import { OPENSPRINT_PATHS } from "@opensprint/shared";
 import { AppError } from "../middleware/error-handler.js";
@@ -153,7 +154,7 @@ function extractExplicitAgentErrors(rawOutput: string): string {
 
 /** Format raw agent errors into user-friendly messages with remediation hints */
 function formatAgentError(
-  agentType: "claude" | "claude-cli" | "cursor" | "custom" | "openai",
+  agentType: "claude" | "claude-cli" | "cursor" | "custom" | "openai" | "google",
   raw: string
 ): string {
   const lower = raw.toLowerCase();
@@ -197,6 +198,9 @@ function formatAgentError(
   if (lower.includes("api key") || lower.includes("401") || lower.includes("unauthorized")) {
     if (agentType === "openai") {
       return `${raw} Check that OPENAI_API_KEY is set in .env or Settings. Get a key from https://platform.openai.com/.`;
+    }
+    if (agentType === "google") {
+      return `${raw} Check that GOOGLE_API_KEY is set in .env or Settings. Get a key from https://aistudio.google.com/.`;
     }
     return `${raw} Check that your API key is set in .env and valid.`;
   }
@@ -243,6 +247,8 @@ export class AgentClient {
         return this.invokeCursorCli(options);
       case "openai":
         return this.invokeOpenAIApi(options);
+      case "google":
+        return this.invokeGoogleApi(options);
       case "custom":
         return this.invokeCustomCli(options);
       default:
@@ -279,6 +285,18 @@ export class AgentClient {
   ): { kill: () => void; pid: number | null } {
     if (config.type === "openai") {
       return this.spawnOpenAIWithTaskFile(
+        config,
+        taskFilePath,
+        cwd,
+        onOutput,
+        onExit,
+        agentRole,
+        outputLogPath,
+        projectId
+      );
+    }
+    if (config.type === "google") {
+      return this.spawnGoogleWithTaskFile(
         config,
         taskFilePath,
         cwd,
@@ -654,6 +672,194 @@ export class AgentClient {
 
     run().catch((err) => {
       log.error("spawnOpenAIWithTaskFile failed", { err });
+      Promise.resolve(onExit(1)).catch(() => {});
+    });
+
+    return handle;
+  }
+
+  /**
+   * Google/Gemini with task file: run API call in-process, stream to onOutput, simulate exit code.
+   * No subprocess spawn; uses getNextKey/recordLimitHit/clearLimitHit for key rotation.
+   */
+  private spawnGoogleWithTaskFile(
+    config: AgentConfig,
+    taskFilePath: string,
+    cwd: string,
+    onOutput: (chunk: string) => void,
+    onExit: (code: number | null) => void | Promise<void>,
+    agentRole?: string,
+    outputLogPath?: string,
+    projectId?: string
+  ): { kill: () => void; pid: number | null } {
+    let aborted = false;
+    const handle: { kill: () => void; pid: number | null } = {
+      pid: null,
+      kill() {
+        aborted = true;
+      },
+    };
+
+    if (outputLogPath) {
+      mkdirSync(path.dirname(outputLogPath), { recursive: true });
+    }
+
+    const emit = (chunk: string) => {
+      onOutput(chunk);
+      if (outputLogPath) {
+        try {
+          appendFileSync(outputLogPath, chunk);
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    const run = async (): Promise<void> => {
+      let taskContent: string;
+      try {
+        taskContent = await readFile(taskFilePath, "utf-8");
+      } catch (readErr) {
+        const msg = getErrorMessage(readErr);
+        log.error("Google task file read failed", { taskFilePath, err: msg });
+        emit(`[Agent error: Could not read task file: ${msg}]\n`);
+        return Promise.resolve(onExit(1)).catch((e) => log.error("onExit failed", { err: e }));
+      }
+
+      const model = config.model ?? "gemini-1.5-flash";
+      const systemPrompt = `You are a coding agent. Execute the task described in the user message. Output your work directly.`;
+
+      const triedKeyIds = new Set<string>();
+      let lastError: unknown;
+
+      const tryCall = async (): Promise<void> => {
+        if (aborted) return;
+
+        const resolved = projectId
+          ? await getNextKey(projectId, "GOOGLE_API_KEY")
+          : {
+              key: process.env.GOOGLE_API_KEY || "",
+              keyId: ENV_FALLBACK_KEY_ID,
+              source: "env" as KeySource,
+            };
+
+        if (!resolved || !resolved.key.trim()) {
+          const msg = lastError ? getErrorMessage(lastError) : "No Google API key available";
+          emit(`[Agent error: ${msg}]\n`);
+          if (projectId) {
+            markExhausted(projectId, "GOOGLE_API_KEY");
+            notificationService
+              .createApiBlocked({
+                projectId,
+                source: "execute",
+                sourceId: "api-keys-GOOGLE_API_KEY",
+                message:
+                  "Your API key(s) for Google have hit their limit. Please increase your budget or add another key.",
+                errorCode: "rate_limit",
+              })
+              .then((notification) => {
+                broadcastToProject(projectId, {
+                  type: "notification.added",
+                  notification: {
+                    id: notification.id,
+                    projectId: notification.projectId,
+                    source: notification.source,
+                    sourceId: notification.sourceId,
+                    questions: notification.questions,
+                    status: notification.status,
+                    createdAt: notification.createdAt,
+                    resolvedAt: notification.resolvedAt,
+                    kind: "api_blocked",
+                    errorCode: notification.errorCode,
+                  },
+                });
+              })
+              .catch((e) => log.error("Failed to create API-blocked notification", { err: e }));
+          }
+          return Promise.resolve(onExit(1)).catch((e) => log.error("onExit failed", { err: e }));
+        }
+
+        const { key, keyId, source } = resolved;
+        if (triedKeyIds.has(keyId)) {
+          const msg = getErrorMessage(lastError);
+          emit(`[Agent error: ${msg}]\n`);
+          if (projectId) {
+            markExhausted(projectId, "GOOGLE_API_KEY");
+            notificationService
+              .createApiBlocked({
+                projectId,
+                source: "execute",
+                sourceId: "api-keys-GOOGLE_API_KEY",
+                message:
+                  "Your API key(s) for Google have hit their limit. Please increase your budget or add another key.",
+                errorCode: "rate_limit",
+              })
+              .then((notification) => {
+                broadcastToProject(projectId, {
+                  type: "notification.added",
+                  notification: {
+                    id: notification.id,
+                    projectId: notification.projectId,
+                    source: notification.source,
+                    sourceId: notification.sourceId,
+                    questions: notification.questions,
+                    status: notification.status,
+                    createdAt: notification.createdAt,
+                    resolvedAt: notification.resolvedAt,
+                    kind: "api_blocked",
+                    errorCode: notification.errorCode,
+                  },
+                });
+              })
+              .catch((e) => log.error("Failed to create API-blocked notification", { err: e }));
+          }
+          return Promise.resolve(onExit(1)).catch((e) => log.error("onExit failed", { err: e }));
+        }
+        triedKeyIds.add(keyId);
+
+        const genAI = new GoogleGenerativeAI(key);
+        const geminiModel = genAI.getGenerativeModel({
+          model,
+          systemInstruction: systemPrompt,
+        });
+
+        try {
+          const result = await geminiModel.generateContentStream(taskContent);
+          let fullContent = "";
+          for await (const chunk of result.stream) {
+            if (aborted) break;
+            const text = chunk.text();
+            if (text) {
+              fullContent += text;
+              emit(text);
+            }
+          }
+
+          if (aborted) return;
+
+          if (projectId && keyId !== ENV_FALLBACK_KEY_ID) {
+            await clearLimitHit(projectId, "GOOGLE_API_KEY", keyId, source);
+          }
+
+          log.info("Google coding agent completed", { outputLen: fullContent.length });
+          return Promise.resolve(onExit(0)).catch((e) => log.error("onExit failed", { err: e }));
+        } catch (error: unknown) {
+          lastError = error;
+          if (isLimitError(error) && keyId !== ENV_FALLBACK_KEY_ID) {
+            await recordLimitHit(projectId!, "GOOGLE_API_KEY", keyId, source);
+            return tryCall();
+          }
+          const msg = getErrorMessage(error);
+          emit(`[Agent error: ${msg}]\n`);
+          return Promise.resolve(onExit(1)).catch((e) => log.error("onExit failed", { err: e }));
+        }
+      };
+
+      return tryCall();
+    };
+
+    run().catch((err) => {
+      log.error("spawnGoogleWithTaskFile failed", { err });
       Promise.resolve(onExit(1)).catch(() => {});
     });
 
@@ -1410,6 +1616,106 @@ export class AgentClient {
           formatAgentError("openai", msg),
           {
             agentType: "openai",
+            raw: msg,
+            isLimitError: isLimitError(error),
+          }
+        );
+      }
+    }
+  }
+
+  private async invokeGoogleApi(options: AgentInvokeOptions): Promise<AgentResponse> {
+    const { config, prompt, systemPrompt, conversationHistory, projectId } = options;
+    const model = config.model ?? "gemini-1.5-flash";
+
+    const triedKeyIds = new Set<string>();
+    let lastError: unknown;
+
+    for (;;) {
+      const resolved = projectId
+        ? await getNextKey(projectId, "GOOGLE_API_KEY")
+        : {
+            key: process.env.GOOGLE_API_KEY || "",
+            keyId: ENV_FALLBACK_KEY_ID,
+            source: "env" as KeySource,
+          };
+
+      if (!resolved || !resolved.key.trim()) {
+        const msg = lastError ? getErrorMessage(lastError) : "No Google API key available";
+        throw new AppError(
+          400,
+          ErrorCodes.AGENT_INVOKE_FAILED,
+          lastError && isLimitError(lastError)
+            ? `All Google API keys hit rate limits. ${msg} Add more keys in Settings, or retry after 24h.`
+            : "GOOGLE_API_KEY is not set. Add it to your .env file or Settings. Get a key from https://aistudio.google.com/.",
+          lastError ? { agentType: "google", raw: msg, isLimitError: isLimitError(lastError) } : undefined
+        );
+      }
+
+      const { key, keyId, source } = resolved;
+      if (triedKeyIds.has(keyId)) {
+        const msg = getErrorMessage(lastError);
+        throw new AppError(
+          502,
+          ErrorCodes.AGENT_INVOKE_FAILED,
+          `Google API error: ${msg}. Check Settings (API key, model).`,
+          { agentType: "google", raw: msg, isLimitError: true }
+        );
+      }
+      triedKeyIds.add(keyId);
+
+      const genAI = new GoogleGenerativeAI(key);
+      const geminiModel = genAI.getGenerativeModel({
+        model,
+        systemInstruction: systemPrompt?.trim() || undefined,
+      });
+
+      try {
+        const chat = geminiModel.startChat({
+          history: (conversationHistory ?? []).map((m) => ({
+            role: m.role === "user" ? "user" : "model",
+            parts: [{ text: m.content }],
+          })),
+        });
+
+        if (options.onChunk) {
+          const result = await chat.sendMessageStream(prompt);
+          let fullContent = "";
+          for await (const chunk of result.stream) {
+            const text = chunk.text();
+            if (text) {
+              fullContent += text;
+              options.onChunk(text);
+            }
+          }
+          if (projectId && keyId !== ENV_FALLBACK_KEY_ID) {
+            await clearLimitHit(projectId, "GOOGLE_API_KEY", keyId, source);
+          }
+          return { content: fullContent };
+        }
+
+        const result = await chat.sendMessage(prompt);
+        const response = result.response;
+        const content = response.text();
+
+        if (projectId && keyId !== ENV_FALLBACK_KEY_ID) {
+          await clearLimitHit(projectId, "GOOGLE_API_KEY", keyId, source);
+        }
+
+        return { content };
+      } catch (error: unknown) {
+        lastError = error;
+        if (isLimitError(error) && keyId !== ENV_FALLBACK_KEY_ID) {
+          await recordLimitHit(projectId!, "GOOGLE_API_KEY", keyId, source);
+          continue;
+        }
+        const msg = getErrorMessage(error);
+        throw new AppError(
+          502,
+          ErrorCodes.AGENT_INVOKE_FAILED,
+          formatAgentError("google", msg),
+          {
+            agentType: "google",
             raw: msg,
             isLimitError: isLimitError(error),
           }

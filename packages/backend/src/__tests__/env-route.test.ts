@@ -151,13 +151,14 @@ describe("Env API", () => {
   });
 
   describe("GET /env/keys", () => {
-    it("returns shape with anthropic, cursor, openai, claudeCli, useCustomCli booleans", async () => {
+    it("returns shape with anthropic, cursor, openai, google, claudeCli, useCustomCli booleans", async () => {
       const res = await request(app).get(`${API_PREFIX}/env/keys`);
       expect(res.status).toBe(200);
       expect(res.body.data).toBeDefined();
       expect(typeof res.body.data.anthropic).toBe("boolean");
       expect(typeof res.body.data.cursor).toBe("boolean");
       expect(typeof res.body.data.openai).toBe("boolean");
+      expect(typeof res.body.data.google).toBe("boolean");
       expect(typeof res.body.data.claudeCli).toBe("boolean");
       expect(typeof res.body.data.useCustomCli).toBe("boolean");
     });
@@ -222,6 +223,18 @@ describe("Env API", () => {
       const res = await request(app).get(`${API_PREFIX}/env/keys`);
       expect(res.status).toBe(200);
       expect(res.body.data.openai).toBe(true);
+    });
+
+    it("google true when global store has GOOGLE_API_KEY", async () => {
+      await setGlobalSettings({
+        apiKeys: {
+          GOOGLE_API_KEY: [{ id: "k4", value: "AIza-xxx" }],
+        },
+      });
+
+      const res = await request(app).get(`${API_PREFIX}/env/keys`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.google).toBe(true);
     });
 
     it("openai true when process.env has OPENAI_API_KEY", async () => {

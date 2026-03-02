@@ -210,7 +210,7 @@ export class AgentService {
       return this.invokeOpenAIPlanningAgent(options);
     }
 
-    // Cursor and custom: use AgentClient (CLI-based). Images are written to temp files
+    // Google, Cursor, and custom: use AgentClient (invokeGoogleApi, CLI-based). Images are written to temp files
     // and paths appended to the prompt so the agent can read them via tool calling.
     const lastUser = messages.filter((m) => m.role === "user").pop();
     let prompt = lastUser?.content ?? "";

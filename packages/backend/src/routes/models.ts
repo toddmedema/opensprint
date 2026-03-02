@@ -16,10 +16,11 @@ export const modelsRouter = Router();
 
 const CURSOR_MODELS_URL = "https://api.cursor.com/v0/models";
 const OPENAI_MODELS_URL = "https://api.openai.com/v1/models";
+const GOOGLE_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 
 /** Validate an API key via minimal API call. Reused by POST /env/keys/validate. */
 export async function validateApiKey(
-  provider: "claude" | "cursor" | "openai",
+  provider: "claude" | "cursor" | "openai" | "google",
   value: string
 ): Promise<{ valid: boolean; error?: string }> {
   const trimmed = value?.trim();
@@ -78,6 +79,26 @@ export async function validateApiKey(
               ? " OpenAI API rate limit hit. Try again shortly."
               : "";
       return { valid: false, error: `OpenAI API error ${response.status}: ${text}${hint}` };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { valid: false, error: msg };
+    }
+  }
+
+  if (provider === "google") {
+    try {
+      const response = await fetch(`${GOOGLE_MODELS_URL}?key=${encodeURIComponent(trimmed)}`);
+      if (response.ok) return { valid: true };
+      const text = await response.text();
+      const hint =
+        response.status === 401
+          ? " Check that the API key is valid. Get a key from aistudio.google.com."
+          : response.status === 403
+            ? " Your API key may not have access to models."
+            : response.status === 429
+              ? " Google API rate limit hit. Try again shortly."
+              : "";
+      return { valid: false, error: `Google API error ${response.status}: ${text}${hint}` };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return { valid: false, error: msg };
@@ -175,12 +196,51 @@ async function fetchCursorModels(apiKey: string): Promise<ModelOption[]> {
   }));
 }
 
+async function fetchGoogleModels(apiKey: string): Promise<ModelOption[]> {
+  const response = await fetch(`${GOOGLE_MODELS_URL}?key=${encodeURIComponent(apiKey)}`);
+
+  if (!response.ok) {
+    const text = await response.text();
+    const hint =
+      response.status === 401
+        ? " Check that GOOGLE_API_KEY in .env is valid. Get a key from aistudio.google.com."
+        : response.status === 403
+          ? " Your API key may not have access to models."
+          : response.status === 429
+            ? " Google API rate limit hit. The app caches model lists for 30 minutes; try again shortly."
+            : "";
+    throw new AppError(
+      response.status >= 500 ? 502 : response.status,
+      ErrorCodes.GOOGLE_API_ERROR,
+      `Google API error ${response.status}: ${text}${hint}`,
+      {
+        status: response.status,
+        responsePreview: text.slice(0, 200),
+      }
+    );
+  }
+
+  const body = (await response.json()) as {
+    models?: Array<{ name?: string; displayName?: string }>;
+  };
+  return (body.models ?? [])
+    .filter((m) => m.name && m.name.startsWith("models/"))
+    .map((m) => {
+      const name = m.name!;
+      const id = name.replace(/^models\//, "");
+      return {
+        id,
+        displayName: m.displayName ?? id,
+      };
+    });
+}
+
 /**
  * Fetch models for a provider with request coalescing.
  * Concurrent requests for the same provider share a single API call to avoid rate limits.
  */
 async function getModelsWithCoalescing(
-  provider: "claude" | "cursor" | "openai",
+  provider: "claude" | "cursor" | "openai" | "google",
   fetchFn: () => Promise<ModelOption[]>
 ): Promise<ModelOption[]> {
   const cached = modelListCache.get<ModelOption[]>(provider);
@@ -216,7 +276,7 @@ const CLAUDE_CLI_DEFAULT_MODELS: ModelOption[] = [
  */
 async function resolveApiKey(
   projectId: string | undefined,
-  provider: "ANTHROPIC_API_KEY" | "CURSOR_API_KEY" | "OPENAI_API_KEY"
+  provider: "ANTHROPIC_API_KEY" | "CURSOR_API_KEY" | "OPENAI_API_KEY" | "GOOGLE_API_KEY"
 ): Promise<string | null> {
   // Model-list fetches are lightweight capability discovery and should still work
   // even if a key is cooling down after an agent rate-limit event.
@@ -273,6 +333,18 @@ modelsRouter.get("/", async (req: Request, res, next) => {
       }
 
       const models = await getModelsWithCoalescing("openai", () => fetchOpenAIModels(apiKey));
+      res.json({ data: models } as ApiResponse<ModelOption[]>);
+      return;
+    }
+
+    if (provider === "google") {
+      const apiKey = await resolveApiKey(projectId, "GOOGLE_API_KEY");
+      if (!apiKey) {
+        res.json({ data: [] } as ApiResponse<ModelOption[]>);
+        return;
+      }
+
+      const models = await getModelsWithCoalescing("google", () => fetchGoogleModels(apiKey));
       res.json({ data: models } as ApiResponse<ModelOption[]>);
       return;
     }

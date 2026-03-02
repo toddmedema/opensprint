@@ -136,11 +136,12 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
   const [settings, setSettings] = useState<ProjectSettings | null>(null);
 
   // API key status (for agents tab - to show "configure in Settings" when keys missing)
-  // anthropic/cursor derived from global store only; claudeCli from env (CLI binary availability)
+  // anthropic/cursor/openai/google derived from global store only; claudeCli from env (CLI binary availability)
   const [envKeys, setEnvKeys] = useState<{
     anthropic: boolean;
     cursor: boolean;
     openai: boolean;
+    google: boolean;
     claudeCli: boolean;
   } | null>(null);
   const [modelRefreshTrigger, setModelRefreshTrigger] = useState(0);
@@ -170,7 +171,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
   }, [project.id]);
 
   // Fetch API key status when agents tab is active.
-  // API key warning (claude/cursor) uses global store only; claudeCli uses env for CLI availability.
+  // API key warning (claude/cursor/openai/google) uses global store only; claudeCli uses env for CLI availability.
   useEffect(() => {
     if (activeTab !== "agents") return;
     Promise.all([api.globalSettings.get(), api.env.getKeys()])
@@ -179,7 +180,8 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
         const anthropic = (apiKeys?.ANTHROPIC_API_KEY?.length ?? 0) > 0;
         const cursor = (apiKeys?.CURSOR_API_KEY?.length ?? 0) > 0;
         const openai = (apiKeys?.OPENAI_API_KEY?.length ?? 0) > 0;
-        setEnvKeys({ anthropic, cursor, openai, claudeCli: env.claudeCli });
+        const google = (apiKeys?.GOOGLE_API_KEY?.length ?? 0) > 0;
+        setEnvKeys({ anthropic, cursor, openai, google, claudeCli: env.claudeCli });
       })
       .catch(() => setEnvKeys(null));
   }, [activeTab]);
@@ -500,11 +502,13 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                     const needsCursor = envKeys && !envKeys.cursor && selectedTypes.has("cursor");
                     const needsOpenai =
                       envKeys && !envKeys.openai && selectedTypes.has("openai");
+                    const needsGoogle =
+                      envKeys && !envKeys.google && selectedTypes.has("google");
                     const claudeCliMissing =
                       envKeys && !envKeys.claudeCli && selectedTypes.has("claude-cli");
                     return (
                       <>
-                        {(needsAnthropic || needsCursor || needsOpenai) && (
+                        {(needsAnthropic || needsCursor || needsOpenai || needsGoogle) && (
                           <div className="p-3 rounded-lg bg-theme-warning-bg border border-theme-warning-border">
                             <p className="text-sm text-theme-warning-text">
                               <strong>API key required:</strong>{" "}
@@ -568,6 +572,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                             <option value="claude-cli">Claude (CLI)</option>
                             <option value="cursor">Cursor</option>
                             <option value="openai">OpenAI</option>
+                            <option value="google">Google (Gemini)</option>
                             <option value="custom">Custom CLI</option>
                           </select>
                         </div>
@@ -627,6 +632,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                             <option value="claude-cli">Claude (CLI)</option>
                             <option value="cursor">Cursor</option>
                             <option value="openai">OpenAI</option>
+                            <option value="google">Google (Gemini)</option>
                             <option value="custom">Custom CLI</option>
                           </select>
                         </div>
