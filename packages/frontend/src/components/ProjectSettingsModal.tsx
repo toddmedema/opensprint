@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
 import { FolderBrowser } from "./FolderBrowser";
 import { CloseButton } from "./CloseButton";
@@ -36,6 +36,14 @@ interface ProjectSettingsModalProps {
   onSaved?: () => void;
   /** When true, render as full-screen page instead of modal overlay */
   fullScreen?: boolean;
+  /** When fullScreen, parent renders tabs in topbar; pass these to control tab state externally */
+  activeTab?: SettingsSubTab;
+  onTabChange?: (tab: SettingsSubTab) => void;
+  onSaveStatusChange?: (status: "saving" | "saved") => void;
+}
+
+export interface ProjectSettingsModalRef {
+  persist: () => Promise<void>;
 }
 
 const TAB_PARAM = "tab";
@@ -48,17 +56,33 @@ function parseTabFromSearch(search: string): SettingsSubTab | null {
   return null;
 }
 
-export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: ProjectSettingsModalProps) {
+export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectSettingsModalProps>(
+  function ProjectSettingsModal(
+    {
+      project,
+      onClose,
+      onSaved,
+      fullScreen,
+      activeTab: externalActiveTab,
+      onTabChange: externalOnTabChange,
+      onSaveStatusChange,
+    },
+    ref
+  ) {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabFromUrl = fullScreen ? parseTabFromSearch(searchParams.toString()) : null;
-  const [activeTab, setActiveTab] = useState<SettingsSubTab>(tabFromUrl ?? "basics");
+  const [internalActiveTab, setInternalActiveTab] = useState<SettingsSubTab>(tabFromUrl ?? "basics");
 
-  // Sync URL -> state when fullScreen (e.g. browser back/forward)
+  const tabsControlledExternally = Boolean(fullScreen && externalActiveTab != null && externalOnTabChange);
+  const activeTab = tabsControlledExternally ? externalActiveTab! : internalActiveTab;
+  const setActiveTab = tabsControlledExternally ? externalOnTabChange! : setInternalActiveTab;
+
+  // Sync URL -> state when fullScreen and not externally controlled (e.g. browser back/forward)
   useEffect(() => {
-    if (fullScreen && tabFromUrl && tabFromUrl !== activeTab) {
-      setActiveTab(tabFromUrl);
+    if (fullScreen && !tabsControlledExternally && tabFromUrl && tabFromUrl !== internalActiveTab) {
+      setInternalActiveTab(tabFromUrl);
     }
-  }, [fullScreen, tabFromUrl, activeTab]);
+  }, [fullScreen, tabsControlledExternally, tabFromUrl, internalActiveTab]);
 
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -66,6 +90,10 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
 
   const saveStatus = saving ? "saving" : "saved";
+
+  useEffect(() => {
+    if (onSaveStatusChange) onSaveStatusChange(saveStatus);
+  }, [saveStatus, onSaveStatusChange]);
 
   useEffect(() => {
     if (saveStatus !== "saving") return;
@@ -243,6 +271,16 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
     ]
   );
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      persist: async () => {
+        if (settings && !loading) await persistSettings();
+      },
+    }),
+    [settings, loading, persistSettings]
+  );
+
   const handleClose = useCallback(async () => {
     if (settings && !loading) {
       await persistSettings(true);
@@ -322,7 +360,7 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
     ? "flex-1 min-h-0 flex flex-col overflow-hidden"
     : "fixed inset-0 z-50 flex items-center justify-center";
   const contentClass = fullScreen
-    ? "relative bg-theme-surface flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-theme-border"
+    ? "relative bg-theme-surface flex-1 min-h-0 flex flex-col overflow-hidden"
     : "relative bg-theme-surface rounded-xl shadow-2xl w-full max-w-2xl mx-4 flex flex-col max-h-[85vh] overflow-hidden";
 
   return (
@@ -331,16 +369,17 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
         <div className="absolute inset-0 bg-theme-overlay backdrop-blur-sm" onClick={() => void handleClose()} />
       )}
 
+      {fullScreen && !tabsControlledExternally && (
+        <>
+          <SettingsTopBar projectId={project.id} saveStatus={saveStatus} />
+          <SettingsSubTabsBar activeTab={activeTab} onTabChange={switchTab} />
+        </>
+      )}
       <div
         className={contentClass}
         data-testid="settings-modal"
       >
-        {fullScreen ? (
-          <>
-            <SettingsTopBar projectId={project.id} saveStatus={saveStatus} />
-            <SettingsSubTabsBar activeTab={activeTab} onTabChange={switchTab} />
-          </>
-        ) : (
+        {!fullScreen && (
           <div
             className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-theme-border"
             data-testid="settings-modal-header"
@@ -1094,4 +1133,4 @@ export function ProjectSettingsModal({ project, onClose, onSaved, fullScreen }: 
       )}
     </div>
   );
-}
+});

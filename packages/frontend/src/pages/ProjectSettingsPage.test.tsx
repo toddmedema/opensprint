@@ -188,7 +188,7 @@ describe("ProjectSettingsPage", () => {
     expect(page).toHaveClass("min-h-0");
   });
 
-  it("settings modal wrapper is direct flex child of page (no extra wrapper) for correct scroll chain", async () => {
+  it("topbar and content are direct flex children of page for correct scroll chain", async () => {
     renderProjectSettingsPage();
 
     await waitFor(() => {
@@ -197,13 +197,30 @@ describe("ProjectSettingsPage", () => {
 
     const page = screen.getByTestId("project-settings-page");
     const modal = screen.getByTestId("settings-modal");
-    // Page has 1 direct child: ProjectSettingsModal root (no header)
+    // Page has 2 direct children: topbar navbar and content area (Execute-style layout)
     const pageChildren = Array.from(page.children);
-    expect(pageChildren.length).toBe(1);
-    const modalWrapper = pageChildren[0];
-    expect(modalWrapper).toContainElement(modal);
-    expect(modalWrapper).toHaveClass("flex-1");
-    expect(modalWrapper).toHaveClass("min-h-0");
+    expect(pageChildren.length).toBe(2);
+    expect(screen.getByTestId("settings-topbar-navbar")).toBeInTheDocument();
+    const contentWrapper = pageChildren[1];
+    expect(contentWrapper).toContainElement(modal);
+    expect(contentWrapper).toHaveClass("flex-1");
+    expect(contentWrapper).toHaveClass("min-h-0");
+  });
+
+  it("tabs (Global/Project and sub-tabs) are in topbar outside modal, not inside modal container", async () => {
+    renderProjectSettingsPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("settings-modal")).toBeInTheDocument();
+    });
+
+    const modal = screen.getByTestId("settings-modal");
+    const topBar = screen.getByTestId("settings-top-bar");
+    const subTabsBar = screen.getByTestId("settings-sub-tabs-bar");
+
+    // Tabs must not be descendants of the modal container
+    expect(modal).not.toContainElement(topBar);
+    expect(modal).not.toContainElement(subTabsBar);
   });
 
   it("does not render back button in header", async () => {
