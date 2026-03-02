@@ -586,6 +586,47 @@ User authentication.
     expect(prompt).not.toContain("## Prior Review History");
   });
 
+  it("should include Focus Areas section when reviewAngles are provided", async () => {
+    const plansDir = path.join(repoPath, OPENSPRINT_PATHS.plans);
+    await fs.mkdir(plansDir, { recursive: true });
+    await fs.writeFile(
+      path.join(plansDir, "auth.md"),
+      "# Feature: Auth\n\n## Acceptance Criteria\n\n- Login works\n"
+    );
+
+    const config = {
+      invocation_id: "bd-a3f8.2",
+      agent_role: "reviewer" as const,
+      taskId: "bd-a3f8.2",
+      repoPath,
+      branch: "opensprint/bd-a3f8.2",
+      testCommand: "npm test",
+      attempt: 1,
+      phase: "review" as const,
+      previousFailure: null as string | null,
+      reviewFeedback: null as string | null,
+      reviewAngles: ["security", "performance", "test_coverage"],
+    };
+
+    const context = {
+      taskId: config.taskId,
+      title: "Implement auth",
+      description: "Add JWT validation",
+      planContent: "# Feature: Auth",
+      prdExcerpt: "# Product Requirements",
+      dependencyOutputs: [] as Array<{ taskId: string; diff: string; summary: string }>,
+    };
+
+    const taskDir = await assembler.assembleTaskDirectory(repoPath, config.taskId, config, context);
+    const prompt = await fs.readFile(path.join(taskDir, "prompt.md"), "utf-8");
+
+    expect(prompt).toContain("## Focus Areas");
+    expect(prompt).toContain("Pay special attention to these review angles:");
+    expect(prompt).toContain("- Security implications");
+    expect(prompt).toContain("- Performance impact");
+    expect(prompt).toContain("- Validating test coverage");
+  });
+
   it("should include prior review history in review prompt when provided", async () => {
     const planContent = `# Feature: Auth\n\n## Acceptance Criteria\n\n- Login works\n`;
 

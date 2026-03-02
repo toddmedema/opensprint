@@ -295,6 +295,54 @@ describe("ProjectSettingsModal", () => {
     );
   });
 
+  it("shows review angles multi-select and persists selection", async () => {
+    mockGetSettings.mockResolvedValue({ ...mockSettings, reviewAngles: undefined });
+
+    renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
+    await waitForModalReady();
+
+    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
+    await userEvent.click(agentConfigTab);
+
+    await screen.findByText("Code Review");
+    expect(screen.getByTestId("review-angles-multiselect")).toBeInTheDocument();
+    expect(screen.getByText("Security implications")).toBeInTheDocument();
+    expect(screen.getByText("Performance impact")).toBeInTheDocument();
+
+    const securityCheckbox = screen.getByRole("checkbox", { name: /Security implications/i });
+    await userEvent.click(securityCheckbox);
+
+    await waitFor(() =>
+      expect(mockUpdateSettings).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({
+          reviewAngles: ["security"],
+        })
+      )
+    );
+  });
+
+  it("shows pre-selected review angles when settings have them", async () => {
+    mockGetSettings.mockResolvedValue({
+      ...mockSettings,
+      reviewAngles: ["security", "test_coverage"],
+    });
+
+    renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
+    await waitForModalReady();
+
+    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
+    await userEvent.click(agentConfigTab);
+
+    await screen.findByText("Code Review");
+    const securityCheckbox = screen.getByRole("checkbox", { name: /Security implications/i });
+    const testCoverageCheckbox = screen.getByRole("checkbox", {
+      name: /Validating test coverage/i,
+    });
+    expect(securityCheckbox).toBeChecked();
+    expect(testCoverageCheckbox).toBeChecked();
+  });
+
   it("Autonomy tab shows AI Autonomy slider with three levels", async () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();

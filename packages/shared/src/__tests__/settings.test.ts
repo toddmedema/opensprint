@@ -190,6 +190,45 @@ describe("parseSettings", () => {
     const parsed = parseSettings(raw);
     expect(parsed.gitWorkingMode).toBe("worktree");
   });
+
+  it("should parse and preserve valid reviewAngles", () => {
+    const raw = {
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+      testFramework: null,
+      reviewAngles: ["security", "performance", "test_coverage"],
+    };
+    const parsed = parseSettings(raw);
+    expect(parsed.reviewAngles).toEqual(["security", "performance", "test_coverage"]);
+  });
+
+  it("should filter invalid reviewAngles and return undefined when empty", () => {
+    const raw = {
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+      testFramework: null,
+      reviewAngles: ["security", "invalid", "performance"],
+    };
+    const parsed = parseSettings(raw);
+    expect(parsed.reviewAngles).toEqual(["security", "performance"]);
+  });
+
+  it("should return undefined for reviewAngles when array is empty", () => {
+    const raw = {
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+      testFramework: null,
+      reviewAngles: [],
+    };
+    const parsed = parseSettings(raw);
+    expect(parsed.reviewAngles).toBeUndefined();
+  });
 });
 
 describe("getDefaultDeploymentTarget", () => {

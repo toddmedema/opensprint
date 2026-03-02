@@ -273,6 +273,23 @@ export type ReviewMode = "always" | "never" | "on-failure-only";
 /** Default review mode for new projects (PRD ?7.3.2: two-agent cycle is recommended) */
 export const DEFAULT_REVIEW_MODE: ReviewMode = "always";
 
+/** Review angle identifiers for code review agent config */
+export type ReviewAngle =
+  | "security"
+  | "performance"
+  | "test_coverage"
+  | "code_quality"
+  | "design_ux_accessibility";
+
+/** Review angle options for multi-select UI */
+export const REVIEW_ANGLE_OPTIONS: { value: ReviewAngle; label: string }[] = [
+  { value: "security", label: "Security implications" },
+  { value: "performance", label: "Performance impact" },
+  { value: "test_coverage", label: "Validating test coverage" },
+  { value: "code_quality", label: "Code quality, cleanliness and modularity" },
+  { value: "design_ux_accessibility", label: "Design, UX and accessibility" },
+];
+
 /** Strategy when file scope is unknown for parallel scheduling */
 export type UnknownScopeStrategy = "conservative" | "optimistic";
 
@@ -423,6 +440,8 @@ export interface ProjectSettings {
   testCommand?: string | null;
   /** When to invoke the review agent after coding completes (default: "always") */
   reviewMode?: ReviewMode;
+  /** Selected review angles for the review agent. When empty, all angles are covered by default. */
+  reviewAngles?: ReviewAngle[];
   /** Max concurrent Coder/Reviewer agents per project. 1 = v1 sequential behavior. */
   maxConcurrentCoders?: number;
   /** How to handle tasks with no file-scope prediction: "conservative" (serialize) or "optimistic" (parallelize, rely on merger) */
@@ -474,6 +493,22 @@ export function getAgentForComplexity(
 const DEFAULT_AGENT: AgentConfig = { type: "cursor", model: null, cliCommand: null };
 
 const VALID_AI_AUTONOMY_LEVELS: AiAutonomyLevel[] = ["confirm_all", "major_only", "full"];
+const VALID_REVIEW_ANGLES: ReviewAngle[] = [
+  "security",
+  "performance",
+  "test_coverage",
+  "code_quality",
+  "design_ux_accessibility",
+];
+
+function parseReviewAngles(raw: unknown): ReviewAngle[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const filtered = raw.filter(
+    (v): v is ReviewAngle =>
+      typeof v === "string" && VALID_REVIEW_ANGLES.includes(v as ReviewAngle)
+  );
+  return filtered.length > 0 ? filtered : undefined;
+}
 
 /**
  * Parse raw settings into ProjectSettings. Expects two-tier format (simpleComplexityAgent, complexComplexityAgent).
@@ -507,6 +542,7 @@ export function parseSettings(raw: unknown): ProjectSettings {
     hilConfig,
     testFramework: (r?.testFramework as string | null) ?? null,
     gitWorkingMode,
+    reviewAngles: parseReviewAngles(r?.reviewAngles),
   };
 
   const { apiKeys: _omitApiKeys, ...rest } = r as Partial<ProjectSettings> & { apiKeys?: unknown };

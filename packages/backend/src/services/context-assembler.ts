@@ -1,6 +1,11 @@
 import fs from "fs/promises";
 import path from "path";
-import { OPENSPRINT_PATHS, SPEC_MD, prdToSpecMarkdown } from "@opensprint/shared";
+import {
+  OPENSPRINT_PATHS,
+  REVIEW_ANGLE_OPTIONS,
+  SPEC_MD,
+  prdToSpecMarkdown,
+} from "@opensprint/shared";
 import type { ActiveTaskConfig } from "@opensprint/shared";
 import { BranchManager } from "./branch-manager.js";
 import { PrdService } from "./prd.service.js";
@@ -464,6 +469,23 @@ export class ContextAssembler {
     prompt += `You are reviewing the implementation of a task. Review efficiently — if the implementation clearly meets acceptance criteria and tests pass, approve with a brief summary. Reject only when scope or quality issues exist. Your review covers **two dimensions**:\n`;
     prompt += `1. **Scope compliance** — Does the implementation match the original ticket and meet all acceptance criteria?\n`;
     prompt += `2. **Code quality** — Is the code correct, clear, well-tested, and production-ready?\n\n`;
+
+    const reviewAngles = config.reviewAngles;
+    if (reviewAngles && reviewAngles.length > 0) {
+      const angleLabels = reviewAngles
+        .map(
+          (v) =>
+            REVIEW_ANGLE_OPTIONS.find((o) => o.value === v)?.label ?? v
+        )
+        .filter(Boolean);
+      prompt += `## Focus Areas\n\n`;
+      prompt += `Pay special attention to these review angles:\n\n`;
+      for (const label of angleLabels) {
+        prompt += `- ${label}\n`;
+      }
+      prompt += `\n`;
+    }
+
     prompt += `Approve only if BOTH dimensions pass. Reject with specific, actionable feedback if either fails.\n\n`;
 
     prompt += `## Original Ticket\n\n`;

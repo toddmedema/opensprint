@@ -320,6 +320,8 @@ export class PhaseExecutorService {
         reviewFeedback: null,
         hilConfig: settings.hilConfig,
         aiAutonomyLevel: settings.aiAutonomyLevel,
+        ...(settings.reviewAngles &&
+          settings.reviewAngles.length > 0 && { reviewAngles: settings.reviewAngles }),
       };
 
       const taskDir = this.host.sessionManager.getActiveDir(wtPath, task.id);

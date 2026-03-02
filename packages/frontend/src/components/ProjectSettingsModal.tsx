@@ -18,6 +18,7 @@ import type {
   AiAutonomyLevel,
   DeploymentMode,
   GitWorkingMode,
+  ReviewAngle,
   ReviewMode,
   UnknownScopeStrategy,
 } from "@opensprint/shared";
@@ -27,6 +28,7 @@ import {
   DEFAULT_REVIEW_MODE,
   getDeploymentTargetsForUi,
   AUTO_DEPLOY_TRIGGER_OPTIONS,
+  REVIEW_ANGLE_OPTIONS,
   type AutoDeployTrigger,
 } from "@opensprint/shared";
 
@@ -185,6 +187,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
     gitWorkingMode: GitWorkingMode;
     testCommand: string | null;
     reviewMode: ReviewMode;
+    reviewAngles: ReviewAngle[];
     maxConcurrentCoders: number;
     unknownScopeStrategy: UnknownScopeStrategy;
   }>;
@@ -243,6 +246,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
             aiAutonomyLevel: effAiAutonomy,
             testCommand: overrides?.testCommand ?? effSettings?.testCommand ?? undefined,
             reviewMode: overrides?.reviewMode ?? effSettings?.reviewMode ?? DEFAULT_REVIEW_MODE,
+            reviewAngles: overrides?.reviewAngles ?? effSettings?.reviewAngles ?? undefined,
             maxConcurrentCoders:
               effGitMode === "branches" ? 1 : (overrides?.maxConcurrentCoders ?? effSettings?.maxConcurrentCoders ?? 1),
             unknownScopeStrategy: overrides?.unknownScopeStrategy ?? effSettings?.unknownScopeStrategy ?? "optimistic",
@@ -663,30 +667,70 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                     />
                   </div>
                   <hr />
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="min-w-0 flex-1">
-                      <h3 className="text-sm font-semibold text-theme-text">Code Review</h3>
-                      <p className="text-xs text-theme-muted">
-                        After the coding agent completes a task, a review agent can validate the
-                        implementation against the ticket specification, verify tests pass and cover
-                        the scope, and check code quality. Rejected work is sent back to the coding
-                        agent with feedback for improvement.
-                      </p>
+                  <div>
+                    <div className="flex items-center justify-between gap-4 mb-3">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-sm font-semibold text-theme-text">Code Review</h3>
+                        <p className="text-xs text-theme-muted">
+                          After the coding agent completes a task, a review agent can validate the
+                          implementation against the ticket specification, verify tests pass and cover
+                          the scope, and check code quality. Rejected work is sent back to the coding
+                          agent with feedback for improvement.
+                        </p>
+                      </div>
+                      <select
+                        data-testid="review-mode-select"
+                        className="input w-48 shrink-0"
+                        value={settings?.reviewMode ?? DEFAULT_REVIEW_MODE}
+                        onChange={(e) => {
+                          const mode = e.target.value as ReviewMode;
+                          setSettings((s) => (s ? { ...s, reviewMode: mode } : null));
+                          void persistSettings(undefined, { reviewMode: mode });
+                        }}
+                      >
+                        <option value="never">Never</option>
+                        <option value="always">Always</option>
+                        <option value="on-failure-only">On Failure Only</option>
+                      </select>
                     </div>
-                    <select
-                      data-testid="review-mode-select"
-                      className="input w-48 shrink-0"
-                      value={settings?.reviewMode ?? DEFAULT_REVIEW_MODE}
-                      onChange={(e) => {
-                        const mode = e.target.value as ReviewMode;
-                        setSettings((s) => (s ? { ...s, reviewMode: mode } : null));
-                        void persistSettings(undefined, { reviewMode: mode });
-                      }}
-                    >
-                      <option value="never">Never</option>
-                      <option value="always">Always</option>
-                      <option value="on-failure-only">On Failure Only</option>
-                    </select>
+                    <div>
+                      <label className="block text-xs font-medium text-theme-muted mb-2">
+                        Review angles
+                      </label>
+                      <p className="text-xs text-theme-muted mb-2">
+                        Select one or more focus areas for the review agent. Leave empty to cover all angles.
+                      </p>
+                      <div className="flex flex-wrap gap-2" data-testid="review-angles-multiselect">
+                        {REVIEW_ANGLE_OPTIONS.map((opt) => {
+                          const selected = (settings?.reviewAngles ?? []).includes(opt.value);
+                          return (
+                            <label
+                              key={opt.value}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer transition-colors text-sm ${
+                                selected
+                                  ? "border-brand-600 bg-brand-50 dark:bg-brand-900/20"
+                                  : "border-theme-border hover:border-theme-muted"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() => {
+                                  const current = settings?.reviewAngles ?? [];
+                                  const next = selected
+                                    ? current.filter((a) => a !== opt.value)
+                                    : [...current, opt.value];
+                                  setSettings((s) => (s ? { ...s, reviewAngles: next } : null));
+                                  void persistSettings(undefined, { reviewAngles: next });
+                                }}
+                                className="rounded"
+                              />
+                              <span className="text-theme-text">{opt.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
                   </div>
                   <hr />
                   <div className="flex items-center justify-between gap-4">

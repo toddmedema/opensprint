@@ -180,6 +180,8 @@ export interface ActiveTaskConfig {
   };
   /** AI Autonomy level (confirm_all | major_only | full): human-readable rule for when to emit open_questions */
   aiAutonomyLevel?: "confirm_all" | "major_only" | "full";
+  /** Selected review angles for the review agent (security, performance, etc.). When empty, all angles are covered. */
+  reviewAngles?: string[];
 }
 
 /** Agent session record (.opensprint/sessions/<task-id>-<attempt>.json) */
