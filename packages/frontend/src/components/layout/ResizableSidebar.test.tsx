@@ -147,6 +147,19 @@ describe("ResizableSidebar", () => {
     expect(handle).toHaveAttribute("aria-valuemax", "800");
   });
 
+  it("has expanded hit zone (w-8) for resize handle while visible dragger stays small", () => {
+    render(
+      <ResizableSidebar storageKey={STORAGE_KEY}>
+        <span>Content</span>
+      </ResizableSidebar>
+    );
+
+    const handle = screen.getByRole("slider", { name: "Resize sidebar" });
+    expect(handle).toHaveClass("w-8");
+    const visibleDragger = handle.querySelector(".w-1.h-12");
+    expect(visibleDragger).toBeInTheDocument();
+  });
+
   it("uses min 200px and max 80% viewport by default", () => {
     const originalInnerWidth = window.innerWidth;
     Object.defineProperty(window, "innerWidth", { value: 1000, writable: true });

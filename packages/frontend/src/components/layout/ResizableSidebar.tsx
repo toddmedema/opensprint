@@ -231,10 +231,11 @@ export function ResizableSidebar({
         ? "border-r border-theme-border"
         : "border-l border-theme-border";
 
+  // Hit zone is w-8 (32px) for easier grab; visible dragger stays w-1 via inner div
   const handlePositionClass =
     side === "left"
-      ? "absolute right-0 top-0 bottom-0 w-2 -mr-1 cursor-col-resize z-10 flex items-center justify-center group hover:bg-brand-500/10"
-      : "absolute left-0 top-0 bottom-0 w-2 -ml-1 cursor-col-resize z-10 flex items-center justify-center group hover:bg-brand-500/10";
+      ? "absolute right-0 top-0 bottom-0 w-8 -mr-4 cursor-col-resize z-10 flex items-center justify-center group hover:bg-brand-500/10"
+      : "absolute left-0 top-0 bottom-0 w-8 -ml-4 cursor-col-resize z-10 flex items-center justify-center group hover:bg-brand-500/10";
 
   // Mobile overlay: fixed panel with backdrop, close button, swipe-to-close
   if (isMobileOverlay && visible) {
