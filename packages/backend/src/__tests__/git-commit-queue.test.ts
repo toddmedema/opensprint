@@ -192,6 +192,38 @@ describe.skipIf(!gitQueuePostgresOk)("GitCommitQueue", () => {
     expect(treeFiles).toContain("feature.ts");
   });
 
+  it("should merge a branch into custom baseBranch (develop)", async () => {
+    await execAsync("git checkout -b develop", { cwd: repoPath });
+    await execAsync("git checkout -b opensprint/task-develop", { cwd: repoPath });
+    await fs.writeFile(path.join(repoPath, "develop-feature.ts"), "export const d = 1;");
+    await execAsync('git add develop-feature.ts && git commit -m "add develop feature"', {
+      cwd: repoPath,
+    });
+    await execAsync("git checkout develop", { cwd: repoPath });
+
+    await gitCommitQueue.enqueueAndWait({
+      type: "worktree_merge",
+      repoPath,
+      worktreePath: repoPath,
+      branchName: "opensprint/task-develop",
+      taskId: "opensprint.dev-xyz.1",
+      taskTitle: "Develop task",
+      baseBranch: "develop",
+    });
+
+    const { stdout: branchOut } = await execAsync("git branch --show-current", { cwd: repoPath });
+    expect(branchOut.trim()).toBe("develop");
+
+    const { stdout: logOut } = await execAsync("git log -1 --oneline", { cwd: repoPath });
+    expect(logOut).toContain("Closed opensprint.dev-xyz.1: Develop task");
+
+    const { stdout: treeOut } = await execAsync("git ls-tree -r HEAD --name-only", {
+      cwd: repoPath,
+    });
+    const treeFiles = treeOut.trim().split("\n").filter(Boolean);
+    expect(treeFiles).toContain("develop-feature.ts");
+  });
+
   it("should succeed without commit when branch already merged (idempotent)", async () => {
     await execAsync("git checkout -b opensprint/task-2", { cwd: repoPath });
     await fs.writeFile(path.join(repoPath, "other.ts"), "export const y = 2;");
