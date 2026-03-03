@@ -50,9 +50,32 @@ describe("ModelSelect", () => {
     expect(onChange).toHaveBeenCalledWith("claude-3-opus");
   });
 
-  it("shows No models available when list is empty", async () => {
+  it("shows Auto for cursor when no model is selected", async () => {
+    mockModelsList.mockResolvedValue([{ id: "gpt-4", displayName: "gpt-4" }]);
+    const onChange = vi.fn();
+
+    render(<ModelSelect provider="cursor" value={null} onChange={onChange} />);
+
+    const select = await screen.findByRole("combobox", { name: /model selection/i });
+    expect(screen.getByRole("option", { name: "Auto" })).toBeInTheDocument();
+    expect(select).toHaveValue("");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("maps the cursor Auto option back to null", async () => {
+    mockModelsList.mockResolvedValue([{ id: "gpt-4", displayName: "gpt-4" }]);
+    const onChange = vi.fn();
+
+    render(<ModelSelect provider="cursor" value="gpt-4" onChange={onChange} />);
+
+    const select = await screen.findByRole("combobox", { name: /model selection/i });
+    fireEvent.change(select, { target: { value: "" } });
+    expect(onChange).toHaveBeenCalledWith(null);
+  });
+
+  it("shows Auto for cursor when list is empty", async () => {
     mockModelsList.mockResolvedValue([]);
     render(<ModelSelect provider="cursor" value={null} onChange={() => {}} />);
-    await screen.findByText("No models available");
+    await screen.findByRole("option", { name: "Auto" });
   });
 });
