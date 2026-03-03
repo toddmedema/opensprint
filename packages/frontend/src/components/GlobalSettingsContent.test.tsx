@@ -438,4 +438,77 @@ describe("GlobalSettingsContent", () => {
     expect(mockSetupTables).not.toHaveBeenCalled();
     expect(screen.queryByTestId("setup-tables-dialog")).not.toBeInTheDocument();
   });
+
+  it("shows Saving spinner for at least 500ms on fast database URL save", async () => {
+    const timestamps: { saving?: number; saved?: number } = {};
+    const onSaveStateChange = vi.fn((status: string) => {
+      if (status === "saving") timestamps.saving = Date.now();
+      if (status === "saved") timestamps.saved = Date.now();
+    });
+    mockGlobalSettingsPut.mockImplementation(
+      () => Promise.resolve({ databaseUrl: "postgresql://user:***@localhost:5432/opensprint", apiKeys: undefined })
+    );
+
+    renderApp(<GlobalSettingsContent onSaveStateChange={onSaveStateChange} />);
+
+    await screen.findByTestId("database-url-input");
+    const input = screen.getByTestId("database-url-input");
+    fireEvent.change(input, {
+      target: { value: "postgresql://user:secret@localhost:5432/opensprint" },
+    });
+
+    await waitFor(() => {
+      expect(timestamps.saving).toBeDefined();
+    });
+
+    expect(mockGlobalSettingsPut).toHaveBeenCalled();
+    expect(timestamps.saved).toBeUndefined();
+
+    await waitFor(
+      () => {
+        expect(timestamps.saved).toBeDefined();
+      },
+      { timeout: 1500 }
+    );
+
+    expect(timestamps.saved! - timestamps.saving!).toBeGreaterThanOrEqual(500);
+  });
+
+  it("hides Saving spinner when save completes on slow (>500ms) database URL save", async () => {
+    const onSaveStateChange = vi.fn();
+    mockGlobalSettingsPut.mockImplementation(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(
+            () =>
+              resolve({
+                databaseUrl: "postgresql://user:***@localhost:5432/opensprint",
+                apiKeys: undefined,
+              }),
+            600
+          )
+        )
+    );
+
+    renderApp(<GlobalSettingsContent onSaveStateChange={onSaveStateChange} />);
+
+    await screen.findByTestId("database-url-input");
+    const input = screen.getByTestId("database-url-input");
+    fireEvent.change(input, {
+      target: { value: "postgresql://user:secret@localhost:5432/opensprint" },
+    });
+
+    await waitFor(() => {
+      expect(onSaveStateChange).toHaveBeenCalledWith("saving");
+    });
+
+    await waitFor(
+      () => {
+        expect(onSaveStateChange).toHaveBeenCalledWith("saved");
+      },
+      { timeout: 2000 }
+    );
+
+    expect(onSaveStateChange).toHaveBeenCalledWith("saved");
+  });
 });

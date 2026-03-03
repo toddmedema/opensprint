@@ -18,6 +18,9 @@ import type {
 import { API_KEY_PROVIDERS } from "@opensprint/shared";
 import type { SaveStatus } from "./SaveIndicator";
 
+/** Minimum time (ms) the Saving spinner is visible, regardless of request completion time */
+const MIN_SAVE_SPINNER_MS = 500;
+
 const THEME_OPTIONS: { value: "light" | "dark" | "system"; label: string }[] = [
   { value: "light", label: "Light" },
   { value: "dark", label: "Dark" },
@@ -103,6 +106,36 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
     [onSaveStateChange]
   );
 
+  const saveGenerationRef = useRef(0);
+  const saveCompleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleSaveComplete = useCallback(
+    (startTime: number) => {
+      const completedGeneration = saveGenerationRef.current;
+      const elapsed = Date.now() - startTime;
+      const remaining = Math.max(0, MIN_SAVE_SPINNER_MS - elapsed);
+      const run = () => {
+        if (saveGenerationRef.current === completedGeneration) {
+          notifySaveState("saved");
+        }
+      };
+      if (remaining > 0) {
+        saveCompleteTimeoutRef.current = setTimeout(run, remaining);
+      } else {
+        run();
+      }
+    },
+    [notifySaveState]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (saveCompleteTimeoutRef.current) {
+        clearTimeout(saveCompleteTimeoutRef.current);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     setDatabaseUrlLoading(true);
     api.globalSettings
@@ -130,13 +163,15 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
     const t = setTimeout(() => {
       setDatabaseUrlError(null);
       setDatabaseUrlSaving(true);
+      saveGenerationRef.current += 1;
+      const startTime = Date.now();
       notifySaveState("saving");
       api.globalSettings
         .put({ databaseUrl: trimmed })
         .then((res) => {
           setDatabaseUrl(res.databaseUrl);
           void queryClient.invalidateQueries({ queryKey: DB_STATUS_QUERY_KEY });
-          notifySaveState("saved");
+          scheduleSaveComplete(startTime);
         })
         .catch((err) => {
           setDatabaseUrlError(
@@ -146,14 +181,14 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
                 ? err.message
                 : "Failed to save"
           );
-          notifySaveState("saved");
+          scheduleSaveComplete(startTime);
         })
         .finally(() => {
           setDatabaseUrlSaving(false);
         });
     }, 300);
     return () => clearTimeout(t);
-  }, [databaseUrl, databaseUrlLoading, notifySaveState, queryClient]);
+  }, [databaseUrl, databaseUrlLoading, notifySaveState, queryClient, scheduleSaveComplete]);
 
   const handleClearLimitHit = useCallback(
     async (
@@ -161,11 +196,13 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
       id: string
     ) => {
       setApiKeysError(null);
+      saveGenerationRef.current += 1;
+      const startTime = Date.now();
       notifySaveState("saving");
       try {
         const res = await api.globalSettings.clearLimitHit(provider, id);
         setApiKeys(res.apiKeys);
-        notifySaveState("saved");
+        scheduleSaveComplete(startTime);
       } catch (err) {
         const message = isConnectionError(err)
           ? "Unable to connect. Please check your network and try again."
@@ -173,14 +210,16 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
             ? err.message
             : "Failed to clear limit";
         setApiKeysError(message);
-        notifySaveState("saved");
+        scheduleSaveComplete(startTime);
       }
     },
-    [notifySaveState]
+    [notifySaveState, scheduleSaveComplete]
   );
 
   const handleApiKeysChange = async (updates: ApiKeysUpdate) => {
     setApiKeysError(null);
+    saveGenerationRef.current += 1;
+    const startTime = Date.now();
     notifySaveState("saving");
     const merged: ApiKeysUpdate = {};
     for (const provider of API_KEY_PROVIDERS) {
@@ -219,7 +258,7 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
     try {
       const res = await api.globalSettings.put({ apiKeys: merged });
       setApiKeys(res.apiKeys);
-      notifySaveState("saved");
+      scheduleSaveComplete(startTime);
     } catch (err) {
       const message = isConnectionError(err)
         ? "Unable to connect. Please check your network and try again."
@@ -227,7 +266,7 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
           ? err.message
           : "Failed to save";
       setApiKeysError(message);
-      notifySaveState("saved");
+      scheduleSaveComplete(startTime);
     }
   };
 
