@@ -96,6 +96,13 @@ describe("useTaskFilter", () => {
     expect(result.current.statusFilter).toBe("ready");
   });
 
+  it("migrates in_review from localStorage to in_progress on mount", () => {
+    localStorage.setItem(EXECUTE_STATUS_FILTER_KEY, "in_review");
+    const { result } = renderHook(() => useTaskFilter());
+
+    expect(result.current.statusFilter).toBe("in_progress");
+  });
+
   it("clears search query immediately when input is empty", () => {
     const { result } = renderHook(() => useTaskFilter());
 

@@ -102,6 +102,34 @@ describe("useExecuteSwimlanes", () => {
     expect(result.current.chipConfig.some((c) => c.filter === "done" && c.count === 1)).toBe(true);
   });
 
+  it("In Progress chip combines in_progress and in_review counts (no separate In Review chip)", () => {
+    const tasks: Task[] = [
+      task({ id: "epic-a.1", kanbanColumn: "in_progress" }),
+      task({ id: "epic-a.2", kanbanColumn: "in_review" }),
+      task({ id: "epic-a.3", kanbanColumn: "done" }),
+    ];
+    const plans: Plan[] = [plan()];
+    const { result } = renderHook(() => useExecuteSwimlanes(tasks, plans, "all", ""));
+    const chips = result.current.chipConfig;
+    const inProgressChip = chips.find((c) => c.filter === "in_progress");
+    expect(inProgressChip).toBeDefined();
+    expect(inProgressChip!.label).toBe("In Progress");
+    expect(inProgressChip!.count).toBe(2);
+    expect(chips.some((c) => c.filter === "in_review")).toBe(false);
+  });
+
+  it("in_progress filter shows both in_progress and in_review tasks", () => {
+    const tasks: Task[] = [
+      task({ id: "epic-a.1", kanbanColumn: "in_progress", epicId: "epic-a" }),
+      task({ id: "epic-a.2", kanbanColumn: "in_review", epicId: "epic-a" }),
+      task({ id: "epic-a.3", kanbanColumn: "ready", epicId: "epic-a" }),
+    ];
+    const plans: Plan[] = [plan()];
+    const { result } = renderHook(() => useExecuteSwimlanes(tasks, plans, "in_progress", ""));
+    expect(result.current.filteredTasks).toHaveLength(2);
+    expect(result.current.filteredTasks.map((t) => t.id)).toEqual(["epic-a.1", "epic-a.2"]);
+  });
+
   it("In Line chip is between All and Ready and counts backlog, planning (excludes blocked)", () => {
     const tasks: Task[] = [
       task({ id: "epic-a.1", kanbanColumn: "backlog" }),

@@ -33,6 +33,7 @@ describe("executeTaskFilter", () => {
     it("returns true when column matches filter", () => {
       expect(matchesStatusFilter("ready", "ready")).toBe(true);
       expect(matchesStatusFilter("in_progress", "in_progress")).toBe(true);
+      expect(matchesStatusFilter("in_review", "in_progress")).toBe(true);
       expect(matchesStatusFilter("done", "done")).toBe(true);
     });
 
@@ -156,6 +157,17 @@ describe("executeTaskFilter", () => {
     it("returns empty array when no tasks match", () => {
       const result = filterTasksByStatusAndSearch(tasks, "in_progress", "xyz");
       expect(result).toHaveLength(0);
+    });
+
+    it("in_progress filter matches both in_progress and in_review kanban columns", () => {
+      const inProgressTasks: Task[] = [
+        { ...baseTask, id: "t1", kanbanColumn: "in_progress" as const },
+        { ...baseTask, id: "t2", kanbanColumn: "in_review" as const },
+        { ...baseTask, id: "t3", kanbanColumn: "ready" as const },
+      ];
+      const result = filterTasksByStatusAndSearch(inProgressTasks, "in_progress", "");
+      expect(result).toHaveLength(2);
+      expect(result.map((t) => t.id)).toEqual(["t1", "t2"]);
     });
 
     it("clearing search restores full view", () => {

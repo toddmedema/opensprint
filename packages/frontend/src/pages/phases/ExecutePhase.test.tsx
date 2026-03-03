@@ -590,8 +590,8 @@ describe("ExecutePhase top bar", () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByTestId("filter-chip-in_progress")).toHaveTextContent("1");
-    expect(screen.getByTestId("filter-chip-in_review")).toHaveTextContent("1");
+    expect(screen.getByTestId("filter-chip-in_progress")).toHaveTextContent("2");
+    expect(screen.queryByTestId("filter-chip-in_review")).not.toBeInTheDocument();
     expect(screen.getByTestId("filter-chip-done")).toHaveTextContent("1");
   });
 

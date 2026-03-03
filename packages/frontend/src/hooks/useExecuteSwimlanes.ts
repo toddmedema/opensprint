@@ -183,8 +183,7 @@ export function useExecuteSwimlanes(
     { label: "All", filter: "all", count: totalTasks },
     { label: "In Line", filter: "in_line", count: inLineCount },
     { label: "Ready", filter: "ready", count: readyCount },
-    { label: "In Progress", filter: "in_progress", count: inProgressCount },
-    { label: "In Review", filter: "in_review", count: inReviewCount },
+    { label: "In Progress", filter: "in_progress", count: inProgressCount + inReviewCount },
     { label: "Done", filter: "done", count: doneCount },
     ...(blockedOnHumanCount > 0
       ? [

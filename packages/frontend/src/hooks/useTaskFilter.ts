@@ -9,7 +9,6 @@ const VALID_STATUS_FILTERS: StatusFilter[] = [
   "in_line",
   "ready",
   "in_progress",
-  "in_review",
   "done",
   "blocked",
 ];
@@ -19,6 +18,7 @@ function loadStatusFilter(): StatusFilter {
   try {
     const stored = localStorage.getItem(EXECUTE_STATUS_FILTER_KEY);
     if (!stored) return "all";
+    if (stored === "in_review") return "in_progress";
     if (VALID_STATUS_FILTERS.includes(stored as StatusFilter)) {
       return stored as StatusFilter;
     }
