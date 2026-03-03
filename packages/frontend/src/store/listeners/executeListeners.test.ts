@@ -37,7 +37,7 @@ describe("executeListeners", () => {
     mockInvalidateQueries.mockClear();
   });
 
-  it("updates task detail cache in place and invalidates tasks list when updateTaskPriority.fulfilled", () => {
+  it("updates task detail cache in place and does NOT invalidate tasks list when updateTaskPriority.fulfilled", () => {
     const store = createStore();
     const task = {
       id: "task-1",
@@ -69,9 +69,8 @@ describe("executeListeners", () => {
       queryKeys.tasks.detail("proj-1", "task-1"),
       task
     );
-    expect(mockInvalidateQueries).toHaveBeenCalledWith({
-      queryKey: queryKeys.tasks.list("proj-1"),
-    });
+    // Must NOT invalidate tasks list — that triggers refetch → setTasks → full Redux replace → sidebar flicker
+    expect(mockInvalidateQueries).not.toHaveBeenCalled();
   });
 
   it("does not invalidate task detail query (avoids sidebar reload)", () => {

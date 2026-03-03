@@ -5,9 +5,12 @@ import { queryKeys } from "../../api/queryKeys";
 
 /**
  * When priority update succeeds:
- * - Invalidate tasks list so main content (kanban/timeline) ordering stays in sync.
  * - Update task detail cache in place (do NOT invalidate) so the sidebar does not
- *   refetch and show loading state. Only the priority component updates.
+ *   refetch and show loading state. Only the priority component re-renders.
+ * - Do NOT invalidate the tasks list: that triggers a refetch → setTasks → full Redux
+ *   replace → ExecutePhase cascade re-renders and sidebar flicker. Redux is already
+ *   updated in place by updateTaskPriority.fulfilled; list order will sync on next
+ *   natural refetch (e.g. websocket, navigation).
  */
 export const executeListeners = createListenerMiddleware();
 
@@ -19,7 +22,6 @@ executeListeners.startListening({
       const qc = getQueryClient();
       const { task, taskId } = action.payload;
       const projectId = action.meta.arg.projectId;
-      void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
       qc.setQueryData(queryKeys.tasks.detail(projectId, taskId), task);
     } catch {
       // QueryClient may not be set in tests

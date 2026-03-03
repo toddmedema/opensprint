@@ -131,7 +131,6 @@ function createMinimalProps(overrides: Record<string, unknown> = {}) {
     archivedLoading: (flat.archivedLoading as boolean) ?? false,
     markDoneLoading: (flat.markDoneLoading as boolean) ?? false,
     unblockLoading: (flat.unblockLoading as boolean) ?? false,
-    priorityUpdateLoading: (flat.priorityUpdateLoading as boolean) ?? false,
     deleteLoading: (flat.deleteLoading as boolean) ?? false,
     taskIdToStartedAt: (flat.taskIdToStartedAt as Record<string, string>) ?? {},
     planByEpicId: ((flat.plans as Plan[]) ?? [basePlan]).reduce<Record<string, Plan>>(
@@ -183,25 +182,35 @@ function createMinimalProps(overrides: Record<string, unknown> = {}) {
   };
 }
 
-const defaultPreloadedState: Partial<RootState> = {
-  execute: initialExecuteState,
-  websocket: {
-    connected: false,
-    deliverToast: null,
-  },
-  plan: {
-    plans: [basePlan],
-    dependencyGraph: null,
-    selectedPlanId: null,
-    chatMessages: {},
-    loading: false,
-    decomposing: false,
-    executingPlanId: null,
-    reExecutingPlanId: null,
-    archivingPlanId: null,
-    error: null,
-  },
-};
+/** Preloaded state with task in Redux so TaskPriorityDropdown can read it. */
+function getPreloadedState(selectedTaskData?: Task) {
+  const task = selectedTaskData ?? defaultSelectedTaskData;
+  return {
+    execute: {
+      ...initialExecuteState,
+      tasksById: { [task.id]: task },
+      taskIdsOrder: [task.id],
+    },
+    websocket: {
+      connected: false,
+      deliverToast: null,
+    },
+    plan: {
+      plans: [basePlan],
+      dependencyGraph: null,
+      selectedPlanId: null,
+      chatMessages: {},
+      loading: false,
+      decomposing: false,
+      executingPlanId: null,
+      reExecutingPlanId: null,
+      archivingPlanId: null,
+      error: null,
+    },
+  } as Partial<RootState>;
+}
+
+const defaultPreloadedState: Partial<RootState> = getPreloadedState();
 
 describe("TaskDetailSidebar", () => {
   beforeEach(() => {
@@ -1656,11 +1665,12 @@ describe("TaskDetailSidebar", () => {
     });
 
     it("shows current priority as clickable element when selectedTaskData is loaded", () => {
+      const task = taskDetailWithPriority(1);
       const props = createMinimalProps({
-        selectedTaskData: taskDetailWithPriority(1),
+        selectedTaskData: task,
       });
       renderSidebar(props, {
-        preloadedState: defaultPreloadedState,
+        preloadedState: getPreloadedState(task),
       });
       const trigger = screen.getByTestId("priority-dropdown-trigger");
       expect(trigger).toBeInTheDocument();
@@ -1669,11 +1679,12 @@ describe("TaskDetailSidebar", () => {
     });
 
     it("renders PriorityIcon in the priority dropdown trigger", () => {
+      const task = taskDetailWithPriority(1);
       const props = createMinimalProps({
-        selectedTaskData: taskDetailWithPriority(1),
+        selectedTaskData: task,
       });
       renderSidebar(props, {
-        preloadedState: defaultPreloadedState,
+        preloadedState: getPreloadedState(task),
       });
       const trigger = screen.getByTestId("priority-dropdown-trigger");
       expect(within(trigger).getByRole("img", { name: "High" })).toBeInTheDocument();
@@ -1681,11 +1692,12 @@ describe("TaskDetailSidebar", () => {
 
     it("renders PriorityIcon in each dropdown option with correct priority", async () => {
       const user = userEvent.setup();
+      const task = taskDetailWithPriority(2);
       const props = createMinimalProps({
-        selectedTaskData: taskDetailWithPriority(2),
+        selectedTaskData: task,
       });
       renderSidebar(props, {
-        preloadedState: defaultPreloadedState,
+        preloadedState: getPreloadedState(task),
       });
       await user.click(screen.getByTestId("priority-dropdown-trigger"));
       const labels = ["Critical", "High", "Medium", "Low", "Lowest"] as const;
@@ -1697,11 +1709,12 @@ describe("TaskDetailSidebar", () => {
 
     it("opens dropdown with all 5 priority levels when clicked", async () => {
       const user = userEvent.setup();
+      const task = taskDetailWithPriority(2);
       const props = createMinimalProps({
-        selectedTaskData: taskDetailWithPriority(2),
+        selectedTaskData: task,
       });
       renderSidebar(props, {
-        preloadedState: defaultPreloadedState,
+        preloadedState: getPreloadedState(task),
       });
       await user.click(screen.getByTestId("priority-dropdown-trigger"));
       const dropdown = screen.getByTestId("priority-dropdown");
@@ -1719,12 +1732,13 @@ describe("TaskDetailSidebar", () => {
 
     it("persists via API and closes dropdown when selecting a new priority", async () => {
       const user = userEvent.setup();
-      mockUpdatePriority.mockResolvedValue({ ...taskDetailWithPriority(0), priority: 0 });
+      const task = taskDetailWithPriority(1);
+      mockUpdatePriority.mockResolvedValue({ ...task, priority: 0 });
       const props = createMinimalProps({
-        selectedTaskData: taskDetailWithPriority(1),
+        selectedTaskData: task,
       });
       renderSidebar(props, {
-        preloadedState: defaultPreloadedState,
+        preloadedState: getPreloadedState(task),
       });
       await user.click(screen.getByTestId("priority-dropdown-trigger"));
       expect(screen.getByTestId("priority-dropdown")).toBeInTheDocument();
@@ -1733,13 +1747,19 @@ describe("TaskDetailSidebar", () => {
       expect(screen.queryByTestId("priority-dropdown")).not.toBeInTheDocument();
     });
 
-    it("shows Updating… and disables dropdown when priorityUpdateLoading is true", () => {
+    it("shows Updating… and disables dropdown when priority update is pending", () => {
+      const task = taskDetailWithPriority(1);
       const props = createMinimalProps({
-        selectedTaskData: taskDetailWithPriority(1),
-        priorityUpdateLoading: true,
+        selectedTaskData: task,
       });
       renderSidebar(props, {
-        preloadedState: defaultPreloadedState,
+        preloadedState: {
+          ...getPreloadedState(task),
+          execute: {
+            ...getPreloadedState(task).execute,
+            priorityUpdatePendingTaskId: "epic-1.1",
+          },
+        },
       });
       const trigger = screen.getByTestId("priority-dropdown-trigger");
       expect(trigger).toHaveTextContent("Updating…");
@@ -1749,11 +1769,12 @@ describe("TaskDetailSidebar", () => {
 
     it("does not call API when selecting the same priority", async () => {
       const user = userEvent.setup();
+      const task = taskDetailWithPriority(2);
       const props = createMinimalProps({
-        selectedTaskData: taskDetailWithPriority(2),
+        selectedTaskData: task,
       });
       renderSidebar(props, {
-        preloadedState: defaultPreloadedState,
+        preloadedState: getPreloadedState(task),
       });
       await user.click(screen.getByTestId("priority-dropdown-trigger"));
       await user.click(screen.getByTestId("priority-option-2"));
@@ -1762,11 +1783,12 @@ describe("TaskDetailSidebar", () => {
 
     it("closes dropdown on outside click", async () => {
       const user = userEvent.setup();
+      const task = taskDetailWithPriority(2);
       const props = createMinimalProps({
-        selectedTaskData: taskDetailWithPriority(2),
+        selectedTaskData: task,
       });
       renderSidebar(props, {
-        preloadedState: defaultPreloadedState,
+        preloadedState: getPreloadedState(task),
       });
       await user.click(screen.getByTestId("priority-dropdown-trigger"));
       expect(screen.getByTestId("priority-dropdown")).toBeInTheDocument();
@@ -1775,16 +1797,17 @@ describe("TaskDetailSidebar", () => {
     });
 
     it("shows priority as read-only static text when task is done (closed)", () => {
+      const task = {
+        ...taskDetailWithPriority(2),
+        kanbanColumn: "done" as const,
+        status: "closed" as const,
+      };
       const props = createMinimalProps({
-        selectedTaskData: {
-          ...taskDetailWithPriority(2),
-          kanbanColumn: "done" as const,
-          status: "closed" as const,
-        },
+        selectedTaskData: task,
         isDoneTask: true,
       });
       renderSidebar(props, {
-        preloadedState: defaultPreloadedState,
+        preloadedState: getPreloadedState(task),
       });
       expect(screen.getByTestId("priority-read-only")).toBeInTheDocument();
       expect(screen.getByTestId("priority-read-only")).toHaveTextContent("Medium");
@@ -1794,16 +1817,17 @@ describe("TaskDetailSidebar", () => {
 
     it("does not open dropdown when priority is read-only (done task)", async () => {
       const user = userEvent.setup();
+      const task = {
+        ...taskDetailWithPriority(1),
+        kanbanColumn: "done" as const,
+        status: "closed" as const,
+      };
       const props = createMinimalProps({
-        selectedTaskData: {
-          ...taskDetailWithPriority(1),
-          kanbanColumn: "done" as const,
-          status: "closed" as const,
-        },
+        selectedTaskData: task,
         isDoneTask: true,
       });
       renderSidebar(props, {
-        preloadedState: defaultPreloadedState,
+        preloadedState: getPreloadedState(task),
       });
       const readOnly = screen.getByTestId("priority-read-only");
       await user.click(readOnly);
@@ -2110,11 +2134,12 @@ describe("TaskDetailSidebar", () => {
     });
 
     it("renders status and priority on first row below header", () => {
+      const task = taskDetailWithPriority(1);
       const props = createMinimalProps({
-        selectedTaskData: taskDetailWithPriority(1),
+        selectedTaskData: task,
       });
       renderSidebar(props, {
-        preloadedState: defaultPreloadedState,
+        preloadedState: getPreloadedState(task),
       });
       const row = screen.getByTestId("task-detail-priority-state-row");
       expect(row).toBeInTheDocument();
@@ -2125,11 +2150,12 @@ describe("TaskDetailSidebar", () => {
     it("renders all priority levels inline with state", () => {
       const labels = ["Critical", "High", "Medium", "Low", "Lowest"] as const;
       for (let p = 0; p <= 4; p++) {
+        const task = taskDetailWithPriority(p);
         const props = createMinimalProps({
-          selectedTaskData: taskDetailWithPriority(p),
+          selectedTaskData: task,
         });
         const { unmount } = renderSidebar(props, {
-          preloadedState: defaultPreloadedState,
+          preloadedState: getPreloadedState(task),
         });
         const row = screen.getByTestId("task-detail-priority-state-row");
         expect(row).toBeInTheDocument();

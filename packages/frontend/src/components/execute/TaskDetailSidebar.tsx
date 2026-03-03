@@ -13,7 +13,6 @@ import type {
 } from "@opensprint/shared";
 import { VirtualizedAgentOutput } from "./VirtualizedAgentOutput";
 import {
-  PRIORITY_LABELS,
   AGENT_ROLE_LABELS,
   complexityToDisplay,
   TASK_COMPLEXITY_MIN,
@@ -21,15 +20,11 @@ import {
 } from "@opensprint/shared";
 import type { ActiveTaskInfo } from "../../store/slices/executeSlice";
 import { useAppDispatch } from "../../store";
-import {
-  updateTaskPriority,
-  addTaskDependency,
-  removeTaskDependency,
-} from "../../store/slices/executeSlice";
+import { addTaskDependency, removeTaskDependency } from "../../store/slices/executeSlice";
 import { wsConnect } from "../../store/middleware/websocketMiddleware";
 import { CloseButton } from "../CloseButton";
-import { PriorityIcon } from "../PriorityIcon";
 import { ComplexityIcon } from "../ComplexityIcon";
+import { TaskPriorityDropdown } from "./TaskPriorityDropdown";
 import { TaskStatusBadge, COLUMN_LABELS } from "../kanban";
 import { formatUptime, formatTaskDuration } from "../../lib/formatting";
 import { getEpicTitleFromPlan } from "../../lib/planContentUtils";
@@ -89,6 +84,20 @@ function formatAttemptLabel(attempts: number[]): string {
   return first === last ? `Attempt ${first}` : `Attempts ${first}-${last}`;
 }
 
+/** Compare task data excluding priority. When only priority changed, skip sidebar re-render (TaskPriorityDropdown handles it via Redux). */
+function taskDataEqualExceptPriority(a: Task | null, b: Task | null): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.id !== b.id) return false;
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<keyof Task>;
+  for (const k of keys) {
+    if (k === "priority") continue;
+    const va = (a as Record<string, unknown>)[k];
+    const vb = (b as Record<string, unknown>)[k];
+    if (JSON.stringify(va) !== JSON.stringify(vb)) return false;
+  }
+  return true;
+}
+
 export interface TaskDetailTaskDetail {
   selectedTaskData: Task | null;
   taskDetailLoading: boolean;
@@ -132,7 +141,6 @@ export interface TaskDetailSidebarProps {
   archivedLoading: boolean;
   markDoneLoading: boolean;
   unblockLoading: boolean;
-  priorityUpdateLoading?: boolean;
   deleteLoading: boolean;
   taskIdToStartedAt: Record<string, string>;
   planByEpicId: Record<string, Plan>;
@@ -164,13 +172,12 @@ function areTaskDetailSidebarPropsEqual(
   if (
     prev.projectId !== next.projectId ||
     prev.selectedTask !== next.selectedTask ||
-    td(prev).selectedTaskData !== td(next).selectedTaskData ||
+    !taskDataEqualExceptPriority(td(prev).selectedTaskData, td(next).selectedTaskData) ||
     td(prev).taskDetailLoading !== td(next).taskDetailLoading ||
     td(prev).taskDetailError !== td(next).taskDetailError ||
     prev.archivedLoading !== next.archivedLoading ||
     prev.markDoneLoading !== next.markDoneLoading ||
     prev.unblockLoading !== next.unblockLoading ||
-    prev.priorityUpdateLoading !== next.priorityUpdateLoading ||
     prev.deleteLoading !== next.deleteLoading ||
     prev.taskIdToStartedAt !== next.taskIdToStartedAt ||
     prev.planByEpicId !== next.planByEpicId ||
@@ -218,7 +225,6 @@ function TaskDetailSidebarInner({
   archivedLoading,
   markDoneLoading,
   unblockLoading,
-  priorityUpdateLoading = false,
   deleteLoading,
   taskIdToStartedAt,
   planByEpicId,
@@ -253,7 +259,6 @@ function TaskDetailSidebarInner({
   } = callbacks;
   const dispatch = useAppDispatch();
   const roleLabel = activeRoleLabel(selectedTask, activeTasks);
-  const [priorityDropdownOpen, setPriorityDropdownOpen] = useState(false);
   const [showLoadingPlaceholder, setShowLoadingPlaceholder] = useState(false);
 
   const agentOutputText = useMemo(() => agentOutput.join(""), [agentOutput]);
@@ -287,7 +292,6 @@ function TaskDetailSidebarInner({
     contentLength: liveOutputContent.length,
     resetKey: selectedTask,
   });
-  const priorityDropdownRef = useRef<HTMLDivElement>(null);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -368,17 +372,6 @@ function TaskDetailSidebarInner({
   }, [selectedTask]);
 
   useEffect(() => {
-    if (!priorityDropdownOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (priorityDropdownRef.current && !priorityDropdownRef.current.contains(e.target as Node)) {
-        setPriorityDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [priorityDropdownOpen]);
-
-  useEffect(() => {
     if (!actionsMenuOpen) return;
     const handler = (e: MouseEvent) => {
       if (actionsMenuRef.current && !actionsMenuRef.current.contains(e.target as Node)) {
@@ -388,20 +381,6 @@ function TaskDetailSidebarInner({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [actionsMenuOpen]);
-
-  const handlePrioritySelect = (priority: number) => {
-    if (!task || !selectedTask || task.priority === priority) return;
-    const previousPriority = task.priority ?? 1;
-    dispatch(
-      updateTaskPriority({
-        projectId,
-        taskId: selectedTask,
-        priority,
-        previousPriority,
-      })
-    );
-    setPriorityDropdownOpen(false);
-  };
 
   const handleConfirmDeleteTask = async () => {
     await onDeleteTask();
@@ -676,65 +655,11 @@ function TaskDetailSidebarInner({
                   />
                   <span>{COLUMN_LABELS[task.kanbanColumn]}</span>
                 </span>
-                {isDoneTask ? (
-                  <span
-                    className="inline-flex items-center gap-1.5 text-theme-muted/80 cursor-default"
-                    data-testid="priority-read-only"
-                    aria-label={`Priority: ${PRIORITY_LABELS[task.priority ?? 1] ?? "Medium"}`}
-                  >
-                    <PriorityIcon priority={task.priority ?? 1} size="sm" />
-                    {PRIORITY_LABELS[task.priority ?? 1] ?? "Medium"}
-                  </span>
-                ) : (
-                  <div ref={priorityDropdownRef} className="relative inline-block">
-                    <button
-                      type="button"
-                      onClick={() => setPriorityDropdownOpen((o) => !o)}
-                      disabled={priorityUpdateLoading}
-                      className="dropdown-trigger inline-flex items-center gap-2 rounded py-1 text-theme-muted hover:bg-theme-border-subtle/50 hover:text-theme-text transition-colors cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
-                      aria-haspopup="listbox"
-                      aria-expanded={priorityDropdownOpen}
-                      aria-busy={priorityUpdateLoading}
-                      aria-label={`Priority: ${PRIORITY_LABELS[task.priority ?? 1] ?? "Medium"}. Click to change`}
-                      data-testid="priority-dropdown-trigger"
-                    >
-                      <PriorityIcon priority={task.priority ?? 1} size="sm" />
-                      <span>{PRIORITY_LABELS[task.priority ?? 1] ?? "Medium"}</span>
-                      {priorityUpdateLoading ? (
-                        <span className="text-[10px] opacity-70 pr-2 animate-pulse">Updating…</span>
-                      ) : (
-                        <span className="text-[10px] opacity-70 pr-2">
-                          {priorityDropdownOpen ? "▲" : "▼"}
-                        </span>
-                      )}
-                    </button>
-                    {priorityDropdownOpen && (
-                      <ul
-                        role="listbox"
-                        className="absolute left-0 top-full mt-1 z-50 min-w-[140px] rounded-lg border border-theme-border bg-theme-surface shadow-lg py-1"
-                        data-testid="priority-dropdown"
-                      >
-                        {([0, 1, 2, 3, 4] as const).map((p) => (
-                          <li key={p} role="option">
-                            <button
-                              type="button"
-                              onClick={() => handlePrioritySelect(p)}
-                              className={`dropdown-item w-full flex items-center gap-2 text-left text-xs hover:bg-theme-border-subtle/50 transition-colors ${
-                                (task.priority ?? 1) === p
-                                  ? "text-brand-600 font-medium"
-                                  : "text-theme-text"
-                              }`}
-                              data-testid={`priority-option-${p}`}
-                            >
-                              <PriorityIcon priority={p} size="sm" />
-                              {p}: {PRIORITY_LABELS[p]}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
+                <TaskPriorityDropdown
+                  projectId={projectId}
+                  taskId={selectedTask}
+                  isDoneTask={isDoneTask}
+                />
                 <span
                   className="inline-flex items-center gap-1.5 text-theme-muted/80"
                   data-testid="task-complexity"
