@@ -3,7 +3,7 @@ import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 
 /** Agent type: claude, cursor, openai, or custom CLI (PRD §6.3) */
-const agentTypeSchema = z.enum(["claude", "claude-cli", "cursor", "custom", "openai"]);
+const agentTypeSchema = z.enum(["claude", "claude-cli", "cursor", "custom", "openai", "google"]);
 
 /**
  * Agent configuration schema (PRD §6.3, §10.2).

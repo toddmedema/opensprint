@@ -151,13 +151,13 @@ export const api = {
       }>("/env/keys"),
     getGlobalStatus: () =>
       request<{ hasAnyKey: boolean; useCustomCli: boolean }>("/env/global-status"),
-    validateKey: (provider: "claude" | "cursor" | "openai", value: string) =>
+    validateKey: (provider: "claude" | "cursor" | "openai" | "google", value: string) =>
       request<{ valid: boolean; error?: string }>("/env/keys/validate", {
         method: "POST",
         body: JSON.stringify({ provider, value }),
       }),
     saveKey: (
-      key: "ANTHROPIC_API_KEY" | "CURSOR_API_KEY" | "OPENAI_API_KEY",
+      key: "ANTHROPIC_API_KEY" | "CURSOR_API_KEY" | "OPENAI_API_KEY" | "GOOGLE_API_KEY",
       value: string
     ) =>
       request<{ saved: boolean }>("/env/keys", {

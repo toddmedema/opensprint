@@ -5,12 +5,13 @@ import { api, isConnectionError } from "../api/client";
 const BODY_COPY =
   "At least one agent API key is required to use Open Sprint. Or, select 'Custom/CLI' if you'll be using your own agent or a CLI integration rather than an API.";
 
-type ProviderOption = "claude" | "cursor" | "openai" | "custom";
+type ProviderOption = "claude" | "cursor" | "openai" | "google" | "custom";
 
 const PROVIDER_OPTIONS: { value: ProviderOption; label: string }[] = [
   { value: "claude", label: "Claude" },
   { value: "cursor", label: "Cursor" },
   { value: "openai", label: "OpenAI" },
+  { value: "google", label: "Google" },
   { value: "custom", label: "Custom/CLI" },
 ];
 
@@ -76,7 +77,7 @@ export function ApiKeySetupModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const needsKeyInput = provider === "claude" || provider === "cursor" || provider === "openai";
+  const needsKeyInput = provider === "claude" || provider === "cursor" || provider === "openai" || provider === "google";
 
   const handleSave = async () => {
     setError(null);
@@ -92,7 +93,13 @@ export function ApiKeySetupModal({
           return;
         }
         const apiProvider =
-          provider === "claude" ? "claude" : provider === "cursor" ? "cursor" : "openai";
+          provider === "claude"
+            ? "claude"
+            : provider === "cursor"
+              ? "cursor"
+              : provider === "openai"
+                ? "openai"
+                : "google";
         const { valid, error: validateError } = await api.env.validateKey(apiProvider, value);
         if (!valid) {
           setError(validateError ?? "Invalid API key");
@@ -104,7 +111,9 @@ export function ApiKeySetupModal({
             ? "ANTHROPIC_API_KEY"
             : provider === "cursor"
               ? "CURSOR_API_KEY"
-              : "OPENAI_API_KEY";
+              : provider === "openai"
+                ? "OPENAI_API_KEY"
+                : "GOOGLE_API_KEY";
         await api.env.saveKey(envKey, value);
       }
       onComplete();
@@ -204,7 +213,9 @@ export function ApiKeySetupModal({
                       ? "sk-ant-..."
                       : provider === "cursor"
                         ? "key_..."
-                        : "sk-..."
+                        : provider === "openai"
+                          ? "sk-..."
+                          : "AIza..."
                   }
                   value={keyValue}
                   onChange={(e) => {

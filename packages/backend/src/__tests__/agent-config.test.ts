@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
-import { parseAgentConfig } from "../schemas/agent-config.js";
+import { describe, expect, it } from "vitest";
 import { AppError } from "../middleware/error-handler.js";
+import { parseAgentConfig } from "../schemas/agent-config.js";
 
 describe("agent-config schema", () => {
   describe("parseAgentConfig", () => {
@@ -36,6 +36,18 @@ describe("agent-config schema", () => {
       expect(config).toEqual({
         type: "openai",
         model: "gpt-4o",
+        cliCommand: null,
+      });
+    });
+
+    it("should accept google agent type", () => {
+      const config = parseAgentConfig(
+        { type: "google", model: "gemini-2.5-pro", cliCommand: null },
+        "simpleComplexityAgent"
+      );
+      expect(config).toEqual({
+        type: "google",
+        model: "gemini-2.5-pro",
         cliCommand: null,
       });
     });

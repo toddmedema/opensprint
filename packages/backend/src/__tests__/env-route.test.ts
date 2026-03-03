@@ -88,7 +88,7 @@ describe("Env API", () => {
       expect(mockValidateApiKey).not.toHaveBeenCalled();
     });
 
-    it("returns 400 when provider is not claude, cursor, or openai", async () => {
+    it("returns 400 when provider is not claude, cursor, openai, or google", async () => {
       const res = await request(app)
         .post(`${API_PREFIX}/env/keys/validate`)
         .send({ provider: "unknown", value: "sk-test" });
@@ -96,6 +96,18 @@ describe("Env API", () => {
       expect(res.body.error?.code).toBe("INVALID_INPUT");
       expect(res.body.error?.message).toContain("provider must be");
       expect(mockValidateApiKey).not.toHaveBeenCalled();
+    });
+
+    it("returns valid: true when validation succeeds for Google", async () => {
+      mockValidateApiKey.mockResolvedValue({ valid: true });
+
+      const res = await request(app)
+        .post(`${API_PREFIX}/env/keys/validate`)
+        .send({ provider: "google", value: "AIza-test" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual({ valid: true });
+      expect(mockValidateApiKey).toHaveBeenCalledWith("google", "AIza-test");
     });
 
     it("returns valid: true when validation succeeds for OpenAI", async () => {
