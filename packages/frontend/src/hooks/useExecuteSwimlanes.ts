@@ -17,7 +17,7 @@ export interface Swimlane {
   tasks: Task[];
 }
 
-/** Whether to show Ready vs In Line section headers (when filter is all, ready, or in_line). */
+/** Whether to show Ready vs Up Next section headers (when filter is all, ready, or in_line). */
 export function showReadyInLineSections(statusFilter: StatusFilter): boolean {
   return statusFilter === "all" || statusFilter === "ready" || statusFilter === "in_line";
 }
@@ -185,7 +185,7 @@ export function useExecuteSwimlanes(
 
   const chipConfig: { label: string; filter: StatusFilter; count: number }[] = [
     { label: "All", filter: "all", count: totalTasks },
-    { label: "In Line", filter: "in_line", count: inLineCount },
+    { label: "Up Next", filter: "in_line", count: inLineCount },
     { label: "Ready", filter: "ready", count: readyCount },
     { label: "In Progress", filter: "in_progress", count: inProgressCount + inReviewCount },
     { label: "Done", filter: "done", count: doneCount },

@@ -208,7 +208,7 @@ describe("ExecutePhase epic card task order", () => {
     mockAgentsActive.mockResolvedValue([]);
   });
 
-  it("All filter shows Ready and In Line swimlanes instead of active and completed tasks", () => {
+  it("All filter shows Ready and Up Next swimlanes instead of active and completed tasks", () => {
     const tasks = [
       {
         id: "epic-1.1",
@@ -549,7 +549,7 @@ describe("ExecutePhase top bar", () => {
     expect(topBar?.querySelector('[role="progressbar"]')).not.toBeInTheDocument();
   });
 
-  it("shows status filter chips with task counts (All, In Line, Ready, In Progress, In Review, Done; Blocked on Human only when count > 0)", () => {
+  it("shows status filter chips with task counts (All, Up Next, Ready, In Progress, In Review, Done; Blocked on Human only when count > 0)", () => {
     const tasks = [
       {
         id: "epic-1.1",
@@ -579,7 +579,7 @@ describe("ExecutePhase top bar", () => {
 
     expect(screen.getByTestId("filter-chip-all")).toHaveTextContent("All");
     expect(screen.getByTestId("filter-chip-all")).toHaveTextContent("2");
-    expect(screen.getByTestId("filter-chip-in_line")).toHaveTextContent("In Line");
+    expect(screen.getByTestId("filter-chip-in_line")).toHaveTextContent("Up Next");
     expect(screen.getByTestId("filter-chip-in_line")).toHaveTextContent("0");
     expect(screen.getByTestId("filter-chip-ready")).toHaveTextContent("Ready");
     expect(screen.getByTestId("filter-chip-ready")).toHaveTextContent("1");
@@ -702,7 +702,7 @@ describe("ExecutePhase top bar", () => {
     expect(screen.getByTestId("filter-chip-blocked")).toHaveTextContent("1");
   });
 
-  it("filters to In Line tasks (backlog, planning) when In Line chip is clicked; excludes blocked", async () => {
+  it("filters to Up Next tasks (backlog, planning) when Up Next chip is clicked; excludes blocked", async () => {
     const user = userEvent.setup();
     const tasks = [
       {

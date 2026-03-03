@@ -34,11 +34,11 @@ export interface TimelineListProps {
 
 const SECTION_LABELS: Record<string, string> = {
   [TIMELINE_SECTION.active]: "In Progress",
-  [TIMELINE_SECTION.queue]: "In Line",
+  [TIMELINE_SECTION.queue]: "Up Next",
   [TIMELINE_SECTION.completed]: "Completed",
   blocked: "Blocked",
   ready: "Ready",
-  in_line: "In Line",
+  in_line: "Up Next",
 };
 
 function TimelineRow({

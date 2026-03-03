@@ -77,7 +77,7 @@ describe("TimelineList", () => {
     expect(screen.getByRole("heading", { name: "In Progress" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Completed" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Ready" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "In Line" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Up Next" })).not.toBeInTheDocument();
   });
 
   it("displays Ready section when ready tasks exist", () => {
@@ -94,7 +94,7 @@ describe("TimelineList", () => {
     expect(screen.getByText("Queued Task")).toBeInTheDocument();
   });
 
-  it("displays In Line section when backlog/planning tasks exist", () => {
+  it("displays Up Next section when backlog/planning tasks exist", () => {
     const tasks = [
       createMockTask({ id: "a", kanbanColumn: "in_progress", title: "Active Task" }),
       createMockTask({ id: "b", kanbanColumn: "backlog", title: "Blocked Task" }),
@@ -104,7 +104,7 @@ describe("TimelineList", () => {
     render(<TimelineList tasks={tasks} plans={plans} onTaskSelect={vi.fn()} />);
 
     expect(screen.getByRole("heading", { name: "In Progress" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "In Line" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Up Next" })).toBeInTheDocument();
     expect(screen.getByText("Blocked Task")).toBeInTheDocument();
   });
 

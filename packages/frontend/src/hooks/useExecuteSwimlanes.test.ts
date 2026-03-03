@@ -130,7 +130,7 @@ describe("useExecuteSwimlanes", () => {
     expect(result.current.filteredTasks.map((t) => t.id)).toEqual(["epic-a.1", "epic-a.2"]);
   });
 
-  it("In Line chip is between All and Ready and counts backlog, planning (excludes blocked)", () => {
+  it("Up Next chip is between All and Ready and counts backlog, planning (excludes blocked)", () => {
     const tasks: Task[] = [
       task({ id: "epic-a.1", kanbanColumn: "backlog" }),
       task({ id: "epic-a.2", kanbanColumn: "blocked" }),
@@ -145,7 +145,7 @@ describe("useExecuteSwimlanes", () => {
     const readyIdx = chips.findIndex((c) => c.filter === "ready");
     expect(allIdx).toBeLessThan(inLineIdx);
     expect(inLineIdx).toBeLessThan(readyIdx);
-    expect(chips[inLineIdx].label).toBe("In Line");
+    expect(chips[inLineIdx].label).toBe("Up Next");
     expect(chips[inLineIdx].count).toBe(2);
   });
 
@@ -163,7 +163,7 @@ describe("useExecuteSwimlanes", () => {
     expect(result.current.swimlanes[0].tasks[0].title).toBe("Login form");
   });
 
-  describe("Ready vs In Line sections", () => {
+  describe("Ready vs Up Next sections", () => {
     it("showReadyInLineSections returns true for all, ready, in_line filters", () => {
       expect(showReadyInLineSections("all")).toBe(true);
       expect(showReadyInLineSections("ready")).toBe(true);

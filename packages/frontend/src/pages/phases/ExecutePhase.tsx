@@ -360,7 +360,7 @@ export function ExecutePhase({
                   {inLineSwimlanes.length > 0 && (
                     <section data-testid="execute-section-in_line">
                       <h2 className="text-sm font-semibold text-theme-muted tracking-wide uppercase mb-4">
-                        In Line
+                        Up Next
                       </h2>
                       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                         {inLineSwimlanes.map((lane) => (
