@@ -334,6 +334,41 @@ export class FailureHandlerService {
       .comment(projectId, task.id, commentText)
       .catch((err) => log.warn("Failed to add failure comment", { err }));
 
+    if (failureType === "no_result" && apiErrorKind) {
+      const retrySummary = buildTaskLastExecutionSummary({
+        attempt: cumulativeAttempts,
+        outcome: "requeued",
+        phase: slot.phase,
+        failureType,
+        summary: `${failureSummary}. Waiting for API issue to be resolved.`,
+      });
+      await persistTaskLastExecutionSummary(this.host.taskStore, projectId, task.id, retrySummary);
+      await this.revertOrRemoveWorktree(repoPath, task.id, branchName, slot, gitWorkingMode);
+      await this.host.deleteAssignment(repoPath, task.id);
+      try {
+        await this.host.taskStore.update(projectId, task.id, {
+          status: "open",
+          assignee: "",
+          extra: {
+            last_execution_summary: retrySummary,
+          },
+        });
+      } catch (err) {
+        log.warn("Failed to reopen task after API-blocked no_result failure", { err });
+      }
+      this.host.transition(projectId, { to: "fail", taskId: task.id });
+      await this.host.persistCounters(projectId, repoPath);
+      broadcastToProject(projectId, {
+        type: "agent.completed",
+        taskId: task.id,
+        status: "failed",
+        testResults: null,
+        reason: effectiveReason.slice(0, 500),
+      });
+      this.host.nudge(projectId);
+      return;
+    }
+
     if (diagnosedNoResultFailure) {
       log.warn("Diagnosed no_result startup/config failure; blocking without blind retries", {
         taskId: task.id,

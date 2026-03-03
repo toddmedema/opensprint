@@ -814,6 +814,77 @@ describe("AgentClient", () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
     });
 
+    it("records limit hits for detached Cursor usage-limit messages emitted as plain text", async () => {
+      const fs = await import("fs/promises");
+      const path = await import("path");
+      const os = await import("os");
+      const tmpDir = path.join(os.tmpdir(), `agent-client-output-limit-${Date.now()}`);
+      const taskDir = path.join(tmpDir, ".opensprint/active/bd-a3f8.1");
+      await fs.mkdir(taskDir, { recursive: true });
+      const taskFilePath = path.join(taskDir, "prompt.md");
+      await fs.writeFile(taskFilePath, "# Task\n\nFix bug", "utf-8");
+      const outputLogPath = path.join(taskDir, "output.log");
+
+      mockGetNextKey
+        .mockResolvedValueOnce({ key: "cursor-key-1", keyId: "k1", source: "global" })
+        .mockResolvedValueOnce({ key: "cursor-key-2", keyId: "k2", source: "project" })
+        .mockResolvedValue({ key: "cursor-key-2", keyId: "k2", source: "project" });
+
+      const makeChild = (exitCode: number) => ({
+        killed: false,
+        kill: vi.fn(),
+        pid: 10010 + exitCode,
+        stdout: { on: vi.fn(), removeAllListeners: vi.fn() },
+        stderr: { on: vi.fn(), removeAllListeners: vi.fn() },
+        on: vi.fn((ev: string, fn: (code?: number) => void) => {
+          if (ev === "close") setTimeout(() => fn(exitCode), 20);
+          return { on: vi.fn(), removeAllListeners: vi.fn() };
+        }),
+        removeAllListeners: vi.fn(),
+      });
+
+      mockSpawn.mockReturnValueOnce(makeChild(1)).mockReturnValueOnce(makeChild(0));
+
+      const onOutput = vi.fn();
+      const onExit = vi.fn();
+      const config: AgentConfig = { type: "cursor", model: "composer-1.5", cliCommand: null };
+
+      client.spawnWithTaskFile(
+        config,
+        taskFilePath,
+        tmpDir,
+        onOutput,
+        onExit,
+        "coder",
+        outputLogPath,
+        "proj-123"
+      );
+
+      await fs.writeFile(
+        outputLogPath,
+        "S: You've hit your usage limit. Switch to Auto for more usage or set a Spend Limit to continue with this model.\n",
+        "utf-8"
+      );
+
+      await vi.waitFor(
+        () => {
+          expect(onExit).toHaveBeenCalledWith(0);
+        },
+        { timeout: 2000 }
+      );
+
+      expect(mockRecordLimitHit).toHaveBeenCalledWith("proj-123", "CURSOR_API_KEY", "k1", "global");
+      expect(mockGetNextKey).toHaveBeenCalledTimes(3);
+      expect(mockClearLimitHit).toHaveBeenCalledWith("proj-123", "CURSOR_API_KEY", "k2", "project");
+      expect(onOutput).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "[Agent error: You've hit your usage limit. Switch to Auto for more usage or set a Spend Limit to continue with this model.]"
+        )
+      );
+
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
     it("should return kill that terminates process with process group", async () => {
       const fs = await import("fs/promises");
       const path = await import("path");

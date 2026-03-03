@@ -18,6 +18,22 @@ vi.mock("../websocket/index.js", () => ({
   broadcastToProject: vi.fn(),
 }));
 
+vi.mock("../services/notification.service.js", () => ({
+  notificationService: {
+    createApiBlocked: vi.fn().mockResolvedValue({
+      id: "notif-1",
+      projectId: "proj-1",
+      source: "execute",
+      sourceId: "os-abc1",
+      questions: [],
+      status: "open",
+      createdAt: new Date().toISOString(),
+      resolvedAt: null,
+      errorCode: "rate_limit",
+    }),
+  },
+}));
+
 const mockRemoveTaskWorktree = vi.fn();
 
 const mockDeleteBranch = vi.fn();
@@ -309,6 +325,60 @@ describe("FailureHandlerService", () => {
         projectId,
         taskId,
         expect.objectContaining({ status: "blocked", block_reason: "Coding Failure" })
+      );
+    });
+
+    it("reopens no_result failures caused by API limits instead of blocking the task", async () => {
+      const slot = makeSlot("/tmp/worktree");
+      slot.agent.outputLog = [
+        "S: You've hit your usage limit. Switch to Auto for more usage or set a Spend Limit to continue with this model.\n",
+      ];
+      const mockUpdate = vi.fn().mockResolvedValue(undefined);
+      const mockDeleteAssignment = vi.fn().mockResolvedValue(undefined);
+      const mockSetCumulativeAttempts = vi.fn().mockResolvedValue(undefined);
+      mockHost.getState = vi.fn().mockReturnValue({
+        slots: new Map([[taskId, slot]]),
+        status: { totalFailed: 0, queueDepth: 0 },
+      });
+      mockHost.taskStore = {
+        ...mockHost.taskStore,
+        update: mockUpdate,
+        setCumulativeAttempts: mockSetCumulativeAttempts,
+      };
+      mockHost.deleteAssignment = mockDeleteAssignment;
+
+      await handler.handleTaskFailure(
+        projectId,
+        repoPath,
+        makeTask(),
+        branchName,
+        "Agent exited with code 1 without producing a result",
+        null,
+        "no_result"
+      );
+
+      expect(mockExecuteCodingPhase).not.toHaveBeenCalled();
+      expect(mockRemoveTaskWorktree).toHaveBeenCalledWith(repoPath, taskId, "/tmp/worktree");
+      expect(mockDeleteAssignment).toHaveBeenCalledWith(repoPath, taskId);
+      expect(mockSetCumulativeAttempts).not.toHaveBeenCalled();
+      expect(mockUpdate).toHaveBeenCalledWith(
+        projectId,
+        taskId,
+        expect.objectContaining({
+          status: "open",
+          assignee: "",
+          extra: expect.objectContaining({
+            last_execution_summary: expect.objectContaining({
+              outcome: "requeued",
+              failureType: "no_result",
+            }),
+          }),
+        })
+      );
+      expect(mockUpdate).not.toHaveBeenCalledWith(
+        projectId,
+        taskId,
+        expect.objectContaining({ status: "blocked" })
       );
     });
 

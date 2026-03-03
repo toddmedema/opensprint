@@ -86,6 +86,17 @@ describe("isLimitError", () => {
     expect(isLimitError(new Error("Resource exhausted"))).toBe(true);
   });
 
+  it("returns true for Cursor Composer usage-limit messages", () => {
+    expect(
+      isLimitError(
+        new Error(
+          "You've hit your usage limit. Switch to Auto for more usage or set a Spend Limit to continue."
+        )
+      )
+    ).toBe(true);
+    expect(isLimitError("Your usage limits will reset when your monthly cycle ends")).toBe(true);
+  });
+
   it("returns true when 429 in message string", () => {
     expect(isLimitError(new Error("HTTP 429 Too Many Requests"))).toBe(true);
     expect(isLimitError("Error: 429 rate limit")).toBe(true);
@@ -208,6 +219,14 @@ describe("isAuthError", () => {
 
   it("returns true for authentication required", () => {
     expect(isAuthError(new Error("Authentication required"))).toBe(true);
+  });
+
+  it("returns true for missing Cursor access token in keychain", () => {
+    expect(
+      isAuthError(
+        new Error("Password not found for account 'cursor-user' and service 'cursor-access-token'")
+      )
+    ).toBe(true);
   });
 
   it("returns false for non-auth errors", () => {

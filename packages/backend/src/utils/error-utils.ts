@@ -37,6 +37,10 @@ const LIMIT_ERROR_PATTERNS = [
   /rate\s*limit/i,
   /ratelimiterror/i,
   /overloaded/i,
+  /usage\s+limit/i,
+  /spend\s+limit/i,
+  /switch\s+to\s+auto\s+for\s+more\s+usage/i,
+  /usage\s+limits\s+will\s+reset/i,
   /add\s+more\s+tokens/i,
   /quota\s+exceeded/i,
   /quota_exceeded/i,
@@ -100,6 +104,8 @@ const AUTH_ERROR_PATTERNS = [
   /authentication\s*required/i,
   /invalid\s*token/i,
   /authentication\s*failed/i,
+  /password\s+not\s+found.*cursor-access-token/i,
+  /cursor-access-token/i,
 ];
 
 /**

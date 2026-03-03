@@ -9,7 +9,12 @@ import type { AgentConfig } from "@opensprint/shared";
 import { OPENSPRINT_PATHS } from "@opensprint/shared";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
-import { getErrorMessage, getExecErrorShape, isLimitError } from "../utils/error-utils.js";
+import {
+  classifyAgentApiError,
+  getErrorMessage,
+  getExecErrorShape,
+  isLimitError,
+} from "../utils/error-utils.js";
 import {
   isOpenAIResponsesModel,
   toOpenAIResponsesInputMessage,
@@ -143,7 +148,16 @@ function extractExplicitAgentErrors(rawOutput: string): string {
       const message = getStructuredAgentErrorMessage(parsed);
       if (message) errors.push(message);
     } catch {
-      // Ignore normal output lines. Detached log files mix stdout and stderr.
+      const prefixMatch = trimmed.match(/^(S:|Error:)\s*(.+)$/i);
+      const candidate = prefixMatch?.[2]?.trim() ?? trimmed;
+      if (
+        (/you'?ve hit your usage limit/i.test(candidate) ||
+          prefixMatch !== null ||
+          candidate !== trimmed) &&
+        classifyAgentApiError(candidate)
+      ) {
+        errors.push(candidate);
+      }
     }
   }
 
@@ -419,8 +433,18 @@ export class AgentClient {
         } else {
           output = stderrCollector.stderr;
         }
-        const limitCheckOutput = outputLogPath ? extractExplicitAgentErrors(output) : output;
-        if (isLimitError({ stderr: limitCheckOutput }) && keyId !== ENV_FALLBACK_KEY_ID) {
+        const apiErrorOutput = outputLogPath ? extractExplicitAgentErrors(output) : output;
+        const apiErrorKind = classifyAgentApiError(apiErrorOutput);
+        if (apiErrorOutput && !output.includes("[Agent error:")) {
+          onOutput(
+            apiErrorOutput
+              .split("\n")
+              .filter(Boolean)
+              .map((message) => `[Agent error: ${message}]\n`)
+              .join("")
+          );
+        }
+        if (apiErrorKind === "rate_limit" && keyId !== ENV_FALLBACK_KEY_ID) {
           await recordLimitHit(projectId, "CURSOR_API_KEY", keyId, source);
           const next = await getNextKey(projectId, "CURSOR_API_KEY");
           if (next) {
