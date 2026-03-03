@@ -37,6 +37,7 @@ import {
   normalizeWorktreeBaseBranch,
   type AutoDeployTrigger,
 } from "@opensprint/shared";
+import { SETTINGS_HELP_CONTAINER_CLASS } from "../lib/constants";
 
 interface ProjectSettingsModalProps {
   project: Project;
@@ -432,7 +433,9 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
 
           {/* Content */}
           <div
-            className="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden px-5 py-4 overscroll-contain"
+            className={`flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden py-4 overscroll-contain ${
+              fullScreen ? SETTINGS_HELP_CONTAINER_CLASS : "px-5"
+            }`}
             data-testid="settings-modal-content"
           >
             {loading ? (

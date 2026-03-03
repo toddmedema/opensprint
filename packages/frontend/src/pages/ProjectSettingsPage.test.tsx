@@ -248,6 +248,18 @@ describe("ProjectSettingsPage", () => {
     expect(contentArea).toHaveClass("min-h-0");
   });
 
+  it("project settings tab content has 1800px max-width for consistency with Global and Help", async () => {
+    renderProjectSettingsPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("settings-modal-content")).toBeInTheDocument();
+    });
+
+    const contentArea = screen.getByTestId("settings-modal-content");
+    expect(contentArea).toHaveClass("max-w-[1800px]");
+    expect(contentArea).toHaveClass("mx-auto");
+  });
+
   it("navigating between settings tabs does not redirect to sketch", async () => {
     const user = userEvent.setup();
     renderProjectSettingsPage();
