@@ -36,39 +36,40 @@ export function HelpContent({ project, onClose }: HelpContentProps) {
         role="tablist"
         aria-label="Help sections"
       >
-        <div className="flex w-full items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "ask"}
-              aria-controls="help-tabpanel-ask"
-              id="help-tab-ask"
-              onClick={() => setActiveTab("ask")}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 min-h-[44px] text-sm font-medium transition-colors ${
-                activeTab === "ask"
-                  ? "bg-brand-600 text-white ring-2 ring-brand-500 ring-offset-2 ring-offset-theme-bg"
-                  : "bg-theme-surface-muted text-theme-text hover:bg-theme-border-subtle"
-              }`}
-            >
-              Ask a Question
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === "meet"}
-              aria-controls="help-tabpanel-meet"
-              id="help-tab-meet"
-              onClick={() => setActiveTab("meet")}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 min-h-[44px] text-sm font-medium transition-colors ${
-                activeTab === "meet"
-                  ? "bg-brand-600 text-white ring-2 ring-brand-500 ring-offset-2 ring-offset-theme-bg"
-                  : "bg-theme-surface-muted text-theme-text hover:bg-theme-border-subtle"
-              }`}
-            >
-              Meet your Team
-            </button>
-          </div>
+        <div className="flex-1 min-w-0" aria-hidden="true" />
+        <div className="flex flex-wrap items-center justify-center gap-2 shrink-0">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "ask"}
+            aria-controls="help-tabpanel-ask"
+            id="help-tab-ask"
+            onClick={() => setActiveTab("ask")}
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 min-h-[44px] text-sm font-medium transition-colors ${
+              activeTab === "ask"
+                ? "bg-brand-600 text-white ring-2 ring-brand-500 ring-offset-2 ring-offset-theme-bg"
+                : "bg-theme-surface-muted text-theme-text hover:bg-theme-border-subtle"
+            }`}
+          >
+            Ask a Question
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "meet"}
+            aria-controls="help-tabpanel-meet"
+            id="help-tab-meet"
+            onClick={() => setActiveTab("meet")}
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 min-h-[44px] text-sm font-medium transition-colors ${
+              activeTab === "meet"
+                ? "bg-brand-600 text-white ring-2 ring-brand-500 ring-offset-2 ring-offset-theme-bg"
+                : "bg-theme-surface-muted text-theme-text hover:bg-theme-border-subtle"
+            }`}
+          >
+            Meet your Team
+          </button>
+        </div>
+        <div className="flex-1 min-w-0 flex justify-end items-center">
           {onClose && (
             <button
               type="button"

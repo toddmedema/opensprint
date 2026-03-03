@@ -63,25 +63,31 @@ Add under Execute Phase (Code Review):
 
 - **Multi-angle parallel review:** When review angles are empty, one general Reviewer runs (scope + code quality). When 1+ angles are selected, N parallel Reviewers run (one per angle); all must approve for overall approval.
 
+Add under Execute Phase (Git / Worktree):
+
+- **Worktree base branch:** When Git working mode is Worktree, a configurable base branch (default `main`) allows users to create task branches from and merge into a non-main branch (e.g. `beta`). Sync and push use `origin/<baseBranch>`. Reviewer diff uses `baseBranch...taskBranch`. Branches mode ignores this setting.
+
 ## Technical Architecture
 
 Replace all references to `prd.json` with `SPEC.md`. The Sketch phase PRD is stored as **SPEC.md** at the repository root—a flat markdown file with standard section headers (Executive Summary, Problem Statement, User Personas, Goals and Success Metrics, Feature List, Technical Architecture, Data Model, API Contracts, Non-Functional Requirements, Open Questions). This format is standardized and optimized for AI agent consumption. The Dreamer writes SPEC.md directly during conversation (trust boundary exception). The Harmonizer proposes updates; the orchestrator writes and commits SPEC.md. Agent context receives `context/spec.md`. Git commit queue includes SPEC.md. Resolved Decisions table: PRD storage → SPEC.md at repo root (flat markdown) for AI-agent-friendly standardized format.
 
 **Code review flow:** When `reviewAngles` is empty or undefined, one Reviewer runs with a general prompt (scope + code quality). When 1+ angles are selected, N parallel Reviewers run (one per angle); all must approve for overall approval. The single-agent constraint is relaxed for this case: multiple parallel reviewers are allowed for the same task when angles are selected.
 
+**Worktree base branch:** In worktree mode, `worktreeBaseBranch` (project setting, default `main`) controls which branch task branches are created from and merged into. Sync and push use `origin/<baseBranch>`. Reviewer diff uses `baseBranch...taskBranch`. Merger agent prompts reference the configured base branch. Branches mode always uses `main`.
+
 ## Data Model
 
 **PRD (PRDDocument):** Stored as `SPEC.md` at repository root. A flat markdown file with standard section headers. The backend parses SPEC.md for API responses and structured editing; the canonical on-disk format is markdown. Optional metadata (version, change_log) may be stored in `.opensprint/spec-metadata.json` for versioning and section-level diffing. Entity relationship: PRD (1:1, SPEC.md).
+
+**ProjectSettings:** Includes `worktreeBaseBranch?: string` (default `"main"`). Used when `gitWorkingMode === "worktree"`; controls branch creation, merge, sync, and push. Empty or invalid values normalize to `"main"`. Branches mode ignores this field.
 
 **Storage Strategy:** Per-project data includes SPEC.md at repo root. The backend maintains an in-memory index rebuilt from the filesystem on startup.
 
 ## API Contracts
 
-### REST API (`/api/v1`)
-
 **Projects:** GET/POST `/projects`, GET/PUT/DELETE `/projects/:id`
 
-**Project Settings:** GET/PUT `/projects/:id/settings` — Project settings (agent config, deployment, HIL, etc.). Does **not** include apiKeys; API keys are managed via global-settings only.
+**Project Settings:** GET/PUT `/projects/:id/settings` — Project settings (agent config, deployment, HIL, worktreeBaseBranch, etc.). Does **not** include apiKeys; API keys are managed via global-settings only.
 
 **Global Settings:** GET/PUT `/global-settings` — Returns and accepts `databaseUrl` (masked in response) and `apiKeys` (masked: `{id, masked, limitHitAt}` per provider). Supports multiple keys per provider (ANTHROPIC_API_KEY, CURSOR_API_KEY); merge semantics on PUT (preserve existing when value omitted).
 

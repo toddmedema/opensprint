@@ -48,7 +48,7 @@ export function SettingsSubTabsBar({
   }
   return (
     <div
-      className="px-4 sm:px-6 min-h-[48px] flex items-center py-2 border-b border-theme-border bg-theme-surface shrink-0"
+      className="px-4 sm:px-6 min-h-[48px] flex items-center justify-center py-2 border-b border-theme-border bg-theme-surface shrink-0"
       data-testid="settings-sub-tabs-bar"
     >
       {content}

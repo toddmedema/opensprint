@@ -39,7 +39,8 @@ export function SettingsTopBar({ projectId, saveStatus }: SettingsTopBarProps) {
       className="px-4 sm:px-6 min-h-[48px] flex items-center justify-between py-2 border-b border-theme-border bg-theme-surface shrink-0"
       data-testid="settings-top-bar"
     >
-      <div className="flex items-center gap-1 bg-theme-border-subtle rounded-lg p-1">
+      <div className="flex-1 min-w-0" aria-hidden="true" />
+      <div className="flex items-center justify-center gap-1 bg-theme-border-subtle rounded-lg p-1 shrink-0">
         <NavButton
           to={globalHref}
           active={isGlobal}
@@ -55,7 +56,9 @@ export function SettingsTopBar({ projectId, saveStatus }: SettingsTopBarProps) {
           Project
         </NavButton>
       </div>
-      <SaveIndicator status={saveStatus} data-testid="settings-save-indicator" />
+      <div className="flex-1 min-w-0 flex justify-end">
+        <SaveIndicator status={saveStatus} data-testid="settings-save-indicator" />
+      </div>
     </div>
   );
 }
