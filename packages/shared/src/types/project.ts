@@ -69,7 +69,6 @@ export interface ScaffoldProjectRequest {
 /** Scaffold project response */
 export interface ScaffoldProjectResponse {
   project: Project;
-  runCommand: string;
   /** Present when an init error was detected and recovery was attempted */
   recovery?: ScaffoldRecoveryInfo;
 }

@@ -43,25 +43,46 @@ const CATEGORY_PATTERNS: Array<{
 }> = [
   {
     category: "missing_node",
-    patterns: [/node:\s*command not found/i, /node:\s*not found/i, /ENOENT.*node/i, /'node' is not recognized/i],
+    patterns: [
+      /node:\s*command not found/i,
+      /node:\s*not found/i,
+      /ENOENT.*node/i,
+      /'node' is not recognized/i,
+    ],
     tool: "node",
     recoverable: true,
   },
   {
     category: "missing_npx",
-    patterns: [/npx:\s*command not found/i, /npx:\s*not found/i, /ENOENT.*npx/i, /'npx' is not recognized/i],
+    patterns: [
+      /npx:\s*command not found/i,
+      /npx:\s*not found/i,
+      /ENOENT.*npx/i,
+      /'npx' is not recognized/i,
+    ],
     tool: "npx",
     recoverable: true,
   },
   {
     category: "missing_npm",
-    patterns: [/npm:\s*command not found/i, /npm:\s*not found/i, /ENOENT.*npm/i, /'npm' is not recognized/i, /npm ERR! code ENOENT/i],
+    patterns: [
+      /npm:\s*command not found/i,
+      /npm:\s*not found/i,
+      /ENOENT.*npm/i,
+      /'npm' is not recognized/i,
+      /npm ERR! code ENOENT/i,
+    ],
     tool: "npm",
     recoverable: true,
   },
   {
     category: "missing_expo_cli",
-    patterns: [/expo:\s*command not found/i, /create-expo-app.*not found/i, /Cannot find module.*expo/i, /expo is not installed/i],
+    patterns: [
+      /expo:\s*command not found/i,
+      /create-expo-app.*not found/i,
+      /Cannot find module.*expo/i,
+      /expo is not installed/i,
+    ],
     tool: "expo",
     recoverable: true,
   },
@@ -73,7 +94,14 @@ const CATEGORY_PATTERNS: Array<{
   },
   {
     category: "network_error",
-    patterns: [/ENOTFOUND/i, /ETIMEDOUT/i, /ECONNREFUSED/i, /network.*error/i, /getaddrinfo/i, /EAI_AGAIN/i],
+    patterns: [
+      /ENOTFOUND/i,
+      /ETIMEDOUT/i,
+      /ECONNREFUSED/i,
+      /network.*error/i,
+      /getaddrinfo/i,
+      /EAI_AGAIN/i,
+    ],
     tool: "",
     recoverable: false,
   },
@@ -145,34 +173,34 @@ function buildRecoveryPrompt(classification: InitErrorClassification, projectPat
         "- Install Node.js (which includes npm and npx).",
         "- On macOS: try `brew install node` or download from https://nodejs.org",
         "- On Linux: try `curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs`",
-        "- Verify by running: `node --version && npm --version && npx --version`",
+        "- Verify by running: `node --version && npm --version && npx --version`"
       );
       break;
     case "missing_expo_cli":
       lines.push(
         "- Install create-expo-app globally: `npm install -g create-expo-app@latest`",
         "- Or ensure npx is available so it can run create-expo-app on demand.",
-        "- Verify by running: `npx create-expo-app --version`",
+        "- Verify by running: `npx create-expo-app --version`"
       );
       break;
     case "permission_denied":
       lines.push(
         "- Fix file permissions for the project directory.",
         `- Try: \`sudo chown -R $(whoami) ${projectPath}\``,
-        "- Or adjust npm global prefix: `npm config set prefix ~/.npm-global`",
+        "- Or adjust npm global prefix: `npm config set prefix ~/.npm-global`"
       );
       break;
     default:
       lines.push(
         "- Analyze the error output and attempt to fix the root cause.",
-        "- Run diagnostic commands to understand the issue.",
+        "- Run diagnostic commands to understand the issue."
       );
   }
 
   lines.push(
     "",
     "After fixing, verify the tool is available by running the verification command.",
-    "Do NOT run the original scaffolding command — just fix the missing dependency.",
+    "Do NOT run the original scaffolding command — just fix the missing dependency."
   );
 
   return lines.join("\n");
@@ -196,7 +224,7 @@ function verifyCommandForCategory(category: InitErrorCategory): string | null {
 export async function attemptRecovery(
   classification: InitErrorClassification,
   projectPath: string,
-  agentConfig: AgentConfig,
+  agentConfig: AgentConfig
 ): Promise<RecoveryResult> {
   if (!classification.recoverable) {
     return {
@@ -220,7 +248,8 @@ export async function attemptRecovery(
     const response = await client.invoke({
       config: agentConfig,
       prompt,
-      systemPrompt: "You are a system administrator fixing a development environment issue. Execute commands to resolve the problem. Be concise.",
+      systemPrompt:
+        "You are a system administrator fixing a development environment issue. Execute commands to resolve the problem. Be concise.",
       cwd: projectPath,
     });
     agentOutput = response.content;
@@ -246,7 +275,11 @@ export async function attemptRecovery(
       };
     } catch (verifyErr) {
       const msg = getErrorMessage(verifyErr);
-      log.warn("Recovery verification failed", { category: classification.category, verifyCmd, err: msg });
+      log.warn("Recovery verification failed", {
+        category: classification.category,
+        verifyCmd,
+        err: msg,
+      });
       return {
         success: false,
         category: classification.category,

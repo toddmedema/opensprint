@@ -6,12 +6,14 @@
  * If TEST_DATABASE_URL is already set (e.g. CI), we leave it and do not write the file.
  */
 
+import { randomUUID } from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const URL_FILE = path.resolve(__dirname, "../../.vitest-postgres-url");
+const RUN_ID_ENV = "OPENSPRINT_VITEST_RUN_ID";
 
 /** Native Postgres test DB URL. Tests must never use the app DB (opensprint). */
 const NATIVE_TEST_URL = "postgresql://opensprint:opensprint@localhost:5432/opensprint_test";
@@ -20,6 +22,10 @@ const SETUP_HINT =
   "Start Postgres and ensure the test database exists. Run from repo root: npm run setup";
 
 export default async function globalSetup() {
+  if (!process.env[RUN_ID_ENV]) {
+    process.env[RUN_ID_ENV] = randomUUID();
+  }
+
   if (process.env.TEST_DATABASE_URL) {
     return;
   }
@@ -33,10 +39,9 @@ export default async function globalSetup() {
       connectionTimeoutMillis: 5000,
     });
     try {
-      const res = await pool.query(
-        "SELECT 1 FROM pg_database WHERE datname = $1",
-        ["opensprint_test"]
-      );
+      const res = await pool.query("SELECT 1 FROM pg_database WHERE datname = $1", [
+        "opensprint_test",
+      ]);
       if (res.rowCount === 0) {
         await pool.query("CREATE DATABASE opensprint_test");
       }

@@ -35,7 +35,12 @@ describe("planTasksListener", () => {
   it("dispatches fetchTasks when planTasks.fulfilled", async () => {
     const store = createStore();
     const plan = {
-      metadata: { planId: "plan-1", epicId: "epic-1", shippedAt: null, complexity: "medium" as const },
+      metadata: {
+        planId: "plan-1",
+        epicId: "epic-1",
+        shippedAt: null,
+        complexity: "medium" as const,
+      },
       content: "",
       status: "planning" as const,
       taskCount: 2,
@@ -52,7 +57,12 @@ describe("planTasksListener", () => {
   it("dispatches fetchTasks when generateTasksForPlan.fulfilled", async () => {
     const store = createStore();
     const plan = {
-      metadata: { planId: "plan-2", epicId: "epic-2", shippedAt: null, complexity: "medium" as const },
+      metadata: {
+        planId: "plan-2",
+        epicId: "epic-2",
+        shippedAt: null,
+        complexity: "medium" as const,
+      },
       content: "",
       status: "planning" as const,
       taskCount: 3,

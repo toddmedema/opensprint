@@ -11,15 +11,17 @@ import { ErrorCodes } from "../middleware/error-codes.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { createLogger } from "../utils/logger.js";
 import { validateApiKey } from "./models.js";
-import {
-  getGlobalSettings,
-  updateGlobalSettings,
-} from "../services/global-settings.service.js";
+import { getGlobalSettings, updateGlobalSettings } from "../services/global-settings.service.js";
 
 const execFileAsync = promisify(execFile);
 const log = createLogger("env");
 
-const ALLOWED_KEYS = ["ANTHROPIC_API_KEY", "CURSOR_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY"] as const;
+const ALLOWED_KEYS = [
+  "ANTHROPIC_API_KEY",
+  "CURSOR_API_KEY",
+  "OPENAI_API_KEY",
+  "GOOGLE_API_KEY",
+] as const;
 
 /** Override for tests when process.chdir is not available (e.g. Vitest workers). Set to null in production. */
 let envPathForTesting: string | null = null;
@@ -194,7 +196,12 @@ envRouter.post("/keys/validate", async (req: Request, res, next) => {
     if (!provider || typeof value !== "string") {
       throw new AppError(400, ErrorCodes.INVALID_INPUT, "provider and value are required");
     }
-    if (provider !== "claude" && provider !== "cursor" && provider !== "openai" && provider !== "google") {
+    if (
+      provider !== "claude" &&
+      provider !== "cursor" &&
+      provider !== "openai" &&
+      provider !== "google"
+    ) {
       throw new AppError(
         400,
         ErrorCodes.INVALID_INPUT,
@@ -202,7 +209,10 @@ envRouter.post("/keys/validate", async (req: Request, res, next) => {
       );
     }
 
-    const result = await validateApiKey(provider as "claude" | "cursor" | "openai" | "google", value);
+    const result = await validateApiKey(
+      provider as "claude" | "cursor" | "openai" | "google",
+      value
+    );
     res.json({
       data: result.valid ? { valid: true } : { valid: false, error: result.error },
     } as ApiResponse<{ valid: boolean; error?: string }>);

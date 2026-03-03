@@ -85,10 +85,7 @@ export const triggerDeliver = createAsyncThunk(
 
 export const deployExpo = createAsyncThunk(
   "deliver/expoDeploy",
-  async (
-    { projectId, variant }: { projectId: string; variant: "beta" | "prod" },
-    { dispatch }
-  ) => {
+  async ({ projectId, variant }: { projectId: string; variant: "beta" | "prod" }, { dispatch }) => {
     const { deployId } = await api.deliver.expoDeploy(projectId, variant);
     dispatch(fetchDeliverStatus(projectId));
     dispatch(fetchDeliverHistory(projectId));

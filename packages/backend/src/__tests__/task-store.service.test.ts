@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { runSchema, toPgParams } from "../db/index.js";
 import { TaskStoreService } from "../services/task-store.service.js";
-import { createTestPostgresClient } from "./test-db-helper.js";
+import { createTestPostgresClient, createTestProjectId } from "./test-db-helper.js";
 
-const TEST_PROJECT_ID = "test-project";
+let TEST_PROJECT_ID = createTestProjectId("task-store");
 
 const withDb = await createTestPostgresClient();
 const suite = withDb ? describe : describe.skip;
@@ -22,6 +22,7 @@ suite("TaskStoreService", () => {
     store = new TaskStoreService(client);
     await store.init();
     await store.deleteByProjectId(TEST_PROJECT_ID);
+    TEST_PROJECT_ID = createTestProjectId("task-store");
   });
 
   describe("create", () => {
@@ -83,9 +84,7 @@ suite("TaskStoreService", () => {
       });
       expect((result as { sourceFeedbackIds?: string[] }).sourceFeedbackIds).toEqual(["fb-123"]);
       const refetched = await store.show(TEST_PROJECT_ID, result.id);
-      expect((refetched as { sourceFeedbackIds?: string[] }).sourceFeedbackIds).toEqual([
-        "fb-123",
-      ]);
+      expect((refetched as { sourceFeedbackIds?: string[] }).sourceFeedbackIds).toEqual(["fb-123"]);
     });
   });
 
@@ -289,7 +288,9 @@ suite("TaskStoreService", () => {
         block_reason: null,
       });
       expect(result.status).toBe("open");
-      expect([null, undefined]).toContain((result as { block_reason?: string | null }).block_reason);
+      expect([null, undefined]).toContain(
+        (result as { block_reason?: string | null }).block_reason
+      );
     });
 
     it("should persist last_auto_retry_at when set", async () => {
@@ -393,9 +394,7 @@ suite("TaskStoreService", () => {
       const afterAssign = new Date().toISOString();
 
       expect(result.started_at).toBeTruthy();
-      expect(
-        result.started_at! >= beforeAssign && result.started_at! <= afterAssign
-      ).toBe(true);
+      expect(result.started_at! >= beforeAssign && result.started_at! <= afterAssign).toBe(true);
     });
 
     it("should set started_at when assignee is first set via claim", async () => {
@@ -556,7 +555,7 @@ suite("TaskStoreService", () => {
     });
 
     it("scopes to project when projectId provided", async () => {
-      const otherProject = "other-project";
+      const otherProject = createTestProjectId("other-project");
       const t1 = await store.create(TEST_PROJECT_ID, "Task P1", { type: "task", complexity: 1 });
       const t2 = await store.create(otherProject, "Task P2", { type: "task", complexity: 2 });
       await store.close(TEST_PROJECT_ID, t1.id, "Done");
@@ -660,9 +659,8 @@ suite("TaskStoreService", () => {
       await store.addDependency(TEST_PROJECT_ID, t2.id, t1.id, "blocks");
       await store.update(TEST_PROJECT_ID, epic.id, { status: "blocked" });
 
-      const { tasks: blocked, statusMap: blockedMap } = await store.readyWithStatusMap(
-        TEST_PROJECT_ID
-      );
+      const { tasks: blocked, statusMap: blockedMap } =
+        await store.readyWithStatusMap(TEST_PROJECT_ID);
       expect(blocked.filter((t) => t.id === t1.id || t.id === t2.id)).toHaveLength(0);
       expect(blockedMap.get(epic.id)).toBe("blocked");
 
@@ -1168,8 +1166,8 @@ suite("TaskStoreService", () => {
 
   describe("deleteByProjectId", () => {
     it("should remove tasks, dependencies, feedback, sessions, stats, events, counters, deployments, plans, and open_questions for a project", async () => {
-      const pid = "proj-delete-test";
-      const otherPid = "proj-keep";
+      const pid = createTestProjectId("proj-delete-test");
+      const otherPid = createTestProjectId("proj-keep");
       const now = new Date().toISOString();
 
       // Clear any leftover data from a previous run so inserts are idempotent
@@ -1184,35 +1182,51 @@ suite("TaskStoreService", () => {
 
       const db = await store.getDb();
       await db.execute(
-        toPgParams(`INSERT INTO feedback (id, project_id, text, category, status, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
+        toPgParams(
+          `INSERT INTO feedback (id, project_id, text, category, status, created_at) VALUES (?, ?, ?, ?, ?, ?)`
+        ),
         ["fb-1", pid, "Fix bug", "bug", "open", now]
       );
       await db.execute(
-        toPgParams(`INSERT INTO feedback (id, project_id, text, category, status, created_at) VALUES (?, ?, ?, ?, ?, ?)`),
+        toPgParams(
+          `INSERT INTO feedback (id, project_id, text, category, status, created_at) VALUES (?, ?, ?, ?, ?, ?)`
+        ),
         ["fb-2", otherPid, "Other bug", "bug", "open", now]
       );
       await db.execute(
-        toPgParams(`INSERT INTO feedback_inbox (project_id, feedback_id, enqueued_at) VALUES (?, ?, ?)`),
+        toPgParams(
+          `INSERT INTO feedback_inbox (project_id, feedback_id, enqueued_at) VALUES (?, ?, ?)`
+        ),
         [pid, "fb-1", now]
       );
       await db.execute(
-        toPgParams(`INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
+        toPgParams(
+          `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        ),
         [pid, task.id, 1, "coder", "claude", now, "completed", "opensprint/test"]
       );
       await db.execute(
-        toPgParams(`INSERT INTO agent_stats (project_id, task_id, agent_id, model, attempt, started_at, completed_at, outcome, duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+        toPgParams(
+          `INSERT INTO agent_stats (project_id, task_id, agent_id, model, attempt, started_at, completed_at, outcome, duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ),
         [pid, task.id, "agent-1", "claude", 1, now, now, "success", 1000]
       );
       await db.execute(
-        toPgParams(`INSERT INTO orchestrator_events (project_id, task_id, timestamp, event) VALUES (?, ?, ?, ?)`),
+        toPgParams(
+          `INSERT INTO orchestrator_events (project_id, task_id, timestamp, event) VALUES (?, ?, ?, ?)`
+        ),
         [pid, task.id, now, "assigned"]
       );
       await db.execute(
-        toPgParams(`INSERT INTO orchestrator_counters (project_id, total_done, total_failed, queue_depth, updated_at) VALUES (?, ?, ?, ?, ?)`),
+        toPgParams(
+          `INSERT INTO orchestrator_counters (project_id, total_done, total_failed, queue_depth, updated_at) VALUES (?, ?, ?, ?, ?)`
+        ),
         [pid, 5, 1, 3, now]
       );
       await db.execute(
-        toPgParams(`INSERT INTO deployments (id, project_id, status, started_at) VALUES (?, ?, ?, ?)`),
+        toPgParams(
+          `INSERT INTO deployments (id, project_id, status, started_at) VALUES (?, ?, ?, ?)`
+        ),
         ["dep-1", pid, "completed", now]
       );
       await db.execute(
@@ -1268,7 +1282,7 @@ suite("TaskStoreService", () => {
     });
 
     it("should be idempotent — second call on same project does not error", async () => {
-      const pid = "proj-idempotent";
+      const pid = createTestProjectId("proj-idempotent");
       await store.create(pid, "Task", { type: "task" });
       await store.deleteByProjectId(pid);
       await store.deleteByProjectId(pid);
@@ -1279,8 +1293,8 @@ suite("TaskStoreService", () => {
 
   describe("deleteOpenQuestionsByProjectId", () => {
     it("should remove all open_questions for a project", async () => {
-      const pid = "proj-oq-test";
-      const otherPid = "proj-oq-keep";
+      const pid = createTestProjectId("proj-oq-test");
+      const otherPid = createTestProjectId("proj-oq-keep");
       const now = new Date().toISOString();
 
       // Clear any leftover open_questions so inserts are idempotent
@@ -1327,12 +1341,15 @@ suite("TaskStoreService", () => {
     });
 
     it("returns 0 when <= 100 sessions", async () => {
+      const projectId = createTestProjectId("prune-sessions");
       await store.runWrite(async (client) => {
         const now = new Date().toISOString();
         for (let i = 0; i < 50; i++) {
           await client.execute(
-            toPgParams(`INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
-            ["proj", `task-${i}`, 1, "coder", "claude", now, "success", "branch"]
+            toPgParams(
+              `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+            ),
+            [projectId, `task-${i}`, 1, "coder", "claude", now, "success", "branch"]
           );
         }
       });
@@ -1345,12 +1362,15 @@ suite("TaskStoreService", () => {
     });
 
     it("keeps 100 most recent and prunes older", async () => {
+      const projectId = createTestProjectId("prune-sessions");
       await store.runWrite(async (client) => {
         const now = new Date().toISOString();
         for (let i = 0; i < 150; i++) {
           await client.execute(
-            toPgParams(`INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
-            ["proj", `task-${i}`, 1, "coder", "claude", now, "success", "branch"]
+            toPgParams(
+              `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+            ),
+            [projectId, `task-${i}`, 1, "coder", "claude", now, "success", "branch"]
           );
         }
       });
@@ -1370,12 +1390,15 @@ suite("TaskStoreService", () => {
     });
 
     it("runs VACUUM after pruning without error", async () => {
+      const projectId = createTestProjectId("prune-sessions");
       await store.runWrite(async (client) => {
         const now = new Date().toISOString();
         for (let i = 0; i < 120; i++) {
           await client.execute(
-            toPgParams(`INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
-            ["proj", `task-${i}`, 1, "coder", "claude", now, "success", "branch"]
+            toPgParams(
+              `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+            ),
+            [projectId, `task-${i}`, 1, "coder", "claude", now, "success", "branch"]
           );
         }
       });

@@ -102,8 +102,22 @@ describe("auditor.service", () => {
         status: "success",
         capability_summary: "## Features",
         tasks: [
-          { index: 0, title: "Easy task", description: "...", priority: 1, depends_on: [], complexity: "low" },
-          { index: 1, title: "Hard task", description: "...", priority: 2, depends_on: [0], complexity: "high" },
+          {
+            index: 0,
+            title: "Easy task",
+            description: "...",
+            priority: 1,
+            depends_on: [],
+            complexity: "low",
+          },
+          {
+            index: 1,
+            title: "Hard task",
+            description: "...",
+            priority: 2,
+            depends_on: [0],
+            complexity: "high",
+          },
         ],
       });
       const result = parseAuditorResult(content);
@@ -116,7 +130,14 @@ describe("auditor.service", () => {
         status: "success",
         capability_summary: "## Features",
         tasks: [
-          { index: 0, title: "Task", description: "...", priority: 1, depends_on: [], complexity: "medium" },
+          {
+            index: 0,
+            title: "Task",
+            description: "...",
+            priority: 1,
+            depends_on: [],
+            complexity: "medium",
+          },
         ],
       });
       const result = parseAuditorResult(content);

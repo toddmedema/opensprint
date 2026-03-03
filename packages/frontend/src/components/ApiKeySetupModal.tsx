@@ -24,11 +24,7 @@ function EyeIcon({ className }: { className?: string }) {
       stroke="currentColor"
       strokeWidth={2}
     >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-      />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -77,7 +73,11 @@ export function ApiKeySetupModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const needsKeyInput = provider === "claude" || provider === "cursor" || provider === "openai" || provider === "google";
+  const needsKeyInput =
+    provider === "claude" ||
+    provider === "cursor" ||
+    provider === "openai" ||
+    provider === "google";
 
   const handleSave = async () => {
     setError(null);
@@ -129,9 +129,7 @@ export function ApiKeySetupModal({
     }
   };
 
-  const canSave =
-    provider === "custom" ||
-    (needsKeyInput && keyValue.trim().length > 0);
+  const canSave = provider === "custom" || (needsKeyInput && keyValue.trim().length > 0);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -163,10 +161,7 @@ export function ApiKeySetupModal({
         data-testid="api-key-setup-modal"
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-theme-border">
-          <h2
-            id="api-key-modal-title"
-            className="text-lg font-semibold text-theme-text"
-          >
+          <h2 id="api-key-modal-title" className="text-lg font-semibold text-theme-text">
             Enter agent API key
           </h2>
           <CloseButton onClick={onCancel} ariaLabel="Close API key modal" />
@@ -238,11 +233,7 @@ export function ApiKeySetupModal({
                   aria-label={showKey ? "Hide key" : "Show key"}
                   data-testid="api-key-eye-toggle"
                 >
-                  {showKey ? (
-                    <EyeOffIcon className="w-4 h-4" />
-                  ) : (
-                    <EyeIcon className="w-4 h-4" />
-                  )}
+                  {showKey ? <EyeOffIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
                 </button>
               </div>
               {error && (
@@ -268,12 +259,7 @@ export function ApiKeySetupModal({
         </div>
 
         <div className="flex justify-end gap-2 px-5 py-4 border-t border-theme-border bg-theme-bg rounded-b-xl">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="btn-secondary"
-            disabled={saving}
-          >
+          <button type="button" onClick={onCancel} className="btn-secondary" disabled={saving}>
             Cancel
           </button>
           <button

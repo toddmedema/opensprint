@@ -3,7 +3,9 @@ import { api } from "../client";
 import { queryKeys } from "../queryKeys";
 
 /** Normalize API messages to { role, content, timestamp }. */
-function normalizeMessages(raw: unknown): { role: "user" | "assistant"; content: string; timestamp: string }[] {
+function normalizeMessages(
+  raw: unknown
+): { role: "user" | "assistant"; content: string; timestamp: string }[] {
   if (!Array.isArray(raw)) return [];
   return (raw as Array<{ role?: string; content?: string; timestamp?: string }>)
     .filter(
@@ -24,7 +26,7 @@ export function usePlanStatus(projectId: string | undefined, options?: { enabled
   return useQuery({
     queryKey: queryKeys.plans.status(projectId ?? ""),
     queryFn: () => api.projects.getPlanStatus(projectId!),
-    enabled: Boolean(projectId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && options?.enabled !== false,
   });
 }
 
@@ -32,7 +34,7 @@ export function usePlans(projectId: string | undefined, options?: { enabled?: bo
   return useQuery({
     queryKey: queryKeys.plans.list(projectId ?? ""),
     queryFn: () => api.plans.list(projectId!),
-    enabled: Boolean(projectId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && options?.enabled !== false,
   });
 }
 
@@ -44,7 +46,7 @@ export function useSinglePlan(
   return useQuery({
     queryKey: queryKeys.plans.detail(projectId ?? "", planId ?? ""),
     queryFn: () => api.plans.get(projectId!, planId!),
-    enabled: Boolean(projectId) && Boolean(planId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && Boolean(planId) && options?.enabled !== false,
   });
 }
 
@@ -59,7 +61,7 @@ export function usePlanChat(
       const conv = await api.chat.history(projectId!, context!);
       return { context: context!, messages: normalizeMessages(conv?.messages ?? []) };
     },
-    enabled: Boolean(projectId) && Boolean(context?.trim()) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && Boolean(context?.trim()) && options?.enabled !== false,
   });
 }
 
@@ -130,13 +132,8 @@ export function useArchivePlan(projectId: string) {
 export function useUpdatePlan(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      planId,
-      content,
-    }: {
-      planId: string;
-      content: string;
-    }) => api.plans.update(projectId, planId, { content }),
+    mutationFn: ({ planId, content }: { planId: string; content: string }) =>
+      api.plans.update(projectId, planId, { content }),
     onSuccess: (_, { planId }) => {
       void qc.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
       void qc.invalidateQueries({ queryKey: queryKeys.plans.detail(projectId, planId) });
@@ -147,13 +144,8 @@ export function useUpdatePlan(projectId: string) {
 export function useSendPlanMessage(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      message,
-      context,
-    }: {
-      message: string;
-      context: string;
-    }) => api.chat.send(projectId, message, context),
+    mutationFn: ({ message, context }: { message: string; context: string }) =>
+      api.chat.send(projectId, message, context),
     onSuccess: (_, { context }) => {
       void qc.invalidateQueries({ queryKey: queryKeys.plans.chat(projectId, context) });
       void qc.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });

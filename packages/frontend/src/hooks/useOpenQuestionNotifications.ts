@@ -15,9 +15,7 @@ export function useOpenQuestionNotifications(projectId: string | null): {
   refetch: () => void;
 } {
   const dispatch = useAppDispatch();
-  const notifications = useAppSelector((state) =>
-    selectProjectNotifications(state, projectId)
-  );
+  const notifications = useAppSelector((state) => selectProjectNotifications(state, projectId));
 
   const fetchNotifications = useCallback(() => {
     if (!projectId) return;

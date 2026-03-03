@@ -8,7 +8,12 @@ import { api } from "../api/client";
 
 function LocationCapture() {
   const loc = useLocation();
-  return <div data-testid="current-location">{loc.pathname}{loc.search}</div>;
+  return (
+    <div data-testid="current-location">
+      {loc.pathname}
+      {loc.search}
+    </div>
+  );
 }
 
 function renderWithRouter(ui: React.ReactElement) {
@@ -175,7 +180,13 @@ describe("OpenQuestionsBlock", () => {
     const apiBlockedNotification: Notification = {
       ...mockNotification,
       id: "ab-1",
-      questions: [{ id: "q1", text: "Rate limit exceeded. Add more API keys.", createdAt: "2025-01-01T00:00:00Z" }],
+      questions: [
+        {
+          id: "q1",
+          text: "Rate limit exceeded. Add more API keys.",
+          createdAt: "2025-01-01T00:00:00Z",
+        },
+      ],
       kind: "api_blocked",
       errorCode: "rate_limit",
     };
@@ -193,7 +204,9 @@ describe("OpenQuestionsBlock", () => {
 
     expect(screen.getByText("API blocked")).toBeInTheDocument();
     expect(screen.getByText(/Rate limit: Fix in Global settings/)).toBeInTheDocument();
-    expect(screen.getByTestId("open-global-settings-link")).toHaveTextContent("Open Global settings");
+    expect(screen.getByTestId("open-global-settings-link")).toHaveTextContent(
+      "Open Global settings"
+    );
     expect(screen.getByText(/Rate limit exceeded/)).toBeInTheDocument();
     expect(screen.queryByTestId("open-questions-answer-input")).not.toBeInTheDocument();
     expect(screen.getByTestId("open-questions-retry-btn")).toBeInTheDocument();
@@ -264,7 +277,11 @@ describe("OpenQuestionsBlock", () => {
       ...mockNotification,
       id: "ab-scope",
       questions: [
-        { id: "q1", text: "Scope compliance: implementation does not match ticket.", createdAt: "2025-01-01T00:00:00Z" },
+        {
+          id: "q1",
+          text: "Scope compliance: implementation does not match ticket.",
+          createdAt: "2025-01-01T00:00:00Z",
+        },
       ],
       kind: "api_blocked",
       errorCode: "scope_compliance",
@@ -281,7 +298,9 @@ describe("OpenQuestionsBlock", () => {
     );
 
     expect(screen.getByText("API blocked")).toBeInTheDocument();
-    expect(screen.getByText("Scope compliance: Review rejected. Dismiss to acknowledge.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Scope compliance: Review rejected. Dismiss to acknowledge.")
+    ).toBeInTheDocument();
     expect(screen.queryByTestId("open-questions-retry-btn")).not.toBeInTheDocument();
     expect(screen.getByTestId("open-questions-dismiss-btn")).toBeInTheDocument();
   });

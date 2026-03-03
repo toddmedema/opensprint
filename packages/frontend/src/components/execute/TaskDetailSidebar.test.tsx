@@ -10,10 +10,7 @@ import {
   createTestStore,
   type RootState,
 } from "../../test/test-utils";
-import {
-  TaskDetailSidebar,
-  type TaskDetailSidebarProps,
-} from "./TaskDetailSidebar";
+import { TaskDetailSidebar, type TaskDetailSidebarProps } from "./TaskDetailSidebar";
 import type { AgentSession, Plan, Task, TaskExecutionDiagnostics } from "@opensprint/shared";
 import type { ActiveTaskInfo } from "../../store/slices/executeSlice";
 import {
@@ -134,24 +131,31 @@ function createMinimalProps(overrides: Record<string, unknown> = {}) {
     isBlockedTask: flat.isBlockedTask as boolean,
     sections: {
       descriptionSectionExpanded: flat.descriptionSectionExpanded as boolean,
-      setDescriptionSectionExpanded: flat.setDescriptionSectionExpanded as React.Dispatch<React.SetStateAction<boolean>>,
+      setDescriptionSectionExpanded: flat.setDescriptionSectionExpanded as React.Dispatch<
+        React.SetStateAction<boolean>
+      >,
       artifactsSectionExpanded: flat.artifactsSectionExpanded as boolean,
-      setArtifactsSectionExpanded: flat.setArtifactsSectionExpanded as React.Dispatch<React.SetStateAction<boolean>>,
+      setArtifactsSectionExpanded: flat.setArtifactsSectionExpanded as React.Dispatch<
+        React.SetStateAction<boolean>
+      >,
       sourceFeedbackExpanded: flat.sourceFeedbackExpanded as Record<string, boolean>,
-      setSourceFeedbackExpanded: flat.setSourceFeedbackExpanded as React.Dispatch<React.SetStateAction<Record<string, boolean>>>,
+      setSourceFeedbackExpanded: flat.setSourceFeedbackExpanded as React.Dispatch<
+        React.SetStateAction<Record<string, boolean>>
+      >,
     },
     callbacks: {
       onClose: flat.onClose as () => void,
       onMarkDone: flat.onMarkDone as () => void,
       onUnblock: flat.onUnblock as () => void,
-      onDeleteTask: flat.onDeleteTask as (() => void | Promise<void>),
+      onDeleteTask: flat.onDeleteTask as () => void | Promise<void>,
       onSelectTask: flat.onSelectTask as (taskId: string) => void,
       onNavigateToPlan: flat.onNavigateToPlan as undefined | ((planId: string) => void),
       onOpenQuestionResolved: flat.onOpenQuestionResolved as undefined | (() => void),
     },
-    ...(flat.openQuestionNotification !== undefined && flat.openQuestionNotification !== null && {
-      openQuestionNotification: flat.openQuestionNotification,
-    }),
+    ...(flat.openQuestionNotification !== undefined &&
+      flat.openQuestionNotification !== null && {
+        openQuestionNotification: flat.openQuestionNotification,
+      }),
   };
 }
 
@@ -200,7 +204,11 @@ describe("TaskDetailSidebar", () => {
       source: "execute" as const,
       sourceId: "epic-1.1",
       questions: [
-        { id: "q1", text: "Which database should I use for this feature?", createdAt: "2025-01-01T00:00:00Z" },
+        {
+          id: "q1",
+          text: "Which database should I use for this feature?",
+          createdAt: "2025-01-01T00:00:00Z",
+        },
       ],
       status: "open" as const,
       createdAt: "2025-01-01T00:00:00Z",
@@ -498,9 +506,10 @@ describe("TaskDetailSidebar", () => {
     expect(artifactsContent).toBeInTheDocument();
 
     // Single bordered container: bg-theme-code-bg rounded-lg border border-theme-border
-    const borderedContainers = artifactsContent?.querySelectorAll(
-      ".bg-theme-code-bg.rounded-lg.border.border-theme-border"
-    ) ?? [];
+    const borderedContainers =
+      artifactsContent?.querySelectorAll(
+        ".bg-theme-code-bg.rounded-lg.border.border-theme-border"
+      ) ?? [];
     expect(borderedContainers.length).toBe(1);
 
     const liveOutput = screen.getByTestId("live-agent-output");
@@ -1072,7 +1081,9 @@ describe("TaskDetailSidebar", () => {
     expect(screen.getByText("Sync plan tasks when agent updates")).toBeInTheDocument();
     expect(screen.getByText("Add hover background")).toBeInTheDocument();
 
-    const linkButtons = screen.getAllByRole("button", { name: /Remove pagination|Sync plan tasks|Add hover background/i });
+    const linkButtons = screen.getAllByRole("button", {
+      name: /Remove pagination|Sync plan tasks|Add hover background/i,
+    });
     expect(linkButtons).toHaveLength(3);
     const firstText = linkButtons[0].textContent ?? "";
     const secondText = linkButtons[1].textContent ?? "";
@@ -1086,8 +1097,8 @@ describe("TaskDetailSidebar", () => {
     it("shows Add link button in Execute sidebar", () => {
       const props = createMinimalProps({ tasks: [{ id: "epic-1.2", title: "Task B" }] });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       expect(screen.getByTestId("sidebar-add-link-btn")).toBeInTheDocument();
       expect(screen.getByTestId("sidebar-add-link-btn")).toHaveTextContent("Add link");
     });
@@ -1096,13 +1107,41 @@ describe("TaskDetailSidebar", () => {
       const user = userEvent.setup();
       const props = createMinimalProps({
         tasks: [
-          { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "in_progress" as const, priority: 0, assignee: null, type: "task" as const, status: "in_progress" as const, labels: [], dependencies: [], description: "", createdAt: "", updatedAt: "" },
-          { id: "epic-1.2", title: "Task B", epicId: "epic-1", kanbanColumn: "in_progress" as const, priority: 0, assignee: null, type: "task" as const, status: "in_progress" as const, labels: [], dependencies: [], description: "", createdAt: "", updatedAt: "" },
+          {
+            id: "epic-1.1",
+            title: "Task A",
+            epicId: "epic-1",
+            kanbanColumn: "in_progress" as const,
+            priority: 0,
+            assignee: null,
+            type: "task" as const,
+            status: "in_progress" as const,
+            labels: [],
+            dependencies: [],
+            description: "",
+            createdAt: "",
+            updatedAt: "",
+          },
+          {
+            id: "epic-1.2",
+            title: "Task B",
+            epicId: "epic-1",
+            kanbanColumn: "in_progress" as const,
+            priority: 0,
+            assignee: null,
+            type: "task" as const,
+            status: "in_progress" as const,
+            labels: [],
+            dependencies: [],
+            description: "",
+            createdAt: "",
+            updatedAt: "",
+          },
         ],
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       await user.click(screen.getByTestId("sidebar-add-link-btn"));
       expect(screen.getByTestId("add-link-flow")).toBeInTheDocument();
       expect(screen.getByTestId("add-link-type-select")).toBeInTheDocument();
@@ -1121,8 +1160,8 @@ describe("TaskDetailSidebar", () => {
       const user = userEvent.setup();
       const props = createMinimalProps({ tasks: [{ id: "epic-1.2", title: "Task B" }] });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       await user.click(screen.getByTestId("sidebar-add-link-btn"));
       expect(screen.getByTestId("add-link-flow")).toBeInTheDocument();
       await user.click(screen.getByTestId("add-link-cancel-btn"));
@@ -1150,13 +1189,41 @@ describe("TaskDetailSidebar", () => {
       });
       const props = createMinimalProps({
         tasks: [
-          { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "in_progress" as const, priority: 0, assignee: null, type: "task" as const, status: "in_progress" as const, labels: [], dependencies: [], description: "", createdAt: "", updatedAt: "" },
-          { id: "epic-1.2", title: "Task B", epicId: "epic-1", kanbanColumn: "in_progress" as const, priority: 0, assignee: null, type: "task" as const, status: "in_progress" as const, labels: [], dependencies: [], description: "", createdAt: "", updatedAt: "" },
+          {
+            id: "epic-1.1",
+            title: "Task A",
+            epicId: "epic-1",
+            kanbanColumn: "in_progress" as const,
+            priority: 0,
+            assignee: null,
+            type: "task" as const,
+            status: "in_progress" as const,
+            labels: [],
+            dependencies: [],
+            description: "",
+            createdAt: "",
+            updatedAt: "",
+          },
+          {
+            id: "epic-1.2",
+            title: "Task B",
+            epicId: "epic-1",
+            kanbanColumn: "in_progress" as const,
+            priority: 0,
+            assignee: null,
+            type: "task" as const,
+            status: "in_progress" as const,
+            labels: [],
+            dependencies: [],
+            description: "",
+            createdAt: "",
+            updatedAt: "",
+          },
         ],
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       await user.click(screen.getByTestId("sidebar-add-link-btn"));
       await user.type(screen.getByTestId("add-link-input"), "b");
       const suggestion = await screen.findByTestId("add-link-suggestions");
@@ -1185,18 +1252,60 @@ describe("TaskDetailSidebar", () => {
         createdAt: "",
         updatedAt: "",
       });
-      const taskB = { id: "epic-1.2", title: "Task B", epicId: "epic-1", kanbanColumn: "in_progress" as const, priority: 0, assignee: null, type: "task" as const, status: "in_progress" as const, labels: [], dependencies: [], description: "", createdAt: "", updatedAt: "" };
-      const taskC = { id: "epic-1.3", title: "Task C", epicId: "epic-1", kanbanColumn: "in_progress" as const, priority: 0, assignee: null, type: "task" as const, status: "in_progress" as const, labels: [], dependencies: [], description: "", createdAt: "", updatedAt: "" };
+      const taskB = {
+        id: "epic-1.2",
+        title: "Task B",
+        epicId: "epic-1",
+        kanbanColumn: "in_progress" as const,
+        priority: 0,
+        assignee: null,
+        type: "task" as const,
+        status: "in_progress" as const,
+        labels: [],
+        dependencies: [],
+        description: "",
+        createdAt: "",
+        updatedAt: "",
+      };
+      const taskC = {
+        id: "epic-1.3",
+        title: "Task C",
+        epicId: "epic-1",
+        kanbanColumn: "in_progress" as const,
+        priority: 0,
+        assignee: null,
+        type: "task" as const,
+        status: "in_progress" as const,
+        labels: [],
+        dependencies: [],
+        description: "",
+        createdAt: "",
+        updatedAt: "",
+      };
       const props = createMinimalProps({
         tasks: [
-          { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "in_progress" as const, priority: 0, assignee: null, type: "task" as const, status: "in_progress" as const, labels: [], dependencies: [], description: "", createdAt: "", updatedAt: "" },
+          {
+            id: "epic-1.1",
+            title: "Task A",
+            epicId: "epic-1",
+            kanbanColumn: "in_progress" as const,
+            priority: 0,
+            assignee: null,
+            type: "task" as const,
+            status: "in_progress" as const,
+            labels: [],
+            dependencies: [],
+            description: "",
+            createdAt: "",
+            updatedAt: "",
+          },
           taskB,
           taskC,
         ],
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       await user.click(screen.getByTestId("sidebar-add-link-btn"));
       await user.type(screen.getByTestId("add-link-input"), "task");
       const suggestionList = await screen.findByTestId("add-link-suggestions");
@@ -1220,18 +1329,60 @@ describe("TaskDetailSidebar", () => {
 
     it("selected suggestion has distinct background when navigating with arrow keys", async () => {
       const user = userEvent.setup();
-      const taskB = { id: "epic-1.2", title: "Task B", epicId: "epic-1", kanbanColumn: "in_progress" as const, priority: 0, assignee: null, type: "task" as const, status: "in_progress" as const, labels: [], dependencies: [], description: "", createdAt: "", updatedAt: "" };
-      const taskC = { id: "epic-1.3", title: "Task C", epicId: "epic-1", kanbanColumn: "in_progress" as const, priority: 0, assignee: null, type: "task" as const, status: "in_progress" as const, labels: [], dependencies: [], description: "", createdAt: "", updatedAt: "" };
+      const taskB = {
+        id: "epic-1.2",
+        title: "Task B",
+        epicId: "epic-1",
+        kanbanColumn: "in_progress" as const,
+        priority: 0,
+        assignee: null,
+        type: "task" as const,
+        status: "in_progress" as const,
+        labels: [],
+        dependencies: [],
+        description: "",
+        createdAt: "",
+        updatedAt: "",
+      };
+      const taskC = {
+        id: "epic-1.3",
+        title: "Task C",
+        epicId: "epic-1",
+        kanbanColumn: "in_progress" as const,
+        priority: 0,
+        assignee: null,
+        type: "task" as const,
+        status: "in_progress" as const,
+        labels: [],
+        dependencies: [],
+        description: "",
+        createdAt: "",
+        updatedAt: "",
+      };
       const props = createMinimalProps({
         tasks: [
-          { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "in_progress" as const, priority: 0, assignee: null, type: "task" as const, status: "in_progress" as const, labels: [], dependencies: [], description: "", createdAt: "", updatedAt: "" },
+          {
+            id: "epic-1.1",
+            title: "Task A",
+            epicId: "epic-1",
+            kanbanColumn: "in_progress" as const,
+            priority: 0,
+            assignee: null,
+            type: "task" as const,
+            status: "in_progress" as const,
+            labels: [],
+            dependencies: [],
+            description: "",
+            createdAt: "",
+            updatedAt: "",
+          },
           taskB,
           taskC,
         ],
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       await user.click(screen.getByTestId("sidebar-add-link-btn"));
       await user.type(screen.getByTestId("add-link-input"), "task");
       const suggestionList = await screen.findByTestId("add-link-suggestions");
@@ -1269,13 +1420,41 @@ describe("TaskDetailSidebar", () => {
       });
       const props = createMinimalProps({
         tasks: [
-          { id: "epic-1.1", title: "Task A", epicId: "epic-1", kanbanColumn: "in_progress" as const, priority: 0, assignee: null, type: "task" as const, status: "in_progress" as const, labels: [], dependencies: [], description: "", createdAt: "", updatedAt: "" },
-          { id: "epic-1.2", title: "Task B", epicId: "epic-1", kanbanColumn: "in_progress" as const, priority: 0, assignee: null, type: "task" as const, status: "in_progress" as const, labels: [], dependencies: [], description: "", createdAt: "", updatedAt: "" },
+          {
+            id: "epic-1.1",
+            title: "Task A",
+            epicId: "epic-1",
+            kanbanColumn: "in_progress" as const,
+            priority: 0,
+            assignee: null,
+            type: "task" as const,
+            status: "in_progress" as const,
+            labels: [],
+            dependencies: [],
+            description: "",
+            createdAt: "",
+            updatedAt: "",
+          },
+          {
+            id: "epic-1.2",
+            title: "Task B",
+            epicId: "epic-1",
+            kanbanColumn: "in_progress" as const,
+            priority: 0,
+            assignee: null,
+            type: "task" as const,
+            status: "in_progress" as const,
+            labels: [],
+            dependencies: [],
+            description: "",
+            createdAt: "",
+            updatedAt: "",
+          },
         ],
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       await user.click(screen.getByTestId("sidebar-add-link-btn"));
       await user.type(screen.getByTestId("add-link-input"), "b");
       await screen.findByTestId("add-link-suggestions");
@@ -1365,8 +1544,8 @@ describe("TaskDetailSidebar", () => {
         selectedTaskData: { ...taskDetailWithPriority(1), status: "open" as const },
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       expect(screen.getByTestId("priority-dropdown-trigger")).toBeInTheDocument();
       expect(screen.queryByTestId("priority-read-only")).not.toBeInTheDocument();
     });
@@ -1376,8 +1555,8 @@ describe("TaskDetailSidebar", () => {
         selectedTaskData: taskDetailWithPriority(1),
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       const trigger = screen.getByTestId("priority-dropdown-trigger");
       expect(trigger).toBeInTheDocument();
       expect(trigger).toHaveTextContent("High");
@@ -1389,8 +1568,8 @@ describe("TaskDetailSidebar", () => {
         selectedTaskData: taskDetailWithPriority(1),
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       const trigger = screen.getByTestId("priority-dropdown-trigger");
       expect(within(trigger).getByRole("img", { name: "High" })).toBeInTheDocument();
     });
@@ -1401,8 +1580,8 @@ describe("TaskDetailSidebar", () => {
         selectedTaskData: taskDetailWithPriority(2),
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       await user.click(screen.getByTestId("priority-dropdown-trigger"));
       const labels = ["Critical", "High", "Medium", "Low", "Lowest"] as const;
       for (let p = 0; p <= 4; p++) {
@@ -1417,8 +1596,8 @@ describe("TaskDetailSidebar", () => {
         selectedTaskData: taskDetailWithPriority(2),
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       await user.click(screen.getByTestId("priority-dropdown-trigger"));
       const dropdown = screen.getByTestId("priority-dropdown");
       expect(dropdown).toBeInTheDocument();
@@ -1440,8 +1619,8 @@ describe("TaskDetailSidebar", () => {
         selectedTaskData: taskDetailWithPriority(1),
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       await user.click(screen.getByTestId("priority-dropdown-trigger"));
       expect(screen.getByTestId("priority-dropdown")).toBeInTheDocument();
       await user.click(screen.getByTestId("priority-option-0"));
@@ -1469,8 +1648,8 @@ describe("TaskDetailSidebar", () => {
         selectedTaskData: taskDetailWithPriority(2),
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       await user.click(screen.getByTestId("priority-dropdown-trigger"));
       await user.click(screen.getByTestId("priority-option-2"));
       expect(mockUpdatePriority).not.toHaveBeenCalled();
@@ -1482,8 +1661,8 @@ describe("TaskDetailSidebar", () => {
         selectedTaskData: taskDetailWithPriority(2),
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       await user.click(screen.getByTestId("priority-dropdown-trigger"));
       expect(screen.getByTestId("priority-dropdown")).toBeInTheDocument();
       await user.click(document.body);
@@ -1500,8 +1679,8 @@ describe("TaskDetailSidebar", () => {
         isDoneTask: true,
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       expect(screen.getByTestId("priority-read-only")).toBeInTheDocument();
       expect(screen.getByTestId("priority-read-only")).toHaveTextContent("Medium");
       expect(screen.getByTestId("priority-read-only")).toHaveClass("cursor-default");
@@ -1519,8 +1698,8 @@ describe("TaskDetailSidebar", () => {
         isDoneTask: true,
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       const readOnly = screen.getByTestId("priority-read-only");
       await user.click(readOnly);
       expect(screen.queryByTestId("priority-dropdown")).not.toBeInTheDocument();
@@ -1617,8 +1796,8 @@ describe("TaskDetailSidebar", () => {
         },
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       const complexity = screen.getByTestId("task-complexity");
       expect(complexity).toHaveTextContent("Simple");
       expect(complexity).toHaveAttribute("aria-label", "Complexity: Simple");
@@ -1633,8 +1812,8 @@ describe("TaskDetailSidebar", () => {
         },
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       const complexity = screen.getByTestId("task-complexity");
       expect(complexity).toHaveTextContent("Complex");
       expect(complexity).toHaveAttribute("aria-label", "Complexity: Complex");
@@ -1649,8 +1828,8 @@ describe("TaskDetailSidebar", () => {
         },
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       const complexity = screen.getByTestId("task-complexity");
       expect(complexity).toHaveTextContent("—");
       expect(complexity).toHaveAttribute("aria-label", "Complexity: not set");
@@ -1720,8 +1899,8 @@ describe("TaskDetailSidebar", () => {
         },
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       const row = screen.getByTestId("task-detail-priority-state-row");
       expect(row).toContainElement(screen.getByTestId("task-complexity"));
       expect(row).toHaveTextContent("Complex");
@@ -1742,8 +1921,8 @@ describe("TaskDetailSidebar", () => {
         },
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       const duration = screen.getByTestId("task-duration");
       expect(duration).toHaveTextContent("Took 5:30");
       expect(duration).toHaveAttribute("aria-label", "Took 5:30");
@@ -1760,8 +1939,8 @@ describe("TaskDetailSidebar", () => {
         },
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       expect(screen.queryByTestId("task-duration")).not.toBeInTheDocument();
     });
 
@@ -1777,8 +1956,8 @@ describe("TaskDetailSidebar", () => {
         },
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       expect(screen.queryByTestId("task-duration")).not.toBeInTheDocument();
     });
 
@@ -1794,8 +1973,8 @@ describe("TaskDetailSidebar", () => {
         },
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       expect(screen.queryByTestId("task-duration")).not.toBeInTheDocument();
     });
   });
@@ -1822,8 +2001,8 @@ describe("TaskDetailSidebar", () => {
         selectedTaskData: taskDetailWithPriority(1),
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       const row = screen.getByTestId("task-detail-priority-state-row");
       expect(row).toBeInTheDocument();
       expect(within(row).getByTestId("priority-dropdown-trigger")).toHaveTextContent("High");
@@ -1863,8 +2042,8 @@ describe("TaskDetailSidebar", () => {
         taskIdToStartedAt: { "epic-1.1": startedAt },
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       const callout = screen.getByTestId("task-detail-active-callout");
       expect(callout).toBeInTheDocument();
       expect(callout).toHaveTextContent("Active: Coder");
@@ -1887,8 +2066,8 @@ describe("TaskDetailSidebar", () => {
         taskIdToStartedAt: { "epic-1.1": startedAt },
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       const callout = screen.getByTestId("task-detail-active-callout");
       expect(callout).toHaveTextContent("Active: Reviewer");
       expect(callout.textContent).toMatch(/2m/);
@@ -1907,8 +2086,8 @@ describe("TaskDetailSidebar", () => {
         taskIdToStartedAt: {},
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       const callout = screen.getByTestId("task-detail-active-callout");
       expect(callout).toHaveTextContent("Active: Coder");
     });
@@ -1918,8 +2097,8 @@ describe("TaskDetailSidebar", () => {
         selectedTaskData: taskDetailWithPriority(1),
       });
       renderWithProviders(<TaskDetailSidebar {...props} />, {
-      preloadedState: defaultPreloadedState,
-    });
+        preloadedState: defaultPreloadedState,
+      });
       const row = screen.getByTestId("task-detail-priority-state-row");
       expect(row).toHaveClass("flex");
       expect(row).toHaveClass("flex-wrap");
@@ -2154,11 +2333,7 @@ describe("TaskDetailSidebar", () => {
     const contentElements = scrollContent?.querySelectorAll("*") ?? [];
     const sectionDividers = Array.from(contentElements).filter((el) => {
       const cls = el.className?.toString?.() ?? "";
-      if (
-        cls.includes("animate-spin") ||
-        cls.includes("prose") ||
-        cls.includes("rounded-lg")
-      )
+      if (cls.includes("animate-spin") || cls.includes("prose") || cls.includes("rounded-lg"))
         return false;
       return (
         (cls.includes("border-b") && cls.includes("border-theme")) ||
@@ -2355,8 +2530,7 @@ describe("TaskDetailSidebar", () => {
         taskStatus: "blocked",
         blockReason: "Merge Failure",
         cumulativeAttempts: 6,
-        latestSummary:
-          "Attempt 6 merge failed during merge_to_main: fatal: no rebase in progress",
+        latestSummary: "Attempt 6 merge failed during merge_to_main: fatal: no rebase in progress",
         latestFailureType: null,
         latestOutcome: "blocked" as const,
         latestNextAction: "Blocked pending investigation",
@@ -2421,9 +2595,7 @@ describe("TaskDetailSidebar", () => {
     expect(screen.getByTestId("execution-diagnostics-earlier-failures")).toHaveTextContent(
       "Attempts 1-2"
     );
-    expect(screen.getByTestId("execution-attempt-6")).toHaveTextContent(
-      "Merge · Blocked"
-    );
+    expect(screen.getByTestId("execution-attempt-6")).toHaveTextContent("Merge · Blocked");
     expect(screen.getByTestId("execution-attempt-6")).toHaveTextContent(
       "packages/backend/src/routes/global-settings.ts"
     );
@@ -2560,9 +2732,7 @@ describe("TaskDetailSidebar", () => {
     });
 
     await user.click(screen.getByRole("button", { name: /collapse source feedback \(1 of 2\)/i }));
-    expect(setSourceFeedbackExpanded).toHaveBeenCalledWith(
-      expect.any(Function)
-    );
+    expect(setSourceFeedbackExpanded).toHaveBeenCalledWith(expect.any(Function));
     const updater = setSourceFeedbackExpanded.mock.calls[0][0];
     expect(updater({ "fb-1": true, "fb-2": false })).toEqual({ "fb-1": false, "fb-2": false });
 

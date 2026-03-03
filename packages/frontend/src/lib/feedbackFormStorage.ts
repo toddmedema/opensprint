@@ -28,7 +28,8 @@ export function loadFeedbackFormDraft(projectId: string): FeedbackFormDraft {
     const stored = localStorage.getItem(getStorageKey(projectId));
     if (!stored) return { text: "", images: [], priority: null };
     const parsed = JSON.parse(stored) as unknown;
-    if (parsed === null || typeof parsed !== "object") return { text: "", images: [], priority: null };
+    if (parsed === null || typeof parsed !== "object")
+      return { text: "", images: [], priority: null };
     const obj = parsed as Record<string, unknown>;
     const text = typeof obj.text === "string" ? obj.text : "";
     const imagesRaw = obj.images;
@@ -45,7 +46,10 @@ export function loadFeedbackFormDraft(projectId: string): FeedbackFormDraft {
     }
     const priorityRaw = obj.priority;
     const priority =
-      typeof priorityRaw === "number" && Number.isInteger(priorityRaw) && priorityRaw >= 0 && priorityRaw <= 4
+      typeof priorityRaw === "number" &&
+      Number.isInteger(priorityRaw) &&
+      priorityRaw >= 0 &&
+      priorityRaw <= 4
         ? priorityRaw
         : null;
     return { text, images, priority };

@@ -39,9 +39,8 @@ vi.mock("child_process", () => ({
   execSync: (...args: unknown[]) => mockExecSync(...args),
 }));
 
-const { triggerDeploy, triggerDeployForEvent } = await import(
-  "../services/deploy-trigger.service.js"
-);
+const { triggerDeploy, triggerDeployForEvent } =
+  await import("../services/deploy-trigger.service.js");
 
 describe("deploy-trigger.service", () => {
   let repoPath: string;

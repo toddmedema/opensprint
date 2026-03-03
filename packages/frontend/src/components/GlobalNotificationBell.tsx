@@ -89,7 +89,13 @@ export function GlobalNotificationBell() {
             : n.source === "execute"
               ? "execute"
               : "eval";
-      const options: { plan?: string; task?: string; feedback?: string; section?: string; question: string } = {
+      const options: {
+        plan?: string;
+        task?: string;
+        feedback?: string;
+        section?: string;
+        question: string;
+      } = {
         question: n.id,
       };
       if (n.source === "plan") {
@@ -144,10 +150,13 @@ export function GlobalNotificationBell() {
                 onClick={() => handleNotificationClick(n)}
               >
                 <div className="font-medium text-theme-text">
-                  {projectNameMap.get(n.projectId) ?? n.projectId} · {NOTIFICATION_SOURCE_LABELS[n.source]}
+                  {projectNameMap.get(n.projectId) ?? n.projectId} ·{" "}
+                  {NOTIFICATION_SOURCE_LABELS[n.source]}
                 </div>
                 <div className="text-theme-muted mt-0.5">{truncatePreview(preview(n), 80)}</div>
-                <div className="text-theme-muted text-xs mt-1">{formatNotificationTimestamp(n.createdAt)}</div>
+                <div className="text-theme-muted text-xs mt-1">
+                  {formatNotificationTimestamp(n.createdAt)}
+                </div>
               </button>
             </li>
           ))}

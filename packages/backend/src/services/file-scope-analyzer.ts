@@ -71,7 +71,11 @@ export class FileScopeAnalyzer {
           create?: string[];
           test?: string[];
         };
-        const allFiles = [...(parsed.modify ?? []), ...(parsed.create ?? []), ...(parsed.test ?? [])];
+        const allFiles = [
+          ...(parsed.modify ?? []),
+          ...(parsed.create ?? []),
+          ...(parsed.test ?? []),
+        ];
         for (const f of allFiles) {
           scope.files.add(f);
           scope.directories.add(path.dirname(f));

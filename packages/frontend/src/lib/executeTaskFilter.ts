@@ -13,8 +13,7 @@ export type StatusFilter =
 export function matchesStatusFilter(kanbanColumn: string, filter: StatusFilter): boolean {
   if (filter === "all") return true;
   if (filter === "blocked") return kanbanColumn === "blocked";
-  if (filter === "in_line")
-    return kanbanColumn === "backlog" || kanbanColumn === "planning";
+  if (filter === "in_line") return kanbanColumn === "backlog" || kanbanColumn === "planning";
   return kanbanColumn === filter;
 }
 

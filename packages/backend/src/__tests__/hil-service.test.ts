@@ -9,11 +9,29 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
   const { createTestPostgresClient } = await import("./test-db-helper.js");
   const dbResult = await createTestPostgresClient();
   if (!dbResult) {
-    return { ...actual, TaskStoreService: class { constructor() { throw new Error("Postgres required"); } }, taskStore: null, _postgresAvailable: false };
+    return {
+      ...actual,
+      TaskStoreService: class {
+        constructor() {
+          throw new Error("Postgres required");
+        }
+      },
+      taskStore: null,
+      _postgresAvailable: false,
+    };
   }
   const store = new actual.TaskStoreService(dbResult.client);
   await store.init();
-  return { ...actual, TaskStoreService: class extends actual.TaskStoreService { constructor() { super(dbResult.client); } }, taskStore: store, _postgresAvailable: true };
+  return {
+    ...actual,
+    TaskStoreService: class extends actual.TaskStoreService {
+      constructor() {
+        super(dbResult.client);
+      }
+    },
+    taskStore: store,
+    _postgresAvailable: true,
+  };
 });
 
 const mockGetSettings = vi.fn();
@@ -38,7 +56,8 @@ const { HilService } = await import("../services/hil-service.js");
 const { broadcastToProject } = await import("../websocket/index.js");
 
 const hilTaskStoreMod = await import("../services/task-store.service.js");
-const hilPostgresOk = (hilTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
+const hilPostgresOk =
+  (hilTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
 
 describe.skipIf(!hilPostgresOk)("HilService", () => {
   let hilService: InstanceType<typeof HilService>;
@@ -54,13 +73,22 @@ describe.skipIf(!hilPostgresOk)("HilService", () => {
     });
     // Restore after clearAllMocks (which clears mock implementations)
     mockCreateHilApproval.mockImplementation(
-      async (input: { description?: string; projectId?: string; source?: string; sourceId?: string }) => ({
+      async (input: {
+        description?: string;
+        projectId?: string;
+        source?: string;
+        sourceId?: string;
+      }) => ({
         id: "hil-test-123",
         projectId: input?.projectId ?? "test-project",
         source: input?.source ?? "eval",
         sourceId: input?.sourceId ?? "scope",
         questions: [
-          { id: "q-1", text: input?.description ?? "Placeholder", createdAt: new Date().toISOString() },
+          {
+            id: "q-1",
+            text: input?.description ?? "Placeholder",
+            createdAt: new Date().toISOString(),
+          },
         ],
         status: "open",
         createdAt: new Date().toISOString(),

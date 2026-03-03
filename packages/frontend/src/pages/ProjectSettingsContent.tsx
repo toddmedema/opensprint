@@ -4,10 +4,7 @@ import { ProjectSettingsModal } from "../components/ProjectSettingsModal";
 import type { ProjectSettingsModalRef } from "../components/ProjectSettingsModal";
 import { GlobalSettingsContent } from "../components/GlobalSettingsContent";
 import { SettingsTopBar } from "../components/settings/SettingsTopBar";
-import {
-  SettingsSubTabsBar,
-  type SettingsSubTab,
-} from "../components/settings/SettingsSubTabsBar";
+import { SettingsSubTabsBar, type SettingsSubTab } from "../components/settings/SettingsSubTabsBar";
 import { getProjectPhasePath } from "../lib/phaseRouting";
 import { queryKeys } from "../api/queryKeys";
 import { useQueryClient } from "@tanstack/react-query";

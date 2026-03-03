@@ -111,17 +111,17 @@ Replace all references to `prd.json` with `SPEC.md`. The Sketch phase PRD is sto
 
 ## Non-Functional Requirements
 
-| Category        | Requirement                                                                                                 |
-| --------------- | ----------------------------------------------------------------------------------------------------------- |
-| Performance     | Agent output streaming < 500ms latency; task status updates within 1 second                                |
+| Category        | Requirement                                                                                                              |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Performance     | Agent output streaming < 500ms latency; task status updates within 1 second                                              |
 | Scalability     | Up to 500 tasks; single Coder/Reviewer in v1, except multiple parallel reviewers allowed when review angles are selected |
-| Reliability     | Agent failures must not corrupt state; transactional, recoverable                                           |
-| Security        | Sandboxed code execution; filesystem isolation                                                             |
-| Usability       | First-time users reach Execute within 30 minutes without docs                                               |
-| Theme Support   | Light/dark/system; persists; no flash on load                                                             |
-| Data Integrity  | Full audit trail; no data loss on agent crash                                                              |
-| Testing         | 80% coverage; all layers automated; real-time results                                                      |
-| Offline Support | All core features work without internet                                                                     |
+| Reliability     | Agent failures must not corrupt state; transactional, recoverable                                                        |
+| Security        | Sandboxed code execution; filesystem isolation                                                                           |
+| Usability       | First-time users reach Execute within 30 minutes without docs                                                            |
+| Theme Support   | Light/dark/system; persists; no flash on load                                                                            |
+| Data Integrity  | Full audit trail; no data loss on agent crash                                                                            |
+| Testing         | 80% coverage; all layers automated; real-time results                                                                    |
+| Offline Support | All core features work without internet                                                                                  |
 
 ## Open Questions
 

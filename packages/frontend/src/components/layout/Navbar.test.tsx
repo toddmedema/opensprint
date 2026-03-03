@@ -244,9 +244,7 @@ describe("Navbar", () => {
       createdAt: "2025-01-01T00:00:00Z",
       updatedAt: "2025-01-01T00:00:00Z",
     };
-    renderNavbar(
-      <Navbar project={mockProject} currentPhase="sketch" onPhaseChange={vi.fn()} />
-    );
+    renderNavbar(<Navbar project={mockProject} currentPhase="sketch" onPhaseChange={vi.fn()} />);
     const nav = screen.getByRole("navigation");
     expect(nav).toHaveStyle({ height: `${NAVBAR_HEIGHT}px` });
   });
@@ -297,10 +295,10 @@ describe("Navbar", () => {
       createdAt: "2025-01-01T00:00:00Z",
       updatedAt: "2025-01-01T00:00:00Z",
     };
-    renderNavbar(
-      <Navbar project={mockProject} currentPhase="sketch" onPhaseChange={vi.fn()} />
-    );
-    const phaseTabsContainer = screen.getByRole("tab", { name: /Sketch/ }).closest("div")?.parentElement;
+    renderNavbar(<Navbar project={mockProject} currentPhase="sketch" onPhaseChange={vi.fn()} />);
+    const phaseTabsContainer = screen
+      .getByRole("tab", { name: /Sketch/ })
+      .closest("div")?.parentElement;
     expect(phaseTabsContainer).toHaveClass("overflow-x-auto");
   });
 
@@ -313,9 +311,7 @@ describe("Navbar", () => {
       createdAt: "2025-01-01T00:00:00Z",
       updatedAt: "2025-01-01T00:00:00Z",
     };
-    renderNavbar(
-      <Navbar project={mockProject} currentPhase="sketch" onPhaseChange={vi.fn()} />
-    );
+    renderNavbar(<Navbar project={mockProject} currentPhase="sketch" onPhaseChange={vi.fn()} />);
     const sketchTab = screen.getByRole("tab", { name: /Sketch/ });
     const planTab = screen.getByRole("tab", { name: /Plan/ });
     expect(sketchTab).toHaveAttribute("aria-label", "Switch to Sketch phase");
@@ -333,9 +329,7 @@ describe("Navbar", () => {
       createdAt: "2025-01-01T00:00:00Z",
       updatedAt: "2025-01-01T00:00:00Z",
     };
-    renderNavbar(
-      <Navbar project={mockProject} currentPhase="sketch" onPhaseChange={vi.fn()} />
-    );
+    renderNavbar(<Navbar project={mockProject} currentPhase="sketch" onPhaseChange={vi.fn()} />);
     const tablist = screen.getByRole("tablist", { name: "Phase navigation" });
     expect(tablist).toBeInTheDocument();
     const tabs = screen.getAllByRole("tab");
@@ -351,9 +345,7 @@ describe("Navbar", () => {
       createdAt: "2025-01-01T00:00:00Z",
       updatedAt: "2025-01-01T00:00:00Z",
     };
-    renderNavbar(
-      <Navbar project={mockProject} currentPhase="sketch" onPhaseChange={vi.fn()} />
-    );
+    renderNavbar(<Navbar project={mockProject} currentPhase="sketch" onPhaseChange={vi.fn()} />);
     const sketchTab = screen.getByRole("tab", { name: /Sketch/ });
     expect(sketchTab).toHaveClass("phase-tab");
     // .phase-tab in index.css includes min-h-[44px] min-w-[44px] for WCAG touch targets
@@ -395,12 +387,17 @@ describe("Navbar", () => {
       createdAt: "2025-01-01T00:00:00Z",
       updatedAt: "2025-01-01T00:00:00Z",
     };
-    renderNavbar(
-      <Navbar project={mockProject} currentPhase="sketch" onPhaseChange={vi.fn()} />
-    );
+    renderNavbar(<Navbar project={mockProject} currentPhase="sketch" onPhaseChange={vi.fn()} />);
     const border = screen.getByTestId("navbar-bottom-border");
     expect(border).toBeInTheDocument();
-    expect(border).toHaveClass("absolute", "bottom-0", "left-0", "right-0", "bg-theme-border", "z-10");
+    expect(border).toHaveClass(
+      "absolute",
+      "bottom-0",
+      "left-0",
+      "right-0",
+      "bg-theme-border",
+      "z-10"
+    );
     expect(border).toHaveAttribute("aria-hidden", "true");
   });
 

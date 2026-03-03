@@ -4,10 +4,7 @@ import {
   setAgentOutputBackfill,
   setSelectedTaskId,
 } from "../slices/executeSlice";
-import {
-  createAgentOutputFilter,
-  filterAgentOutput,
-} from "../../utils/agentOutputFilter";
+import { createAgentOutputFilter, filterAgentOutput } from "../../utils/agentOutputFilter";
 
 /** Batch window in ms: collect chunks for this duration before dispatching. */
 const BATCH_MS = 150;
@@ -60,9 +57,7 @@ export const agentOutputFilterMiddleware: Middleware = () => {
     }
     if (setAgentOutputBackfill.match(action)) {
       const filtered = filterAgentOutput(action.payload.output);
-      return next(
-        setAgentOutputBackfill({ taskId: action.payload.taskId, output: filtered })
-      );
+      return next(setAgentOutputBackfill({ taskId: action.payload.taskId, output: filtered }));
     }
     return next(action);
   };

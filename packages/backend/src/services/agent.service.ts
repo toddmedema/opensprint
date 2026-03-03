@@ -407,7 +407,10 @@ ${branchDiffStat || "(no output)"}
    * the caller then runs rebase --continue or merge --continue.
    */
   async runMergerAgentAndWait(options: RunMergerAgentOptions): Promise<boolean> {
-    const promptPath = path.join(os.tmpdir(), `opensprint-merger-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.md`);
+    const promptPath = path.join(
+      os.tmpdir(),
+      `opensprint-merger-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.md`
+    );
     await fs.writeFile(promptPath, await this.buildMergerPrompt(options));
     try {
       const exitedCleanly = await new Promise<boolean>((resolve) => {
@@ -538,7 +541,9 @@ ${branchDiffStat || "(no output)"}
           lastError && isLimitError(lastError)
             ? `All Claude API keys hit rate limits. ${msg} Add more keys in Settings, or retry after 24h.`
             : "ANTHROPIC_API_KEY is not set. Add it to your .env file or Settings. Get a key from https://console.anthropic.com/. Alternatively, switch to Claude (CLI) in Agent Config to use the locally-installed claude CLI instead.",
-          lastError ? { agentType: "claude", raw: msg, isLimitError: isLimitError(lastError) } : undefined
+          lastError
+            ? { agentType: "claude", raw: msg, isLimitError: isLimitError(lastError) }
+            : undefined
         );
       }
 
@@ -680,7 +685,9 @@ ${branchDiffStat || "(no output)"}
           lastError && isLimitError(lastError)
             ? `All OpenAI API keys hit rate limits. ${msg} Add more keys in Settings, or retry after 24h.`
             : "OPENAI_API_KEY is not set. Add it to your .env file or Settings. Get a key from https://platform.openai.com/.",
-          lastError ? { agentType: "openai", raw: msg, isLimitError: isLimitError(lastError) } : undefined
+          lastError
+            ? { agentType: "openai", raw: msg, isLimitError: isLimitError(lastError) }
+            : undefined
         );
       }
 

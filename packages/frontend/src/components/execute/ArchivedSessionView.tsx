@@ -26,10 +26,7 @@ const SessionCard = React.memo(function SessionCard({
   );
 
   return (
-    <div
-      className={!isLast ? "pb-6" : ""}
-      data-testid={`session-card-${session.attempt}`}
-    >
+    <div className={!isLast ? "pb-6" : ""} data-testid={`session-card-${session.attempt}`}>
       <div className="px-4 py-2 flex items-center gap-4 text-xs flex-wrap text-theme-muted">
         <span>
           Attempt {session.attempt} · {session.status} · {session.agentType}

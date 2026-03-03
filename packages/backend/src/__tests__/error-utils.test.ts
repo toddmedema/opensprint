@@ -135,12 +135,16 @@ describe("isLimitError", () => {
   });
 
   it("returns true for OpenAI error object with rate_limit_exceeded code", () => {
-    expect(isLimitError({ message: "rate_limit_exceeded", code: "rate_limit_exceeded" })).toBe(true);
+    expect(isLimitError({ message: "rate_limit_exceeded", code: "rate_limit_exceeded" })).toBe(
+      true
+    );
   });
 
   it("returns true for OpenAI Rate limit message", () => {
     expect(isLimitError(new Error("Rate limit reached for gpt-4o in organization"))).toBe(true);
-    expect(isLimitError(new Error("Rate limit exceeded. Please retry after 60 seconds."))).toBe(true);
+    expect(isLimitError(new Error("Rate limit exceeded. Please retry after 60 seconds."))).toBe(
+      true
+    );
   });
 
   it("returns true for OpenAI error body with limit pattern", () => {
@@ -168,7 +172,9 @@ describe("isLimitError", () => {
 
   it("returns true for OpenAI quota_exceeded code", () => {
     expect(isLimitError(new Error("quota_exceeded"))).toBe(true);
-    expect(isLimitError({ code: "quota_exceeded", message: "You exceeded your current quota" })).toBe(true);
+    expect(
+      isLimitError({ code: "quota_exceeded", message: "You exceeded your current quota" })
+    ).toBe(true);
     expect(isLimitError({ code: "quota_exceeded" })).toBe(true);
   });
 
@@ -213,7 +219,9 @@ describe("isAuthError", () => {
 
 describe("isScopeComplianceError", () => {
   it("returns true for scope compliance in message", () => {
-    expect(isScopeComplianceError(new Error("Scope compliance: implementation does not match"))).toBe(true);
+    expect(
+      isScopeComplianceError(new Error("Scope compliance: implementation does not match"))
+    ).toBe(true);
     expect(isScopeComplianceError(new Error("scope compliance failed"))).toBe(true);
     expect(isScopeComplianceError(new Error("scope_compliance rejection"))).toBe(true);
   });
@@ -257,12 +265,16 @@ describe("classifyAgentApiError", () => {
   });
 
   it("returns scope_compliance for scope compliance rejections (not rate_limit)", () => {
-    expect(classifyAgentApiError(new Error("Scope compliance: implementation does not match"))).toBe("scope_compliance");
+    expect(
+      classifyAgentApiError(new Error("Scope compliance: implementation does not match"))
+    ).toBe("scope_compliance");
     expect(classifyAgentApiError(new Error("scope_compliance rejection"))).toBe("scope_compliance");
     // When both scope compliance and rate limit appear, scope_compliance takes precedence
-    expect(classifyAgentApiError(new Error("Scope compliance: implementation does not rate limit correctly"))).toBe(
-      "scope_compliance"
-    );
+    expect(
+      classifyAgentApiError(
+        new Error("Scope compliance: implementation does not rate limit correctly")
+      )
+    ).toBe("scope_compliance");
   });
 
   it("returns rate_limit for rate limit errors", () => {

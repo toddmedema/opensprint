@@ -9,7 +9,11 @@ import os from "os";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { BranchManager } from "../services/branch-manager.js";
-import { MergeCoordinatorService, type MergeCoordinatorHost, type MergeSlot } from "../services/merge-coordinator.service.js";
+import {
+  MergeCoordinatorService,
+  type MergeCoordinatorHost,
+  type MergeSlot,
+} from "../services/merge-coordinator.service.js";
 import type { StoredTask } from "../services/task-store.service.js";
 
 const execAsync = promisify(exec);

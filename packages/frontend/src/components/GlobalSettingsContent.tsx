@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "../contexts/ThemeContext";
 import { useDisplayPreferences } from "../contexts/DisplayPreferencesContext";
 import type { RunningAgentsDisplayMode } from "../lib/displayPrefs";
 import { api, isConnectionError } from "../api/client";
+import { DB_STATUS_QUERY_KEY } from "../api/hooks/db-status";
 import { ApiKeysSection } from "./ApiKeysSection";
 import { CloseButton } from "./CloseButton";
 import type {
@@ -76,6 +78,7 @@ export interface GlobalSettingsContentProps {
  * All settings and inputs are defined here; adding a new setting requires changes in only one location.
  */
 export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsContentProps = {}) {
+  const queryClient = useQueryClient();
   const { preference: themePreference, setTheme } = useTheme();
   const { runningAgentsDisplayMode, setRunningAgentsDisplayMode } = useDisplayPreferences();
 
@@ -132,6 +135,7 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
         .put({ databaseUrl: trimmed })
         .then((res) => {
           setDatabaseUrl(res.databaseUrl);
+          void queryClient.invalidateQueries({ queryKey: DB_STATUS_QUERY_KEY });
           notifySaveState("saved");
         })
         .catch((err) => {
@@ -149,7 +153,7 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
         });
     }, 300);
     return () => clearTimeout(t);
-  }, [databaseUrl, databaseUrlLoading]);
+  }, [databaseUrl, databaseUrlLoading, notifySaveState, queryClient]);
 
   const handleClearLimitHit = useCallback(
     async (
@@ -234,6 +238,7 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
     setSetupTablesLoading(true);
     try {
       await api.globalSettings.setupTables(trimmed);
+      void queryClient.invalidateQueries({ queryKey: DB_STATUS_QUERY_KEY });
       setSetupTablesDialogOpen(false);
     } catch (err) {
       setSetupTablesError(
@@ -246,7 +251,7 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
     } finally {
       setSetupTablesLoading(false);
     }
-  }, []);
+  }, [queryClient]);
 
   const showSetupTablesButton = databaseUrl.trim().length > 0 && !databaseUrl.includes("***");
 

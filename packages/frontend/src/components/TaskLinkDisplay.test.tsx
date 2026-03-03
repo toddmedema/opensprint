@@ -16,7 +16,10 @@ vi.mock("../api/client", () => ({
   },
 }));
 
-function toTasksByIdAndOrder(tasks: Task[]): { tasksById: Record<string, Task>; taskIdsOrder: string[] } {
+function toTasksByIdAndOrder(tasks: Task[]): {
+  tasksById: Record<string, Task>;
+  taskIdsOrder: string[];
+} {
   const tasksById: Record<string, Task> = {};
   const taskIdsOrder: string[] = [];
   const seen = new Set<string>();

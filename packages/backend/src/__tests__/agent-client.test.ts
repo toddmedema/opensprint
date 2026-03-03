@@ -59,8 +59,7 @@ const { mockGeminiGenerateContent, mockGeminiGenerateContentStream } = vi.hoiste
 vi.mock("@google/genai", () => ({
   GoogleGenAI: vi.fn().mockImplementation(() => ({
     models: {
-      generateContent: (opts: { contents: unknown }) =>
-        mockGeminiGenerateContent(opts.contents),
+      generateContent: (opts: { contents: unknown }) => mockGeminiGenerateContent(opts.contents),
       generateContentStream: (opts: { contents: unknown }) =>
         Promise.resolve(mockGeminiGenerateContentStream(opts.contents)),
     },
@@ -192,7 +191,11 @@ describe("AgentClient", () => {
     });
 
     it("should use ApiKeyResolver when projectId provided for cursor", async () => {
-      mockGetNextKey.mockResolvedValue({ key: "cursor-key-from-resolver", keyId: "k1", source: "global" });
+      mockGetNextKey.mockResolvedValue({
+        key: "cursor-key-from-resolver",
+        keyId: "k1",
+        source: "global",
+      });
       const mockChild = {
         killed: false,
         kill: vi.fn(),
@@ -254,9 +257,7 @@ describe("AgentClient", () => {
         return {
           ...mockChild,
           stdout: {
-            on: vi.fn((_ev: string, fn: (d: Buffer) => void) =>
-              fn(Buffer.from("Success"))
-            ),
+            on: vi.fn((_ev: string, fn: (d: Buffer) => void) => fn(Buffer.from("Success"))),
           },
           on: vi.fn((ev: string, fn: (code: number) => void) => {
             if (ev === "close") setTimeout(() => fn(0), 0);
@@ -273,7 +274,12 @@ describe("AgentClient", () => {
       });
 
       expect(mockGetNextKey).toHaveBeenCalledTimes(2);
-      expect(mockRecordLimitHit).toHaveBeenCalledWith("proj-123", "CURSOR_API_KEY", "k1", "project");
+      expect(mockRecordLimitHit).toHaveBeenCalledWith(
+        "proj-123",
+        "CURSOR_API_KEY",
+        "k1",
+        "project"
+      );
       expect(mockClearLimitHit).toHaveBeenCalledWith("proj-123", "CURSOR_API_KEY", "k2", "project");
       expect(result.content).toContain("Success");
     });
@@ -385,7 +391,12 @@ describe("AgentClient", () => {
       expect(mockSpawn).not.toHaveBeenCalled();
       expect(mockGetNextKey).toHaveBeenCalledWith("proj-gemini", "GOOGLE_API_KEY");
       expect(mockGeminiGenerateContent).toHaveBeenCalled();
-      expect(mockClearLimitHit).toHaveBeenCalledWith("proj-gemini", "GOOGLE_API_KEY", "k1", "global");
+      expect(mockClearLimitHit).toHaveBeenCalledWith(
+        "proj-gemini",
+        "GOOGLE_API_KEY",
+        "k1",
+        "global"
+      );
       expect(result.content).toBe("Gemini planning response");
     });
 
@@ -393,7 +404,9 @@ describe("AgentClient", () => {
       mockGetNextKey.mockResolvedValue({ key: "gemini-key", keyId: "k1", source: "global" });
       const responseWithNoText = {
         text: () => {
-          throw new Error("The `response.text` quick accessor requires the response to contain a valid `Part`");
+          throw new Error(
+            "The `response.text` quick accessor requires the response to contain a valid `Part`"
+          );
         },
       };
       mockGeminiGenerateContent.mockResolvedValue(responseWithNoText);
@@ -565,7 +578,12 @@ describe("AgentClient", () => {
         { timeout: 2000 }
       );
       expect(onOutput).toHaveBeenCalled();
-      expect(mockClearLimitHit).toHaveBeenCalledWith("proj-openai", "OPENAI_API_KEY", "k1", "global");
+      expect(mockClearLimitHit).toHaveBeenCalledWith(
+        "proj-openai",
+        "OPENAI_API_KEY",
+        "k1",
+        "global"
+      );
 
       await fs.rm(tmpDir, { recursive: true, force: true });
     });
@@ -615,7 +633,12 @@ describe("AgentClient", () => {
       expect(mockGeminiGenerateContentStream).toHaveBeenCalledWith("# Task\n\nImplement login");
       expect(onOutput).toHaveBeenCalledWith("First ");
       expect(onOutput).toHaveBeenCalledWith("chunk.");
-      expect(mockClearLimitHit).toHaveBeenCalledWith("proj-google", "GOOGLE_API_KEY", "k1", "global");
+      expect(mockClearLimitHit).toHaveBeenCalledWith(
+        "proj-google",
+        "GOOGLE_API_KEY",
+        "k1",
+        "global"
+      );
 
       await fs.rm(tmpDir, { recursive: true, force: true });
     });

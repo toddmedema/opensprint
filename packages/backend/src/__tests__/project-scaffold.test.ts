@@ -5,10 +5,17 @@ import os from "os";
 import { ProjectService } from "../services/project.service.js";
 import type { DbClient } from "../db/client.js";
 
-const { testClientRef } = vi.hoisted(() => ({ testClientRef: { current: null as DbClient | null } }));
+const { testClientRef } = vi.hoisted(() => ({
+  testClientRef: { current: null as DbClient | null },
+}));
 
 vi.mock("../services/scaffold-recovery.service.js", () => ({
-  classifyInitError: () => ({ category: "unknown", recoverable: false, summary: "Unknown", rawError: "" }),
+  classifyInitError: () => ({
+    category: "unknown",
+    recoverable: false,
+    summary: "Unknown",
+    rawError: "",
+  }),
   attemptRecovery: async () => ({ success: false, category: "unknown" as const }),
 }));
 
@@ -22,7 +29,11 @@ vi.mock("../services/task-store.service.js", async () => {
     taskStore: {
       init: vi.fn().mockImplementation(async () => {}),
       getDb: vi.fn().mockImplementation(async () => testClientRef.current),
-      runWrite: vi.fn().mockImplementation(async (fn: (c: DbClient) => Promise<unknown>) => fn(testClientRef.current!)),
+      runWrite: vi
+        .fn()
+        .mockImplementation(async (fn: (c: DbClient) => Promise<unknown>) =>
+          fn(testClientRef.current!)
+        ),
       listAll: vi.fn().mockResolvedValue([]),
       list: vi.fn().mockResolvedValue([]),
       show: vi.fn().mockResolvedValue({}),
@@ -73,11 +84,13 @@ vi.mock("child_process", async (importOriginal) => {
           callback(err, "", "git: command not found");
         } else {
           const execOpts = typeof optsOrCb === "function" ? {} : (optsOrCb as object);
-          (actual.exec as (a: string, b: unknown, c: (err: Error | null, stdout?: string, stderr?: string) => void) => void)(
-            cmd,
-            execOpts,
-            callback
-          );
+          (
+            actual.exec as (
+              a: string,
+              b: unknown,
+              c: (err: Error | null, stdout?: string, stderr?: string) => void
+            ) => void
+          )(cmd, execOpts, callback);
         }
         return;
       }
@@ -88,11 +101,13 @@ vi.mock("child_process", async (importOriginal) => {
           callback(err, "", "node: command not found");
         } else {
           const execOpts = typeof optsOrCb === "function" ? {} : (optsOrCb as object);
-          (actual.exec as (a: string, b: unknown, c: (err: Error | null, stdout?: string, stderr?: string) => void) => void)(
-            cmd,
-            execOpts,
-            callback
-          );
+          (
+            actual.exec as (
+              a: string,
+              b: unknown,
+              c: (err: Error | null, stdout?: string, stderr?: string) => void
+            ) => void
+          )(cmd, execOpts, callback);
         }
         return;
       }
@@ -111,18 +126,24 @@ vi.mock("child_process", async (importOriginal) => {
           .catch((err) => callback(err as Error, "", ""));
       } else if (cmd.includes("npm install")) {
         callback(null, "", "");
-      } else if (cmd.includes("expo install") && cmd.includes("react-dom") && cmd.includes("react-native-web")) {
+      } else if (
+        cmd.includes("expo install") &&
+        cmd.includes("react-dom") &&
+        cmd.includes("react-native-web")
+      ) {
         if (expoInstallShouldFail) {
           callback(new Error("expo: command not found"), "", "expo: command not found");
         } else {
           callback(null, "", "");
         }
       } else {
-        (actual.exec as (a: string, b: unknown, c: (err: Error | null, stdout?: string, stderr?: string) => void) => void)(
-          cmd,
-          opts,
-          callback
-        );
+        (
+          actual.exec as (
+            a: string,
+            b: unknown,
+            c: (err: Error | null, stdout?: string, stderr?: string) => void
+          ) => void
+        )(cmd, opts, callback);
       }
     },
   };
@@ -145,7 +166,7 @@ describe("ProjectService.scaffoldProject", () => {
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
-  it("scaffolds web-app-expo-react and returns project + runCommand", async () => {
+  it("scaffolds web-app-expo-react and returns project details", async () => {
     const result = await projectService.scaffoldProject({
       name: "my-app",
       parentPath: tempDir,
@@ -158,14 +179,7 @@ describe("ProjectService.scaffoldProject", () => {
     expect(result.project.id).toBeDefined();
     expect(result.project.name).toBe("my-app");
     expect(result.project.repoPath).toBe(path.resolve(tempDir));
-    expect(result.runCommand).toContain("npm run web");
-    expect(result.runCommand).toContain(path.resolve(tempDir));
-
-    if (process.platform === "win32") {
-      expect(result.runCommand).toContain("cd /d");
-    } else {
-      expect(result.runCommand).toMatch(/^cd .+ && npm run web$/);
-    }
+    expect(result.recovery).toBeUndefined();
 
     const repoPath = path.resolve(tempDir);
     const pkgPath = path.join(repoPath, "package.json");

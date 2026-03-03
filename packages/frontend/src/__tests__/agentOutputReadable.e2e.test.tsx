@@ -259,7 +259,8 @@ describe("E2E: Readable agent output", () => {
         store.dispatch(
           appendAgentOutput({
             taskId: "epic-1.1",
-            chunk: '{"type":"text","text":"Hello from agent"}\n{"type":"tool_use","name":"edit"}\n{"type":"text","text":" **bold** and `code`"}\n',
+            chunk:
+              '{"type":"text","text":"Hello from agent"}\n{"type":"tool_use","name":"edit"}\n{"type":"text","text":" **bold** and `code`"}\n',
           })
         );
         vi.advanceTimersByTime(2500);
@@ -299,8 +300,7 @@ describe("E2E: Readable agent output", () => {
     try {
       await renderExecutePhase(store);
 
-      const markdownContent =
-        "```\nconst x = 42;\n```\n\n- Item one\n- Item two\n\n**Bold text**";
+      const markdownContent = "```\nconst x = 42;\n```\n\n- Item one\n- Item two\n\n**Bold text**";
       await act(async () => {
         store.dispatch(
           appendAgentOutput({

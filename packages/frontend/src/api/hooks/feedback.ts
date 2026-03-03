@@ -6,7 +6,7 @@ export function useFeedback(projectId: string | undefined, options?: { enabled?:
   return useQuery({
     queryKey: queryKeys.feedback.list(projectId ?? ""),
     queryFn: () => api.feedback.list(projectId!),
-    enabled: Boolean(projectId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && options?.enabled !== false,
   });
 }
 
@@ -18,7 +18,7 @@ export function useFeedbackItem(
   return useQuery({
     queryKey: [...queryKeys.feedback.list(projectId ?? ""), "item", feedbackId] as const,
     queryFn: () => api.feedback.get(projectId!, feedbackId!),
-    enabled: Boolean(projectId) && Boolean(feedbackId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && Boolean(feedbackId) && options?.enabled !== false,
   });
 }
 
@@ -45,13 +45,8 @@ export function useSubmitFeedback(projectId: string) {
 export function useRecategorizeFeedback(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      feedbackId,
-      answer,
-    }: {
-      feedbackId: string;
-      answer?: string;
-    }) => api.feedback.recategorize(projectId, feedbackId, answer),
+    mutationFn: ({ feedbackId, answer }: { feedbackId: string; answer?: string }) =>
+      api.feedback.recategorize(projectId, feedbackId, answer),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.feedback.list(projectId) });
     },

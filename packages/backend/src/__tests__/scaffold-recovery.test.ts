@@ -6,12 +6,18 @@ vi.mock("child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("child_process")>();
   return {
     ...actual,
-    exec: vi.fn((cmd: string, opts: unknown, cb: (err: Error | null, result?: { stdout: string; stderr: string }) => void) => {
-      if (typeof opts === "function") {
-        cb = opts as typeof cb;
+    exec: vi.fn(
+      (
+        cmd: string,
+        opts: unknown,
+        cb: (err: Error | null, result?: { stdout: string; stderr: string }) => void
+      ) => {
+        if (typeof opts === "function") {
+          cb = opts as typeof cb;
+        }
+        cb(null, { stdout: "v20.0.0", stderr: "" });
       }
-      cb(null, { stdout: "v20.0.0", stderr: "" });
-    }),
+    ),
   };
 });
 

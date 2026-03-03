@@ -2,11 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
-import {
-  isExpoInstalled,
-  installExpo,
-  ensureExpoInstalled,
-} from "../expo-install.js";
+import { isExpoInstalled, installExpo, ensureExpoInstalled } from "../expo-install.js";
 
 vi.mock("child_process", () => ({
   exec: vi.fn(),
@@ -22,9 +18,15 @@ describe("expo-install", () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "expo-install-test-"));
     vi.clearAllMocks();
     // Default: exec fails (for isExpoInstalled eas-cli check when no deps)
-    execMock.mockImplementation((_cmd: string, _opts: unknown, cb: (err: Error | null, stdout?: string, stderr?: string) => void) => {
-      cb(new Error("command not found"));
-    });
+    execMock.mockImplementation(
+      (
+        _cmd: string,
+        _opts: unknown,
+        cb: (err: Error | null, stdout?: string, stderr?: string) => void
+      ) => {
+        cb(new Error("command not found"));
+      }
+    );
   });
 
   afterEach(async () => {
@@ -67,9 +69,15 @@ describe("expo-install", () => {
         path.join(tempDir, "package.json"),
         JSON.stringify({ name: "test", dependencies: {} })
       );
-      execMock.mockImplementation((cmd: string, opts: unknown, cb: (err: Error | null, stdout?: string, stderr?: string) => void) => {
-        cb(null, "added 1 package", "");
-      });
+      execMock.mockImplementation(
+        (
+          cmd: string,
+          opts: unknown,
+          cb: (err: Error | null, stdout?: string, stderr?: string) => void
+        ) => {
+          cb(null, "added 1 package", "");
+        }
+      );
       const result = await installExpo(tempDir);
       expect(result.installed).toBe(true);
       expect(execMock).toHaveBeenCalledWith(
@@ -80,13 +88,16 @@ describe("expo-install", () => {
     });
 
     it("returns installed: false with error when npm install fails", async () => {
-      await fs.writeFile(
-        path.join(tempDir, "package.json"),
-        JSON.stringify({ name: "test" })
+      await fs.writeFile(path.join(tempDir, "package.json"), JSON.stringify({ name: "test" }));
+      execMock.mockImplementation(
+        (
+          cmd: string,
+          opts: unknown,
+          cb: (err: Error | null, stdout?: string, stderr?: string) => void
+        ) => {
+          cb(new Error("npm ERR! network timeout"), "stdout", "npm ERR! network timeout");
+        }
       );
-      execMock.mockImplementation((cmd: string, opts: unknown, cb: (err: Error | null, stdout?: string, stderr?: string) => void) => {
-        cb(new Error("npm ERR! network timeout"), "stdout", "npm ERR! network timeout");
-      });
       const result = await installExpo(tempDir);
       expect(result.installed).toBe(false);
       expect(result.error).toContain("Expo installation failed");
@@ -110,9 +121,15 @@ describe("expo-install", () => {
         path.join(tempDir, "package.json"),
         JSON.stringify({ name: "test", dependencies: {} })
       );
-      execMock.mockImplementation((cmd: string, opts: unknown, cb: (err: Error | null, stdout?: string, stderr?: string) => void) => {
-        cb(null, "added 1 package", "");
-      });
+      execMock.mockImplementation(
+        (
+          cmd: string,
+          opts: unknown,
+          cb: (err: Error | null, stdout?: string, stderr?: string) => void
+        ) => {
+          cb(null, "added 1 package", "");
+        }
+      );
       const result = await ensureExpoInstalled(tempDir);
       expect(result).toEqual({ ok: true });
     });
@@ -122,9 +139,15 @@ describe("expo-install", () => {
         path.join(tempDir, "package.json"),
         JSON.stringify({ name: "test", dependencies: {} })
       );
-      execMock.mockImplementation((cmd: string, opts: unknown, cb: (err: Error | null, stdout?: string, stderr?: string) => void) => {
-        cb(new Error("EACCES: permission denied"), "", "EACCES: permission denied");
-      });
+      execMock.mockImplementation(
+        (
+          cmd: string,
+          opts: unknown,
+          cb: (err: Error | null, stdout?: string, stderr?: string) => void
+        ) => {
+          cb(new Error("EACCES: permission denied"), "", "EACCES: permission denied");
+        }
+      );
       const result = await ensureExpoInstalled(tempDir);
       expect(result.ok).toBe(false);
       if (result.ok === false) {
@@ -138,13 +161,21 @@ describe("expo-install", () => {
         path.join(tempDir, "package.json"),
         JSON.stringify({ name: "test", dependencies: {} })
       );
-      execMock.mockImplementation((cmd: string, opts: unknown, cb: (err: Error | null, stdout?: string, stderr?: string) => void) => {
-        cb(null, "added 1 package", "");
-      });
+      execMock.mockImplementation(
+        (
+          cmd: string,
+          opts: unknown,
+          cb: (err: Error | null, stdout?: string, stderr?: string) => void
+        ) => {
+          cb(null, "added 1 package", "");
+        }
+      );
       const emit = vi.fn();
       const result = await ensureExpoInstalled(tempDir, emit);
       expect(result).toEqual({ ok: true });
-      expect(emit).toHaveBeenCalledWith("Expo not found. Installing Expo (this may take a minute)...\n");
+      expect(emit).toHaveBeenCalledWith(
+        "Expo not found. Installing Expo (this may take a minute)...\n"
+      );
     });
 
     it("does not call emit when expo is already installed", async () => {

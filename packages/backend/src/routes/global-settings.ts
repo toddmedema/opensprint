@@ -12,16 +12,14 @@ import {
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import type { GlobalSettings } from "@opensprint/shared";
-import {
-  getGlobalSettings,
-  updateGlobalSettings,
-} from "../services/global-settings.service.js";
+import { getGlobalSettings, updateGlobalSettings } from "../services/global-settings.service.js";
 import { clearLimitHit } from "../services/api-key-resolver.service.js";
 import { clearExhaustedForProviderAcrossAllProjects } from "../services/api-key-exhausted.service.js";
 import { orchestratorService } from "../services/orchestrator.service.js";
 import { getProjects } from "../services/project-index.js";
 import { runSchema } from "../db/schema.js";
 import { createPostgresDbClientFromUrl } from "../db/client.js";
+import { databaseRuntime } from "../services/database-runtime.service.js";
 
 export const globalSettingsRouter = Router();
 
@@ -83,19 +81,11 @@ globalSettingsRouter.post("/setup-tables", async (req: Request, res, next) => {
   try {
     const body = req.body as { databaseUrl?: string };
     if (body.databaseUrl === undefined || typeof body.databaseUrl !== "string") {
-      throw new AppError(
-        400,
-        ErrorCodes.INVALID_INPUT,
-        "databaseUrl must be a string"
-      );
+      throw new AppError(400, ErrorCodes.INVALID_INPUT, "databaseUrl must be a string");
     }
     const trimmed = body.databaseUrl.trim();
     if (!trimmed) {
-      throw new AppError(
-        400,
-        ErrorCodes.INVALID_INPUT,
-        "databaseUrl cannot be empty"
-      );
+      throw new AppError(400, ErrorCodes.INVALID_INPUT, "databaseUrl cannot be empty");
     }
     let databaseUrl: string;
     try {
@@ -110,6 +100,7 @@ globalSettingsRouter.post("/setup-tables", async (req: Request, res, next) => {
     } finally {
       await pool.end();
     }
+    databaseRuntime.requestReconnect("setup-tables");
     res.json({ data: { ok: true } } as ApiResponse<{ ok: boolean }>);
   } catch (err) {
     next(err);
@@ -133,22 +124,15 @@ globalSettingsRouter.put("/", async (req: Request, res, next) => {
   try {
     const body = req.body as { databaseUrl?: string; apiKeys?: unknown };
     const updates: { databaseUrl?: string; apiKeys?: unknown } = {};
+    const previous = await getGlobalSettings();
 
     if (body.databaseUrl !== undefined) {
       if (typeof body.databaseUrl !== "string") {
-        throw new AppError(
-          400,
-          ErrorCodes.INVALID_INPUT,
-          "databaseUrl must be a string"
-        );
+        throw new AppError(400, ErrorCodes.INVALID_INPUT, "databaseUrl must be a string");
       }
       const trimmed = body.databaseUrl.trim();
       if (!trimmed) {
-        throw new AppError(
-          400,
-          ErrorCodes.INVALID_INPUT,
-          "databaseUrl cannot be empty"
-        );
+        throw new AppError(400, ErrorCodes.INVALID_INPUT, "databaseUrl cannot be empty");
       }
       try {
         updates.databaseUrl = validateDatabaseUrl(trimmed);
@@ -170,6 +154,9 @@ globalSettingsRouter.put("/", async (req: Request, res, next) => {
     }
 
     const updated = await updateGlobalSettings(updates as Partial<GlobalSettings>);
+    if (updates.databaseUrl !== undefined && updates.databaseUrl !== previous.databaseUrl) {
+      databaseRuntime.requestReconnect("settings-updated");
+    }
     res.json({
       data: buildResponse(updated),
     } as ApiResponse<GlobalSettingsResponse>);

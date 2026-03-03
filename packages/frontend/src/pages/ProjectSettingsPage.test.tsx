@@ -52,7 +52,10 @@ vi.mock("../api/client", () => ({
       history: vi.fn().mockResolvedValue([]),
     },
     chat: { history: vi.fn().mockResolvedValue({ messages: [] }) },
-    notifications: { listByProject: vi.fn().mockResolvedValue([]), listGlobal: vi.fn().mockResolvedValue([]) },
+    notifications: {
+      listByProject: vi.fn().mockResolvedValue([]),
+      listGlobal: vi.fn().mockResolvedValue([]),
+    },
     env: {
       getKeys: (...args: unknown[]) => mockGetKeys(...args),
     },

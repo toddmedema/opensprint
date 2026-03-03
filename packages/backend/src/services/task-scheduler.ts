@@ -110,9 +110,7 @@ export class TaskScheduler {
 
       // File-overlap detection (only when parallel dispatch is active)
       if (maxSlots > 1 && (activeScopes.length > 0 || results.length > 0)) {
-        const overlapping = existingScopes.some((s) =>
-          this.analyzer.overlaps(scope, s)
-        );
+        const overlapping = existingScopes.some((s) => this.analyzer.overlaps(scope, s));
 
         if (overlapping) {
           log.info("Skipping task (file scope overlaps with active/selected)", {

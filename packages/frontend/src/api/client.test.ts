@@ -424,7 +424,9 @@ describe("api client", () => {
             databaseUrl: "postgresql://user:***@localhost:5432/opensprint",
             apiKeys: {
               ANTHROPIC_API_KEY: [{ id: "k1", masked: "••••••••" }],
-              CURSOR_API_KEY: [{ id: "k2", masked: "••••••••", limitHitAt: "2025-01-01T00:00:00Z" }],
+              CURSOR_API_KEY: [
+                { id: "k2", masked: "••••••••", limitHitAt: "2025-01-01T00:00:00Z" },
+              ],
             },
           },
         }),
@@ -450,7 +452,9 @@ describe("api client", () => {
       const result = await api.globalSettings.put({
         databaseUrl: "postgresql://user:secret@db.example.com:5432/opensprint",
       });
-      expect(result).toEqual({ databaseUrl: "postgresql://user:***@db.example.com:5432/opensprint" });
+      expect(result).toEqual({
+        databaseUrl: "postgresql://user:***@db.example.com:5432/opensprint",
+      });
       expect(fetch).toHaveBeenCalledWith(
         expect.stringContaining("/api/v1/global-settings"),
         expect.objectContaining({

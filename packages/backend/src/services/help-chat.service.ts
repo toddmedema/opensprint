@@ -163,10 +163,12 @@ export class HelpChatService {
     // Tasks (summary)
     const nonEpic = tasksResult.filter((t) => t.issue_type !== "epic");
     if (nonEpic.length > 0) {
-      const taskLines = nonEpic.slice(0, 50).map(
-        (t) =>
-          `- ${t.id}: ${(t.title ?? "").slice(0, 60)} | status: ${t.status} | assignee: ${t.assignee ?? "unassigned"}`
-      );
+      const taskLines = nonEpic
+        .slice(0, 50)
+        .map(
+          (t) =>
+            `- ${t.id}: ${(t.title ?? "").slice(0, 60)} | status: ${t.status} | assignee: ${t.assignee ?? "unassigned"}`
+        );
       const more = nonEpic.length > 50 ? `\n... and ${nonEpic.length - 50} more tasks` : "";
       parts.push("## Tasks\n\n" + taskLines.join("\n") + more);
     } else {

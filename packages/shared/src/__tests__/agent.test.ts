@@ -215,5 +215,4 @@ describe("AgentRole and slot mapping", () => {
       expect(getRoleDisplayLabel({ role: "coder", name: "   " })).toBe("Coder");
     });
   });
-
 });

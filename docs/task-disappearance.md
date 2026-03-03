@@ -30,7 +30,7 @@ If you use "Rebuild" before starting any work, this is a common cause of "my tas
 
 ---
 
-## What does *not* delete tasks
+## What does _not_ delete tasks
 
 - **Closing a task** (`taskStore.close()`) only sets `status = 'closed'` and `close_reason` / `completed_at`. The row stays in the database; closed tasks still appear in `listAll` and in the API.
 - **Archiving a plan** only closes (updates status of) ready/open tasks; it does not delete them.

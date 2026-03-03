@@ -10,21 +10,17 @@ export const queryKeys = {
     history: (projectId: string) => ["prd", projectId, "history"] as const,
   },
   chat: {
-    history: (projectId: string, context: string) =>
-      ["chat", projectId, context] as const,
+    history: (projectId: string, context: string) => ["chat", projectId, context] as const,
   },
   plans: {
     list: (projectId: string) => ["plans", projectId] as const,
     status: (projectId: string) => ["plans", projectId, "status"] as const,
-    detail: (projectId: string, planId: string) =>
-      ["plans", projectId, planId] as const,
-    chat: (projectId: string, context: string) =>
-      ["plans", projectId, "chat", context] as const,
+    detail: (projectId: string, planId: string) => ["plans", projectId, planId] as const,
+    chat: (projectId: string, context: string) => ["plans", projectId, "chat", context] as const,
   },
   tasks: {
     list: (projectId: string) => ["tasks", projectId] as const,
-    detail: (projectId: string, taskId: string) =>
-      ["tasks", projectId, taskId] as const,
+    detail: (projectId: string, taskId: string) => ["tasks", projectId, taskId] as const,
     sessions: (projectId: string, taskId: string) =>
       ["tasks", projectId, taskId, "sessions"] as const,
   },

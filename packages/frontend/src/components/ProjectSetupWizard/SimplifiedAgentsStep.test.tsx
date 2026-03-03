@@ -48,18 +48,18 @@ function renderSimplifiedAgentsStep(
   return render(
     <MemoryRouter>
       <SimplifiedAgentsStep
-      simpleComplexityAgent={defaultSimpleAgent}
-      complexComplexityAgent={defaultComplexAgent}
-      onSimpleComplexityAgentChange={() => {}}
-      onComplexComplexityAgentChange={() => {}}
-      envKeys={null}
-      keyInput={{ anthropic: "", cursor: "", openai: "" }}
-      onKeyInputChange={() => {}}
-      savingKey={null}
-      onSaveKey={() => {}}
-      modelRefreshTrigger={0}
-      {...overrides}
-    />
+        simpleComplexityAgent={defaultSimpleAgent}
+        complexComplexityAgent={defaultComplexAgent}
+        onSimpleComplexityAgentChange={() => {}}
+        onComplexComplexityAgentChange={() => {}}
+        envKeys={null}
+        keyInput={{ anthropic: "", cursor: "", openai: "" }}
+        onKeyInputChange={() => {}}
+        savingKey={null}
+        onSaveKey={() => {}}
+        modelRefreshTrigger={0}
+        {...overrides}
+      />
     </MemoryRouter>
   );
 }

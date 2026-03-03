@@ -12,7 +12,7 @@ export function usePrd(projectId: string | undefined, options?: { enabled?: bool
       const data = await api.prd.get(projectId!);
       return parsePrdSections(data);
     },
-    enabled: Boolean(projectId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && options?.enabled !== false,
   });
 }
 
@@ -20,7 +20,7 @@ export function usePrdHistory(projectId: string | undefined, options?: { enabled
   return useQuery({
     queryKey: queryKeys.prd.history(projectId ?? ""),
     queryFn: () => api.prd.getHistory(projectId!),
-    enabled: Boolean(projectId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && options?.enabled !== false,
   });
 }
 
@@ -31,20 +31,15 @@ export function useSketchChat(projectId: string | undefined, options?: { enabled
       const conv = await api.chat.history(projectId!, SKETCH_CONTEXT);
       return conv?.messages ?? [];
     },
-    enabled: Boolean(projectId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && options?.enabled !== false,
   });
 }
 
 export function useSavePrdSection(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      section,
-      content,
-    }: {
-      section: string;
-      content: string;
-    }) => api.prd.updateSection(projectId, section, content),
+    mutationFn: ({ section, content }: { section: string; content: string }) =>
+      api.prd.updateSection(projectId, section, content),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.prd.detail(projectId) });
       void qc.invalidateQueries({ queryKey: queryKeys.prd.history(projectId) });
@@ -63,8 +58,7 @@ export function useSendSketchMessage(projectId: string) {
       message: string;
       prdSectionFocus?: string;
       images?: string[];
-    }) =>
-      api.chat.send(projectId, message, SKETCH_CONTEXT, prdSectionFocus, images),
+    }) => api.chat.send(projectId, message, SKETCH_CONTEXT, prdSectionFocus, images),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.prd.detail(projectId) });
       void qc.invalidateQueries({ queryKey: queryKeys.prd.history(projectId) });

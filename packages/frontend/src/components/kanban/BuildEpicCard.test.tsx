@@ -182,7 +182,9 @@ describe("BuildEpicCard", () => {
     const tasks = [
       createMockTask({ id: "epic-1.1", title: "Blocked Task", kanbanColumn: "blocked" }),
     ];
-    renderWithStore(<BuildEpicCard epicId="epic-1" epicTitle="Auth" tasks={tasks} onTaskSelect={vi.fn()} />);
+    renderWithStore(
+      <BuildEpicCard epicId="epic-1" epicTitle="Auth" tasks={tasks} onTaskSelect={vi.fn()} />
+    );
 
     expect(screen.queryByRole("button", { name: "Unblock" })).not.toBeInTheDocument();
   });
@@ -196,7 +198,9 @@ describe("BuildEpicCard", () => {
         kanbanColumn: "in_progress",
       }),
     ];
-    renderWithStore(<BuildEpicCard epicId="epic-1" epicTitle="Auth" tasks={tasks} onTaskSelect={vi.fn()} />);
+    renderWithStore(
+      <BuildEpicCard epicId="epic-1" epicTitle="Auth" tasks={tasks} onTaskSelect={vi.fn()} />
+    );
 
     expect(screen.getByText("Frodo")).toBeInTheDocument();
   });
@@ -289,7 +293,9 @@ describe("BuildEpicCard", () => {
         kanbanColumn: "ready",
       }),
     ];
-    renderWithStore(<BuildEpicCard epicId="epic-1" epicTitle="Auth" tasks={tasks} onTaskSelect={vi.fn()} />);
+    renderWithStore(
+      <BuildEpicCard epicId="epic-1" epicTitle="Auth" tasks={tasks} onTaskSelect={vi.fn()} />
+    );
     expect(screen.getByText("Unassigned Task")).toBeInTheDocument();
     expect(screen.getByTitle("Ready")).toBeInTheDocument();
     expect(screen.queryByText("—")).not.toBeInTheDocument();
@@ -301,7 +307,9 @@ describe("BuildEpicCard", () => {
       createMockTask({ id: "epic-1.1", title: "Task A", kanbanColumn: "done" }),
       createMockTask({ id: "epic-1.2", title: "Task B", kanbanColumn: "done" }),
     ];
-    renderWithStore(<BuildEpicCard epicId="epic-1" epicTitle="Auth" tasks={tasks} onTaskSelect={vi.fn()} />);
+    renderWithStore(
+      <BuildEpicCard epicId="epic-1" epicTitle="Auth" tasks={tasks} onTaskSelect={vi.fn()} />
+    );
 
     const checkmark = screen.getByTestId("epic-completed-checkmark");
     expect(checkmark).toBeInTheDocument();
@@ -314,7 +322,9 @@ describe("BuildEpicCard", () => {
       createMockTask({ id: "epic-1.1", title: "Task A", kanbanColumn: "done" }),
       createMockTask({ id: "epic-1.2", title: "Task B", kanbanColumn: "in_progress" }),
     ];
-    renderWithStore(<BuildEpicCard epicId="epic-1" epicTitle="Auth" tasks={tasks} onTaskSelect={vi.fn()} />);
+    renderWithStore(
+      <BuildEpicCard epicId="epic-1" epicTitle="Auth" tasks={tasks} onTaskSelect={vi.fn()} />
+    );
 
     expect(screen.queryByTestId("epic-completed-checkmark")).not.toBeInTheDocument();
   });

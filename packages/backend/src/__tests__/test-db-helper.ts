@@ -8,18 +8,17 @@
  * Ensure the test DB exists: createdb opensprint_test (global-setup may create it if possible).
  */
 
+import { randomUUID } from "crypto";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import type { Pool } from "pg";
 import type { DbClient } from "../db/client.js";
-import {
-  createPostgresDbClientFromUrl,
-  runSchema,
-} from "../db/index.js";
+import { createPostgresDbClientFromUrl, runSchema } from "../db/index.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const URL_FILE = path.resolve(__dirname, "../../.vitest-postgres-url");
+const VITEST_RUN_ID_ENV = "OPENSPRINT_VITEST_RUN_ID";
 // Use a different database name than the app default (opensprint) so test setup (e.g. DELETE FROM tasks)
 // never wipes the database the running app is using when TEST_DATABASE_URL is unset and no container URL exists.
 const FALLBACK_TEST_URL = "postgresql://opensprint:opensprint@localhost:5432/opensprint_test";
@@ -71,13 +70,29 @@ function getVitestWorkerId(): string | null {
   return null;
 }
 
+function getVitestRunId(): string | null {
+  const runId = process.env[VITEST_RUN_ID_ENV]?.trim();
+  return runId || null;
+}
+
 /** Keep schema names safe for SQL identifiers and reasonably short. */
-function sanitizeSchemaPart(value: string): string {
-  return value.replace(/[^a-zA-Z0-9_]+/g, "_").slice(0, 32);
+function sanitizeSchemaPart(value: string, maxLen = 32): string {
+  const sanitized = value.replace(/[^a-zA-Z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+  return (sanitized || "x").slice(0, maxLen);
+}
+
+export function buildVitestSchemaName(runId: string, workerId: string): string {
+  const runPart = sanitizeSchemaPart(runId, 20);
+  const workerPart = sanitizeSchemaPart(workerId, 20);
+  return `vitest_${runPart}_${workerPart}`;
+}
+
+export function createTestProjectId(prefix = "test-project"): string {
+  return `${prefix}-${randomUUID()}`;
 }
 
 function quoteIdent(ident: string): string {
-  return `"${ident.replace(/"/g, "\"\"")}"`;
+  return `"${ident.replace(/"/g, '""')}"`;
 }
 
 /**
@@ -85,11 +100,14 @@ function quoteIdent(ident: string): string {
  * on DELETE/TRUNCATE setup hooks against shared tables.
  */
 function withWorkerScopedSchema(url: string): { url: string; schema: string | null } {
+  const runId = getVitestRunId();
   const workerId = getVitestWorkerId();
-  if (!workerId) return { url, schema: null };
+  if (!runId && !workerId) return { url, schema: null };
 
   try {
-    const schema = `vitest_${sanitizeSchemaPart(workerId)}`;
+    const schema = runId
+      ? buildVitestSchemaName(runId, workerId ?? "main")
+      : `vitest_${sanitizeSchemaPart(workerId ?? "main")}`;
     const u = new URL(url);
     const options = u.searchParams.get("options") ?? "";
     if (!options.includes("search_path=")) {

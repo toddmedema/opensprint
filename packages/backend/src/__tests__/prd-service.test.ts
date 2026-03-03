@@ -178,11 +178,7 @@ describe("PrdService", () => {
     }
     await fs.writeFile(
       metaPath,
-      JSON.stringify(
-        { version: mockPrd.version, changeLog: [], sectionVersions },
-        null,
-        2
-      ),
+      JSON.stringify({ version: mockPrd.version, changeLog: [], sectionVersions }, null, 2),
       "utf-8"
     );
 

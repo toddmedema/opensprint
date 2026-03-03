@@ -878,11 +878,7 @@ export class BranchManager {
    *   instead of getWorktreePath(taskId). Critical when os.tmpdir() changes between process runs,
    *   which would otherwise leave orphaned worktrees.
    */
-  async removeTaskWorktree(
-    repoPath: string,
-    taskId: string,
-    actualPath?: string
-  ): Promise<void> {
+  async removeTaskWorktree(repoPath: string, taskId: string, actualPath?: string): Promise<void> {
     const wtPath = actualPath ?? this.getWorktreePath(taskId);
     const registeredPath = await this.resolveRegisteredWorktreePath(repoPath, taskId, wtPath);
     if (!registeredPath) {
@@ -917,7 +913,9 @@ export class BranchManager {
     candidatePath: string
   ): Promise<string | null> {
     const worktrees = await this.listTaskWorktrees(repoPath);
-    const candidateResolved = await fs.realpath(candidatePath).catch(() => path.resolve(candidatePath));
+    const candidateResolved = await fs
+      .realpath(candidatePath)
+      .catch(() => path.resolve(candidatePath));
 
     for (const worktree of worktrees) {
       if (worktree.taskId !== taskId) continue;
@@ -938,7 +936,9 @@ export class BranchManager {
    * under any opensprint-worktrees directory (not just current tmpdir). This ensures we find
    * orphaned worktrees created when os.tmpdir() differed (e.g. before restart or TMPDIR change).
    */
-  async listTaskWorktrees(repoPath: string): Promise<Array<{ taskId: string; worktreePath: string }>> {
+  async listTaskWorktrees(
+    repoPath: string
+  ): Promise<Array<{ taskId: string; worktreePath: string }>> {
     const result: Array<{ taskId: string; worktreePath: string }> = [];
     try {
       const { stdout } = await shellExec("git worktree list --porcelain", { cwd: repoPath });

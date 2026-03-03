@@ -209,18 +209,20 @@ export function ResizableSidebar({
     [width, storageKey, minWidth, maxWidth, side]
   );
 
-  const widthStyle = responsive && !isMobileOverlay
-    ? {
-        ["--sidebar-width" as string]: `${width}px`,
-        ["--sidebar-mobile-max" as string]: `${defaultWidth}px`,
-      }
-    : !isMobileOverlay
-      ? { width: visible ? width : 0, minWidth: visible ? width : 0 }
-      : undefined;
+  const widthStyle =
+    responsive && !isMobileOverlay
+      ? {
+          ["--sidebar-width" as string]: `${width}px`,
+          ["--sidebar-mobile-max" as string]: `${defaultWidth}px`,
+        }
+      : !isMobileOverlay
+        ? { width: visible ? width : 0, minWidth: visible ? width : 0 }
+        : undefined;
 
-  const responsiveClasses = responsive && !isMobileOverlay
-    ? "w-full max-w-[var(--sidebar-mobile-max,420px)] md:max-w-none md:w-[var(--sidebar-width)]"
-    : "";
+  const responsiveClasses =
+    responsive && !isMobileOverlay
+      ? "w-full max-w-[var(--sidebar-mobile-max,420px)] md:max-w-none md:w-[var(--sidebar-width)]"
+      : "";
 
   const borderClass =
     noBorder || responsive
@@ -254,9 +256,7 @@ export function ResizableSidebar({
         {/* Panel */}
         <div
           className={`absolute top-0 bottom-0 h-full w-full flex flex-col bg-theme-bg shadow-xl ${
-            side === "right"
-              ? "right-0 animate-slide-in-right"
-              : "left-0 animate-slide-in-left"
+            side === "right" ? "right-0 animate-slide-in-right" : "left-0 animate-slide-in-left"
           }`}
           style={{
             [side]: 0,

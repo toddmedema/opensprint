@@ -85,7 +85,13 @@ export function NotificationBell({ projectId }: NotificationBellProps) {
             : n.source === "execute"
               ? "execute"
               : "eval";
-      const options: { plan?: string; task?: string; feedback?: string; section?: string; question: string } = {
+      const options: {
+        plan?: string;
+        task?: string;
+        feedback?: string;
+        section?: string;
+        question: string;
+      } = {
         question: n.id,
       };
       if (n.source === "plan") {
@@ -157,7 +163,9 @@ export function NotificationBell({ projectId }: NotificationBellProps) {
                   )}
                 </div>
                 <div className="text-theme-muted mt-0.5">{truncatePreview(preview(n), 80)}</div>
-                <div className="text-theme-muted text-xs mt-1">{formatNotificationTimestamp(n.createdAt)}</div>
+                <div className="text-theme-muted text-xs mt-1">
+                  {formatNotificationTimestamp(n.createdAt)}
+                </div>
               </button>
             </li>
           ))}

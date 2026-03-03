@@ -62,10 +62,7 @@ import {
 import { validateTransition } from "./task-state-machine.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import { getNextKey } from "./api-key-resolver.service.js";
-import {
-  isExhausted,
-  clearExhausted,
-} from "./api-key-exhausted.service.js";
+import { isExhausted, clearExhausted } from "./api-key-exhausted.service.js";
 import { getComplexityForAgent } from "./plan-complexity.js";
 import {
   buildTaskLastExecutionSummary,
@@ -577,10 +574,7 @@ export class OrchestratorService {
    * When listAll returns no tasks but we have slots, we skip reconciliation to avoid killing
    * agents on transient empty results (wrong DB, connection issue, or external wipe).
    */
-  private async reconcileStaleSlots(
-    projectId: string,
-    validTaskIds?: Set<string>
-  ): Promise<void> {
+  private async reconcileStaleSlots(projectId: string, validTaskIds?: Set<string>): Promise<void> {
     const state = this.getState(projectId);
     if (state.slots.size === 0) return;
 
@@ -894,7 +888,9 @@ export class OrchestratorService {
       return false;
     }
 
-    const reviewAngles = [...new Set((settings.reviewAngles ?? []).filter(Boolean))] as ReviewAngle[];
+    const reviewAngles = [
+      ...new Set((settings.reviewAngles ?? []).filter(Boolean)),
+    ] as ReviewAngle[];
     if (options.pidAlive && reviewAngles.length > 0) {
       log.warn("Recovery: cannot safely reattach multi-angle review with live reviewer PID", {
         taskId: task.id,
@@ -949,7 +945,8 @@ export class OrchestratorService {
         ? task.assignee
         : getAgentNameForRole("reviewer", state.nextReviewerIndex);
     const reviewerIdx = reviewerList.indexOf(reviewerAssignee);
-    if (reviewerIdx >= 0) state.nextReviewerIndex = Math.max(state.nextReviewerIndex, reviewerIdx + 1);
+    if (reviewerIdx >= 0)
+      state.nextReviewerIndex = Math.max(state.nextReviewerIndex, reviewerIdx + 1);
     else state.nextReviewerIndex += 1;
 
     const slot = this.createSlot(
@@ -1295,7 +1292,8 @@ export class OrchestratorService {
       if (slot.phase === "review" && slot.reviewAgents && slot.reviewAgents.size > 0) {
         for (const reviewAgent of slot.reviewAgents.values()) {
           const optionLabel =
-            REVIEW_ANGLE_OPTIONS.find((o) => o.value === reviewAgent.angle)?.label ?? reviewAgent.angle;
+            REVIEW_ANGLE_OPTIONS.find((o) => o.value === reviewAgent.angle)?.label ??
+            reviewAgent.angle;
           const angleLabel = REVIEW_ANGLE_ACTIVE_LABELS[reviewAgent.angle] ?? optionLabel;
           agents.push({
             id: buildReviewAgentId(slot.taskId, reviewAgent.angle),
@@ -1651,9 +1649,8 @@ export class OrchestratorService {
     const alreadyNotified = existing.some(
       (n) => n.kind === "api_blocked" && n.sourceId === `api-keys-${provider}`
     );
-    let notification: Awaited<
-      ReturnType<typeof notificationService.createApiBlocked>
-    > | null = null;
+    let notification: Awaited<ReturnType<typeof notificationService.createApiBlocked>> | null =
+      null;
     if (!alreadyNotified) {
       notification = await notificationService.createApiBlocked({
         projectId,
@@ -1845,7 +1842,10 @@ export class OrchestratorService {
             .map((q: unknown) => {
               const qq = q as { id?: string; text: string };
               return {
-                id: typeof qq.id === "string" ? qq.id : `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                id:
+                  typeof qq.id === "string"
+                    ? qq.id
+                    : `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
                 text: String(qq.text).trim(),
               };
             })
@@ -2055,7 +2055,8 @@ export class OrchestratorService {
     }
 
     const reviewAgentState = angle ? slot.reviewAgents?.get(angle) : undefined;
-    const killedDueToTimeout = reviewAgentState?.agent.killedDueToTimeout ?? slot.agent.killedDueToTimeout;
+    const killedDueToTimeout =
+      reviewAgentState?.agent.killedDueToTimeout ?? slot.agent.killedDueToTimeout;
 
     // If coordinated with tests, report outcome and let the coordinator decide
     if (slot.phaseCoordinator) {
@@ -2217,12 +2218,7 @@ export class OrchestratorService {
       startedAt: slot.agent.startedAt,
     });
     await this.sessionManager.archiveSession(repoPath, task.id, slot.attempt, session, wtPath);
-    await persistTaskLastExecutionSummary(
-      this.taskStore,
-      projectId,
-      task.id,
-      rejectionSummary
-    );
+    await persistTaskLastExecutionSummary(this.taskStore, projectId, task.id, rejectionSummary);
     eventLogService
       .append(repoPath, {
         timestamp: new Date().toISOString(),

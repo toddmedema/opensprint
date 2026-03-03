@@ -190,7 +190,10 @@ export function GlobalActiveAgentsList() {
 
   useEffect(() => {
     dispatch(fetchGlobalActiveAgents());
-    const interval = setInterval(() => dispatch(fetchGlobalActiveAgents()), ACTIVE_AGENTS_POLL_INTERVAL_MS);
+    const interval = setInterval(
+      () => dispatch(fetchGlobalActiveAgents()),
+      ACTIVE_AGENTS_POLL_INTERVAL_MS
+    );
     return () => clearInterval(interval);
   }, [dispatch]);
 

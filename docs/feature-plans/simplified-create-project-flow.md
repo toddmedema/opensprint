@@ -13,7 +13,7 @@ Improve user onboarding by separating the project creation experience into two d
 - [ ] Create New links to new 3-page wizard at `/projects/create-new`; title bar shows "Create New Project"
 - [ ] Create New Page 1: Project Name, Project Folder (with browse), Template dropdown (only "Web App (Expo/React)" for now)
 - [ ] Create New Page 2: Simplified agent config — API keys + provider/model selection only; no git work mode, no parallelism (use defaults in background)
-- [ ] Create New Page 3: Loading spinner while scaffolding runs; then show OS-dependent run command (e.g. `cd <folder> && npm run web`); "I'm Ready" navigates to project
+- [ ] Create New Page 3: Loading spinner while scaffolding runs; then show OS-dependent run instructions derived from the project path (Windows: `pushd "<folder>"` then `npm run web`; macOS/Linux: `cd "<folder>"` then `npm run web`); "I'm Ready" navigates to project
 - [ ] Scaffolding includes `npm install` and creates a runnable Expo/React web app
 
 ## Technical Approach
@@ -35,7 +35,7 @@ Improve user onboarding by separating the project creation experience into two d
 - Three steps: `basics` | `agents` | `scaffold`.
 - **Page 1 (basics):** Project name, project folder (FolderBrowser), template dropdown (single option: "Web App (Expo/React)").
 - **Page 2 (agents):** Simplified `AgentsStep` variant — only API keys + provider/model for Simple and Complex; omit git work mode, parallelism, unknown scope strategy.
-- **Page 3 (scaffold):** Call `POST /projects/scaffold` with body `{ name, parentPath, template, simpleComplexityAgent, complexComplexityAgent }`. Backend scaffolds project folder, runs `npm install`, registers project in index, returns `{ project, runCommand }`. Run command is OS-dependent (e.g. `cd /path/to/project && npm run web`).
+- **Page 3 (scaffold):** Call `POST /projects/scaffold` with body `{ name, parentPath, template, simpleComplexityAgent, complexComplexityAgent }`. Backend scaffolds project folder, runs `npm install`, registers project in index, and returns `{ project }`. The frontend renders OS-dependent run instructions from `project.repoPath`.
 
 ### Backend Scaffolding
 
@@ -45,7 +45,7 @@ Improve user onboarding by separating the project creation experience into two d
 
 - After scaffolding, call existing `createProject` logic (or a shared helper) to add `.opensprint` structure, register in project index, and persist settings. Use defaults: `gitWorkingMode: "worktree"`, `maxConcurrentCoders: 1`, `deployment: DEFAULT_DEPLOYMENT_CONFIG`, `hilConfig: DEFAULT_HIL_CONFIG`, `testFramework: null`.
 
-- Return `{ project, runCommand }` where `runCommand` is platform-specific: `process.platform === "win32"` → `cd /d <path> && npm run web`, else `cd <path> && npm run web`.
+- Return `{ project }`. The client derives platform-specific run instructions from `project.repoPath`: Windows uses `pushd "<path>"` then `npm run web`; other platforms use `cd "<path>"` then `npm run web`.
 
 ### Simplified Agent Config
 
@@ -72,8 +72,16 @@ Improve user onboarding by separating the project creation experience into two d
   "name": "Project Name",
   "parentPath": "/absolute/path/to/parent",
   "template": "web-app-expo-react",
-  "simpleComplexityAgent": { "type": "cursor", "model": "claude-sonnet-4-20250514", "cliCommand": "" },
-  "complexComplexityAgent": { "type": "cursor", "model": "claude-sonnet-4-20250514", "cliCommand": "" }
+  "simpleComplexityAgent": {
+    "type": "cursor",
+    "model": "claude-sonnet-4-20250514",
+    "cliCommand": ""
+  },
+  "complexComplexityAgent": {
+    "type": "cursor",
+    "model": "claude-sonnet-4-20250514",
+    "cliCommand": ""
+  }
 }
 ```
 
@@ -82,8 +90,14 @@ Improve user onboarding by separating the project creation experience into two d
 ```json
 {
   "data": {
-    "project": { "id": "...", "name": "...", "repoPath": "...", "currentPhase": "sketch", "createdAt": "...", "updatedAt": "..." },
-    "runCommand": "cd /path/to/project && npm run web"
+    "project": {
+      "id": "...",
+      "name": "...",
+      "repoPath": "...",
+      "currentPhase": "sketch",
+      "createdAt": "...",
+      "updatedAt": "..."
+    }
   }
 }
 ```
@@ -95,7 +109,7 @@ Improve user onboarding by separating the project creation experience into two d
 - Projects list: card grid, responsive; each card shows name, path (truncated), phase badge. Kebab menu for Archive/Delete.
 - Header: "Projects" title left; "Create New" (primary) and "Add Existing" (secondary) right.
 - Create New wizard: step 1 of 3, 2 of 3, 3 of 3 progress bar; Back/Next navigation.
-- Page 3: Spinner with "Building your project..." during scaffold; on success: "Your project is ready!" with run command in a code block; "I'm Ready" primary button.
+- Page 3: Spinner with "Building your project..." during scaffold; on success: "Your project is ready!" with OS-aware run instructions in a code block; "I'm Ready" primary button.
 
 ## Edge Cases and Error Handling
 
@@ -108,7 +122,7 @@ Improve user onboarding by separating the project creation experience into two d
 ## Testing Strategy
 
 - Unit: `CreateNewProjectPage` step rendering; `SimplifiedAgentsStep` renders only API/provider/model.
-- Integration: `POST /projects/scaffold` with temp dir; verify folder created, `.opensprint` present, `runCommand` correct for platform.
+- Integration: `POST /projects/scaffold` with temp dir; verify folder created, `.opensprint` present, and project metadata returned. Frontend tests verify the rendered run instructions for Windows and non-Windows platforms.
 - E2E: Create New flow end-to-end; Add Existing flow still works.
 - Update `HomeScreen.test.tsx`: remove create-project-row; add create-new/add-existing button tests.
 

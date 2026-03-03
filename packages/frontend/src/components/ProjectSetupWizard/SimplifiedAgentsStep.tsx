@@ -275,7 +275,9 @@ export function SimplifiedAgentsStep({
               </div>
             ) : (
               <div className="flex-1 min-w-[200px]">
-                <label className="block text-sm font-medium text-theme-text mb-1">CLI command</label>
+                <label className="block text-sm font-medium text-theme-text mb-1">
+                  CLI command
+                </label>
                 <input
                   type="text"
                   className="input w-full font-mono text-sm"
@@ -328,7 +330,9 @@ export function SimplifiedAgentsStep({
               </div>
             ) : (
               <div className="flex-1 min-w-[200px]">
-                <label className="block text-sm font-medium text-theme-text mb-1">CLI command</label>
+                <label className="block text-sm font-medium text-theme-text mb-1">
+                  CLI command
+                </label>
                 <input
                   type="text"
                   className="input w-full font-mono text-sm"

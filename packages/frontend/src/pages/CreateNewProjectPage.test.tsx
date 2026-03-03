@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
@@ -13,6 +13,7 @@ function LocationDisplay() {
 const mockScaffold = vi.fn();
 const mockGetKeys = vi.fn();
 const mockGlobalSettingsGet = vi.fn();
+const originalNavigator = global.navigator;
 
 vi.mock("../api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/client")>();
@@ -59,13 +60,27 @@ function renderCreateNewProjectPage() {
   );
 }
 
+function setNavigator(platform: string, userAgent: string) {
+  vi.stubGlobal("navigator", {
+    ...originalNavigator,
+    platform,
+    userAgent,
+  });
+}
+
+function getInstructionsPre() {
+  return screen.getByText(
+    (_content, element) => element?.tagName === "PRE" && !!element.textContent?.includes("npm run web")
+  );
+}
+
 const defaultScaffoldResponse = {
   project: { id: "proj-1", name: "My App", repoPath: "/path/to/parent/My App" },
-  runCommand: "cd /path/to/parent/My\\ App && npm run web",
 };
 
 describe("CreateNewProjectPage", () => {
   beforeEach(() => {
+    setNavigator("Linux x86_64", "Mozilla/5.0 (X11; Linux x86_64)");
     mockScaffold.mockReset();
     mockScaffold.mockResolvedValue(defaultScaffoldResponse);
     mockGlobalSettingsGet.mockResolvedValue({
@@ -84,6 +99,10 @@ describe("CreateNewProjectPage", () => {
     });
   });
 
+  afterEach(() => {
+    vi.stubGlobal("navigator", originalNavigator);
+  });
+
   it("renders Create New Project title", () => {
     renderCreateNewProjectPage();
     expect(screen.getByRole("heading", { name: /create new project/i })).toBeInTheDocument();
@@ -91,12 +110,12 @@ describe("CreateNewProjectPage", () => {
 
   it("Cancel button navigates to homepage", async () => {
     mockGetKeys.mockResolvedValue({
-        anthropic: true,
-        cursor: true,
-        openai: true,
-        claudeCli: true,
-        useCustomCli: false,
-      });
+      anthropic: true,
+      cursor: true,
+      openai: true,
+      claudeCli: true,
+      useCustomCli: false,
+    });
     const user = userEvent.setup();
     render(
       <MemoryRouter initialEntries={["/projects/create-new"]}>
@@ -121,13 +140,15 @@ describe("CreateNewProjectPage", () => {
     expect(screen.getByText("Project folder")).toBeInTheDocument();
     expect(screen.getByLabelText(/template/i)).toBeInTheDocument();
     expect(screen.getByTestId("template-select")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Request a template" })).toHaveAttribute(
+      "href",
+      "https://github.com/toddmedema/opensprint/issues/new"
+    );
   });
 
   it("shows 'Project files will be created in this folder' label under directory picker", () => {
     renderCreateNewProjectPage();
-    expect(
-      screen.getByText("Project files will be created in this folder")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Project files will be created in this folder")).toBeInTheDocument();
   });
 
   it("template dropdown has Web App (Expo/React) option", () => {
@@ -261,7 +282,9 @@ describe("CreateNewProjectPage", () => {
     await user.click(screen.getByTestId("back-button"));
     expect(screen.getByTestId("create-new-basics-step")).toBeInTheDocument();
     expect(screen.getByLabelText(/project name/i)).toHaveValue("My App");
-    expect(screen.getByPlaceholderText("/Users/you/projects/my-app")).toHaveValue("/path/to/parent");
+    expect(screen.getByPlaceholderText("/Users/you/projects/my-app")).toHaveValue(
+      "/path/to/parent"
+    );
   });
 
   it("advances to scaffold step from agents and scaffolds on mount", async () => {
@@ -297,7 +320,7 @@ describe("CreateNewProjectPage", () => {
     );
   });
 
-  it("shows run command and I'm Ready after successful scaffold", async () => {
+  it("shows quoted Unix run instructions and I'm Ready after successful scaffold", async () => {
     const user = userEvent.setup();
     renderCreateNewProjectPage();
     await user.type(screen.getByLabelText(/project name/i), "My App");
@@ -306,8 +329,33 @@ describe("CreateNewProjectPage", () => {
     await user.click(screen.getByTestId("next-button"));
 
     await screen.findByText(/your project is ready/i);
-    expect(screen.getByText("cd /path/to/parent/My\\ App && npm run web")).toBeInTheDocument();
+    expect(screen.getByText(/run these commands in order/i)).toBeInTheDocument();
+    expect(getInstructionsPre()).toHaveTextContent('cd "/path/to/parent/My App"');
+    expect(getInstructionsPre()).toHaveTextContent("npm run web");
     expect(screen.getByTestId("im-ready-button")).toBeInTheDocument();
+  });
+
+  it("shows Windows-safe run instructions on Windows", async () => {
+    setNavigator("Win32", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+    mockScaffold.mockResolvedValue({
+      project: {
+        id: "proj-1",
+        name: "My App",
+        repoPath: "C:\\Users\\Todd\\My App",
+      },
+    });
+    const user = userEvent.setup();
+    renderCreateNewProjectPage();
+    await user.type(screen.getByLabelText(/project name/i), "My App");
+    await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "C:\\Users\\Todd");
+    await user.click(screen.getByTestId("next-button"));
+    await user.click(screen.getByTestId("next-button"));
+
+    await screen.findByText(/your project is ready/i);
+    expect(getInstructionsPre()).toHaveTextContent('pushd "C:\\Users\\Todd\\My App"');
+    expect(getInstructionsPre()).toHaveTextContent("npm run web");
+    expect(getInstructionsPre()).not.toHaveTextContent("&&");
+    expect(getInstructionsPre()).not.toHaveTextContent("cd /d");
   });
 
   it("I'm Ready navigates to project sketch phase", async () => {
@@ -515,12 +563,12 @@ describe("CreateNewProjectPage", () => {
 
   it("disables Next on agents step when custom CLI selected but cliCommand empty", async () => {
     mockGetKeys.mockResolvedValue({
-        anthropic: true,
-        cursor: true,
-        openai: true,
-        claudeCli: true,
-        useCustomCli: false,
-      });
+      anthropic: true,
+      cursor: true,
+      openai: true,
+      claudeCli: true,
+      useCustomCli: false,
+    });
     const user = userEvent.setup();
     renderCreateNewProjectPage();
     await user.type(screen.getByLabelText(/project name/i), "My App");
@@ -535,12 +583,12 @@ describe("CreateNewProjectPage", () => {
 
   it("enables Next on agents step when custom CLI has cliCommand", async () => {
     mockGetKeys.mockResolvedValue({
-        anthropic: true,
-        cursor: true,
-        openai: true,
-        claudeCli: true,
-        useCustomCli: false,
-      });
+      anthropic: true,
+      cursor: true,
+      openai: true,
+      claudeCli: true,
+      useCustomCli: false,
+    });
     const user = userEvent.setup();
     renderCreateNewProjectPage();
     await user.type(screen.getByLabelText(/project name/i), "My App");
@@ -694,7 +742,9 @@ describe("CreateNewProjectPage", () => {
 
     const errorDetails = await screen.findByTestId("scaffold-error-details");
     expect(screen.getByText("Initialization failed")).toBeInTheDocument();
-    const errorTextElements = screen.getAllByText(/Recovery agent ran but the command still failed/i);
+    const errorTextElements = screen.getAllByText(
+      /Recovery agent ran but the command still failed/i
+    );
     expect(errorTextElements.length).toBeGreaterThanOrEqual(1);
     expect(errorDetails).toBeInTheDocument();
   });

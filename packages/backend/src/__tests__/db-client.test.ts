@@ -32,7 +32,10 @@ describe("DbClient (createPostgresDbClient with mock Pool)", () => {
   }
 
   it("query returns rows from pool", async () => {
-    const rows: DbRow[] = [{ id: 1, name: "a" }, { id: 2, name: "b" }];
+    const rows: DbRow[] = [
+      { id: 1, name: "a" },
+      { id: 2, name: "b" },
+    ];
     const pool = createMockPool({ queryRows: rows });
     const client = createPostgresDbClient(pool);
 

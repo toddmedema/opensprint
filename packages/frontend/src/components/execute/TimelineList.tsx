@@ -139,9 +139,7 @@ export function TimelineList({
       ),
       blocked: blockedTasks,
       ready: sorted.filter((t) => t.kanbanColumn === "ready"),
-      in_line: sorted.filter(
-        (t) => t.kanbanColumn === "backlog" || t.kanbanColumn === "planning"
-      ),
+      in_line: sorted.filter((t) => t.kanbanColumn === "backlog" || t.kanbanColumn === "planning"),
     }),
     [sorted, blockedTasks]
   );
@@ -289,9 +287,7 @@ export function TimelineList({
                   <TimelineRow
                     key={task.id}
                     task={task}
-                    epicName={
-                      task.epicId ? (epicIdToTitle.get(task.epicId) ?? task.epicId) : ""
-                    }
+                    epicName={task.epicId ? (epicIdToTitle.get(task.epicId) ?? task.epicId) : ""}
                     relativeTime={getRelativeTime(task)}
                     onTaskSelect={onTaskSelect}
                     onUnblock={task.kanbanColumn === "blocked" ? onUnblock : undefined}

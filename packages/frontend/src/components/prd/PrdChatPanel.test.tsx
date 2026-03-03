@@ -352,21 +352,12 @@ describe("PrdChatPanel", () => {
       );
 
       const sendButton = screen.getByRole("button", { name: "Send" });
-      expect(sendButton).toHaveAttribute(
-        "title",
-        "Waiting on Dreamer to finish current response"
-      );
+      expect(sendButton).toHaveAttribute("title", "Waiting on Dreamer to finish current response");
     });
 
     it("allows typing in input while sending (floating variant)", async () => {
       const user = userEvent.setup();
-      render(
-        <PrdChatPanel
-          {...defaultProps}
-          open={true}
-          sending={true}
-        />
-      );
+      render(<PrdChatPanel {...defaultProps} open={true} sending={true} />);
 
       const input = screen.getByRole("textbox", { name: "Chat message" });
       expect(input).not.toBeDisabled();

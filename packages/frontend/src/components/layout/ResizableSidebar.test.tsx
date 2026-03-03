@@ -281,12 +281,7 @@ describe("ResizableSidebar", () => {
 
     it("renders overlay with correct side (left)", () => {
       render(
-        <ResizableSidebar
-          storageKey={STORAGE_KEY}
-          responsive
-          side="left"
-          onClose={() => {}}
-        >
+        <ResizableSidebar storageKey={STORAGE_KEY} responsive side="left" onClose={() => {}}>
           <span data-testid="left-content">Left</span>
         </ResizableSidebar>
       );
@@ -298,12 +293,7 @@ describe("ResizableSidebar", () => {
 
     it("renders overlay with correct side (right)", () => {
       render(
-        <ResizableSidebar
-          storageKey={STORAGE_KEY}
-          responsive
-          side="right"
-          onClose={() => {}}
-        >
+        <ResizableSidebar storageKey={STORAGE_KEY} responsive side="right" onClose={() => {}}>
           <span data-testid="right-content">Right</span>
         </ResizableSidebar>
       );
@@ -335,7 +325,9 @@ describe("ResizableSidebar", () => {
       );
 
       expect(screen.getByTestId("inline-content")).toHaveTextContent("Inline content");
-      expect(screen.queryByRole("button", { name: "Close sidebar (backdrop)" })).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Close sidebar (backdrop)" })
+      ).not.toBeInTheDocument();
       const container = screen.getByTestId("inline-content").closest(".relative");
       expect(container).toBeInTheDocument();
       expect(container).toHaveClass("w-full");

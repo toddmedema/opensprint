@@ -32,10 +32,7 @@ function usePerformanceObserver() {
     const observer = new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
         if (entry.duration > LONG_TASK_THRESHOLD_MS) {
-          console.debug(
-            `[DevProfiler] Long task: ${entry.duration.toFixed(1)}ms`,
-            entry.name
-          );
+          console.debug(`[DevProfiler] Long task: ${entry.duration.toFixed(1)}ms`, entry.name);
         }
       }
     });

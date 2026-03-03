@@ -10,9 +10,13 @@ config({ path: path.resolve(process.cwd(), "../.env") });
 config({ path: path.resolve(process.cwd(), "../../.env") });
 
 import { exec } from "child_process";
-import { setupWebSocket, closeWebSocket, hasClientConnected, broadcastToProject } from "./websocket/index.js";
+import {
+  setupWebSocket,
+  closeWebSocket,
+  hasClientConnected,
+  broadcastToProject,
+} from "./websocket/index.js";
 import { DEFAULT_API_PORT } from "@opensprint/shared";
-import { getDatabaseUrl } from "./services/global-settings.service.js";
 import { ProjectService } from "./services/project.service.js";
 import { taskStore } from "./services/task-store.service.js";
 import { wireTaskStoreEvents } from "./task-store-events.js";
@@ -34,8 +38,9 @@ import {
   clearAgentProcessRegistry,
 } from "./services/agent-process-registry.js";
 import { createLogger } from "./utils/logger.js";
-import { isLocalDatabaseUrl } from "@opensprint/shared";
 import { initAppDb } from "./db/app-db.js";
+import type { AppDb } from "./db/app-db.js";
+import { databaseRuntime } from "./services/database-runtime.service.js";
 
 const logStartup = createLogger("startup");
 const logOrchestrator = createLogger("orchestrator");
@@ -122,36 +127,9 @@ setupWebSocket(server, {
 
 // Wire TaskStoreService to emit task create/update/close events via WebSocket
 wireTaskStoreEvents(broadcastToProject);
-
-// Resolve database URL from env (DATABASE_URL) then global settings then default. Use this
-// single source so we never accidentally use the test DB (e.g. via .env or misconfigured file).
-const databaseUrl = await getDatabaseUrl();
-
-// Refuse to run the app against the test database. Tests run DELETE FROM tasks in setup;
-// if the app used opensprint_test, running tests (e.g. in another terminal) would wipe
-// the app's tasks and cause "all tasks disappear" (see docs/task-disappearance.md).
-const TEST_DB_NAME = "opensprint_test";
-let resolvedDbName = "opensprint";
-try {
-  resolvedDbName = new URL(databaseUrl).pathname.replace(/^\/+|\/+$/g, "") || "opensprint";
-  if (resolvedDbName === TEST_DB_NAME) {
-    logStartup.error("App must not use the test database", {
-      database: resolvedDbName,
-      hint: `Use the app database "opensprint" (default). Unset DATABASE_URL if set to test DB; set databaseUrl in ~/.opensprint/global-settings.json to a non-test database. Tests use ${TEST_DB_NAME} and wipe task data.`,
-    });
-    process.exit(1);
-  }
-} catch {
-  // URL parse failed; initAppDb or getDatabaseUrl validation will fail later
-}
-logStartup.info("Using database", { database: resolvedDbName });
-
-const dbSource = isLocalDatabaseUrl(databaseUrl) ? "local" : "remote";
-logStartup.info("Database source", { source: dbSource });
-
-// Single DB pool owner; task store and other services use it
-const appDb = await initAppDb(databaseUrl);
-await taskStore.init(databaseUrl, appDb);
+let appDb: AppDb | null = null;
+let databaseFeaturesStarted = false;
+let databaseFeaturesStartPromise: Promise<void> | null = null;
 
 async function initAlwaysOnOrchestrator(): Promise<void> {
   const projectService = new ProjectService();
@@ -259,6 +237,75 @@ async function initAlwaysOnOrchestrator(): Promise<void> {
   }
 }
 
+async function stopDatabaseFeatures(): Promise<void> {
+  if (!databaseFeaturesStarted && !appDb) {
+    return;
+  }
+  stopNightlyDeployScheduler();
+  stopBlockedAutoRetry();
+  watchdogService.stop();
+  sessionRetentionService.stop();
+  orchestratorService.stopAll();
+  await taskStore.closePool().catch((err) => {
+    logShutdown.warn("Could not close task store pool", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+  });
+  if (appDb) {
+    await appDb.close().catch((err) => {
+      logShutdown.warn("Could not close app database", {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    });
+    appDb = null;
+  }
+  databaseFeaturesStarted = false;
+}
+
+async function startDatabaseFeatures(databaseUrl: string): Promise<void> {
+  if (databaseFeaturesStarted) {
+    return;
+  }
+  if (databaseFeaturesStartPromise) {
+    await databaseFeaturesStartPromise;
+    return;
+  }
+
+  databaseFeaturesStartPromise = (async () => {
+    let nextAppDb: AppDb | null = null;
+    try {
+      nextAppDb = await initAppDb(databaseUrl);
+      await taskStore.init(databaseUrl, nextAppDb);
+      appDb = nextAppDb;
+      databaseFeaturesStarted = true;
+      startNightlyDeployScheduler();
+      await initAlwaysOnOrchestrator();
+    } catch (err) {
+      if (nextAppDb) {
+        await nextAppDb.close().catch(() => {});
+      }
+      appDb = null;
+      await taskStore.closePool().catch(() => {});
+      databaseFeaturesStarted = false;
+      databaseRuntime.handleOperationalFailure(err);
+      throw err;
+    } finally {
+      databaseFeaturesStartPromise = null;
+    }
+  })();
+
+  await databaseFeaturesStartPromise;
+}
+
+databaseRuntime.setLifecycleHandlers({
+  onConnected: async ({ databaseUrl }) => {
+    await startDatabaseFeatures(databaseUrl);
+  },
+  onDisconnected: async () => {
+    await stopDatabaseFeatures();
+  },
+});
+
 const FLUSH_PERSIST_TIMEOUT_MS = 15000;
 
 // Graceful shutdown
@@ -271,11 +318,7 @@ const shutdown = async () => {
     await killAllTrackedAgentProcesses();
   }
   stopProcessReaper();
-  sessionRetentionService.stop();
-  stopNightlyDeployScheduler();
-  stopBlockedAutoRetry();
-  watchdogService.stop();
-  orchestratorService.stopAll();
+  await stopDatabaseFeatures();
 
   const flushDone = taskStore.flushPersist();
   const flushTimeout = new Promise<void>((_, reject) =>
@@ -286,7 +329,6 @@ const shutdown = async () => {
   });
 
   await taskStore.closePool();
-  await appDb.close();
 
   removePidFile();
   closeWebSocket();
@@ -320,19 +362,7 @@ server.listen(port, () => {
   logStartup.info("OpenSprint backend listening", { url: `http://localhost:${port}` });
   logStartup.info("WebSocket server ready", { url: `ws://localhost:${port}/ws` });
   startProcessReaper();
-  startNightlyDeployScheduler();
-  initAlwaysOnOrchestrator().catch((err) => {
-    const message = err instanceof Error ? err.message : String(err);
-    const code =
-      err && typeof (err as { code?: string }).code === "string"
-        ? (err as { code: string }).code
-        : undefined;
-    logOrchestrator.error("Always-on init failed", {
-      message,
-      code,
-      stack: err instanceof Error ? err.stack : undefined,
-    });
-  });
+  databaseRuntime.start();
 
   // Auto-open frontend if no browser reconnects within 15s
   setTimeout(() => {

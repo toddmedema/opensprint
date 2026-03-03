@@ -1,14 +1,6 @@
-import type {
-  AgentPhase,
-  AgentRuntimeState,
-  AgentSuspendReason,
-  TestResults,
-} from "./agent.js";
+import type { AgentPhase, AgentRuntimeState, AgentSuspendReason, TestResults } from "./agent.js";
 import type { FeedbackItem } from "./feedback.js";
-import type {
-  ScopeChangeMetadata,
-  ScopeChangeProposedUpdate,
-} from "./notification.js";
+import type { ScopeChangeMetadata, ScopeChangeProposedUpdate } from "./notification.js";
 
 // ─── Server → Client Events ───
 

@@ -37,20 +37,20 @@ function renderAgentsStep(overrides: Partial<Parameters<typeof AgentsStep>[0]> =
   return render(
     <MemoryRouter>
       <AgentsStep
-      simpleComplexityAgent={defaultLowComplexityAgent}
-      complexComplexityAgent={defaultHighComplexityAgent}
-      onSimpleComplexityAgentChange={() => {}}
-      onComplexComplexityAgentChange={() => {}}
-      envKeys={null}
-      modelRefreshTrigger={0}
-      maxConcurrentCoders={1}
-      onMaxConcurrentCodersChange={() => {}}
-      unknownScopeStrategy="optimistic"
-      onUnknownScopeStrategyChange={() => {}}
-      gitWorkingMode="worktree"
-      onGitWorkingModeChange={() => {}}
-      {...overrides}
-    />
+        simpleComplexityAgent={defaultLowComplexityAgent}
+        complexComplexityAgent={defaultHighComplexityAgent}
+        onSimpleComplexityAgentChange={() => {}}
+        onComplexComplexityAgentChange={() => {}}
+        envKeys={null}
+        modelRefreshTrigger={0}
+        maxConcurrentCoders={1}
+        onMaxConcurrentCodersChange={() => {}}
+        unknownScopeStrategy="optimistic"
+        onUnknownScopeStrategyChange={() => {}}
+        gitWorkingMode="worktree"
+        onGitWorkingModeChange={() => {}}
+        {...overrides}
+      />
     </MemoryRouter>
   );
 }
@@ -330,5 +330,4 @@ describe("AgentsStep", () => {
       expect(screen.queryByTestId("agent-reference-modal")).not.toBeInTheDocument();
     });
   });
-
 });

@@ -11,7 +11,14 @@ import {
   setMessages,
   setSketchError,
 } from "../../store/slices/sketchSlice";
-import { usePrd, usePrdHistory, useSketchChat, usePlanStatus, useDecomposePlans, usePlans } from "../../api/hooks";
+import {
+  usePrd,
+  usePrdHistory,
+  useSketchChat,
+  usePlanStatus,
+  useDecomposePlans,
+  usePlans,
+} from "../../api/hooks";
 import { usePhaseLoadingState } from "../../hooks/usePhaseLoadingState";
 import { PhaseLoadingSpinner } from "../../components/PhaseLoadingSpinner";
 import { queryKeys } from "../../api/queryKeys";
@@ -223,9 +230,7 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
     if (!hasPrdContent && projectId) {
       Promise.resolve()
         .then(() => api.projects.getSketchContext(projectId))
-        .then((data) =>
-          setSketchContext({ hasExistingCode: Boolean(data?.hasExistingCode) })
-        )
+        .then((data) => setSketchContext({ hasExistingCode: Boolean(data?.hasExistingCode) }))
         .catch(() => setSketchContext({ hasExistingCode: false }));
     } else {
       setSketchContext(null);
@@ -526,12 +531,26 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
     }
   };
 
+  const planCtaLabel =
+    planStatus?.action === "plan"
+      ? planningIt || decomposing
+        ? "Planning..."
+        : "Plan it"
+      : planStatus?.action === "replan"
+        ? planningIt || decomposing
+          ? "Replanning..."
+          : "Replan it"
+        : null;
+
   /* ══════════════════════════════════════════════════════════
    *  RENDER: Loading spinner during fetch
    * ══════════════════════════════════════════════════════════ */
   if (showPrdSpinner) {
     return (
-      <div className="flex flex-1 min-h-0 items-center justify-center bg-theme-bg" data-testid="sketch-phase-loading">
+      <div
+        className="flex flex-1 min-h-0 items-center justify-center bg-theme-bg"
+        data-testid="sketch-phase-loading"
+      >
         <PhaseLoadingSpinner data-testid="sketch-phase-loading-spinner" aria-label="Loading" />
       </div>
     );
@@ -708,27 +727,16 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
               Product Requirements Document
             </h1>
             <div className="flex items-center gap-3">
-              {planStatus?.action === "plan" && (
+              {planCtaLabel && (
                 <button
                   type="button"
                   onClick={handlePlanIt}
                   disabled={planningIt || decomposing}
                   className="btn-primary text-sm disabled:opacity-50"
                 >
-                  {planningIt || decomposing ? "Planning..." : "Plan it"}
+                  {planCtaLabel}
                 </button>
               )}
-              {planStatus?.action === "replan" && (
-                <button
-                  type="button"
-                  onClick={handlePlanIt}
-                  disabled={planningIt || decomposing}
-                  className="btn-primary text-sm disabled:opacity-50"
-                >
-                  {planningIt || decomposing ? "Replanning..." : "Replan it"}
-                </button>
-              )}
-              {planStatus?.action === "none" && null}
             </div>
           </div>
 
@@ -754,6 +762,25 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
             expanded={historyExpanded}
             onToggle={() => setHistoryExpanded(!historyExpanded)}
           />
+
+          {planCtaLabel && (
+            <div
+              className="sticky bottom-6 z-10 mt-10 flex justify-center pointer-events-none"
+              data-testid="sketch-plan-footer"
+            >
+              <div className="pointer-events-auto rounded-full border border-theme-border bg-theme-bg/95 p-2 shadow-lg backdrop-blur-sm">
+                <button
+                  type="button"
+                  onClick={handlePlanIt}
+                  disabled={planningIt || decomposing}
+                  className="btn-primary min-w-[10rem] text-sm disabled:opacity-50"
+                  data-testid="sketch-plan-cta"
+                >
+                  {planCtaLabel}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

@@ -115,14 +115,7 @@ export class NotificationService {
       await client.execute(
         `INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind)
          VALUES ($1, $2, $3, $4, $5, 'open', $6, 'open_question')`,
-        [
-          id,
-          input.projectId,
-          input.source,
-          input.sourceId,
-          JSON.stringify(questions),
-          createdAt,
-        ]
+        [id, input.projectId, input.source, input.sourceId, JSON.stringify(questions), createdAt]
       );
     });
 
@@ -285,7 +278,9 @@ export class NotificationService {
    * Called when the system is demonstrably working (e.g. review agent starts, retry succeeds).
    * Returns the list of resolved notification IDs for broadcasting.
    */
-  async resolveRateLimitNotifications(projectId: string): Promise<Array<{ id: string; source: NotificationSource; sourceId: string }>> {
+  async resolveRateLimitNotifications(
+    projectId: string
+  ): Promise<Array<{ id: string; source: NotificationSource; sourceId: string }>> {
     const client = await taskStore.getDb();
     const rows = await client.query(
       `SELECT id, source, source_id FROM open_questions
@@ -311,7 +306,11 @@ export class NotificationService {
       source: r.source as NotificationSource,
       sourceId: r.source_id as string,
     }));
-    log.info("Resolved rate limit notifications", { projectId, count: resolved.length, ids: resolved.map((r) => r.id) });
+    log.info("Resolved rate limit notifications", {
+      projectId,
+      count: resolved.length,
+      ids: resolved.map((r) => r.id),
+    });
     return resolved;
   }
 

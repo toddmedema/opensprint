@@ -54,10 +54,7 @@ export class TaskService {
     if (projectId != null) {
       await this.projectService.getProject(projectId);
     }
-    const tasks = await this.taskStore.listRecentlyCompletedTasks(
-      projectId ?? null,
-      100
-    );
+    const tasks = await this.taskStore.listRecentlyCompletedTasks(projectId ?? null, 100);
     const buckets = new Map<number, { totalMs: number; count: number }>();
     for (let c = TASK_COMPLEXITY_MIN; c <= TASK_COMPLEXITY_MAX; c++) {
       buckets.set(c, { totalMs: 0, count: 0 });
@@ -103,8 +100,9 @@ export class TaskService {
     const listAllMs = Math.round(performance.now() - t0);
 
     const t1 = performance.now();
-    const sessionsByTask =
-      await this.sessionManager.loadSessionsTestResultsOnlyGroupedByTaskId(project.repoPath);
+    const sessionsByTask = await this.sessionManager.loadSessionsTestResultsOnlyGroupedByTaskId(
+      project.repoPath
+    );
     const sessionsMs = Math.round(performance.now() - t1);
 
     const readyIds = this.computeReadyIdsFromListAll(allIssues);
@@ -284,8 +282,7 @@ export class TaskService {
 
     const taskComplexity = clampTaskComplexity((issue as { complexity?: number }).complexity);
 
-    const blockReason =
-      (issue as { block_reason?: string | null }).block_reason ?? null;
+    const blockReason = (issue as { block_reason?: string | null }).block_reason ?? null;
     const lastExecution = parseTaskLastExecutionSummary(
       (issue as { last_execution_summary?: unknown }).last_execution_summary
     );
@@ -354,7 +351,10 @@ export class TaskService {
   }
 
   /** Walk up parent chain to find epic (epic-blocked model: no gate). */
-  private extractEpicId(id: string | undefined | null, idToIssue?: Map<string, StoredTask>): string | null {
+  private extractEpicId(
+    id: string | undefined | null,
+    idToIssue?: Map<string, StoredTask>
+  ): string | null {
     if (id == null || typeof id !== "string") return null;
     const lastDot = id.lastIndexOf(".");
     if (lastDot <= 0) return null;
@@ -585,9 +585,7 @@ export class TaskService {
 
     if (epicId) {
       const implTasks = allIssues.filter(
-        (i) =>
-          i.id.startsWith(epicId + ".") &&
-          (i.issue_type ?? i.type) !== "epic"
+        (i) => i.id.startsWith(epicId + ".") && (i.issue_type ?? i.type) !== "epic"
       );
       const allClosed = implTasks.every((i) => (i.status as string) === "closed");
 

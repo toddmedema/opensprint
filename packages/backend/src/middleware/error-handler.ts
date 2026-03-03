@@ -18,6 +18,9 @@ export class AppError extends Error {
 
 export function errorHandler(err: Error, _req: Request, res: Response, _next: NextFunction): void {
   if (err instanceof AppError) {
+    if (err.code === "DATABASE_UNAVAILABLE") {
+      res.setHeader("Retry-After", "5");
+    }
     // 4xx are expected client errors (e.g. not found); log at debug to avoid noise
     if (err.statusCode < 500) {
       log.debug("Request client error", {

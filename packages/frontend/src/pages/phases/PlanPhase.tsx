@@ -88,12 +88,20 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
 
   /* ── Redux state (needed for hook args) ── */
   const selectedPlanId = useAppSelector((s) => s.plan.selectedPlanId);
-  const planChatQuery = usePlanChat(projectId, selectedPlanId ? `plan:${selectedPlanId}` : undefined);
+  const planChatQuery = usePlanChat(
+    projectId,
+    selectedPlanId ? `plan:${selectedPlanId}` : undefined
+  );
   const singlePlanQuery = useSinglePlan(projectId, selectedPlanId ?? undefined);
 
   useEffect(() => {
     if (planChatQuery.data) {
-      dispatch(setPlanChatMessages({ context: planChatQuery.data.context, messages: planChatQuery.data.messages }));
+      dispatch(
+        setPlanChatMessages({
+          context: planChatQuery.data.context,
+          messages: planChatQuery.data.messages,
+        })
+      );
     }
   }, [planChatQuery.data, dispatch]);
 
@@ -164,7 +172,8 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
     (selectedPlanId &&
       openQuestionNotifications.find(
         (n) => n.source === "plan" && n.sourceId === selectedPlanId
-      )) ?? null;
+      )) ??
+    null;
   const sidebarScrollRef = useRef<HTMLDivElement>(null);
   const prevChatMessageCountRef = useRef(0);
 
@@ -174,8 +183,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
   const processingGenerateRef = useRef(false);
 
   const filteredAndSortedPlans = useMemo(() => {
-    let filtered =
-      statusFilter === "all" ? plans : plans.filter((p) => p.status === statusFilter);
+    let filtered = statusFilter === "all" ? plans : plans.filter((p) => p.status === statusFilter);
     if (searchQuery.trim()) {
       filtered = filtered.filter((p) => matchesPlanSearchQuery(p, searchQuery));
     }
@@ -183,10 +191,8 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
   }, [plans, statusFilter, searchQuery]);
 
   const plansEmpty = plans.length === 0 && optimisticPlans.length === 0;
-  const { showSpinner: showPlansSpinner, showEmptyState: showPlansEmptyState } = usePhaseLoadingState(
-    plansQuery.isLoading,
-    plansEmpty
-  );
+  const { showSpinner: showPlansSpinner, showEmptyState: showPlansEmptyState } =
+    usePhaseLoadingState(plansQuery.isLoading, plansEmpty);
 
   /** Process the generate-plan queue sequentially (one at a time). */
   const processGenerateQueue = useCallback(async () => {
@@ -198,7 +204,9 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
         generateQueueRef.current = generateQueueRef.current.slice(1);
         const result = await dispatch(generatePlan({ projectId, description, tempId }));
         if (generatePlan.fulfilled.match(result)) {
-          dispatch(addNotification({ message: "Plan generated successfully", severity: "success" }));
+          dispatch(
+            addNotification({ message: "Plan generated successfully", severity: "success" })
+          );
           void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
         } else if (generatePlan.rejected.match(result)) {
           dispatch(
@@ -355,7 +363,9 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
         // planTasksListener dispatches fetchTasks on planTasks.fulfilled for live updates
         const currentSelected = store.getState().plan.selectedPlanId;
         if (currentSelected === planId) {
-          void queryClient.invalidateQueries({ queryKey: queryKeys.plans.detail(projectId, planId) });
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.plans.detail(projectId, planId),
+          });
         }
         if (planTasks.fulfilled.match(result)) {
           completed += 1;
@@ -525,7 +535,9 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
     if (sendPlanMessage.fulfilled.match(result)) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
       if (selectedPlanId) {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.plans.detail(projectId, selectedPlanId!) });
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.plans.detail(projectId, selectedPlanId!),
+        });
       }
       // Refetch chat history so persisted messages are authoritative in Redux (survives reload)
       void planChatQuery.refetch();
@@ -541,10 +553,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
         className="flex flex-1 min-h-0 items-center justify-center bg-theme-bg"
         data-testid="plan-phase-loading"
       >
-        <PhaseLoadingSpinner
-          data-testid="plan-phase-loading-spinner"
-          aria-label="Loading plans"
-        />
+        <PhaseLoadingSpinner data-testid="plan-phase-loading-spinner" aria-label="Loading plans" />
       </div>
     );
   }
@@ -627,85 +636,82 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
             /* Card Mode: Feature Plans */
             <>
               {/* Plan Cards */}
-        <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
-          <h2 className="text-lg font-semibold text-theme-text">Feature Plans</h2>
-        </div>
+              <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
+                <h2 className="text-lg font-semibold text-theme-text">Feature Plans</h2>
+              </div>
 
-        {showPlansEmptyState ? (
-          <div className="text-center py-10">
-            <p className="text-theme-muted">
-              No plans yet. Click &ldquo;Add Plan&rdquo; in the topbar to generate a plan, or use
-              &ldquo;Plan it&rdquo; from the Sketch phase.
-            </p>
-          </div>
-        ) : filteredAndSortedPlans.length === 0 && optimisticPlans.length === 0 ? (
-          <div className="text-center py-10">
-            <p className="text-theme-muted">
-              {isSearchActive
-                ? "No plans match your search."
-                : `No plans match the "${statusFilter === "all" ? "All" : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}" filter.`}
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {/* Optimistic cards first (top-left), visible when filter is all or planning */}
-            {(statusFilter === "all" || statusFilter === "planning") &&
-              optimisticPlans.map((opt) => {
-                const optimisticPlan: Plan = {
-                  metadata: {
-                    planId: opt.title,
-                    epicId: opt.tempId,
-                    shippedAt: null,
-                    complexity: "medium",
-                  },
-                  content: "",
-                  status: "planning",
-                  taskCount: 0,
-                  doneTaskCount: 0,
-                  dependencyCount: 0,
-                };
-                return (
-                  <EpicCard
-                    key={opt.tempId}
-                    plan={optimisticPlan}
-                    isOptimistic
-                    executingPlanId={null}
-                    reExecutingPlanId={null}
-                    planTasksPlanIds={[]}
-                    onSelect={() => {}}
-                    onShip={() => {}}
-                    onPlanTasks={() => {}}
-                    onReship={() => {}}
-                  />
-                );
-              })}
-            {filteredAndSortedPlans.map((plan) => (
-              <EpicCard
-                key={plan.metadata.planId}
-                plan={plan}
-                executingPlanId={executingPlanId}
-                reExecutingPlanId={reExecutingPlanId}
-                planTasksPlanIds={planTasksPlanIds}
-                executeError={executeError}
-                onSelect={() => handleSelectPlan(plan)}
-                onShip={() => handleShip(plan.metadata.planId)}
-                onPlanTasks={() => handlePlanTasks(plan.metadata.planId)}
-                onReship={() => handleReship(plan.metadata.planId)}
-                onClearError={() => dispatch(clearExecuteError())}
-              />
-            ))}
-          </div>
-        )}
+              {showPlansEmptyState ? (
+                <div className="text-center py-10">
+                  <p className="text-theme-muted">
+                    No plans yet. Click &ldquo;Add Plan&rdquo; in the topbar to generate a plan, or
+                    use &ldquo;Plan it&rdquo; from the Sketch phase.
+                  </p>
+                </div>
+              ) : filteredAndSortedPlans.length === 0 && optimisticPlans.length === 0 ? (
+                <div className="text-center py-10">
+                  <p className="text-theme-muted">
+                    {isSearchActive
+                      ? "No plans match your search."
+                      : `No plans match the "${statusFilter === "all" ? "All" : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}" filter.`}
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {/* Optimistic cards first (top-left), visible when filter is all or planning */}
+                  {(statusFilter === "all" || statusFilter === "planning") &&
+                    optimisticPlans.map((opt) => {
+                      const optimisticPlan: Plan = {
+                        metadata: {
+                          planId: opt.title,
+                          epicId: opt.tempId,
+                          shippedAt: null,
+                          complexity: "medium",
+                        },
+                        content: "",
+                        status: "planning",
+                        taskCount: 0,
+                        doneTaskCount: 0,
+                        dependencyCount: 0,
+                      };
+                      return (
+                        <EpicCard
+                          key={opt.tempId}
+                          plan={optimisticPlan}
+                          isOptimistic
+                          executingPlanId={null}
+                          reExecutingPlanId={null}
+                          planTasksPlanIds={[]}
+                          onSelect={() => {}}
+                          onShip={() => {}}
+                          onPlanTasks={() => {}}
+                          onReship={() => {}}
+                        />
+                      );
+                    })}
+                  {filteredAndSortedPlans.map((plan) => (
+                    <EpicCard
+                      key={plan.metadata.planId}
+                      plan={plan}
+                      executingPlanId={executingPlanId}
+                      reExecutingPlanId={reExecutingPlanId}
+                      planTasksPlanIds={planTasksPlanIds}
+                      executeError={executeError}
+                      onSelect={() => handleSelectPlan(plan)}
+                      onShip={() => handleShip(plan.metadata.planId)}
+                      onPlanTasks={() => handlePlanTasks(plan.metadata.planId)}
+                      onReship={() => handleReship(plan.metadata.planId)}
+                      onClearError={() => dispatch(clearExecuteError())}
+                    />
+                  ))}
+                </div>
+              )}
             </>
           )}
         </div>
       </div>
 
       {addPlanModalOpen && (
-        <AddPlanModal
-          onGenerate={handleGeneratePlan}
-          onClose={() => setAddPlanModalOpen(false)}
-        />
+        <AddPlanModal onGenerate={handleGeneratePlan} onClose={() => setAddPlanModalOpen(false)} />
       )}
 
       {crossEpicModal && (
@@ -763,12 +769,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
 
       {/* Sidebar: Plan Detail + Chat — show when planContext set so chat persists across reloads (e.g. deep link) */}
       {planContext && (
-        <ResizableSidebar
-          storageKey="plan"
-          defaultWidth={420}
-          responsive
-          onClose={handleClosePlan}
-        >
+        <ResizableSidebar storageKey="plan" defaultWidth={420} responsive onClose={handleClosePlan}>
           {/* Sticky header + scrollable body (matches Execute sidebar) */}
           {selectedPlan ? (
             <PlanDetailContent
@@ -958,9 +959,13 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                             })
                           );
                           if (sendPlanMessage.fulfilled.match(result)) {
-                            void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
+                            void queryClient.invalidateQueries({
+                              queryKey: queryKeys.plans.list(projectId),
+                            });
                             if (selectedPlanId) {
-                              void queryClient.invalidateQueries({ queryKey: queryKeys.plans.detail(projectId, selectedPlanId!) });
+                              void queryClient.invalidateQueries({
+                                queryKey: queryKeys.plans.detail(projectId, selectedPlanId!),
+                              });
                             }
                             void planChatQuery.refetch();
                           } else {
@@ -995,7 +1000,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                             <div
                               className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
                                 msg.role === "user"
-                                  ? "bg-brand-600 text-white"
+                                  ? "border border-theme-border bg-theme-surface text-theme-text shadow-sm"
                                   : "bg-theme-surface border border-theme-border text-theme-text"
                               }`}
                             >
@@ -1027,10 +1032,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                 </h3>
                 <CloseButton onClick={handleClosePlan} ariaLabel="Close plan panel" />
               </div>
-              <div
-                ref={sidebarScrollRef}
-                className="flex-1 overflow-y-auto min-h-0 flex flex-col"
-              >
+              <div ref={sidebarScrollRef} className="flex-1 overflow-y-auto min-h-0 flex flex-col">
                 <div className="p-4 text-sm text-theme-muted">Loading plan...</div>
                 <div
                   className="p-4"
@@ -1056,7 +1058,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                         <div
                           className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
                             msg.role === "user"
-                              ? "bg-brand-600 text-white"
+                              ? "border border-theme-border bg-theme-surface text-theme-text shadow-sm"
                               : "bg-theme-surface border border-theme-border text-theme-text"
                           }`}
                         >

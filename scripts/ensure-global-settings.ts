@@ -10,8 +10,7 @@
 import fs from "fs/promises";
 import path from "path";
 
-const DEFAULT_DATABASE_URL =
-  "postgresql://opensprint:opensprint@localhost:5432/opensprint";
+const DEFAULT_DATABASE_URL = "postgresql://opensprint:opensprint@localhost:5432/opensprint";
 
 function getGlobalSettingsPath(): string {
   const home = process.env.HOME ?? process.env.USERPROFILE ?? "/tmp";

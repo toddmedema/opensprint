@@ -14,10 +14,7 @@ interface ErrorBoundaryState {
  * Catches uncaught render errors in the tree and shows a fallback UI
  * so the app does not unmount entirely.
  */
-export class ErrorBoundary extends React.Component<
-  ErrorBoundaryProps,
-  ErrorBoundaryState
-> {
+export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false };
@@ -43,8 +40,7 @@ export class ErrorBoundary extends React.Component<
         >
           <h1 className="text-xl font-semibold">Something went wrong</h1>
           <p className="max-w-md text-center text-theme-text-muted">
-            An unexpected error occurred. You can try reloading the page or
-            return to the home page.
+            An unexpected error occurred. You can try reloading the page or return to the home page.
           </p>
           <div className="flex gap-3">
             <button

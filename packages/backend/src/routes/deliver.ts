@@ -334,8 +334,7 @@ deliverRouter.post("/:deployId/rollback", async (req: Request<DeployIdParams>, r
     const recordTarget =
       record.target && typeof record.target === "string" ? record.target : "production";
     const targetConfig = getDeploymentTargetConfig(settings.deployment, recordTarget);
-    const rollbackCommand =
-      targetConfig?.rollbackCommand ?? settings.deployment.rollbackCommand;
+    const rollbackCommand = targetConfig?.rollbackCommand ?? settings.deployment.rollbackCommand;
 
     if (settings.deployment.mode === "custom" && rollbackCommand) {
       const latest = await deployStorageService.getLatestDeploy(projectId);
@@ -463,16 +462,8 @@ export async function runDeployAsync(
     if (config.mode === "expo") {
       await ensureEasConfig(repoPath);
       // Expo mode: staging maps to beta variant, production to prod (PRD §7.5.3)
-      const variant: "beta" | "prod" =
-        effectiveTarget === "staging" ? "beta" : "prod";
-      await runExpoDeployAsync(
-        projectId,
-        deployId,
-        repoPath,
-        variant,
-        emit,
-        envVars
-      );
+      const variant: "beta" | "prod" = effectiveTarget === "staging" ? "beta" : "prod";
+      await runExpoDeployAsync(projectId, deployId, repoPath, variant, emit, envVars);
     } else if (config.mode === "custom") {
       const customCommand = targetConfig?.command ?? config.customCommand;
       const webhookUrl = targetConfig?.webhookUrl ?? config.webhookUrl;

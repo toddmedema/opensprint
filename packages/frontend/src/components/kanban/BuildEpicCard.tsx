@@ -79,9 +79,7 @@ const EpicTaskRow = memo(function EpicTaskRow({
 });
 
 import type { StatusFilter } from "../../lib/executeTaskFilter";
-import {
-  filterTasksByStatusAndSearch,
-} from "../../lib/executeTaskFilter";
+import { filterTasksByStatusAndSearch } from "../../lib/executeTaskFilter";
 import { sortEpicTasksByStatus } from "../../lib/executeTaskSort";
 import { selectTasksForEpic } from "../../store/slices/executeSlice";
 
@@ -120,19 +118,13 @@ export function BuildEpicCard({
 }: BuildEpicCardProps) {
   const [expanded, setExpanded] = useState(false);
   const taskListRef = useRef<HTMLDivElement>(null);
-  const tasksFromRedux = useAppSelector(
-    (s) => selectTasksForEpic(s, epicId),
-    shallowEqual
-  );
+  const tasksFromRedux = useAppSelector((s) => selectTasksForEpic(s, epicId), shallowEqual);
   const tasks = tasksProp ?? tasksFromRedux;
   const filteredTasks = useMemo(
     () => filterTasksByStatusAndSearch(tasks, statusFilter, searchQuery),
     [tasks, statusFilter, searchQuery]
   );
-  const sortedTasks = useMemo(
-    () => sortEpicTasksByStatus(filteredTasks),
-    [filteredTasks]
-  );
+  const sortedTasks = useMemo(() => sortEpicTasksByStatus(filteredTasks), [filteredTasks]);
   const doneCount = sortedTasks.filter((t) => t.kanbanColumn === "done").length;
   const totalCount = sortedTasks.length;
   const progress = totalCount > 0 ? (doneCount / totalCount) * 100 : 0;
@@ -151,9 +143,7 @@ export function BuildEpicCard({
   });
 
   const selectedIndex =
-    selectedTaskId != null
-      ? sortedTasks.findIndex((t) => t.id === selectedTaskId)
-      : -1;
+    selectedTaskId != null ? sortedTasks.findIndex((t) => t.id === selectedTaskId) : -1;
 
   useEffect(() => {
     if (selectedTaskId && selectedIndex >= 0 && !expanded && selectedIndex >= VISIBLE_SUBTASKS) {
@@ -287,9 +277,7 @@ export function BuildEpicCard({
                   key={t.id}
                   taskId={t.id}
                   task={useTaskProp ? t : undefined}
-                  elapsed={
-                    taskIdToStartedAt[t.id] ? formatUptime(taskIdToStartedAt[t.id]) : null
-                  }
+                  elapsed={taskIdToStartedAt[t.id] ? formatUptime(taskIdToStartedAt[t.id]) : null}
                   onTaskSelect={onTaskSelect}
                   onUnblock={onUnblock}
                 />

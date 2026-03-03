@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "../contexts/ThemeContext";
 import { DisplayPreferencesProvider } from "../contexts/DisplayPreferencesContext";
 import { HomeScreen } from "./HomeScreen";
@@ -124,59 +125,19 @@ describe("HomeScreen", () => {
     expect(screen.getByText("/path/to/repo")).toBeInTheDocument();
   });
 
-  it("shows PostgreSQL error banner when backend cannot connect to database", async () => {
-    mockProjectsList.mockResolvedValue([]);
+  it("renders the home UI even when database status is unavailable", async () => {
+    mockProjectsList.mockResolvedValue([mockProject]);
     mockDbStatusGet.mockResolvedValue({
       ok: false,
-      message: "Server is unable to connect to PostgreSQL database.",
-    });
-
-    renderHomeScreen();
-
-    await screen.findByTestId("postgres-error-banner");
-    expect(screen.getByTestId("postgres-error-banner")).toHaveTextContent(
-      "Server is unable to connect to PostgreSQL database."
-    );
-  });
-
-  it("shows root cause message when Postgres is unreachable", async () => {
-    mockProjectsList.mockResolvedValue([]);
-    mockDbStatusGet.mockResolvedValue({
-      ok: false,
+      state: "disconnected",
+      lastCheckedAt: null,
       message: "No PostgreSQL server running",
     });
 
     renderHomeScreen();
 
-    await screen.findByTestId("postgres-error-banner");
-    expect(screen.getByTestId("postgres-error-banner")).toHaveTextContent(
-      "No PostgreSQL server running"
-    );
-  });
-
-  it("shows root cause message when auth/database config is wrong", async () => {
-    mockProjectsList.mockResolvedValue([]);
-    mockDbStatusGet.mockResolvedValue({
-      ok: false,
-      message: "PostgreSQL server is running but wrong user or database setup",
-    });
-
-    renderHomeScreen();
-
-    await screen.findByTestId("postgres-error-banner");
-    expect(screen.getByTestId("postgres-error-banner")).toHaveTextContent(
-      "PostgreSQL server is running but wrong user or database setup"
-    );
-  });
-
-  it("does not show error banner when DB is connected", async () => {
-    mockProjectsList.mockResolvedValue([]);
-    mockDbStatusGet.mockResolvedValue({ ok: true });
-
-    renderHomeScreen();
-
-    await screen.findByTestId("projects-grid");
-    expect(screen.queryByTestId("postgres-error-banner")).not.toBeInTheDocument();
+    await screen.findByTestId("project-card-proj-1");
+    expect(screen.getByText("My Project")).toBeInTheDocument();
   });
 
   it("project cards have hover effect for clickability feedback", async () => {
@@ -244,24 +205,30 @@ describe("HomeScreen", () => {
   });
 
   it("navigates to /settings when Create New clicked and no API keys", async () => {
-    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+    );
     mockProjectsList.mockResolvedValue([]);
     mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: false, useCustomCli: false });
     const user = userEvent.setup();
 
     const { SettingsPage } = await import("../pages/SettingsPage");
     const store = configureStore({ reducer: { notification: notificationReducer } });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <ThemeProvider>
         <DisplayPreferencesProvider>
-          <Provider store={store}>
-            <MemoryRouter initialEntries={["/"]}>
-              <Routes>
-                <Route path="/" element={<HomeScreen />} />
-                <Route path="/settings" element={<SettingsPage />} />
-              </Routes>
-            </MemoryRouter>
-          </Provider>
+          <QueryClientProvider client={queryClient}>
+            <Provider store={store}>
+              <MemoryRouter initialEntries={["/"]}>
+                <Routes>
+                  <Route path="/" element={<HomeScreen />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                </Routes>
+              </MemoryRouter>
+            </Provider>
+          </QueryClientProvider>
         </DisplayPreferencesProvider>
       </ThemeProvider>
     );
@@ -273,24 +240,30 @@ describe("HomeScreen", () => {
   });
 
   it("navigates to /settings when Add Existing clicked and no API keys", async () => {
-    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
+    );
     mockProjectsList.mockResolvedValue([]);
     mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: false, useCustomCli: false });
     const user = userEvent.setup();
 
     const { SettingsPage } = await import("../pages/SettingsPage");
     const store = configureStore({ reducer: { notification: notificationReducer } });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <ThemeProvider>
         <DisplayPreferencesProvider>
-          <Provider store={store}>
-            <MemoryRouter initialEntries={["/"]}>
-              <Routes>
-                <Route path="/" element={<HomeScreen />} />
-                <Route path="/settings" element={<SettingsPage />} />
-              </Routes>
-            </MemoryRouter>
-          </Provider>
+          <QueryClientProvider client={queryClient}>
+            <Provider store={store}>
+              <MemoryRouter initialEntries={["/"]}>
+                <Routes>
+                  <Route path="/" element={<HomeScreen />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                </Routes>
+              </MemoryRouter>
+            </Provider>
+          </QueryClientProvider>
         </DisplayPreferencesProvider>
       </ThemeProvider>
     );

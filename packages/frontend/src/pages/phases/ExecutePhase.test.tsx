@@ -107,21 +107,23 @@ function syncTaskMocks(tasks: Parameters<typeof toTasksByIdAndOrder>[0]) {
   vi.mocked(api.tasks.list).mockResolvedValue(tasksList as never);
   const existingGetImpl = mockGet.getMockImplementation();
   const defaultGetImpl = async (_projectId: string, taskId: string) => {
-    return taskById.get(taskId) ?? {
-      id: taskId,
-      title: taskId,
-      epicId: "epic-1",
-      kanbanColumn: "in_progress",
-      priority: 0,
-      assignee: null,
-      description: "",
-      type: "task",
-      status: "open",
-      labels: [],
-      dependencies: [],
-      createdAt: "",
-      updatedAt: "",
-    };
+    return (
+      taskById.get(taskId) ?? {
+        id: taskId,
+        title: taskId,
+        epicId: "epic-1",
+        kanbanColumn: "in_progress",
+        priority: 0,
+        assignee: null,
+        description: "",
+        type: "task",
+        status: "open",
+        labels: [],
+        dependencies: [],
+        createdAt: "",
+        updatedAt: "",
+      }
+    );
   };
   if (!existingGetImpl || existingGetImpl === currentTaskGetImpl) {
     mockGet.mockImplementation(defaultGetImpl);

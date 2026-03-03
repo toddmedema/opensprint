@@ -10,7 +10,7 @@ export function useDeliverStatus(
   return useQuery({
     queryKey: queryKeys.deliver.status(projectId ?? ""),
     queryFn: () => api.deliver.status(projectId!),
-    enabled: Boolean(projectId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && options?.enabled !== false,
     refetchInterval: options?.refetchInterval,
   });
 }
@@ -23,7 +23,7 @@ export function useDeliverHistory(
   return useQuery({
     queryKey: queryKeys.deliver.history(projectId ?? ""),
     queryFn: () => api.deliver.history(projectId!, limit),
-    enabled: Boolean(projectId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && options?.enabled !== false,
     refetchInterval: options?.refetchInterval,
   });
 }

@@ -194,10 +194,7 @@ export class FailureHandlerService {
       failureType === "no_result"
         ? this.enrichNoResultReason(reason, slot.agent.outputLog)
         : reason;
-    const diagnosedNoResultFailure = this.isDiagnosedNoResultFailure(
-      failureType,
-      effectiveReason
-    );
+    const diagnosedNoResultFailure = this.isDiagnosedNoResultFailure(failureType, effectiveReason);
     const currentPriority = task.priority ?? 2;
     const nextAction = this.nextActionForFailure({
       diagnosedNoResultFailure,
@@ -461,16 +458,16 @@ export class FailureHandlerService {
       await this.host.deleteAssignment(repoPath, task.id);
 
       if (currentPriority >= MAX_PRIORITY_BEFORE_BLOCK) {
-          await this.blockTask(
-            projectId,
-            repoPath,
-            task,
-            cumulativeAttempts,
-            effectiveReason,
-            failureType,
-            slot.phase,
-            agentConfig.model ?? null
-          );
+        await this.blockTask(
+          projectId,
+          repoPath,
+          task,
+          cumulativeAttempts,
+          effectiveReason,
+          failureType,
+          slot.phase,
+          agentConfig.model ?? null
+        );
       } else {
         const newPriority = currentPriority + 1;
         log.info(

@@ -39,7 +39,9 @@ function renderActiveAgentsList() {
           if (cancelled) return;
           const taskIdToStartedAt = Object.fromEntries(
             (agents as Array<{ id: string; phase?: string; startedAt?: string }>)
-              .filter((agent) => (agent.phase === "coding" || agent.phase === "review") && agent.startedAt)
+              .filter(
+                (agent) => (agent.phase === "coding" || agent.phase === "review") && agent.startedAt
+              )
               .map((agent) => [agent.id, agent.startedAt as string])
           );
           store.dispatch(

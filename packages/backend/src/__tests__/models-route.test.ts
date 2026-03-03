@@ -373,9 +373,7 @@ describe("Models API", () => {
       mockModelsList.mockReturnValue(gen());
 
       delete process.env.ANTHROPIC_API_KEY;
-      const res = await request(app).get(
-        `${API_PREFIX}/models?provider=claude&projectId=proj-123`
-      );
+      const res = await request(app).get(`${API_PREFIX}/models?provider=claude&projectId=proj-123`);
 
       expect(res.status).toBe(200);
       expect(res.body.data).toEqual([{ id: "claude-sonnet-4", displayName: "Claude Sonnet 4" }]);

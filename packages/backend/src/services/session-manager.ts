@@ -13,10 +13,7 @@ import type {
 import { ensureRuntimeDir, getRuntimePath } from "../utils/runtime-dir.js";
 import { taskStore } from "./task-store.service.js";
 import { ProjectService } from "./project.service.js";
-import {
-  computeLogDiff95thPercentile,
-  truncateToThreshold,
-} from "../utils/log-diff-truncation.js";
+import { computeLogDiff95thPercentile, truncateToThreshold } from "../utils/log-diff-truncation.js";
 
 const projectService = new ProjectService();
 
@@ -55,11 +52,7 @@ export class SessionManager {
    * When angle is undefined: reads from result.json (general agent).
    * When angle is provided: reads from review-angles/<angle>/result.json.
    */
-  async readResult(
-    repoPath: string,
-    taskId: string,
-    angle?: ReviewAngle
-  ): Promise<unknown | null> {
+  async readResult(repoPath: string, taskId: string, angle?: ReviewAngle): Promise<unknown | null> {
     const resultPath = this.getResultPath(repoPath, taskId, angle);
     try {
       const raw = await fs.readFile(resultPath, "utf-8");
@@ -75,11 +68,7 @@ export class SessionManager {
    * When angle is undefined: clears result.json (general agent).
    * When angle is provided: clears review-angles/<angle>/result.json.
    */
-  async clearResult(
-    repoPath: string,
-    taskId: string,
-    angle?: ReviewAngle
-  ): Promise<void> {
+  async clearResult(repoPath: string, taskId: string, angle?: ReviewAngle): Promise<void> {
     const resultPath = this.getResultPath(repoPath, taskId, angle);
     try {
       await fs.unlink(resultPath);

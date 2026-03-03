@@ -267,15 +267,15 @@ export function ApiKeysSection({
                   const isVisible = visibleKeys.has(entry.id);
                   const canRemove = entries.length > 1;
                   const placeholder = !hasValue
-                    ? (isNew
-                        ? provider === "ANTHROPIC_API_KEY"
-                          ? "sk-ant-..."
-                          : provider === "OPENAI_API_KEY"
-                            ? "sk-..."
-                            : provider === "GOOGLE_API_KEY"
-                              ? "AIza..."
-                              : "key_..."
-                        : MASKED_PLACEHOLDER)
+                    ? isNew
+                      ? provider === "ANTHROPIC_API_KEY"
+                        ? "sk-ant-..."
+                        : provider === "OPENAI_API_KEY"
+                          ? "sk-..."
+                          : provider === "GOOGLE_API_KEY"
+                            ? "AIza..."
+                            : "key_..."
+                      : MASKED_PLACEHOLDER
                     : undefined;
                   return (
                     <div key={entry.id} className="space-y-1">

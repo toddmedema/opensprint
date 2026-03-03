@@ -14,11 +14,7 @@ const SIZE_CLASSES: Record<"xs" | "sm" | "md", string> = {
 };
 
 /** Simple (low/1-5): one dot, blue. Complex (high/6-10): three dots in triangle, yellow. */
-export function ComplexityIcon({
-  complexity,
-  size = "sm",
-  className = "",
-}: ComplexityIconProps) {
+export function ComplexityIcon({ complexity, size = "sm", className = "" }: ComplexityIconProps) {
   if (complexity === undefined || complexity === null) return null;
 
   const sizeClass = SIZE_CLASSES[size];

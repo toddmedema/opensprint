@@ -9,7 +9,12 @@
  * - Push failures: try merger agent once; if resolution fails, abort and retry on next completion
  */
 
-import { BACKOFF_FAILURE_THRESHOLD, resolveTestCommand, type AgentConfig, type TestResults } from "@opensprint/shared";
+import {
+  BACKOFF_FAILURE_THRESHOLD,
+  resolveTestCommand,
+  type AgentConfig,
+  type TestResults,
+} from "@opensprint/shared";
 import type { StoredTask } from "./task-store.service.js";
 import { RebaseConflictError } from "./branch-manager.js";
 import { gitCommitQueue, MergeJobError } from "./git-commit-queue.service.js";
@@ -538,8 +543,8 @@ export class MergeCoordinatorService {
             summary: requeuedSummary.summary,
             nextAction: "Requeued for retry",
           },
-          })
-          .catch(() => {});
+        })
+        .catch(() => {});
 
       shouldNudge = true;
     } catch (err) {
@@ -601,8 +606,8 @@ export class MergeCoordinatorService {
       if (allClosed) {
         const epicIssue = allIssues.find((i) => i.id === epicId);
         if (epicIssue && (epicIssue.status as string) !== "closed") {
-          this.runFinalReviewAndCloseOrCreateTasks(projectId, repoPath, epicId).catch(
-            (err) => log.warn("Final review flow failed", { projectId, epicId, err })
+          this.runFinalReviewAndCloseOrCreateTasks(projectId, repoPath, epicId).catch((err) =>
+            log.warn("Final review flow failed", { projectId, epicId, err })
           );
         } else {
           triggerDeployForEvent(projectId, "each_epic").catch((err) => {

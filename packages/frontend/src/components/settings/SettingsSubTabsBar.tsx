@@ -24,27 +24,27 @@ export function SettingsSubTabsBar({
   variant = "bar",
 }: SettingsSubTabsBarProps) {
   const content = (
-      <div className="flex flex-wrap items-center gap-2">
-        {TABS.map((tab) => {
-          const isActive = activeTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => onTabChange(tab.key)}
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-                isActive
-                  ? "bg-brand-600 text-white ring-2 ring-brand-500 ring-offset-2 ring-offset-theme-bg"
-                  : "bg-theme-surface-muted text-theme-text hover:bg-theme-border-subtle"
-              }`}
-              aria-pressed={isActive}
-              data-testid={`settings-tab-${tab.key}`}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
+    <div className="flex flex-wrap items-center gap-2">
+      {TABS.map((tab) => {
+        const isActive = activeTab === tab.key;
+        return (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => onTabChange(tab.key)}
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+              isActive
+                ? "bg-brand-600 text-white ring-2 ring-brand-500 ring-offset-2 ring-offset-theme-bg"
+                : "bg-theme-surface-muted text-theme-text hover:bg-theme-border-subtle"
+            }`}
+            aria-pressed={isActive}
+            data-testid={`settings-tab-${tab.key}`}
+          >
+            {tab.label}
+          </button>
+        );
+      })}
+    </div>
   );
 
   if (variant === "inline") {

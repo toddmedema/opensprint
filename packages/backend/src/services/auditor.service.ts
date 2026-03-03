@@ -132,7 +132,11 @@ export function parseAuditorResult(content: string): AuditorResult | null {
         const raw = t.complexity;
         const complexity =
           clampTaskComplexity(raw) ??
-          (raw === "simple" || raw === "low" ? 3 : raw === "complex" || raw === "high" ? 7 : undefined);
+          (raw === "simple" || raw === "low"
+            ? 3
+            : raw === "complex" || raw === "high"
+              ? 7
+              : undefined);
         const task: DeltaTask = {
           index: typeof t.index === "number" ? t.index : 0,
           title: String(t.title ?? t.task_title ?? "").trim(),

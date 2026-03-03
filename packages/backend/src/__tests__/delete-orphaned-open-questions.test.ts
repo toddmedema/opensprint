@@ -2,7 +2,9 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { deleteOrphanedOpenQuestions } from "../services/delete-orphaned-open-questions.js";
 import type { DbClient } from "../db/client.js";
 
-const { testClientRef } = vi.hoisted(() => ({ testClientRef: { current: null as DbClient | null } }));
+const { testClientRef } = vi.hoisted(() => ({
+  testClientRef: { current: null as DbClient | null },
+}));
 vi.mock("../services/task-store.service.js", async () => {
   const { createTestPostgresClient } = await import("./test-db-helper.js");
   const dbResult = await createTestPostgresClient();
@@ -53,7 +55,8 @@ async function countOpenQuestions(client: DbClient): Promise<number> {
 }
 
 const deleteOrphanedTaskStoreMod = await import("../services/task-store.service.js");
-const deleteOrphanedPostgresOk = (deleteOrphanedTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
+const deleteOrphanedPostgresOk =
+  (deleteOrphanedTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
 
 describe.skipIf(!deleteOrphanedPostgresOk)("deleteOrphanedOpenQuestions", () => {
   beforeEach(async () => {
@@ -93,12 +96,20 @@ describe.skipIf(!deleteOrphanedPostgresOk)("deleteOrphanedOpenQuestions", () => 
     expect(result.deletedCount).toBe(2);
     expect(result.deletedIds).toHaveLength(2);
     expect(result.deletedIds.map((r) => r.id).sort()).toEqual(["oq-3", "oq-4"]);
-    expect(result.deletedIds.map((r) => r.project_id).sort()).toEqual(["proj-deleted", "proj-ghost"]);
+    expect(result.deletedIds.map((r) => r.project_id).sort()).toEqual([
+      "proj-deleted",
+      "proj-ghost",
+    ]);
     expect(await countOpenQuestions(testClientRef.current!)).toBe(2);
   });
 
   it("is idempotent — second run deletes nothing", async () => {
-    mockProjects.push({ id: "proj-1", name: "P1", repoPath: "/p1", createdAt: new Date().toISOString() });
+    mockProjects.push({
+      id: "proj-1",
+      name: "P1",
+      repoPath: "/p1",
+      createdAt: new Date().toISOString(),
+    });
     await insertOpenQuestion(testClientRef.current!, "oq-1", "proj-orphan");
 
     const first = await deleteOrphanedOpenQuestions();

@@ -6,6 +6,6 @@ export function useProject(projectId: string | undefined, options?: { enabled?: 
   return useQuery({
     queryKey: queryKeys.projects.detail(projectId ?? ""),
     queryFn: () => api.projects.get(projectId!),
-    enabled: Boolean(projectId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && options?.enabled !== false,
   });
 }

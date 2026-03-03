@@ -285,7 +285,11 @@ export type UnknownScopeStrategy = "conservative" | "optimistic";
 export type GitWorkingMode = "worktree" | "branches";
 
 /** API key provider env var names (used as keys in apiKeys) */
-export type ApiKeyProvider = "ANTHROPIC_API_KEY" | "CURSOR_API_KEY" | "OPENAI_API_KEY" | "GOOGLE_API_KEY";
+export type ApiKeyProvider =
+  | "ANTHROPIC_API_KEY"
+  | "CURSOR_API_KEY"
+  | "OPENAI_API_KEY"
+  | "GOOGLE_API_KEY";
 
 /** Single API key entry with optional limit-hit timestamp */
 export interface ApiKeyEntry {

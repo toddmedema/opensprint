@@ -24,6 +24,11 @@ import openQuestionsReducer from "../store/slices/openQuestionsSlice";
 // Mock websocket middleware to prevent connection attempts
 const mockWsConnect = vi.fn((payload: unknown) => ({ type: "ws/connect", payload }));
 const mockWsDisconnect = vi.fn(() => ({ type: "ws/disconnect" }));
+const mockDbStatusGet = vi.fn().mockResolvedValue({
+  ok: true,
+  state: "connected",
+  lastCheckedAt: null,
+});
 vi.mock("../store/middleware/websocketMiddleware", () => ({
   wsConnect: (payload: unknown) => mockWsConnect(payload),
   wsDisconnect: () => mockWsDisconnect(),
@@ -35,12 +40,15 @@ vi.mock("../store/middleware/websocketMiddleware", () => ({
 vi.mock("../api/client", () => ({
   api: {
     projects: {
-      get: vi.fn().mockResolvedValue({ id: "proj-1", name: "Test Project", currentPhase: "sketch" }),
+      get: vi
+        .fn()
+        .mockResolvedValue({ id: "proj-1", name: "Test Project", currentPhase: "sketch" }),
       list: vi.fn().mockResolvedValue([]),
       getSettings: vi.fn().mockResolvedValue({ deployment: {} }),
       getSketchContext: vi.fn().mockResolvedValue({ hasExistingCode: false }),
       getPlanStatus: vi.fn().mockResolvedValue({ status: "idle" }),
     },
+    dbStatus: { get: (...args: unknown[]) => mockDbStatusGet(...args) },
     prd: { get: vi.fn().mockResolvedValue({}), getHistory: vi.fn().mockResolvedValue([]) },
     plans: { list: vi.fn().mockResolvedValue({ plans: [], edges: [] }) },
     tasks: {
@@ -64,6 +72,12 @@ vi.mock("../api/client", () => ({
 }));
 
 beforeEach(() => {
+  mockDbStatusGet.mockReset();
+  mockDbStatusGet.mockResolvedValue({
+    ok: true,
+    state: "connected",
+    lastCheckedAt: null,
+  });
   vi.stubGlobal(
     "matchMedia",
     vi.fn(() => ({
@@ -119,7 +133,11 @@ function createQueryClient() {
   });
 }
 
-function renderWithRouter(initialPath: string, store = createStore(), queryClient = createQueryClient()) {
+function renderWithRouter(
+  initialPath: string,
+  store = createStore(),
+  queryClient = createQueryClient()
+) {
   return render(
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
@@ -292,34 +310,92 @@ describe("ProjectView upfront loading and mount-all", () => {
         updatedAt: "",
       },
     ];
-    vi.mocked(api.projects.get).mockImplementation((id: string) =>
-      Promise.resolve(
-        id === "proj-1"
-          ? { id: "proj-1", name: "Project 1", currentPhase: "sketch" }
-          : { id: "proj-2", name: "Project 2", currentPhase: "sketch" }
-      ) as never
+    vi.mocked(api.projects.get).mockImplementation(
+      (id: string) =>
+        Promise.resolve(
+          id === "proj-1"
+            ? { id: "proj-1", name: "Project 1", currentPhase: "sketch" }
+            : { id: "proj-2", name: "Project 2", currentPhase: "sketch" }
+        ) as never
     );
-    vi.mocked(api.tasks.list).mockImplementation((id: string) =>
-      Promise.resolve(id === "proj-1" ? proj1Tasks : proj2Tasks) as never
+    vi.mocked(api.tasks.list).mockImplementation(
+      (id: string) => Promise.resolve(id === "proj-1" ? proj1Tasks : proj2Tasks) as never
     );
-    vi.mocked(api.plans.list).mockImplementation((id: string) =>
-      Promise.resolve({
-        plans: id === "proj-1" ? [{ metadata: { planId: "p1", epicId: "e1", shippedAt: null, complexity: "low" as const }, content: "# P1", status: "planning" as const, taskCount: 1, doneTaskCount: 0, dependencyCount: 0 }] : [{ metadata: { planId: "p2", epicId: "e2", shippedAt: null, complexity: "low" as const }, content: "# P2", status: "planning" as const, taskCount: 1, doneTaskCount: 0, dependencyCount: 0 }],
-        edges: [],
-      }) as never
+    vi.mocked(api.plans.list).mockImplementation(
+      (id: string) =>
+        Promise.resolve({
+          plans:
+            id === "proj-1"
+              ? [
+                  {
+                    metadata: {
+                      planId: "p1",
+                      epicId: "e1",
+                      shippedAt: null,
+                      complexity: "low" as const,
+                    },
+                    content: "# P1",
+                    status: "planning" as const,
+                    taskCount: 1,
+                    doneTaskCount: 0,
+                    dependencyCount: 0,
+                  },
+                ]
+              : [
+                  {
+                    metadata: {
+                      planId: "p2",
+                      epicId: "e2",
+                      shippedAt: null,
+                      complexity: "low" as const,
+                    },
+                    content: "# P2",
+                    status: "planning" as const,
+                    taskCount: 1,
+                    doneTaskCount: 0,
+                    dependencyCount: 0,
+                  },
+                ],
+          edges: [],
+        }) as never
     );
-    vi.mocked(api.feedback.list).mockImplementation((id: string) =>
-      Promise.resolve(
-        id === "proj-1"
-          ? [{ id: "f1", text: "Feedback 1", category: "bug" as const, mappedPlanId: null, createdTaskIds: [], status: "pending" as const, createdAt: "2025-01-01" }]
-          : [{ id: "f2", text: "Feedback 2", category: "feature" as const, mappedPlanId: null, createdTaskIds: [], status: "pending" as const, createdAt: "2025-01-01" }]
-      ) as never
+    vi.mocked(api.feedback.list).mockImplementation(
+      (id: string) =>
+        Promise.resolve(
+          id === "proj-1"
+            ? [
+                {
+                  id: "f1",
+                  text: "Feedback 1",
+                  category: "bug" as const,
+                  mappedPlanId: null,
+                  createdTaskIds: [],
+                  status: "pending" as const,
+                  createdAt: "2025-01-01",
+                },
+              ]
+            : [
+                {
+                  id: "f2",
+                  text: "Feedback 2",
+                  category: "feature" as const,
+                  mappedPlanId: null,
+                  createdTaskIds: [],
+                  status: "pending" as const,
+                  createdAt: "2025-01-01",
+                },
+              ]
+        ) as never
     );
 
     function NavToProj2() {
       const navigate = useNavigate();
       return (
-        <button type="button" onClick={() => navigate("/projects/proj-2/sketch")} data-testid="nav-to-proj2">
+        <button
+          type="button"
+          onClick={() => navigate("/projects/proj-2/sketch")}
+          data-testid="nav-to-proj2"
+        >
           Go to proj-2
         </button>
       );
@@ -457,21 +533,22 @@ describe("ProjectView upfront loading and mount-all", () => {
       },
     ];
 
-    vi.mocked(api.projects.get).mockImplementation((id: string) =>
-      Promise.resolve(
-        id === "proj-1"
-          ? { id: "proj-1", name: "Project 1", currentPhase: "sketch" }
-          : { id: "proj-2", name: "Project 2", currentPhase: "sketch" }
-      ) as never
+    vi.mocked(api.projects.get).mockImplementation(
+      (id: string) =>
+        Promise.resolve(
+          id === "proj-1"
+            ? { id: "proj-1", name: "Project 1", currentPhase: "sketch" }
+            : { id: "proj-2", name: "Project 2", currentPhase: "sketch" }
+        ) as never
     );
-    vi.mocked(api.tasks.list).mockImplementation((id: string) =>
-      Promise.resolve(id === "proj-1" ? proj1Tasks : proj2Tasks) as never
+    vi.mocked(api.tasks.list).mockImplementation(
+      (id: string) => Promise.resolve(id === "proj-1" ? proj1Tasks : proj2Tasks) as never
     );
-    vi.mocked(api.plans.list).mockImplementation((id: string) =>
-      Promise.resolve(id === "proj-1" ? proj1Plans : proj2Plans) as never
+    vi.mocked(api.plans.list).mockImplementation(
+      (id: string) => Promise.resolve(id === "proj-1" ? proj1Plans : proj2Plans) as never
     );
-    vi.mocked(api.feedback.list).mockImplementation((id: string) =>
-      Promise.resolve(id === "proj-1" ? proj1Feedback : proj2Feedback) as never
+    vi.mocked(api.feedback.list).mockImplementation(
+      (id: string) => Promise.resolve(id === "proj-1" ? proj1Feedback : proj2Feedback) as never
     );
 
     function NavToProj2() {
@@ -957,6 +1034,25 @@ describe("ProjectView global deliver toast", () => {
   });
 });
 
+describe("ProjectShell degraded database mode", () => {
+  it("shows the database unavailable state instead of phase content", async () => {
+    mockDbStatusGet.mockResolvedValueOnce({
+      ok: false,
+      state: "disconnected",
+      lastCheckedAt: null,
+      message: "No PostgreSQL server running",
+    });
+
+    renderWithRouter("/projects/proj-1/plan");
+
+    await waitFor(() => {
+      const unavailableState = screen.getByTestId("database-unavailable-state");
+      expect(unavailableState).toBeInTheDocument();
+      expect(within(unavailableState).getByText("No PostgreSQL server running")).toBeInTheDocument();
+    });
+  });
+});
+
 describe("ProjectView plan refresh toast", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -984,7 +1080,9 @@ describe("ProjectView plan refresh toast", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("connection-error-banner")).toBeInTheDocument();
-      expect(screen.getByText("Failed to connect to Open Sprint server - try restarting it")).toBeInTheDocument();
+      expect(
+        screen.getByText("Failed to connect to Open Sprint server - try restarting it")
+      ).toBeInTheDocument();
     });
     expect(screen.queryByTestId("plan-refresh-toast")).not.toBeInTheDocument();
   });

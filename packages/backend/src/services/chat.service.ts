@@ -300,7 +300,8 @@ export class ChatService {
       conversation.messages.push(userMessage);
       const assistantMessage: ConversationMessage = {
         role: "assistant",
-        content: "Answer received. The task will be unblocked and the orchestrator will pick it up.",
+        content:
+          "Answer received. The task will be unblocked and the orchestrator will pick it up.",
         timestamp: new Date().toISOString(),
       };
       conversation.messages.push(assistantMessage);
@@ -388,7 +389,11 @@ export class ChatService {
           ? `plan-chat-${projectId}-${planId}-${conversation.id}-${Date.now()}`
           : `design-chat-${projectId}-${conversation.id}-${Date.now()}`;
     const phase = isExecuteContext ? "execute" : isPlanContext ? "plan" : "sketch";
-    const label = isExecuteContext ? "Execute task chat" : isPlanContext ? "Plan chat" : "Sketch chat";
+    const label = isExecuteContext
+      ? "Execute task chat"
+      : isPlanContext
+        ? "Plan chat"
+        : "Sketch chat";
     const trackingRole = isExecuteContext ? "analyst" : "dreamer";
     try {
       log.info("Invoking planning agent", {

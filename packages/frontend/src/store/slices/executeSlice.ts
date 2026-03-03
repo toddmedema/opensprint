@@ -78,11 +78,14 @@ export interface ExecuteState {
   queueDepth: number;
   selectedTaskId: string | null;
   agentOutput: Record<string, string[]>;
-  completionStateByTaskId: Record<string, {
-    status: string;
-    testResults: { passed: number; failed: number; skipped: number; total: number } | null;
-    reason?: string | null;
-  }>;
+  completionStateByTaskId: Record<
+    string,
+    {
+      status: string;
+      testResults: { passed: number; failed: number; skipped: number; total: number } | null;
+      reason?: string | null;
+    }
+  >;
   archivedSessions: AgentSession[];
   async: AsyncStates<ExecuteAsyncKey>;
   /** Last error from any async operation (for backward compat / display) */

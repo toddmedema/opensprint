@@ -31,7 +31,8 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
 });
 
 const helpTaskStoreMod = await import("../services/task-store.service.js");
-const helpPostgresOk = (helpTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
+const helpPostgresOk =
+  (helpTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
 
 const mockInvokePlanningAgent = vi.fn();
 
@@ -104,7 +105,9 @@ describe.skipIf(!helpPostgresOk)("Help chat API", () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toBeDefined();
     expect(res.body.data.message).toBeDefined();
-    expect(res.body.data.message).toContain("I'd be happy to help! Based on the context, you have one project.");
+    expect(res.body.data.message).toContain(
+      "I'd be happy to help! Based on the context, you have one project."
+    );
   });
 
   it("POST /help/chat (project view) accepts projectId and returns agent response", async () => {
@@ -120,7 +123,9 @@ describe.skipIf(!helpPostgresOk)("Help chat API", () => {
         messages: expect.arrayContaining([
           expect.objectContaining({ role: "user", content: "What is in this project?" }),
         ]),
-        systemPrompt: expect.stringMatching(/Project: Test Project[\s\S]*## Currently Running Agents/),
+        systemPrompt: expect.stringMatching(
+          /Project: Test Project[\s\S]*## Currently Running Agents/
+        ),
       })
     );
   });
@@ -155,9 +160,7 @@ describe.skipIf(!helpPostgresOk)("Help chat API", () => {
     await fs.writeFile(projectsPath, JSON.stringify({ projects: [] }), "utf-8");
     helpChatService.clearProjectListCacheForTesting();
 
-    const res = await request(app)
-      .post(`${API_PREFIX}/help/chat`)
-      .send({ message: "Help me" });
+    const res = await request(app).post(`${API_PREFIX}/help/chat`).send({ message: "Help me" });
 
     expect(res.status).toBe(400);
     expect(res.body.error?.message).toContain("No projects exist");
@@ -194,9 +197,7 @@ describe.skipIf(!helpPostgresOk)("Help chat API", () => {
   });
 
   it("GET /help/chat/history returns empty when no history exists (project)", async () => {
-    const res = await request(app).get(
-      `${API_PREFIX}/help/chat/history?projectId=${projectId}`
-    );
+    const res = await request(app).get(`${API_PREFIX}/help/chat/history?projectId=${projectId}`);
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({ messages: [] });
   });
@@ -206,9 +207,7 @@ describe.skipIf(!helpPostgresOk)("Help chat API", () => {
       .post(`${API_PREFIX}/help/chat`)
       .send({ message: "What is this project?", projectId });
 
-    const res = await request(app).get(
-      `${API_PREFIX}/help/chat/history?projectId=${projectId}`
-    );
+    const res = await request(app).get(`${API_PREFIX}/help/chat/history?projectId=${projectId}`);
     expect(res.status).toBe(200);
     expect(res.body.data.messages).toHaveLength(2);
     expect(res.body.data.messages[0]).toEqual({
@@ -235,9 +234,7 @@ describe.skipIf(!helpPostgresOk)("Help chat API", () => {
   });
 
   it.skip("project and homepage help histories are stored separately", async () => {
-    await request(app)
-      .post(`${API_PREFIX}/help/chat`)
-      .send({ message: "Homepage question" });
+    await request(app).post(`${API_PREFIX}/help/chat`).send({ message: "Homepage question" });
     await request(app)
       .post(`${API_PREFIX}/help/chat`)
       .send({ message: "Project question", projectId });

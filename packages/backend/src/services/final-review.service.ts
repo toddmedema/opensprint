@@ -94,15 +94,13 @@ export class FinalReviewService {
       depIds
     );
 
-    const { fileTree, keyFilesContent } = await this.planService.getCodebaseContext(
-      projectId
-    );
+    const { fileTree, keyFilesContent } = await this.planService.getCodebaseContext(projectId);
     const prdExcerpt = await this.contextAssembler.extractPrdExcerpt(repoPath);
 
     const completedTasksSummary = implTasks
       .map((t) => {
         const out = dependencyOutputs.find((d) => d.taskId === t.id);
-        const summary = out?.summary ?? (t.close_reason ?? "Completed");
+        const summary = out?.summary ?? t.close_reason ?? "Completed";
         return `### ${t.id}: ${t.title}\n${summary}`;
       })
       .join("\n\n");

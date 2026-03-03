@@ -137,7 +137,12 @@ export class RecoveryService {
     ]);
 
     // 2. Stale heartbeat recovery
-    const staleResult = await this.recoverFromStaleHeartbeats(projectId, repoPath, excludeIds, host);
+    const staleResult = await this.recoverFromStaleHeartbeats(
+      projectId,
+      repoPath,
+      excludeIds,
+      host
+    );
     result.reattached.push(...staleResult.reattached);
     result.requeued.push(...staleResult.requeued);
 
@@ -293,9 +298,7 @@ export class RecoveryService {
         const task = await this.taskStore.show(projectId, taskId);
         if (task.status === "in_progress") {
           const pidAlive =
-            typeof heartbeat.pid === "number" &&
-            heartbeat.pid > 0 &&
-            isPidAlive(heartbeat.pid);
+            typeof heartbeat.pid === "number" && heartbeat.pid > 0 && isPidAlive(heartbeat.pid);
           const exceededSuspendGrace =
             Date.now() - heartbeat.lastOutputTimestamp > AGENT_SUSPEND_GRACE_MS;
           const assignment = await this.readAssignment(repoPath, taskId);
@@ -444,12 +447,7 @@ export class RecoveryService {
   ): Promise<string[]> {
     const settings = await this.projectService.getSettings(projectId);
     if (settings.gitWorkingMode === "branches") return [];
-    return this.branchManager.pruneOrphanWorktrees(
-      repoPath,
-      projectId,
-      excludeIds,
-      this.taskStore
-    );
+    return this.branchManager.pruneOrphanWorktrees(repoPath, projectId, excludeIds, this.taskStore);
   }
 
   // ─── Shared helpers ───
@@ -473,11 +471,7 @@ export class RecoveryService {
       try {
         const worktrees = await this.branchManager.listTaskWorktrees(repoPath);
         const found = worktrees.find((w) => w.taskId === task.id);
-        await this.branchManager.removeTaskWorktree(
-          repoPath,
-          task.id,
-          found?.worktreePath
-        );
+        await this.branchManager.removeTaskWorktree(repoPath, task.id, found?.worktreePath);
       } catch {
         // Worktree may not exist
       }
@@ -489,19 +483,21 @@ export class RecoveryService {
     });
   }
 
-  private async readAssignment(
-    repoPath: string,
-    taskId: string
-  ): Promise<GuppAssignment | null> {
+  private async readAssignment(repoPath: string, taskId: string): Promise<GuppAssignment | null> {
     try {
       const readAssignmentAt = (
         this.crashRecovery as {
-          readAssignmentAt?: (basePath: string, assignmentTaskId: string) => Promise<GuppAssignment | null>;
+          readAssignmentAt?: (
+            basePath: string,
+            assignmentTaskId: string
+          ) => Promise<GuppAssignment | null>;
         }
       ).readAssignmentAt;
       if (typeof readAssignmentAt !== "function") return null;
       const worktreePath = this.branchManager.getWorktreePath(taskId);
-      return (await readAssignmentAt(worktreePath, taskId)) ?? (await readAssignmentAt(repoPath, taskId));
+      return (
+        (await readAssignmentAt(worktreePath, taskId)) ?? (await readAssignmentAt(repoPath, taskId))
+      );
     } catch {
       return null;
     }

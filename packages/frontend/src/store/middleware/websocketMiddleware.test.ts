@@ -7,8 +7,7 @@ import projectReducer from "../slices/projectSlice";
 
 const mockInvalidateQueries = vi.fn().mockResolvedValue(undefined);
 vi.mock("../../queryClient", () => ({
-  getQueryClient: () =>
-    ({ invalidateQueries: mockInvalidateQueries }) as unknown as QueryClient,
+  getQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }) as unknown as QueryClient,
 }));
 import websocketReducer from "../slices/websocketSlice";
 import sketchReducer from "../slices/sketchSlice";

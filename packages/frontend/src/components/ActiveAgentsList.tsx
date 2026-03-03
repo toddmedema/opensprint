@@ -240,9 +240,7 @@ export function ActiveAgentsList({ projectId }: ActiveAgentsListProps) {
 
   /** Sort agents by canonical README/PRD order for consistent icon display. */
   const visibleAgents =
-    hiddenAgentIds.size === 0
-      ? agents
-      : agents.filter((agent) => !hiddenAgentIds.has(agent.id));
+    hiddenAgentIds.size === 0 ? agents : agents.filter((agent) => !hiddenAgentIds.has(agent.id));
   const sortedAgents = sortAgentsByCanonicalOrder(visibleAgents);
 
   const BUTTON_AGENT_ICON_SIZE = "1.5rem";

@@ -270,7 +270,9 @@ describe("ApiKeysSection", () => {
       />
     );
     expect(screen.getByTestId("api-keys-section")).toBeInTheDocument();
-    expect(screen.getByText(/Keys are stored globally and used across all projects/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Keys are stored globally and used across all projects/)
+    ).toBeInTheDocument();
     expect(screen.getByText("ANTHROPIC_API_KEY (Claude API)")).toBeInTheDocument();
     expect(screen.getByText("CURSOR_API_KEY")).toBeInTheDocument();
   });
@@ -281,9 +283,7 @@ describe("ApiKeysSection", () => {
     render(
       <ApiKeysSection
         apiKeys={{
-          ANTHROPIC_API_KEY: [
-            { id: "k1", masked: "••••••••", limitHitAt: "2025-02-25T12:00:00Z" },
-          ],
+          ANTHROPIC_API_KEY: [{ id: "k1", masked: "••••••••", limitHitAt: "2025-02-25T12:00:00Z" }],
         }}
         providers={["ANTHROPIC_API_KEY"]}
         variant="global"
@@ -307,9 +307,7 @@ describe("ApiKeysSection", () => {
     render(
       <ApiKeysSection
         apiKeys={{
-          ANTHROPIC_API_KEY: [
-            { id: "k1", masked: "••••••••", limitHitAt: "2025-02-25T12:00:00Z" },
-          ],
+          ANTHROPIC_API_KEY: [{ id: "k1", masked: "••••••••", limitHitAt: "2025-02-25T12:00:00Z" }],
         }}
         providers={["ANTHROPIC_API_KEY"]}
         variant="global"

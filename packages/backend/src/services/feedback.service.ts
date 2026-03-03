@@ -343,15 +343,15 @@ export class FeedbackService {
 
     const count = ancestors.length;
     const lines = ancestors.map((a, i) => {
-      const label = count === 1
-        ? "Parent feedback"
-        : `Feedback ${i + 1} of ${count} (depth ${a.depth ?? i})`;
+      const label =
+        count === 1 ? "Parent feedback" : `Feedback ${i + 1} of ${count} (depth ${a.depth ?? i})`;
       return `${label}:\n  Content: "${a.text}"\n  Category: ${a.category}\n  mappedPlanId: ${a.mappedPlanId ?? "null"}`;
     });
 
-    const header = count === 1
-      ? "# Parent feedback (this is a reply)"
-      : `# Feedback conversation chain (this is a reply — ${count} ancestors, oldest first)`;
+    const header =
+      count === 1
+        ? "# Parent feedback (this is a reply)"
+        : `# Feedback conversation chain (this is a reply — ${count} ancestors, oldest first)`;
 
     return `\n\n${header}\n\n${lines.join("\n\n")}\n`;
   }
@@ -394,7 +394,10 @@ export class FeedbackService {
           },
         ],
         systemPrompt: (() => {
-          const autonomyDesc = buildAutonomyDescription(settings.aiAutonomyLevel, settings.hilConfig);
+          const autonomyDesc = buildAutonomyDescription(
+            settings.aiAutonomyLevel,
+            settings.hilConfig
+          );
           return autonomyDesc
             ? `${FEEDBACK_CATEGORIZATION_PROMPT}\n\n## AI Autonomy Level\n\n${autonomyDesc}\n\n`
             : FEEDBACK_CATEGORIZATION_PROMPT;
@@ -453,9 +456,7 @@ export class FeedbackService {
 
         // is_large_scope: route to Planner for new Epic/Plan instead of individual tickets (PRD §7.4.2)
         item.isLargeScope =
-          typeof parsed.is_large_scope === "boolean"
-            ? parsed.is_large_scope
-            : false;
+          typeof parsed.is_large_scope === "boolean" ? parsed.is_large_scope : false;
 
         const rawProposed = parsed.proposed_tasks ?? parsed.proposedTasks;
         if (Array.isArray(rawProposed) && rawProposed.length > 0) {
@@ -486,7 +487,11 @@ export class FeedbackService {
                 const rawComplexity = t.complexity;
                 let complexity =
                   clampTaskComplexity(rawComplexity) ??
-                  (rawComplexity === "simple" || rawComplexity === "low" ? 3 : rawComplexity === "complex" || rawComplexity === "high" ? 7 : undefined);
+                  (rawComplexity === "simple" || rawComplexity === "low"
+                    ? 3
+                    : rawComplexity === "complex" || rawComplexity === "high"
+                      ? 7
+                      : undefined);
                 // Reply-derived tasks: always complex (default agent could not resolve)
                 if (item.parent_id) {
                   complexity = 7;
@@ -534,16 +539,12 @@ export class FeedbackService {
             ? rawLinkIds.filter((id: unknown) => typeof id === "string").map((id) => String(id))
             : [];
         similarExistingTaskId =
-          linkIds.length === 0 &&
-          typeof rawSimilarId === "string" &&
-          rawSimilarId.trim()
+          linkIds.length === 0 && typeof rawSimilarId === "string" && rawSimilarId.trim()
             ? rawSimilarId.trim()
             : null;
         const rawUpdates = parsed.update_existing_tasks ?? parsed.updateExistingTasks;
         updateExistingTasks =
-          rawUpdates &&
-          typeof rawUpdates === "object" &&
-          !Array.isArray(rawUpdates)
+          rawUpdates && typeof rawUpdates === "object" && !Array.isArray(rawUpdates)
             ? (rawUpdates as Record<string, { title?: string; description?: string }>)
             : {};
 
@@ -559,7 +560,9 @@ export class FeedbackService {
                 const qq = q as { id?: string; text: string };
                 return {
                   id:
-                    typeof qq.id === "string" ? qq.id : `q-${crypto.randomBytes(4).toString("hex")}`,
+                    typeof qq.id === "string"
+                      ? qq.id
+                      : `q-${crypto.randomBytes(4).toString("hex")}`,
                   text: String(qq.text).trim(),
                 };
               })
@@ -601,13 +604,20 @@ export class FeedbackService {
             const scopeMode = settings.hilConfig.scopeChanges;
             if (scopeMode === "requires_approval") {
               const planTitle =
-                plan.content.split("\n")[0]?.replace(/^#+\s*/, "").trim() || plan.metadata.planId;
+                plan.content
+                  .split("\n")[0]
+                  ?.replace(/^#+\s*/, "")
+                  .trim() || plan.metadata.planId;
               const { approved } = await this.hilService.evaluateDecision(
                 projectId,
                 "scopeChanges",
                 buildPlanExecutionHilDescription(item.text, planTitle),
                 [
-                  { id: "approve", label: "Execute", description: "Approve plan and queue for execution" },
+                  {
+                    id: "approve",
+                    label: "Execute",
+                    description: "Approve plan and queue for execution",
+                  },
                   { id: "reject", label: "Reject", description: "Keep plan in Planning state" },
                 ],
                 true,
@@ -872,8 +882,8 @@ export class FeedbackService {
     for (const taskId of taskIds) {
       const upd = updates?.[taskId];
       const existing = await Promise.resolve(this.taskStore.show(projectId, taskId));
-      const existingIds =
-        ((existing as { sourceFeedbackIds?: string[] }).sourceFeedbackIds ?? []) as string[];
+      const existingIds = ((existing as { sourceFeedbackIds?: string[] }).sourceFeedbackIds ??
+        []) as string[];
       const sourceFeedbackIds = existingIds.includes(item.id)
         ? existingIds
         : [...existingIds, item.id];
@@ -888,12 +898,7 @@ export class FeedbackService {
           extra: { sourceFeedbackIds },
         });
       }
-      await this.taskStore.addDependency(
-        projectId,
-        taskId,
-        sourceTask.id,
-        "discovered-from"
-      );
+      await this.taskStore.addDependency(projectId, taskId, sourceTask.id, "discovered-from");
     }
 
     return taskIds;
@@ -906,8 +911,7 @@ export class FeedbackService {
   ): Promise<"low" | "medium" | "high" | "very_high" | undefined> {
     const plan = await this.taskStore.planGetByEpicId(projectId, epicId);
     const c = plan?.metadata?.complexity;
-    return typeof c === "string" &&
-      ["low", "medium", "high", "very_high"].includes(c)
+    return typeof c === "string" && ["low", "medium", "high", "very_high"].includes(c)
       ? (c as "low" | "medium" | "high" | "very_high")
       : undefined;
   }
@@ -943,8 +947,8 @@ export class FeedbackService {
           const existing = await Promise.resolve(
             await this.taskStore.show(projectId, similar_existing_task_id)
           );
-          const existingIds =
-            ((existing as { sourceFeedbackIds?: string[] }).sourceFeedbackIds ?? []) as string[];
+          const existingIds = ((existing as { sourceFeedbackIds?: string[] }).sourceFeedbackIds ??
+            []) as string[];
           const sourceFeedbackIds = existingIds.includes(item.id)
             ? existingIds
             : [...existingIds, item.id];
@@ -1053,9 +1057,13 @@ export class FeedbackService {
           const raw = task.complexity as number | string | undefined;
           const taskComplexity = item.parent_id
             ? 7
-            : clampTaskComplexity(raw) ??
-              (raw === "simple" || raw === "low" ? 3 : raw === "complex" || raw === "high" ? 7 : undefined) ??
-              (planComplexity ? planComplexityToTask(planComplexity) : 3);
+            : (clampTaskComplexity(raw) ??
+              (raw === "simple" || raw === "low"
+                ? 3
+                : raw === "complex" || raw === "high"
+                  ? 7
+                  : undefined) ??
+              (planComplexity ? planComplexityToTask(planComplexity) : 3));
           const issue = await this.taskStore.createWithRetry(
             project.id,
             task.title,

@@ -9,7 +9,9 @@ import { activeAgentsService } from "../services/active-agents.service.js";
 import { API_PREFIX, DEFAULT_HIL_CONFIG } from "@opensprint/shared";
 import type { DbClient } from "../db/client.js";
 
-const { testClientRef } = vi.hoisted(() => ({ testClientRef: { current: null as DbClient | null } }));
+const { testClientRef } = vi.hoisted(() => ({
+  testClientRef: { current: null as DbClient | null },
+}));
 vi.mock("../services/task-store.service.js", async () => {
   const { SCHEMA_SQL, runSchema } = await import("../db/schema.js");
   const { createTestPostgresClient } = await import("./test-db-helper.js");
@@ -20,7 +22,11 @@ vi.mock("../services/task-store.service.js", async () => {
     taskStore: {
       init: vi.fn().mockImplementation(async () => {}),
       getDb: vi.fn().mockImplementation(async () => testClientRef.current),
-      runWrite: vi.fn().mockImplementation(async (fn: (c: DbClient) => Promise<unknown>) => fn(testClientRef.current!)),
+      runWrite: vi
+        .fn()
+        .mockImplementation(async (fn: (c: DbClient) => Promise<unknown>) =>
+          fn(testClientRef.current!)
+        ),
       listAll: vi.fn().mockResolvedValue([]),
       list: vi.fn().mockResolvedValue([]),
       show: vi.fn().mockResolvedValue({}),
@@ -123,7 +129,11 @@ describe("Agents API", () => {
     it("should return content when AGENTS.md exists", async () => {
       const repoPath = path.join(tempDir, "my-project");
       await fs.mkdir(repoPath, { recursive: true });
-      await fs.writeFile(path.join(repoPath, "AGENTS.md"), "# Agent Instructions\n\nUse bd for tasks.", "utf-8");
+      await fs.writeFile(
+        path.join(repoPath, "AGENTS.md"),
+        "# Agent Instructions\n\nUse bd for tasks.",
+        "utf-8"
+      );
 
       const res = await request(app).get(`${API_PREFIX}/projects/${projectId}/agents/instructions`);
 
@@ -142,7 +152,9 @@ describe("Agents API", () => {
     });
 
     it("should return 404 for non-existent project", async () => {
-      const res = await request(app).get(`${API_PREFIX}/projects/nonexistent-id/agents/instructions`);
+      const res = await request(app).get(
+        `${API_PREFIX}/projects/nonexistent-id/agents/instructions`
+      );
 
       expect(res.status).toBe(404);
       expect(res.body.error).toBeDefined();

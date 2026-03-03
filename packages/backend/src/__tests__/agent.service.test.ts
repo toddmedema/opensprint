@@ -133,7 +133,13 @@ describe("AgentService", () => {
   describe("runMergerAgentAndWait", () => {
     it("returns true when merger agent exits with code 0", async () => {
       mockSpawnWithTaskFile.mockImplementation(
-        (_config: unknown, _path: unknown, _cwd: unknown, _onOutput: unknown, onExit: (code: number | null) => void) => {
+        (
+          _config: unknown,
+          _path: unknown,
+          _cwd: unknown,
+          _onOutput: unknown,
+          onExit: (code: number | null) => void
+        ) => {
           setImmediate(() => onExit(0));
           return { kill: vi.fn(), pid: 12345 };
         }
@@ -170,7 +176,13 @@ describe("AgentService", () => {
 
     it("returns false when merger agent exits with non-zero code", async () => {
       mockSpawnWithTaskFile.mockImplementation(
-        (_config: unknown, _path: unknown, _cwd: unknown, _onOutput: unknown, onExit: (code: number | null) => void) => {
+        (
+          _config: unknown,
+          _path: unknown,
+          _cwd: unknown,
+          _onOutput: unknown,
+          onExit: (code: number | null) => void
+        ) => {
           setImmediate(() => onExit(1));
           return { kill: vi.fn(), pid: 12345 };
         }
@@ -193,7 +205,11 @@ describe("AgentService", () => {
 
   describe("invokePlanningAgent (Claude + ApiKeyResolver)", () => {
     const projectId = "proj-123";
-    const claudeConfig: AgentConfig = { type: "claude", model: "claude-sonnet-4", cliCommand: null };
+    const claudeConfig: AgentConfig = {
+      type: "claude",
+      model: "claude-sonnet-4",
+      cliCommand: null,
+    };
 
     it("uses getNextKey and clearLimitHit on success", async () => {
       mockGetNextKey.mockResolvedValue({ key: "sk-ant-test", keyId: "k1", source: "global" });
@@ -208,7 +224,12 @@ describe("AgentService", () => {
       });
 
       expect(mockGetNextKey).toHaveBeenCalledWith(projectId, "ANTHROPIC_API_KEY");
-      expect(mockClearLimitHit).toHaveBeenCalledWith(projectId, "ANTHROPIC_API_KEY", "k1", "global");
+      expect(mockClearLimitHit).toHaveBeenCalledWith(
+        projectId,
+        "ANTHROPIC_API_KEY",
+        "k1",
+        "global"
+      );
       expect(mockRecordLimitHit).not.toHaveBeenCalled();
       expect(result.content).toBe("Hello");
     });
@@ -228,8 +249,18 @@ describe("AgentService", () => {
       });
 
       expect(mockGetNextKey).toHaveBeenCalledTimes(2);
-      expect(mockRecordLimitHit).toHaveBeenCalledWith(projectId, "ANTHROPIC_API_KEY", "k1", "project");
-      expect(mockClearLimitHit).toHaveBeenCalledWith(projectId, "ANTHROPIC_API_KEY", "k2", "project");
+      expect(mockRecordLimitHit).toHaveBeenCalledWith(
+        projectId,
+        "ANTHROPIC_API_KEY",
+        "k1",
+        "project"
+      );
+      expect(mockClearLimitHit).toHaveBeenCalledWith(
+        projectId,
+        "ANTHROPIC_API_KEY",
+        "k2",
+        "project"
+      );
       expect(result.content).toBe("Success");
     });
 
@@ -272,8 +303,7 @@ describe("AgentService", () => {
             if (ev === "text") setImmediate(() => fn("Hello world"));
             return stream;
           },
-          finalMessage: () =>
-            Promise.resolve({ content: [{ type: "text", text: "Hello world" }] }),
+          finalMessage: () => Promise.resolve({ content: [{ type: "text", text: "Hello world" }] }),
         };
         return stream;
       });
@@ -286,7 +316,12 @@ describe("AgentService", () => {
       });
 
       expect(mockGetNextKey).toHaveBeenCalledWith(projectId, "ANTHROPIC_API_KEY");
-      expect(mockClearLimitHit).toHaveBeenCalledWith(projectId, "ANTHROPIC_API_KEY", "k1", "global");
+      expect(mockClearLimitHit).toHaveBeenCalledWith(
+        projectId,
+        "ANTHROPIC_API_KEY",
+        "k1",
+        "global"
+      );
       expect(result.content).toBe("Hello world");
     });
   });

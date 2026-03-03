@@ -68,12 +68,7 @@ export async function getComplexityForAgent(
   taskStore?: TaskStoreService
 ): Promise<PlanComplexity | undefined> {
   const taskComplexity = clampTaskComplexity((task as { complexity?: number }).complexity);
-  const planComplexity = await getPlanComplexityForTask(
-    projectId,
-    repoPath,
-    task,
-    taskStore
-  );
+  const planComplexity = await getPlanComplexityForTask(projectId, repoPath, task, taskStore);
   const epicComplexity = planComplexity ? planComplexityToTask(planComplexity) : undefined;
 
   const taskLevel = taskComplexity ?? -1;

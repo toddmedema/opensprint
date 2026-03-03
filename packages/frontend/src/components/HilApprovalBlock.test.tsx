@@ -21,9 +21,7 @@ function renderWithProviders(ui: React.ReactNode) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
-    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
-  );
+  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
 }
 
 const mockNotification = {
@@ -31,9 +29,7 @@ const mockNotification = {
   projectId: "proj-1",
   source: "eval" as const,
   sourceId: "fb-1",
-  questions: [
-    { id: "q1", text: "Approve this scope change?", createdAt: "2025-01-01T00:00:00Z" },
-  ],
+  questions: [{ id: "q1", text: "Approve this scope change?", createdAt: "2025-01-01T00:00:00Z" }],
   status: "open" as const,
   createdAt: "2025-01-01T00:00:00Z",
   resolvedAt: null,

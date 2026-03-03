@@ -123,7 +123,9 @@ function normalizePlannerTask(
               )
             : undefined,
           test: Array.isArray((rawFiles as { test?: unknown }).test)
-            ? (rawFiles as { test: unknown[] }).test.filter((f): f is string => typeof f === "string")
+            ? (rawFiles as { test: unknown[] }).test.filter(
+                (f): f is string => typeof f === "string"
+              )
             : undefined,
         }
       : undefined;
@@ -1579,13 +1581,10 @@ ${planNew}`;
     if (epicId) {
       const allIssues = await this.taskStore.listAll(projectId);
       const planTaskIds = allIssues.filter(
-        (issue: StoredTask) =>
-          issue.id === epicId || issue.id.startsWith(epicId + ".")
+        (issue: StoredTask) => issue.id === epicId || issue.id.startsWith(epicId + ".")
       );
       // Delete children before parent (longest ids first) to avoid dependency references to already-deleted tasks
-      const sortedIds = [...planTaskIds]
-        .map((t) => t.id)
-        .sort((a, b) => b.length - a.length);
+      const sortedIds = [...planTaskIds].map((t) => t.id).sort((a, b) => b.length - a.length);
       for (const id of sortedIds) {
         await this.taskStore.delete(projectId, id);
       }

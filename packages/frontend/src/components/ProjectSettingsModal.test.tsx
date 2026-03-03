@@ -79,7 +79,9 @@ describe("ProjectSettingsModal", () => {
         CURSOR_API_KEY: [{ id: "b", masked: "••••••••" }],
       },
     });
-    mockGetAgentsInstructions.mockResolvedValue({ content: "# Agent Instructions\n\nUse bd for tasks." });
+    mockGetAgentsInstructions.mockResolvedValue({
+      content: "# Agent Instructions\n\nUse bd for tasks.",
+    });
     mockUpdateAgentsInstructions.mockResolvedValue({ saved: true });
     mockGetKeys.mockResolvedValue({
       anthropic: true,
@@ -527,7 +529,10 @@ describe("ProjectSettingsModal", () => {
       expect(mockUpdateSettings).toHaveBeenCalledWith(
         "proj-1",
         expect.objectContaining({
-          simpleComplexityAgent: expect.objectContaining({ type: "claude", model: "claude-3-5-sonnet" }),
+          simpleComplexityAgent: expect.objectContaining({
+            type: "claude",
+            model: "claude-3-5-sonnet",
+          }),
           complexComplexityAgent: expect.objectContaining({
             type: "claude",
             model: "claude-3-5-sonnet",

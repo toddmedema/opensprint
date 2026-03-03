@@ -60,7 +60,9 @@ describe("AgentsMdSection", () => {
         removeEventListener: vi.fn(),
       }))
     );
-    mockGetAgentsInstructions.mockResolvedValue({ content: "# Agent Instructions\n\nUse bd for tasks." });
+    mockGetAgentsInstructions.mockResolvedValue({
+      content: "# Agent Instructions\n\nUse bd for tasks.",
+    });
     mockUpdateAgentsInstructions.mockResolvedValue({ saved: true });
   });
 
@@ -149,7 +151,10 @@ describe("AgentsMdSection", () => {
     fireEvent.blur(textarea);
 
     await waitFor(() =>
-      expect(mockUpdateAgentsInstructions).toHaveBeenCalledWith(projectId, "# Updated\n\nNew content.")
+      expect(mockUpdateAgentsInstructions).toHaveBeenCalledWith(
+        projectId,
+        "# Updated\n\nNew content."
+      )
     );
 
     expect(screen.getByTestId("agents-md-saved")).toHaveTextContent("Saved");

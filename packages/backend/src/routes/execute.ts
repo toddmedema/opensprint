@@ -3,11 +3,7 @@ import { orchestratorService } from "../services/orchestrator.service.js";
 import type { TaskService } from "../services/task.service.js";
 import { eventLogService, type OrchestratorEvent } from "../services/event-log.service.js";
 import type { ProjectService } from "../services/project.service.js";
-import type {
-  ApiResponse,
-  OrchestratorStatus,
-  TaskExecutionDiagnostics,
-} from "@opensprint/shared";
+import type { ApiResponse, OrchestratorStatus, TaskExecutionDiagnostics } from "@opensprint/shared";
 import { taskStore } from "../services/task-store.service.js";
 import { SessionManager } from "../services/session-manager.js";
 import { TaskExecutionDiagnosticsService } from "../services/task-execution-diagnostics.service.js";

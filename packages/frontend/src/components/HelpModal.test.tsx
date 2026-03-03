@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, fireEvent, waitFor } from "@testing-library/react";
+import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../test/test-utils";
 import { HelpModal } from "./HelpModal";
@@ -65,10 +65,7 @@ describe("HelpModal", () => {
 
   it("shows project context in Ask a Question when project provided", () => {
     renderWithProviders(
-      <HelpModal
-        onClose={vi.fn()}
-        project={{ id: "proj-1", name: "My Project" }}
-      />
+      <HelpModal onClose={vi.fn()} project={{ id: "proj-1", name: "My Project" }} />
     );
 
     expect(screen.getByText(/Ask about My Project/)).toBeInTheDocument();
@@ -79,7 +76,8 @@ describe("HelpModal", () => {
     const user = userEvent.setup();
     renderWithProviders(<HelpModal onClose={onClose} />);
 
-    await user.click(screen.getByRole("button", { name: /close help/i }));
+    const dialog = screen.getByRole("dialog", { name: /help/i });
+    await user.click(within(dialog).getByRole("button", { name: /close help/i }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -140,10 +138,7 @@ describe("HelpModal", () => {
     vi.mocked(api.help.chat).mockResolvedValue({ message: "Project context." });
     const user = userEvent.setup();
     renderWithProviders(
-      <HelpModal
-        onClose={vi.fn()}
-        project={{ id: "proj-1", name: "My Project" }}
-      />
+      <HelpModal onClose={vi.fn()} project={{ id: "proj-1", name: "My Project" }} />
     );
 
     await user.type(screen.getByPlaceholderText("Ask a question..."), "What plans exist?");
@@ -174,13 +169,13 @@ describe("HelpModal", () => {
 
   it("Ask a Question tab loads per-project history when project provided", async () => {
     vi.mocked(api.help.history).mockResolvedValue({
-      messages: [{ role: "user", content: "Project question" }, { role: "assistant", content: "Answer" }],
+      messages: [
+        { role: "user", content: "Project question" },
+        { role: "assistant", content: "Answer" },
+      ],
     });
     renderWithProviders(
-      <HelpModal
-        onClose={vi.fn()}
-        project={{ id: "proj-1", name: "My Project" }}
-      />
+      <HelpModal onClose={vi.fn()} project={{ id: "proj-1", name: "My Project" }} />
     );
 
     await waitFor(() => {

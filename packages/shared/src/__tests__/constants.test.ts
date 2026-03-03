@@ -66,9 +66,7 @@ describe("getAgentNameForRole", () => {
   });
   it("wraps with modulo", () => {
     const reviewerCount = AGENT_NAMES_BY_ROLE.reviewer.length;
-    expect(getAgentNameForRole("reviewer", reviewerCount)).toBe(
-      getAgentNameForRole("reviewer", 0)
-    );
+    expect(getAgentNameForRole("reviewer", reviewerCount)).toBe(getAgentNameForRole("reviewer", 0));
   });
   it("falls back to coder list for unknown role", () => {
     expect(getAgentNameForRole("unknown", 0)).toBe("Frodo");

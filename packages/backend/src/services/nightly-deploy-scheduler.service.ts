@@ -15,10 +15,10 @@ const DEFAULT_NIGHTLY_TIME = "02:00";
  */
 function hasMainCommitsAfter(repoPath: string, afterTimestamp: string): boolean {
   try {
-    const out = execSync(
-      `git rev-list main --after="${afterTimestamp}" --count`,
-      { cwd: repoPath, encoding: "utf-8" }
-    );
+    const out = execSync(`git rev-list main --after="${afterTimestamp}" --count`, {
+      cwd: repoPath,
+      encoding: "utf-8",
+    });
     const count = parseInt(out.trim(), 10);
     return !Number.isNaN(count) && count > 0;
   } catch {
@@ -81,16 +81,18 @@ export async function runNightlyTick(
           project.id,
           targetName
         );
-        const baselineTimestamp =
-          lastSuccess?.completedAt ?? lastSuccess?.startedAt ?? null;
+        const baselineTimestamp = lastSuccess?.completedAt ?? lastSuccess?.startedAt ?? null;
         if (baselineTimestamp) {
           const hasNewCommits = hasMainCommitsAfter(project.repoPath, baselineTimestamp);
           if (!hasNewCommits) {
-            log.info("Skipping nightly deploy: no new commits on main since last successful deploy", {
-              projectId: project.id,
-              projectName: project.name,
-              targetName,
-            });
+            log.info(
+              "Skipping nightly deploy: no new commits on main since last successful deploy",
+              {
+                projectId: project.id,
+                projectName: project.name,
+                targetName,
+              }
+            );
             results.push({ projectId: project.id, targetName, deployId: null });
             continue;
           }

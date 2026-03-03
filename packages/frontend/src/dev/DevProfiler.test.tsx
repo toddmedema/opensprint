@@ -4,10 +4,13 @@ import { DevProfiler } from "./DevProfiler";
 
 describe("DevProfiler", () => {
   beforeEach(() => {
-    vi.stubGlobal("PerformanceObserver", vi.fn().mockImplementation(() => ({
-      observe: vi.fn(),
-      disconnect: vi.fn(),
-    })));
+    vi.stubGlobal(
+      "PerformanceObserver",
+      vi.fn().mockImplementation(() => ({
+        observe: vi.fn(),
+        disconnect: vi.fn(),
+      }))
+    );
   });
 
   afterEach(() => {

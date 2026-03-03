@@ -15,10 +15,7 @@ import type { StoredTask } from "./task-store.service.js";
 import { getRuntimePath } from "../utils/runtime-dir.js";
 
 /** Short checklist items per review angle for angle-specific prompts */
-const REVIEW_ANGLE_CHECKLISTS: Record<
-  ReviewAngle,
-  string[]
-> = {
+const REVIEW_ANGLE_CHECKLISTS: Record<ReviewAngle, string[]> = {
   security: [
     "No injection vulnerabilities (SQL, command, XSS)",
     "Sensitive data is not logged or exposed",
@@ -247,13 +244,8 @@ export class ContextAssembler {
 
     let userClarification: string | undefined;
     try {
-      const executeConv = await this.chatService.getHistory(
-        projectId,
-        `execute:${taskId}`
-      );
-      const lastUserMsg = [...executeConv.messages]
-        .reverse()
-        .find((m) => m.role === "user");
+      const executeConv = await this.chatService.getHistory(projectId, `execute:${taskId}`);
+      const lastUserMsg = [...executeConv.messages].reverse().find((m) => m.role === "user");
       if (lastUserMsg?.content?.trim()) {
         userClarification = lastUserMsg.content.trim();
       }

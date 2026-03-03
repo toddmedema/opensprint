@@ -2,11 +2,7 @@ import { describe, it, expect } from "vitest";
 import { matchesPlanSearchQuery } from "./planSearchFilter";
 import type { Plan } from "@opensprint/shared";
 
-function createPlan(
-  planId: string,
-  content: string,
-  overrides?: Partial<Plan>
-): Plan {
+function createPlan(planId: string, content: string, overrides?: Partial<Plan>): Plan {
   return {
     metadata: {
       planId,

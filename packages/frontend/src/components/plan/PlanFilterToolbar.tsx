@@ -161,7 +161,11 @@ export function PlanFilterToolbar({
               {executeAllInProgress ? "Executing all…" : "Execute All"}
             </button>
           )}
-          {handleSearchExpand && handleSearchClose && handleSearchKeyDown && setSearchInputValue && searchInputRef ? (
+          {handleSearchExpand &&
+          handleSearchClose &&
+          handleSearchKeyDown &&
+          setSearchInputValue &&
+          searchInputRef ? (
             searchExpanded ? (
               <div
                 className="flex items-center gap-1 animate-fade-in"

@@ -83,7 +83,8 @@ vi.mock("../websocket/index.js", () => ({
 }));
 
 const chatRouteTaskStoreMod = await import("../services/task-store.service.js");
-const chatRoutePostgresOk = (chatRouteTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
+const chatRoutePostgresOk =
+  (chatRouteTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
 
 describe.skipIf(!chatRoutePostgresOk)("Chat REST API", () => {
   let app: ReturnType<typeof createApp>;

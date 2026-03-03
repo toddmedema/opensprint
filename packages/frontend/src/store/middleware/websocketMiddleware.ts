@@ -28,11 +28,7 @@ import {
   taskClosed,
 } from "../slices/executeSlice";
 import { updateFeedbackItem, updateFeedbackItemResolved } from "../slices/evalSlice";
-import {
-  appendDeliverOutput,
-  deliverStarted,
-  deliverCompleted,
-} from "../slices/deliverSlice";
+import { appendDeliverOutput, deliverStarted, deliverCompleted } from "../slices/deliverSlice";
 import { getQueryClient } from "../../queryClient";
 import { queryKeys } from "../../api/queryKeys";
 
@@ -260,7 +256,8 @@ export const websocketMiddleware: Middleware = (storeApi) => {
           })
         );
         const root = getState() as { execute?: { tasksById?: Record<string, unknown> } };
-        const taskExists = root.execute?.tasksById != null && event.taskId in root.execute.tasksById;
+        const taskExists =
+          root.execute?.tasksById != null && event.taskId in root.execute.tasksById;
         if (!taskExists) {
           void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
         }

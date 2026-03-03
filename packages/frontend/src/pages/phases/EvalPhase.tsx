@@ -333,15 +333,12 @@ const FeedbackCard = memo(
     const removeRef = useRef<(() => void) | undefined>(undefined);
     removeRef.current = () => onRemoveAfterAnimation(item.id);
 
-    const handleTransitionEnd = useCallback(
-      (e: React.TransitionEvent) => {
-        if (e.target !== collapseRef.current) return;
-        if (e.propertyName === "max-height") {
-          removeRef.current?.();
-        }
-      },
-      []
-    );
+    const handleTransitionEnd = useCallback((e: React.TransitionEvent) => {
+      if (e.target !== collapseRef.current) return;
+      if (e.propertyName === "max-height") {
+        removeRef.current?.();
+      }
+    }, []);
 
     useEffect(() => {
       if (!isAnimatingOut) return;
@@ -409,226 +406,231 @@ const FeedbackCard = memo(
       >
         <div ref={innerRef} style={innerStyle}>
           <div className="card p-4">
-          {/* Category badge/spinner floats top-right */}
-          <div className="mb-2 overflow-hidden">
-            {isCategorizing(item) ? (
-              <span
-                className="float-right ml-2 mb-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-theme-border-subtle text-theme-muted flex-shrink-0"
-                aria-label="Categorizing feedback"
-              >
-                <div
-                  className="h-3 w-3 border-2 border-theme-ring border-t-transparent rounded-full animate-spin"
-                  aria-hidden="true"
-                />
-                Categorizing…
-              </span>
-            ) : (
-              <>
-                {(item.status === "resolved" || item.status === "cancelled") && (
+            {/* Category badge/spinner floats top-right */}
+            <div className="mb-2 overflow-hidden">
+              {isCategorizing(item) ? (
+                <span
+                  className="float-right ml-2 mb-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium bg-theme-border-subtle text-theme-muted flex-shrink-0"
+                  aria-label="Categorizing feedback"
+                >
+                  <div
+                    className="h-3 w-3 border-2 border-theme-ring border-t-transparent rounded-full animate-spin"
+                    aria-hidden="true"
+                  />
+                  Categorizing…
+                </span>
+              ) : (
+                <>
+                  {(item.status === "resolved" || item.status === "cancelled") && (
+                    <span
+                      className={`float-right ml-2 mb-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium flex-shrink-0 ${
+                        item.status === "cancelled"
+                          ? "bg-theme-border-subtle text-theme-muted"
+                          : "bg-theme-success-bg text-theme-success-text"
+                      }`}
+                      aria-label={item.status === "cancelled" ? "Cancelled" : "Resolved"}
+                    >
+                      {item.status === "cancelled" ? "Cancelled" : "Resolved"}
+                    </span>
+                  )}
                   <span
                     className={`float-right ml-2 mb-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium flex-shrink-0 ${
-                      item.status === "cancelled"
-                        ? "bg-theme-border-subtle text-theme-muted"
-                        : "bg-theme-success-bg text-theme-success-text"
+                      categoryColors[item.category] ?? "bg-theme-border-subtle text-theme-muted"
                     }`}
-                    aria-label={item.status === "cancelled" ? "Cancelled" : "Resolved"}
                   >
-                    {item.status === "cancelled" ? "Cancelled" : "Resolved"}
+                    {getFeedbackTypeLabel(item)}
                   </span>
-                )}
-                <span
-                  className={`float-right ml-2 mb-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium flex-shrink-0 ${
-                    categoryColors[item.category] ?? "bg-theme-border-subtle text-theme-muted"
-                  }`}
-                >
-                  {getFeedbackTypeLabel(item)}
-                </span>
-              </>
-            )}
-            <p className="text-sm text-theme-text whitespace-pre-wrap break-words min-w-0">
-              {item.text ?? "(No feedback text)"}
-            </p>
-          </div>
-
-          {item.images && item.images.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-2">
-              {item.images.map((dataUrl, i) => (
-                <img
-                  key={i}
-                  src={dataUrl}
-                  alt={`Attachment ${i + 1}`}
-                  className="h-16 w-16 object-cover rounded border border-theme-border"
-                />
-              ))}
-            </div>
-          )}
-
-          {/* HIL approval (scope change) — Approve/Reject via notification system */}
-          {notification?.kind === "hil_approval" && (
-            <div className="mt-3">
-              <HilApprovalBlock
-                notification={notification}
-                projectId={projectId}
-                onResolved={() => onHilResolved?.()}
-              />
-            </div>
-          )}
-          {/* Open questions (Analyst needs clarification) — Answer/Dismiss controls */}
-          {notification &&
-            notification.kind !== "hil_approval" &&
-            notification.questions.length > 0 && (
-            <div
-              className="mt-3 p-3 rounded-lg border border-theme-border bg-theme-border-subtle/30"
-              data-testid="feedback-open-questions"
-            >
-              <p className="text-xs font-medium text-theme-muted mb-2">
-                The Analyst needs clarification before categorizing:
-              </p>
-              <ul className="list-disc list-inside text-sm text-theme-text space-y-1 mb-3">
-                {notification.questions.map((q) => (
-                  <li key={q.id}>{q.text}</li>
-                ))}
-              </ul>
-              <div className="flex flex-wrap items-end gap-2">
-                <div className="flex-1 min-w-[200px]">
-                  <textarea
-                    className="input text-sm min-h-[60px] w-full"
-                    value={answerText}
-                    onChange={(e) => setAnswerText(e.target.value)}
-                    onKeyDown={onKeyDownAnswer}
-                    placeholder="Type your answer..."
-                    disabled={answeringOpenQuestion}
-                    data-testid="feedback-answer-input"
-                  />
-                </div>
-                <div className="flex gap-2 flex-shrink-0">
-                  <button
-                    type="button"
-                    onClick={handleAnswerOpenQuestion}
-                    disabled={!answerText.trim() || answeringOpenQuestion}
-                    className="btn-primary text-sm py-1.5 px-3 disabled:opacity-50"
-                    data-testid="feedback-answer-submit"
-                  >
-                    {answeringOpenQuestion ? "Submitting..." : "Answer"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onDismissOpenQuestion?.(item.id, notification.id)}
-                    disabled={answeringOpenQuestion}
-                    className="btn-secondary text-sm py-1.5 px-3 disabled:opacity-50"
-                    data-testid="feedback-dismiss-question"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Ticket info on left, action buttons (Reply, Resolve, etc.) on right — same line */}
-          <div
-            className="mt-1 flex flex-wrap items-center justify-between gap-2"
-            data-testid="feedback-card-actions-row"
-          >
-            {(() => {
-              const taskIds = item.createdTaskIds ?? [];
-              const isPlanLinked =
-                item.mappedPlanId != null && item.mappedPlanId !== "" && taskIds.length === 0;
-              if (isPlanLinked) {
-                return (
-                  <div
-                    className="flex gap-1 flex-wrap min-w-0"
-                    data-testid="feedback-card-plan-link"
-                  >
-                    <button
-                      type="button"
-                      onClick={() =>
-                        navigate(getProjectPhasePath(projectId, "plan", { plan: item.mappedPlanId! }))
-                      }
-                      className="inline-flex items-center gap-1.5 rounded bg-theme-border-subtle px-1.5 py-0.5 text-xs font-mono text-brand-600 hover:bg-theme-info-bg hover:text-theme-info-text underline transition-colors"
-                      title={`View plan: ${formatPlanIdAsTitle(item.mappedPlanId!)}`}
-                      aria-label={`View plan ${formatPlanIdAsTitle(item.mappedPlanId!)}`}
-                    >
-                      Plan: {formatPlanIdAsTitle(item.mappedPlanId!)}
-                    </button>
-                  </div>
-                );
-              }
-              if (taskIds.length > 0) {
-                return (
-                  <div className="flex gap-1 flex-wrap min-w-0" data-testid="feedback-card-ticket-info">
-                    {taskIds.map((taskId) => (
-                      <FeedbackTaskChip
-                        key={taskId}
-                        taskId={taskId}
-                        projectId={projectId}
-                        onNavigateToBuildTask={onNavigateToBuildTask}
-                      />
-                    ))}
-                  </div>
-                );
-              }
-              return null;
-            })()}
-            <div className="flex gap-2 flex-shrink-0 ml-auto">
-              {hasChildren && (
-                <button
-                  type="button"
-                  onClick={() => onToggleCollapse(item.id)}
-                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-theme-muted hover:bg-theme-border-subtle hover:text-theme-text transition-colors"
-                  aria-label={isCollapsed ? "Expand replies" : "Collapse replies"}
-                  data-testid={`collapse-replies-${item.id}`}
-                >
-                  {isCollapsed ? "Expand" : "Collapse"} ({countTotalReplies(node)}{" "}
-                  {countTotalReplies(node) === 1 ? "reply" : "replies"})
-                </button>
+                </>
               )}
-              {item.status === "pending" && !isCategorizing(item) && (
-                <>
-                  {canShowCancelButton(item, taskSummaryById) && (
+              <p className="text-sm text-theme-text whitespace-pre-wrap break-words min-w-0">
+                {item.text ?? "(No feedback text)"}
+              </p>
+            </div>
+
+            {item.images && item.images.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {item.images.map((dataUrl, i) => (
+                  <img
+                    key={i}
+                    src={dataUrl}
+                    alt={`Attachment ${i + 1}`}
+                    className="h-16 w-16 object-cover rounded border border-theme-border"
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* HIL approval (scope change) — Approve/Reject via notification system */}
+            {notification?.kind === "hil_approval" && (
+              <div className="mt-3">
+                <HilApprovalBlock
+                  notification={notification}
+                  projectId={projectId}
+                  onResolved={() => onHilResolved?.()}
+                />
+              </div>
+            )}
+            {/* Open questions (Analyst needs clarification) — Answer/Dismiss controls */}
+            {notification &&
+              notification.kind !== "hil_approval" &&
+              notification.questions.length > 0 && (
+                <div
+                  className="mt-3 p-3 rounded-lg border border-theme-border bg-theme-border-subtle/30"
+                  data-testid="feedback-open-questions"
+                >
+                  <p className="text-xs font-medium text-theme-muted mb-2">
+                    The Analyst needs clarification before categorizing:
+                  </p>
+                  <ul className="list-disc list-inside text-sm text-theme-text space-y-1 mb-3">
+                    {notification.questions.map((q) => (
+                      <li key={q.id}>{q.text}</li>
+                    ))}
+                  </ul>
+                  <div className="flex flex-wrap items-end gap-2">
+                    <div className="flex-1 min-w-[200px]">
+                      <textarea
+                        className="input text-sm min-h-[60px] w-full"
+                        value={answerText}
+                        onChange={(e) => setAnswerText(e.target.value)}
+                        onKeyDown={onKeyDownAnswer}
+                        placeholder="Type your answer..."
+                        disabled={answeringOpenQuestion}
+                        data-testid="feedback-answer-input"
+                      />
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleAnswerOpenQuestion}
+                        disabled={!answerText.trim() || answeringOpenQuestion}
+                        className="btn-primary text-sm py-1.5 px-3 disabled:opacity-50"
+                        data-testid="feedback-answer-submit"
+                      >
+                        {answeringOpenQuestion ? "Submitting..." : "Answer"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDismissOpenQuestion?.(item.id, notification.id)}
+                        disabled={answeringOpenQuestion}
+                        className="btn-secondary text-sm py-1.5 px-3 disabled:opacity-50"
+                        data-testid="feedback-dismiss-question"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            {/* Ticket info on left, action buttons (Reply, Resolve, etc.) on right — same line */}
+            <div
+              className="mt-1 flex flex-wrap items-center justify-between gap-2"
+              data-testid="feedback-card-actions-row"
+            >
+              {(() => {
+                const taskIds = item.createdTaskIds ?? [];
+                const isPlanLinked =
+                  item.mappedPlanId != null && item.mappedPlanId !== "" && taskIds.length === 0;
+                if (isPlanLinked) {
+                  return (
+                    <div
+                      className="flex gap-1 flex-wrap min-w-0"
+                      data-testid="feedback-card-plan-link"
+                    >
+                      <button
+                        type="button"
+                        onClick={() =>
+                          navigate(
+                            getProjectPhasePath(projectId, "plan", { plan: item.mappedPlanId! })
+                          )
+                        }
+                        className="inline-flex items-center gap-1.5 rounded bg-theme-border-subtle px-1.5 py-0.5 text-xs font-mono text-brand-600 hover:bg-theme-info-bg hover:text-theme-info-text underline transition-colors"
+                        title={`View plan: ${formatPlanIdAsTitle(item.mappedPlanId!)}`}
+                        aria-label={`View plan ${formatPlanIdAsTitle(item.mappedPlanId!)}`}
+                      >
+                        Plan: {formatPlanIdAsTitle(item.mappedPlanId!)}
+                      </button>
+                    </div>
+                  );
+                }
+                if (taskIds.length > 0) {
+                  return (
+                    <div
+                      className="flex gap-1 flex-wrap min-w-0"
+                      data-testid="feedback-card-ticket-info"
+                    >
+                      {taskIds.map((taskId) => (
+                        <FeedbackTaskChip
+                          key={taskId}
+                          taskId={taskId}
+                          projectId={projectId}
+                          onNavigateToBuildTask={onNavigateToBuildTask}
+                        />
+                      ))}
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+              <div className="flex gap-2 flex-shrink-0 ml-auto">
+                {hasChildren && (
+                  <button
+                    type="button"
+                    onClick={() => onToggleCollapse(item.id)}
+                    className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-theme-muted hover:bg-theme-border-subtle hover:text-theme-text transition-colors"
+                    aria-label={isCollapsed ? "Expand replies" : "Collapse replies"}
+                    data-testid={`collapse-replies-${item.id}`}
+                  >
+                    {isCollapsed ? "Expand" : "Collapse"} ({countTotalReplies(node)}{" "}
+                    {countTotalReplies(node) === 1 ? "reply" : "replies"})
+                  </button>
+                )}
+                {item.status === "pending" && !isCategorizing(item) && (
+                  <>
+                    {canShowCancelButton(item, taskSummaryById) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onCancel(item.id);
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-theme-muted hover:bg-theme-border-subtle transition-colors"
+                        title="Cancel feedback and delete associated tasks"
+                        aria-label="Cancel"
+                        data-testid="feedback-cancel-button"
+                      >
+                        Cancel
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        onCancel(item.id);
+                        onResolve(item.id);
                       }}
-                      className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-theme-muted hover:bg-theme-border-subtle transition-colors"
-                      title="Cancel feedback and delete associated tasks"
-                      aria-label="Cancel"
-                      data-testid="feedback-cancel-button"
+                      className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-theme-success-text hover:bg-theme-success-bg transition-colors"
+                      title="Mark as resolved"
+                      aria-label="Resolve"
                     >
-                      Cancel
+                      Resolve
                     </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onResolve(item.id);
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-theme-success-text hover:bg-theme-success-bg transition-colors"
-                    title="Mark as resolved"
-                    aria-label="Resolve"
-                  >
-                    Resolve
-                  </button>
-                </>
-              )}
-              <button
-                type="button"
-                onClick={() => (isReplying ? onCancelReply() : onStartReply(item.id))}
-                className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-theme-muted hover:bg-theme-border-subtle hover:text-theme-text transition-colors"
-                title="Reply"
-                aria-label={isReplying ? "Cancel reply" : "Reply"}
-              >
-                <ReplyIcon className="w-4 h-4" />
-                {isReplying ? "Cancel" : "Reply"}
-              </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={() => (isReplying ? onCancelReply() : onStartReply(item.id))}
+                  className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-theme-muted hover:bg-theme-border-subtle hover:text-theme-text transition-colors"
+                  title="Reply"
+                  aria-label={isReplying ? "Cancel reply" : "Reply"}
+                >
+                  <ReplyIcon className="w-4 h-4" />
+                  {isReplying ? "Cancel" : "Reply"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
         </div>
 
         {/* Inline reply composer (PRD §7.4.1: quote snippet of parent above text input) */}
@@ -763,11 +765,8 @@ export function EvalPhase({
   const submitting = useAppSelector((s) => s.eval?.async?.submit?.loading ?? false);
 
   const feedbackEmpty = feedback.length === 0;
-  const { showSpinner: showFeedbackSpinner, showEmptyState: showFeedbackEmptyState } = usePhaseLoadingState(
-    feedbackQuery.isLoading,
-    feedbackEmpty,
-    FEEDBACK_LOADING_DEBOUNCE_MS
-  );
+  const { showSpinner: showFeedbackSpinner, showEmptyState: showFeedbackEmptyState } =
+    usePhaseLoadingState(feedbackQuery.isLoading, feedbackEmpty, FEEDBACK_LOADING_DEBOUNCE_MS);
 
   /* Fetch missing tasks for feedback cards (createdTaskIds) and merge into query cache so list stays in sync */
   const taskIdsFromFeedback = useMemo(() => {
@@ -1018,13 +1017,16 @@ export function EvalPhase({
     }
 
     // Scroll after a brief delay to allow layout (especially after expanding)
-    const timer = setTimeout(() => {
-      const el = document.querySelector(`[data-feedback-id="${feedbackIdFromUrl}"]`);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-        hasScrolledToFeedbackRef.current = true;
-      }
-    }, ancestorIds.length > 0 ? 150 : 0);
+    const timer = setTimeout(
+      () => {
+        const el = document.querySelector(`[data-feedback-id="${feedbackIdFromUrl}"]`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          hasScrolledToFeedbackRef.current = true;
+        }
+      },
+      ancestorIds.length > 0 ? 150 : 0
+    );
 
     return () => clearTimeout(timer);
   }, [feedbackIdFromUrl, feedback, feedbackQuery.isLoading, projectId, statusFilter]);
@@ -1100,10 +1102,7 @@ export function EvalPhase({
         className="flex flex-1 min-h-0 items-center justify-center bg-theme-bg"
         data-testid="feedback-loading"
       >
-        <PhaseLoadingSpinner
-          data-testid="feedback-loading-spinner"
-          aria-label="Loading feedback"
-        />
+        <PhaseLoadingSpinner data-testid="feedback-loading-spinner" aria-label="Loading feedback" />
       </div>
     );
   }

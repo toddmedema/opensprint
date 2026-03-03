@@ -30,10 +30,10 @@ export async function deleteOrphanedOpenQuestions(): Promise<{
 
   await taskStore.runWrite(async (tx) => {
     for (const row of orphaned) {
-      await tx.execute(
-        "DELETE FROM open_questions WHERE id = $1 AND project_id = $2",
-        [row.id, row.project_id]
-      );
+      await tx.execute("DELETE FROM open_questions WHERE id = $1 AND project_id = $2", [
+        row.id,
+        row.project_id,
+      ]);
     }
   });
 

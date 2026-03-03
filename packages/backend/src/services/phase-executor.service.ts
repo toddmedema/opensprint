@@ -110,12 +110,7 @@ export class PhaseExecutorService {
     const gitWorkingMode = settings.gitWorkingMode ?? "worktree";
 
     // Pre-flight: ensure API key available before any heavy work
-    const complexity = await getComplexityForAgent(
-      projectId,
-      repoPath,
-      task,
-      this.host.taskStore
-    );
+    const complexity = await getComplexityForAgent(projectId, repoPath, task, this.host.taskStore);
     const agentConfig = getAgentForComplexity(settings, complexity);
     const provider = getProviderForAgentType(agentConfig.type);
     if (provider) {
@@ -163,9 +158,9 @@ export class PhaseExecutorService {
           await this.host.branchManager.rebaseOntoMain(wtPath);
           log.info("Rebased existing branch onto main before retry", { taskId: task.id });
         } catch {
-          const conflictedFiles = await this.host.branchManager.getConflictedFiles(wtPath).catch(
-            () => []
-          );
+          const conflictedFiles = await this.host.branchManager
+            .getConflictedFiles(wtPath)
+            .catch(() => []);
           await this.host.branchManager.rebaseAbort(wtPath);
           await this.host.taskStore.setConflictFiles(projectId, task.id, conflictedFiles);
           await this.host.taskStore.setMergeStage(projectId, task.id, "rebase_before_merge");
@@ -334,7 +329,9 @@ export class PhaseExecutorService {
     }
     const settings = await this.host.projectService.getSettings(projectId);
     const wtPath = slot.worktreePath ?? repoPath;
-    const reviewAngles = [...new Set((settings.reviewAngles ?? []).filter(Boolean))] as ReviewAngle[];
+    const reviewAngles = [
+      ...new Set((settings.reviewAngles ?? []).filter(Boolean)),
+    ] as ReviewAngle[];
     const useAngleSpecificReview = reviewAngles.length > 0;
 
     try {
@@ -450,7 +447,10 @@ export class PhaseExecutorService {
             };
 
             await fs.mkdir(angleDir, { recursive: true });
-            await writeJsonAtomic(path.join(angleDir, OPENSPRINT_PATHS.assignment), angleAssignment);
+            await writeJsonAtomic(
+              path.join(angleDir, OPENSPRINT_PATHS.assignment),
+              angleAssignment
+            );
 
             const mainRepoAngleDir = path.join(mainRepoActiveDirReview, "review-angles", angle);
             await fs.mkdir(mainRepoAngleDir, { recursive: true });
@@ -477,7 +477,14 @@ export class PhaseExecutorService {
                 agentLabel: slot.taskTitle ?? task.id,
                 role: "reviewer",
                 onDone: (code) =>
-                  this.callbacks.handleReviewDone(projectId, repoPath, task, branchName, code, angle),
+                  this.callbacks.handleReviewDone(
+                    projectId,
+                    repoPath,
+                    task,
+                    branchName,
+                    code,
+                    angle
+                  ),
                 onStateChange: this.host.onAgentStateChange(projectId),
               },
               angleAgent,

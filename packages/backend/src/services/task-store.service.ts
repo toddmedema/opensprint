@@ -13,17 +13,14 @@ import { ErrorCodes } from "../middleware/error-codes.js";
 import { createLogger } from "../utils/logger.js";
 import type { DbClient } from "../db/client.js";
 import { createPostgresDbClient, getPoolConfig } from "../db/client.js";
+import { classifyDbConnectionError, isDbConnectionError } from "../db/db-errors.js";
 import { runSchema } from "../db/schema.js";
 import type { AppDb } from "../db/app-db.js";
-import {
-  PlanStore,
-  type PlanInsertData,
-} from "./plan-store.service.js";
+import { PlanStore, type PlanInsertData } from "./plan-store.service.js";
 import { toPgParams } from "../db/sql-params.js";
 import { getDatabaseUrl } from "./global-settings.service.js";
 
 const log = createLogger("task-store");
-
 
 export interface StoredTask {
   id: string;
@@ -88,59 +85,6 @@ export type TaskChangeCallback = (
   task: StoredTask
 ) => void;
 
-/** Node.js/network codes: Postgres server unreachable */
-const DB_UNREACHABLE_CODES = new Set([
-  "ECONNREFUSED",
-  "ETIMEDOUT",
-  "ENOTFOUND",
-  "ECONNRESET",
-  "EHOSTUNREACH",
-  "ENETUNREACH",
-  "EAI_AGAIN",
-]);
-
-/** PostgreSQL error codes: server reachable but auth/database/config wrong */
-const DB_AUTH_CONFIG_CODES = new Set([
-  "28P01", // invalid_password
-  "28000", // invalid_authorization_specification
-  "3D000", // invalid_catalog_name (database does not exist)
-  "42501", // insufficient_privilege
-  "42P01", // undefined_table (schema not applied)
-]);
-
-export function classifyDbConnectionError(err: unknown): string {
-  const code =
-    (err as NodeJS.ErrnoException).code ??
-    (err as { code?: string }).code ??
-    (err as { errno?: number }).errno;
-  const codeStr = typeof code === "number" ? String(code) : String(code ?? "");
-
-  if (DB_UNREACHABLE_CODES.has(codeStr)) {
-    return "No PostgreSQL server running";
-  }
-  if (DB_AUTH_CONFIG_CODES.has(codeStr)) {
-    return "PostgreSQL server is running but wrong user or database setup";
-  }
-
-  const msg = err instanceof Error ? err.message : String(err);
-  if (
-    /ECONNREFUSED|ETIMEDOUT|ENOTFOUND|connection refused|getaddrinfo|connect EHOSTUNREACH/i.test(
-      msg
-    )
-  ) {
-    return "No PostgreSQL server running";
-  }
-  if (
-    /password authentication failed|role .* does not exist|database .* does not exist|permission denied/i.test(
-      msg
-    )
-  ) {
-    return "PostgreSQL server is running but wrong user or database setup";
-  }
-
-  return "Server is unable to connect to PostgreSQL database.";
-}
-
 export class TaskStoreService {
   private client: DbClient | null = null;
   private pool: Pool | null = null;
@@ -165,7 +109,11 @@ export class TaskStoreService {
     this.onTaskChange = cb;
   }
 
-  private emitTaskChange(projectId: string, changeType: "create" | "update" | "close", task: StoredTask): void {
+  private emitTaskChange(
+    projectId: string,
+    changeType: "create" | "update" | "close",
+    task: StoredTask
+  ): void {
     this.onTaskChange?.(projectId, changeType, task);
   }
 
@@ -198,6 +146,16 @@ export class TaskStoreService {
       await this.initPromise;
     } catch (err) {
       this.initPromise = null;
+      if (
+        (err instanceof AppError && err.code === ErrorCodes.DATABASE_UNAVAILABLE) ||
+        isDbConnectionError(err)
+      ) {
+        throw new AppError(
+          503,
+          ErrorCodes.DATABASE_UNAVAILABLE,
+          classifyDbConnectionError(err)
+        );
+      }
       const msg =
         err instanceof Error
           ? err.message || (err as NodeJS.ErrnoException).code || err.stack || String(err)
@@ -221,7 +179,7 @@ export class TaskStoreService {
             500,
             ErrorCodes.TASK_STORE_INIT_FAILED,
             `TaskStoreService.runInitInternal refused to connect to app database "${dbName}" during tests. ` +
-              "Add vi.mock(\"../services/task-store.service.js\") with createTestPostgresClient() in your test file."
+              'Add vi.mock("../services/task-store.service.js") with createTestPostgresClient() in your test file.'
           );
         }
       } catch (err) {
@@ -396,7 +354,15 @@ export class TaskStoreService {
     const dependentCount = (depCountRow?.cnt as number) ?? 0;
     return this.hydrateTask(
       row,
-      new Map([[row.id as string, deps.map((d) => ({ depends_on_id: d.depends_on_id as string, type: d.dep_type as string }))]]),
+      new Map([
+        [
+          row.id as string,
+          deps.map((d) => ({
+            depends_on_id: d.depends_on_id as string,
+            type: d.dep_type as string,
+          })),
+        ],
+      ]),
       new Map([[row.id as string, dependentCount]])
     );
   }
@@ -458,14 +424,24 @@ export class TaskStoreService {
     }
     const { z } = await import("zod");
     const schema = z.object({
-      id: z.string(), project_id: z.string(), title: z.string(),
-      description: z.string().nullable().optional(), issue_type: z.string(),
-      status: z.string(), priority: z.number(),
-      assignee: z.string().nullable().optional(), owner: z.string().nullable().optional(),
-      labels: z.string().optional(), created_at: z.string(), updated_at: z.string(),
-      created_by: z.string().nullable().optional(), close_reason: z.string().nullable().optional(),
-      started_at: z.string().nullable().optional(), completed_at: z.string().nullable().optional(),
-      complexity: z.number().nullable().optional(), extra: z.string().nullable().optional(),
+      id: z.string(),
+      project_id: z.string(),
+      title: z.string(),
+      description: z.string().nullable().optional(),
+      issue_type: z.string(),
+      status: z.string(),
+      priority: z.number(),
+      assignee: z.string().nullable().optional(),
+      owner: z.string().nullable().optional(),
+      labels: z.string().optional(),
+      created_at: z.string(),
+      updated_at: z.string(),
+      created_by: z.string().nullable().optional(),
+      close_reason: z.string().nullable().optional(),
+      started_at: z.string().nullable().optional(),
+      completed_at: z.string().nullable().optional(),
+      complexity: z.number().nullable().optional(),
+      extra: z.string().nullable().optional(),
     });
     const parsed = schema.safeParse(row);
     if (!parsed.success) {
@@ -494,7 +470,9 @@ export class TaskStoreService {
   async listRecentlyCompletedTasks(
     projectId: string | null,
     limit: number = 100
-  ): Promise<Array<{ id: string; created_at: string; completed_at: string; complexity: number | null }>> {
+  ): Promise<
+    Array<{ id: string; created_at: string; completed_at: string; complexity: number | null }>
+  > {
     await this.ensureInitialized();
     const client = this.ensureClient();
     const sql =
@@ -530,9 +508,7 @@ export class TaskStoreService {
    * for auto-retry. Excludes human-feedback blocks. Only returns tasks whose last_auto_retry_at
    * is null or older than AUTO_RETRY_BLOCKED_INTERVAL_MS (8 hours).
    */
-  async listBlockedByTechnicalErrorEligibleForRetry(
-    projectId: string
-  ): Promise<StoredTask[]> {
+  async listBlockedByTechnicalErrorEligibleForRetry(projectId: string): Promise<StoredTask[]> {
     await this.ensureInitialized();
     const blocked = await this.execAndHydrateWithDeps(
       projectId,
@@ -664,7 +640,18 @@ export class TaskStoreService {
           `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, complexity, extra)
            VALUES (?, ?, ?, ?, ?, 'open', ?, NULL, '[]', ?, ?, ?, ?)`
         ),
-        [id, projectId, title, options.description ?? null, type, priority, now, now, complexity ?? null, extra]
+        [
+          id,
+          projectId,
+          title,
+          options.description ?? null,
+          type,
+          priority,
+          now,
+          now,
+          complexity ?? null,
+          extra,
+        ]
       );
 
       if (options.parentId) {
@@ -766,7 +753,18 @@ export class TaskStoreService {
               `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, complexity, extra)
                VALUES (?, ?, ?, ?, ?, 'open', ?, NULL, '[]', ?, ?, ?, ?)`
             ),
-            [id, projectId, input.title, input.description ?? null, type, priority, now, now, complexity ?? null, "{}"]
+            [
+              id,
+              projectId,
+              input.title,
+              input.description ?? null,
+              type,
+              priority,
+              now,
+              now,
+              complexity ?? null,
+              "{}",
+            ]
           );
 
           if (input.parentId) {
@@ -840,8 +838,7 @@ export class TaskStoreService {
         }
       }
 
-      const assigneeBeingSet =
-        options.assignee != null && options.assignee.trim() !== "";
+      const assigneeBeingSet = options.assignee != null && options.assignee.trim() !== "";
       if (assigneeBeingSet) {
         const row = await client.queryOne(
           toPgParams("SELECT started_at FROM tasks WHERE id = ? AND project_id = ?"),
@@ -1073,7 +1070,10 @@ export class TaskStoreService {
     });
   }
 
-  private stripTaskLinesFromPlanContent(content: string, taskId: string): { content: string; changed: boolean } {
+  private stripTaskLinesFromPlanContent(
+    content: string,
+    taskId: string
+  ): { content: string; changed: boolean } {
     if (!content || !taskId) return { content, changed: false };
     const lines = content.split("\n");
     const kept = lines.filter((line) => !line.includes(taskId));
@@ -1081,7 +1081,10 @@ export class TaskStoreService {
     return { content: kept.join("\n"), changed: true };
   }
 
-  private pruneTaskIdFromJson(value: unknown, taskId: string): { value: unknown; changed: boolean } {
+  private pruneTaskIdFromJson(
+    value: unknown,
+    taskId: string
+  ): { value: unknown; changed: boolean } {
     if (Array.isArray(value)) {
       let changed = false;
       const next: unknown[] = [];
@@ -1243,10 +1246,10 @@ export class TaskStoreService {
           toPgParams("DELETE FROM task_dependencies WHERE task_id = ? OR depends_on_id = ?"),
           [id, id]
         );
-        return tx.execute(
-          toPgParams("DELETE FROM tasks WHERE id = ? AND project_id = ?"),
-          [id, projectId]
-        );
+        return tx.execute(toPgParams("DELETE FROM tasks WHERE id = ? AND project_id = ?"), [
+          id,
+          projectId,
+        ]);
       });
       if (modified === 0) {
         throw new AppError(404, ErrorCodes.ISSUE_NOT_FOUND, `Task ${id} not found`, {
@@ -1275,10 +1278,10 @@ export class TaskStoreService {
             toPgParams("DELETE FROM task_dependencies WHERE task_id = ? OR depends_on_id = ?"),
             [id, id]
           );
-          await tx.execute(
-            toPgParams("DELETE FROM tasks WHERE id = ? AND project_id = ?"),
-            [id, projectId]
-          );
+          await tx.execute(toPgParams("DELETE FROM tasks WHERE id = ? AND project_id = ?"), [
+            id,
+            projectId,
+          ]);
         }
       });
     });
@@ -1289,10 +1292,9 @@ export class TaskStoreService {
     return this.withWriteLock(async () => {
       await this.ensureInitialized();
       const client = this.ensureClient();
-      await client.execute(
-        toPgParams("DELETE FROM open_questions WHERE project_id = ?"),
-        [projectId]
-      );
+      await client.execute(toPgParams("DELETE FROM open_questions WHERE project_id = ?"), [
+        projectId,
+      ]);
     });
   }
 
@@ -1301,10 +1303,9 @@ export class TaskStoreService {
     return this.withWriteLock(async () => {
       await this.ensureInitialized();
       const client = this.ensureClient();
-      const rows = await client.query(
-        toPgParams("SELECT id FROM tasks WHERE project_id = ?"),
-        [projectId]
-      );
+      const rows = await client.query(toPgParams("SELECT id FROM tasks WHERE project_id = ?"), [
+        projectId,
+      ]);
       const ids = rows.map((r) => r.id as string);
       for (const id of ids) {
         await client.execute(
@@ -1314,14 +1315,24 @@ export class TaskStoreService {
       }
       await client.execute(toPgParams("DELETE FROM tasks WHERE project_id = ?"), [projectId]);
       await client.execute(toPgParams("DELETE FROM feedback WHERE project_id = ?"), [projectId]);
-      await client.execute(toPgParams("DELETE FROM feedback_inbox WHERE project_id = ?"), [projectId]);
-      await client.execute(toPgParams("DELETE FROM agent_sessions WHERE project_id = ?"), [projectId]);
+      await client.execute(toPgParams("DELETE FROM feedback_inbox WHERE project_id = ?"), [
+        projectId,
+      ]);
+      await client.execute(toPgParams("DELETE FROM agent_sessions WHERE project_id = ?"), [
+        projectId,
+      ]);
       await client.execute(toPgParams("DELETE FROM agent_stats WHERE project_id = ?"), [projectId]);
-      await client.execute(toPgParams("DELETE FROM orchestrator_events WHERE project_id = ?"), [projectId]);
-      await client.execute(toPgParams("DELETE FROM orchestrator_counters WHERE project_id = ?"), [projectId]);
+      await client.execute(toPgParams("DELETE FROM orchestrator_events WHERE project_id = ?"), [
+        projectId,
+      ]);
+      await client.execute(toPgParams("DELETE FROM orchestrator_counters WHERE project_id = ?"), [
+        projectId,
+      ]);
       await client.execute(toPgParams("DELETE FROM deployments WHERE project_id = ?"), [projectId]);
       await this.planStore.planDeleteAllForProject(projectId);
-      await client.execute(toPgParams("DELETE FROM open_questions WHERE project_id = ?"), [projectId]);
+      await client.execute(toPgParams("DELETE FROM open_questions WHERE project_id = ?"), [
+        projectId,
+      ]);
     });
   }
 
@@ -1576,6 +1587,8 @@ export class TaskStoreService {
    * then VACUUM to reclaim disk space. Active/in-progress sessions are not in agent_sessions
    * until archived, so this has no impact on them.
    * Uses withWriteLock directly because VACUUM cannot run inside a transaction.
+   * Vacuum only the current schema's agent_sessions table so concurrent test runs do not
+   * trigger full-database VACUUM work against each other.
    * @returns Number of rows pruned
    */
   async pruneAgentSessions(): Promise<number> {
@@ -1592,12 +1605,11 @@ export class TaskStoreService {
       const cutoffId = cutoffRow?.id as number | undefined;
       if (cutoffId == null) return 0;
 
-      const pruned = await client.execute(
-        toPgParams("DELETE FROM agent_sessions WHERE id < ?"),
-        [cutoffId]
-      );
+      const pruned = await client.execute(toPgParams("DELETE FROM agent_sessions WHERE id < ?"), [
+        cutoffId,
+      ]);
 
-      await client.execute("VACUUM");
+      await client.execute("VACUUM agent_sessions");
       if (pruned > 0) {
         log.info("Pruned agent_sessions", { pruned, retained: 100 });
       }

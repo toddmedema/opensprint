@@ -40,7 +40,7 @@ function isPathUnderRoot(resolvedPath: string): boolean {
   const allowedRoot = getFsAllowedRoot();
   const normalized = path.normalize(resolvedPath);
   const relative = path.relative(allowedRoot, normalized);
-  return (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative)));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 export const fsRouter = Router();
@@ -115,7 +115,11 @@ fsRouter.post(
         throw new AppError(400, ErrorCodes.INVALID_INPUT, "Invalid folder name");
       }
       if (trimmedName.includes("/") || trimmedName.includes("\\")) {
-        throw new AppError(400, ErrorCodes.INVALID_INPUT, "Folder name cannot contain path separators");
+        throw new AppError(
+          400,
+          ErrorCodes.INVALID_INPUT,
+          "Folder name cannot contain path separators"
+        );
       }
 
       const parentResolved = resolve(parentPath);
@@ -136,7 +140,11 @@ fsRouter.post(
       }
 
       if (existsSync(newPath)) {
-        throw new AppError(409, ErrorCodes.ALREADY_EXISTS, "A file or folder with that name already exists");
+        throw new AppError(
+          409,
+          ErrorCodes.ALREADY_EXISTS,
+          "A file or folder with that name already exists"
+        );
       }
 
       await mkdir(newPath, { recursive: false });

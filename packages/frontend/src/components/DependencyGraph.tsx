@@ -155,8 +155,7 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
       // actual viewport. Fallbacks cause nodes to cluster in top-left when container
       // later gets real size (we only resize SVG, we don't re-run simulation).
       const hasValidDimensions =
-        measuredWidth >= MIN_DIMENSION &&
-        (fillHeight ? measuredHeight >= MIN_DIMENSION : true);
+        measuredWidth >= MIN_DIMENSION && (fillHeight ? measuredHeight >= MIN_DIMENSION : true);
 
       if (!readyRef.current && !hasValidDimensions) {
         return;
@@ -180,7 +179,8 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
 
       const svg = svgRef.current;
       if (svg && svg.childNodes.length > 0 && d3Module) {
-        d3Module.select(svg)
+        d3Module
+          .select(svg)
           .attr("width", width)
           .attr("height", height)
           .attr("viewBox", [0, 0, width, height]);
@@ -190,7 +190,14 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
         if (zoom && prev) {
           try {
             const t = d3Module.zoomTransform(svg);
-            const next = adjustTransformForResize(d3Module, t, prev.width, prev.height, width, height);
+            const next = adjustTransformForResize(
+              d3Module,
+              t,
+              prev.width,
+              prev.height,
+              width,
+              height
+            );
             d3Module.select(svg).call(zoom.transform, next);
           } catch {
             // JSDOM/headless may lack SVG dimensions; skip transform adjustment
@@ -244,8 +251,7 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
         const measuredWidth = el.clientWidth;
         const measuredHeight = el.clientHeight;
         const hasValidDimensions =
-          measuredWidth >= MIN_DIMENSION &&
-          (fillHeight ? measuredHeight >= MIN_DIMENSION : true);
+          measuredWidth >= MIN_DIMENSION && (fillHeight ? measuredHeight >= MIN_DIMENSION : true);
 
         if (!hasValidDimensions) return;
 
@@ -255,7 +261,13 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
           : Math.max(280, Math.min(400, (graph?.plans.length ?? 3) * 50));
 
         const prev = dimensionsRef.current;
-        if (prev && prev.width === width && prev.height === height && !hadFallbackDimensionsRef.current) return;
+        if (
+          prev &&
+          prev.width === width &&
+          prev.height === height &&
+          !hadFallbackDimensionsRef.current
+        )
+          return;
 
         dimensionsRef.current = { width, height };
         if (hadFallbackDimensionsRef.current) {

@@ -15,7 +15,9 @@ import { setGlobalSettings } from "../services/global-settings.service.js";
 import { API_PREFIX, DEFAULT_HIL_CONFIG, DEFAULT_REVIEW_MODE } from "@opensprint/shared";
 import type { DbClient } from "../db/client.js";
 
-const { testClientRef } = vi.hoisted(() => ({ testClientRef: { current: null as DbClient | null } }));
+const { testClientRef } = vi.hoisted(() => ({
+  testClientRef: { current: null as DbClient | null },
+}));
 vi.mock("../services/task-store.service.js", async () => {
   const { SCHEMA_SQL, runSchema } = await import("../db/schema.js");
   const { createTestPostgresClient } = await import("./test-db-helper.js");
@@ -26,7 +28,11 @@ vi.mock("../services/task-store.service.js", async () => {
     taskStore: {
       init: vi.fn().mockImplementation(async () => {}),
       getDb: vi.fn().mockImplementation(async () => testClientRef.current),
-      runWrite: vi.fn().mockImplementation(async (fn: (c: DbClient) => Promise<unknown>) => fn(testClientRef.current!)),
+      runWrite: vi
+        .fn()
+        .mockImplementation(async (fn: (c: DbClient) => Promise<unknown>) =>
+          fn(testClientRef.current!)
+        ),
       listAll: vi.fn().mockResolvedValue([]),
       list: vi.fn().mockResolvedValue([]),
       show: vi.fn().mockResolvedValue({}),

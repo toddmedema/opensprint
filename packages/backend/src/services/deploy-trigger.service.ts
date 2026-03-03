@@ -1,9 +1,6 @@
 import { execSync } from "child_process";
 import type { DeployEvent } from "@opensprint/shared";
-import {
-  getDefaultDeploymentTarget,
-  getTargetsForDeployEvent,
-} from "@opensprint/shared";
+import { getDefaultDeploymentTarget, getTargetsForDeployEvent } from "@opensprint/shared";
 import { ProjectService } from "./project.service.js";
 import { deployStorageService } from "./deploy-storage.service.js";
 import { broadcastToProject } from "../websocket/index.js";

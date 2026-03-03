@@ -31,10 +31,7 @@ describe("GET /:taskId logging", () => {
     app = express();
     app.use(express.json());
     app.use(requestIdMiddleware);
-    app.use(
-      `${API_PREFIX}/projects/:projectId/tasks`,
-      createTasksRouter(taskService)
-    );
+    app.use(`${API_PREFIX}/projects/:projectId/tasks`, createTasksRouter(taskService));
 
     logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -46,14 +43,13 @@ describe("GET /:taskId logging", () => {
   });
 
   it("does not log info on normal (fast) requests", async () => {
-    const res = await request(app).get(
-      `${API_PREFIX}/projects/proj-1/tasks/os-abc.1`
-    );
+    const res = await request(app).get(`${API_PREFIX}/projects/proj-1/tasks/os-abc.1`);
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual(fakeTask);
 
     const infoCalls = logSpy.mock.calls.filter(
-      (call) => typeof call[0] === "string" && call[0].includes("GET /:taskId") && !call[0].includes("slow")
+      (call) =>
+        typeof call[0] === "string" && call[0].includes("GET /:taskId") && !call[0].includes("slow")
     );
     expect(infoCalls).toHaveLength(0);
   });
@@ -66,9 +62,7 @@ describe("GET /:taskId logging", () => {
         })
     );
 
-    const res = await request(app).get(
-      `${API_PREFIX}/projects/proj-1/tasks/os-abc.1`
-    );
+    const res = await request(app).get(`${API_PREFIX}/projects/proj-1/tasks/os-abc.1`);
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual(fakeTask);
 

@@ -50,9 +50,7 @@ export function isExhausted(projectId: string, provider: ApiKeyProvider): boolea
  * can resume work promptly.
  * @returns Project IDs that had the provider cleared
  */
-export function clearExhaustedForProviderAcrossAllProjects(
-  provider: ApiKeyProvider
-): string[] {
+export function clearExhaustedForProviderAcrossAllProjects(provider: ApiKeyProvider): string[] {
   const cleared: string[] = [];
   for (const [projectId, set] of exhaustedByProject.entries()) {
     if (set.has(provider)) {

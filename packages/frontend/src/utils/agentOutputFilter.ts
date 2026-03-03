@@ -11,11 +11,7 @@
 function extractTextFromContentArray(content: unknown[]): string | null {
   const parts: string[] = [];
   for (const block of content) {
-    if (
-      block &&
-      typeof block === "object" &&
-      (block as Record<string, unknown>).type === "text"
-    ) {
+    if (block && typeof block === "object" && (block as Record<string, unknown>).type === "text") {
       const t = (block as Record<string, unknown>).text;
       if (typeof t === "string") parts.push(t);
     }
@@ -32,9 +28,7 @@ function extractContentFromEvent(obj: unknown): string | null {
 
   const o = obj as Record<string, unknown>;
   const nestedError =
-    o.error && typeof o.error === "object"
-      ? (o.error as Record<string, unknown>)
-      : null;
+    o.error && typeof o.error === "object" ? (o.error as Record<string, unknown>) : null;
   const explicitErrorMessage =
     typeof o.message === "string"
       ? o.message

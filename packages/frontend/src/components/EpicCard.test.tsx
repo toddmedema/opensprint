@@ -7,7 +7,10 @@ import { EpicCard } from "./EpicCard";
 import executeReducer from "../store/slices/executeSlice";
 import type { Plan, Task } from "@opensprint/shared";
 
-function toTasksByIdAndOrder(tasks: Task[]): { tasksById: Record<string, Task>; taskIdsOrder: string[] } {
+function toTasksByIdAndOrder(tasks: Task[]): {
+  tasksById: Record<string, Task>;
+  taskIdsOrder: string[];
+} {
   const tasksById: Record<string, Task> = {};
   const taskIdsOrder: string[] = [];
   const seen = new Set<string>();
@@ -122,7 +125,12 @@ describe("EpicCard", () => {
   });
 
   it("hides Plan Tasks button when isOptimistic (planning, zero tasks)", () => {
-    const planningPlan = { ...basePlan, status: "planning" as const, taskCount: 0, doneTaskCount: 0 };
+    const planningPlan = {
+      ...basePlan,
+      status: "planning" as const,
+      taskCount: 0,
+      doneTaskCount: 0,
+    };
     renderWithStore(
       <EpicCard
         plan={planningPlan}

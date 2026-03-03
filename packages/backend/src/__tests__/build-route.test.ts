@@ -12,15 +12,34 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
   const { createTestPostgresClient } = await import("./test-db-helper.js");
   const dbResult = await createTestPostgresClient();
   if (!dbResult) {
-    return { ...actual, TaskStoreService: class { constructor() { throw new Error("Postgres required"); } }, taskStore: null, _postgresAvailable: false };
+    return {
+      ...actual,
+      TaskStoreService: class {
+        constructor() {
+          throw new Error("Postgres required");
+        }
+      },
+      taskStore: null,
+      _postgresAvailable: false,
+    };
   }
   const store = new actual.TaskStoreService(dbResult.client);
   await store.init();
-  return { ...actual, TaskStoreService: class extends actual.TaskStoreService { constructor() { super(dbResult.client); } }, taskStore: store, _postgresAvailable: true };
+  return {
+    ...actual,
+    TaskStoreService: class extends actual.TaskStoreService {
+      constructor() {
+        super(dbResult.client);
+      }
+    },
+    taskStore: store,
+    _postgresAvailable: true,
+  };
 });
 
 const buildRouteTaskStoreMod = await import("../services/task-store.service.js");
-const buildRoutePostgresOk = (buildRouteTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
+const buildRoutePostgresOk =
+  (buildRouteTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
 
 describe.skipIf(!buildRoutePostgresOk)("Execute API", () => {
   let app: ReturnType<typeof createApp>;

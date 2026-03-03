@@ -123,10 +123,7 @@ export function isAuthError(err: unknown): boolean {
 }
 
 /** Scope compliance patterns — review/API rejection for scope violations (distinct from rate limit). */
-const SCOPE_COMPLIANCE_PATTERNS = [
-  /scope\s*compliance/i,
-  /scope_compliance/i,
-];
+const SCOPE_COMPLIANCE_PATTERNS = [/scope\s*compliance/i, /scope_compliance/i];
 
 /**
  * Detect scope compliance rejection errors.

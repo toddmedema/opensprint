@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useParams, useLocation, useNavigate, Outlet, Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppDispatch, useAppSelector } from "../store";
@@ -36,9 +36,11 @@ import {
   useSketchChat,
   usePlanStatus,
   useActiveAgents,
+  useDbStatus,
 } from "../api/hooks";
 import { queryKeys } from "../api/queryKeys";
 import { Layout } from "../components/layout/Layout";
+import { DatabaseUnavailableState } from "../components/DatabaseUnavailableState";
 import { getProjectPhasePath } from "../lib/phaseRouting";
 import { VALID_PHASE_SLUGS } from "../lib/phaseRouting";
 import type { ProjectPhase } from "@opensprint/shared";
@@ -80,44 +82,51 @@ export function ProjectShell() {
   const lastSyncedRef = useRef<Record<string, SyncedProjectData | undefined>>({});
 
   const view = getViewFromPathname(location.pathname);
+  const phaseRoute = isPhaseRoute(view);
   const currentPhase: ProjectPhase = isPhaseRoute(view) ? view : "sketch";
   const isSketch = currentPhase === "sketch";
   const isPlan = currentPhase === "plan";
   const isExecute = currentPhase === "execute";
   const isDeliver = currentPhase === "deliver";
+  const dbStatus = useDbStatus();
+  const dbPhaseAvailable = dbStatus.data?.ok === true;
+  const shouldEnableDbBackedQueries = dbPhaseAvailable;
+  const shouldConnectProjectWs = dbPhaseAvailable;
+  const settingsHref = projectId ? `/projects/${projectId}/settings` : "/settings";
 
   const { data: project, isLoading: projectLoading, error: projectError } = useProject(projectId);
-  const { data: tasksData } = useTasks(projectId);
-  const { data: plansData } = usePlans(projectId);
-  const { data: feedbackData } = useFeedback(projectId);
+  const { data: tasksData } = useTasks(projectId, { enabled: shouldEnableDbBackedQueries });
+  const { data: plansData } = usePlans(projectId, { enabled: shouldEnableDbBackedQueries });
+  const { data: feedbackData } = useFeedback(projectId, { enabled: shouldEnableDbBackedQueries });
   const { data: executeStatusData } = useExecuteStatus(projectId, {
-    enabled: isExecute,
+    enabled: isExecute && shouldEnableDbBackedQueries,
   });
   const { data: deliverStatusData } = useDeliverStatus(projectId, {
-    enabled: isDeliver,
+    enabled: isDeliver && shouldEnableDbBackedQueries,
   });
   const { data: deliverHistoryData } = useDeliverHistory(projectId, undefined, {
-    enabled: isDeliver,
+    enabled: isDeliver && shouldEnableDbBackedQueries,
   });
   const { data: prdData } = usePrd(projectId, {
-    enabled: isSketch,
+    enabled: isSketch && shouldEnableDbBackedQueries,
   });
   const { data: prdHistoryData } = usePrdHistory(projectId, {
-    enabled: isSketch,
+    enabled: isSketch && shouldEnableDbBackedQueries,
   });
   const { data: sketchChatData } = useSketchChat(projectId, {
-    enabled: isSketch,
+    enabled: isSketch && shouldEnableDbBackedQueries,
   });
   const { data: planStatusData } = usePlanStatus(projectId, {
-    enabled: isSketch || isPlan,
+    enabled: (isSketch || isPlan) && shouldEnableDbBackedQueries,
   });
   const activeAgentsQuery = useActiveAgents(projectId, {
+    enabled: shouldEnableDbBackedQueries,
     refetchInterval: ACTIVE_AGENTS_POLL_INTERVAL_MS,
   });
   const wsConnected = useAppSelector((s) => s.websocket.connected);
   const prevWsConnectedRef = useRef<boolean | null>(null);
 
-  // Project lifecycle: reset slices before query-to-Redux syncs run, then connect WS.
+  // Project lifecycle: reset slices before query-to-Redux syncs run, then connect WS when DB is ready.
   useEffect(() => {
     if (!projectId) return;
 
@@ -138,7 +147,9 @@ export function ProjectShell() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.feedback.list(projectId) });
     }
     prevProjectIdRef.current = projectId;
-    dispatch(wsConnect({ projectId }));
+    if (shouldConnectProjectWs) {
+      dispatch(wsConnect({ projectId }));
+    }
 
     return () => {
       dispatch(wsDisconnect());
@@ -151,7 +162,7 @@ export function ProjectShell() {
       dispatch(resetDeliver());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [projectId, shouldConnectProjectWs]);
 
   // Sync TanStack Query → Redux (keeps state populated even when on Help/Settings)
   useEffect(() => {
@@ -238,9 +249,9 @@ export function ProjectShell() {
     dispatch(setPlanStatusPayload(planStatusData));
   }, [projectId, planStatusData, dispatch]);
   useEffect(() => {
-    if (!projectId) return;
+    if (!projectId || !shouldEnableDbBackedQueries) return;
     dispatch(fetchProjectNotifications(projectId));
-  }, [projectId, dispatch]);
+  }, [projectId, shouldEnableDbBackedQueries, dispatch]);
   useEffect(() => {
     if (!projectId || !activeAgentsQuery.data) return;
     const previous = lastSyncedRef.current["activeAgents"];
@@ -268,12 +279,12 @@ export function ProjectShell() {
   useEffect(() => {
     const prev = prevWsConnectedRef.current;
     prevWsConnectedRef.current = wsConnected;
-    if (prev == null || !projectId) return;
+    if (prev == null || !projectId || !shouldEnableDbBackedQueries) return;
     if (!prev && wsConnected) {
       void activeAgentsQuery.refetch();
       dispatch(fetchProjectNotifications(projectId));
     }
-  }, [projectId, wsConnected, activeAgentsQuery, dispatch]);
+  }, [projectId, wsConnected, shouldEnableDbBackedQueries, activeAgentsQuery, dispatch]);
 
   const handlePhaseChange = (phase: ProjectPhase) => {
     if (projectId) navigate(getProjectPhasePath(projectId, phase));
@@ -288,19 +299,21 @@ export function ProjectShell() {
   const deliverToast = useAppSelector((s) => s.websocket.deliverToast);
   const planBackgroundError = useAppSelector((s) => s.plan.backgroundError);
   const connectionError = useAppSelector((s) => s.connection?.connectionError ?? false);
+  const dbUnavailableMessage = dbStatus.data?.message ?? "PostgreSQL is unavailable.";
 
   const handleDismissDeliverToast = () => dispatch(clearDeliverToast());
   const handleDismissPlanBackgroundError = () => dispatch(clearPlanBackgroundError());
 
-  if (!projectId) return null;
-
-  if (projectLoading && !project) {
+  function renderShellContent(content: ReactNode) {
     return (
       <>
-        <Layout>
-          <div className="flex items-center justify-center h-full text-theme-muted">
-            Loading project...
-          </div>
+        <Layout
+          project={project ?? null}
+          currentPhase={currentPhase}
+          onPhaseChange={project ? handlePhaseChange : undefined}
+          onProjectSaved={project ? handleProjectSaved : undefined}
+        >
+          {content}
         </Layout>
         <DeliverToast toast={deliverToast} onDismiss={handleDismissDeliverToast} />
         {!connectionError && (
@@ -313,25 +326,24 @@ export function ProjectShell() {
     );
   }
 
+  if (!projectId) return null;
+
+  if (projectLoading && !project) {
+    return renderShellContent(
+      <div className="flex items-center justify-center h-full text-theme-muted">
+        Loading project...
+      </div>
+    );
+  }
+
   if (projectError || (!projectLoading && !project)) {
-    return (
-      <>
-        <Layout>
-          <div className="flex flex-col items-center justify-center h-full gap-2 text-theme-muted">
-            <p>Project not found or failed to load.</p>
-            <Link to="/" className="text-brand-600 hover:text-brand-700 font-medium">
-              Return to home
-            </Link>
-          </div>
-        </Layout>
-        <DeliverToast toast={deliverToast} onDismiss={handleDismissDeliverToast} />
-        {!connectionError && (
-          <PlanRefreshToast
-            error={planBackgroundError}
-            onDismiss={handleDismissPlanBackgroundError}
-          />
-        )}
-      </>
+    return renderShellContent(
+      <div className="flex flex-col items-center justify-center h-full gap-2 text-theme-muted">
+        <p>Project not found or failed to load.</p>
+        <Link to="/" className="text-brand-600 hover:text-brand-700 font-medium">
+          Return to home
+        </Link>
+      </div>
     );
   }
 
@@ -341,28 +353,28 @@ export function ProjectShell() {
 
   const resolvedProject = project;
 
+  if (phaseRoute && dbStatus.isPending) {
+    return renderShellContent(
+      <div className="flex items-center justify-center h-full text-theme-muted">
+        Checking PostgreSQL...
+      </div>
+    );
+  }
+
+  if (phaseRoute && dbStatus.data && !dbStatus.data.ok) {
+    return renderShellContent(
+      <DatabaseUnavailableState message={dbUnavailableMessage} settingsHref={settingsHref} />
+    );
+  }
+
   return (
-    <>
-      <Layout
-        project={resolvedProject}
-        currentPhase={currentPhase}
-        onPhaseChange={handlePhaseChange}
-        onProjectSaved={handleProjectSaved}
-      >
-        <Outlet
-          context={
-            { projectId, project: resolvedProject, currentPhase } satisfies ProjectShellContext
-          }
-        />
-      </Layout>
-      <DeliverToast toast={deliverToast} onDismiss={handleDismissDeliverToast} />
-      {!connectionError && (
-        <PlanRefreshToast
-          error={planBackgroundError}
-          onDismiss={handleDismissPlanBackgroundError}
-        />
-      )}
-    </>
+    renderShellContent(
+      <Outlet
+        context={
+          { projectId, project: resolvedProject, currentPhase } satisfies ProjectShellContext
+        }
+      />
+    )
   );
 }
 

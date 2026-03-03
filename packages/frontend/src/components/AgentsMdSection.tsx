@@ -3,19 +3,15 @@ import remarkGfm from "remark-gfm";
 import { api } from "../api/client";
 import { useTheme } from "../contexts/ThemeContext";
 
-const MDEditor = lazy(() =>
-  import("@uiw/react-md-editor").then((m) => ({ default: m.default }))
-);
+const MDEditor = lazy(() => import("@uiw/react-md-editor").then((m) => ({ default: m.default })));
 const AgentsMdPreview = lazy(() =>
   import("./AgentsMdPreview").then((module) => ({ default: module.AgentsMdPreview }))
 );
 
-let markdownFormatterPromise:
-  | Promise<{
-      prettier: typeof import("prettier");
-      parserMarkdown: typeof import("prettier/plugins/markdown");
-    }>
-  | null = null;
+let markdownFormatterPromise: Promise<{
+  prettier: typeof import("prettier");
+  parserMarkdown: typeof import("prettier/plugins/markdown");
+}> | null = null;
 
 function EditorLoadingFallback() {
   return (
@@ -211,7 +207,14 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
                       keyCommand: "prettify",
                       buttonProps: { "aria-label": "Prettify markdown" },
                       icon: (
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
                           <path d="M4 6h16M4 12h10M4 18h16" />
                         </svg>
                       ),

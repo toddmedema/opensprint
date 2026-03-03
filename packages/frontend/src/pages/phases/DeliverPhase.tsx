@@ -344,76 +344,51 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
               </svg>
             </button>
           ) : (
-          <ResizableSidebar
-            storageKey="deliver"
-            defaultWidth={280}
-            side="left"
-            resizeHandleLabel="Resize delivery history sidebar"
-            responsive
-            onClose={isMobile ? () => setMobileHistoryOpen(false) : undefined}
-          >
-            <div className="h-full flex flex-col border-r border-theme-border bg-theme-bg">
-              <div className="px-3 py-2 border-b border-theme-border flex items-center justify-between gap-2">
-                <h3 className="text-sm font-medium text-theme-text">Delivery History</h3>
-                {history.length > 0 && (
-                  <div className="relative shrink-0" ref={filterDropdownRef}>
-                    <button
-                      type="button"
-                      onClick={() => setFilterDropdownOpen((o) => !o)}
-                      className="p-1 rounded text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle transition-colors"
-                      aria-label="Filter by environment"
-                      aria-expanded={filterDropdownOpen}
-                      aria-haspopup="listbox"
-                      data-testid="delivery-history-filter-button"
-                    >
-                      <FilterIcon className="w-4 h-4" />
-                    </button>
-                    {filterDropdownOpen && (
-                      <div
-                        role="listbox"
-                        className="absolute right-0 top-full mt-1 z-10 min-w-[10rem] py-1 bg-theme-surface border border-theme-border rounded-lg shadow-lg"
-                        data-testid="delivery-history-filter-dropdown"
+            <ResizableSidebar
+              storageKey="deliver"
+              defaultWidth={280}
+              side="left"
+              resizeHandleLabel="Resize delivery history sidebar"
+              responsive
+              onClose={isMobile ? () => setMobileHistoryOpen(false) : undefined}
+            >
+              <div className="h-full flex flex-col border-r border-theme-border bg-theme-bg">
+                <div className="px-3 py-2 border-b border-theme-border flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-medium text-theme-text">Delivery History</h3>
+                  {history.length > 0 && (
+                    <div className="relative shrink-0" ref={filterDropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => setFilterDropdownOpen((o) => !o)}
+                        className="p-1 rounded text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle transition-colors"
+                        aria-label="Filter by environment"
+                        aria-expanded={filterDropdownOpen}
+                        aria-haspopup="listbox"
+                        data-testid="delivery-history-filter-button"
                       >
-                        <button
-                          role="option"
-                          aria-selected={envFilter === "all"}
-                          type="button"
-                          onClick={() => {
-                            setEnvFilter("all");
-                            setFilterDropdownOpen(false);
-                          }}
-                          className={`dropdown-item w-full text-left text-sm hover:bg-theme-border-subtle ${
-                            envFilter === "all" ? "bg-theme-surface-muted font-medium" : ""
-                          }`}
+                        <FilterIcon className="w-4 h-4" />
+                      </button>
+                      {filterDropdownOpen && (
+                        <div
+                          role="listbox"
+                          className="absolute right-0 top-full mt-1 z-10 min-w-[10rem] py-1 bg-theme-surface border border-theme-border rounded-lg shadow-lg"
+                          data-testid="delivery-history-filter-dropdown"
                         >
-                          All ({envCounts.all})
-                        </button>
-                        {["staging", "production"].map((key) => (
                           <button
-                            key={key}
                             role="option"
-                            aria-selected={envFilter === key}
+                            aria-selected={envFilter === "all"}
                             type="button"
                             onClick={() => {
-                              setEnvFilter(key);
+                              setEnvFilter("all");
                               setFilterDropdownOpen(false);
                             }}
                             className={`dropdown-item w-full text-left text-sm hover:bg-theme-border-subtle ${
-                              envFilter === key ? "bg-theme-surface-muted font-medium" : ""
+                              envFilter === "all" ? "bg-theme-surface-muted font-medium" : ""
                             }`}
                           >
-                            {formatTarget(key)} ({envCounts[key] ?? 0})
+                            All ({envCounts.all})
                           </button>
-                        ))}
-                        {Object.entries(envCounts)
-                          .filter(
-                            ([k]) =>
-                              k !== "all" &&
-                              k !== "staging" &&
-                              k !== "production" &&
-                              k !== "unknown"
-                          )
-                          .map(([key]) => (
+                          {["staging", "production"].map((key) => (
                             <button
                               key={key}
                               role="option"
@@ -427,68 +402,93 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
                                 envFilter === key ? "bg-theme-surface-muted font-medium" : ""
                               }`}
                             >
-                              {formatTarget(key)} ({envCounts[key]})
+                              {formatTarget(key)} ({envCounts[key] ?? 0})
                             </button>
                           ))}
-                        {(envCounts.unknown ?? 0) > 0 && (
+                          {Object.entries(envCounts)
+                            .filter(
+                              ([k]) =>
+                                k !== "all" &&
+                                k !== "staging" &&
+                                k !== "production" &&
+                                k !== "unknown"
+                            )
+                            .map(([key]) => (
+                              <button
+                                key={key}
+                                role="option"
+                                aria-selected={envFilter === key}
+                                type="button"
+                                onClick={() => {
+                                  setEnvFilter(key);
+                                  setFilterDropdownOpen(false);
+                                }}
+                                className={`dropdown-item w-full text-left text-sm hover:bg-theme-border-subtle ${
+                                  envFilter === key ? "bg-theme-surface-muted font-medium" : ""
+                                }`}
+                              >
+                                {formatTarget(key)} ({envCounts[key]})
+                              </button>
+                            ))}
+                          {(envCounts.unknown ?? 0) > 0 && (
+                            <button
+                              role="option"
+                              aria-selected={envFilter === "unknown"}
+                              type="button"
+                              onClick={() => {
+                                setEnvFilter("unknown");
+                                setFilterDropdownOpen(false);
+                              }}
+                              className={`dropdown-item w-full text-left text-sm hover:bg-theme-border-subtle ${
+                                envFilter === "unknown" ? "bg-theme-surface-muted font-medium" : ""
+                              }`}
+                            >
+                              Unknown ({envCounts.unknown})
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  {historyLoading ? (
+                    <div className="p-4 text-center text-sm text-theme-muted">Loading…</div>
+                  ) : history.length === 0 ? (
+                    <div className="p-4 text-center text-sm text-theme-muted">
+                      No deliveries yet. Configure targets and deploy.
+                    </div>
+                  ) : filteredHistory.length === 0 ? (
+                    <div className="p-4 text-center text-sm text-theme-muted">
+                      No deployments match this filter.
+                    </div>
+                  ) : (
+                    <ul className="py-2">
+                      {filteredHistory.map((r) => (
+                        <li key={r.id}>
                           <button
-                            role="option"
-                            aria-selected={envFilter === "unknown"}
                             type="button"
-                            onClick={() => {
-                              setEnvFilter("unknown");
-                              setFilterDropdownOpen(false);
-                            }}
-                            className={`dropdown-item w-full text-left text-sm hover:bg-theme-border-subtle ${
-                              envFilter === "unknown" ? "bg-theme-surface-muted font-medium" : ""
+                            onClick={() => handleSelectDeploy(r.id)}
+                            className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-theme-border-subtle transition-colors ${
+                              selectedDeployId === r.id ||
+                              (!selectedDeployId && r.id === filteredHistory[0]?.id)
+                                ? "bg-theme-surface border-l-2 border-brand-600"
+                                : ""
                             }`}
                           >
-                            Unknown ({envCounts.unknown})
+                            <StatusBadge status={r.status} />
+                            <EnvironmentChip target={r.target} />
+                            <span className="text-xs text-theme-muted truncate flex-1">
+                              {formatDate(r.startedAt)}
+                            </span>
                           </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
-              <div className="flex-1 overflow-y-auto">
-                {historyLoading ? (
-                  <div className="p-4 text-center text-sm text-theme-muted">Loading…</div>
-                ) : history.length === 0 ? (
-                  <div className="p-4 text-center text-sm text-theme-muted">
-                    No deliveries yet. Configure targets and deploy.
-                  </div>
-                ) : filteredHistory.length === 0 ? (
-                  <div className="p-4 text-center text-sm text-theme-muted">
-                    No deployments match this filter.
-                  </div>
-                ) : (
-                  <ul className="py-2">
-                    {filteredHistory.map((r) => (
-                      <li key={r.id}>
-                        <button
-                          type="button"
-                          onClick={() => handleSelectDeploy(r.id)}
-                          className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-theme-border-subtle transition-colors ${
-                            selectedDeployId === r.id ||
-                            (!selectedDeployId && r.id === filteredHistory[0]?.id)
-                              ? "bg-theme-surface border-l-2 border-brand-600"
-                              : ""
-                          }`}
-                        >
-                          <StatusBadge status={r.status} />
-                          <EnvironmentChip target={r.target} />
-                          <span className="text-xs text-theme-muted truncate flex-1">
-                            {formatDate(r.startedAt)}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-          </ResizableSidebar>
+            </ResizableSidebar>
           )}
 
           <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-theme-surface">

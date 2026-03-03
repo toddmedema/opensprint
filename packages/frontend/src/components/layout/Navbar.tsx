@@ -12,6 +12,7 @@ import { GlobalActiveAgentsList } from "../GlobalActiveAgentsList";
 import { NotificationBell } from "../NotificationBell";
 import { GlobalNotificationBell } from "../GlobalNotificationBell";
 import { ConnectionIndicator } from "../ConnectionIndicator";
+import { useDbStatus } from "../../api/hooks";
 interface NavbarProps {
   project?: Project | null;
   currentPhase?: ProjectPhase;
@@ -54,6 +55,7 @@ export function Navbar({
     "p-1.5 rounded-md transition-colors text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle min-h-[44px] min-w-[44px] inline-flex items-center justify-center";
 
   const dispatch = useAppDispatch();
+  const { data: dbStatus } = useDbStatus();
   const executeBlockedCount = useAppSelector((s) => {
     const implTasks = selectTasks(s).filter((t) => t.type !== "epic");
     return implTasks.filter((t) => t.kanbanColumn === "blocked").length;
@@ -67,6 +69,7 @@ export function Navbar({
       })),
     [executeBlockedCount]
   );
+  const showDbBackedChrome = dbStatus?.ok === true;
 
   // Load projects when on home (no project) so we can show GlobalActiveAgentsList when at least one exists
   useEffect(() => {
@@ -141,7 +144,9 @@ export function Navbar({
               <polygon points="22,10 54,40 22,70" fill="#818cf8" />
               <polygon points="40,10 72,40 40,70" fill="#4f46e5" />
             </svg>
-            <span className="hidden min-[1000px]:inline font-sans font-semibold text-lg text-theme-text">Open Sprint</span>
+            <span className="hidden min-[1000px]:inline font-sans font-semibold text-lg text-theme-text">
+              Open Sprint
+            </span>
           </Link>
 
           <div className="relative flex items-center min-w-0" ref={dropdownRef}>
@@ -227,33 +232,31 @@ export function Navbar({
               role="tablist"
               aria-label="Phase navigation"
             >
-            {phaseTabs.map((phase, index) => {
-              const isActive = currentPhase === phase.key && !isSettingsActive && !isHelpActive;
-              return (
-                <button
-                  key={phase.key}
-                  role="tab"
-                  onClick={() => onPhaseChange(phase.key)}
-                  onKeyDown={(e) => {
-                    if (e.key === "ArrowLeft" && index > 0) {
-                      e.preventDefault();
-                      onPhaseChange(phaseTabs[index - 1].key);
-                    } else if (e.key === "ArrowRight" && index < phaseTabs.length - 1) {
-                      e.preventDefault();
-                      onPhaseChange(phaseTabs[index + 1].key);
-                    }
-                  }}
-                  className={`phase-tab ${
-                    isActive ? "phase-tab-active" : "phase-tab-inactive"
-                  }`}
-                  aria-label={`Switch to ${phase.label} phase`}
-                  aria-selected={isActive}
-                  aria-current={isActive ? "page" : undefined}
-                >
-                  {phase.label}
-                </button>
-              );
-            })}
+              {phaseTabs.map((phase, index) => {
+                const isActive = currentPhase === phase.key && !isSettingsActive && !isHelpActive;
+                return (
+                  <button
+                    key={phase.key}
+                    role="tab"
+                    onClick={() => onPhaseChange(phase.key)}
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowLeft" && index > 0) {
+                        e.preventDefault();
+                        onPhaseChange(phaseTabs[index - 1].key);
+                      } else if (e.key === "ArrowRight" && index < phaseTabs.length - 1) {
+                        e.preventDefault();
+                        onPhaseChange(phaseTabs[index + 1].key);
+                      }
+                    }}
+                    className={`phase-tab ${isActive ? "phase-tab-active" : "phase-tab-inactive"}`}
+                    aria-label={`Switch to ${phase.label} phase`}
+                    aria-selected={isActive}
+                    aria-current={isActive ? "page" : undefined}
+                  >
+                    {phase.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -262,8 +265,8 @@ export function Navbar({
         <div className="flex items-center shrink-0 [&>*:not(:first-child)]:pl-1 md:[&>*:not(:first-child)]:pl-3">
           {project ? (
             <>
-              <ActiveAgentsList projectId={project.id} />
-              <NotificationBell projectId={project.id} />
+              {showDbBackedChrome && <ActiveAgentsList projectId={project.id} />}
+              {showDbBackedChrome && <NotificationBell projectId={project.id} />}
               <ConnectionIndicator />
               <Link
                 to={helpHref}
@@ -278,7 +281,9 @@ export function Navbar({
               <Link
                 to={settingsHref}
                 className={`rounded-md transition-colors inline-flex items-center justify-center min-h-[44px] min-w-[44px] shrink-0 ${
-                  isSettingsActive ? "phase-tab phase-tab-active !p-2" : "text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle p-1.5"
+                  isSettingsActive
+                    ? "phase-tab phase-tab-active !p-2"
+                    : "text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle p-1.5"
                 }`}
                 aria-label="Project settings"
                 title="Project settings"
@@ -305,8 +310,8 @@ export function Navbar({
             </>
           ) : projects.length >= 1 ? (
             <>
-              <GlobalActiveAgentsList />
-              <GlobalNotificationBell />
+              {showDbBackedChrome && <GlobalActiveAgentsList />}
+              {showDbBackedChrome && <GlobalNotificationBell />}
               <Link
                 to={helpHref}
                 className={`rounded-md transition-colors inline-flex items-center justify-center min-h-[44px] min-w-[44px] shrink-0 aspect-square ${
@@ -320,7 +325,9 @@ export function Navbar({
               <Link
                 to={settingsHref}
                 className={`rounded-md transition-colors inline-flex items-center justify-center min-h-[44px] min-w-[44px] shrink-0 ${
-                  isSettingsActive ? "phase-tab phase-tab-active !p-2" : "text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle p-1.5"
+                  isSettingsActive
+                    ? "phase-tab phase-tab-active !p-2"
+                    : "text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle p-1.5"
                 }`}
                 aria-label="Settings"
                 title="Settings"
@@ -360,7 +367,9 @@ export function Navbar({
               <Link
                 to={settingsHref}
                 className={`rounded-md transition-colors inline-flex items-center justify-center min-h-[44px] min-w-[44px] shrink-0 ${
-                  isSettingsActive ? "phase-tab phase-tab-active !p-2" : "text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle p-1.5"
+                  isSettingsActive
+                    ? "phase-tab phase-tab-active !p-2"
+                    : "text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle p-1.5"
                 }`}
                 aria-label="Settings"
                 title="Settings"

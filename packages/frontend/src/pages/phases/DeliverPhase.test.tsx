@@ -141,7 +141,7 @@ describe("DeliverPhase", () => {
     const store = createStore();
     renderWithRouter(store);
     expect(
-      screen.getByRole("separator", { name: "Resize delivery history sidebar" })
+      screen.getByRole("slider", { name: "Resize delivery history sidebar" })
     ).toBeInTheDocument();
   });
 
@@ -149,16 +149,13 @@ describe("DeliverPhase", () => {
     const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
     const store = createStore();
     renderWithRouter(store);
-    const handle = screen.getByRole("separator", {
+    const handle = screen.getByRole("slider", {
       name: "Resize delivery history sidebar",
     });
     handle.dispatchEvent(new MouseEvent("mousedown", { clientX: 100, bubbles: true }));
     document.dispatchEvent(new MouseEvent("mousemove", { clientX: 150, bubbles: true }));
     document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-    expect(setItemSpy).toHaveBeenCalledWith(
-      "opensprint-sidebar-width-deliver",
-      expect.any(String)
-    );
+    expect(setItemSpy).toHaveBeenCalledWith("opensprint-sidebar-width-deliver", expect.any(String));
     setItemSpy.mockRestore();
   });
 
@@ -328,7 +325,9 @@ describe("DeliverPhase", () => {
     renderWithRouter(store);
     await waitFor(() => expect(mockGetSettings).toHaveBeenCalled());
     expect(screen.queryByTestId("deploy-prod-button")).not.toBeInTheDocument();
-    expect(screen.getByTestId("deploy-to-production-button")).toHaveTextContent("Deploy to production");
+    expect(screen.getByTestId("deploy-to-production-button")).toHaveTextContent(
+      "Deploy to production"
+    );
   });
 
   it("Deploy to Staging calls expoDeploy with variant beta", async () => {
@@ -420,7 +419,9 @@ describe("DeliverPhase", () => {
     expect(topBar).toContainElement(cancelBtn);
     expect(topBar).toContainElement(spinner);
     const ordered = Array.from(
-      topBar.querySelectorAll('[data-testid="cancel-deployment-button"], [data-testid="deploy-spinner"]')
+      topBar.querySelectorAll(
+        '[data-testid="cancel-deployment-button"], [data-testid="deploy-spinner"]'
+      )
     );
     expect(ordered[0]).toBe(cancelBtn);
     expect(ordered[1]).toBe(spinner);

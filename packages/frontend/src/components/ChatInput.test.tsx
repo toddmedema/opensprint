@@ -12,25 +12,13 @@ function ControlledChatInput({
   placeholder?: string;
 }) {
   const [value, setValue] = useState("");
-  return (
-    <ChatInput
-      value={value}
-      onChange={setValue}
-      onSend={onSend}
-      placeholder={placeholder}
-    />
-  );
+  return <ChatInput value={value} onChange={setValue} onSend={onSend} placeholder={placeholder} />;
 }
 
 describe("ChatInput", () => {
   it("renders textarea and send button", () => {
     render(
-      <ChatInput
-        value=""
-        onChange={vi.fn()}
-        onSend={vi.fn()}
-        placeholder="Type a message..."
-      />
+      <ChatInput value="" onChange={vi.fn()} onSend={vi.fn()} placeholder="Type a message..." />
     );
     expect(screen.getByPlaceholderText("Type a message...")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
@@ -48,9 +36,7 @@ describe("ChatInput", () => {
   it("calls onSend when Send button clicked", async () => {
     const user = userEvent.setup();
     const onSend = vi.fn();
-    render(
-      <ChatInput value="Hello" onChange={vi.fn()} onSend={onSend} placeholder="Type..." />
-    );
+    render(<ChatInput value="Hello" onChange={vi.fn()} onSend={onSend} placeholder="Type..." />);
     await user.click(screen.getByRole("button", { name: "Send" }));
     expect(onSend).toHaveBeenCalledTimes(1);
   });
@@ -58,9 +44,7 @@ describe("ChatInput", () => {
   it("Enter submits when multiline (Shift+Enter inserts newline)", async () => {
     const user = userEvent.setup();
     const onSend = vi.fn();
-    render(
-      <ChatInput value="Hello" onChange={vi.fn()} onSend={onSend} placeholder="Type..." />
-    );
+    render(<ChatInput value="Hello" onChange={vi.fn()} onSend={onSend} placeholder="Type..." />);
     const input = screen.getByPlaceholderText("Type...");
     await user.type(input, "{Enter}");
     expect(onSend).toHaveBeenCalledTimes(1);
@@ -116,10 +100,7 @@ describe("ChatInput", () => {
       />
     );
     const sendButton = screen.getByRole("button", { name: "Send" });
-    expect(sendButton).toHaveAttribute(
-      "title",
-      "Waiting on Dreamer to finish current response"
-    );
+    expect(sendButton).toHaveAttribute("title", "Waiting on Dreamer to finish current response");
   });
 
   it("does not show sendDisabledTooltip when sendDisabled is false", () => {
@@ -137,16 +118,12 @@ describe("ChatInput", () => {
   });
 
   it("disables send button when value is empty", () => {
-    render(
-      <ChatInput value="" onChange={vi.fn()} onSend={vi.fn()} placeholder="Type..." />
-    );
+    render(<ChatInput value="" onChange={vi.fn()} onSend={vi.fn()} placeholder="Type..." />);
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
   });
 
   it("has resize-none and overflow-y-auto for auto-expand up to 5 lines", () => {
-    render(
-      <ChatInput value="" onChange={vi.fn()} onSend={vi.fn()} placeholder="Type..." />
-    );
+    render(<ChatInput value="" onChange={vi.fn()} onSend={vi.fn()} placeholder="Type..." />);
     const input = screen.getByPlaceholderText("Type...");
     expect(input).toHaveClass("resize-none");
     expect(input).toHaveClass("overflow-y-auto");

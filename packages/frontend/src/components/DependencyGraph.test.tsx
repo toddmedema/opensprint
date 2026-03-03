@@ -103,12 +103,7 @@ describe("DependencyGraph", () => {
   it("renders all plans on initial load without requiring user interaction", async () => {
     // Uses dimension fallback (100ms) when ResizeObserver mock doesn't fire.
     const graphWithFourPlans: PlanDependencyGraph = {
-      plans: [
-        mockPlan("plan-a"),
-        mockPlan("plan-b"),
-        mockPlan("plan-c"),
-        mockPlan("plan-d"),
-      ],
+      plans: [mockPlan("plan-a"), mockPlan("plan-b"), mockPlan("plan-c"), mockPlan("plan-d")],
       edges: [
         { from: "plan-a", to: "plan-b", type: "blocks" },
         { from: "plan-b", to: "plan-c", type: "blocks" },
@@ -167,7 +162,9 @@ describe("DependencyGraph", () => {
     expect(nodes.length).toBe(3);
 
     const positions = getNodePositions(nodes);
-    expect(new Set(positions.map(({ x, y }) => `${x.toFixed(3)},${y.toFixed(3)}`)).size).toBeGreaterThan(1);
+    expect(
+      new Set(positions.map(({ x, y }) => `${x.toFixed(3)},${y.toFixed(3)}`)).size
+    ).toBeGreaterThan(1);
   });
 
   it("applies synchronous simulation positions to the DOM before any interaction", async () => {
@@ -193,7 +190,9 @@ describe("DependencyGraph", () => {
     });
 
     const positions = getNodePositions(document.querySelectorAll("svg g.nodes g"));
-    expect(new Set(positions.map(({ x, y }) => `${x.toFixed(3)},${y.toFixed(3)}`)).size).toBeGreaterThan(1);
+    expect(
+      new Set(positions.map(({ x, y }) => `${x.toFixed(3)},${y.toFixed(3)}`)).size
+    ).toBeGreaterThan(1);
   });
 
   it("calls onPlanClick when a plan node is clicked", async () => {

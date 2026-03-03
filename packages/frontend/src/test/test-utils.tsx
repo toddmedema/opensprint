@@ -54,8 +54,7 @@ export function renderWithProviders(
   ui: React.ReactElement,
   options: RenderWithProvidersOptions = {}
 ) {
-  const store =
-    options.store ?? createTestStore(options.preloadedState);
+  const store = options.store ?? createTestStore(options.preloadedState);
   const queryClient = options.queryClient ?? defaultQueryClient;
 
   return render(

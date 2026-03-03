@@ -29,29 +29,19 @@ describe("ApiKeySetupModal", () => {
 
   it("renders modal with title and body copy", () => {
     render(
-      <ApiKeySetupModal
-        onComplete={onComplete}
-        onCancel={onCancel}
-        intendedRoute={intendedRoute}
-      />
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
 
     expect(screen.getByText("Enter agent API key")).toBeInTheDocument();
     expect(
       screen.getByText(/At least one agent API key is required to use Open Sprint/)
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/Custom\/CLI.*own agent/)
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Custom\/CLI.*own agent/)).toBeInTheDocument();
   });
 
   it("shows provider dropdown with Claude, Cursor, OpenAI, Custom/CLI", () => {
     render(
-      <ApiKeySetupModal
-        onComplete={onComplete}
-        onCancel={onCancel}
-        intendedRoute={intendedRoute}
-      />
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
 
     const select = screen.getByTestId("api-key-provider-select");
@@ -65,11 +55,7 @@ describe("ApiKeySetupModal", () => {
 
   it("shows password input when Claude, Cursor, or OpenAI selected", () => {
     render(
-      <ApiKeySetupModal
-        onComplete={onComplete}
-        onCancel={onCancel}
-        intendedRoute={intendedRoute}
-      />
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
 
     expect(screen.getByTestId("api-key-input")).toBeInTheDocument();
@@ -80,17 +66,10 @@ describe("ApiKeySetupModal", () => {
   it("hides key input when Custom/CLI selected", async () => {
     const user = userEvent.setup();
     render(
-      <ApiKeySetupModal
-        onComplete={onComplete}
-        onCancel={onCancel}
-        intendedRoute={intendedRoute}
-      />
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
 
-    await user.selectOptions(
-      screen.getByTestId("api-key-provider-select"),
-      "Custom/CLI"
-    );
+    await user.selectOptions(screen.getByTestId("api-key-provider-select"), "Custom/CLI");
 
     expect(screen.queryByTestId("api-key-input")).not.toBeInTheDocument();
   });
@@ -98,11 +77,7 @@ describe("ApiKeySetupModal", () => {
   it("toggles password visibility with eye icon", async () => {
     const user = userEvent.setup();
     render(
-      <ApiKeySetupModal
-        onComplete={onComplete}
-        onCancel={onCancel}
-        intendedRoute={intendedRoute}
-      />
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
 
     const input = screen.getByTestId("api-key-input");
@@ -118,11 +93,7 @@ describe("ApiKeySetupModal", () => {
   it("calls onCancel when Cancel is clicked", async () => {
     const user = userEvent.setup();
     render(
-      <ApiKeySetupModal
-        onComplete={onComplete}
-        onCancel={onCancel}
-        intendedRoute={intendedRoute}
-      />
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
 
     await user.click(screen.getByRole("button", { name: /Cancel/ }));
@@ -132,22 +103,13 @@ describe("ApiKeySetupModal", () => {
 
   it("Custom/CLI shows user-friendly message on network error", async () => {
     const user = userEvent.setup();
-    vi.mocked(api.env.setGlobalSettings).mockRejectedValue(
-      new Error("Failed to fetch")
-    );
+    vi.mocked(api.env.setGlobalSettings).mockRejectedValue(new Error("Failed to fetch"));
 
     render(
-      <ApiKeySetupModal
-        onComplete={onComplete}
-        onCancel={onCancel}
-        intendedRoute={intendedRoute}
-      />
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
 
-    await user.selectOptions(
-      screen.getByTestId("api-key-provider-select"),
-      "Custom/CLI"
-    );
+    await user.selectOptions(screen.getByTestId("api-key-provider-select"), "Custom/CLI");
     await user.click(screen.getByTestId("api-key-save-button"));
 
     expect(
@@ -161,17 +123,10 @@ describe("ApiKeySetupModal", () => {
     vi.mocked(api.env.setGlobalSettings).mockResolvedValue({ useCustomCli: true });
 
     render(
-      <ApiKeySetupModal
-        onComplete={onComplete}
-        onCancel={onCancel}
-        intendedRoute={intendedRoute}
-      />
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
 
-    await user.selectOptions(
-      screen.getByTestId("api-key-provider-select"),
-      "Custom/CLI"
-    );
+    await user.selectOptions(screen.getByTestId("api-key-provider-select"), "Custom/CLI");
     await user.click(screen.getByTestId("api-key-save-button"));
 
     expect(api.env.setGlobalSettings).toHaveBeenCalledWith({ useCustomCli: true });
@@ -192,11 +147,7 @@ describe("ApiKeySetupModal", () => {
     vi.mocked(api.env.saveKey).mockResolvedValue({ saved: true });
 
     render(
-      <ApiKeySetupModal
-        onComplete={onComplete}
-        onCancel={onCancel}
-        intendedRoute={intendedRoute}
-      />
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
 
     await user.type(screen.getByTestId("api-key-input"), "sk-ant-x");
@@ -219,11 +170,7 @@ describe("ApiKeySetupModal", () => {
     vi.mocked(api.env.saveKey).mockResolvedValue({ saved: true });
 
     render(
-      <ApiKeySetupModal
-        onComplete={onComplete}
-        onCancel={onCancel}
-        intendedRoute={intendedRoute}
-      />
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
 
     await user.type(screen.getByTestId("api-key-input"), "sk-ant-test-key");
@@ -240,17 +187,10 @@ describe("ApiKeySetupModal", () => {
     vi.mocked(api.env.saveKey).mockResolvedValue({ saved: true });
 
     render(
-      <ApiKeySetupModal
-        onComplete={onComplete}
-        onCancel={onCancel}
-        intendedRoute={intendedRoute}
-      />
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
 
-    await user.selectOptions(
-      screen.getByTestId("api-key-provider-select"),
-      "Cursor"
-    );
+    await user.selectOptions(screen.getByTestId("api-key-provider-select"), "Cursor");
     await user.type(screen.getByTestId("api-key-input"), "key_cursor_test");
     await user.click(screen.getByTestId("api-key-save-button"));
 
@@ -265,17 +205,10 @@ describe("ApiKeySetupModal", () => {
     vi.mocked(api.env.saveKey).mockResolvedValue({ saved: true });
 
     render(
-      <ApiKeySetupModal
-        onComplete={onComplete}
-        onCancel={onCancel}
-        intendedRoute={intendedRoute}
-      />
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
 
-    await user.selectOptions(
-      screen.getByTestId("api-key-provider-select"),
-      "OpenAI"
-    );
+    await user.selectOptions(screen.getByTestId("api-key-provider-select"), "OpenAI");
     await user.type(screen.getByTestId("api-key-input"), "sk-openai-test-key");
     await user.click(screen.getByTestId("api-key-save-button"));
 
@@ -292,11 +225,7 @@ describe("ApiKeySetupModal", () => {
     });
 
     render(
-      <ApiKeySetupModal
-        onComplete={onComplete}
-        onCancel={onCancel}
-        intendedRoute={intendedRoute}
-      />
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
 
     await user.type(screen.getByTestId("api-key-input"), "bad-key");
@@ -314,11 +243,7 @@ describe("ApiKeySetupModal", () => {
     vi.mocked(api.env.validateKey).mockRejectedValue(new Error("Failed to fetch"));
 
     render(
-      <ApiKeySetupModal
-        onComplete={onComplete}
-        onCancel={onCancel}
-        intendedRoute={intendedRoute}
-      />
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
 
     await user.type(screen.getByTestId("api-key-input"), "sk-ant-valid");
@@ -337,11 +262,7 @@ describe("ApiKeySetupModal", () => {
     vi.mocked(api.env.saveKey).mockRejectedValue(new Error("Network request failed"));
 
     render(
-      <ApiKeySetupModal
-        onComplete={onComplete}
-        onCancel={onCancel}
-        intendedRoute={intendedRoute}
-      />
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
 
     await user.type(screen.getByTestId("api-key-input"), "sk-ant-valid");
@@ -355,11 +276,7 @@ describe("ApiKeySetupModal", () => {
 
   it("shows error when Save is clicked with empty key for Claude", async () => {
     render(
-      <ApiKeySetupModal
-        onComplete={onComplete}
-        onCancel={onCancel}
-        intendedRoute={intendedRoute}
-      />
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
 
     // Save button should be disabled when empty, but let's ensure we don't call API
@@ -371,11 +288,7 @@ describe("ApiKeySetupModal", () => {
     const user = userEvent.setup();
 
     render(
-      <ApiKeySetupModal
-        onComplete={onComplete}
-        onCancel={onCancel}
-        intendedRoute={intendedRoute}
-      />
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
 
     expect(screen.getByTestId("api-key-save-button")).toBeDisabled();
@@ -387,17 +300,10 @@ describe("ApiKeySetupModal", () => {
     const user = userEvent.setup();
 
     render(
-      <ApiKeySetupModal
-        onComplete={onComplete}
-        onCancel={onCancel}
-        intendedRoute={intendedRoute}
-      />
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
 
-    await user.selectOptions(
-      screen.getByTestId("api-key-provider-select"),
-      "Custom/CLI"
-    );
+    await user.selectOptions(screen.getByTestId("api-key-provider-select"), "Custom/CLI");
     expect(screen.getByTestId("api-key-save-button")).not.toBeDisabled();
   });
 });

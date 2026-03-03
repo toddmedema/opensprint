@@ -10,8 +10,10 @@ import {
   SimplifiedAgentsStep,
 } from "../components/ProjectSetupWizard";
 import type { ProjectMetadataState } from "../components/ProjectSetupWizard";
-import type { AgentType, ScaffoldRecoveryInfo } from "@opensprint/shared";
+import type { AgentType, Project, ScaffoldRecoveryInfo } from "@opensprint/shared";
 import { api, ApiError } from "../api/client";
+import { getPlatformFamily } from "../utils/platform";
+import { getRunInstructions } from "../utils/runInstructions";
 
 type Step = "basics" | "agents" | "scaffold";
 
@@ -21,9 +23,7 @@ const STEPS: { key: Step; label: string }[] = [
   { key: "scaffold", label: "Scaffold" },
 ];
 
-const TEMPLATE_OPTIONS = [
-  { value: "web-app-expo-react", label: "Web App (Expo/React)" },
-] as const;
+const TEMPLATE_OPTIONS = [{ value: "web-app-expo-react", label: "Web App (Expo/React)" }] as const;
 
 export function CreateNewProjectPage() {
   const navigate = useNavigate();
@@ -63,10 +63,12 @@ export function CreateNewProjectPage() {
   const [scaffolding, setScaffolding] = useState(false);
   const [scaffoldError, setScaffoldError] = useState<string | null>(null);
   const [scaffoldRecovery, setScaffoldRecovery] = useState<ScaffoldRecoveryInfo | null>(null);
-  const [runCommand, setRunCommand] = useState<string | null>(null);
-  const [scaffoldedProject, setScaffoldedProject] = useState<{ id: string } | null>(null);
+  const [scaffoldedProject, setScaffoldedProject] = useState<Project | null>(null);
 
   const currentStepIndex = STEPS.findIndex((s) => s.key === step);
+  const runInstructions = scaffoldedProject
+    ? getRunInstructions(scaffoldedProject.repoPath, getPlatformFamily())
+    : null;
 
   useEffect(() => {
     if (step !== "agents") return;
@@ -95,9 +97,7 @@ export function CreateNewProjectPage() {
     setSavingKey(envKey);
     try {
       await api.env.saveKey(envKey, value.trim());
-      setEnvKeys((prev) =>
-        prev ? { ...prev, [keyToInput]: true } : null
-      );
+      setEnvKeys((prev) => (prev ? { ...prev, [keyToInput]: true } : null));
       setKeyInput((prev) => ({
         ...prev,
         [keyToInput]: "",
@@ -123,7 +123,6 @@ export function CreateNewProjectPage() {
   const handleAgentsNext = () => {
     setScaffoldError(null);
     setScaffoldRecovery(null);
-    setRunCommand(null);
     setScaffoldedProject(null);
     setScaffolding(true);
     setStep("scaffold");
@@ -147,7 +146,8 @@ export function CreateNewProjectPage() {
           template,
           simpleComplexityAgent: {
             type: simpleComplexityAgent.type,
-            model: simpleComplexityAgent.type === "custom" ? null : simpleComplexityAgent.model || null,
+            model:
+              simpleComplexityAgent.type === "custom" ? null : simpleComplexityAgent.model || null,
             cliCommand:
               simpleComplexityAgent.type === "custom" && simpleComplexityAgent.cliCommand.trim()
                 ? simpleComplexityAgent.cliCommand.trim()
@@ -155,7 +155,10 @@ export function CreateNewProjectPage() {
           },
           complexComplexityAgent: {
             type: complexComplexityAgent.type,
-            model: complexComplexityAgent.type === "custom" ? null : complexComplexityAgent.model || null,
+            model:
+              complexComplexityAgent.type === "custom"
+                ? null
+                : complexComplexityAgent.model || null,
             cliCommand:
               complexComplexityAgent.type === "custom" && complexComplexityAgent.cliCommand.trim()
                 ? complexComplexityAgent.cliCommand.trim()
@@ -163,7 +166,6 @@ export function CreateNewProjectPage() {
           },
         });
         if (scaffoldStepMountedRef.current) {
-          setRunCommand(result.runCommand);
           setScaffoldedProject(result.project);
           if (result.recovery) {
             setScaffoldRecovery(result.recovery);
@@ -203,6 +205,7 @@ export function CreateNewProjectPage() {
   const handleScaffoldRetry = () => {
     setScaffoldError(null);
     setScaffoldRecovery(null);
+    setScaffoldedProject(null);
     setScaffolding(true);
     api.projects
       .scaffold({
@@ -211,7 +214,8 @@ export function CreateNewProjectPage() {
         template,
         simpleComplexityAgent: {
           type: simpleComplexityAgent.type,
-          model: simpleComplexityAgent.type === "custom" ? null : simpleComplexityAgent.model || null,
+          model:
+            simpleComplexityAgent.type === "custom" ? null : simpleComplexityAgent.model || null,
           cliCommand:
             simpleComplexityAgent.type === "custom" && simpleComplexityAgent.cliCommand.trim()
               ? simpleComplexityAgent.cliCommand.trim()
@@ -219,7 +223,8 @@ export function CreateNewProjectPage() {
         },
         complexComplexityAgent: {
           type: complexComplexityAgent.type,
-          model: complexComplexityAgent.type === "custom" ? null : complexComplexityAgent.model || null,
+          model:
+            complexComplexityAgent.type === "custom" ? null : complexComplexityAgent.model || null,
           cliCommand:
             complexComplexityAgent.type === "custom" && complexComplexityAgent.cliCommand.trim()
               ? complexComplexityAgent.cliCommand.trim()
@@ -228,7 +233,6 @@ export function CreateNewProjectPage() {
       })
       .then((result) => {
         if (scaffoldStepMountedRef.current) {
-          setRunCommand(result.runCommand);
           setScaffoldedProject(result.project);
           if (result.recovery) {
             setScaffoldRecovery(result.recovery);
@@ -256,7 +260,6 @@ export function CreateNewProjectPage() {
   const handleScaffoldBack = () => {
     setScaffoldError(null);
     setScaffoldRecovery(null);
-    setRunCommand(null);
     setScaffoldedProject(null);
     setScaffolding(false);
     setStep("agents");
@@ -375,6 +378,16 @@ export function CreateNewProjectPage() {
                       </option>
                     ))}
                   </select>
+                  <p className="mt-2 text-sm text-theme-text-secondary">
+                    <a
+                      href="https://github.com/toddmedema/opensprint/issues/new"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline underline-offset-2 hover:text-theme-text"
+                    >
+                      Request a template
+                    </a>
+                  </p>
                 </div>
               </div>
             )}
@@ -404,8 +417,8 @@ export function CreateNewProjectPage() {
                     />
                     <p className="text-theme-text font-medium">Building your project...</p>
                     <p className="text-sm text-theme-muted mt-1">
-                      Creating scaffolding and installing dependencies.
-                      If an error is detected, an agent will attempt to fix it automatically.
+                      Creating scaffolding and installing dependencies. If an error is detected, an
+                      agent will attempt to fix it automatically.
                     </p>
                   </div>
                 )}
@@ -446,7 +459,7 @@ export function CreateNewProjectPage() {
                     )}
                   </div>
                 )}
-                {runCommand && !scaffolding && (
+                {runInstructions && !scaffolding && (
                   <div className="space-y-4">
                     <p className="text-theme-text font-medium">Your project is ready!</p>
                     {scaffoldRecovery?.attempted && scaffoldRecovery.success && (
@@ -454,12 +467,13 @@ export function CreateNewProjectPage() {
                         className="p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-sm text-green-800 dark:text-green-300"
                         data-testid="scaffold-recovery-success"
                       >
-                        An initialization issue was automatically resolved: {scaffoldRecovery.errorSummary}
+                        An initialization issue was automatically resolved:{" "}
+                        {scaffoldRecovery.errorSummary}
                       </div>
                     )}
-                    <p className="text-sm text-theme-muted">Run your app:</p>
+                    <p className="text-sm text-theme-muted">Run these commands in order:</p>
                     <pre className="p-3 bg-theme-surface-muted rounded-lg font-mono text-sm overflow-x-auto">
-                      {runCommand}
+                      {runInstructions.join("\n")}
                     </pre>
                   </div>
                 )}
@@ -524,7 +538,7 @@ export function CreateNewProjectPage() {
             )}
             {step === "scaffold" && (
               <>
-                {runCommand ? (
+                {scaffoldedProject ? (
                   <button
                     onClick={handleImReady}
                     className="btn-primary"

@@ -19,11 +19,11 @@ function SourceFeedbackSectionInner({
   title?: string;
 }) {
   const dispatch = useAppDispatch();
-  const { data: feedback, isFetching: loading, error } = useFeedbackItem(
-    projectId,
-    feedbackId,
-    { enabled: expanded && Boolean(feedbackId) }
-  );
+  const {
+    data: feedback,
+    isFetching: loading,
+    error,
+  } = useFeedbackItem(projectId, feedbackId, { enabled: expanded && Boolean(feedbackId) });
   const lastNotifiedErrorRef = useRef<string | null>(null);
   const errorMessage = error instanceof Error ? error.message : error ? String(error) : null;
 

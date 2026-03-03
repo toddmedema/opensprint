@@ -90,9 +90,7 @@ describe("Filesystem API", () => {
     const nestedDir = path.join(tempDir, "workspace", "demo");
     await fs.mkdir(nestedDir, { recursive: true });
 
-    const res = await request(app)
-      .get(`${API_PREFIX}/fs/browse`)
-      .query({ path: nestedDir });
+    const res = await request(app).get(`${API_PREFIX}/fs/browse`).query({ path: nestedDir });
 
     expect(res.status).toBe(200);
     expect(res.body.data.current).toBe(nestedDir);
@@ -102,9 +100,7 @@ describe("Filesystem API", () => {
     const outsideDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-fs-outside-"));
 
     try {
-      const res = await request(app)
-        .get(`${API_PREFIX}/fs/browse`)
-        .query({ path: outsideDir });
+      const res = await request(app).get(`${API_PREFIX}/fs/browse`).query({ path: outsideDir });
 
       expect(res.status).toBe(400);
       expect(res.body.error?.message).toBe("Path is outside the allowed directory.");

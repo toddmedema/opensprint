@@ -303,8 +303,9 @@ describe("PhaseExecutorService", () => {
       const slot = makeSlot();
       const slots = new Map([[task.id, slot]]);
       mockGetState.mockReturnValue({ slots, status: { queueDepth: 0 } });
-      (mockHost.branchManager as { captureBranchDiff: ReturnType<typeof vi.fn> }).captureBranchDiff =
-        vi.fn().mockResolvedValue("");
+      (
+        mockHost.branchManager as { captureBranchDiff: ReturnType<typeof vi.fn> }
+      ).captureBranchDiff = vi.fn().mockResolvedValue("");
 
       await phaseExecutor.executeReviewPhase(projectId, repoPath, task, slot.branchName);
 
@@ -313,7 +314,9 @@ describe("PhaseExecutorService", () => {
         promptPath: string;
         onDone: (code: number | null) => Promise<void>;
       };
-      expect(runParams.promptPath).toContain(path.join(".opensprint", "active", taskId, "prompt.md"));
+      expect(runParams.promptPath).toContain(
+        path.join(".opensprint", "active", taskId, "prompt.md")
+      );
 
       await runParams.onDone(0);
       expect(mockHandleReviewDone).toHaveBeenCalledWith(
@@ -348,16 +351,20 @@ describe("PhaseExecutorService", () => {
       const slot = makeSlot();
       const slots = new Map([[task.id, slot]]);
       mockGetState.mockReturnValue({ slots, status: { queueDepth: 0 } });
-      (mockHost.branchManager as { captureBranchDiff: ReturnType<typeof vi.fn> }).captureBranchDiff =
-        vi.fn().mockResolvedValue("");
+      (
+        mockHost.branchManager as { captureBranchDiff: ReturnType<typeof vi.fn> }
+      ).captureBranchDiff = vi.fn().mockResolvedValue("");
 
       await phaseExecutor.executeReviewPhase(projectId, repoPath, task, slot.branchName);
 
       expect(mockLifecycleRun).toHaveBeenCalledTimes(2);
-      const runParams = mockLifecycleRun.mock.calls.map((call) => call[0] as {
-        promptPath: string;
-        onDone: (code: number | null) => Promise<void>;
-      });
+      const runParams = mockLifecycleRun.mock.calls.map(
+        (call) =>
+          call[0] as {
+            promptPath: string;
+            onDone: (code: number | null) => Promise<void>;
+          }
+      );
       expect(runParams.map((r) => r.promptPath)).toEqual(
         expect.arrayContaining([
           expect.stringContaining(path.join("review-angles", "security", "prompt.md")),

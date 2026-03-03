@@ -65,7 +65,7 @@ export function ProjectView() {
     const path = getProjectPhasePath(projectId, currentPhase, {
       plan: currentPhase === "plan" ? (selectedPlanId ?? urlPlan ?? undefined) : undefined,
       task: currentPhase === "execute" ? (selectedTaskId ?? urlTask ?? undefined) : undefined,
-      feedback: currentPhase === "eval" ? urlFeedback ?? undefined : undefined,
+      feedback: currentPhase === "eval" ? (urlFeedback ?? undefined) : undefined,
       question: urlQuestion ?? undefined,
       section: urlSection ?? undefined,
     });
@@ -119,10 +119,7 @@ export function ProjectView() {
           />
         )}
         {currentPhase === "plan" && (
-          <LazyPlanPhase
-            projectId={projectId}
-            onNavigateToBuildTask={handleNavigateToBuildTask}
-          />
+          <LazyPlanPhase projectId={projectId} onNavigateToBuildTask={handleNavigateToBuildTask} />
         )}
         {currentPhase === "execute" && (
           <LazyExecutePhase

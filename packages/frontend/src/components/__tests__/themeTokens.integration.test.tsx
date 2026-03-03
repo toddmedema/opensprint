@@ -23,6 +23,7 @@ vi.mock("../../api/client", () => ({
   api: {
     projects: { list: () => Promise.resolve([]) },
     agents: { active: () => Promise.resolve([]) },
+    dbStatus: { get: () => Promise.resolve({ ok: true, message: null }) },
   },
 }));
 

@@ -217,14 +217,7 @@ describe("TimelineList", () => {
     ];
     const plans = [createMockPlan("epic-1", "Auth")];
 
-    render(
-      <TimelineList
-        tasks={tasks}
-        plans={plans}
-        onTaskSelect={vi.fn()}
-        statusFilter="all"
-      />
-    );
+    render(<TimelineList tasks={tasks} plans={plans} onTaskSelect={vi.fn()} statusFilter="all" />);
 
     expect(screen.getByTestId("timeline-section-blocked")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Blocked" })).toBeInTheDocument();
@@ -240,14 +233,7 @@ describe("TimelineList", () => {
     ];
     const plans = [createMockPlan("epic-1", "Auth")];
 
-    render(
-      <TimelineList
-        tasks={tasks}
-        plans={plans}
-        onTaskSelect={vi.fn()}
-        statusFilter="all"
-      />
-    );
+    render(<TimelineList tasks={tasks} plans={plans} onTaskSelect={vi.fn()} statusFilter="all" />);
 
     expect(screen.queryByTestId("timeline-section-blocked")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Blocked" })).not.toBeInTheDocument();
@@ -260,14 +246,7 @@ describe("TimelineList", () => {
     ];
     const plans = [createMockPlan("epic-1", "Auth")];
 
-    render(
-      <TimelineList
-        tasks={tasks}
-        plans={plans}
-        onTaskSelect={vi.fn()}
-        statusFilter="all"
-      />
-    );
+    render(<TimelineList tasks={tasks} plans={plans} onTaskSelect={vi.fn()} statusFilter="all" />);
 
     expect(screen.getByTestId("timeline-section-blocked")).toBeInTheDocument();
     expect(screen.getByTestId("timeline-section-ready")).toBeInTheDocument();

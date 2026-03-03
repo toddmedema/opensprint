@@ -50,14 +50,14 @@ Tasks are stored in `~/.opensprint/tasks.db` (SQLite via sql.js WASM). The `Task
 
 ## Glossary (docs/glossary.md)
 
-| Term | Definition |
-|------|------------|
-| **Worktree** | Git worktree for a task at `.opensprint/worktrees/<task-id>/`. Survives backend restarts. |
-| **Assignment** | `assignment.json` in `.opensprint/active/<task-id>/` — everything an agent needs to self-start. Enables GUPP-style crash recovery. |
-| **Nudge** | Event that triggers the orchestrator loop (agent done, feedback submitted, Execute! clicked, or loop kicker tick). |
-| **Loop kicker** | 60s timer that nudges when the orchestrator loop is idle. Runs inside the orchestrator. |
-| **Watchdog** | 5-min health patrol (stale heartbeats, orphaned tasks, stale `.git/index.lock`). Runs in a separate `WatchdogService`. |
-| **Progressive backoff** | Deprioritize then block tasks after repeated failures. |
+| Term                    | Definition                                                                                                                         |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| **Worktree**            | Git worktree for a task at `.opensprint/worktrees/<task-id>/`. Survives backend restarts.                                          |
+| **Assignment**          | `assignment.json` in `.opensprint/active/<task-id>/` — everything an agent needs to self-start. Enables GUPP-style crash recovery. |
+| **Nudge**               | Event that triggers the orchestrator loop (agent done, feedback submitted, Execute! clicked, or loop kicker tick).                 |
+| **Loop kicker**         | 60s timer that nudges when the orchestrator loop is idle. Runs inside the orchestrator.                                            |
+| **Watchdog**            | 5-min health patrol (stale heartbeats, orphaned tasks, stale `.git/index.lock`). Runs in a separate `WatchdogService`.             |
+| **Progressive backoff** | Deprioritize then block tasks after repeated failures.                                                                             |
 
 ---
 

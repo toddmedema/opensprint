@@ -293,7 +293,10 @@ const planSlice = createSlice({
     /** Sync from TanStack Query usePlanChat. */
     setPlanChatMessages(
       state,
-      action: PayloadAction<{ context: string; messages: { role: "user" | "assistant"; content: string; timestamp: string }[] }>
+      action: PayloadAction<{
+        context: string;
+        messages: { role: "user" | "assistant"; content: string; timestamp: string }[];
+      }>
     ) {
       const { context, messages } = action.payload;
       if (context?.trim()) state.chatMessages[context] = messages;

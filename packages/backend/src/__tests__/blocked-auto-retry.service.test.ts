@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { runBlockedAutoRetryPass, startBlockedAutoRetry, stopBlockedAutoRetry } from "../services/blocked-auto-retry.service.js";
+import {
+  runBlockedAutoRetryPass,
+  startBlockedAutoRetry,
+  stopBlockedAutoRetry,
+} from "../services/blocked-auto-retry.service.js";
 
 vi.mock("../services/task-store.service.js", () => ({
   taskStore: {
@@ -39,8 +43,7 @@ describe("BlockedAutoRetryService", () => {
 
       vi.mocked(taskStore.update).mockResolvedValue({} as never);
 
-      const getTargets = () =>
-        Promise.resolve([{ projectId: "proj-1", repoPath: "/tmp/repo" }]);
+      const getTargets = () => Promise.resolve([{ projectId: "proj-1", repoPath: "/tmp/repo" }]);
 
       const retried = await runBlockedAutoRetryPass(getTargets);
 
@@ -57,8 +60,7 @@ describe("BlockedAutoRetryService", () => {
     it("does not retry when no eligible tasks", async () => {
       vi.mocked(taskStore.listBlockedByTechnicalErrorEligibleForRetry).mockResolvedValue([]);
 
-      const getTargets = () =>
-        Promise.resolve([{ projectId: "proj-1", repoPath: "/tmp/repo" }]);
+      const getTargets = () => Promise.resolve([{ projectId: "proj-1", repoPath: "/tmp/repo" }]);
 
       const retried = await runBlockedAutoRetryPass(getTargets);
 

@@ -143,7 +143,10 @@ export class HilService {
           },
         });
 
-        log.info("Waiting for approval via notification", { category, notificationId: notification.id });
+        log.info("Waiting for approval via notification", {
+          category,
+          notificationId: notification.id,
+        });
 
         return new Promise<{ approved: boolean; notes?: string }>((resolve) => {
           this.notificationResolveCallbacks.set(notification.id, (approved) => {

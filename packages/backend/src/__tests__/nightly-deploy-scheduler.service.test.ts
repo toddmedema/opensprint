@@ -1,7 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { runNightlyTick, startNightlyDeployScheduler, stopNightlyDeployScheduler } from "../services/nightly-deploy-scheduler.service.js";
+import {
+  runNightlyTick,
+  startNightlyDeployScheduler,
+  stopNightlyDeployScheduler,
+} from "../services/nightly-deploy-scheduler.service.js";
 
-const { mockListProjects, mockGetSettings, mockTriggerDeploy, mockGetLastSuccessfulDeployForTarget, mockExecSync } = vi.hoisted(() => ({
+const {
+  mockListProjects,
+  mockGetSettings,
+  mockTriggerDeploy,
+  mockGetLastSuccessfulDeployForTarget,
+  mockExecSync,
+} = vi.hoisted(() => ({
   mockListProjects: vi.fn(),
   mockGetSettings: vi.fn(),
   mockTriggerDeploy: vi.fn(),
@@ -119,9 +129,7 @@ describe("nightly-deploy-scheduler.service", () => {
           nightlyDeployTime: "03:30",
         },
       });
-      mockTriggerDeploy
-        .mockResolvedValueOnce("deploy-1")
-        .mockResolvedValueOnce("deploy-2");
+      mockTriggerDeploy.mockResolvedValueOnce("deploy-1").mockResolvedValueOnce("deploy-2");
 
       const now = new Date(2025, 1, 15, 3, 30, 0); // Feb 15, 2025 03:30 local
       const results = await runNightlyTick(now);

@@ -10,10 +10,7 @@ import type { ProjectService } from "./project.service.js";
 import type { SessionManager } from "./session-manager.js";
 import type { StoredTask, TaskStoreService } from "./task-store.service.js";
 import { eventLogService, type OrchestratorEvent } from "./event-log.service.js";
-import {
-  compactExecutionText,
-  parseTaskLastExecutionSummary,
-} from "./task-execution-summary.js";
+import { compactExecutionText, parseTaskLastExecutionSummary } from "./task-execution-summary.js";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -382,10 +379,7 @@ function finalAttemptFromSessions(
     finalPhase: last.status === "rejected" ? "review" : "coding",
     finalOutcome: outcomeFromSessionStatus(last.status),
     finalSummary:
-      last.failureReason ??
-      last.summary ??
-      outputHint ??
-      `Attempt ${last.attempt} ${last.status}`,
+      last.failureReason ?? last.summary ?? outputHint ?? `Attempt ${last.attempt} ${last.status}`,
     sessionAttemptStatuses: statuses,
   };
 }
@@ -395,9 +389,7 @@ function buildAttemptItem(
   sessions: AgentSession[],
   attemptEvents: TaskExecutionEventItem[]
 ): TaskExecutionAttemptItem {
-  const terminalEvent = [...attemptEvents]
-    .reverse()
-    .find((event) => event.outcome !== "running");
+  const terminalEvent = [...attemptEvents].reverse().find((event) => event.outcome !== "running");
   const sessionDerived = finalAttemptFromSessions(sessions);
   const codingModel =
     attemptEvents.find((event) => event.phase === "coding" && event.model)?.model ?? null;
@@ -410,17 +402,11 @@ function buildAttemptItem(
       sessions[0]?.startedAt ??
       attemptEvents.find((event) => event.outcome === "running")?.at ??
       null,
-    completedAt:
-      sessions[sessions.length - 1]?.completedAt ??
-      terminalEvent?.at ??
-      null,
+    completedAt: sessions[sessions.length - 1]?.completedAt ?? terminalEvent?.at ?? null,
     codingModel,
     reviewModel,
     finalPhase: terminalEvent?.phase ?? sessionDerived?.finalPhase ?? "orchestrator",
-    finalOutcome:
-      terminalEvent?.outcome ??
-      sessionDerived?.finalOutcome ??
-      "running",
+    finalOutcome: terminalEvent?.outcome ?? sessionDerived?.finalOutcome ?? "running",
     finalSummary:
       terminalEvent?.summary ??
       sessionDerived?.finalSummary ??
@@ -470,7 +456,10 @@ export class TaskExecutionDiagnosticsService {
       if (!latestAttempt.mergeStage && fallbackMergeStage) {
         latestAttempt.mergeStage = fallbackMergeStage;
       }
-      if ((latestAttempt.conflictedFiles ?? []).length === 0 && fallbackConflictedFiles.length > 0) {
+      if (
+        (latestAttempt.conflictedFiles ?? []).length === 0 &&
+        fallbackConflictedFiles.length > 0
+      ) {
         latestAttempt.conflictedFiles = fallbackConflictedFiles;
       }
       if (
@@ -491,17 +480,23 @@ export class TaskExecutionDiagnosticsService {
     }
 
     const latestTimelineEvent = timeline.at(-1) ?? null;
-    const latestEvent = [...timeline].reverse().find((event) => event.outcome !== "running") ?? null;
+    const latestEvent =
+      [...timeline].reverse().find((event) => event.outcome !== "running") ?? null;
 
     return {
       taskId,
       taskStatus: task.status,
       blockReason: task.block_reason ?? null,
       cumulativeAttempts,
-      latestSummary: lastExecution?.summary ?? latestTimelineEvent?.summary ?? latestEvent?.summary ?? null,
+      latestSummary:
+        lastExecution?.summary ?? latestTimelineEvent?.summary ?? latestEvent?.summary ?? null,
       latestFailureType:
-        lastExecution?.failureType ?? latestTimelineEvent?.failureType ?? latestEvent?.failureType ?? null,
-      latestOutcome: lastExecution?.outcome ?? latestTimelineEvent?.outcome ?? latestEvent?.outcome ?? null,
+        lastExecution?.failureType ??
+        latestTimelineEvent?.failureType ??
+        latestEvent?.failureType ??
+        null,
+      latestOutcome:
+        lastExecution?.outcome ?? latestTimelineEvent?.outcome ?? latestEvent?.outcome ?? null,
       latestNextAction:
         latestTimelineEvent?.nextAction ??
         latestEvent?.nextAction ??

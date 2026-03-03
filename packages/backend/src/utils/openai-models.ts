@@ -48,7 +48,5 @@ export function toOpenAIResponsesInputMessage(
   role: "user" | "assistant",
   content: string
 ): OpenAIResponsesInputMessage {
-  return role === "assistant"
-    ? { role, content, phase: "final_answer" }
-    : { role, content };
+  return role === "assistant" ? { role, content, phase: "final_answer" } : { role, content };
 }

@@ -1,10 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { configureStore } from "@reduxjs/toolkit";
 import { agentOutputFilterMiddleware } from "./agentOutputFilterMiddleware";
-import executeReducer, {
-  appendAgentOutput,
-  setSelectedTaskId,
-} from "../slices/executeSlice";
+import executeReducer, { appendAgentOutput, setSelectedTaskId } from "../slices/executeSlice";
 import planReducer from "../slices/planSlice";
 import websocketReducer from "../slices/websocketSlice";
 

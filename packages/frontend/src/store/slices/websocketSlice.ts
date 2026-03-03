@@ -37,10 +37,6 @@ const websocketSlice = createSlice({
   },
 });
 
-export const {
-  setConnected,
-  setDeliverToast,
-  clearDeliverToast,
-  resetWebsocket,
-} = websocketSlice.actions;
+export const { setConnected, setDeliverToast, clearDeliverToast, resetWebsocket } =
+  websocketSlice.actions;
 export default websocketSlice.reducer;

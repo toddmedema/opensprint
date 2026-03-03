@@ -14,12 +14,7 @@ export function PhaseLoadingSpinner({
       role="status"
       aria-label={ariaLabel}
     >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 80 80"
-        className="w-12 h-12"
-        aria-hidden
-      >
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" className="w-12 h-12" aria-hidden>
         <polygon
           points="4,10 36,40 4,70"
           fill="#c7d2fe"

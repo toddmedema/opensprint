@@ -4,21 +4,23 @@ import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import type { DbClient } from "../db/client.js";
 
-const { sharedClientRef } = vi.hoisted(() => ({ sharedClientRef: { current: null as DbClient | null } }));
+const { sharedClientRef } = vi.hoisted(() => ({
+  sharedClientRef: { current: null as DbClient | null },
+}));
 vi.mock("../services/task-store.service.js", async () => {
   const { createTestPostgresClient } = await import("./test-db-helper.js");
   const dbResult = await createTestPostgresClient();
   sharedClientRef.current = dbResult?.client ?? null;
   return {
     taskStore: {
-    async getDb() {
-      if (!sharedClientRef.current) throw new Error("sharedClient not initialized");
-      return sharedClientRef.current;
-    },
-    async runWrite<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
-      if (!sharedClientRef.current) throw new Error("sharedClient not initialized");
-      return fn(sharedClientRef.current);
-    },
+      async getDb() {
+        if (!sharedClientRef.current) throw new Error("sharedClient not initialized");
+        return sharedClientRef.current;
+      },
+      async runWrite<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
+        if (!sharedClientRef.current) throw new Error("sharedClient not initialized");
+        return fn(sharedClientRef.current);
+      },
     },
     TaskStoreService: vi.fn(),
     SCHEMA_SQL: "",
@@ -27,7 +29,8 @@ vi.mock("../services/task-store.service.js", async () => {
 });
 
 const notifTaskStoreMod = await import("../services/task-store.service.js");
-const notifPostgresOk = (notifTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
+const notifPostgresOk =
+  (notifTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
 
 describe.skipIf(!notifPostgresOk)("NotificationService", () => {
   let service: NotificationService;

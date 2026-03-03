@@ -12,16 +12,22 @@ import {
   taskStore as taskStoreSingleton,
   type TaskStoreService,
 } from "../services/task-store.service.js";
+import { createTestProjectId } from "./test-db-helper.js";
 
 /** Unique project ID so other test files (e.g. task-store) don't wipe our data. */
-const TEST_PROJECT_ID = "plan-complexity-test-project";
+let TEST_PROJECT_ID = createTestProjectId("plan-complexity-test-project");
 
 vi.mock("../services/task-store.service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../services/task-store.service.js")>();
   const { createTestPostgresClient } = await import("./test-db-helper.js");
   const dbResult = await createTestPostgresClient();
   if (!dbResult) {
-    return { ...actual, taskStore: null, _postgresAvailable: false, _resetPlanComplexityDb: () => {} };
+    return {
+      ...actual,
+      taskStore: null,
+      _postgresAvailable: false,
+      _resetPlanComplexityDb: () => {},
+    };
   }
   const store = new actual.TaskStoreService(dbResult.client);
   await store.init();
@@ -43,7 +49,8 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
 });
 
 const planComplexityTaskStoreMod = await import("../services/task-store.service.js");
-const planComplexityPostgresOk = (planComplexityTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
+const planComplexityPostgresOk =
+  (planComplexityTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
 
 describe.skipIf(!planComplexityPostgresOk)("getPlanComplexityForTask", () => {
   let tempDir: string;
@@ -54,6 +61,7 @@ describe.skipIf(!planComplexityPostgresOk)("getPlanComplexityForTask", () => {
       _resetPlanComplexityDb?: () => void | Promise<void>;
     };
     await mod._resetPlanComplexityDb?.();
+    TEST_PROJECT_ID = createTestProjectId("plan-complexity-test-project");
 
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-complexity-"));
     taskStore = taskStoreSingleton;
@@ -203,6 +211,7 @@ describe.skipIf(!planComplexityPostgresOk)("getComplexityForAgent", () => {
       _resetPlanComplexityDb?: () => void | Promise<void>;
     };
     await mod._resetPlanComplexityDb?.();
+    TEST_PROJECT_ID = createTestProjectId("plan-complexity-test-project");
 
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-complexity-agent-"));
     taskStore = taskStoreSingleton;

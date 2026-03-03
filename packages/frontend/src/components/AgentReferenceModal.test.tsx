@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AgentReferenceModal } from "./AgentReferenceModal";
 
@@ -26,7 +26,9 @@ describe("AgentReferenceModal", () => {
     render(<AgentReferenceModal onClose={vi.fn()} />);
 
     expect(
-      screen.getByText(/Refines your idea into a PRD; asks the hard questions before the journey begins/)
+      screen.getByText(
+        /Refines your idea into a PRD; asks the hard questions before the journey begins/
+      )
     ).toBeInTheDocument();
     expect(
       screen.getByText(/Decomposes the PRD into epics, tasks, and dependency graph/)
@@ -71,7 +73,8 @@ describe("AgentReferenceModal", () => {
     const user = userEvent.setup();
     render(<AgentReferenceModal onClose={onClose} />);
 
-    await user.click(screen.getByRole("button", { name: /close agent reference/i }));
+    const dialog = screen.getByRole("dialog", { name: /meet the agent team/i });
+    await user.click(within(dialog).getByRole("button", { name: /close agent reference/i }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 

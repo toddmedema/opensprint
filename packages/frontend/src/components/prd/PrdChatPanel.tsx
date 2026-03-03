@@ -3,12 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AGENT_ROLE_LABELS, type AgentRole } from "@opensprint/shared";
 import { ChatInput } from "../ChatInput";
-import {
-  ChatIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  SparklesIcon,
-} from "../icons/PrdIcons";
+import { ChatIcon, ChevronLeftIcon, ChevronRightIcon, SparklesIcon } from "../icons/PrdIcons";
 import { CloseButton } from "../CloseButton";
 import { formatSectionKey } from "../../lib/formatting";
 
@@ -50,7 +45,9 @@ function ChatBubble({ msg }: { msg: ChatMessage }) {
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
       <div
         className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
-          isUser ? "bg-brand-600 text-white" : "bg-theme-border-subtle text-theme-text"
+          isUser
+            ? "border border-theme-border bg-theme-surface text-theme-text shadow-sm"
+            : "bg-theme-border-subtle text-theme-text"
         }`}
       >
         {isUser ? (
@@ -269,9 +266,7 @@ export function PrdChatPanel({
       <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-theme-border bg-theme-surface shrink-0">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <SparklesIcon className="w-4 h-4 text-brand-500 shrink-0" />
-          <span className="text-sm font-semibold text-theme-text">
-            Chatting with {agentLabel}
-          </span>
+          <span className="text-sm font-semibold text-theme-text">Chatting with {agentLabel}</span>
         </div>
         <CloseButton
           onClick={() => {
@@ -343,9 +338,7 @@ export function PrdChatPanel({
           sendDisabledTooltip={
             sending ? `Waiting on ${agentLabel} to finish current response` : undefined
           }
-          placeholder={
-            selectionContext ? "Comment on this selection..." : "Ask about your PRD..."
-          }
+          placeholder={selectionContext ? "Comment on this selection..." : "Ask about your PRD..."}
           inputRef={inputRef}
           aria-label="Chat message"
         />

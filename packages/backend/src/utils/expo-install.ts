@@ -58,10 +58,7 @@ export async function installExpo(repoPath: string): Promise<ExpoInstallResult> 
       env: { ...process.env },
     });
     const out = (stdout || "") + (stderr || "");
-    if (
-      out.toLowerCase().includes("error") &&
-      !out.toLowerCase().includes("0 error")
-    ) {
+    if (out.toLowerCase().includes("error") && !out.toLowerCase().includes("0 error")) {
       return { installed: false, error: out || "Expo install reported errors" };
     }
     return { installed: true };

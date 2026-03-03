@@ -50,11 +50,14 @@ describe("AgentsMdSection lazy-loading", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal("matchMedia", vi.fn(() => ({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    })));
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }))
+    );
     mockGetAgentsInstructions.mockResolvedValue({
       content: "# Agent Instructions\n\nUse bd for tasks.",
     });

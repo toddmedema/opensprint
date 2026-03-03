@@ -70,7 +70,9 @@ export function useImageAttachment(initialImages?: string[]): UseImageAttachment
 
   const resetTo = useCallback((imgs: string[]) => {
     setImages(
-      Array.isArray(imgs) ? imgs.filter((img) => typeof img === "string" && img.startsWith("data:image/")) : []
+      Array.isArray(imgs)
+        ? imgs.filter((img) => typeof img === "string" && img.startsWith("data:image/"))
+        : []
     );
   }, []);
 

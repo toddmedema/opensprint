@@ -15,7 +15,17 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
   const { createTestPostgresClient } = await import("./test-db-helper.js");
   const dbResult = await createTestPostgresClient();
   if (!dbResult) {
-    return { ...actual, TaskStoreService: class { constructor() { throw new Error("Postgres required"); } }, taskStore: null, _postgresAvailable: false, _resetSharedDb: () => {} };
+    return {
+      ...actual,
+      TaskStoreService: class {
+        constructor() {
+          throw new Error("Postgres required");
+        }
+      },
+      taskStore: null,
+      _postgresAvailable: false,
+      _resetSharedDb: () => {},
+    };
   }
   const store = new actual.TaskStoreService(dbResult.client);
   await store.init();
@@ -25,7 +35,11 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
   };
   return {
     ...actual,
-    TaskStoreService: class extends actual.TaskStoreService { constructor() { super(dbResult.client); } },
+    TaskStoreService: class extends actual.TaskStoreService {
+      constructor() {
+        super(dbResult.client);
+      }
+    },
     taskStore: store,
     _resetSharedDb: resetSharedDb,
     _postgresAvailable: true,
@@ -35,7 +49,8 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
 const execAsync = promisify(exec);
 
 const deployRouteTaskStoreMod = await import("../services/task-store.service.js");
-const deployRoutePostgresOk = (deployRouteTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
+const deployRoutePostgresOk =
+  (deployRouteTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
 
 describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deployment records)", () => {
   let app: ReturnType<typeof createApp>;
@@ -248,9 +263,7 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
         .put(`${API_PREFIX}/projects/${projectId}/deliver/settings`)
         .send({
           mode: "custom",
-          targets: [
-            { name: "staging", autoDeployTrigger: "nightly", isDefault: true },
-          ],
+          targets: [{ name: "staging", autoDeployTrigger: "nightly", isDefault: true }],
           nightlyDeployTime: "03:30",
         });
 

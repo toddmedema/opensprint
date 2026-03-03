@@ -133,7 +133,7 @@ The **task store** (TaskStoreService backed by sql.js at `~/.opensprint/tasks.db
 | Triggering the next agent    | All            | Agents have no mechanism to invoke the orchestrator; workflow progression is orchestrator-driven                                                     |
 | Task store state transitions | Execute        | `TaskStoreService.update`, `close` — invoked by orchestrator based on agent _output_, not agent _actions_                                            |
 | Task creation                | Plan, Evaluate | `TaskStoreService.create` / `createMany`, `addDependency` / `addDependencies` — agents propose as structured data; orchestrator creates actual tasks |
-| PRD file updates             | Plan, Evaluate | Agents propose updates; orchestrator writes and commits. **Exception:** Dreamer writes `SPEC.md` directly (user-supervised)                         |
+| PRD file updates             | Plan, Evaluate | Agents propose updates; orchestrator writes and commits. **Exception:** Dreamer writes `SPEC.md` directly (user-supervised)                          |
 | Epic unblock on Execute!     | Plan           | "Execute!" sets epic `status: "open"` via `TaskStoreService.update` — a scripted action triggered by UI button                                       |
 
 **Agent responsibilities:** Agents produce _outputs_ — code files, `result.json`, structured data (task proposals, PRD updates, feedback categorizations). The orchestrator reads these outputs and performs all corresponding critical operations. Agents never touch git or the task store directly.
@@ -188,7 +188,7 @@ Multiple concurrent agents trigger operations that commit to git on the main bra
 | ----------------------- | ----------------------------------------------------------------- | -------------------------------------------- |
 | Task store save         | After task creation batch, status transitions, dependency changes | In-process; no git commit for task data      |
 | PRD update (Harmonizer) | After orchestrator writes Harmonizer's proposed updates           | `prd: updated after Plan <plan-id> built`    |
-| PRD update (Dreamer)    | After Dreamer modifies `SPEC.md` during conversation             | `prd: Sketch session update`                 |
+| PRD update (Dreamer)    | After Dreamer modifies `SPEC.md` during conversation              | `prd: Sketch session update`                 |
 | Worktree merge          | After Reviewer approves a task                                    | `merge: opensprint/<task-id> — <task title>` |
 
 The Dreamer writes `SPEC.md` directly but does not commit; the orchestrator detects the change and enqueues a commit job. If a commit job fails, it is retried once; if it fails again, the error is logged and the next job proceeds — in-memory state is still correct, and the next successful commit captures accumulated changes.
@@ -1006,8 +1006,8 @@ This table records architectural decisions where the rationale isn't self-eviden
 | Decision                       | Resolution                                                                                                                    | Rationale                                                                                                   |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
 | Backend language               | Node.js + TypeScript                                                                                                          | Shared language with React frontend; strong subprocess and WebSocket support                                |
-| PRD storage                    | JSON file in git (`.opensprint/SPEC.md`) with markdown inside section wrappers                                               | Structured for section-level diffing and versioning; git-versioned; offline-compatible                      |
-| Agent selection                | Pluggable: Claude, Cursor, OpenAI, or Custom CLI command                                                                     | Maximizes flexibility; Custom option future-proofs for new agents                                           |
+| PRD storage                    | JSON file in git (`.opensprint/SPEC.md`) with markdown inside section wrappers                                                | Structured for section-level diffing and versioning; git-versioned; offline-compatible                      |
+| Agent selection                | Pluggable: Claude, Cursor, OpenAI, or Custom CLI command                                                                      | Maximizes flexibility; Custom option future-proofs for new agents                                           |
 | Named agent taxonomy           | Two slots (Planning, Coding) with 8 named roles                                                                               | Each role gets a specialized prompt and output schema; slots allow cost optimization per phase              |
 | Human-in-the-loop threshold    | 3 configurable categories with 3 notification modes each; error recovery always automatic                                     | Gives users control over product decisions while keeping the flywheel running through errors                |
 | Agent concurrency              | Single Coder/Reviewer per project in v1; Planning-slot agents unlimited concurrency                                           | Eliminates merge conflict concerns for MVP; planning agents don't touch code branches                       |

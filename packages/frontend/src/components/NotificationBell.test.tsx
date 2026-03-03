@@ -27,7 +27,12 @@ beforeEach(() => {
 
 function LocationCapture() {
   const loc = useLocation();
-  return <div data-testid="current-location">{loc.pathname}{loc.search}</div>;
+  return (
+    <div data-testid="current-location">
+      {loc.pathname}
+      {loc.search}
+    </div>
+  );
 }
 
 function renderNotificationBell(
@@ -73,7 +78,9 @@ function renderNotificationBell(
 describe("NotificationBell", () => {
   it("renders nothing when no notifications", () => {
     renderNotificationBell([]);
-    expect(screen.queryByTitle("Notifications (open questions & API issues)")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTitle("Notifications (open questions & API issues)")
+    ).not.toBeInTheDocument();
   });
 
   it("shows bell with red dot when notifications exist", async () => {
@@ -103,7 +110,13 @@ describe("NotificationBell", () => {
         projectId: "proj-1",
         source: "plan" as const,
         sourceId: "plan-1",
-        questions: [{ id: "q1", text: "What is the scope of this feature?", createdAt: "2025-01-01T00:00:00Z" }],
+        questions: [
+          {
+            id: "q1",
+            text: "What is the scope of this feature?",
+            createdAt: "2025-01-01T00:00:00Z",
+          },
+        ],
         status: "open" as const,
         createdAt: "2025-01-01T00:00:00Z",
         resolvedAt: null,

@@ -206,9 +206,9 @@ describe("phaseRouting", () => {
 
   describe("getProjectPhasePath with section", () => {
     it("appends section param for Sketch phase (e.g. open_questions)", () => {
-      expect(
-        getProjectPhasePath("proj-1", "sketch", { section: "open_questions" })
-      ).toBe("/projects/proj-1/sketch?section=open_questions");
+      expect(getProjectPhasePath("proj-1", "sketch", { section: "open_questions" })).toBe(
+        "/projects/proj-1/sketch?section=open_questions"
+      );
     });
   });
 

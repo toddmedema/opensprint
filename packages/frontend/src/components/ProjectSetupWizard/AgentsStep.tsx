@@ -2,11 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ModelSelect } from "../ModelSelect";
 import { AgentReferenceModal } from "../AgentReferenceModal";
-import type {
-  AgentType,
-  GitWorkingMode,
-  UnknownScopeStrategy,
-} from "@opensprint/shared";
+import type { AgentType, GitWorkingMode, UnknownScopeStrategy } from "@opensprint/shared";
 import {
   AGENT_ROLE_CANONICAL_ORDER,
   AGENT_ROLE_LABELS,
@@ -188,7 +184,9 @@ export function AgentsStep({
               </div>
             ) : (
               <div className="flex-1 min-w-[200px]">
-                <label className="block text-sm font-medium text-theme-text mb-1">CLI command</label>
+                <label className="block text-sm font-medium text-theme-text mb-1">
+                  CLI command
+                </label>
                 <input
                   type="text"
                   className="input w-full font-mono text-sm"
@@ -241,7 +239,9 @@ export function AgentsStep({
               </div>
             ) : (
               <div className="flex-1 min-w-[200px]">
-                <label className="block text-sm font-medium text-theme-text mb-1">CLI command</label>
+                <label className="block text-sm font-medium text-theme-text mb-1">
+                  CLI command
+                </label>
                 <input
                   type="text"
                   className="input w-full font-mono text-sm"
@@ -313,8 +313,9 @@ export function AgentsStep({
                     Unknown Scope Strategy
                   </label>
                   <p className="text-xs text-theme-muted mb-2">
-                    When file scope can&apos;t be predicted for a task, should the scheduler
-                    serialize it or run it in parallel?
+                    Agents identify task scope based on the files they expect it to touch, and
+                    parallel agents won&apos;t work on tasks with conflicting expected files. What
+                    should agents do when the scope is unclear?
                   </p>
                   <select
                     className="input"

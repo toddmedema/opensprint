@@ -132,7 +132,7 @@ Three primary layers: web frontend, backend API server, and background agent CLI
 | ------------------- | ---------------------------------------------------------------------------- |
 | Web Frontend        | UI for all five phases; real-time agent monitoring                           |
 | Backend API         | Project state, WebSocket relay, PRD versioning, agent orchestration          |
-| Agent CLI           | Code generation, testing, debugging (Claude/Cursor/OpenAI/Custom)           |
+| Agent CLI           | Code generation, testing, debugging (Claude/Cursor/OpenAI/Custom)            |
 | Orchestration Layer | Deterministic Node.js; agent lifecycle; git/task ops; commit queue; watchdog |
 | TaskService         | Issue CRUD, dependencies, `ready()`, assignee, hierarchical IDs              |
 | Test Runner         | Jest, Playwright, etc. — auto-detected from `package.json`                   |

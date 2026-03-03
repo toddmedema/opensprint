@@ -138,7 +138,10 @@ describe("SettingsPage", () => {
         })
     );
     mockGlobalSettingsPut.mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve({ databaseUrl: "", apiKeys: undefined }), 100))
+      () =>
+        new Promise((resolve) =>
+          setTimeout(() => resolve({ databaseUrl: "", apiKeys: undefined }), 100)
+        )
     );
 
     renderSettingsPage();

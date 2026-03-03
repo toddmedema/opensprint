@@ -48,7 +48,8 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
 });
 
 const taskStoreMod = await import("../services/task-store.service.js");
-const postgresAvailable = (taskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
+const postgresAvailable =
+  (taskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
 
 describe.skipIf(!postgresAvailable)("Tasks REST - task-to-kanban-column mapping", () => {
   let app: ReturnType<typeof createApp>;
@@ -593,9 +594,9 @@ Test review prompt generation.
     await expect(taskStore.show(projectId, targetTask.id)).rejects.toThrow(/not found/i);
 
     const dependentAfter = await taskStore.show(projectId, dependentTask.id);
-    expect(
-      (dependentAfter.dependencies ?? []).some((d) => d.depends_on_id === targetTask.id)
-    ).toBe(false);
+    expect((dependentAfter.dependencies ?? []).some((d) => d.depends_on_id === targetTask.id)).toBe(
+      false
+    );
 
     const feedbackAfter = await db.queryOne(
       "SELECT created_task_ids, feedback_source_task_id, mapped_epic_id FROM feedback WHERE id = $1 AND project_id = $2",
@@ -760,8 +761,9 @@ Test review prompt generation.
     expect(res.status).toBe(204);
 
     const childAfter = await taskStore.show(projectId, childTask.id);
-    const deps = (childAfter as { dependencies?: Array<{ depends_on_id: string; type: string }> })
-      .dependencies ?? [];
+    const deps =
+      (childAfter as { dependencies?: Array<{ depends_on_id: string; type: string }> })
+        .dependencies ?? [];
     expect(deps.some((d) => d.depends_on_id === parentTask.id && d.type === "blocks")).toBe(true);
   });
 
@@ -797,7 +799,9 @@ Test review prompt generation.
     expect(res.body.data.byComplexity).toBeDefined();
     expect(Array.isArray(res.body.data.byComplexity)).toBe(true);
     expect(res.body.data.byComplexity).toHaveLength(10);
-    const bucket3 = res.body.data.byComplexity.find((b: { complexity: number }) => b.complexity === 3);
+    const bucket3 = res.body.data.byComplexity.find(
+      (b: { complexity: number }) => b.complexity === 3
+    );
     expect(bucket3).toBeDefined();
     expect(bucket3.taskCount).toBe(2);
     expect(bucket3.avgCompletionTimeMs).toBeGreaterThanOrEqual(0);

@@ -118,7 +118,9 @@ function itemToRow(item: FeedbackItem, projectId: string): Record<string, unknow
     depth: item.depth ?? null,
     user_priority: item.userPriority ?? null,
     extra: JSON.stringify({
-      ...(item.linkInvalidRetryCount != null && { linkInvalidRetryCount: item.linkInvalidRetryCount }),
+      ...(item.linkInvalidRetryCount != null && {
+        linkInvalidRetryCount: item.linkInvalidRetryCount,
+      }),
       ...(item.isLargeScope != null && { isLargeScope: item.isLargeScope }),
     }),
   };
@@ -241,10 +243,10 @@ export class FeedbackStoreService {
   async updateFeedback(projectId: string, item: FeedbackItem): Promise<void> {
     const row = itemToRow(item, projectId);
     const client = await taskStore.getDb();
-    await client.queryOne(
-      "SELECT image_paths FROM feedback WHERE id = $1 AND project_id = $2",
-      [item.id, projectId]
-    );
+    await client.queryOne("SELECT image_paths FROM feedback WHERE id = $1 AND project_id = $2", [
+      item.id,
+      projectId,
+    ]);
 
     await taskStore.runWrite(async (tx) => {
       await tx.execute(
@@ -277,10 +279,10 @@ export class FeedbackStoreService {
 
   async getFeedbackRow(projectId: string, feedbackId: string): Promise<FeedbackRow | null> {
     const client = await taskStore.getDb();
-    const row = await client.queryOne(
-      "SELECT * FROM feedback WHERE id = $1 AND project_id = $2",
-      [feedbackId, projectId]
-    );
+    const row = await client.queryOne("SELECT * FROM feedback WHERE id = $1 AND project_id = $2", [
+      feedbackId,
+      projectId,
+    ]);
     return row ? (row as unknown as FeedbackRow) : null;
   }
 
@@ -421,10 +423,10 @@ export class FeedbackStoreService {
    */
   async deleteFeedback(projectId: string, feedbackId: string): Promise<void> {
     await taskStore.runWrite(async (client) => {
-      await client.execute(
-        "DELETE FROM feedback WHERE id = $1 AND project_id = $2",
-        [feedbackId, projectId]
-      );
+      await client.execute("DELETE FROM feedback WHERE id = $1 AND project_id = $2", [
+        feedbackId,
+        projectId,
+      ]);
     });
     await this.removeFromInbox(projectId, feedbackId);
     const dir = getFeedbackAssetsDir(projectId, feedbackId);

@@ -657,7 +657,9 @@ describe("TaskService", () => {
             id: "proj-1",
             repoPath: "/tmp/test-repo",
           }),
-          getProjectByRepoPath: vi.fn().mockResolvedValue({ id: "proj-1", repoPath: "/tmp/test-repo" }),
+          getProjectByRepoPath: vi
+            .fn()
+            .mockResolvedValue({ id: "proj-1", repoPath: "/tmp/test-repo" }),
           getSettings: vi.fn().mockResolvedValue({ gitWorkingMode: "worktree" }),
         }) as never
     );

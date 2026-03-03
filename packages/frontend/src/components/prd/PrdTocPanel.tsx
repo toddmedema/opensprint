@@ -44,7 +44,9 @@ export function PrdTocPanel({
     const updateActiveSection = () => {
       const entries = Array.from(visibleSectionsRef.current.entries());
       if (entries.length === 0) {
-        setActiveSection((prev) => (prev && sections.includes(prev) ? prev : sections[0] ?? null));
+        setActiveSection((prev) =>
+          prev && sections.includes(prev) ? prev : (sections[0] ?? null)
+        );
         return;
       }
       const rootRect = scrollEl.getBoundingClientRect();
@@ -149,10 +151,7 @@ export function PrdTocPanel({
             </button>
           </div>
 
-          <nav
-            className="flex-1 overflow-y-auto p-3 space-y-1"
-            aria-label="Table of contents"
-          >
+          <nav className="flex-1 overflow-y-auto p-3 space-y-1" aria-label="Table of contents">
             {sections.map((sectionKey, index) => {
               const isActive = activeSection === sectionKey;
               return (

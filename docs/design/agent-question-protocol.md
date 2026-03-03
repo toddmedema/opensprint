@@ -22,18 +22,19 @@ Agents emit questions via a standard JSON field in their output:
 **Field names:** Both `open_questions` (snake_case) and `openQuestions` (camelCase) are accepted.
 
 **Per-question shape:**
+
 - `id` (optional): Unique identifier. If omitted, the server generates one.
 - `text` (required): The question text shown to the user.
 - `createdAt` (optional): ISO8601 timestamp; server sets if omitted.
 
 ### Agent-Specific Usage
 
-| Agent | Source | sourceId | When to emit |
-|-------|--------|----------|--------------|
-| **Analyst** | eval | feedbackId | Feedback too vague to categorize; do NOT create tasks until answered |
-| **Dreamer** | prd | sectionKey | Requirements unclear; wait for clarification before PRD update |
-| **Planner** | plan | planId | Plan requirements ambiguous; emit before decomposing |
-| **Coder** | execute | taskId | Task spec ambiguous; pause (or use HIL) rather than guessing |
+| Agent       | Source  | sourceId   | When to emit                                                         |
+| ----------- | ------- | ---------- | -------------------------------------------------------------------- |
+| **Analyst** | eval    | feedbackId | Feedback too vague to categorize; do NOT create tasks until answered |
+| **Dreamer** | prd     | sectionKey | Requirements unclear; wait for clarification before PRD update       |
+| **Planner** | plan    | planId     | Plan requirements ambiguous; emit before decomposing                 |
+| **Coder**   | execute | taskId     | Task spec ambiguous; pause (or use HIL) rather than guessing         |
 
 ### Fail-Early Behavior
 
@@ -77,10 +78,12 @@ Project settings include `hilConfig`:
 ```
 
 **Passed to agents via:**
+
 - `config.json` in task directory (Coder/Reviewer)
 - Prompt context (all agents)
 
 **Human-readable mapping:**
+
 - `automated` → "Full autonomy: proceed without confirmation"
 - `notify_and_proceed` → "Notify user but proceed"
 - `requires_approval` → "Confirm all changes before proceeding"

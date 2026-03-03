@@ -4,11 +4,7 @@ import remarkGfm from "remark-gfm";
 import { useAppDispatch, useAppSelector } from "../../store";
 import { setSelectedTaskId, setAgentOutputBackfill } from "../../store/slices/executeSlice";
 import { wsSend } from "../../store/middleware/websocketMiddleware";
-import {
-  useExecuteStatus,
-  useActiveAgents,
-  useLiveOutputBackfill,
-} from "../../api/hooks";
+import { useExecuteStatus, useActiveAgents, useLiveOutputBackfill } from "../../api/hooks";
 import { CloseButton } from "../../components/CloseButton";
 
 interface AgentDashboardProps {

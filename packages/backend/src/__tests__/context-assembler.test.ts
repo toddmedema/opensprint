@@ -2,10 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
-import {
-  ContextAssembler,
-  buildAutonomyDescription,
-} from "../services/context-assembler.js";
+import { ContextAssembler, buildAutonomyDescription } from "../services/context-assembler.js";
 import { OPENSPRINT_PATHS, SPEC_MD } from "@opensprint/shared";
 import { ensureRuntimeDir, getRuntimePath } from "../utils/runtime-dir.js";
 
@@ -307,7 +304,9 @@ Use PostgreSQL for the database.`;
 
     const prompt = await fs.readFile(path.join(taskDir, "prompt.md"), "utf-8");
     expect(prompt).toContain("## User clarification (from open questions)");
-    expect(prompt).toContain("The user answered your open questions. Use this to proceed with the task:");
+    expect(prompt).toContain(
+      "The user answered your open questions. Use this to proceed with the task:"
+    );
     expect(prompt).toContain("Use PostgreSQL for the database");
     expect(prompt).toContain("bd-a3f8.1");
   });

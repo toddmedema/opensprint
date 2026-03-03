@@ -39,8 +39,22 @@ export function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
-      <Route path="/settings" element={<LazyRoute><SettingsPage /></LazyRoute>} />
-      <Route path="/help" element={<LazyRoute><HelpPage /></LazyRoute>} />
+      <Route
+        path="/settings"
+        element={
+          <LazyRoute>
+            <SettingsPage />
+          </LazyRoute>
+        }
+      />
+      <Route
+        path="/help"
+        element={
+          <LazyRoute>
+            <HelpPage />
+          </LazyRoute>
+        }
+      />
       <Route path="/projects/add-existing" element={<ProjectSetup />} />
       <Route path="/projects/create-new" element={<CreateNewProjectPage />} />
       <Route path="/projects/:projectId" element={<ProjectShell />}>

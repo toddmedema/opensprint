@@ -8,7 +8,9 @@ export function setQueryClient(client: QueryClient): void {
 
 export function getQueryClient(): QueryClient {
   if (!queryClientInstance) {
-    throw new Error("QueryClient not set. Call setQueryClient() in main.tsx before using getQueryClient().");
+    throw new Error(
+      "QueryClient not set. Call setQueryClient() in main.tsx before using getQueryClient()."
+    );
   }
   return queryClientInstance;
 }

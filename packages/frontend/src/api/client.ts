@@ -47,7 +47,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public readonly code: string,
-    public readonly details?: unknown,
+    public readonly details?: unknown
   ) {
     super(message);
     this.name = "ApiError";
@@ -57,6 +57,10 @@ export class ApiError extends Error {
 
 export function isApiError(err: unknown): err is ApiError {
   return err instanceof ApiError;
+}
+
+export function isDatabaseUnavailableError(err: unknown): err is ApiError {
+  return err instanceof ApiError && err.code === "DATABASE_UNAVAILABLE";
 }
 
 /** True when fetch failed before getting a response (network down, CORS, server unreachable). */
@@ -114,6 +118,8 @@ export interface ModelOption {
 export interface DbStatusResponse {
   ok: boolean;
   message?: string;
+  state: "connected" | "connecting" | "disconnected";
+  lastCheckedAt: string | null;
 }
 
 // ─── Projects ───
@@ -138,11 +144,16 @@ export const api = {
         body: JSON.stringify(updates),
       }),
     revealKey: (provider: string, id: string) =>
-      request<{ value: string }>(`/global-settings/reveal-key/${encodeURIComponent(provider)}/${encodeURIComponent(id)}`),
+      request<{ value: string }>(
+        `/global-settings/reveal-key/${encodeURIComponent(provider)}/${encodeURIComponent(id)}`
+      ),
     clearLimitHit: (provider: string, id: string) =>
-      request<GlobalSettingsResponse>(`/global-settings/clear-limit-hit/${encodeURIComponent(provider)}/${encodeURIComponent(id)}`, {
-        method: "POST",
-      }),
+      request<GlobalSettingsResponse>(
+        `/global-settings/clear-limit-hit/${encodeURIComponent(provider)}/${encodeURIComponent(id)}`,
+        {
+          method: "POST",
+        }
+      ),
     setupTables: (databaseUrl: string) =>
       request<{ ok: boolean }>("/global-settings/setup-tables", {
         method: "POST",
@@ -313,8 +324,7 @@ export const api = {
 
   // ─── Tasks ───
   tasks: {
-    list: (projectId: string) =>
-      request<TaskListResponse>(`/projects/${projectId}/tasks`),
+    list: (projectId: string) => request<TaskListResponse>(`/projects/${projectId}/tasks`),
     ready: (projectId: string) => request<Task[]>(`/projects/${projectId}/tasks/ready`),
     get: (projectId: string, taskId: string) =>
       request<Task>(`/projects/${projectId}/tasks/${taskId}`),
@@ -413,8 +423,7 @@ export const api = {
 
   // ─── Feedback ───
   feedback: {
-    list: (projectId: string) =>
-      request<FeedbackItem[]>(`/projects/${projectId}/feedback`),
+    list: (projectId: string) => request<FeedbackItem[]>(`/projects/${projectId}/feedback`),
     submit: (
       projectId: string,
       text: string,
@@ -476,13 +485,8 @@ export const api = {
       request<{ deletedCount: number }>(`/projects/${projectId}/notifications`, {
         method: "DELETE",
       }),
-    clearAllGlobal: () =>
-      request<{ deletedCount: number }>("/notifications", { method: "DELETE" }),
-    resolve: (
-      projectId: string,
-      notificationId: string,
-      body?: { approved?: boolean }
-    ) =>
+    clearAllGlobal: () => request<{ deletedCount: number }>("/notifications", { method: "DELETE" }),
+    resolve: (projectId: string, notificationId: string, body?: { approved?: boolean }) =>
       request<Notification>(`/projects/${projectId}/notifications/${notificationId}`, {
         method: "PATCH",
         body: body ? JSON.stringify(body) : undefined,

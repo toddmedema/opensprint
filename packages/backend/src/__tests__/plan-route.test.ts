@@ -34,7 +34,17 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
   const { createTestPostgresClient } = await import("./test-db-helper.js");
   const dbResult = await createTestPostgresClient();
   if (!dbResult) {
-    return { ...actual, TaskStoreService: class { constructor() { throw new Error("Postgres required"); } }, taskStore: null, _postgresAvailable: false, _resetSharedDb: () => {} };
+    return {
+      ...actual,
+      TaskStoreService: class {
+        constructor() {
+          throw new Error("Postgres required");
+        }
+      },
+      taskStore: null,
+      _postgresAvailable: false,
+      _resetSharedDb: () => {},
+    };
   }
   const store = new actual.TaskStoreService(dbResult.client);
   await store.init();
@@ -45,7 +55,11 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
   };
   return {
     ...actual,
-    TaskStoreService: class extends actual.TaskStoreService { constructor() { super(dbResult.client); } },
+    TaskStoreService: class extends actual.TaskStoreService {
+      constructor() {
+        super(dbResult.client);
+      }
+    },
     taskStore: store,
     _resetSharedDb: resetSharedDb,
     _postgresAvailable: true,
@@ -68,7 +82,8 @@ vi.mock("../services/orchestrator.service.js", () => ({
 }));
 
 const planRouteTaskStoreMod = await import("../services/task-store.service.js");
-const planRoutePostgresOk = (planRouteTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
+const planRoutePostgresOk =
+  (planRouteTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
 
 describe.skipIf(!planRoutePostgresOk)("Plan REST endpoints - task decomposition", () => {
   let app: ReturnType<typeof createApp>;
@@ -186,13 +201,17 @@ describe.skipIf(!planRoutePostgresOk)("Plan REST endpoints - task decomposition"
       complexity: "medium",
       tasks: [
         { title: "Simple task", description: "Easy", priority: 0, dependsOn: [], complexity: 2 },
-        { title: "Complex task", description: "Hard", priority: 1, dependsOn: ["Simple task"], complexity: 8 },
+        {
+          title: "Complex task",
+          description: "Hard",
+          priority: 1,
+          dependsOn: ["Simple task"],
+          complexity: 8,
+        },
       ],
     };
 
-    const res = await request(app)
-      .post(`${API_PREFIX}/projects/${projectId}/plans`)
-      .send(planBody);
+    const res = await request(app).post(`${API_PREFIX}/projects/${projectId}/plans`).send(planBody);
 
     expect(res.status).toBe(201);
     const plan = res.body.data;
@@ -788,7 +807,6 @@ Updated description for task two.`;
         for (const task of planTasks) {
           await taskStore.close(projectId, (task as { id: string }).id, "Done");
         }
-
 
         // Re-execute: Auditor creates delta tasks (no gate); epic set back to blocked
         const reshipRes = await request(app).post(

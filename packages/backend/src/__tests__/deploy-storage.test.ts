@@ -7,7 +7,9 @@ import { ProjectService } from "../services/project.service.js";
 import { DEFAULT_HIL_CONFIG } from "@opensprint/shared";
 import type { DbClient } from "../db/client.js";
 
-const { testClientRef } = vi.hoisted(() => ({ testClientRef: { current: null as DbClient | null } }));
+const { testClientRef } = vi.hoisted(() => ({
+  testClientRef: { current: null as DbClient | null },
+}));
 vi.mock("../services/task-store.service.js", async () => {
   const { createTestPostgresClient } = await import("./test-db-helper.js");
   const dbResult = await createTestPostgresClient();
@@ -18,7 +20,9 @@ vi.mock("../services/task-store.service.js", async () => {
       getDb: vi.fn().mockImplementation(async () => testClientRef.current),
       runWrite: vi
         .fn()
-        .mockImplementation(async (fn: (client: DbClient) => Promise<unknown>) => fn(testClientRef.current!)),
+        .mockImplementation(async (fn: (client: DbClient) => Promise<unknown>) =>
+          fn(testClientRef.current!)
+        ),
     },
     TaskStoreService: vi.fn(),
     SCHEMA_SQL: "",
@@ -27,7 +31,8 @@ vi.mock("../services/task-store.service.js", async () => {
 });
 
 const deployStorageTaskStoreMod = await import("../services/task-store.service.js");
-const deployStoragePostgresOk = (deployStorageTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
+const deployStoragePostgresOk =
+  (deployStorageTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
 
 describe.skipIf(!deployStoragePostgresOk)("DeployStorageService", () => {
   let projectService: ProjectService;

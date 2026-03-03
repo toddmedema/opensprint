@@ -1,19 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render as rtlRender, screen, waitFor, within, act } from "@testing-library/react";
+import { screen, waitFor, within, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
 import {
   renderWithProviders,
   wrapWithProviders,
   createTestStore,
   type RootState,
 } from "../../test/test-utils";
-import {
-  EvalPhase,
-  EVALUATE_FEEDBACK_FILTER_KEY,
-  FEEDBACK_LOADING_DEBOUNCE_MS,
-} from "./EvalPhase";
+import { EvalPhase, EVALUATE_FEEDBACK_FILTER_KEY, FEEDBACK_LOADING_DEBOUNCE_MS } from "./EvalPhase";
 import { FEEDBACK_FORM_DRAFT_KEY_PREFIX } from "../../lib/feedbackFormStorage";
 import { CONTENT_CONTAINER_CLASS } from "../../lib/constants";
 import {
@@ -24,15 +20,20 @@ import {
 } from "../../store/slices/executeSlice";
 import { updateFeedbackItem } from "../../store/slices/evalSlice";
 import type { FeedbackItem, Notification, Task } from "@opensprint/shared";
+import { queryKeys } from "../../api/queryKeys";
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-
-function render(ui: React.ReactElement) {
-  return rtlRender(ui, {
-    wrapper: ({ children }) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-    ),
+/**
+ * Pre-seed feedback query so EvalPhase skips loading/empty-state debounce and shows the form immediately.
+ * Use with renderWithProviders({ store, queryClient }) for tests that need the feedback form visible.
+ * Uses staleTime: Infinity so the pre-seeded data is not refetched (keeps tests that assert
+ * api.feedback.list not called valid).
+ */
+function createQueryClientWithFeedbackPreloaded(feedback: FeedbackItem[] = []): QueryClient {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
+  client.setQueryData(queryKeys.feedback.list("proj-1"), feedback);
+  return client;
 }
 
 vi.mock("../../api/client", () => ({
@@ -70,8 +71,9 @@ vi.mock("../../api/client", () => ({
           createdAt: new Date().toISOString(),
         })
       ),
-      recategorize: vi.fn().mockImplementation(
-        (_projectId: string, feedbackId: string, answer?: string) =>
+      recategorize: vi
+        .fn()
+        .mockImplementation((_projectId: string, feedbackId: string, answer?: string) =>
           Promise.resolve({
             id: feedbackId,
             text: answer ? `Feedback with answer: ${answer}` : "Recategorized feedback",
@@ -81,7 +83,7 @@ vi.mock("../../api/client", () => ({
             status: "pending",
             createdAt: new Date().toISOString(),
           })
-      ),
+        ),
     },
     notifications: {
       listByProject: vi.fn().mockResolvedValue([]),
@@ -281,7 +283,7 @@ describe("EvalPhase feedback loading state", () => {
   it("shows loading spinner when fetch takes longer than debounce threshold", async () => {
     vi.useFakeTimers();
     const store = createStore({ evalFeedback: [], feedbackLoading: true });
-    render(
+    renderWithProviders(
       <MemoryRouter>
         <EvalPhase projectId="proj-1" />
       </MemoryRouter>,
@@ -299,7 +301,7 @@ describe("EvalPhase feedback loading state", () => {
   it("does not show spinner when response is fast (no flicker)", () => {
     vi.useFakeTimers();
     const store = createStore({ evalFeedback: [], feedbackLoading: true });
-    render(
+    renderWithProviders(
       <MemoryRouter>
         <EvalPhase projectId="proj-1" />
       </MemoryRouter>,
@@ -310,15 +312,17 @@ describe("EvalPhase feedback loading state", () => {
     vi.useRealTimers();
   });
 
-  it("shows empty state only after fetch completes with no feedback", () => {
+  it("shows empty state only after fetch completes with no feedback", async () => {
     const store = createStore({ evalFeedback: [] });
-    render(
+    renderWithProviders(
       <MemoryRouter>
         <EvalPhase projectId="proj-1" />
       </MemoryRouter>,
       { store }
     );
-    expect(screen.getByText(/No feedback submitted yet/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/No feedback submitted yet/)).toBeInTheDocument();
+    });
     expect(screen.queryByTestId("feedback-loading-spinner")).not.toBeInTheDocument();
   });
 });
@@ -330,11 +334,12 @@ describe("EvalPhase feedback form", () => {
 
   it("feedback content uses CONTENT_CONTAINER_CLASS", () => {
     const store = createStore();
+    const queryClient = createQueryClientWithFeedbackPreloaded();
     renderWithProviders(
       <MemoryRouter>
         <EvalPhase projectId="proj-1" />
       </MemoryRouter>,
-      { store }
+      { store, queryClient }
     );
     const content = screen.getByTestId("eval-feedback-content");
     for (const cls of CONTENT_CONTAINER_CLASS.split(" ")) {
@@ -344,11 +349,12 @@ describe("EvalPhase feedback form", () => {
 
   it("focuses feedback input when Evaluate tab activates", async () => {
     const store = createStore();
+    const queryClient = createQueryClientWithFeedbackPreloaded();
     renderWithProviders(
       <MemoryRouter>
         <EvalPhase projectId="proj-1" />
       </MemoryRouter>,
-      { store }
+      { store, queryClient }
     );
 
     await waitFor(() => {
@@ -370,11 +376,12 @@ describe("EvalPhase feedback form", () => {
     });
 
     const store = createStore();
+    const queryClient = createQueryClientWithFeedbackPreloaded();
     renderWithProviders(
       <MemoryRouter>
         <EvalPhase projectId="proj-1" />
       </MemoryRouter>,
-      { store }
+      { store, queryClient }
     );
 
     await waitFor(() => {
@@ -404,11 +411,12 @@ describe("EvalPhase feedback form", () => {
     });
 
     const store = createStore();
+    const queryClient = createQueryClientWithFeedbackPreloaded();
     renderWithProviders(
       <MemoryRouter>
         <EvalPhase projectId="proj-1" />
       </MemoryRouter>,
-      { store }
+      { store, queryClient }
     );
 
     await waitFor(() => {
@@ -426,12 +434,13 @@ describe("EvalPhase feedback form", () => {
 
   it("renders priority dropdown with placeholder and options", async () => {
     const store = createStore();
+    const queryClient = createQueryClientWithFeedbackPreloaded();
     const user = userEvent.setup();
     renderWithProviders(
       <MemoryRouter>
         <EvalPhase projectId="proj-1" />
       </MemoryRouter>,
-      { store }
+      { store, queryClient }
     );
 
     await waitFor(() => {
@@ -457,12 +466,13 @@ describe("EvalPhase feedback form", () => {
 
   it("closes priority dropdown on Escape key", async () => {
     const store = createStore();
+    const queryClient = createQueryClientWithFeedbackPreloaded();
     const user = userEvent.setup();
     renderWithProviders(
       <MemoryRouter>
         <EvalPhase projectId="proj-1" />
       </MemoryRouter>,
-      { store }
+      { store, queryClient }
     );
 
     await waitFor(() => {
@@ -479,11 +489,12 @@ describe("EvalPhase feedback form", () => {
   it("passes selected priority when submitting feedback", async () => {
     const { api } = await import("../../api/client");
     const store = createStore();
+    const queryClient = createQueryClientWithFeedbackPreloaded();
     renderWithProviders(
       <MemoryRouter>
         <EvalPhase projectId="proj-1" />
       </MemoryRouter>,
-      { store }
+      { store, queryClient }
     );
 
     await waitFor(() => {
@@ -520,11 +531,12 @@ describe("EvalPhase feedback form", () => {
     });
 
     const store = createStore();
+    const queryClient = createQueryClientWithFeedbackPreloaded();
     renderWithProviders(
       <MemoryRouter>
         <EvalPhase projectId="proj-1" />
       </MemoryRouter>,
-      { store }
+      { store, queryClient }
     );
 
     await waitFor(() => {
@@ -550,11 +562,12 @@ describe("EvalPhase feedback form", () => {
   it("omits priority from submission when none selected", async () => {
     const { api } = await import("../../api/client");
     const store = createStore();
+    const queryClient = createQueryClientWithFeedbackPreloaded();
     renderWithProviders(
       <MemoryRouter>
         <EvalPhase projectId="proj-1" />
       </MemoryRouter>,
-      { store }
+      { store, queryClient }
     );
 
     await waitFor(() => {
@@ -587,11 +600,12 @@ describe("EvalPhase feedback form", () => {
     );
 
     const store = createStore();
+    const queryClient = createQueryClientWithFeedbackPreloaded();
     renderWithProviders(
       <MemoryRouter>
         <EvalPhase projectId="proj-1" />
       </MemoryRouter>,
-      { store }
+      { store, queryClient }
     );
 
     await waitFor(() => {
@@ -640,18 +654,21 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: mockFeedbackItems,
         openQuestionNotifications: [openQuestionNotification],
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
         expect(screen.getByTestId("feedback-open-questions")).toBeInTheDocument();
       });
 
-      expect(screen.getByText(/The Analyst needs clarification before categorizing/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/The Analyst needs clarification before categorizing/)
+      ).toBeInTheDocument();
       expect(screen.getByText("Which screen does this happen on?")).toBeInTheDocument();
       expect(screen.getByTestId("feedback-answer-input")).toBeInTheDocument();
       expect(screen.getByTestId("feedback-answer-submit")).toBeInTheDocument();
@@ -664,12 +681,13 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: mockFeedbackItems,
         openQuestionNotifications: [openQuestionNotification],
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -692,12 +710,13 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: mockFeedbackItems,
         openQuestionNotifications: [openQuestionNotification],
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -718,12 +737,13 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: mockFeedbackItems,
         openQuestionNotifications: [openQuestionNotification],
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -742,13 +762,17 @@ describe("EvalPhase feedback form", () => {
       const { api } = await import("../../api/client");
       vi.mocked(api.notifications.listByProject).mockResolvedValue([openQuestionNotification]);
 
-      const store = createStore({ evalFeedback: mockFeedbackItems });
+      const store = createStore({
+        evalFeedback: mockFeedbackItems,
+        openQuestionNotifications: [openQuestionNotification],
+      });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -770,12 +794,13 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: mockFeedbackItems,
         openQuestionNotifications: [openQuestionNotification],
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -804,11 +829,12 @@ describe("EvalPhase feedback form", () => {
       );
 
       const store = createStore();
+      const queryClient = createQueryClientWithFeedbackPreloaded();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -824,12 +850,13 @@ describe("EvalPhase feedback form", () => {
 
     it("persists text to localStorage on change", async () => {
       const store = createStore();
+      const queryClient = createQueryClientWithFeedbackPreloaded();
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -843,12 +870,13 @@ describe("EvalPhase feedback form", () => {
 
     it("persists priority to localStorage when selected", async () => {
       const store = createStore();
+      const queryClient = createQueryClientWithFeedbackPreloaded();
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -880,12 +908,13 @@ describe("EvalPhase feedback form", () => {
       );
 
       const store = createStore();
+      const queryClient = createQueryClientWithFeedbackPreloaded();
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -903,11 +932,12 @@ describe("EvalPhase feedback form", () => {
   describe("feedback form control heights", () => {
     it("applies consistent h-10 height to priority select and both buttons", async () => {
       const store = createStore();
+      const queryClient = createQueryClientWithFeedbackPreloaded();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -926,11 +956,12 @@ describe("EvalPhase feedback form", () => {
 
     it("priority select has equal left and right padding", async () => {
       const store = createStore();
+      const queryClient = createQueryClientWithFeedbackPreloaded();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -943,11 +974,12 @@ describe("EvalPhase feedback form", () => {
 
     it("status filter select has chevron right padding (pl-3, pr from select.input)", async () => {
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -961,11 +993,12 @@ describe("EvalPhase feedback form", () => {
 
     it("actions row uses items-stretch so all controls share the same height", async () => {
       const store = createStore();
+      const queryClient = createQueryClientWithFeedbackPreloaded();
       const { container } = renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -980,11 +1013,12 @@ describe("EvalPhase feedback form", () => {
 
     it("actions row has flex-wrap to prevent overflow at narrow viewports", async () => {
       const store = createStore();
+      const queryClient = createQueryClientWithFeedbackPreloaded();
       const { container } = renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -999,12 +1033,13 @@ describe("EvalPhase feedback form", () => {
 
     it("reply form applies consistent h-10 height to Attach and Submit buttons", async () => {
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByText("Bug 1")).toBeInTheDocument());
@@ -1015,7 +1050,9 @@ describe("EvalPhase feedback form", () => {
       });
 
       const replyForm = screen.getByPlaceholderText("Write a reply...").closest(".card");
-      expect(within(replyForm!).queryByRole("button", { name: /^Cancel$/ })).not.toBeInTheDocument();
+      expect(
+        within(replyForm!).queryByRole("button", { name: /^Cancel$/ })
+      ).not.toBeInTheDocument();
       const attachButton = within(replyForm!).getByTestId("reply-attach-images");
       const submitButton = within(replyForm!).getByRole("button", { name: /^Submit$/ });
 
@@ -1045,11 +1082,12 @@ describe("EvalPhase feedback form", () => {
       });
 
       const store = createStore();
+      const queryClient = createQueryClientWithFeedbackPreloaded();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -1076,11 +1114,12 @@ describe("EvalPhase feedback form", () => {
       });
 
       const store = createStore();
+      const queryClient = createQueryClientWithFeedbackPreloaded();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -1107,11 +1146,12 @@ describe("EvalPhase feedback form", () => {
       });
 
       const store = createStore();
+      const queryClient = createQueryClientWithFeedbackPreloaded();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -1142,11 +1182,12 @@ describe("EvalPhase feedback form", () => {
 
     it("shows Attach image(s) tooltip on main feedback form after hover delay", async () => {
       const store = createStore();
+      const queryClient = createQueryClientWithFeedbackPreloaded();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -1167,11 +1208,12 @@ describe("EvalPhase feedback form", () => {
 
     it("dismisses attach image tooltip when cursor leaves button", async () => {
       const store = createStore();
+      const queryClient = createQueryClientWithFeedbackPreloaded();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -1193,11 +1235,12 @@ describe("EvalPhase feedback form", () => {
 
     it("dismisses attach image tooltip on Escape key", async () => {
       const store = createStore();
+      const queryClient = createQueryClientWithFeedbackPreloaded();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -1219,12 +1262,13 @@ describe("EvalPhase feedback form", () => {
 
     it("shows Attach image(s) tooltip on reply form after hover delay", async () => {
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByText("Bug 1")).toBeInTheDocument());
@@ -1248,12 +1292,13 @@ describe("EvalPhase feedback form", () => {
 
     it("shows Submit keyboard shortcut tooltip on reply form after hover delay", async () => {
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByText("Bug 1")).toBeInTheDocument());
@@ -1284,11 +1329,12 @@ describe("EvalPhase feedback form", () => {
 
     it("defaults to Pending when no localStorage key exists", async () => {
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -1301,11 +1347,12 @@ describe("EvalPhase feedback form", () => {
 
     it("title does not display a count", async () => {
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -1319,11 +1366,12 @@ describe("EvalPhase feedback form", () => {
 
     it("each dropdown option displays its count (All, Pending = pending+mapped, Resolved)", async () => {
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -1337,11 +1385,12 @@ describe("EvalPhase feedback form", () => {
 
     it("dropdown shows All first, then Pending and Resolved options", async () => {
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -1355,12 +1404,13 @@ describe("EvalPhase feedback form", () => {
 
     it("writes filter selection to localStorage on change", async () => {
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -1383,11 +1433,12 @@ describe("EvalPhase feedback form", () => {
       localStorage.setItem(EVALUATE_FEEDBACK_FILTER_KEY, "resolved");
 
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -1402,11 +1453,12 @@ describe("EvalPhase feedback form", () => {
       localStorage.setItem(EVALUATE_FEEDBACK_FILTER_KEY, "all");
 
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -1421,11 +1473,12 @@ describe("EvalPhase feedback form", () => {
       localStorage.setItem(EVALUATE_FEEDBACK_FILTER_KEY, "mapped");
 
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -1440,11 +1493,12 @@ describe("EvalPhase feedback form", () => {
       localStorage.setItem(EVALUATE_FEEDBACK_FILTER_KEY, "invalid");
 
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -1458,11 +1512,12 @@ describe("EvalPhase feedback form", () => {
     it("Pending filter shows both pending and mapped items", async () => {
       localStorage.setItem(EVALUATE_FEEDBACK_FILTER_KEY, "pending");
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
@@ -1482,11 +1537,12 @@ describe("EvalPhase feedback form", () => {
     it("All filter shows all feedback items", async () => {
       localStorage.setItem(EVALUATE_FEEDBACK_FILTER_KEY, "all");
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
@@ -1505,12 +1561,13 @@ describe("EvalPhase feedback form", () => {
 
     it("Resolved filter shows only resolved items", async () => {
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
@@ -1524,11 +1581,12 @@ describe("EvalPhase feedback form", () => {
 
     it("does not show Cancelled option when no feedback has status cancelled", async () => {
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
@@ -1541,11 +1599,12 @@ describe("EvalPhase feedback form", () => {
 
     it("shows Cancelled option when at least one feedback has status cancelled", async () => {
       const store = createStore({ evalFeedback: mockFeedbackWithCancelled });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackWithCancelled);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
@@ -1558,12 +1617,13 @@ describe("EvalPhase feedback form", () => {
 
     it("Cancelled filter shows only cancelled items", async () => {
       const store = createStore({ evalFeedback: mockFeedbackWithCancelled });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackWithCancelled);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
@@ -1577,12 +1637,13 @@ describe("EvalPhase feedback form", () => {
 
     it("Resolved filter excludes cancelled items", async () => {
       const store = createStore({ evalFeedback: mockFeedbackWithCancelled });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackWithCancelled);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
@@ -1595,12 +1656,13 @@ describe("EvalPhase feedback form", () => {
 
     it("resets to Pending when cancelled is selected but no cancelled items exist", async () => {
       const store = createStore({ evalFeedback: mockFeedbackWithCancelled });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackWithCancelled);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
@@ -1608,9 +1670,7 @@ describe("EvalPhase feedback form", () => {
 
       // Simulate feedback changing: cancelled item gets resolved (e.g. via WebSocket update)
       act(() => {
-        store.dispatch(
-          updateFeedbackItem({ ...mockFeedbackWithCancelled[6], status: "resolved" })
-        );
+        store.dispatch(updateFeedbackItem({ ...mockFeedbackWithCancelled[6], status: "resolved" }));
       });
 
       await waitFor(() => {
@@ -1621,12 +1681,13 @@ describe("EvalPhase feedback form", () => {
 
     it("writes and restores cancelled filter to localStorage", async () => {
       const store = createStore({ evalFeedback: mockFeedbackWithCancelled });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackWithCancelled);
       const user = userEvent.setup();
       const { rerender } = renderWithProviders(
         <MemoryRouter>
           <EvalPhase key="first" projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
@@ -1640,7 +1701,7 @@ describe("EvalPhase feedback form", () => {
           <MemoryRouter>
             <EvalPhase key="second" projectId="proj-1" />
           </MemoryRouter>,
-          { store }
+          { store, queryClient }
         )
       );
 
@@ -1652,11 +1713,12 @@ describe("EvalPhase feedback form", () => {
 
     it("default Pending filter shows both pending and mapped items on first load", async () => {
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
@@ -1705,11 +1767,12 @@ describe("EvalPhase feedback form", () => {
         },
       ];
       const store = createStore({ evalFeedback: feedbackWithReplies });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedbackWithReplies);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByText("Parent feedback")).toBeInTheDocument());
@@ -1762,11 +1825,12 @@ describe("EvalPhase feedback form", () => {
         },
       ];
       const store = createStore({ evalFeedback: feedbackDeepNesting });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedbackDeepNesting);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByText("Root")).toBeInTheDocument());
@@ -1799,11 +1863,12 @@ describe("EvalPhase feedback form", () => {
         },
       ];
       const store = createStore({ evalFeedback: feedbackSingleReply });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedbackSingleReply);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByText("Parent")).toBeInTheDocument());
@@ -1835,15 +1900,18 @@ describe("EvalPhase feedback form", () => {
         },
       ];
       const store = createStore({ evalFeedback: initialFeedback });
+      const queryClient = createQueryClientWithFeedbackPreloaded(initialFeedback);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByText("Parent")).toBeInTheDocument());
-      expect(screen.getByTestId("collapse-replies-fb-parent")).toHaveTextContent("Collapse (1 reply)");
+      expect(screen.getByTestId("collapse-replies-fb-parent")).toHaveTextContent(
+        "Collapse (1 reply)"
+      );
 
       // Add a nested reply via Redux (simulates WebSocket feedback.updated)
       const newReply: FeedbackItem = {
@@ -1892,18 +1960,17 @@ describe("EvalPhase feedback form", () => {
           parent_id: "fb-order-parent",
         },
       ];
-      const executeTasks: Task[] = [
-        createMockTask({ id: "task-1", kanbanColumn: "in_progress" }),
-      ];
+      const executeTasks: Task[] = [createMockTask({ id: "task-1", kanbanColumn: "in_progress" })];
       const store = createStore({
         evalFeedback: feedbackWithReplies,
         executeTasks,
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedbackWithReplies);
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-        { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByText("Parent with replies")).toBeInTheDocument());
@@ -1943,12 +2010,13 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: feedbackWithTasks,
         executeTasks,
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedbackWithTasks);
 
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -1976,12 +2044,13 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: feedbackWithTasks,
         executeTasks: [],
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedbackWithTasks);
 
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -2011,12 +2080,13 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: feedbackWithTasks,
         executeTasks,
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedbackWithTasks);
 
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -2045,12 +2115,13 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: feedbackWithTasks,
         executeTasks,
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedbackWithTasks);
 
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -2079,12 +2150,13 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: feedbackWithTasks,
         executeTasks,
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedbackWithTasks);
 
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -2121,12 +2193,13 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: feedbackWithTasks,
         executeTasks,
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedbackWithTasks);
 
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -2174,6 +2247,7 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: feedbackWithTwoItems,
         executeTasks,
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedbackWithTwoItems);
 
       const { api } = await import("../../api/client");
       vi.mocked(api.feedback.list).mockClear();
@@ -2182,7 +2256,7 @@ describe("EvalPhase feedback form", () => {
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -2229,6 +2303,7 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: [feedbackItem],
         executeTasks: [],
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded([feedbackItem]);
 
       const { api } = await import("../../api/client");
       vi.mocked(api.feedback.list).mockClear();
@@ -2252,7 +2327,7 @@ describe("EvalPhase feedback form", () => {
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -2299,6 +2374,7 @@ describe("EvalPhase feedback form", () => {
         },
       ];
       const store = createStore({ evalFeedback: feedbackWithOneItem });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedbackWithOneItem);
 
       const { api } = await import("../../api/client");
       vi.mocked(api.feedback.list).mockClear();
@@ -2307,7 +2383,7 @@ describe("EvalPhase feedback form", () => {
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -2338,12 +2414,13 @@ describe("EvalPhase feedback form", () => {
 
     it("preserves scroll position when clicking Resolve", async () => {
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByText("Bug 3")).toBeInTheDocument());
@@ -2362,12 +2439,13 @@ describe("EvalPhase feedback form", () => {
 
     it("collapses height during resolve fade-out animation (no empty gap)", async () => {
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByText("Bug 3")).toBeInTheDocument());
@@ -2391,6 +2469,8 @@ describe("EvalPhase feedback form", () => {
     it("does not refresh page when clicking Resolve (prevents form submit)", async () => {
       const formSubmit = vi.fn();
       const user = userEvent.setup();
+      const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       renderWithProviders(
         <form
           onSubmit={(e) => {
@@ -2401,7 +2481,8 @@ describe("EvalPhase feedback form", () => {
           <MemoryRouter>
             <EvalPhase projectId="proj-1" />
           </MemoryRouter>
-        </form>
+        </form>,
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByText("Bug 3")).toBeInTheDocument());
@@ -2432,12 +2513,13 @@ describe("EvalPhase feedback form", () => {
           evalFeedback: feedbackWithTasks,
           executeTasks,
         });
+        const queryClient = createQueryClientWithFeedbackPreloaded(feedbackWithTasks);
 
         renderWithProviders(
           <MemoryRouter>
             <EvalPhase projectId="proj-1" />
           </MemoryRouter>,
-          { store }
+          { store, queryClient }
         );
 
         await waitFor(() => {
@@ -2458,19 +2540,18 @@ describe("EvalPhase feedback form", () => {
             createdAt: "2024-01-01T00:00:01Z",
           },
         ];
-        const executeTasks: Task[] = [
-          createMockTask({ id: "task-1", kanbanColumn: "backlog" }),
-        ];
+        const executeTasks: Task[] = [createMockTask({ id: "task-1", kanbanColumn: "backlog" })];
         const store = createStore({
           evalFeedback: feedbackWithTasks,
           executeTasks,
         });
+        const queryClient = createQueryClientWithFeedbackPreloaded(feedbackWithTasks);
 
         renderWithProviders(
           <MemoryRouter>
             <EvalPhase projectId="proj-1" />
           </MemoryRouter>,
-          { store }
+          { store, queryClient }
         );
 
         await waitFor(() => {
@@ -2493,12 +2574,13 @@ describe("EvalPhase feedback form", () => {
           },
         ];
         const store = createStore({ evalFeedback: feedbackNoTasks });
+        const queryClient = createQueryClientWithFeedbackPreloaded(feedbackNoTasks);
 
         renderWithProviders(
           <MemoryRouter>
             <EvalPhase projectId="proj-1" />
           </MemoryRouter>,
-          { store }
+          { store, queryClient }
         );
 
         await waitFor(() => {
@@ -2527,12 +2609,13 @@ describe("EvalPhase feedback form", () => {
           evalFeedback: feedbackWithTasks,
           executeTasks,
         });
+        const queryClient = createQueryClientWithFeedbackPreloaded(feedbackWithTasks);
 
         renderWithProviders(
           <MemoryRouter>
             <EvalPhase projectId="proj-1" />
           </MemoryRouter>,
-          { store }
+          { store, queryClient }
         );
 
         await waitFor(() => {
@@ -2563,19 +2646,22 @@ describe("EvalPhase feedback form", () => {
         },
       ];
       const store = createStore({ evalFeedback: planLinkedFeedback, executeTasks: [] });
+      const queryClient = createQueryClientWithFeedbackPreloaded(planLinkedFeedback);
 
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
         expect(screen.getByTestId("feedback-card-plan-link")).toBeInTheDocument();
       });
 
-      expect(screen.getByRole("button", { name: /View plan Auth Feature Plan/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /View plan Auth Feature Plan/i })
+      ).toBeInTheDocument();
       expect(screen.getByText(/Plan: Auth Feature Plan/)).toBeInTheDocument();
       expect(screen.queryByTestId("feedback-card-ticket-info")).not.toBeInTheDocument();
     });
@@ -2597,12 +2683,13 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: taskLinkedFeedback,
         executeTasks,
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(taskLinkedFeedback);
 
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -2636,6 +2723,7 @@ describe("EvalPhase feedback form", () => {
         },
       ];
       const store = createStore({ evalFeedback: planLinkedFeedback, executeTasks: [] });
+      const queryClient = createQueryClientWithFeedbackPreloaded(planLinkedFeedback);
 
       renderWithProviders(
         <MemoryRouter initialEntries={["/projects/proj-1/eval"]}>
@@ -2644,7 +2732,7 @@ describe("EvalPhase feedback form", () => {
             <EvalPhase projectId="proj-1" />
           </>
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -2680,12 +2768,13 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: feedbackWithTasks,
         executeTasks,
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedbackWithTasks);
 
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" onNavigateToBuildTask={onNavigateToBuildTask} />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -2717,12 +2806,13 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: feedbackWithTasks,
         executeTasks,
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedbackWithTasks);
 
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -2759,12 +2849,13 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: feedbackWithTasks,
         executeTasks,
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedbackWithTasks);
 
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -2806,12 +2897,13 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: feedbackWithTasks,
         executeTasks,
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedbackWithTasks);
 
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -2870,12 +2962,13 @@ describe("EvalPhase feedback form", () => {
         evalFeedback: feedbackWithTasks,
         executeTasks,
       });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedbackWithTasks);
 
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -2901,12 +2994,13 @@ describe("EvalPhase feedback form", () => {
   describe("reply image attachment", () => {
     it("shows Attach icon button in reply composer to the left of Submit", async () => {
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByText("Bug 1")).toBeInTheDocument());
@@ -2936,12 +3030,13 @@ describe("EvalPhase feedback form", () => {
     it("persists attached images when submitting reply", async () => {
       const { api } = await import("../../api/client");
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByText("Bug 1")).toBeInTheDocument());
@@ -2987,11 +3082,12 @@ describe("EvalPhase feedback form", () => {
   describe("image drag targets", () => {
     it("renders main feedback drop zone", async () => {
       const store = createStore();
+      const queryClient = createQueryClientWithFeedbackPreloaded();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => {
@@ -3001,12 +3097,13 @@ describe("EvalPhase feedback form", () => {
 
     it("renders reply drop zone when reply form is open", async () => {
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
       await waitFor(() => expect(screen.getByText("Bug 1")).toBeInTheDocument());
@@ -3021,15 +3118,18 @@ describe("EvalPhase feedback form", () => {
 
     it("main and reply drop zones are valid drop targets with drag handlers", async () => {
       const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       const user = userEvent.setup();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
-      await waitFor(() => expect(screen.getByTestId("main-feedback-drop-zone")).toBeInTheDocument());
+      await waitFor(() =>
+        expect(screen.getByTestId("main-feedback-drop-zone")).toBeInTheDocument()
+      );
 
       const mainZone = screen.getByTestId("main-feedback-drop-zone");
       expect(mainZone).toBeInTheDocument();
@@ -3047,14 +3147,17 @@ describe("EvalPhase feedback form", () => {
 
     it("drop target hides immediately when image is dropped onto it", async () => {
       const store = createStore();
+      const queryClient = createQueryClientWithFeedbackPreloaded();
       renderWithProviders(
         <MemoryRouter>
           <EvalPhase projectId="proj-1" />
         </MemoryRouter>,
-      { store }
+        { store, queryClient }
       );
 
-      await waitFor(() => expect(screen.getByTestId("main-feedback-drop-zone")).toBeInTheDocument());
+      await waitFor(() =>
+        expect(screen.getByTestId("main-feedback-drop-zone")).toBeInTheDocument()
+      );
 
       const dataTransfer = {
         types: ["Files"],
@@ -3063,7 +3166,10 @@ describe("EvalPhase feedback form", () => {
       } as DataTransfer;
 
       const dragEnterEvent = new Event("dragenter", { bubbles: true }) as DragEvent;
-      Object.defineProperty(dragEnterEvent, "dataTransfer", { value: dataTransfer, writable: false });
+      Object.defineProperty(dragEnterEvent, "dataTransfer", {
+        value: dataTransfer,
+        writable: false,
+      });
 
       await act(async () => {
         document.dispatchEvent(dragEnterEvent);

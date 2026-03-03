@@ -28,10 +28,7 @@ import { queryKeys } from "../../api/queryKeys";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
 import { BuildEpicCard } from "../../components/kanban";
 import { useTaskFilter } from "../../hooks/useTaskFilter";
-import {
-  useExecuteSwimlanes,
-  showReadyInLineSections,
-} from "../../hooks/useExecuteSwimlanes";
+import { useExecuteSwimlanes, showReadyInLineSections } from "../../hooks/useExecuteSwimlanes";
 import { useScrollToQuestion } from "../../hooks/useScrollToQuestion";
 import { useOpenQuestionNotifications } from "../../hooks/useOpenQuestionNotifications";
 import { ExecuteFilterToolbar } from "../../components/execute/ExecuteFilterToolbar";
@@ -98,23 +95,15 @@ export function ExecutePhase({
   const selectedAgentOutput = useAppSelector((s) =>
     selectSelectedTaskOutput(s, effectiveSelectedTask)
   );
-  const completionState = useAppSelector((s) =>
-    selectCompletionState(s, effectiveSelectedTask)
-  );
+  const completionState = useAppSelector((s) => selectCompletionState(s, effectiveSelectedTask));
 
   const taskDetailQuery = useTaskDetail(projectId, effectiveSelectedTask ?? undefined);
-  const archivedQuery = useArchivedSessions(
-    projectId,
-    effectiveSelectedTask ?? undefined,
-    { enabled: Boolean(effectiveSelectedTask) }
-  );
-  const liveOutputQuery = useLiveOutputBackfill(
-    projectId,
-    effectiveSelectedTask ?? undefined,
-    {
-      enabled: Boolean(effectiveSelectedTask),
-    }
-  );
+  const archivedQuery = useArchivedSessions(projectId, effectiveSelectedTask ?? undefined, {
+    enabled: Boolean(effectiveSelectedTask),
+  });
+  const liveOutputQuery = useLiveOutputBackfill(projectId, effectiveSelectedTask ?? undefined, {
+    enabled: Boolean(effectiveSelectedTask),
+  });
   const markDoneMutation = useMarkTaskDone(projectId);
   const unblockMutation = useUnblockTask(projectId);
   const deleteTaskMutation = useDeleteTask(projectId);
@@ -122,7 +111,9 @@ export function ExecutePhase({
   const taskDetailData = taskDetailQuery.data;
   const taskDetailLoading = taskDetailQuery.isFetching;
   const taskDetailError = taskDetailQuery.error
-    ? (taskDetailQuery.error instanceof Error ? taskDetailQuery.error.message : String(taskDetailQuery.error))
+    ? taskDetailQuery.error instanceof Error
+      ? taskDetailQuery.error.message
+      : String(taskDetailQuery.error)
     : null;
   const archivedSessions = archivedQuery.data ?? [];
   const archivedLoading = archivedQuery.isFetching;
@@ -192,10 +183,21 @@ export function ExecutePhase({
   }, [effectiveSelectedTask, isDoneTask, liveOutputQuery, wsConnected]);
 
   useEffect(() => {
-    if (effectiveSelectedTask && !isDoneTask && archivedQuery.data?.length === 0 && !archivedLoading) {
+    if (
+      effectiveSelectedTask &&
+      !isDoneTask &&
+      archivedQuery.data?.length === 0 &&
+      !archivedLoading
+    ) {
       void archivedQuery.refetch();
     }
-  }, [effectiveSelectedTask, isDoneTask, archivedQuery.data?.length, archivedLoading, archivedQuery]);
+  }, [
+    effectiveSelectedTask,
+    isDoneTask,
+    archivedQuery.data?.length,
+    archivedLoading,
+    archivedQuery,
+  ]);
 
   // Subscribe to live agent output. Middleware queues subscribe when WS not yet connected
   useEffect(() => {
@@ -233,24 +235,15 @@ export function ExecutePhase({
     }
   };
 
-  const {
-    implTasks,
-    filteredTasks,
-    swimlanes,
-    readySwimlanes,
-    inLineSwimlanes,
-    chipConfig,
-  } = useExecuteSwimlanes(tasks, plans, statusFilter, searchQuery);
+  const { implTasks, filteredTasks, swimlanes, readySwimlanes, inLineSwimlanes, chipConfig } =
+    useExecuteSwimlanes(tasks, plans, statusFilter, searchQuery);
 
   const tasksQuery = useTasks(projectId);
   const tasksEmpty = implTasks.length === 0;
-  const { showSpinner: showTasksSpinner, showEmptyState: showTasksEmptyState } = usePhaseLoadingState(
-    tasksQuery.isLoading,
-    tasksEmpty
-  );
+  const { showSpinner: showTasksSpinner, showEmptyState: showTasksEmptyState } =
+    usePhaseLoadingState(tasksQuery.isLoading, tasksEmpty);
 
-  const useReadyInLineSections =
-    showReadyInLineSections(statusFilter) && implTasks.length > 0;
+  const useReadyInLineSections = showReadyInLineSections(statusFilter) && implTasks.length > 0;
 
   const planByEpicId = useMemo(
     () =>
@@ -286,7 +279,8 @@ export function ExecutePhase({
     (effectiveSelectedTask &&
       openQuestionNotifications.find(
         (n) => n.source === "execute" && n.sourceId === effectiveSelectedTask
-      )) ?? null;
+      )) ??
+    null;
 
   /* ── RENDER: Loading spinner during fetch (no fake page content) ── */
   if (showTasksSpinner) {
@@ -322,14 +316,18 @@ export function ExecutePhase({
           onViewModeChange={setViewMode}
         />
 
-        <div ref={executeScrollRef} className="flex-1 min-h-0 overflow-auto p-6" data-testid="execute-main-scroll">
+        <div
+          ref={executeScrollRef}
+          className="flex-1 min-h-0 overflow-auto p-6"
+          data-testid="execute-main-scroll"
+        >
           {showTasksEmptyState ? (
             <div className="text-center py-10 text-theme-muted">
               No tasks yet. Ship a Plan to start generating tasks.
             </div>
           ) : viewMode === "kanban" ? (
             useReadyInLineSections ? (
-              (readySwimlanes.length > 0 || inLineSwimlanes.length > 0) ? (
+              readySwimlanes.length > 0 || inLineSwimlanes.length > 0 ? (
                 <div className="space-y-8">
                   {readySwimlanes.length > 0 && (
                     <section data-testid="execute-section-ready">

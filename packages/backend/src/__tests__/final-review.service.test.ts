@@ -38,9 +38,9 @@ vi.mock("../services/project.service.js", () => ({
 
 vi.mock("../services/context-assembler.js", () => ({
   ContextAssembler: vi.fn().mockImplementation(() => ({
-    collectDependencyOutputs: vi.fn().mockResolvedValue([
-      { taskId: "os-abc.1", diff: "", summary: "Task 1 done" },
-    ]),
+    collectDependencyOutputs: vi
+      .fn()
+      .mockResolvedValue([{ taskId: "os-abc.1", diff: "", summary: "Task 1 done" }]),
     extractPrdExcerpt: vi.fn().mockResolvedValue("# PRD\n\nExcerpt"),
   })),
 }));

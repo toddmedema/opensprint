@@ -86,10 +86,7 @@ export class PlanStore {
     };
   }
 
-  async planGetByEpicId(
-    projectId: string,
-    epicId: string
-  ): Promise<PlanGetByEpicIdResult | null> {
+  async planGetByEpicId(projectId: string, epicId: string): Promise<PlanGetByEpicIdResult | null> {
     const client = this.getClient();
     const row = await client.queryOne(
       toPgParams(
@@ -133,7 +130,9 @@ export class PlanStore {
     }
     const now = new Date().toISOString();
     await client.execute(
-      toPgParams("UPDATE plans SET content = ?, updated_at = ? WHERE project_id = ? AND plan_id = ?"),
+      toPgParams(
+        "UPDATE plans SET content = ?, updated_at = ? WHERE project_id = ? AND plan_id = ?"
+      ),
       [content, now, projectId, planId]
     );
   }
@@ -154,7 +153,9 @@ export class PlanStore {
     const metaJson = JSON.stringify(metadata);
     const now = new Date().toISOString();
     await client.execute(
-      toPgParams("UPDATE plans SET metadata = ?, updated_at = ? WHERE project_id = ? AND plan_id = ?"),
+      toPgParams(
+        "UPDATE plans SET metadata = ?, updated_at = ? WHERE project_id = ? AND plan_id = ?"
+      ),
       [metaJson, now, projectId, planId]
     );
   }

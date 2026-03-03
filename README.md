@@ -1,17 +1,15 @@
 # Open Sprint
 
-Open Sprint guides a software project from idea to shipped code using AI agents across Sketch, Plan, Execute, Evaluate, and Deliver.
+[Open Sprint](https://opensprint.ai/) guides a software project from idea to shipped code using AI agents across Sketch, Plan, Execute, Evaluate, and Deliver.
 
-[Demo](https://demo.opensprint.dev/) · [Get started](#quick-start)
+_Plan like a Product Manager. Ship at the speed of thought._
 
 ## Quick Start
 
 ### Prerequisites
 
 - Node.js 20+
-- PostgreSQL
-- On Mac and Linux, `npm run setup` can install and start PostgreSQL for you
-- On Windows, PostgreSQL may need manual setup
+- PostgreSQL (On Mac and Linux, `npm run setup` can install and start PostgreSQL for you. On Windows, PostgreSQL may need manual setup.)
 
 ### Start Open Sprint
 
@@ -47,16 +45,14 @@ Once the app is running:
 - Add your AI provider API key there.
 - If you want to use a different database later, update the database connection in Settings.
 
-The app still needs a working database before the UI is available, so local PostgreSQL must be working first.
-
 ## Common Commands
 
-| Command | What it does |
-| --- | --- |
+| Command         | What it does                                                             |
+| --------------- | ------------------------------------------------------------------------ |
 | `npm run setup` | Install dependencies, prepare PostgreSQL when possible, and apply schema |
-| `npm run dev` | Start the backend and frontend |
-| `npm run test` | Run the test suite |
-| `npm run build` | Build all packages |
+| `npm run dev`   | Start the backend and frontend                                           |
+| `npm run test`  | Run the test suite                                                       |
+| `npm run build` | Build all packages                                                       |
 
 ## How Open Sprint Works
 

@@ -17,10 +17,7 @@ export interface PrdDiffViewProps {
 /**
  * Renders a section-level diff: for each proposed section, shows current vs proposed with line-level changes.
  */
-export function PrdDiffView({
-  currentPrd,
-  scopeChangeMetadata,
-}: PrdDiffViewProps) {
+export function PrdDiffView({ currentPrd, scopeChangeMetadata }: PrdDiffViewProps) {
   const { scopeChangeSummary, scopeChangeProposedUpdates } = scopeChangeMetadata;
 
   if (!scopeChangeProposedUpdates?.length) {
@@ -38,8 +35,7 @@ export function PrdDiffView({
       )}
       <div className="space-y-4">
         {scopeChangeProposedUpdates.map((update) => {
-          const currentContent =
-            currentPrd?.sections?.[update.section]?.content?.trim() ?? "";
+          const currentContent = currentPrd?.sections?.[update.section]?.content?.trim() ?? "";
           const proposedContent = (update.content ?? "").trim();
           const changeLogEntry = update.changeLogEntry;
 
@@ -58,9 +54,7 @@ export function PrdDiffView({
                   {formatSectionKey(update.section)}
                 </span>
                 {changeLogEntry && (
-                  <span className="ml-2 text-sm text-theme-muted">
-                    — {changeLogEntry}
-                  </span>
+                  <span className="ml-2 text-sm text-theme-muted">— {changeLogEntry}</span>
                 )}
               </div>
               <div className="p-3 font-mono text-xs overflow-x-auto max-h-64 overflow-y-auto">

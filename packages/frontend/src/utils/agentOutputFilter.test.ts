@@ -114,7 +114,8 @@ describe("agentOutputFilter", () => {
 
     it("extracts thinking from content_block_delta with delta.thinking", () => {
       const f = createAgentOutputFilter();
-      const chunk = '{"type":"content_block_delta","delta":{"type":"thinking","thinking":"streamed thought"}}\n';
+      const chunk =
+        '{"type":"content_block_delta","delta":{"type":"thinking","thinking":"streamed thought"}}\n';
       expect(f.filter(chunk)).toBe("streamed thought");
     });
 
@@ -203,8 +204,7 @@ describe("agentOutputFilter", () => {
 
   describe("filterAgentOutput", () => {
     it("filters full NDJSON in one pass", () => {
-      const raw =
-        '{"type":"text","text":"Hello"}\n{"type":"text","text":" world"}\n';
+      const raw = '{"type":"text","text":"Hello"}\n{"type":"text","text":" world"}\n';
       expect(filterAgentOutput(raw)).toBe("Hello world");
     });
 

@@ -34,8 +34,7 @@ export async function syncPlanTasksFromContent(
 
   const allIssues = await taskStore.listAll(projectId);
   const children = allIssues.filter(
-    (issue: StoredTask) =>
-      issue.id.startsWith(epicId + ".") && issue.issue_type !== "epic"
+    (issue: StoredTask) => issue.id.startsWith(epicId + ".") && issue.issue_type !== "epic"
   );
 
   // Sort by child index (epic.1, epic.2, ...) for stable ordering

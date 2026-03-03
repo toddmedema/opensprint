@@ -357,11 +357,7 @@ describe("MergeCoordinatorService", () => {
     await coordinator.postCompletionAsync(projectId, repoPath, "os-abc.1");
 
     await vi.waitFor(() => {
-      expect(finalReviewService.runFinalReview).toHaveBeenCalledWith(
-        projectId,
-        "os-abc",
-        repoPath
-      );
+      expect(finalReviewService.runFinalReview).toHaveBeenCalledWith(projectId, "os-abc", repoPath);
     });
     expect(mockHost.taskStore.close).toHaveBeenCalledWith(
       projectId,
@@ -390,17 +386,11 @@ describe("MergeCoordinatorService", () => {
     await coordinator.postCompletionAsync(projectId, repoPath, "os-abc.1");
 
     await vi.waitFor(() => {
-      expect(finalReviewService.runFinalReview).toHaveBeenCalledWith(
-        projectId,
-        "os-abc",
-        repoPath
-      );
+      expect(finalReviewService.runFinalReview).toHaveBeenCalledWith(projectId, "os-abc", repoPath);
     });
-    expect(finalReviewService.createTasksFromReview).toHaveBeenCalledWith(
-      projectId,
-      "os-abc",
-      [{ title: "Add error handling", description: "Handle edge cases", priority: 1 }]
-    );
+    expect(finalReviewService.createTasksFromReview).toHaveBeenCalledWith(projectId, "os-abc", [
+      { title: "Add error handling", description: "Handle edge cases", priority: 1 },
+    ]);
     expect(mockHost.taskStore.close).not.toHaveBeenCalledWith(
       projectId,
       "os-abc",

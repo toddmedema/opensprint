@@ -8,7 +8,7 @@ export function useTasks(projectId: string | undefined, options?: { enabled?: bo
   return useQuery({
     queryKey: queryKeys.tasks.list(projectId ?? ""),
     queryFn: async () => normalizeTaskListResponse(await api.tasks.list(projectId!)),
-    enabled: Boolean(projectId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && options?.enabled !== false,
   });
 }
 
@@ -20,7 +20,7 @@ export function useTaskDetail(
   return useQuery({
     queryKey: queryKeys.tasks.detail(projectId ?? "", taskId ?? ""),
     queryFn: () => api.tasks.get(projectId!, taskId!),
-    enabled: Boolean(projectId) && Boolean(taskId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && Boolean(taskId) && options?.enabled !== false,
   });
 }
 
@@ -32,7 +32,7 @@ export function useArchivedSessions(
   return useQuery({
     queryKey: queryKeys.tasks.sessions(projectId ?? "", taskId ?? ""),
     queryFn: async () => (await api.tasks.sessions(projectId!, taskId!)) ?? [],
-    enabled: Boolean(projectId) && Boolean(taskId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && Boolean(taskId) && options?.enabled !== false,
   });
 }
 
@@ -43,7 +43,7 @@ export function useExecuteStatus(
   return useQuery({
     queryKey: queryKeys.execute.status(projectId ?? ""),
     queryFn: () => api.execute.status(projectId!),
-    enabled: Boolean(projectId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && options?.enabled !== false,
     refetchInterval: options?.refetchInterval,
   });
 }
@@ -56,7 +56,7 @@ export function useLiveOutputBackfill(
   return useQuery({
     queryKey: queryKeys.execute.liveOutput(projectId ?? "", taskId ?? ""),
     queryFn: async () => (await api.execute.liveOutput(projectId!, taskId!)).output,
-    enabled: Boolean(projectId) && Boolean(taskId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && Boolean(taskId) && options?.enabled !== false,
     refetchInterval: options?.refetchInterval,
   });
 }
@@ -69,10 +69,7 @@ export function useTaskExecutionDiagnostics(
   return useQuery<TaskExecutionDiagnostics>({
     queryKey: queryKeys.execute.diagnostics(projectId ?? "", taskId ?? ""),
     queryFn: () => api.execute.taskDiagnostics(projectId!, taskId!),
-    enabled:
-      Boolean(projectId) &&
-      Boolean(taskId) &&
-      (options?.enabled !== false),
+    enabled: Boolean(projectId) && Boolean(taskId) && options?.enabled !== false,
     refetchInterval: options?.refetchInterval,
   });
 }
@@ -104,13 +101,8 @@ export function useUpdateTaskPriority(projectId: string) {
 export function useUnblockTask(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      taskId,
-      resetAttempts,
-    }: {
-      taskId: string;
-      resetAttempts?: boolean;
-    }) => api.tasks.unblock(projectId, taskId, { resetAttempts }),
+    mutationFn: ({ taskId, resetAttempts }: { taskId: string; resetAttempts?: boolean }) =>
+      api.tasks.unblock(projectId, taskId, { resetAttempts }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
       void qc.invalidateQueries({ queryKey: queryKeys.execute.status(projectId) });
@@ -170,7 +162,7 @@ export function useActiveAgents(
       }
       return { agents, taskIdToStartedAt };
     },
-    enabled: Boolean(projectId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && options?.enabled !== false,
     refetchInterval: options?.refetchInterval,
   });
 }

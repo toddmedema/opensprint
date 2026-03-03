@@ -7,10 +7,7 @@ import os from "os";
 import { globalSettingsRouter } from "../routes/global-settings.js";
 import { API_PREFIX } from "@opensprint/shared";
 import { errorHandler } from "../middleware/error-handler.js";
-import {
-  setGlobalSettings,
-  getGlobalSettings,
-} from "../services/global-settings.service.js";
+import { setGlobalSettings, getGlobalSettings } from "../services/global-settings.service.js";
 
 vi.mock("../services/task-store.service.js", () => ({
   taskStore: {
@@ -92,9 +89,7 @@ describe("Global Settings API", () => {
 
       const res = await request(app).get(`${API_PREFIX}/global-settings`);
       expect(res.status).toBe(200);
-      expect(res.body.data.databaseUrl).toBe(
-        "postgresql://user:***@db.example.com:5432/mydb"
-      );
+      expect(res.body.data.databaseUrl).toBe("postgresql://user:***@db.example.com:5432/mydb");
       expect(res.body.data.databaseUrl).not.toContain("secret123");
     });
 
@@ -114,11 +109,9 @@ describe("Global Settings API", () => {
 
   describe("PUT /global-settings", () => {
     it("updates databaseUrl and returns masked value", async () => {
-      const res = await request(app)
-        .put(`${API_PREFIX}/global-settings`)
-        .send({
-          databaseUrl: "postgresql://myuser:mypass@supabase.example.com:5432/db",
-        });
+      const res = await request(app).put(`${API_PREFIX}/global-settings`).send({
+        databaseUrl: "postgresql://myuser:mypass@supabase.example.com:5432/db",
+      });
 
       expect(res.status).toBe(200);
       expect(res.body.data.databaseUrl).toBe(
@@ -132,11 +125,9 @@ describe("Global Settings API", () => {
     });
 
     it("accepts postgres:// scheme", async () => {
-      const res = await request(app)
-        .put(`${API_PREFIX}/global-settings`)
-        .send({
-          databaseUrl: "postgres://u:secret@localhost:5432/test",
-        });
+      const res = await request(app).put(`${API_PREFIX}/global-settings`).send({
+        databaseUrl: "postgres://u:secret@localhost:5432/test",
+      });
 
       expect(res.status).toBe(200);
       expect(res.body.data.databaseUrl).toContain("localhost");
@@ -150,9 +141,7 @@ describe("Global Settings API", () => {
         databaseUrl: "postgresql://a:b@host:5432/db",
       });
 
-      const res = await request(app)
-        .put(`${API_PREFIX}/global-settings`)
-        .send({});
+      const res = await request(app).put(`${API_PREFIX}/global-settings`).send({});
 
       expect(res.status).toBe(200);
       expect(res.body.data.databaseUrl).toBe("postgresql://a:***@host:5432/db");
@@ -209,12 +198,8 @@ describe("Global Settings API", () => {
       const res = await request(app).get(`${API_PREFIX}/global-settings`);
       expect(res.status).toBe(200);
       expect(res.body.data.apiKeys).toBeDefined();
-      expect(res.body.data.apiKeys.ANTHROPIC_API_KEY).toEqual([
-        { id: "k1", masked: "••••••••" },
-      ]);
-      expect(res.body.data.apiKeys.CURSOR_API_KEY).toEqual([
-        { id: "k2", masked: "••••••••" },
-      ]);
+      expect(res.body.data.apiKeys.ANTHROPIC_API_KEY).toEqual([{ id: "k1", masked: "••••••••" }]);
+      expect(res.body.data.apiKeys.CURSOR_API_KEY).toEqual([{ id: "k2", masked: "••••••••" }]);
       expect(res.body.data.apiKeys.ANTHROPIC_API_KEY[0]).not.toHaveProperty("value");
       expect(res.body.data.apiKeys.ANTHROPIC_API_KEY[0]).not.toContain("secret");
     });
@@ -230,9 +215,7 @@ describe("Global Settings API", () => {
       const limitHitAt = new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString();
       await setGlobalSettings({
         apiKeys: {
-          ANTHROPIC_API_KEY: [
-            { id: "k1", value: "sk-ant-secret", limitHitAt },
-          ],
+          ANTHROPIC_API_KEY: [{ id: "k1", value: "sk-ant-secret", limitHitAt }],
         },
       });
 
@@ -283,9 +266,7 @@ describe("Global Settings API", () => {
         });
 
       expect(res.status).toBe(200);
-      expect(res.body.data.apiKeys.ANTHROPIC_API_KEY).toEqual([
-        { id: "k1", masked: "••••••••" },
-      ]);
+      expect(res.body.data.apiKeys.ANTHROPIC_API_KEY).toEqual([{ id: "k1", masked: "••••••••" }]);
 
       const getRes = await request(app).get(`${API_PREFIX}/global-settings`);
       expect(getRes.body.data.apiKeys.ANTHROPIC_API_KEY).toEqual([
@@ -305,9 +286,7 @@ describe("Global Settings API", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data.databaseUrl).toContain("localhost");
-      expect(res.body.data.apiKeys.CURSOR_API_KEY).toEqual([
-        { id: "c1", masked: "••••••••" },
-      ]);
+      expect(res.body.data.apiKeys.CURSOR_API_KEY).toEqual([{ id: "c1", masked: "••••••••" }]);
     });
   });
 
@@ -351,9 +330,7 @@ describe("Global Settings API", () => {
       const limitHitAt = new Date().toISOString();
       await setGlobalSettings({
         apiKeys: {
-          ANTHROPIC_API_KEY: [
-            { id: "k1", value: "sk-ant-secret", limitHitAt },
-          ],
+          ANTHROPIC_API_KEY: [{ id: "k1", value: "sk-ant-secret", limitHitAt }],
         },
       });
 
@@ -362,9 +339,7 @@ describe("Global Settings API", () => {
       );
 
       expect(res.status).toBe(200);
-      expect(res.body.data.apiKeys.ANTHROPIC_API_KEY).toEqual([
-        { id: "k1", masked: "••••••••" },
-      ]);
+      expect(res.body.data.apiKeys.ANTHROPIC_API_KEY).toEqual([{ id: "k1", masked: "••••••••" }]);
       expect(res.body.data.apiKeys.ANTHROPIC_API_KEY[0]).not.toHaveProperty("limitHitAt");
 
       const gs = await getGlobalSettings();
@@ -392,18 +367,14 @@ describe("Global Settings API", () => {
       );
 
       expect(res.status).toBe(200);
-      expect(res.body.data.apiKeys.CURSOR_API_KEY).toEqual([
-        { id: "c1", masked: "••••••••" },
-      ]);
+      expect(res.body.data.apiKeys.CURSOR_API_KEY).toEqual([{ id: "c1", masked: "••••••••" }]);
     });
 
     it("nudges orchestrator for all projects when retry succeeds", async () => {
       const limitHitAt = new Date().toISOString();
       await setGlobalSettings({
         apiKeys: {
-          ANTHROPIC_API_KEY: [
-            { id: "k1", value: "sk-ant-secret", limitHitAt },
-          ],
+          ANTHROPIC_API_KEY: [{ id: "k1", value: "sk-ant-secret", limitHitAt }],
         },
       });
       mockGetProjects.mockResolvedValue([
@@ -424,9 +395,7 @@ describe("Global Settings API", () => {
 
   describe("POST /global-settings/setup-tables", () => {
     it("returns 400 when databaseUrl is missing", async () => {
-      const res = await request(app)
-        .post(`${API_PREFIX}/global-settings/setup-tables`)
-        .send({});
+      const res = await request(app).post(`${API_PREFIX}/global-settings/setup-tables`).send({});
 
       expect(res.status).toBe(400);
       expect(res.body.error?.code).toBe("INVALID_INPUT");

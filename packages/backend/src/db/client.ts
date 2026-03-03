@@ -5,6 +5,33 @@
  */
 
 import type { Pool, PoolClient } from "pg";
+import { AppError } from "../middleware/error-handler.js";
+import { ErrorCodes } from "../middleware/error-codes.js";
+import { databaseRuntime } from "../services/database-runtime.service.js";
+import { classifyDbConnectionError, isDbConnectionError } from "./db-errors.js";
+
+function rethrowDatabaseError(err: unknown): never {
+  if (err instanceof AppError && err.code === ErrorCodes.DATABASE_UNAVAILABLE) {
+    throw err;
+  }
+  if (isDbConnectionError(err)) {
+    databaseRuntime.handleOperationalFailure(err);
+    throw new AppError(
+      503,
+      ErrorCodes.DATABASE_UNAVAILABLE,
+      classifyDbConnectionError(err)
+    );
+  }
+  throw err;
+}
+
+async function withDatabaseErrorHandling<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    rethrowDatabaseError(err);
+  }
+}
 
 /** Row returned from a query (column names as keys). */
 export type DbRow = Record<string, unknown>;
@@ -48,52 +75,66 @@ export interface DbClient {
 export function createPostgresDbClient(pool: Pool): DbClient {
   const clientFromPool = (client: PoolClient): DbClient => ({
     async query(sql: string, params?: unknown[]): Promise<DbRow[]> {
-      const result = await client.query(sql, params ?? []);
-      return (result.rows as DbRow[]) ?? [];
+      return withDatabaseErrorHandling(async () => {
+        const result = await client.query(sql, params ?? []);
+        return (result.rows as DbRow[]) ?? [];
+      });
     },
     async queryOne(sql: string, params?: unknown[]): Promise<DbRow | undefined> {
-      const result = await client.query(sql, params ?? []);
-      const rows = result.rows as DbRow[];
-      return rows.length > 0 ? rows[0] : undefined;
+      return withDatabaseErrorHandling(async () => {
+        const result = await client.query(sql, params ?? []);
+        const rows = result.rows as DbRow[];
+        return rows.length > 0 ? rows[0] : undefined;
+      });
     },
     async execute(sql: string, params?: unknown[]): Promise<number> {
-      const result = await client.query(sql, params ?? []);
-      return result.rowCount ?? 0;
+      return withDatabaseErrorHandling(async () => {
+        const result = await client.query(sql, params ?? []);
+        return result.rowCount ?? 0;
+      });
     },
     async runInTransaction<T>(fn: (txClient: DbClient) => Promise<T>): Promise<T> {
       // Already in a transaction; reuse this client
-      return fn(clientFromPool(client));
+      return withDatabaseErrorHandling(async () => fn(clientFromPool(client)));
     },
   });
 
   return {
     async query(sql: string, params?: unknown[]): Promise<DbRow[]> {
-      const result = await pool.query(sql, params ?? []);
-      return (result.rows as DbRow[]) ?? [];
+      return withDatabaseErrorHandling(async () => {
+        const result = await pool.query(sql, params ?? []);
+        return (result.rows as DbRow[]) ?? [];
+      });
     },
     async queryOne(sql: string, params?: unknown[]): Promise<DbRow | undefined> {
-      const result = await pool.query(sql, params ?? []);
-      const rows = result.rows as DbRow[];
-      return rows.length > 0 ? rows[0] : undefined;
+      return withDatabaseErrorHandling(async () => {
+        const result = await pool.query(sql, params ?? []);
+        const rows = result.rows as DbRow[];
+        return rows.length > 0 ? rows[0] : undefined;
+      });
     },
     async execute(sql: string, params?: unknown[]): Promise<number> {
-      const result = await pool.query(sql, params ?? []);
-      return result.rowCount ?? 0;
+      return withDatabaseErrorHandling(async () => {
+        const result = await pool.query(sql, params ?? []);
+        return result.rowCount ?? 0;
+      });
     },
     async runInTransaction<T>(fn: (txClient: DbClient) => Promise<T>): Promise<T> {
-      const client = await pool.connect();
-      try {
-        await client.query("BEGIN");
-        const txClient = clientFromPool(client);
-        const result = await fn(txClient);
-        await client.query("COMMIT");
-        return result;
-      } catch (err) {
-        await client.query("ROLLBACK").catch(() => {});
-        throw err;
-      } finally {
-        client.release();
-      }
+      return withDatabaseErrorHandling(async () => {
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          const txClient = clientFromPool(client);
+          const result = await fn(txClient);
+          await client.query("COMMIT");
+          return result;
+        } catch (err) {
+          await client.query("ROLLBACK").catch(() => {});
+          throw err;
+        } finally {
+          client.release();
+        }
+      });
     },
   };
 }

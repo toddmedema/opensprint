@@ -54,7 +54,10 @@ describe("agent-config schema", () => {
 
     it("should reject invalid type", () => {
       expect(() =>
-        parseAgentConfig({ type: "invalid", model: null, cliCommand: null }, "simpleComplexityAgent")
+        parseAgentConfig(
+          { type: "invalid", model: null, cliCommand: null },
+          "simpleComplexityAgent"
+        )
       ).toThrow(AppError);
     });
 

@@ -127,11 +127,7 @@ export class OrphanRecoveryService {
       try {
         const worktrees = await this.branchManager.listTaskWorktrees(repoPath);
         const found = worktrees.find((w) => w.taskId === task.id);
-        await this.branchManager.removeTaskWorktree(
-          repoPath,
-          task.id,
-          found?.worktreePath
-        );
+        await this.branchManager.removeTaskWorktree(repoPath, task.id, found?.worktreePath);
       } catch {
         // Worktree may not exist
       }

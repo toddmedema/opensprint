@@ -89,9 +89,7 @@ export function AddLinkFlow({
       setError("Enter a task ID or select from suggestions");
       return;
     }
-    const matched = tasks.find(
-      (t) => t.id === id || t.id.toLowerCase() === id.toLowerCase()
-    );
+    const matched = tasks.find((t) => t.id === id || t.id.toLowerCase() === id.toLowerCase());
     const parentId = matched?.id ?? id;
     if (exclude.has(parentId)) {
       setError("Cannot link to this task");
@@ -114,9 +112,7 @@ export function AddLinkFlow({
       <div className="flex flex-wrap items-center gap-2">
         <select
           value={linkType}
-          onChange={(e) =>
-            setLinkType(e.target.value as "blocks" | "parent-child" | "related")
-          }
+          onChange={(e) => setLinkType(e.target.value as "blocks" | "parent-child" | "related")}
           className="text-xs rounded border border-theme-border bg-theme-surface text-theme-text px-2 py-1"
           data-testid="add-link-type-select"
           aria-label="Link type"

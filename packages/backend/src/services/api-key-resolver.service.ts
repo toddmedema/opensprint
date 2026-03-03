@@ -8,10 +8,7 @@
  */
 import type { ApiKeyProvider, ApiKeyEntry, GlobalSettings } from "@opensprint/shared";
 import { isLimitHitExpired } from "@opensprint/shared";
-import {
-  getGlobalSettings,
-  atomicUpdateGlobalSettings,
-} from "./global-settings.service.js";
+import { getGlobalSettings, atomicUpdateGlobalSettings } from "./global-settings.service.js";
 
 /** Synthetic keyId when falling back to process.env (recordLimitHit/clearLimitHit no-op) */
 export const ENV_FALLBACK_KEY_ID = "__env__";

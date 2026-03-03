@@ -55,9 +55,11 @@ vi.mock("../services/project.service.js", () => ({
 vi.mock("../services/branch-manager.js", () => ({
   BranchManager: vi.fn().mockImplementation(() => ({
     getWorktreeBasePath: vi.fn().mockReturnValue(path.join(os.tmpdir(), "opensprint-worktrees")),
-    getWorktreePath: vi.fn().mockImplementation((taskId: string) =>
-      path.join(os.tmpdir(), "opensprint-worktrees", taskId)
-    ),
+    getWorktreePath: vi
+      .fn()
+      .mockImplementation((taskId: string) =>
+        path.join(os.tmpdir(), "opensprint-worktrees", taskId)
+      ),
     commitWip: vi.fn().mockResolvedValue(undefined),
     listTaskWorktrees: vi.fn().mockResolvedValue([]),
     removeTaskWorktree: vi.fn().mockResolvedValue(undefined),

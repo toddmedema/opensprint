@@ -54,7 +54,8 @@ export function ProjectSetup() {
     cliCommand: "",
   });
   const [testFramework, setTestFramework] = useState<string>("none");
-  const [aiAutonomyLevel, setAiAutonomyLevel] = useState<AiAutonomyLevel>(DEFAULT_AI_AUTONOMY_LEVEL);
+  const [aiAutonomyLevel, setAiAutonomyLevel] =
+    useState<AiAutonomyLevel>(DEFAULT_AI_AUTONOMY_LEVEL);
   const [maxConcurrentCoders, setMaxConcurrentCoders] = useState(1);
   const [unknownScopeStrategy, setUnknownScopeStrategy] =
     useState<UnknownScopeStrategy>("optimistic");
@@ -170,7 +171,8 @@ export function ProjectSetup() {
         repoPath,
         simpleComplexityAgent: {
           type: simpleComplexityAgent.type,
-          model: simpleComplexityAgent.type === "custom" ? null : simpleComplexityAgent.model || null,
+          model:
+            simpleComplexityAgent.type === "custom" ? null : simpleComplexityAgent.model || null,
           cliCommand:
             simpleComplexityAgent.type === "custom" && simpleComplexityAgent.cliCommand.trim()
               ? simpleComplexityAgent.cliCommand.trim()
@@ -178,7 +180,8 @@ export function ProjectSetup() {
         },
         complexComplexityAgent: {
           type: complexComplexityAgent.type,
-          model: complexComplexityAgent.type === "custom" ? null : complexComplexityAgent.model || null,
+          model:
+            complexComplexityAgent.type === "custom" ? null : complexComplexityAgent.model || null,
           cliCommand:
             complexComplexityAgent.type === "custom" && complexComplexityAgent.cliCommand.trim()
               ? complexComplexityAgent.cliCommand.trim()
@@ -352,8 +355,10 @@ export function ProjectSetup() {
                 onClick={handleCreate}
                 disabled={
                   creating ||
-                  (simpleComplexityAgent.type === "custom" && !simpleComplexityAgent.cliCommand.trim()) ||
-                  (complexComplexityAgent.type === "custom" && !complexComplexityAgent.cliCommand.trim())
+                  (simpleComplexityAgent.type === "custom" &&
+                    !simpleComplexityAgent.cliCommand.trim()) ||
+                  (complexComplexityAgent.type === "custom" &&
+                    !complexComplexityAgent.cliCommand.trim())
                 }
                 className="btn-primary disabled:opacity-50"
               >

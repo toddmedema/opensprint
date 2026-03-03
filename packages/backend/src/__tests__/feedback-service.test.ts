@@ -94,7 +94,9 @@ vi.mock("../services/orchestrator.service.js", () => ({
 }));
 
 const mockGeneratePlanFromDescription = vi.fn();
-const mockShipPlan = vi.fn().mockResolvedValue({ metadata: { planId: "gen-plan", epicId: "os-gen1" } });
+const mockShipPlan = vi
+  .fn()
+  .mockResolvedValue({ metadata: { planId: "gen-plan", epicId: "os-gen1" } });
 const mockListPlans = vi.fn().mockResolvedValue([]);
 const mockGetPlan = vi.fn().mockResolvedValue({ metadata: { planId: "auth", epicId: "os-auth1" } });
 vi.mock("../services/plan.service.js", () => ({
@@ -141,7 +143,9 @@ vi.mock("../utils/feedback-id.js", () => ({
 const mockTaskStoreListAll = vi.fn().mockResolvedValue([]);
 const mockTaskStoreReady = vi.fn().mockResolvedValue([]);
 
-const { testClientRef } = vi.hoisted(() => ({ testClientRef: { current: null as DbClient | null } }));
+const { testClientRef } = vi.hoisted(() => ({
+  testClientRef: { current: null as DbClient | null },
+}));
 vi.mock("../services/task-store.service.js", async () => {
   const { createTestPostgresClient } = await import("./test-db-helper.js");
   const dbResult = await createTestPostgresClient();
@@ -151,7 +155,9 @@ vi.mock("../services/task-store.service.js", async () => {
     getDb: vi.fn().mockImplementation(async () => testClientRef.current),
     runWrite: vi
       .fn()
-      .mockImplementation(async (fn: (client: DbClient) => Promise<unknown>) => fn(testClientRef.current!)),
+      .mockImplementation(async (fn: (client: DbClient) => Promise<unknown>) =>
+        fn(testClientRef.current!)
+      ),
     create: (...args: unknown[]) => mockTaskStoreCreate(...args),
     createWithRetry: (...args: unknown[]) => mockTaskStoreCreateWithRetry(...args),
     addDependency: (...args: unknown[]) => mockTaskStoreAddDependency(...args),
@@ -176,7 +182,8 @@ vi.mock("../services/task-store.service.js", async () => {
 });
 
 const feedbackServiceTaskStoreMod = await import("../services/task-store.service.js");
-const feedbackServicePostgresOk = (feedbackServiceTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
+const feedbackServicePostgresOk =
+  (feedbackServiceTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
 
 describe.skipIf(!feedbackServicePostgresOk)("FeedbackService", () => {
   let feedbackService: FeedbackService;
@@ -197,7 +204,9 @@ describe.skipIf(!feedbackServicePostgresOk)("FeedbackService", () => {
       content: "# Large Scope Feature\n\nPlan content",
       _createdTaskIds: ["os-large1.1", "os-large1.2"],
     });
-    mockShipPlan.mockResolvedValue({ metadata: { planId: "large-scope-plan", epicId: "os-large1" } });
+    mockShipPlan.mockResolvedValue({
+      metadata: { planId: "large-scope-plan", epicId: "os-large1" },
+    });
     taskStoreCreateCallCount = 0;
     feedbackService = new FeedbackService();
     projectService = new ProjectService();
@@ -382,7 +391,9 @@ describe.skipIf(!feedbackServicePostgresOk)("FeedbackService", () => {
       }),
     });
 
-    const root = await feedbackService.submitFeedback(projectId, { text: "Root issue: login broken" });
+    const root = await feedbackService.submitFeedback(projectId, {
+      text: "Root issue: login broken",
+    });
     const mid1 = await feedbackService.submitFeedback(projectId, {
       text: "Followup: also on Safari",
       parent_id: root.id,
@@ -462,18 +473,38 @@ describe.skipIf(!feedbackServicePostgresOk)("FeedbackService", () => {
         content: JSON.stringify({
           category: "bug",
           mappedPlanId: null,
-          proposed_tasks: [{ index: 0, title: "Fix desktop", description: "Fix", priority: 0, depends_on: [], complexity: "simple" }],
+          proposed_tasks: [
+            {
+              index: 0,
+              title: "Fix desktop",
+              description: "Fix",
+              priority: 0,
+              depends_on: [],
+              complexity: "simple",
+            },
+          ],
         }),
       })
       .mockResolvedValueOnce({
         content: JSON.stringify({
           category: "bug",
           mappedPlanId: null,
-          proposed_tasks: [{ index: 0, title: "Fix mobile too", description: "Same fix", priority: 0, depends_on: [], complexity: "simple" }],
+          proposed_tasks: [
+            {
+              index: 0,
+              title: "Fix mobile too",
+              description: "Same fix",
+              priority: 0,
+              depends_on: [],
+              complexity: "simple",
+            },
+          ],
         }),
       });
 
-    const parent = await feedbackService.submitFeedback(projectId, { text: "Login broken on desktop" });
+    const parent = await feedbackService.submitFeedback(projectId, {
+      text: "Login broken on desktop",
+    });
     const reply = await feedbackService.submitFeedback(projectId, {
       text: "Same on mobile",
       parent_id: parent.id,
@@ -869,7 +900,10 @@ describe.skipIf(!feedbackServicePostgresOk)("FeedbackService", () => {
           status: "open",
           questions: expect.arrayContaining([
             expect.objectContaining({ id: "q1", text: "Which screen or flow does this refer to?" }),
-            expect.objectContaining({ id: "q2", text: "What specific behavior do you want changed?" }),
+            expect.objectContaining({
+              id: "q2",
+              text: "What specific behavior do you want changed?",
+            }),
           ]),
         }),
       })
@@ -886,7 +920,9 @@ describe.skipIf(!feedbackServicePostgresOk)("FeedbackService", () => {
         category: "bug",
         mapped_plan_id: null,
         similar_existing_task_id: "os-nonexistent",
-        proposed_tasks: [{ index: 0, title: "Fix bug", description: "", priority: 0, depends_on: [] }],
+        proposed_tasks: [
+          { index: 0, title: "Fix bug", description: "", priority: 0, depends_on: [] },
+        ],
       }),
     });
 
@@ -931,7 +967,9 @@ describe.skipIf(!feedbackServicePostgresOk)("FeedbackService", () => {
         category: "bug",
         mapped_plan_id: null,
         similar_existing_task_id: null,
-        proposed_tasks: [{ index: 0, title: "Fix bug", description: "", priority: 0, depends_on: [] }],
+        proposed_tasks: [
+          { index: 0, title: "Fix bug", description: "", priority: 0, depends_on: [] },
+        ],
       }),
     });
 
@@ -1227,8 +1265,7 @@ describe.skipIf(!feedbackServicePostgresOk)("FeedbackService", () => {
     await feedbackService.processFeedbackWithAnalyst(projectId, feedbackId);
 
     const skipLogCalls = logSpy.mock.calls.filter(
-      (args) =>
-        args[0]?.includes?.("Skipping Analyst") && args[0]?.includes?.("linked tasks")
+      (args) => args[0]?.includes?.("Skipping Analyst") && args[0]?.includes?.("linked tasks")
     );
     expect(skipLogCalls).toHaveLength(0);
     logSpy.mockRestore();
@@ -1917,7 +1954,9 @@ describe.skipIf(!feedbackServicePostgresOk)("FeedbackService", () => {
           mapped_plan_id: null,
           is_scope_change: false,
           is_large_scope: false,
-          proposed_tasks: [{ index: 0, title: "Small task", description: "", priority: 2, depends_on: [] }],
+          proposed_tasks: [
+            { index: 0, title: "Small task", description: "", priority: 2, depends_on: [] },
+          ],
         }),
       });
 
@@ -2185,10 +2224,7 @@ describe.skipIf(!feedbackServicePostgresOk)("FeedbackService", () => {
 
       expect(result.status).toBe("cancelled");
       expect(mockStopTaskAndFreeSlot).toHaveBeenCalledWith(projectId, "task-x");
-      expect(mockStopTaskAndFreeSlot).toHaveBeenCalledWith(
-        projectId,
-        "chore-feedback-source"
-      );
+      expect(mockStopTaskAndFreeSlot).toHaveBeenCalledWith(projectId, "chore-feedback-source");
       expect(taskStore.deleteMany).toHaveBeenCalledWith(projectId, [
         "task-x",
         "chore-feedback-source",

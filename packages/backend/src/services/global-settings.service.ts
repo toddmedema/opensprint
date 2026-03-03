@@ -75,16 +75,37 @@ export async function getGlobalSettings(): Promise<GlobalSettings> {
  * Never stored in the database; only in ~/.opensprint/global-settings.json or env.
  */
 export async function getDatabaseUrl(): Promise<string> {
+  return (await getEffectiveDatabaseConfig()).databaseUrl;
+}
+
+export type DatabaseUrlSource = "env" | "global-settings" | "default";
+
+export async function getEffectiveDatabaseConfig(): Promise<{
+  databaseUrl: string;
+  source: DatabaseUrlSource;
+}> {
   const fromEnv = process.env.DATABASE_URL;
   if (fromEnv != null && fromEnv.trim() !== "") {
     try {
-      return validateDatabaseUrl(fromEnv.trim());
+      return {
+        databaseUrl: validateDatabaseUrl(fromEnv.trim()),
+        source: "env",
+      };
     } catch {
       // Invalid DATABASE_URL ignored; fall through to file/default
     }
   }
   const settings = await getGlobalSettings();
-  return settings.databaseUrl ?? DEFAULT_DATABASE_URL;
+  if (settings.databaseUrl) {
+    return {
+      databaseUrl: settings.databaseUrl,
+      source: "global-settings",
+    };
+  }
+  return {
+    databaseUrl: DEFAULT_DATABASE_URL,
+    source: "default",
+  };
 }
 
 /**
@@ -154,7 +175,10 @@ export async function atomicUpdateGlobalSettings(
   const prev = atomicLock;
   let resolve: () => void;
   atomicLock = prev.then(
-    () => new Promise<void>((r) => { resolve = r; })
+    () =>
+      new Promise<void>((r) => {
+        resolve = r;
+      })
   );
   await prev;
   try {

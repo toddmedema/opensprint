@@ -8,10 +8,7 @@ import { envRouter } from "../routes/env.js";
 import { API_PREFIX } from "@opensprint/shared";
 import { setEnvPathForTesting } from "../routes/env.js";
 import { errorHandler } from "../middleware/error-handler.js";
-import {
-  getGlobalSettings,
-  setGlobalSettings,
-} from "../services/global-settings.service.js";
+import { getGlobalSettings, setGlobalSettings } from "../services/global-settings.service.js";
 
 const mockValidateApiKey = vi.fn();
 
@@ -481,9 +478,7 @@ describe("Env API", () => {
     });
 
     it("persists useCustomCli across requests", async () => {
-      await request(app)
-        .put(`${API_PREFIX}/env/global-settings`)
-        .send({ useCustomCli: true });
+      await request(app).put(`${API_PREFIX}/env/global-settings`).send({ useCustomCli: true });
 
       const res = await request(app).get(`${API_PREFIX}/env/global-status`);
       expect(res.body.data.useCustomCli).toBe(true);
@@ -492,9 +487,7 @@ describe("Env API", () => {
     it("returns current useCustomCli when body has no valid updates", async () => {
       await setGlobalSettings({ useCustomCli: true });
 
-      const res = await request(app)
-        .put(`${API_PREFIX}/env/global-settings`)
-        .send({});
+      const res = await request(app).put(`${API_PREFIX}/env/global-settings`).send({});
 
       expect(res.status).toBe(200);
       expect(res.body.data.useCustomCli).toBe(true);

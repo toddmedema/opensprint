@@ -72,7 +72,7 @@ async function getProjectAndTask(): Promise<{ projectId: string; taskId: string 
     `${API_BASE}/projects/${projectId}/tasks?limit=50`
   );
   const raw = tasksRes?.data;
-  const tasks = Array.isArray(raw) ? raw : (raw as { items?: { id: string }[] })?.items ?? [];
+  const tasks = Array.isArray(raw) ? raw : ((raw as { items?: { id: string }[] })?.items ?? []);
   const taskIds = tasks.map((t: { id: string }) => t.id);
   if (taskIds.length === 0) return null;
 
@@ -99,7 +99,9 @@ async function getNavigationTiming(page: Page): Promise<{
   firstContentfulPaint?: number;
 }> {
   return page.evaluate(() => {
-    const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    const nav = performance.getEntriesByType("navigation")[0] as
+      | PerformanceNavigationTiming
+      | undefined;
     const paint = performance.getEntriesByType("paint");
     const fcp = paint.find((p) => p.name === "first-contentful-paint");
 
@@ -157,9 +159,11 @@ async function runPerf(browser: Browser): Promise<PerfMetrics> {
         timeout: 30000,
       });
 
-      await page.waitForSelector('[data-testid="task-detail-title"], [aria-label="Close task detail"]', {
-        timeout: 5000,
-      }).catch(() => null);
+      await page
+        .waitForSelector('[data-testid="task-detail-title"], [aria-label="Close task detail"]', {
+          timeout: 5000,
+        })
+        .catch(() => null);
 
       const openEnd = Date.now();
       metrics.sidebar.openToVisible = openEnd - openStart;
@@ -255,8 +259,7 @@ function compareWithBaseline(current: PerfMetrics): void {
   }
 
   if (current.sidebarOpened && baseline.sidebarOpened) {
-    const closeDelta =
-      (current.sidebar.closeToHidden ?? 0) - (baseline.sidebar.closeToHidden ?? 0);
+    const closeDelta = (current.sidebar.closeToHidden ?? 0) - (baseline.sidebar.closeToHidden ?? 0);
     console.log(`Sidebar close: ${closeDelta >= 0 ? "+" : ""}${closeDelta} ms`);
   }
   console.log("");

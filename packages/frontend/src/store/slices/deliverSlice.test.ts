@@ -81,11 +81,7 @@ describe("deliverSlice", () => {
   it("should handle deployExpo.fulfilled", () => {
     const state = deliverReducer(
       undefined,
-      deployExpo.fulfilled(
-        { deployId: "expo-1" },
-        "req-1",
-        { projectId: "p1", variant: "beta" }
-      )
+      deployExpo.fulfilled({ deployId: "expo-1" }, "req-1", { projectId: "p1", variant: "beta" })
     );
     expect(state.selectedDeployId).toBe("expo-1");
     expect(state.async.expoDeploy.loading).toBe(false);

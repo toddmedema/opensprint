@@ -511,7 +511,7 @@ describe("SketchPhase with sketchSlice", () => {
       });
       renderSketchPhase(store);
       expect(screen.getByText("Chatting with Dreamer")).toBeInTheDocument();
-      expect(screen.getByRole("separator", { name: "Resize Discuss sidebar" })).toBeInTheDocument();
+      expect(screen.getByRole("slider", { name: "Resize Discuss sidebar" })).toBeInTheDocument();
     });
 
     it("persists Discuss sidebar width to localStorage when resized", () => {
@@ -520,7 +520,7 @@ describe("SketchPhase with sketchSlice", () => {
         sketch: { prdContent: { overview: "Content" } },
       });
       renderSketchPhase(store);
-      const handle = screen.getByRole("separator", { name: "Resize Discuss sidebar" });
+      const handle = screen.getByRole("slider", { name: "Resize Discuss sidebar" });
       handle.dispatchEvent(new MouseEvent("mousedown", { clientX: 100, bubbles: true }));
       document.dispatchEvent(new MouseEvent("mousemove", { clientX: 80, bubbles: true }));
       document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
@@ -919,8 +919,11 @@ describe("SketchPhase with sketchSlice", () => {
       });
       renderSketchPhase(store);
       await waitFor(() => {
-        expect(screen.getByRole("button", { name: /Plan it/i })).toBeInTheDocument();
+        expect(screen.getAllByRole("button", { name: /Plan it/i })).toHaveLength(2);
       });
+      expect(screen.getByTestId("sketch-plan-footer")).toContainElement(
+        screen.getByTestId("sketch-plan-cta")
+      );
       expect(screen.queryByRole("button", { name: /Replan it/i })).not.toBeInTheDocument();
     });
 
@@ -938,8 +941,11 @@ describe("SketchPhase with sketchSlice", () => {
       });
       renderSketchPhase(store);
       await waitFor(() => {
-        expect(screen.getByRole("button", { name: /Replan it/i })).toBeInTheDocument();
+        expect(screen.getAllByRole("button", { name: /Replan it/i })).toHaveLength(2);
       });
+      expect(screen.getByTestId("sketch-plan-footer")).toContainElement(
+        screen.getByTestId("sketch-plan-cta")
+      );
       expect(screen.queryByRole("button", { name: /^Plan it$/i })).not.toBeInTheDocument();
     });
 
@@ -993,12 +999,13 @@ describe("SketchPhase with sketchSlice", () => {
       });
       renderSketchPhase(store);
       await waitFor(() => {
-        expect(screen.getByRole("button", { name: /Plan it/i })).toBeInTheDocument();
+        expect(screen.getAllByRole("button", { name: /Plan it/i })).toHaveLength(2);
       });
 
-      await userEvent.click(screen.getByRole("button", { name: /Plan it/i }));
+      await userEvent.click(screen.getByTestId("sketch-plan-cta"));
       await waitFor(() => {
-        expect(screen.getByRole("button", { name: /Planning/i })).toBeDisabled();
+        expect(screen.getAllByRole("button", { name: /Planning/i })).toHaveLength(2);
+        expect(screen.getByTestId("sketch-plan-cta")).toBeDisabled();
       });
       resolveDecompose!();
       mockPlansDecompose.mockResolvedValue({ created: 2, plans: [] });

@@ -218,9 +218,9 @@ describe("global-settings.service", () => {
     });
 
     it("throws when databaseUrl has invalid format", async () => {
-      await expect(
-        setGlobalSettings({ databaseUrl: "mysql://localhost/db" })
-      ).rejects.toThrow("databaseUrl must start with postgres:// or postgresql://");
+      await expect(setGlobalSettings({ databaseUrl: "mysql://localhost/db" })).rejects.toThrow(
+        "databaseUrl must start with postgres:// or postgresql://"
+      );
     });
   });
 
@@ -296,9 +296,9 @@ describe("global-settings.service", () => {
     it("throws when databaseUrl has invalid format", async () => {
       await setGlobalSettings({ useCustomCli: true });
 
-      await expect(
-        updateGlobalSettings({ databaseUrl: "invalid-url" })
-      ).rejects.toThrow("databaseUrl must start with postgres:// or postgresql://");
+      await expect(updateGlobalSettings({ databaseUrl: "invalid-url" })).rejects.toThrow(
+        "databaseUrl must start with postgres:// or postgresql://"
+      );
     });
   });
 

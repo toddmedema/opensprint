@@ -73,9 +73,10 @@ function normalizeDeployment(input: CreateProjectRequest["deployment"]): Deploym
 const VALID_AI_AUTONOMY_LEVELS: AiAutonomyLevel[] = ["confirm_all", "major_only", "full"];
 
 /** Resolve aiAutonomyLevel and hilConfig from create/update input. aiAutonomyLevel takes precedence. */
-function resolveAiAutonomyAndHil(
-  input: { aiAutonomyLevel?: AiAutonomyLevel; hilConfig?: CreateProjectRequest["hilConfig"] }
-): { aiAutonomyLevel: AiAutonomyLevel; hilConfig: HilConfig } {
+function resolveAiAutonomyAndHil(input: {
+  aiAutonomyLevel?: AiAutonomyLevel;
+  hilConfig?: CreateProjectRequest["hilConfig"];
+}): { aiAutonomyLevel: AiAutonomyLevel; hilConfig: HilConfig } {
   const level = input.aiAutonomyLevel;
   if (typeof level === "string" && VALID_AI_AUTONOMY_LEVELS.includes(level)) {
     return { aiAutonomyLevel: level, hilConfig: hilConfigFromAiAutonomyLevel(level) };
@@ -180,10 +181,7 @@ export class ProjectService {
     for (const entry of entries) {
       try {
         await fs.access(path.join(entry.repoPath, OPENSPRINT_DIR));
-        const { updatedAt } = await getSettingsWithMetaFromStore(
-          entry.id,
-          buildDefaultSettings()
-        );
+        const { updatedAt } = await getSettingsWithMetaFromStore(entry.id, buildDefaultSettings());
         projects.push({
           id: entry.id,
           name: entry.name,
@@ -336,7 +334,11 @@ export class ProjectService {
     await fs.mkdir(path.dirname(metaPath), { recursive: true });
     await fs.writeFile(
       metaPath,
-      JSON.stringify({ version: 0, changeLog: [], sectionVersions: buildSectionVersions() }, null, 2),
+      JSON.stringify(
+        { version: 0, changeLog: [], sectionVersions: buildSectionVersions() },
+        null,
+        2
+      ),
       "utf-8"
     );
 
@@ -407,7 +409,10 @@ export class ProjectService {
 
     const isCommandNotFound = (err: unknown): boolean => {
       const msg = err instanceof Error ? err.message : String(err);
-      const code = err && typeof err === "object" && "code" in err ? (err as { code?: string }).code : undefined;
+      const code =
+        err && typeof err === "object" && "code" in err
+          ? (err as { code?: string }).code
+          : undefined;
       return (
         code === "ENOENT" ||
         /command not found/i.test(msg) ||
@@ -474,7 +479,10 @@ export class ProjectService {
     }
 
     const repoPath = path.resolve(parentPath);
-    const agentConfig = (input.simpleComplexityAgent ?? DEFAULT_AGENT_CONFIG) as AgentConfigInput & { type: "cursor" | "claude" | "claude-cli" | "custom" };
+    const agentConfig = (input.simpleComplexityAgent ??
+      DEFAULT_AGENT_CONFIG) as AgentConfigInput & {
+      type: "cursor" | "claude" | "claude-cli" | "custom";
+    };
     let recovery: ScaffoldRecoveryInfo | undefined;
 
     if (template === "web-app-expo-react") {
@@ -485,18 +493,16 @@ export class ProjectService {
         "npx create-expo-app@latest . --template blank --yes",
         repoPath,
         agentConfig,
-        "Failed to scaffold Expo app",
+        "Failed to scaffold Expo app"
       );
       if (scaffoldResult.recovery) {
         recovery = scaffoldResult.recovery;
       }
       if (!scaffoldResult.success) {
-        throw new AppError(
-          500,
-          ErrorCodes.SCAFFOLD_INIT_FAILED,
-          scaffoldResult.errorMessage!,
-          { repoPath, recovery },
-        );
+        throw new AppError(500, ErrorCodes.SCAFFOLD_INIT_FAILED, scaffoldResult.errorMessage!, {
+          repoPath,
+          recovery,
+        });
       }
 
       // Step 2: npm install
@@ -504,18 +510,16 @@ export class ProjectService {
         "npm install",
         repoPath,
         agentConfig,
-        "Failed to run npm install",
+        "Failed to run npm install"
       );
       if (!recovery && installResult.recovery) {
         recovery = installResult.recovery;
       }
       if (!installResult.success) {
-        throw new AppError(
-          500,
-          ErrorCodes.SCAFFOLD_INIT_FAILED,
-          installResult.errorMessage!,
-          { repoPath, recovery: installResult.recovery ?? recovery },
-        );
+        throw new AppError(500, ErrorCodes.SCAFFOLD_INIT_FAILED, installResult.errorMessage!, {
+          repoPath,
+          recovery: installResult.recovery ?? recovery,
+        });
       }
 
       // Step 3: install web dependencies for Expo Web template
@@ -530,7 +534,7 @@ export class ProjectService {
           500,
           ErrorCodes.SCAFFOLD_INIT_FAILED,
           `Expo web dependencies could not be installed: ${msg}. Ensure Expo CLI is available and try again.`,
-          { repoPath, recovery },
+          { repoPath, recovery }
         );
       }
     }
@@ -551,13 +555,7 @@ export class ProjectService {
 
     const project = await this.createProject(createRequest);
 
-    const absPath = path.resolve(repoPath);
-    const runCommand =
-      process.platform === "win32"
-        ? `cd /d ${absPath} && npm run web`
-        : `cd ${absPath} && npm run web`;
-
-    return { project, runCommand, ...(recovery && { recovery }) };
+    return { project, ...(recovery && { recovery }) };
   }
 
   /**
@@ -568,7 +566,7 @@ export class ProjectService {
     command: string,
     cwd: string,
     agentConfig: AgentConfigInput & { type: string },
-    fallbackMessage: string,
+    fallbackMessage: string
   ): Promise<{ success: boolean; errorMessage?: string; recovery?: ScaffoldRecoveryInfo }> {
     try {
       await execAsync(command, { cwd });
@@ -599,7 +597,7 @@ export class ProjectService {
       const recoveryResult = await attemptRecovery(
         classification,
         cwd,
-        agentConfig as AgentConfigInput & { type: "cursor" | "claude" | "claude-cli" | "custom" },
+        agentConfig as AgentConfigInput & { type: "cursor" | "claude" | "claude-cli" | "custom" }
       );
 
       if (!recoveryResult.success) {
@@ -751,7 +749,10 @@ export class ProjectService {
     const current = await this.getSettings(projectId);
 
     // Validate agent config if provided (accept new or legacy keys)
-    const raw = updates as Partial<ProjectSettings> & { lowComplexityAgent?: unknown; highComplexityAgent?: unknown };
+    const raw = updates as Partial<ProjectSettings> & {
+      lowComplexityAgent?: unknown;
+      highComplexityAgent?: unknown;
+    };
     const simpleUpdate = updates.simpleComplexityAgent ?? raw.lowComplexityAgent;
     const complexUpdate = updates.complexComplexityAgent ?? raw.highComplexityAgent;
     let simpleComplexityAgent = current.simpleComplexityAgent;
@@ -788,11 +789,7 @@ export class ProjectService {
         }
       }
       if (missing.length > 0) {
-        throw new AppError(
-          400,
-          ErrorCodes.INVALID_AGENT_CONFIG,
-          "Configure API keys in Settings."
-        );
+        throw new AppError(400, ErrorCodes.INVALID_AGENT_CONFIG, "Configure API keys in Settings.");
       }
     }
 

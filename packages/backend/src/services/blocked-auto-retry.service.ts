@@ -79,9 +79,7 @@ export async function runBlockedAutoRetryPass(
 /**
  * Start the 8-hour auto-retry timer. Runs immediately on start, then every 8 hours.
  */
-export function startBlockedAutoRetry(
-  getTargets: () => Promise<BlockedAutoRetryTarget[]>
-): void {
+export function startBlockedAutoRetry(getTargets: () => Promise<BlockedAutoRetryTarget[]>): void {
   if (interval) return;
 
   const run = () => {

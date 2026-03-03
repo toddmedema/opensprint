@@ -157,7 +157,10 @@ class GitCommitQueueImpl implements GitCommitQueueService {
     }
   }
 
-  private async getMergeAgentConfig(repoPath: string, _taskId: string): Promise<{
+  private async getMergeAgentConfig(
+    repoPath: string,
+    _taskId: string
+  ): Promise<{
     projectId: string;
     config: AgentConfig;
     testCommand?: string;
@@ -328,7 +331,10 @@ class GitCommitQueueImpl implements GitCommitQueueService {
         }
 
         try {
-          const mergeResult = await this.branchManager.mergeToMainNoCommit(repoPath, job.branchName);
+          const mergeResult = await this.branchManager.mergeToMainNoCommit(
+            repoPath,
+            job.branchName
+          );
           if (mergeResult.autoResolvedFiles.length > 0) {
             const project = await this.projectService.getProjectByRepoPath(repoPath);
             if (project) {
@@ -405,7 +411,9 @@ class GitCommitQueueImpl implements GitCommitQueueService {
                 throw continueErr instanceof Error ? continueErr : new Error(String(continueErr));
               }
             } else {
-              log.warn("Merger agent failed to resolve merge conflicts", { branchName: job.branchName });
+              log.warn("Merger agent failed to resolve merge conflicts", {
+                branchName: job.branchName,
+              });
               await this.branchManager.mergeAbort(repoPath);
               throw new MergeJobError(
                 `Merge conflict in ${mergeErr.conflictedFiles.length} file(s): ${mergeErr.conflictedFiles.join(", ")}`,

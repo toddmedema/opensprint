@@ -213,11 +213,7 @@ export class AgentLifecycleManager {
       taskId,
       OPENSPRINT_PATHS.agentOutputLog
     );
-    await this.primeRecoveredRunState(
-      outputLogPath,
-      runState,
-      options?.recoveredLastOutputTimeMs
-    );
+    await this.primeRecoveredRunState(outputLogPath, runState, options?.recoveredLastOutputTimeMs);
     const outputTailStop = this.startOutputTail(
       outputLogPath,
       params,
@@ -536,10 +532,7 @@ export class AgentLifecycleManager {
     this.setRunningState(runState, primedTime);
   }
 
-  private recordToolActivity(
-    params: AgentRunParams,
-    toolEvents: ToolCallLifecycleEvent[]
-  ): void {
+  private recordToolActivity(params: AgentRunParams, toolEvents: ToolCallLifecycleEvent[]): void {
     if (toolEvents.length === 0) return;
 
     for (const event of toolEvents) {

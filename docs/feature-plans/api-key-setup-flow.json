@@ -56,7 +56,10 @@
       "title": "Update GET /env/keys to reflect global store",
       "description": "Extend GET /env/keys to check global store keys in addition to process.env. Return anthropic/cursor true if any source has them. Add useCustomCli to response or keep separate global-status endpoint.",
       "priority": 5,
-      "dependsOn": ["Add GlobalSettingsService and global-settings.json", "Add GET /env/global-status and PUT /env/global-settings"],
+      "dependsOn": [
+        "Add GlobalSettingsService and global-settings.json",
+        "Add GET /env/global-status and PUT /env/global-settings"
+      ],
       "complexity": "simple"
     },
     {
@@ -77,21 +80,31 @@
       "title": "Intercept Create New / Add Existing with global-status check",
       "description": "HomeScreen: before navigate to Create New or Add Existing, call getGlobalStatus(). If !hasAnyKey && !useCustomCli, show ApiKeySetupModal instead. On modal complete, navigate to intended route. Navbar: same logic when creating from project context. Pass intendedRoute to modal.",
       "priority": 8,
-      "dependsOn": ["Create ApiKeySetupModal component", "Add api.env methods for global-status, validate, global-settings", "Add GET /env/global-status and PUT /env/global-settings"],
+      "dependsOn": [
+        "Create ApiKeySetupModal component",
+        "Add api.env methods for global-status, validate, global-settings",
+        "Add GET /env/global-status and PUT /env/global-settings"
+      ],
       "complexity": "simple"
     },
     {
       "title": "Add ApiKeySetupModal validation and error handling",
       "description": "Wire Save: call validateKey for Claude/Cursor; show loading state; on validation error display inline below input; on success call saveKey then onComplete. Handle network errors with user-friendly message.",
       "priority": 9,
-      "dependsOn": ["Create ApiKeySetupModal component", "Add api.env methods for global-status, validate, global-settings"],
+      "dependsOn": [
+        "Create ApiKeySetupModal component",
+        "Add api.env methods for global-status, validate, global-settings"
+      ],
       "complexity": "simple"
     },
     {
       "title": "Add ApiKeySetupModal and env route tests",
       "description": "Unit tests: ApiKeySetupModal renders, provider change toggles input, Custom/CLI Save without input. Integration: POST /env/keys/validate with valid/invalid keys; PUT /env/global-settings; GET /env/global-status. E2E: full flow Create New with no keys → modal → add key → redirect.",
       "priority": 10,
-      "dependsOn": ["Intercept Create New / Add Existing with global-status check", "Add ApiKeySetupModal validation and error handling"],
+      "dependsOn": [
+        "Intercept Create New / Add Existing with global-status check",
+        "Add ApiKeySetupModal validation and error handling"
+      ],
       "complexity": "simple"
     }
   ]

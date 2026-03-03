@@ -3,6 +3,7 @@ import type { Project, ProjectPhase } from "@opensprint/shared";
 import { Navbar } from "./Navbar";
 import { NotificationBar } from "../NotificationBar";
 import { ConnectionErrorBanner } from "../ConnectionErrorBanner";
+import { DatabaseStatusBanner } from "../DatabaseStatusBanner";
 
 interface LayoutProps {
   children: ReactNode;
@@ -22,6 +23,7 @@ export function Layout({
   return (
     <div className="h-full flex flex-col bg-theme-bg">
       <ConnectionErrorBanner />
+      <DatabaseStatusBanner />
       <Navbar
         project={project}
         currentPhase={currentPhase}

@@ -2,6 +2,9 @@ import { describe, it, expect, vi } from "vitest";
 import request from "supertest";
 import { createApp } from "../app.js";
 import { API_PREFIX } from "@opensprint/shared";
+import { AppError } from "../middleware/error-handler.js";
+import { ErrorCodes } from "../middleware/error-codes.js";
+import { databaseRuntime } from "../services/database-runtime.service.js";
 
 vi.mock("../services/task-store.service.js", () => ({
   taskStore: {
@@ -65,5 +68,21 @@ describe("App", () => {
     // Projects create may return 400/500 without valid setup, but body parsing works
     expect(res.status).toBeGreaterThanOrEqual(400);
     expect(res.body).toBeDefined();
+  });
+
+  it("returns 503 for DB-gated routes when database is unavailable", async () => {
+    const app = createApp();
+    vi.spyOn(databaseRuntime, "requireDatabase").mockRejectedValueOnce(
+      new AppError(503, ErrorCodes.DATABASE_UNAVAILABLE, "No PostgreSQL server running")
+    );
+
+    const res = await request(app).get(`${API_PREFIX}/projects/proj-1/tasks`);
+
+    expect(res.status).toBe(503);
+    expect(res.body.error).toMatchObject({
+      code: ErrorCodes.DATABASE_UNAVAILABLE,
+      message: "No PostgreSQL server running",
+    });
+    expect(res.headers["retry-after"]).toBe("5");
   });
 });

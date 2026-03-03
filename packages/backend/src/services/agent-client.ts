@@ -98,9 +98,7 @@ function getStructuredAgentErrorMessage(obj: unknown): string | null {
 
   const o = obj as Record<string, unknown>;
   const nestedError =
-    o.error && typeof o.error === "object"
-      ? (o.error as Record<string, unknown>)
-      : null;
+    o.error && typeof o.error === "object" ? (o.error as Record<string, unknown>) : null;
   const explicitErrorMessage =
     typeof o.message === "string"
       ? o.message
@@ -421,9 +419,7 @@ export class AgentClient {
         } else {
           output = stderrCollector.stderr;
         }
-        const limitCheckOutput = outputLogPath
-          ? extractExplicitAgentErrors(output)
-          : output;
+        const limitCheckOutput = outputLogPath ? extractExplicitAgentErrors(output) : output;
         if (isLimitError({ stderr: limitCheckOutput }) && keyId !== ENV_FALLBACK_KEY_ID) {
           await recordLimitHit(projectId, "CURSOR_API_KEY", keyId, source);
           const next = await getNextKey(projectId, "CURSOR_API_KEY");
@@ -1332,7 +1328,11 @@ export class AgentClient {
     for (;;) {
       const resolved = projectId
         ? await getNextKey(projectId, "CURSOR_API_KEY")
-        : { key: process.env.CURSOR_API_KEY || "", keyId: ENV_FALLBACK_KEY_ID, source: "env" as KeySource };
+        : {
+            key: process.env.CURSOR_API_KEY || "",
+            keyId: ENV_FALLBACK_KEY_ID,
+            source: "env" as KeySource,
+          };
 
       if (!resolved || !resolved.key.trim()) {
         const msg = lastError ? getErrorMessage(lastError) : "No Cursor API key available";
@@ -1342,7 +1342,9 @@ export class AgentClient {
           lastError && isLimitError(lastError)
             ? `All Cursor API keys hit rate limits. ${msg} Add more keys in Settings, or retry after 24h.`
             : "CURSOR_API_KEY is not set. Add it to your .env file or Settings. Get a key from Cursor → Settings → Integrations → User API Keys.",
-          lastError ? { agentType: "cursor", raw: msg, isLimitError: isLimitError(lastError) } : undefined
+          lastError
+            ? { agentType: "cursor", raw: msg, isLimitError: isLimitError(lastError) }
+            : undefined
         );
       }
 
@@ -1545,7 +1547,9 @@ export class AgentClient {
           lastError && isLimitError(lastError)
             ? `All OpenAI API keys hit rate limits. ${msg} Add more keys in Settings, or retry after 24h.`
             : "OPENAI_API_KEY is not set. Add it to your .env file or Settings. Get a key from https://platform.openai.com/.",
-          lastError ? { agentType: "openai", raw: msg, isLimitError: isLimitError(lastError) } : undefined
+          lastError
+            ? { agentType: "openai", raw: msg, isLimitError: isLimitError(lastError) }
+            : undefined
         );
       }
 
@@ -1624,16 +1628,11 @@ export class AgentClient {
           continue;
         }
         const msg = getErrorMessage(error);
-        throw new AppError(
-          502,
-          ErrorCodes.AGENT_INVOKE_FAILED,
-          formatAgentError("openai", msg),
-          {
-            agentType: "openai",
-            raw: msg,
-            isLimitError: isLimitError(error),
-          }
-        );
+        throw new AppError(502, ErrorCodes.AGENT_INVOKE_FAILED, formatAgentError("openai", msg), {
+          agentType: "openai",
+          raw: msg,
+          isLimitError: isLimitError(error),
+        });
       }
     }
   }
@@ -1662,7 +1661,9 @@ export class AgentClient {
           lastError && isLimitError(lastError)
             ? `All Google API keys hit rate limits. ${msg} Add more keys in Settings, or retry after 24h.`
             : "GOOGLE_API_KEY is not set. Add it to your .env file or Settings. Get a key from https://aistudio.google.com/.",
-          lastError ? { agentType: "google", raw: msg, isLimitError: isLimitError(lastError) } : undefined
+          lastError
+            ? { agentType: "google", raw: msg, isLimitError: isLimitError(lastError) }
+            : undefined
         );
       }
 
@@ -1692,9 +1693,7 @@ export class AgentClient {
           const streamPromise = ai.models.generateContentStream({
             model,
             contents,
-            config: systemPrompt?.trim()
-              ? { systemInstruction: systemPrompt.trim() }
-              : undefined,
+            config: systemPrompt?.trim() ? { systemInstruction: systemPrompt.trim() } : undefined,
           });
           const stream = await streamPromise;
           let fullContent = "";
@@ -1714,9 +1713,7 @@ export class AgentClient {
         const response = await ai.models.generateContent({
           model,
           contents,
-          config: systemPrompt?.trim()
-            ? { systemInstruction: systemPrompt.trim() }
-            : undefined,
+          config: systemPrompt?.trim() ? { systemInstruction: systemPrompt.trim() } : undefined,
         });
         const content = safeGeminiText(response);
 
@@ -1732,16 +1729,11 @@ export class AgentClient {
           continue;
         }
         const msg = getErrorMessage(error);
-        throw new AppError(
-          502,
-          ErrorCodes.AGENT_INVOKE_FAILED,
-          formatAgentError("google", msg),
-          {
-            agentType: "google",
-            raw: msg,
-            isLimitError: isLimitError(error),
-          }
-        );
+        throw new AppError(502, ErrorCodes.AGENT_INVOKE_FAILED, formatAgentError("google", msg), {
+          agentType: "google",
+          raw: msg,
+          isLimitError: isLimitError(error),
+        });
       }
     }
   }

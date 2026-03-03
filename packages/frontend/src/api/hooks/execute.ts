@@ -10,7 +10,7 @@ export function useTasks(projectId: string | undefined, options?: { enabled?: bo
       const data = await api.tasks.list(projectId!);
       return normalizeTaskListResponse(data);
     },
-    enabled: Boolean(projectId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && options?.enabled !== false,
   });
 }
 
@@ -22,10 +22,7 @@ export function useTaskDetail(
   return useQuery({
     queryKey: queryKeys.tasks.detail(projectId ?? "", taskId ?? ""),
     queryFn: () => api.tasks.get(projectId!, taskId!),
-    enabled:
-      Boolean(projectId) &&
-      Boolean(taskId) &&
-      (options?.enabled !== false),
+    enabled: Boolean(projectId) && Boolean(taskId) && options?.enabled !== false,
   });
 }
 
@@ -37,10 +34,7 @@ export function useArchivedSessions(
   return useQuery({
     queryKey: queryKeys.tasks.sessions(projectId ?? "", taskId ?? ""),
     queryFn: async () => (await api.tasks.sessions(projectId!, taskId!)) ?? [],
-    enabled:
-      Boolean(projectId) &&
-      Boolean(taskId) &&
-      (options?.enabled !== false),
+    enabled: Boolean(projectId) && Boolean(taskId) && options?.enabled !== false,
   });
 }
 
@@ -48,7 +42,7 @@ export function useExecuteStatus(projectId: string | undefined, options?: { enab
   return useQuery({
     queryKey: queryKeys.execute.status(projectId ?? ""),
     queryFn: () => api.execute.status(projectId!),
-    enabled: Boolean(projectId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && options?.enabled !== false,
   });
 }
 
@@ -63,10 +57,7 @@ export function useLiveOutputBackfill(
       const res = await api.execute.liveOutput(projectId!, taskId!);
       return { taskId: taskId!, output: res.output };
     },
-    enabled:
-      Boolean(projectId) &&
-      Boolean(taskId) &&
-      (options?.enabled !== false),
+    enabled: Boolean(projectId) && Boolean(taskId) && options?.enabled !== false,
   });
 }
 
@@ -84,13 +75,8 @@ export function useMarkTaskDone(projectId: string) {
 export function useUpdateTaskPriority(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      taskId,
-      priority,
-    }: {
-      taskId: string;
-      priority: number;
-    }) => api.tasks.updatePriority(projectId, taskId, priority),
+    mutationFn: ({ taskId, priority }: { taskId: string; priority: number }) =>
+      api.tasks.updatePriority(projectId, taskId, priority),
     onSuccess: (_, { taskId }) => {
       void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
       void qc.invalidateQueries({
@@ -103,13 +89,8 @@ export function useUpdateTaskPriority(projectId: string) {
 export function useUnblockTask(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      taskId,
-      resetAttempts,
-    }: {
-      taskId: string;
-      resetAttempts?: boolean;
-    }) => api.tasks.unblock(projectId, taskId, { resetAttempts }),
+    mutationFn: ({ taskId, resetAttempts }: { taskId: string; resetAttempts?: boolean }) =>
+      api.tasks.unblock(projectId, taskId, { resetAttempts }),
     onSuccess: async () => {
       void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
       void qc.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
@@ -130,6 +111,6 @@ export function useActiveAgents(projectId: string | undefined, options?: { enabl
       }
       return { agents, taskIdToStartedAt };
     },
-    enabled: Boolean(projectId) && (options?.enabled !== false),
+    enabled: Boolean(projectId) && options?.enabled !== false,
   });
 }

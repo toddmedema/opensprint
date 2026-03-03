@@ -12,15 +12,34 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
   const { createTestPostgresClient } = await import("./test-db-helper.js");
   const dbResult = await createTestPostgresClient();
   if (!dbResult) {
-    return { ...actual, TaskStoreService: class { constructor() { throw new Error("Postgres required"); } }, taskStore: null, _postgresAvailable: false };
+    return {
+      ...actual,
+      TaskStoreService: class {
+        constructor() {
+          throw new Error("Postgres required");
+        }
+      },
+      taskStore: null,
+      _postgresAvailable: false,
+    };
   }
   const store = new actual.TaskStoreService(dbResult.client);
   await store.init();
-  return { ...actual, TaskStoreService: class extends actual.TaskStoreService { constructor() { super(dbResult.client); } }, taskStore: store, _postgresAvailable: true };
+  return {
+    ...actual,
+    TaskStoreService: class extends actual.TaskStoreService {
+      constructor() {
+        super(dbResult.client);
+      }
+    },
+    taskStore: store,
+    _postgresAvailable: true,
+  };
 });
 
 const projectServiceTaskStoreMod = await import("../services/task-store.service.js");
-const projectServicePostgresOk = (projectServiceTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
+const projectServicePostgresOk =
+  (projectServiceTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
 
 /** Read project settings from global store (when HOME=tempDir in tests). */
 async function readSettingsFromGlobalStore(
@@ -380,9 +399,9 @@ describe.skipIf(!projectServicePostgresOk)("ProjectService", () => {
     expect((settings.hilConfig as { architectureDecisions: string }).architectureDecisions).toBe(
       "automated"
     );
-    expect((settings.hilConfig as { dependencyModifications: string }).dependencyModifications).toBe(
-      "automated"
-    );
+    expect(
+      (settings.hilConfig as { dependencyModifications: string }).dependencyModifications
+    ).toBe("automated");
   });
 
   it("should adopt path that has .opensprint when project not in index", async () => {
@@ -460,7 +479,11 @@ describe.skipIf(!projectServicePostgresOk)("ProjectService", () => {
         name: "Test",
         repoPath,
         simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
-        complexComplexityAgent: { type: "cursor", model: 123 as unknown as string, cliCommand: null },
+        complexComplexityAgent: {
+          type: "cursor",
+          model: 123 as unknown as string,
+          cliCommand: null,
+        },
         deployment: { mode: "custom" },
         hilConfig: DEFAULT_HIL_CONFIG,
       })

@@ -51,48 +51,72 @@ describe("DEFAULT_HIL_CONFIG", () => {
 
 describe("getAgentForComplexity", () => {
   it("should return simpleComplexityAgent for low", () => {
-    const settings = makeSettings({ simpleComplexityAgent: lowAgent, complexComplexityAgent: highAgent });
+    const settings = makeSettings({
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
+    });
     expect(getAgentForComplexity(settings, "low")).toBe(lowAgent);
   });
 
   it("should return simpleComplexityAgent for medium", () => {
-    const settings = makeSettings({ simpleComplexityAgent: lowAgent, complexComplexityAgent: highAgent });
+    const settings = makeSettings({
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
+    });
     expect(getAgentForComplexity(settings, "medium")).toBe(lowAgent);
   });
 
   it("should return complexComplexityAgent for high", () => {
-    const settings = makeSettings({ simpleComplexityAgent: lowAgent, complexComplexityAgent: highAgent });
+    const settings = makeSettings({
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
+    });
     expect(getAgentForComplexity(settings, "high")).toBe(highAgent);
   });
 
   it("should return complexComplexityAgent for very_high", () => {
-    const settings = makeSettings({ simpleComplexityAgent: lowAgent, complexComplexityAgent: highAgent });
+    const settings = makeSettings({
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
+    });
     expect(getAgentForComplexity(settings, "very_high")).toBe(highAgent);
   });
 
   it("should return simpleComplexityAgent when complexity is undefined", () => {
-    const settings = makeSettings({ simpleComplexityAgent: lowAgent, complexComplexityAgent: highAgent });
+    const settings = makeSettings({
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
+    });
     expect(getAgentForComplexity(settings, undefined)).toBe(lowAgent);
   });
 });
 
 describe("getAgentForPlanningRole", () => {
   it("Dreamer always returns complexComplexityAgent", () => {
-    const settings = makeSettings({ simpleComplexityAgent: lowAgent, complexComplexityAgent: highAgent });
+    const settings = makeSettings({
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
+    });
     expect(getAgentForPlanningRole(settings, "dreamer")).toBe(highAgent);
     expect(getAgentForPlanningRole(settings, "dreamer", "low")).toBe(highAgent);
     expect(getAgentForPlanningRole(settings, "dreamer", "high")).toBe(highAgent);
   });
 
   it("Analyst always returns simpleComplexityAgent", () => {
-    const settings = makeSettings({ simpleComplexityAgent: lowAgent, complexComplexityAgent: highAgent });
+    const settings = makeSettings({
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
+    });
     expect(getAgentForPlanningRole(settings, "analyst")).toBe(lowAgent);
     expect(getAgentForPlanningRole(settings, "analyst", "high")).toBe(lowAgent);
     expect(getAgentForPlanningRole(settings, "analyst", "very_high")).toBe(lowAgent);
   });
 
   it("Planner/Harmonizer/Auditor/Summarizer inherit plan complexity", () => {
-    const settings = makeSettings({ simpleComplexityAgent: lowAgent, complexComplexityAgent: highAgent });
+    const settings = makeSettings({
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
+    });
     for (const role of ["planner", "harmonizer", "auditor", "summarizer"] as const) {
       expect(getAgentForPlanningRole(settings, role, "low")).toBe(lowAgent);
       expect(getAgentForPlanningRole(settings, role, "medium")).toBe(lowAgent);

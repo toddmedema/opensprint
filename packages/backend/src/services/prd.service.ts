@@ -146,11 +146,13 @@ export class PrdService {
 
     try {
       const markdown = await fs.readFile(specPath, "utf-8");
-      let metadata: {
-        version: number;
-        changeLog: PrdChangeLogEntry[];
-        sectionVersions?: Record<string, number>;
-      } | undefined;
+      let metadata:
+        | {
+            version: number;
+            changeLog: PrdChangeLogEntry[];
+            sectionVersions?: Record<string, number>;
+          }
+        | undefined;
       try {
         const metaRaw = await fs.readFile(metaPath, "utf-8");
         const meta = JSON.parse(metaRaw) as {
@@ -231,11 +233,7 @@ export class PrdService {
     }
     await fs.writeFile(
       metaPath,
-      JSON.stringify(
-        { version: prd.version, changeLog: prd.changeLog, sectionVersions },
-        null,
-        2
-      ),
+      JSON.stringify({ version: prd.version, changeLog: prd.changeLog, sectionVersions }, null, 2),
       "utf-8"
     );
     const source = options?.source ?? "sketch";

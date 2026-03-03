@@ -368,9 +368,7 @@ describe("AgentLifecycleManager", () => {
       capturedOnOutput?.(
         '{"type":"tool_call","subtype":"started","call_id":"call-1","tool_call":{"shellToolCall":{"args":{"command":"npm test -- --runInBand"}}}}\n'
       );
-      capturedOnOutput?.(
-        '{"type":"tool_call","subtype":"completed","call_id":"call-1"}\n'
-      );
+      capturedOnOutput?.('{"type":"tool_call","subtype":"completed","call_id":"call-1"}\n');
 
       expect(mockAppendEvent).toHaveBeenNthCalledWith(
         1,

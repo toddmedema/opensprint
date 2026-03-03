@@ -802,7 +802,9 @@ describe("OrchestratorService (slot-based model)", () => {
         expect(mockWriteJsonAtomic).toHaveBeenCalled();
       });
 
-      const state = (orchestrator as unknown as { getState: (id: string) => { slots: Map<string, unknown> } }).getState(projectId);
+      const state = (
+        orchestrator as unknown as { getState: (id: string) => { slots: Map<string, unknown> } }
+      ).getState(projectId);
       const slot = state.slots.get(task.id) as {
         phase: "coding" | "review";
         reviewAgents?: Map<
@@ -839,10 +841,7 @@ describe("OrchestratorService (slot-based model)", () => {
       const reviewerAgents = agents.filter((a) => a.role === "reviewer");
       expect(reviewerAgents).toHaveLength(2);
       expect(reviewerAgents.map((a) => a.id)).toEqual(
-        expect.arrayContaining([
-          `${task.id}--review--security`,
-          `${task.id}--review--performance`,
-        ])
+        expect.arrayContaining([`${task.id}--review--security`, `${task.id}--review--performance`])
       );
       expect(reviewerAgents.map((a) => a.name)).toEqual(
         expect.arrayContaining(["Security", "Performance"])
