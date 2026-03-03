@@ -5,6 +5,7 @@ import { createLogger } from "../utils/logger.js";
 import {
   projectIdParamSchema,
   taskIdParamSchema,
+  taskDependencyParamsSchema,
   paginationQuerySchema,
   taskPatchBodySchema,
   dependencyBodySchema,
@@ -18,6 +19,7 @@ export function createTasksRouter(taskService: TaskService): Router {
 
   type ProjectParams = { projectId: string };
   type TaskParams = { projectId: string; taskId: string };
+  type TaskDependencyParams = { projectId: string; taskId: string; parentTaskId: string };
   type SessionParams = { projectId: string; taskId: string; attempt: string };
 
   // GET /projects/:projectId/tasks — List all tasks (supports ?limit=&offset= for pagination)
@@ -141,6 +143,24 @@ export function createTasksRouter(taskService: TaskService): Router {
           req.params.taskId,
           parentTaskId,
           type
+        );
+        res.status(204).send();
+      } catch (err) {
+        next(err);
+      }
+    }
+  );
+
+  // DELETE /projects/:projectId/tasks/:taskId/dependencies/:parentTaskId — Remove dependency
+  router.delete(
+    "/:taskId/dependencies/:parentTaskId",
+    validateParams(taskDependencyParamsSchema),
+    async (req: Request<TaskDependencyParams>, res, next) => {
+      try {
+        await taskService.removeDependency(
+          req.params.projectId,
+          req.params.taskId,
+          req.params.parentTaskId
         );
         res.status(204).send();
       } catch (err) {

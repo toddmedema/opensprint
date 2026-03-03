@@ -1050,6 +1050,21 @@ export class TaskStoreService {
     });
   }
 
+  async removeDependency(
+    _projectId: string,
+    childId: string,
+    parentId: string
+  ): Promise<void> {
+    return this.withWriteLock(async () => {
+      await this.ensureInitialized();
+      const client = this.ensureClient();
+      await client.execute(
+        toPgParams("DELETE FROM task_dependencies WHERE task_id = ? AND depends_on_id = ?"),
+        [childId, parentId]
+      );
+    });
+  }
+
   async addDependencies(
     _projectId: string,
     deps: Array<{ childId: string; parentId: string; type?: string }>

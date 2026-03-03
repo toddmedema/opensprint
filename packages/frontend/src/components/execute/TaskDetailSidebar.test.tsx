@@ -36,6 +36,7 @@ import {
 const mockGet = vi.fn();
 const mockUpdatePriority = vi.fn();
 const mockAddDependency = vi.fn();
+const mockRemoveDependency = vi.fn();
 const mockTasksGet = vi.fn();
 vi.mock("../../api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../api/client")>();
@@ -49,6 +50,7 @@ vi.mock("../../api/client", async (importOriginal) => {
         get: (...args: unknown[]) => mockTasksGet(...args),
         updatePriority: (...args: unknown[]) => mockUpdatePriority(...args),
         addDependency: (...args: unknown[]) => mockAddDependency(...args),
+        removeDependency: (...args: unknown[]) => mockRemoveDependency(...args),
       },
     },
   };
@@ -204,6 +206,7 @@ describe("TaskDetailSidebar", () => {
     mockGet.mockResolvedValue(null);
     mockUpdatePriority.mockResolvedValue({});
     mockAddDependency.mockResolvedValue(undefined);
+    mockRemoveDependency.mockResolvedValue(undefined);
     mockTasksGet.mockResolvedValue({});
   });
 
@@ -1095,9 +1098,12 @@ describe("TaskDetailSidebar", () => {
     expect(screen.getByText("Sync plan tasks when agent updates")).toBeInTheDocument();
     expect(screen.getByText("Add hover background")).toBeInTheDocument();
 
-    const linkButtons = screen.getAllByRole("button", {
+    const allMatchButtons = screen.getAllByRole("button", {
       name: /Remove pagination|Sync plan tasks|Add hover background/i,
     });
+    const linkButtons = allMatchButtons.filter(
+      (b) => !b.getAttribute("data-testid")?.startsWith("sidebar-remove-link-btn-")
+    );
     expect(linkButtons).toHaveLength(3);
     const firstText = linkButtons[0].textContent ?? "";
     const secondText = linkButtons[1].textContent ?? "";
@@ -1168,6 +1174,88 @@ describe("TaskDetailSidebar", () => {
       expect(options.map((o) => o.textContent)).toContain("Blocks");
       expect(options.map((o) => o.textContent)).toContain("Parent-child");
       expect(options.map((o) => o.textContent)).toContain("Related");
+    });
+
+    it("shows X button and confirmation when removing link", async () => {
+      const user = userEvent.setup();
+      mockRemoveDependency.mockResolvedValue(undefined);
+      mockTasksGet.mockResolvedValue({
+        id: "epic-1.1",
+        title: "Task A",
+        epicId: "epic-1",
+        kanbanColumn: "in_progress" as const,
+        priority: 0,
+        assignee: null,
+        type: "task" as const,
+        status: "in_progress" as const,
+        labels: [],
+        dependencies: [],
+        description: "",
+        createdAt: "",
+        updatedAt: "",
+      });
+      const props = createMinimalProps({
+        selectedTaskData: {
+          id: "epic-1.1",
+          title: "Task A",
+          epicId: "epic-1",
+          kanbanColumn: "in_progress" as const,
+          priority: 0,
+          assignee: null,
+          type: "task" as const,
+          status: "in_progress" as const,
+          labels: [],
+          dependencies: [{ targetId: "epic-1.2", type: "blocks" }],
+          description: "",
+          createdAt: "",
+          updatedAt: "",
+        },
+        tasks: [
+          {
+            id: "epic-1.1",
+            title: "Task A",
+            epicId: "epic-1",
+            kanbanColumn: "in_progress" as const,
+            priority: 0,
+            assignee: null,
+            type: "task" as const,
+            status: "in_progress" as const,
+            labels: [],
+            dependencies: [{ targetId: "epic-1.2", type: "blocks" }],
+            description: "",
+            createdAt: "",
+            updatedAt: "",
+          },
+          {
+            id: "epic-1.2",
+            title: "Task B",
+            epicId: "epic-1",
+            kanbanColumn: "backlog" as const,
+            priority: 0,
+            assignee: null,
+            type: "task" as const,
+            status: "open" as const,
+            labels: [],
+            dependencies: [],
+            description: "",
+            createdAt: "",
+            updatedAt: "",
+          },
+        ],
+      });
+      renderSidebar(props, { preloadedState: defaultPreloadedState });
+      const removeBtn = screen.getByTestId("sidebar-remove-link-btn-epic-1.2");
+      expect(removeBtn).toBeInTheDocument();
+      await user.click(removeBtn);
+      expect(screen.getByTestId("sidebar-delete-link-dialog")).toBeInTheDocument();
+      expect(screen.getByText(/Are you sure you want to delete the Blocked on link to Task B\?/)).toBeInTheDocument();
+      await user.click(screen.getByTestId("sidebar-delete-link-confirm-btn"));
+      await waitFor(() => {
+        expect(mockRemoveDependency).toHaveBeenCalledWith("proj-1", "epic-1.1", "epic-1.2");
+      });
+      await waitFor(() => {
+        expect(screen.queryByTestId("sidebar-delete-link-dialog")).not.toBeInTheDocument();
+      });
     });
 
     it("cancel dismisses Add link flow without changes", async () => {

@@ -9,6 +9,12 @@ export const taskIdParamSchema = z.object({
   taskId: z.string().min(1),
 });
 
+export const taskDependencyParamsSchema = z.object({
+  projectId: z.string().min(1),
+  taskId: z.string().min(1),
+  parentTaskId: z.string().min(1),
+});
+
 export const paginationQuerySchema = z.object({
   limit: z.coerce.number().int().positive().optional(),
   offset: z.coerce.number().int().nonnegative().optional(),

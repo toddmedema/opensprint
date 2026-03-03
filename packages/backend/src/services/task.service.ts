@@ -156,6 +156,16 @@ export class TaskService {
     await this.taskStore.addDependency(projectId, childTaskId, parentTaskId, type);
   }
 
+  /** Remove a dependency from childTaskId to parentTaskId. */
+  async removeDependency(
+    projectId: string,
+    childTaskId: string,
+    parentTaskId: string
+  ): Promise<void> {
+    await this.projectService.getProject(projectId);
+    await this.taskStore.removeDependency(projectId, childTaskId, parentTaskId);
+  }
+
   /** Get a single task with full details. */
   async getTask(projectId: string, taskId: string): Promise<Task> {
     await this.projectService.getProject(projectId);

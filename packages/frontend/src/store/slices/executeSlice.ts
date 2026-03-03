@@ -251,6 +251,22 @@ export const addTaskDependency = createAsyncThunk(
   }
 );
 
+export const removeTaskDependency = createAsyncThunk(
+  "execute/removeTaskDependency",
+  async (
+    {
+      projectId,
+      taskId,
+      parentTaskId,
+    }: { projectId: string; taskId: string; parentTaskId: string },
+    { dispatch: _dispatch }
+  ) => {
+    await api.tasks.removeDependency(projectId, taskId, parentTaskId);
+    const task = await api.tasks.get(projectId, taskId);
+    return { task, taskId };
+  }
+);
+
 export const unblockTask = createAsyncThunk(
   "execute/unblockTask",
   async (
@@ -719,6 +735,13 @@ const executeSlice = createSlice({
 
     // addTaskDependency — refresh task in state after adding dependency
     builder.addCase(addTaskDependency.fulfilled, (state, action) => {
+      ensureTasksState(state);
+      const { task } = action.payload;
+      state.tasksById[task.id] = task;
+    });
+
+    // removeTaskDependency — refresh task in state after removing dependency
+    builder.addCase(removeTaskDependency.fulfilled, (state, action) => {
       ensureTasksState(state);
       const { task } = action.payload;
       state.tasksById[task.id] = task;

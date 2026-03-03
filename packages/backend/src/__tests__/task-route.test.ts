@@ -779,6 +779,29 @@ Test review prompt generation.
     expect(res.body.error?.message).toMatch(/parentTaskId/i);
   });
 
+  it("DELETE /tasks/:taskId/dependencies/:parentTaskId removes dependency and returns 204", async () => {
+    const parentTask = await taskStore.create(projectId, "Parent Task", {
+      type: "task",
+      priority: 1,
+    });
+    const childTask = await taskStore.create(projectId, "Child Task", {
+      type: "task",
+      priority: 1,
+    });
+    await taskStore.addDependency(projectId, childTask.id, parentTask.id, "blocks");
+
+    const res = await request(app).delete(
+      `${API_PREFIX}/projects/${projectId}/tasks/${childTask.id}/dependencies/${parentTask.id}`
+    );
+
+    expect(res.status).toBe(204);
+
+    const childAfter = await taskStore.show(projectId, childTask.id);
+    const deps =
+      (childAfter as { dependencies?: Array<{ depends_on_id: string }> }).dependencies ?? [];
+    expect(deps.some((d) => d.depends_on_id === parentTask.id)).toBe(false);
+  });
+
   it("GET /projects/:projectId/tasks/analytics returns analytics grouped by complexity", async () => {
     const t1 = await taskStore.create(projectId, "Analytics Task 1", {
       type: "task",

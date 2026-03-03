@@ -372,6 +372,11 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ parentTaskId, type: type ?? "blocks" }),
       }),
+    removeDependency: (projectId: string, taskId: string, parentTaskId: string) =>
+      request<void>(
+        `/projects/${projectId}/tasks/${taskId}/dependencies/${parentTaskId}`,
+        { method: "DELETE" }
+      ),
   },
 
   // ─── Execute ───

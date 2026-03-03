@@ -21,7 +21,11 @@ import {
 } from "@opensprint/shared";
 import type { ActiveTaskInfo } from "../../store/slices/executeSlice";
 import { useAppDispatch } from "../../store";
-import { updateTaskPriority, addTaskDependency } from "../../store/slices/executeSlice";
+import {
+  updateTaskPriority,
+  addTaskDependency,
+  removeTaskDependency,
+} from "../../store/slices/executeSlice";
 import { wsConnect } from "../../store/middleware/websocketMiddleware";
 import { CloseButton } from "../CloseButton";
 import { PriorityIcon } from "../PriorityIcon";
@@ -287,6 +291,12 @@ function TaskDetailSidebarInner({
   const actionsMenuRef = useRef<HTMLDivElement>(null);
   const [actionsMenuOpen, setActionsMenuOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteLinkConfirm, setDeleteLinkConfirm] = useState<{
+    targetId: string;
+    type: string;
+    taskName: string;
+  } | null>(null);
+  const [removeLinkRemovingId, setRemoveLinkRemovingId] = useState<string | null>(null);
   const [addLinkOpen, setAddLinkOpen] = useState(false);
   const task = selectedTaskData;
   const displayLabel = task ? complexityToDisplay(task.complexity) : null;
@@ -545,6 +555,80 @@ function TaskDetailSidebarInner({
         </div>
       )}
 
+      {deleteLinkConfirm && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close delete link confirmation"
+            onClick={() => setDeleteLinkConfirm(null)}
+            className="absolute inset-0 bg-theme-overlay backdrop-blur-sm"
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-link-confirm-title"
+            className="relative bg-theme-surface rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto flex flex-col"
+            data-testid="sidebar-delete-link-dialog"
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-theme-border shrink-0">
+              <h2 id="delete-link-confirm-title" className="text-lg font-semibold text-theme-text">
+                Remove link
+              </h2>
+              <CloseButton
+                onClick={() => setDeleteLinkConfirm(null)}
+                ariaLabel="Close delete link confirmation"
+              />
+            </div>
+            <div className="px-5 py-4">
+              <p className="text-sm text-theme-text">
+                Are you sure you want to delete the{" "}
+                {deleteLinkConfirm.type === "blocks"
+                  ? "Blocked on"
+                  : deleteLinkConfirm.type === "parent-child"
+                    ? "Parent"
+                    : "Related"}{" "}
+                link to {deleteLinkConfirm.taskName}?
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-4 border-t border-theme-border bg-theme-bg rounded-b-xl">
+              <button
+                type="button"
+                onClick={() => setDeleteLinkConfirm(null)}
+                className="btn-secondary"
+                data-testid="sidebar-delete-link-cancel-btn"
+                disabled={removeLinkRemovingId !== null}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const { targetId } = deleteLinkConfirm;
+                  setRemoveLinkRemovingId(targetId);
+                  try {
+                    await dispatch(
+                      removeTaskDependency({
+                        projectId,
+                        taskId: selectedTask,
+                        parentTaskId: targetId,
+                      })
+                    ).unwrap();
+                    setDeleteLinkConfirm(null);
+                  } finally {
+                    setRemoveLinkRemovingId(null);
+                  }
+                }}
+                className="btn-primary disabled:opacity-50"
+                data-testid="sidebar-delete-link-confirm-btn"
+                disabled={removeLinkRemovingId !== null}
+              >
+                {removeLinkRemovingId ? "Removing..." : "Remove"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto min-h-0">
         {/* Open questions block — when coder needs clarification */}
         {openQuestionNotification && task && (
@@ -746,6 +830,11 @@ function TaskDetailSidebarInner({
                 "parent-child": "Parent:",
                 related: "Related:",
               };
+              const TYPE_LABEL_SHORT: Record<string, string> = {
+                blocks: "Blocked on",
+                "parent-child": "Parent",
+                related: "Related",
+              };
               const sorted = [...nonEpicDeps].sort(
                 (a, b) => (TYPE_ORDER[a.type] ?? 3) - (TYPE_ORDER[b.type] ?? 3)
               );
@@ -775,22 +864,56 @@ function TaskDetailSidebarInner({
                     )}
                     {sorted.map((d) => {
                       const depTask = d.targetId ? taskById[d.targetId] : undefined;
-                      const label = depTask?.title ?? d.targetId;
+                      const label = depTask?.title ?? d.targetId ?? "";
                       const col = depTask?.kanbanColumn ?? "backlog";
                       const typeLabel = TYPE_LABEL[d.type] ?? "Related:";
+                      const removing = removeLinkRemovingId === d.targetId;
                       return (
-                        <button
+                        <div
                           key={d.targetId}
-                          type="button"
-                          onClick={() => onSelectTask(d.targetId!)}
-                          className="inline-flex items-center gap-1.5 text-left text-brand-600 hover:text-brand-500 transition-colors"
+                          className="inline-flex items-center gap-1.5 w-full group"
                         >
-                          <TaskStatusBadge column={col} size="xs" title={COLUMN_LABELS[col]} />
-                          <span className="text-theme-muted shrink-0">{typeLabel}</span>
-                          <span className="truncate max-w-[200px] hover:underline" title={label}>
-                            {label}
-                          </span>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => onSelectTask(d.targetId!)}
+                            className="flex-1 min-w-0 inline-flex items-center gap-1.5 text-left text-brand-600 hover:text-brand-500 transition-colors"
+                          >
+                            <TaskStatusBadge column={col} size="xs" title={COLUMN_LABELS[col]} />
+                            <span className="text-theme-muted shrink-0">{typeLabel}</span>
+                            <span className="truncate max-w-[200px] hover:underline" title={label}>
+                              {label}
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteLinkConfirm({
+                                targetId: d.targetId!,
+                                type: d.type ?? "related",
+                                taskName: label,
+                              });
+                            }}
+                            disabled={removing}
+                            className="shrink-0 p-0.5 rounded text-theme-muted hover:text-theme-error-text hover:bg-theme-error-bg transition-colors disabled:opacity-50"
+                            aria-label={`Remove ${TYPE_LABEL_SHORT[d.type] ?? "Related"} link to ${label}`}
+                            data-testid={`sidebar-remove-link-btn-${d.targetId}`}
+                          >
+                            <svg
+                              className="w-3.5 h-3.5"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M6 18L18 6M6 6l12 12"
+                              />
+                            </svg>
+                          </button>
+                        </div>
                       );
                     })}
                   </div>
