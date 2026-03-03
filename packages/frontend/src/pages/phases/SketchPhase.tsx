@@ -36,7 +36,7 @@ import { useScrollToQuestion } from "../../hooks/useScrollToQuestion";
 import { useOpenQuestionNotifications } from "../../hooks/useOpenQuestionNotifications";
 import { HilApprovalBlock } from "../../components/HilApprovalBlock";
 import { ImageAttachmentThumbnails, ImageAttachmentButton } from "../../components/ImageAttachment";
-import { SparklesIcon, CommentIcon } from "../../components/icons/PrdIcons";
+import { CommentIcon } from "../../components/icons/PrdIcons";
 import { api } from "../../api/client";
 import { isApiError } from "../../api/client";
 
@@ -605,9 +605,18 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
           </div>
         )}
 
-        {/* Branding / Sparkle */}
+        {/* Branding / Open Sprint logo with gentle slow pulse */}
         <div className="mb-8 text-center">
-          <SparklesIcon className="w-10 h-10 text-brand-500 mx-auto mb-4" />
+          <div
+            className="w-10 h-10 mx-auto mb-4 flex items-center justify-center animate-logo-pulse-slow"
+            aria-hidden
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" className="w-10 h-10">
+              <polygon points="4,10 36,40 4,70" fill="#c7d2fe" />
+              <polygon points="22,10 54,40 22,70" fill="#818cf8" />
+              <polygon points="40,10 72,40 40,70" fill="#4f46e5" />
+            </svg>
+          </div>
           <h1 className="text-3xl font-bold text-theme-text tracking-tight">
             What do you want to build?
           </h1>

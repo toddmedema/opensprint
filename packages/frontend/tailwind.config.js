@@ -113,6 +113,7 @@ export default {
         "slide-in-left": "slide-in-left 0.2s ease-out",
         "fade-in": "fade-in 0.15s ease-out",
         "logo-pulse": "logo-pulse 1.2s ease-in-out infinite",
+        "logo-pulse-slow": "logo-pulse 3.6s ease-in-out infinite",
       },
     },
   },
