@@ -30,6 +30,10 @@ function isInLineTask(t: Task): boolean {
   return t.kanbanColumn === "backlog" || t.kanbanColumn === "planning";
 }
 
+function isBlockedTask(t: Task): boolean {
+  return t.kanbanColumn === "blocked";
+}
+
 function buildSwimlanesFromFilteredTasks(
   tasks: Task[],
   plans: Plan[],
@@ -208,12 +212,19 @@ export function useExecuteSwimlanes(
     return buildSwimlanesFromFilteredTasks(inLineTasks, plans, statusFilter, searchQuery);
   }, [implTasks, plans, statusFilter, searchQuery]);
 
+  const blockedSwimlanes = useMemo((): Swimlane[] => {
+    if (statusFilter !== "all") return [];
+    const blockedTasks = implTasks.filter(isBlockedTask);
+    return buildSwimlanesFromFilteredTasks(blockedTasks, plans, statusFilter, searchQuery);
+  }, [implTasks, plans, statusFilter, searchQuery]);
+
   return {
     implTasks,
     filteredTasks,
     swimlanes,
     readySwimlanes,
     inLineSwimlanes,
+    blockedSwimlanes,
     chipConfig,
   };
 }

@@ -235,7 +235,7 @@ export function ExecutePhase({
     }
   };
 
-  const { implTasks, filteredTasks, swimlanes, readySwimlanes, inLineSwimlanes, chipConfig } =
+  const { implTasks, filteredTasks, swimlanes, readySwimlanes, inLineSwimlanes, blockedSwimlanes, chipConfig } =
     useExecuteSwimlanes(tasks, plans, statusFilter, searchQuery);
 
   const tasksQuery = useTasks(projectId);
@@ -327,7 +327,7 @@ export function ExecutePhase({
             </div>
           ) : viewMode === "kanban" ? (
             useReadyInLineSections ? (
-              readySwimlanes.length > 0 || inLineSwimlanes.length > 0 ? (
+              readySwimlanes.length > 0 || inLineSwimlanes.length > 0 || blockedSwimlanes.length > 0 ? (
                 <div className="space-y-8">
                   {readySwimlanes.length > 0 && (
                     <section data-testid="execute-section-ready">
@@ -369,6 +369,34 @@ export function ExecutePhase({
                             epicId={lane.epicId}
                             epicTitle={lane.epicTitle}
                             statusFilter="in_line"
+                            searchQuery={searchQuery}
+                            filteringActive={isSearchActive}
+                            onTaskSelect={(taskId) => dispatch(setSelectedTaskId(taskId))}
+                            onUnblock={(taskId) => unblockMutation.mutate({ taskId })}
+                            onViewPlan={
+                              lane.planId && onNavigateToPlan
+                                ? () => onNavigateToPlan(lane.planId!)
+                                : undefined
+                            }
+                            taskIdToStartedAt={taskIdToStartedAt}
+                            selectedTaskId={effectiveSelectedTask}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                  {blockedSwimlanes.length > 0 && (
+                    <section data-testid="execute-section-blocked">
+                      <h2 className="text-sm font-semibold text-theme-muted tracking-wide uppercase mb-4">
+                        Blocked
+                      </h2>
+                      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        {blockedSwimlanes.map((lane) => (
+                          <BuildEpicCard
+                            key={lane.epicId || "other"}
+                            epicId={lane.epicId}
+                            epicTitle={lane.epicTitle}
+                            statusFilter="blocked"
                             searchQuery={searchQuery}
                             filteringActive={isSearchActive}
                             onTaskSelect={(taskId) => dispatch(setSelectedTaskId(taskId))}

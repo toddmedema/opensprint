@@ -247,5 +247,36 @@ describe("useExecuteSwimlanes", () => {
       expect(result.current.readySwimlanes[0].tasks[0].title).toBe("Auth flow");
       expect(result.current.inLineSwimlanes).toHaveLength(0);
     });
+
+    it("blockedSwimlanes contains only blocked tasks when statusFilter is all", () => {
+      const tasks: Task[] = [
+        task({ id: "epic-a.1", kanbanColumn: "ready", epicId: "epic-a" }),
+        task({ id: "epic-a.2", kanbanColumn: "blocked", epicId: "epic-a" }),
+        task({ id: "epic-b.1", kanbanColumn: "blocked", epicId: "epic-b" }),
+      ];
+      const plans: Plan[] = [
+        plan({
+          metadata: { planId: "p1", epicId: "epic-a", shippedAt: null, complexity: "medium" },
+        }),
+        plan({
+          metadata: { planId: "p2", epicId: "epic-b", shippedAt: null, complexity: "medium" },
+        }),
+      ];
+      const { result } = renderHook(() => useExecuteSwimlanes(tasks, plans, "all", ""));
+      expect(result.current.blockedSwimlanes).toHaveLength(2);
+      expect(
+        result.current.blockedSwimlanes.every((s) => s.tasks.every((t) => t.kanbanColumn === "blocked"))
+      ).toBe(true);
+      expect(result.current.blockedSwimlanes.flatMap((s) => s.tasks)).toHaveLength(2);
+    });
+
+    it("blockedSwimlanes is empty when statusFilter is not all", () => {
+      const tasks: Task[] = [
+        task({ id: "epic-a.1", kanbanColumn: "blocked", epicId: "epic-a" }),
+      ];
+      const plans: Plan[] = [plan()];
+      const { result } = renderHook(() => useExecuteSwimlanes(tasks, plans, "blocked", ""));
+      expect(result.current.blockedSwimlanes).toHaveLength(0);
+    });
   });
 });

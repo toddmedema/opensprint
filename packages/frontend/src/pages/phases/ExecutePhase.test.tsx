@@ -260,6 +260,40 @@ describe("ExecutePhase epic card task order", () => {
     expect(container).not.toHaveTextContent("Done task");
   });
 
+  it("All filter shows Blocked section when blocked tasks exist", () => {
+    const tasks = [
+      {
+        id: "epic-1.1",
+        title: "Ready task",
+        epicId: "epic-1",
+        kanbanColumn: "ready",
+        priority: 0,
+        assignee: null,
+      },
+      {
+        id: "epic-1.2",
+        title: "Blocked task",
+        epicId: "epic-1",
+        kanbanColumn: "blocked",
+        priority: 0,
+        assignee: null,
+      },
+    ];
+    const store = createStore(tasks);
+    const { container } = render(
+      <MemoryRouter>
+        <Provider store={store}>
+          <ExecutePhase projectId="proj-1" />
+        </Provider>
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId("execute-section-ready")).toBeInTheDocument();
+    expect(screen.getByTestId("execute-section-blocked")).toBeInTheDocument();
+    expect(container).toHaveTextContent("Ready task");
+    expect(container).toHaveTextContent("Blocked task");
+  });
+
   it("renders task rows with status before title and assignee on the right", async () => {
     const user = userEvent.setup();
     const tasks = [
