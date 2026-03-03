@@ -286,8 +286,7 @@ describe("DeliverPhase", () => {
     });
     const store = createStore();
     renderWithRouter(store);
-    await waitFor(() => expect(mockGetSettings).toHaveBeenCalled());
-    const deployBtn = screen.getByTestId("deploy-to-production-button");
+    const deployBtn = await screen.findByTestId("deploy-to-production-button");
     const topBar = screen.getByTestId("deliver-top-bar");
     expect(topBar).toContainElement(deployBtn);
   });
