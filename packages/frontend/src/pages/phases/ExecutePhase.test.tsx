@@ -34,6 +34,7 @@ import openQuestionsReducer, {
   addNotification as addOpenQuestionNotification,
 } from "../../store/slices/openQuestionsSlice";
 import websocketReducer, { setConnected } from "../../store/slices/websocketSlice";
+import { MOBILE_BREAKPOINT } from "../../lib/constants";
 const mockGet = vi.fn().mockResolvedValue({});
 const mockMarkDone = vi.fn().mockResolvedValue(undefined);
 const mockUnblock = vi.fn().mockResolvedValue({ taskUnblocked: true });
@@ -1620,6 +1621,55 @@ describe("ExecutePhase mobile layout", () => {
 
     const grid = document.querySelector('[data-testid="execute-section-ready"] .grid');
     expect(grid).toHaveClass("grid-cols-1", "sm:grid-cols-2", "lg:grid-cols-3");
+  });
+
+  it("task detail sidebar renders as overlay with backdrop on mobile viewport (< 768px)", async () => {
+    const originalInnerWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { value: MOBILE_BREAKPOINT - 1, writable: true });
+
+    mockGet.mockResolvedValue({
+      id: "epic-1.1",
+      title: "Task A",
+      epicId: "epic-1",
+      kanbanColumn: "in_progress",
+      description: "",
+      type: "task",
+      status: "open",
+      labels: [],
+      dependencies: [],
+      createdAt: "",
+      updatedAt: "",
+      priority: 0,
+      assignee: null,
+    });
+    const tasks = [
+      {
+        id: "epic-1.1",
+        title: "Task A",
+        epicId: "epic-1",
+        kanbanColumn: "in_progress",
+        priority: 0,
+        assignee: null,
+      },
+    ];
+    const store = createStore(tasks, { selectedTaskId: "epic-1.1" });
+    render(
+      <MemoryRouter>
+        <Provider store={store}>
+          <ExecutePhase projectId="proj-1" />
+        </Provider>
+      </MemoryRouter>
+    );
+
+    await vi.waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith("proj-1", "epic-1.1");
+    });
+
+    expect(
+      screen.getByRole("button", { name: "Close sidebar (backdrop)" })
+    ).toBeInTheDocument();
+
+    Object.defineProperty(window, "innerWidth", { value: originalInnerWidth, writable: true });
   });
 });
 
