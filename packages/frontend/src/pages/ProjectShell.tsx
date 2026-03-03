@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { useParams, useLocation, useNavigate, Outlet, Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppDispatch, useAppSelector } from "../store";
@@ -127,13 +127,31 @@ export function ProjectShell() {
   const prevWsConnectedRef = useRef<boolean | null>(null);
 
   // Project lifecycle: reset slices before query-to-Redux syncs run, then connect WS when DB is ready.
-  useEffect(() => {
+  // When projectId changes (switch or fresh mount from home), clear sync state and invalidate queries
+  // so plans/tasks/feedback always load correctly without requiring a manual refresh.
+  // useLayoutEffect ensures reset runs before paint when switching projects, avoiding a flash of
+  // the previous project's data.
+  useLayoutEffect(() => {
     if (!projectId) return;
 
+    const projectIdChanged = prevProjectIdRef.current !== projectId;
     const switchingProject =
       prevProjectIdRef.current != null && prevProjectIdRef.current !== projectId;
-    if (switchingProject) {
+
+    if (projectIdChanged) {
       lastSyncedRef.current = {};
+      // Invalidate and refetch tasks/plans/feedback when project changes so Plan/Execute/Evaluate
+      // show correct data without requiring a manual refresh. refetchQueries ensures we actively
+      // trigger fetches rather than relying on stale-while-revalidate timing.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.feedback.list(projectId) });
+      void queryClient.refetchQueries({ queryKey: queryKeys.tasks.list(projectId) });
+      void queryClient.refetchQueries({ queryKey: queryKeys.plans.list(projectId) });
+      void queryClient.refetchQueries({ queryKey: queryKeys.feedback.list(projectId) });
+    }
+    if (switchingProject) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(projectId) });
       dispatch(resetSketch(undefined as never));
       dispatch(resetPlan(undefined as never));
       dispatch(resetExecute(undefined as never));
@@ -141,10 +159,6 @@ export function ProjectShell() {
       dispatch(resetDeliver());
       dispatch(resetProject());
       dispatch(resetWebsocket());
-      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.detail(projectId) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.feedback.list(projectId) });
     }
     prevProjectIdRef.current = projectId;
     if (shouldConnectProjectWs) {

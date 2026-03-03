@@ -54,6 +54,42 @@ describe("api client", () => {
       expect((err as ApiError).message).toBe("Invalid project ID");
     });
 
+    it("uses error.details when present (scaffold recovery)", async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        json: vi.fn().mockResolvedValue({
+          error: {
+            code: "SCAFFOLD_INIT_FAILED",
+            message: "Node.js is not installed",
+            details: { repoPath: "/tmp/proj", recovery: { attempted: true, success: false } },
+          },
+        }),
+      } as Response);
+
+      const err = await api.projects.scaffold({ name: "x", parentPath: "/tmp", template: "react" }).catch((e) => e);
+      expect(isApiError(err)).toBe(true);
+      const details = (err as ApiError).details as { repoPath?: string; recovery?: { attempted: boolean } };
+      expect(details?.recovery?.attempted).toBe(true);
+    });
+
+    it("uses full error when details absent (Expo prompt at top level)", async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: false,
+        status: 401,
+        statusText: "Unauthorized",
+        json: vi.fn().mockResolvedValue({
+          error: { code: "EXPO_TOKEN_REQUIRED", message: "Auth required", prompt: "Go to expo.dev" },
+        }),
+      } as Response);
+
+      const err = await api.deliver.expoDeploy("proj-1", "beta").catch((e) => e);
+      expect(isApiError(err)).toBe(true);
+      const details = (err as ApiError).details as { prompt?: string };
+      expect(details?.prompt).toBe("Go to expo.dev");
+    });
+
     it("throws with statusText when error JSON has no message", async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: false,
