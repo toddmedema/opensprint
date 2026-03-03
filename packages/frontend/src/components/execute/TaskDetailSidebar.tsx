@@ -299,18 +299,6 @@ function TaskDetailSidebarInner({
     () => task?.sourceFeedbackIds ?? (task?.sourceFeedbackId ? [task.sourceFeedbackId] : []),
     [task?.sourceFeedbackIds, task?.sourceFeedbackId]
   );
-  const latestFailedSession = useMemo(
-    () =>
-      [...archivedSessions]
-        .reverse()
-        .find(
-          (session) =>
-            Boolean(session.failureReason) ||
-            session.status === "failed" ||
-            session.status === "rejected"
-        ) ?? null,
-    [archivedSessions]
-  );
   const earlierFailureSummaries = useMemo(() => {
     if (!diagnostics || diagnostics.attempts.length < 2) return [];
 
@@ -913,14 +901,6 @@ function TaskDetailSidebarInner({
                     <span className="text-theme-muted">Attempts:</span>{" "}
                     <span className="text-theme-text">{diagnostics.cumulativeAttempts}</span>
                   </div>
-                  {latestFailedSession?.failureReason && (
-                    <div data-testid="execution-diagnostics-archived-failure">
-                      <span className="text-theme-muted">Latest archived failure:</span>{" "}
-                      <span className="text-theme-text">
-                        Attempt {latestFailedSession.attempt}: {latestFailedSession.failureReason}
-                      </span>
-                    </div>
-                  )}
                 </div>
 
                 <div>
