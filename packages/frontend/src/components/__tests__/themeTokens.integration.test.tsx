@@ -9,7 +9,6 @@ import { Provider } from "react-redux";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { configureStore } from "@reduxjs/toolkit";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "../../contexts/ThemeContext";
 import notificationReducer from "../../store/slices/notificationSlice";
 import executeReducer from "../../store/slices/executeSlice";
@@ -31,8 +30,6 @@ vi.mock("../../api/client", () => ({
     globalSettings: { get: () => Promise.resolve({ databaseUrl: "", apiKeys: undefined }) },
   },
 }));
-
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
 function createTestStore() {
   return configureStore({

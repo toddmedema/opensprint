@@ -3,6 +3,7 @@ import { Layout } from "../components/layout/Layout";
 import { GlobalSettingsContent } from "../components/GlobalSettingsContent";
 import { SettingsTopBar } from "../components/settings/SettingsTopBar";
 import type { SaveStatus } from "../components/SaveIndicator";
+import { CONTENT_CONTAINER_CLASS } from "../lib/constants";
 
 /**
  * Full-screen Settings page (homepage). Replaces the DisplaySettingsModal.
@@ -26,7 +27,7 @@ export function SettingsPage() {
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden" data-testid="settings-page">
         <SettingsTopBar saveStatus={saveStatus} />
         <div className="flex-1 min-h-0 overflow-y-auto">
-          <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+          <div className={`${CONTENT_CONTAINER_CLASS} py-6 sm:py-8`}>
             <div className="bg-theme-surface rounded-xl border border-theme-border p-4 sm:p-6">
               <GlobalSettingsContent onSaveStateChange={setSaveStatus} />
             </div>
