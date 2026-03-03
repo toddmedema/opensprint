@@ -2,8 +2,17 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { renderWithProviders } from "../../test/test-utils";
 import { SourceFeedbackSection } from "./SourceFeedbackSection";
+
+function renderWithRouter(ui: React.ReactElement) {
+  return renderWithProviders(
+    <MemoryRouter initialEntries={["/projects/proj-1/execute"]}>
+      {ui}
+    </MemoryRouter>
+  );
+}
 
 const mockFeedbackGet = vi.fn();
 
@@ -22,7 +31,7 @@ describe("SourceFeedbackSection", () => {
   });
 
   it("renders collapsible header with Source Feedback label", () => {
-    renderWithProviders(
+    renderWithRouter(
       <SourceFeedbackSection
         projectId="proj-1"
         feedbackId="fb-1"
@@ -38,7 +47,7 @@ describe("SourceFeedbackSection", () => {
   it("calls onToggle when header is clicked", async () => {
     const user = userEvent.setup();
     const onToggle = vi.fn();
-    renderWithProviders(
+    renderWithRouter(
       <SourceFeedbackSection
         projectId="proj-1"
         feedbackId="fb-1"
@@ -62,7 +71,7 @@ describe("SourceFeedbackSection", () => {
       createdAt: "2026-02-17T10:00:00Z",
     });
 
-    renderWithProviders(
+    renderWithRouter(
       <SourceFeedbackSection
         projectId="proj-1"
         feedbackId="fb-1"
@@ -86,7 +95,7 @@ describe("SourceFeedbackSection", () => {
       createdAt: "2026-02-17T10:00:00Z",
     });
 
-    renderWithProviders(
+    renderWithRouter(
       <SourceFeedbackSection
         projectId="proj-1"
         feedbackId="fb-1"
@@ -99,7 +108,7 @@ describe("SourceFeedbackSection", () => {
   });
 
   it("does not fetch when collapsed", () => {
-    renderWithProviders(
+    renderWithRouter(
       <SourceFeedbackSection
         projectId="proj-1"
         feedbackId="fb-1"
@@ -122,7 +131,7 @@ describe("SourceFeedbackSection", () => {
       createdAt: "2026-02-17T10:00:00Z",
     });
 
-    const { container } = renderWithProviders(
+    const { container } = renderWithRouter(
       <SourceFeedbackSection
         projectId="proj-1"
         feedbackId="fb-1"
@@ -161,7 +170,7 @@ describe("SourceFeedbackSection", () => {
       createdAt: "2026-02-17T10:00:00Z",
     });
 
-    renderWithProviders(
+    renderWithRouter(
       <SourceFeedbackSection
         projectId="proj-1"
         feedbackId="fb-1"
@@ -187,7 +196,7 @@ describe("SourceFeedbackSection", () => {
       createdAt: "2026-02-17T10:00:00Z",
     });
 
-    renderWithProviders(
+    renderWithRouter(
       <SourceFeedbackSection
         projectId="proj-1"
         feedbackId="fb-1"
@@ -201,10 +210,37 @@ describe("SourceFeedbackSection", () => {
     expect(screen.queryByText(/2\/17\/2026|Feb.*17.*2026|10:00:00/)).not.toBeInTheDocument();
   });
 
+  it("shows link to View feedback in Evaluate that navigates to Evaluate phase with feedback param", async () => {
+    mockFeedbackGet.mockResolvedValue({
+      id: "fb-1",
+      text: "Add dark mode support",
+      category: "feature",
+      mappedPlanId: "plan-1",
+      createdTaskIds: [],
+      status: "pending",
+      createdAt: "2026-02-17T10:00:00Z",
+    });
+
+    renderWithRouter(
+      <SourceFeedbackSection
+        projectId="proj-1"
+        feedbackId="fb-1"
+        expanded={true}
+        onToggle={() => {}}
+      />
+    );
+
+    await screen.findByText("Add dark mode support");
+    const link = screen.getByRole("link", { name: /view feedback in evaluate/i });
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute("href", "/projects/proj-1/eval?feedback=fb-1");
+    expect(link).toHaveClass("text-brand-600");
+  });
+
   it("shows loading state with matching container styling", () => {
     mockFeedbackGet.mockImplementation(() => new Promise(() => {}));
 
-    renderWithProviders(
+    renderWithRouter(
       <SourceFeedbackSection
         projectId="proj-1"
         feedbackId="fb-1"

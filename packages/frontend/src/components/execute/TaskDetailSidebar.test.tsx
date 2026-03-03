@@ -10,6 +10,19 @@ import {
   createTestStore,
   type RootState,
 } from "../../test/test-utils";
+import type { RenderWithProvidersOptions } from "../../test/test-utils";
+
+function renderSidebar(
+  props: TaskDetailSidebarProps,
+  options?: RenderWithProvidersOptions
+) {
+  return renderWithProviders(
+    <MemoryRouter initialEntries={["/projects/proj-1/execute"]}>
+      <TaskDetailSidebar {...props} />
+    </MemoryRouter>,
+    options
+  );
+}
 import { TaskDetailSidebar, type TaskDetailSidebarProps } from "./TaskDetailSidebar";
 import type { AgentSession, Plan, Task, TaskExecutionDiagnostics } from "@opensprint/shared";
 import type { ActiveTaskInfo } from "../../store/slices/executeSlice";
@@ -190,7 +203,7 @@ describe("TaskDetailSidebar", () => {
 
   it("renders task title from selectedTaskData", () => {
     const props = createMinimalProps();
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -218,12 +231,7 @@ describe("TaskDetailSidebar", () => {
       openQuestionNotification,
       onOpenQuestionResolved: vi.fn(),
     });
-    renderWithProviders(
-      <MemoryRouter>
-        <TaskDetailSidebar {...props} />
-      </MemoryRouter>,
-      { preloadedState: defaultPreloadedState }
-    );
+    renderSidebar(props, { preloadedState: defaultPreloadedState });
 
     expect(screen.getByTestId("open-questions-block")).toBeInTheDocument();
     expect(screen.getByText("Which database should I use for this feature?")).toBeInTheDocument();
@@ -250,7 +258,7 @@ describe("TaskDetailSidebar", () => {
         updatedAt: "",
       },
     });
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -278,7 +286,7 @@ describe("TaskDetailSidebar", () => {
         updatedAt: "",
       },
     });
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -291,7 +299,7 @@ describe("TaskDetailSidebar", () => {
   it("renders actions menu with Mark done when task is not done and not blocked", async () => {
     const user = userEvent.setup();
     const props = createMinimalProps();
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -305,7 +313,7 @@ describe("TaskDetailSidebar", () => {
 
   it("renders actions menu trigger to the right of title, close to the left of X", () => {
     const props = createMinimalProps();
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -341,7 +349,7 @@ describe("TaskDetailSidebar", () => {
       },
       isBlockedTask: true,
     });
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -371,7 +379,7 @@ describe("TaskDetailSidebar", () => {
       },
       isBlockedTask: true,
     });
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -385,7 +393,7 @@ describe("TaskDetailSidebar", () => {
     const onClose = vi.fn();
     const props = createMinimalProps({ onClose });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -398,7 +406,7 @@ describe("TaskDetailSidebar", () => {
     const onMarkDone = vi.fn();
     const props = createMinimalProps({ onMarkDone });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -430,7 +438,7 @@ describe("TaskDetailSidebar", () => {
       isBlockedTask: true,
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -442,7 +450,7 @@ describe("TaskDetailSidebar", () => {
   it("opens and closes delete confirmation dialog from actions menu", async () => {
     const user = userEvent.setup();
     const props = createMinimalProps();
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -458,7 +466,7 @@ describe("TaskDetailSidebar", () => {
     const user = userEvent.setup();
     const onDeleteTask = vi.fn().mockResolvedValue(undefined);
     const props = createMinimalProps({ onDeleteTask });
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -470,7 +478,7 @@ describe("TaskDetailSidebar", () => {
 
   it("does not render actions menu when task is done", () => {
     const props = createMinimalProps({ isDoneTask: true });
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -480,7 +488,7 @@ describe("TaskDetailSidebar", () => {
   it("closes actions menu on outside click", async () => {
     const user = userEvent.setup();
     const props = createMinimalProps();
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -498,7 +506,7 @@ describe("TaskDetailSidebar", () => {
       artifactsSectionExpanded: true,
     });
 
-    const { container } = renderWithProviders(<TaskDetailSidebar {...props} />, {
+    const { container } = renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -525,7 +533,7 @@ describe("TaskDetailSidebar", () => {
       agentOutput: ["Hello **world**"],
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -544,7 +552,7 @@ describe("TaskDetailSidebar", () => {
       agentOutput: ["**Bold text** and `inline code`\n\n```\ncode block\n```"],
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -563,7 +571,7 @@ describe("TaskDetailSidebar", () => {
       agentOutput: ["```\ncode\n```"],
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -593,7 +601,7 @@ describe("TaskDetailSidebar", () => {
       ],
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -637,7 +645,7 @@ describe("TaskDetailSidebar", () => {
       ],
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -653,7 +661,7 @@ describe("TaskDetailSidebar", () => {
       agentOutput: ["Line 1\n", "Line 2\n", "Line 3\n"],
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -678,7 +686,7 @@ describe("TaskDetailSidebar", () => {
       agentOutput: ["Line 1\n", "Line 2\n", "Line 3\n"],
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -718,7 +726,7 @@ describe("TaskDetailSidebar", () => {
       isDoneTask: false,
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -730,7 +738,7 @@ describe("TaskDetailSidebar", () => {
   it("shows connecting state when wsConnected is false and task is not done", () => {
     const props = createMinimalProps({ wsConnected: false, isDoneTask: false });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -741,7 +749,7 @@ describe("TaskDetailSidebar", () => {
   it("shows task detail error when taskDetailError is set", () => {
     const props = createMinimalProps({ taskDetailError: "Network error" });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -784,7 +792,7 @@ describe("TaskDetailSidebar", () => {
       descriptionSectionExpanded: true,
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -816,7 +824,7 @@ describe("TaskDetailSidebar", () => {
       descriptionSectionExpanded: true,
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -846,7 +854,7 @@ describe("TaskDetailSidebar", () => {
       descriptionSectionExpanded: true,
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -894,7 +902,7 @@ describe("TaskDetailSidebar", () => {
       descriptionSectionExpanded: true,
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -946,7 +954,7 @@ describe("TaskDetailSidebar", () => {
       descriptionSectionExpanded: true,
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -991,7 +999,7 @@ describe("TaskDetailSidebar", () => {
       descriptionSectionExpanded: true,
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -1069,7 +1077,7 @@ describe("TaskDetailSidebar", () => {
       descriptionSectionExpanded: true,
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -1096,7 +1104,7 @@ describe("TaskDetailSidebar", () => {
   describe("Add link", () => {
     it("shows Add link button in Execute sidebar", () => {
       const props = createMinimalProps({ tasks: [{ id: "epic-1.2", title: "Task B" }] });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       expect(screen.getByTestId("sidebar-add-link-btn")).toBeInTheDocument();
@@ -1139,7 +1147,7 @@ describe("TaskDetailSidebar", () => {
           },
         ],
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       await user.click(screen.getByTestId("sidebar-add-link-btn"));
@@ -1159,7 +1167,7 @@ describe("TaskDetailSidebar", () => {
     it("cancel dismisses Add link flow without changes", async () => {
       const user = userEvent.setup();
       const props = createMinimalProps({ tasks: [{ id: "epic-1.2", title: "Task B" }] });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       await user.click(screen.getByTestId("sidebar-add-link-btn"));
@@ -1221,7 +1229,7 @@ describe("TaskDetailSidebar", () => {
           },
         ],
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       await user.click(screen.getByTestId("sidebar-add-link-btn"));
@@ -1303,7 +1311,7 @@ describe("TaskDetailSidebar", () => {
           taskC,
         ],
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       await user.click(screen.getByTestId("sidebar-add-link-btn"));
@@ -1380,7 +1388,7 @@ describe("TaskDetailSidebar", () => {
           taskC,
         ],
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       await user.click(screen.getByTestId("sidebar-add-link-btn"));
@@ -1452,7 +1460,7 @@ describe("TaskDetailSidebar", () => {
           },
         ],
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       await user.click(screen.getByTestId("sidebar-add-link-btn"));
@@ -1484,7 +1492,7 @@ describe("TaskDetailSidebar", () => {
       },
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -1513,7 +1521,7 @@ describe("TaskDetailSidebar", () => {
       },
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -1543,7 +1551,7 @@ describe("TaskDetailSidebar", () => {
       const props = createMinimalProps({
         selectedTaskData: { ...taskDetailWithPriority(1), status: "open" as const },
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       expect(screen.getByTestId("priority-dropdown-trigger")).toBeInTheDocument();
@@ -1554,7 +1562,7 @@ describe("TaskDetailSidebar", () => {
       const props = createMinimalProps({
         selectedTaskData: taskDetailWithPriority(1),
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       const trigger = screen.getByTestId("priority-dropdown-trigger");
@@ -1567,7 +1575,7 @@ describe("TaskDetailSidebar", () => {
       const props = createMinimalProps({
         selectedTaskData: taskDetailWithPriority(1),
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       const trigger = screen.getByTestId("priority-dropdown-trigger");
@@ -1579,7 +1587,7 @@ describe("TaskDetailSidebar", () => {
       const props = createMinimalProps({
         selectedTaskData: taskDetailWithPriority(2),
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       await user.click(screen.getByTestId("priority-dropdown-trigger"));
@@ -1595,7 +1603,7 @@ describe("TaskDetailSidebar", () => {
       const props = createMinimalProps({
         selectedTaskData: taskDetailWithPriority(2),
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       await user.click(screen.getByTestId("priority-dropdown-trigger"));
@@ -1618,7 +1626,7 @@ describe("TaskDetailSidebar", () => {
       const props = createMinimalProps({
         selectedTaskData: taskDetailWithPriority(1),
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       await user.click(screen.getByTestId("priority-dropdown-trigger"));
@@ -1633,7 +1641,7 @@ describe("TaskDetailSidebar", () => {
         selectedTaskData: taskDetailWithPriority(1),
         priorityUpdateLoading: true,
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       const trigger = screen.getByTestId("priority-dropdown-trigger");
@@ -1647,7 +1655,7 @@ describe("TaskDetailSidebar", () => {
       const props = createMinimalProps({
         selectedTaskData: taskDetailWithPriority(2),
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       await user.click(screen.getByTestId("priority-dropdown-trigger"));
@@ -1660,7 +1668,7 @@ describe("TaskDetailSidebar", () => {
       const props = createMinimalProps({
         selectedTaskData: taskDetailWithPriority(2),
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       await user.click(screen.getByTestId("priority-dropdown-trigger"));
@@ -1678,7 +1686,7 @@ describe("TaskDetailSidebar", () => {
         },
         isDoneTask: true,
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       expect(screen.getByTestId("priority-read-only")).toBeInTheDocument();
@@ -1697,7 +1705,7 @@ describe("TaskDetailSidebar", () => {
         },
         isDoneTask: true,
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       const readOnly = screen.getByTestId("priority-read-only");
@@ -1716,12 +1724,14 @@ describe("TaskDetailSidebar", () => {
       );
       const { rerender } = render(
         wrapWithProviders(
-          <TaskDetailSidebar
-            {...createMinimalProps({
-              selectedTaskData: { ...taskDetail, kanbanColumn: "in_progress" as const },
-              isDoneTask: false,
-            })}
-          />,
+          <MemoryRouter>
+            <TaskDetailSidebar
+              {...createMinimalProps({
+                selectedTaskData: { ...taskDetail, kanbanColumn: "in_progress" as const },
+                isDoneTask: false,
+              })}
+            />
+          </MemoryRouter>,
           { store }
         )
       );
@@ -1729,16 +1739,18 @@ describe("TaskDetailSidebar", () => {
 
       rerender(
         wrapWithProviders(
-          <TaskDetailSidebar
-            {...createMinimalProps({
-              selectedTaskData: {
-                ...taskDetail,
-                kanbanColumn: "done" as const,
-                status: "closed" as const,
-              },
-              isDoneTask: true,
-            })}
-          />,
+          <MemoryRouter>
+            <TaskDetailSidebar
+              {...createMinimalProps({
+                selectedTaskData: {
+                  ...taskDetail,
+                  kanbanColumn: "done" as const,
+                  status: "closed" as const,
+                },
+                isDoneTask: true,
+              })}
+            />
+          </MemoryRouter>,
           { store }
         )
       );
@@ -1771,7 +1783,11 @@ describe("TaskDetailSidebar", () => {
           taskDetailLoading: loading,
           taskDetailError: error,
         });
-        return <TaskDetailSidebar {...props} />;
+        return (
+          <MemoryRouter>
+            <TaskDetailSidebar {...props} />
+          </MemoryRouter>
+        );
       }
       render(wrapWithProviders(<Wrapper />, { store }));
       expect(screen.getByTestId("priority-dropdown-trigger")).toHaveTextContent("High");
@@ -1795,7 +1811,7 @@ describe("TaskDetailSidebar", () => {
           complexity: 3,
         },
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       const complexity = screen.getByTestId("task-complexity");
@@ -1811,7 +1827,7 @@ describe("TaskDetailSidebar", () => {
           complexity: 7,
         },
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       const complexity = screen.getByTestId("task-complexity");
@@ -1827,7 +1843,7 @@ describe("TaskDetailSidebar", () => {
           complexity: undefined,
         },
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       const complexity = screen.getByTestId("task-complexity");
@@ -1842,7 +1858,7 @@ describe("TaskDetailSidebar", () => {
           complexity: 5,
         },
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       const complexity = screen.getByTestId("task-complexity");
@@ -1856,7 +1872,7 @@ describe("TaskDetailSidebar", () => {
           complexity: 1,
         },
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       const complexity = screen.getByTestId("task-complexity");
@@ -1870,7 +1886,7 @@ describe("TaskDetailSidebar", () => {
           complexity: 10,
         },
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       const complexity = screen.getByTestId("task-complexity");
@@ -1884,7 +1900,7 @@ describe("TaskDetailSidebar", () => {
           complexity: undefined,
         },
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       const complexity = screen.getByTestId("task-complexity");
@@ -1898,7 +1914,7 @@ describe("TaskDetailSidebar", () => {
           complexity: 7,
         },
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       const row = screen.getByTestId("task-detail-priority-state-row");
@@ -1920,7 +1936,7 @@ describe("TaskDetailSidebar", () => {
           completedAt: "2026-02-16T12:05:30.000Z",
         },
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       const duration = screen.getByTestId("task-duration");
@@ -1938,7 +1954,7 @@ describe("TaskDetailSidebar", () => {
           completedAt: null,
         },
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       expect(screen.queryByTestId("task-duration")).not.toBeInTheDocument();
@@ -1955,7 +1971,7 @@ describe("TaskDetailSidebar", () => {
           completedAt: null,
         },
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       expect(screen.queryByTestId("task-duration")).not.toBeInTheDocument();
@@ -1972,7 +1988,7 @@ describe("TaskDetailSidebar", () => {
           completedAt: "2026-02-16T12:05:30.000Z",
         },
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       expect(screen.queryByTestId("task-duration")).not.toBeInTheDocument();
@@ -2000,7 +2016,7 @@ describe("TaskDetailSidebar", () => {
       const props = createMinimalProps({
         selectedTaskData: taskDetailWithPriority(1),
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       const row = screen.getByTestId("task-detail-priority-state-row");
@@ -2015,7 +2031,7 @@ describe("TaskDetailSidebar", () => {
         const props = createMinimalProps({
           selectedTaskData: taskDetailWithPriority(p),
         });
-        const { unmount } = renderWithProviders(<TaskDetailSidebar {...props} />, {
+        const { unmount } = renderSidebar(props, {
           preloadedState: defaultPreloadedState,
         });
         const row = screen.getByTestId("task-detail-priority-state-row");
@@ -2041,7 +2057,7 @@ describe("TaskDetailSidebar", () => {
         ],
         taskIdToStartedAt: { "epic-1.1": startedAt },
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       const callout = screen.getByTestId("task-detail-active-callout");
@@ -2065,7 +2081,7 @@ describe("TaskDetailSidebar", () => {
         ],
         taskIdToStartedAt: { "epic-1.1": startedAt },
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       const callout = screen.getByTestId("task-detail-active-callout");
@@ -2085,7 +2101,7 @@ describe("TaskDetailSidebar", () => {
         ],
         taskIdToStartedAt: {},
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       const callout = screen.getByTestId("task-detail-active-callout");
@@ -2096,7 +2112,7 @@ describe("TaskDetailSidebar", () => {
       const props = createMinimalProps({
         selectedTaskData: taskDetailWithPriority(1),
       });
-      renderWithProviders(<TaskDetailSidebar {...props} />, {
+      renderSidebar(props, {
         preloadedState: defaultPreloadedState,
       });
       const row = screen.getByTestId("task-detail-priority-state-row");
@@ -2136,7 +2152,7 @@ describe("TaskDetailSidebar", () => {
       artifactsSectionExpanded: true,
     });
 
-    const { container } = renderWithProviders(<TaskDetailSidebar {...props} />, {
+    const { container } = renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -2171,7 +2187,7 @@ describe("TaskDetailSidebar", () => {
       artifactsSectionExpanded: true,
     });
 
-    const { container } = renderWithProviders(<TaskDetailSidebar {...props} />, {
+    const { container } = renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -2215,7 +2231,7 @@ describe("TaskDetailSidebar", () => {
       artifactsSectionExpanded: true,
     });
 
-    const { container } = renderWithProviders(<TaskDetailSidebar {...props} />, {
+    const { container } = renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -2316,7 +2332,7 @@ describe("TaskDetailSidebar", () => {
       artifactsSectionExpanded: true,
     });
 
-    const { container } = renderWithProviders(<TaskDetailSidebar {...props} />, {
+    const { container } = renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -2364,7 +2380,7 @@ describe("TaskDetailSidebar", () => {
       artifactsSectionExpanded: false,
     });
 
-    const { container } = renderWithProviders(<TaskDetailSidebar {...props} />, {
+    const { container } = renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -2414,7 +2430,7 @@ describe("TaskDetailSidebar", () => {
       setArtifactsSectionExpanded,
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -2468,7 +2484,7 @@ describe("TaskDetailSidebar", () => {
       artifactsSectionExpanded: true,
     });
 
-    const { container } = renderWithProviders(<TaskDetailSidebar {...props} />, {
+    const { container } = renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -2507,7 +2523,7 @@ describe("TaskDetailSidebar", () => {
       artifactsSectionExpanded: true,
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -2582,7 +2598,7 @@ describe("TaskDetailSidebar", () => {
       },
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -2642,7 +2658,7 @@ describe("TaskDetailSidebar", () => {
       artifactsSectionExpanded: true,
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -2683,7 +2699,7 @@ describe("TaskDetailSidebar", () => {
       artifactsSectionExpanded: true,
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -2727,7 +2743,7 @@ describe("TaskDetailSidebar", () => {
     });
 
     const user = userEvent.setup();
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 
@@ -2774,7 +2790,7 @@ describe("TaskDetailSidebar", () => {
       artifactsSectionExpanded: true,
     });
 
-    renderWithProviders(<TaskDetailSidebar {...props} />, {
+    renderSidebar(props, {
       preloadedState: defaultPreloadedState,
     });
 

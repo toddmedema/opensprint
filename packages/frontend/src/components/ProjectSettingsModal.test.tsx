@@ -297,7 +297,7 @@ describe("ProjectSettingsModal", () => {
     );
   });
 
-  it("shows review angles multi-select and persists selection", async () => {
+  it("shows review agents multi-select and persists selection", async () => {
     mockGetSettings.mockResolvedValue({ ...mockSettings, reviewAngles: undefined });
 
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
@@ -307,10 +307,11 @@ describe("ProjectSettingsModal", () => {
     await userEvent.click(agentConfigTab);
 
     await screen.findByText("Code Review");
-    expect(screen.getByTestId("review-angles-multiselect")).toBeInTheDocument();
+    expect(screen.getByText("Review agents")).toBeInTheDocument();
+    expect(screen.getByTestId("review-agents-multiselect")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Leave empty for one general review. Select one or more angles for parallel angle-specific reviews."
+        "Leave empty for one general review. Select one or more for parallel agent-specific reviews."
       )
     ).toBeInTheDocument();
     expect(screen.getByText("Security implications")).toBeInTheDocument();
@@ -329,7 +330,7 @@ describe("ProjectSettingsModal", () => {
     );
   });
 
-  it("shows pre-selected review angles when settings have them", async () => {
+  it("shows pre-selected review agents when settings have them", async () => {
     mockGetSettings.mockResolvedValue({
       ...mockSettings,
       reviewAngles: ["security", "test_coverage"],
@@ -350,7 +351,7 @@ describe("ProjectSettingsModal", () => {
     expect(testCoverageCheckbox).toBeChecked();
   });
 
-  it("review angle checkboxes have no visible border", async () => {
+  it("review agent checkboxes have no visible border", async () => {
     mockGetSettings.mockResolvedValue({ ...mockSettings, reviewAngles: undefined });
 
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);

@@ -723,15 +723,15 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-theme-muted mb-2">
-                          Review angles
+                          Review agents
                         </label>
                         <p className="text-xs text-theme-muted mb-2">
-                          Leave empty for one general review. Select one or more angles for parallel
-                          angle-specific reviews.
+                          Leave empty for one general review. Select one or more for parallel
+                          agent-specific reviews.
                         </p>
                         <div
                           className="flex flex-wrap gap-2"
-                          data-testid="review-angles-multiselect"
+                          data-testid="review-agents-multiselect"
                         >
                           {REVIEW_ANGLE_OPTIONS.map((opt) => {
                             const selected = (settings?.reviewAngles ?? []).includes(opt.value);

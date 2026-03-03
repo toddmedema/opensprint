@@ -1,7 +1,9 @@
 import React, { useEffect, useRef } from "react";
+import { Link } from "react-router-dom";
 import { useAppDispatch } from "../../store";
 import { addNotification } from "../../store/slices/notificationSlice";
 import { useFeedbackItem } from "../../api/hooks";
+import { getProjectPhasePath } from "../../lib/phaseRouting";
 import { CollapsibleSection } from "./CollapsibleSection";
 
 function SourceFeedbackSectionInner({
@@ -78,6 +80,13 @@ function SourceFeedbackSectionInner({
             <p className="text-theme-text whitespace-pre-wrap break-words min-w-0">
               {feedback.text ?? "(No feedback text)"}
             </p>
+            <Link
+              to={getProjectPhasePath(projectId, "eval", { feedback: feedbackId })}
+              className="text-xs text-brand-600 hover:text-brand-700 hover:underline"
+              data-testid="source-feedback-view-in-eval-link"
+            >
+              View feedback in Evaluate
+            </Link>
           </div>
         </div>
       ) : null}
