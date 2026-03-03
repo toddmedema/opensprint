@@ -35,10 +35,12 @@ import { useImageAttachment } from "../../hooks/useImageAttachment";
 import { useScrollToQuestion } from "../../hooks/useScrollToQuestion";
 import { useOpenQuestionNotifications } from "../../hooks/useOpenQuestionNotifications";
 import { HilApprovalBlock } from "../../components/HilApprovalBlock";
+import { OpenQuestionsBlock } from "../../components/OpenQuestionsBlock";
 import { ImageAttachmentThumbnails, ImageAttachmentButton } from "../../components/ImageAttachment";
 import { CommentIcon } from "../../components/icons/PrdIcons";
 import { api } from "../../api/client";
 import { isApiError } from "../../api/client";
+import { isNotificationManagedAgentFailure } from "../../lib/agentApiError";
 
 /* ── Types ──────────────────────────────────────────────── */
 
@@ -197,6 +199,12 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
       openQuestionNotifications.find(
         (n) => n.source === "prd" && n.sourceId === "architecture" && n.kind === "hil_approval"
       ),
+    [openQuestionNotifications]
+  );
+  const prdApiBlockedNotification = React.useMemo(
+    () =>
+      openQuestionNotifications.find((n) => n.source === "prd" && n.kind === "api_blocked") ??
+      null,
     [openQuestionNotifications]
   );
   const questionIdBySection = React.useMemo(() => {
@@ -454,12 +462,23 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
       await api.prd.generateFromCodebase(projectId);
       triggerRefreshCascade();
     } catch (err) {
-      const message = isApiError(err) ? err.message : String(err);
-      dispatch(setSketchError(message));
+      if (isNotificationManagedAgentFailure(err)) {
+        refetchNotifications();
+      } else {
+        const message = isApiError(err) ? err.message : String(err);
+        dispatch(setSketchError(message));
+      }
     } finally {
       setGeneratingFromCodebase(false);
     }
-  }, [projectId, generatingFromCodebase, sending, dispatch, triggerRefreshCascade]);
+  }, [
+    projectId,
+    generatingFromCodebase,
+    sending,
+    dispatch,
+    refetchNotifications,
+    triggerRefreshCascade,
+  ]);
 
   const handleChatSend = useCallback(
     async (text: string) => {
@@ -582,6 +601,18 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
                 ? "Open Sprint is scanning your repo and drafting a product requirements document."
                 : "This may take a moment while Open Sprint crafts your product requirements"}
             </p>
+          </div>
+        )}
+
+        {prdApiBlockedNotification && (
+          <div className="w-full max-w-2xl mb-4">
+            <OpenQuestionsBlock
+              notification={prdApiBlockedNotification}
+              projectId={projectId}
+              source="prd"
+              sourceId={prdApiBlockedNotification.sourceId}
+              onResolved={refetchNotifications}
+            />
           </div>
         )}
 
@@ -757,6 +788,17 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
                 projectId={projectId}
                 onResolved={refetchNotifications}
                 hideDiffInBlock
+              />
+            </div>
+          )}
+          {prdApiBlockedNotification && (
+            <div className="mb-4">
+              <OpenQuestionsBlock
+                notification={prdApiBlockedNotification}
+                projectId={projectId}
+                source="prd"
+                sourceId={prdApiBlockedNotification.sourceId}
+                onResolved={refetchNotifications}
               />
             </div>
           )}

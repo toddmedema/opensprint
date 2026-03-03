@@ -4,9 +4,16 @@ export interface RepositoryStepProps {
   onBrowse: () => void;
   /** When true, shows "Project files will be created in this folder" (Create New flow) */
   createNewMode?: boolean;
+  validationMessage?: string | null;
 }
 
-export function RepositoryStep({ value, onChange, onBrowse, createNewMode }: RepositoryStepProps) {
+export function RepositoryStep({
+  value,
+  onChange,
+  onBrowse,
+  createNewMode,
+  validationMessage,
+}: RepositoryStepProps) {
   const helperText = createNewMode
     ? "Project files will be created in this folder"
     : "Absolute path where the project repo will be created";
@@ -47,6 +54,11 @@ export function RepositoryStep({ value, onChange, onBrowse, createNewMode }: Rep
         <p className="mt-1 text-xs text-theme-muted" data-testid="repository-step-helper">
           {helperText}
         </p>
+        {validationMessage && (
+          <p className="mt-2 text-xs text-theme-error-text" data-testid="repository-step-error">
+            {validationMessage}
+          </p>
+        )}
       </div>
     </div>
   );

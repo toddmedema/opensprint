@@ -9,6 +9,7 @@ import { API_PREFIX } from "@opensprint/shared";
 import { setEnvPathForTesting } from "../routes/env.js";
 import { errorHandler } from "../middleware/error-handler.js";
 import { getGlobalSettings, setGlobalSettings } from "../services/global-settings.service.js";
+import { setBackendRuntimeInfoForTesting } from "../utils/runtime-info.js";
 
 const mockValidateApiKey = vi.fn();
 
@@ -68,6 +69,7 @@ describe("Env API", () => {
 
   afterEach(() => {
     setEnvPathForTesting(null);
+    setBackendRuntimeInfoForTesting(null);
     process.env.HOME = originalHome;
     try {
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -265,6 +267,46 @@ describe("Env API", () => {
       const res = await request(app).get(`${API_PREFIX}/env/keys`);
       expect(res.status).toBe(200);
       expect(res.body.data.useCustomCli).toBe(true);
+    });
+  });
+
+  describe("GET /env/runtime", () => {
+    it("returns native Linux runtime info", async () => {
+      setBackendRuntimeInfoForTesting({
+        platform: "linux",
+        isWsl: false,
+        wslDistroName: null,
+        repoPathPolicy: "any",
+      });
+
+      const res = await request(app).get(`${API_PREFIX}/env/runtime`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual({
+        platform: "linux",
+        isWsl: false,
+        wslDistroName: null,
+        repoPathPolicy: "any",
+      });
+    });
+
+    it("returns WSL runtime info with distro name", async () => {
+      setBackendRuntimeInfoForTesting({
+        platform: "linux",
+        isWsl: true,
+        wslDistroName: "Ubuntu",
+        repoPathPolicy: "linux_fs_only",
+      });
+
+      const res = await request(app).get(`${API_PREFIX}/env/runtime`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual({
+        platform: "linux",
+        isWsl: true,
+        wslDistroName: "Ubuntu",
+        repoPathPolicy: "linux_fs_only",
+      });
     });
   });
 

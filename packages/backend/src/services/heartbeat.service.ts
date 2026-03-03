@@ -8,7 +8,7 @@ const log = createLogger("heartbeat");
 
 /** Heartbeat file contents written during agent execution */
 export interface HeartbeatData {
-  pid: number;
+  processGroupLeaderPid: number;
   lastOutputTimestamp: number;
   heartbeatTimestamp: number;
 }
@@ -50,7 +50,7 @@ export class HeartbeatService {
       const raw = await fs.readFile(heartbeatPath, "utf-8");
       const data = JSON.parse(raw) as HeartbeatData;
       if (
-        typeof data.pid === "number" &&
+        typeof data.processGroupLeaderPid === "number" &&
         typeof data.lastOutputTimestamp === "number" &&
         typeof data.heartbeatTimestamp === "number"
       ) {

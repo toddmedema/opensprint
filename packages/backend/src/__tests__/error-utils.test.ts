@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   getErrorMessage,
+  getAgentApiFailureDetails,
   isLimitError,
   isAuthError,
   isOutOfCreditError,
@@ -273,6 +274,21 @@ describe("isOutOfCreditError", () => {
 });
 
 describe("classifyAgentApiError", () => {
+  it("prefers structured agent api failure details when present", () => {
+    const details = {
+      kind: "rate_limit",
+      agentType: "google",
+      raw: "RESOURCE_EXHAUSTED",
+      userMessage: "Google Gemini hit a rate limit.",
+      notificationMessage: "Google Gemini hit a rate limit.",
+      isLimitError: true,
+      allKeysExhausted: true,
+    } as const;
+
+    expect(getAgentApiFailureDetails({ details })).toEqual(details);
+    expect(classifyAgentApiError({ details })).toBe("rate_limit");
+  });
+
   it("returns auth for invalid token errors", () => {
     expect(classifyAgentApiError(new Error("Invalid API key"))).toBe("auth");
     expect(classifyAgentApiError({ status: 401 })).toBe("auth");

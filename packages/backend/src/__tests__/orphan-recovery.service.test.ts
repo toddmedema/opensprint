@@ -256,7 +256,7 @@ describe("OrphanRecoveryService", () => {
       await fs.writeFile(
         path.join(wtPath, ".opensprint", "active", taskId, "heartbeat.json"),
         JSON.stringify({
-          pid: 12345,
+          processGroupLeaderPid: 12345,
           lastOutputTimestamp: 0,
           heartbeatTimestamp: Date.now() - 3 * 60 * 1000, // 3 min ago
         })
@@ -285,7 +285,7 @@ describe("OrphanRecoveryService", () => {
       await fs.writeFile(
         path.join(wtPath, ".opensprint", "active", taskId, "heartbeat.json"),
         JSON.stringify({
-          pid: 1,
+          processGroupLeaderPid: 1,
           lastOutputTimestamp: 0,
           heartbeatTimestamp: Date.now() - 3 * 60 * 1000,
         })

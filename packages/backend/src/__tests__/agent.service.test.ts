@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { AgentService } from "../services/agent.service.js";
+import { AgentService, createProcessGroupHandle } from "../services/agent.service.js";
 import type { AgentConfig } from "@opensprint/shared";
 
 const { mockSpawnWithTaskFile } = vi.hoisted(() => ({
@@ -127,6 +127,46 @@ describe("AgentService", () => {
         undefined,
         undefined
       );
+    });
+  });
+
+  describe("createProcessGroupHandle", () => {
+    it("sends SIGTERM to the detached process group and escalates to SIGKILL", () => {
+      vi.useFakeTimers();
+      const mockKill = vi.spyOn(process, "kill").mockImplementation(() => true);
+
+      const handle = createProcessGroupHandle(7777);
+      handle.kill();
+
+      expect(mockKill).toHaveBeenCalledWith(-7777, "SIGTERM");
+
+      vi.advanceTimersByTime(5000);
+
+      const sigkillCalls = mockKill.mock.calls.filter((call) => call[1] === "SIGKILL");
+      expect(sigkillCalls).toContainEqual([-7777, "SIGKILL"]);
+
+      mockKill.mockRestore();
+      vi.useRealTimers();
+    });
+
+    it("falls back to positive PID signals on Windows", () => {
+      vi.useFakeTimers();
+      const platformSpy = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+      const mockKill = vi.spyOn(process, "kill").mockImplementation(() => true);
+
+      const handle = createProcessGroupHandle(8888);
+      handle.kill();
+
+      expect(mockKill).toHaveBeenCalledWith(8888, "SIGTERM");
+
+      vi.advanceTimersByTime(5000);
+
+      const sigkillCalls = mockKill.mock.calls.filter((call) => call[1] === "SIGKILL");
+      expect(sigkillCalls).toContainEqual([8888, "SIGKILL"]);
+
+      mockKill.mockRestore();
+      platformSpy.mockRestore();
+      vi.useRealTimers();
     });
   });
 

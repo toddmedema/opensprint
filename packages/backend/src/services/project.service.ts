@@ -45,6 +45,7 @@ import * as projectIndex from "./project-index.js";
 import { parseAgentConfig, type AgentConfigInput } from "../schemas/agent-config.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { createLogger } from "../utils/logger.js";
+import { assertSupportedRepoPath } from "../utils/repo-path-policy.js";
 import { classifyInitError, attemptRecovery } from "./scaffold-recovery.service.js";
 
 const execAsync = promisify(exec);
@@ -219,6 +220,7 @@ export class ProjectService {
     if (!repoPath) {
       throw new AppError(400, ErrorCodes.INVALID_INPUT, "Project folder is required");
     }
+    assertSupportedRepoPath(repoPath);
 
     // Validate agent config schema (accept new or legacy keys)
     const simpleInput = input.simpleComplexityAgent ?? input.lowComplexityAgent;
@@ -488,6 +490,7 @@ export class ProjectService {
     }
 
     const repoPath = path.resolve(parentPath);
+    assertSupportedRepoPath(repoPath);
     const agentConfig = (input.simpleComplexityAgent ??
       DEFAULT_AGENT_CONFIG) as AgentConfigInput & {
       type: "cursor" | "claude" | "claude-cli" | "custom";
@@ -715,6 +718,9 @@ export class ProjectService {
   ): Promise<{ project: Project; repoPathChanged: boolean }> {
     const project = await this.getProject(id);
     const repoPathChanged = updates.repoPath !== undefined && updates.repoPath !== project.repoPath;
+    if (repoPathChanged && updates.repoPath) {
+      assertSupportedRepoPath(updates.repoPath);
+    }
     const updated = { ...project, ...updates, updatedAt: new Date().toISOString() };
 
     // Update global index if name or repoPath changed

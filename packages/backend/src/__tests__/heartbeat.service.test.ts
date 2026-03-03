@@ -25,7 +25,7 @@ describe("HeartbeatService", () => {
     it("writes heartbeat file with correct structure", async () => {
       const taskId = "task-1";
       const data: HeartbeatData = {
-        pid: 12345,
+        processGroupLeaderPid: 12345,
         lastOutputTimestamp: 1000,
         heartbeatTimestamp: 2000,
       };
@@ -43,7 +43,7 @@ describe("HeartbeatService", () => {
     it("reads valid heartbeat", async () => {
       const taskId = "task-2";
       const data: HeartbeatData = {
-        pid: 999,
+        processGroupLeaderPid: 999,
         lastOutputTimestamp: 5000,
         heartbeatTimestamp: 6000,
       };
@@ -76,7 +76,7 @@ describe("HeartbeatService", () => {
       await fs.mkdir(dir, { recursive: true });
       await fs.writeFile(
         path.join(dir, "heartbeat.json"),
-        JSON.stringify({ pid: 1 }) // missing lastOutputTimestamp, heartbeatTimestamp
+        JSON.stringify({ processGroupLeaderPid: 1 }) // missing lastOutputTimestamp, heartbeatTimestamp
       );
 
       const result = await heartbeatService.readHeartbeat(tmpDir, taskId);
@@ -87,7 +87,7 @@ describe("HeartbeatService", () => {
   describe("isStale", () => {
     it("returns true when heartbeat is older than maxAge", () => {
       const heartbeat: HeartbeatData = {
-        pid: 1,
+        processGroupLeaderPid: 1,
         lastOutputTimestamp: 0,
         heartbeatTimestamp: Date.now() - HEARTBEAT_STALE_MS - 1000,
       };
@@ -96,7 +96,7 @@ describe("HeartbeatService", () => {
 
     it("returns false when heartbeat is recent", () => {
       const heartbeat: HeartbeatData = {
-        pid: 1,
+        processGroupLeaderPid: 1,
         lastOutputTimestamp: Date.now(),
         heartbeatTimestamp: Date.now(),
       };
@@ -105,7 +105,7 @@ describe("HeartbeatService", () => {
 
     it("respects custom maxAgeMs", () => {
       const heartbeat: HeartbeatData = {
-        pid: 1,
+        processGroupLeaderPid: 1,
         lastOutputTimestamp: 0,
         heartbeatTimestamp: Date.now() - 5000,
       };
@@ -118,7 +118,7 @@ describe("HeartbeatService", () => {
     it("removes heartbeat file", async () => {
       const taskId = "task-delete";
       await heartbeatService.writeHeartbeat(tmpDir, taskId, {
-        pid: 1,
+        processGroupLeaderPid: 1,
         lastOutputTimestamp: 0,
         heartbeatTimestamp: Date.now(),
       });
@@ -147,7 +147,7 @@ describe("HeartbeatService", () => {
       await fs.writeFile(
         path.join(task1Dir, ".opensprint", "active", "task-stale", "heartbeat.json"),
         JSON.stringify({
-          pid: 1,
+          processGroupLeaderPid: 1,
           lastOutputTimestamp: 0,
           heartbeatTimestamp: Date.now() - HEARTBEAT_STALE_MS - 1000,
         })
@@ -161,7 +161,7 @@ describe("HeartbeatService", () => {
       await fs.writeFile(
         path.join(task2Dir, ".opensprint", "active", "task-fresh", "heartbeat.json"),
         JSON.stringify({
-          pid: 2,
+          processGroupLeaderPid: 2,
           lastOutputTimestamp: Date.now(),
           heartbeatTimestamp: Date.now(),
         })

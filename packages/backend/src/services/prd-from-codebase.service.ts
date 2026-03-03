@@ -88,10 +88,18 @@ Output PRD_UPDATE blocks for each section you can derive.`;
     } catch (error) {
       const msg = getErrorMessage(error);
       log.error("PRD from codebase agent failed", { projectId, error });
+      if (error instanceof AppError) {
+        throw new AppError(
+          error.statusCode,
+          error.code,
+          `The planning agent could not generate a PRD from the codebase. ${error.message}`,
+          error.details
+        );
+      }
       throw new AppError(
         502,
         ErrorCodes.AGENT_INVOKE_FAILED,
-        `The planning agent could not generate a PRD from the codebase: ${msg}`
+        `The planning agent could not generate a PRD from the codebase. ${msg}`
       );
     }
 

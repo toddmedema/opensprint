@@ -8,8 +8,6 @@ import { createApp } from "./app.js";
 config({ path: path.resolve(process.cwd(), ".env") });
 config({ path: path.resolve(process.cwd(), "../.env") });
 config({ path: path.resolve(process.cwd(), "../../.env") });
-
-import { exec } from "child_process";
 import {
   setupWebSocket,
   closeWebSocket,
@@ -41,6 +39,7 @@ import { createLogger } from "./utils/logger.js";
 import { initAppDb } from "./db/app-db.js";
 import type { AppDb } from "./db/app-db.js";
 import { databaseRuntime } from "./services/database-runtime.service.js";
+import { openBrowser } from "./utils/open-browser.js";
 
 const logStartup = createLogger("startup");
 const logOrchestrator = createLogger("orchestrator");
@@ -369,10 +368,13 @@ server.listen(port, () => {
     if (hasClientConnected()) return;
     const url = `http://localhost:${FRONTEND_PORT}`;
     logStartup.info("No WebSocket client connected — opening frontend", { url });
-    const cmd =
-      process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-    exec(`${cmd} ${url}`, (err) => {
-      if (err) logStartup.warn("Could not open browser", { err: err.message });
+    void openBrowser(url).then((result) => {
+      if (result.status === "failed") {
+        logStartup.warn("Could not open browser", { url, err: result.error });
+      }
+      if (result.status === "logged") {
+        logStartup.info("Open the frontend manually if it did not launch automatically", { url });
+      }
     });
   }, 15_000);
 });

@@ -10,10 +10,18 @@ import {
   SimplifiedAgentsStep,
 } from "../components/ProjectSetupWizard";
 import type { ProjectMetadataState } from "../components/ProjectSetupWizard";
-import type { AgentType, Project, ScaffoldRecoveryInfo } from "@opensprint/shared";
+import type {
+  AgentType,
+  EnvRuntimeResponse,
+  Project,
+  ScaffoldRecoveryInfo,
+} from "@opensprint/shared";
+import {
+  isWindowsMountedWslPath,
+  UNSUPPORTED_WSL_REPO_PATH_MESSAGE,
+} from "@opensprint/shared";
 import { api, ApiError } from "../api/client";
 import { getDefaultProviderFromEnvKeys } from "../utils/agentConfigDefaults";
-import { getPlatformFamily } from "../utils/platform";
 import { getRunInstructions } from "../utils/runInstructions";
 
 type Step = "basics" | "agents" | "scaffold";
@@ -66,11 +74,24 @@ export function CreateNewProjectPage() {
   const [scaffoldError, setScaffoldError] = useState<string | null>(null);
   const [scaffoldRecovery, setScaffoldRecovery] = useState<ScaffoldRecoveryInfo | null>(null);
   const [scaffoldedProject, setScaffoldedProject] = useState<Project | null>(null);
+  const [backendRuntime, setBackendRuntime] = useState<EnvRuntimeResponse | null>(null);
 
   const currentStepIndex = STEPS.findIndex((s) => s.key === step);
-  const runInstructions = scaffoldedProject
-    ? getRunInstructions(scaffoldedProject.repoPath, getPlatformFamily())
-    : null;
+  const repoPathValidationMessage =
+    backendRuntime?.isWsl && isWindowsMountedWslPath(parentPath.trim())
+      ? UNSUPPORTED_WSL_REPO_PATH_MESSAGE
+      : null;
+  const runInstructions =
+    scaffoldedProject && backendRuntime
+      ? getRunInstructions(scaffoldedProject.repoPath, backendRuntime)
+      : null;
+
+  useEffect(() => {
+    api.env
+      .getRuntime()
+      .then((runtime) => setBackendRuntime(runtime))
+      .catch(() => setBackendRuntime(null));
+  }, []);
 
   useEffect(() => {
     if (step !== "agents") return;
@@ -85,8 +106,18 @@ export function CreateNewProjectPage() {
         if (!hasSetAgentDefaultRef.current) {
           hasSetAgentDefaultRef.current = true;
           const defaultType = getDefaultProviderFromEnvKeys(keys);
-          setSimpleComplexityAgent((prev) => ({ ...prev, type: defaultType, model: "", cliCommand: "" }));
-          setComplexComplexityAgent((prev) => ({ ...prev, type: defaultType, model: "", cliCommand: "" }));
+          setSimpleComplexityAgent((prev) => ({
+            ...prev,
+            type: defaultType,
+            model: "",
+            cliCommand: "",
+          }));
+          setComplexComplexityAgent((prev) => ({
+            ...prev,
+            type: defaultType,
+            model: "",
+            cliCommand: "",
+          }));
         }
       })
       .catch(() => setEnvKeys(null));
@@ -125,11 +156,14 @@ export function CreateNewProjectPage() {
       return;
     }
     setMetadataError(null);
-    if (!parentPath.trim()) return;
+    if (!parentPath.trim() || repoPathValidationMessage) return;
     setStep("agents");
   };
 
   const handleAgentsNext = () => {
+    if (repoPathValidationMessage) {
+      return;
+    }
     setScaffoldError(null);
     setScaffoldRecovery(null);
     setScaffoldedProject(null);
@@ -280,7 +314,7 @@ export function CreateNewProjectPage() {
     }
   };
 
-  const canProceedFromBasics = parentPath.trim().length > 0;
+  const canProceedFromBasics = parentPath.trim().length > 0 && !repoPathValidationMessage;
 
   const needsAnthropic =
     envKeys &&
@@ -300,6 +334,7 @@ export function CreateNewProjectPage() {
 
   const canProceedFromAgents =
     envKeys !== null &&
+    !repoPathValidationMessage &&
     !needsAnthropic &&
     !needsCursor &&
     !needsOpenai &&
@@ -366,6 +401,7 @@ export function CreateNewProjectPage() {
                   onChange={setParentPath}
                   onBrowse={() => setShowFolderBrowser(true)}
                   createNewMode
+                  validationMessage={repoPathValidationMessage}
                 />
                 <div>
                   <label
@@ -480,6 +516,11 @@ export function CreateNewProjectPage() {
                         {scaffoldRecovery.errorSummary}
                       </div>
                     )}
+                    {backendRuntime?.isWsl && (
+                      <p className="text-sm text-theme-muted">
+                        Run these commands in your WSL terminal.
+                      </p>
+                    )}
                     <p className="text-sm text-theme-muted">Run these commands in order:</p>
                     <pre className="p-3 bg-theme-surface-muted rounded-lg font-mono text-sm overflow-x-auto">
                       {runInstructions.join("\n")}
@@ -503,6 +544,12 @@ export function CreateNewProjectPage() {
               >
                 Dismiss
               </button>
+            </div>
+          )}
+
+          {repoPathValidationMessage && step !== "scaffold" && (
+            <div className="mt-4 p-3 bg-theme-error-bg border border-theme-error-border rounded-lg text-sm text-theme-error-text">
+              {repoPathValidationMessage}
             </div>
           )}
 

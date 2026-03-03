@@ -102,19 +102,19 @@ describe("RecoveryService — stale heartbeat recovery", () => {
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   });
 
-  it("terminates orphaned agent process before recovering task when heartbeat.pid is alive", async () => {
+  it("terminates orphaned agent process group before recovering task when the leader is alive", async () => {
     mockFindStaleHeartbeats.mockResolvedValue([
       {
         taskId: "task-stale",
         heartbeat: {
-          pid: TEST_PID,
+          processGroupLeaderPid: TEST_PID,
           lastOutputTimestamp: 0,
           heartbeatTimestamp: Date.now() - 3 * 60 * 1000,
         },
       },
     ]);
 
-    // process.kill(pid, 0) = alive; process.kill(pid, 'SIGTERM') = ok
+    // process.kill(pid, 0) = alive; process group SIGTERM/SIGKILL succeed
     process.kill = mockKill as unknown as typeof process.kill;
     mockKill.mockImplementation((pid: number, signal: number | string) => {
       if (signal === 0) return; // isPidAlive: don't throw
@@ -128,7 +128,7 @@ describe("RecoveryService — stale heartbeat recovery", () => {
     await runPromise;
 
     const sigtermCalls = mockKill.mock.calls.filter((c) => c[1] === "SIGTERM");
-    expect(sigtermCalls).toContainEqual([TEST_PID, "SIGTERM"]);
+    expect(sigtermCalls).toContainEqual([-TEST_PID, "SIGTERM"]);
     expect(vi.mocked(taskStore.update)).toHaveBeenCalledWith(
       "proj-1",
       "task-stale",
@@ -136,12 +136,12 @@ describe("RecoveryService — stale heartbeat recovery", () => {
     );
   });
 
-  it("does not call process.kill when heartbeat.pid is missing or invalid", async () => {
+  it("does not call process.kill when processGroupLeaderPid is missing or invalid", async () => {
     mockFindStaleHeartbeats.mockResolvedValue([
       {
         taskId: "task-stale",
         heartbeat: {
-          pid: undefined,
+          processGroupLeaderPid: undefined,
           lastOutputTimestamp: 0,
           heartbeatTimestamp: Date.now() - 3 * 60 * 1000,
         },
@@ -163,12 +163,12 @@ describe("RecoveryService — stale heartbeat recovery", () => {
     );
   });
 
-  it("does not call SIGTERM when process is already dead (isPidAlive returns false)", async () => {
+  it("does not call SIGTERM when the process-group leader is already dead", async () => {
     mockFindStaleHeartbeats.mockResolvedValue([
       {
         taskId: "task-stale",
         heartbeat: {
-          pid: TEST_PID,
+          processGroupLeaderPid: TEST_PID,
           lastOutputTimestamp: 0,
           heartbeatTimestamp: Date.now() - 3 * 60 * 1000,
         },
@@ -222,7 +222,7 @@ describe("RecoveryService — stale heartbeat recovery", () => {
       },
     ]);
     mockReadHeartbeat.mockResolvedValue({
-      pid: TEST_PID,
+      processGroupLeaderPid: TEST_PID,
       lastOutputTimestamp: Date.now(),
       heartbeatTimestamp: Date.now(),
     });
@@ -248,7 +248,7 @@ describe("RecoveryService — stale heartbeat recovery", () => {
     );
   });
 
-  it("reattaches a stale heartbeat with live PID when assignment is present", async () => {
+  it("reattaches a stale heartbeat with a live process-group leader when assignment is present", async () => {
     const recoverableHost = {
       ...host,
       handleRecoverableHeartbeatGap: vi.fn().mockResolvedValue(true),
@@ -258,7 +258,7 @@ describe("RecoveryService — stale heartbeat recovery", () => {
       {
         taskId: "task-stale",
         heartbeat: {
-          pid: TEST_PID,
+          processGroupLeaderPid: TEST_PID,
           lastOutputTimestamp: Date.now() - 3 * 60 * 1000,
           heartbeatTimestamp: Date.now() - 3 * 60 * 1000,
         },

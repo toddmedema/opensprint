@@ -5,11 +5,18 @@ import { readFile, writeFile, access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { ApiResponse, ApiKeys, ApiKeyEntry, ApiKeyProvider } from "@opensprint/shared";
+import type {
+  ApiResponse,
+  ApiKeys,
+  ApiKeyEntry,
+  ApiKeyProvider,
+  EnvRuntimeResponse,
+} from "@opensprint/shared";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { createLogger } from "../utils/logger.js";
+import { getBackendRuntimeInfo } from "../utils/runtime-info.js";
 import { validateApiKey } from "./models.js";
 import { getGlobalSettings, updateGlobalSettings } from "../services/global-settings.service.js";
 
@@ -112,6 +119,12 @@ function globalStoreHasProvider(
 
 // GET /env/global-status — Returns { hasAnyKey, useCustomCli } for modal flow.
 // hasAnyKey = global store has keys OR process.env has ANTHROPIC/CURSOR/OPENAI (per spec: API keys only).
+envRouter.get("/runtime", (_req, res) => {
+  res.json({
+    data: getBackendRuntimeInfo(),
+  } as ApiResponse<EnvRuntimeResponse>);
+});
+
 envRouter.get("/global-status", async (_req, res, next) => {
   try {
     const settings = await getGlobalSettings();

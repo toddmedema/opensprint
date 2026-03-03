@@ -6,11 +6,13 @@ This document provides context for the Help Chat agent to answer questions about
 
 ## Agent Instructions (AGENTS.md)
 
-Task tracking is handled internally by `TaskStoreService` backed by an embedded sql.js database at `~/.opensprint/tasks.db`. There is no external CLI for task management.
+Task tracking is handled internally by `TaskStoreService` backed by PostgreSQL. The connection URL is resolved in order: `DATABASE_URL`, then `databaseUrl` in `~/.opensprint/global-settings.json`, then the default local URL. There is no external CLI for task management.
 
 **Project Overview:** OpenSprint is a web application that guides users through the full software development lifecycle using AI agents. It has five phases — SPEED: Sketch, Plan, Execute, Evaluate, and Deliver.
 
 **Tech stack:** Node.js + TypeScript (backend), React + TypeScript (frontend).
+
+**Windows runtime policy:** OpenSprint is supported on Windows only when `npm run setup` and `npm run dev` are run inside WSL2. Project repos must live in the WSL filesystem (for example `/home/<user>/src/app`), not under `/mnt/c/...`. Native Windows execution is unsupported because orchestration and process-management paths assume Linux/Unix shell and process semantics.
 
 ### Orchestrator Recovery (GUPP-style)
 
@@ -23,7 +25,7 @@ Work state is persisted before agent spawn via `assignment.json` in `.opensprint
 
 ### Task Store
 
-Tasks are stored in `~/.opensprint/tasks.db` (SQLite via sql.js WASM). The `TaskStoreService` provides:
+Tasks are stored in PostgreSQL. Schema is applied on init via `runSchema` in `packages/backend/src/db/schema.ts`. Backend tests use a separate test database (`opensprint_test` or `TEST_DATABASE_URL`). The `TaskStoreService` provides:
 
 - `create()` / `createMany()` — Create tasks with optional parent IDs
 - `update()` / `updateMany()` — Update task fields (status, assignee, priority, etc.)

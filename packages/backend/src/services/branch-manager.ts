@@ -237,7 +237,9 @@ export class BranchManager {
         throw new RebaseConflictError(conflictedFiles);
       }
     } else {
-      log.info("pushMain: origin/%s not present (e.g. empty remote), skipping rebase", baseBranch);
+      log.info("pushMain: origin branch not present (e.g. empty remote), skipping rebase", {
+        baseBranch,
+      });
     }
 
     await this.git(repoPath, `-c core.hooksPath=/dev/null push origin ${baseBranch}`);
@@ -530,7 +532,7 @@ export class BranchManager {
     const originRef = `origin/${baseBranch}`;
     const hasOriginBase = await this.hasRemoteBranch(repoPath, originRef);
     if (!hasOriginBase) {
-      log.info("syncMainWithOrigin: origin/%s not present, skipping", baseBranch);
+      log.info("syncMainWithOrigin: origin branch not present, skipping", { baseBranch });
       return "up_to_date";
     }
     const currentBranch = await this.getCurrentBranch(repoPath).catch(() => "");
@@ -559,7 +561,7 @@ export class BranchManager {
 
     if (localBehind > 0) {
       await this.git(repoPath, `merge --ff-only ${originRef}`);
-      log.info("syncMainWithOrigin: fast-forwarded %s to origin/%s", baseBranch, baseBranch);
+      log.info("syncMainWithOrigin: fast-forwarded branch to origin", { baseBranch });
       return "fast_forwarded";
     }
 

@@ -7,6 +7,7 @@ import { createApp } from "../app.js";
 import { ProjectService } from "../services/project.service.js";
 import { setGlobalSettings } from "../services/global-settings.service.js";
 import { API_PREFIX, DEFAULT_HIL_CONFIG, OPENSPRINT_DIR } from "@opensprint/shared";
+import { setBackendRuntimeInfoForTesting } from "../utils/runtime-info.js";
 
 vi.mock("../services/task-store.service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../services/task-store.service.js")>();
@@ -86,6 +87,7 @@ describe.skipIf(!projectsPostgresOk)("Projects REST API — spec/sketch phase ro
   });
 
   afterEach(async () => {
+    setBackendRuntimeInfoForTesting(null);
     process.env.HOME = originalHome;
     await fs.rm(tempDir, { recursive: true, force: true });
   });
@@ -184,6 +186,7 @@ describe("Projects REST API — create and settings", () => {
   });
 
   afterEach(async () => {
+    setBackendRuntimeInfoForTesting(null);
     process.env.HOME = originalHome;
     await fs.rm(tempDir, { recursive: true, force: true });
   });
@@ -209,6 +212,23 @@ describe("Projects REST API — create and settings", () => {
     expect(settingsRes.body.data.simpleComplexityAgent.type).toBe("claude");
     expect(settingsRes.body.data.complexComplexityAgent).toBeDefined();
     expect(settingsRes.body.data.complexComplexityAgent.type).toBe("claude");
+  });
+
+  it("POST /projects rejects /mnt paths when runtime is WSL", async () => {
+    setBackendRuntimeInfoForTesting({
+      platform: "linux",
+      isWsl: true,
+      wslDistroName: "Ubuntu",
+      repoPathPolicy: "linux_fs_only",
+    });
+
+    const res = await request(app)
+      .post(`${API_PREFIX}/projects`)
+      .send({ ...validCreateBody, repoPath: "/mnt/c/Users/Todd/my-project" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("UNSUPPORTED_REPO_PATH");
+    expect(res.body.error.message).toContain("WSL filesystem");
   });
 
   it("PUT /projects/:id/settings updates simpleComplexityAgent and complexComplexityAgent", async () => {
@@ -257,5 +277,22 @@ describe("Projects REST API — create and settings", () => {
     const settingsRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/settings`);
     expect(settingsRes.status).toBe(200);
     expect(settingsRes.body.data).not.toHaveProperty("apiKeys");
+  });
+
+  it("PUT /projects/:id rejects /mnt repoPath updates when runtime is WSL", async () => {
+    setBackendRuntimeInfoForTesting({
+      platform: "linux",
+      isWsl: true,
+      wslDistroName: "Ubuntu",
+      repoPathPolicy: "linux_fs_only",
+    });
+
+    const res = await request(app)
+      .put(`${API_PREFIX}/projects/${projectId}`)
+      .send({ repoPath: "/mnt/d/Users/Todd/updated-project" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("UNSUPPORTED_REPO_PATH");
+    expect(res.body.error.message).toContain("WSL filesystem");
   });
 });

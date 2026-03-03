@@ -7,6 +7,7 @@ import type {
 } from "@opensprint/shared";
 import { api } from "../../api/client";
 import { DEDUP_SKIP } from "../dedup";
+import { isNotificationManagedAgentFailure } from "../../lib/agentApiError";
 
 interface Message {
   role: "user" | "assistant";
@@ -367,7 +368,9 @@ const planSlice = createSlice({
       })
       .addCase(decomposePlans.rejected, (state, action) => {
         state.decomposing = false;
-        state.error = action.error.message || "Failed to decompose PRD";
+        if (!isNotificationManagedAgentFailure(action.error)) {
+          state.error = action.error.message || "Failed to decompose PRD";
+        }
       })
       // generatePlan — optimistic UX: no longer blocks input; optimistic plans replaced in place
       .addCase(generatePlan.pending, (state, _action) => {
@@ -390,7 +393,9 @@ const planSlice = createSlice({
         if (tempId) {
           state.optimisticPlans = state.optimisticPlans.filter((p) => p.tempId !== tempId);
         }
-        state.error = action.error.message || "Failed to generate plan";
+        if (!isNotificationManagedAgentFailure(action.error)) {
+          state.error = action.error.message || "Failed to generate plan";
+        }
       })
       // executePlan / reExecutePlan
       .addCase(executePlan.pending, (state, action) => {
@@ -403,8 +408,10 @@ const planSlice = createSlice({
       .addCase(executePlan.rejected, (state, action) => {
         const message = action.error.message || "Failed to start execute";
         state.executingPlanId = null;
-        state.error = message;
-        state.executeError = { planId: action.meta.arg.planId, message };
+        if (!isNotificationManagedAgentFailure(action.error)) {
+          state.error = message;
+          state.executeError = { planId: action.meta.arg.planId, message };
+        }
       })
       .addCase(generateTasksForPlan.pending, (state, action) => {
         if (!state.planTasksPlanIds.includes(action.meta.arg.planId)) {
@@ -424,11 +431,13 @@ const planSlice = createSlice({
         state.planTasksPlanIds = state.planTasksPlanIds.filter(
           (id) => id !== action.meta.arg.planId
         );
-        const message = action.error.message || "Failed to generate tasks";
-        state.executeError = {
-          planId: action.meta.arg.planId,
-          message,
-        };
+        if (!isNotificationManagedAgentFailure(action.error)) {
+          const message = action.error.message || "Failed to generate tasks";
+          state.executeError = {
+            planId: action.meta.arg.planId,
+            message,
+          };
+        }
       })
       .addCase(reExecutePlan.pending, (state, action) => {
         state.reExecutingPlanId = action.meta.arg.planId;
@@ -439,7 +448,9 @@ const planSlice = createSlice({
       })
       .addCase(reExecutePlan.rejected, (state, action) => {
         state.reExecutingPlanId = null;
-        state.error = action.error.message || "Failed to re-execute plan";
+        if (!isNotificationManagedAgentFailure(action.error)) {
+          state.error = action.error.message || "Failed to re-execute plan";
+        }
       })
       // planTasks
       .addCase(planTasks.pending, (state, action) => {
@@ -466,10 +477,12 @@ const planSlice = createSlice({
         state.planTasksPlanIds = state.planTasksPlanIds.filter(
           (id) => id !== action.meta.arg.planId
         );
-        state.executeError = {
-          planId: action.meta.arg.planId,
-          message: action.error.message || "Failed to generate tasks",
-        };
+        if (!isNotificationManagedAgentFailure(action.error)) {
+          state.executeError = {
+            planId: action.meta.arg.planId,
+            message: action.error.message || "Failed to generate tasks",
+          };
+        }
       })
       // archivePlan
       .addCase(archivePlan.pending, (state, action) => {

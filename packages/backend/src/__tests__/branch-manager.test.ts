@@ -514,7 +514,7 @@ describe("BranchManager", () => {
       // Simulate active agent in the other path: non-stale heartbeat
       const now = Date.now();
       vi.spyOn(heartbeatService, "readHeartbeat").mockResolvedValue({
-        pid: 12345,
+        processGroupLeaderPid: 12345,
         lastOutputTimestamp: now,
         heartbeatTimestamp: now,
       });

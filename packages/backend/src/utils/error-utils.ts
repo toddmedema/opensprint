@@ -171,6 +171,94 @@ export function isOutOfCreditError(err: unknown): boolean {
 /** Classification for agent API failures — used for human-blocked notifications. */
 export type AgentApiErrorKind = "rate_limit" | "auth" | "out_of_credit" | "scope_compliance";
 
+export interface AgentApiFailureDetails {
+  kind: AgentApiErrorKind;
+  agentType: "claude" | "claude-cli" | "cursor" | "custom" | "openai" | "google";
+  raw: string;
+  userMessage: string;
+  notificationMessage: string;
+  isLimitError: boolean;
+  retryAfterSeconds?: number;
+  allKeysExhausted?: boolean;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === "object";
+}
+
+function asAgentApiFailureDetails(value: unknown): AgentApiFailureDetails | null {
+  if (!isRecord(value)) return null;
+  const kind = value.kind;
+  const agentType = value.agentType;
+  const raw = value.raw;
+  const userMessage = value.userMessage;
+  const notificationMessage = value.notificationMessage;
+  const isLimitError = value.isLimitError;
+
+  if (
+    (kind === "rate_limit" ||
+      kind === "auth" ||
+      kind === "out_of_credit" ||
+      kind === "scope_compliance") &&
+    (agentType === "claude" ||
+      agentType === "claude-cli" ||
+      agentType === "cursor" ||
+      agentType === "custom" ||
+      agentType === "openai" ||
+      agentType === "google") &&
+    typeof raw === "string" &&
+    typeof userMessage === "string" &&
+    typeof notificationMessage === "string" &&
+    typeof isLimitError === "boolean"
+  ) {
+    return {
+      kind,
+      agentType,
+      raw,
+      userMessage,
+      notificationMessage,
+      isLimitError,
+      ...(typeof value.retryAfterSeconds === "number"
+        ? { retryAfterSeconds: value.retryAfterSeconds }
+        : {}),
+      ...(typeof value.allKeysExhausted === "boolean"
+        ? { allKeysExhausted: value.allKeysExhausted }
+        : {}),
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Read structured agent/provider failure details from unknown values.
+ * Supports direct details objects, AppError.details, and ApiError-style nested { details } wrappers.
+ */
+export function getAgentApiFailureDetails(err: unknown): AgentApiFailureDetails | null {
+  const direct = asAgentApiFailureDetails(err);
+  if (direct) return direct;
+
+  if (!isRecord(err)) return null;
+
+  const nestedDetails = asAgentApiFailureDetails(err.details);
+  if (nestedDetails) return nestedDetails;
+
+  if (isRecord(err.error)) {
+    const nestedErrorDetails = asAgentApiFailureDetails(err.error);
+    if (nestedErrorDetails) return nestedErrorDetails;
+    const nestedErrorDetailsField = asAgentApiFailureDetails(err.error.details);
+    if (nestedErrorDetailsField) return nestedErrorDetailsField;
+  }
+
+  return null;
+}
+
+export function createAgentApiFailureDetails(
+  details: AgentApiFailureDetails
+): AgentApiFailureDetails {
+  return details;
+}
+
 /**
  * Classify an error as an agent API failure type.
  * Returns the kind for human-blocked notifications, or null if not API-related.
@@ -179,6 +267,8 @@ export type AgentApiErrorKind = "rate_limit" | "auth" | "out_of_credit" | "scope
  */
 export function classifyAgentApiError(err: unknown): AgentApiErrorKind | null {
   if (err == null) return null;
+  const structured = getAgentApiFailureDetails(err);
+  if (structured) return structured.kind;
   if (isAuthError(err)) return "auth";
   if (isOutOfCreditError(err)) return "out_of_credit";
   if (isScopeComplianceError(err)) return "scope_compliance";

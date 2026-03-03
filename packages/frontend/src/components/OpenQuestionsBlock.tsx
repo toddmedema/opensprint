@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import type { Notification, ApiBlockedErrorCode } from "@opensprint/shared";
+import type { Notification, ApiBlockedErrorCode, NotificationSource } from "@opensprint/shared";
 import { api } from "../api/client";
 
 const API_BLOCKED_LABELS: Record<ApiBlockedErrorCode, string> = {
@@ -15,7 +15,7 @@ export interface OpenQuestionsBlockProps {
   notification: Notification;
   projectId: string;
   /** Source determines Answer behavior: plan uses chat, execute uses task chat */
-  source: "plan" | "execute";
+  source: NotificationSource;
   /** For plan: planId. For execute: taskId. Used for chat context. */
   sourceId: string;
   /** Called when notification is resolved (after Dismiss or successful Answer) */
@@ -123,7 +123,15 @@ export function OpenQuestionsBlock({
             `${apiBlockedLabel}: Fix in Settings (API keys or credits), then Dismiss.`
           )
         ) : (
-          `The ${source === "plan" ? "planner" : "coder"} needs clarification before proceeding.`
+          `The ${
+            source === "plan"
+              ? "planner"
+              : source === "execute"
+                ? "coder"
+                : source === "eval"
+                  ? "analyst"
+                  : "dreamer"
+          } needs clarification before proceeding.`
         )}
       </p>
       <ul className="space-y-2 mb-3">

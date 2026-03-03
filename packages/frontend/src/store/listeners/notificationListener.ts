@@ -5,6 +5,11 @@ import { addNotification } from "../slices/notificationSlice";
 import { setConnectionError } from "../slices/connectionSlice";
 import { clearDeliverToast } from "../slices/websocketSlice";
 import { isConnectionError } from "../../api/client";
+import {
+  getRejectedActionProjectId,
+  isNotificationManagedAgentFailure,
+} from "../../lib/agentApiError";
+import { fetchProjectNotifications } from "../slices/openQuestionsSlice";
 
 /** One-line actionable hints for known API error codes (backend ErrorCodes). */
 export function getApiErrorHint(code: string | undefined): string | null {
@@ -91,6 +96,14 @@ notificationListener.startListening({
     if (isConnectionError(error ?? { message: msg })) {
       listenerApi.dispatch(setConnectionError(true));
       listenerApi.dispatch(clearDeliverToast());
+      return;
+    }
+
+    if (isNotificationManagedAgentFailure({ code, message: msg })) {
+      const projectId = getRejectedActionProjectId(action);
+      if (projectId) {
+        void listenerApi.dispatch(fetchProjectNotifications(projectId));
+      }
       return;
     }
 

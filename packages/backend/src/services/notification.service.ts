@@ -155,8 +155,26 @@ export class NotificationService {
       },
     ];
 
-    await taskStore.runWrite(async (client) => {
-      await client.execute(
+    const existing = await taskStore.runWrite(async (writeClient) => {
+      const existingRows = await writeClient.query(
+        `SELECT *
+           FROM open_questions
+          WHERE project_id = $1
+            AND source = $2
+            AND source_id = $3
+            AND status = 'open'
+            AND kind = 'api_blocked'
+            AND error_code = $4
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [input.projectId, input.source, input.sourceId, input.errorCode]
+      );
+      const row = existingRows[0] as Record<string, unknown> | undefined;
+      if (row) {
+        return rowToNotification(row);
+      }
+
+      await writeClient.execute(
         `INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind, error_code)
          VALUES ($1, $2, $3, $4, $5, 'open', $6, 'api_blocked', $7)`,
         [
@@ -169,7 +187,10 @@ export class NotificationService {
           input.errorCode,
         ]
       );
+      return null;
     });
+
+    if (existing) return existing;
 
     log.info("Created API-blocked notification", {
       id,

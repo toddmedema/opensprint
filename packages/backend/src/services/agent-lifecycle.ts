@@ -361,7 +361,8 @@ export class AgentLifecycleManager {
         if (!runState.activeProcess) return;
         heartbeatService
           .writeHeartbeat(wtPath, taskId, {
-            pid: runState.activeProcess.pid ?? 0,
+            // Execute agents run detached, so the child PID is the process-group leader.
+            processGroupLeaderPid: runState.activeProcess.pid ?? 0,
             lastOutputTimestamp: runState.lastOutputTime,
             heartbeatTimestamp: Date.now(),
           })

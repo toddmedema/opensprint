@@ -14,8 +14,31 @@ export interface ApiErrorResponse {
   };
 }
 
+/** Structured agent/provider failure details carried in ApiErrorResponse.error.details. */
+export interface AgentApiFailureDetails {
+  kind: "rate_limit" | "auth" | "out_of_credit" | "scope_compliance";
+  agentType: "claude" | "claude-cli" | "cursor" | "custom" | "openai" | "google";
+  raw: string;
+  userMessage: string;
+  notificationMessage: string;
+  isLimitError: boolean;
+  retryAfterSeconds?: number;
+  allKeysExhausted?: boolean;
+}
+
 /** Union of success and error response */
 export type ApiResult<T> = ApiResponse<T> | ApiErrorResponse;
+
+export type BackendPlatform = "linux" | "darwin" | "win32";
+
+export type RepoPathPolicy = "any" | "linux_fs_only";
+
+export interface EnvRuntimeResponse {
+  platform: BackendPlatform;
+  isWsl: boolean;
+  wslDistroName: string | null;
+  repoPathPolicy: RepoPathPolicy;
+}
 
 /** Task context for Execute chat replies (enables agent to resolve "this task" references) */
 export interface ExecuteTaskContext {

@@ -49,6 +49,8 @@ export interface CreateProjectRequest {
   unknownScopeStrategy?: "conservative" | "optimistic";
   /** Git working mode: "worktree" or "branches". Stored in project settings. Default: "worktree". */
   gitWorkingMode?: "worktree" | "branches";
+  /** Base branch used when creating worktrees. Ignored in branches mode. */
+  worktreeBaseBranch?: string;
 }
 
 /** Project update request (partial fields) */

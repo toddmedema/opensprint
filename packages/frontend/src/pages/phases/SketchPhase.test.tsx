@@ -35,10 +35,17 @@ const mockPrdGet = vi.fn();
 const mockPrdGetHistory = vi.fn();
 const mockPrdUpdateSection = vi.fn();
 const mockPrdUpload = vi.fn();
+const mockPrdGenerateFromCodebase = vi.fn();
 const mockPlansDecompose = vi.fn();
+const mockRefetchNotifications = vi.fn();
+const mockGetSketchContext = vi.fn();
+let mockOpenQuestionNotifications: unknown[] = [];
 
 vi.mock("../../hooks/useOpenQuestionNotifications", () => ({
-  useOpenQuestionNotifications: () => ({ notifications: [], refetch: () => {} }),
+  useOpenQuestionNotifications: () => ({
+    notifications: mockOpenQuestionNotifications,
+    refetch: mockRefetchNotifications,
+  }),
 }));
 vi.mock("../../hooks/usePhaseLoadingState", () => ({
   usePhaseLoadingState: (isLoading: boolean, isEmpty: boolean) => ({
@@ -80,18 +87,20 @@ vi.mock("../../api/client", () => ({
       getHistory: (...args: unknown[]) => mockPrdGetHistory(...args),
       updateSection: (...args: unknown[]) => mockPrdUpdateSection(...args),
       upload: (...args: unknown[]) => mockPrdUpload(...args),
+      generateFromCodebase: (...args: unknown[]) => mockPrdGenerateFromCodebase(...args),
     },
     plans: {
       decompose: (...args: unknown[]) => mockPlansDecompose(...args),
     },
     projects: {
       getPlanStatus: (...args: unknown[]) => mockGetPlanStatus(...args),
-      getSketchContext: vi.fn().mockResolvedValue({ hasExistingCode: false }),
+      getSketchContext: (...args: unknown[]) => mockGetSketchContext(...args),
     },
     notifications: {
       listByProject: vi.fn().mockResolvedValue([]),
     },
   },
+  isApiError: (err: unknown) => !!err && typeof err === "object" && "code" in (err as object),
 }));
 
 function createStore(preloadedState?: {
@@ -177,12 +186,15 @@ function renderSketchPhase(store = createStore()) {
 describe("SketchPhase with sketchSlice", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockOpenQuestionNotifications = [];
     mockChatSend.mockResolvedValue({ message: "Response" });
     mockChatHistory.mockResolvedValue({ messages: [] });
     mockPrdGet.mockResolvedValue({ sections: {} });
     mockPrdGetHistory.mockResolvedValue([]);
     mockPrdUpdateSection.mockResolvedValue(undefined);
+    mockPrdGenerateFromCodebase.mockResolvedValue(undefined);
     mockPlansDecompose.mockResolvedValue({ created: 2, plans: [] });
+    mockGetSketchContext.mockResolvedValue({ hasExistingCode: false });
     mockGetPlanStatus.mockResolvedValue({
       hasPlanningRun: false,
       prdChangedSinceLastRun: false,
@@ -202,6 +214,49 @@ describe("SketchPhase with sketchSlice", () => {
       renderSketchPhase();
       expect(screen.getByText("Upload existing PRD")).toBeInTheDocument();
       expect(screen.getByText(/.md, .docx, .pdf/)).toBeInTheDocument();
+    });
+
+    it("renders api_blocked notification inline in empty state", () => {
+      mockOpenQuestionNotifications = [
+        {
+          id: "ab-1",
+          projectId: "proj-1",
+          source: "prd",
+          sourceId: "global",
+          status: "open",
+          createdAt: "2026-03-03T00:00:00Z",
+          resolvedAt: null,
+          kind: "api_blocked",
+          errorCode: "rate_limit",
+          questions: [{ id: "q-1", text: "Google Gemini hit a rate limit", createdAt: "" }],
+        },
+      ];
+
+      renderSketchPhase();
+
+      expect(screen.getByText("API blocked")).toBeInTheDocument();
+      expect(screen.getByText("Google Gemini hit a rate limit")).toBeInTheDocument();
+    });
+
+    it("prefers notification UX over sketchError for actionable generate-from-codebase failures", async () => {
+      const user = userEvent.setup();
+      mockPrdGenerateFromCodebase.mockRejectedValue({
+        code: "AGENT_INVOKE_FAILED",
+        message: "Google Gemini hit a rate limit",
+      });
+      mockGetSketchContext.mockResolvedValueOnce({ hasExistingCode: true });
+
+      renderSketchPhase();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("generate-from-codebase")).toBeInTheDocument();
+      });
+      await user.click(screen.getByTestId("generate-from-codebase"));
+
+      await waitFor(() => {
+        expect(mockRefetchNotifications).toHaveBeenCalled();
+      });
+      expect(screen.queryByText("Google Gemini hit a rate limit")).not.toBeInTheDocument();
     });
 
     it("dispatches sendSpecMessage when user submits initial idea", async () => {

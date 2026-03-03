@@ -8,6 +8,7 @@ import {
 import type { ChatResponse, PrdChangeLogEntry } from "@opensprint/shared";
 import { api } from "../../api/client";
 import { parsePrdSections } from "../../lib/prdUtils";
+import { isNotificationManagedAgentFailure } from "../../lib/agentApiError";
 
 /** Message shape used across PRD chat slices */
 export interface PrdChatMessage {
@@ -235,7 +236,9 @@ export function createPrdChatSlice(sliceName: string): PrdChatSliceResult {
         })
         .addCase(sendMessage.rejected, (state, action) => {
           state.sendingChat = false;
-          state.error = action.error.message || "Failed to send message";
+          if (!isNotificationManagedAgentFailure(action.error)) {
+            state.error = action.error.message || "Failed to send message";
+          }
         })
         .addCase(savePrdSection.pending, (state, action) => {
           const section = action.meta.arg.section;
@@ -248,7 +251,9 @@ export function createPrdChatSlice(sliceName: string): PrdChatSliceResult {
         })
         .addCase(savePrdSection.rejected, (state, action) => {
           state.savingSections = state.savingSections.filter((s) => s !== action.meta.arg.section);
-          state.error = action.error.message || "Failed to save PRD section";
+          if (!isNotificationManagedAgentFailure(action.error)) {
+            state.error = action.error.message || "Failed to save PRD section";
+          }
         })
         .addCase(uploadPrdFile.pending, (state) => {
           state.sendingChat = true;
@@ -279,7 +284,9 @@ export function createPrdChatSlice(sliceName: string): PrdChatSliceResult {
         })
         .addCase(uploadPrdFile.rejected, (state, action) => {
           state.sendingChat = false;
-          state.error = action.error.message || "Failed to process uploaded file";
+          if (!isNotificationManagedAgentFailure(action.error)) {
+            state.error = action.error.message || "Failed to process uploaded file";
+          }
         });
     },
   });

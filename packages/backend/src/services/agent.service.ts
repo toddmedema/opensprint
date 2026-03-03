@@ -7,13 +7,18 @@ import type { AgentConfig, AgentRole } from "@opensprint/shared";
 import { AgentClient } from "./agent-client.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
-import { getErrorMessage, isLimitError } from "../utils/error-utils.js";
+import {
+  createAgentApiFailureDetails,
+  getErrorMessage,
+  isLimitError,
+} from "../utils/error-utils.js";
 import {
   isOpenAIResponsesModel,
   toOpenAIResponsesInputMessage,
   type OpenAIResponsesInputContent,
   type OpenAIResponsesInputMessage,
 } from "../utils/openai-models.js";
+import { isProcessAlive, signalProcessGroup } from "../utils/process-group.js";
 import { shellExec } from "../utils/shell-exec.js";
 import { activeAgentsService } from "./active-agents.service.js";
 import {
@@ -108,6 +113,31 @@ async function collectOpenAIResponsesStream(
   return fullContent;
 }
 
+function buildAgentApiFailureMessages(
+  agentType: "claude" | "openai",
+  kind: "rate_limit" | "auth",
+  options?: { allKeysExhausted?: boolean }
+): { userMessage: string; notificationMessage: string } {
+  const label = agentType === "claude" ? "Claude" : "OpenAI";
+  if (kind === "rate_limit") {
+    if (options?.allKeysExhausted) {
+      return {
+        userMessage: `All ${label} API keys have hit rate limits. Add another key in Settings or retry after the limit resets.`,
+        notificationMessage: `${label} hit a rate limit. Add another API key in Settings or retry after the limit resets.`,
+      };
+    }
+    return {
+      userMessage: `${label} hit a rate limit. Add another key in Settings or retry after the limit resets.`,
+      notificationMessage: `${label} hit a rate limit. Add another API key in Settings or retry after the limit resets.`,
+    };
+  }
+
+  return {
+    userMessage: `${label} is not configured correctly. Add a valid API key in Settings and try again.`,
+    notificationMessage: `${label} needs a valid API key in Settings before work can continue.`,
+  };
+}
+
 /** Options for invokeCodingAgent (file-based prompt) */
 export interface InvokeCodingAgentOptions {
   /** Working directory for the agent (typically repo path) */
@@ -147,16 +177,27 @@ export interface RunMergerAgentOptions {
   baseBranch?: string;
 }
 
-/** Create a handle for an existing process by PID (used when re-attaching after backend restart). */
-export function createPidHandle(pid: number): CodingAgentHandle {
+/** Create a handle for a detached agent process group after backend restart. */
+export function createProcessGroupHandle(processGroupLeaderPid: number): CodingAgentHandle {
   return {
-    pid,
+    pid: processGroupLeaderPid,
     kill() {
       try {
-        process.kill(pid, "SIGTERM");
+        signalProcessGroup(processGroupLeaderPid, "SIGTERM");
       } catch {
         // Process may already be dead
+        return;
       }
+
+      const killTimer = setTimeout(() => {
+        if (!isProcessAlive(processGroupLeaderPid)) return;
+        try {
+          signalProcessGroup(processGroupLeaderPid, "SIGKILL");
+        } catch {
+          // Process may already be dead
+        }
+      }, 5000);
+      killTimer.unref?.();
     },
   };
 }
@@ -542,15 +583,23 @@ ${branchDiffStat || "(no output)"}
       const resolved = await getNextKey(projectId, "ANTHROPIC_API_KEY");
       if (!resolved) {
         const msg = lastError ? getErrorMessage(lastError) : "No API key available";
+        const details = createAgentApiFailureDetails({
+          kind: lastError && isLimitError(lastError) ? "rate_limit" : "auth",
+          agentType: "claude",
+          raw: msg,
+          ...buildAgentApiFailureMessages(
+            "claude",
+            lastError && isLimitError(lastError) ? "rate_limit" : "auth",
+            { allKeysExhausted: Boolean(lastError && isLimitError(lastError)) }
+          ),
+          isLimitError: Boolean(lastError && isLimitError(lastError)),
+          ...(lastError && isLimitError(lastError) ? { allKeysExhausted: true } : {}),
+        });
         throw new AppError(
           400,
           ErrorCodes.ANTHROPIC_API_KEY_MISSING,
-          lastError && isLimitError(lastError)
-            ? `All Claude API keys hit rate limits. ${msg} Add more keys in Settings, or retry after 24h.`
-            : "ANTHROPIC_API_KEY is not set. Add it to your .env file or Settings. Get a key from https://console.anthropic.com/. Alternatively, switch to Claude (CLI) in Agent Config to use the locally-installed claude CLI instead.",
-          lastError
-            ? { agentType: "claude", raw: msg, isLimitError: isLimitError(lastError) }
-            : undefined
+          details.userMessage,
+          details
         );
       }
 
@@ -558,11 +607,19 @@ ${branchDiffStat || "(no output)"}
       if (triedKeyIds.has(keyId)) {
         // Already tried this key (env fallback with limit - can't mark, would loop)
         const msg = getErrorMessage(lastError);
+        const details = createAgentApiFailureDetails({
+          kind: "rate_limit",
+          agentType: "claude",
+          raw: msg,
+          ...buildAgentApiFailureMessages("claude", "rate_limit", { allKeysExhausted: true }),
+          isLimitError: true,
+          allKeysExhausted: true,
+        });
         throw new AppError(
           502,
           ErrorCodes.AGENT_INVOKE_FAILED,
-          `Claude API error: ${msg}. Check Settings (API key, model).`,
-          { agentType: "claude", raw: msg, isLimitError: true }
+          details.userMessage,
+          details
         );
       }
       triedKeyIds.add(keyId);
@@ -619,22 +676,37 @@ ${branchDiffStat || "(no output)"}
         if (isLimitError(error)) {
           if (keyId === ENV_FALLBACK_KEY_ID) {
             const msg = getErrorMessage(error);
+            const details = createAgentApiFailureDetails({
+              kind: "rate_limit",
+              agentType: "claude",
+              raw: msg,
+              ...buildAgentApiFailureMessages("claude", "rate_limit"),
+              isLimitError: true,
+            });
             throw new AppError(
               502,
               ErrorCodes.AGENT_INVOKE_FAILED,
-              `Claude API rate limit: ${msg}. Add more keys in Settings for automatic rotation.`,
-              { agentType: "claude", raw: msg, isLimitError: true }
+              details.userMessage,
+              details
             );
           }
           await recordLimitHit(projectId, "ANTHROPIC_API_KEY", keyId, source);
           continue;
         }
         const msg = getErrorMessage(error);
+        const details = createAgentApiFailureDetails({
+          kind: "auth",
+          agentType: "claude",
+          raw: msg,
+          userMessage: "Claude failed. Check the configured API key and model in Settings.",
+          notificationMessage: "Claude needs attention in Settings before work can continue.",
+          isLimitError: false,
+        });
         throw new AppError(
           502,
           ErrorCodes.AGENT_INVOKE_FAILED,
-          `Claude API error: ${msg}. Check Settings (API key, model).`,
-          { agentType: "claude", raw: msg, isLimitError: false }
+          details.userMessage,
+          details
         );
       }
     }
@@ -686,26 +758,42 @@ ${branchDiffStat || "(no output)"}
       const resolved = await getNextKey(projectId, "OPENAI_API_KEY");
       if (!resolved) {
         const msg = lastError ? getErrorMessage(lastError) : "No API key available";
+        const details = createAgentApiFailureDetails({
+          kind: lastError && isLimitError(lastError) ? "rate_limit" : "auth",
+          agentType: "openai",
+          raw: msg,
+          ...buildAgentApiFailureMessages(
+            "openai",
+            lastError && isLimitError(lastError) ? "rate_limit" : "auth",
+            { allKeysExhausted: Boolean(lastError && isLimitError(lastError)) }
+          ),
+          isLimitError: Boolean(lastError && isLimitError(lastError)),
+          ...(lastError && isLimitError(lastError) ? { allKeysExhausted: true } : {}),
+        });
         throw new AppError(
           400,
           ErrorCodes.OPENAI_API_ERROR,
-          lastError && isLimitError(lastError)
-            ? `All OpenAI API keys hit rate limits. ${msg} Add more keys in Settings, or retry after 24h.`
-            : "OPENAI_API_KEY is not set. Add it to your .env file or Settings. Get a key from https://platform.openai.com/.",
-          lastError
-            ? { agentType: "openai", raw: msg, isLimitError: isLimitError(lastError) }
-            : undefined
+          details.userMessage,
+          details
         );
       }
 
       const { key, keyId, source } = resolved;
       if (triedKeyIds.has(keyId)) {
         const msg = getErrorMessage(lastError);
+        const details = createAgentApiFailureDetails({
+          kind: "rate_limit",
+          agentType: "openai",
+          raw: msg,
+          ...buildAgentApiFailureMessages("openai", "rate_limit", { allKeysExhausted: true }),
+          isLimitError: true,
+          allKeysExhausted: true,
+        });
         throw new AppError(
           502,
           ErrorCodes.AGENT_INVOKE_FAILED,
-          `OpenAI API error: ${msg}. Check Settings (API key, model).`,
-          { agentType: "openai", raw: msg, isLimitError: true }
+          details.userMessage,
+          details
         );
       }
       triedKeyIds.add(keyId);
@@ -768,22 +856,37 @@ ${branchDiffStat || "(no output)"}
         if (isLimitError(error)) {
           if (keyId === ENV_FALLBACK_KEY_ID) {
             const msg = getErrorMessage(error);
+            const details = createAgentApiFailureDetails({
+              kind: "rate_limit",
+              agentType: "openai",
+              raw: msg,
+              ...buildAgentApiFailureMessages("openai", "rate_limit"),
+              isLimitError: true,
+            });
             throw new AppError(
               502,
               ErrorCodes.AGENT_INVOKE_FAILED,
-              `OpenAI API rate limit: ${msg}. Add more keys in Settings for automatic rotation.`,
-              { agentType: "openai", raw: msg, isLimitError: true }
+              details.userMessage,
+              details
             );
           }
           await recordLimitHit(projectId, "OPENAI_API_KEY", keyId, source);
           continue;
         }
         const msg = getErrorMessage(error);
+        const details = createAgentApiFailureDetails({
+          kind: "auth",
+          agentType: "openai",
+          raw: msg,
+          userMessage: "OpenAI failed. Check the configured API key and model in Settings.",
+          notificationMessage: "OpenAI needs attention in Settings before work can continue.",
+          isLimitError: false,
+        });
         throw new AppError(
           502,
           ErrorCodes.AGENT_INVOKE_FAILED,
-          `OpenAI API error: ${msg}. Check Settings (API key, model).`,
-          { agentType: "openai", raw: msg, isLimitError: false }
+          details.userMessage,
+          details
         );
       }
     }

@@ -107,4 +107,41 @@ describe("PrdFromCodebaseService", () => {
       code: "AGENT_INVOKE_FAILED",
     });
   });
+
+  it("preserves structured agent failure details when wrapping the PRD-from-codebase context", async () => {
+    const service = new PrdFromCodebaseService() as any;
+    service.planService = {
+      getCodebaseContext: vi.fn().mockResolvedValue({ fileTree: "", keyFilesContent: "" }),
+    };
+    service.projectService = {
+      getSettings: vi.fn().mockResolvedValue({
+        simpleComplexityAgent: { type: "google", model: "gemini-2.5-pro", cliCommand: null },
+        complexComplexityAgent: { type: "google", model: "gemini-2.5-pro", cliCommand: null },
+        hilConfig: {
+          scopeChanges: "automated",
+          architectureDecisions: "automated",
+          dependencyModifications: "automated",
+        },
+      }),
+      getRepoPath: vi.fn().mockResolvedValue("/repo"),
+    };
+    mockInvokePlanningAgent.mockRejectedValue(
+      new AppError(502, "AGENT_INVOKE_FAILED", "Google Gemini hit a rate limit.", {
+        kind: "rate_limit",
+        agentType: "google",
+        raw: "RESOURCE_EXHAUSTED",
+        userMessage: "Google Gemini hit a rate limit.",
+        notificationMessage: "Google Gemini hit a rate limit.",
+        isLimitError: true,
+      })
+    );
+
+    await expect(service.generatePrdFromCodebase("proj-1")).rejects.toMatchObject({
+      message: "The planning agent could not generate a PRD from the codebase. Google Gemini hit a rate limit.",
+      details: expect.objectContaining({
+        kind: "rate_limit",
+        notificationMessage: "Google Gemini hit a rate limit.",
+      }),
+    });
+  });
 });

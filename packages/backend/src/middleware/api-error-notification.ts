@@ -6,7 +6,7 @@
 
 import type { Request, Response, NextFunction } from "express";
 import { AppError } from "./error-handler.js";
-import { classifyAgentApiError } from "../utils/error-utils.js";
+import { classifyAgentApiError, getAgentApiFailureDetails } from "../utils/error-utils.js";
 import { notificationService } from "../services/notification.service.js";
 import { broadcastToProject } from "../websocket/index.js";
 import { createLogger } from "../utils/logger.js";
@@ -19,6 +19,8 @@ const API_ERROR_CODES = new Set([
   "ANTHROPIC_API_KEY_MISSING",
   "CURSOR_API_ERROR",
   "AGENT_CLI_REQUIRED",
+  "OPENAI_API_ERROR",
+  "GOOGLE_API_ERROR",
 ]);
 
 export function apiErrorNotificationMiddleware(
@@ -43,7 +45,8 @@ export function apiErrorNotificationMiddleware(
     return;
   }
 
-  const apiErrorKind = classifyAgentApiError(err);
+  const structured = getAgentApiFailureDetails(err.details);
+  const apiErrorKind = structured?.kind ?? classifyAgentApiError(err);
   if (!apiErrorKind) {
     next(err);
     return;
@@ -54,7 +57,7 @@ export function apiErrorNotificationMiddleware(
       projectId,
       source: inferSourceFromPath(req.path),
       sourceId: inferSourceIdFromPath(req.path, projectId),
-      message: err.message.slice(0, 500),
+      message: (structured?.notificationMessage ?? err.message).slice(0, 500),
       errorCode: apiErrorKind,
     })
     .then((notification) => {

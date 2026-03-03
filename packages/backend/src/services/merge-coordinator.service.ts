@@ -105,6 +105,7 @@ export interface MergeCoordinatorHost {
     branchName: string;
     conflictedFiles: string[];
     testCommand?: string;
+    baseBranch?: string;
   }): Promise<boolean>;
   sessionManager: {
     createSession(repoPath: string, data: Record<string, unknown>): Promise<{ id: string }>;

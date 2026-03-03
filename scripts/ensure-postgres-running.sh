@@ -3,13 +3,28 @@
 # No-op if Postgres is already accepting connections on localhost:5432.
 set -e
 
+is_wsl() {
+  [ -n "${WSL_DISTRO_NAME:-}" ] || [ -n "${WSL_INTEROP:-}" ] || \
+    grep -qi microsoft /proc/version 2>/dev/null
+}
+
+UNAME="$(uname -s)"
+IS_WSL=0
+if [ "$UNAME" = "Linux" ] && is_wsl; then
+  IS_WSL=1
+fi
+
 if command -v pg_isready >/dev/null 2>&1; then
   if pg_isready -h localhost -p 5432 -q 2>/dev/null; then
     exit 0
   fi
 fi
 
-UNAME="$(uname -s)"
+if [ "$IS_WSL" -eq 1 ]; then
+  echo "==> WSL detected. Skipping PostgreSQL service start. Ensure Postgres is reachable from WSL on localhost:5432 or configure DATABASE_URL."
+  exit 0
+fi
+
 case "$UNAME" in
   Darwin)
     if command -v brew >/dev/null 2>&1; then

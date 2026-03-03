@@ -21,6 +21,7 @@ import { CrashRecoveryService } from "./crash-recovery.service.js";
 import { ProjectService } from "./project.service.js";
 import { heartbeatService } from "./heartbeat.service.js";
 import { eventLogService } from "./event-log.service.js";
+import { isProcessAlive, terminateProcessGroup } from "../utils/process-group.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("recovery");
@@ -51,7 +52,7 @@ export interface RecoveryHost {
     assignment: GuppAssignment,
     options: { pidAlive: boolean }
   ): Promise<boolean>;
-  /** Called when a stale heartbeat still has a live PID and an assignment to reattach from. */
+  /** Called when a stale heartbeat still has a live process-group leader and an assignment to reattach from. */
   handleRecoverableHeartbeatGap?(
     projectId: string,
     repoPath: string,
@@ -72,36 +73,6 @@ export interface GuppAssignment {
   agentConfig: unknown;
   attempt: number;
   createdAt: string;
-}
-
-/** Check whether a PID is still running */
-function isPidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const SIGTERM_WAIT_MS = 2000;
-
-/** Terminate an agent process: SIGTERM first, then SIGKILL if it does not exit. */
-async function terminateAgentProcess(pid: number): Promise<void> {
-  try {
-    process.kill(pid, "SIGTERM");
-  } catch {
-    // Process may already be gone
-    return;
-  }
-  await new Promise((r) => setTimeout(r, SIGTERM_WAIT_MS));
-  if (isPidAlive(pid)) {
-    try {
-      process.kill(pid, "SIGKILL");
-    } catch {
-      // Best effort
-    }
-  }
 }
 
 export class RecoveryService {
@@ -221,9 +192,9 @@ export class RecoveryService {
       const heartbeat = wtPath ? await heartbeatService.readHeartbeat(wtPath, taskId) : null;
       const pidAlive =
         heartbeat != null &&
-        typeof heartbeat.pid === "number" &&
-        heartbeat.pid > 0 &&
-        isPidAlive(heartbeat.pid);
+        typeof heartbeat.processGroupLeaderPid === "number" &&
+        heartbeat.processGroupLeaderPid > 0 &&
+        isProcessAlive(heartbeat.processGroupLeaderPid);
 
       if (pidAlive && assignment.phase === "coding" && host.reattachSlot) {
         const attached = await host.reattachSlot(projectId, repoPath, task, assignment);
@@ -298,7 +269,9 @@ export class RecoveryService {
         const task = await this.taskStore.show(projectId, taskId);
         if (task.status === "in_progress") {
           const pidAlive =
-            typeof heartbeat.pid === "number" && heartbeat.pid > 0 && isPidAlive(heartbeat.pid);
+            typeof heartbeat.processGroupLeaderPid === "number" &&
+            heartbeat.processGroupLeaderPid > 0 &&
+            isProcessAlive(heartbeat.processGroupLeaderPid);
           const exceededSuspendGrace =
             Date.now() - heartbeat.lastOutputTimestamp > AGENT_SUSPEND_GRACE_MS;
           const assignment = await this.readAssignment(repoPath, taskId);
@@ -324,11 +297,11 @@ export class RecoveryService {
           if (pidAlive) {
             log.info("Terminating orphaned agent process", {
               taskId,
-              pid: heartbeat.pid,
+              processGroupLeaderPid: heartbeat.processGroupLeaderPid,
               exceededSuspendGrace,
               hasAssignment: Boolean(assignment),
             });
-            await terminateAgentProcess(heartbeat.pid);
+            await terminateProcessGroup(heartbeat.processGroupLeaderPid, 2000);
           }
           await this.recoverTask(projectId, repoPath, task);
           requeued.push(taskId);

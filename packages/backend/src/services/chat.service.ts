@@ -92,15 +92,12 @@ function normalizePlannerOpenQuestions(
 
   return input
     .filter(
-      (item): item is { id?: unknown; text?: unknown } =>
+      (item): item is { id?: string; text: string } =>
         item != null && typeof item === "object" && typeof item.text === "string"
     )
     .map((item) => ({
-      id:
-        typeof item.id === "string" && item.id.trim()
-          ? item.id.trim()
-          : `q-${Math.random().toString(36).slice(2, 10)}`,
-      text: item.text!.trim(),
+      id: item.id?.trim() ? item.id.trim() : `q-${Math.random().toString(36).slice(2, 10)}`,
+      text: item.text.trim(),
     }))
     .filter((item) => item.text.length > 0);
 }

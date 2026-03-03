@@ -25,7 +25,10 @@ export function PrdViewer({
   scopeChangeMetadata,
 }: PrdViewerProps) {
   const proposedBySection = useMemo(() => {
-    const map = new Map<string, (typeof scopeChangeMetadata.scopeChangeProposedUpdates)[number]>();
+    const map = new Map<
+      string,
+      NonNullable<ScopeChangeMetadata["scopeChangeProposedUpdates"]>[number]
+    >();
     for (const u of scopeChangeMetadata?.scopeChangeProposedUpdates ?? []) {
       map.set(u.section, u);
     }

@@ -4,11 +4,18 @@ import { waitFor } from "@testing-library/react";
 import notificationReducer from "../slices/notificationSlice";
 import connectionReducer, { setConnectionError } from "../slices/connectionSlice";
 import websocketReducer, { setDeliverToast } from "../slices/websocketSlice";
+import openQuestionsReducer from "../slices/openQuestionsSlice";
 import { notificationListener } from "./notificationListener";
 
 const mockIsConnectionError = vi.fn();
+const mockListByProject = vi.fn();
 
 vi.mock("../../api/client", () => ({
+  api: {
+    notifications: {
+      listByProject: (...args: unknown[]) => mockListByProject(...args),
+    },
+  },
   isConnectionError: (...args: unknown[]) => mockIsConnectionError(...args),
 }));
 
@@ -18,6 +25,7 @@ function createStore() {
       notification: notificationReducer,
       connection: connectionReducer,
       websocket: websocketReducer,
+      openQuestions: openQuestionsReducer,
     },
     middleware: (getDefaultMiddleware) =>
       getDefaultMiddleware().prepend(notificationListener.middleware),
@@ -27,6 +35,8 @@ function createStore() {
 describe("notificationListener", () => {
   beforeEach(() => {
     mockIsConnectionError.mockReset();
+    mockListByProject.mockReset();
+    mockListByProject.mockResolvedValue([]);
   });
 
   it("keeps not-found rejections quiet", () => {
@@ -88,6 +98,26 @@ describe("notificationListener", () => {
 
     await waitFor(() => {
       expect(store.getState().connection.connectionError).toBe(false);
+    });
+  });
+
+  it("suppresses toast notifications and refetches project notifications for api-blocked failures", async () => {
+    const store = createStore();
+    mockIsConnectionError.mockReturnValue(false);
+
+    store.dispatch({
+      type: "sketch/sendMessage/rejected",
+      meta: {
+        requestStatus: "rejected",
+        requestId: "req-5",
+        arg: { projectId: "proj-1", message: "hello" },
+      },
+      error: { message: "Google Gemini hit a rate limit", code: "AGENT_INVOKE_FAILED" },
+    });
+
+    await waitFor(() => {
+      expect(store.getState().notification.items).toHaveLength(0);
+      expect(mockListByProject).toHaveBeenCalledWith("proj-1");
     });
   });
 });

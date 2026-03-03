@@ -38,6 +38,7 @@ import type {
   HelpChatHistory,
   TaskAnalytics,
   ExecuteTaskContext,
+  EnvRuntimeResponse,
 } from "@opensprint/shared";
 import type { TaskListResponse } from "./taskList";
 
@@ -98,7 +99,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     const body = await response.json().catch(() => null);
     const code = body?.error?.code ?? "UNKNOWN";
     const message = body?.error?.message || response.statusText || "Request failed";
-    const details = body?.error;
+    const details = body?.error?.details ?? body?.error;
     throw new ApiError(message, code, details);
   }
 
@@ -163,6 +164,7 @@ export const api = {
       }),
   },
   env: {
+    getRuntime: () => request<EnvRuntimeResponse>("/env/runtime"),
     getKeys: () =>
       request<{
         anthropic: boolean;

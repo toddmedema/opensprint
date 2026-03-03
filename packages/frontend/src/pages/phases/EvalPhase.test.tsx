@@ -813,6 +813,36 @@ describe("EvalPhase feedback form", () => {
       expect(api.notifications.resolve).not.toHaveBeenCalled();
       expect((answerInput as HTMLTextAreaElement).value).toBe("Line 1\nLine 2");
     });
+
+    it("renders api_blocked notifications with OpenQuestionsBlock instead of analyst answer controls", async () => {
+      const apiBlockedNotification: Notification = {
+        ...openQuestionNotification,
+        id: "ab-1",
+        kind: "api_blocked",
+        errorCode: "rate_limit",
+        questions: [
+          { id: "q1", text: "Google Gemini hit a rate limit", createdAt: "2024-01-01T00:00:00Z" },
+        ],
+      };
+      const store = createStore({
+        evalFeedback: mockFeedbackItems,
+        openQuestionNotifications: [apiBlockedNotification],
+      });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
+      renderWithProviders(
+        <MemoryRouter>
+          <EvalPhase projectId="proj-1" />
+        </MemoryRouter>,
+        { store, queryClient }
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText("API blocked")).toBeInTheDocument();
+      });
+
+      expect(screen.getByText("Google Gemini hit a rate limit")).toBeInTheDocument();
+      expect(screen.queryByTestId("feedback-answer-input")).not.toBeInTheDocument();
+    });
   });
 
   describe("feedback form draft persistence (localStorage)", () => {

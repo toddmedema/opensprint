@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { OrchestratorService, formatReviewFeedback } from "../services/orchestrator.service.js";
+import { heartbeatService } from "../services/heartbeat.service.js";
 import type { ReviewAgentResult } from "@opensprint/shared";
 
 // ─── Mocks ───
@@ -56,6 +57,7 @@ const {
   mockInvokeCodingAgent,
   mockInvokeReviewAgent,
   mockInvokeMergerAgent,
+  mockCreateProcessGroupHandle,
   mockRecoverOrphanedTasks,
   mockRecoverFromStaleHeartbeats,
   mockWriteJsonAtomic,
@@ -116,6 +118,7 @@ const {
   mockInvokeCodingAgent: vi.fn(),
   mockInvokeReviewAgent: vi.fn(),
   mockInvokeMergerAgent: vi.fn(),
+  mockCreateProcessGroupHandle: vi.fn(),
   mockRecoverOrphanedTasks: vi.fn(),
   mockRecoverFromStaleHeartbeats: vi.fn(),
   mockWriteJsonAtomic: vi.fn(),
@@ -268,6 +271,7 @@ vi.mock("../services/agent.service.js", () => ({
     invokeReviewAgent: mockInvokeReviewAgent,
     invokeMergerAgent: mockInvokeMergerAgent,
   },
+  createProcessGroupHandle: mockCreateProcessGroupHandle,
 }));
 
 vi.mock("../services/deployment-service.js", () => ({
@@ -436,6 +440,7 @@ describe("OrchestratorService (slot-based model)", () => {
       dependencyOutputs: [],
       taskDescription: "",
     });
+    mockCreateProcessGroupHandle.mockReturnValue({ kill: vi.fn(), pid: 12345 });
   });
 
   afterEach(async () => {
@@ -563,6 +568,86 @@ describe("OrchestratorService (slot-based model)", () => {
       await vi.waitFor(() => {
         expect(mockCommitWip).toHaveBeenCalledWith(repoPath, task.id);
       });
+    });
+
+    it("reattaches recovered coding agents with a process-group handle", async () => {
+      const task = {
+        ...makeTask("task-coding-recover"),
+        status: "in_progress",
+        assignee: "Frodo",
+      };
+      const host = orchestrator.getRecoveryHost();
+
+      vi.mocked(heartbeatService.readHeartbeat).mockResolvedValue({
+        processGroupLeaderPid: 4242,
+        lastOutputTimestamp: Date.now(),
+        heartbeatTimestamp: Date.now(),
+      });
+
+      const resumed = await host.reattachSlot?.(
+        projectId,
+        repoPath,
+        task as never,
+        {
+          taskId: task.id,
+          projectId,
+          phase: "coding",
+          branchName: `opensprint/${task.id}`,
+          worktreePath: repoPath,
+          promptPath: path.join(repoPath, ".opensprint", "active", task.id, "prompt.md"),
+          agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
+          attempt: 2,
+          createdAt: "2026-03-02T10:00:00.000Z",
+        }
+      );
+
+      expect(resumed).toBe(true);
+      expect(mockCreateProcessGroupHandle).toHaveBeenCalledWith(4242);
+    });
+
+    it("reattaches recovered review agents with a process-group handle", async () => {
+      const task = {
+        ...makeTask("task-review-live"),
+        status: "in_progress",
+        assignee: "Boromir",
+      };
+      const host = orchestrator.getRecoveryHost();
+
+      mockGetSettings.mockResolvedValue({
+        ...defaultSettings,
+        reviewMode: "always",
+        simpleComplexityAgent: { type: "cursor", model: "gpt-5", cliCommand: null },
+        complexComplexityAgent: { type: "cursor", model: "gpt-5", cliCommand: null },
+      });
+      mockGetChangedFiles.mockResolvedValue(["src/foo.ts"]);
+      mockRunScopedTests.mockResolvedValue({ passed: 3, failed: 0, rawOutput: "ok" });
+      vi.mocked(heartbeatService.readHeartbeat).mockResolvedValue({
+        processGroupLeaderPid: 4343,
+        lastOutputTimestamp: Date.now(),
+        heartbeatTimestamp: Date.now(),
+      });
+
+      const resumed = await host.resumeReviewPhase?.(
+        projectId,
+        repoPath,
+        task as never,
+        {
+          taskId: task.id,
+          projectId,
+          phase: "review",
+          branchName: `opensprint/${task.id}`,
+          worktreePath: repoPath,
+          promptPath: path.join(repoPath, ".opensprint", "active", task.id, "prompt.md"),
+          agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
+          attempt: 2,
+          createdAt: "2026-03-02T10:00:00.000Z",
+        },
+        { pidAlive: true }
+      );
+
+      expect(resumed).toBe(true);
+      expect(mockCreateProcessGroupHandle).toHaveBeenCalledWith(4343);
+      expect(mockInvokeReviewAgent).not.toHaveBeenCalled();
     });
   });
 

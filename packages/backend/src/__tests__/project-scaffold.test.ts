@@ -4,6 +4,7 @@ import path from "path";
 import os from "os";
 import { ProjectService } from "../services/project.service.js";
 import type { DbClient } from "../db/client.js";
+import { setBackendRuntimeInfoForTesting } from "../utils/runtime-info.js";
 
 const { testClientRef } = vi.hoisted(() => ({
   testClientRef: { current: null as DbClient | null },
@@ -162,6 +163,7 @@ describe("ProjectService.scaffoldProject", () => {
   });
 
   afterEach(async () => {
+    setBackendRuntimeInfoForTesting(null);
     process.env.HOME = originalHome;
     await fs.rm(tempDir, { recursive: true, force: true });
   });
@@ -220,6 +222,26 @@ describe("ProjectService.scaffoldProject", () => {
     ).rejects.toMatchObject({
       code: "INVALID_INPUT",
       message: expect.stringContaining("Unsupported template"),
+    });
+  });
+
+  it("rejects /mnt parent paths when runtime is WSL", async () => {
+    setBackendRuntimeInfoForTesting({
+      platform: "linux",
+      isWsl: true,
+      wslDistroName: "Ubuntu",
+      repoPathPolicy: "linux_fs_only",
+    });
+
+    await expect(
+      projectService.scaffoldProject({
+        name: "my-app",
+        parentPath: "/mnt/c/Users/Todd/my-app",
+        template: "web-app-expo-react",
+      })
+    ).rejects.toMatchObject({
+      code: "UNSUPPORTED_REPO_PATH",
+      message: expect.stringContaining("WSL filesystem"),
     });
   });
 

@@ -12,6 +12,7 @@ function LocationDisplay() {
 
 const mockScaffold = vi.fn();
 const mockGetKeys = vi.fn();
+const mockGetRuntime = vi.fn();
 const mockGlobalSettingsGet = vi.fn();
 const originalNavigator = global.navigator;
 
@@ -31,6 +32,7 @@ vi.mock("../api/client", async (importOriginal) => {
       },
       env: {
         ...actual.api.env,
+        getRuntime: () => mockGetRuntime(),
         getKeys: (...args: unknown[]) => mockGetKeys(...args),
         saveKey: vi.fn().mockResolvedValue({ saved: true }),
       },
@@ -82,6 +84,7 @@ describe("CreateNewProjectPage", () => {
   beforeEach(() => {
     setNavigator("Linux x86_64", "Mozilla/5.0 (X11; Linux x86_64)");
     mockScaffold.mockReset();
+    mockGetRuntime.mockReset();
     mockScaffold.mockResolvedValue(defaultScaffoldResponse);
     mockGlobalSettingsGet.mockResolvedValue({
       databaseUrl: "",
@@ -96,6 +99,12 @@ describe("CreateNewProjectPage", () => {
       openai: true,
       claudeCli: true,
       useCustomCli: false,
+    });
+    mockGetRuntime.mockResolvedValue({
+      platform: "linux",
+      isWsl: false,
+      wslDistroName: null,
+      repoPathPolicy: "any",
     });
   });
 
@@ -364,8 +373,44 @@ describe("CreateNewProjectPage", () => {
     expect(screen.getByTestId("im-ready-button")).toBeInTheDocument();
   });
 
-  it("shows Windows-safe run instructions on Windows", async () => {
+  it("shows WSL run instructions for a Windows browser when the backend is running in WSL", async () => {
     setNavigator("Win32", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+    mockGetRuntime.mockResolvedValue({
+      platform: "linux",
+      isWsl: true,
+      wslDistroName: "Ubuntu",
+      repoPathPolicy: "linux_fs_only",
+    });
+    mockScaffold.mockResolvedValue({
+      project: {
+        id: "proj-1",
+        name: "My App",
+        repoPath: "/home/todd/My App",
+      },
+    });
+    const user = userEvent.setup();
+    renderCreateNewProjectPage();
+    await user.type(screen.getByLabelText(/project name/i), "My App");
+    await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/home/todd");
+    await user.click(screen.getByTestId("next-button"));
+    await user.click(screen.getByTestId("next-button"));
+
+    await screen.findByText(/your project is ready/i);
+    expect(screen.getByText(/run these commands in your wsl terminal/i)).toBeInTheDocument();
+    expect(getInstructionsPre()).toHaveTextContent('cd "/home/todd/My App"');
+    expect(getInstructionsPre()).toHaveTextContent("npm run web");
+    expect(getInstructionsPre()).not.toHaveTextContent("&&");
+    expect(getInstructionsPre()).not.toHaveTextContent("pushd");
+  });
+
+  it("shows Windows-safe run instructions when the backend itself is native Windows", async () => {
+    setNavigator("Win32", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+    mockGetRuntime.mockResolvedValue({
+      platform: "win32",
+      isWsl: false,
+      wslDistroName: null,
+      repoPathPolicy: "any",
+    });
     mockScaffold.mockResolvedValue({
       project: {
         id: "proj-1",
@@ -385,6 +430,24 @@ describe("CreateNewProjectPage", () => {
     expect(getInstructionsPre()).toHaveTextContent("npm run web");
     expect(getInstructionsPre()).not.toHaveTextContent("&&");
     expect(getInstructionsPre()).not.toHaveTextContent("cd /d");
+  });
+
+  it("blocks /mnt paths when the backend runtime is WSL", async () => {
+    mockGetRuntime.mockResolvedValue({
+      platform: "linux",
+      isWsl: true,
+      wslDistroName: "Ubuntu",
+      repoPathPolicy: "linux_fs_only",
+    });
+    const user = userEvent.setup();
+    renderCreateNewProjectPage();
+    await user.type(screen.getByLabelText(/project name/i), "My App");
+    await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/mnt/c/Users/Todd");
+
+    expect(await screen.findByTestId("repository-step-error")).toHaveTextContent(
+      /project repos must be in the wsl filesystem/i
+    );
+    expect(screen.getByTestId("next-button")).toBeDisabled();
   });
 
   it("I'm Ready navigates to project sketch phase", async () => {

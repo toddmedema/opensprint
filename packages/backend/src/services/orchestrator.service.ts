@@ -29,7 +29,7 @@ import {
 } from "@opensprint/shared";
 import { taskStore as taskStoreSingleton, type StoredTask } from "./task-store.service.js";
 import { ProjectService } from "./project.service.js";
-import { agentService, createPidHandle } from "./agent.service.js";
+import { agentService, createProcessGroupHandle } from "./agent.service.js";
 import { BranchManager, WorktreeBranchInUseError } from "./branch-manager.js";
 import { ContextAssembler } from "./context-assembler.js";
 import { SessionManager } from "./session-manager.js";
@@ -837,8 +837,8 @@ export class OrchestratorService {
     if (coderIdx >= 0) state.nextCoderIndex = Math.max(state.nextCoderIndex, coderIdx + 1);
 
     const heartbeat = await heartbeatService.readHeartbeat(assignment.worktreePath, task.id);
-    if (!heartbeat?.pid) return false;
-    const handle = createPidHandle(heartbeat.pid);
+    if (!heartbeat?.processGroupLeaderPid) return false;
+    const handle = createProcessGroupHandle(heartbeat.processGroupLeaderPid);
     const initialSuspendReason =
       options?.suspendReason ??
       this.shouldStartRecoveredAgentSuspended(heartbeat.lastOutputTimestamp);
@@ -903,7 +903,9 @@ export class OrchestratorService {
     const heartbeat = options.pidAlive
       ? await heartbeatService.readHeartbeat(assignment.worktreePath, task.id)
       : null;
-    const handle = heartbeat?.pid ? createPidHandle(heartbeat.pid) : null;
+    const handle = heartbeat?.processGroupLeaderPid
+      ? createProcessGroupHandle(heartbeat.processGroupLeaderPid)
+      : null;
     if (options.pidAlive && !handle) return false;
 
     const existingSlot = state.slots.get(task.id);

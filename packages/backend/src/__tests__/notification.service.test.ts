@@ -157,6 +157,27 @@ describe.skipIf(!notifPostgresOk)("NotificationService", () => {
       expect(list[0]!.kind).toBe("api_blocked");
       expect(list[0]!.errorCode).toBe("auth");
     });
+
+    it("dedupes unresolved api-blocked notifications by project, source, sourceId, and error code", async () => {
+      const first = await service.createApiBlocked({
+        projectId: "proj-dedupe",
+        source: "prd",
+        sourceId: "global",
+        message: "Google Gemini hit a rate limit",
+        errorCode: "rate_limit",
+      });
+      const second = await service.createApiBlocked({
+        projectId: "proj-dedupe",
+        source: "prd",
+        sourceId: "global",
+        message: "Google Gemini hit a rate limit again",
+        errorCode: "rate_limit",
+      });
+
+      expect(second.id).toBe(first.id);
+      const list = await service.listByProject("proj-dedupe");
+      expect(list).toHaveLength(1);
+    });
   });
 
   describe("listByProject", () => {

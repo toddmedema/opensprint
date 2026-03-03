@@ -76,4 +76,47 @@ describe("apiErrorNotificationMiddleware", () => {
     expect(mockBroadcastToProject).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledWith(expect.any(AppError));
   });
+
+  it("prefers structured notificationMessage/details and recognizes GOOGLE_API_ERROR", async () => {
+    mockCreateApiBlocked.mockResolvedValue({
+      id: "notif-2",
+      projectId: "proj-1",
+      source: "prd",
+      sourceId: "global",
+      questions: [],
+      createdAt: "2026-03-03T00:00:00Z",
+      errorCode: "rate_limit",
+    });
+    const next = vi.fn();
+
+    apiErrorNotificationMiddleware(
+      new AppError(502, "GOOGLE_API_ERROR", "noisy raw provider payload", {
+        kind: "rate_limit",
+        agentType: "google",
+        raw: "RESOURCE_EXHAUSTED",
+        userMessage: "Google Gemini hit a rate limit.",
+        notificationMessage: "Google Gemini hit a rate limit. Add another key in Settings.",
+        isLimitError: true,
+      }),
+      {
+        params: { projectId: "proj-1" },
+        path: "/api/projects/proj-1/prd/generate-from-codebase",
+      } as never,
+      {} as never,
+      next
+    );
+
+    await vi.waitFor(() => {
+      expect(mockCreateApiBlocked).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: "proj-1",
+          source: "prd",
+          sourceId: "global",
+          errorCode: "rate_limit",
+          message: "Google Gemini hit a rate limit. Add another key in Settings.",
+        })
+      );
+      expect(next).toHaveBeenCalled();
+    });
+  });
 });

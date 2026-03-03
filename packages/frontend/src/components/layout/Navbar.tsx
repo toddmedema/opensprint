@@ -41,13 +41,15 @@ export function Navbar({
   const [projects, setProjects] = useState<Project[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const isSettingsActive =
+  const isSettingsActive = Boolean(
     location.pathname === "/settings" ||
-    (project && location.pathname === `/projects/${project.id}/settings`);
+      (project ? location.pathname === `/projects/${project.id}/settings` : false)
+  );
 
-  const isHelpActive =
+  const isHelpActive = Boolean(
     location.pathname === "/help" ||
-    (project && location.pathname === `/projects/${project.id}/help`);
+      (project ? location.pathname === `/projects/${project.id}/help` : false)
+  );
 
   const settingsHref = project ? `/projects/${project.id}/settings` : "/settings";
   const helpHref = project ? `/projects/${project.id}/help` : "/help";

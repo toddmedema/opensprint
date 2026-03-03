@@ -11,6 +11,7 @@ import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import {
   classifyAgentApiError,
+  createAgentApiFailureDetails,
   getErrorMessage,
   getExecErrorShape,
   isLimitError,
@@ -231,6 +232,31 @@ function formatAgentError(
   }
 
   return raw;
+}
+
+function buildApiFailureMessages(
+  agentType: "openai" | "google",
+  kind: "rate_limit" | "auth",
+  options?: { allKeysExhausted?: boolean }
+): { userMessage: string; notificationMessage: string } {
+  const label = agentType === "google" ? "Google Gemini" : "OpenAI";
+  if (kind === "rate_limit") {
+    if (options?.allKeysExhausted) {
+      return {
+        userMessage: `All ${label} API keys have hit rate limits. Add another key in Settings or retry after the limit resets.`,
+        notificationMessage: `${label} hit a rate limit. Add another API key in Settings or retry after the limit resets.`,
+      };
+    }
+    return {
+      userMessage: `${label} hit a rate limit. Add another key in Settings or retry after the limit resets.`,
+      notificationMessage: `${label} hit a rate limit. Add another API key in Settings or retry after the limit resets.`,
+    };
+  }
+
+  return {
+    userMessage: `${label} is not configured correctly. Add a valid API key in Settings and try again.`,
+    notificationMessage: `${label} needs a valid API key in Settings before work can continue.`,
+  };
 }
 
 export interface AgentInvokeOptions {
@@ -1565,26 +1591,42 @@ export class AgentClient {
 
       if (!resolved || !resolved.key.trim()) {
         const msg = lastError ? getErrorMessage(lastError) : "No OpenAI API key available";
+        const details = createAgentApiFailureDetails({
+          kind: lastError && isLimitError(lastError) ? "rate_limit" : "auth",
+          agentType: "openai",
+          raw: msg,
+          ...buildApiFailureMessages(
+            "openai",
+            lastError && isLimitError(lastError) ? "rate_limit" : "auth",
+            { allKeysExhausted: Boolean(lastError && isLimitError(lastError)) }
+          ),
+          isLimitError: Boolean(lastError && isLimitError(lastError)),
+          ...(lastError && isLimitError(lastError) ? { allKeysExhausted: true } : {}),
+        });
         throw new AppError(
           400,
           ErrorCodes.AGENT_INVOKE_FAILED,
-          lastError && isLimitError(lastError)
-            ? `All OpenAI API keys hit rate limits. ${msg} Add more keys in Settings, or retry after 24h.`
-            : "OPENAI_API_KEY is not set. Add it to your .env file or Settings. Get a key from https://platform.openai.com/.",
-          lastError
-            ? { agentType: "openai", raw: msg, isLimitError: isLimitError(lastError) }
-            : undefined
+          details.userMessage,
+          details
         );
       }
 
       const { key, keyId, source } = resolved;
       if (triedKeyIds.has(keyId)) {
         const msg = getErrorMessage(lastError);
+        const details = createAgentApiFailureDetails({
+          kind: "rate_limit",
+          agentType: "openai",
+          raw: msg,
+          ...buildApiFailureMessages("openai", "rate_limit", { allKeysExhausted: true }),
+          isLimitError: true,
+          allKeysExhausted: true,
+        });
         throw new AppError(
           502,
           ErrorCodes.AGENT_INVOKE_FAILED,
-          `OpenAI API error: ${msg}. Check Settings (API key, model).`,
-          { agentType: "openai", raw: msg, isLimitError: true }
+          details.userMessage,
+          details
         );
       }
       triedKeyIds.add(keyId);
@@ -1652,11 +1694,19 @@ export class AgentClient {
           continue;
         }
         const msg = getErrorMessage(error);
-        throw new AppError(502, ErrorCodes.AGENT_INVOKE_FAILED, formatAgentError("openai", msg), {
+        const details = createAgentApiFailureDetails({
+          kind: isLimitError(error) ? "rate_limit" : "auth",
           agentType: "openai",
           raw: msg,
+          ...(isLimitError(error)
+            ? buildApiFailureMessages("openai", "rate_limit")
+            : {
+                userMessage: "OpenAI failed. Check the configured API key and model in Settings.",
+                notificationMessage: "OpenAI needs attention in Settings before work can continue.",
+              }),
           isLimitError: isLimitError(error),
         });
+        throw new AppError(502, ErrorCodes.AGENT_INVOKE_FAILED, details.userMessage, details);
       }
     }
   }
@@ -1679,26 +1729,42 @@ export class AgentClient {
 
       if (!resolved || !resolved.key.trim()) {
         const msg = lastError ? getErrorMessage(lastError) : "No Google API key available";
+        const details = createAgentApiFailureDetails({
+          kind: lastError && isLimitError(lastError) ? "rate_limit" : "auth",
+          agentType: "google",
+          raw: msg,
+          ...buildApiFailureMessages(
+            "google",
+            lastError && isLimitError(lastError) ? "rate_limit" : "auth",
+            { allKeysExhausted: Boolean(lastError && isLimitError(lastError)) }
+          ),
+          isLimitError: Boolean(lastError && isLimitError(lastError)),
+          ...(lastError && isLimitError(lastError) ? { allKeysExhausted: true } : {}),
+        });
         throw new AppError(
           400,
           ErrorCodes.AGENT_INVOKE_FAILED,
-          lastError && isLimitError(lastError)
-            ? `All Google API keys hit rate limits. ${msg} Add more keys in Settings, or retry after 24h.`
-            : "GOOGLE_API_KEY is not set. Add it to your .env file or Settings. Get a key from https://aistudio.google.com/.",
-          lastError
-            ? { agentType: "google", raw: msg, isLimitError: isLimitError(lastError) }
-            : undefined
+          details.userMessage,
+          details
         );
       }
 
       const { key, keyId, source } = resolved;
       if (triedKeyIds.has(keyId)) {
         const msg = getErrorMessage(lastError);
+        const details = createAgentApiFailureDetails({
+          kind: "rate_limit",
+          agentType: "google",
+          raw: msg,
+          ...buildApiFailureMessages("google", "rate_limit", { allKeysExhausted: true }),
+          isLimitError: true,
+          allKeysExhausted: true,
+        });
         throw new AppError(
           502,
           ErrorCodes.AGENT_INVOKE_FAILED,
-          `Google API error: ${msg}. Check Settings (API key, model).`,
-          { agentType: "google", raw: msg, isLimitError: true }
+          details.userMessage,
+          details
         );
       }
       triedKeyIds.add(keyId);
@@ -1753,11 +1819,20 @@ export class AgentClient {
           continue;
         }
         const msg = getErrorMessage(error);
-        throw new AppError(502, ErrorCodes.AGENT_INVOKE_FAILED, formatAgentError("google", msg), {
+        const details = createAgentApiFailureDetails({
+          kind: isLimitError(error) ? "rate_limit" : "auth",
           agentType: "google",
           raw: msg,
+          ...(isLimitError(error)
+            ? buildApiFailureMessages("google", "rate_limit")
+            : {
+                userMessage: "Google Gemini failed. Check the configured API key and model in Settings.",
+                notificationMessage:
+                  "Google Gemini needs attention in Settings before work can continue.",
+              }),
           isLimitError: isLimitError(error),
         });
+        throw new AppError(502, ErrorCodes.AGENT_INVOKE_FAILED, details.userMessage, details);
       }
     }
   }

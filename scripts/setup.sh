@@ -14,6 +14,23 @@ npm install
 # Ensure ~/.opensprint exists and global-settings has default databaseUrl if missing
 npx tsx scripts/ensure-global-settings.ts
 
+is_wsl() {
+  [ -n "${WSL_DISTRO_NAME:-}" ] || [ -n "${WSL_INTEROP:-}" ] || \
+    grep -qi microsoft /proc/version 2>/dev/null
+}
+
+print_wsl_setup_guidance() {
+  cat <<'EOF'
+==> OpenSprint Windows support requires running npm run setup and npm run dev inside WSL2.
+==> PostgreSQL must already be reachable from WSL before continuing.
+==> Supported database options:
+    - PostgreSQL running inside your WSL distro on localhost:5432
+    - PostgreSQL exposed to WSL on localhost:5432 from Docker Desktop or similar
+    - Remote PostgreSQL configured via DATABASE_URL or ~/.opensprint/global-settings.json
+==> Store your project repo in the WSL filesystem (for example /home/<user>/src/app), not under /mnt/c/...
+EOF
+}
+
 # --- Install and start PostgreSQL (platform-specific), create user and DB ---
 OS_USER="opensprint"
 OS_PASSWORD="opensprint"
@@ -98,16 +115,26 @@ install_and_start_postgres_linux() {
 }
 
 UNAME="$(uname -s)"
+IS_WSL=0
+if [ "$UNAME" = "Linux" ] && is_wsl; then
+  IS_WSL=1
+fi
+
 case "$UNAME" in
   Darwin)
     install_and_start_postgres_mac || true
     ;;
   Linux)
-    install_and_start_postgres_linux || true
+    if [ "$IS_WSL" -eq 1 ]; then
+      echo "==> WSL detected. Skipping package-manager and service-manager PostgreSQL setup."
+    else
+      install_and_start_postgres_linux || true
+    fi
     ;;
-  MINGW*|MSYS*)
-    echo "==> On Windows, install PostgreSQL from https://www.postgresql.org/download/windows/ or use Chocolatey: choco install postgresql"
-    echo "    Create user 'opensprint' with password 'opensprint', databases 'opensprint' and 'opensprint_test', or set databaseUrl in ~/.opensprint/global-settings.json"
+  MINGW*|MSYS*|CYGWIN*)
+    echo "==> Native Windows execution is unsupported."
+    echo "==> Install WSL2, open a WSL terminal, clone this repo into your Linux home directory, and run npm run setup there."
+    exit 1
     ;;
   *)
     echo "==> Unsupported OS. Install PostgreSQL and set databaseUrl in ~/.opensprint/global-settings.json"
@@ -116,10 +143,23 @@ esac
 
 # Apply database schema (tables and indexes) so the backend can start without errors
 echo "==> Applying database schema..."
-if npx tsx scripts/ensure-db-schema.ts 2>/dev/null; then
-  echo "==> Database schema applied"
+if [ "$IS_WSL" -eq 1 ]; then
+  if npx tsx scripts/ensure-db-schema.ts; then
+    echo "==> Database schema applied"
+  else
+    print_wsl_setup_guidance
+    exit 1
+  fi
 else
-  echo "==> Could not apply schema (is Postgres running and user/db created?). Backend will apply schema on first start."
+  if npx tsx scripts/ensure-db-schema.ts 2>/dev/null; then
+    echo "==> Database schema applied"
+  else
+    echo "==> Could not apply schema (is Postgres running and user/db created?). Backend will apply schema on first start."
+  fi
 fi
 
-echo "==> Setup complete. Run: npm run dev"
+if [ "$IS_WSL" -eq 1 ]; then
+  echo "==> Setup complete. Run: npm run dev from your WSL terminal"
+else
+  echo "==> Setup complete. Run: npm run dev"
+fi

@@ -36,6 +36,7 @@ import { CONTENT_CONTAINER_CLASS } from "../../lib/constants";
 import { getProjectPhasePath } from "../../lib/phaseRouting";
 import { formatPlanIdAsTitle } from "../../lib/formatting";
 import { HilApprovalBlock } from "../../components/HilApprovalBlock";
+import { OpenQuestionsBlock } from "../../components/OpenQuestionsBlock";
 
 /** Reply icon (message turn / corner up-right) */
 function ReplyIcon({ className }: { className?: string }) {
@@ -519,9 +520,21 @@ const FeedbackCard = memo(
                 />
               </div>
             )}
+            {notification?.kind === "api_blocked" && notification.questions.length > 0 && (
+              <div className="mt-3">
+                <OpenQuestionsBlock
+                  notification={notification}
+                  projectId={projectId}
+                  source="eval"
+                  sourceId={item.id}
+                  onResolved={() => onHilResolved?.()}
+                />
+              </div>
+            )}
             {/* Open questions (Analyst needs clarification) — Answer/Dismiss controls */}
             {notification &&
               notification.kind !== "hil_approval" &&
+              notification.kind !== "api_blocked" &&
               notification.questions.length > 0 && (
                 <div
                   className="mt-3 p-3 rounded-lg border border-theme-border bg-theme-border-subtle/30"
