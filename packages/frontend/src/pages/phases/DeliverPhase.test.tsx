@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DeliverPhase } from "./DeliverPhase";
 import deliverReducer from "../../store/slices/deliverSlice";
 import projectReducer from "../../store/slices/projectSlice";
+import { MOBILE_BREAKPOINT } from "../../lib/constants";
 
 const {
   mockGetSettings,
@@ -767,6 +768,145 @@ describe("DeliverPhase", () => {
       expect(logEl).toHaveTextContent("Live chunk 1");
       expect(logEl).toHaveTextContent("Live chunk 2");
       expect(logEl).not.toHaveTextContent("Older polled line");
+    });
+  });
+
+  describe("mobile layout", () => {
+    const history = [
+      {
+        id: "deploy-1",
+        projectId: "proj-1",
+        status: "success",
+        startedAt: "2025-01-01T12:00:00.000Z",
+        completedAt: "2025-01-01T12:01:00.000Z",
+        log: ["Deploy step 1\n", "Deploy step 2\n"],
+        target: "staging",
+      },
+      {
+        id: "deploy-2",
+        projectId: "proj-1",
+        status: "success",
+        startedAt: "2025-01-01T13:00:00.000Z",
+        completedAt: "2025-01-01T13:01:00.000Z",
+        log: ["Prod deploy\n"],
+        target: "production",
+      },
+    ];
+
+    it("on mobile, history is full-width; tapping a deploy opens detail overlay", async () => {
+      const originalInnerWidth = window.innerWidth;
+      try {
+        Object.defineProperty(window, "innerWidth", {
+          value: MOBILE_BREAKPOINT - 1,
+          writable: true,
+        });
+        mockGetSettings.mockResolvedValue({
+          deployment: {
+            mode: "custom",
+            targets: [{ name: "production", command: "echo deploy", isDefault: true }],
+          },
+        });
+        const store = createStore({ history });
+        renderWithRouter(store);
+        await waitFor(() => expect(screen.getByText("Delivery History")).toBeInTheDocument());
+        expect(screen.getByTestId("delivery-history-mobile-main")).toBeInTheDocument();
+        expect(screen.queryByRole("slider", { name: "Resize delivery history sidebar" })).not.toBeInTheDocument();
+        const deploy1Row = screen.getByText("Staging").closest("button");
+        expect(deploy1Row).toBeInTheDocument();
+        fireEvent.click(deploy1Row!);
+        await waitFor(() => {
+          const overlay = document.querySelector('[role="dialog"][aria-label="Deployment detail"]');
+          expect(overlay).toBeInTheDocument();
+        });
+        expect(screen.getByTestId("deploy-log")).toHaveTextContent("Deploy step 1");
+      } finally {
+        Object.defineProperty(window, "innerWidth", {
+          value: originalInnerWidth,
+          writable: true,
+        });
+      }
+    });
+
+    it("on mobile, close button and backdrop dismiss deploy detail overlay", async () => {
+      const originalInnerWidth = window.innerWidth;
+      try {
+        Object.defineProperty(window, "innerWidth", {
+          value: MOBILE_BREAKPOINT - 1,
+          writable: true,
+        });
+        mockGetSettings.mockResolvedValue({
+          deployment: {
+            mode: "custom",
+            targets: [{ name: "production", command: "echo deploy", isDefault: true }],
+          },
+        });
+        const store = createStore({
+          history,
+          selectedDeployId: "deploy-1",
+        });
+        renderWithRouter(store);
+        await waitFor(() => {
+          const overlay = document.querySelector('[role="dialog"][aria-label="Deployment detail"]');
+          expect(overlay).toBeInTheDocument();
+        });
+        const closeBtn = screen.getByRole("button", { name: "Close deployment detail" });
+        fireEvent.click(closeBtn);
+        await waitFor(() => {
+          const overlay = document.querySelector('[role="dialog"][aria-label="Deployment detail"]');
+          expect(overlay).not.toBeInTheDocument();
+        });
+      } finally {
+        Object.defineProperty(window, "innerWidth", {
+          value: originalInnerWidth,
+          writable: true,
+        });
+      }
+    });
+
+    it("top bar has responsive padding (px-4 on mobile, sm:px-6)", async () => {
+      mockGetSettings.mockResolvedValue({
+        deployment: {
+          mode: "custom",
+          targets: [{ name: "production", command: "echo deploy", isDefault: true }],
+        },
+      });
+      const store = createStore();
+      renderWithRouter(store);
+      const topBar = screen.getByTestId("deliver-top-bar");
+      expect(topBar).toHaveClass("px-4", "sm:px-6");
+    });
+
+    it("mobile deploy detail overlay has overflow-y-auto for scrollable content", async () => {
+      const originalInnerWidth = window.innerWidth;
+      try {
+        Object.defineProperty(window, "innerWidth", {
+          value: MOBILE_BREAKPOINT - 1,
+          writable: true,
+        });
+        mockGetSettings.mockResolvedValue({
+          deployment: {
+            mode: "custom",
+            targets: [{ name: "production", command: "echo deploy", isDefault: true }],
+          },
+        });
+        const store = createStore({
+          history,
+          selectedDeployId: "deploy-1",
+        });
+        renderWithRouter(store);
+        await waitFor(() => {
+          const overlay = document.querySelector('[role="dialog"][aria-label="Deployment detail"]');
+          expect(overlay).toBeInTheDocument();
+        });
+        const overlayEl = document.querySelector('[role="dialog"][aria-label="Deployment detail"]');
+        const scrollable = overlayEl?.querySelector(".overflow-y-auto");
+        expect(scrollable).toBeTruthy();
+      } finally {
+        Object.defineProperty(window, "innerWidth", {
+          value: originalInnerWidth,
+          writable: true,
+        });
+      }
     });
   });
 });

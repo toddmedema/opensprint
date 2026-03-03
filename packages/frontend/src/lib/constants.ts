@@ -24,8 +24,9 @@ export const GITHUB_REPO_URL = "https://github.com/toddmedema/opensprint.dev";
  * Tailwind classes for content containers that must share the same width.
  * Used by: evaluate feedback input.
  * Ensures consistent layout across viewport sizes regardless of content.
+ * Responsive padding: px-4 on mobile, px-6 from sm up.
  */
-export const CONTENT_CONTAINER_CLASS = "max-w-3xl mx-auto px-6" as const;
+export const CONTENT_CONTAINER_CLASS = "max-w-3xl mx-auto px-4 sm:px-6" as const;
 
 /**
  * Max-width for Settings and Help page content (1800px).

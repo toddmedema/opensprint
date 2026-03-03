@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { screen, waitFor, within, act } from "@testing-library/react";
+import { screen, waitFor, within, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { QueryClient } from "@tanstack/react-query";
@@ -11,7 +11,7 @@ import {
 } from "../../test/test-utils";
 import { EvalPhase, EVALUATE_FEEDBACK_FILTER_KEY, FEEDBACK_LOADING_DEBOUNCE_MS } from "./EvalPhase";
 import { FEEDBACK_FORM_DRAFT_KEY_PREFIX } from "../../lib/feedbackFormStorage";
-import { CONTENT_CONTAINER_CLASS } from "../../lib/constants";
+import { CONTENT_CONTAINER_CLASS, MOBILE_BREAKPOINT } from "../../lib/constants";
 import {
   taskUpdated,
   fetchTasks,
@@ -330,6 +330,68 @@ describe("EvalPhase feedback loading state", () => {
 describe("EvalPhase feedback form", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("on mobile tapping a feedback card opens detail overlay, close button dismisses", async () => {
+    const originalInnerWidth = window.innerWidth;
+    try {
+      Object.defineProperty(window, "innerWidth", {
+        value: MOBILE_BREAKPOINT - 1,
+        writable: true,
+      });
+      const store = createStore({ evalFeedback: mockFeedbackItems });
+      const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
+      renderWithProviders(
+        <MemoryRouter>
+          <EvalPhase projectId="proj-1" />
+        </MemoryRouter>,
+        { store, queryClient }
+      );
+      await waitFor(() => {
+        expect(screen.getByText("Bug 1")).toBeInTheDocument();
+      });
+      const card = screen.getByText("Bug 1").closest('[role="button"]');
+      expect(card).toBeInTheDocument();
+      fireEvent.click(card!);
+      await waitFor(() => {
+        expect(screen.getByTestId("feedback-detail-overlay")).toBeInTheDocument();
+      });
+      const closeBtn = screen.getByRole("button", { name: /^Close$/ });
+      fireEvent.click(closeBtn);
+      await waitFor(() => {
+        expect(screen.queryByTestId("feedback-detail-overlay")).not.toBeInTheDocument();
+      });
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        value: originalInnerWidth,
+        writable: true,
+      });
+    }
+  });
+
+  it("filter toolbar has data-testid and wraps on mobile", () => {
+    const store = createStore({ evalFeedback: mockFeedbackItems });
+    const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
+    renderWithProviders(
+      <MemoryRouter>
+        <EvalPhase projectId="proj-1" />
+      </MemoryRouter>,
+      { store, queryClient }
+    );
+    expect(screen.getByTestId("eval-feedback-filter-toolbar")).toBeInTheDocument();
+  });
+
+  it("filter toolbar has flex-wrap and responsive layout (flex-col on mobile, sm:flex-row)", () => {
+    const store = createStore({ evalFeedback: mockFeedbackItems });
+    const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
+    renderWithProviders(
+      <MemoryRouter>
+        <EvalPhase projectId="proj-1" />
+      </MemoryRouter>,
+      { store, queryClient }
+    );
+    const toolbar = screen.getByTestId("eval-feedback-filter-toolbar");
+    expect(toolbar).toHaveClass("flex", "flex-col", "sm:flex-row", "sm:flex-wrap");
   });
 
   it("feedback content uses CONTENT_CONTAINER_CLASS", () => {

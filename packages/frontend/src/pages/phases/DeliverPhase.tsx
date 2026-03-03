@@ -18,6 +18,8 @@ import { queryKeys } from "../../api/queryKeys";
 import { api } from "../../api/client";
 import { useViewportWidth } from "../../hooks/useViewportWidth";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
+import { CloseButton } from "../../components/CloseButton";
+import { createPortal } from "react-dom";
 
 /** Normalize target for display (staging → Staging, production → Production, custom as-is) */
 function formatTarget(target: DeploymentRecord["target"]): string {
@@ -103,7 +105,6 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
   const effectiveProjectId = projectId ?? paramProjectId ?? "";
   const viewportWidth = useViewportWidth();
   const isMobile = viewportWidth < MOBILE_BREAKPOINT;
-  const [mobileHistoryOpen, setMobileHistoryOpen] = useState(true);
   const [settings, setSettings] = useState<{ deployment: DeploymentConfig } | null>(null);
   const [resetLoading, setResetLoading] = useState(false);
   const [envFilter, setEnvFilter] = useState<string>("all");
@@ -199,6 +200,10 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
     dispatch(setSelectedDeployId(id));
   };
 
+  const handleCloseDetailOverlay = () => {
+    dispatch(setSelectedDeployId(null));
+  };
+
   const handleResetDeliver = async () => {
     if (resetLoading) return;
     setResetLoading(true);
@@ -220,10 +225,10 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
         <div
-          className="w-full px-6 min-h-[48px] flex items-center justify-end py-2 border-b border-theme-border bg-theme-surface shrink-0"
+          className="w-full px-4 sm:px-6 min-h-[48px] flex items-center justify-end py-2 border-b border-theme-border bg-theme-surface shrink-0"
           data-testid="deliver-top-bar"
         >
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
             {settings?.deployment?.mode === "expo" ? (
               isDeploying ? (
                 <>
@@ -231,7 +236,7 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
                     type="button"
                     onClick={handleResetDeliver}
                     disabled={resetLoading}
-                    className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="btn-secondary min-h-[44px] min-w-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
                     data-testid="cancel-deployment-button"
                   >
                     {resetLoading ? "Cancelling…" : "Cancel Deployment"}
@@ -247,7 +252,7 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
                   <button
                     type="button"
                     onClick={handleDeployToBeta}
-                    className="btn-secondary"
+                    className="btn-secondary min-h-[44px] min-w-[44px]"
                     data-testid="deploy-beta-button"
                   >
                     Deploy to Staging
@@ -255,7 +260,7 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
                   <button
                     type="button"
                     onClick={handleDeployToProd}
-                    className="btn-primary"
+                    className="btn-primary min-h-[44px] min-w-[44px]"
                     data-testid="deploy-prod-button"
                   >
                     Deploy to Production
@@ -268,7 +273,7 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
                   type="button"
                   onClick={handleResetDeliver}
                   disabled={resetLoading}
-                  className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="btn-secondary min-h-[44px] min-w-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
                   data-testid="cancel-deployment-button"
                 >
                   {resetLoading ? "Cancelling…" : "Cancel Deployment"}
@@ -294,7 +299,7 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
                           key={t.name}
                           type="button"
                           onClick={() => dispatch(triggerDeliver({ projectId, target: t.name }))}
-                          className={t.isDefault ? "btn-primary" : "btn-secondary"}
+                          className={`min-h-[44px] min-w-[44px] ${t.isDefault ? "btn-primary" : "btn-secondary"}`}
                           data-testid={`deploy-to-${t.name}-button`}
                         >
                           Deploy to {t.name}
@@ -322,30 +327,147 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
         </div>
 
         <div className="flex-1 min-h-0 flex overflow-hidden">
-          {/* On mobile with overlay closed: show trigger. Otherwise show sidebar. */}
-          {isMobile && !mobileHistoryOpen ? (
-            <button
-              type="button"
-              onClick={() => setMobileHistoryOpen(true)}
-              className="md:hidden fixed left-0 top-1/2 -translate-y-1/2 z-30 min-h-[44px] min-w-[44px] flex items-center justify-center bg-theme-surface border border-theme-border rounded-r-lg shadow-lg text-theme-muted hover:text-theme-text hover:bg-theme-bg-elevated transition-colors"
-              aria-label="Open delivery history"
-              data-testid="delivery-history-open-button"
+          {/* Mobile: history full-width as main content. Desktop: ResizableSidebar with history. */}
+          {isMobile ? (
+            <div
+              className="flex-1 flex flex-col min-h-0 min-w-0 bg-theme-bg overflow-hidden"
+              data-testid="delivery-history-mobile-main"
             >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-            </button>
+              <div className="px-4 sm:px-6 py-2 border-b border-theme-border flex flex-wrap items-center justify-between gap-2 shrink-0">
+                <h3 className="text-sm font-medium text-theme-text">Delivery History</h3>
+                {history.length > 0 && (
+                  <div className="relative shrink-0" ref={filterDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setFilterDropdownOpen((o) => !o)}
+                      className="min-h-[44px] min-w-[44px] p-1 flex items-center justify-center rounded text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle transition-colors"
+                      aria-label="Filter by environment"
+                      aria-expanded={filterDropdownOpen}
+                      aria-haspopup="listbox"
+                      data-testid="delivery-history-filter-button"
+                    >
+                      <FilterIcon className="w-4 h-4" />
+                    </button>
+                    {filterDropdownOpen && (
+                      <div
+                        role="listbox"
+                        className="absolute right-0 top-full mt-1 z-10 min-w-[10rem] max-h-[90vh] overflow-y-auto py-1 bg-theme-surface border border-theme-border rounded-lg shadow-lg"
+                        data-testid="delivery-history-filter-dropdown"
+                      >
+                        <button
+                          role="option"
+                          aria-selected={envFilter === "all"}
+                          type="button"
+                          onClick={() => {
+                            setEnvFilter("all");
+                            setFilterDropdownOpen(false);
+                          }}
+                          className={`dropdown-item w-full text-left text-sm hover:bg-theme-border-subtle ${
+                            envFilter === "all" ? "bg-theme-surface-muted font-medium" : ""
+                          }`}
+                        >
+                          All ({envCounts.all})
+                        </button>
+                        {["staging", "production"].map((key) => (
+                          <button
+                            key={key}
+                            role="option"
+                            aria-selected={envFilter === key}
+                            type="button"
+                            onClick={() => {
+                              setEnvFilter(key);
+                              setFilterDropdownOpen(false);
+                            }}
+                            className={`dropdown-item w-full text-left text-sm hover:bg-theme-border-subtle ${
+                              envFilter === key ? "bg-theme-surface-muted font-medium" : ""
+                            }`}
+                          >
+                            {formatTarget(key)} ({envCounts[key] ?? 0})
+                          </button>
+                        ))}
+                        {Object.entries(envCounts)
+                          .filter(
+                            ([k]) =>
+                              k !== "all" &&
+                              k !== "staging" &&
+                              k !== "production" &&
+                              k !== "unknown"
+                          )
+                          .map(([key]) => (
+                            <button
+                              key={key}
+                              role="option"
+                              aria-selected={envFilter === key}
+                              type="button"
+                              onClick={() => {
+                                setEnvFilter(key);
+                                setFilterDropdownOpen(false);
+                              }}
+                              className={`dropdown-item w-full text-left text-sm hover:bg-theme-border-subtle ${
+                                envFilter === key ? "bg-theme-surface-muted font-medium" : ""
+                              }`}
+                            >
+                              {formatTarget(key)} ({envCounts[key]})
+                            </button>
+                          ))}
+                        {(envCounts.unknown ?? 0) > 0 && (
+                          <button
+                            role="option"
+                            aria-selected={envFilter === "unknown"}
+                            type="button"
+                            onClick={() => {
+                              setEnvFilter("unknown");
+                              setFilterDropdownOpen(false);
+                            }}
+                            className={`dropdown-item w-full text-left text-sm hover:bg-theme-border-subtle ${
+                              envFilter === "unknown" ? "bg-theme-surface-muted font-medium" : ""
+                            }`}
+                          >
+                            Unknown ({envCounts.unknown})
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                {historyLoading ? (
+                  <div className="p-4 text-center text-sm text-theme-muted">Loading…</div>
+                ) : history.length === 0 ? (
+                  <div className="p-4 text-center text-sm text-theme-muted">
+                    No deliveries yet. Configure targets and deploy.
+                  </div>
+                ) : filteredHistory.length === 0 ? (
+                  <div className="p-4 text-center text-sm text-theme-muted">
+                    No deployments match this filter.
+                  </div>
+                ) : (
+                  <ul className="py-2">
+                    {filteredHistory.map((r) => (
+                      <li key={r.id}>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectDeploy(r.id)}
+                          className={`w-full text-left px-4 sm:px-6 py-3 flex flex-wrap items-center gap-2 hover:bg-theme-border-subtle transition-colors min-h-[44px] ${
+                            selectedDeployId === r.id ||
+                            (!selectedDeployId && r.id === filteredHistory[0]?.id)
+                              ? "bg-theme-surface border-l-4 border-brand-600"
+                              : ""
+                          }`}
+                        >
+                          <StatusBadge status={r.status} />
+                          <EnvironmentChip target={r.target} />
+                          <span className="text-xs text-theme-muted truncate flex-1 min-w-0">
+                            {formatDate(r.startedAt)}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
           ) : (
             <ResizableSidebar
               storageKey="deliver"
@@ -353,7 +475,6 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
               side="left"
               resizeHandleLabel="Resize delivery history sidebar"
               responsive
-              onClose={isMobile ? () => setMobileHistoryOpen(false) : undefined}
             >
               <div className="h-full flex flex-col border-r border-theme-border bg-theme-bg">
                 <div className="px-3 py-2 border-b border-theme-border flex items-center justify-between gap-2">
@@ -494,8 +615,10 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
             </ResizableSidebar>
           )}
 
+          {/* Desktop: detail inline. Mobile: detail only when deploy selected (rendered as overlay below). */}
+          {!isMobile && (
           <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-theme-surface">
-            <div className="px-4 py-2 border-b border-theme-border flex items-center justify-between shrink-0">
+            <div className="px-4 sm:px-6 py-2 border-b border-theme-border flex flex-wrap items-center justify-between gap-2 shrink-0">
               <h3 className="text-sm font-medium text-theme-text">
                 {selectedRecord ? `Delivery ${formatDate(selectedRecord.startedAt)}` : "Live Log"}
               </h3>
@@ -504,13 +627,13 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
                   type="button"
                   onClick={handleRollback}
                   disabled={rollbackLoading}
-                  className="text-sm text-theme-warning-text hover:opacity-80 disabled:opacity-50"
+                  className="min-h-[44px] min-w-[44px] text-sm text-theme-warning-text hover:opacity-80 disabled:opacity-50 flex items-center justify-center"
                 >
                   {rollbackLoading ? "Rolling back…" : "Rollback"}
                 </button>
               )}
             </div>
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
               {expoDeployError && (
                 <div
                   className="mb-4 p-4 bg-theme-error-bg border border-theme-error-border rounded-lg text-sm text-theme-error-text whitespace-pre-wrap"
@@ -568,7 +691,115 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
               )}
             </div>
           </div>
+          )}
+
         </div>
+
+        {/* Mobile: deploy detail as overlay when a deploy is selected */}
+        {isMobile && selectedDeployId && selectedRecord && (
+          <>
+            {createPortal(
+              <div
+                className="fixed inset-0 z-40"
+                aria-modal="true"
+                role="dialog"
+                aria-label="Deployment detail"
+              >
+                <button
+                  type="button"
+                  onClick={handleCloseDetailOverlay}
+                  className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+                  aria-label="Close deployment detail (backdrop)"
+                />
+                <div className="absolute inset-x-0 bottom-0 top-1/4 bg-theme-surface rounded-t-xl shadow-xl flex flex-col max-h-[90vh]">
+                  <div className="px-4 py-2 border-b border-theme-border flex flex-wrap items-center justify-between gap-2 shrink-0">
+                    <h3 className="text-sm font-medium text-theme-text">
+                      {selectedRecord ? `Delivery ${formatDate(selectedRecord.startedAt)}` : "Live Log"}
+                    </h3>
+                    <div className="flex flex-wrap items-center gap-2 min-h-[44px]">
+                      {canRollback && (
+                        <button
+                          type="button"
+                          onClick={handleRollback}
+                          disabled={rollbackLoading}
+                          className="min-h-[44px] min-w-[44px] text-sm text-theme-warning-text hover:opacity-80 disabled:opacity-50 flex items-center justify-center"
+                        >
+                          {rollbackLoading ? "Rolling back…" : "Rollback"}
+                        </button>
+                      )}
+                      <CloseButton
+                        onClick={handleCloseDetailOverlay}
+                        ariaLabel="Close deployment detail"
+                        className="p-2 rounded-md text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle transition-colors bg-theme-surface"
+                        size="w-5 h-5"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 min-h-0">
+                    {expoDeployError && (
+                      <div
+                        className="mb-4 p-4 bg-theme-error-bg border border-theme-error-border rounded-lg text-sm text-theme-error-text whitespace-pre-wrap"
+                        data-testid="expo-deploy-auth-error"
+                      >
+                        {expoDeployError}
+                        {(onOpenGlobalSettings ?? onOpenSettings) && (
+                          <div className="mt-3">
+                            <button
+                              type="button"
+                              onClick={onOpenGlobalSettings ?? onOpenSettings}
+                              className="text-brand-600 hover:text-brand-700 font-medium underline"
+                              data-testid="expo-auth-settings-link"
+                            >
+                              Open Settings to add Expo API Token →
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <pre
+                      className="text-xs font-mono whitespace-pre-wrap text-theme-text bg-theme-code-bg text-theme-code-text p-4 rounded-lg"
+                      data-testid="deploy-log"
+                    >
+                      {displayLog.length > 0 ? displayLog.join("") : "(No log output)"}
+                    </pre>
+                    {selectedRecord?.url && (
+                      <div className="mt-3">
+                        <a
+                          href={selectedRecord.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-brand-600 hover:text-brand-700 text-sm"
+                        >
+                          Open delivery →
+                        </a>
+                      </div>
+                    )}
+                    {selectedRecord?.error && (
+                      <div className="mt-3 p-3 bg-theme-error-bg border border-theme-error-border rounded text-sm text-theme-error-text">
+                        {selectedRecord.error}
+                        {selectedRecord.fixEpicId && (
+                          <div className="mt-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                navigate(getProjectPhasePath(effectiveProjectId, "execute"))
+                              }
+                              className="text-brand-600 hover:text-brand-700 font-medium underline"
+                              data-testid="fix-epic-link"
+                            >
+                              View fix epic ({selectedRecord.fixEpicId}) →
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>,
+              document.body
+            )}
+          </>
+        )}
       </div>
     </div>
   );

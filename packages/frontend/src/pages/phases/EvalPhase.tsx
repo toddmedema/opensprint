@@ -32,11 +32,13 @@ import { useSubmitShortcut } from "../../hooks/useSubmitShortcut";
 import { useScrollToQuestion } from "../../hooks/useScrollToQuestion";
 import { useOpenQuestionNotifications } from "../../hooks/useOpenQuestionNotifications";
 import { api } from "../../api/client";
-import { CONTENT_CONTAINER_CLASS } from "../../lib/constants";
+import { CONTENT_CONTAINER_CLASS, MOBILE_BREAKPOINT } from "../../lib/constants";
 import { getProjectPhasePath } from "../../lib/phaseRouting";
 import { formatPlanIdAsTitle } from "../../lib/formatting";
 import { HilApprovalBlock } from "../../components/HilApprovalBlock";
 import { OpenQuestionsBlock } from "../../components/OpenQuestionsBlock";
+import { useViewportWidth } from "../../hooks/useViewportWidth";
+import { CloseButton } from "../../components/CloseButton";
 
 /** Reply icon (message turn / corner up-right) */
 function ReplyIcon({ className }: { className?: string }) {
@@ -207,6 +209,19 @@ function buildFeedbackTree(items: FeedbackItem[]): FeedbackTreeNode[] {
   return build(null);
 }
 
+/** Find a feedback node by ID in the tree (searches recursively). */
+function findFeedbackNode(
+  tree: FeedbackTreeNode[],
+  id: string
+): FeedbackTreeNode | null {
+  for (const node of tree) {
+    if (node.item.id === id) return node;
+    const found = findFeedbackNode(node.children, id);
+    if (found) return found;
+  }
+  return null;
+}
+
 /** Task columns that indicate feedback is in progress (agent may be working). */
 const IN_PROGRESS_TASK_COLUMNS = ["in_progress", "in_review"] as const;
 const EMPTY_TASK_SUMMARY_BY_ID: Record<string, { kanbanColumn: string }> = {};
@@ -262,6 +277,8 @@ interface FeedbackCardProps {
   answeringOpenQuestion?: boolean;
   /** Refetch notifications when HIL approval is resolved */
   onHilResolved?: () => void;
+  /** On mobile: tap card body to open detail overlay */
+  onCardTap?: () => void;
 }
 
 const FADE_OUT_DURATION_MS = 500;
@@ -293,6 +310,7 @@ const FeedbackCard = memo(
     onDismissOpenQuestion,
     answeringOpenQuestion = false,
     onHilResolved,
+    onCardTap,
   }: FeedbackCardProps) {
     const { item, children } = node;
     const navigate = useNavigate();
@@ -435,7 +453,32 @@ const FeedbackCard = memo(
         onTransitionEnd={handleTransitionEnd}
       >
         <div ref={innerRef} style={innerStyle}>
-          <div className="card p-4">
+          <div
+            className="card p-4"
+            role={onCardTap ? "button" : undefined}
+            tabIndex={onCardTap ? 0 : undefined}
+            onClick={
+              onCardTap
+                ? (e) => {
+                    const closest = (e.target as HTMLElement).closest(
+                      "button, a, [role='button'], input, select, textarea"
+                    );
+                    if (closest && closest !== (e.currentTarget as HTMLElement)) return;
+                    onCardTap();
+                  }
+                : undefined
+            }
+            onKeyDown={
+              onCardTap
+                ? (e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onCardTap();
+                    }
+                  }
+                : undefined
+            }
+          >
             {/* Category badge/spinner floats top-right */}
             <div className="mb-2 overflow-hidden">
               {isCategorizing(item) ? (
@@ -873,6 +916,7 @@ const FeedbackCard = memo(
     if (prev.notificationByFeedbackId !== next.notificationByFeedbackId) return false;
     if (prev.answeringOpenQuestion !== next.answeringOpenQuestion) return false;
     if (prev.onHilResolved !== next.onHilResolved) return false;
+    if (prev.onCardTap !== next.onCardTap) return false;
     return true;
   }
 );
@@ -884,6 +928,8 @@ export function EvalPhase({
 }: EvalPhaseProps) {
   const dispatch = useAppDispatch();
   const queryClient = useQueryClient();
+  const viewportWidth = useViewportWidth();
+  const isMobile = viewportWidth < MOBILE_BREAKPOINT;
   const { data: tasksList = [] } = useTasks(projectId);
   const feedbackQuery = useFeedback(projectId);
 
@@ -980,6 +1026,9 @@ export function EvalPhase({
   );
   /** IDs of items animating out (resolved but still visible during collapse). Keeps them in the tree when filter would hide them. */
   const [animatingOutIds, setAnimatingOutIds] = useState<Set<string>>(new Set());
+  /** On mobile: feedback ID shown in detail overlay (null = no overlay) */
+  const [selectedFeedbackIdForOverlay, setSelectedFeedbackIdForOverlay] =
+    useState<string | null>(null);
 
   // Reset filter when "cancelled" is selected but no feedback has status cancelled (option no longer shown)
   const hasCancelled = feedback.some((f) => f.status === "cancelled");
@@ -1247,10 +1296,10 @@ export function EvalPhase({
     <div className="h-full flex flex-col min-h-0">
       <div
         ref={feedbackFeedRef}
-        className="flex-1 min-h-0 overflow-y-auto"
+        className="flex-1 min-h-0 overflow-y-auto w-full"
         data-testid="eval-feedback-feed-scroll"
       >
-        <div className={`${CONTENT_CONTAINER_CLASS} py-8`} data-testid="eval-feedback-content">
+        <div className={`${CONTENT_CONTAINER_CLASS} py-4 sm:py-8 w-full`} data-testid="eval-feedback-content">
           {/* Feedback Input */}
           <ImageDropZone
             variant="main"
@@ -1361,7 +1410,10 @@ export function EvalPhase({
           </ImageDropZone>
 
           {/* Feedback Feed */}
-          <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
+          <div
+            className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 sm:gap-4 mb-4"
+            data-testid="eval-feedback-filter-toolbar"
+          >
             <h3 className="text-sm font-semibold text-theme-text">Feedback History</h3>
             {feedback.length > 0 && (
               <select
@@ -1371,7 +1423,7 @@ export function EvalPhase({
                   setStatusFilter(value);
                   saveFeedbackStatusFilter(value);
                 }}
-                className="input text-sm py-1.5 pl-3 w-auto min-w-[7rem] bg-theme-input-bg text-theme-input-text ring-theme-ring"
+                className="input text-sm min-h-[44px] min-w-[44px] py-1.5 pl-3 w-auto min-w-[7rem] bg-theme-input-bg text-theme-input-text ring-theme-ring"
                 aria-label="Filter feedback by status"
                 data-testid="feedback-status-filter"
               >
@@ -1403,7 +1455,7 @@ export function EvalPhase({
             </div>
           ) : (
             <>
-              <div className="space-y-3">
+              <div className="space-y-3 flex flex-col">
                 {/* key=node.item.id preserves DOM identity when a single item is updated via WebSocket */}
                 {feedbackTree.map((node) => (
                   <FeedbackCard
@@ -1433,6 +1485,11 @@ export function EvalPhase({
                     onDismissOpenQuestion={handleDismissOpenQuestion}
                     answeringOpenQuestion={answeringOpenQuestion}
                     onHilResolved={refetchNotifications}
+                    onCardTap={
+                      isMobile
+                        ? () => setSelectedFeedbackIdForOverlay(node.item.id)
+                        : undefined
+                    }
                   />
                 ))}
               </div>
@@ -1440,6 +1497,60 @@ export function EvalPhase({
           )}
         </div>
       </div>
+
+      {/* Mobile feedback detail overlay */}
+      {isMobile && selectedFeedbackIdForOverlay && (() => {
+        const node = findFeedbackNode(feedbackTree, selectedFeedbackIdForOverlay);
+        if (!node) return null;
+        return (
+          <div
+            className="fixed inset-0 z-50 flex flex-col bg-theme-bg"
+            data-testid="feedback-detail-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Feedback detail"
+          >
+            <div className="flex flex-none items-center justify-between px-4 py-3 border-b border-theme-border shrink-0">
+              <h3 className="text-sm font-semibold text-theme-text">Feedback</h3>
+              <CloseButton
+                onClick={() => setSelectedFeedbackIdForOverlay(null)}
+                ariaLabel="Close"
+                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded text-theme-muted hover:bg-theme-border-subtle hover:text-theme-text transition-colors"
+                size="w-5 h-5"
+              />
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
+              <FeedbackCard
+                node={node}
+                depth={0}
+                projectId={projectId}
+                onNavigateToBuildTask={onNavigateToBuildTask}
+                replyingToId={replyingToId}
+                onStartReply={setReplyingToId}
+                onCancelReply={() => setReplyingToId(null)}
+                onSubmitReply={handleSubmitReply}
+                onResolve={handleResolve}
+                onCancel={handleCancel}
+                onRemoveAfterAnimation={handleRemoveAfterAnimation}
+                collapsedIds={collapsedIds}
+                onToggleCollapse={handleToggleCollapse}
+                submitting={submitting}
+                isDraggingImage={isDraggingImage}
+                clearDragState={clearDragState}
+                taskSummaryById={taskSummaryById}
+                questionId={questionIdByFeedbackId[node.item.id]}
+                questionIdByFeedbackId={questionIdByFeedbackId}
+                notification={notificationByFeedbackId[node.item.id]}
+                notificationByFeedbackId={notificationByFeedbackId}
+                onAnswerOpenQuestion={handleAnswerOpenQuestion}
+                onDismissOpenQuestion={handleDismissOpenQuestion}
+                answeringOpenQuestion={answeringOpenQuestion}
+                onHilResolved={refetchNotifications}
+              />
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
