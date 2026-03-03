@@ -155,11 +155,16 @@ export interface TaskDetailSidebarProps {
   callbacks: TaskDetailCallbacks;
 }
 
-const activeRoleLabel = (selectedTask: string, activeTasks: ActiveTaskInfo[]) => {
-  const active = activeTasks.find((a) => a.taskId === selectedTask);
-  if (!active) return null;
-  const phase = active.phase as "coding" | "review";
-  return AGENT_ROLE_LABELS[phase === "coding" ? "coder" : "reviewer"] ?? null;
+/** Build active agent label(s) for the selected task. Handles multi-angle review: shows each reviewer with angle (e.g. "Reviewer (Security), Reviewer (Performance)"). */
+const activeRoleLabel = (selectedTask: string, activeTasks: ActiveTaskInfo[]): string | null => {
+  const matching = activeTasks.filter((a) => a.taskId === selectedTask);
+  if (matching.length === 0) return null;
+  const labels = matching.map((a) => {
+    const phase = a.phase as "coding" | "review";
+    const roleLabel = AGENT_ROLE_LABELS[phase === "coding" ? "coder" : "reviewer"] ?? "";
+    return a.name?.trim() || roleLabel;
+  });
+  return labels.filter(Boolean).join(", ") || null;
 };
 
 function areTaskDetailSidebarPropsEqual(

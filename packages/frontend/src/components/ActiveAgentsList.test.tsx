@@ -37,13 +37,24 @@ function renderActiveAgentsList() {
       void mockAgentsActive("proj-1")
         .then((agents) => {
           if (cancelled) return;
-          const taskIdToStartedAt = Object.fromEntries(
-            (agents as Array<{ id: string; phase?: string; startedAt?: string }>)
-              .filter(
-                (agent) => (agent.phase === "coding" || agent.phase === "review") && agent.startedAt
-              )
-              .map((agent) => [agent.id, agent.startedAt as string])
-          );
+          const taskIdToStartedAt: Record<string, string> = {};
+          for (const agent of agents as Array<{
+            id: string;
+            taskId?: string;
+            phase?: string;
+            startedAt?: string;
+          }>) {
+            if (
+              (agent.phase === "coding" || agent.phase === "review") &&
+              agent.startedAt
+            ) {
+              const key = agent.taskId ?? agent.id;
+              const existing = taskIdToStartedAt[key];
+              if (!existing || agent.startedAt < existing) {
+                taskIdToStartedAt[key] = agent.startedAt;
+              }
+            }
+          }
           store.dispatch(
             setActiveAgentsPayload({
               agents: agents as Parameters<typeof setActiveAgentsPayload>[0]["agents"],
@@ -199,6 +210,42 @@ describe("ActiveAgentsList", () => {
     expect(screen.getByText(/Coder/)).toBeInTheDocument();
 
     vi.useRealTimers();
+  });
+
+  it("shows each reviewer with angle label when multi-angle review is active", async () => {
+    const startedAt = "2026-02-16T12:00:00.000Z";
+    mockAgentsActive.mockResolvedValue([
+      {
+        id: "task-1--review--security",
+        taskId: "task-1",
+        phase: "review",
+        role: "reviewer",
+        label: "Task 1",
+        name: "Security",
+        startedAt,
+      },
+      {
+        id: "task-1--review--performance",
+        taskId: "task-1",
+        phase: "review",
+        role: "reviewer",
+        label: "Task 1",
+        name: "Performance",
+        startedAt,
+      },
+    ]);
+
+    const user = userEvent.setup();
+    renderActiveAgentsList();
+
+    await waitFor(() => {
+      expect(screen.getByText(/2 agent/)).toBeInTheDocument();
+    });
+    await user.click(screen.getByTitle("Active agents"));
+
+    expect(screen.getByText(/Reviewer \(Security\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Reviewer \(Performance\)/)).toBeInTheDocument();
+    expect(screen.getAllByText("Task 1")).toHaveLength(2);
   });
 
   it("shows elapsed time from the project-scoped active-agent fetch", async () => {

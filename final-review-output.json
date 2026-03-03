@@ -1,11 +1,11 @@
 {
   "status": "issues",
-  "assessment": "The Mobile-Friendly OpenSprint implementation largely meets the plan scope: breakpoint constants, responsive Navbar with scrollable phase tabs, ResizableSidebar overlay behavior with backdrop and swipe-to-close, phase layouts (Sketch, Plan, Execute, Evaluate, Deliver) with responsive grids and padding, viewport-safe modals/dropdowns/toasts, DependencyGraph ResizeObserver, and Vitest viewport tests at 375×667 and 768×1024. All 1887 tests pass. One gap: NavButton icon variant (Help, Settings) uses min-w-[36px] but the plan requires 44×44px touch targets for primary actions.",
+  "assessment": "The Mobile-Friendly OpenSprint implementation covers the plan scope well: MOBILE_BREAKPOINT/TABLET_BREAKPOINT constants, responsive Navbar with horizontally scrollable phase tabs, ResizableSidebar overlay behavior for Sketch/Plan/Deliver, touch targets (44×44px), viewport-safe modals/dropdowns/toasts, and viewport E2E tests at 375×667 and 768×1024. One clear deviation: Execute phase TaskDetailSidebar uses overlayOnMobile=false, so task detail renders inline instead of as a slide-over overlay per the plan. The task summary (os-0236.3) specified overlayOnMobile=true; the code has false. This may cause layout squeeze on narrow viewports and diverges from the plan's 'slide-over from right' UX.",
   "proposedTasks": [
     {
-      "title": "NavButton icon touch targets to 44×44px",
-      "description": "Update NavButton icon variant from min-w-[36px] to min-h-[44px] min-w-[44px] so Help and Settings buttons meet the plan's 44×44px minimum for primary actions.",
-      "priority": 2
+      "title": "Execute phase: use overlay for task detail on mobile",
+      "description": "Change ExecutePhase ResizableSidebar from overlayOnMobile=false to overlayOnMobile=true so task detail opens as a slide-over overlay with backdrop on viewports < 768px, matching the plan scope and other phases (Plan, Sketch, Deliver). Ensures consistent UX and avoids potential layout squeeze.",
+      "priority": 1
     }
   ]
 }

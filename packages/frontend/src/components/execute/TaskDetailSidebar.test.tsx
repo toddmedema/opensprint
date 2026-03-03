@@ -2212,6 +2212,36 @@ describe("TaskDetailSidebar", () => {
       expect(callout.textContent).toMatch(/2m/);
     });
 
+    it("Active callout shows each reviewer with angle label when multi-angle review is active", () => {
+      const startedAt = new Date(Date.now() - 60 * 1000).toISOString();
+      const props = createMinimalProps({
+        selectedTaskData: taskDetailWithPriority(2),
+        activeTasks: [
+          {
+            taskId: "epic-1.1",
+            phase: "review",
+            startedAt,
+            id: "epic-1.1--review--security",
+            name: "Reviewer (Security)",
+          },
+          {
+            taskId: "epic-1.1",
+            phase: "review",
+            startedAt,
+            id: "epic-1.1--review--performance",
+            name: "Reviewer (Performance)",
+          },
+        ],
+        taskIdToStartedAt: { "epic-1.1": startedAt },
+      });
+      renderSidebar(props, {
+        preloadedState: defaultPreloadedState,
+      });
+      const callout = screen.getByTestId("task-detail-active-callout");
+      expect(callout).toHaveTextContent("Active: Reviewer (Security), Reviewer (Performance)");
+      expect(callout.textContent).toMatch(/1m/);
+    });
+
     it("Active callout shows agent role without time when taskIdToStartedAt is missing", () => {
       const props = createMinimalProps({
         selectedTaskData: taskDetailWithPriority(1),

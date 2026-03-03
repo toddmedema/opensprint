@@ -167,7 +167,11 @@ export const fetchActiveAgents = createAsyncThunk(
     const map: Record<string, string> = {};
     for (const a of agents) {
       if (a.phase === "coding" || a.phase === "review") {
-        map[a.taskId ?? a.id] = a.startedAt;
+        const key = a.taskId ?? a.id;
+        const existing = map[key];
+        if (!existing || a.startedAt < existing) {
+          map[key] = a.startedAt;
+        }
       }
     }
     return { agents, taskIdToStartedAt: map };
