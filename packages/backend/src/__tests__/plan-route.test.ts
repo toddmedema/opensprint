@@ -52,6 +52,7 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
     await dbResult.client.execute("DELETE FROM task_dependencies");
     await dbResult.client.execute("DELETE FROM tasks");
     await dbResult.client.execute("DELETE FROM plans");
+    await dbResult.client.execute("DELETE FROM auditor_runs");
   };
   return {
     ...actual,
@@ -1475,6 +1476,65 @@ Feature that depends on auth.
       );
       expect(depsRes.status).toBe(200);
       expect(depsRes.body.data.prerequisitePlanIds).toEqual([]);
+    });
+  });
+
+  describe("GET /projects/:id/plans/:planId/auditor-runs", () => {
+    it("returns empty array when plan has no auditor runs", async () => {
+      const planBody = {
+        title: "Auditor Runs Test Plan",
+        content: "# Auditor Runs Test\n\n## Dependencies\n\nNone.",
+        complexity: "low",
+      };
+      const createRes = await request(app)
+        .post(`${API_PREFIX}/projects/${projectId}/plans`)
+        .send(planBody);
+      expect(createRes.status).toBe(201);
+      const planId = createRes.body.data.metadata.planId;
+
+      const runsRes = await request(app).get(
+        `${API_PREFIX}/projects/${projectId}/plans/${planId}/auditor-runs`
+      );
+      expect(runsRes.status).toBe(200);
+      expect(runsRes.body.data).toEqual([]);
+    });
+
+    it("returns auditor runs for plan when runs exist", async () => {
+      const planBody = {
+        title: "Plan With Auditor Runs",
+        content: "# Plan With Auditor Runs\n\n## Dependencies\n\nNone.",
+        complexity: "low",
+      };
+      const createRes = await request(app)
+        .post(`${API_PREFIX}/projects/${projectId}/plans`)
+        .send(planBody);
+      expect(createRes.status).toBe(201);
+      const planId = createRes.body.data.metadata.planId;
+      const epicId = createRes.body.data.metadata.epicId;
+
+      const inserted = await taskStore.auditorRunInsert({
+        projectId,
+        planId,
+        epicId,
+        startedAt: "2025-01-01T00:00:00.000Z",
+        completedAt: "2025-01-01T00:01:00.000Z",
+        status: "pass",
+        assessment: "Implementation meets plan scope.",
+      });
+
+      const runsRes = await request(app).get(
+        `${API_PREFIX}/projects/${projectId}/plans/${planId}/auditor-runs`
+      );
+      expect(runsRes.status).toBe(200);
+      expect(runsRes.body.data).toHaveLength(1);
+      expect(runsRes.body.data[0]).toMatchObject({
+        id: inserted.id,
+        projectId,
+        planId,
+        epicId,
+        status: "pass",
+        assessment: "Implementation meets plan scope.",
+      });
     });
   });
 

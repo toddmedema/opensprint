@@ -21,6 +21,7 @@ import type {
   GeneratePlanRequest,
   GeneratePlanResult,
   CrossEpicDependenciesResponse,
+  AuditorRun,
   Task,
   AgentSession,
   OrchestratorStatus,
@@ -303,6 +304,8 @@ export const api = {
       request<CrossEpicDependenciesResponse>(
         `/projects/${projectId}/plans/${planId}/cross-epic-dependencies`
       ),
+    auditorRuns: (projectId: string, planId: string) =>
+      request<AuditorRun[]>(`/projects/${projectId}/plans/${planId}/auditor-runs`),
     planTasks: (projectId: string, planId: string) =>
       request<Plan>(`/projects/${projectId}/plans/${planId}/plan-tasks`, {
         method: "POST",

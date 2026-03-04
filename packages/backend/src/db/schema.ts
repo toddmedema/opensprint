@@ -166,6 +166,19 @@ CREATE TABLE IF NOT EXISTS plans (
 CREATE INDEX IF NOT EXISTS idx_plans_project_id ON plans(project_id);
 CREATE INDEX IF NOT EXISTS idx_plans_project_epic ON plans(project_id, epic_id);
 
+-- Auditor runs (final review Auditor execution records, enables plan-centric lookup and deep-linking)
+CREATE TABLE IF NOT EXISTS auditor_runs (
+    id           SERIAL PRIMARY KEY,
+    project_id   TEXT NOT NULL,
+    plan_id      TEXT NOT NULL,
+    epic_id      TEXT NOT NULL,
+    started_at   TEXT NOT NULL,
+    completed_at TEXT NOT NULL,
+    status       TEXT NOT NULL,
+    assessment   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_auditor_runs_project_plan ON auditor_runs(project_id, plan_id);
+
 -- Open questions / notifications (agent clarification requests + API-blocked human notifications)
 CREATE TABLE IF NOT EXISTS open_questions (
     id           TEXT PRIMARY KEY,

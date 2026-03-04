@@ -141,10 +141,13 @@ Assess the implementation against the plan scope. Return JSON with status, asses
       ...new Set((settings.reviewAngles ?? []).filter(Boolean)),
     ] as ReviewAngle[];
 
+    const planId = plan.plan_id;
+
     if (reviewAngles.length >= 2) {
       return this.runMultiAngleEpicReview(
         projectId,
         epicId,
+        planId,
         repoPath,
         basePrompt,
         reviewAngles,
@@ -153,6 +156,7 @@ Assess the implementation against the plan scope. Return JSON with status, asses
     }
 
     const agentId = `final-review-${projectId}-${epicId}-${Date.now()}`;
+    const startedAt = new Date().toISOString();
     try {
       const response = await agentService.invokePlanningAgent({
         projectId,
@@ -166,12 +170,23 @@ Assess the implementation against the plan scope. Return JSON with status, asses
           phase: "execute",
           role: "auditor",
           label: "Final review",
+          planId,
         },
       });
 
-      return this.parseFinalReviewResponse(response.content, projectId, epicId);
+      const result = this.parseFinalReviewResponse(response.content, projectId, epicId);
+      await this.persistAuditorRun(projectId, planId, epicId, startedAt, result.status, result.assessment);
+      return result;
     } catch (err) {
       log.error("Final review agent failed", { projectId, epicId, err });
+      await this.persistAuditorRun(
+        projectId,
+        planId,
+        epicId,
+        startedAt,
+        "failed",
+        err instanceof Error ? err.message : String(err)
+      );
       return null;
     }
   }
@@ -182,6 +197,7 @@ Assess the implementation against the plan scope. Return JSON with status, asses
   private async runMultiAngleEpicReview(
     projectId: string,
     epicId: string,
+    planId: string,
     repoPath: string,
     basePrompt: string,
     reviewAngles: ReviewAngle[],
@@ -218,6 +234,7 @@ Respond with ONLY valid JSON (no markdown):
             phase: "execute",
             role: "auditor",
             label: `Final review (${label})`,
+            planId,
           },
         });
         const parsed = extractJsonFromAgentResponse<{
@@ -243,13 +260,21 @@ Respond with ONLY valid JSON (no markdown):
     const results = await Promise.all(anglePromises);
     for (const r of results) angleResults.push(r);
 
-    return this.synthesizeEpicReviewResults(angleResults, projectId, epicId, repoPath, settings);
+    return this.synthesizeEpicReviewResults(
+      angleResults,
+      projectId,
+      epicId,
+      planId,
+      repoPath,
+      settings
+    );
   }
 
   private async synthesizeEpicReviewResults(
     angleResults: Array<{ angle: string; status: string; assessment: string; proposedTasks: FinalReviewProposedTask[] }>,
     projectId: string,
     epicId: string,
+    planId: string,
     repoPath: string,
     settings: import("@opensprint/shared").ProjectSettings
   ): Promise<FinalReviewResult> {
@@ -269,6 +294,7 @@ Rules:
 
     const prompt = `## Angle review results\n\n${blocks}\n\n---\nSynthesize into one JSON with status, assessment, proposedTasks.`;
 
+    const startedAt = new Date().toISOString();
     try {
       const response = await agentService.invokePlanningAgent({
         projectId,
@@ -282,6 +308,7 @@ Rules:
           phase: "execute",
           role: "auditor",
           label: "Epic Review Synthesizer",
+          planId,
         },
       });
       const parsed = extractJsonFromAgentResponse<{
@@ -297,7 +324,9 @@ Rules:
           description: String(t.description),
           priority: typeof t.priority === "number" ? Math.min(4, Math.max(0, t.priority)) : 2,
         }));
-      return { status, assessment: parsed?.assessment ?? "", proposedTasks };
+      const result: FinalReviewResult = { status, assessment: parsed?.assessment ?? "", proposedTasks };
+      await this.persistAuditorRun(projectId, planId, epicId, startedAt, result.status, result.assessment);
+      return result;
     } catch (err) {
       log.warn("Epic synthesizer failed, using programmatic merge", { projectId, epicId, err });
       const hasIssues = angleResults.some((r) => r.status === "issues");
@@ -309,11 +338,36 @@ Rules:
         seen.add(key);
         return true;
       });
-      return {
+      const result: FinalReviewResult = {
         status: hasIssues ? "issues" : "pass",
         assessment: angleResults.map((r) => r.assessment).filter(Boolean).join(" | ") || "Epic review",
         proposedTasks: deduped,
       };
+      await this.persistAuditorRun(projectId, planId, epicId, startedAt, result.status, result.assessment);
+      return result;
+    }
+  }
+
+  private async persistAuditorRun(
+    projectId: string,
+    planId: string,
+    epicId: string,
+    startedAt: string,
+    status: string,
+    assessment: string
+  ): Promise<void> {
+    try {
+      await this.taskStore.auditorRunInsert({
+        projectId,
+        planId,
+        epicId,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        status,
+        assessment,
+      });
+    } catch (err) {
+      log.warn("Failed to persist auditor run", { projectId, planId, epicId, err });
     }
   }
 

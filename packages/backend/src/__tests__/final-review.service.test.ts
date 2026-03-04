@@ -9,6 +9,7 @@ vi.mock("../services/task-store.service.js", () => ({
     planGetByEpicId: vi.fn(),
     listAll: vi.fn(),
     create: vi.fn(),
+    auditorRunInsert: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -120,6 +121,39 @@ describe("FinalReviewService", () => {
     expect(result).not.toBeNull();
     expect(result!.status).toBe("pass");
     expect(result!.proposedTasks).toEqual([]);
+  });
+
+  it("passes planId in tracking and persists auditor run", async () => {
+    const { agentService } = await import("../services/agent.service.js");
+    const { taskStore: ts } = await import("../services/task-store.service.js");
+    vi.mocked(agentService.invokePlanningAgent).mockResolvedValue({
+      content: JSON.stringify({
+        status: "pass",
+        assessment: "Implementation meets plan scope.",
+        proposedTasks: [],
+      }),
+    });
+
+    await service.runFinalReview(projectId, epicId, repoPath);
+
+    expect(agentService.invokePlanningAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tracking: expect.objectContaining({
+          planId: "test-plan",
+          role: "auditor",
+          label: "Final review",
+        }),
+      })
+    );
+    expect(ts.auditorRunInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId,
+        planId: "test-plan",
+        epicId,
+        status: "pass",
+        assessment: "Implementation meets plan scope.",
+      })
+    );
   });
 
   it("returns issues and proposed tasks when agent finds problems", async () => {

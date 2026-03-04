@@ -150,6 +150,18 @@ export interface CrossEpicDependenciesResponse {
   prerequisitePlanIds: string[];
 }
 
+/** Auditor run record (final review Auditor execution; enables plan-centric lookup and deep-linking) */
+export interface AuditorRun {
+  id: number;
+  projectId: string;
+  planId: string;
+  epicId: string;
+  startedAt: string;
+  completedAt: string;
+  status: string;
+  assessment: string | null;
+}
+
 /** Request body for POST /projects/:id/plans/generate — AI generates plan from freeform description */
 export interface GeneratePlanRequest {
   description: string;

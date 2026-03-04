@@ -17,6 +17,11 @@ import { classifyDbConnectionError, isDbConnectionError } from "../db/db-errors.
 import { runSchema } from "../db/schema.js";
 import type { AppDb } from "../db/app-db.js";
 import { PlanStore, type PlanInsertData } from "./plan-store.service.js";
+import {
+  AuditorRunStore,
+  type AuditorRunInsert,
+  type AuditorRunRecord,
+} from "./auditor-run-store.service.js";
 import { toPgParams } from "../db/sql-params.js";
 import { getDatabaseUrl } from "./global-settings.service.js";
 
@@ -97,6 +102,7 @@ export class TaskStoreService {
   private onTaskChange: TaskChangeCallback | null = null;
 
   private planStore = new PlanStore(() => this.ensureClient());
+  private auditorRunStore = new AuditorRunStore(() => this.ensureClient());
 
   constructor(injectedClient?: DbClient) {
     if (injectedClient) {
@@ -1344,6 +1350,9 @@ export class TaskStoreService {
       await client.execute(toPgParams("DELETE FROM agent_sessions WHERE project_id = ?"), [
         projectId,
       ]);
+      await client.execute(toPgParams("DELETE FROM auditor_runs WHERE project_id = ?"), [
+        projectId,
+      ]);
       await client.execute(toPgParams("DELETE FROM agent_stats WHERE project_id = ?"), [projectId]);
       await client.execute(toPgParams("DELETE FROM orchestrator_events WHERE project_id = ?"), [
         projectId,
@@ -1597,6 +1606,20 @@ export class TaskStoreService {
       await this.ensureInitialized();
       return this.planStore.planDelete(projectId, planId);
     });
+  }
+
+  // ──── Auditor run storage (final review Auditor execution records) ────
+
+  async auditorRunInsert(record: AuditorRunInsert): Promise<AuditorRunRecord> {
+    return this.withWriteLock(async () => {
+      await this.ensureInitialized();
+      return this.auditorRunStore.insert(record);
+    });
+  }
+
+  async listAuditorRunsByPlanId(projectId: string, planId: string): Promise<AuditorRunRecord[]> {
+    await this.ensureInitialized();
+    return this.auditorRunStore.listByPlanId(projectId, planId);
   }
 
   private async ensureInitialized(): Promise<void> {

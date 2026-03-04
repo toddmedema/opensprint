@@ -1,6 +1,7 @@
 import { Router, Request } from "express";
 import { PlanService } from "../services/plan.service.js";
 import { orchestratorService } from "../services/orchestrator.service.js";
+import { taskStore } from "../services/task-store.service.js";
 import type {
   ApiResponse,
   Plan,
@@ -99,6 +100,20 @@ plansRouter.get("/:planId/cross-epic-dependencies", async (req: Request<PlanPara
       req.params.planId
     );
     const body: ApiResponse<CrossEpicDependenciesResponse> = { data: result };
+    res.json(body);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /projects/:projectId/plans/:planId/auditor-runs — List Auditor runs for a plan (plan-centric lookup)
+plansRouter.get("/:planId/auditor-runs", async (req: Request<PlanParams>, res, next) => {
+  try {
+    const runs = await taskStore.listAuditorRunsByPlanId(
+      req.params.projectId,
+      req.params.planId
+    );
+    const body: ApiResponse<typeof runs> = { data: runs };
     res.json(body);
   } catch (err) {
     next(err);
