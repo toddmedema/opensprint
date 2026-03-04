@@ -26,8 +26,8 @@ Native Windows Node, PowerShell, and `cmd.exe` execution are unsupported because
 ### Start Open Sprint
 
 ```bash
-git clone https://github.com/toddmedema/opensprint.dev.git
-cd opensprint.dev
+git clone https://github.com/toddmedema/opensprint.git
+cd opensprint
 npm run setup
 npm run dev
 ```
@@ -109,4 +109,4 @@ Bug reports: [GitHub Issues](https://github.com/toddmedema/opensprint/issues)
 
 ## License
 
-[AGPL-3.0](LICENSE). Support or partnership: [contact@opensprint.dev](mailto:contact@opensprint.dev).
+[AGPL-3.0](LICENSE). Support or partnership: [contact@opensprint.ai](mailto:contact@opensprint.ai).
