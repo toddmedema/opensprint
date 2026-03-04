@@ -12,11 +12,18 @@ vi.mock("prettier", () => ({
 }));
 vi.mock("prettier/plugins/markdown", () => ({ default: {} }));
 
+const mockGetAgentsInstructionsForRole = vi.fn();
+const mockUpdateAgentsInstructionsForRole = vi.fn();
+
 vi.mock("../api/client", () => ({
   api: {
     projects: {
       getAgentsInstructions: (...args: unknown[]) => mockGetAgentsInstructions(...args),
       updateAgentsInstructions: (...args: unknown[]) => mockUpdateAgentsInstructions(...args),
+      getAgentsInstructionsForRole: (...args: unknown[]) =>
+        mockGetAgentsInstructionsForRole(...args),
+      updateAgentsInstructionsForRole: (...args: unknown[]) =>
+        mockUpdateAgentsInstructionsForRole(...args),
     },
   },
 }));

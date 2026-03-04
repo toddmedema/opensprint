@@ -87,7 +87,7 @@ describe("AgentsMdSection", () => {
 
     await screen.findByTestId("agents-md-view");
     await screen.findByText("Use bd for tasks.");
-    expect(screen.getByText("Agent Instructions (AGENTS.md)")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3, name: "Agent Instructions" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Agent Instructions");
     expect(screen.getByTestId("agents-md-edit")).toBeInTheDocument();
   });
@@ -96,7 +96,7 @@ describe("AgentsMdSection", () => {
     renderSection();
 
     await screen.findByTestId("agents-md-view");
-    const title = screen.getByText("Agent Instructions (AGENTS.md)");
+    const title = screen.getByRole("heading", { level: 3, name: "Agent Instructions" });
     const subtext = screen.getByText(
       /Shared instructions for all agents\. Edit to customize behavior/
     );
@@ -128,7 +128,7 @@ describe("AgentsMdSection", () => {
     renderSection();
 
     await screen.findByText(/Network error|Failed to load/);
-    expect(screen.getByText("Agent Instructions (AGENTS.md)")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3, name: "Agent Instructions" })).toBeInTheDocument();
   });
 
   it("switches to edit mode when Edit is clicked", async () => {
@@ -222,6 +222,53 @@ describe("AgentsMdSection", () => {
     );
     expect(screen.getByTestId("agents-md-saved")).toHaveTextContent("Saved");
     await screen.findByTestId("agents-md-view");
+  });
+
+  it("loads role-specific content when switching to role tab", async () => {
+    mockGetAgentsInstructionsForRole.mockResolvedValue({
+      content: "# Coder instructions\n\nPrefer TypeScript.",
+    });
+    const user = userEvent.setup();
+    renderSection({ testMode: true });
+
+    await screen.findByTestId("agents-md-view");
+    await user.click(screen.getByTestId("agents-tab-coder"));
+
+    await waitFor(() =>
+      expect(mockGetAgentsInstructionsForRole).toHaveBeenCalledWith(projectId, "coder")
+    );
+    expect(screen.getByText("Prefer TypeScript.")).toBeInTheDocument();
+  });
+
+  it("shows role placeholder when role tab content is empty", async () => {
+    mockGetAgentsInstructionsForRole.mockResolvedValue({ content: "" });
+    const user = userEvent.setup();
+    renderSection({ testMode: true });
+
+    await screen.findByTestId("agents-md-view");
+    await user.click(screen.getByTestId("agents-tab-coder"));
+
+    await waitFor(() =>
+      expect(mockGetAgentsInstructionsForRole).toHaveBeenCalledWith(projectId, "coder")
+    );
+    expect(
+      screen.getByText(/No role-specific instructions. Add instructions that apply only to this agent./)
+    ).toBeInTheDocument();
+  });
+
+  it("tab list is keyboard-navigable", async () => {
+    mockGetAgentsInstructionsForRole.mockResolvedValue({ content: "" });
+    const user = userEvent.setup();
+    renderSection({ testMode: true });
+
+    await screen.findByTestId("agents-md-view");
+    const generalTab = screen.getByTestId("agents-tab-general");
+    generalTab.focus();
+
+    await user.keyboard("{ArrowRight}");
+    await waitFor(() =>
+      expect(mockGetAgentsInstructionsForRole).toHaveBeenCalledWith(projectId, "dreamer")
+    );
   });
 
   it("shows MDEditor with toolbar when not in test mode (lazy-loaded)", async () => {

@@ -142,10 +142,32 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
   }, [editing]);
 
   const tabLabel = AGENT_TABS.find((t) => t.key === activeTab)?.label ?? "General";
-  const fileLabel =
-    activeTab === "general"
-      ? "AGENTS.md"
-      : `.opensprint/agents/${activeTab}.md`;
+  const rolePlaceholder = "No role-specific instructions. Add instructions that apply only to this agent.";
+  const generalEmptyText = "No agent instructions yet. Click Edit to add.";
+
+  const handleTabKeyDown = useCallback(
+    (e: React.KeyboardEvent, tabIndex: number) => {
+      let nextIndex: number | null = null;
+      if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        e.preventDefault();
+        nextIndex = tabIndex > 0 ? tabIndex - 1 : AGENT_TABS.length - 1;
+      } else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        e.preventDefault();
+        nextIndex = tabIndex < AGENT_TABS.length - 1 ? tabIndex + 1 : 0;
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        nextIndex = 0;
+      } else if (e.key === "End") {
+        e.preventDefault();
+        nextIndex = AGENT_TABS.length - 1;
+      }
+      if (nextIndex !== null) {
+        handleTabChange(AGENT_TABS[nextIndex]!.key);
+        (e.currentTarget as HTMLElement).parentElement?.querySelectorAll<HTMLButtonElement>("[role='tab']")[nextIndex]?.focus();
+      }
+    },
+    [handleTabChange]
+  );
 
   if (loading && content === null) {
     return (
@@ -160,14 +182,10 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
   }
 
   if (error && !editing) {
-    const errFileLabel =
-      activeTab === "general"
-        ? "AGENTS.md"
-        : `.opensprint/agents/${activeTab}.md`;
     return (
       <div className="pt-2">
         <h3 className="text-sm font-semibold text-theme-text mb-3">
-          Agent Instructions ({errFileLabel})
+          Agent Instructions
         </h3>
         <div className="p-3 rounded-lg bg-theme-error-bg border border-theme-error-border">
           <p className="text-sm text-theme-error-text">{error}</p>
@@ -178,14 +196,24 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
 
   return (
     <div className="pt-2">
-      <div className="flex flex-wrap items-center gap-1 bg-theme-border-subtle rounded-lg p-1 mb-3">
-        {AGENT_TABS.map((tab) => {
+      <div
+        className="flex flex-wrap items-center gap-1 bg-theme-border-subtle rounded-lg p-1 mb-3"
+        role="tablist"
+        aria-label="Agent instruction tabs"
+      >
+        {AGENT_TABS.map((tab, index) => {
           const isActive = activeTab === tab.key;
           return (
             <button
               key={tab.key}
               type="button"
+              role="tab"
+              aria-selected={isActive}
+              tabIndex={isActive ? 0 : -1}
+              id={`agents-tab-${tab.key}`}
+              aria-controls={`agents-tabpanel-${tab.key}`}
               onClick={() => handleTabChange(tab.key)}
+              onKeyDown={(e) => handleTabKeyDown(e, index)}
               className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
                 isActive
                   ? "bg-theme-surface text-theme-text shadow-sm"
@@ -199,10 +227,15 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
         })}
       </div>
 
-      <div className="flex items-center justify-between gap-4 mb-3">
+      <div
+        role="tabpanel"
+        id={`agents-tabpanel-${activeTab}`}
+        aria-labelledby={`agents-tab-${activeTab}`}
+      >
+        <div className="flex items-center justify-between gap-4 mb-3">
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold leading-tight text-theme-text">
-            Agent Instructions ({fileLabel})
+            Agent Instructions
           </h3>
           <p className="text-xs leading-tight text-theme-muted mt-0.5">
             {activeTab === "general"
@@ -227,7 +260,7 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
             </span>
           )}
         </div>
-      </div>
+        </div>
 
       {editing ? (
         <div className="space-y-3" data-color-mode={resolved}>
@@ -241,7 +274,7 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
                 placeholder={
                   activeTab === "general"
                     ? "# Agent Instructions\n\nAdd instructions for your agents..."
-                    : `# ${tabLabel} Instructions\n\nAdd role-specific instructions...`
+                    : rolePlaceholder
                 }
                 data-testid="agents-md-textarea"
               />
@@ -257,7 +290,7 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
                     placeholder:
                       activeTab === "general"
                         ? "# Agent Instructions\n\nAdd instructions for your agents..."
-                        : `# ${tabLabel} Instructions\n\nAdd role-specific instructions...`,
+                        : rolePlaceholder,
                     onBlur: () => void handleSave(),
                   }}
                   extraCommands={[
@@ -321,12 +354,13 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
               </Suspense>
             ) : (
               <p className="text-theme-muted text-sm italic">
-                No agent instructions yet. Click Edit to add.
+                {activeTab === "general" ? generalEmptyText : rolePlaceholder}
               </p>
             )}
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
