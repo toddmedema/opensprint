@@ -1086,7 +1086,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                           {selectedPlanTasks.length === 0 ? (
                             <div className="space-y-2">
                               <p className="text-sm text-theme-muted">
-                                Use the chat to refine the plan, then click Generate tasks when
+                                Use the chat to refine the plan, then click Generate Tasks when
                                 you&apos;re ready to break it down into specific tickets
                               </p>
                               {(planTasksPlanIds ?? []).includes(selectedPlan.metadata.planId) ? (

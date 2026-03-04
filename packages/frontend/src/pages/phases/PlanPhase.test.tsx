@@ -984,7 +984,7 @@ describe("PlanPhase dynamic plan button label", () => {
     await screen.findByText(/Archive Test Feature/i);
     expect(
       screen.getByText(
-        /Use the chat to refine the plan, then click Generate tasks when you're ready to break it down into specific tickets/
+        /Use the chat to refine the plan, then click Generate Tasks when you're ready to break it down into specific tickets/
       )
     ).toBeInTheDocument();
   });
