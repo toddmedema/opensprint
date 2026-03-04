@@ -379,7 +379,7 @@ function AnalyticsContent({ projectId }: { projectId: string | null }) {
   );
 }
 
-type AgentLogSortKey = "roleName" | "durationMs" | "endTime" | "projectName";
+type AgentLogSortKey = "model" | "role" | "durationMs" | "endTime" | "projectName";
 type SortDir = "asc" | "desc";
 
 function AgentLogContent({
@@ -416,8 +416,10 @@ function AgentLogContent({
     const arr = [...entries];
     return arr.sort((a, b) => {
       let cmp = 0;
-      if (sortKey === "roleName") {
-        cmp = (a.roleName ?? "").localeCompare(b.roleName ?? "");
+      if (sortKey === "model") {
+        cmp = (a.model ?? "").localeCompare(b.model ?? "");
+      } else if (sortKey === "role") {
+        cmp = (a.role ?? "").localeCompare(b.role ?? "");
       } else if (sortKey === "durationMs") {
         cmp = (a.durationMs ?? 0) - (b.durationMs ?? 0);
       } else if (sortKey === "endTime") {
@@ -527,7 +529,10 @@ function AgentLogContent({
           <thead>
             <tr className="border-b border-theme-border bg-theme-surface-muted">
               <th className="px-4 py-2 text-left">
-                <SortHeader label="Role / Name" columnKey="roleName" />
+                <SortHeader label="Model" columnKey="model" />
+              </th>
+              <th className="px-4 py-2 text-left">
+                <SortHeader label="Role" columnKey="role" />
               </th>
               <th className="px-4 py-2 text-left">
                 <SortHeader label="Running time" columnKey="durationMs" />
@@ -546,7 +551,7 @@ function AgentLogContent({
             {sortedEntries.length === 0 ? (
               <tr>
                 <td
-                  colSpan={showProjectColumn ? 4 : 3}
+                  colSpan={showProjectColumn ? 5 : 4}
                   className="px-4 py-8 text-center text-theme-muted"
                 >
                   No agent runs yet.
@@ -558,7 +563,8 @@ function AgentLogContent({
                   key={i}
                   className="border-b border-theme-border last:border-b-0 hover:bg-theme-border-subtle/50"
                 >
-                  <td className="px-4 py-2 text-theme-text">{e.roleName}</td>
+                  <td className="px-4 py-2 text-theme-text">{e.model}</td>
+                  <td className="px-4 py-2 text-theme-text">{e.role}</td>
                   <td className="px-4 py-2 text-theme-text">{formatDuration(e.durationMs)}</td>
                   <td className="px-4 py-2 text-theme-text">{formatEndTime(e.endTime)}</td>
                   {showProjectColumn && (

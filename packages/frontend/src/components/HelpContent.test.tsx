@@ -103,8 +103,13 @@ describe("HelpContent", () => {
   it("Agent log tab shows table and calls agentLog API", async () => {
     const user = userEvent.setup();
     vi.mocked(api.help.agentLog).mockResolvedValue([
-      { roleName: "Coder", durationMs: 45000, endTime: "2025-03-01T12:00:00Z" },
-      { roleName: "claude-sonnet", durationMs: 120000, endTime: "2025-03-01T11:00:00Z" },
+      { model: "claude-sonnet-4", role: "Coder", durationMs: 45000, endTime: "2025-03-01T12:00:00Z" },
+      {
+        model: "claude-sonnet-4",
+        role: "claude-sonnet",
+        durationMs: 120000,
+        endTime: "2025-03-01T11:00:00Z",
+      },
     ]);
     render(<HelpContent />);
 

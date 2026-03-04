@@ -288,7 +288,8 @@ describe.skipIf(!helpPostgresOk)("Help chat API", () => {
     expect(Array.isArray(res.body.data)).toBe(true);
     expect(res.body.data).toHaveLength(1);
     expect(res.body.data[0]).toMatchObject({
-      roleName: "Coder",
+      model: "claude-sonnet-4",
+      role: "Coder",
       durationMs: 90000,
       endTime: "2025-03-01T10:01:30Z",
     });
@@ -319,10 +320,11 @@ describe.skipIf(!helpPostgresOk)("Help chat API", () => {
     expect(res.status).toBe(200);
     expect(res.body.data).toBeDefined();
     expect(Array.isArray(res.body.data)).toBe(true);
-    const entry = res.body.data.find((e: { roleName: string }) => e.roleName === "claude-sonnet");
+    const entry = res.body.data.find((e: { role: string }) => e.role === "claude-sonnet");
     expect(entry).toBeDefined();
     expect(entry).toMatchObject({
-      roleName: "claude-sonnet",
+      model: "claude-sonnet-4",
+      role: "claude-sonnet",
       durationMs: 120000,
       endTime: "2025-03-01T11:02:00Z",
       projectName: "Test Project",

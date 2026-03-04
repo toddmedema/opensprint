@@ -110,8 +110,10 @@ export interface TaskAnalytics {
 
 /** Agent log entry (past agent runs from agent_stats) */
 export interface AgentLogEntry {
-  /** Agent role/name (e.g. coder, claude-sonnet) */
-  roleName: string;
+  /** Model identifier (e.g. claude-sonnet-4-20250514) */
+  model: string;
+  /** Agent role/type (e.g. Coder, Dreamer, Reviewer) */
+  role: string;
   /** Running time in milliseconds */
   durationMs: number;
   /** End time (ISO string) */

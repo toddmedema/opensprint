@@ -24,12 +24,12 @@ export async function getAgentLog(projectId: string | null): Promise<AgentLogEnt
 
   const sql =
     projectId != null
-      ? `SELECT agent_id, duration_ms, completed_at
+      ? `SELECT agent_id, model, duration_ms, completed_at
          FROM agent_stats
          WHERE project_id = $1
          ORDER BY completed_at DESC
          LIMIT $2`
-      : `SELECT agent_id, duration_ms, completed_at, project_id
+      : `SELECT agent_id, model, duration_ms, completed_at, project_id
          FROM agent_stats
          ORDER BY completed_at DESC
          LIMIT $1`;
@@ -47,9 +47,10 @@ export async function getAgentLog(projectId: string | null): Promise<AgentLogEnt
 
   return rows.map((r) => {
     const agentId = r.agent_id as string;
-    const roleName = formatRoleName(agentId);
+    const role = formatRoleName(agentId);
     const entry: AgentLogEntry = {
-      roleName,
+      model: (r.model as string) ?? "",
+      role,
       durationMs: r.duration_ms as number,
       endTime: r.completed_at as string,
     };
