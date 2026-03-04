@@ -725,6 +725,60 @@ describe("ActiveAgentsList", () => {
     expect(screen.getByTestId("location")).toHaveTextContent("/projects/proj-1/plan");
   });
 
+  it("navigates to Plan page with plan param when clicking Auditor agent (deep-link to Plan view)", async () => {
+    mockAgentsActive.mockResolvedValue([
+      {
+        id: "final-review-proj-1-epic-1-123",
+        phase: "execute",
+        role: "auditor",
+        label: "Final review",
+        startedAt: "2026-02-16T12:00:00.000Z",
+        planId: "auth-feature",
+      },
+    ]);
+
+    function LocationDisplay() {
+      const { pathname, search } = useLocation();
+      return <div data-testid="location">{pathname + search}</div>;
+    }
+
+    const store = createStore();
+
+    function ActiveAgentsFetcher() {
+      useEffect(() => {
+        void mockAgentsActive("proj-1").then((agents) => {
+          store.dispatch(setActiveAgentsPayload({ agents, taskIdToStartedAt: {} }));
+        });
+      }, []);
+
+      return null;
+    }
+
+    render(
+      <Provider store={store}>
+        <DisplayPreferencesProvider>
+          <MemoryRouter initialEntries={["/projects/proj-1/execute"]}>
+            <ActiveAgentsFetcher />
+            <ActiveAgentsList projectId="proj-1" />
+            <LocationDisplay />
+          </MemoryRouter>
+        </DisplayPreferencesProvider>
+      </Provider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("1 agent running")).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTitle("Active agents"));
+    await user.click(screen.getByRole("button", { name: /Final review/ }));
+
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/projects/proj-1/plan?plan=auth-feature"
+    );
+  });
+
   it("renders agent icons sized to match two lines of text (3.01875rem) with 2px left margin in dropdown", async () => {
     mockAgentsActive.mockResolvedValue([
       {

@@ -261,6 +261,48 @@ describe("GlobalActiveAgentsList", () => {
     expect(screen.getByTestId("location")).toHaveTextContent("/projects/proj-1/sketch");
   });
 
+  it("navigates to Plan page with plan param when clicking Auditor agent (deep-link to Plan view)", async () => {
+    mockProjectsList.mockResolvedValue([{ id: "proj-1", name: "Project A" }]);
+    mockAgentsActive.mockResolvedValue([
+      {
+        id: "final-review-proj-1-epic-1-123",
+        phase: "execute",
+        role: "auditor",
+        label: "Final review",
+        startedAt: "2026-02-16T12:00:00.000Z",
+        planId: "auth-feature",
+      },
+    ]);
+
+    function LocationDisplay() {
+      const { pathname, search } = useLocation();
+      return <div data-testid="location">{pathname + search}</div>;
+    }
+
+    render(
+      <Provider store={createStore()}>
+        <DisplayPreferencesProvider>
+          <MemoryRouter initialEntries={["/projects/proj-1/execute"]}>
+            <GlobalActiveAgentsList />
+            <LocationDisplay />
+          </MemoryRouter>
+        </DisplayPreferencesProvider>
+      </Provider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("1 agent running")).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTitle("Active agents"));
+    await user.click(screen.getByRole("button", { name: /Final review/ }));
+
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/projects/proj-1/plan?plan=auth-feature"
+    );
+  });
+
   it("dropdown agent items have visible hover background and cursor pointer for clickability feedback", async () => {
     mockProjectsList.mockResolvedValue([{ id: "proj-1", name: "Project A" }]);
     mockAgentsActive.mockResolvedValue([

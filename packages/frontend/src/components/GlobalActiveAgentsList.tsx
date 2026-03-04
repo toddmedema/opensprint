@@ -215,6 +215,10 @@ export function GlobalActiveAgentsList() {
       const phase = getPhaseForAgentNavigation(agent);
       if (agent.role === "analyst" && agent.feedbackId) {
         navigate(getProjectPhasePath(projectId, "eval", { feedback: agent.feedbackId }));
+      } else if (agent.role === "auditor" && agent.planId) {
+        // Auditor results deep-link to Plan view (not Execute tasks)
+        dispatch(setSelectedPlanId(agent.planId));
+        navigate(getProjectPhasePath(projectId, "plan", { plan: agent.planId }));
       } else if (agent.planId && phase === "plan") {
         dispatch(setSelectedPlanId(agent.planId));
         navigate(getProjectPhasePath(projectId, "plan", { plan: agent.planId }));
