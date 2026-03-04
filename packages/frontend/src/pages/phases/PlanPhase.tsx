@@ -1088,9 +1088,8 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                           {selectedPlanTasks.length === 0 ? (
                             <div className="space-y-2">
                               <p className="text-sm text-theme-muted">
-                                No tasks yet. Click \u201CGenerate Tasks\u201D below or on the card
-                                to generate tasks from this plan, or use the AI chat to refine it
-                                first.
+                                Use the chat to refine the plan, then click Generate tasks when
+                                you&apos;re ready to break it down into specific tickets
                               </p>
                               {(planTasksPlanIds ?? []).includes(selectedPlan.metadata.planId) ? (
                                 <p

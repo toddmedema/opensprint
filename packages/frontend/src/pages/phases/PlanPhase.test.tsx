@@ -961,6 +961,34 @@ describe("PlanPhase dynamic plan button label", () => {
     expect(screen.queryByTestId("execute-button")).not.toBeInTheDocument();
   });
 
+  it("displays empty-state copy when plan sidebar has no tasks", async () => {
+    const planningPlan = {
+      ...basePlan,
+      status: "planning" as const,
+      taskCount: 0,
+      doneTaskCount: 0,
+      metadata: { ...basePlan.metadata },
+    };
+    mockPlansList.mockResolvedValue({ plans: [planningPlan], edges: [] });
+    const store = createStore([planningPlan], undefined, [], {
+      selectedPlanId: "archive-test-feature",
+    });
+    render(
+      <MemoryRouter>
+        <Provider store={store}>
+          <PlanPhase projectId="proj-1" />
+        </Provider>
+      </MemoryRouter>,
+      { wrapper: PlanPhaseWrapper }
+    );
+    await screen.findByText(/Archive Test Feature/i);
+    expect(
+      screen.getByText(
+        /Use the chat to refine the plan, then click Generate tasks when you're ready to break it down into specific tickets/
+      )
+    ).toBeInTheDocument();
+  });
+
   it("shows Execute when plan has child tasks and epic is blocked", async () => {
     const planningPlan = {
       ...basePlan,
