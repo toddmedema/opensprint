@@ -37,7 +37,7 @@ export function SettingsTopBar({ projectId, saveStatus }: SettingsTopBarProps) {
 
   return (
     <div
-      className="px-4 sm:px-6 flex items-center justify-between border-b border-theme-border bg-theme-surface shrink-0"
+      className="px-4 sm:px-6 flex items-center justify-between border-b border-theme-border bg-theme-settings-outer shrink-0"
       style={{ height: NAVBAR_HEIGHT }}
       data-testid="settings-top-bar"
     >

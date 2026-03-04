@@ -21,6 +21,9 @@ html:not([data-theme]) {
   --color-code-text: #10b981;
   --color-overlay: rgba(0, 0, 0, 0.4);
   --color-surface-muted: #f3f4f6;
+  /* Settings page contrast: outer = darker, content = lighter */
+  --color-settings-outer: #e5e7eb;
+  --color-settings-content: #ffffff;
   /* Semantic theme tokens */
   --color-error-bg: #fef2f2;
   --color-error-text: #b91c1c;
@@ -97,6 +100,9 @@ html[data-theme="dark"] {
   --color-code-text: #34d399;
   --color-overlay: rgba(0, 0, 0, 0.6);
   --color-surface-muted: #1f2937;
+  /* Settings page contrast: outer = darker blue, content = lighter grey */
+  --color-settings-outer: #0f172a;
+  --color-settings-content: #374151;
   /* Semantic theme tokens (dark mode) */
   --color-error-bg: #450a0a;
   --color-error-text: #fca5a5;

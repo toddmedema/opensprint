@@ -78,7 +78,7 @@ export function ProjectSettingsContent() {
     >
       {/* Execute-style topbar: tabs live here, not inside the modal */}
       <div
-        className="w-full shrink-0 border-b border-theme-border bg-theme-surface"
+        className="w-full shrink-0 border-b border-theme-border bg-theme-settings-outer"
         data-testid="settings-topbar-navbar"
       >
         <SettingsTopBar projectId={project.id} saveStatus={saveStatus} />
@@ -87,11 +87,11 @@ export function ProjectSettingsContent() {
         )}
       </div>
 
-      {/* Content area: scrollable, no card/modal wrapper; bg-theme-surface removes top gap */}
-      <div className="flex-1 min-h-0 overflow-hidden flex flex-col px-4 sm:px-6 py-4 sm:py-6 bg-theme-surface">
+      {/* Content area: scrollable, no gap at top; outer = darker, content = lighter */}
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col px-4 sm:px-6 py-4 sm:py-6 bg-theme-settings-outer">
         {isGlobalLevel ? (
           <div className="flex-1 min-h-0 overflow-y-auto">
-            <div className="w-full max-w-[1800px] mx-auto bg-theme-surface rounded-xl">
+            <div className="w-full max-w-[1800px] mx-auto bg-theme-settings-content rounded-xl">
               <div className="rounded-xl border border-theme-border p-4 sm:p-6">
                 <GlobalSettingsContent onSaveStateChange={setSaveStatus} />
               </div>

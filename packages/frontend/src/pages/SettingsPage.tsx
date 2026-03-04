@@ -24,11 +24,11 @@ export function SettingsPage() {
 
   return (
     <Layout>
-      <div className="flex-1 min-h-0 flex flex-col overflow-hidden" data-testid="settings-page">
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-theme-settings-outer" data-testid="settings-page">
         <SettingsTopBar saveStatus={saveStatus} />
-        <div className="flex-1 min-h-0 overflow-y-auto bg-theme-surface">
+        <div className="flex-1 min-h-0 overflow-y-auto bg-theme-settings-outer">
           <div
-            className={`${SETTINGS_HELP_CONTAINER_CLASS} py-6 sm:py-8 bg-theme-surface rounded-xl`}
+            className={`${SETTINGS_HELP_CONTAINER_CLASS} pt-0 pb-6 sm:pb-8 bg-theme-settings-content rounded-xl`}
           >
             <div className="rounded-xl border border-theme-border p-4 sm:p-6">
               <GlobalSettingsContent onSaveStateChange={setSaveStatus} />
