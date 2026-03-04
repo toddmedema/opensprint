@@ -476,7 +476,12 @@ describe("OrchestratorService (slot-based model)", () => {
     mockWaitForGitReady.mockResolvedValue(undefined);
     mockPushMain.mockResolvedValue(undefined);
     mockMergeToMain.mockResolvedValue(undefined);
-    mockRunScopedTests.mockResolvedValue({ passed: 0, failed: 0, rawOutput: "" });
+    mockRunScopedTests.mockResolvedValue({
+      passed: 0,
+      failed: 0,
+      rawOutput: "",
+      executedCommand: "npm test",
+    });
     mockListSessions.mockResolvedValue([]);
     mockBuildContext.mockResolvedValue({
       prdExcerpt: "",
@@ -573,7 +578,12 @@ describe("OrchestratorService (slot-based model)", () => {
         complexComplexityAgent: { type: "cursor", model: "gpt-5", cliCommand: null },
       });
       mockGetChangedFiles.mockResolvedValue(["src/foo.ts"]);
-      mockRunScopedTests.mockResolvedValue({ passed: 3, failed: 0, rawOutput: "ok" });
+      mockRunScopedTests.mockResolvedValue({
+        passed: 3,
+        failed: 0,
+        rawOutput: "ok",
+        executedCommand: "npx vitest related --run src/foo.ts",
+      });
       mockGetActiveDir.mockImplementation((base: string, tid: string) =>
         path.join(base, ".opensprint", "active", tid)
       );
@@ -611,6 +621,19 @@ describe("OrchestratorService (slot-based model)", () => {
       });
       await vi.waitFor(() => {
         expect(mockCommitWip).toHaveBeenCalledWith(repoPath, task.id);
+      });
+      const statusPath = path.join(
+        repoPath,
+        ".opensprint",
+        "active",
+        task.id,
+        "context",
+        "orchestrator-test-status.md"
+      );
+      await vi.waitFor(async () => {
+        await expect(fs.readFile(statusPath, "utf-8")).resolves.toContain(
+          "Validation command: `npx vitest related --run src/foo.ts`"
+        );
       });
     });
 
@@ -664,7 +687,12 @@ describe("OrchestratorService (slot-based model)", () => {
         complexComplexityAgent: { type: "cursor", model: "gpt-5", cliCommand: null },
       });
       mockGetChangedFiles.mockResolvedValue(["src/foo.ts"]);
-      mockRunScopedTests.mockResolvedValue({ passed: 3, failed: 0, rawOutput: "ok" });
+      mockRunScopedTests.mockResolvedValue({
+        passed: 3,
+        failed: 0,
+        rawOutput: "ok",
+        executedCommand: "npx vitest related --run src/foo.ts",
+      });
       vi.mocked(heartbeatService.readHeartbeat).mockResolvedValue({
         processGroupLeaderPid: 4343,
         lastOutputTimestamp: Date.now(),

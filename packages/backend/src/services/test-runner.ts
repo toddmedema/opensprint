@@ -20,6 +20,8 @@ const JEST_CONFIG_FILES = ["jest.config.js", "jest.config.ts", "jest.config.mjs"
 export interface ScopedTestResult extends TestResults {
   /** Raw stdout+stderr output from the test run */
   rawOutput: string;
+  /** Actual command executed after scoped/full-suite resolution */
+  executedCommand: string | null;
 }
 
 /**
@@ -72,6 +74,7 @@ export class TestRunner {
         total: 0,
         details: [],
         rawOutput: "",
+        executedCommand: null,
       };
     }
 
@@ -80,7 +83,7 @@ export class TestRunner {
 
     if (exitCode === 0) {
       const parsed = this.parseTestOutput(rawOutput, command);
-      return { ...parsed, rawOutput };
+      return { ...parsed, rawOutput, executedCommand: command };
     }
 
     const results = this.parseTestOutput(rawOutput, command);
@@ -99,10 +102,11 @@ export class TestRunner {
           },
         ],
         rawOutput,
+        executedCommand: command,
       };
     }
 
-    return { ...results, rawOutput };
+    return { ...results, rawOutput, executedCommand: command };
   }
 
   /**
@@ -110,7 +114,7 @@ export class TestRunner {
    */
   async runTests(repoPath: string, testCommand?: string): Promise<TestResults> {
     const result = await this.runTestsWithOutput(repoPath, testCommand);
-    const { rawOutput: _, ...testResults } = result;
+    const { rawOutput: _, executedCommand: __, ...testResults } = result;
     return testResults;
   }
 
@@ -304,10 +308,7 @@ export class TestRunner {
 
   private buildVitestCommand(mode: "run" | "related", files: string[]): string {
     const fileArgs = files.join(" ").trim();
-    const base =
-      mode === "run"
-        ? "npx vitest run --maxWorkers=1"
-        : "npx vitest related --run --maxWorkers=1";
+    const base = mode === "run" ? "npx vitest run" : "npx vitest related --run";
     return fileArgs ? `${base} ${fileArgs}` : base;
   }
 

@@ -80,6 +80,7 @@ describe("TestRunner", () => {
       expect(result.skipped).toBe(2);
       expect(result.total).toBe(7);
       expect(result.rawOutput).toContain(output);
+      expect(result.executedCommand).toBe("npm test");
       expect(mockSpawn).toHaveBeenCalledWith("sh", ["-c", "npm test"], expect.any(Object));
     });
 
@@ -106,6 +107,7 @@ describe("TestRunner", () => {
       expect(result.total).toBe(1);
       expect(result.details[0]?.status).toBe("failed");
       expect(result.details[0]?.error).toContain("Command not found");
+      expect(result.executedCommand).toBe("nonexistent-command");
     });
 
     it("returns empty results when no test command is provided and no package.json", async () => {
@@ -119,6 +121,7 @@ describe("TestRunner", () => {
         expect(result.failed).toBe(0);
         expect(result.total).toBe(0);
         expect(result.rawOutput).toBe("");
+        expect(result.executedCommand).toBeNull();
         expect(mockSpawn).not.toHaveBeenCalled();
       } finally {
         await fs.rm(emptyDir, { recursive: true, force: true }).catch(() => {});
@@ -150,10 +153,11 @@ describe("TestRunner", () => {
 
       expect(mockSpawn).toHaveBeenCalledWith(
         "sh",
-        ["-c", "npx vitest run --maxWorkers=1 src/foo.test.ts"],
+        ["-c", "npx vitest run src/foo.test.ts"],
         expect.any(Object)
       );
       expect(result.passed).toBe(2);
+      expect(result.executedCommand).toBe("npx vitest run src/foo.test.ts");
     });
 
     it("uses vitest related for changed source files", async () => {
@@ -164,7 +168,7 @@ describe("TestRunner", () => {
 
       expect(mockSpawn).toHaveBeenCalledWith(
         "sh",
-        ["-c", "npx vitest related --run --maxWorkers=1 src/foo.ts src/bar.ts"],
+        ["-c", "npx vitest related --run src/foo.ts src/bar.ts"],
         expect.any(Object)
       );
     });
@@ -210,7 +214,7 @@ describe("TestRunner", () => {
 
       expect(mockSpawn).toHaveBeenCalledWith(
         "sh",
-        ["-c", "npx vitest related --run --maxWorkers=1 src/foo.ts"],
+        ["-c", "npx vitest related --run src/foo.ts"],
         expect.any(Object)
       );
     });
@@ -234,6 +238,7 @@ describe("TestRunner", () => {
 
       expect(result.passed).toBe(1);
       expect(result).not.toHaveProperty("rawOutput");
+      expect(result).not.toHaveProperty("executedCommand");
     });
   });
 });

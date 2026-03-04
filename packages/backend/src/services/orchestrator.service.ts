@@ -2052,13 +2052,14 @@ export class OrchestratorService {
         }
         sl.phaseResult.testOutput = scopedResult.rawOutput;
         if (scopedResult.failed > 0) {
+          const validationCommand = scopedResult.executedCommand ?? testCommand;
           await this.writeReviewTestStatus(
             task.id,
             repoPath,
             wtPath,
             buildOrchestratorTestStatusContent({
               status: "failed",
-              testCommand,
+              testCommand: validationCommand,
               results: scopedResult,
               rawOutput: scopedResult.rawOutput,
             })
@@ -2071,13 +2072,14 @@ export class OrchestratorService {
         } else {
           sl.phaseResult.testResults = scopedResult;
           await this.branchManager.commitWip(wtPath, task.id);
+          const validationCommand = scopedResult.executedCommand ?? testCommand;
           await this.writeReviewTestStatus(
             task.id,
             repoPath,
             wtPath,
             buildOrchestratorTestStatusContent({
               status: "passed",
-              testCommand,
+              testCommand: validationCommand,
               results: scopedResult,
             })
           );
