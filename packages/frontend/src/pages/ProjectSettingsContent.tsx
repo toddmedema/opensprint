@@ -6,7 +6,6 @@ import { GlobalSettingsContent } from "../components/GlobalSettingsContent";
 import { SettingsTopBar } from "../components/settings/SettingsTopBar";
 import { SettingsSubTabsBar, type SettingsSubTab } from "../components/settings/SettingsSubTabsBar";
 import { getProjectPhasePath } from "../lib/phaseRouting";
-import { SETTINGS_HELP_CONTAINER_CLASS } from "../lib/constants";
 import { queryKeys } from "../api/queryKeys";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ProjectShellContext } from "./ProjectShell";
@@ -74,7 +73,7 @@ export function ProjectSettingsContent() {
 
   return (
     <div
-      className="flex-1 min-h-0 overflow-hidden flex flex-col bg-theme-surface"
+      className="flex-1 min-h-0 overflow-hidden flex flex-col"
       data-testid="project-settings-page"
     >
       {/* Execute-style topbar: tabs live here, not inside the modal */}
@@ -88,11 +87,11 @@ export function ProjectSettingsContent() {
         )}
       </div>
 
-      {/* Content area: scrollable, no gap at top; nav and content share same background */}
-      <div className="flex-1 min-h-0 overflow-hidden flex flex-col pt-0 bg-theme-surface">
+      {/* Content area: outer bg-theme-bg (from Layout), content card bg-theme-surface — matches Help page */}
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col pt-0">
         {isGlobalLevel ? (
-          <div className="flex-1 min-h-0 overflow-y-auto bg-theme-surface">
-            <div className={`${SETTINGS_HELP_CONTAINER_CLASS} pt-0 pb-6 sm:pb-8 mt-[15px]`}>
+          <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-y-auto max-w-[1800px] mx-auto w-full bg-theme-surface px-4 sm:px-6 py-4 mt-[15px] pb-6 sm:pb-8">
               <GlobalSettingsContent onSaveStateChange={setSaveStatus} />
             </div>
           </div>
