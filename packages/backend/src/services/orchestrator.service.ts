@@ -79,6 +79,10 @@ import {
   RepoPreflightError,
   resolveBaseBranch,
 } from "../utils/git-repo-state.js";
+import {
+  buildOrchestratorTestStatusContent,
+  getOrchestratorTestStatusFsPath,
+} from "./orchestrator-test-status.js";
 
 const log = createLogger("orchestrator");
 
@@ -990,7 +994,7 @@ export class OrchestratorService {
     });
     await this.persistCounters(projectId, repoPath);
 
-    this.startReviewCoordinatorAndTests(
+    await this.startReviewCoordinatorAndTests(
       projectId,
       repoPath,
       task,
@@ -1849,7 +1853,7 @@ export class OrchestratorService {
           assignee: reviewerAssignee,
         });
         await this.persistCounters(projectId, repoPath);
-        this.startReviewCoordinatorAndTests(
+        await this.startReviewCoordinatorAndTests(
           projectId,
           repoPath,
           task,
@@ -1963,19 +1967,28 @@ export class OrchestratorService {
     }
   }
 
-  private startReviewCoordinatorAndTests(
+  private async startReviewCoordinatorAndTests(
     projectId: string,
     repoPath: string,
     task: StoredTask,
     branchName: string,
     settings: import("@opensprint/shared").ProjectSettings,
     changedFiles: string[]
-  ): void {
+  ): Promise<void> {
     const slot = this.getState(projectId).slots.get(task.id);
     if (!slot) return;
     const wtPath = slot.worktreePath ?? repoPath;
     const testCommand = resolveTestCommand(settings) || undefined;
     const angles = (settings.reviewAngles ?? []).filter(Boolean);
+    await this.writeReviewTestStatus(
+      task.id,
+      repoPath,
+      wtPath,
+      buildOrchestratorTestStatusContent({
+        status: "pending",
+        testCommand,
+      })
+    );
     const coordinator = new TaskPhaseCoordinator(
       task.id,
       (testOutcome, reviewOutcome) =>
@@ -2021,6 +2034,16 @@ export class OrchestratorService {
       .then(async (scopedResult) => {
         const sl = this.getState(projectId).slots.get(task.id);
         if (!sl) {
+          await this.writeReviewTestStatus(
+            task.id,
+            repoPath,
+            wtPath,
+            buildOrchestratorTestStatusContent({
+              status: "error",
+              testCommand,
+              errorMessage: "Slot removed during tests",
+            })
+          );
           coordinator.setTestOutcome({
             status: "error",
             errorMessage: "Slot removed during tests",
@@ -2029,6 +2052,17 @@ export class OrchestratorService {
         }
         sl.phaseResult.testOutput = scopedResult.rawOutput;
         if (scopedResult.failed > 0) {
+          await this.writeReviewTestStatus(
+            task.id,
+            repoPath,
+            wtPath,
+            buildOrchestratorTestStatusContent({
+              status: "failed",
+              testCommand,
+              results: scopedResult,
+              rawOutput: scopedResult.rawOutput,
+            })
+          );
           coordinator.setTestOutcome({
             status: "failed",
             results: scopedResult,
@@ -2037,13 +2071,49 @@ export class OrchestratorService {
         } else {
           sl.phaseResult.testResults = scopedResult;
           await this.branchManager.commitWip(wtPath, task.id);
+          await this.writeReviewTestStatus(
+            task.id,
+            repoPath,
+            wtPath,
+            buildOrchestratorTestStatusContent({
+              status: "passed",
+              testCommand,
+              results: scopedResult,
+            })
+          );
           coordinator.setTestOutcome({ status: "passed", results: scopedResult });
         }
       })
       .catch((err) => {
         log.error("Background tests failed for task", { taskId: task.id, err });
+        void this.writeReviewTestStatus(
+          task.id,
+          repoPath,
+          wtPath,
+          buildOrchestratorTestStatusContent({
+            status: "error",
+            testCommand,
+            errorMessage: String(err),
+          })
+        );
         coordinator.setTestOutcome({ status: "error", errorMessage: String(err) });
       });
+  }
+
+  private async writeReviewTestStatus(
+    taskId: string,
+    repoPath: string,
+    wtPath: string,
+    content: string
+  ): Promise<void> {
+    const bases = new Set([repoPath, wtPath]);
+    await Promise.all(
+      [...bases].map(async (basePath) => {
+        const statusPath = getOrchestratorTestStatusFsPath(basePath, taskId);
+        await fs.mkdir(path.dirname(statusPath), { recursive: true });
+        await fs.writeFile(statusPath, content, "utf-8");
+      })
+    );
   }
 
   private async executeReviewPhase(

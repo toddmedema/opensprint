@@ -802,19 +802,24 @@ User authentication.
     expect(prompt).toContain("Correctness");
     expect(prompt).toContain("Error handling");
     expect(prompt).toContain("Test coverage");
-    expect(prompt).toContain("Automated validation is handled by the orchestrator");
+    expect(prompt).toContain("Orchestrator validation status is green");
+    expect(prompt).toContain(".opensprint/active/bd-a3f8.2/context/orchestrator-test-status.md");
 
     // Working directory (so reviewer knows the repo root for git or targeted repro steps)
     expect(prompt).toContain("## Working directory");
     expect(prompt).toContain("config.json");
     expect(prompt).toContain("repoPath");
     expect(prompt).toContain("Do not run `npm test` from this review prompt");
+    expect(prompt).toContain("writes live validation status");
 
     // Instructions
     expect(prompt).toContain("## Instructions");
     expect(prompt).toContain("Read the original ticket");
     expect(prompt).toContain(`git diff main...opensprint/bd-a3f8.2`);
     expect(prompt).toContain("Do NOT rerun the full-suite command `npm test`");
+    expect(prompt).toContain("Before approving, open that file");
+    expect(prompt).toContain("If it says `FAILED` or `ERROR`, reject");
+    expect(prompt).toContain("If it still says `PENDING`, wait briefly and re-check");
     expect(prompt).toContain("6. Write your result to `.opensprint/active/bd-a3f8.2/result.json`");
     expect(prompt).toContain('"status": "approved"');
     expect(prompt).toContain("do NOT merge");
@@ -918,6 +923,8 @@ User authentication.
     expect(securityPrompt).toContain("Review Checklist — Security implications");
     expect(securityPrompt).toContain("No injection vulnerabilities");
     expect(securityPrompt).toContain("Do NOT rerun the full-suite command `npm test`");
+    expect(securityPrompt).toContain(".opensprint/active/bd-a3f8.2/context/orchestrator-test-status.md");
+    expect(securityPrompt).toContain("Before approving, open that file");
     expect(securityPrompt).toContain(
       ".opensprint/active/bd-a3f8.2/review-angles/security/result.json"
     );
