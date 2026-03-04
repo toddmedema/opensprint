@@ -6,6 +6,8 @@ import { AgentsMdSection } from "./AgentsMdSection";
 
 const mockGetAgentsInstructions = vi.fn();
 const mockUpdateAgentsInstructions = vi.fn();
+const mockGetAgentsInstructionsForRole = vi.fn();
+const mockUpdateAgentsInstructionsForRole = vi.fn();
 
 vi.mock("prettier", () => ({
   format: (content: string) => Promise.resolve(content),
@@ -43,6 +45,10 @@ vi.mock("../api/client", () => ({
     projects: {
       getAgentsInstructions: (...args: unknown[]) => mockGetAgentsInstructions(...args),
       updateAgentsInstructions: (...args: unknown[]) => mockUpdateAgentsInstructions(...args),
+      getAgentsInstructionsForRole: (...args: unknown[]) =>
+        mockGetAgentsInstructionsForRole(...args),
+      updateAgentsInstructionsForRole: (...args: unknown[]) =>
+        mockUpdateAgentsInstructionsForRole(...args),
     },
   },
 }));
@@ -92,7 +98,7 @@ describe("AgentsMdSection", () => {
     await screen.findByTestId("agents-md-view");
     const title = screen.getByText("Agent Instructions (AGENTS.md)");
     const subtext = screen.getByText(
-      /Agent-specific instructions read by coding agents\. Edit to customize behavior/
+      /Shared instructions for all agents\. Edit to customize behavior/
     );
     const editBtn = screen.getByTestId("agents-md-edit");
     const headerBlock = title.closest("div");

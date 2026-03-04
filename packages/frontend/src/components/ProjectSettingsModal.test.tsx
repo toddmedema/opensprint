@@ -354,15 +354,16 @@ describe("ProjectSettingsModal", () => {
 
     await screen.findByText("Code Review");
     expect(screen.getByText("Review agents")).toBeInTheDocument();
-    expect(screen.getByTestId("review-agents-multiselect")).toBeInTheDocument();
+    const multiselect = screen.getByTestId("review-agents-multiselect");
+    expect(multiselect).toBeInTheDocument();
     expect(
       screen.getByText(
         "Leave empty for one general review. Select one or more angles for parallel angle-specific reviews."
       )
     ).toBeInTheDocument();
-    expect(screen.getByText("General")).toBeInTheDocument();
-    expect(screen.getByText("Security implications")).toBeInTheDocument();
-    expect(screen.getByText("Performance impact")).toBeInTheDocument();
+    expect(within(multiselect).getByText("General")).toBeInTheDocument();
+    expect(within(multiselect).getByText("Security implications")).toBeInTheDocument();
+    expect(within(multiselect).getByText("Performance impact")).toBeInTheDocument();
 
     const securityCheckbox = screen.getByRole("checkbox", { name: /Security implications/i });
     await userEvent.click(securityCheckbox);

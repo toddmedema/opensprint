@@ -2,6 +2,11 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react"
 import remarkGfm from "remark-gfm";
 import { api } from "../api/client";
 import { useTheme } from "../contexts/ThemeContext";
+import {
+  AGENT_ROLE_CANONICAL_ORDER,
+  AGENT_ROLE_LABELS,
+} from "@opensprint/shared";
+import type { AgentRole } from "@opensprint/shared";
 
 const MDEditor = lazy(() => import("@uiw/react-md-editor").then((m) => ({ default: m.default })));
 const AgentsMdPreview = lazy(() =>
@@ -31,6 +36,16 @@ function PreviewLoadingFallback() {
   );
 }
 
+type AgentInstructionsTab = "general" | AgentRole;
+
+const AGENT_TABS: { key: AgentInstructionsTab; label: string }[] = [
+  { key: "general", label: "General" },
+  ...AGENT_ROLE_CANONICAL_ORDER.map((role) => ({
+    key: role as AgentInstructionsTab,
+    label: AGENT_ROLE_LABELS[role],
+  })),
+];
+
 interface AgentsMdSectionProps {
   projectId: string;
   /** When true, renders a plain textarea for simpler testing. */
@@ -54,6 +69,7 @@ async function prettifyMarkdown(content: string): Promise<string> {
 
 export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSectionProps) {
   const { resolved } = useTheme();
+  const [activeTab, setActiveTab] = useState<AgentInstructionsTab>("general");
   const [content, setContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,30 +78,32 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
   const [saving, setSaving] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState<"saved" | "error" | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    api.projects
-      .getAgentsInstructions(projectId)
-      .then((data) => {
-        if (!cancelled) {
+  const loadContent = useCallback(
+    async (tab: AgentInstructionsTab) => {
+      setLoading(true);
+      setError(null);
+      try {
+        if (tab === "general") {
+          const data = await api.projects.getAgentsInstructions(projectId);
+          setContent(data.content);
+          setEditValue(data.content);
+        } else {
+          const data = await api.projects.getAgentsInstructionsForRole(projectId, tab);
           setContent(data.content);
           setEditValue(data.content);
         }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load agent instructions");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load agent instructions");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [projectId]
+  );
+
+  useEffect(() => {
+    loadContent(activeTab);
+  }, [activeTab, loadContent]);
 
   const editValueRef = useRef(editValue);
   editValueRef.current = editValue;
@@ -96,7 +114,11 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
     setSaveFeedback(null);
     try {
       const toSave = await prettifyMarkdown(value);
-      await api.projects.updateAgentsInstructions(projectId, toSave);
+      if (activeTab === "general") {
+        await api.projects.updateAgentsInstructions(projectId, toSave);
+      } else {
+        await api.projects.updateAgentsInstructionsForRole(projectId, activeTab, toSave);
+      }
       setContent(toSave);
       setEditValue(toSave);
       setEditing(false);
@@ -108,14 +130,27 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
     } finally {
       setSaving(false);
     }
-  }, [projectId]);
+  }, [projectId, activeTab]);
 
-  if (loading) {
+  const handleTabChange = useCallback((tab: AgentInstructionsTab) => {
+    if (editing) {
+      if (!confirm("Discard unsaved changes?")) return;
+    }
+    setActiveTab(tab);
+    setEditing(false);
+    setSaveFeedback(null);
+  }, [editing]);
+
+  const tabLabel = AGENT_TABS.find((t) => t.key === activeTab)?.label ?? "General";
+  const fileLabel =
+    activeTab === "general"
+      ? "AGENTS.md"
+      : `.opensprint/agents/${activeTab}.md`;
+
+  if (loading && content === null) {
     return (
       <div className="pt-2">
-        <h3 className="text-sm font-semibold text-theme-text mb-3">
-          Agent Instructions (AGENTS.md)
-        </h3>
+        <h3 className="text-sm font-semibold text-theme-text mb-3">Agent Instructions</h3>
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
           <span className="text-sm text-theme-muted">Loading...</span>
@@ -125,10 +160,14 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
   }
 
   if (error && !editing) {
+    const errFileLabel =
+      activeTab === "general"
+        ? "AGENTS.md"
+        : `.opensprint/agents/${activeTab}.md`;
     return (
       <div className="pt-2">
         <h3 className="text-sm font-semibold text-theme-text mb-3">
-          Agent Instructions (AGENTS.md)
+          Agent Instructions ({errFileLabel})
         </h3>
         <div className="p-3 rounded-lg bg-theme-error-bg border border-theme-error-border">
           <p className="text-sm text-theme-error-text">{error}</p>
@@ -139,14 +178,36 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
 
   return (
     <div className="pt-2">
+      <div className="flex flex-wrap items-center gap-1 bg-theme-border-subtle rounded-lg p-1 mb-3">
+        {AGENT_TABS.map((tab) => {
+          const isActive = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => handleTabChange(tab.key)}
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                isActive
+                  ? "bg-theme-surface text-theme-text shadow-sm"
+                  : "text-theme-muted hover:text-theme-text hover:bg-theme-bg-elevated"
+              }`}
+              data-testid={`agents-tab-${tab.key}`}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
       <div className="flex items-center justify-between gap-4 mb-3">
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-semibold leading-tight text-theme-text">
-            Agent Instructions (AGENTS.md)
+            Agent Instructions ({fileLabel})
           </h3>
           <p className="text-xs leading-tight text-theme-muted mt-0.5">
-            Agent-specific instructions read by coding agents. Edit to customize behavior for this
-            project.
+            {activeTab === "general"
+              ? "Shared instructions for all agents. Edit to customize behavior for this project."
+              : `Role-specific instructions for ${tabLabel}. Combined with General when this agent runs.`}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -177,7 +238,11 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
                 onBlur={() => void handleSave()}
-                placeholder="# Agent Instructions\n\nAdd instructions for your agents..."
+                placeholder={
+                  activeTab === "general"
+                    ? "# Agent Instructions\n\nAdd instructions for your agents..."
+                    : `# ${tabLabel} Instructions\n\nAdd role-specific instructions...`
+                }
                 data-testid="agents-md-textarea"
               />
             ) : (
@@ -189,7 +254,10 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
                   visibleDragbar={false}
                   preview="edit"
                   textareaProps={{
-                    placeholder: "# Agent Instructions\n\nAdd instructions for your agents...",
+                    placeholder:
+                      activeTab === "general"
+                        ? "# Agent Instructions\n\nAdd instructions for your agents..."
+                        : `# ${tabLabel} Instructions\n\nAdd role-specific instructions...`,
                     onBlur: () => void handleSave(),
                   }}
                   extraCommands={[

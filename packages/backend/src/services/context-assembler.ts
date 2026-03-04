@@ -10,6 +10,7 @@ import type { ActiveTaskConfig, ReviewAngle } from "@opensprint/shared";
 import { BranchManager } from "./branch-manager.js";
 import { PrdService } from "./prd.service.js";
 import { ChatService } from "./chat.service.js";
+import { getCombinedInstructions } from "./agent-instructions.service.js";
 import type { TaskStoreService } from "./task-store.service.js";
 import type { StoredTask } from "./task-store.service.js";
 import { getRuntimePath } from "../utils/runtime-dir.js";
@@ -135,18 +136,26 @@ export class ContextAssembler {
       await fs.writeFile(path.join(contextDir, "implementation.diff"), context.branchDiff);
     }
 
-    // Generate prompt(s)
+    // Generate prompt(s) — inject agent instructions (AGENTS.md + role-specific) per acceptance criteria
     if (config.phase === "coding") {
-      const prompt = this.generateCodingPrompt(config, context);
+      const agentInstructions = await getCombinedInstructions(repoPath, "coder");
+      const prompt = this.buildPromptWithInstructions(
+        agentInstructions,
+        this.generateCodingPrompt(config, context)
+      );
       await fs.writeFile(path.join(taskDir, "prompt.md"), prompt);
     } else {
+      const agentInstructions = await getCombinedInstructions(repoPath, "reviewer");
       const reviewAngles = config.reviewAngles;
       if (reviewAngles && reviewAngles.length > 0) {
         // Angle-specific: create review-angles/<angle>/ per angle
         for (const angle of reviewAngles as ReviewAngle[]) {
           const angleDir = path.join(taskDir, "review-angles", angle);
           await fs.mkdir(angleDir, { recursive: true });
-          const prompt = this.generateReviewPromptForAngle(config, context, angle);
+          const prompt = this.buildPromptWithInstructions(
+            agentInstructions,
+            this.generateReviewPromptForAngle(config, context, angle)
+          );
           await fs.writeFile(path.join(angleDir, "prompt.md"), prompt);
           await fs.writeFile(
             path.join(angleDir, "config.json"),
@@ -155,7 +164,10 @@ export class ContextAssembler {
         }
       } else {
         // General: single prompt at task dir
-        const prompt = this.generateReviewPrompt(config, context);
+        const prompt = this.buildPromptWithInstructions(
+          agentInstructions,
+          this.generateReviewPrompt(config, context)
+        );
         await fs.writeFile(path.join(taskDir, "prompt.md"), prompt);
       }
     }
@@ -304,6 +316,12 @@ export class ContextAssembler {
     }
 
     return outputs;
+  }
+
+  /** Prepend agent instructions to prompt when present. */
+  private buildPromptWithInstructions(agentInstructions: string, basePrompt: string): string {
+    if (!agentInstructions.trim()) return basePrompt;
+    return `${agentInstructions}\n\n${basePrompt}`;
   }
 
   /**

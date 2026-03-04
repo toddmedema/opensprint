@@ -15,6 +15,7 @@ export const OPENSPRINT_PATHS = {
   /** Session log/diff files under runtime dir; session metadata is in DB (agent_sessions). */
   sessions: `${OPENSPRINT_DIR}/sessions`,
   active: `${OPENSPRINT_DIR}/active`,
+  agents: `${OPENSPRINT_DIR}/agents`,
   pendingCommits: `${OPENSPRINT_DIR}/pending-commits.json`,
   heartbeat: "heartbeat.json",
   agentOutputLog: "agent-output.log",

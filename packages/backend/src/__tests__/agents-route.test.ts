@@ -6,7 +6,7 @@ import os from "os";
 import { createApp } from "../app.js";
 import { ProjectService } from "../services/project.service.js";
 import { activeAgentsService } from "../services/active-agents.service.js";
-import { API_PREFIX, DEFAULT_HIL_CONFIG } from "@opensprint/shared";
+import { API_PREFIX, DEFAULT_HIL_CONFIG, OPENSPRINT_PATHS } from "@opensprint/shared";
 import type { DbClient } from "../db/client.js";
 
 const { testClientRef } = vi.hoisted(() => ({
@@ -196,6 +196,102 @@ describe("Agents API", () => {
       expect(res.status).toBe(404);
       expect(res.body.error).toBeDefined();
       expect(res.body.error.code).toBe("PROJECT_NOT_FOUND");
+    });
+  });
+
+  describe("GET /projects/:projectId/agents/instructions/:role", () => {
+    it("should return content when role file exists", async () => {
+      const repoPath = path.join(tempDir, "my-project");
+      const agentsDir = path.join(repoPath, OPENSPRINT_PATHS.agents);
+      await fs.mkdir(agentsDir, { recursive: true });
+      await fs.writeFile(
+        path.join(agentsDir, "coder.md"),
+        "# Coder Instructions\n\nPrefer TypeScript.",
+        "utf-8"
+      );
+
+      const res = await request(app).get(
+        `${API_PREFIX}/projects/${projectId}/agents/instructions/coder`
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual({
+        content: "# Coder Instructions\n\nPrefer TypeScript.",
+      });
+    });
+
+    it("should return empty content when role file is missing", async () => {
+      const res = await request(app).get(
+        `${API_PREFIX}/projects/${projectId}/agents/instructions/reviewer`
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual({ content: "" });
+    });
+
+    it("should return 400 for invalid role", async () => {
+      const res = await request(app).get(
+        `${API_PREFIX}/projects/${projectId}/agents/instructions/invalid`
+      );
+
+      expect(res.status).toBe(400);
+      expect(res.body.error?.code).toBe("VALIDATION_ERROR");
+      expect(res.body.error?.message).toContain("Invalid role");
+    });
+
+    it("should return 404 for non-existent project", async () => {
+      const res = await request(app).get(
+        `${API_PREFIX}/projects/nonexistent-id/agents/instructions/coder`
+      );
+
+      expect(res.status).toBe(404);
+      expect(res.body.error?.code).toBe("PROJECT_NOT_FOUND");
+    });
+  });
+
+  describe("PUT /projects/:projectId/agents/instructions/:role", () => {
+    it("should create agents dir and write role file", async () => {
+      const repoPath = path.join(tempDir, "my-project");
+
+      const res = await request(app)
+        .put(`${API_PREFIX}/projects/${projectId}/agents/instructions/coder`)
+        .send({ content: "# Coder\n\nUse strict mode." });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual({ saved: true });
+
+      const written = await fs.readFile(
+        path.join(repoPath, OPENSPRINT_PATHS.agents, "coder.md"),
+        "utf-8"
+      );
+      expect(written).toBe("# Coder\n\nUse strict mode.");
+    });
+
+    it("should return 400 when content is missing", async () => {
+      const res = await request(app)
+        .put(`${API_PREFIX}/projects/${projectId}/agents/instructions/planner`)
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.error?.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("should return 400 for invalid role", async () => {
+      const res = await request(app)
+        .put(`${API_PREFIX}/projects/${projectId}/agents/instructions/badrole`)
+        .send({ content: "test" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error?.code).toBe("VALIDATION_ERROR");
+    });
+
+    it("should return 404 for non-existent project", async () => {
+      const res = await request(app)
+        .put(`${API_PREFIX}/projects/nonexistent-id/agents/instructions/coder`)
+        .send({ content: "test" });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error?.code).toBe("PROJECT_NOT_FOUND");
     });
   });
 

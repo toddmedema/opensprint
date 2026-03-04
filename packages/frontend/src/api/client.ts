@@ -236,6 +236,13 @@ export const api = {
         method: "PUT",
         body: JSON.stringify({ content }),
       }),
+    getAgentsInstructionsForRole: (id: string, role: string) =>
+      request<{ content: string }>(`/projects/${id}/agents/instructions/${role}`),
+    updateAgentsInstructionsForRole: (id: string, role: string, content: string) =>
+      request<{ saved: boolean }>(`/projects/${id}/agents/instructions/${role}`, {
+        method: "PUT",
+        body: JSON.stringify({ content }),
+      }),
   },
 
   // ─── PRD ───

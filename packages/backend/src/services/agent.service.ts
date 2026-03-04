@@ -27,6 +27,7 @@ import {
   clearLimitHit,
   ENV_FALLBACK_KEY_ID,
 } from "./api-key-resolver.service.js";
+import { getCombinedInstructions } from "./agent-instructions.service.js";
 
 /** Message for planning agent (user or assistant) */
 export interface PlanningMessage {
@@ -366,7 +367,8 @@ export class AgentService {
 
   private async buildMergerPrompt(options: RunMergerAgentOptions): Promise<string> {
     const baseBranch = options.baseBranch ?? "main";
-    const [statusShort, diffFilterU, mainLog, branchDiffStat] = await Promise.all([
+    const [agentInstructions, statusShort, diffFilterU, mainLog, branchDiffStat] = await Promise.all([
+      getCombinedInstructions(options.cwd, "merger"),
       this.captureGitOutput(options.cwd, "git status --short"),
       this.captureGitOutput(options.cwd, "git diff --name-only --diff-filter=U"),
       this.captureGitOutput(
@@ -383,7 +385,7 @@ export class AgentService {
       options.conflictedFiles.length > 0 ? options.conflictedFiles.join("\n") : "(none reported)";
     const testCommand = options.testCommand?.trim() ? options.testCommand.trim() : "(not provided)";
 
-    return `# Merger Agent: Resolve Git Conflicts
+    const basePrompt = `# Merger Agent: Resolve Git Conflicts
 
 You are the Merger agent. Your job is to resolve ${options.phase} conflicts for task ${options.taskId} on branch ${options.branchName}.
 
@@ -424,6 +426,10 @@ ${branchDiffStat || "(no output)"}
 - Exit with code 0 only when all conflicted files are resolved and staged.
 - Exit non-zero if you cannot produce a correct resolution.
 `;
+    if (agentInstructions.trim()) {
+      return `${agentInstructions}\n\n${basePrompt}`;
+    }
+    return basePrompt;
   }
 
   private async captureGitOutput(cwd: string, command: string): Promise<string> {
