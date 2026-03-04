@@ -14,6 +14,10 @@ npm install
 # Ensure ~/.opensprint exists and global-settings has default databaseUrl if missing
 npx tsx scripts/ensure-global-settings.ts
 
+# Backend setup helpers import @opensprint/shared, whose dist output is not present
+# on a fresh install until we build it explicitly.
+npm run build -w packages/shared
+
 is_wsl() {
   [ -n "${WSL_DISTRO_NAME:-}" ] || [ -n "${WSL_INTEROP:-}" ] || \
     grep -qi microsoft /proc/version 2>/dev/null

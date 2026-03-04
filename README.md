@@ -6,24 +6,13 @@ _Plan like a Product Manager. Ship at the speed of thought._
 
 ## Quick Start
 
-### Prerequisites
+### Mac/Linux
 
-- Node.js 20+
-- PostgreSQL
+Prerequisites:
 
-### Windows Support
-
-OpenSprint is supported on Windows only through WSL2.
-
-- Install WSL2.
-- Open a WSL terminal.
-- Clone OpenSprint into your Linux home directory, for example `/home/<user>/src/opensprint`.
-- Do not run OpenSprint from `/mnt/c/...` or any other Windows-mounted filesystem.
-- Run `npm run setup` and `npm run dev` inside WSL.
-
-Native Windows Node, PowerShell, and `cmd.exe` execution are unsupported because the orchestration and process-management stack assumes Linux/Unix process behavior.
-
-### Start Open Sprint
+- [Git](https://git-scm.com/install/)
+- [Node.js 20+](https://nodejs.org/en/download)
+- [PostgreSQL](https://www.postgresql.org/download/)
 
 ```bash
 git clone https://github.com/toddmedema/opensprint.git
@@ -32,12 +21,23 @@ npm run setup
 npm run dev
 ```
 
-Then open [http://localhost:5173](http://localhost:5173). If the browser does not open automatically, navigate there manually.
+Then open [http://localhost:5173](http://localhost:5173) and get building!
 
-- `npm run setup` installs dependencies, prepares local PostgreSQL when possible, and applies the database schema.
-- `npm run dev` starts the backend and frontend for local development.
+#### Windows
 
-## If PostgreSQL Setup Fails
+You will need to install WSL2 ([Windows Subsystem for Linux](https://learn.microsoft.com/en-us/windows/wsl/install)) by opening PowerShell as an admin, running `wsl --install`, rebooting your computer, then running `wsl.exe --install` in PowerShell.
+
+Then, open the `WSL` application, [install node.js](https://stackoverflow.com/a/75739322),
+
+Once installed, run the remaining installation steps inside the WSL prompt by running `WSL` from the start menu. _Do not run OpenSprint from `/mnt/c/...` or any other Windows-mounted filesystem._
+
+(TODO how to install node and postgres in WSL?)
+
+- Clone OpenSprint into your Linux home directory, for example `/home/<user>/src/opensprint`.
+
+_Native Windows Node, PowerShell, and `cmd.exe` execution are unsupported because the orchestration and process-management stack assumes Linux/Unix process behavior._
+
+#### If PostgreSQL Setup Fails
 
 If you already have PostgreSQL running, OpenSprint expects a local role `opensprint` with password `opensprint` and a local database named `opensprint`.
 
@@ -53,18 +53,9 @@ If you already have PostgreSQL running, OpenSprint expects a local role `openspr
 
 Once the app is running:
 
-- Open Settings in the web UI.
+- Open Settings in the web UI at [http://localhost:5173](http://localhost:5173).
 - Add your AI provider API key there.
-- If you want to use a different database later, update the database connection in Settings.
-
-## Common Commands
-
-| Command         | What it does                                                             |
-| --------------- | ------------------------------------------------------------------------ |
-| `npm run setup` | Install dependencies, prepare PostgreSQL when possible, and apply schema |
-| `npm run dev`   | Start the backend and frontend                                           |
-| `npm run test`  | Run the test suite                                                       |
-| `npm run build` | Build all packages                                                       |
+- If you want to use a different database later, update the database connection in Settings. |
 
 ## How Open Sprint Works
 
@@ -78,7 +69,16 @@ Open Sprint uses the SPEED lifecycle:
 
 Specialized agents handle planning, implementation, review, and handoff so the project keeps moving without manual orchestration at every step.
 
-## Project Structure
+## Contributing
+
+1. Fork the repo and create a branch.
+2. Make changes and add tests.
+3. Run `npm run test`.
+4. Open a pull request.
+
+Bug reports: [GitHub Issues](https://github.com/toddmedema/opensprint/issues)
+
+### Project Structure
 
 Open Sprint is a monorepo with three main packages:
 
@@ -88,7 +88,7 @@ Open Sprint is a monorepo with three main packages:
 
 The product spec for Open Sprint lives in `PRD.md`. Each project's Sketch output is written to `SPEC.md` at the project repo root.
 
-## Advanced: Developing On Open Sprint
+### Developing On Open Sprint
 
 If you are using Open Sprint to work on Open Sprint itself, use two clones to avoid restarts and git lock contention:
 
@@ -98,14 +98,14 @@ If you are using Open Sprint to work on Open Sprint itself, use two clones to av
 
 Run `npm run dev` only from the control clone.
 
-## Contributing
+### Common Commands
 
-1. Fork the repo and create a branch.
-2. Make changes and add tests.
-3. Run `npm run test`.
-4. Open a pull request.
-
-Bug reports: [GitHub Issues](https://github.com/toddmedema/opensprint/issues)
+| Command         | What it does                                                             |
+| --------------- | ------------------------------------------------------------------------ |
+| `npm run setup` | Install dependencies, prepare PostgreSQL when possible, and apply schema |
+| `npm run dev`   | Start the backend and frontend                                           |
+| `npm run test`  | Run the test suite                                                       |
+| `npm run build` | Build all packages                                                       |
 
 ## License
 

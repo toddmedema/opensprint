@@ -68,4 +68,14 @@ describe("dev config (source-direct imports)", () => {
     expect(devScript).toContain("dev:backend");
     expect(devScript).toContain("dev:frontend");
   });
+
+  it("setup script builds shared before applying database schema", () => {
+    const setupScriptPath = resolve(repoRoot, "scripts/setup.sh");
+    expect(existsSync(setupScriptPath)).toBe(true);
+    const content = readFileSync(setupScriptPath, "utf-8");
+    const buildIndex = content.indexOf("npm run build -w packages/shared");
+    const schemaIndex = content.indexOf("npx tsx scripts/ensure-db-schema.ts");
+    expect(buildIndex).toBeGreaterThanOrEqual(0);
+    expect(schemaIndex).toBeGreaterThan(buildIndex);
+  });
 });
