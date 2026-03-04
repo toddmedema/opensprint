@@ -176,6 +176,35 @@ describe("AgentService", () => {
   });
 
   describe("runMergerAgentAndWait", () => {
+    it("includes destructive-command guardrails in merger prompts", async () => {
+      const prompt = await (
+        service as unknown as {
+          buildMergerPrompt: (options: {
+            projectId: string;
+            cwd: string;
+            config: AgentConfig;
+            phase: "merge_to_main" | "push_rebase" | "rebase_before_merge";
+            taskId: string;
+            branchName: string;
+            conflictedFiles: string[];
+            testCommand?: string;
+          }) => Promise<string>;
+        }
+      ).buildMergerPrompt({
+        projectId: "proj-123",
+        cwd: "/tmp/repo",
+        config: { type: "cursor", model: null, cliCommand: null },
+        phase: "merge_to_main",
+        taskId: "os-1",
+        branchName: "opensprint/os-1",
+        conflictedFiles: ["src/conflict.ts"],
+        testCommand: "npm test",
+      });
+
+      expect(prompt).toContain("Do NOT run destructive cleanup commands");
+      expect(prompt).toContain("git clean -fdx");
+    });
+
     it("returns true when merger agent exits with code 0", async () => {
       mockSpawnWithTaskFile.mockImplementation(
         (

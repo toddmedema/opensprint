@@ -44,6 +44,7 @@ import { notificationService } from "./notification.service.js";
 import { broadcastToProject } from "../websocket/index.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { extractJsonFromAgentResponse } from "../utils/json-extract.js";
+import { assertSafeTaskWorktreePath } from "../utils/path-safety.js";
 import { TimerRegistry } from "./timer-registry.js";
 import { AgentLifecycleManager, type AgentRunState } from "./agent-lifecycle.js";
 import { heartbeatService } from "./heartbeat.service.js";
@@ -2408,6 +2409,9 @@ export class OrchestratorService {
     taskId: string,
     reviewAngles?: ReviewAngle[]
   ): Promise<void> {
+    if (wtPath !== repoPath) {
+      assertSafeTaskWorktreePath(repoPath, taskId, wtPath);
+    }
     await this.branchManager.waitForGitReady(wtPath);
 
     try {

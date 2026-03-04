@@ -16,10 +16,7 @@ import type {
   Project,
   ScaffoldRecoveryInfo,
 } from "@opensprint/shared";
-import {
-  isWindowsMountedWslPath,
-  UNSUPPORTED_WSL_REPO_PATH_MESSAGE,
-} from "@opensprint/shared";
+import { isWindowsMountedWslPath, UNSUPPORTED_WSL_REPO_PATH_MESSAGE } from "@opensprint/shared";
 import { api, ApiError } from "../api/client";
 import { getDefaultProviderFromEnvKeys } from "../utils/agentConfigDefaults";
 import { getRunInstructions } from "../utils/runInstructions";
@@ -521,7 +518,10 @@ export function CreateNewProjectPage() {
                         Run these commands in your WSL terminal.
                       </p>
                     )}
-                    <p className="text-sm text-theme-muted">Run these commands in order:</p>
+                    <p className="text-sm text-theme-muted">
+                      Run these commands{" "}
+                      {backendRuntime?.isWsl && <span>in your WSL terminal</span>} in order:
+                    </p>
                     <pre className="p-3 bg-theme-surface-muted rounded-lg font-mono text-sm overflow-x-auto">
                       {runInstructions.join("\n")}
                     </pre>

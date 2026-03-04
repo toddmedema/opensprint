@@ -6,6 +6,7 @@ import { createLogger } from "../utils/logger.js";
 import { waitForGitReady as waitForGitReadyUtil } from "../utils/git-lock.js";
 import { shellExec } from "../utils/shell-exec.js";
 import { formatClosedCommitMessage, parseClosedCommitMessage } from "../utils/commit-message.js";
+import { assertSafeTaskWorktreePath } from "../utils/path-safety.js";
 import { taskStore as taskStoreSingleton } from "./task-store.service.js";
 import { ProjectService } from "./project.service.js";
 import { heartbeatService } from "./heartbeat.service.js";
@@ -56,6 +57,20 @@ export interface MergeToMainResult {
 /** Max time (ms) for npm install when ensuring node_modules exists */
 const NPM_INSTALL_TIMEOUT_MS = 120_000;
 
+function shQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+export class UnsafeCleanupPathError extends Error {
+  constructor(
+    message: string,
+    public readonly targetPath: string
+  ) {
+    super(message);
+    this.name = "UnsafeCleanupPathError";
+  }
+}
+
 /**
  * Manages git branches for the task lifecycle:
  * - Create task branches
@@ -66,6 +81,49 @@ const NPM_INSTALL_TIMEOUT_MS = 120_000;
 export class BranchManager {
   private taskStore = taskStoreSingleton;
   private projectService = new ProjectService();
+
+  private async validateDisposableWorktreePath(
+    repoPath: string,
+    taskId: string,
+    candidatePath: string,
+    reason: string
+  ): Promise<string> {
+    const resolvedCandidate = await fs
+      .realpath(candidatePath)
+      .catch(() => path.resolve(candidatePath));
+    const resolvedRepo = await fs.realpath(repoPath).catch(() => path.resolve(repoPath));
+    try {
+      assertSafeTaskWorktreePath(resolvedRepo, taskId, resolvedCandidate);
+      return resolvedCandidate;
+    } catch (err) {
+      throw new UnsafeCleanupPathError(
+        `${reason}: ${err instanceof Error ? err.message : String(err)}`,
+        resolvedCandidate
+      );
+    }
+  }
+
+  private async removeWorktreeDirectorySafely(
+    repoPath: string,
+    taskId: string,
+    candidatePath: string,
+    reason: string
+  ): Promise<boolean> {
+    let safePath: string;
+    try {
+      safePath = await this.validateDisposableWorktreePath(repoPath, taskId, candidatePath, reason);
+    } catch (err) {
+      log.error("Refusing unsafe worktree cleanup target", {
+        taskId,
+        candidatePath,
+        err: err instanceof Error ? err.message : String(err),
+      });
+      return false;
+    }
+    await fs.rm(safePath, { recursive: true, force: true }).catch(() => {});
+    await this.git(repoPath, "worktree prune").catch(() => {});
+    return true;
+  }
 
   /**
    * Create a task branch from the base branch.
@@ -703,6 +761,12 @@ export class BranchManager {
 
         // Derive taskId that owns that path (worktree path is base + taskId)
         const otherTaskId = path.basename(otherResolved);
+        const safeOtherPath = await this.validateDisposableWorktreePath(
+          repoPath,
+          otherTaskId,
+          worktreePath,
+          `Refusing to clean up branch ${branchName} from an unsafe path`
+        );
         const heartbeat = await heartbeatService.readHeartbeat(otherResolved, otherTaskId);
         if (heartbeat && !heartbeatService.isStale(heartbeat)) {
           throw new WorktreeBranchInUseError(
@@ -719,14 +783,14 @@ export class BranchManager {
           ourPath,
         });
         try {
-          await this.git(repoPath, `worktree remove ${worktreePath} --force`);
+          await this.git(repoPath, `worktree remove ${shQuote(safeOtherPath)} --force`);
         } catch {
-          try {
-            await fs.rm(worktreePath, { recursive: true, force: true });
-            await this.git(repoPath, "worktree prune");
-          } catch {
-            // Best effort; worktree add may still fail with a clear error
-          }
+          await this.removeWorktreeDirectorySafely(
+            repoPath,
+            otherTaskId,
+            safeOtherPath,
+            "Manual stale-worktree cleanup"
+          );
         }
         break;
       }
@@ -752,6 +816,14 @@ export class BranchManager {
   ): Promise<string> {
     const branchName = `opensprint/${taskId}`;
     const wtPath = this.getWorktreePath(taskId);
+    const currentBranch = await this.getCurrentBranch(repoPath).catch(() => "");
+
+    if (currentBranch === branchName) {
+      throw new UnsafeCleanupPathError(
+        `Refusing to create worktree for ${branchName}: the main repo is currently checked out to that task branch, so cleanup would be unsafe.`,
+        repoPath
+      );
+    }
 
     // Create branch from base branch if it doesn't exist
     try {
@@ -769,10 +841,13 @@ export class BranchManager {
     // Create worktree with hooks disabled so post-checkout hooks do not run
     // in the worktree; task store operations only run from the main repo.
     await fs.mkdir(path.dirname(wtPath), { recursive: true });
-    await shellExec(`git -c core.hooksPath=/dev/null worktree add ${wtPath} ${branchName}`, {
-      cwd: repoPath,
-      timeout: 30000,
-    });
+    await shellExec(
+      `git -c core.hooksPath=/dev/null worktree add ${shQuote(wtPath)} ${shQuote(branchName)}`,
+      {
+        cwd: repoPath,
+        timeout: 30000,
+      }
+    );
 
     // Symlink node_modules from main repo so dependencies are available in the worktree.
     // Git worktrees only contain tracked files; node_modules is gitignored.
@@ -935,26 +1010,50 @@ export class BranchManager {
     const wtPath = actualPath ?? this.getWorktreePath(taskId);
     const registeredPath = await this.resolveRegisteredWorktreePath(repoPath, taskId, wtPath);
     if (!registeredPath) {
-      await fs.rm(wtPath, { recursive: true, force: true }).catch(() => {});
+      await this.removeWorktreeDirectorySafely(
+        repoPath,
+        taskId,
+        wtPath,
+        "Refusing to remove unregistered worktree path"
+      );
+      return;
+    }
+
+    let safeRegisteredPath: string;
+    try {
+      safeRegisteredPath = await this.validateDisposableWorktreePath(
+        repoPath,
+        taskId,
+        registeredPath,
+        "Refusing to remove registered worktree path"
+      );
+    } catch (err) {
+      log.error("Refusing unsafe registered worktree cleanup target", {
+        taskId,
+        registeredPath,
+        err: err instanceof Error ? err.message : String(err),
+      });
       return;
     }
 
     try {
-      await this.git(repoPath, `worktree remove ${registeredPath} --force`);
+      await this.git(repoPath, `worktree remove ${shQuote(safeRegisteredPath)} --force`);
     } catch (err) {
       log.warn("worktree remove failed, attempting manual cleanup", {
         taskId,
-        wtPath: registeredPath,
+        wtPath: safeRegisteredPath,
         err: err instanceof Error ? err.message : String(err),
       });
-      try {
-        await fs.rm(registeredPath, { recursive: true, force: true });
-        await this.git(repoPath, "worktree prune");
-      } catch (cleanupErr) {
+      const removed = await this.removeWorktreeDirectorySafely(
+        repoPath,
+        taskId,
+        safeRegisteredPath,
+        "Manual worktree cleanup"
+      );
+      if (!removed) {
         log.warn("Manual worktree cleanup failed", {
           taskId,
-          wtPath: registeredPath,
-          err: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+          wtPath: safeRegisteredPath,
         });
       }
     }

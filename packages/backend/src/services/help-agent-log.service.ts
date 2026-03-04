@@ -49,7 +49,7 @@ export async function getAgentLog(projectId: string | null): Promise<AgentLogEnt
   const params = projectId != null ? [projectId, DEFAULT_LIMIT] : [DEFAULT_LIMIT];
   const rows = await client.query(sql, params);
 
-  let projectNameMap: Map<string, string> = new Map();
+  const projectNameMap = new Map<string, string>();
   if (projectId == null) {
     const projects = await projectService.listProjects();
     for (const p of projects) {

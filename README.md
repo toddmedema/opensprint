@@ -23,11 +23,11 @@ npm run dev
 
 Then open [http://localhost:5173](http://localhost:5173) and get building!
 
-#### Windows
+### Windows
 
 You will need to install WSL2 ([Windows Subsystem for Linux](https://learn.microsoft.com/en-us/windows/wsl/install)) by opening PowerShell as an admin, running `wsl --install`, rebooting your computer, then running `wsl.exe --install` in PowerShell.
 
-Then, open the `WSL` application, [install node.js](https://stackoverflow.com/a/75739322), [install postgres](https://dev.to/sfpear/install-and-use-postgres-in-wsl-423d) and set the default postgres user's password to `opensprint`.
+Then, open the `WSL` application, [install node.js](https://stackoverflow.com/a/75739322), [install postgres](https://dev.to/sfpear/install-and-use-postgres-in-wsl-423d) and set the default postgres user password to `opensprint`.
 
 Then, from the default ~ directory, run:
 
@@ -40,29 +40,15 @@ npm run dev
 
 _Native Windows Node, PowerShell, and `cmd.exe` execution are unsupported because the orchestration and process-management stack assumes Linux/Unix process behavior. Do not run OpenSprint from `/mnt/c/...` or any other Windows-mounted filesystem._
 
-#### If PostgreSQL Setup Fails
+### PostgreSQL Setup FAQ
 
-If you already have PostgreSQL running, OpenSprint expects a local role `opensprint` with password `opensprint` and a local database named `opensprint`.
-
+- If you already have PostgreSQL running, OpenSprint expects a local role `opensprint` with password `opensprint` and a local database named `opensprint`.
 - If automatic setup cannot create the role or database, create them manually and rerun `npm run setup`.
-- If another PostgreSQL install is already using the default port or conflicts with setup, use that existing local install and create the expected role and database yourself.
-- On WSL, `npm run setup` does not try to install or start PostgreSQL for you. Make sure one of these is already reachable from WSL before running setup:
-  - PostgreSQL inside the WSL distro on `localhost:5432`
-  - PostgreSQL exposed to WSL `localhost` from Docker Desktop or another local service
-  - A remote database configured through `DATABASE_URL` or `~/.opensprint/global-settings.json`
-- `opensprint_test` is only needed for running tests, not for first launch.
-
-## After Open Sprint Starts
-
-Once the app is running:
-
-- Open Settings in the web UI at [http://localhost:5173](http://localhost:5173).
-- Add your AI provider API key there.
-- If you want to use a different database later, update the database connection in Settings. |
+- If another PostgreSQL install is already using the default port or conflicts with setup, use that existing local install and create the expected role and database yourself, or update the DATABASE_URL in the web UI settings to point to a different database.
 
 ## How Open Sprint Works
 
-Open Sprint uses the SPEED lifecycle:
+Open Sprint uses the SPEED Product Management lifecycle:
 
 - **Sketch**: turn an idea into a clear product spec
 - **Plan**: break the spec into epics, tasks, and dependencies

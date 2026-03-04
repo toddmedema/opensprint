@@ -174,6 +174,7 @@ User authentication.
     expect(prompt).toContain("context/deps/");
     expect(prompt).toContain("Commit after each logical unit");
     expect(prompt).toContain("Do not wait until the end to commit");
+    expect(prompt).toContain("Never run destructive cleanup commands");
     // Terminology: use "done" and "finish" instead of "complete" (feedback consistency)
     expect(prompt).toContain("when the task is done");
     expect(prompt).toContain("could not finish it");

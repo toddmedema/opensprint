@@ -7,7 +7,7 @@ beforeEach(() => {
   if (typeof ResizeObserver === "undefined") {
     vi.stubGlobal(
       "ResizeObserver",
-      vi.fn().mockImplementation((cb: ResizeObserverCallback) => ({
+      vi.fn().mockImplementation((_cb: ResizeObserverCallback) => ({
         observe: vi.fn(),
         unobserve: vi.fn(),
         disconnect: vi.fn(),

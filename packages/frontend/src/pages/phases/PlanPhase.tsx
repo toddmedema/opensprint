@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { shallowEqual } from "react-redux";
 import { useQueryClient } from "@tanstack/react-query";
-import type { Notification, Plan, PlanStatus } from "@opensprint/shared";
+import type { Plan, PlanStatus } from "@opensprint/shared";
 import { sortPlansByStatus } from "@opensprint/shared";
 import { useLocation } from "react-router-dom";
 import { store, useAppDispatch, useAppSelector } from "../../store";
@@ -67,14 +67,12 @@ function PlanAuditorOutputSection({
   auditorOutput,
   wsConnected,
   activeAuditor,
-  projectId,
   onRetryConnect,
 }: {
   planId: string;
   auditorOutput: string;
   wsConnected: boolean;
   activeAuditor?: { startedAt: string; label?: string };
-  projectId: string;
   onRetryConnect: () => void;
 }) {
   const [auditorExpanded, setAuditorExpanded] = useState(true);
@@ -1155,7 +1153,6 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                         activeAuditor={activeAgents.find(
                           (a) => a.role === "auditor" && a.planId === selectedPlan.metadata.planId
                         )}
-                        projectId={projectId}
                         onRetryConnect={() => dispatch(wsConnect({ projectId }))}
                       />
                     )}

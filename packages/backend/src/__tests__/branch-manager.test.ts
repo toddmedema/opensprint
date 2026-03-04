@@ -316,6 +316,24 @@ describe("BranchManager", () => {
       expect(mainBranch.trim()).toBe("main");
     });
 
+    it("refuses to treat the main repo checkout as a disposable worktree", async () => {
+      await execAsync("git init", { cwd: repoPath });
+      await execAsync("git branch -M main", { cwd: repoPath });
+      await execAsync('git config user.email "test@test.com"', { cwd: repoPath });
+      await execAsync('git config user.name "Test"', { cwd: repoPath });
+      await fs.writeFile(path.join(repoPath, "README"), "initial");
+      await execAsync('git add README && git commit -m "initial"', { cwd: repoPath });
+
+      const taskId = `wt-main-branch-${Date.now()}`;
+      await execAsync(`git checkout -b opensprint/${taskId}`, { cwd: repoPath });
+
+      await expect(branchManager.createTaskWorktree(repoPath, taskId)).rejects.toThrow(
+        /main repo is currently checked out/
+      );
+      await expect(fs.readFile(path.join(repoPath, "README"), "utf-8")).resolves.toBe("initial");
+      await expect(fs.access(path.join(repoPath, ".git"))).resolves.toBeUndefined();
+    });
+
     it("should remove a worktree cleanly", async () => {
       await execAsync("git init", { cwd: repoPath });
       await execAsync("git branch -M main", { cwd: repoPath });
@@ -352,6 +370,20 @@ describe("BranchManager", () => {
 
       // Should not throw
       await branchManager.removeTaskWorktree(repoPath, "nonexistent-task");
+    });
+
+    it("refuses to delete the repo root when passed as an unsafe worktree path", async () => {
+      await execAsync("git init", { cwd: repoPath });
+      await execAsync("git branch -M main", { cwd: repoPath });
+      await execAsync('git config user.email "test@test.com"', { cwd: repoPath });
+      await execAsync('git config user.name "Test"', { cwd: repoPath });
+      await fs.writeFile(path.join(repoPath, "README"), "initial");
+      await execAsync('git add README && git commit -m "initial"', { cwd: repoPath });
+
+      await branchManager.removeTaskWorktree(repoPath, `wt-unsafe-${Date.now()}`, repoPath);
+
+      await expect(fs.readFile(path.join(repoPath, "README"), "utf-8")).resolves.toBe("initial");
+      await expect(fs.access(path.join(repoPath, ".git"))).resolves.toBeUndefined();
     });
 
     it("should treat an unregistered task worktree as a no-op cleanup", async () => {

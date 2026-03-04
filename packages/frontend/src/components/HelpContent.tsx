@@ -420,9 +420,14 @@ function SessionLogModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="session-log-modal-title"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className="flex flex-col max-w-4xl w-full mx-4 max-h-[80vh] rounded-lg border border-theme-border bg-theme-surface shadow-xl">
+      <button
+        type="button"
+        className="absolute inset-0 cursor-default"
+        aria-label="Close session log"
+        onClick={onClose}
+      />
+      <div className="relative flex flex-col max-w-4xl w-full mx-4 max-h-[80vh] rounded-lg border border-theme-border bg-theme-surface shadow-xl">
         <div className="flex items-center justify-between px-4 py-3 border-b border-theme-border shrink-0">
           <h2 id="session-log-modal-title" className="text-lg font-medium text-theme-text">
             Session log
@@ -448,12 +453,14 @@ function SessionLogModal({
             </p>
           )}
           {!loading && !error && content != null && (
-            <pre
-              className="h-full overflow-auto text-xs font-mono text-theme-text whitespace-pre-wrap break-words rounded border border-theme-border bg-theme-surface-muted p-3"
-              style={{ maxHeight: "calc(80vh - 120px)" }}
-            >
-              {content}
-            </pre>
+            <div className="h-full overflow-auto">
+              <pre
+                className="text-xs font-mono text-theme-text whitespace-pre-wrap break-words rounded border border-theme-border bg-theme-surface-muted p-3"
+                style={{ maxHeight: "calc(80vh - 120px)" }}
+              >
+                {content}
+              </pre>
+            </div>
           )}
         </div>
       </div>

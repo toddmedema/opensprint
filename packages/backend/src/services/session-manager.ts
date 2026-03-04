@@ -11,6 +11,7 @@ import type {
   ReviewAngle,
 } from "@opensprint/shared";
 import { ensureRuntimeDir, getRuntimePath } from "../utils/runtime-dir.js";
+import { getSafeTaskActiveDir } from "../utils/path-safety.js";
 import { taskStore } from "./task-store.service.js";
 import { ProjectService } from "./project.service.js";
 import { computeLogDiff95thPercentile, truncateToThreshold } from "../utils/log-diff-truncation.js";
@@ -31,7 +32,7 @@ export class SessionManager {
    * Get the active task directory path.
    */
   getActiveDir(repoPath: string, taskId: string): string {
-    return path.join(repoPath, OPENSPRINT_PATHS.active, taskId);
+    return getSafeTaskActiveDir(repoPath, taskId);
   }
 
   /**

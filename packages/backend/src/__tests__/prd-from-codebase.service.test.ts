@@ -2,6 +2,23 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { AppError } from "../middleware/error-handler.js";
 import { PrdFromCodebaseService } from "../services/prd-from-codebase.service.js";
 
+type PrdFromCodebaseServiceTestDouble = PrdFromCodebaseService & {
+  planService: {
+    getCodebaseContext: ReturnType<typeof vi.fn>;
+  };
+  projectService: {
+    getSettings: ReturnType<typeof vi.fn>;
+    getRepoPath: ReturnType<typeof vi.fn>;
+  };
+  chatService: {
+    parsePrdUpdatesFromContent: ReturnType<typeof vi.fn>;
+    addSketchAssistantMessage?: ReturnType<typeof vi.fn>;
+  };
+  prdService: {
+    updateSections: ReturnType<typeof vi.fn>;
+  };
+};
+
 const mockInvokePlanningAgent = vi.fn();
 const mockBroadcastToProject = vi.fn();
 
@@ -21,7 +38,7 @@ describe("PrdFromCodebaseService", () => {
   });
 
   it("updates PRD sections and broadcasts each change", async () => {
-    const service = new PrdFromCodebaseService() as any;
+    const service = new PrdFromCodebaseService() as unknown as PrdFromCodebaseServiceTestDouble;
     service.planService = {
       getCodebaseContext: vi.fn().mockResolvedValue({
         fileTree: "src/index.ts",
@@ -66,7 +83,7 @@ describe("PrdFromCodebaseService", () => {
   });
 
   it("throws a user-facing error when the agent returns no PRD sections", async () => {
-    const service = new PrdFromCodebaseService() as any;
+    const service = new PrdFromCodebaseService() as unknown as PrdFromCodebaseServiceTestDouble;
     service.planService = {
       getCodebaseContext: vi.fn().mockResolvedValue({ fileTree: "", keyFilesContent: "" }),
     };
@@ -89,7 +106,7 @@ describe("PrdFromCodebaseService", () => {
   });
 
   it("wraps planning-agent failures as AGENT_INVOKE_FAILED", async () => {
-    const service = new PrdFromCodebaseService() as any;
+    const service = new PrdFromCodebaseService() as unknown as PrdFromCodebaseServiceTestDouble;
     service.planService = {
       getCodebaseContext: vi.fn().mockResolvedValue({ fileTree: "", keyFilesContent: "" }),
     };
@@ -109,7 +126,7 @@ describe("PrdFromCodebaseService", () => {
   });
 
   it("preserves structured agent failure details when wrapping the PRD-from-codebase context", async () => {
-    const service = new PrdFromCodebaseService() as any;
+    const service = new PrdFromCodebaseService() as unknown as PrdFromCodebaseServiceTestDouble;
     service.planService = {
       getCodebaseContext: vi.fn().mockResolvedValue({ fileTree: "", keyFilesContent: "" }),
     };

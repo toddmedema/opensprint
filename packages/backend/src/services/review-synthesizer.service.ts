@@ -5,7 +5,7 @@
  * one coherent report for approval or rejection.
  */
 
-import type { ReviewAgentResult, ReviewAngle } from "@opensprint/shared";
+import type { ReviewAgentResult } from "@opensprint/shared";
 import { REVIEW_ANGLE_OPTIONS } from "@opensprint/shared";
 import { agentService } from "./agent.service.js";
 import { ProjectService } from "./project.service.js";

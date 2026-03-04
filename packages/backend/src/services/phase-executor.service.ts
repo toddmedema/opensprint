@@ -25,6 +25,7 @@ import { getComplexityForAgent } from "./plan-complexity.js";
 import { agentIdentityService } from "./agent-identity.service.js";
 import { eventLogService } from "./event-log.service.js";
 import { writeJsonAtomic } from "../utils/file-utils.js";
+import { assertSafeTaskWorktreePath } from "../utils/path-safety.js";
 import { getNextKey } from "./api-key-resolver.service.js";
 import { markExhausted } from "./api-key-exhausted.service.js";
 import type {
@@ -153,6 +154,7 @@ export class PhaseExecutorService {
           await this.host.branchManager.syncMainWithOrigin(repoPath, baseBranch);
         }
         wtPath = await this.host.branchManager.createTaskWorktree(repoPath, task.id, baseBranch);
+        assertSafeTaskWorktreePath(repoPath, task.id, wtPath);
       }
       (slot as { worktreePath: string | null }).worktreePath = wtPath;
 
@@ -341,6 +343,9 @@ export class PhaseExecutorService {
         ? (settings.worktreeBaseBranch ?? "main")
         : "main";
     const wtPath = slot.worktreePath ?? repoPath;
+    if (wtPath !== repoPath) {
+      assertSafeTaskWorktreePath(repoPath, task.id, wtPath);
+    }
     const reviewAngles = [
       ...new Set((settings.reviewAngles ?? []).filter(Boolean)),
     ] as ReviewAngle[];

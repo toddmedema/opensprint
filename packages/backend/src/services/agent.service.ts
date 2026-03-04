@@ -422,6 +422,7 @@ ${branchDiffStat || "(no output)"}
 
 - Do NOT run \`git rebase --continue\`, \`git commit\`, or \`git merge --continue\`.
 - Resolve conflicts by editing files; do not delete files unless that is clearly correct.
+- Do NOT run destructive cleanup commands such as \`rm -rf\`, \`find ... -delete\`, or \`git clean -fdx\`.
 - Run \`git diff --check\` before exiting.
 - Exit with code 0 only when all conflicted files are resolved and staged.
 - Exit non-zero if you cannot produce a correct resolution.

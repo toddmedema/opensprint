@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
 import { PlanStore } from "../services/plan-store.service.js";
-import { AppError } from "../middleware/error-handler.js";
 
 function createDbClient() {
   return {

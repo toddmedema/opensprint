@@ -14,6 +14,7 @@ import { getCombinedInstructions } from "./agent-instructions.service.js";
 import type { TaskStoreService } from "./task-store.service.js";
 import type { StoredTask } from "./task-store.service.js";
 import { getRuntimePath } from "../utils/runtime-dir.js";
+import { getSafeTaskActiveDir } from "../utils/path-safety.js";
 
 /** Short checklist items per review angle for angle-specific prompts. Exported for epic final review. */
 export const REVIEW_ANGLE_CHECKLISTS: Record<ReviewAngle, string[]> = {
@@ -112,7 +113,7 @@ export class ContextAssembler {
     config: ActiveTaskConfig,
     context: TaskContext
   ): Promise<string> {
-    const taskDir = path.join(repoPath, OPENSPRINT_PATHS.active, taskId);
+    const taskDir = getSafeTaskActiveDir(repoPath, taskId);
     const contextDir = path.join(taskDir, "context");
     const depsDir = path.join(contextDir, "deps");
 
@@ -459,6 +460,7 @@ export class ContextAssembler {
     prompt += `   **When the task spec is ambiguous:** Instead of guessing, return \`"status": "failed"\` with \`open_questions\` in the standard protocol format: [{ "id": "q1", "text": "Your clarification question" }]. The server will surface these via the Human Notification System; do not proceed until the user answers.\n`;
     prompt += `   After writing result.json, exit the process immediately so the orchestrator can continue (exit code 0 on success).\n\n`;
     prompt += `If tests fail after implementation, fix them before writing result.json. Do not report success with failing tests.\n\n`;
+    prompt += `Never run destructive cleanup commands such as \`rm -rf\`, \`find ... -delete\`, or \`git clean -fdx\` against the repo. If you think broad cleanup is required, stop and report failure; the orchestrator owns cleanup.\n\n`;
 
     const autonomyDesc = buildAutonomyDescription(config.aiAutonomyLevel, config.hilConfig);
     if (autonomyDesc) {
@@ -561,6 +563,7 @@ export class ContextAssembler {
     prompt += `## Important\n\n`;
     prompt += `- Do NOT run ${abortCmd}. The orchestrator will handle cleanup if you fail.\n`;
     prompt += `- Do NOT run \`git push\`. The orchestrator will push after you exit.\n`;
+    prompt += `- Do NOT run destructive cleanup commands such as \`rm -rf\`, \`find ... -delete\`, or \`git clean -fdx\`. Resolve conflicts by editing specific files only.\n`;
     prompt += `- Focus only on resolving conflicts — do not make other code changes.\n`;
 
     return prompt;
