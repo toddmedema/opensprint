@@ -57,6 +57,9 @@ export function filterTasksByStatusAndSearch(
   return tasks.filter((t) => {
     if (statusFilter === "planning") {
       if (!plans || !isTaskInPlanningPlan(t, plans)) return false;
+    } else if (statusFilter === "in_line") {
+      if (!matchesStatusFilter(t.kanbanColumn, statusFilter)) return false;
+      if (plans && isTaskInPlanningPlan(t, plans)) return false;
     } else if (!matchesStatusFilter(t.kanbanColumn, statusFilter)) {
       return false;
     }

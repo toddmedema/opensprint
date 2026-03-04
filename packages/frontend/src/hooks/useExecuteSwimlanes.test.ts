@@ -130,7 +130,7 @@ describe("useExecuteSwimlanes", () => {
     expect(result.current.filteredTasks.map((t) => t.id)).toEqual(["epic-a.1", "epic-a.2"]);
   });
 
-  it("Up Next chip is between All and Ready and counts backlog, planning (excludes blocked)", () => {
+  it("Up Next chip is between All and Ready and counts backlog, planning (excludes blocked and planning-plan tasks)", () => {
     const tasks: Task[] = [
       task({ id: "epic-a.1", kanbanColumn: "backlog" }),
       task({ id: "epic-a.2", kanbanColumn: "blocked" }),
@@ -147,6 +147,29 @@ describe("useExecuteSwimlanes", () => {
     expect(inLineIdx).toBeLessThan(readyIdx);
     expect(chips[inLineIdx].label).toBe("Up Next");
     expect(chips[inLineIdx].count).toBe(2);
+  });
+
+  it("Up Next excludes tasks in plans still in planning", () => {
+    const tasks: Task[] = [
+      task({ id: "epic-a.1", kanbanColumn: "backlog", epicId: "epic-a" }),
+      task({ id: "epic-a.2", kanbanColumn: "planning", epicId: "epic-a" }),
+      task({ id: "epic-b.1", kanbanColumn: "backlog", epicId: "epic-b" }),
+    ];
+    const plans: Plan[] = [
+      plan({
+        metadata: { planId: "p1", epicId: "epic-a", shippedAt: null, complexity: "medium" },
+        status: "planning",
+      }),
+      plan({
+        metadata: { planId: "p2", epicId: "epic-b", shippedAt: null, complexity: "medium" },
+        status: "building",
+      }),
+    ];
+    const { result } = renderHook(() => useExecuteSwimlanes(tasks, plans, "all", ""));
+    expect(result.current.chipConfig.find((c) => c.filter === "in_line")!.count).toBe(1);
+    expect(result.current.inLineSwimlanes).toHaveLength(1);
+    expect(result.current.inLineSwimlanes[0].tasks).toHaveLength(1);
+    expect(result.current.inLineSwimlanes[0].tasks[0].id).toBe("epic-b.1");
   });
 
   it("filters by search query", () => {

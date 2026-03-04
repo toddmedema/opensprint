@@ -186,7 +186,9 @@ export function useExecuteSwimlanes(
   const totalTasks = implTasks.length;
   const planningCount = implTasks.filter((t) => isTaskInPlanningPlan(t, plans)).length;
   const inLineCount = implTasks.filter(
-    (t) => t.kanbanColumn === "backlog" || t.kanbanColumn === "planning"
+    (t) =>
+      (t.kanbanColumn === "backlog" || t.kanbanColumn === "planning") &&
+      !isTaskInPlanningPlan(t, plans)
   ).length;
   const readyCount = implTasks.filter((t) => t.kanbanColumn === "ready").length;
   const blockedOnHumanCount = implTasks.filter((t) => t.kanbanColumn === "blocked").length;
@@ -220,7 +222,9 @@ export function useExecuteSwimlanes(
 
   const inLineSwimlanes = useMemo((): Swimlane[] => {
     if (statusFilter !== "all" && statusFilter !== "in_line") return [];
-    const inLineTasks = implTasks.filter(isInLineTask);
+    const inLineTasks = implTasks.filter(
+      (t) => isInLineTask(t) && !isPlanningPlanTask(t, plans)
+    );
     return buildSwimlanesFromFilteredTasks(inLineTasks, plans, statusFilter, searchQuery);
   }, [implTasks, plans, statusFilter, searchQuery]);
 

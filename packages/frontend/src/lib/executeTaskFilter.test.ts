@@ -167,6 +167,31 @@ describe("executeTaskFilter", () => {
       expect(result.map((t) => t.id)).toEqual(["t1", "t3"]);
     });
 
+    it("in_line filter excludes tasks in planning plans when plans provided", () => {
+      const planningPlan: Plan = {
+        metadata: { planId: "p1", epicId: "epic-planning", shippedAt: null, complexity: "medium" },
+        content: "",
+        status: "planning",
+        taskCount: 2,
+        doneTaskCount: 0,
+        dependencyCount: 0,
+      };
+      const buildingPlan: Plan = {
+        ...planningPlan,
+        metadata: { ...planningPlan.metadata, epicId: "epic-building" },
+        status: "building",
+      };
+      const plans: Plan[] = [planningPlan, buildingPlan];
+      const inLineTasks: Task[] = [
+        { ...baseTask, id: "t1", epicId: "epic-planning", kanbanColumn: "backlog" as const },
+        { ...baseTask, id: "t2", epicId: "epic-planning", kanbanColumn: "planning" as const },
+        { ...baseTask, id: "t3", epicId: "epic-building", kanbanColumn: "backlog" as const },
+      ];
+      const result = filterTasksByStatusAndSearch(inLineTasks, "in_line", "", plans);
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("t3");
+    });
+
     it("filters by search only when status=all", () => {
       const result = filterTasksByStatusAndSearch(tasks, "all", "login");
       expect(result).toHaveLength(1);
