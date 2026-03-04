@@ -22,7 +22,7 @@ export function DisplaySettingsModal({ onClose }: DisplaySettingsModalProps) {
           <h2 className="text-lg font-semibold text-theme-text">Settings</h2>
           <CloseButton onClick={onClose} ariaLabel="Close settings modal" />
         </div>
-        <div className="px-5 py-4 mt-[15px]">
+        <div className="px-5 py-4 pt-[15px]">
           <GlobalSettingsContent />
         </div>
       </div>
