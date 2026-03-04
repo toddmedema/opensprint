@@ -1,13 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
-  computeLogDiff95thPercentile,
   truncateToThreshold,
-  DEFAULT_LOG_DIFF_THRESHOLD,
+  LOG_DIFF_TRUNCATE_AT_CHARS,
 } from "../log-diff-truncation.js";
-import { createPostgresDbClientFromUrl, runSchema, toPgParams } from "../../db/index.js";
-import type { DbClient } from "../../db/client.js";
-import type { Pool } from "pg";
-import { getTestDatabaseUrl } from "../../__tests__/test-db-helper.js";
 
 describe("log-diff-truncation", () => {
   describe("truncateToThreshold", () => {
@@ -40,78 +35,20 @@ describe("log-diff-truncation", () => {
     it("returns undefined as null", () => {
       expect(truncateToThreshold(undefined, 100)).toBeNull();
     });
-  });
 
-  describe("computeLogDiff95thPercentile", () => {
-    let client: DbClient | null = null;
-    let pool: Pool | null = null;
-
-    beforeAll(async () => {
-      try {
-        const url = await getTestDatabaseUrl();
-        const result = await createPostgresDbClientFromUrl(url);
-        client = result.client;
-        pool = result.pool;
-        await runSchema(client);
-        await client.query("DELETE FROM agent_sessions");
-      } catch {
-        client = null;
-        pool = null;
-      }
+    it("truncates at 100KB (LOG_DIFF_TRUNCATE_AT_CHARS) when over limit", () => {
+      const over = "x".repeat(LOG_DIFF_TRUNCATE_AT_CHARS + 1000);
+      const result = truncateToThreshold(over, LOG_DIFF_TRUNCATE_AT_CHARS);
+      expect(result).not.toBe(over);
+      expect(result!.length).toBe(LOG_DIFF_TRUNCATE_AT_CHARS + "\n\n... [truncated]".length);
+      expect(result!.endsWith("\n\n... [truncated]")).toBe(true);
     });
 
-    afterAll(async () => {
-      if (pool) await pool.end();
-    });
-
-    it("returns default when table is empty", async () => {
-      if (!client) return;
-      await client.query("DELETE FROM agent_sessions");
-      const threshold = await computeLogDiff95thPercentile(client);
-      expect(threshold).toBe(DEFAULT_LOG_DIFF_THRESHOLD);
-    });
-
-    it("returns 95th percentile from output_log and git_diff sizes", async () => {
-      if (!client) return;
-      await client.query("DELETE FROM agent_sessions");
-      const sql = toPgParams(
-        `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch, output_log)
-         VALUES (?, ?, ?, 'cursor', 'gpt-4', '2024-01-01', 'success', 'main', ?)`
-      );
-      for (let i = 0; i < 10; i++) {
-        await client.execute(sql, ["proj", `task-${i}`, i + 1, "x".repeat(2000)]);
-      }
-      for (let i = 10; i < 20; i++) {
-        await client.execute(sql, ["proj", `task-${i}`, i + 1, "x".repeat(5000)]);
-      }
-      const diffSql = toPgParams(
-        `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch, git_diff)
-         VALUES (?, ?, ?, 'cursor', 'gpt-4', '2024-01-01', 'success', 'main', ?)`
-      );
-      for (let i = 20; i < 25; i++) {
-        await client.execute(diffSql, ["proj", `task-${i}`, i + 1, "y".repeat(3000)]);
-      }
-      for (let i = 25; i < 30; i++) {
-        await client.execute(diffSql, ["proj", `task-${i}`, i + 1, "z".repeat(8000)]);
-      }
-
-      const threshold = await computeLogDiff95thPercentile(client);
-      expect(threshold).toBe(8000);
-    });
-
-    it("enforces minimum threshold of 1024", async () => {
-      if (!client) return;
-      await client.query("DELETE FROM agent_sessions");
-      await client.execute(
-        toPgParams(
-          `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, status, git_branch, output_log)
-           VALUES ('p', 't', 1, 'cursor', 'gpt-4', '2024-01-01', 'success', 'main', ?)`
-        ),
-        ["x".repeat(50)]
-      );
-
-      const threshold = await computeLogDiff95thPercentile(client);
-      expect(threshold).toBe(1024);
+    it("does not truncate when at or under 100KB", () => {
+      const at = "y".repeat(LOG_DIFF_TRUNCATE_AT_CHARS);
+      expect(truncateToThreshold(at, LOG_DIFF_TRUNCATE_AT_CHARS)).toBe(at);
+      const under = "z".repeat(1000);
+      expect(truncateToThreshold(under, LOG_DIFF_TRUNCATE_AT_CHARS)).toBe(under);
     });
   });
 });

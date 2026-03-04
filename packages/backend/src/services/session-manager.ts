@@ -14,7 +14,7 @@ import { ensureRuntimeDir, getRuntimePath } from "../utils/runtime-dir.js";
 import { getSafeTaskActiveDir } from "../utils/path-safety.js";
 import { taskStore } from "./task-store.service.js";
 import { ProjectService } from "./project.service.js";
-import { computeLogDiff95thPercentile, truncateToThreshold } from "../utils/log-diff-truncation.js";
+import { LOG_DIFF_TRUNCATE_AT_CHARS, truncateToThreshold } from "../utils/log-diff-truncation.js";
 
 const projectService = new ProjectService();
 
@@ -135,11 +135,9 @@ export class SessionManager {
     worktreePath?: string
   ): Promise<void> {
     const projectId = await repoPathToProjectId(repoPath);
+    const truncatedOutputLog = truncateToThreshold(session.outputLog, LOG_DIFF_TRUNCATE_AT_CHARS);
+    const truncatedGitDiff = truncateToThreshold(session.gitDiff, LOG_DIFF_TRUNCATE_AT_CHARS);
     await taskStore.runWrite(async (client) => {
-      const threshold = await computeLogDiff95thPercentile(client);
-      const truncatedOutputLog = truncateToThreshold(session.outputLog, threshold);
-      const truncatedGitDiff = truncateToThreshold(session.gitDiff, threshold);
-
       await client.execute(
         `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, completed_at, status, output_log, git_branch, git_diff, test_results, failure_reason, summary)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,

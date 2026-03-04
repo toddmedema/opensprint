@@ -390,46 +390,12 @@ describe.skipIf(!sessionPostgresOk)("SessionManager", () => {
   });
 
   describe("archiveSession", () => {
-    it("truncates output_log and git_diff to 95th percentile threshold when archiving", async () => {
-      const projectId = repoPathToProjectId(repoPath);
-      const { taskStore } = await import("../services/task-store.service.js");
-      const client = await taskStore.getDb();
-
-      // Seed agent_sessions with sizes to establish 95th percentile of 500
-      await insertSession(client, projectId, {
-        taskId: "seed-1",
-        attempt: 1,
-        agentType: "cursor",
-        agentModel: "gpt-4",
-        startedAt: "2024-01-01T00:00:00Z",
-        completedAt: "2024-01-01T00:05:00Z",
-        status: "success",
-        outputLog: "x".repeat(500),
-        gitBranch: "main",
-        gitDiff: null,
-        testResults: null,
-        failureReason: null,
-      });
-      await insertSession(client, projectId, {
-        taskId: "seed-2",
-        attempt: 1,
-        agentType: "cursor",
-        agentModel: "gpt-4",
-        startedAt: "2024-01-01T00:00:00Z",
-        completedAt: "2024-01-01T00:05:00Z",
-        status: "success",
-        outputLog: "x".repeat(100),
-        gitBranch: "main",
-        gitDiff: "y".repeat(500),
-        testResults: null,
-        failureReason: null,
-      });
-
+    it("truncates output_log and git_diff at 100KB when archiving", async () => {
       const activeDir = path.join(repoPath, OPENSPRINT_PATHS.active, "task-trunc");
       await fs.mkdir(activeDir, { recursive: true });
 
-      const largeOutputLog = "log".repeat(1000);
-      const largeGitDiff = "diff".repeat(1000);
+      const largeOutputLog = "log".repeat(50_000);
+      const largeGitDiff = "diff".repeat(50_000);
       await manager.archiveSession(repoPath, "task-trunc", 1, {
         taskId: "task-trunc",
         attempt: 1,
@@ -454,7 +420,7 @@ describe.skipIf(!sessionPostgresOk)("SessionManager", () => {
       expect(archived![0].gitDiff!.endsWith("\n\n... [truncated]")).toBe(true);
     });
 
-    it("uses default threshold when no existing sessions", async () => {
+    it("truncates log over 100KB when archiving", async () => {
       const activeDir = path.join(repoPath, OPENSPRINT_PATHS.active, "task-default");
       await fs.mkdir(activeDir, { recursive: true });
 
