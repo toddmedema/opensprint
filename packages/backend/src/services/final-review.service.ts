@@ -17,6 +17,7 @@ import { extractJsonFromAgentResponse } from "../utils/json-extract.js";
 import { PlanService } from "./plan.service.js";
 import { ProjectService } from "./project.service.js";
 import { ContextAssembler, REVIEW_ANGLE_CHECKLISTS } from "./context-assembler.js";
+import { getCombinedInstructions } from "./agent-instructions.service.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("final-review");
@@ -157,12 +158,13 @@ Assess the implementation against the plan scope. Return JSON with status, asses
 
     const agentId = `final-review-${projectId}-${epicId}-${Date.now()}`;
     const startedAt = new Date().toISOString();
+    const finalReviewSystemPrompt = `${FINAL_REVIEW_SYSTEM_PROMPT}\n\n${await getCombinedInstructions(repoPath, "auditor")}`;
     try {
       const response = await agentService.invokePlanningAgent({
         projectId,
         config: getAgentForPlanningRole(settings, "auditor"),
         messages: [{ role: "user", content: basePrompt }],
-        systemPrompt: FINAL_REVIEW_SYSTEM_PROMPT,
+        systemPrompt: finalReviewSystemPrompt,
         cwd: repoPath,
         tracking: {
           id: agentId,
@@ -210,6 +212,7 @@ Respond with ONLY valid JSON (no markdown):
 - status "pass": This angle has no significant issues. proposedTasks must be [].
 - status "issues": You found issues. proposedTasks lists concrete tasks for this angle only.`;
 
+    const angleSystemPrompt = `${EPIC_ANGLE_SYSTEM}\n\n${await getCombinedInstructions(repoPath, "auditor")}`;
     const config = getAgentForPlanningRole(settings, "auditor");
     const angleResults: Array<{ angle: string; status: string; assessment: string; proposedTasks: FinalReviewProposedTask[] }> = [];
 
@@ -226,7 +229,7 @@ Respond with ONLY valid JSON (no markdown):
           projectId,
           config,
           messages: [{ role: "user", content: prompt }],
-          systemPrompt: EPIC_ANGLE_SYSTEM,
+          systemPrompt: angleSystemPrompt,
           cwd: repoPath,
           tracking: {
             id: agentId,
@@ -285,6 +288,7 @@ Rules:
 - If ALL angles passed, status "pass", proposedTasks [].
 - Output ONLY valid JSON: {"status":"pass"|"issues","assessment":"Synthesis summary","proposedTasks":[{"title":"...","description":"...","priority":0-4}]}`;
 
+    const synthesizerSystemPrompt = `${EPIC_SYNTHESIZER_PROMPT}\n\n${await getCombinedInstructions(repoPath, "auditor")}`;
     const blocks = angleResults
       .map((r) => {
         const label = REVIEW_ANGLE_OPTIONS.find((o) => o.value === r.angle)?.label ?? r.angle;
@@ -300,7 +304,7 @@ Rules:
         projectId,
         config: getAgentForPlanningRole(settings, "auditor"),
         messages: [{ role: "user", content: prompt }],
-        systemPrompt: EPIC_SYNTHESIZER_PROMPT,
+        systemPrompt: synthesizerSystemPrompt,
         cwd: repoPath,
         tracking: {
           id: `epic-synthesizer-${projectId}-${epicId}-${Date.now()}`,

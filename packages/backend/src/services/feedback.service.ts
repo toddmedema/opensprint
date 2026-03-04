@@ -27,6 +27,7 @@ import { extractJsonFromAgentResponse } from "../utils/json-extract.js";
 import { JSON_OUTPUT_PREAMBLE } from "../utils/agent-prompts.js";
 import { triggerDeployForEvent } from "./deploy-trigger.service.js";
 import { buildAutonomyDescription } from "./context-assembler.js";
+import { getCombinedInstructions } from "./agent-instructions.service.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("feedback");
@@ -383,6 +384,11 @@ export class FeedbackService {
     let linkIds: string[] = [];
     let similarExistingTaskId: string | null = null;
     let updateExistingTasks: Record<string, { title?: string; description?: string }> = {};
+    const autonomyDesc = buildAutonomyDescription(settings.aiAutonomyLevel, settings.hilConfig);
+    const baseSystemPrompt = autonomyDesc
+      ? `${FEEDBACK_CATEGORIZATION_PROMPT}\n\n## AI Autonomy Level\n\n${autonomyDesc}\n\n`
+      : FEEDBACK_CATEGORIZATION_PROMPT;
+    const systemPrompt = `${baseSystemPrompt}\n\n${await getCombinedInstructions(project.repoPath, "analyst")}`;
     try {
       const response = await agentService.invokePlanningAgent({
         projectId,
@@ -393,15 +399,7 @@ export class FeedbackService {
             content: `# PRD\n\n${prdContext}\n\n# Plans\n\n${planContext}\n\n# Existing OPEN tasks\n\n${openTasksContext}${parentContext}\n\n# Feedback to categorize\n\n"${item.text}"`,
           },
         ],
-        systemPrompt: (() => {
-          const autonomyDesc = buildAutonomyDescription(
-            settings.aiAutonomyLevel,
-            settings.hilConfig
-          );
-          return autonomyDesc
-            ? `${FEEDBACK_CATEGORIZATION_PROMPT}\n\n## AI Autonomy Level\n\n${autonomyDesc}\n\n`
-            : FEEDBACK_CATEGORIZATION_PROMPT;
-        })(),
+        systemPrompt,
         images: item.images,
         cwd: project.repoPath,
         tracking: {

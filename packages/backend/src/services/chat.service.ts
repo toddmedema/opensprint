@@ -32,6 +32,7 @@ import {
   type HarmonizerPrdUpdate,
 } from "./harmonizer.service.js";
 import { buildAutonomyDescription } from "./context-assembler.js";
+import { getCombinedInstructions } from "./agent-instructions.service.js";
 import { activeAgentsService } from "./active-agents.service.js";
 
 const log = createLogger("chat");
@@ -493,6 +494,9 @@ export class ChatService {
       systemPrompt += `\n\n## AI Autonomy Level\n\n${autonomyDesc}\n\n`;
     }
 
+    const agentInstructions = await getCombinedInstructions(repoPath, planningRole);
+    systemPrompt += `\n\n${agentInstructions}`;
+
     // Assemble messages for AgentService.invokePlanningAgent
     const messages = conversation.messages.slice(0, -1).map((m) => ({
       role: m.role,
@@ -726,7 +730,8 @@ export class ChatService {
     const prdContext = await this.buildPrdContext(projectId);
 
     const prompt = buildHarmonizerPromptBuildIt(planId, planContent);
-    const systemPrompt = `You are the Harmonizer agent for OpenSprint (PRD §12.3.3). Review shipped Plans against the PRD and propose section updates.\n\n## Current PRD\n\n${prdContext}`;
+    let systemPrompt = `You are the Harmonizer agent for OpenSprint (PRD §12.3.3). Review shipped Plans against the PRD and propose section updates.\n\n## Current PRD\n\n${prdContext}`;
+    systemPrompt += `\n\n${await getCombinedInstructions(repoPath, "harmonizer")}`;
 
     const agentId = `harmonizer-build-it-${projectId}-${planId}-${Date.now()}`;
 
@@ -786,7 +791,8 @@ export class ChatService {
     const prdContext = await this.buildPrdContext(projectId);
 
     const prompt = buildHarmonizerPromptScopeChange(feedbackText);
-    const systemPrompt = `You are the Harmonizer agent for OpenSprint (PRD §12.3.3). Review scope-change feedback against the PRD and propose section updates.\n\n## Current PRD\n\n${prdContext}`;
+    let systemPrompt = `You are the Harmonizer agent for OpenSprint (PRD §12.3.3). Review scope-change feedback against the PRD and propose section updates.\n\n## Current PRD\n\n${prdContext}`;
+    systemPrompt += `\n\n${await getCombinedInstructions(repoPath, "harmonizer")}`;
 
     const agentId = `harmonizer-scope-preview-${projectId}-${Date.now()}`;
 
@@ -865,7 +871,8 @@ export class ChatService {
     const prdContext = await this.buildPrdContext(projectId);
 
     const prompt = buildHarmonizerPromptScopeChange(feedbackText);
-    const systemPrompt = `You are the Harmonizer agent for OpenSprint (PRD §12.3.3). Review scope-change feedback against the PRD and propose section updates.\n\n## Current PRD\n\n${prdContext}`;
+    let systemPrompt = `You are the Harmonizer agent for OpenSprint (PRD §12.3.3). Review scope-change feedback against the PRD and propose section updates.\n\n## Current PRD\n\n${prdContext}`;
+    systemPrompt += `\n\n${await getCombinedInstructions(repoPath, "harmonizer")}`;
 
     const agentId = `harmonizer-scope-change-${projectId}-${Date.now()}`;
 

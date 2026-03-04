@@ -31,6 +31,7 @@ import { PrdService } from "./prd.service.js";
 import { agentService } from "./agent.service.js";
 import { buildAuditorPrompt, parseAuditorResult } from "./auditor.service.js";
 import { buildAutonomyDescription } from "./context-assembler.js";
+import { getCombinedInstructions } from "./agent-instructions.service.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import {
@@ -399,11 +400,12 @@ export class PlanService {
 
     const agentId = `plan-complexity-${projectId}-${Date.now()}`;
 
+    const systemPrompt = `${COMPLEXITY_EVALUATION_SYSTEM_PROMPT}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
     const response = await agentService.invokePlanningAgent({
       projectId,
       config: getAgentForPlanningRole(settings, "planner"),
       messages: [{ role: "user", content: prompt }],
-      systemPrompt: COMPLEXITY_EVALUATION_SYSTEM_PROMPT,
+      systemPrompt,
       cwd: repoPath,
       tracking: {
         id: agentId,
@@ -835,11 +837,12 @@ export class PlanService {
         ? `${TASK_GENERATION_SYSTEM_PROMPT}\n\n## AI Autonomy Level\n\n${autonomyDesc}\n\n`
         : TASK_GENERATION_SYSTEM_PROMPT;
     })();
+    const taskGenSystemPrompt = `${taskGenPrompt}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
     const response = await agentService.invokePlanningAgent({
       projectId,
       config: getAgentForPlanningRole(settings, "planner", plan.metadata.complexity),
       messages: [{ role: "user", content: prompt }],
-      systemPrompt: taskGenPrompt,
+      systemPrompt: taskGenSystemPrompt,
       cwd: repoPath,
       tracking: {
         id: agentId,
@@ -1156,12 +1159,14 @@ ${planNew}`;
     const settings = await this.projectService.getSettings(projectId);
     let auditorResponse: { content: string };
     try {
+      const auditorSystemPrompt =
+          "You are the Auditor agent for OpenSprint (PRD §12.3.6). Audit the app's current capabilities and generate delta tasks for re-execution.\n\n" +
+          (await getCombinedInstructions(repoPath, "auditor"));
       auditorResponse = await agentService.invokePlanningAgent({
         projectId,
         config: getAgentForPlanningRole(settings, "auditor", plan.metadata.complexity),
         messages: [{ role: "user", content: auditorFullPrompt }],
-        systemPrompt:
-          "You are the Auditor agent for OpenSprint (PRD §12.3.6). Audit the app's current capabilities and generate delta tasks for re-execution.",
+        systemPrompt: auditorSystemPrompt,
         cwd: repoPath,
         tracking: {
           id: agentIdAuditor,
@@ -1735,11 +1740,12 @@ ${planNew}`;
 
       const agentId = `plan-auto-review-${projectId}-${Date.now()}`;
 
+      const autoReviewSystemPrompt = `${AUTO_REVIEW_SYSTEM_PROMPT}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
       const response = await agentService.invokePlanningAgent({
         projectId,
         config: getAgentForPlanningRole(settings, "planner"),
         messages: [{ role: "user", content: prompt }],
-        systemPrompt: AUTO_REVIEW_SYSTEM_PROMPT,
+        systemPrompt: autoReviewSystemPrompt,
         cwd: repoPath,
         tracking: {
           id: agentId,
@@ -1844,11 +1850,12 @@ Field rules: complexity: low, medium, high, or very_high (plan-level).
 
     const agentId = `plan-generate-${projectId}-${Date.now()}`;
 
+    const generateSystemPrompt = `${systemPromptWithAutonomy}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
     const response = await agentService.invokePlanningAgent({
       projectId,
       config: getAgentForPlanningRole(settings, "planner"),
       messages: [{ role: "user", content: prompt }],
-      systemPrompt: systemPromptWithAutonomy,
+      systemPrompt: generateSystemPrompt,
       cwd: repoPath,
       tracking: {
         id: agentId,
@@ -1976,11 +1983,12 @@ Field rules: complexity: low, medium, high, or very_high (plan-level).
       ? `${baseSystemPrompt}\n\n## AI Autonomy Level\n\n${autonomyDesc}\n\n`
       : baseSystemPrompt;
 
+    const suggestSystemPrompt = `${systemPrompt}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
     const response = await agentService.invokePlanningAgent({
       projectId,
       config: getAgentForPlanningRole(settings, "planner"),
       messages: [{ role: "user", content: prompt }],
-      systemPrompt,
+      systemPrompt: suggestSystemPrompt,
       cwd: repoPath,
       tracking: {
         id: agentId,
@@ -2062,11 +2070,12 @@ Field rules: complexity: low, medium, high, or very_high (plan-level).
       ? `${baseSystemPrompt}\n\n## AI Autonomy Level\n\n${autonomyDesc}\n\n`
       : baseSystemPrompt;
 
+    const decomposeSystemPrompt = `${systemPrompt}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
     const response = await agentService.invokePlanningAgent({
       projectId,
       config: getAgentForPlanningRole(settings, "planner"),
       messages: [{ role: "user", content: prompt }],
-      systemPrompt,
+      systemPrompt: decomposeSystemPrompt,
       cwd: repoPath,
       tracking: {
         id: agentId,

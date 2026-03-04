@@ -12,6 +12,7 @@ import { ProjectService } from "./project.service.js";
 import { getAgentForComplexity } from "@opensprint/shared";
 import { getComplexityForAgent } from "./plan-complexity.js";
 import { extractJsonFromAgentResponse } from "../utils/json-extract.js";
+import { getCombinedInstructions } from "./agent-instructions.service.js";
 import { createLogger } from "../utils/logger.js";
 import type { TaskStoreService } from "./task-store.service.js";
 import type { StoredTask } from "./task-store.service.js";
@@ -76,12 +77,13 @@ ${angleBlocks}
 
 Synthesize the above into a single report. Output ONLY valid JSON with status, summary, and (if rejected) issues and notes.`;
 
+    const systemPrompt = `${SYNTHESIZER_SYSTEM_PROMPT}\n\n${await getCombinedInstructions(repoPath, "reviewer")}`;
     try {
       const response = await agentService.invokePlanningAgent({
         projectId,
         config: agentConfig,
         messages: [{ role: "user", content: prompt }],
-        systemPrompt: SYNTHESIZER_SYSTEM_PROMPT,
+        systemPrompt,
         cwd: repoPath,
         tracking: {
           id: `synthesizer-${projectId}-${task.id}-${Date.now()}`,

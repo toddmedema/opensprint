@@ -20,6 +20,7 @@ import { ErrorCodes } from "../middleware/error-codes.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { createLogger } from "../utils/logger.js";
 import { writeJsonAtomic } from "../utils/file-utils.js";
+import { getCombinedInstructions } from "./agent-instructions.service.js";
 
 const log = createLogger("help-chat");
 
@@ -256,7 +257,7 @@ export class HelpChatService {
         ? `\n\n---\n\n## OpenSprint Internal Documentation\n\nThe following describes OpenSprint's internal behavior. Use it to answer questions about scheduling, config, orchestrator logic, task runnability, epic-blocked behavior, and why agents run (or don't run).\n\n${opensprintDocs}`
         : "";
 
-    const systemPrompt = `${HELP_SYSTEM_PROMPT}\n\n---\n\n## Current Context\n\nThe following context is provided for answering the user's question. Use it to give accurate, helpful answers.\n\n${context}${docsSection}`;
+    let systemPrompt = `${HELP_SYSTEM_PROMPT}\n\n---\n\n## Current Context\n\nThe following context is provided for answering the user's question. Use it to give accurate, helpful answers.\n\n${context}${docsSection}`;
 
     const priorMessages = (body.messages ?? []).map((m) => ({
       role: m.role as "user" | "assistant",
@@ -288,6 +289,8 @@ export class HelpChatService {
       agentConfig = getAgentForPlanningRole(settings, "dreamer");
       cwd = firstProject.repoPath;
     }
+
+    systemPrompt += `\n\n${await getCombinedInstructions(cwd!, "dreamer")}`;
 
     const agentId = `help-chat-${isProjectView ? projectId : "homepage"}-${Date.now()}`;
 

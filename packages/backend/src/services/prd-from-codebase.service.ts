@@ -9,6 +9,7 @@ import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { createLogger } from "../utils/logger.js";
+import { getCombinedInstructions } from "./agent-instructions.service.js";
 
 const log = createLogger("prd-from-codebase");
 
@@ -67,6 +68,7 @@ Output PRD_UPDATE blocks for each section you can derive.`;
 
     const repoPath = await this.projectService.getRepoPath(projectId);
 
+    const systemPrompt = `${CODEBASE_TO_PRD_SYSTEM_PROMPT}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
     let responseContent: string;
     try {
       log.info("Invoking planning agent for PRD from codebase", { projectId });
@@ -74,7 +76,7 @@ Output PRD_UPDATE blocks for each section you can derive.`;
         projectId,
         config: agentConfig,
         messages: [{ role: "user", content: userPrompt }],
-        systemPrompt: CODEBASE_TO_PRD_SYSTEM_PROMPT,
+        systemPrompt,
         cwd: repoPath,
         tracking: {
           id: agentId,
