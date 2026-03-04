@@ -48,7 +48,8 @@ describe("constants", () => {
   });
 
   describe("SETTINGS_HELP_CONTAINER_CLASS", () => {
-    it("includes max-w-[1800px] mx-auto px-6 for Settings and Help page content on wide viewports", () => {
+    it("includes w-full max-w-[1800px] mx-auto px-6 for consistent Settings and Help page content width", () => {
+      expect(SETTINGS_HELP_CONTAINER_CLASS).toContain("w-full");
       expect(SETTINGS_HELP_CONTAINER_CLASS).toContain("max-w-[1800px]");
       expect(SETTINGS_HELP_CONTAINER_CLASS).toContain("mx-auto");
       expect(SETTINGS_HELP_CONTAINER_CLASS).toContain("px-6");

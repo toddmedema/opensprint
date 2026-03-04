@@ -31,8 +31,9 @@ export const CONTENT_CONTAINER_CLASS = "max-w-3xl mx-auto px-4 sm:px-6" as const
 /**
  * Max-width for Settings and Help page content (1800px).
  * Matches Evaluate feedback cards for consistency on wide viewports.
+ * width=100% with max-width for consistent content width across all settings pages.
  */
-export const SETTINGS_HELP_CONTAINER_CLASS = "max-w-[1800px] mx-auto px-6" as const;
+export const SETTINGS_HELP_CONTAINER_CLASS = "w-full max-w-[1800px] mx-auto px-6" as const;
 
 /**
  * Wider container for homepage (header + project cards).

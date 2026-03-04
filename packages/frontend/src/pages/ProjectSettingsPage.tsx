@@ -57,7 +57,7 @@ export function ProjectSettingsPage() {
   return (
     <Layout project={project} currentPhase="sketch" onPhaseChange={handlePhaseChange}>
       <div
-        className="flex-1 min-h-0 overflow-hidden flex flex-col px-6 py-6"
+        className="flex-1 min-h-0 overflow-hidden flex flex-col px-6 py-6 bg-theme-surface"
         data-testid="project-settings-page"
       >
         <ProjectSettingsModal

@@ -26,7 +26,7 @@ export function SettingsPage() {
     <Layout>
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden" data-testid="settings-page">
         <SettingsTopBar saveStatus={saveStatus} />
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto bg-theme-surface">
           <div
             className={`${SETTINGS_HELP_CONTAINER_CLASS} py-6 sm:py-8 bg-theme-surface rounded-xl`}
           >

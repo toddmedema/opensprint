@@ -87,11 +87,11 @@ export function ProjectSettingsContent() {
         )}
       </div>
 
-      {/* Content area: scrollable, no card/modal wrapper */}
-      <div className="flex-1 min-h-0 overflow-hidden flex flex-col px-4 sm:px-6 py-4 sm:py-6">
+      {/* Content area: scrollable, no card/modal wrapper; bg-theme-surface removes top gap */}
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col px-4 sm:px-6 py-4 sm:py-6 bg-theme-surface">
         {isGlobalLevel ? (
           <div className="flex-1 min-h-0 overflow-y-auto">
-            <div className="max-w-[1800px] mx-auto bg-theme-surface rounded-xl">
+            <div className="w-full max-w-[1800px] mx-auto bg-theme-surface rounded-xl">
               <div className="rounded-xl border border-theme-border p-4 sm:p-6">
                 <GlobalSettingsContent onSaveStateChange={setSaveStatus} />
               </div>
