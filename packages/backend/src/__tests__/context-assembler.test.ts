@@ -174,6 +174,9 @@ User authentication.
     expect(prompt).toContain("context/deps/");
     expect(prompt).toContain("Commit after each logical unit");
     expect(prompt).toContain("Do not wait until the end to commit");
+    expect(prompt).toContain("Run only the smallest targeted, non-watch test command");
+    expect(prompt).toContain("Do NOT run the full-suite command `npm test` yourself");
+    expect(prompt).toContain("Never use watch mode");
     expect(prompt).toContain("Never run destructive cleanup commands");
     // Terminology: use "done" and "finish" instead of "complete" (feedback consistency)
     expect(prompt).toContain("when the task is done");
@@ -799,18 +802,19 @@ User authentication.
     expect(prompt).toContain("Correctness");
     expect(prompt).toContain("Error handling");
     expect(prompt).toContain("Test coverage");
-    expect(prompt).toContain("All tests pass");
+    expect(prompt).toContain("Automated validation is handled by the orchestrator");
 
-    // Working directory (so reviewer runs tests from repo root, not task dir)
+    // Working directory (so reviewer knows the repo root for git or targeted repro steps)
     expect(prompt).toContain("## Working directory");
     expect(prompt).toContain("config.json");
     expect(prompt).toContain("repoPath");
+    expect(prompt).toContain("Do not run `npm test` from this review prompt");
 
     // Instructions
     expect(prompt).toContain("## Instructions");
     expect(prompt).toContain("Read the original ticket");
     expect(prompt).toContain(`git diff main...opensprint/bd-a3f8.2`);
-    expect(prompt).toContain("full test suite: `npm test`");
+    expect(prompt).toContain("Do NOT rerun the full-suite command `npm test`");
     expect(prompt).toContain("6. Write your result to `.opensprint/active/bd-a3f8.2/result.json`");
     expect(prompt).toContain('"status": "approved"');
     expect(prompt).toContain("do NOT merge");
@@ -913,6 +917,7 @@ User authentication.
     expect(securityPrompt).toContain("focusing only on this angle: Security implications");
     expect(securityPrompt).toContain("Review Checklist — Security implications");
     expect(securityPrompt).toContain("No injection vulnerabilities");
+    expect(securityPrompt).toContain("Do NOT rerun the full-suite command `npm test`");
     expect(securityPrompt).toContain(
       ".opensprint/active/bd-a3f8.2/review-angles/security/result.json"
     );

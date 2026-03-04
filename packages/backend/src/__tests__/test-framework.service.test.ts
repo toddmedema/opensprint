@@ -90,7 +90,7 @@ describe("test-framework.service", () => {
       });
     });
 
-    it("falls back to npm test when scripts.test is defined and not default", async () => {
+    it("detects Vitest from a vitest-based test script", async () => {
       await fs.writeFile(
         path.join(repoPath, "package.json"),
         JSON.stringify({
@@ -100,8 +100,8 @@ describe("test-framework.service", () => {
 
       const result = await detectTestFramework(repoPath);
       expect(result).toEqual({
-        framework: "jest",
-        testCommand: "npm test",
+        framework: "vitest",
+        testCommand: "npx vitest run",
       });
     });
 
@@ -120,6 +120,23 @@ describe("test-framework.service", () => {
     it("detects vitest from config file when package.json has no test deps", async () => {
       await fs.writeFile(path.join(repoPath, "package.json"), JSON.stringify({}));
       await fs.writeFile(path.join(repoPath, "vitest.config.ts"), "export default {}");
+
+      const result = await detectTestFramework(repoPath);
+      expect(result).toEqual({
+        framework: "vitest",
+        testCommand: "npx vitest run",
+      });
+    });
+
+    it("prefers Vitest workspace config over a generic workspace test script", async () => {
+      await fs.writeFile(
+        path.join(repoPath, "package.json"),
+        JSON.stringify({
+          workspaces: ["packages/*"],
+          scripts: { test: "npm run test --workspaces --if-present" },
+        })
+      );
+      await fs.writeFile(path.join(repoPath, "vitest.workspace.ts"), "export default []");
 
       const result = await detectTestFramework(repoPath);
       expect(result).toEqual({

@@ -21,31 +21,38 @@ function createMockChild(stdout: string, stderr: string, exitCode: number) {
   const listeners: { event: string; cb: (arg?: unknown) => void }[] = [];
   const stdoutListeners: ((data: Buffer) => void)[] = [];
   const stderrListeners: ((data: Buffer) => void)[] = [];
+  let scheduled = false;
+
+  const emitAndClose = () => {
+    if (scheduled) return;
+    scheduled = true;
+    setImmediate(() => {
+      if (stdout) stdoutListeners.forEach((cb) => cb(Buffer.from(stdout)));
+      if (stderr) stderrListeners.forEach((cb) => cb(Buffer.from(stderr)));
+      listeners.filter((l) => l.event === "close").forEach((l) => l.cb(exitCode));
+    });
+  };
 
   const child = {
     pid: 12345,
     stdout: {
       on: (event: string, cb: (data: Buffer) => void) => {
         if (event === "data") stdoutListeners.push(cb);
+        emitAndClose();
       },
     },
     stderr: {
       on: (event: string, cb: (data: Buffer) => void) => {
         if (event === "data") stderrListeners.push(cb);
+        emitAndClose();
       },
     },
     on: (event: string, cb: (arg?: unknown) => void) => {
       listeners.push({ event, cb });
+      emitAndClose();
     },
     unref: () => {},
   };
-
-  // Emit data and close asynchronously
-  setImmediate(() => {
-    if (stdout) stdoutListeners.forEach((cb) => cb(Buffer.from(stdout)));
-    if (stderr) stderrListeners.forEach((cb) => cb(Buffer.from(stderr)));
-    listeners.filter((l) => l.event === "close").forEach((l) => l.cb(exitCode));
-  });
 
   return child;
 }
@@ -143,10 +150,23 @@ describe("TestRunner", () => {
 
       expect(mockSpawn).toHaveBeenCalledWith(
         "sh",
-        ["-c", "npx vitest run src/foo.test.ts"],
+        ["-c", "npx vitest run --maxWorkers=1 src/foo.test.ts"],
         expect.any(Object)
       );
       expect(result.passed).toBe(2);
+    });
+
+    it("uses vitest related for changed source files", async () => {
+      const output = "Tests: 3 passed, 0 failed, 0 skipped, 3 total";
+      mockSpawn.mockReturnValue(createMockChild(output, "", 0));
+
+      await runner.runScopedTests("/tmp/repo", ["src/foo.ts", "src/bar.ts"], "npx vitest run");
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        "sh",
+        ["-c", "npx vitest related --run --maxWorkers=1 src/foo.ts src/bar.ts"],
+        expect.any(Object)
+      );
     });
 
     it("scopes jest to changed test files when test command includes jest", async () => {
@@ -162,7 +182,40 @@ describe("TestRunner", () => {
       );
     });
 
-    it("uses full test command when no test files in changed files", async () => {
+    it("uses related jest tests for changed source files", async () => {
+      const output = "Tests: 2 passed, 0 failed, 0 skipped, 2 total";
+      mockSpawn.mockReturnValue(createMockChild(output, "", 0));
+
+      await runner.runScopedTests("/tmp/repo", ["src/foo.ts", "src/bar.ts"], "npx jest");
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        "sh",
+        ["-c", "npx jest --findRelatedTests src/foo.ts src/bar.ts"],
+        expect.any(Object)
+      );
+    });
+
+    it("infers vitest from repo config even when the configured command is npm test", async () => {
+      const repoPath = path.join(os.tmpdir(), `opensprint-vitest-related-${Date.now()}`);
+      const output = "Tests: 1 passed, 0 failed, 0 skipped, 1 total";
+      mockSpawn.mockReturnValue(createMockChild(output, "", 0));
+      await fs.mkdir(repoPath, { recursive: true });
+      await fs.writeFile(path.join(repoPath, "vitest.workspace.ts"), "export default []");
+
+      try {
+        await runner.runScopedTests(repoPath, ["src/foo.ts"], "npm test");
+      } finally {
+        await fs.rm(repoPath, { recursive: true, force: true }).catch(() => {});
+      }
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        "sh",
+        ["-c", "npx vitest related --run --maxWorkers=1 src/foo.ts"],
+        expect.any(Object)
+      );
+    });
+
+    it("uses full test command when no scoped runner can be inferred", async () => {
       const output = "Tests: 5 passed, 0 failed, 0 skipped, 5 total";
       mockSpawn.mockReturnValue(createMockChild(output, "", 0));
 

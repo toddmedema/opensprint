@@ -34,7 +34,7 @@ export const REVIEW_ANGLE_CHECKLISTS: Record<ReviewAngle, string[]> = {
     "New/changed behavior has tests",
     "Edge cases and error paths are covered",
     "Tests are meaningful (not just coverage metrics)",
-    "All tests pass",
+    "Added and changed tests look correct and deterministic",
   ],
   code_quality: [
     "Code is readable and well-named",
@@ -450,7 +450,7 @@ export class ContextAssembler {
 
     prompt += `${config.useExistingBranch ? "4" : "3"}. Write comprehensive tests (unit, and integration where applicable).\n`;
     prompt += `${config.useExistingBranch ? "5" : "4"}. **Commit after each logical unit** — with descriptive messages (e.g., "Add login API endpoint", "Add auth tests"). Do not wait until the end to commit. This protects your work if the process is interrupted.\n`;
-    prompt += `${config.useExistingBranch ? "6" : "5"}. Run \`${config.testCommand}\` and ensure all tests pass.\n`;
+    prompt += `${config.useExistingBranch ? "6" : "5"}. Run only the smallest targeted, non-watch test command you need while iterating. Do NOT run the full-suite command \`${config.testCommand}\` yourself unless the task explicitly requires it; the orchestrator runs final validation after you finish. Never use watch mode or leave test processes running in the background.\n`;
     prompt += `${config.useExistingBranch ? "7" : "6"}. Write your result to \`.opensprint/active/${config.taskId}/result.json\` using this exact JSON format:\n`;
     prompt += `   \`\`\`json\n`;
     prompt += `   { "status": "success", "summary": "Brief description of what you implemented" }\n`;
@@ -459,7 +459,7 @@ export class ContextAssembler {
     prompt += `   The \`status\` field MUST be exactly \`"success"\` or \`"failed"\` — no other values.\n`;
     prompt += `   **When the task spec is ambiguous:** Instead of guessing, return \`"status": "failed"\` with \`open_questions\` in the standard protocol format: [{ "id": "q1", "text": "Your clarification question" }]. The server will surface these via the Human Notification System; do not proceed until the user answers.\n`;
     prompt += `   After writing result.json, exit the process immediately so the orchestrator can continue (exit code 0 on success).\n\n`;
-    prompt += `If tests fail after implementation, fix them before writing result.json. Do not report success with failing tests.\n\n`;
+    prompt += `If your targeted tests fail after implementation, fix them before writing result.json. Do not report success if you know the relevant tests are failing. The orchestrator will run the repository validation command after you exit.\n\n`;
     prompt += `Never run destructive cleanup commands such as \`rm -rf\`, \`find ... -delete\`, or \`git clean -fdx\` against the repo. If you think broad cleanup is required, stop and report failure; the orchestrator owns cleanup.\n\n`;
 
     const autonomyDesc = buildAutonomyDescription(config.aiAutonomyLevel, config.hilConfig);
@@ -633,11 +633,11 @@ export class ContextAssembler {
     prompt += `  - Happy paths\n`;
     prompt += `  - Edge cases and error paths\n`;
     prompt += `  - Boundary conditions where applicable\n`;
-    prompt += `- [ ] **All tests pass** — Run \`${config.testCommand}\` and confirm zero failures\n`;
+    prompt += `- [ ] **Automated validation is handled by the orchestrator** — focus on whether the tests and assertions are correct; do not rerun the full suite unless you need a narrow reproduction\n`;
     prompt += `- [ ] **Consistent style** — Follows existing codebase patterns and conventions\n\n`;
 
     prompt += `## Working directory\n\n`;
-    prompt += `The **repository root** is the directory that contains \`package.json\`, \`packages/backend\`, \`packages/frontend\`, etc. You MUST run the test command and any \`git\` commands from that directory. Its path is in \`.opensprint/active/${config.taskId}/config.json\` as \`repoPath\`. If your current working directory is \`.opensprint/active/${config.taskId}/\` (the task folder), change to the repo root first, e.g. \`cd "$(jq -r .repoPath .opensprint/active/${config.taskId}/config.json)"\` (or \`cd <repoPath>\` using the value from config.json), then run \`${config.testCommand}\`. Do not run \`npm test\` from the task folder — it has no \`package.json\` and will fail with ENOENT.\n\n`;
+    prompt += `The **repository root** is the directory that contains \`package.json\`, \`packages/backend\`, \`packages/frontend\`, etc. You MUST run any \`git\` commands from that directory. Its path is in \`.opensprint/active/${config.taskId}/config.json\` as \`repoPath\`. If you need a targeted test reproduction, change to the repo root first, e.g. \`cd "$(jq -r .repoPath .opensprint/active/${config.taskId}/config.json)"\` (or \`cd <repoPath>\` using the value from config.json). Do not run \`${config.testCommand}\` from this review prompt; the orchestrator runs validation separately.\n\n`;
 
     prompt += `## Instructions\n\n`;
     prompt += `1. Read the original ticket, acceptance criteria, and context files above to fully understand the scope.\n`;
@@ -647,7 +647,7 @@ export class ContextAssembler {
       prompt += `2. Review the diff: \`git diff main...${config.branch}\`\n`;
     }
     prompt += `3. Walk through the checklist above, checking each item.\n`;
-    prompt += `4. From the repository root (see Working directory above), run the full test suite: \`${config.testCommand}\` — confirm ALL tests pass (not just the new ones). Regressions in other tests are grounds for rejection.\n`;
+    prompt += `4. Do NOT rerun the full-suite command \`${config.testCommand}\` from this review prompt. The orchestrator runs validation in parallel. Only run a small, targeted, non-watch reproduction if you need evidence for a specific issue.\n`;
     prompt += `5. If prior reviews rejected this task, verify each previously cited issue was resolved. If not, reject and list which issues remain.\n`;
     prompt += `6. Write your result to \`.opensprint/active/${config.taskId}/result.json\` using this exact JSON format:\n`;
     prompt += `   If approving (do NOT merge — the orchestrator will merge after you exit):\n`;
@@ -729,7 +729,7 @@ export class ContextAssembler {
     prompt += `\n`;
 
     prompt += `## Working directory\n\n`;
-    prompt += `The **repository root** is the directory that contains \`package.json\`, \`packages/backend\`, \`packages/frontend\`, etc. You MUST run the test command and any \`git\` commands from that directory. Its path is in \`.opensprint/active/${config.taskId}/review-angles/${angle}/config.json\` as \`repoPath\`. If your current working directory is the task folder, change to the repo root first, then run \`${config.testCommand}\`.\n\n`;
+    prompt += `The **repository root** is the directory that contains \`package.json\`, \`packages/backend\`, \`packages/frontend\`, etc. You MUST run any \`git\` commands from that directory. Its path is in \`.opensprint/active/${config.taskId}/review-angles/${angle}/config.json\` as \`repoPath\`. If you need a targeted test reproduction, change to the repo root first. Do not run \`${config.testCommand}\` from this review prompt; the orchestrator runs validation separately.\n\n`;
 
     prompt += `## Instructions\n\n`;
     prompt += `1. Read the original ticket and context files above.\n`;
@@ -739,7 +739,7 @@ export class ContextAssembler {
       prompt += `2. Review the diff: \`git diff main...${config.branch}\`\n`;
     }
     prompt += `3. Walk through the checklist above for ${angleLabel}.\n`;
-    prompt += `4. From the repository root, run the full test suite: \`${config.testCommand}\` — confirm ALL tests pass.\n`;
+    prompt += `4. Do NOT rerun the full-suite command \`${config.testCommand}\` from this review prompt. The orchestrator runs validation in parallel. Only run a small, targeted, non-watch reproduction if you need evidence for a specific issue.\n`;
     prompt += `5. Write your result to \`.opensprint/active/${config.taskId}/review-angles/${angle}/result.json\` using this exact JSON format:\n`;
     prompt += `   If approving:\n`;
     prompt += `   \`\`\`json\n`;

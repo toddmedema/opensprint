@@ -18,6 +18,8 @@ export async function detectTestFramework(repoPath: string): Promise<DetectedTes
       const raw = await fs.readFile(pkgPath, "utf-8");
       const pkg = JSON.parse(raw);
       const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+      const testScript =
+        typeof pkg.scripts?.test === "string" ? pkg.scripts.test.trim().toLowerCase() : "";
 
       if (deps["@playwright/test"]) {
         return { framework: "playwright", testCommand: "npx playwright test" };
@@ -34,15 +36,32 @@ export async function detectTestFramework(repoPath: string): Promise<DetectedTes
       if (deps["mocha"]) {
         return { framework: "mocha", testCommand: "npm test" };
       }
-      if (pkg.scripts?.test && pkg.scripts.test !== 'echo "Error: no test specified" && exit 1') {
-        return { framework: "jest", testCommand: "npm test" };
+      if (testScript.includes("vitest")) {
+        return { framework: "vitest", testCommand: "npx vitest run" };
+      }
+      if (testScript.includes("playwright")) {
+        return { framework: "playwright", testCommand: "npx playwright test" };
+      }
+      if (testScript.includes("cypress")) {
+        return { framework: "cypress", testCommand: "npx cypress run" };
+      }
+      if (testScript.includes("jest")) {
+        return { framework: "jest", testCommand: "npx jest" };
+      }
+      if (testScript.includes("pytest")) {
+        return { framework: "pytest", testCommand: "pytest" };
+      }
+      if (testScript.includes("mocha")) {
+        return { framework: "mocha", testCommand: "npm test" };
       }
     } catch {
       // No package.json or invalid
     }
 
-    // Check for config files
+    // Check for config files before falling back to a generic package.json test script.
     const configs: { file: string; framework: string; command: string }[] = [
+      { file: "vitest.workspace.ts", framework: "vitest", command: "npx vitest run" },
+      { file: "vitest.workspace.js", framework: "vitest", command: "npx vitest run" },
       { file: "vitest.config.ts", framework: "vitest", command: "npx vitest run" },
       { file: "vitest.config.js", framework: "vitest", command: "npx vitest run" },
       { file: "jest.config.js", framework: "jest", command: "npx jest" },
@@ -60,6 +79,16 @@ export async function detectTestFramework(repoPath: string): Promise<DetectedTes
       } catch {
         // Config not found
       }
+    }
+
+    try {
+      const raw = await fs.readFile(pkgPath, "utf-8");
+      const pkg = JSON.parse(raw);
+      if (pkg.scripts?.test && pkg.scripts.test !== 'echo "Error: no test specified" && exit 1') {
+        return { framework: "jest", testCommand: "npm test" };
+      }
+    } catch {
+      // No package.json or invalid
     }
 
     // Check for setup.py (Python)
