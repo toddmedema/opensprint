@@ -29,6 +29,10 @@ import {
 } from "../slices/executeSlice";
 import { updateFeedbackItem, updateFeedbackItemResolved } from "../slices/evalSlice";
 import { appendDeliverOutput, deliverStarted, deliverCompleted } from "../slices/deliverSlice";
+import {
+  appendAuditorOutput,
+  setAuditorOutputBackfill,
+} from "../slices/planSlice";
 import { getQueryClient } from "../../queryClient";
 import { queryKeys } from "../../api/queryKeys";
 
@@ -57,10 +61,13 @@ export const websocketMiddleware: Middleware = (storeApi) => {
 
   /** Pending agent.subscribe messages to replay when connection opens (fixes stuck live output) */
   const pendingSubscribes: Array<{ type: "agent.subscribe"; taskId: string }> = [];
+  /** Pending plan.agent.subscribe messages to replay when connection opens */
+  const pendingPlanSubscribes: Array<{ type: "plan.agent.subscribe"; planId: string }> = [];
 
   function cleanup() {
     intentionalClose = true;
     pendingSubscribes.length = 0;
+    pendingPlanSubscribes.length = 0;
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
@@ -111,6 +118,13 @@ export const websocketMiddleware: Middleware = (storeApi) => {
         }
       }
       pendingSubscribes.length = 0;
+      // Replay pending plan.agent.subscribe for Auditor output
+      for (const msg of pendingPlanSubscribes) {
+        if (ws?.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify(msg));
+        }
+      }
+      pendingPlanSubscribes.length = 0;
     };
 
     socket.onmessage = (event) => {
@@ -317,6 +331,22 @@ export const websocketMiddleware: Middleware = (storeApi) => {
         break;
       }
 
+      case "plan.agent.output": {
+        const ev = event as { type: "plan.agent.output"; planId: string; chunk: string };
+        d(appendAuditorOutput({ planId: ev.planId, chunk: ev.chunk }));
+        break;
+      }
+
+      case "plan.agent.outputBackfill": {
+        const ev = event as {
+          type: "plan.agent.outputBackfill";
+          planId: string;
+          output: string;
+        };
+        d(setAuditorOutputBackfill({ planId: ev.planId, output: ev.output }));
+        break;
+      }
+
       case "execute.status": {
         const statusEv = event as ExecuteStatusEvent;
         const activeTasks = statusEv.activeTasks ?? [];
@@ -443,6 +473,16 @@ export const websocketMiddleware: Middleware = (storeApi) => {
         const idx = pendingSubscribes.findIndex((p) => p.taskId === event.taskId);
         if (idx >= 0) pendingSubscribes.splice(idx, 1);
         pendingSubscribes.push({ type: "agent.subscribe", taskId: event.taskId });
+      } else if (
+        event.type === "plan.agent.subscribe" &&
+        "planId" in event &&
+        event.planId &&
+        currentProjectId &&
+        currentProjectId !== HOME_SENTINEL
+      ) {
+        const idx = pendingPlanSubscribes.findIndex((p) => p.planId === event.planId);
+        if (idx >= 0) pendingPlanSubscribes.splice(idx, 1);
+        pendingPlanSubscribes.push({ type: "plan.agent.subscribe", planId: event.planId });
       }
     }
 

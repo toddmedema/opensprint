@@ -250,12 +250,14 @@ function createStore(
         error: planError ?? null,
         executeError: null,
         backgroundError: null,
+        auditorOutputByPlanId: {},
       },
-      execute: {
+        execute: {
         ...toTasksByIdAndOrder(executeTasks),
         orchestratorRunning: false,
         awaitingApproval: false,
         activeTasks: [],
+        activeAgents: [],
         selectedTaskId: null,
         taskDetailLoading: false,
         taskDetailError: null,

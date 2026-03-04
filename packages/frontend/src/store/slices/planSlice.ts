@@ -49,6 +49,8 @@ export interface PlanState {
   executeError: { planId: string; message: string } | null;
   /** Unobtrusive toast for background refresh failures (does not reset page) */
   backgroundError: string | null;
+  /** Streaming Auditor output per planId (Re-execute) */
+  auditorOutputByPlanId: Record<string, string>;
 }
 
 const initialState: PlanState = {
@@ -70,6 +72,7 @@ const initialState: PlanState = {
   error: null,
   executeError: null,
   backgroundError: null,
+  auditorOutputByPlanId: {},
 };
 
 export const fetchPlanStatus = createAsyncThunk(
@@ -319,6 +322,18 @@ const planSlice = createSlice({
     resetPlan() {
       return { ...initialState };
     },
+    appendAuditorOutput(state, action: PayloadAction<{ planId: string; chunk: string }>) {
+      const { planId, chunk } = action.payload;
+      const existing = state.auditorOutputByPlanId[planId] ?? "";
+      state.auditorOutputByPlanId[planId] = existing + chunk;
+    },
+    setAuditorOutputBackfill(state, action: PayloadAction<{ planId: string; output: string }>) {
+      const { planId, output } = action.payload;
+      state.auditorOutputByPlanId[planId] = output;
+    },
+    clearAuditorOutput(state, action: PayloadAction<string>) {
+      delete state.auditorOutputByPlanId[action.payload];
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -443,11 +458,19 @@ const planSlice = createSlice({
         state.reExecutingPlanId = action.meta.arg.planId;
         state.error = null;
       })
-      .addCase(reExecutePlan.fulfilled, (state) => {
+      .addCase(reExecutePlan.fulfilled, (state, action) => {
+        const planId = action.meta.arg.planId;
         state.reExecutingPlanId = null;
+        if (state.auditorOutputByPlanId) {
+          delete state.auditorOutputByPlanId[planId];
+        }
       })
       .addCase(reExecutePlan.rejected, (state, action) => {
+        const planId = action.meta.arg.planId;
         state.reExecutingPlanId = null;
+        if (state.auditorOutputByPlanId) {
+          delete state.auditorOutputByPlanId[planId];
+        }
         if (!isNotificationManagedAgentFailure(action.error)) {
           state.error = action.error.message || "Failed to re-execute plan";
         }
@@ -591,5 +614,8 @@ export const {
   setPlanChatMessages,
   setSinglePlan,
   resetPlan,
+  appendAuditorOutput,
+  setAuditorOutputBackfill,
+  clearAuditorOutput,
 } = planSlice.actions;
 export default planSlice.reducer;

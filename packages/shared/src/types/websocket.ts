@@ -199,6 +199,20 @@ export interface PlanGeneratedEvent {
   planId: string;
 }
 
+/** Streaming output from plan-scoped agents (e.g. Auditor during Re-execute). */
+export interface PlanAgentOutputEvent {
+  type: "plan.agent.output";
+  planId: string;
+  chunk: string;
+}
+
+/** One-off backfill of existing Auditor output when client subscribes. */
+export interface PlanAgentOutputBackfillEvent {
+  type: "plan.agent.outputBackfill";
+  planId: string;
+  output: string;
+}
+
 /** Emitted when a task is blocked after progressive backoff exhaustion (PRDv2 §9.1) */
 export interface TaskBlockedEvent {
   type: "task.blocked";
@@ -250,7 +264,9 @@ export type ServerEvent =
   | NotificationAddedEvent
   | NotificationResolvedEvent
   | PlanUpdatedEvent
-  | PlanGeneratedEvent;
+  | PlanGeneratedEvent
+  | PlanAgentOutputEvent
+  | PlanAgentOutputBackfillEvent;
 
 // ─── Client → Server Events ───
 
@@ -264,6 +280,16 @@ export interface AgentUnsubscribeEvent {
   taskId: string;
 }
 
+export interface PlanAgentSubscribeEvent {
+  type: "plan.agent.subscribe";
+  planId: string;
+}
+
+export interface PlanAgentUnsubscribeEvent {
+  type: "plan.agent.unsubscribe";
+  planId: string;
+}
+
 export interface HilRespondEvent {
   type: "hil.respond";
   requestId: string;
@@ -272,4 +298,9 @@ export interface HilRespondEvent {
 }
 
 /** All client-to-server WebSocket event types */
-export type ClientEvent = AgentSubscribeEvent | AgentUnsubscribeEvent | HilRespondEvent;
+export type ClientEvent =
+  | AgentSubscribeEvent
+  | AgentUnsubscribeEvent
+  | PlanAgentSubscribeEvent
+  | PlanAgentUnsubscribeEvent
+  | HilRespondEvent;

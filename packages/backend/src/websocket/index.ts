@@ -1,7 +1,13 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { Server } from "http";
-import type { ServerEvent, ClientEvent, AgentOutputBackfillEvent } from "@opensprint/shared";
+import type {
+  ServerEvent,
+  ClientEvent,
+  AgentOutputBackfillEvent,
+  PlanAgentOutputBackfillEvent,
+} from "@opensprint/shared";
 import { eventRelay } from "../services/event-relay.service.js";
+import { getPlanAgentOutput } from "../services/plan-agent-output-buffer.service.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("websocket");
@@ -11,6 +17,9 @@ const projectClients = new Map<string, Set<WebSocket>>();
 
 /** Map of WebSocket → subscribed task IDs */
 const agentSubscriptions = new Map<WebSocket, Set<string>>();
+
+/** Map of WebSocket → subscribed plan IDs (for Auditor output) */
+const planAgentSubscriptions = new Map<WebSocket, Set<string>>();
 
 /** Map of WebSocket → projectId (only set when client connected to /ws/projects/:id) */
 const wsToProjectId = new Map<WebSocket, string>();
@@ -31,7 +40,7 @@ export interface WebSocketOptions {
 
 export function setupWebSocket(server: Server, options?: WebSocketOptions): void {
   getLiveOutput = options?.getLiveOutput ?? null;
-  eventRelay.init(projectClients, agentSubscriptions);
+  eventRelay.init(projectClients, agentSubscriptions, planAgentSubscriptions);
 
   // No path filter — we accept /ws and /ws/projects/:id; path matching is done in the handler
   wss = new WebSocketServer({ server });
@@ -63,6 +72,7 @@ export function setupWebSocket(server: Server, options?: WebSocketOptions): void
     }
 
     agentSubscriptions.set(ws, new Set());
+    planAgentSubscriptions.set(ws, new Set());
 
     ws.on("message", (data) => {
       try {
@@ -76,6 +86,7 @@ export function setupWebSocket(server: Server, options?: WebSocketOptions): void
     ws.on("close", () => {
       wsToProjectId.delete(ws);
       agentSubscriptions.delete(ws);
+      planAgentSubscriptions.delete(ws);
 
       // Clean up project client tracking
       if (projectId) {
@@ -126,6 +137,33 @@ function handleClientEvent(ws: WebSocket, event: ClientEvent): void {
       }
       break;
     }
+    case "plan.agent.subscribe": {
+      if ("planId" in event && event.planId) {
+        const planId = event.planId;
+        planAgentSubscriptions.get(ws)?.add(planId);
+        log.info("Client subscribed to plan agent output", { planId });
+        const projectId = wsToProjectId.get(ws);
+        if (projectId && ws.readyState === 1 /* WebSocket.OPEN */) {
+          const output = getPlanAgentOutput(projectId, planId);
+          if (output.length > 0) {
+            const backfill: PlanAgentOutputBackfillEvent = {
+              type: "plan.agent.outputBackfill",
+              planId,
+              output,
+            };
+            ws.send(JSON.stringify(backfill));
+          }
+        }
+      }
+      break;
+    }
+    case "plan.agent.unsubscribe": {
+      if ("planId" in event && event.planId) {
+        planAgentSubscriptions.get(ws)?.delete(event.planId);
+        log.info("Client unsubscribed from plan agent output", { planId: event.planId });
+      }
+      break;
+    }
     default:
       log.warn("Unknown client event type", { type: (event as { type?: string }).type });
   }
@@ -144,10 +182,20 @@ export function closeWebSocket(): void {
   }
   projectClients.clear();
   agentSubscriptions.clear();
+  planAgentSubscriptions.clear();
   wss.close();
 }
 
 /** Send agent output to clients in a project who have subscribed to the task via agent.subscribe */
 export function sendAgentOutputToProject(projectId: string, taskId: string, chunk: string): void {
   eventRelay.sendAgentOutputToProject(projectId, taskId, chunk);
+}
+
+/** Send plan agent output (Auditor) to clients subscribed via plan.agent.subscribe */
+export function sendPlanAgentOutputToProject(
+  projectId: string,
+  planId: string,
+  chunk: string
+): void {
+  eventRelay.sendPlanAgentOutputToProject(projectId, planId, chunk);
 }

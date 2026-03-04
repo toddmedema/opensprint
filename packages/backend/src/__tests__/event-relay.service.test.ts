@@ -4,13 +4,16 @@ import { eventRelay } from "../services/event-relay.service.js";
 describe("EventRelayService", () => {
   const projectClients = new Map<string, Set<unknown>>();
   const agentSubscriptions = new Map<unknown, Set<string>>();
+  const planAgentSubscriptions = new Map<unknown, Set<string>>();
 
   beforeEach(() => {
     projectClients.clear();
     agentSubscriptions.clear();
+    planAgentSubscriptions.clear();
     eventRelay.init(
       projectClients as Parameters<typeof eventRelay.init>[0],
-      agentSubscriptions as Parameters<typeof eventRelay.init>[1]
+      agentSubscriptions as Parameters<typeof eventRelay.init>[1],
+      planAgentSubscriptions as Parameters<typeof eventRelay.init>[2]
     );
   });
 

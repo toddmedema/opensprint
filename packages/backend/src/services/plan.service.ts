@@ -33,7 +33,14 @@ import { buildAuditorPrompt, parseAuditorResult } from "./auditor.service.js";
 import { buildAutonomyDescription } from "./context-assembler.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
-import { broadcastToProject } from "../websocket/index.js";
+import {
+  broadcastToProject,
+  sendPlanAgentOutputToProject,
+} from "../websocket/index.js";
+import {
+  appendPlanAgentOutput,
+  clearPlanAgentOutput,
+} from "./plan-agent-output-buffer.service.js";
 import { writeJsonAtomic } from "../utils/file-utils.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { extractJsonFromAgentResponse } from "../utils/json-extract.js";
@@ -1147,22 +1154,31 @@ ${planNew}`;
     const agentIdAuditor = `auditor-${projectId}-${planId}-${Date.now()}`;
 
     const settings = await this.projectService.getSettings(projectId);
-    const auditorResponse = await agentService.invokePlanningAgent({
-      projectId,
-      config: getAgentForPlanningRole(settings, "auditor", plan.metadata.complexity),
-      messages: [{ role: "user", content: auditorFullPrompt }],
-      systemPrompt:
-        "You are the Auditor agent for OpenSprint (PRD §12.3.6). Audit the app's current capabilities and generate delta tasks for re-execution.",
-      cwd: repoPath,
-      tracking: {
-        id: agentIdAuditor,
+    let auditorResponse: { content: string };
+    try {
+      auditorResponse = await agentService.invokePlanningAgent({
         projectId,
-        phase: "plan",
-        role: "auditor",
-        label: "Re-execute: audit & delta tasks",
-        planId,
-      },
-    });
+        config: getAgentForPlanningRole(settings, "auditor", plan.metadata.complexity),
+        messages: [{ role: "user", content: auditorFullPrompt }],
+        systemPrompt:
+          "You are the Auditor agent for OpenSprint (PRD §12.3.6). Audit the app's current capabilities and generate delta tasks for re-execution.",
+        cwd: repoPath,
+        tracking: {
+          id: agentIdAuditor,
+          projectId,
+          phase: "plan",
+          role: "auditor",
+          label: "Re-execute: audit & delta tasks",
+          planId,
+        },
+        onChunk: (chunk) => {
+          appendPlanAgentOutput(projectId, planId, chunk);
+          sendPlanAgentOutputToProject(projectId, planId, chunk);
+        },
+      });
+    } finally {
+      clearPlanAgentOutput(projectId, planId);
+    }
 
     const auditorResult = parseAuditorResult(auditorResponse.content);
     if (!auditorResult || auditorResult.status === "failed") {
