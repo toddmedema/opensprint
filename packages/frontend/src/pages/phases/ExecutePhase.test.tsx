@@ -589,6 +589,8 @@ describe("ExecutePhase top bar", () => {
 
     expect(screen.getByTestId("filter-chip-all")).toHaveTextContent("All");
     expect(screen.getByTestId("filter-chip-all")).toHaveTextContent("2");
+    expect(screen.getByTestId("filter-chip-planning")).toHaveTextContent("Planning");
+    expect(screen.getByTestId("filter-chip-planning")).toHaveTextContent("0");
     expect(screen.getByTestId("filter-chip-in_line")).toHaveTextContent("Up Next");
     expect(screen.getByTestId("filter-chip-in_line")).toHaveTextContent("0");
     expect(screen.getByTestId("filter-chip-ready")).toHaveTextContent("Ready");

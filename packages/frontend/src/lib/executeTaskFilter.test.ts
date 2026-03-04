@@ -3,8 +3,10 @@ import {
   matchesStatusFilter,
   matchesSearchQuery,
   filterTasksByStatusAndSearch,
+  isTaskInPlanningPlan,
 } from "./executeTaskFilter";
 import type { Task } from "@opensprint/shared";
+import type { Plan } from "@opensprint/shared";
 
 const baseTask: Task = {
   id: "task-1",
@@ -55,6 +57,45 @@ describe("executeTaskFilter", () => {
       expect(matchesStatusFilter("ready", "in_line")).toBe(false);
       expect(matchesStatusFilter("in_progress", "in_line")).toBe(false);
       expect(matchesStatusFilter("done", "in_line")).toBe(false);
+    });
+
+    it("planning filter returns false (planning uses parent plan status, not kanbanColumn)", () => {
+      expect(matchesStatusFilter("planning", "planning")).toBe(false);
+      expect(matchesStatusFilter("ready", "planning")).toBe(false);
+    });
+  });
+
+  describe("isTaskInPlanningPlan", () => {
+    const planningPlan: Plan = {
+      metadata: { planId: "p1", epicId: "epic-a", shippedAt: null, complexity: "medium" },
+      content: "",
+      status: "planning",
+      taskCount: 1,
+      doneTaskCount: 0,
+      dependencyCount: 0,
+    };
+    const buildingPlan: Plan = {
+      ...planningPlan,
+      metadata: { ...planningPlan.metadata, epicId: "epic-b" },
+      status: "building",
+    };
+
+    it("returns true when task epicId matches plan with status planning", () => {
+      expect(isTaskInPlanningPlan({ ...baseTask, epicId: "epic-a" }, [planningPlan])).toBe(true);
+    });
+
+    it("returns false when task epicId matches plan with status building", () => {
+      expect(isTaskInPlanningPlan({ ...baseTask, epicId: "epic-b" }, [buildingPlan])).toBe(false);
+    });
+
+    it("returns false when task has no epicId", () => {
+      expect(isTaskInPlanningPlan({ ...baseTask, epicId: null }, [planningPlan])).toBe(false);
+    });
+
+    it("returns false when no matching plan exists", () => {
+      expect(isTaskInPlanningPlan({ ...baseTask, epicId: "epic-unknown" }, [planningPlan])).toBe(
+        false
+      );
     });
   });
 
@@ -176,6 +217,31 @@ describe("executeTaskFilter", () => {
 
       const restored = filterTasksByStatusAndSearch(tasks, "all", "");
       expect(restored).toHaveLength(3);
+    });
+
+    it("planning filter returns tasks whose parent plan has status planning", () => {
+      const planningPlan: Plan = {
+        metadata: { planId: "p1", epicId: "epic-1", shippedAt: null, complexity: "medium" },
+        content: "",
+        status: "planning",
+        taskCount: 2,
+        doneTaskCount: 0,
+        dependencyCount: 0,
+      };
+      const buildingPlan: Plan = {
+        ...planningPlan,
+        metadata: { ...planningPlan.metadata, epicId: "epic-2" },
+        status: "building",
+      };
+      const plans: Plan[] = [planningPlan, buildingPlan];
+      const planningTasks: Task[] = [
+        { ...baseTask, id: "t1", epicId: "epic-1", kanbanColumn: "ready" as const },
+        { ...baseTask, id: "t2", epicId: "epic-1", kanbanColumn: "backlog" as const },
+        { ...baseTask, id: "t3", epicId: "epic-2", kanbanColumn: "ready" as const },
+      ];
+      const result = filterTasksByStatusAndSearch(planningTasks, "planning", "", plans);
+      expect(result).toHaveLength(2);
+      expect(result.map((t) => t.id)).toEqual(["t1", "t2"]);
     });
   });
 });

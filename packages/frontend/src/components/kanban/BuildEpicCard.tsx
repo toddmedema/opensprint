@@ -80,6 +80,7 @@ const EpicTaskRow = memo(function EpicTaskRow({
 
 import type { StatusFilter } from "../../lib/executeTaskFilter";
 import { filterTasksByStatusAndSearch } from "../../lib/executeTaskFilter";
+import type { Plan } from "@opensprint/shared";
 import { sortEpicTasksByStatus } from "../../lib/executeTaskSort";
 import { selectTasksForEpic } from "../../store/slices/executeSlice";
 
@@ -91,6 +92,8 @@ export interface BuildEpicCardProps {
   searchQuery?: string;
   /** When provided (e.g. in tests), use this instead of Redux. Otherwise subscribe to tasks via selectTasksForEpic. */
   tasks?: Task[];
+  /** Required when statusFilter is "planning" to determine parent plan status. */
+  plans?: Plan[];
   /** When true, progress summary reflects filtered results; show indicator */
   filteringActive?: boolean;
   onTaskSelect: (taskId: string) => void;
@@ -109,6 +112,7 @@ export function BuildEpicCard({
   statusFilter = "all",
   searchQuery = "",
   tasks: tasksProp,
+  plans,
   filteringActive = false,
   onTaskSelect,
   onUnblock,
@@ -121,8 +125,8 @@ export function BuildEpicCard({
   const tasksFromRedux = useAppSelector((s) => selectTasksForEpic(s, epicId), shallowEqual);
   const tasks = tasksProp ?? tasksFromRedux;
   const filteredTasks = useMemo(
-    () => filterTasksByStatusAndSearch(tasks, statusFilter, searchQuery),
-    [tasks, statusFilter, searchQuery]
+    () => filterTasksByStatusAndSearch(tasks, statusFilter, searchQuery, plans),
+    [tasks, statusFilter, searchQuery, plans]
   );
   const sortedTasks = useMemo(() => sortEpicTasksByStatus(filteredTasks), [filteredTasks]);
   const doneCount = sortedTasks.filter((t) => t.kanbanColumn === "done").length;

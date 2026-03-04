@@ -40,7 +40,11 @@ const createMockTask = (
     ...overrides,
   }) as Task;
 
-const createMockPlan = (epicId: string, title: string): Plan =>
+const createMockPlan = (
+  epicId: string,
+  title: string,
+  status: Plan["status"] = "building"
+): Plan =>
   ({
     metadata: {
       planId: `plan-${epicId}`,
@@ -49,7 +53,7 @@ const createMockPlan = (epicId: string, title: string): Plan =>
       complexity: "medium",
     },
     content: `# ${title}\n\nOverview`,
-    status: "building",
+    status,
     taskCount: 1,
     doneTaskCount: 0,
     dependencyCount: 0,
@@ -106,6 +110,35 @@ describe("TimelineList", () => {
     expect(screen.getByRole("heading", { name: "In Progress" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Up Next" })).toBeInTheDocument();
     expect(screen.getByText("Blocked Task")).toBeInTheDocument();
+  });
+
+  it("displays Planning section above Completed when tasks belong to plans in planning status", () => {
+    const tasks = [
+      createMockTask({ id: "a", kanbanColumn: "done", title: "Done Task", epicId: "epic-done" }),
+      createMockTask({
+        id: "b",
+        kanbanColumn: "ready",
+        title: "Planning Plan Task",
+        epicId: "epic-planning",
+      }),
+    ];
+    const plans = [
+      createMockPlan("epic-done", "Done Epic", "complete"),
+      createMockPlan("epic-planning", "Planning Epic", "planning"),
+    ];
+
+    render(<TimelineList tasks={tasks} plans={plans} onTaskSelect={vi.fn()} />);
+
+    expect(screen.getByRole("heading", { name: "Planning" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Completed" })).toBeInTheDocument();
+    expect(screen.getByText("Planning Plan Task")).toBeInTheDocument();
+    expect(screen.getByText("Done Task")).toBeInTheDocument();
+    const headings = screen.getAllByRole("heading", { level: 3 });
+    const planningIdx = headings.findIndex((h) => h.textContent === "Planning");
+    const completedIdx = headings.findIndex((h) => h.textContent === "Completed");
+    expect(planningIdx).toBeGreaterThanOrEqual(0);
+    expect(completedIdx).toBeGreaterThanOrEqual(0);
+    expect(planningIdx).toBeLessThan(completedIdx);
   });
 
   it("rows display correct status badge, priority icon, title, epic name", () => {

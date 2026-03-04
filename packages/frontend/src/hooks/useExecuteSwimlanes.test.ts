@@ -278,5 +278,46 @@ describe("useExecuteSwimlanes", () => {
       const { result } = renderHook(() => useExecuteSwimlanes(tasks, plans, "blocked", ""));
       expect(result.current.blockedSwimlanes).toHaveLength(0);
     });
+
+    it("planningSwimlanes contains only tasks whose parent plan has status planning", () => {
+      const tasks: Task[] = [
+        task({ id: "epic-a.1", kanbanColumn: "ready", epicId: "epic-a" }),
+        task({ id: "epic-b.1", kanbanColumn: "ready", epicId: "epic-b" }),
+      ];
+      const plans: Plan[] = [
+        plan({
+          metadata: { planId: "p1", epicId: "epic-a", shippedAt: null, complexity: "medium" },
+          status: "planning",
+        }),
+        plan({
+          metadata: { planId: "p2", epicId: "epic-b", shippedAt: null, complexity: "medium" },
+          status: "building",
+        }),
+      ];
+      const { result } = renderHook(() => useExecuteSwimlanes(tasks, plans, "all", ""));
+      expect(result.current.planningSwimlanes).toHaveLength(1);
+      expect(result.current.planningSwimlanes[0].tasks).toHaveLength(1);
+      expect(result.current.planningSwimlanes[0].tasks[0].id).toBe("epic-a.1");
+    });
+
+    it("Planning chip appears immediately left of Up Next", () => {
+      const tasks: Task[] = [
+        task({ id: "epic-a.1", epicId: "epic-a", kanbanColumn: "ready" }),
+      ];
+      const plans: Plan[] = [
+        plan({
+          metadata: { planId: "p1", epicId: "epic-a", shippedAt: null, complexity: "medium" },
+          status: "planning",
+        }),
+      ];
+      const { result } = renderHook(() => useExecuteSwimlanes(tasks, plans, "all", ""));
+      const chips = result.current.chipConfig;
+      const allIdx = chips.findIndex((c) => c.filter === "all");
+      const planningIdx = chips.findIndex((c) => c.filter === "planning");
+      const inLineIdx = chips.findIndex((c) => c.filter === "in_line");
+      expect(allIdx).toBeLessThan(planningIdx);
+      expect(planningIdx).toBeLessThan(inLineIdx);
+      expect(chips[planningIdx].label).toBe("Planning");
+    });
   });
 });

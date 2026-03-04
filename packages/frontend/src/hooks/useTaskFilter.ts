@@ -6,6 +6,7 @@ const EXECUTE_STATUS_FILTER_KEY = "opensprint.executeStatusFilter";
 
 const VALID_STATUS_FILTERS: StatusFilter[] = [
   "all",
+  "planning",
   "in_line",
   "ready",
   "in_progress",

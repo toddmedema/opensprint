@@ -7,6 +7,7 @@ import {
   getTimelineSection,
   TIMELINE_SECTION,
 } from "../../lib/executeTaskSort";
+import { isTaskInPlanningPlan } from "../../lib/executeTaskFilter";
 import { getEpicTitleFromPlan } from "../../lib/planContentUtils";
 import { formatUptime, formatTimestamp } from "../../lib/formatting";
 import { TaskStatusBadge, COLUMN_LABELS } from "../kanban";
@@ -39,6 +40,7 @@ const SECTION_LABELS: Record<string, string> = {
   blocked: "Failures",
   ready: "Ready",
   in_line: "Up Next",
+  planning: "Planning",
 };
 
 function TimelineRow({
@@ -134,18 +136,36 @@ export function TimelineList({
   const showBlockedSection = blockedTasks.length > 0;
 
   const bySection = useMemo(
-    () => ({
-      [TIMELINE_SECTION.active]: sorted.filter(
+    () => {
+      const planningTasks = sorted.filter((t) => isTaskInPlanningPlan(t, plans));
+      const planningIds = new Set(planningTasks.map((t) => t.id));
+      const notInPlanning = (t: (typeof sorted)[number]) => !planningIds.has(t.id);
+
+      const active = sorted.filter(
         (t) => getTimelineSection(t.kanbanColumn) === TIMELINE_SECTION.active
-      ),
-      [TIMELINE_SECTION.completed]: sorted.filter(
+      );
+      const completed = sorted.filter(
         (t) => getTimelineSection(t.kanbanColumn) === TIMELINE_SECTION.completed
-      ),
-      blocked: blockedTasks,
-      ready: sorted.filter((t) => t.kanbanColumn === "ready"),
-      in_line: sorted.filter((t) => t.kanbanColumn === "backlog" || t.kanbanColumn === "planning"),
-    }),
-    [sorted, blockedTasks]
+      );
+      const ready = sorted.filter(
+        (t) => t.kanbanColumn === "ready" && notInPlanning(t)
+      );
+      const inLine = sorted.filter(
+        (t) =>
+          (t.kanbanColumn === "backlog" || t.kanbanColumn === "planning") && notInPlanning(t)
+      );
+      const blockedExcludingPlanning = blockedTasks.filter(notInPlanning);
+
+      return {
+        [TIMELINE_SECTION.active]: active,
+        [TIMELINE_SECTION.completed]: completed,
+        blocked: blockedExcludingPlanning,
+        ready,
+        in_line: inLine,
+        planning: planningTasks,
+      };
+    },
+    [sorted, blockedTasks, plans]
   );
 
   const sections = useMemo(
@@ -154,6 +174,9 @@ export function TimelineList({
       { key: TIMELINE_SECTION.active, tasks: bySection[TIMELINE_SECTION.active] },
       { key: "ready" as const, tasks: bySection.ready },
       { key: "in_line" as const, tasks: bySection.in_line },
+      ...(bySection.planning.length > 0
+        ? [{ key: "planning" as const, tasks: bySection.planning }]
+        : []),
       { key: TIMELINE_SECTION.completed, tasks: bySection[TIMELINE_SECTION.completed] },
     ],
     [showBlockedSection, bySection]

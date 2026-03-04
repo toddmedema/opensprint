@@ -1,7 +1,9 @@
 import type { Task } from "@opensprint/shared";
+import type { Plan } from "@opensprint/shared";
 
 export type StatusFilter =
   | "all"
+  | "planning"
   | "in_line"
   | "ready"
   | "in_progress"
@@ -11,10 +13,18 @@ export type StatusFilter =
 /** Blocked-on-human = task status blocked (kanbanColumn "blocked"); excludes planning/backlog. */
 export function matchesStatusFilter(kanbanColumn: string, filter: StatusFilter): boolean {
   if (filter === "all") return true;
+  if (filter === "planning") return false; // planning filter uses parent plan status, not kanbanColumn
   if (filter === "blocked") return kanbanColumn === "blocked";
   if (filter === "in_line") return kanbanColumn === "backlog" || kanbanColumn === "planning";
   if (filter === "in_progress") return kanbanColumn === "in_progress" || kanbanColumn === "in_review";
   return kanbanColumn === filter;
+}
+
+/** Returns true if the task's parent plan has status "planning" (not yet executed). */
+export function isTaskInPlanningPlan(task: Task, plans: Plan[]): boolean {
+  if (!task.epicId) return false;
+  const plan = plans.find((p) => p.metadata.epicId === task.epicId);
+  return plan?.status === "planning";
 }
 
 /**
@@ -35,15 +45,21 @@ export function matchesSearchQuery(
 /**
  * Filters tasks by status filter and search query (AND logic).
  * Both filters must match for a task to be included.
+ * For "planning" filter, plans must be provided to determine parent plan status.
  */
 export function filterTasksByStatusAndSearch(
   tasks: Task[],
   statusFilter: StatusFilter,
-  searchQuery: string
+  searchQuery: string,
+  plans?: Plan[]
 ): Task[] {
   const q = searchQuery.trim().toLowerCase();
   return tasks.filter((t) => {
-    if (!matchesStatusFilter(t.kanbanColumn, statusFilter)) return false;
+    if (statusFilter === "planning") {
+      if (!plans || !isTaskInPlanningPlan(t, plans)) return false;
+    } else if (!matchesStatusFilter(t.kanbanColumn, statusFilter)) {
+      return false;
+    }
     if (!q) return true;
     return matchesSearchQuery(t, searchQuery);
   });

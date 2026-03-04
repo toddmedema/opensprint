@@ -27,7 +27,11 @@ import { queryKeys } from "../../api/queryKeys";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
 import { BuildEpicCard } from "../../components/kanban";
 import { useTaskFilter } from "../../hooks/useTaskFilter";
-import { useExecuteSwimlanes, showReadyInLineSections } from "../../hooks/useExecuteSwimlanes";
+import {
+  useExecuteSwimlanes,
+  showReadyInLineSections,
+  showPlanningSection,
+} from "../../hooks/useExecuteSwimlanes";
 import { useScrollToQuestion } from "../../hooks/useScrollToQuestion";
 import { useOpenQuestionNotifications } from "../../hooks/useOpenQuestionNotifications";
 import { ExecuteFilterToolbar } from "../../components/execute/ExecuteFilterToolbar";
@@ -232,8 +236,16 @@ export function ExecutePhase({
     }
   };
 
-  const { implTasks, filteredTasks, swimlanes, readySwimlanes, inLineSwimlanes, blockedSwimlanes, chipConfig } =
-    useExecuteSwimlanes(tasks, plans, statusFilter, searchQuery);
+  const {
+    implTasks,
+    filteredTasks,
+    swimlanes,
+    readySwimlanes,
+    inLineSwimlanes,
+    blockedSwimlanes,
+    planningSwimlanes,
+    chipConfig,
+  } = useExecuteSwimlanes(tasks, plans, statusFilter, searchQuery);
 
   const tasksQuery = useTasks(projectId);
   const tasksEmpty = implTasks.length === 0;
@@ -241,6 +253,7 @@ export function ExecutePhase({
     usePhaseLoadingState(tasksQuery.isLoading, tasksEmpty);
 
   const useReadyInLineSections = showReadyInLineSections(statusFilter) && implTasks.length > 0;
+  const usePlanningSection = showPlanningSection(statusFilter) && implTasks.length > 0;
 
   const planByEpicId = useMemo(
     () =>
@@ -323,8 +336,11 @@ export function ExecutePhase({
               No tasks yet. Ship a Plan to start generating tasks.
             </div>
           ) : viewMode === "kanban" ? (
-            useReadyInLineSections ? (
-              readySwimlanes.length > 0 || inLineSwimlanes.length > 0 || blockedSwimlanes.length > 0 ? (
+            useReadyInLineSections || usePlanningSection ? (
+              readySwimlanes.length > 0 ||
+              inLineSwimlanes.length > 0 ||
+              blockedSwimlanes.length > 0 ||
+              planningSwimlanes.length > 0 ? (
                 <div className="space-y-8">
                   {readySwimlanes.length > 0 && (
                     <section data-testid="execute-section-ready">
@@ -395,6 +411,35 @@ export function ExecutePhase({
                             epicTitle={lane.epicTitle}
                             statusFilter="blocked"
                             searchQuery={searchQuery}
+                            filteringActive={isSearchActive}
+                            onTaskSelect={(taskId) => dispatch(setSelectedTaskId(taskId))}
+                            onUnblock={(taskId) => unblockMutation.mutate({ taskId })}
+                            onViewPlan={
+                              lane.planId && onNavigateToPlan
+                                ? () => onNavigateToPlan(lane.planId!)
+                                : undefined
+                            }
+                            taskIdToStartedAt={taskIdToStartedAt}
+                            selectedTaskId={effectiveSelectedTask}
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  )}
+                  {planningSwimlanes.length > 0 && (
+                    <section data-testid="execute-section-planning">
+                      <h2 className="text-sm font-semibold text-theme-muted tracking-wide uppercase mb-4">
+                        Planning
+                      </h2>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        {planningSwimlanes.map((lane) => (
+                          <BuildEpicCard
+                            key={lane.epicId || "other"}
+                            epicId={lane.epicId}
+                            epicTitle={lane.epicTitle}
+                            statusFilter="planning"
+                            searchQuery={searchQuery}
+                            plans={plans}
                             filteringActive={isSearchActive}
                             onTaskSelect={(taskId) => dispatch(setSelectedTaskId(taskId))}
                             onUnblock={(taskId) => unblockMutation.mutate({ taskId })}

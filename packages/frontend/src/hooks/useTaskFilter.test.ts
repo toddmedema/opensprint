@@ -34,6 +34,12 @@ describe("useTaskFilter", () => {
     expect(result.current.statusFilter).toBe("done");
   });
 
+  it("accepts planning as valid statusFilter", () => {
+    const { result } = renderHook(() => useTaskFilter());
+    act(() => result.current.setStatusFilter("planning"));
+    expect(result.current.statusFilter).toBe("planning");
+  });
+
   it("expands search when handleSearchExpand is called", () => {
     const { result } = renderHook(() => useTaskFilter());
 

@@ -3,6 +3,7 @@ import type { Task } from "@opensprint/shared";
 import { sortEpicTasksByStatus } from "../lib/executeTaskSort";
 import {
   filterTasksByStatusAndSearch,
+  isTaskInPlanningPlan,
   matchesSearchQuery,
   type StatusFilter,
 } from "../lib/executeTaskFilter";
@@ -22,6 +23,11 @@ export function showReadyInLineSections(statusFilter: StatusFilter): boolean {
   return statusFilter === "all" || statusFilter === "ready" || statusFilter === "in_line";
 }
 
+/** Whether to show Planning section (when filter is all or planning). */
+export function showPlanningSection(statusFilter: StatusFilter): boolean {
+  return statusFilter === "all" || statusFilter === "planning";
+}
+
 function isReadyTask(t: Task): boolean {
   return t.kanbanColumn === "ready";
 }
@@ -32,6 +38,10 @@ function isInLineTask(t: Task): boolean {
 
 function isBlockedTask(t: Task): boolean {
   return t.kanbanColumn === "blocked";
+}
+
+function isPlanningPlanTask(t: Task, plans: Plan[]): boolean {
+  return isTaskInPlanningPlan(t, plans);
 }
 
 function buildSwimlanesFromFilteredTasks(
@@ -110,8 +120,8 @@ export function useExecuteSwimlanes(
   const implTasks = useMemo(() => tasks.filter((t) => t.type !== "epic"), [tasks]);
 
   const filteredTasks = useMemo(
-    () => filterTasksByStatusAndSearch(implTasks, statusFilter, searchQuery),
-    [implTasks, statusFilter, searchQuery]
+    () => filterTasksByStatusAndSearch(implTasks, statusFilter, searchQuery, plans),
+    [implTasks, statusFilter, searchQuery, plans]
   );
 
   const swimlanes = useMemo((): Swimlane[] => {
@@ -174,6 +184,7 @@ export function useExecuteSwimlanes(
   }, [filteredTasks, plans, statusFilter]);
 
   const totalTasks = implTasks.length;
+  const planningCount = implTasks.filter((t) => isTaskInPlanningPlan(t, plans)).length;
   const inLineCount = implTasks.filter(
     (t) => t.kanbanColumn === "backlog" || t.kanbanColumn === "planning"
   ).length;
@@ -185,6 +196,7 @@ export function useExecuteSwimlanes(
 
   const chipConfig: { label: string; filter: StatusFilter; count: number }[] = [
     { label: "All", filter: "all", count: totalTasks },
+    { label: "Planning", filter: "planning", count: planningCount },
     { label: "Up Next", filter: "in_line", count: inLineCount },
     { label: "Ready", filter: "ready", count: readyCount },
     { label: "In Progress", filter: "in_progress", count: inProgressCount + inReviewCount },
@@ -218,6 +230,12 @@ export function useExecuteSwimlanes(
     return buildSwimlanesFromFilteredTasks(blockedTasks, plans, statusFilter, searchQuery);
   }, [implTasks, plans, statusFilter, searchQuery]);
 
+  const planningSwimlanes = useMemo((): Swimlane[] => {
+    if (statusFilter !== "all" && statusFilter !== "planning") return [];
+    const planningTasks = implTasks.filter((t) => isPlanningPlanTask(t, plans));
+    return buildSwimlanesFromFilteredTasks(planningTasks, plans, statusFilter, searchQuery);
+  }, [implTasks, plans, statusFilter, searchQuery]);
+
   return {
     implTasks,
     filteredTasks,
@@ -225,6 +243,7 @@ export function useExecuteSwimlanes(
     readySwimlanes,
     inLineSwimlanes,
     blockedSwimlanes,
+    planningSwimlanes,
     chipConfig,
   };
 }
