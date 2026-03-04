@@ -6,6 +6,7 @@ import { GlobalSettingsContent } from "../components/GlobalSettingsContent";
 import { SettingsTopBar } from "../components/settings/SettingsTopBar";
 import { SettingsSubTabsBar, type SettingsSubTab } from "../components/settings/SettingsSubTabsBar";
 import { getProjectPhasePath } from "../lib/phaseRouting";
+import { SETTINGS_HELP_CONTAINER_CLASS } from "../lib/constants";
 import { queryKeys } from "../api/queryKeys";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ProjectShellContext } from "./ProjectShell";
@@ -73,12 +74,12 @@ export function ProjectSettingsContent() {
 
   return (
     <div
-      className="flex-1 min-h-0 overflow-hidden flex flex-col"
+      className="flex-1 min-h-0 overflow-hidden flex flex-col bg-theme-surface"
       data-testid="project-settings-page"
     >
       {/* Execute-style topbar: tabs live here, not inside the modal */}
       <div
-        className="w-full shrink-0 border-b border-theme-border bg-theme-settings-outer"
+        className="w-full shrink-0 border-b border-theme-border bg-theme-surface"
         data-testid="settings-topbar-navbar"
       >
         <SettingsTopBar projectId={project.id} saveStatus={saveStatus} />
@@ -87,14 +88,12 @@ export function ProjectSettingsContent() {
         )}
       </div>
 
-      {/* Content area: scrollable, no gap at top; outer = darker, content = lighter */}
-      <div className="flex-1 min-h-0 overflow-hidden flex flex-col px-4 sm:px-6 py-4 sm:py-6 bg-theme-settings-outer">
+      {/* Content area: scrollable, no gap at top; nav and content share same background */}
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col pt-0 bg-theme-surface">
         {isGlobalLevel ? (
-          <div className="flex-1 min-h-0 overflow-y-auto">
-            <div className="w-full max-w-[1800px] mx-auto bg-theme-settings-content rounded-xl">
-              <div className="rounded-xl border border-theme-border p-4 sm:p-6">
-                <GlobalSettingsContent onSaveStateChange={setSaveStatus} />
-              </div>
+          <div className="flex-1 min-h-0 overflow-y-auto bg-theme-surface">
+            <div className={`${SETTINGS_HELP_CONTAINER_CLASS} pt-0 pb-6 sm:pb-8`}>
+              <GlobalSettingsContent onSaveStateChange={setSaveStatus} />
             </div>
           </div>
         ) : (
