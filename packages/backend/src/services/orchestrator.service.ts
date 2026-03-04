@@ -33,6 +33,7 @@ import { agentService, createProcessGroupHandle } from "./agent.service.js";
 import { BranchManager, WorktreeBranchInUseError } from "./branch-manager.js";
 import { ContextAssembler } from "./context-assembler.js";
 import { SessionManager } from "./session-manager.js";
+import { getCombinedInstructions } from "./agent-instructions.service.js";
 import { buildSummarizerPrompt, countWords } from "./summarizer.service.js";
 import type { TaskContext } from "./context-assembler.js";
 import { TestRunner } from "./test-runner.js";
@@ -2358,7 +2359,8 @@ export class OrchestratorService {
     const depCount = context.dependencyOutputs.length;
     const planWordCount = countWords(context.planContent);
     const summarizerPrompt = buildSummarizerPrompt(taskId, context, depCount, planWordCount);
-    const systemPrompt = `You are the Summarizer agent for OpenSprint (PRD §12.3.5). Condense context into a focused summary when it exceeds size thresholds. Produce JSON only. No markdown outside the summary field.`;
+    const baseSystemPrompt = `You are the Summarizer agent for OpenSprint (PRD §12.3.5). Condense context into a focused summary when it exceeds size thresholds. Produce JSON only. No markdown outside the summary field.`;
+    const systemPrompt = `${baseSystemPrompt}\n\n${await getCombinedInstructions(repoPath, "summarizer")}`;
     const summarizerId = `summarizer-${projectId}-${taskId}-${Date.now()}`;
 
     try {
