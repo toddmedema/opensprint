@@ -20,7 +20,6 @@ import {
   usePlans,
 } from "../../api/hooks";
 import { usePhaseLoadingState } from "../../hooks/usePhaseLoadingState";
-import { PhaseLoadingSpinner } from "../../components/PhaseLoadingSpinner";
 import { queryKeys } from "../../api/queryKeys";
 import {
   PrdViewer,
@@ -36,6 +35,7 @@ import { useScrollToQuestion } from "../../hooks/useScrollToQuestion";
 import { useViewportWidth } from "../../hooks/useViewportWidth";
 import { MOBILE_BREAKPOINT } from "../../lib/constants";
 import { useOpenQuestionNotifications } from "../../hooks/useOpenQuestionNotifications";
+import { SketchLogoLoading } from "../../components/PhaseLoadingFallback";
 import { HilApprovalBlock } from "../../components/HilApprovalBlock";
 import { OpenQuestionsBlock } from "../../components/OpenQuestionsBlock";
 import { ImageAttachmentThumbnails, ImageAttachmentButton } from "../../components/ImageAttachment";
@@ -138,7 +138,7 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
   const queryClient = useQueryClient();
 
   /* ── TanStack Query (server state) ── */
-  const { data: prdData, isLoading: prdLoading } = usePrd(projectId);
+  const { data: prdData, isLoading: prdLoading, isPending: prdPending } = usePrd(projectId);
   const { data: prdHistoryData } = usePrdHistory(projectId);
   const { data: chatMessagesData } = useSketchChat(projectId);
   const hasPrdContentFromQuery = Object.values(prdData ?? {}).some(
@@ -233,12 +233,15 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
   // Show empty-state prompt when no section has substantive content (new projects get SPEC.md with all sections empty)
   const hasPrdContent = Object.values(prdContent).some((c) => String(c ?? "").trim().length > 0);
   const prdEmpty = !Object.values(prdData ?? {}).some((c) => String(c ?? "").trim().length > 0);
-  const { showSpinner: showPrdSpinner, showEmptyState: showPrdEmptyState } = usePhaseLoadingState(
+  const { showEmptyState: showPrdEmptyState } = usePhaseLoadingState(
     prdLoading,
     prdEmpty
   );
-  // Show loading until backend definitively indicates whether PRD exists (prevents flash of PRD content before app idea prompt)
-  const prdStateUnknown = prdLoading;
+  // Show logo loading until backend definitively indicates whether PRD exists. No intermediate empty PRD view or filler.
+  // prdPending: query has not resolved yet (no response from backend).
+  // prdEmpty && !showPrdEmptyState: during empty-state delay after fast fetch (avoids flash of app idea prompt).
+  const showLoading =
+    prdPending || (prdEmpty && !showPrdEmptyState);
 
   /* ── Fetch sketch-context when in empty state (for "Generate from codebase" visibility) ── */
   useEffect(() => {
@@ -569,16 +572,16 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
         : null;
 
   /* ══════════════════════════════════════════════════════════
-   *  RENDER: Loading spinner until PRD state is known
+   *  RENDER: Logo loading animation until PRD state is known
+   *  Same logo as app idea prompt for seamless transition.
+   *  No intermediate empty PRD view or filler rectangle.
    * ══════════════════════════════════════════════════════════ */
-  if (prdStateUnknown || showPrdSpinner) {
+  if (showLoading) {
     return (
-      <div
-        className="flex flex-1 min-h-0 items-center justify-center bg-theme-bg"
-        data-testid="sketch-phase-loading"
-      >
-        <PhaseLoadingSpinner data-testid="sketch-phase-loading-spinner" aria-label="Loading" />
-      </div>
+      <SketchLogoLoading
+        containerTestId="sketch-phase-loading"
+        spinnerTestId="sketch-phase-loading-spinner"
+      />
     );
   }
 

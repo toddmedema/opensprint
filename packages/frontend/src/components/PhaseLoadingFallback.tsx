@@ -2,11 +2,11 @@ import type { ProjectPhase } from "@opensprint/shared";
 import { PhaseLoadingSpinner } from "./PhaseLoadingSpinner";
 
 /** Phase-appropriate loading fallback for Suspense when lazy-loading phase content.
- * Execute and Evaluate show animated logo only (no skeleton blocks). */
+ * Sketch, Execute, and Evaluate show animated logo only (no skeleton blocks). */
 export function PhaseLoadingFallback({ phase }: { phase: ProjectPhase }) {
   switch (phase) {
     case "sketch":
-      return <SketchPhaseSkeleton />;
+      return <SketchPhaseAnimatedLogo />;
     case "plan":
       return <PlanPhaseSkeleton />;
     case "execute":
@@ -20,17 +20,50 @@ export function PhaseLoadingFallback({ phase }: { phase: ProjectPhase }) {
   }
 }
 
-function SketchPhaseSkeleton() {
+/** Shared Sketch logo loading animation. Same logo as app idea prompt for seamless transition.
+ * Used by PhaseLoadingFallback (Suspense) and SketchPhase (until PRD status known). */
+export function SketchLogoLoading({
+  containerTestId = "phase-sketch-loading",
+  spinnerTestId = "phase-sketch-loading-spinner",
+}: {
+  containerTestId?: string;
+  spinnerTestId?: string;
+} = {}) {
   return (
-    <div className="flex flex-1 min-h-0" data-testid="phase-sketch-loading">
-      <div className="flex-1 p-6 space-y-4">
-        <div className="h-8 w-48 rounded bg-theme-surface-muted animate-pulse" />
-        <div className="h-4 w-full rounded bg-theme-surface-muted/70 animate-pulse" />
-        <div className="h-4 w-3/4 rounded bg-theme-surface-muted/70 animate-pulse" />
-        <div className="h-64 rounded-lg border border-theme-border bg-theme-surface-muted/30 animate-pulse" />
+    <div
+      className="flex flex-1 min-h-0 items-center justify-center bg-theme-bg"
+      data-testid={containerTestId}
+    >
+      <div
+        className="flex flex-col items-center justify-center gap-3 py-10"
+        data-testid={spinnerTestId}
+        role="status"
+        aria-label="Loading"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" className="w-10 h-10" aria-hidden>
+          <polygon
+            points="4,10 36,40 4,70"
+            fill="#c7d2fe"
+            className="animate-logo-pulse [animation-delay:0ms]"
+          />
+          <polygon
+            points="22,10 54,40 22,70"
+            fill="#818cf8"
+            className="animate-logo-pulse [animation-delay:200ms]"
+          />
+          <polygon
+            points="40,10 72,40 40,70"
+            fill="#4f46e5"
+            className="animate-logo-pulse [animation-delay:400ms]"
+          />
+        </svg>
       </div>
     </div>
   );
+}
+
+function SketchPhaseAnimatedLogo() {
+  return <SketchLogoLoading />;
 }
 
 function PlanPhaseSkeleton() {

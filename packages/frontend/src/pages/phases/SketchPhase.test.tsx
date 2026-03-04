@@ -239,6 +239,52 @@ describe("SketchPhase with sketchSlice", () => {
       });
     });
 
+    it("transitions from loading directly to PRD view when PRD exists (no flash of empty state)", async () => {
+      let resolvePrd: (v: unknown) => void;
+      mockPrdGet.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolvePrd = resolve;
+          })
+      );
+
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false, staleTime: 0 } },
+      });
+      queryClient.setQueryData(queryKeys.prd.history("proj-1"), []);
+
+      const wrappedUi = (
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <Provider store={createStore()}>
+              <SketchPhase projectId="proj-1" />
+            </Provider>
+          </MemoryRouter>
+        </QueryClientProvider>
+      );
+
+      render(wrappedUi);
+
+      expect(screen.getByTestId("sketch-phase-loading")).toBeInTheDocument();
+      expect(screen.queryByText("What do you want to build?")).not.toBeInTheDocument();
+      expect(screen.queryByText("Product Requirements Document")).not.toBeInTheDocument();
+
+      (resolvePrd as (v: unknown) => void)({
+        sections: {
+          executive_summary: { content: "Existing PRD summary", version: 1 },
+        },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("Product Requirements Document")).toBeInTheDocument();
+        expect(screen.getByTestId("prd-content-executive_summary")).toHaveTextContent(
+          "Existing PRD summary"
+        );
+      });
+      expect(screen.queryByTestId("sketch-phase-loading")).not.toBeInTheDocument();
+      expect(screen.queryByText("What do you want to build?")).not.toBeInTheDocument();
+    });
+
     it("renders central prompt when prdContent is empty", () => {
       renderSketchPhase();
       expect(screen.getByText("What do you want to build?")).toBeInTheDocument();
