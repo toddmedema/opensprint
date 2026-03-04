@@ -562,7 +562,8 @@ export class ContextAssembler {
     prompt += `   The \`status\` field MUST be exactly \`"success"\` or \`"failed"\`.\n\n`;
     prompt += `## Important\n\n`;
     prompt += `- Do NOT run ${abortCmd}. The orchestrator will handle cleanup if you fail.\n`;
-    prompt += `- Do NOT run \`git push\`. The orchestrator will push after you exit.\n`;
+    prompt +=
+      "- Do NOT run `git push`. The orchestrator will merge your work into the project base branch after you exit, and publish to the remote when one is configured.\n";
     prompt += `- Do NOT run destructive cleanup commands such as \`rm -rf\`, \`find ... -delete\`, or \`git clean -fdx\`. Resolve conflicts by editing specific files only.\n`;
     prompt += `- Focus only on resolving conflicts — do not make other code changes.\n`;
 

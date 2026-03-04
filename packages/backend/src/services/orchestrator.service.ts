@@ -72,6 +72,13 @@ import {
   compactExecutionText,
   persistTaskLastExecutionSummary,
 } from "./task-execution-summary.js";
+import {
+  assertGitIdentityConfigured,
+  ensureBaseBranchExists,
+  inspectGitRepoState,
+  RepoPreflightError,
+  resolveBaseBranch,
+} from "../utils/git-repo-state.js";
 
 const log = createLogger("orchestrator");
 
@@ -943,10 +950,7 @@ export class OrchestratorService {
       return true;
     }
 
-    const baseBranch =
-      (settings.gitWorkingMode ?? "worktree") === "worktree"
-        ? (settings.worktreeBaseBranch ?? "main")
-        : "main";
+    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
     let changedFiles: string[] = [];
     try {
       changedFiles = await this.branchManager.getChangedFiles(
@@ -1409,10 +1413,7 @@ export class OrchestratorService {
 
     await this.persistCounters(projectId, repoPath);
     const settings = await this.projectService.getSettings(projectId);
-    const baseBranch =
-      (settings.gitWorkingMode ?? "worktree") === "worktree"
-        ? (settings.worktreeBaseBranch ?? "main")
-        : "main";
+    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
     await this.branchManager.ensureOnMain(repoPath, baseBranch);
     await this.executeCodingPhase(projectId, repoPath, task, slot, undefined);
   }
@@ -1792,10 +1793,7 @@ export class OrchestratorService {
 
     if (result.status === "success") {
       const settings = await this.projectService.getSettings(projectId);
-      const baseBranch =
-        (settings.gitWorkingMode ?? "worktree") === "worktree"
-          ? (settings.worktreeBaseBranch ?? "main")
-          : "main";
+      const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
       slot.phaseResult.codingDiff = await this.branchManager.captureBranchDiff(
         repoPath,
         branchName,
@@ -2254,10 +2252,7 @@ export class OrchestratorService {
     });
 
     const settings = await this.projectService.getSettings(projectId);
-    const baseBranch =
-      (settings.gitWorkingMode ?? "worktree") === "worktree"
-        ? (settings.worktreeBaseBranch ?? "main")
-        : "main";
+    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
     let gitDiff = "";
     try {
       const branchDiff = await this.branchManager.captureBranchDiff(
@@ -2407,12 +2402,30 @@ export class OrchestratorService {
     repoPath: string,
     wtPath: string,
     taskId: string,
+    baseBranch?: string,
     reviewAngles?: ReviewAngle[]
   ): Promise<void> {
     if (wtPath !== repoPath) {
       assertSafeTaskWorktreePath(repoPath, taskId, wtPath);
     }
     await this.branchManager.waitForGitReady(wtPath);
+    const repoState = await inspectGitRepoState(repoPath, baseBranch);
+    try {
+      assertGitIdentityConfigured(repoState.identity, { appError: false });
+    } catch (error) {
+      if (error instanceof RepoPreflightError) {
+        throw error;
+      }
+      throw new RepoPreflightError(String(error), ErrorCodes.GIT_IDENTITY_REQUIRED);
+    }
+    try {
+      await ensureBaseBranchExists(repoPath, repoState.baseBranch);
+    } catch (error) {
+      throw new RepoPreflightError(
+        error instanceof Error ? error.message : String(error),
+        ErrorCodes.GIT_BASE_BRANCH_INVALID
+      );
+    }
 
     try {
       await fs.access(path.join(wtPath, "node_modules"));

@@ -148,7 +148,7 @@ projectsRouter.delete("/:id", async (req: Request<ProjectParams>, res, next) => 
 // GET /projects/:id/settings — Get project settings (apiKeys not included; stored in global settings only)
 projectsRouter.get("/:id/settings", async (req, res, next) => {
   try {
-    const settings = await projectService.getSettings(req.params.id);
+    const settings = await projectService.getSettingsWithRuntimeState(req.params.id);
     res.json({ data: settings });
   } catch (err) {
     next(err);

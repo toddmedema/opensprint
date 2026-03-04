@@ -46,6 +46,13 @@ import { parseAgentConfig, type AgentConfigInput } from "../schemas/agent-config
 import { getErrorMessage } from "../utils/error-utils.js";
 import { createLogger } from "../utils/logger.js";
 import { assertSupportedRepoPath } from "../utils/repo-path-policy.js";
+import { shellExec } from "../utils/shell-exec.js";
+import {
+  assertGitIdentityConfigured,
+  ensureBaseBranchExists,
+  inspectGitRepoState,
+  hasWorkingTreeChanges,
+} from "../utils/git-repo-state.js";
 import { classifyInitError, attemptRecovery } from "./scaffold-recovery.service.js";
 
 const execAsync = promisify(exec);
@@ -168,6 +175,7 @@ function buildSectionVersions(version = 0): Record<string, number> {
 
 export class ProjectService {
   private taskStore = taskStoreSingleton;
+  private static readonly BOOTSTRAP_COMMIT_MESSAGE = "chore: initialize OpenSprint project";
   /** In-memory cache for listProjects() so GET /projects returns instantly when the event loop is busy (e.g. orchestrator). Invalidated on create/update/delete. */
   private listCache: Project[] | null = null;
 
@@ -178,6 +186,64 @@ export class ProjectService {
   /** Clear list cache (for tests that overwrite projects.json directly). */
   clearListCacheForTesting(): void {
     this.listCache = null;
+  }
+
+  private async stageAndCommitPaths(repoPath: string, pathsToStage: string[]): Promise<boolean> {
+    const existingPaths: string[] = [];
+    for (const relPath of pathsToStage) {
+      try {
+        await fs.access(path.join(repoPath, relPath));
+        existingPaths.push(relPath);
+      } catch {
+        // File may legitimately not exist in this project shape
+      }
+    }
+    if (existingPaths.length === 0) return false;
+
+    const quoted = existingPaths.map((entry) => `"${entry.replace(/"/g, '\\"')}"`).join(" ");
+    await shellExec(`git add -A -- ${quoted}`, { cwd: repoPath });
+    const staged = await shellExec("git diff --cached --name-only", { cwd: repoPath });
+    if (!staged.stdout.trim()) return false;
+    await shellExec(
+      `git -c core.hooksPath=/dev/null commit -m "${ProjectService.BOOTSTRAP_COMMIT_MESSAGE}"`,
+      { cwd: repoPath, timeout: 30_000 }
+    );
+    return true;
+  }
+
+  private async commitBootstrapChanges(
+    repoPath: string,
+    options: { includeWholeRepo: boolean; extraPaths?: string[] }
+  ): Promise<boolean> {
+    if (options.includeWholeRepo) {
+      const hasChanges = await hasWorkingTreeChanges(repoPath);
+      if (!hasChanges) return false;
+      await shellExec("git add -A", { cwd: repoPath });
+      await shellExec(
+        `git -c core.hooksPath=/dev/null commit -m "${ProjectService.BOOTSTRAP_COMMIT_MESSAGE}"`,
+        { cwd: repoPath, timeout: 30_000 }
+      );
+      return true;
+    }
+
+    return this.stageAndCommitPaths(repoPath, [
+      "AGENTS.md",
+      ".gitignore",
+      "SPEC.md",
+      ".opensprint",
+      ...(options.extraPaths ?? []),
+    ]);
+  }
+
+  private async prepareRepoForProject(
+    repoPath: string,
+    preferredBaseBranch?: string
+  ): Promise<{ hadHead: boolean; baseBranch: string }> {
+    const repoState = await inspectGitRepoState(repoPath, preferredBaseBranch);
+    assertGitIdentityConfigured(repoState.identity);
+    const baseBranch = repoState.baseBranch;
+    await ensureBaseBranchExists(repoPath, baseBranch);
+    return { hadHead: repoState.hasHead, baseBranch };
   }
 
   /** List all projects (cached; invalidated on create/update/delete). Settings are in global DB. */
@@ -277,6 +343,11 @@ export class ProjectService {
       await execAsync("git init", { cwd: repoPath });
     }
 
+    const { hadHead, baseBranch } = await this.prepareRepoForProject(
+      repoPath,
+      input.worktreeBaseBranch
+    );
+
     // Task store uses global server only. No per-repo data.
 
     // Ensure AGENTS.md exists and contains bd task-tracking instruction
@@ -373,6 +444,7 @@ export class ProjectService {
       testCommand,
       reviewMode: DEFAULT_REVIEW_MODE,
       gitWorkingMode,
+      worktreeBaseBranch: baseBranch,
       maxConcurrentCoders: effectiveMaxConcurrentCoders,
       ...(effectiveMaxConcurrentCoders > 1 &&
         input.unknownScopeStrategy && {
@@ -385,6 +457,11 @@ export class ProjectService {
     if (deployment.mode === "expo") {
       await ensureEasConfig(repoPath);
     }
+
+    await this.commitBootstrapChanges(repoPath, {
+      includeWholeRepo: !hadHead,
+      extraPaths: deployment.mode === "expo" ? ["eas.json"] : [],
+    });
 
     // Add to global index
     await projectIndex.addProject({
@@ -755,6 +832,19 @@ export class ProjectService {
     return parsed;
   }
 
+  async getSettingsWithRuntimeState(projectId: string): Promise<ProjectSettings> {
+    const [settings, repoPath] = await Promise.all([
+      this.getSettings(projectId),
+      this.getRepoPath(projectId),
+    ]);
+    const repoState = await inspectGitRepoState(repoPath, settings.worktreeBaseBranch);
+    return {
+      ...settings,
+      worktreeBaseBranch: repoState.baseBranch,
+      gitRemoteMode: repoState.remoteMode,
+    };
+  }
+
   /** Update project settings (persisted in global store). */
   async updateSettings(
     projectId: string,
@@ -834,7 +924,7 @@ export class ProjectService {
     };
     const toPersist = toCanonicalSettings(updated);
     await setSettingsInStore(projectId, toPersist);
-    return updated;
+    return this.getSettingsWithRuntimeState(projectId);
   }
 
   /** Archive a project: remove from index only. Data in project folder remains. */

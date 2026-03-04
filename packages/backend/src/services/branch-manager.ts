@@ -5,6 +5,7 @@ import { OPENSPRINT_PATHS } from "@opensprint/shared";
 import { createLogger } from "../utils/logger.js";
 import { waitForGitReady as waitForGitReadyUtil } from "../utils/git-lock.js";
 import { shellExec } from "../utils/shell-exec.js";
+import { getOriginUrl } from "../utils/git-repo-state.js";
 import { formatClosedCommitMessage, parseClosedCommitMessage } from "../utils/commit-message.js";
 import { assertSafeTaskWorktreePath } from "../utils/path-safety.js";
 import { taskStore as taskStoreSingleton } from "./task-store.service.js";
@@ -48,7 +49,13 @@ export class WorktreeBranchInUseError extends Error {
   }
 }
 
-export type MainSyncResult = "up_to_date" | "fast_forwarded" | "local_ahead" | "fetch_failed";
+export type MainSyncResult =
+  | "up_to_date"
+  | "fast_forwarded"
+  | "local_ahead"
+  | "fetch_failed"
+  | "no_remote"
+  | "remote_error";
 
 export interface MergeToMainResult {
   autoResolvedFiles: string[];
@@ -265,6 +272,11 @@ export class BranchManager {
    * @param baseBranch - Base branch to push (default: "main")
    */
   async pushMain(repoPath: string, baseBranch: string = "main"): Promise<void> {
+    const originUrl = await getOriginUrl(repoPath);
+    if (!originUrl) {
+      log.info("pushMain: no origin configured, skipping publish", { baseBranch });
+      return;
+    }
     try {
       await this.git(repoPath, `fetch origin ${baseBranch}`);
     } catch (error) {
@@ -415,6 +427,11 @@ export class BranchManager {
    * @param baseBranch - Base branch to push (default: "main")
    */
   async pushMainToOrigin(repoPath: string, baseBranch: string = "main"): Promise<void> {
+    const originUrl = await getOriginUrl(repoPath);
+    if (!originUrl) {
+      log.info("pushMainToOrigin: no origin configured, skipping publish", { baseBranch });
+      return;
+    }
     await this.commitWip(repoPath, "pre-push");
     await this.git(repoPath, `-c core.hooksPath=/dev/null push origin ${baseBranch}`);
   }
@@ -581,11 +598,16 @@ export class BranchManager {
    */
   async syncMainWithOrigin(repoPath: string, baseBranch: string = "main"): Promise<MainSyncResult> {
     await this.waitForGitReady(repoPath);
+    const originUrl = await getOriginUrl(repoPath);
+    if (!originUrl) {
+      log.info("syncMainWithOrigin: no origin configured, skipping remote sync", { baseBranch });
+      return "no_remote";
+    }
     try {
       await this.git(repoPath, `fetch origin ${baseBranch}`);
     } catch (error) {
       log.warn("syncMainWithOrigin: fetch failed", { error });
-      return "fetch_failed";
+      return "remote_error";
     }
     const originRef = `origin/${baseBranch}`;
     const hasOriginBase = await this.hasRemoteBranch(repoPath, originRef);

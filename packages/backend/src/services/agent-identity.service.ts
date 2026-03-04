@@ -28,6 +28,7 @@ export type AttemptOutcome =
   | "test_failure"
   | "review_rejection"
   | "crash"
+  | "repo_preflight"
   | "timeout"
   | "no_result"
   | "coding_failure";

@@ -37,6 +37,7 @@ import type {
 import type { AgentRunState } from "./agent-lifecycle.js";
 import { TimerRegistry } from "./timer-registry.js";
 import { createLogger } from "../utils/logger.js";
+import { RepoPreflightError, resolveBaseBranch } from "../utils/git-repo-state.js";
 
 const log = createLogger("phase-executor");
 
@@ -57,6 +58,7 @@ export interface PhaseExecutorHost {
     repoPath: string,
     wtPath: string,
     taskId: string,
+    baseBranch?: string,
     reviewAngles?: ReviewAngle[]
   ): Promise<void>;
   runSummarizer(
@@ -109,10 +111,7 @@ export class PhaseExecutorService {
     const settings = await this.host.projectService.getSettings(projectId);
     const branchName = slot.branchName;
     const gitWorkingMode = settings.gitWorkingMode ?? "worktree";
-    const baseBranch =
-      gitWorkingMode === "worktree"
-        ? (settings.worktreeBaseBranch ?? "main")
-        : "main";
+    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
 
     // Pre-flight: ensure API key available before any heavy work
     const complexity = await getComplexityForAgent(projectId, repoPath, task, this.host.taskStore);
@@ -180,7 +179,7 @@ export class PhaseExecutorService {
         }
       }
 
-      await this.host.preflightCheck(repoPath, wtPath, task.id, undefined);
+      await this.host.preflightCheck(repoPath, wtPath, task.id, baseBranch, undefined);
 
       let context: TaskContext = await this.host.contextAssembler.buildContext(
         projectId,
@@ -319,7 +318,7 @@ export class PhaseExecutorService {
         branchName,
         String(error),
         null,
-        "agent_crash"
+        error instanceof RepoPreflightError ? "repo_preflight" : "agent_crash"
       );
     }
   }
@@ -337,11 +336,7 @@ export class PhaseExecutorService {
       return;
     }
     const settings = await this.host.projectService.getSettings(projectId);
-    const gitWorkingMode = settings.gitWorkingMode ?? "worktree";
-    const baseBranch =
-      gitWorkingMode === "worktree"
-        ? (settings.worktreeBaseBranch ?? "main")
-        : "main";
+    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
     const wtPath = slot.worktreePath ?? repoPath;
     if (wtPath !== repoPath) {
       assertSafeTaskWorktreePath(repoPath, task.id, wtPath);
@@ -356,6 +351,7 @@ export class PhaseExecutorService {
         repoPath,
         wtPath,
         task.id,
+        baseBranch,
         settings.reviewAngles && settings.reviewAngles.length > 0
           ? settings.reviewAngles
           : undefined
@@ -579,7 +575,7 @@ export class PhaseExecutorService {
         branchName,
         String(error),
         null,
-        "agent_crash"
+        error instanceof RepoPreflightError ? "repo_preflight" : "agent_crash"
       );
     }
   }

@@ -6,6 +6,12 @@
  */
 import { vi } from "vitest";
 
+process.env.GIT_AUTHOR_NAME = process.env.GIT_AUTHOR_NAME || "OpenSprint Test";
+process.env.GIT_AUTHOR_EMAIL = process.env.GIT_AUTHOR_EMAIL || "test@opensprint.dev";
+process.env.GIT_COMMITTER_NAME = process.env.GIT_COMMITTER_NAME || process.env.GIT_AUTHOR_NAME;
+process.env.GIT_COMMITTER_EMAIL =
+  process.env.GIT_COMMITTER_EMAIL || process.env.GIT_AUTHOR_EMAIL;
+
 vi.mock("@google/genai", () => ({
   GoogleGenAI: vi.fn().mockImplementation(() => ({
     models: {

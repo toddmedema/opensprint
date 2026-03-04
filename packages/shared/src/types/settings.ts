@@ -489,8 +489,10 @@ export interface ProjectSettings {
   unknownScopeStrategy?: UnknownScopeStrategy;
   /** Git working mode: "worktree" (parallel worktrees) or "branches" (single branch in main repo). Default: "worktree". */
   gitWorkingMode?: GitWorkingMode;
-  /** Base branch for worktree mode (task branches created from and merged into this). Default: "main". */
+  /** Project base branch (task branches are created from and merged into this). Persisted under the legacy field name for backward compatibility. */
   worktreeBaseBranch?: string;
+  /** Read-only runtime status: whether the repo can publish to origin, is local-only, or has a remote configured but currently unreachable. */
+  gitRemoteMode?: "publishable" | "local_only" | "remote_error";
 }
 
 /** Planning agent roles — Dreamer/Analyst use fixed tiers; others inherit plan complexity */

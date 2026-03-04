@@ -25,6 +25,7 @@ import {
   compactExecutionText,
   persistTaskLastExecutionSummary,
 } from "./task-execution-summary.js";
+import { resolveBaseBranch } from "../utils/git-repo-state.js";
 
 const log = createLogger("failure-handler");
 
@@ -197,13 +198,16 @@ export class FailureHandlerService {
         : reason;
     const diagnosedNoResultFailure = this.isDiagnosedNoResultFailure(failureType, effectiveReason);
     const currentPriority = task.priority ?? 2;
-    const nextAction = this.nextActionForFailure({
+    let nextAction = this.nextActionForFailure({
       diagnosedNoResultFailure,
       isInfraFailure,
       infraRetries: slot.infraRetries,
       currentPriority,
       cumulativeAttempts,
     });
+    if (failureType === "repo_preflight") {
+      nextAction = "Blocked pending git setup";
+    }
     const failureSummary = compactExecutionText(
       `${slot.phase === "review" ? "Review" : "Coding"} failed: ${effectiveReason}`,
       500
@@ -285,10 +289,7 @@ export class FailureHandlerService {
       })
       .catch((err) => log.warn("Failed to record attempt", { err }));
 
-    const baseBranch =
-      gitWorkingMode === "worktree"
-        ? (failSettings.worktreeBaseBranch ?? "main")
-        : "main";
+    const baseBranch = await resolveBaseBranch(repoPath, failSettings.worktreeBaseBranch);
     let previousDiff = "";
     let gitDiff = "";
     try {
@@ -382,6 +383,30 @@ export class FailureHandlerService {
 
     if (diagnosedNoResultFailure) {
       log.warn("Diagnosed no_result startup/config failure; blocking without blind retries", {
+        taskId: task.id,
+      });
+      await this.host.taskStore.setCumulativeAttempts(projectId, task.id, cumulativeAttempts, {
+        currentLabels: (task.labels ?? []) as string[],
+      });
+      await this.revertOrRemoveWorktree(repoPath, task.id, branchName, slot, gitWorkingMode, {
+        baseBranch,
+      });
+      await this.host.deleteAssignment(repoPath, task.id);
+      await this.blockTask(
+        projectId,
+        repoPath,
+        task,
+        cumulativeAttempts,
+        effectiveReason,
+        failureType,
+        slot.phase,
+        agentConfig.model ?? null
+      );
+      return;
+    }
+
+    if (failureType === "repo_preflight") {
+      log.warn("Repo preflight failed; blocking task until git setup is fixed", {
         taskId: task.id,
       });
       await this.host.taskStore.setCumulativeAttempts(projectId, task.id, cumulativeAttempts, {

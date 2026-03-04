@@ -17,10 +17,18 @@ export const helpChatService = new HelpChatService();
 
 export const helpRouter = Router();
 
+function queryProjectId(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function paramString(value: unknown): string {
+  return typeof value === "string" ? value : Array.isArray(value) ? String(value[0] ?? "") : "";
+}
+
 // GET /help/agent-log — Past agent runs from agent_stats (projectId query = per-project; omit = all projects)
 helpRouter.get("/agent-log", async (req: Request, res, next) => {
   try {
-    const projectId = (req.query.projectId as string)?.trim() || null;
+    const projectId = queryProjectId(req.query.projectId);
     log.info("GET /help/agent-log", { projectId: projectId ?? "all" });
     const entries = await getAgentLog(projectId);
     const result: ApiResponse<AgentLogEntry[]> = { data: entries };
@@ -33,7 +41,7 @@ helpRouter.get("/agent-log", async (req: Request, res, next) => {
 // GET /help/session-log/:sessionId — Raw session output log for log viewer modal
 helpRouter.get("/session-log/:sessionId", async (req: Request, res, next) => {
   try {
-    const sessionId = parseInt(req.params.sessionId ?? "", 10);
+    const sessionId = parseInt(paramString(req.params.sessionId), 10);
     if (!Number.isFinite(sessionId) || sessionId < 1) {
       res.status(400).json({ error: "Invalid session ID" });
       return;
@@ -54,7 +62,7 @@ helpRouter.get("/session-log/:sessionId", async (req: Request, res, next) => {
 // GET /help/analytics — Task analytics by complexity (projectId query = per-project; omit = all projects)
 helpRouter.get("/analytics", async (req: Request, res, next) => {
   try {
-    const projectId = (req.query.projectId as string)?.trim() || null;
+    const projectId = queryProjectId(req.query.projectId);
     log.info("GET /help/analytics", { projectId: projectId ?? "all" });
     const analytics = await getTaskAnalytics(projectId);
     const result: ApiResponse<TaskAnalytics> = { data: analytics };
@@ -67,7 +75,7 @@ helpRouter.get("/analytics", async (req: Request, res, next) => {
 // GET /help/chat/history — Load persisted Help chat messages (projectId query = per-project; omit = homepage)
 helpRouter.get("/chat/history", async (req: Request, res, next) => {
   try {
-    const projectId = (req.query.projectId as string)?.trim() || null;
+    const projectId = queryProjectId(req.query.projectId);
     log.info("GET /help/chat/history", { projectId: projectId ?? "homepage" });
     const history = await helpChatService.getHistory(projectId);
     const result: ApiResponse<HelpChatHistory> = { data: history };

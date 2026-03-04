@@ -26,6 +26,7 @@ import { FeedbackService } from "./feedback.service.js";
 import type { StoredTask } from "./task-store.service.js";
 import { createLogger } from "../utils/logger.js";
 import { parseTaskLastExecutionSummary } from "./task-execution-summary.js";
+import { resolveBaseBranch } from "../utils/git-repo-state.js";
 
 const log = createLogger("task");
 
@@ -474,10 +475,7 @@ export class TaskService {
 
     // 3. Delete task branch so next agent starts from fresh base branch
     const branchName = `opensprint/${taskId}`;
-    const baseBranch =
-      gitWorkingMode === "worktree"
-        ? (settings.worktreeBaseBranch ?? "main")
-        : "main";
+    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
     try {
       await this.branchManager.revertAndReturnToMain(repoPath, branchName, baseBranch);
     } catch (err) {
@@ -644,10 +642,7 @@ export class TaskService {
     const branchName = `opensprint/${taskId}`;
 
     if (createBranch) {
-      const baseBranch =
-        (settings.gitWorkingMode ?? "worktree") === "worktree"
-          ? (settings.worktreeBaseBranch ?? "main")
-          : "main";
+      const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
       await this.branchManager.createOrCheckoutBranch(repoPath, branchName, baseBranch);
     }
 

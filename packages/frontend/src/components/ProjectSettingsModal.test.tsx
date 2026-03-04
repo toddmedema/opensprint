@@ -872,7 +872,7 @@ describe("ProjectSettingsModal", () => {
     });
   });
 
-  it("hides Base branch input when Branches mode selected", async () => {
+  it("keeps Base branch input visible when Branches mode selected", async () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
@@ -882,6 +882,7 @@ describe("ProjectSettingsModal", () => {
     const select = screen.getByTestId("git-working-mode-select");
     await userEvent.selectOptions(select, "branches");
 
-    expect(screen.queryByTestId("worktree-base-branch-input")).not.toBeInTheDocument();
+    expect(screen.getByTestId("worktree-base-branch-input")).toBeInTheDocument();
+    expect(screen.getByTestId("worktree-base-branch-input")).toHaveValue("main");
   });
 });

@@ -24,6 +24,7 @@ import { api, isApiError } from "../api/client";
 import { getDefaultProviderFromEnvKeys } from "../utils/agentConfigDefaults";
 
 type Step = "basics" | "agents" | "testing" | "hil" | "confirm";
+type ActionableError = { message: string; commands?: string[] };
 
 /** Add Existing flow: no Delivery step; configure later via project settings. */
 const ADD_EXISTING_STEPS: { key: Step; label: string }[] = [
@@ -61,7 +62,7 @@ export function ProjectSetup() {
   const [unknownScopeStrategy, setUnknownScopeStrategy] =
     useState<UnknownScopeStrategy>("optimistic");
   const [gitWorkingMode, setGitWorkingMode] = useState<GitWorkingMode>("worktree");
-  const [worktreeBaseBranch, setWorktreeBaseBranch] = useState("main");
+  const [worktreeBaseBranch, setWorktreeBaseBranch] = useState("");
   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
 
   const [detectedFramework, setDetectedFramework] = useState<string | null>(null);
@@ -99,7 +100,7 @@ export function ProjectSetup() {
     (simpleComplexityAgent.type !== "custom" || simpleComplexityAgent.cliCommand.trim()) &&
     (complexComplexityAgent.type !== "custom" || complexComplexityAgent.cliCommand.trim());
   const [modelRefreshTrigger] = useState(0);
-  const [createError, setCreateError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<ActionableError | null>(null);
   const [checkingExisting, setCheckingExisting] = useState(false);
   const hasSetAgentDefaultRef = useRef(false);
 
@@ -203,7 +204,7 @@ export function ProjectSetup() {
         maxConcurrentCoders: gitWorkingMode === "branches" ? 1 : maxConcurrentCoders,
         unknownScopeStrategy,
         gitWorkingMode,
-        worktreeBaseBranch: gitWorkingMode === "worktree" ? worktreeBaseBranch || "main" : undefined,
+        worktreeBaseBranch: worktreeBaseBranch.trim() || undefined,
       });
       navigate(getProjectPhasePath((project as { id: string }).id, "sketch"));
     } catch (err) {
@@ -221,7 +222,15 @@ export function ProjectSetup() {
         }
       }
       const msg = err instanceof Error ? err.message : "Failed to create project";
-      setCreateError(msg);
+      if (isApiError(err)) {
+        const details = err.details as { commands?: string[] } | undefined;
+        setCreateError({
+          message: msg,
+          commands: Array.isArray(details?.commands) ? details.commands : undefined,
+        });
+      } else {
+        setCreateError({ message: msg });
+      }
     } finally {
       setCreating(false);
     }
@@ -338,15 +347,22 @@ export function ProjectSetup() {
           </div>
 
           {createError && (
-            <div className="mt-4 p-3 bg-theme-error-bg border border-theme-error-border rounded-lg text-sm text-theme-error-text flex justify-between items-center">
-              <span>{createError}</span>
-              <button
-                type="button"
-                onClick={() => setCreateError(null)}
-                className="text-theme-error-text hover:opacity-80 underline"
-              >
-                Dismiss
-              </button>
+            <div className="mt-4 p-3 bg-theme-error-bg border border-theme-error-border rounded-lg text-sm text-theme-error-text">
+              <div className="flex justify-between items-start gap-4">
+                <span>{createError.message}</span>
+                <button
+                  type="button"
+                  onClick={() => setCreateError(null)}
+                  className="text-theme-error-text hover:opacity-80 underline shrink-0"
+                >
+                  Dismiss
+                </button>
+              </div>
+              {createError.commands && createError.commands.length > 0 && (
+                <pre className="mt-3 p-3 bg-theme-surface-muted rounded-lg font-mono text-xs overflow-x-auto">
+                  {createError.commands.join("\n")}
+                </pre>
+              )}
             </div>
           )}
           <div className="flex justify-between mt-6">

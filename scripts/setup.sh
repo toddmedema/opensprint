@@ -9,6 +9,15 @@ set -e
 
 echo "==> OpenSprint setup"
 
+# Ensure git user identity is set so commits work (required by AGENTS.md workflow)
+if ! git config --get user.name >/dev/null 2>&1 || ! git config --get user.email >/dev/null 2>&1; then
+  echo "==> Git user identity is not set. Set it so that 'git commit' works:"
+  echo "    git config --global user.name \"Your Name\""
+  echo "    git config --global user.email \"you@example.com\""
+  echo "Then run: npm run setup"
+  exit 1
+fi
+
 npm install
 
 # Ensure ~/.opensprint exists and global-settings has default databaseUrl if missing

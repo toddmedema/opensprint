@@ -91,8 +91,8 @@ function taskDataEqualExceptPriority(a: Task | null, b: Task | null): boolean {
   const keys = new Set([...Object.keys(a), ...Object.keys(b)]) as Set<keyof Task>;
   for (const k of keys) {
     if (k === "priority") continue;
-    const va = (a as Record<string, unknown>)[k];
-    const vb = (b as Record<string, unknown>)[k];
+    const va = a[k];
+    const vb = b[k];
     if (JSON.stringify(va) !== JSON.stringify(vb)) return false;
   }
   return true;

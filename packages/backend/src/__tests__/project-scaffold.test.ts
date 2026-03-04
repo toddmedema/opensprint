@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { promisify } from "util";
 import { ProjectService } from "../services/project.service.js";
 import type { DbClient } from "../db/client.js";
 import { setBackendRuntimeInfoForTesting } from "../utils/runtime-info.js";
@@ -65,88 +66,114 @@ let nodeCheckShouldFail = false;
 
 vi.mock("child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("child_process")>();
-  return {
-    ...actual,
-    exec: (
-      cmd: string,
-      optsOrCb: unknown,
-      cb?: (err: Error | null, stdout?: string, stderr?: string) => void
-    ) => {
-      const opts = typeof optsOrCb === "function" ? {} : (optsOrCb as { cwd?: string });
-      const callback = (typeof optsOrCb === "function" ? optsOrCb : cb) as (
-        err: Error | null,
-        stdout?: string,
-        stderr?: string
-      ) => void;
-      if (cmd.trim() === "git --version") {
-        if (gitCheckShouldFail) {
-          const err = new Error("git: command not found") as Error & { code?: string };
-          err.code = "ENOENT";
-          callback(err, "", "git: command not found");
-        } else {
-          const execOpts = typeof optsOrCb === "function" ? {} : (optsOrCb as object);
-          (
-            actual.exec as (
-              a: string,
-              b: unknown,
-              c: (err: Error | null, stdout?: string, stderr?: string) => void
-            ) => void
-          )(cmd, execOpts, callback);
-        }
-        return;
-      }
-      if (cmd.trim() === "node --version") {
-        if (nodeCheckShouldFail) {
-          const err = new Error("node: command not found") as Error & { code?: string };
-          err.code = "ENOENT";
-          callback(err, "", "node: command not found");
-        } else {
-          const execOpts = typeof optsOrCb === "function" ? {} : (optsOrCb as object);
-          (
-            actual.exec as (
-              a: string,
-              b: unknown,
-              c: (err: Error | null, stdout?: string, stderr?: string) => void
-            ) => void
-          )(cmd, execOpts, callback);
-        }
-        return;
-      }
-      if (cmd.includes("create-expo-app")) {
-        const cwd = opts.cwd || process.cwd();
-        const pkgPath = path.join(cwd, "package.json");
-        fs.writeFile(
-          pkgPath,
-          JSON.stringify({
-            name: "test-app",
-            version: "1.0.0",
-            scripts: { web: "expo start --web", start: "expo start" },
-          })
-        )
-          .then(() => callback(null, "", ""))
-          .catch((err) => callback(err as Error, "", ""));
-      } else if (cmd.includes("npm install")) {
-        callback(null, "", "");
-      } else if (
-        cmd.includes("expo install") &&
-        cmd.includes("react-dom") &&
-        cmd.includes("react-native-web")
-      ) {
-        if (expoInstallShouldFail) {
-          callback(new Error("expo: command not found"), "", "expo: command not found");
-        } else {
-          callback(null, "", "");
-        }
+  const execMock = (
+    cmd: string,
+    optsOrCb: unknown,
+    cb?: (err: Error | null, stdout?: string, stderr?: string) => void
+  ) => {
+    const opts = typeof optsOrCb === "function" ? {} : (optsOrCb as { cwd?: string });
+    const callback = (typeof optsOrCb === "function" ? optsOrCb : cb) as (
+      err: Error | null,
+      stdout?: string,
+      stderr?: string
+    ) => void;
+    if (cmd.trim() === "git --version") {
+      if (gitCheckShouldFail) {
+        const err = new Error("git: command not found") as Error & { code?: string };
+        err.code = "ENOENT";
+        callback(err, "", "git: command not found");
       } else {
+        const execOpts = typeof optsOrCb === "function" ? {} : (optsOrCb as object);
         (
           actual.exec as (
             a: string,
             b: unknown,
             c: (err: Error | null, stdout?: string, stderr?: string) => void
           ) => void
-        )(cmd, opts, callback);
+        )(cmd, execOpts, callback);
       }
-    },
+      return undefined;
+    }
+    if (cmd.trim() === "node --version") {
+      if (nodeCheckShouldFail) {
+        const err = new Error("node: command not found") as Error & { code?: string };
+        err.code = "ENOENT";
+        callback(err, "", "node: command not found");
+      } else {
+        const execOpts = typeof optsOrCb === "function" ? {} : (optsOrCb as object);
+        (
+          actual.exec as (
+            a: string,
+            b: unknown,
+            c: (err: Error | null, stdout?: string, stderr?: string) => void
+          ) => void
+        )(cmd, execOpts, callback);
+      }
+      return undefined;
+    }
+    if (cmd.includes("create-expo-app")) {
+      const cwd = opts.cwd || process.cwd();
+      const pkgPath = path.join(cwd, "package.json");
+      fs.writeFile(
+        pkgPath,
+        JSON.stringify({
+          name: "test-app",
+          version: "1.0.0",
+          scripts: { web: "expo start --web", start: "expo start" },
+        })
+      )
+        .then(() => callback(null, "", ""))
+        .catch((err) => callback(err as Error, "", ""));
+      return undefined;
+    }
+    if (cmd.includes("npm install")) {
+      callback(null, "", "");
+      return undefined;
+    }
+    if (
+      cmd.includes("expo install") &&
+      cmd.includes("react-dom") &&
+      cmd.includes("react-native-web")
+    ) {
+      if (expoInstallShouldFail) {
+        callback(new Error("expo: command not found"), "", "expo: command not found");
+      } else {
+        callback(null, "", "");
+      }
+      return undefined;
+    }
+
+    (
+      actual.exec as (
+        a: string,
+        b: unknown,
+        c: (err: Error | null, stdout?: string, stderr?: string) => void
+      ) => void
+    )(cmd, opts, callback);
+    return undefined;
+  };
+
+  execMock[promisify.custom] = (cmd: string, opts?: unknown) =>
+    new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+      execMock(
+        cmd,
+        opts ?? {},
+        (err: Error | null, stdout?: string, stderr?: string) => {
+          if (err) {
+            const execErr = err as Error & { stdout?: string; stderr?: string };
+            execErr.stdout = stdout ?? "";
+            execErr.stderr = stderr ?? "";
+            reject(execErr);
+            return;
+          }
+          resolve({ stdout: stdout ?? "", stderr: stderr ?? "" });
+        }
+      );
+    });
+
+  return {
+    ...actual,
+    exec: execMock,
   };
 });
 

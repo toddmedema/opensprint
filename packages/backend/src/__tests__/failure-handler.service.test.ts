@@ -213,7 +213,7 @@ describe("FailureHandlerService", () => {
       expect(mockCaptureBranchDiff).toHaveBeenCalledWith(repoPath, branchName, "develop");
     });
 
-    it("branches mode always passes main to revertAndReturnToMain (ignores worktreeBaseBranch)", async () => {
+    it("branches mode uses the configured base branch for revertAndReturnToMain", async () => {
       mockGetSettings.mockResolvedValue({
         simpleComplexityAgent: { type: "cursor", model: null },
         complexComplexityAgent: { type: "cursor", model: null },
@@ -235,7 +235,7 @@ describe("FailureHandlerService", () => {
         "agent_crash"
       );
 
-      expect(mockRevertAndReturnToMain).toHaveBeenCalledWith(repoPath, branchName, "main");
+      expect(mockRevertAndReturnToMain).toHaveBeenCalledWith(repoPath, branchName, "develop");
     });
 
     it("calls removeTaskWorktree when gitWorkingMode is worktree (infra retry)", async () => {

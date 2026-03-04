@@ -22,6 +22,7 @@ import { getDefaultProviderFromEnvKeys } from "../utils/agentConfigDefaults";
 import { getRunInstructions } from "../utils/runInstructions";
 
 type Step = "basics" | "agents" | "scaffold";
+type ActionableError = { message: string; commands?: string[] };
 
 const STEPS: { key: Step; label: string }[] = [
   { key: "basics", label: "Basics" },
@@ -68,7 +69,7 @@ export function CreateNewProjectPage() {
   const hasSetAgentDefaultRef = useRef(false);
 
   const [scaffolding, setScaffolding] = useState(false);
-  const [scaffoldError, setScaffoldError] = useState<string | null>(null);
+  const [scaffoldError, setScaffoldError] = useState<ActionableError | null>(null);
   const [scaffoldRecovery, setScaffoldRecovery] = useState<ScaffoldRecoveryInfo | null>(null);
   const [scaffoldedProject, setScaffoldedProject] = useState<Project | null>(null);
   const [backendRuntime, setBackendRuntime] = useState<EnvRuntimeResponse | null>(null);
@@ -213,7 +214,12 @@ export function CreateNewProjectPage() {
         }
       } catch (err) {
         if (scaffoldStepMountedRef.current) {
-          setScaffoldError(err instanceof Error ? err.message : "Failed to scaffold project");
+          const message = err instanceof Error ? err.message : "Failed to scaffold project";
+          const commands =
+            err instanceof ApiError && err.details && Array.isArray((err.details as { commands?: unknown }).commands)
+              ? (((err.details as { commands?: string[] }).commands as string[]) ?? undefined)
+              : undefined;
+          setScaffoldError({ message, commands });
           if (err instanceof ApiError && err.details) {
             const details = err.details as { recovery?: ScaffoldRecoveryInfo };
             if (details.recovery) {
@@ -281,7 +287,12 @@ export function CreateNewProjectPage() {
       })
       .catch((err) => {
         if (scaffoldStepMountedRef.current) {
-          setScaffoldError(err instanceof Error ? err.message : "Failed to scaffold project");
+          const message = err instanceof Error ? err.message : "Failed to scaffold project";
+          const commands =
+            err instanceof ApiError && err.details && Array.isArray((err.details as { commands?: unknown }).commands)
+              ? (((err.details as { commands?: string[] }).commands as string[]) ?? undefined)
+              : undefined;
+          setScaffoldError({ message, commands });
           if (err instanceof ApiError && err.details) {
             const details = err.details as { recovery?: ScaffoldRecoveryInfo };
             if (details.recovery) {
@@ -468,7 +479,12 @@ export function CreateNewProjectPage() {
                   <div data-testid="scaffold-error-details" className="space-y-3">
                     <div className="p-3 bg-theme-error-bg border border-theme-error-border rounded-lg text-sm text-theme-error-text">
                       <p className="font-medium mb-1">Initialization failed</p>
-                      <p>{scaffoldError}</p>
+                      <p>{scaffoldError.message}</p>
+                      {scaffoldError.commands && scaffoldError.commands.length > 0 && (
+                        <pre className="mt-3 p-3 bg-theme-surface-muted rounded-lg font-mono text-xs overflow-x-auto">
+                          {scaffoldError.commands.join("\n")}
+                        </pre>
+                      )}
                     </div>
                     {scaffoldRecovery && (
                       <div
@@ -532,18 +548,25 @@ export function CreateNewProjectPage() {
           </div>
 
           {scaffoldError && !scaffolding && (
-            <div className="mt-4 p-3 bg-theme-error-bg border border-theme-error-border rounded-lg text-sm text-theme-error-text flex justify-between items-center">
-              <span>{scaffoldError}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setScaffoldError(null);
-                  setScaffoldRecovery(null);
-                }}
-                className="text-theme-error-text hover:opacity-80 underline"
-              >
-                Dismiss
-              </button>
+            <div className="mt-4 p-3 bg-theme-error-bg border border-theme-error-border rounded-lg text-sm text-theme-error-text">
+              <div className="flex justify-between items-start gap-4">
+                <span>{scaffoldError.message}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScaffoldError(null);
+                    setScaffoldRecovery(null);
+                  }}
+                  className="text-theme-error-text hover:opacity-80 underline shrink-0"
+                >
+                  Dismiss
+                </button>
+              </div>
+              {scaffoldError.commands && scaffoldError.commands.length > 0 && (
+                <pre className="mt-3 p-3 bg-theme-surface-muted rounded-lg font-mono text-xs overflow-x-auto">
+                  {scaffoldError.commands.join("\n")}
+                </pre>
+              )}
             </div>
           )}
 

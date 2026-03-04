@@ -298,9 +298,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                 "optimistic",
               gitWorkingMode: effGitMode,
               worktreeBaseBranch:
-                effGitMode === "worktree"
-                  ? (overrides?.worktreeBaseBranch ?? effSettings?.worktreeBaseBranch ?? "main")
-                  : undefined,
+                overrides?.worktreeBaseBranch ?? effSettings?.worktreeBaseBranch ?? "main",
             }),
           ]);
           if (notifyOnComplete) onSaved?.();
@@ -769,11 +767,14 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                         >
                           {REVIEW_AGENT_OPTIONS.map((opt) => {
                             const isGeneral = opt.value === GENERAL_REVIEW_OPTION;
+                            const angleValue: ReviewAngle | null = isGeneral
+                              ? null
+                              : (opt.value as ReviewAngle);
                             const angles = settings?.reviewAngles ?? [];
                             const generalSelected = angles.length === 0;
                             const selected = isGeneral
                               ? generalSelected
-                              : angles.includes(opt.value);
+                              : angleValue !== null && angles.includes(angleValue);
                             const selectedCount = (generalSelected ? 1 : 0) + angles.length;
                             const wouldLeaveZero = selected && selectedCount === 1;
                             const disabled = wouldLeaveZero;
@@ -809,9 +810,11 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                                       }
                                     } else {
                                       const current = angles;
-                                      const next = selected
-                                        ? current.filter((a) => a !== opt.value)
-                                        : [...current, opt.value];
+                                      const next: ReviewAngle[] = selected
+                                        ? current.filter((a) => a !== angleValue)
+                                        : angleValue
+                                          ? [...current, angleValue]
+                                          : current;
                                       if (next.length === 0 && selected) return;
                                       setSettings((s) =>
                                         s ? { ...s, reviewAngles: next } : null
@@ -839,6 +842,13 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                             ? "Worktree: isolated directories per task, supports parallel agents."
                             : "Branches: agents work in main repo on task branches, one at a time."}
                         </p>
+                        <p className="text-xs text-theme-muted mt-1" data-testid="git-remote-mode">
+                          {settings?.gitRemoteMode === "publishable"
+                            ? "Remote configured"
+                            : settings?.gitRemoteMode === "remote_error"
+                              ? "Remote unreachable"
+                              : "Local-only repo"}
+                        </p>
                       </div>
                       <select
                         className="input w-48 shrink-0"
@@ -861,38 +871,41 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                           Branches mode uses a single coder.
                         </p>
                       </div>
-                    ) : (
+                    ) : null}
+                    <div>
+                      <div className="mb-4">
+                        <label className="block text-sm font-medium text-theme-text mb-1">
+                          Base branch
+                        </label>
+                        <p className="text-xs text-theme-muted mb-2">
+                          Task branches are created from and merged into this branch. Use
+                          alphanumeric, slash, underscore, hyphen, or dot.
+                        </p>
+                        <input
+                          type="text"
+                          className="input w-full max-w-xs"
+                          value={settings?.worktreeBaseBranch ?? "main"}
+                          onChange={(e) =>
+                            setSettings((s) =>
+                              s ? { ...s, worktreeBaseBranch: e.target.value || "main" } : null
+                            )
+                          }
+                          onBlur={() => {
+                            const normalized = normalizeWorktreeBaseBranch(
+                              settings?.worktreeBaseBranch
+                            );
+                            setSettings((s) =>
+                              s ? { ...s, worktreeBaseBranch: normalized } : null
+                            );
+                            void persistSettings(undefined, { worktreeBaseBranch: normalized });
+                          }}
+                          placeholder="main"
+                          data-testid="worktree-base-branch-input"
+                        />
+                      </div>
+                    </div>
+                    {gitWorkingMode === "worktree" ? (
                       <div>
-                        <div className="mb-4">
-                          <label className="block text-sm font-medium text-theme-text mb-1">
-                            Base branch
-                          </label>
-                          <p className="text-xs text-theme-muted mb-2">
-                            Task branches are created from and merged into this branch. Use
-                            alphanumeric, slash, underscore, hyphen, or dot.
-                          </p>
-                          <input
-                            type="text"
-                            className="input w-full max-w-xs"
-                            value={settings?.worktreeBaseBranch ?? "main"}
-                            onChange={(e) =>
-                              setSettings((s) =>
-                                s ? { ...s, worktreeBaseBranch: e.target.value || "main" } : null
-                              )
-                            }
-                            onBlur={() => {
-                              const normalized = normalizeWorktreeBaseBranch(
-                                settings?.worktreeBaseBranch
-                              );
-                              setSettings((s) =>
-                                s ? { ...s, worktreeBaseBranch: normalized } : null
-                              );
-                              void persistSettings(undefined, { worktreeBaseBranch: normalized });
-                            }}
-                            placeholder="main"
-                            data-testid="worktree-base-branch-input"
-                          />
-                        </div>
                         <h3 className="text-sm font-semibold text-theme-text mb-1">Parallelism</h3>
                         <p className="text-xs text-theme-muted mb-3">
                           Run multiple coding agents simultaneously on independent tasks. Higher
@@ -960,7 +973,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                           )}
                         </div>
                       </div>
-                    )}
+                    ) : null}
                     <hr />
                     <Suspense fallback={<AgentsSectionFallback />}>
                       <AgentsMdSection projectId={project.id} />

@@ -22,10 +22,12 @@ import { agentIdentityService } from "./agent-identity.service.js";
 import { eventLogService } from "./event-log.service.js";
 import { triggerDeployForEvent } from "./deploy-trigger.service.js";
 import { finalReviewService } from "./final-review.service.js";
+import { notificationService } from "./notification.service.js";
 import { broadcastToProject } from "../websocket/index.js";
 import type { TimerRegistry } from "./timer-registry.js";
 import { createLogger } from "../utils/logger.js";
 import { buildTaskLastExecutionSummary, compactExecutionText } from "./task-execution-summary.js";
+import { inspectGitRepoState, resolveBaseBranch } from "../utils/git-repo-state.js";
 
 const log = createLogger("merge-coordinator");
 
@@ -57,6 +59,8 @@ interface CleanupTarget {
   worktreePath: string | null;
   gitWorkingMode: "worktree" | "branches";
 }
+
+type PushCompletionStatus = "published" | "local_only" | "publish_failed";
 
 export interface MergeCoordinatorHost {
   getState(projectId: string): {
@@ -251,10 +255,7 @@ export class MergeCoordinatorService {
     await this.host.branchManager.commitWip(wtPath, task.id);
     await this.waitForPushComplete(projectId);
     const settings = await this.host.projectService.getSettings(projectId);
-    const baseBranch =
-      (settings.gitWorkingMode ?? "worktree") === "worktree"
-        ? (settings.worktreeBaseBranch ?? "main")
-        : "main";
+    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
 
     // 2. Attempt merge inside the serialized queue. Rebase now happens there.
     try {
@@ -569,7 +570,7 @@ export class MergeCoordinatorService {
   }
 
   async postCompletionAsync(projectId: string, repoPath: string, taskId: string): Promise<void> {
-    let pushed = false;
+    let pushStatus: PushCompletionStatus = "publish_failed";
     if (!this.pushInProgress.has(projectId)) {
       let resolvePush!: () => void;
       const pushPromise = new Promise<void>((r) => {
@@ -578,8 +579,8 @@ export class MergeCoordinatorService {
       this.pushCompletion.set(projectId, { promise: pushPromise, resolve: resolvePush });
       this.pushInProgress.add(projectId);
       try {
-        pushed = await this.pushMainSafe(projectId, repoPath);
-        if (pushed) {
+        pushStatus = await this.pushMainSafe(projectId, repoPath);
+        if (pushStatus !== "publish_failed") {
           await this.cleanupAfterSuccessfulPush(projectId, repoPath);
         }
       } finally {
@@ -681,15 +682,35 @@ export class MergeCoordinatorService {
   /**
    * Push main to origin. On rebase conflict: try merger agent once; if resolution fails, abort and retry on next completion.
    */
-  private async pushMainSafe(projectId: string, repoPath: string): Promise<boolean> {
+  private async pushMainSafe(
+    projectId: string,
+    repoPath: string
+  ): Promise<PushCompletionStatus> {
     await gitCommitQueue.drain();
     await this.host.taskStore.syncForPush(projectId);
 
     const settings = await this.host.projectService.getSettings(projectId);
-    const baseBranch =
-      (settings.gitWorkingMode ?? "worktree") === "worktree"
-        ? (settings.worktreeBaseBranch ?? "main")
-        : "main";
+    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+    const repoState = await inspectGitRepoState(repoPath, baseBranch);
+
+    if (repoState.remoteMode === "local_only") {
+      log.info("No origin configured; skipping publish after local merge", {
+        projectId,
+        baseBranch,
+      });
+      eventLogService
+        .append(repoPath, {
+          timestamp: new Date().toISOString(),
+          projectId,
+          taskId: "",
+          event: "push.skipped",
+          data: {
+            reason: "local_only",
+          },
+        })
+        .catch(() => {});
+      return "local_only";
+    }
 
     try {
       await this.host.branchManager.pushMain(repoPath, baseBranch);
@@ -702,7 +723,7 @@ export class MergeCoordinatorService {
           event: "push.succeeded",
         })
         .catch(() => {});
-      return true;
+      return "published";
     } catch (err) {
       if (err instanceof RebaseConflictError) {
         log.info("Push rebase conflict, invoking merger agent", {
@@ -734,7 +755,7 @@ export class MergeCoordinatorService {
                 event: "push.succeeded",
               })
               .catch(() => {});
-            return true;
+            return "published";
           } catch (continueErr) {
             log.warn("rebase --continue or push failed after merger", {
               projectId,
@@ -749,6 +770,7 @@ export class MergeCoordinatorService {
       } else {
         log.warn("Push failed, will retry on next task completion", { projectId, err });
       }
+      const reason = err instanceof Error ? err.message.slice(0, 500) : String(err).slice(0, 500);
       eventLogService
         .append(repoPath, {
           timestamp: new Date().toISOString(),
@@ -756,13 +778,31 @@ export class MergeCoordinatorService {
           taskId: "",
           event: "push.failed",
           data: {
-            reason: err instanceof Error ? err.message.slice(0, 500) : String(err).slice(0, 500),
+            reason,
             conflictedFiles: err instanceof RebaseConflictError ? err.conflictedFiles : [],
             stage: err instanceof RebaseConflictError ? "push_rebase" : "push",
           },
         })
         .catch(() => {});
-      return false;
+      await notificationService
+        .create({
+          projectId,
+          source: "execute",
+          sourceId: "remote-publish",
+          questions: [
+            {
+              id: `push-${projectId}`,
+              text: `Work merged locally, but publish to origin failed: ${reason}`,
+            },
+          ],
+        })
+        .catch((notificationErr) =>
+          log.warn("Failed to create remote publish warning notification", {
+            projectId,
+            notificationErr,
+          })
+        );
+      return "publish_failed";
     }
   }
 }

@@ -10,6 +10,7 @@ export type FailureType =
   | "test_failure"
   | "review_rejection"
   | "agent_crash"
+  | "repo_preflight"
   | "timeout"
   | "no_result"
   | "merge_conflict"

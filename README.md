@@ -25,9 +25,7 @@ Then open [http://localhost:5173](http://localhost:5173) and get building!
 
 ### Windows
 
-You will need to install WSL2 ([Windows Subsystem for Linux](https://learn.microsoft.com/en-us/windows/wsl/install)) by opening PowerShell as an admin, running `wsl --install`, rebooting your computer, then running `wsl.exe --install` in PowerShell.
-
-Then, open the `WSL` application, [install node.js](https://stackoverflow.com/a/75739322), [install postgres](https://dev.to/sfpear/install-and-use-postgres-in-wsl-423d) and set the default postgres user password to `opensprint`.
+You will need to install ([WSL2](https://learn.microsoft.com/en-us/windows/wsl/install)) with Node andd Postgres by opening PowerShell as an admin, running `wsl --install`, rebooting your computer, then running `wsl.exe --install` in PowerShell. Then, open the `WSL` application, [install node.js](https://stackoverflow.com/a/75739322), [install postgres](https://dev.to/sfpear/install-and-use-postgres-in-wsl-423d) and set the default postgres user password to `opensprint`.
 
 Then, from the default ~ directory, run:
 
