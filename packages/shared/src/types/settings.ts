@@ -502,6 +502,8 @@ export interface ProjectSettings {
   gitRemoteMode?: "publishable" | "local_only" | "remote_error";
   /** Read-only runtime cache/probe status for Git fields returned by project settings APIs. */
   gitRuntimeStatus?: GitRuntimeStatus;
+  /** Team members (id + name) for human assignees. Stored in project settings. */
+  teamMembers?: Array<{ id: string; name: string }>;
 }
 
 /** Planning agent roles — Dreamer/Analyst use fixed tiers; others inherit plan complexity */
@@ -574,6 +576,22 @@ function parseReviewAngles(raw: unknown): ReviewAngle[] | undefined {
   return filtered.length > 0 ? filtered : undefined;
 }
 
+function parseTeamMembers(raw: unknown): Array<{ id: string; name: string }> | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const result: Array<{ id: string; name: string }> = [];
+  for (const item of raw) {
+    if (item && typeof item === "object" && "id" in item && "name" in item) {
+      const obj = item as Record<string, unknown>;
+      const id = obj.id;
+      const name = obj.name;
+      if (typeof id === "string" && id.trim() && typeof name === "string" && name.trim()) {
+        result.push({ id: id.trim(), name: name.trim() });
+      }
+    }
+  }
+  return result.length > 0 ? result : undefined;
+}
+
 /**
  * Parse raw settings into ProjectSettings. Expects two-tier format (simpleComplexityAgent, complexComplexityAgent).
  * Backward compat: accepts legacy lowComplexityAgent/highComplexityAgent.
@@ -611,6 +629,7 @@ export function parseSettings(raw: unknown): ProjectSettings {
     gitWorkingMode,
     worktreeBaseBranch: normalizeWorktreeBaseBranch(r?.worktreeBaseBranch),
     reviewAngles: parseReviewAngles(r?.reviewAngles),
+    teamMembers: parseTeamMembers(r?.teamMembers),
   };
 
   const { apiKeys: _omitApiKeys, ...rest } = r as Partial<ProjectSettings> & { apiKeys?: unknown };

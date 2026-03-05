@@ -254,6 +254,60 @@ describe("parseSettings", () => {
     expect(parsed.reviewAngles).toBeUndefined();
   });
 
+  it("should round-trip teamMembers through parseSettings", () => {
+    const teamMembers = [
+      { id: "alice-id", name: "Alice" },
+      { id: "bob-id", name: "Bob" },
+    ];
+    const raw = {
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+      testFramework: null,
+      teamMembers,
+    };
+    const parsed = parseSettings(raw);
+    expect(parsed.teamMembers).toEqual(teamMembers);
+    const roundTripped = parseSettings(parsed);
+    expect(roundTripped.teamMembers).toEqual(teamMembers);
+  });
+
+  it("should filter invalid teamMembers entries and trim id/name", () => {
+    const raw = {
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+      testFramework: null,
+      teamMembers: [
+        { id: "valid-id", name: "Valid" },
+        { id: "", name: "Empty id" },
+        { id: "no-name" },
+        { name: "No id" },
+        { id: "  trimmed  ", name: "  Trimmed Name  " },
+      ],
+    };
+    const parsed = parseSettings(raw);
+    expect(parsed.teamMembers).toEqual([
+      { id: "valid-id", name: "Valid" },
+      { id: "trimmed", name: "Trimmed Name" },
+    ]);
+  });
+
+  it("should return undefined for teamMembers when array is empty", () => {
+    const raw = {
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+      testFramework: null,
+      teamMembers: [],
+    };
+    const parsed = parseSettings(raw);
+    expect(parsed.teamMembers).toBeUndefined();
+  });
+
   it("should preserve a valid aiAutonomyLevel", () => {
     const parsed = parseSettings({
       aiAutonomyLevel: "major_only",

@@ -155,6 +155,7 @@ function toCanonicalSettings(s: ProjectSettings): ProjectSettings {
     ...(s.unknownScopeStrategy !== undefined && { unknownScopeStrategy: s.unknownScopeStrategy }),
     gitWorkingMode: s.gitWorkingMode ?? "worktree",
     worktreeBaseBranch: s.worktreeBaseBranch ?? "main",
+    ...(s.teamMembers && s.teamMembers.length > 0 && { teamMembers: s.teamMembers }),
   };
 }
 
