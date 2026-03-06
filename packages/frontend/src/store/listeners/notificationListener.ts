@@ -52,6 +52,8 @@ const QUIET_NOT_FOUND_CODES = new Set([
 const REJECTED_ACTION_MESSAGES: Record<string, string> = {
   "execute/updateTaskPriority/rejected":
     "Failed to update task priority. The change was reverted. Check the network and try again.",
+  "execute/updateTaskAssignee/rejected":
+    "Failed to update assignee. Check the network and try again.",
   "execute/fetchTasks/rejected": "Failed to load tasks. Refresh the page or try again.",
   "execute/fetchExecuteStatus/rejected":
     "Failed to load execute status. Refresh the page or try again.",

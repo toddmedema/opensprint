@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from "react";
 import { isAgentAssignee } from "@opensprint/shared";
-import { api } from "../../api/client";
+import { useAppDispatch } from "../../store";
+import { updateTaskAssignee } from "../../store/slices/executeSlice";
 
 export interface AssigneeSelectorProps {
   projectId: string;
   taskId: string;
   currentAssignee: string | null;
   teamMembers: Array<{ id: string; name: string }>;
-  onSelect: (assignee: string | null) => void;
+  /** Called after assignee update succeeds. Optional; Redux is updated by the thunk. */
+  onSelect?: (assignee: string | null) => void;
   /** When true, show agent icon instead of person icon. Default: derived from isAgentAssignee(currentAssignee). */
   isAgentAssignee?: boolean;
   /** When true, show read-only display (e.g. for done tasks). */
@@ -59,6 +61,7 @@ export function AssigneeSelector({
   isAgentAssignee: isAgentProp,
   readOnly = false,
 }: AssigneeSelectorProps) {
+  const dispatch = useAppDispatch();
   const isAgent = isAgentProp ?? (!!currentAssignee && isAgentAssignee(currentAssignee));
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -88,8 +91,10 @@ export function AssigneeSelector({
     }
     setLoading(true);
     try {
-      await api.tasks.updateTask(projectId, taskId, { assignee });
-      onSelect(assignee);
+      await dispatch(
+        updateTaskAssignee({ projectId, taskId, assignee })
+      ).unwrap();
+      onSelect?.(assignee);
       setOpen(false);
       setShowOtherInput(false);
       setOtherInput("");

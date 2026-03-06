@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AssigneeSelector } from "./AssigneeSelector";
+import { renderWithProviders } from "../../test/test-utils";
 
 const mockUpdateTask = vi.fn();
 vi.mock("../../api/client", () => ({
@@ -11,6 +12,26 @@ vi.mock("../../api/client", () => ({
     },
   },
 }));
+
+function mockTask(assignee: string | null) {
+  return {
+    id: "task-1",
+    title: "Task 1",
+    description: "",
+    type: "task" as const,
+    status: "open" as const,
+    priority: 1,
+    assignee,
+    labels: [],
+    dependencies: [],
+    epicId: null,
+    kanbanColumn: "backlog" as const,
+    createdAt: "",
+    updatedAt: "",
+    startedAt: null,
+    completedAt: null,
+  };
+}
 
 const defaultProps = {
   projectId: "proj-1",
@@ -26,18 +47,21 @@ const defaultProps = {
 describe("AssigneeSelector", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUpdateTask.mockResolvedValue({});
+    mockUpdateTask.mockImplementation(
+      (_projectId: string, _taskId: string, updates: { assignee?: string | null }) =>
+        Promise.resolve(mockTask(updates.assignee ?? null))
+    );
   });
 
   it("renders", () => {
-    render(<AssigneeSelector {...defaultProps} />);
+    renderWithProviders(<AssigneeSelector {...defaultProps} />);
 
     expect(screen.getByTestId("assignee-dropdown-trigger")).toBeInTheDocument();
     expect(screen.getByText("—")).toBeInTheDocument();
   });
 
   it("shows current assignee when set", () => {
-    render(<AssigneeSelector {...defaultProps} currentAssignee="Alice" />);
+    renderWithProviders(<AssigneeSelector {...defaultProps} currentAssignee="Alice" />);
 
     expect(screen.getByText("Alice")).toBeInTheDocument();
   });
@@ -45,7 +69,7 @@ describe("AssigneeSelector", () => {
   it("selecting Unassigned clears assignee", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
-    render(
+    renderWithProviders(
       <AssigneeSelector
         {...defaultProps}
         currentAssignee="Alice"
@@ -69,7 +93,7 @@ describe("AssigneeSelector", () => {
   it("selecting team member sets assignee", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
-    render(<AssigneeSelector {...defaultProps} onSelect={onSelect} />);
+    renderWithProviders(<AssigneeSelector {...defaultProps} onSelect={onSelect} />);
 
     await user.click(screen.getByTestId("assignee-dropdown-trigger"));
     await user.click(screen.getByTestId("assignee-option-alice"));
@@ -85,7 +109,7 @@ describe("AssigneeSelector", () => {
   it("free-form Other input sets assignee", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
-    render(<AssigneeSelector {...defaultProps} onSelect={onSelect} />);
+    renderWithProviders(<AssigneeSelector {...defaultProps} onSelect={onSelect} />);
 
     await user.click(screen.getByTestId("assignee-dropdown-trigger"));
     await user.click(screen.getByTestId("assignee-option-other"));
@@ -104,7 +128,7 @@ describe("AssigneeSelector", () => {
   });
 
   it("readOnly shows assignee without dropdown", () => {
-    render(
+    renderWithProviders(
       <AssigneeSelector
         {...defaultProps}
         currentAssignee="Alice"
@@ -118,7 +142,7 @@ describe("AssigneeSelector", () => {
   });
 
   it("shows person icon for human assignee", () => {
-    render(<AssigneeSelector {...defaultProps} currentAssignee="Alice" />);
+    renderWithProviders(<AssigneeSelector {...defaultProps} currentAssignee="Alice" />);
 
     expect(screen.getByTestId("assignee-dropdown-trigger")).toBeInTheDocument();
     const svgs = screen.getByTestId("assignee-dropdown-trigger").querySelectorAll("svg");
@@ -126,7 +150,7 @@ describe("AssigneeSelector", () => {
   });
 
   it("shows agent icon when isAgentAssignee is true", () => {
-    render(
+    renderWithProviders(
       <AssigneeSelector
         {...defaultProps}
         currentAssignee="Frodo"

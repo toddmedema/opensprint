@@ -4,7 +4,7 @@ import executeReducer from "../slices/executeSlice";
 import projectReducer from "../slices/projectSlice";
 import websocketReducer from "../slices/websocketSlice";
 import { executeListeners } from "./executeListeners";
-import { updateTaskPriority } from "../slices/executeSlice";
+import { updateTaskPriority, updateTaskAssignee } from "../slices/executeSlice";
 import { getQueryClient } from "../../queryClient";
 import { queryKeys } from "../../api/queryKeys";
 
@@ -110,5 +110,42 @@ describe("executeListeners", () => {
         call[0].queryKey[2] === "task-2"
     );
     expect(taskDetailInvalidated).toBe(false);
+  });
+
+  it("updates task detail cache and invalidates tasks list when updateTaskAssignee.fulfilled", () => {
+    const store = createStore();
+    const task = {
+      id: "task-1",
+      title: "Test task",
+      priority: 1,
+      assignee: "Alice",
+      kanbanColumn: "ready" as const,
+      type: "task" as const,
+      status: "open" as const,
+      description: "",
+      labels: [],
+      dependencies: [],
+      epicId: null,
+      createdAt: "",
+      updatedAt: "",
+      startedAt: null,
+      completedAt: null,
+    };
+
+    store.dispatch(
+      updateTaskAssignee.fulfilled(
+        { task, taskId: "task-1" },
+        "",
+        { projectId: "proj-1", taskId: "task-1", assignee: "Alice" }
+      )
+    );
+
+    expect(mockSetQueryData).toHaveBeenCalledWith(
+      queryKeys.tasks.detail("proj-1", "task-1"),
+      task
+    );
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.tasks.list("proj-1"),
+    });
   });
 });

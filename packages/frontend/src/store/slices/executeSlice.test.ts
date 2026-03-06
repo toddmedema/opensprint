@@ -13,6 +13,7 @@ import executeReducer, {
   markTaskDone,
   unblockTask,
   updateTaskPriority,
+  updateTaskAssignee,
   setSelectedTaskId,
   appendAgentOutput,
   setOrchestratorRunning,
@@ -45,6 +46,7 @@ vi.mock("../../api/client", async (importOriginal) => {
         markDone: vi.fn(),
         unblock: vi.fn(),
         updatePriority: vi.fn(),
+        updateTask: vi.fn(),
       },
       plans: { list: vi.fn() },
       execute: {
@@ -109,6 +111,7 @@ describe("executeSlice", () => {
     vi.mocked(api.tasks.markDone).mockReset();
     vi.mocked(api.tasks.unblock).mockReset();
     vi.mocked(api.tasks.updatePriority).mockReset();
+    vi.mocked(api.tasks.updateTask).mockReset();
     vi.mocked(api.plans.list).mockReset();
     vi.mocked(api.execute.status).mockReset();
     vi.mocked(api.execute.liveOutput).mockReset();
@@ -818,6 +821,55 @@ describe("executeSlice", () => {
       expect(selectTasks(store.getState())[0].priority).toBe(1);
       expect(store.getState().websocket.deliverToast).toEqual({
         message: "Failed to update priority",
+        variant: "failed",
+      });
+    });
+  });
+
+  describe("updateTaskAssignee thunk", () => {
+    it("updates tasksById and taskDetailCache on fulfilled", async () => {
+      const updatedTask = { ...mockTask, id: "task-1", assignee: "Alice" };
+      vi.mocked(api.tasks.updateTask).mockResolvedValue(updatedTask as never);
+      const store = createStore();
+      store.dispatch(setTasks([{ ...mockTask, id: "task-1", assignee: null }]));
+
+      await store.dispatch(
+        updateTaskAssignee({ projectId: "proj-1", taskId: "task-1", assignee: "Alice" })
+      );
+
+      expect(api.tasks.updateTask).toHaveBeenCalledWith("proj-1", "task-1", {
+        assignee: "Alice",
+      });
+      expect(selectTasks(store.getState())[0].assignee).toBe("Alice");
+    });
+
+    it("clears assignee when passing null", async () => {
+      const updatedTask = { ...mockTask, id: "task-1", assignee: null };
+      vi.mocked(api.tasks.updateTask).mockResolvedValue(updatedTask as never);
+      const store = createStore();
+      store.dispatch(setTasks([{ ...mockTask, id: "task-1", assignee: "Alice" }]));
+
+      await store.dispatch(
+        updateTaskAssignee({ projectId: "proj-1", taskId: "task-1", assignee: null })
+      );
+
+      expect(api.tasks.updateTask).toHaveBeenCalledWith("proj-1", "task-1", {
+        assignee: null,
+      });
+      expect(selectTasks(store.getState())[0].assignee).toBeNull();
+    });
+
+    it("shows toast on rejected", async () => {
+      vi.mocked(api.tasks.updateTask).mockRejectedValue(new Error("Network error"));
+      const store = createStore();
+      store.dispatch(setTasks([{ ...mockTask, id: "task-1", assignee: null }]));
+
+      await store.dispatch(
+        updateTaskAssignee({ projectId: "proj-1", taskId: "task-1", assignee: "Bob" })
+      );
+
+      expect(store.getState().websocket.deliverToast).toEqual({
+        message: "Failed to update assignee",
         variant: "failed",
       });
     });

@@ -237,6 +237,28 @@ export const updateTaskPriority = createAsyncThunk(
   }
 );
 
+export const updateTaskAssignee = createAsyncThunk(
+  "execute/updateTaskAssignee",
+  async (
+    {
+      projectId,
+      taskId,
+      assignee,
+    }: { projectId: string; taskId: string; assignee: string | null },
+    { dispatch, rejectWithValue }
+  ) => {
+    try {
+      const task = await api.tasks.updateTask(projectId, taskId, { assignee });
+      return { task, taskId };
+    } catch (err) {
+      if (!isConnectionError(err)) {
+        dispatch(setDeliverToast({ message: "Failed to update assignee", variant: "failed" }));
+      }
+      return rejectWithValue(err instanceof Error ? err.message : "Failed to update assignee");
+    }
+  }
+);
+
 export const addTaskDependency = createAsyncThunk(
   "execute/addTaskDependency",
   async (
@@ -739,6 +761,21 @@ const executeSlice = createSlice({
         const task = state.tasksById[taskId];
         if (task) task.priority = payload.previousPriority;
         state.priorityUpdatePendingTaskId = null;
+      });
+
+    // updateTaskAssignee — update tasksById and taskDetailCache on fulfilled
+    builder
+      .addCase(updateTaskAssignee.fulfilled, (state, action) => {
+        ensureTasksState(state);
+        const { task } = action.payload;
+        const t = state.tasksById[task.id];
+        if (t) {
+          t.assignee = task.assignee;
+        }
+        state.tasksById[task.id] = task;
+        if (!state.taskIdsOrder.includes(task.id)) {
+          state.taskIdsOrder.push(task.id);
+        }
       });
 
     // addTaskDependency — refresh task in state after adding dependency
