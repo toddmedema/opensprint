@@ -9,3 +9,11 @@ export function useProject(projectId: string | undefined, options?: { enabled?: 
     enabled: Boolean(projectId) && options?.enabled !== false,
   });
 }
+
+export function useProjectSettings(projectId: string | undefined, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.projects.settings(projectId ?? ""),
+    queryFn: () => api.projects.getSettings(projectId!),
+    enabled: Boolean(projectId) && options?.enabled !== false,
+  });
+}

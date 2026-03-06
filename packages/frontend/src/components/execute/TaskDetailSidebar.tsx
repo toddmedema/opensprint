@@ -25,6 +25,7 @@ import { wsConnect } from "../../store/middleware/websocketMiddleware";
 import { CloseButton } from "../CloseButton";
 import { ComplexityIcon } from "../ComplexityIcon";
 import { TaskPriorityDropdown } from "./TaskPriorityDropdown";
+import { AssigneeSelector } from "./AssigneeSelector";
 import { TaskStatusBadge, COLUMN_LABELS } from "../kanban";
 import { formatUptime, formatTaskDuration } from "../../lib/formatting";
 import { getEpicTitleFromPlan } from "../../lib/planContentUtils";
@@ -152,6 +153,8 @@ export interface TaskDetailSidebarProps {
   sections: TaskDetailSections;
   /** Open question notification for this task (renders block with Answer/Dismiss) */
   openQuestionNotification?: Notification | null;
+  /** Team members from project settings for assignee dropdown. */
+  teamMembers?: Array<{ id: string; name: string }>;
   callbacks: TaskDetailCallbacks;
 }
 
@@ -204,6 +207,7 @@ function areTaskDetailSidebarPropsEqual(
     cb(prev).onNavigateToPlan !== cb(next).onNavigateToPlan ||
     cb(prev).onClose !== cb(next).onClose ||
     prev.openQuestionNotification !== next.openQuestionNotification ||
+    prev.teamMembers !== next.teamMembers ||
     cb(prev).onOpenQuestionResolved !== cb(next).onOpenQuestionResolved ||
     cb(prev).onMarkDone !== cb(next).onMarkDone ||
     cb(prev).onUnblock !== cb(next).onUnblock ||
@@ -240,6 +244,7 @@ function TaskDetailSidebarInner({
   isBlockedTask,
   sections,
   openQuestionNotification,
+  teamMembers = [],
   callbacks,
 }: TaskDetailSidebarProps) {
   const { selectedTaskData, taskDetailLoading, taskDetailError } = taskDetail;
@@ -680,6 +685,13 @@ function TaskDetailSidebarInner({
                   <ComplexityIcon complexity={task.complexity} size="sm" />
                   {displayLabel ?? "—"}
                 </span>
+                <AssigneeSelector
+                  projectId={projectId}
+                  taskId={selectedTask}
+                  currentAssignee={task.assignee ?? null}
+                  teamMembers={teamMembers}
+                  readOnly={isDoneTask}
+                />
                 {isDoneTask &&
                   (() => {
                     const duration = formatTaskDuration(task.startedAt, task.completedAt);

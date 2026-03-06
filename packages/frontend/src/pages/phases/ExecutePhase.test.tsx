@@ -45,6 +45,8 @@ const mockLiveOutput = vi.fn().mockResolvedValue({ output: "" });
 const mockTaskDiagnostics = vi.fn().mockResolvedValue(null);
 let currentTaskGetImpl = mockGet.getMockImplementation();
 
+const mockGetSettings = vi.fn().mockResolvedValue({ teamMembers: [] });
+
 vi.mock("../../api/client", () => ({
   api: {
     tasks: {
@@ -54,9 +56,16 @@ vi.mock("../../api/client", () => ({
       markDone: (...args: unknown[]) => mockMarkDone(...args),
       unblock: (...args: unknown[]) => mockUnblock(...args),
       delete: (...args: unknown[]) => mockDeleteTask(...args),
+      updateTask: vi.fn().mockImplementation(async (_projectId: string, taskId: string, updates: { assignee?: string | null }) => {
+        const task = (await mockGet("proj-1", taskId)) as { id: string; assignee: string | null };
+        return { ...task, assignee: updates.assignee ?? task.assignee };
+      }),
     },
     plans: {
       list: vi.fn().mockResolvedValue({ plans: [], edges: [] }),
+    },
+    projects: {
+      getSettings: (...args: unknown[]) => mockGetSettings(...args),
     },
     execute: {
       status: vi.fn().mockResolvedValue({}),

@@ -33,6 +33,7 @@ executeListeners.startListening({
  * When assignee update succeeds:
  * - Update task detail cache in place so the sidebar reflects the new assignee.
  * - Invalidate tasks list so it refetches and stays in sync.
+ * - Invalidate project settings so teamMembers (including auto-added names) stays in sync.
  */
 executeListeners.startListening({
   predicate: (action): action is ReturnType<typeof updateTaskAssignee.fulfilled> =>
@@ -44,6 +45,7 @@ executeListeners.startListening({
       const projectId = action.meta.arg.projectId;
       qc.setQueryData(queryKeys.tasks.detail(projectId, taskId), task);
       void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.projects.settings(projectId) });
     } catch {
       // QueryClient may not be set in tests
     }

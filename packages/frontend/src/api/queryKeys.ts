@@ -4,6 +4,7 @@ export const queryKeys = {
   projects: {
     all: ["projects"] as const,
     detail: (projectId: string) => ["projects", projectId] as const,
+    settings: (projectId: string) => ["projects", projectId, "settings"] as const,
   },
   prd: {
     detail: (projectId: string) => ["prd", projectId] as const,

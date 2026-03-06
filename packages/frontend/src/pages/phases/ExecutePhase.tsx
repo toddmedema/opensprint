@@ -20,6 +20,7 @@ import {
   useUnblockTask,
   useDeleteTask,
   useTasks,
+  useProjectSettings,
 } from "../../api/hooks";
 import { usePhaseLoadingState } from "../../hooks/usePhaseLoadingState";
 import { PhaseLoadingSpinner } from "../../components/PhaseLoadingSpinner";
@@ -111,6 +112,7 @@ export function ExecutePhase({
   const markDoneMutation = useMarkTaskDone(projectId);
   const unblockMutation = useUnblockTask(projectId);
   const deleteTaskMutation = useDeleteTask(projectId);
+  const projectSettingsQuery = useProjectSettings(projectId);
 
   const taskDetailData = taskDetailQuery.data;
   const taskDetailLoading = taskDetailQuery.isFetching;
@@ -571,6 +573,7 @@ export function ExecutePhase({
               sourceFeedbackExpanded,
               setSourceFeedbackExpanded,
             }}
+            teamMembers={projectSettingsQuery.data?.teamMembers ?? []}
             callbacks={{
               onClose: handleClose,
               onMarkDone: handleMarkDone,

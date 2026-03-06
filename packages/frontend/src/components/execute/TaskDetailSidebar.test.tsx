@@ -38,6 +38,7 @@ import {
 
 const mockGet = vi.fn();
 const mockUpdatePriority = vi.fn();
+const mockUpdateTask = vi.fn();
 const mockAddDependency = vi.fn();
 const mockRemoveDependency = vi.fn();
 const mockTasksGet = vi.fn();
@@ -52,6 +53,7 @@ vi.mock("../../api/client", async (importOriginal) => {
         ...((actual.api as { tasks?: Record<string, unknown> }).tasks ?? {}),
         get: (...args: unknown[]) => mockTasksGet(...args),
         updatePriority: (...args: unknown[]) => mockUpdatePriority(...args),
+        updateTask: (...args: unknown[]) => mockUpdateTask(...args),
         addDependency: (...args: unknown[]) => mockAddDependency(...args),
         removeDependency: (...args: unknown[]) => mockRemoveDependency(...args),
       },
@@ -179,6 +181,7 @@ function createMinimalProps(overrides: Record<string, unknown> = {}) {
       flat.openQuestionNotification !== null && {
         openQuestionNotification: flat.openQuestionNotification,
       }),
+    teamMembers: (flat.teamMembers as Array<{ id: string; name: string }>) ?? [],
   };
 }
 
@@ -217,6 +220,16 @@ describe("TaskDetailSidebar", () => {
     vi.clearAllMocks();
     mockGet.mockResolvedValue(null);
     mockUpdatePriority.mockResolvedValue({});
+    mockUpdateTask.mockImplementation(
+      async (
+        _projectId: string,
+        _taskId: string,
+        updates: { assignee?: string | null }
+      ) => ({
+        ...defaultSelectedTaskData,
+        assignee: updates.assignee ?? null,
+      })
+    );
     mockAddDependency.mockResolvedValue(undefined);
     mockRemoveDependency.mockResolvedValue(undefined);
     mockTasksGet.mockResolvedValue({});
@@ -2042,6 +2055,64 @@ describe("TaskDetailSidebar", () => {
       expect(row).toContainElement(screen.getByTestId("task-complexity"));
       expect(row).toHaveTextContent("Complex");
       expect(row).toHaveTextContent("In Progress");
+    });
+  });
+
+  describe("Assignee selector", () => {
+    it("shows assignee dropdown in metadata row when task is not done", () => {
+      const props = createMinimalProps({
+        selectedTaskData: { ...defaultSelectedTaskData, assignee: "Alice" },
+        teamMembers: [{ id: "alice", name: "Alice" }, { id: "bob", name: "Bob" }],
+      });
+      renderSidebar(props, {
+        preloadedState: getPreloadedState({ ...defaultSelectedTaskData, assignee: "Alice" }),
+      });
+      expect(screen.getByTestId("assignee-dropdown-trigger")).toBeInTheDocument();
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+    });
+
+    it("shows Unassigned when task has no assignee", () => {
+      const props = createMinimalProps({
+        teamMembers: [{ id: "alice", name: "Alice" }],
+      });
+      renderSidebar(props, { preloadedState: defaultPreloadedState });
+      const trigger = screen.getByTestId("assignee-dropdown-trigger");
+      expect(trigger).toBeInTheDocument();
+      expect(trigger).toHaveAttribute("aria-label", "Assignee: —. Click to change");
+    });
+
+    it("shows read-only assignee when task is done", () => {
+      const props = createMinimalProps({
+        isDoneTask: true,
+        selectedTaskData: {
+          ...defaultSelectedTaskData,
+          kanbanColumn: "done" as const,
+          status: "closed" as const,
+          assignee: "Alice",
+        },
+        teamMembers: [{ id: "alice", name: "Alice" }],
+      });
+      renderSidebar(props, {
+        preloadedState: defaultPreloadedState,
+      });
+      expect(screen.getByTestId("assignee-read-only")).toBeInTheDocument();
+      expect(screen.getByText("Alice")).toBeInTheDocument();
+      expect(screen.queryByTestId("assignee-dropdown-trigger")).not.toBeInTheDocument();
+    });
+
+    it("persists assignee change when selecting team member", async () => {
+      const user = userEvent.setup();
+      const props = createMinimalProps({
+        teamMembers: [{ id: "alice", name: "Alice" }, { id: "bob", name: "Bob" }],
+      });
+      renderSidebar(props, { preloadedState: defaultPreloadedState });
+      await user.click(screen.getByTestId("assignee-dropdown-trigger"));
+      await user.click(screen.getByTestId("assignee-option-alice"));
+      await waitFor(() => {
+        expect(mockUpdateTask).toHaveBeenCalledWith("proj-1", "epic-1.1", {
+          assignee: "Alice",
+        });
+      });
     });
   });
 
