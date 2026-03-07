@@ -45,11 +45,13 @@ export function CreateNewProjectPage() {
     type: "cursor" as AgentType,
     model: "",
     cliCommand: "",
+    baseUrl: "http://localhost:1234",
   });
   const [complexComplexityAgent, setComplexComplexityAgent] = useState({
     type: "cursor" as AgentType,
     model: "",
     cliCommand: "",
+    baseUrl: "http://localhost:1234",
   });
   const [envKeys, setEnvKeys] = useState<{
     anthropic: boolean;
@@ -109,12 +111,14 @@ export function CreateNewProjectPage() {
             type: defaultType,
             model: "",
             cliCommand: "",
+            baseUrl: "http://localhost:1234",
           }));
           setComplexComplexityAgent((prev) => ({
             ...prev,
             type: defaultType,
             model: "",
             cliCommand: "",
+            baseUrl: "http://localhost:1234",
           }));
         }
       })
@@ -193,6 +197,9 @@ export function CreateNewProjectPage() {
               simpleComplexityAgent.type === "custom" && simpleComplexityAgent.cliCommand.trim()
                 ? simpleComplexityAgent.cliCommand.trim()
                 : null,
+            ...(simpleComplexityAgent.type === "lmstudio" && {
+              baseUrl: simpleComplexityAgent.baseUrl || "http://localhost:1234",
+            }),
           },
           complexComplexityAgent: {
             type: complexComplexityAgent.type,
@@ -204,6 +211,9 @@ export function CreateNewProjectPage() {
               complexComplexityAgent.type === "custom" && complexComplexityAgent.cliCommand.trim()
                 ? complexComplexityAgent.cliCommand.trim()
                 : null,
+            ...(complexComplexityAgent.type === "lmstudio" && {
+              baseUrl: complexComplexityAgent.baseUrl || "http://localhost:1234",
+            }),
           },
         });
         if (scaffoldStepMountedRef.current) {
@@ -243,9 +253,11 @@ export function CreateNewProjectPage() {
     simpleComplexityAgent.type,
     simpleComplexityAgent.model,
     simpleComplexityAgent.cliCommand,
+    simpleComplexityAgent.baseUrl,
     complexComplexityAgent.type,
     complexComplexityAgent.model,
     complexComplexityAgent.cliCommand,
+    complexComplexityAgent.baseUrl,
   ]);
 
   const handleScaffoldRetry = () => {
@@ -266,6 +278,9 @@ export function CreateNewProjectPage() {
             simpleComplexityAgent.type === "custom" && simpleComplexityAgent.cliCommand.trim()
               ? simpleComplexityAgent.cliCommand.trim()
               : null,
+          ...(simpleComplexityAgent.type === "lmstudio" && {
+            baseUrl: simpleComplexityAgent.baseUrl || "http://localhost:1234",
+          }),
         },
         complexComplexityAgent: {
           type: complexComplexityAgent.type,
@@ -275,6 +290,9 @@ export function CreateNewProjectPage() {
             complexComplexityAgent.type === "custom" && complexComplexityAgent.cliCommand.trim()
               ? complexComplexityAgent.cliCommand.trim()
               : null,
+          ...(complexComplexityAgent.type === "lmstudio" && {
+            baseUrl: complexComplexityAgent.baseUrl || "http://localhost:1234",
+          }),
         },
       })
       .then((result) => {

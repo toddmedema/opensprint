@@ -40,6 +40,8 @@ import {
 } from "@opensprint/shared";
 import { MIN_SAVE_SPINNER_MS, SETTINGS_HELP_CONTAINER_CLASS } from "../lib/constants";
 
+const DEFAULT_LMSTUDIO_BASE_URL = "http://localhost:1234";
+
 interface ProjectSettingsModalProps {
   project: Project;
   onClose: () => void;
@@ -233,18 +235,16 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
         .catch(() => setEnvKeys(null));
     }, [activeTab]);
 
-    const simpleComplexityAgent = settings?.simpleComplexityAgent ??
-      settings?.simpleComplexityAgent ?? {
-        type: "cursor" as AgentType,
-        model: null,
-        cliCommand: null,
-      };
-    const complexComplexityAgent = settings?.complexComplexityAgent ??
-      settings?.complexComplexityAgent ?? {
-        type: "cursor" as AgentType,
-        model: null,
-        cliCommand: null,
-      };
+    const simpleComplexityAgent = settings?.simpleComplexityAgent ?? {
+      type: "cursor" as AgentType,
+      model: null,
+      cliCommand: null,
+    };
+    const complexComplexityAgent = settings?.complexComplexityAgent ?? {
+      type: "cursor" as AgentType,
+      model: null,
+      cliCommand: null,
+    };
     const deployment = settings?.deployment ?? { mode: "custom" as DeploymentMode };
     const aiAutonomyLevel = settings?.aiAutonomyLevel ?? DEFAULT_AI_AUTONOMY_LEVEL;
     const gitWorkingMode = settings?.gitWorkingMode ?? "worktree";
@@ -310,11 +310,17 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                 type: effSimple.type,
                 model: effSimple.model || null,
                 cliCommand: effSimple.cliCommand || null,
+                ...(effSimple.type === "lmstudio" && {
+                  baseUrl: effSimple.baseUrl || DEFAULT_LMSTUDIO_BASE_URL,
+                }),
               },
               complexComplexityAgent: {
                 type: effComplex.type,
                 model: effComplex.model || null,
                 cliCommand: effComplex.cliCommand || null,
+                ...(effComplex.type === "lmstudio" && {
+                  baseUrl: effComplex.baseUrl || DEFAULT_LMSTUDIO_BASE_URL,
+                }),
               },
               deployment: {
                 mode: effDeployment.mode,
@@ -665,25 +671,50 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                               <option value="claude-cli">Claude (CLI)</option>
                               <option value="cursor">Cursor</option>
                               <option value="openai">OpenAI</option>
-                              <option value="google">Google (Gemini)</option>
-                              <option value="custom">Custom CLI</option>
-                            </select>
+                            <option value="google">Google (Gemini)</option>
+                            <option value="lmstudio">LM Studio (local)</option>
+                            <option value="custom">Custom CLI</option>
+                          </select>
+                        </div>
+                        {simpleComplexityAgent.type === "lmstudio" && (
+                          <div className="flex-1 min-w-[180px]">
+                            <label className="block text-xs font-medium text-theme-muted mb-1">
+                              Base URL
+                            </label>
+                            <input
+                              type="text"
+                              className="input w-full font-mono text-sm"
+                              placeholder={DEFAULT_LMSTUDIO_BASE_URL}
+                              value={simpleComplexityAgent.baseUrl ?? ""}
+                              onChange={(e) =>
+                                updateSimpleComplexityAgent({
+                                  baseUrl: e.target.value.trim() || undefined,
+                                })
+                              }
+                              onBlur={scheduleSaveOnBlur}
+                            />
                           </div>
-                          {simpleComplexityAgent.type !== "custom" ? (
-                            <div className="flex-1 min-w-[140px]">
-                              <label className="block text-xs font-medium text-theme-muted mb-1">
-                                Agent
-                              </label>
-                              <ModelSelect
-                                provider={simpleComplexityAgent.type}
-                                value={simpleComplexityAgent.model}
-                                onChange={(id) => updateSimpleComplexityAgent({ model: id })}
-                                onBlur={scheduleSaveOnBlur}
-                                projectId={project.id}
-                                refreshTrigger={modelRefreshTrigger}
-                              />
-                            </div>
-                          ) : (
+                        )}
+                        {simpleComplexityAgent.type !== "custom" ? (
+                          <div className="flex-1 min-w-[140px]">
+                            <label className="block text-xs font-medium text-theme-muted mb-1">
+                              Agent
+                            </label>
+                            <ModelSelect
+                              provider={simpleComplexityAgent.type}
+                              value={simpleComplexityAgent.model}
+                              onChange={(id) => updateSimpleComplexityAgent({ model: id })}
+                              onBlur={scheduleSaveOnBlur}
+                              projectId={project.id}
+                              refreshTrigger={modelRefreshTrigger}
+                              baseUrl={
+                                simpleComplexityAgent.type === "lmstudio"
+                                  ? simpleComplexityAgent.baseUrl || DEFAULT_LMSTUDIO_BASE_URL
+                                  : undefined
+                              }
+                            />
+                          </div>
+                        ) : (
                             <div className="flex-1 min-w-[200px]">
                               <label className="block text-xs font-medium text-theme-muted mb-1">
                                 CLI command
@@ -725,34 +756,59 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                               <option value="claude-cli">Claude (CLI)</option>
                               <option value="cursor">Cursor</option>
                               <option value="openai">OpenAI</option>
-                              <option value="google">Google (Gemini)</option>
-                              <option value="custom">Custom CLI</option>
-                            </select>
+                            <option value="google">Google (Gemini)</option>
+                            <option value="lmstudio">LM Studio (local)</option>
+                            <option value="custom">Custom CLI</option>
+                          </select>
+                        </div>
+                        {complexComplexityAgent.type === "lmstudio" && (
+                          <div className="flex-1 min-w-[180px]">
+                            <label className="block text-xs font-medium text-theme-muted mb-1">
+                              Base URL
+                            </label>
+                            <input
+                              type="text"
+                              className="input w-full font-mono text-sm"
+                              placeholder={DEFAULT_LMSTUDIO_BASE_URL}
+                              value={complexComplexityAgent.baseUrl ?? ""}
+                              onChange={(e) =>
+                                updateComplexComplexityAgent({
+                                  baseUrl: e.target.value.trim() || undefined,
+                                })
+                              }
+                              onBlur={scheduleSaveOnBlur}
+                            />
                           </div>
-                          {complexComplexityAgent.type !== "custom" ? (
-                            <div className="flex-1 min-w-[140px]">
-                              <label className="block text-xs font-medium text-theme-muted mb-1">
-                                Agent
-                              </label>
-                              <ModelSelect
-                                provider={complexComplexityAgent.type}
-                                value={complexComplexityAgent.model}
-                                onChange={(id) => updateComplexComplexityAgent({ model: id })}
-                                onBlur={scheduleSaveOnBlur}
-                                projectId={project.id}
-                                refreshTrigger={modelRefreshTrigger}
-                              />
-                            </div>
-                          ) : (
-                            <div className="flex-1 min-w-[200px]">
-                              <label className="block text-xs font-medium text-theme-muted mb-1">
-                                CLI command
-                              </label>
-                              <input
-                                type="text"
-                                className="input w-full font-mono text-sm"
-                                placeholder="e.g. my-agent or /usr/local/bin/my-agent --model gpt-4"
-                                value={complexComplexityAgent.cliCommand ?? ""}
+                        )}
+                        {complexComplexityAgent.type !== "custom" ? (
+                          <div className="flex-1 min-w-[140px]">
+                            <label className="block text-xs font-medium text-theme-muted mb-1">
+                              Agent
+                            </label>
+                            <ModelSelect
+                              provider={complexComplexityAgent.type}
+                              value={complexComplexityAgent.model}
+                              onChange={(id) => updateComplexComplexityAgent({ model: id })}
+                              onBlur={scheduleSaveOnBlur}
+                              projectId={project.id}
+                              refreshTrigger={modelRefreshTrigger}
+                              baseUrl={
+                                complexComplexityAgent.type === "lmstudio"
+                                  ? complexComplexityAgent.baseUrl || DEFAULT_LMSTUDIO_BASE_URL
+                                  : undefined
+                              }
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex-1 min-w-[200px]">
+                            <label className="block text-xs font-medium text-theme-muted mb-1">
+                              CLI command
+                            </label>
+                            <input
+                              type="text"
+                              className="input w-full font-mono text-sm"
+                              placeholder="e.g. my-agent or /usr/local/bin/my-agent --model gpt-4"
+                              value={complexComplexityAgent.cliCommand ?? ""}
                                 onChange={(e) =>
                                   updateComplexComplexityAgent(
                                     { cliCommand: e.target.value || null },

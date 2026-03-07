@@ -142,6 +142,43 @@ describe("AgentsStep", () => {
     expect(openaiOptions).toHaveLength(2);
   });
 
+  it("LM Studio (local) appears as provider option in Simple and Complex dropdowns", () => {
+    renderAgentsStep();
+
+    const lmstudioOptions = screen.getAllByRole("option", { name: "LM Studio (local)" });
+    expect(lmstudioOptions).toHaveLength(2);
+  });
+
+  it("when LM Studio selected for Simple, shows Base URL input and ModelSelect with baseUrl", async () => {
+    mockModelsList.mockImplementation((provider: string, _projectId?: string, baseUrl?: string) => {
+      if (provider === "lmstudio") {
+        return Promise.resolve([
+          { id: "local-model", displayName: "Local Model" },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    renderAgentsStep({
+      simpleComplexityAgent: {
+        type: "lmstudio",
+        model: "",
+        cliCommand: "",
+        baseUrl: "http://localhost:1234",
+      },
+      complexComplexityAgent: { type: "cursor", model: "", cliCommand: "" },
+      envKeys: { anthropic: true, cursor: true, openai: true, claudeCli: true },
+    });
+
+    expect(screen.getByPlaceholderText("http://localhost:1234")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockModelsList).toHaveBeenCalledWith("lmstudio", undefined, "http://localhost:1234");
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "Local Model" })).toBeInTheDocument();
+    });
+  });
+
   it("when OpenAI selected for Simple, fetches and displays OpenAI models", async () => {
     mockModelsList.mockImplementation((provider: string) => {
       if (provider === "openai") {
@@ -160,7 +197,7 @@ describe("AgentsStep", () => {
     });
 
     await waitFor(() => {
-      expect(mockModelsList).toHaveBeenCalledWith("openai", undefined);
+      expect(mockModelsList).toHaveBeenCalledWith("openai", undefined, undefined);
     });
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "gpt-4o" })).toBeInTheDocument();
@@ -192,6 +229,26 @@ describe("AgentsStep", () => {
 
     expect(screen.queryByText(/API key required/)).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText("sk-ant-...")).not.toBeInTheDocument();
+  });
+
+  it("does not show API key warning when LM Studio is selected", () => {
+    renderAgentsStep({
+      simpleComplexityAgent: {
+        type: "lmstudio",
+        model: "",
+        cliCommand: "",
+        baseUrl: "http://localhost:1234",
+      },
+      complexComplexityAgent: {
+        type: "lmstudio",
+        model: "",
+        cliCommand: "",
+        baseUrl: "http://localhost:1234",
+      },
+      envKeys: { anthropic: false, cursor: false, openai: false, claudeCli: true },
+    });
+
+    expect(screen.queryByText(/API key required/)).not.toBeInTheDocument();
   });
 
   it("shows CLI warning when claude-cli is selected and CLI is not available", () => {

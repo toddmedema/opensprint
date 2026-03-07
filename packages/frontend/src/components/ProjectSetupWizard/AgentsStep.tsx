@@ -13,10 +13,13 @@ import type { AgentRole } from "@opensprint/shared";
 import { ASSET_BASE } from "../../lib/constants";
 import { hasNoApiKeys } from "../../utils/agentConfigDefaults";
 
+const DEFAULT_LMSTUDIO_BASE_URL = "http://localhost:1234";
+
 export interface AgentConfig {
   type: AgentType;
   model: string;
   cliCommand: string;
+  baseUrl?: string;
 }
 
 export interface EnvKeys {
@@ -185,9 +188,27 @@ export function AgentsStep({
                 <option value="cursor">Cursor</option>
                 <option value="openai">OpenAI</option>
                 <option value="google">Google (Gemini)</option>
+                <option value="lmstudio">LM Studio (local)</option>
                 <option value="custom">Custom CLI</option>
               </select>
             </div>
+            {simpleComplexityAgent.type === "lmstudio" && (
+              <div className="flex-1 min-w-[180px]">
+                <label className="block text-sm font-medium text-theme-text mb-1">Base URL</label>
+                <input
+                  type="text"
+                  className="input w-full font-mono text-sm"
+                  placeholder={DEFAULT_LMSTUDIO_BASE_URL}
+                  value={simpleComplexityAgent.baseUrl ?? ""}
+                  onChange={(e) =>
+                    onSimpleComplexityAgentChange({
+                      ...simpleComplexityAgent,
+                      baseUrl: e.target.value.trim() || undefined,
+                    })
+                  }
+                />
+              </div>
+            )}
             {simpleComplexityAgent.type !== "custom" ? (
               <div className="flex-1 min-w-[140px]">
                 <label className="block text-sm font-medium text-theme-text mb-1">Agent</label>
@@ -198,6 +219,11 @@ export function AgentsStep({
                     onSimpleComplexityAgentChange({ ...simpleComplexityAgent, model: id ?? "" })
                   }
                   refreshTrigger={modelRefreshTrigger}
+                  baseUrl={
+                    simpleComplexityAgent.type === "lmstudio"
+                      ? simpleComplexityAgent.baseUrl || DEFAULT_LMSTUDIO_BASE_URL
+                      : undefined
+                  }
                 />
               </div>
             ) : (
@@ -240,9 +266,27 @@ export function AgentsStep({
                 <option value="cursor">Cursor</option>
                 <option value="openai">OpenAI</option>
                 <option value="google">Google (Gemini)</option>
+                <option value="lmstudio">LM Studio (local)</option>
                 <option value="custom">Custom CLI</option>
               </select>
             </div>
+            {complexComplexityAgent.type === "lmstudio" && (
+              <div className="flex-1 min-w-[180px]">
+                <label className="block text-sm font-medium text-theme-text mb-1">Base URL</label>
+                <input
+                  type="text"
+                  className="input w-full font-mono text-sm"
+                  placeholder={DEFAULT_LMSTUDIO_BASE_URL}
+                  value={complexComplexityAgent.baseUrl ?? ""}
+                  onChange={(e) =>
+                    onComplexComplexityAgentChange({
+                      ...complexComplexityAgent,
+                      baseUrl: e.target.value.trim() || undefined,
+                    })
+                  }
+                />
+              </div>
+            )}
             {complexComplexityAgent.type !== "custom" ? (
               <div className="flex-1 min-w-[140px]">
                 <label className="block text-sm font-medium text-theme-text mb-1">Agent</label>
@@ -253,6 +297,11 @@ export function AgentsStep({
                     onComplexComplexityAgentChange({ ...complexComplexityAgent, model: id ?? "" })
                   }
                   refreshTrigger={modelRefreshTrigger}
+                  baseUrl={
+                    complexComplexityAgent.type === "lmstudio"
+                      ? complexComplexityAgent.baseUrl || DEFAULT_LMSTUDIO_BASE_URL
+                      : undefined
+                  }
                 />
               </div>
             ) : (

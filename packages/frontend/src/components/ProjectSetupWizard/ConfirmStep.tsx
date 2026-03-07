@@ -41,6 +41,12 @@ export function ConfirmStep({
         return "Claude (CLI)";
       case "cursor":
         return "Cursor";
+      case "openai":
+        return "OpenAI";
+      case "google":
+        return "Google (Gemini)";
+      case "lmstudio":
+        return "LM Studio (local)";
       default:
         return type;
     }

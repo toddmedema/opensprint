@@ -49,11 +49,13 @@ export function ProjectSetup() {
     type: "cursor" as AgentType,
     model: "",
     cliCommand: "",
+    baseUrl: "http://localhost:1234",
   });
   const [complexComplexityAgent, setComplexComplexityAgent] = useState({
     type: "cursor" as AgentType,
     model: "",
     cliCommand: "",
+    baseUrl: "http://localhost:1234",
   });
   const [testFramework, setTestFramework] = useState<string>("none");
   const [aiAutonomyLevel, setAiAutonomyLevel] =
@@ -148,8 +150,20 @@ export function ProjectSetup() {
         if (!hasSetAgentDefaultRef.current) {
           hasSetAgentDefaultRef.current = true;
           const defaultType = getDefaultProviderFromEnvKeys(keys);
-          setSimpleComplexityAgent((prev) => ({ ...prev, type: defaultType, model: "", cliCommand: "" }));
-          setComplexComplexityAgent((prev) => ({ ...prev, type: defaultType, model: "", cliCommand: "" }));
+          setSimpleComplexityAgent((prev) => ({
+            ...prev,
+            type: defaultType,
+            model: "",
+            cliCommand: "",
+            baseUrl: "http://localhost:1234",
+          }));
+          setComplexComplexityAgent((prev) => ({
+            ...prev,
+            type: defaultType,
+            model: "",
+            cliCommand: "",
+            baseUrl: "http://localhost:1234",
+          }));
         }
       })
       .catch(() => setEnvKeys(null));
@@ -188,6 +202,9 @@ export function ProjectSetup() {
             simpleComplexityAgent.type === "custom" && simpleComplexityAgent.cliCommand.trim()
               ? simpleComplexityAgent.cliCommand.trim()
               : null,
+          ...(simpleComplexityAgent.type === "lmstudio" && {
+            baseUrl: simpleComplexityAgent.baseUrl || "http://localhost:1234",
+          }),
         },
         complexComplexityAgent: {
           type: complexComplexityAgent.type,
@@ -197,6 +214,9 @@ export function ProjectSetup() {
             complexComplexityAgent.type === "custom" && complexComplexityAgent.cliCommand.trim()
               ? complexComplexityAgent.cliCommand.trim()
               : null,
+          ...(complexComplexityAgent.type === "lmstudio" && {
+            baseUrl: complexComplexityAgent.baseUrl || "http://localhost:1234",
+          }),
         },
         deployment: { ...DEFAULT_DEPLOYMENT_CONFIG },
         aiAutonomyLevel,
