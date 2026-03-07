@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import OpenAI from "openai";
 import { AgentClient } from "../services/agent-client.js";
 import type { AgentConfig } from "@opensprint/shared";
 import {
@@ -485,6 +486,103 @@ describe("AgentClient", () => {
         })
       ).rejects.toThrow("Unsupported agent type");
     });
+
+    it("should route lmstudio config to LM Studio API with default baseURL and model", async () => {
+      mockOpenAICreate.mockResolvedValue({
+        choices: [{ message: { content: "LM Studio response" } }],
+      });
+
+      const result = await client.invoke({
+        config: { type: "lmstudio", model: null, cliCommand: null },
+        prompt: "Hello",
+        cwd: "/tmp",
+      });
+
+      expect(mockGetNextKey).not.toHaveBeenCalled();
+      expect(OpenAI).toHaveBeenCalledWith(
+        expect.objectContaining({
+          baseURL: "http://localhost:1234/v1",
+          apiKey: "lm-studio",
+        })
+      );
+      expect(mockOpenAICreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: "local",
+          messages: expect.arrayContaining([
+            expect.objectContaining({ role: "user", content: "Hello" }),
+          ]),
+          max_tokens: 8192,
+        })
+      );
+      expect(result.content).toBe("LM Studio response");
+    });
+
+    it("should route lmstudio config with custom baseUrl and model", async () => {
+      mockOpenAICreate.mockResolvedValue({
+        choices: [{ message: { content: "Custom LM Studio" } }],
+      });
+
+      await client.invoke({
+        config: {
+          type: "lmstudio",
+          model: "my-model",
+          cliCommand: null,
+          baseUrl: "http://127.0.0.1:5678",
+        },
+        prompt: "Hi",
+        cwd: "/tmp",
+      });
+
+      expect(OpenAI).toHaveBeenCalledWith(
+        expect.objectContaining({
+          baseURL: "http://127.0.0.1:5678/v1",
+          apiKey: "lm-studio",
+        })
+      );
+      expect(mockOpenAICreate).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "my-model" })
+      );
+    });
+
+    it("should throw user-facing message when LM Studio is unreachable", async () => {
+      mockOpenAICreate.mockRejectedValue(Object.assign(new Error("fetch failed"), { code: "ECONNREFUSED" }));
+
+      await expect(
+        client.invoke({
+          config: { type: "lmstudio", model: "local", cliCommand: null },
+          prompt: "Hello",
+        })
+      ).rejects.toThrow("LM Studio is not running");
+
+      expect(mockGetNextKey).not.toHaveBeenCalled();
+    });
+
+    it("should stream LM Studio response when onChunk is provided", async () => {
+      mockOpenAICreate.mockImplementation(async (opts: { stream?: boolean }) => {
+        if (opts?.stream) {
+          async function* stream() {
+            yield { choices: [{ delta: { content: "Streamed " } }] };
+            yield { choices: [{ delta: { content: "response" } }] };
+          }
+          return stream();
+        }
+        return { choices: [{ message: { content: "fallback" } }] };
+      });
+
+      const onChunk = vi.fn();
+      const result = await client.invoke({
+        config: { type: "lmstudio", model: "local", cliCommand: null },
+        prompt: "Hi",
+        onChunk,
+      });
+
+      expect(mockOpenAICreate).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "local", stream: true, max_tokens: 8192 })
+      );
+      expect(onChunk).toHaveBeenCalledWith("Streamed ");
+      expect(onChunk).toHaveBeenCalledWith("response");
+      expect(result.content).toBe("Streamed response");
+    });
   });
 
   describe("spawnWithTaskFile", () => {
@@ -761,6 +859,79 @@ describe("AgentClient", () => {
         "k1",
         "global"
       );
+
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it("should run LM Studio in-process for spawnWithTaskFile (no subprocess, no API key)", async () => {
+      const fs = await import("fs/promises");
+      const path = await import("path");
+      const os = await import("os");
+      const tmpDir = path.join(os.tmpdir(), `agent-client-lmstudio-${Date.now()}`);
+      const taskDir = path.join(tmpDir, ".opensprint/active/os-lm.1");
+      await fs.mkdir(taskDir, { recursive: true });
+      const taskFilePath = path.join(taskDir, "prompt.md");
+      await fs.writeFile(taskFilePath, "# Task\n\nUse LM Studio", "utf-8");
+
+      mockOpenAICreate.mockImplementation(async () => {
+        async function* stream() {
+          yield { choices: [{ delta: { content: "LM " } }] };
+          yield { choices: [{ delta: { content: "Studio " } }] };
+          yield { choices: [{ delta: { content: "stream." } }] };
+        }
+        return stream();
+      });
+
+      const onOutput = vi.fn();
+      const onExit = vi.fn();
+      const config: AgentConfig = {
+        type: "lmstudio",
+        model: "local",
+        cliCommand: null,
+        baseUrl: "http://localhost:1234",
+      };
+
+      const { kill, pid } = client.spawnWithTaskFile(
+        config,
+        taskFilePath,
+        tmpDir,
+        onOutput,
+        onExit,
+        "coder",
+        undefined,
+        undefined
+      );
+
+      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(mockGetNextKey).not.toHaveBeenCalled();
+      expect(pid).toBeNull();
+      expect(kill).toBeDefined();
+
+      await vi.waitFor(
+        () => {
+          expect(onExit).toHaveBeenCalledWith(0);
+        },
+        { timeout: 2000 }
+      );
+      expect(OpenAI).toHaveBeenCalledWith(
+        expect.objectContaining({
+          baseURL: "http://localhost:1234/v1",
+          apiKey: "lm-studio",
+        })
+      );
+      expect(mockOpenAICreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: "local",
+          messages: expect.arrayContaining([
+            expect.objectContaining({ role: "user", content: "# Task\n\nUse LM Studio" }),
+          ]),
+          stream: true,
+          max_tokens: 16384,
+        })
+      );
+      expect(onOutput).toHaveBeenCalledWith("LM ");
+      expect(onOutput).toHaveBeenCalledWith("Studio ");
+      expect(onOutput).toHaveBeenCalledWith("stream.");
 
       await fs.rm(tmpDir, { recursive: true, force: true });
     });

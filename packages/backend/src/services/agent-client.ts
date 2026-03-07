@@ -100,6 +100,16 @@ async function collectOpenAIResponsesStream(
   return fullContent;
 }
 
+const LM_STUDIO_NOT_RUNNING_MESSAGE =
+  "LM Studio is not running. Start LM Studio, load a model, and ensure the local server is started (e.g. port 1234).";
+
+/** Normalize LM Studio base URL to include /v1 for OpenAI-compatible client. */
+function getLMStudioBaseUrl(configBaseUrl?: string | null): string {
+  const base = (configBaseUrl && configBaseUrl.trim()) || "http://localhost:1234";
+  const trimmed = base.replace(/\/+$/, "");
+  return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
+}
+
 function getStructuredAgentErrorMessage(obj: unknown): string | null {
   if (obj === null || typeof obj !== "object") return null;
 
@@ -358,6 +368,8 @@ export class AgentClient {
         return this.invokeOpenAIApi(options);
       case "google":
         return this.invokeGoogleApi(options);
+      case "lmstudio":
+        return this.invokeLMStudio(options);
       case "custom":
         return this.invokeCustomCli(options);
       default:
@@ -406,6 +418,18 @@ export class AgentClient {
     }
     if (config.type === "google") {
       return this.spawnGoogleWithTaskFile(
+        config,
+        taskFilePath,
+        cwd,
+        onOutput,
+        onExit,
+        agentRole,
+        outputLogPath,
+        projectId
+      );
+    }
+    if (config.type === "lmstudio") {
+      return this.spawnLMStudioWithTaskFile(
         config,
         taskFilePath,
         cwd,
@@ -847,6 +871,106 @@ export class AgentClient {
 
     run().catch((err) => {
       log.error("spawnGoogleWithTaskFile failed", { err });
+      Promise.resolve(onExit(1)).catch(() => {});
+    });
+
+    return handle;
+  }
+
+  /**
+   * LM Studio with task file: run API call in-process, stream to onOutput, simulate exit code.
+   * No subprocess spawn; no API key or key rotation.
+   */
+  private spawnLMStudioWithTaskFile(
+    config: AgentConfig,
+    taskFilePath: string,
+    cwd: string,
+    onOutput: (chunk: string) => void,
+    onExit: (code: number | null) => void | Promise<void>,
+    agentRole?: string,
+    outputLogPath?: string,
+    _projectId?: string
+  ): { kill: () => void; pid: number | null } {
+    let aborted = false;
+    const handle: { kill: () => void; pid: number | null } = {
+      pid: null,
+      kill() {
+        aborted = true;
+      },
+    };
+
+    if (outputLogPath) {
+      mkdirSync(path.dirname(outputLogPath), { recursive: true });
+    }
+
+    const emit = (chunk: string) => {
+      onOutput(chunk);
+      if (outputLogPath) {
+        try {
+          appendFileSync(outputLogPath, chunk);
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    const run = async (): Promise<void> => {
+      let taskContent: string;
+      try {
+        taskContent = await readFile(taskFilePath, "utf-8");
+      } catch (readErr) {
+        const msg = getErrorMessage(readErr);
+        log.error("LM Studio task file read failed", { taskFilePath, err: msg });
+        emit(`[Agent error: Could not read task file: ${msg}]\n`);
+        return Promise.resolve(onExit(1)).catch((e) => log.error("onExit failed", { err: e }));
+      }
+
+      const baseURL = getLMStudioBaseUrl(config.baseUrl);
+      const model = config.model ?? "local";
+      const systemPrompt = `You are a coding agent. Execute the task described in the user message. Output your work directly.`;
+      const client = new OpenAI({
+        baseURL,
+        apiKey: "lm-studio",
+      });
+      const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: taskContent },
+      ];
+
+      try {
+        const stream = await client.chat.completions.create({
+          model,
+          messages,
+          max_tokens: 16384,
+          stream: true,
+        });
+        let fullContent = "";
+        for await (const chunk of stream) {
+          if (aborted) return;
+          const delta = chunk.choices[0]?.delta?.content;
+          if (delta) {
+            fullContent += delta;
+            emit(delta);
+          }
+        }
+        if (aborted) return;
+        log.info("LM Studio coding agent completed", { outputLen: fullContent.length });
+        return Promise.resolve(onExit(0)).catch((e) => log.error("onExit failed", { err: e }));
+      } catch (error: unknown) {
+        const msg = getErrorMessage(error);
+        const isConnectionError =
+          msg.includes("ECONNREFUSED") ||
+          msg.includes("fetch failed") ||
+          msg.includes("ENOTFOUND") ||
+          (error instanceof Error && (error as NodeJS.ErrnoException).code === "ECONNREFUSED");
+        const userMsg = isConnectionError ? LM_STUDIO_NOT_RUNNING_MESSAGE : msg;
+        emit(`[Agent error: ${userMsg}]\n`);
+        return Promise.resolve(onExit(1)).catch((e) => log.error("onExit failed", { err: e }));
+      }
+    };
+
+    run().catch((err) => {
+      log.error("spawnLMStudioWithTaskFile failed", { err });
       Promise.resolve(onExit(1)).catch(() => {});
     });
 
@@ -1654,6 +1778,70 @@ export class AgentClient {
         });
         throw new AppError(502, ErrorCodes.AGENT_INVOKE_FAILED, details.userMessage, details);
       }
+    }
+  }
+
+  /**
+   * Invoke LM Studio via OpenAI-compatible API. No API key or key rotation.
+   */
+  private async invokeLMStudio(options: AgentInvokeOptions): Promise<AgentResponse> {
+    const { config, prompt, systemPrompt, conversationHistory } = options;
+    const baseURL = getLMStudioBaseUrl(config.baseUrl);
+    const model = config.model ?? "local";
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
+    if (systemPrompt?.trim()) {
+      messages.push({ role: "system", content: systemPrompt.trim() });
+    }
+    if (conversationHistory) {
+      for (const m of conversationHistory) {
+        messages.push({ role: m.role, content: m.content });
+      }
+    }
+    messages.push({ role: "user", content: prompt });
+
+    const client = new OpenAI({
+      baseURL,
+      apiKey: "lm-studio",
+    });
+
+    try {
+      if (options.onChunk) {
+        const stream = await client.chat.completions.create({
+          model,
+          messages,
+          max_tokens: 8192,
+          stream: true,
+        });
+        let fullContent = "";
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta?.content;
+          if (delta) {
+            fullContent += delta;
+            options.onChunk(delta);
+          }
+        }
+        return { content: fullContent };
+      }
+      const response = await client.chat.completions.create({
+        model,
+        messages,
+        max_tokens: 8192,
+      });
+      const content = response.choices[0]?.message?.content ?? "";
+      return { content };
+    } catch (error: unknown) {
+      const msg = getErrorMessage(error);
+      const isConnectionError =
+        msg.includes("ECONNREFUSED") ||
+        msg.includes("fetch failed") ||
+        msg.includes("ENOTFOUND") ||
+        (error instanceof Error && (error as NodeJS.ErrnoException).code === "ECONNREFUSED");
+      throw new AppError(
+        502,
+        ErrorCodes.AGENT_INVOKE_FAILED,
+        isConnectionError ? LM_STUDIO_NOT_RUNNING_MESSAGE : msg,
+        { agentType: "lmstudio", raw: msg }
+      );
     }
   }
 
