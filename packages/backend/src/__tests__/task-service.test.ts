@@ -66,6 +66,7 @@ vi.mock("../services/project.service.js", () => ({
     }),
     getProjectByRepoPath: vi.fn().mockResolvedValue({ id: "proj-1", repoPath: "/tmp/test-repo" }),
     getSettings: vi.fn().mockResolvedValue({ gitWorkingMode: "branches" }),
+    updateSettings: vi.fn().mockResolvedValue({}),
   })),
 }));
 
@@ -708,6 +709,100 @@ describe("TaskService", () => {
     expect(mockOrchestrator.stopTaskAndFreeSlot).toHaveBeenCalledWith("proj-1", "task-1");
     expect(taskStore.delete).toHaveBeenCalledWith("proj-1", "task-1");
     expect(mockOrchestrator.nudge).toHaveBeenCalledWith("proj-1");
+  });
+
+  describe("updateTask", () => {
+    it("adds human assignee to project teamMembers when not already in list", async () => {
+      const projectService = new ProjectService();
+      vi.mocked(projectService.getSettings).mockResolvedValue({
+        gitWorkingMode: "worktree",
+        teamMembers: [],
+      } as never);
+      vi.mocked(projectService.updateSettings).mockResolvedValue({} as never);
+
+      const svc = new TaskService(
+        projectService,
+        taskStore,
+        new FeedbackService(),
+        new SessionManager(),
+        new ContextAssembler(),
+        new BranchManager(),
+        mockOrchestrator
+      );
+
+      vi.mocked(taskStore.update).mockResolvedValue(undefined as never);
+
+      await svc.updateTask("proj-1", "task-1", { assignee: "Alice" });
+
+      expect(projectService.updateSettings).toHaveBeenCalledWith("proj-1", {
+        teamMembers: [{ id: "alice", name: "Alice" }],
+      });
+      expect(taskStore.update).toHaveBeenCalledWith(
+        "proj-1",
+        "task-1",
+        expect.objectContaining({ assignee: "Alice" })
+      );
+    });
+
+    it("does not call updateSettings when human assignee is already in teamMembers", async () => {
+      const projectService = new ProjectService();
+      vi.mocked(projectService.getSettings).mockResolvedValue({
+        gitWorkingMode: "worktree",
+        teamMembers: [{ id: "alice", name: "Alice" }],
+      } as never);
+      vi.mocked(projectService.updateSettings).mockResolvedValue({} as never);
+
+      const svc = new TaskService(
+        projectService,
+        taskStore,
+        new FeedbackService(),
+        new SessionManager(),
+        new ContextAssembler(),
+        new BranchManager(),
+        mockOrchestrator
+      );
+
+      vi.mocked(taskStore.update).mockResolvedValue(undefined as never);
+
+      await svc.updateTask("proj-1", "task-1", { assignee: "Alice" });
+
+      expect(projectService.updateSettings).not.toHaveBeenCalled();
+      expect(taskStore.update).toHaveBeenCalledWith(
+        "proj-1",
+        "task-1",
+        expect.objectContaining({ assignee: "Alice" })
+      );
+    });
+
+    it("does not add agent assignee to teamMembers", async () => {
+      const projectService = new ProjectService();
+      vi.mocked(projectService.getSettings).mockResolvedValue({
+        gitWorkingMode: "worktree",
+        teamMembers: [],
+      } as never);
+      vi.mocked(projectService.updateSettings).mockResolvedValue({} as never);
+
+      const svc = new TaskService(
+        projectService,
+        taskStore,
+        new FeedbackService(),
+        new SessionManager(),
+        new ContextAssembler(),
+        new BranchManager(),
+        mockOrchestrator
+      );
+
+      vi.mocked(taskStore.update).mockResolvedValue(undefined as never);
+
+      await svc.updateTask("proj-1", "task-1", { assignee: "Frodo" });
+
+      expect(projectService.updateSettings).not.toHaveBeenCalled();
+      expect(taskStore.update).toHaveBeenCalledWith(
+        "proj-1",
+        "task-1",
+        expect.objectContaining({ assignee: "Frodo" })
+      );
+    });
   });
 
   describe("sourceFeedbackIds", () => {

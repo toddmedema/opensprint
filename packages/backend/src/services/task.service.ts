@@ -13,6 +13,7 @@ import {
   clampTaskComplexity,
   TASK_COMPLEXITY_MIN,
   TASK_COMPLEXITY_MAX,
+  isAgentAssignee,
 } from "@opensprint/shared";
 import { ProjectService } from "./project.service.js";
 import type { TaskStoreService } from "./task-store.service.js";
@@ -29,6 +30,16 @@ import { parseTaskLastExecutionSummary } from "./task-execution-summary.js";
 import { resolveBaseBranch } from "../utils/git-repo-state.js";
 
 const log = createLogger("task");
+
+/** Slug for team member id: lowercase, hyphens for spaces, alphanumeric + hyphens. Non-empty. */
+function slugFromName(name: string): string {
+  const s = name
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
+  return s.length > 0 ? s : "member";
+}
 
 export interface TaskOrchestratorControl {
   stopTaskAndFreeSlot(projectId: string, taskId: string): Promise<void>;
@@ -564,6 +575,24 @@ export class TaskService {
     if (assigneeValue !== undefined) updatePayload.assignee = assigneeValue;
     if (Object.keys(updatePayload).length === 0) {
       return this.getTask(projectId, taskId);
+    }
+    // When assigning to a human (non-agent), add to project teamMembers if not already present (Technical Approach §4).
+    if (
+      assigneeValue &&
+      assigneeValue.length > 0 &&
+      !isAgentAssignee(assigneeValue)
+    ) {
+      const settings = await this.projectService.getSettings(projectId);
+      const teamMembers = settings.teamMembers ?? [];
+      const alreadyInTeam = teamMembers.some(
+        (m) => m.name.trim().toLowerCase() === assigneeValue!.trim().toLowerCase()
+      );
+      if (!alreadyInTeam) {
+        const id = slugFromName(assigneeValue);
+        await this.projectService.updateSettings(projectId, {
+          teamMembers: [...teamMembers, { id, name: assigneeValue }],
+        });
+      }
     }
     await this.taskStore.update(projectId, taskId, updatePayload);
     return this.getTask(projectId, taskId);
