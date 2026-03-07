@@ -263,6 +263,35 @@ describe("api client", () => {
         expect.any(Object)
       );
     });
+
+    it("list appends baseUrl when provider is lmstudio and baseUrl provided", async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({
+          data: [{ id: "local-model", displayName: "Local Model" }],
+        }),
+      } as Response);
+
+      await api.models.list("lmstudio", "proj-1", "http://localhost:1234");
+      const url = vi.mocked(fetch).mock.calls[0][0];
+      expect(url).toContain("/api/v1/models");
+      expect(url).toContain("provider=lmstudio");
+      expect(url).toContain("projectId=proj-1");
+      expect(url).toContain("baseUrl=" + encodeURIComponent("http://localhost:1234"));
+    });
+
+    it("list does not append baseUrl when provider is not lmstudio", async () => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ data: [] }),
+      } as Response);
+
+      await api.models.list("openai", "proj-1", "http://localhost:1234");
+      const url = vi.mocked(fetch).mock.calls[0][0];
+      expect(url).not.toContain("baseUrl=");
+    });
   });
 
   describe("env", () => {

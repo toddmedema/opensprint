@@ -4,13 +4,18 @@ import { ModelSelect } from "./ModelSelect";
 
 const mockModelsList = vi.fn();
 
-vi.mock("../api/client", () => ({
-  api: {
-    models: {
-      list: (...args: unknown[]) => mockModelsList(...args),
+vi.mock("../api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/client")>();
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
+      models: {
+        list: (...args: unknown[]) => mockModelsList(...args),
+      },
     },
-  },
-}));
+  };
+});
 
 describe("ModelSelect", () => {
   beforeEach(() => {
@@ -77,5 +82,71 @@ describe("ModelSelect", () => {
     mockModelsList.mockResolvedValue([]);
     render(<ModelSelect provider="cursor" value={null} onChange={() => {}} />);
     await screen.findByRole("option", { name: "Auto" });
+  });
+
+  it("fetches models for lmstudio with baseUrl and shows loading state", () => {
+    mockModelsList.mockImplementation(() => new Promise(() => {}));
+    render(
+      <ModelSelect
+        provider="lmstudio"
+        value={null}
+        onChange={() => {}}
+        projectId="proj-1"
+        baseUrl="http://localhost:1234"
+      />
+    );
+    expect(mockModelsList).toHaveBeenCalledWith("lmstudio", "proj-1", "http://localhost:1234");
+    expect(screen.getByText("Loading models…")).toBeInTheDocument();
+  });
+
+  it("shows LM Studio unreachable message when fetch fails with connection error", async () => {
+    mockModelsList.mockRejectedValue(new Error("Failed to fetch"));
+    render(
+      <ModelSelect
+        provider="lmstudio"
+        value={null}
+        onChange={() => {}}
+        baseUrl="http://localhost:1234"
+      />
+    );
+    await screen.findByText(/LM Studio is not reachable. Check the server URL in Settings./);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "LM Studio is not reachable. Check the server URL in Settings."
+    );
+  });
+
+  it("shows no models message for lmstudio when fetch fails with non-connection error", async () => {
+    mockModelsList.mockRejectedValue(new Error("Internal server error"));
+    render(
+      <ModelSelect
+        provider="lmstudio"
+        value={null}
+        onChange={() => {}}
+        baseUrl="http://localhost:1234"
+      />
+    );
+    await screen.findByText(/No models — start LM Studio and load a model/);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "No models — start LM Studio and load a model"
+    );
+  });
+
+  it("renders lmstudio model options when fetch succeeds", async () => {
+    mockModelsList.mockResolvedValue([
+      { id: "local/llama", displayName: "Llama 3 Local" },
+      { id: "local/mistral", displayName: "Mistral 7B" },
+    ]);
+    const onChange = vi.fn();
+    render(
+      <ModelSelect
+        provider="lmstudio"
+        value={null}
+        onChange={onChange}
+        baseUrl="http://localhost:1234"
+      />
+    );
+    await screen.findByText("Llama 3 Local");
+    expect(screen.getByRole("option", { name: "Mistral 7B" })).toBeInTheDocument();
+    expect(onChange).toHaveBeenCalledWith("local/llama");
   });
 });

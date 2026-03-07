@@ -135,9 +135,10 @@ export const api = {
       request<DbStatusResponse>("/db-status", signal ? { signal } : {}),
   },
   models: {
-    list: (provider: string, projectId?: string) => {
+    list: (provider: string, projectId?: string, baseUrl?: string) => {
       const params = new URLSearchParams({ provider });
       if (projectId) params.set("projectId", projectId);
+      if (provider === "lmstudio" && baseUrl) params.set("baseUrl", baseUrl);
       return request<ModelOption[]>(`/models?${params.toString()}`);
     },
   },

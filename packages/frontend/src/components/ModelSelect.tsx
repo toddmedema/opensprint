@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { api, type ModelOption } from "../api/client";
+import { api, type ModelOption, isConnectionError } from "../api/client";
 import type { AgentType } from "@opensprint/shared";
 
 interface ModelSelectProps {
@@ -10,11 +10,15 @@ interface ModelSelectProps {
   className?: string;
   /** Project ID for API key resolution when listing models (project-level keys) */
   projectId?: string;
+  /** LM Studio base URL (e.g. http://localhost:1234); used when provider is lmstudio */
+  baseUrl?: string;
   /** Increment to trigger a refetch of models (e.g. after saving an API key) */
   refreshTrigger?: number;
   /** Called when the control loses focus */
   onBlur?: () => void;
 }
+
+const FETCH_PROVIDERS = ["claude", "claude-cli", "cursor", "openai", "google", "lmstudio"] as const;
 
 export function ModelSelect({
   provider,
@@ -23,6 +27,7 @@ export function ModelSelect({
   disabled,
   className = "input",
   projectId,
+  baseUrl,
   refreshTrigger,
   onBlur,
 }: ModelSelectProps) {
@@ -32,13 +37,7 @@ export function ModelSelect({
   const supportsAuto = provider === "cursor";
 
   useEffect(() => {
-    if (
-      provider !== "claude" &&
-      provider !== "claude-cli" &&
-      provider !== "cursor" &&
-      provider !== "openai" &&
-      provider !== "google"
-    ) {
+    if (!FETCH_PROVIDERS.includes(provider as (typeof FETCH_PROVIDERS)[number])) {
       setModels([]);
       setError(null);
       return;
@@ -47,14 +46,14 @@ export function ModelSelect({
     setLoading(true);
     setError(null);
     api.models
-      .list(provider, projectId)
+      .list(provider, projectId, provider === "lmstudio" ? baseUrl : undefined)
       .then((list) => setModels(list))
       .catch((err) => {
         setError(err instanceof Error ? err.message : "Failed to load models");
         setModels([]);
       })
       .finally(() => setLoading(false));
-  }, [provider, projectId, refreshTrigger]);
+  }, [provider, projectId, baseUrl, refreshTrigger]);
 
   // Default to first agent from provider list when list loads and no valid selection
   useEffect(() => {
@@ -92,24 +91,31 @@ export function ModelSelect({
 
   if (error) {
     const hint =
-      provider === "claude"
-        ? "Check ANTHROPIC_API_KEY in .env"
-        : provider === "claude-cli"
-          ? "Ensure claude CLI is installed"
-          : provider === "cursor"
-            ? "Check CURSOR_API_KEY in .env"
-            : provider === "openai"
-              ? "Check OPENAI_API_KEY in .env"
-              : provider === "google"
-                ? "Check GOOGLE_API_KEY in .env"
-                : "";
+      provider === "lmstudio"
+        ? isConnectionError(error)
+          ? "LM Studio is not reachable. Check the server URL in Settings."
+          : "No models — start LM Studio and load a model"
+        : provider === "claude"
+          ? "Check ANTHROPIC_API_KEY in .env"
+          : provider === "claude-cli"
+            ? "Ensure claude CLI is installed"
+            : provider === "cursor"
+              ? "Check CURSOR_API_KEY in .env"
+              : provider === "openai"
+                ? "Check OPENAI_API_KEY in .env"
+                : provider === "google"
+                  ? "Check GOOGLE_API_KEY in .env"
+                  : "";
+    const displayMessage = provider === "lmstudio" ? hint : error;
+    const optionLabel =
+      provider === "lmstudio" ? "No models" : `No models${hint ? ` (${hint})` : ""}`;
     return (
       <div className="space-y-1" role="group" aria-label="Model selection">
         <select className={className} disabled aria-label="Model selection" aria-invalid="true">
-          <option value="">No models ({hint})</option>
+          <option value="">{optionLabel}</option>
         </select>
         <p className="text-xs text-theme-warning-text" role="alert" aria-live="polite">
-          {error}
+          {displayMessage}
         </p>
       </div>
     );
