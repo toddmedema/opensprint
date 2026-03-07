@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Task } from "@opensprint/shared";
 import type { Plan } from "@opensprint/shared";
@@ -57,6 +57,7 @@ function TimelineRow({
   onUnblock,
   projectId,
   teamMembers,
+  onAssigneeDropdownOpenChange,
 }: {
   task: Task;
   epicName: string;
@@ -65,12 +66,22 @@ function TimelineRow({
   onUnblock?: (taskId: string) => void;
   projectId: string;
   teamMembers: Array<{ id: string; name: string }>;
+  onAssigneeDropdownOpenChange?: (taskId: string, open: boolean) => void;
 }) {
   const isBlocked = task.kanbanColumn === "blocked";
   const isDone = task.kanbanColumn === "done";
+  const [assigneeDropdownOpen, setAssigneeDropdownOpen] = useState(false);
+
+  const handleAssigneeOpenChange = (open: boolean) => {
+    setAssigneeDropdownOpen(open);
+    onAssigneeDropdownOpenChange?.(task.id, open);
+  };
 
   return (
-    <li data-testid={`timeline-row-${task.id}`}>
+    <li
+      data-testid={`timeline-row-${task.id}`}
+      className={assigneeDropdownOpen ? "relative z-[200]" : undefined}
+    >
       <div className="flex items-center gap-2 px-4 py-2.5 group overflow-x-auto md:overflow-x-visible min-w-0">
         <button
           type="button"
@@ -104,6 +115,7 @@ function TimelineRow({
             teamMembers={teamMembers}
             readOnly={isDone}
             isAgentAssignee={!!task.assignee && isAgentAssignee(task.assignee)}
+            onOpenChange={handleAssigneeOpenChange}
           />
         </span>
         {isBlocked && onUnblock && (
@@ -245,6 +257,7 @@ export function TimelineList({
     return m;
   }, [items]);
 
+  const [openAssigneeTaskId, setOpenAssigneeTaskId] = useState<string | null>(null);
   const useVirtualization = Boolean(scrollRef) && items.length > VIRTUALIZE_THRESHOLD;
   const virtualizer = useVirtualizer({
     count: items.length,
@@ -295,6 +308,9 @@ export function TimelineList({
                     onUnblock={task.kanbanColumn === "blocked" ? onUnblock : undefined}
                     projectId={projectId}
                     teamMembers={teamMembers}
+                    onAssigneeDropdownOpenChange={(taskId, open) =>
+                      setOpenAssigneeTaskId(open ? taskId : null)
+                    }
                   />
                 ))}
               </ul>
@@ -351,6 +367,7 @@ export function TimelineList({
                 left: 0,
                 width: "100%",
                 transform: `translateY(${virtualRow.start - virtualizer.options.scrollMargin}px)`,
+                zIndex: openAssigneeTaskId === item.task.id ? 200 : undefined,
               }}
               className="border-b border-theme-border-subtle"
             >
@@ -363,6 +380,9 @@ export function TimelineList({
                   onUnblock={item.onUnblock}
                   projectId={item.projectId}
                   teamMembers={item.teamMembers}
+                  onAssigneeDropdownOpenChange={(taskId, open) =>
+                    setOpenAssigneeTaskId(open ? taskId : null)
+                  }
                 />
               </ul>
             </div>

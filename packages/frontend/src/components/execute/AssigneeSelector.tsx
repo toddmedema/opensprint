@@ -14,6 +14,8 @@ export interface AssigneeSelectorProps {
   isAgentAssignee?: boolean;
   /** When true, show read-only display (e.g. for done tasks). */
   readOnly?: boolean;
+  /** Called when the dropdown open state changes (e.g. for row z-index in lists). */
+  onOpenChange?: (open: boolean) => void;
 }
 
 /** Person icon for human-assigned tasks. */
@@ -60,6 +62,7 @@ export function AssigneeSelector({
   onSelect,
   isAgentAssignee: isAgentProp,
   readOnly = false,
+  onOpenChange,
 }: AssigneeSelectorProps) {
   const dispatch = useAppDispatch();
   const isAgent = isAgentProp ?? (!!currentAssignee && isAgentAssignee(currentAssignee));
@@ -68,6 +71,10 @@ export function AssigneeSelector({
   const [otherInput, setOtherInput] = useState("");
   const [showOtherInput, setShowOtherInput] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
 
   useEffect(() => {
     if (!open) return;
@@ -145,7 +152,7 @@ export function AssigneeSelector({
       {open && (
         <ul
           role="listbox"
-          className="absolute left-0 top-full mt-1 z-50 min-w-[160px] rounded-lg border border-theme-border bg-theme-surface shadow-lg py-1"
+          className="absolute left-0 top-full mt-1 z-[1000] min-w-[160px] rounded-lg border border-theme-border bg-theme-surface shadow-lg py-1"
           data-testid="assignee-dropdown"
         >
           <li role="option">
