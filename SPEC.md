@@ -6,7 +6,7 @@ OpenSprint is a web application that guides users through the complete software 
 
 The platform pairs a browser-based interface with a background agent CLI, enabling AI to autonomously execute development tasks while keeping the user in control of strategy and direction. The core philosophy is that humans should focus on _what_ to build and _why_, while AI handles _how_ to build it.
 
-OpenSprint supports multiple agent backends (Claude, Cursor, and custom CLI agents), comprehensive automated testing including end-to-end and integration tests, configurable human-in-the-loop thresholds, and full offline operation for users with local agent setups.
+OpenSprint supports multiple agent backends (Claude, Cursor, OpenAI, LM Studio for local models, and custom CLI agents), comprehensive automated testing including end-to-end and integration tests, configurable human-in-the-loop thresholds, and full offline operation for users with local agent setups (including LM Studio).
 
 ## Problem Statement
 
@@ -67,6 +67,10 @@ Add under Execute Phase (Git / Worktree):
 
 - **Worktree base branch:** When Git working mode is Worktree, a configurable base branch (default `main`) allows users to create task branches from and merge into a non-main branch (e.g. `beta`). Sync and push use `origin/<baseBranch>`. Reviewer diff uses `baseBranch...taskBranch`. Branches mode ignores this setting.
 
+Add under Agent backends:
+
+- **LM Studio (local):** Users can select LM Studio as an agent type for planning and Execute. Optional base URL (default http://localhost:1234), model selection from models loaded in LM Studio; no API key required. Enables fully offline operation with local models.
+
 ## Technical Architecture
 
 Replace all references to `prd.json` with `SPEC.md`. The Sketch phase PRD is stored as **SPEC.md** at the repository root—a flat markdown file with standard section headers (Executive Summary, Problem Statement, User Personas, Goals and Success Metrics, Feature List, Technical Architecture, Data Model, API Contracts, Non-Functional Requirements, Open Questions). This format is standardized and optimized for AI agent consumption. The Dreamer writes SPEC.md directly during conversation (trust boundary exception). The Harmonizer proposes updates; the orchestrator writes and commits SPEC.md. Agent context receives `context/spec.md`. Git commit queue includes SPEC.md. Resolved Decisions table: PRD storage → SPEC.md at repo root (flat markdown) for AI-agent-friendly standardized format.
@@ -75,11 +79,15 @@ Replace all references to `prd.json` with `SPEC.md`. The Sketch phase PRD is sto
 
 **Worktree base branch:** In worktree mode, `worktreeBaseBranch` (project setting, default `main`) controls which branch task branches are created from and merged into. Sync and push use `origin/<baseBranch>`. Reviewer diff uses `baseBranch...taskBranch`. Merger agent prompts reference the configured base branch. Branches mode always uses `main`.
 
+**LM Studio agent:** Agent type `lmstudio` uses the OpenAI-compatible Chat Completions API at a configurable base URL (default `http://localhost:1234`). Optional `baseUrl` in agent config; no API key. Invoke (planning) and spawnWithTaskFile (Coder/Reviewer) use in-process HTTP with custom baseURL. GET /models supports `provider=lmstudio` and optional `baseUrl` query; returns models from the local LM Studio server. Enables fully offline agent execution.
+
 ## Data Model
 
 **PRD (PRDDocument):** Stored as `SPEC.md` at repository root. A flat markdown file with standard section headers. The backend parses SPEC.md for API responses and structured editing; the canonical on-disk format is markdown. Optional metadata (version, change_log) may be stored in `.opensprint/spec-metadata.json` for versioning and section-level diffing. Entity relationship: PRD (1:1, SPEC.md).
 
-**ProjectSettings:** Includes `worktreeBaseBranch?: string` (default `"main"`). Used when `gitWorkingMode === "worktree"`; controls branch creation, merge, sync, and push. Empty or invalid values normalize to `"main"`. Branches mode ignores this field.
+**AgentConfig (shared):** Includes optional `baseUrl?: string` when `type === "lmstudio"` (default `http://localhost:1234`). **AgentType** union includes `"lmstudio"`.
+
+**ProjectSettings:** Includes `worktreeBaseBranch?: string` (default `"main"`). Used when `gitWorkingMode === "worktree"`; controls branch creation, merge, sync, and push. Empty or invalid values normalize to `"main"`. Branches mode ignores this field. Agent config (simpleComplexityAgent, complexComplexityAgent) may use `type: "lmstudio"` with optional baseUrl.
 
 **Storage Strategy:** Per-project data includes SPEC.md at repo root. The backend maintains an in-memory index rebuilt from the filesystem on startup.
 
@@ -94,6 +102,8 @@ Replace all references to `prd.json` with `SPEC.md`. The Sketch phase PRD is sto
 **PRD:** GET/PUT `/projects/:id/prd`, GET `/projects/:id/prd/:section`, GET `/projects/:id/prd/history`
 
 **Plans:** GET/POST `/projects/:id/plans`, GET/PUT `/projects/:id/plans/:planId`, POST `/projects/:id/plans/:planId/execute`, POST `/projects/:id/plans/:planId/re-execute`, GET `/projects/:id/plans/dependencies`
+
+**Models:** GET `/projects/:id/models` (or GET `/models`) supports `provider=lmstudio` and optional `baseUrl` query (default `http://localhost:1234`). Fetches models from LM Studio local server; no API key. Returns `{ data: ModelOption[] }`; on connection error returns empty data or 502 with user-facing message.
 
 **Tasks:** GET `/projects/:id/tasks`, GET `/projects/:id/tasks/ready`, GET `/projects/:id/tasks/:taskId`, GET `/projects/:id/tasks/:taskId/sessions`, GET `/projects/:id/tasks/:taskId/sessions/:attempt`. Task responses include `sourceFeedbackIds?: string[]` when the task has linked feedback (derived from discovered-from dependencies).
 
