@@ -66,5 +66,90 @@ describe("agent-config schema", () => {
         parseAgentConfig({ type: "claude", model: 123, cliCommand: null }, "complexComplexityAgent")
       ).toThrow(AppError);
     });
+
+    it("should accept lmstudio agent type with baseUrl", () => {
+      const config = parseAgentConfig(
+        { type: "lmstudio", model: "local-model", cliCommand: null, baseUrl: "http://localhost:1234" },
+        "simpleComplexityAgent"
+      );
+      expect(config).toEqual({
+        type: "lmstudio",
+        model: "local-model",
+        cliCommand: null,
+        baseUrl: "http://localhost:1234",
+      });
+    });
+
+    it("should accept lmstudio without baseUrl (optional)", () => {
+      const config = parseAgentConfig(
+        { type: "lmstudio", model: "local-model", cliCommand: null },
+        "simpleComplexityAgent"
+      );
+      expect(config).toEqual({
+        type: "lmstudio",
+        model: "local-model",
+        cliCommand: null,
+        baseUrl: undefined,
+      });
+    });
+
+    it("should normalize baseUrl trailing slash", () => {
+      const config = parseAgentConfig(
+        {
+          type: "lmstudio",
+          model: "local-model",
+          cliCommand: null,
+          baseUrl: "https://localhost:1234/",
+        },
+        "simpleComplexityAgent"
+      );
+      expect(config.baseUrl).toBe("https://localhost:1234");
+    });
+
+    it("should reject non-http(s) baseUrl with clear message", () => {
+      expect(() =>
+        parseAgentConfig(
+          {
+            type: "lmstudio",
+            model: "local-model",
+            cliCommand: null,
+            baseUrl: "ftp://localhost:1234",
+          },
+          "simpleComplexityAgent"
+        )
+      ).toThrow(AppError);
+      try {
+        parseAgentConfig(
+          {
+            type: "lmstudio",
+            model: "local-model",
+            cliCommand: null,
+            baseUrl: "ftp://localhost:1234",
+          },
+          "simpleComplexityAgent"
+        );
+      } catch (e) {
+        expect(e).toBeInstanceOf(AppError);
+        expect((e as AppError).message).toContain("baseUrl must be an http or https URL");
+      }
+    });
+
+    it("should reject empty baseUrl when type is lmstudio with clear message", () => {
+      expect(() =>
+        parseAgentConfig(
+          { type: "lmstudio", model: "local-model", cliCommand: null, baseUrl: "   " },
+          "simpleComplexityAgent"
+        )
+      ).toThrow(AppError);
+      try {
+        parseAgentConfig(
+          { type: "lmstudio", model: "local-model", cliCommand: null, baseUrl: "   " },
+          "simpleComplexityAgent"
+        );
+      } catch (e) {
+        expect(e).toBeInstanceOf(AppError);
+        expect((e as AppError).message).toContain("baseUrl cannot be empty when type is lmstudio");
+      }
+    });
   });
 });
