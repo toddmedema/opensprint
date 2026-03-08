@@ -368,6 +368,22 @@ describe("parseSettings", () => {
       });
       expect(parsed.mergeStrategy).toBe("per_task");
     });
+
+    it("should preserve mergeStrategy on round-trip", () => {
+      const withPerTask = parseSettings({
+        simpleComplexityAgent: lowAgent,
+        complexComplexityAgent: highAgent,
+        mergeStrategy: "per_task",
+      });
+      expect(parseSettings(withPerTask).mergeStrategy).toBe("per_task");
+
+      const withPerEpic = parseSettings({
+        simpleComplexityAgent: lowAgent,
+        complexComplexityAgent: highAgent,
+        mergeStrategy: "per_epic",
+      });
+      expect(parseSettings(withPerEpic).mergeStrategy).toBe("per_epic");
+    });
   });
 
   describe("worktreeBaseBranch", () => {
