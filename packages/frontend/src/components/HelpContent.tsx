@@ -652,7 +652,7 @@ function AgentLogContent({
                   key={i}
                   className="border-b border-theme-border last:border-b-0 hover:bg-theme-border-subtle/50"
                 >
-                  <td className="px-4 py-2 text-theme-text">{e.model}</td>
+                  <td className="px-4 py-2 text-theme-text">{e.model || "Unknown"}</td>
                   <td className="px-4 py-2 text-theme-text">{e.role}</td>
                   <td className="px-4 py-2 text-theme-text">{formatDuration(e.durationMs)}</td>
                   <td className="px-4 py-2 text-theme-text">{formatEndTime(e.endTime)}</td>

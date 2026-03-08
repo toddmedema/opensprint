@@ -136,6 +136,20 @@ describe("HelpContent", () => {
     expect(api.help.agentLog).toHaveBeenCalledWith("proj-1");
   });
 
+  it("Agent log shows Unknown when model is empty or missing", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.help.agentLog).mockResolvedValue([
+      { model: "", role: "Coder", durationMs: 10000, endTime: "2025-03-01T12:00:00Z" },
+      { model: "Cursor Composer 1.5", role: "Reviewer", durationMs: 20000, endTime: "2025-03-01T11:00:00Z" },
+    ]);
+    render(<HelpContent />);
+
+    await user.click(screen.getByRole("tab", { name: "Agent log" }));
+
+    expect(screen.getByText("Unknown")).toBeInTheDocument();
+    expect(screen.getByText("Cursor Composer 1.5")).toBeInTheDocument();
+  });
+
   it("Agent log shows Log column and magnifying glass only for rows with sessionId", async () => {
     const user = userEvent.setup();
     vi.mocked(api.help.agentLog).mockResolvedValue([

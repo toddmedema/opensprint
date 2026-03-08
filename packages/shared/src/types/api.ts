@@ -110,7 +110,7 @@ export interface TaskAnalytics {
 
 /** Agent log entry (past agent runs from agent_stats) */
 export interface AgentLogEntry {
-  /** Model identifier (e.g. claude-sonnet-4-20250514) */
+  /** Human-readable provider + model label (e.g. "Cursor Composer 1.5", "Claude Sonnet 4"); "Unknown" when missing */
   model: string;
   /** Agent role/type (e.g. Coder, Dreamer, Reviewer) */
   role: string;

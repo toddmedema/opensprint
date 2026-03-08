@@ -367,6 +367,121 @@ describe.skipIf(!helpPostgresOk)("Help chat API", () => {
     });
   });
 
+  it("GET /help/agent-log shows provider + model label when session has agent_type/agent_model", async () => {
+    await taskStore.runWrite(async (client) => {
+      await client.execute(
+        `INSERT INTO agent_stats (project_id, task_id, agent_id, role, model, attempt, started_at, completed_at, outcome, duration_ms)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          projectId,
+          "os-label.1",
+          "coder",
+          "coder",
+          "unknown",
+          1,
+          "2025-03-01T13:00:00Z",
+          "2025-03-01T13:01:00Z",
+          "success",
+          60000,
+        ]
+      );
+      await client.execute(
+        `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, completed_at, status, output_log, git_branch)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          projectId,
+          "os-label.1",
+          1,
+          "cursor",
+          "Composer 1.5",
+          "2025-03-01T13:00:00Z",
+          "2025-03-01T13:01:00Z",
+          "completed",
+          "log",
+          "main",
+        ]
+      );
+    });
+
+    const res = await request(app).get(`${API_PREFIX}/help/agent-log?projectId=${projectId}`);
+    expect(res.status).toBe(200);
+    const labelEntry = res.body.data.find((e: { model: string }) => e.model === "Cursor Composer 1.5");
+    expect(labelEntry).toBeDefined();
+    expect(labelEntry?.model).toBe("Cursor Composer 1.5");
+  });
+
+  it("GET /help/agent-log shows Cursor Composer 1.5 when session has cursor type and empty model", async () => {
+    await taskStore.runWrite(async (client) => {
+      await client.execute(
+        `INSERT INTO agent_stats (project_id, task_id, agent_id, role, model, attempt, started_at, completed_at, outcome, duration_ms)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          projectId,
+          "os-cursor-default.1",
+          "coder",
+          "coder",
+          "unknown",
+          1,
+          "2025-03-01T13:10:00Z",
+          "2025-03-01T13:11:00Z",
+          "success",
+          60000,
+        ]
+      );
+      await client.execute(
+        `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, completed_at, status, output_log, git_branch)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          projectId,
+          "os-cursor-default.1",
+          1,
+          "cursor",
+          "",
+          "2025-03-01T13:10:00Z",
+          "2025-03-01T13:11:00Z",
+          "completed",
+          "",
+          "main",
+        ]
+      );
+    });
+
+    const res = await request(app).get(`${API_PREFIX}/help/agent-log?projectId=${projectId}`);
+    expect(res.status).toBe(200);
+    const entry = res.body.data.find(
+      (e: { model: string; durationMs: number }) => e.durationMs === 60000 && e.model.includes("Cursor")
+    );
+    expect(entry).toBeDefined();
+    expect(entry.model).toBe("Cursor Composer 1.5");
+  });
+
+  it("GET /help/agent-log shows Unknown when model missing and no session", async () => {
+    await taskStore.runWrite(async (client) => {
+      await client.execute(
+        `INSERT INTO agent_stats (project_id, task_id, agent_id, role, model, attempt, started_at, completed_at, outcome, duration_ms)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          projectId,
+          "os-unknown.1",
+          "coder",
+          "coder",
+          "",
+          1,
+          "2025-03-01T14:00:00Z",
+          "2025-03-01T14:00:30Z",
+          "success",
+          30000,
+        ]
+      );
+    });
+
+    const res = await request(app).get(`${API_PREFIX}/help/agent-log?projectId=${projectId}`);
+    expect(res.status).toBe(200);
+    const unknownEntry = res.body.data.find((e: { durationMs: number }) => e.durationMs === 30000);
+    expect(unknownEntry).toBeDefined();
+    expect(unknownEntry?.model).toBe("Unknown");
+  });
+
   it("GET /help/agent-log includes sessionId when agent_sessions has output_log", async () => {
     await taskStore.runWrite(async (client) => {
       await client.execute(
