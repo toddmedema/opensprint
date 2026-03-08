@@ -222,12 +222,7 @@ describe("PhaseExecutorService", () => {
 
       await phaseExecutor.executeCodingPhase(projectId, repoPath, task, slot);
 
-      expect(mockCreateTaskWorktree).toHaveBeenCalledWith(
-        repoPath,
-        task.id,
-        "main",
-        undefined
-      );
+      expect(mockCreateTaskWorktree).toHaveBeenCalledWith(repoPath, task.id, "main", undefined);
       expect(mockCreateOrCheckoutBranch).not.toHaveBeenCalled();
       expect(mockEnsureRepoNodeModules).not.toHaveBeenCalled();
       expect(slot.worktreePath).not.toBe(repoPath);
@@ -279,12 +274,7 @@ describe("PhaseExecutorService", () => {
 
       await phaseExecutor.executeCodingPhase(projectId, repoPath, task, slot);
 
-      expect(mockCreateTaskWorktree).toHaveBeenCalledWith(
-        repoPath,
-        task.id,
-        "main",
-        undefined
-      );
+      expect(mockCreateTaskWorktree).toHaveBeenCalledWith(repoPath, task.id, "main", undefined);
       expect(mockCreateOrCheckoutBranch).not.toHaveBeenCalled();
     });
 
@@ -310,12 +300,7 @@ describe("PhaseExecutorService", () => {
       await phaseExecutor.executeCodingPhase(projectId, repoPath, task, slot);
 
       expect(mockSyncMainWithOrigin).toHaveBeenCalledWith(repoPath, "develop");
-      expect(mockCreateTaskWorktree).toHaveBeenCalledWith(
-        repoPath,
-        task.id,
-        "develop",
-        undefined
-      );
+      expect(mockCreateTaskWorktree).toHaveBeenCalledWith(repoPath, task.id, "develop", undefined);
       expect(mockCreateOrCheckoutBranch).not.toHaveBeenCalled();
     });
 

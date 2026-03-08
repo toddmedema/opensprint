@@ -148,14 +148,10 @@ describe.skipIf(!planDecomposePostgresOk)("Plan decompose with auto-review", () 
       },
       changeLog: [],
     };
-    const { SPEC_MD, SPEC_METADATA_PATH, prdToSpecMarkdown } = await import("@opensprint/shared");
+    const { SPEC_MD, prdToSpecMarkdown } = await import("@opensprint/shared");
     await fs.writeFile(path.join(repoPath, SPEC_MD), prdToSpecMarkdown(prd as never), "utf-8");
-    await fs.mkdir(path.join(repoPath, path.dirname(SPEC_METADATA_PATH)), { recursive: true });
-    await fs.writeFile(
-      path.join(repoPath, SPEC_METADATA_PATH),
-      JSON.stringify({ version: 1, changeLog: [] }, null, 2),
-      "utf-8"
-    );
+    // Do not write legacy spec-metadata.json; PrdService.loadPrd reads SPEC.md and expects
+    // either DB prd_metadata or no legacy file (migration guard would throw if legacy file existed).
   });
 
   afterEach(async () => {

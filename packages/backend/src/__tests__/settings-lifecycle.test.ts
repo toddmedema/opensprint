@@ -314,6 +314,23 @@ describe("Settings API lifecycle", () => {
     expect(settings.teamMembers).toEqual(teamMembers);
   });
 
+  it("PUT /api/v1/projects/:id/settings accepts and persists enableHumanTeammates; GET returns it", async () => {
+    const getRes0 = await request(app).get(`${API_PREFIX}/projects/${projectId}/settings`);
+    expect(getRes0.body.data.enableHumanTeammates).toBe(false);
+
+    const putRes = await request(app)
+      .put(`${API_PREFIX}/projects/${projectId}/settings`)
+      .send({ enableHumanTeammates: true });
+    expect(putRes.status).toBe(200);
+    expect(putRes.body.data.enableHumanTeammates).toBe(true);
+
+    const getRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/settings`);
+    expect(getRes.body.data.enableHumanTeammates).toBe(true);
+
+    const settings = await readProjectFromGlobalStore(tempDir, projectId);
+    expect(settings.enableHumanTeammates).toBe(true);
+  });
+
   it("PUT /api/v1/projects/:id/settings accepts and persists gitWorkingMode", async () => {
     const res = await request(app)
       .put(`${API_PREFIX}/projects/${projectId}/settings`)

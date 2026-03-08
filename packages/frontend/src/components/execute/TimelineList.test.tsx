@@ -450,6 +450,28 @@ describe("TimelineList", () => {
     expect(screen.getByTestId("timeline-row-task-b")).toBeInTheDocument();
   });
 
+  it("when enableHumanTeammates is false shows assignee as text only (no dropdown)", () => {
+    const tasks = [
+      createMockTask({
+        id: "task-1",
+        title: "Ready task",
+        kanbanColumn: "ready",
+        assignee: "Frodo",
+      }),
+    ];
+    renderWithProviders(
+      <TimelineList
+        tasks={tasks}
+        plans={[]}
+        onTaskSelect={vi.fn()}
+        {...defaultListProps}
+        enableHumanTeammates={false}
+      />
+    );
+    expect(screen.getByTestId("task-row-assignee")).toHaveTextContent("Frodo");
+    expect(screen.queryByTestId("assignee-dropdown-trigger")).not.toBeInTheDocument();
+  });
+
   it("task row shows assignee; click opens dropdown; selection updates task", async () => {
     const user = userEvent.setup();
     const tasks = [
@@ -461,7 +483,13 @@ describe("TimelineList", () => {
       }),
     ];
     renderWithProviders(
-      <TimelineList tasks={tasks} plans={[]} onTaskSelect={vi.fn()} {...defaultListProps} />
+      <TimelineList
+        tasks={tasks}
+        plans={[]}
+        onTaskSelect={vi.fn()}
+        {...defaultListProps}
+        enableHumanTeammates={true}
+      />
     );
 
     expect(screen.getByTestId("task-row-assignee")).toBeInTheDocument();
@@ -489,7 +517,13 @@ describe("TimelineList", () => {
       }),
     ];
     renderWithProviders(
-      <TimelineList tasks={tasks} plans={[]} onTaskSelect={vi.fn()} {...defaultListProps} />
+      <TimelineList
+        tasks={tasks}
+        plans={[]}
+        onTaskSelect={vi.fn()}
+        {...defaultListProps}
+        enableHumanTeammates={true}
+      />
     );
 
     expect(screen.getByTestId("task-row-assignee")).toBeInTheDocument();

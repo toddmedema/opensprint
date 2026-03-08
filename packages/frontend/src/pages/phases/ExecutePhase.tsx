@@ -525,6 +525,7 @@ export function ExecutePhase({
                 selectedTaskId={effectiveSelectedTask}
                 projectId={projectId}
                 teamMembers={projectSettingsQuery.data?.teamMembers ?? []}
+                enableHumanTeammates={projectSettingsQuery.data?.enableHumanTeammates ?? false}
               />
             </>
           )}
@@ -581,6 +582,7 @@ export function ExecutePhase({
               setSourceFeedbackExpanded,
             }}
             teamMembers={projectSettingsQuery.data?.teamMembers ?? []}
+            enableHumanTeammates={projectSettingsQuery.data?.enableHumanTeammates ?? false}
             callbacks={{
               onClose: handleClose,
               onMarkDone: handleMarkDone,

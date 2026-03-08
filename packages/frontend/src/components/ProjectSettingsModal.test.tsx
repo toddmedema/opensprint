@@ -432,9 +432,32 @@ describe("ProjectSettingsModal", () => {
     expect(screen.getByTestId("ai-autonomy-slider")).toBeInTheDocument();
   });
 
-  it("Team tab shows team members list and add button", async () => {
+  it("Team tab shows Enable human teammates checkbox; when enabled shows team members list", async () => {
     mockGetSettings.mockResolvedValueOnce({
       ...mockSettings,
+      enableHumanTeammates: false,
+      teamMembers: [],
+    });
+    renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
+    await waitForModalReady();
+
+    const teamTab = screen.getByRole("button", { name: "Team" });
+    await userEvent.click(teamTab);
+
+    expect(screen.getByTestId("team-tab-content")).toBeInTheDocument();
+    const checkbox = screen.getByTestId("enable-human-teammates-checkbox");
+    expect(checkbox).not.toBeChecked();
+    expect(screen.getByText("Enable human teammates")).toBeInTheDocument();
+    expect(screen.queryByText("Team Members")).not.toBeInTheDocument();
+
+    await userEvent.click(checkbox);
+    await waitFor(() => expect(mockUpdateSettings).toHaveBeenCalledWith("proj-1", expect.objectContaining({ enableHumanTeammates: true })));
+  });
+
+  it("Team tab when enableHumanTeammates true shows team members list and add button", async () => {
+    mockGetSettings.mockResolvedValueOnce({
+      ...mockSettings,
+      enableHumanTeammates: true,
       teamMembers: [{ id: "user-1", name: "Alice" }],
     });
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
@@ -444,6 +467,7 @@ describe("ProjectSettingsModal", () => {
     await userEvent.click(teamTab);
 
     expect(screen.getByTestId("team-tab-content")).toBeInTheDocument();
+    expect(screen.getByTestId("enable-human-teammates-checkbox")).toBeChecked();
     expect(screen.getByText("Team Members")).toBeInTheDocument();
     expect(screen.getByTestId("team-member-add")).toBeInTheDocument();
     const nameInput = screen.getByTestId("team-member-name-input");
@@ -457,6 +481,7 @@ describe("ProjectSettingsModal", () => {
   it("Team tab: add member persists to backend", async () => {
     mockGetSettings.mockResolvedValueOnce({
       ...mockSettings,
+      enableHumanTeammates: true,
       teamMembers: [],
     });
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
@@ -483,6 +508,7 @@ describe("ProjectSettingsModal", () => {
   it("Team tab: edit member persists to backend", async () => {
     mockGetSettings.mockResolvedValueOnce({
       ...mockSettings,
+      enableHumanTeammates: true,
       teamMembers: [{ id: "user-1", name: "Alice" }],
     });
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
@@ -511,6 +537,7 @@ describe("ProjectSettingsModal", () => {
   it("Team tab: remove member persists to backend", async () => {
     mockGetSettings.mockResolvedValueOnce({
       ...mockSettings,
+      enableHumanTeammates: true,
       teamMembers: [{ id: "user-1", name: "Alice" }],
     });
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);

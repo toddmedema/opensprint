@@ -158,6 +158,8 @@ export interface TaskDetailSidebarProps {
   openQuestionNotification?: Notification | null;
   /** Team members from project settings for assignee dropdown. */
   teamMembers?: Array<{ id: string; name: string }>;
+  /** When false, assignee is not editable (show as text only). */
+  enableHumanTeammates?: boolean;
   callbacks: TaskDetailCallbacks;
 }
 
@@ -212,6 +214,7 @@ function areTaskDetailSidebarPropsEqual(
     cb(prev).onClose !== cb(next).onClose ||
     prev.openQuestionNotification !== next.openQuestionNotification ||
     prev.teamMembers !== next.teamMembers ||
+    prev.enableHumanTeammates !== next.enableHumanTeammates ||
     cb(prev).onOpenQuestionResolved !== cb(next).onOpenQuestionResolved ||
     cb(prev).onMarkDone !== cb(next).onMarkDone ||
     cb(prev).onUnblock !== cb(next).onUnblock ||
@@ -250,6 +253,7 @@ function TaskDetailSidebarInner({
   sections,
   openQuestionNotification,
   teamMembers = [],
+  enableHumanTeammates = false,
   callbacks,
 }: TaskDetailSidebarProps) {
   const { selectedTaskData, taskDetailLoading, taskDetailError } = taskDetail;
@@ -690,14 +694,20 @@ function TaskDetailSidebarInner({
                   <ComplexityIcon complexity={task.complexity} size="sm" />
                   {displayLabel ?? "—"}
                 </span>
-                <AssigneeSelector
-                  projectId={projectId}
-                  taskId={selectedTask}
-                  currentAssignee={task.assignee ?? null}
-                  teamMembers={teamMembers}
-                  readOnly={isDoneTask || isInProgressTask}
-                  isAgentAssignee={!!task.assignee && isAgentAssignee(task.assignee)}
-                />
+                {enableHumanTeammates ? (
+                  <AssigneeSelector
+                    projectId={projectId}
+                    taskId={selectedTask}
+                    currentAssignee={task.assignee ?? null}
+                    teamMembers={teamMembers}
+                    readOnly={isDoneTask || isInProgressTask}
+                    isAgentAssignee={!!task.assignee && isAgentAssignee(task.assignee)}
+                  />
+                ) : (
+                  <span className="text-sm text-theme-muted">
+                    {task.assignee?.trim() ? task.assignee : "—"}
+                  </span>
+                )}
                 {isDoneTask &&
                   (() => {
                     const duration = formatTaskDuration(task.startedAt, task.completedAt);

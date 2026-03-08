@@ -283,6 +283,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
       reviewAngles: ReviewAngle[];
       maxConcurrentCoders: number;
       unknownScopeStrategy: UnknownScopeStrategy;
+      enableHumanTeammates?: boolean;
       teamMembers: Array<{ id: string; name: string }>;
     }>;
 
@@ -297,6 +298,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
         const effAiAutonomy = overrides?.aiAutonomyLevel ?? aiAutonomyLevel;
         const effGitMode = overrides?.gitWorkingMode ?? gitWorkingMode;
         const effMergeStrategy = overrides?.mergeStrategy ?? mergeStrategy;
+        const effEnableHumanTeammates = overrides?.enableHumanTeammates ?? settings?.enableHumanTeammates ?? false;
         const effTeamMembers = overrides?.teamMembers ?? settings?.teamMembers ?? [];
         const effSettings = overrides ? { ...settings } : settings;
         if (effSimple.type === "custom" && !(effSimple.cliCommand ?? "").trim()) return;
@@ -355,6 +357,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
               mergeStrategy: effMergeStrategy,
               worktreeBaseBranch:
                 overrides?.worktreeBaseBranch ?? effSettings?.worktreeBaseBranch ?? "main",
+              enableHumanTeammates: effEnableHumanTeammates,
               teamMembers: effTeamMembers,
             }),
           ]);
@@ -392,7 +395,13 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
       ]
     );
 
+    const enableHumanTeammates = settings?.enableHumanTeammates ?? false;
     const teamMembers = settings?.teamMembers ?? [];
+
+    const setEnableHumanTeammates = (value: boolean) => {
+      setSettings((s) => (s ? { ...s, enableHumanTeammates: value } : null));
+      void persistSettings(undefined, { enableHumanTeammates: value });
+    };
 
     const updateTeamMembers = (
       next: Array<{ id: string; name: string }>,
@@ -1649,12 +1658,26 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
 
                 {activeTab === "team" && (
                   <div className="space-y-4" data-testid="team-tab-content">
-                    <h3 className="text-sm font-semibold text-theme-text">Team Members</h3>
-                    <p className="text-xs text-theme-muted mb-3">
-                      Add teammates who can be assigned to tasks. Each member has a display name.
-                    </p>
-                    <div className="space-y-3">
-                      {teamMembers.map((member, i) => (
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={enableHumanTeammates}
+                        onChange={(e) => setEnableHumanTeammates(e.target.checked)}
+                        className="rounded border-theme-border"
+                        data-testid="enable-human-teammates-checkbox"
+                      />
+                      <span className="text-sm font-medium text-theme-text">
+                        Enable human teammates
+                      </span>
+                    </label>
+                    {enableHumanTeammates && (
+                      <>
+                        <h3 className="text-sm font-semibold text-theme-text">Team Members</h3>
+                        <p className="text-xs text-theme-muted mb-3">
+                          Add teammates who can be assigned to tasks. Each member has a display name.
+                        </p>
+                        <div className="space-y-3">
+                          {teamMembers.map((member, i) => (
                         <div
                           key={member.id}
                           className="flex flex-wrap items-center gap-2 p-3 rounded-lg border border-theme-border bg-theme-surface"
@@ -1687,20 +1710,22 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                         </div>
                       ))}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const next = [
-                          ...teamMembers,
-                          { id: crypto.randomUUID(), name: "" },
-                        ];
-                        updateTeamMembers(next);
-                      }}
-                      className="btn-secondary text-sm"
-                      data-testid="team-member-add"
-                    >
-                      + Add member
-                    </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = [
+                              ...teamMembers,
+                              { id: crypto.randomUUID(), name: "" },
+                            ];
+                            updateTeamMembers(next);
+                          }}
+                          className="btn-secondary text-sm"
+                          data-testid="team-member-add"
+                        >
+                          + Add member
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </>

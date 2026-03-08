@@ -159,6 +159,7 @@ function toCanonicalSettings(s: ProjectSettings): ProjectSettings {
     gitWorkingMode: s.gitWorkingMode ?? "worktree",
     mergeStrategy: s.mergeStrategy ?? "per_task",
     worktreeBaseBranch: s.worktreeBaseBranch ?? "main",
+    enableHumanTeammates: s.enableHumanTeammates === true,
     ...(s.teamMembers && s.teamMembers.length > 0 && { teamMembers: s.teamMembers }),
   };
 }

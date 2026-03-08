@@ -254,6 +254,19 @@ describe("parseSettings", () => {
     expect(parsed.reviewAngles).toBeUndefined();
   });
 
+  it("should parse enableHumanTeammates (default false)", () => {
+    const raw = {
+      simpleComplexityAgent: lowAgent,
+      complexComplexityAgent: highAgent,
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+      testFramework: null,
+    };
+    expect(parseSettings(raw).enableHumanTeammates).toBe(false);
+    expect(parseSettings({ ...raw, enableHumanTeammates: true }).enableHumanTeammates).toBe(true);
+    expect(parseSettings({ ...raw, enableHumanTeammates: false }).enableHumanTeammates).toBe(false);
+  });
+
   it("should round-trip teamMembers through parseSettings", () => {
     const teamMembers = [
       { id: "alice-id", name: "Alice" },

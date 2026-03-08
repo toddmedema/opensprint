@@ -517,6 +517,8 @@ export interface ProjectSettings {
   gitRemoteMode?: "publishable" | "local_only" | "remote_error";
   /** Read-only runtime cache/probe status for Git fields returned by project settings APIs. */
   gitRuntimeStatus?: GitRuntimeStatus;
+  /** When true, show team member settings and allow human assignee selection. Default: false. */
+  enableHumanTeammates?: boolean;
   /** Team members (id + name) for human assignees. Stored in project settings. */
   teamMembers?: Array<{ id: string; name: string }>;
 }
@@ -646,6 +648,7 @@ export function parseSettings(raw: unknown): ProjectSettings {
   }
   const hilConfig = hilConfigFromAiAutonomyLevel(aiAutonomyLevel);
 
+  const enableHumanTeammates = r?.enableHumanTeammates === true;
   const base = {
     deployment: migrateDeploymentConfig(r?.deployment),
     aiAutonomyLevel,
@@ -655,6 +658,7 @@ export function parseSettings(raw: unknown): ProjectSettings {
     mergeStrategy,
     worktreeBaseBranch: normalizeWorktreeBaseBranch(r?.worktreeBaseBranch),
     reviewAngles: parseReviewAngles(r?.reviewAngles),
+    enableHumanTeammates,
     teamMembers: parseTeamMembers(r?.teamMembers),
   };
 

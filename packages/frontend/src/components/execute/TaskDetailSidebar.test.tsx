@@ -182,6 +182,7 @@ function createMinimalProps(overrides: Record<string, unknown> = {}) {
         openQuestionNotification: flat.openQuestionNotification,
       }),
     teamMembers: (flat.teamMembers as Array<{ id: string; name: string }>) ?? [],
+    enableHumanTeammates: (flat.enableHumanTeammates as boolean) ?? false,
   };
 }
 
@@ -2059,10 +2060,24 @@ describe("TaskDetailSidebar", () => {
   });
 
   describe("Assignee selector", () => {
+    it("shows assignee as text only when enableHumanTeammates is false", () => {
+      const props = createMinimalProps({
+        selectedTaskData: { ...defaultSelectedTaskData, assignee: "Frodo" },
+        teamMembers: [{ id: "alice", name: "Alice" }],
+        enableHumanTeammates: false,
+      });
+      renderSidebar(props, {
+        preloadedState: getPreloadedState({ ...defaultSelectedTaskData, assignee: "Frodo" }),
+      });
+      expect(screen.getByText("Frodo")).toBeInTheDocument();
+      expect(screen.queryByTestId("assignee-dropdown-trigger")).not.toBeInTheDocument();
+    });
+
     it("shows assignee dropdown in metadata row when task is not done", () => {
       const props = createMinimalProps({
         selectedTaskData: { ...defaultSelectedTaskData, assignee: "Alice" },
         teamMembers: [{ id: "alice", name: "Alice" }, { id: "bob", name: "Bob" }],
+        enableHumanTeammates: true,
       });
       renderSidebar(props, {
         preloadedState: getPreloadedState({ ...defaultSelectedTaskData, assignee: "Alice" }),
@@ -2074,6 +2089,7 @@ describe("TaskDetailSidebar", () => {
     it("shows Unassigned when task has no assignee", () => {
       const props = createMinimalProps({
         teamMembers: [{ id: "alice", name: "Alice" }],
+        enableHumanTeammates: true,
       });
       renderSidebar(props, { preloadedState: defaultPreloadedState });
       const trigger = screen.getByTestId("assignee-dropdown-trigger");
@@ -2091,6 +2107,7 @@ describe("TaskDetailSidebar", () => {
           assignee: "Alice",
         },
         teamMembers: [{ id: "alice", name: "Alice" }],
+        enableHumanTeammates: true,
       });
       renderSidebar(props, {
         preloadedState: defaultPreloadedState,
@@ -2104,6 +2121,7 @@ describe("TaskDetailSidebar", () => {
       const user = userEvent.setup();
       const props = createMinimalProps({
         teamMembers: [{ id: "alice", name: "Alice" }, { id: "bob", name: "Bob" }],
+        enableHumanTeammates: true,
       });
       renderSidebar(props, { preloadedState: defaultPreloadedState });
       await user.click(screen.getByTestId("assignee-dropdown-trigger"));

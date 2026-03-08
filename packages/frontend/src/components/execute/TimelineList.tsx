@@ -37,6 +37,8 @@ export interface TimelineListProps {
   projectId: string;
   /** Team members for assignee dropdown. */
   teamMembers: Array<{ id: string; name: string }>;
+  /** When false, assignee is not editable (show as text only). */
+  enableHumanTeammates?: boolean;
 }
 
 const SECTION_LABELS: Record<string, string> = {
@@ -57,6 +59,7 @@ function TimelineRow({
   onUnblock,
   projectId,
   teamMembers,
+  enableHumanTeammates,
   onAssigneeDropdownOpenChange,
 }: {
   task: Task;
@@ -66,6 +69,7 @@ function TimelineRow({
   onUnblock?: (taskId: string) => void;
   projectId: string;
   teamMembers: Array<{ id: string; name: string }>;
+  enableHumanTeammates?: boolean;
   onAssigneeDropdownOpenChange?: (taskId: string, open: boolean) => void;
 }) {
   const isBlocked = task.kanbanColumn === "blocked";
@@ -110,15 +114,21 @@ function TimelineRow({
           data-testid="task-row-assignee"
           onClick={(e) => e.stopPropagation()}
         >
-          <AssigneeSelector
-            projectId={projectId}
-            taskId={task.id}
-            currentAssignee={task.assignee ?? null}
-            teamMembers={teamMembers}
-            readOnly={isDone || isInProgress}
-            isAgentAssignee={!!task.assignee && isAgentAssignee(task.assignee)}
-            onOpenChange={handleAssigneeOpenChange}
-          />
+          {enableHumanTeammates ? (
+            <AssigneeSelector
+              projectId={projectId}
+              taskId={task.id}
+              currentAssignee={task.assignee ?? null}
+              teamMembers={teamMembers}
+              readOnly={isDone || isInProgress}
+              isAgentAssignee={!!task.assignee && isAgentAssignee(task.assignee)}
+              onOpenChange={handleAssigneeOpenChange}
+            />
+          ) : (
+            <span className="text-xs text-theme-muted">
+              {task.assignee?.trim() ? task.assignee : "—"}
+            </span>
+          )}
         </span>
         {isBlocked && onUnblock && (
           <button
@@ -147,6 +157,7 @@ type TimelineItem =
       onUnblock?: (taskId: string) => void;
       projectId: string;
       teamMembers: Array<{ id: string; name: string }>;
+      enableHumanTeammates?: boolean;
     };
 
 export function TimelineList({
@@ -160,6 +171,7 @@ export function TimelineList({
   selectedTaskId,
   projectId,
   teamMembers,
+  enableHumanTeammates = false,
 }: TimelineListProps) {
   const epicIdToTitle = useMemo(() => {
     const m = new Map<string, string>();
@@ -245,11 +257,12 @@ export function TimelineList({
           onUnblock: task.kanbanColumn === "blocked" ? onUnblock : undefined,
           projectId,
           teamMembers,
+          enableHumanTeammates,
         });
       }
     }
     return result;
-  }, [sections, epicIdToTitle, onUnblock, taskIdToStartedAt, projectId, teamMembers]);
+  }, [sections, epicIdToTitle, onUnblock, taskIdToStartedAt, projectId, teamMembers, enableHumanTeammates]);
 
   const taskIdToIndex = useMemo(() => {
     const m = new Map<string, number>();
@@ -310,6 +323,7 @@ export function TimelineList({
                     onUnblock={task.kanbanColumn === "blocked" ? onUnblock : undefined}
                     projectId={projectId}
                     teamMembers={teamMembers}
+                    enableHumanTeammates={enableHumanTeammates}
                     onAssigneeDropdownOpenChange={(taskId, open) =>
                       setOpenAssigneeTaskId(open ? taskId : null)
                     }
@@ -382,6 +396,7 @@ export function TimelineList({
                   onUnblock={item.onUnblock}
                   projectId={item.projectId}
                   teamMembers={item.teamMembers}
+                  enableHumanTeammates={item.enableHumanTeammates}
                   onAssigneeDropdownOpenChange={(taskId, open) =>
                     setOpenAssigneeTaskId(open ? taskId : null)
                   }
