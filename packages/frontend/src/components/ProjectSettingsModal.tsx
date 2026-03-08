@@ -1037,9 +1037,10 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                           Merge strategy
                         </h3>
                         <p className="text-xs text-theme-muted">
-                          When to merge to the base branch: Per task merges each task branch to
-                          main when the task completes. Per epic uses a shared branch for all tasks
-                          in an epic and merges to main only when the entire epic is done.
+                          Per task (default): merge each task to main when complete. Per epic: build
+                          entire plan/epic on one branch; merge once all tasks are done. Use partial
+                          landing (per task) for incremental merges, or batch merge (per epic) to
+                          merge the whole epic at once.
                         </p>
                       </div>
                       <select
@@ -1052,7 +1053,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                         }}
                         data-testid="merge-strategy-select"
                       >
-                        <option value="per_task">Per task</option>
+                        <option value="per_task">Per task (default)</option>
                         <option value="per_epic">Per epic</option>
                       </select>
                     </div>

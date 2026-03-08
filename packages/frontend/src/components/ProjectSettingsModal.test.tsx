@@ -1060,9 +1060,14 @@ describe("ProjectSettingsModal", () => {
     expect(select).toBeInTheDocument();
     expect(select).toHaveValue("per_task");
     expect(
-      screen.getByText(/When to merge to the base branch: Per task merges each task branch/)
+      screen.getByText(/Per task \(default\): merge each task to main when complete/)
     ).toBeInTheDocument();
-    expect(screen.getByText(/Per epic uses a shared branch for all tasks in an epic/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Per epic: build entire plan\/epic on one branch; merge once all tasks are done/)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/partial landing \(per task\) for incremental merges, or batch merge \(per epic\)/)
+    ).toBeInTheDocument();
   });
 
   it("saves mergeStrategy when changed to Per epic", async () => {
