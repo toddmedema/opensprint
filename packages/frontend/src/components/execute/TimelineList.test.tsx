@@ -478,4 +478,22 @@ describe("TimelineList", () => {
       });
     });
   });
+
+  it("does not show assignee dropdown trigger for in-progress task (assignee locked)", () => {
+    const tasks = [
+      createMockTask({
+        id: "task-1",
+        title: "In progress",
+        kanbanColumn: "in_progress",
+        assignee: "Frodo",
+      }),
+    ];
+    renderWithProviders(
+      <TimelineList tasks={tasks} plans={[]} onTaskSelect={vi.fn()} {...defaultListProps} />
+    );
+
+    expect(screen.getByTestId("task-row-assignee")).toBeInTheDocument();
+    expect(screen.getByText("Frodo")).toBeInTheDocument();
+    expect(screen.queryByTestId("assignee-dropdown-trigger")).not.toBeInTheDocument();
+  });
 });

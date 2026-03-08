@@ -58,7 +58,7 @@ vi.mock("../../api/client", async (importOriginal) => {
   };
 });
 
-import { api } from "../../api/client";
+import { api, ApiError } from "../../api/client";
 
 const mockTask: Task = {
   id: "task-1",
@@ -872,6 +872,25 @@ describe("executeSlice", () => {
         message: "Failed to update assignee",
         variant: "failed",
       });
+    });
+
+    it("rejects with message and code when API returns ASSIGNEE_LOCKED (no generic toast)", async () => {
+      vi.mocked(api.tasks.updateTask).mockRejectedValue(
+        new ApiError("Cannot change assignee while task is in progress", "ASSIGNEE_LOCKED")
+      );
+      const store = createStore();
+      store.dispatch(setTasks([{ ...mockTask, id: "task-1", assignee: "Frodo" }]));
+
+      const result = await store.dispatch(
+        updateTaskAssignee({ projectId: "proj-1", taskId: "task-1", assignee: "Alice" })
+      );
+
+      expect(updateTaskAssignee.rejected.match(result)).toBe(true);
+      expect(result.payload).toEqual({
+        message: "Cannot change assignee while task is in progress",
+        code: "ASSIGNEE_LOCKED",
+      });
+      expect(store.getState().websocket.deliverToast).toBeNull();
     });
   });
 });

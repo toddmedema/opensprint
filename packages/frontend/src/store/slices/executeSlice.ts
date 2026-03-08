@@ -23,7 +23,7 @@ import { filterAgentOutput } from "../../utils/agentOutputFilter";
 import { DEDUP_SKIP } from "../dedup";
 import { createInitialAsyncStates, createAsyncHandlers, type AsyncStates } from "../asyncHelpers";
 import { setPlansAndGraph } from "./planSlice";
-import { isConnectionError } from "../../api/client";
+import { isApiError, isConnectionError } from "../../api/client";
 import { setDeliverToast } from "./websocketSlice";
 
 /** Task display shape for kanban (subset of Task) */
@@ -251,6 +251,9 @@ export const updateTaskAssignee = createAsyncThunk(
       const task = await api.tasks.updateTask(projectId, taskId, { assignee });
       return { task, taskId };
     } catch (err) {
+      if (isApiError(err) && err.code === "ASSIGNEE_LOCKED") {
+        return rejectWithValue({ message: err.message, code: err.code });
+      }
       if (!isConnectionError(err)) {
         dispatch(setDeliverToast({ message: "Failed to update assignee", variant: "failed" }));
       }

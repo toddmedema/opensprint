@@ -151,6 +151,8 @@ export interface TaskDetailSidebarProps {
   wsConnected: boolean;
   isDoneTask: boolean;
   isBlockedTask: boolean;
+  /** When true, assignee cannot be changed (task in progress or in review). */
+  isInProgressTask?: boolean;
   sections: TaskDetailSections;
   /** Open question notification for this task (renders block with Answer/Dismiss) */
   openQuestionNotification?: Notification | null;
@@ -195,6 +197,7 @@ function areTaskDetailSidebarPropsEqual(
     prev.wsConnected !== next.wsConnected ||
     prev.isDoneTask !== next.isDoneTask ||
     prev.isBlockedTask !== next.isBlockedTask ||
+    prev.isInProgressTask !== next.isInProgressTask ||
     prev.diagnostics !== next.diagnostics ||
     prev.diagnosticsLoading !== next.diagnosticsLoading ||
     sec(prev).sourceFeedbackExpanded !== sec(next).sourceFeedbackExpanded ||
@@ -243,6 +246,7 @@ function TaskDetailSidebarInner({
   wsConnected,
   isDoneTask,
   isBlockedTask,
+  isInProgressTask = false,
   sections,
   openQuestionNotification,
   teamMembers = [],
@@ -691,7 +695,7 @@ function TaskDetailSidebarInner({
                   taskId={selectedTask}
                   currentAssignee={task.assignee ?? null}
                   teamMembers={teamMembers}
-                  readOnly={isDoneTask}
+                  readOnly={isDoneTask || isInProgressTask}
                   isAgentAssignee={!!task.assignee && isAgentAssignee(task.assignee)}
                 />
                 {isDoneTask &&

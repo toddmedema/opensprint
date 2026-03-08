@@ -406,7 +406,7 @@ suite("TaskStoreService", () => {
       expect(result.started_at).toBeTruthy();
     });
 
-    it("should not overwrite started_at when assignee changes again", async () => {
+    it("should reject assignee change when task is in progress (started_at unchanged)", async () => {
       const created = await store.create(TEST_PROJECT_ID, "My Task");
       const first = await store.update(TEST_PROJECT_ID, created.id, {
         status: "in_progress",
@@ -415,11 +415,13 @@ suite("TaskStoreService", () => {
       const firstStartedAt = first.started_at;
       expect(firstStartedAt).toBeTruthy();
 
-      await new Promise((r) => setTimeout(r, 10));
-      const second = await store.update(TEST_PROJECT_ID, created.id, {
-        assignee: "Samwise",
-      });
-      expect(second.started_at).toBe(firstStartedAt);
+      await expect(
+        store.update(TEST_PROJECT_ID, created.id, { assignee: "Samwise" })
+      ).rejects.toMatchObject({ code: "ASSIGNEE_LOCKED" });
+
+      const current = await store.show(TEST_PROJECT_ID, created.id);
+      expect(current.assignee).toBe("Frodo");
+      expect(current.started_at).toBe(firstStartedAt);
     });
 
     it("should have started_at and completed_at for closed tasks; duration derivable", async () => {
@@ -733,6 +735,55 @@ suite("TaskStoreService", () => {
         (t) => !t.assignee || isAgentAssignee(t.assignee)
       );
       expect(dispatchedUnassigned.map((t) => t.id)).toContain(task.id);
+    });
+  });
+
+  describe("assignee lock when task in progress", () => {
+    it("update() rejects assignee change when task status is in_progress", async () => {
+      const task = await store.create(TEST_PROJECT_ID, "In progress task", { type: "task" });
+      await store.update(TEST_PROJECT_ID, task.id, { status: "in_progress", assignee: "Frodo" });
+
+      await expect(
+        store.update(TEST_PROJECT_ID, task.id, { assignee: "Alice" })
+      ).rejects.toMatchObject({
+        code: "ASSIGNEE_LOCKED",
+        message: expect.stringMatching(/cannot change assignee while task is in progress/i),
+      });
+
+      await expect(
+        store.update(TEST_PROJECT_ID, task.id, { assignee: "" })
+      ).rejects.toMatchObject({
+        code: "ASSIGNEE_LOCKED",
+      });
+
+      const current = await store.show(TEST_PROJECT_ID, task.id);
+      expect(current.assignee).toBe("Frodo");
+      expect(current.status).toBe("in_progress");
+    });
+
+    it("update() allows non-assignee updates when task is in_progress", async () => {
+      const task = await store.create(TEST_PROJECT_ID, "In progress task", { type: "task" });
+      await store.update(TEST_PROJECT_ID, task.id, { status: "in_progress", assignee: "Frodo" });
+
+      const updated = await store.update(TEST_PROJECT_ID, task.id, {
+        title: "Updated title",
+        priority: 2,
+      });
+      expect(updated.title).toBe("Updated title");
+      expect(updated.priority).toBe(2);
+      expect(updated.assignee).toBe("Frodo");
+    });
+
+    it("updateMany() rejects assignee change when task status is in_progress", async () => {
+      const task = await store.create(TEST_PROJECT_ID, "In progress task", { type: "task" });
+      await store.update(TEST_PROJECT_ID, task.id, { status: "in_progress", assignee: "Frodo" });
+
+      await expect(
+        store.updateMany(TEST_PROJECT_ID, [{ id: task.id, assignee: "Alice" }])
+      ).rejects.toMatchObject({
+        code: "ASSIGNEE_LOCKED",
+        message: expect.stringMatching(/cannot change assignee while task is in progress/i),
+      });
     });
   });
 

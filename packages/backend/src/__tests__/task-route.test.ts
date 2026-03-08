@@ -801,6 +801,24 @@ Test review prompt generation.
     expect(getRes.body.data.assignee).toBeNull();
   });
 
+  it("PATCH /tasks/:taskId returns 400 when changing assignee on in-progress task", async () => {
+    const _project = await projectService.getProject(projectId);
+    const task = await taskStore.create(projectId, "In progress task", {
+      type: "task",
+      priority: 1,
+    });
+    await taskStore.update(projectId, task.id, { status: "in_progress", assignee: "Frodo" });
+
+    const res = await request(app)
+      .patch(`${API_PREFIX}/projects/${projectId}/tasks/${task.id}`)
+      .set("Content-Type", "application/json")
+      .send({ assignee: "Alice" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error?.code).toBe("ASSIGNEE_LOCKED");
+    expect(res.body.error?.message).toMatch(/cannot change assignee while task is in progress/i);
+  });
+
   it("GET /tasks/:taskId returns complexity when task has it", async () => {
     const _project = await projectService.getProject(projectId);
     const task = await taskStore.create(projectId, "Task with complexity", {

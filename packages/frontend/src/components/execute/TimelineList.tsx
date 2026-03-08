@@ -70,6 +70,8 @@ function TimelineRow({
 }) {
   const isBlocked = task.kanbanColumn === "blocked";
   const isDone = task.kanbanColumn === "done";
+  const isInProgress =
+    task.kanbanColumn === "in_progress" || task.kanbanColumn === "in_review";
   const [assigneeDropdownOpen, setAssigneeDropdownOpen] = useState(false);
 
   const handleAssigneeOpenChange = (open: boolean) => {
@@ -113,7 +115,7 @@ function TimelineRow({
             taskId={task.id}
             currentAssignee={task.assignee ?? null}
             teamMembers={teamMembers}
-            readOnly={isDone}
+            readOnly={isDone || isInProgress}
             isAgentAssignee={!!task.assignee && isAgentAssignee(task.assignee)}
             onOpenChange={handleAssigneeOpenChange}
           />

@@ -101,6 +101,28 @@ describe("notificationListener", () => {
     });
   });
 
+  it("shows server message for updateTaskAssignee/rejected when payload is ASSIGNEE_LOCKED", async () => {
+    const store = createStore();
+    mockIsConnectionError.mockReturnValue(false);
+
+    store.dispatch({
+      type: "execute/updateTaskAssignee/rejected",
+      meta: { requestStatus: "rejected", requestId: "req-assignee" },
+      error: { message: "Rejected" },
+      payload: {
+        message: "Cannot change assignee while task is in progress",
+        code: "ASSIGNEE_LOCKED",
+      },
+    });
+
+    await waitFor(() => {
+      expect(store.getState().notification.items).toHaveLength(1);
+      expect(store.getState().notification.items[0].message).toBe(
+        "Cannot change assignee while task is in progress"
+      );
+    });
+  });
+
   it("suppresses toast notifications and refetches project notifications for api-blocked failures", async () => {
     const store = createStore();
     mockIsConnectionError.mockReturnValue(false);

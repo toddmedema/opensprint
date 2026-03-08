@@ -139,6 +139,9 @@ export function ExecutePhase({
   })();
   const isDoneTask = selectedTaskData?.kanbanColumn === "done";
   const isBlockedTask = selectedTaskData?.kanbanColumn === "blocked";
+  const isInProgressTask =
+    selectedTaskData?.kanbanColumn === "in_progress" ||
+    selectedTaskData?.kanbanColumn === "in_review";
   const diagnosticsQuery = useTaskExecutionDiagnostics(
     projectId,
     effectiveSelectedTask ?? undefined,
@@ -565,6 +568,7 @@ export function ExecutePhase({
             wsConnected={wsConnected}
             isDoneTask={isDoneTask}
             isBlockedTask={isBlockedTask}
+            isInProgressTask={isInProgressTask}
             sections={{
               descriptionSectionExpanded,
               setDescriptionSectionExpanded,

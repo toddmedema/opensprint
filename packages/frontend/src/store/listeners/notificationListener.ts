@@ -87,11 +87,27 @@ notificationListener.startListening({
     if (action.payload === DEDUP_SKIP) return;
 
     const error = action.error as SerializedError | undefined;
+    const payload = action.payload as unknown;
+    const payloadMessage =
+      payload &&
+      typeof payload === "object" &&
+      "message" in payload &&
+      typeof (payload as { message: unknown }).message === "string"
+        ? (payload as { message: string }).message
+        : null;
+    const payloadCode =
+      payload &&
+      typeof payload === "object" &&
+      "code" in payload &&
+      typeof (payload as { code: unknown }).code === "string"
+        ? (payload as { code: string }).code
+        : undefined;
     const msg =
+      payloadMessage ??
       error?.message ??
       (typeof action.payload === "string" ? action.payload : null) ??
       "An error occurred";
-    const code = error?.code as string | undefined;
+    const code = (payloadCode ?? error?.code) as string | undefined;
     const actionType = (action as { type?: string }).type;
 
     // Connection errors → single global banner, no per-request notifications
@@ -113,13 +129,20 @@ notificationListener.startListening({
     if (code && QUIET_NOT_FOUND_CODES.has(code)) return;
     if (typeof msg === "string" && /Issue .+ not found/.test(msg)) return;
 
+    // Use server message for assignee locked (task in progress)
+    const assigneeLockedMessage =
+      actionType === "execute/updateTaskAssignee/rejected" &&
+      payloadCode === "ASSIGNEE_LOCKED"
+        ? payloadMessage
+        : null;
     // Replace generic "Rejected" with an actionable message when we know the thunk
     const displayBase =
-      msg === "Rejected" && actionType && REJECTED_ACTION_MESSAGES[actionType]
+      assigneeLockedMessage ??
+      (msg === "Rejected" && actionType && REJECTED_ACTION_MESSAGES[actionType]
         ? REJECTED_ACTION_MESSAGES[actionType]
         : msg === "Rejected"
           ? "Something went wrong. Try again or refresh the page."
-          : msg;
+          : msg);
     const hint = getApiErrorHint(code) ?? getMessageBasedHint(msg);
     const displayMessage = hint && displayBase === msg ? `${msg} ${hint}` : displayBase;
     listenerApi.dispatch(addNotification({ message: displayMessage, severity: "error" }));

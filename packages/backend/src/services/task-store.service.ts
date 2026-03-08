@@ -842,7 +842,20 @@ export class TaskStoreService {
           sets.push("status = $" + paramIdx++);
           vals.push(options.status);
         }
-        if (options.assignee != null) {
+        if (options.assignee !== undefined) {
+          const statusRow = await client.queryOne(
+            toPgParams("SELECT status FROM tasks WHERE id = ? AND project_id = ?"),
+            [id, projectId]
+          );
+          const currentStatus = statusRow?.status as string | undefined;
+          if (currentStatus === "in_progress") {
+            throw new AppError(
+              400,
+              ErrorCodes.ASSIGNEE_LOCKED,
+              "Cannot change assignee while task is in progress",
+              { issueId: id }
+            );
+          }
           sets.push("assignee = $" + paramIdx++);
           vals.push(options.assignee);
         }
@@ -942,6 +955,21 @@ export class TaskStoreService {
       const client = this.ensureClient();
       await client.runInTransaction(async (tx) => {
         for (const u of updates) {
+          if (u.assignee !== undefined) {
+            const statusRow = await tx.queryOne(
+              toPgParams("SELECT status FROM tasks WHERE id = ? AND project_id = ?"),
+              [u.id, projectId]
+            );
+            const currentStatus = statusRow?.status as string | undefined;
+            if (currentStatus === "in_progress") {
+              throw new AppError(
+                400,
+                ErrorCodes.ASSIGNEE_LOCKED,
+                "Cannot change assignee while task is in progress",
+                { issueId: u.id }
+              );
+            }
+          }
           const now = new Date().toISOString();
           const sets: string[] = ["updated_at = $1"];
           const vals: unknown[] = [now];
