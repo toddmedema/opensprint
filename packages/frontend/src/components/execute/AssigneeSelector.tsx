@@ -107,7 +107,7 @@ export function AssigneeSelector({
         className={`inline-flex items-center gap-1.5 cursor-default ${matchTaskNameTypography ? "text-xs text-theme-muted" : "text-theme-muted/80"}`}
         data-testid="assignee-read-only"
       >
-        {!isAgent && <PersonIcon size="sm" />}
+        {currentAssignee && !isAgent && <PersonIcon size="sm" />}
         {displayLabel}
       </span>
     );
@@ -130,7 +130,7 @@ export function AssigneeSelector({
         aria-label={`Assignee: ${displayLabel}. Click to change`}
         data-testid="assignee-dropdown-trigger"
       >
-        {!isAgent && <PersonIcon size="sm" />}
+        {currentAssignee && !isAgent && <PersonIcon size="sm" />}
         <span>{displayLabel}</span>
         {loading ? (
           <span className="text-[10px] opacity-70 pr-2 animate-pulse">Updating…</span>

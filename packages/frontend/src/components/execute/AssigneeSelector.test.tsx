@@ -163,11 +163,11 @@ describe("AssigneeSelector", () => {
     expect(trigger.querySelector("svg")).not.toBeInTheDocument();
   });
 
-  it("shows assignee icon when unassigned", () => {
+  it("shows no assignee icon when unassigned", () => {
     renderWithProviders(<AssigneeSelector {...defaultProps} />);
 
     const trigger = screen.getByTestId("assignee-dropdown-trigger");
-    expect(trigger.querySelector("svg")).toBeInTheDocument();
+    expect(trigger.querySelector("svg")).not.toBeInTheDocument();
   });
 
   it("readOnly with agent assignee shows label without icon", () => {
