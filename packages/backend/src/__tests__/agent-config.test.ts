@@ -134,6 +134,34 @@ describe("agent-config schema", () => {
       }
     });
 
+    it("should reject invalid baseUrl (non-URL string)", () => {
+      expect(() =>
+        parseAgentConfig(
+          {
+            type: "lmstudio",
+            model: "local-model",
+            cliCommand: null,
+            baseUrl: "not-a-url",
+          },
+          "simpleComplexityAgent"
+        )
+      ).toThrow(AppError);
+      try {
+        parseAgentConfig(
+          {
+            type: "lmstudio",
+            model: "local-model",
+            cliCommand: null,
+            baseUrl: "not-a-url",
+          },
+          "simpleComplexityAgent"
+        );
+      } catch (e) {
+        expect(e).toBeInstanceOf(AppError);
+        expect((e as AppError).message).toContain("baseUrl must be an http or https URL");
+      }
+    });
+
     it("should reject empty baseUrl when type is lmstudio with clear message", () => {
       expect(() =>
         parseAgentConfig(
