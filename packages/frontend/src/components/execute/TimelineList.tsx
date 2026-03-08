@@ -126,7 +126,7 @@ function TimelineRow({
               onOpenChange={handleAssigneeOpenChange}
             />
           ) : (
-            <span className="text-sm font-medium text-theme-text">
+            <span className="text-xs text-theme-muted">
               {task.assignee?.trim() ? task.assignee : "—"}
             </span>
           )}

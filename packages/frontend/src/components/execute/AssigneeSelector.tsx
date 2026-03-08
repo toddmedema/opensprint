@@ -14,7 +14,7 @@ export interface AssigneeSelectorProps {
   isAgentAssignee?: boolean;
   /** When true, show read-only display (e.g. for done tasks). */
   readOnly?: boolean;
-  /** When true, use same font size/weight as task name (e.g. in Execute queue row). */
+  /** When true, use same font size as other right-side row elements (time, plan name) in Execute queue. */
   matchTaskNameTypography?: boolean;
   /** Called when the dropdown open state changes (e.g. for row z-index in lists). */
   onOpenChange?: (open: boolean) => void;
@@ -104,7 +104,7 @@ export function AssigneeSelector({
   if (readOnly) {
     return (
       <span
-        className={`inline-flex items-center gap-1.5 cursor-default ${matchTaskNameTypography ? "text-sm font-medium text-theme-text" : "text-theme-muted/80"}`}
+        className={`inline-flex items-center gap-1.5 cursor-default ${matchTaskNameTypography ? "text-xs text-theme-muted" : "text-theme-muted/80"}`}
         data-testid="assignee-read-only"
       >
         {!isAgent && <PersonIcon size="sm" />}
@@ -114,7 +114,7 @@ export function AssigneeSelector({
   }
 
   const triggerTypography = matchTaskNameTypography
-    ? "text-sm font-medium text-theme-text hover:bg-theme-border-subtle/50 transition-colors"
+    ? "text-xs text-theme-muted hover:bg-theme-border-subtle/50 hover:text-theme-text transition-colors"
     : "text-theme-muted hover:bg-theme-border-subtle/50 hover:text-theme-text transition-colors";
 
   return (
