@@ -1,8 +1,78 @@
 import { describe, it, expect, beforeEach, afterAll } from "vitest";
 import { isAgentAssignee } from "@opensprint/shared";
 import { toPgParams } from "../db/index.js";
-import { TaskStoreService } from "../services/task-store.service.js";
+import {
+  TaskStoreService,
+  resolveEpicId,
+  type StoredTask,
+} from "../services/task-store.service.js";
 import { createTestPostgresClient, createTestProjectId } from "./test-db-helper.js";
+
+function stored(id: string, issueType: string, overrides: Partial<StoredTask> = {}): StoredTask {
+  const now = new Date().toISOString();
+  return {
+    id,
+    title: id,
+    issue_type: issueType,
+    status: "open",
+    priority: 2,
+    created_at: now,
+    updated_at: now,
+    ...overrides,
+  } as StoredTask;
+}
+
+describe("resolveEpicId", () => {
+  it("returns epic id for os-a3f8.1 when parent is epic", () => {
+    const all = [
+      stored("os-a3f8", "epic"),
+      stored("os-a3f8.1", "task"),
+    ];
+    expect(resolveEpicId("os-a3f8.1", all)).toBe("os-a3f8");
+  });
+
+  it("returns epic id for os-a3f8.1.2 with epic at os-a3f8", () => {
+    const all = [
+      stored("os-a3f8", "epic"),
+      stored("os-a3f8.1", "task"),
+      stored("os-a3f8.1.2", "task"),
+    ];
+    expect(resolveEpicId("os-a3f8.1.2", all)).toBe("os-a3f8");
+  });
+
+  it("returns null when no idToIssue provided", () => {
+    expect(resolveEpicId("os-a3f8.1", undefined)).toBe(null);
+    expect(resolveEpicId("os-a3f8.1", undefined)).toBe(null);
+  });
+
+  it("returns null for top-level task id", () => {
+    const all = [stored("os-a3f8", "epic")];
+    expect(resolveEpicId("os-a3f8", all)).toBe(null);
+  });
+
+  it("returns null when no epic in parent chain", () => {
+    const all = [
+      stored("os-a3f8", "task"),
+      stored("os-a3f8.1", "task"),
+      stored("os-a3f8.1.2", "task"),
+    ];
+    expect(resolveEpicId("os-a3f8.1.2", all)).toBe(null);
+  });
+
+  it("accepts Map as idToIssue", () => {
+    const map = new Map<string, StoredTask>([
+      ["os-a3f8", stored("os-a3f8", "epic")],
+      ["os-a3f8.1", stored("os-a3f8.1", "task")],
+    ]);
+    expect(resolveEpicId("os-a3f8.1", map)).toBe("os-a3f8");
+  });
+
+  it("returns null for null or invalid taskId", () => {
+    expect(resolveEpicId(null, [])).toBe(null);
+    expect(resolveEpicId(undefined, [])).toBe(null);
+    expect(resolveEpicId("", [])).toBe(null);
+  });
+});
 
 let TEST_PROJECT_ID = createTestProjectId("task-store");
 

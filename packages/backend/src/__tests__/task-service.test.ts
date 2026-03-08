@@ -21,10 +21,12 @@ const { mockTaskStoreState, mockBranchManagerInstance, mockOrchestrator } = vi.h
   },
 }));
 
-vi.mock("../services/task-store.service.js", async () => {
+vi.mock("../services/task-store.service.js", async (importOriginal) => {
   const { createMockDbClient } = await import("./test-db-helper.js");
+  const actual = await importOriginal<typeof import("../services/task-store.service.js")>();
   const mockDb = createMockDbClient();
   return {
+    ...actual,
     taskStore: {
       listAll: vi.fn().mockImplementation(async () => mockTaskStoreState.listAll),
       show: vi.fn().mockImplementation(async (_p: string, id: string) => {
@@ -55,6 +57,7 @@ vi.mock("../services/task-store.service.js", async () => {
     },
     TaskStoreService: vi.fn(),
     SCHEMA_SQL: "",
+    resolveEpicId: actual.resolveEpicId,
   };
 });
 

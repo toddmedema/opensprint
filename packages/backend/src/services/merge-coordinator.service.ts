@@ -16,6 +16,7 @@ import {
   type TestResults,
 } from "@opensprint/shared";
 import type { StoredTask } from "./task-store.service.js";
+import { resolveEpicId } from "./task-store.service.js";
 import { RebaseConflictError } from "./branch-manager.js";
 import { gitCommitQueue, MergeJobError } from "./git-commit-queue.service.js";
 import { agentIdentityService } from "./agent-identity.service.js";
@@ -30,14 +31,6 @@ import { buildTaskLastExecutionSummary, compactExecutionText } from "./task-exec
 import { inspectGitRepoState, resolveBaseBranch } from "../utils/git-repo-state.js";
 
 const log = createLogger("merge-coordinator");
-
-/** Extract epic ID from task ID (e.g. os-a3f8.2 -> os-a3f8). Returns null if not a child task. */
-function extractEpicId(id: string | undefined | null): string | null {
-  if (id == null || typeof id !== "string") return null;
-  const lastDot = id.lastIndexOf(".");
-  if (lastDot <= 0) return null;
-  return id.slice(0, lastDot);
-}
 
 export interface MergeSlot {
   taskId: string;
@@ -605,9 +598,9 @@ export class MergeCoordinatorService {
       log.warn("Auto-deploy on task completion failed", { projectId, err });
     });
 
-    const epicId = extractEpicId(taskId);
+    const allIssues = await this.host.taskStore.listAll(projectId);
+    const epicId = resolveEpicId(taskId, allIssues);
     if (epicId) {
-      const allIssues = await this.host.taskStore.listAll(projectId);
       const implTasks = allIssues.filter(
         (i) =>
           i.id.startsWith(epicId + ".") &&

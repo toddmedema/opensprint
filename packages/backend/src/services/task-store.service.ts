@@ -90,6 +90,39 @@ export type TaskChangeCallback = (
   task: StoredTask
 ) => void;
 
+/**
+ * Resolve the epic ID for a task by walking the parent chain until a task with issue_type/type === 'epic' is found.
+ * Used when mergeStrategy === 'per_epic' for branch naming and defer-merge logic.
+ * @param taskId - Task ID (e.g. os-a3f8.1 or os-a3f8.1.2)
+ * @param idToIssue - Optional map or array of all tasks; required to determine which ancestor is the epic
+ * @returns Epic ID (e.g. os-a3f8) or null if no epic in chain or idToIssue not provided
+ */
+export function resolveEpicId(
+  taskId: string | undefined | null,
+  idToIssue?: Map<string, StoredTask> | StoredTask[]
+): string | null {
+  if (taskId == null || typeof taskId !== "string") return null;
+  const map =
+    idToIssue instanceof Map
+      ? idToIssue
+      : Array.isArray(idToIssue)
+        ? new Map(idToIssue.map((t) => [t.id, t]))
+        : undefined;
+  if (!map) return null;
+  let current: string | null = taskId;
+  while (current) {
+    const lastDot = current.lastIndexOf(".");
+    if (lastDot <= 0) return null;
+    const parentId = current.slice(0, lastDot);
+    const parent = map.get(parentId);
+    if (parent && (parent.issue_type ?? (parent as { type?: string }).type) === "epic") {
+      return parentId;
+    }
+    current = parentId;
+  }
+  return null;
+}
+
 export class TaskStoreService {
   private client: DbClient | null = null;
   private pool: Pool | null = null;
@@ -620,15 +653,7 @@ export class TaskStoreService {
 
   /** Find plan epic by walking up parent chain (epic.1.2 -> epic.1 -> epic). */
   private getPlanEpicId(issue: StoredTask, allIssues: StoredTask[]): string | null {
-    let parentId = this.getParentId(issue.id ?? "");
-    while (parentId) {
-      const parent = allIssues.find((i) => i.id === parentId);
-      if (parent && (parent.issue_type ?? parent.type) === "epic") {
-        return parentId;
-      }
-      parentId = this.getParentId(parentId);
-    }
-    return null;
+    return resolveEpicId(issue.id ?? "", allIssues);
   }
 
   // ──── Write methods (mutex + save) ────

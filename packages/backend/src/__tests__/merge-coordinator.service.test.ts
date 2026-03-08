@@ -6,9 +6,13 @@ import {
 } from "../services/merge-coordinator.service.js";
 import type { StoredTask } from "../services/task-store.service.js";
 
-vi.mock("../services/task-store.service.js", () => ({
-  taskStore: {},
-}));
+vi.mock("../services/task-store.service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/task-store.service.js")>();
+  return {
+    taskStore: {},
+    resolveEpicId: actual.resolveEpicId,
+  };
+});
 
 vi.mock("../services/branch-manager.js", () => {
   class RebaseConflictError extends Error {
