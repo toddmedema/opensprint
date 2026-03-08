@@ -1,0 +1,262 @@
+{
+  "tasks": [
+    {
+      "title": "Add reviewedAt to PlanMetadata and extend PlanStatus to in_review",
+      "description": "Add optional reviewedAt: string | null (ISO timestamp) to PlanMetadata in packages/shared/src/types/plan.ts. Extend PlanStatus type from 'planning' | 'building' | 'complete' to include 'in_review'. Add in_review to PLAN_STATUS_ORDER in packages/shared/src/constants/index.ts with value 2 (between building: 1 and complete: 3), and shift complete to 3. Update sortPlansByStatus to handle in_review. Acceptance: TypeScript builds; existing plan tests that assert status values are updated. Run: npm run build from repo root.",
+      "priority": 0,
+      "dependsOn": [],
+      "complexity": 2,
+      "files": {
+        "modify": [
+          "packages/shared/src/types/plan.ts",
+          "packages/shared/src/constants/index.ts"
+        ],
+        "create": [],
+        "test": [
+          "packages/shared/src/__tests__/plan.test.ts"
+        ]
+      }
+    },
+    {
+      "title": "Persist and read reviewedAt in plan metadata (plan-store and plan.service)",
+      "description": "Ensure plan metadata JSON stored in the plans table can hold reviewedAt. In plan.service.ts getPlan(), read reviewedAt from row.metadata (e.g. row.metadata.reviewedAt) and set on PlanMetadata object. When creating or updating plan metadata (createPlan, planUpdateMetadata paths), preserve or accept reviewedAt in the metadata blob. Plan-store.service does not need schema changes—metadata is already a JSON column. Acceptance: GET /projects/:id/plans/:planId returns plan with metadata.reviewedAt when set. Run backend unit tests: npx vitest run packages/backend/src/__tests__/plan-service.test.ts.",
+      "priority": 0,
+      "dependsOn": ["Add reviewedAt to PlanMetadata and extend PlanStatus to in_review"],
+      "complexity": 3,
+      "files": {
+        "modify": [
+          "packages/backend/src/services/plan.service.ts"
+        ],
+        "create": [],
+        "test": [
+          "packages/backend/src/__tests__/plan-service.test.ts"
+        ]
+      }
+    },
+    {
+      "title": "Derive plan status in_review vs complete using reviewedAt",
+      "description": "In plan.service.ts getPlan(), after computing total/done and epic status: when epic is not blocked and total > 0 and done === total, set status to 'in_review' if metadata.reviewedAt is null/undefined, else 'complete'. When not all tasks done, keep status 'building' (or 'planning' if epic blocked). Apply the same derivation in listPlansWithDependencyGraph (and any other path that builds Plan status). Acceptance: Plan with all tasks closed and no reviewedAt returns status in_review; with reviewedAt set returns complete. Run: npx vitest run packages/backend/src/__tests__/plan-service.test.ts.",
+      "priority": 0,
+      "dependsOn": ["Persist and read reviewedAt in plan metadata (plan-store and plan.service)"],
+      "complexity": 4,
+      "files": {
+        "modify": [
+          "packages/backend/src/services/plan.service.ts"
+        ],
+        "create": [],
+        "test": [
+          "packages/backend/src/__tests__/plan-service.test.ts"
+        ]
+      }
+    },
+    {
+      "title": "Add POST /projects/:projectId/plans/:planId/mark-complete endpoint",
+      "description": "Add new route in packages/backend/src/routes/plans.ts: POST /:planId/mark-complete. Implement in plan.service.ts: markPlanComplete(projectId, planId) that (1) fetches plan via getPlan, (2) verifies all epic tasks are closed (same check as reshipPlan: children every status === 'closed'), (3) if not all closed return 400 with message 'Plan has open tasks; cannot mark complete', (4) if plan already has reviewedAt set, return 200 with current plan (idempotent), (5) otherwise set metadata.reviewedAt = new Date().toISOString(), optionally set shippedAt if not set, call taskStore.planUpdateMetadata, (6) return updated plan via getPlan. Register route before :planId param if needed so /mark-complete is not captured by :planId. Response: 200 with full Plan (status will be complete). Errors: 404 plan not found, 400 when not all tasks closed. Run: npx vitest run packages/backend/src/__tests__/plan-route.test.ts and add tests for mark-complete.",
+      "priority": 1,
+      "dependsOn": ["Derive plan status in_review vs complete using reviewedAt"],
+      "complexity": 4,
+      "files": {
+        "modify": [
+          "packages/backend/src/routes/plans.ts",
+          "packages/backend/src/services/plan.service.ts"
+        ],
+        "create": [],
+        "test": [
+          "packages/backend/src/__tests__/plan-route.test.ts"
+        ]
+      }
+    },
+    {
+      "title": "Emit WebSocket event on plan mark-complete",
+      "description": "After successfully updating plan in mark-complete endpoint or plan.service.markPlanComplete, broadcast to project so frontend can invalidate plan list/status. Use existing broadcastToProject(projectId, { type: 'plan.updated', planId }) or equivalent (check websocket event types in shared and backend). Ensure Evaluate and Plan phase queries (plans list) are invalidated on this event in frontend websocket middleware. Acceptance: After calling mark-complete, WebSocket message is sent; frontend plan list refetches. Run backend tests and verify websocket middleware invalidates plans list on plan.updated.",
+      "priority": 1,
+      "dependsOn": ["Add POST /projects/:projectId/plans/:planId/mark-complete endpoint"],
+      "complexity": 3,
+      "files": {
+        "modify": [
+          "packages/backend/src/services/plan.service.ts",
+          "packages/backend/src/routes/plans.ts",
+          "packages/frontend/src/store/middleware/websocketMiddleware.ts"
+        ],
+        "create": [],
+        "test": [
+          "packages/frontend/src/store/middleware/websocketMiddleware.test.ts"
+        ]
+      }
+    },
+    {
+      "title": "Clear reviewedAt when new tasks are added to a completed plan",
+      "description": "When new implementation tasks are created under an epic whose plan already has reviewedAt set (i.e. plan was complete), set reviewedAt = null so the plan returns to in_review when those new tasks are later closed. Implement in plan.service.ts: (1) In createPlan/shipPlan when creating tasks under an existing epic, or in feedback.service when mapping feedback to an epic that has a plan with reviewedAt, or in final-review createTasksFromReview path—whenever new child tasks are added under an epic, get the plan by epic id, if plan.metadata.reviewedAt is set then call planUpdateMetadata with reviewedAt: null. Prefer a single helper e.g. clearReviewedAtIfNewTasksAdded(projectId, epicId) and call it from places that add tasks to an epic (feedback mapping, final review task creation). Acceptance: Complete plan gets new tasks from feedback → reviewedAt cleared; when new tasks close, status becomes in_review. Run plan-service and feedback-service tests.",
+      "priority": 1,
+      "dependsOn": ["Derive plan status in_review vs complete using reviewedAt"],
+      "complexity": 5,
+      "files": {
+        "modify": [
+          "packages/backend/src/services/plan.service.ts",
+          "packages/backend/src/services/feedback.service.ts",
+          "packages/backend/src/services/final-review.service.ts"
+        ],
+        "create": [],
+        "test": [
+          "packages/backend/src/__tests__/plan-service.test.ts",
+          "packages/backend/src/__tests__/feedback-service.test.ts"
+        ]
+      }
+    },
+    {
+      "title": "Deliver gate: trigger deploy only when plan is complete (reviewedAt set)",
+      "description": "In merge-coordinator.service.ts, when all implementation tasks of an epic are closed and we would run final review and then trigger deploy: before calling triggerDeployForEvent(projectId, 'each_epic'), resolve the plan for this epic (e.g. via planService.getPlanByEpicId or list plans and find by epicId). If the plan has status !== 'complete' (i.e. reviewedAt is null, so in_review), do NOT call triggerDeployForEvent. Still run final review and close epic so plan shows in_review. When user marks plan complete (mark-complete endpoint), after setting reviewedAt call triggerDeployForEvent(projectId, 'each_epic') so deploy runs after human approval. Acceptance: All tasks close → epic closes, no deploy; user marks complete → deploy triggers. Run merge-coordinator and deploy-trigger tests.",
+      "priority": 1,
+      "dependsOn": ["Add POST /projects/:projectId/plans/:planId/mark-complete endpoint"],
+      "complexity": 5,
+      "files": {
+        "modify": [
+          "packages/backend/src/services/merge-coordinator.service.ts",
+          "packages/backend/src/services/plan.service.ts",
+          "packages/backend/src/routes/plans.ts"
+        ],
+        "create": [],
+        "test": [
+          "packages/backend/src/__tests__/merge-coordinator.service.test.ts"
+        ]
+      }
+    },
+    {
+      "title": "Restrict Re-execute to plans with status complete",
+      "description": "In plan.service.ts reshipPlan(), after getPlan() if plan.status is not 'complete' (e.g. in_review or building), throw AppError 400 with message that Re-execute is only available for plans that have been marked complete. Optionally add same check in plans router for POST /:planId/re-execute. Frontend already shows Re-execute only when plan.status === 'complete'; backend must enforce. Acceptance: POST re-execute for in_review plan returns 400. Run plan-route and plan-service tests.",
+      "priority": 1,
+      "dependsOn": ["Derive plan status in_review vs complete using reviewedAt"],
+      "complexity": 2,
+      "files": {
+        "modify": [
+          "packages/backend/src/services/plan.service.ts"
+        ],
+        "create": [],
+        "test": [
+          "packages/backend/src/__tests__/plan-route.test.ts",
+          "packages/backend/src/__tests__/plan-service.test.ts"
+        ]
+      }
+    },
+    {
+      "title": "Plan phase: add in_review to filter, sort order, and card status",
+      "description": "In PlanPhase.tsx and related components: (1) Extend status filter counts and filter options to include 'in_review' (planCountByStatus.in_review, filter chip 'In review'). (2) Ensure sort order is planning → building → in_review → complete (sortPlansByStatus already uses PLAN_STATUS_ORDER; after adding in_review to constants this is done). (3) In EpicCard or plan card, show 'In review' badge when status === 'in_review' and add affordance 'Review in Evaluate' or 'Mark complete in Evaluate' (link or CTA). (4) Reset filter when selected chip has count 0 (already exists for other statuses). Acceptance: Plan phase shows In review filter and counts; cards show In review status and link/CTA to Evaluate. Run: npx vitest run packages/frontend/src/pages/phases/PlanPhase.test.tsx and EpicCard tests.",
+      "priority": 2,
+      "dependsOn": ["Add reviewedAt to PlanMetadata and extend PlanStatus to in_review"],
+      "complexity": 4,
+      "files": {
+        "modify": [
+          "packages/frontend/src/pages/phases/PlanPhase.tsx",
+          "packages/frontend/src/components/EpicCard.tsx"
+        ],
+        "create": [],
+        "test": [
+          "packages/frontend/src/pages/phases/PlanPhase.test.tsx",
+          "packages/frontend/src/components/EpicCard.test.tsx"
+        ]
+      }
+    },
+    {
+      "title": "Frontend API: add markPlanComplete and use plans list in Evaluate",
+      "description": "In packages/frontend/src/api/client.ts add method e.g. markPlanComplete(projectId, planId) calling POST /projects/:projectId/plans/:planId/mark-complete. Ensure GET /projects/:id/plans returns plans with reviewedAt and status (already returned by backend). Add or reuse a hook to fetch plans in Evaluate (e.g. usePlans(projectId) from existing queryKeys.plans.list). Acceptance: Frontend can call markPlanComplete and fetch plans list. Run frontend build and existing API tests.",
+      "priority": 2,
+      "dependsOn": ["Add POST /projects/:projectId/plans/:planId/mark-complete endpoint"],
+      "complexity": 2,
+      "files": {
+        "modify": [
+          "packages/frontend/src/api/client.ts",
+          "packages/frontend/src/api/hooks/plans.ts"
+        ],
+        "create": [],
+        "test": []
+      }
+    },
+    {
+      "title": "Evaluate: unified review list (pending = pending feedback + in_review plans)",
+      "description": "In EvalPhase.tsx, build a unified list for the Pending view: (1) Fetch feedback (existing useFeedback) and plans (usePlans or equivalent). (2) Pending bucket = feedback items with status 'pending' plus plans with status 'in_review'. (3) Resolved/Done bucket = feedback with status 'resolved' plus plans with status 'complete'. (4) Keep existing status filter dropdown (All / Pending / Resolved / Cancelled). Filter logic: for Pending show pending feedback + in_review plans; for Resolved show resolved feedback + complete plans; counts in dropdown include both (e.g. Pending (3) = 2 feedback + 1 plan). Sort unified list by date or consistent order (e.g. plans first then feedback, or interleaved by updatedAt). Acceptance: Evaluate Pending shows pending feedback and in_review plans in one list; filter counts correct. Run EvalPhase tests.",
+      "priority": 2,
+      "dependsOn": ["Frontend API: add markPlanComplete and use plans list in Evaluate", "Plan phase: add in_review to filter, sort order, and card status"],
+      "complexity": 6,
+      "files": {
+        "modify": [
+          "packages/frontend/src/pages/phases/EvalPhase.tsx"
+        ],
+        "create": [],
+        "test": [
+          "packages/frontend/src/pages/phases/EvalPhase.test.tsx"
+        ]
+      }
+    },
+    {
+      "title": "Evaluate: add Plan review card component with Mark complete action",
+      "description": "Create a plan review card component (or inline in EvalPhase) for items in the unified list that are plans. Card shows: plan title (formatPlanIdAsTitle(plan.metadata.planId)), plan id, short summary (e.g. 'All N tasks done'), primary button 'Mark complete' that calls markPlanComplete(projectId, plan.metadata.planId) and invalidates plans list/query. Optional: link to open plan in Plan phase or Execute task list. Use same card style as feedback cards with a 'Plan' badge for consistency. Accessibility: button has aria-label, list announced as combined review queue. Acceptance: Plan cards appear in Pending/Resolved; Mark complete calls API and list updates. Run EvalPhase and component tests.",
+      "priority": 2,
+      "dependsOn": ["Evaluate: unified review list (pending = pending feedback + in_review plans)"],
+      "complexity": 5,
+      "files": {
+        "modify": [
+          "packages/frontend/src/pages/phases/EvalPhase.tsx"
+        ],
+        "create": [
+          "packages/frontend/src/components/PlanReviewCard.tsx"
+        ],
+        "test": [
+          "packages/frontend/src/pages/phases/EvalPhase.test.tsx"
+        ]
+      }
+    },
+    {
+      "title": "Evaluate: filter counts and Resolved/Done list for complete plans",
+      "description": "Ensure filter dropdown shows correct counts: Pending count = pending feedback length + in_review plans length; Resolved count = resolved feedback length + complete plans length. Resolved/Done view shows resolved feedback cards and complete plan cards (optionally only plans that were ever in_review to reduce clutter; recommend showing all complete plans for symmetry). Cancelled unchanged. Acceptance: Counts match; Resolved tab shows resolved feedback and complete plans. Run EvalPhase tests.",
+      "priority": 2,
+      "dependsOn": ["Evaluate: add Plan review card component with Mark complete action"],
+      "complexity": 3,
+      "files": {
+        "modify": [
+          "packages/frontend/src/pages/phases/EvalPhase.tsx"
+        ],
+        "create": [],
+        "test": [
+          "packages/frontend/src/pages/phases/EvalPhase.test.tsx"
+        ]
+      }
+    },
+    {
+      "title": "Plan phase: Mark complete from Plan phase (optional CTA)",
+      "description": "Add optional 'Mark complete' or 'Approve' action on Plan phase for plans in in_review status (e.g. on EpicCard or plan detail). Button calls same markPlanComplete API and invalidates plan list. If design prefers Evaluate-only approval, this task can be minimal (e.g. link to Evaluate with hash or query). Acceptance: User can mark plan complete from Plan phase or Evaluate. Run PlanPhase and EpicCard tests.",
+      "priority": 3,
+      "dependsOn": ["Plan phase: add in_review to filter, sort order, and card status", "Frontend API: add markPlanComplete and use plans list in Evaluate"],
+      "complexity": 3,
+      "files": {
+        "modify": [
+          "packages/frontend/src/pages/phases/PlanPhase.tsx",
+          "packages/frontend/src/components/EpicCard.tsx"
+        ],
+        "create": [],
+        "test": [
+          "packages/frontend/src/components/EpicCard.test.tsx"
+        ]
+      }
+    },
+    {
+      "title": "Integration test: plan in_review and mark-complete flow",
+      "description": "Add or extend integration test: create plan, Execute!, close all tasks, assert plan status is in_review (not complete). Call POST mark-complete, assert status complete. Optionally assert Evaluate shows plan in Pending then in Resolved after action. Use existing test DB and project scaffolding. Run: npx vitest run packages/backend/src/__tests__/plan-route.test.ts or a dedicated integration test file.",
+      "priority": 3,
+      "dependsOn": [
+        "Deliver gate: trigger deploy only when plan is complete (reviewedAt set)",
+        "Evaluate: filter counts and Resolved/Done list for complete plans"
+      ],
+      "complexity": 5,
+      "files": {
+        "modify": [
+          "packages/backend/src/__tests__/plan-route.test.ts"
+        ],
+        "create": [],
+        "test": [
+          "packages/backend/src/__tests__/plan-route.test.ts"
+        ]
+      }
+    }
+  ],
+  "open_questions": []
+}

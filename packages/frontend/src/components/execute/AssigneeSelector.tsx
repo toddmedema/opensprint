@@ -14,6 +14,8 @@ export interface AssigneeSelectorProps {
   isAgentAssignee?: boolean;
   /** When true, show read-only display (e.g. for done tasks). */
   readOnly?: boolean;
+  /** When true, use same font size/weight as task name (e.g. in Execute queue row). */
+  matchTaskNameTypography?: boolean;
   /** Called when the dropdown open state changes (e.g. for row z-index in lists). */
   onOpenChange?: (open: boolean) => void;
 }
@@ -44,6 +46,7 @@ export function AssigneeSelector({
   onSelect,
   isAgentAssignee: isAgentProp,
   readOnly = false,
+  matchTaskNameTypography = false,
   onOpenChange,
 }: AssigneeSelectorProps) {
   const dispatch = useAppDispatch();
@@ -101,7 +104,7 @@ export function AssigneeSelector({
   if (readOnly) {
     return (
       <span
-        className="inline-flex items-center gap-1.5 text-theme-muted/80 cursor-default"
+        className={`inline-flex items-center gap-1.5 cursor-default ${matchTaskNameTypography ? "text-sm font-medium text-theme-text" : "text-theme-muted/80"}`}
         data-testid="assignee-read-only"
       >
         {!isAgent && <PersonIcon size="sm" />}
@@ -110,13 +113,17 @@ export function AssigneeSelector({
     );
   }
 
+  const triggerTypography = matchTaskNameTypography
+    ? "text-sm font-medium text-theme-text hover:bg-theme-border-subtle/50 transition-colors"
+    : "text-theme-muted hover:bg-theme-border-subtle/50 hover:text-theme-text transition-colors";
+
   return (
     <div ref={dropdownRef} className="relative inline-block">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         disabled={loading}
-        className="dropdown-trigger inline-flex items-center gap-2 rounded py-1 text-theme-muted hover:bg-theme-border-subtle/50 hover:text-theme-text transition-colors cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+        className={`dropdown-trigger inline-flex items-center gap-2 rounded py-1 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed ${triggerTypography}`}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-busy={loading}

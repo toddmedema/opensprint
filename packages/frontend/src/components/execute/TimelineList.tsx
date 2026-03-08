@@ -122,10 +122,11 @@ function TimelineRow({
               teamMembers={teamMembers}
               readOnly={isDone || isInProgress}
               isAgentAssignee={!!task.assignee && isAgentAssignee(task.assignee)}
+              matchTaskNameTypography
               onOpenChange={handleAssigneeOpenChange}
             />
           ) : (
-            <span className="text-xs text-theme-muted">
+            <span className="text-sm font-medium text-theme-text">
               {task.assignee?.trim() ? task.assignee : "—"}
             </span>
           )}
