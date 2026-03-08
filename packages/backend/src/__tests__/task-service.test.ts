@@ -8,17 +8,20 @@ import { ContextAssembler } from "../services/context-assembler.js";
 import { BranchManager } from "../services/branch-manager.js";
 import type { StoredTask } from "../services/task-store.service.js";
 
-const { mockTaskStoreState, mockBranchManagerInstance, mockOrchestrator } = vi.hoisted(() => ({
-  mockTaskStoreState: { listAll: [] as StoredTask[], readyCalls: 0 },
-  mockBranchManagerInstance: {
-    listTaskWorktrees: vi.fn().mockResolvedValue([]),
-    removeTaskWorktree: vi.fn().mockResolvedValue(undefined),
-    revertAndReturnToMain: vi.fn().mockResolvedValue(undefined),
-  },
-  mockOrchestrator: {
+const { mockTaskStoreState, mockBranchManagerInstance, mockOrchestrator, lastAssembleConfig } =
+  vi.hoisted(() => ({
+    mockTaskStoreState: { listAll: [] as StoredTask[], readyCalls: 0 },
+    mockBranchManagerInstance: {
+      listTaskWorktrees: vi.fn().mockResolvedValue([]),
+      removeTaskWorktree: vi.fn().mockResolvedValue(undefined),
+      revertAndReturnToMain: vi.fn().mockResolvedValue(undefined),
+      createOrCheckoutBranch: vi.fn().mockResolvedValue(undefined),
+    },
+    mockOrchestrator: {
     stopTaskAndFreeSlot: vi.fn().mockResolvedValue(undefined),
     nudge: vi.fn(),
   },
+  lastAssembleConfig: { branch: undefined as string | undefined },
 }));
 
 vi.mock("../services/task-store.service.js", async (importOriginal) => {
@@ -101,7 +104,12 @@ vi.mock("../services/context-assembler.js", () => ({
     extractPrdExcerpt: vi.fn().mockResolvedValue(""),
     getPlanContentForTask: vi.fn().mockResolvedValue(""),
     collectDependencyOutputs: vi.fn().mockResolvedValue([]),
-    assembleTaskDirectory: vi.fn().mockResolvedValue("/tmp/test-dir"),
+    assembleTaskDirectory: vi.fn().mockImplementation(
+      (_repoPath: string, _taskId: string, config: { branch?: string }) => {
+        lastAssembleConfig.branch = config.branch;
+        return Promise.resolve("/tmp/test-dir");
+      }
+    ),
   })),
 }));
 
@@ -135,11 +143,13 @@ describe("TaskService", () => {
   beforeEach(() => {
     mockTaskStoreState.listAll = [...defaultIssues];
     mockTaskStoreState.readyCalls = 0;
+    lastAssembleConfig.branch = undefined;
     mockOrchestrator.stopTaskAndFreeSlot.mockClear();
     mockOrchestrator.nudge.mockClear();
     mockBranchManagerInstance.listTaskWorktrees.mockClear();
     mockBranchManagerInstance.removeTaskWorktree.mockClear();
     mockBranchManagerInstance.revertAndReturnToMain.mockClear();
+    mockBranchManagerInstance.createOrCheckoutBranch.mockClear();
     taskService = new TaskService(
       new ProjectService(),
       taskStore,
@@ -712,6 +722,130 @@ describe("TaskService", () => {
     expect(mockOrchestrator.stopTaskAndFreeSlot).toHaveBeenCalledWith("proj-1", "task-1");
     expect(taskStore.delete).toHaveBeenCalledWith("proj-1", "task-1");
     expect(mockOrchestrator.nudge).toHaveBeenCalledWith("proj-1");
+  });
+
+  describe("prepareTaskDirectory", () => {
+    it("uses per-task branch when mergeStrategy is per_task or default", async () => {
+      const projectService = new ProjectService();
+      vi.mocked(projectService.getSettings).mockResolvedValue({
+        gitWorkingMode: "branches",
+        mergeStrategy: "per_task",
+        worktreeBaseBranch: "main",
+      } as never);
+      const svc = new TaskService(
+        projectService,
+        taskStore,
+        new FeedbackService(),
+        new SessionManager(),
+        new ContextAssembler(),
+        new BranchManager(),
+        mockOrchestrator
+      );
+
+      const dir = await svc.prepareTaskDirectory("proj-1", "task-1", { createBranch: true });
+      expect(dir).toBe("/tmp/test-dir");
+      expect(lastAssembleConfig.branch).toBe("opensprint/task-1");
+      expect(mockBranchManagerInstance.createOrCheckoutBranch).toHaveBeenCalledWith(
+        "/tmp/test-repo",
+        "opensprint/task-1",
+        expect.any(String)
+      );
+    });
+
+    it("uses epic branch when mergeStrategy is per_epic and task belongs to epic", async () => {
+      const epicId = "os-ep";
+      const childTaskId = "os-ep.1";
+      mockTaskStoreState.listAll = [
+        {
+          id: epicId,
+          title: "Epic",
+          description: "",
+          issue_type: "epic",
+          status: "open",
+          priority: 0,
+          assignee: null,
+          labels: [],
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+          dependencies: [],
+        } as StoredTask,
+        {
+          id: childTaskId,
+          title: "Child Task",
+          description: "",
+          issue_type: "task",
+          status: "open",
+          priority: 1,
+          assignee: null,
+          labels: [],
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+          dependencies: [],
+        } as StoredTask,
+      ];
+
+      const projectService = new ProjectService();
+      vi.mocked(projectService.getSettings).mockResolvedValue({
+        gitWorkingMode: "branches",
+        mergeStrategy: "per_epic",
+        worktreeBaseBranch: "main",
+      } as never);
+      const svc = new TaskService(
+        projectService,
+        taskStore,
+        new FeedbackService(),
+        new SessionManager(),
+        new ContextAssembler(),
+        new BranchManager(),
+        mockOrchestrator
+      );
+
+      const dir = await svc.prepareTaskDirectory("proj-1", childTaskId, { createBranch: true });
+      expect(dir).toBe("/tmp/test-dir");
+      expect(lastAssembleConfig.branch).toBe(`opensprint/epic_${epicId}`);
+      expect(mockBranchManagerInstance.createOrCheckoutBranch).toHaveBeenCalledWith(
+        "/tmp/test-repo",
+        `opensprint/epic_${epicId}`,
+        expect.any(String)
+      );
+    });
+
+    it("uses per-task branch when mergeStrategy is per_epic but task has no epic", async () => {
+      mockTaskStoreState.listAll = [
+        {
+          id: "task-1",
+          title: "Standalone Task",
+          description: "",
+          issue_type: "task",
+          status: "open",
+          priority: 1,
+          assignee: null,
+          labels: [],
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+          dependencies: [],
+        } as StoredTask,
+      ];
+
+      const projectService = new ProjectService();
+      vi.mocked(projectService.getSettings).mockResolvedValue({
+        gitWorkingMode: "branches",
+        mergeStrategy: "per_epic",
+        worktreeBaseBranch: "main",
+      } as never);
+      const svc = new TaskService(
+        projectService,
+        taskStore,
+        new FeedbackService(),
+        new SessionManager(),
+        new ContextAssembler(),
+        new BranchManager(),
+        mockOrchestrator
+      );
+
+      await svc.prepareTaskDirectory("proj-1", "task-1", { createBranch: true });
+      expect(lastAssembleConfig.branch).toBe("opensprint/task-1");
+    });
   });
 
   describe("updateTask", () => {

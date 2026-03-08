@@ -665,7 +665,14 @@ export class TaskService {
     const settings = await this.projectService.getSettings(projectId);
 
     const issue = await this.taskStore.show(projectId, taskId);
-    const branchName = `opensprint/${taskId}`;
+    const mergeStrategy = settings.mergeStrategy ?? "per_task";
+    const allIssues = await this.taskStore.listAll(projectId);
+    const epicId = resolveEpicId(taskId, allIssues);
+    const useEpicBranch =
+      mergeStrategy === "per_epic" && epicId != null;
+    const branchName = useEpicBranch
+      ? `opensprint/epic_${epicId}`
+      : `opensprint/${taskId}`;
 
     if (createBranch) {
       const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);

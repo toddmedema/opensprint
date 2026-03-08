@@ -385,6 +385,46 @@ Test review prompt generation.
     }
   );
 
+  it(
+    "POST /tasks/:taskId/prepare with mergeStrategy per_epic uses epic branch in config.json",
+    { timeout: 20000 },
+    async () => {
+      await request(app)
+        .put(`${API_PREFIX}/projects/${projectId}/settings`)
+        .send({ mergeStrategy: "per_epic" });
+      const planRes = await request(app)
+        .post(`${API_PREFIX}/projects/${projectId}/plans`)
+        .send({
+          title: "Epic Branch Prepare Test",
+          content: "# Epic Branch\n\n## Overview\n\nTest epic branch in prepare.\n\n## Technical Approach\n- Use epic branch when per_epic.",
+          complexity: "low",
+          tasks: [{ title: "Task E1", description: "Implement E1", priority: 0, dependsOn: [] }],
+        });
+      expect(planRes.status).toBe(201);
+      const plan = planRes.body.data;
+      const epicId = plan.metadata.epicId;
+      expect(epicId).toBeDefined();
+      await taskStore.update(projectId, epicId, { status: "open" });
+
+      const tasksRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/tasks`);
+      const tasks = tasksRes.body.data ?? [];
+      const taskE1 = tasks.find((t: { title: string }) => t.title === "Task E1");
+      expect(taskE1).toBeDefined();
+
+      const prepareRes = await request(app)
+        .post(`${API_PREFIX}/projects/${projectId}/execute/tasks/${taskE1.id}/prepare`)
+        .set("Content-Type", "application/json")
+        .send({ createBranch: false });
+
+      expect(prepareRes.status).toBe(201);
+      const { taskDir } = prepareRes.body.data;
+      const configPath = path.join(taskDir, "config.json");
+      const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
+      expect(config.branch).toBe(`opensprint/epic_${epicId}`);
+      expect(config.taskId).toBe(taskE1.id);
+    }
+  );
+
   it("POST /tasks/:taskId/unblock sets task status to open", { timeout: 20000 }, async () => {
     const planRes = await request(app)
       .post(`${API_PREFIX}/projects/${projectId}/plans`)
