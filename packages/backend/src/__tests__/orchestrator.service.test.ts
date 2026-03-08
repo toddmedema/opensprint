@@ -753,13 +753,14 @@ describe("OrchestratorService (slot-based model)", () => {
         })
       );
 
-      // Should write assignment.json
+      // Should write assignment.json with branchName and worktreeKey (per_task => worktreeKey = task.id)
       expect(mockWriteJsonAtomic).toHaveBeenCalledWith(
         expect.stringContaining("assignment.json"),
         expect.objectContaining({
           taskId: "task-1",
           phase: "coding",
           branchName: "opensprint/task-1",
+          worktreeKey: "task-1",
         })
       );
     });
@@ -821,7 +822,10 @@ describe("OrchestratorService (slot-based model)", () => {
       });
 
       expect(mockCreateTaskWorktree).toHaveBeenCalledTimes(1);
-      expect(mockCreateTaskWorktree).toHaveBeenCalledWith(repoPath, "task-1", "main", undefined);
+      expect(mockCreateTaskWorktree).toHaveBeenCalledWith(repoPath, "task-1", "main", {
+        worktreeKey: "task-1",
+        branchName: "opensprint/task-1",
+      });
     });
 
     it("uses epic branch and worktreeKey when mergeStrategy is per_epic and task has epic parent", async () => {
@@ -871,7 +875,7 @@ describe("OrchestratorService (slot-based model)", () => {
         { timeout: 8000 }
       );
 
-      // assignment.json written by phase executor contains epic branch
+      // assignment.json written by phase executor contains epic branch and worktreeKey
       const assignmentCall = vi.mocked(mockWriteJsonAtomic).mock.calls.find((c) =>
         String(c[0]).endsWith("assignment.json")
       );
@@ -880,6 +884,49 @@ describe("OrchestratorService (slot-based model)", () => {
         taskId: childTaskId,
         phase: "coding",
         branchName: "opensprint/epic_os-abc",
+        worktreeKey: "epic_os-abc",
+      });
+    });
+
+    it("uses per-task branch when mergeStrategy is per_epic but task has no epic parent (top-level)", async () => {
+      const topLevelTask = makeTask("os-standalone");
+      mockGetSettings.mockResolvedValue({
+        ...defaultSettings,
+        mergeStrategy: "per_epic",
+      });
+      mockTaskStoreReady.mockResolvedValueOnce([topLevelTask]);
+      // listAll: only this task (no parent epic), so resolveEpicId returns null
+      mockTaskStoreListAll.mockResolvedValueOnce([topLevelTask]);
+      mockCreateTaskWorktree.mockResolvedValue(`/tmp/opensprint-worktrees/${topLevelTask.id}`);
+      mockGetActiveDir.mockImplementation((base: string, tid: string) =>
+        path.join(base, ".opensprint", "active", tid)
+      );
+      mockWriteJsonAtomic.mockResolvedValue(undefined);
+      mockInvokeCodingAgent.mockImplementation(
+        (_prompt: string, _config: unknown, _opts: { onExit: (code: number | null) => void }) => ({
+          kill: vi.fn(),
+          pid: 12345,
+        })
+      );
+
+      await orchestrator.ensureRunning(projectId);
+
+      await vi.waitFor(() => {
+        expect(mockCreateTaskWorktree).toHaveBeenCalled();
+      });
+      expect(mockCreateTaskWorktree).toHaveBeenCalledWith(
+        repoPath,
+        "os-standalone",
+        "main",
+        { worktreeKey: "os-standalone", branchName: "opensprint/os-standalone" }
+      );
+      const assignmentCall = vi.mocked(mockWriteJsonAtomic).mock.calls.find((c) =>
+        String(c[0]).endsWith("assignment.json")
+      );
+      expect(assignmentCall![1]).toMatchObject({
+        taskId: "os-standalone",
+        branchName: "opensprint/os-standalone",
+        worktreeKey: "os-standalone",
       });
     });
   });

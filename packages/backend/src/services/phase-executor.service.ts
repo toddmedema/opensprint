@@ -272,6 +272,7 @@ export class PhaseExecutorService {
         projectId,
         phase: "coding",
         branchName,
+        worktreeKey: slot.worktreeKey ?? task.id,
         worktreePath: wtPath,
         promptPath,
         agentConfig,
@@ -443,6 +444,7 @@ export class PhaseExecutorService {
         projectId,
         phase: "review",
         branchName,
+        worktreeKey: slot.worktreeKey ?? task.id,
         worktreePath: wtPath,
         promptPath: useAngleSpecificReview
           ? path.join(taskDir, "review-angles", reviewAngles[0]!, "prompt.md")

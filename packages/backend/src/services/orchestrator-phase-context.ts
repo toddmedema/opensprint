@@ -115,6 +115,8 @@ export interface TaskAssignmentLike {
   projectId: string;
   phase: "coding" | "review";
   branchName: string;
+  /** Worktree key (task.id or epic_<epicId>). Persisted so recovery uses same branch/worktree. */
+  worktreeKey?: string;
   worktreePath: string;
   promptPath: string;
   agentConfig: AgentConfig;

@@ -68,6 +68,8 @@ export interface GuppAssignment {
   projectId: string;
   phase: "coding" | "review";
   branchName: string;
+  /** Worktree key (task.id or epic_<epicId>). When present, recovery uses it for slot. */
+  worktreeKey?: string;
   worktreePath: string;
   promptPath: string;
   agentConfig: unknown;

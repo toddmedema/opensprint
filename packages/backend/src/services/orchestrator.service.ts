@@ -110,6 +110,8 @@ export interface TaskAssignment {
   projectId: string;
   phase: "coding" | "review";
   branchName: string;
+  /** Worktree key (task.id or epic_<epicId>). Persisted so recovery uses same branch/worktree. */
+  worktreeKey?: string;
   worktreePath: string;
   promptPath: string;
   agentConfig: AgentConfig;
@@ -834,9 +836,11 @@ export class OrchestratorService {
 
     log.info("Recovery: re-attaching to running agent", { taskId: task.id });
     const assignee = task.assignee ?? getAgentName(0);
-    const worktreeKey = assignment.branchName.startsWith("opensprint/epic_")
-      ? assignment.branchName.slice("opensprint/".length)
-      : undefined;
+    const worktreeKey =
+      assignment.worktreeKey ??
+      (assignment.branchName.startsWith("opensprint/epic_")
+        ? assignment.branchName.slice("opensprint/".length)
+        : undefined);
     const slot = this.createSlot(
       task.id,
       task.title ?? null,
@@ -989,9 +993,11 @@ export class OrchestratorService {
       state.nextReviewerIndex = Math.max(state.nextReviewerIndex, reviewerIdx + 1);
     else state.nextReviewerIndex += 1;
 
-    const worktreeKey = assignment.branchName.startsWith("opensprint/epic_")
-      ? assignment.branchName.slice("opensprint/".length)
-      : undefined;
+    const worktreeKey =
+      assignment.worktreeKey ??
+      (assignment.branchName.startsWith("opensprint/epic_")
+        ? assignment.branchName.slice("opensprint/".length)
+        : undefined);
     const slot = this.createSlot(
       task.id,
       task.title ?? null,
@@ -1415,7 +1421,7 @@ export class OrchestratorService {
     const branchName = useEpicBranch
       ? `opensprint/epic_${epicId}`
       : `opensprint/${task.id}`;
-    const worktreeKey = useEpicBranch ? `epic_${epicId}` : undefined;
+    const worktreeKey = useEpicBranch ? `epic_${epicId}` : task.id;
 
     const slot = this.createSlot(
       task.id,
