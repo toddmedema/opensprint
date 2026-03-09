@@ -71,11 +71,12 @@ export const DEFAULT_API_PORT = 3100;
 /** API version prefix */
 export const API_PREFIX = "/api/v1";
 
-/** Plan status display order (planning → building → complete) */
-export const PLAN_STATUS_ORDER: Record<"planning" | "building" | "complete", number> = {
+/** Plan status display order (planning → building → in_review → complete) */
+export const PLAN_STATUS_ORDER: Record<"planning" | "building" | "in_review" | "complete", number> = {
   planning: 0,
   building: 1,
-  complete: 2,
+  in_review: 2,
+  complete: 3,
 };
 
 /** Task priority labels */

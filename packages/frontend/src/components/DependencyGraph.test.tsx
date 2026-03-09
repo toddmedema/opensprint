@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import * as d3 from "d3";
 import { DependencyGraph, adjustTransformForResize } from "./DependencyGraph";
-import type { PlanDependencyGraph } from "@opensprint/shared";
+import type { PlanDependencyGraph, PlanStatus } from "@opensprint/shared";
 
-const mockPlan = (planId: string, status: "planning" | "building" | "complete" = "planning") => ({
+const mockPlan = (planId: string, status: PlanStatus = "planning") => ({
   metadata: {
     planId,
     epicId: `epic-${planId}`,

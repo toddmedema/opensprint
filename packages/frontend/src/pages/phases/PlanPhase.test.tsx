@@ -1947,7 +1947,7 @@ describe("PlanPhase plan sorting and status filter", () => {
     Element.prototype.scrollIntoView = vi.fn();
   });
 
-  it("sorts plans by status order: planning, building, complete", () => {
+  it("sorts plans by status order: planning, building, in_review, complete", () => {
     const plans = [
       {
         ...basePlan,
@@ -1958,6 +1958,11 @@ describe("PlanPhase plan sorting and status filter", () => {
         ...basePlan,
         metadata: { ...basePlan.metadata, planId: "planning-feature" },
         status: "planning" as const,
+      },
+      {
+        ...basePlan,
+        metadata: { ...basePlan.metadata, planId: "in-review-feature" },
+        status: "in_review" as const,
       },
       {
         ...basePlan,
@@ -1977,12 +1982,14 @@ describe("PlanPhase plan sorting and status filter", () => {
 
     const planningCard = screen.getByText("Planning Feature").closest('[role="button"]');
     const buildingCard = screen.getByText("Building Feature").closest('[role="button"]');
+    const inReviewCard = screen.getByText("In Review Feature").closest('[role="button"]');
     const doneCard = screen.getByText("Done Feature").closest('[role="button"]');
     expect(planningCard).toBeInTheDocument();
     expect(buildingCard).toBeInTheDocument();
+    expect(inReviewCard).toBeInTheDocument();
     expect(doneCard).toBeInTheDocument();
 
-    const order = [planningCard!, buildingCard!, doneCard!];
+    const order = [planningCard!, buildingCard!, inReviewCard!, doneCard!];
     for (let i = 0; i < order.length - 1; i++) {
       const pos = order[i].compareDocumentPosition(order[i + 1]);
       expect(pos & Node.DOCUMENT_POSITION_FOLLOWING).toBe(Node.DOCUMENT_POSITION_FOLLOWING);

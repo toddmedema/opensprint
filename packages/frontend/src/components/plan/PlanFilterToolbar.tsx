@@ -48,7 +48,7 @@ export type PlanViewMode = "card" | "graph";
 interface PlanFilterToolbarProps {
   statusFilter: "all" | PlanStatus;
   setStatusFilter: (f: "all" | PlanStatus) => void;
-  planCountByStatus: { all: number; planning: number; building: number; complete: number };
+  planCountByStatus: { all: number; planning: number; building: number; in_review: number; complete: number };
   viewMode: PlanViewMode;
   onViewModeChange: (mode: PlanViewMode) => void;
   plansWithNoTasksCount: number;
@@ -97,6 +97,7 @@ export function PlanFilterToolbar({
     { label: "All", filter: "all" as const, count: planCountByStatus.all },
     { label: "Planning", filter: "planning" as const, count: planCountByStatus.planning },
     { label: "Building", filter: "building" as const, count: planCountByStatus.building },
+    { label: "In review", filter: "in_review" as const, count: planCountByStatus.in_review },
     { label: "Complete", filter: "complete" as const, count: planCountByStatus.complete },
   ].filter((c) => c.filter === "all" || c.count > 0);
 

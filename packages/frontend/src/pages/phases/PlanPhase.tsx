@@ -367,10 +367,11 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
   }, [dispatch, projectId, queryClient, refetchNotifications]);
 
   const planCountByStatus = useMemo(() => {
-    const counts = { all: plans.length, planning: 0, building: 0, complete: 0 };
+    const counts = { all: plans.length, planning: 0, building: 0, in_review: 0, complete: 0 };
     for (const p of plans) {
       if (p.status === "planning") counts.planning += 1;
       else if (p.status === "building") counts.building += 1;
+      else if (p.status === "in_review") counts.in_review += 1;
       else if (p.status === "complete") counts.complete += 1;
     }
     return counts;
@@ -791,7 +792,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                 <div className="text-center py-10 text-theme-muted">
                   {isSearchActive
                     ? "No plans match your search."
-                    : `No plans match the "${statusFilter === "all" ? "All" : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}" filter.`}
+                    : `No plans match the "${statusFilter === "all" ? "All" : statusFilter === "in_review" ? "In review" : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}" filter.`}
                 </div>
               ) : (
                 <DependencyGraph
@@ -862,7 +863,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                   <p className="text-theme-muted">
                     {isSearchActive
                       ? "No plans match your search."
-                      : `No plans match the "${statusFilter === "all" ? "All" : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}" filter.`}
+                      : `No plans match the "${statusFilter === "all" ? "All" : statusFilter === "in_review" ? "In review" : statusFilter.charAt(0).toUpperCase() + statusFilter.slice(1)}" filter.`}
                   </p>
                 </div>
               ) : (

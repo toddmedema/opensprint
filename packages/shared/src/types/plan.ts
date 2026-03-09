@@ -5,9 +5,9 @@ import type { Notification } from "./notification.js";
 export type PlanComplexity = "low" | "medium" | "high" | "very_high";
 
 /** Plan status derived from epic state */
-export type PlanStatus = "planning" | "building" | "complete";
+export type PlanStatus = "planning" | "building" | "in_review" | "complete";
 
-/** Sort plans by status order (planning → building → complete) */
+/** Sort plans by status order (planning → building → in_review → complete) */
 export function sortPlansByStatus<T extends { status: PlanStatus }>(plans: T[]): T[] {
   return [...plans].sort((a, b) => {
     const orderA = PLAN_STATUS_ORDER[a.status] ?? 999;
@@ -29,6 +29,8 @@ export interface PlanMetadata {
   planId: string;
   epicId: string;
   shippedAt: string | null;
+  /** ISO timestamp when plan was marked complete (human approval); null until then */
+  reviewedAt?: string | null;
   complexity: PlanComplexity;
   /** UI/UX mockups for this plan */
   mockups?: PlanMockup[];

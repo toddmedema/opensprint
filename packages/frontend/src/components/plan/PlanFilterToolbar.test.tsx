@@ -8,7 +8,7 @@ function renderToolbar(overrides: Partial<React.ComponentProps<typeof PlanFilter
   const props: React.ComponentProps<typeof PlanFilterToolbar> = {
     statusFilter: "planning",
     setStatusFilter: vi.fn(),
-    planCountByStatus: { all: 4, planning: 2, building: 1, complete: 1 },
+    planCountByStatus: { all: 4, planning: 2, building: 1, in_review: 0, complete: 1 },
     viewMode: "card",
     onViewModeChange: vi.fn(),
     plansWithNoTasksCount: 0,
@@ -40,7 +40,7 @@ describe("PlanFilterToolbar", () => {
       <PlanFilterToolbar
         statusFilter="all"
         setStatusFilter={vi.fn()}
-        planCountByStatus={{ all: 2, planning: 1, building: 0, complete: 1 }}
+        planCountByStatus={{ all: 2, planning: 1, building: 0, in_review: 0, complete: 1 }}
         viewMode="card"
         onViewModeChange={vi.fn()}
         plansWithNoTasksCount={0}
@@ -76,7 +76,7 @@ describe("PlanFilterToolbar", () => {
       <PlanFilterToolbar
         statusFilter="all"
         setStatusFilter={vi.fn()}
-        planCountByStatus={{ all: 2, planning: 1, building: 1, complete: 0 }}
+        planCountByStatus={{ all: 2, planning: 1, building: 1, in_review: 0, complete: 0 }}
         viewMode="card"
         onViewModeChange={vi.fn()}
         plansWithNoTasksCount={2}
@@ -98,7 +98,7 @@ describe("PlanFilterToolbar", () => {
       <PlanFilterToolbar
         statusFilter="all"
         setStatusFilter={vi.fn()}
-        planCountByStatus={{ all: 1, planning: 1, building: 0, complete: 0 }}
+        planCountByStatus={{ all: 1, planning: 1, building: 0, in_review: 0, complete: 0 }}
         viewMode="card"
         onViewModeChange={vi.fn()}
         plansWithNoTasksCount={1}
@@ -145,7 +145,7 @@ describe("PlanFilterToolbar", () => {
       <PlanFilterToolbar
         statusFilter="all"
         setStatusFilter={vi.fn()}
-        planCountByStatus={{ all: 2, planning: 1, building: 1, complete: 0 }}
+        planCountByStatus={{ all: 2, planning: 1, building: 1, in_review: 0, complete: 0 }}
         viewMode="card"
         onViewModeChange={vi.fn()}
         plansWithNoTasksCount={0}
