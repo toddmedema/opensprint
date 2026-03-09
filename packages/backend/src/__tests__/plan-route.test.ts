@@ -812,6 +812,12 @@ Updated description for task two.`;
           await taskStore.close(projectId, (task as { id: string }).id, "Done");
         }
 
+        // Re-execute only allowed for complete plans; mark plan complete first
+        const markRes = await request(app).post(
+          `${API_PREFIX}/projects/${projectId}/plans/${planId}/mark-complete`
+        );
+        expect(markRes.status).toBe(200);
+
         // Re-execute: Auditor creates delta tasks (no gate); epic set back to blocked
         const reshipRes = await request(app).post(
           `${API_PREFIX}/projects/${projectId}/plans/${planId}/re-execute`
@@ -887,6 +893,12 @@ Updated description for task two.`;
           await taskStore.close(projectId, (task as { id: string }).id, "Done");
         }
 
+        // Re-execute only allowed for complete plans; mark plan complete first
+        const markRes = await request(app).post(
+          `${API_PREFIX}/projects/${projectId}/plans/${planId}/mark-complete`
+        );
+        expect(markRes.status).toBe(200);
+
         const beforeCount = (await taskStore.listAll(projectId)).filter(
           (i: { id: string; issue_type?: string; type?: string }) =>
             i.id.startsWith(epicId + ".") && (i.issue_type ?? i.type) !== "epic"
@@ -902,6 +914,53 @@ Updated description for task two.`;
             i.id.startsWith(epicId + ".") && (i.issue_type ?? i.type) !== "epic"
         ).length;
         expect(afterCount).toBe(beforeCount);
+      }
+    );
+
+    it(
+      "reship returns 400 when plan status is in_review (not marked complete)",
+      { timeout: 15000 },
+      async () => {
+        const planBody = {
+          title: "In Review Feature",
+          content: "# In Review\n\nContent.",
+          complexity: "medium",
+          tasks: [
+            { title: "Task A", description: "First", priority: 0, dependsOn: [] },
+            { title: "Task B", description: "Second", priority: 1, dependsOn: [] },
+          ],
+        };
+
+        const createRes = await request(app)
+          .post(`${API_PREFIX}/projects/${projectId}/plans`)
+          .send(planBody);
+        expect(createRes.status).toBe(201);
+        const planId = createRes.body.data.metadata.planId;
+        const epicId = createRes.body.data.metadata.epicId;
+
+        const shipRes = await request(app).post(
+          `${API_PREFIX}/projects/${projectId}/plans/${planId}/execute`
+        );
+        expect(shipRes.status).toBe(200);
+
+        const _project = await projectService.getProject(projectId);
+        const allIssues = await taskStore.listAll(projectId);
+        const planTasks = allIssues.filter(
+          (i: { id: string; issue_type?: string; type?: string }) =>
+            i.id.startsWith(epicId + ".") && (i.issue_type ?? i.type) !== "epic"
+        );
+        for (const task of planTasks) {
+          await taskStore.close(projectId, (task as { id: string }).id, "Done");
+        }
+        // Plan is now in_review (all tasks closed, not marked complete). Do not call mark-complete.
+
+        const reshipRes = await request(app).post(
+          `${API_PREFIX}/projects/${projectId}/plans/${planId}/re-execute`
+        );
+        expect(reshipRes.status).toBe(400);
+        expect(reshipRes.body.error?.message).toContain(
+          "Re-execute is only available for plans that have been marked complete"
+        );
       }
     );
 
@@ -1001,7 +1060,7 @@ Updated description for task two.`;
     );
 
     it(
-      "reship succeeds when none started (all open) — deletes tasks then ships",
+      "reship returns 400 when plan not complete (e.g. building — none started)",
       { timeout: 15000 },
       async () => {
         const planBody = {
@@ -1021,7 +1080,7 @@ Updated description for task two.`;
         const planId = createRes.body.data.metadata.planId;
         const epicId = createRes.body.data.metadata.epicId;
 
-        // Execute! (tasks become ready but stay open)
+        // Execute! (tasks become ready but stay open); plan status is "building"
         const shipRes = await request(app).post(
           `${API_PREFIX}/projects/${projectId}/plans/${planId}/execute`
         );
@@ -1035,24 +1094,14 @@ Updated description for task two.`;
         );
         expect(tasksBefore.length).toBe(2);
 
-        // Reship when none started: deletes tasks then calls shipPlan, which re-generates tasks via planTasks
-        const taskGenResponse = {
-          content: `\n\`\`\`json\n{"tasks":[{"title":"Task S","description":"First","priority":0},{"title":"Task T","description":"Second","priority":1}]}\n\`\`\`\n`,
-        };
-        mockPlanningAgentInvoke.mockResolvedValue(taskGenResponse);
-
+        // Re-execute only allowed for complete plans; building plan must return 400
         const reshipRes = await request(app).post(
           `${API_PREFIX}/projects/${projectId}/plans/${planId}/re-execute`
         );
-        expect(reshipRes.status).toBe(200);
-
-        // After reship, shipPlan runs and planTasks re-creates implementation tasks
-        const afterReship = await taskStore.listAll(projectId);
-        const tasksAfter = afterReship.filter(
-          (i: { id: string; issue_type?: string; type?: string }) =>
-            i.id.startsWith(epicId + ".") && (i.issue_type ?? i.type) !== "epic"
+        expect(reshipRes.status).toBe(400);
+        expect(reshipRes.body.error?.message).toContain(
+          "Re-execute is only available for plans that have been marked complete"
         );
-        expect(tasksAfter.length).toBe(2);
       }
     );
   });

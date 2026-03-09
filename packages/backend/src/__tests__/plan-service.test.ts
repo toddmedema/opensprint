@@ -727,6 +727,10 @@ describe("PlanService createWithRetry usage", () => {
 
     await mockPlanSetShippedContent(projectId, planId, "# Reship Plan\n\n## Overview\n\nContent.");
 
+    // Re-execute only allowed for complete plans; set reviewedAt so getPlan returns status "complete"
+    const row = mockPlanStore.get(projectId)?.get(planId);
+    if (row) (row.metadata as Record<string, unknown>).reviewedAt = new Date().toISOString();
+
     const beforeReshipCalls = mockTaskStoreCreateWithRetry.mock.calls.length;
     await planService.reshipPlan(projectId, planId);
     const afterReshipCalls = mockTaskStoreCreateWithRetry.mock.calls;
@@ -795,6 +799,10 @@ describe("PlanService createWithRetry usage", () => {
     ]);
     await mockPlanSetShippedContent(projectId, planId, "# No Delta\n\n## Overview\n\nContent.");
 
+    // Re-execute only allowed for complete plans; set reviewedAt so getPlan returns status "complete"
+    const rowNoDelta = mockPlanStore.get(projectId)?.get(planId);
+    if (rowNoDelta) (rowNoDelta.metadata as Record<string, unknown>).reviewedAt = new Date().toISOString();
+
     mockTaskStoreUpdate.mockClear();
     await planService.reshipPlan(projectId, planId);
 
@@ -803,6 +811,48 @@ describe("PlanService createWithRetry usage", () => {
       (c) => c[1] === "epic-123" && (c[2] as { status?: string })?.status === "blocked"
     );
     expect(blockedCalls).toHaveLength(0);
+  });
+
+  it("reshipPlan throws 400 when plan status is not complete (e.g. in_review)", async () => {
+    mockTaskStoreCreateMany.mockResolvedValue([{ id: "epic-123.1", title: "Task A", type: "task" }]);
+    const plan = await planService.createPlan(projectId, {
+      title: "In Review Plan",
+      content: "# In Review\n\nContent.",
+      complexity: "low",
+      tasks: [{ title: "Task A", description: "Only", priority: 0, dependsOn: [] }],
+    });
+    const planId = plan.metadata.planId;
+    mockTaskStoreListAll.mockResolvedValue([
+      { id: "epic-123", status: "open", type: "epic" },
+      { id: "epic-123.1", status: "closed", type: "task" },
+    ]);
+    await planService.shipPlan(projectId, planId);
+    // Plan has all tasks closed but no reviewedAt → status in_review; do not set reviewedAt
+    await expect(planService.reshipPlan(projectId, planId)).rejects.toMatchObject({
+      statusCode: 400,
+      message: "Re-execute is only available for plans that have been marked complete.",
+    });
+  });
+
+  it("reshipPlan throws 400 when plan status is building (epic open, tasks not all closed)", async () => {
+    mockTaskStoreCreateMany.mockResolvedValue([{ id: "epic-123.1", title: "Task A", type: "task" }]);
+    const plan = await planService.createPlan(projectId, {
+      title: "Building Plan",
+      content: "# Building\n\nContent.",
+      complexity: "low",
+      tasks: [{ title: "Task A", description: "Only", priority: 0, dependsOn: [] }],
+    });
+    const planId = plan.metadata.planId;
+    // Epic open, one task still open → status building
+    mockTaskStoreListAll.mockResolvedValue([
+      { id: "epic-123", status: "open", type: "epic" },
+      { id: "epic-123.1", status: "open", type: "task" },
+    ]);
+    await planService.shipPlan(projectId, planId);
+    await expect(planService.reshipPlan(projectId, planId)).rejects.toMatchObject({
+      statusCode: 400,
+      message: "Re-execute is only available for plans that have been marked complete.",
+    });
   });
 
   it("shipPlan routes to planTasks when no tasks (two-phase flow), then unblocks epic", async () => {

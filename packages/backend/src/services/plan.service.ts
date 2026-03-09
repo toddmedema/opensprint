@@ -1094,6 +1094,13 @@ export class PlanService {
   /** Rebuild an updated Plan — PRD §7.2.2: Auditor performs capability audit and delta task generation */
   async reshipPlan(projectId: string, planId: string): Promise<Plan> {
     const plan = await this.getPlan(projectId, planId);
+    if (plan.status !== "complete") {
+      throw new AppError(
+        400,
+        ErrorCodes.INVALID_INPUT,
+        "Re-execute is only available for plans that have been marked complete."
+      );
+    }
     const repoPath = await this.getRepoPath(projectId);
     const epicId = plan.metadata.epicId;
 
