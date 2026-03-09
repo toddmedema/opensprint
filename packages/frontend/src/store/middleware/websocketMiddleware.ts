@@ -260,6 +260,7 @@ export const websocketMiddleware: Middleware = (storeApi) => {
 
       case "plan.updated":
         void qc.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
+        void qc.invalidateQueries({ queryKey: queryKeys.plans.status(projectId) });
         void qc.invalidateQueries({
           queryKey: queryKeys.plans.detail(projectId, event.planId),
         });

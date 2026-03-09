@@ -1676,6 +1676,10 @@ Feature that depends on auth.
         expect(markRes.body.data.status).toBe("complete");
         expect(markRes.body.data.metadata.reviewedAt).toBeDefined();
         expect(typeof markRes.body.data.metadata.reviewedAt).toBe("string");
+        expect(mockBroadcastToProject).toHaveBeenCalledWith(projectId, {
+          type: "plan.updated",
+          planId,
+        });
       }
     );
 

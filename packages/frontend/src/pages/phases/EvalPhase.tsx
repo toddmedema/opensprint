@@ -999,31 +999,45 @@ const FeedbackCard = memo(
   }
 );
 
-/** Plan review card for Evaluate: in_review shows "Mark complete", complete shows done state */
+/** Plan review card for Evaluate: in_review shows "Mark complete", complete shows done state. Same card style as feedback cards with Plan badge. */
 function PlanReviewCard({
   plan,
+  projectId,
   onMarkComplete,
   isMarking,
 }: {
   plan: Plan;
+  projectId: string;
   onMarkComplete: () => void;
   isMarking: boolean;
 }) {
+  const navigate = useNavigate();
   const isComplete = (plan.status as string) === "complete";
   const title = formatPlanIdAsTitle(plan.metadata.planId);
+  const planId = plan.metadata.planId;
+  const total = plan.taskCount ?? 0;
+  const done = plan.doneTaskCount ?? 0;
+  const summary =
+    total > 0 && done === total ? `All ${total} tasks done` : `${done} of ${total} tasks done`;
+
   return (
     <div
       className="card p-4"
-      data-testid={`plan-review-card-${plan.metadata.planId}`}
+      data-testid={`plan-review-card-${planId}`}
       data-plan-status={plan.status}
     >
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <span className="text-sm font-medium text-theme-text">{title}</span>
-          <span className="text-xs text-theme-muted">
-            {plan.doneTaskCount}/{plan.taskCount} tasks
-          </span>
-        </div>
+      <div className="mb-2 overflow-hidden">
+        <span
+          className="float-right ml-2 mb-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-theme-border-subtle text-theme-muted flex-shrink-0"
+          aria-label="Plan"
+        >
+          Plan
+        </span>
+        <p className="text-sm text-theme-text font-medium min-w-0">{title}</p>
+        <p className="text-xs text-theme-muted font-mono mt-0.5">{planId}</p>
+      </div>
+      <p className="text-xs text-theme-muted mb-2">{summary}</p>
+      <div className="flex flex-wrap items-center gap-2">
         {isComplete ? (
           <span className="text-xs text-theme-success-text">Complete</span>
         ) : (
@@ -1033,10 +1047,23 @@ function PlanReviewCard({
             disabled={isMarking}
             className="btn-primary text-xs w-full sm:w-auto py-2 px-3 rounded-lg font-medium disabled:opacity-60"
             data-testid="plan-mark-complete-button"
+            aria-label={`Mark plan complete: ${title}`}
           >
             {isMarking ? "Marking…" : "Mark complete"}
           </button>
         )}
+        <a
+          href={getProjectPhasePath(projectId, "plan", { plan: planId })}
+          onClick={(e) => {
+            e.preventDefault();
+            navigate(getProjectPhasePath(projectId, "plan", { plan: planId }));
+          }}
+          className="text-xs text-brand-600 hover:text-theme-info-text hover:underline"
+          title={`Open plan: ${title}`}
+          aria-label={`Open plan ${title} in Plan phase`}
+        >
+          View plan
+        </a>
       </div>
     </div>
   );
@@ -1712,22 +1739,29 @@ export function EvalPhase({
                     : "No cancelled feedback yet."}
             </div>
           ) : (
-            <div className="space-y-3 flex flex-col">
+            <div
+              className="space-y-3 flex flex-col"
+              role="list"
+              aria-label="Combined review queue: feedback and plans"
+            >
               {unifiedList.map((entry) =>
                 entry.kind === "plan" ? (
-                  <PlanReviewCard
-                    key={`plan-${entry.plan.metadata.planId}`}
-                    plan={entry.plan}
-                    onMarkComplete={() =>
-                      markPlanCompleteMutation.mutate(entry.plan.metadata.planId)
-                    }
-                    isMarking={
-                      markPlanCompleteMutation.isPending &&
-                      markPlanCompleteMutation.variables === entry.plan.metadata.planId
-                    }
-                  />
+                  <div key={`plan-${entry.plan.metadata.planId}`} role="listitem">
+                    <PlanReviewCard
+                      plan={entry.plan}
+                      projectId={projectId}
+                      onMarkComplete={() =>
+                        markPlanCompleteMutation.mutate(entry.plan.metadata.planId)
+                      }
+                      isMarking={
+                        markPlanCompleteMutation.isPending &&
+                        markPlanCompleteMutation.variables === entry.plan.metadata.planId
+                      }
+                    />
+                  </div>
                 ) : (
-                  <FeedbackCard
+                  <div key={`feedback-${entry.node.item.id}`} role="listitem">
+                    <FeedbackCard
                     key={`feedback-${entry.node.item.id}`}
                     node={entry.node}
                     depth={0}
@@ -1760,6 +1794,7 @@ export function EvalPhase({
                         : undefined
                     }
                   />
+                  </div>
                 )
               )}
             </div>

@@ -342,6 +342,9 @@ describe("websocketMiddleware", () => {
           queryKey: queryKeys.plans.list("proj-1"),
         });
         expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: queryKeys.plans.status("proj-1"),
+        });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
           queryKey: queryKeys.plans.detail("proj-1", "plan-123"),
         });
         expect(mockInvalidateQueries).toHaveBeenCalledWith({

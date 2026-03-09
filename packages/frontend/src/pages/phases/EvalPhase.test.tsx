@@ -1768,6 +1768,76 @@ describe("EvalPhase feedback form", () => {
         expect(screen.getByRole("option", { name: "Pending (3)" })).toBeInTheDocument();
         expect(screen.getByRole("option", { name: "Resolved (2)" })).toBeInTheDocument();
       });
+
+      it("plan review card shows Plan badge, plan id, summary and Mark complete with aria-label", async () => {
+        const planInReview = createMockPlan({ planId: "my-feature-plan", status: "in_review" });
+        const queryClient = createQueryClientWithFeedbackAndPlans([], [planInReview]);
+        const store = createStore({ evalFeedback: [] });
+        localStorage.setItem(EVALUATE_FEEDBACK_FILTER_KEY, "pending");
+
+        renderWithProviders(
+          <MemoryRouter>
+            <EvalPhase projectId="proj-1" />
+          </MemoryRouter>,
+          { store, queryClient }
+        );
+
+        await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
+
+        expect(screen.getByTestId("plan-review-card-my-feature-plan")).toBeInTheDocument();
+        expect(screen.getByText("Plan")).toBeInTheDocument();
+        expect(screen.getByText("My Feature Plan")).toBeInTheDocument();
+        expect(screen.getByText("my-feature-plan")).toBeInTheDocument();
+        expect(screen.getByText("All 3 tasks done")).toBeInTheDocument();
+        const markCompleteBtn = screen.getByRole("button", { name: /Mark plan complete: My Feature Plan/i });
+        expect(markCompleteBtn).toBeInTheDocument();
+        expect(markCompleteBtn).toHaveAttribute("aria-label", "Mark plan complete: My Feature Plan");
+      });
+
+      it("combined review list has role list and aria-label for accessibility", async () => {
+        const planInReview = createMockPlan({ planId: "p1", status: "in_review" });
+        const queryClient = createQueryClientWithFeedbackAndPlans([], [planInReview]);
+        const store = createStore({ evalFeedback: [] });
+        localStorage.setItem(EVALUATE_FEEDBACK_FILTER_KEY, "pending");
+
+        renderWithProviders(
+          <MemoryRouter>
+            <EvalPhase projectId="proj-1" />
+          </MemoryRouter>,
+          { store, queryClient }
+        );
+
+        await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
+
+        const list = screen.getByRole("list", { name: "Combined review queue: feedback and plans" });
+        expect(list).toBeInTheDocument();
+      });
+
+      it("Mark complete calls markPlanComplete and invalidates plans list", async () => {
+        const { api } = await import("../../api/client");
+        vi.mocked(api.plans.markPlanComplete).mockResolvedValue({} as never);
+
+        const planInReview = createMockPlan({ planId: "review-plan", status: "in_review" });
+        const queryClient = createQueryClientWithFeedbackAndPlans([], [planInReview]);
+        const store = createStore({ evalFeedback: [] });
+        localStorage.setItem(EVALUATE_FEEDBACK_FILTER_KEY, "pending");
+
+        renderWithProviders(
+          <MemoryRouter>
+            <EvalPhase projectId="proj-1" />
+          </MemoryRouter>,
+          { store, queryClient }
+        );
+
+        await waitFor(() => expect(screen.getByTestId("plan-mark-complete-button")).toBeInTheDocument());
+
+        const user = userEvent.setup();
+        await user.click(screen.getByRole("button", { name: /Mark plan complete: Review Plan/i }));
+
+        await waitFor(() => {
+          expect(api.plans.markPlanComplete).toHaveBeenCalledWith("proj-1", "review-plan");
+        });
+      });
     });
 
     it("All filter shows all feedback items", async () => {
