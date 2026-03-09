@@ -21,6 +21,35 @@ vi.mock("../services/agent-process-registry.js", () => ({
   unregisterAgentProcess: vi.fn(),
 }));
 
+const { mockDbClient } = vi.hoisted(() => {
+  const client = {
+    query: vi.fn().mockResolvedValue([]),
+    queryOne: vi.fn().mockResolvedValue(undefined),
+    execute: vi.fn().mockResolvedValue(0),
+    runInTransaction: vi.fn().mockImplementation(async (fn: (c: unknown) => Promise<unknown>) => fn(client)),
+  };
+  return { mockDbClient: client };
+});
+vi.mock("../services/task-store.service.js", () => ({
+  taskStore: {
+    init: vi.fn().mockResolvedValue(undefined),
+    show: vi.fn().mockResolvedValue(null),
+    create: vi.fn().mockResolvedValue(undefined),
+    update: vi.fn().mockResolvedValue(undefined),
+    listAll: vi.fn().mockResolvedValue([]),
+    listInProgressWithAgentAssignee: vi.fn().mockResolvedValue([]),
+    close: vi.fn().mockResolvedValue(undefined),
+    comment: vi.fn().mockResolvedValue(undefined),
+    ready: vi.fn().mockResolvedValue([]),
+    addDependency: vi.fn().mockResolvedValue(undefined),
+    syncForPush: vi.fn().mockResolvedValue(undefined),
+    getDb: vi.fn().mockResolvedValue(mockDbClient),
+    runWrite: vi.fn().mockImplementation(async (fn: (c: unknown) => Promise<unknown>) => fn(mockDbClient)),
+  },
+  TaskStoreService: vi.fn(),
+  SCHEMA_SQL: "",
+}));
+
 const { mockGetNextKey, mockRecordLimitHit, mockRecordInvalidKey, mockClearLimitHit } = vi.hoisted(() => ({
   mockGetNextKey: vi.fn(),
   mockRecordLimitHit: vi.fn(),

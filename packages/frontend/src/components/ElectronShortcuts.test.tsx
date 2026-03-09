@@ -132,4 +132,87 @@ describe("ElectronShortcuts", () => {
     await waitFor(() => {}, { timeout: 100 });
     expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/sketch");
   });
+
+  it("Escape from project route opens project settings (same as settings icon)", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/p1/sketch"]}>
+        <ElectronShortcuts />
+        <Routes>
+          <Route path="/projects/:projectId/:phase" element={<LocationDisplay />} />
+          <Route path="/projects/:projectId/settings" element={<LocationDisplay />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/sketch");
+    await act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/settings");
+    });
+  });
+
+  it("Escape from outside project opens global settings (same as settings icon)", async () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <ElectronShortcuts />
+        <Routes>
+          <Route path="/" element={<LocationDisplay />} />
+          <Route path="/settings" element={<LocationDisplay />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/");
+    await act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("/settings");
+    });
+  });
+
+  it("Escape from project settings page stays in project settings", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/p1/settings"]}>
+        <ElectronShortcuts />
+        <Routes>
+          <Route path="/projects/:projectId/settings" element={<LocationDisplay />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/settings");
+    await act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+      );
+    });
+    await waitFor(() => {}, { timeout: 50 });
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/settings");
+  });
+
+  it("Escape does not open settings when focus is in an input", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/p1/sketch"]}>
+        <ElectronShortcuts />
+        <input data-testid="input" />
+        <Routes>
+          <Route path="/projects/:projectId/:phase" element={<LocationDisplay />} />
+          <Route path="/projects/:projectId/settings" element={<LocationDisplay />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    const input = screen.getByTestId("input");
+    input.focus();
+    await act(() => {
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+      );
+    });
+    await waitFor(() => {}, { timeout: 100 });
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/sketch");
+  });
 });

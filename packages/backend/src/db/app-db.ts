@@ -4,10 +4,12 @@ import { createPostgresDbClient, getPoolConfig } from "./client.js";
 import { runSchema } from "./schema.js";
 import { createSqliteDbClient, openSqliteDatabase } from "./sqlite-client.js";
 import { getDatabaseDialect } from "@opensprint/shared";
-import { drizzle } from "drizzle-orm/node-postgres";
-import * as schema from "./drizzle-schema-pg.js";
 
-export type DrizzlePg = ReturnType<typeof drizzle<typeof schema>>;
+// Drizzle is loaded dynamically in initPostgresAppDb so Vitest can load this file without resolving drizzle-orm.
+// Type matches the return of drizzle({ client, schema }) from drizzle-orm/node-postgres.
+export type DrizzlePg = import("drizzle-orm/node-postgres").NodePgDatabase<
+  Record<string, unknown>
+>;
 
 export interface AppDb {
   getClient(): Promise<DbClient>;
@@ -29,12 +31,16 @@ function addApplicationName(url: string, name: string): string {
 }
 
 async function initPostgresAppDb(databaseUrl: string): Promise<AppDb> {
+  const [{ drizzle }, schemaModule] = await Promise.all([
+    import("drizzle-orm/node-postgres"),
+    import("./drizzle-schema-pg.js"),
+  ]);
   const urlWithAppName = addApplicationName(databaseUrl, "opensprint-app");
   const pool = new pg.Pool(getPoolConfig(urlWithAppName));
   const client = createPostgresDbClient(pool);
   await runSchema(client, "postgres");
 
-  const drizzleInstance = drizzle({ client: pool, schema });
+  const drizzleInstance = drizzle({ client: pool, schema: schemaModule });
 
   return {
     async getClient(): Promise<DbClient> {

@@ -9,6 +9,14 @@ import { API_PREFIX } from "@opensprint/shared";
 import { errorHandler } from "../middleware/error-handler.js";
 import { setGlobalSettings, getGlobalSettings } from "../services/global-settings.service.js";
 
+vi.mock("../db/app-db.js", () => ({
+  initAppDb: vi.fn().mockResolvedValue({
+    getClient: vi.fn().mockResolvedValue(undefined),
+    runWrite: vi.fn(),
+    close: vi.fn().mockResolvedValue(undefined),
+  }),
+}));
+
 vi.mock("../services/task-store.service.js", () => ({
   taskStore: {
     init: vi.fn().mockResolvedValue(undefined),

@@ -14,7 +14,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import type { Pool } from "pg";
 import type { DbClient } from "../db/client.js";
-import { createPostgresDbClientFromUrl, runSchema } from "../db/index.js";
+import { createPostgresDbClientFromUrl } from "../db/client.js";
+import { runSchema } from "../db/schema.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const URL_FILE = path.resolve(__dirname, "../../.vitest-postgres-url");

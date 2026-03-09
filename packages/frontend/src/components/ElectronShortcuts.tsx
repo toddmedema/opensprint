@@ -79,7 +79,7 @@ export function ElectronShortcuts() {
         return;
       }
 
-      // Escape: settings (project if in project, else global)
+      // Escape: open settings in same context as settings icon (project when path is under /projects/:id, else global)
       if (key === "Escape") {
         if (projectId) {
           e.preventDefault();

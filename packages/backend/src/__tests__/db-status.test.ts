@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
-import { createApp } from "../app.js";
+import express from "express";
 import { API_PREFIX } from "@opensprint/shared";
 import { classifyDbConnectionError } from "../db/db-errors.js";
+import { dbStatusRouter } from "../routes/db-status.js";
 import { databaseRuntime } from "../services/database-runtime.service.js";
+import { errorHandler } from "../middleware/error-handler.js";
 
 describe("classifyDbConnectionError", () => {
   it("returns 'No PostgreSQL server running' for ECONNREFUSED", () => {
@@ -52,11 +54,14 @@ describe("classifyDbConnectionError", () => {
 });
 
 describe("GET /db-status", () => {
-  let app: ReturnType<typeof createApp>;
+  let app: express.Express;
 
   beforeEach(() => {
     vi.restoreAllMocks();
-    app = createApp();
+    app = express();
+    app.use(express.json());
+    app.use(`${API_PREFIX}/db-status`, dbStatusRouter);
+    app.use(errorHandler);
   });
 
   it("returns ok: true when runtime is connected", async () => {

@@ -20,9 +20,16 @@ export default defineConfig({
       "@google/genai": path.resolve(__dirname, "src/__tests__/mocks/google-genai.mock.ts"),
     },
   },
-  // Let Node load @google/genai natively so Vite doesn't fail resolving/loading its ESM exports
+  // Let Node load these natively so Vite doesn't transform them (avoids "Failed to load url" for
+  // drizzle-orm subpaths and native modules like better-sqlite3).
   ssr: {
-    external: ["@google/genai"],
+    external: [
+      "@google/genai",
+      "drizzle-orm",
+      "drizzle-orm/node-postgres",
+      "drizzle-orm/pg-core",
+      "better-sqlite3",
+    ],
   },
   test: {
     globals: true,
