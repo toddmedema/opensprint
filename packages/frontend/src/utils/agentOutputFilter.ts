@@ -103,7 +103,9 @@ function extractContentFromEvent(obj: unknown): string | null {
           : typeof o.text === "string"
             ? o.text
             : null;
-    return content ? content + "\n" : null;
+    if (!content) return null;
+    // Cursor emits many tiny thinking delta chunks; adding a newline per chunk causes hard wraps.
+    return o.subtype === "delta" ? content : content + "\n";
   }
 
   // Generic: {"content":"..."} or {"text":"..."}
@@ -112,6 +114,10 @@ function extractContentFromEvent(obj: unknown): string | null {
 
   // Metadata events (tool_use, tool_result, etc.) - hide
   return null;
+}
+
+function isThinkingDeltaEvent(obj: Record<string, unknown>): boolean {
+  return obj.type === "thinking" && obj.subtype === "delta";
 }
 
 export interface AgentOutputFilter {
@@ -127,6 +133,7 @@ export interface AgentOutputFilter {
  */
 export function createAgentOutputFilter(): AgentOutputFilter {
   let lineBuffer = "";
+  let previousLineWasThinkingDelta = false;
 
   return {
     filter(chunk: string): string {
@@ -146,10 +153,24 @@ export function createAgentOutputFilter(): AgentOutputFilter {
           const obj = JSON.parse(trimmed) as unknown;
           const content = extractContentFromEvent(obj);
           if (content) {
+            const thinkingDelta =
+              obj !== null &&
+              typeof obj === "object" &&
+              isThinkingDeltaEvent(obj as Record<string, unknown>);
+            if (previousLineWasThinkingDelta && !thinkingDelta) {
+              results.push("\n");
+            }
             results.push(content);
+            previousLineWasThinkingDelta = thinkingDelta;
+          } else {
+            previousLineWasThinkingDelta = false;
           }
         } catch {
           // Not valid JSON - treat as plain text and pass through
+          if (previousLineWasThinkingDelta) {
+            results.push("\n");
+          }
+          previousLineWasThinkingDelta = false;
           results.push(line + "\n");
         }
       }
@@ -158,6 +179,7 @@ export function createAgentOutputFilter(): AgentOutputFilter {
     },
     reset(): void {
       lineBuffer = "";
+      previousLineWasThinkingDelta = false;
     },
   };
 }

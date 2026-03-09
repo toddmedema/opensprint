@@ -3,11 +3,7 @@ import { useParams, useLocation, useNavigate, Outlet, Link } from "react-router-
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppDispatch, useAppSelector } from "../store";
 import { resetProject } from "../store/slices/projectSlice";
-import {
-  resetWebsocket,
-  clearDeliverToast,
-  clearAgentFailureToast,
-} from "../store/slices/websocketSlice";
+import { resetWebsocket, clearDeliverToast } from "../store/slices/websocketSlice";
 import { resetSketch } from "../store/slices/sketchSlice";
 import { resetPlan, clearPlanBackgroundError } from "../store/slices/planSlice";
 import { resetExecute } from "../store/slices/executeSlice";
@@ -315,13 +311,11 @@ export function ProjectShell() {
   };
 
   const deliverToast = useAppSelector((s) => s.websocket.deliverToast);
-  const agentFailureToast = useAppSelector((s) => s.websocket.agentFailureToast);
   const planBackgroundError = useAppSelector((s) => s.plan.backgroundError);
   const connectionError = useAppSelector((s) => s.connection?.connectionError ?? false);
   const dbUnavailableMessage = dbStatus.data?.message ?? "PostgreSQL is unavailable.";
 
   const handleDismissDeliverToast = () => dispatch(clearDeliverToast());
-  const handleDismissAgentFailureToast = () => dispatch(clearAgentFailureToast());
   const handleDismissPlanBackgroundError = () => dispatch(clearPlanBackgroundError());
 
   function renderShellContent(content: ReactNode) {
@@ -336,10 +330,6 @@ export function ProjectShell() {
           {content}
         </Layout>
         <DeliverToast toast={deliverToast} onDismiss={handleDismissDeliverToast} />
-        <AgentFailureToast
-          toast={agentFailureToast}
-          onDismiss={handleDismissAgentFailureToast}
-        />
         {!connectionError && (
           <PlanRefreshToast
             error={planBackgroundError}
@@ -413,47 +403,6 @@ function PlanRefreshToast({ error, onDismiss }: { error: string | null; onDismis
     >
       <div className="flex items-start justify-between gap-3">
         <p className="text-sm font-medium">{error}</p>
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="shrink-0 rounded p-1 text-theme-muted hover:bg-theme-border-subtle hover:text-theme-text"
-          aria-label="Dismiss"
-        >
-          <svg
-            className="h-5 w-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function AgentFailureToast({
-  toast,
-  onDismiss,
-}: {
-  toast: import("../store/slices/websocketSlice").AgentFailureToast | null;
-  onDismiss: () => void;
-}) {
-  if (!toast) return null;
-  return (
-    <div
-      className="fixed z-40 max-w-md max-h-[90vh] overflow-y-auto rounded-lg border border-theme-error-border bg-theme-error-bg p-4 shadow-lg text-theme-error-text"
-      style={TOAST_SAFE_STYLE}
-      data-testid="agent-failure-toast"
-      role="alert"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium">Agent run failed</p>
-          <p className="text-sm mt-1">{toast.reason}</p>
-        </div>
         <button
           type="button"
           onClick={onDismiss}

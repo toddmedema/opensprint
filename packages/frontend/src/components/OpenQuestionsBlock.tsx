@@ -86,6 +86,7 @@ export function OpenQuestionsBlock({
   if (questions.length === 0) return null;
 
   const isApiBlocked = notification.kind === "api_blocked";
+  const isAgentFailed = notification.kind === "agent_failed";
   const apiBlockedLabel = notification.errorCode
     ? API_BLOCKED_LABELS[notification.errorCode]
     : "API blocked";
@@ -95,16 +96,20 @@ export function OpenQuestionsBlock({
       className={`p-4 border-b border-theme-border border-l-4 ${
         isApiBlocked
           ? "bg-amber-500/10 border-l-amber-500"
-          : "bg-theme-warning-bg/30 border-l-theme-warning-solid"
+          : isAgentFailed
+            ? "bg-theme-error-bg/50 border-l-theme-error-border"
+            : "bg-theme-warning-bg/30 border-l-theme-warning-solid"
       }`}
       data-question-id={notification.id}
       data-testid="open-questions-block"
     >
       <h4 className="text-xs font-medium text-theme-muted uppercase tracking-wide mb-2">
-        {isApiBlocked ? "API blocked" : "Open questions"}
+        {isApiBlocked ? "API blocked" : isAgentFailed ? "Agent failed" : "Open questions"}
       </h4>
       <p className="text-xs text-theme-muted mb-2">
-        {isApiBlocked ? (
+        {isAgentFailed ? (
+          "Agent run failed. Dismiss to acknowledge."
+        ) : isApiBlocked ? (
           notification.errorCode === "rate_limit" ? (
             <>
               {apiBlockedLabel}: Fix in Global settings (add keys or retry), then Dismiss.{" "}
@@ -145,7 +150,7 @@ export function OpenQuestionsBlock({
         ))}
       </ul>
       <div className="flex flex-col gap-2">
-        {!isApiBlocked && onAnswerSent && (
+        {!isApiBlocked && !isAgentFailed && onAnswerSent && (
           <div className="flex gap-2">
             <input
               type="text"

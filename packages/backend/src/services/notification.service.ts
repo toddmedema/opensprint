@@ -30,7 +30,7 @@ export interface Notification {
   status: "open" | "resolved";
   createdAt: string;
   resolvedAt: string | null;
-  kind?: "open_question" | "api_blocked" | "hil_approval";
+  kind?: "open_question" | "api_blocked" | "hil_approval" | "agent_failed";
   errorCode?: ApiBlockedErrorCode;
   /** For hil_approval + scopeChanges: proposed PRD updates for diff display */
   scopeChangeMetadata?: ScopeChangeMetadata;
@@ -49,6 +49,13 @@ export interface CreateApiBlockedInput {
   sourceId: string;
   message: string;
   errorCode: ApiBlockedErrorCode;
+}
+
+export interface CreateAgentFailedInput {
+  projectId: string;
+  source: NotificationSource;
+  sourceId: string;
+  message: string;
 }
 
 export interface ScopeChangeProposedUpdate {
@@ -77,7 +84,8 @@ function generateId(): string {
 
 function rowToNotification(row: Record<string, unknown>): Notification {
   const questions: OpenQuestionItem[] = JSON.parse((row.questions as string) || "[]");
-  const kind = (row.kind as "open_question" | "api_blocked" | "hil_approval") || "open_question";
+  const kind =
+    (row.kind as "open_question" | "api_blocked" | "hil_approval" | "agent_failed") || "open_question";
   const errorCode = row.error_code as ApiBlockedErrorCode | undefined;
   const scopeChangeMetadataRaw = row.scope_change_metadata as string | undefined;
   const scopeChangeMetadata = scopeChangeMetadataRaw
@@ -211,6 +219,56 @@ export class NotificationService {
       resolvedAt: null,
       kind: "api_blocked",
       errorCode: input.errorCode,
+    };
+  }
+
+  /**
+   * Create an agent-failed notification (coding/review run failed with surfaced error).
+   * Displayed in the notification bell so the user sees the error without opening the task.
+   */
+  async createAgentFailed(input: CreateAgentFailedInput): Promise<Notification> {
+    const id = "af-" + crypto.randomBytes(4).toString("hex");
+    const createdAt = new Date().toISOString();
+    const questions: OpenQuestionItem[] = [
+      {
+        id: `q-${id}`,
+        text: input.message.slice(0, 2000),
+        createdAt,
+      },
+    ];
+
+    await taskStore.runWrite(async (client) => {
+      await client.execute(
+        `INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind)
+         VALUES ($1, $2, $3, $4, $5, 'open', $6, 'agent_failed')`,
+        [
+          id,
+          input.projectId,
+          input.source,
+          input.sourceId,
+          JSON.stringify(questions),
+          createdAt,
+        ]
+      );
+    });
+
+    log.info("Created agent-failed notification", {
+      id,
+      projectId: input.projectId,
+      source: input.source,
+      sourceId: input.sourceId,
+    });
+
+    return {
+      id,
+      projectId: input.projectId,
+      source: input.source,
+      sourceId: input.sourceId,
+      questions,
+      status: "open",
+      createdAt,
+      resolvedAt: null,
+      kind: "agent_failed",
     };
   }
 

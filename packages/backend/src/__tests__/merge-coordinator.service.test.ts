@@ -46,6 +46,9 @@ const mockDeleteBranch = vi.fn();
 const mockGetSettings = vi.fn();
 const mockGitQueueDrain = vi.fn();
 const mockGitQueueEnqueueAndWait = vi.fn();
+const mockNotificationCreate = vi.fn();
+const mockResolveBaseBranch = vi.fn();
+const mockInspectGitRepoState = vi.fn();
 
 vi.mock("../services/git-commit-queue.service.js", () => ({
   MergeJobError: class MergeJobError extends Error {
@@ -65,6 +68,11 @@ vi.mock("../services/git-commit-queue.service.js", () => ({
   },
 }));
 
+vi.mock("../utils/git-repo-state.js", () => ({
+  resolveBaseBranch: (...args: unknown[]) => mockResolveBaseBranch(...args),
+  inspectGitRepoState: (...args: unknown[]) => mockInspectGitRepoState(...args),
+}));
+
 vi.mock("../services/agent-identity.service.js", () => ({
   agentIdentityService: {
     recordAttempt: vi.fn().mockResolvedValue(undefined),
@@ -74,6 +82,12 @@ vi.mock("../services/agent-identity.service.js", () => ({
 vi.mock("../services/event-log.service.js", () => ({
   eventLogService: {
     append: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+vi.mock("../services/notification.service.js", () => ({
+  notificationService: {
+    create: (...args: unknown[]) => mockNotificationCreate(...args),
   },
 }));
 
@@ -133,6 +147,21 @@ describe("MergeCoordinatorService", () => {
     vi.clearAllMocks();
     mockGitQueueDrain.mockResolvedValue(undefined);
     mockGitQueueEnqueueAndWait.mockResolvedValue(undefined);
+    mockNotificationCreate.mockResolvedValue(undefined);
+    mockResolveBaseBranch.mockImplementation(
+      async (_repoPath: string, preferredBaseBranch?: string | null) => preferredBaseBranch ?? "main"
+    );
+    mockInspectGitRepoState.mockResolvedValue({
+      isGitRepo: true,
+      hasHead: true,
+      currentBranch: "main",
+      baseBranch: "main",
+      hasOrigin: false,
+      originReachable: false,
+      remoteMode: "local_only",
+      originUrl: null,
+      identity: { name: "Test", email: "test@test.com", valid: true },
+    });
     mockGetSettings.mockResolvedValue({
       simpleComplexityAgent: { type: "cursor", model: null },
       complexComplexityAgent: { type: "cursor", model: null },
@@ -487,6 +516,77 @@ describe("MergeCoordinatorService", () => {
 
     const { triggerDeployForEvent } = await import("../services/deploy-trigger.service.js");
     expect(triggerDeployForEvent).not.toHaveBeenCalledWith(projectId, "each_task");
+  });
+
+  describe("push rebase conflicts", () => {
+    it("resolves sequential push rebase conflicts in one push cycle", async () => {
+      const { RebaseConflictError } = await import("../services/branch-manager.js");
+      const firstConflict = new RebaseConflictError(["settings-a.json"]);
+      const secondConflict = new RebaseConflictError(["settings-b.json"]);
+      mockInspectGitRepoState.mockResolvedValue({
+        isGitRepo: true,
+        hasHead: true,
+        currentBranch: "main",
+        baseBranch: "main",
+        hasOrigin: true,
+        originReachable: true,
+        remoteMode: "publishable",
+        originUrl: "git@example.com:test/repo.git",
+        identity: { name: "Test", email: "test@test.com", valid: true },
+      });
+
+      mockHost.branchManager.pushMain = vi.fn().mockRejectedValueOnce(firstConflict);
+      mockHost.branchManager.rebaseContinue = vi
+        .fn()
+        .mockRejectedValueOnce(secondConflict)
+        .mockResolvedValueOnce(undefined);
+      mockHost.branchManager.pushMainToOrigin = vi.fn().mockResolvedValue(undefined);
+      mockHost.runMergerAgentAndWait = vi.fn().mockResolvedValue(true);
+
+      await coordinator.postCompletionAsync(projectId, repoPath, taskId);
+
+      expect(mockHost.branchManager.pushMain).toHaveBeenCalledTimes(1);
+      expect(mockHost.runMergerAgentAndWait).toHaveBeenCalledTimes(2);
+      expect(mockHost.branchManager.rebaseContinue).toHaveBeenCalledTimes(2);
+      expect(mockHost.branchManager.pushMainToOrigin).toHaveBeenCalledTimes(1);
+      expect(mockHost.branchManager.rebaseAbort).not.toHaveBeenCalled();
+      expect(mockNotificationCreate).not.toHaveBeenCalled();
+    });
+
+    it("aborts and reports failure after bounded push rebase rounds", async () => {
+      const { RebaseConflictError } = await import("../services/branch-manager.js");
+      const initialConflict = new RebaseConflictError(["settings-initial.json"]);
+      mockInspectGitRepoState.mockResolvedValue({
+        isGitRepo: true,
+        hasHead: true,
+        currentBranch: "main",
+        baseBranch: "main",
+        hasOrigin: true,
+        originReachable: true,
+        remoteMode: "publishable",
+        originUrl: "git@example.com:test/repo.git",
+        identity: { name: "Test", email: "test@test.com", valid: true },
+      });
+
+      mockHost.branchManager.pushMain = vi.fn().mockRejectedValueOnce(initialConflict);
+      mockHost.branchManager.rebaseContinue = vi
+        .fn()
+        .mockRejectedValue(new RebaseConflictError(["settings-loop.json"]));
+      mockHost.runMergerAgentAndWait = vi.fn().mockResolvedValue(true);
+
+      await coordinator.postCompletionAsync(projectId, repoPath, taskId);
+
+      expect(mockHost.runMergerAgentAndWait).toHaveBeenCalledTimes(12);
+      expect(mockHost.branchManager.rebaseAbort).toHaveBeenCalledTimes(1);
+      expect(mockNotificationCreate).toHaveBeenCalledTimes(1);
+      expect(mockNotificationCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId,
+          source: "execute",
+          sourceId: "remote-publish",
+        })
+      );
+    });
   });
 
   describe("per_epic intermediate completion", () => {

@@ -238,7 +238,7 @@ export class FailureHandlerService {
       reason: effectiveReason,
     });
 
-    // Surface API-related failures (rate limit, auth, out of credit) as human-blocked notifications
+    // Surface failures in the notification system so the user sees the error without digging through logs
     const apiErrorKind = classifyAgentApiError(new Error(effectiveReason));
     if (apiErrorKind) {
       try {
@@ -270,6 +270,35 @@ export class FailureHandlerService {
         });
       } catch (notifErr) {
         log.warn("Failed to create API-blocked notification", { err: notifErr });
+      }
+    } else {
+      try {
+        const notification = await notificationService.createAgentFailed({
+          projectId,
+          source: "execute",
+          sourceId: task.id,
+          message: effectiveReason.slice(0, 2000),
+        });
+        broadcastToProject(projectId, {
+          type: "notification.added",
+          notification: {
+            id: notification.id,
+            projectId: notification.projectId,
+            source: notification.source,
+            sourceId: notification.sourceId,
+            questions: notification.questions.map((q) => ({
+              id: q.id,
+              text: q.text,
+              createdAt: q.createdAt,
+            })),
+            status: "open",
+            createdAt: notification.createdAt,
+            resolvedAt: null,
+            kind: "agent_failed",
+          },
+        });
+      } catch (notifErr) {
+        log.warn("Failed to create agent-failed notification", { err: notifErr });
       }
     }
 

@@ -31,6 +31,17 @@ vi.mock("../services/notification.service.js", () => ({
       resolvedAt: null,
       errorCode: "rate_limit",
     }),
+    createAgentFailed: vi.fn().mockResolvedValue({
+      id: "af-1",
+      projectId: "proj-1",
+      source: "execute",
+      sourceId: "os-abc1",
+      questions: [{ id: "q-1", text: "Agent failed", createdAt: new Date().toISOString() }],
+      status: "open",
+      createdAt: new Date().toISOString(),
+      resolvedAt: null,
+      kind: "agent_failed",
+    }),
   },
 }));
 

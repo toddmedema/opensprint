@@ -532,6 +532,28 @@ export function getSchemaSql(dialect: DatabaseDialect): string {
   return dialect === "sqlite" ? SCHEMA_SQL_SQLITE : SCHEMA_SQL;
 }
 
+function parseSqliteAddColumnIfNotExists(
+  stmt: string
+): { table: string; column: string; definition: string } | null {
+  const match = stmt.match(
+    /^ALTER\s+TABLE\s+([A-Za-z_][A-Za-z0-9_]*)\s+ADD\s+COLUMN\s+IF\s+NOT\s+EXISTS\s+([A-Za-z_][A-Za-z0-9_]*)\s+(.+)$/is
+  );
+  if (!match) return null;
+  return {
+    table: match[1],
+    column: match[2],
+    definition: match[3].trim(),
+  };
+}
+
+function sqliteTableHasColumn(rows: unknown[], column: string): boolean {
+  return rows.some((row) => {
+    if (!row || typeof row !== "object") return false;
+    const record = row as Record<string, unknown>;
+    return record.name === column;
+  });
+}
+
 /** Run schema SQL against a client. Splits by semicolon and executes each statement. */
 export async function runSchema(
   client: {
@@ -545,6 +567,18 @@ export async function runSchema(
     .map((s) => stripLeadingCommentLines(s.trim()))
     .filter((s) => s.length > 0);
   for (const stmt of statements) {
+    if (dialect === "sqlite") {
+      const sqliteAddColumn = parseSqliteAddColumnIfNotExists(stmt);
+      if (sqliteAddColumn) {
+        const columns = await client.query(`PRAGMA table_info(${sqliteAddColumn.table})`);
+        if (!sqliteTableHasColumn(columns, sqliteAddColumn.column)) {
+          await client.query(
+            `ALTER TABLE ${sqliteAddColumn.table} ADD COLUMN ${sqliteAddColumn.column} ${sqliteAddColumn.definition}`
+          );
+        }
+        continue;
+      }
+    }
     await client.query(stmt);
   }
 }

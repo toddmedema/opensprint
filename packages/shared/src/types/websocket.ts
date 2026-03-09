@@ -174,7 +174,7 @@ export interface NotificationAddedEvent {
     status: "open" | "resolved";
     createdAt: string;
     resolvedAt: string | null;
-    kind?: "open_question" | "api_blocked" | "hil_approval";
+    kind?: "open_question" | "api_blocked" | "hil_approval" | "agent_failed";
     errorCode?: "rate_limit" | "auth" | "out_of_credit" | "scope_compliance";
     scopeChangeMetadata?: ScopeChangeMetadata;
   };

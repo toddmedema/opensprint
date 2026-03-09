@@ -52,4 +52,21 @@ describe("initAppDb (SQLite)", () => {
       await appDb.close();
     }
   });
+
+  it("allows non-SELECT statements through query() without throwing", async () => {
+    const appDb = await initAppDb("sqlite://:memory:");
+    try {
+      const client = await appDb.getClient();
+      const rows = await client.query(
+        "INSERT INTO tasks (id, project_id, title, issue_type, status, priority, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ["os-test2", "proj1", "Inserted via query", "task", "open", 2, "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z"]
+      );
+      expect(rows).toEqual([]);
+
+      const inserted = await client.queryOne("SELECT id FROM tasks WHERE id = ?", ["os-test2"]);
+      expect(inserted?.id).toBe("os-test2");
+    } finally {
+      await appDb.close();
+    }
+  });
 });

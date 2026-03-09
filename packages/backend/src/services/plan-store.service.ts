@@ -24,7 +24,7 @@ export interface PlanInsertData {
   gate_task_id?: string | null;
   re_execute_gate_task_id?: string | null;
   content: string;
-  metadata?: string | null;
+  metadata?: Record<string, unknown> | string | null;
 }
 
 export type PlanGetResult = {
@@ -48,9 +48,43 @@ export class PlanStore {
     private getDrizzle?: () => Promise<DrizzlePg | null>
   ) {}
 
+  private serializeMetadata(metadata: PlanInsertData["metadata"]): string {
+    if (metadata == null) return "{}";
+    if (typeof metadata === "string") return metadata;
+    return JSON.stringify(metadata);
+  }
+
+  /**
+   * Metadata is stored as JSON text. Older rows can be double-encoded
+   * (`"{\"planId\":\"...\"}"`) due to a previous write bug, so decode up to 2 layers.
+   */
+  private parseMetadata(raw: unknown): Record<string, unknown> {
+    let value: unknown = raw ?? "{}";
+    for (let i = 0; i < 2; i++) {
+      if (typeof value === "string") {
+        const text = value.trim();
+        if (!text) return {};
+        try {
+          value = JSON.parse(text);
+        } catch {
+          return {};
+        }
+        continue;
+      }
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        return value as Record<string, unknown>;
+      }
+      return {};
+    }
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  }
+
   async planInsert(projectId: string, planId: string, data: PlanInsertData): Promise<void> {
     const db = this.getDrizzle ? await this.getDrizzle() : null;
     const now = new Date().toISOString();
+    const metadataJson = this.serializeMetadata(data.metadata);
     if (db) {
       await db.insert(plansTable).values({
         projectId,
@@ -59,7 +93,7 @@ export class PlanStore {
         gateTaskId: data.gate_task_id ?? null,
         reExecuteGateTaskId: data.re_execute_gate_task_id ?? null,
         content: data.content,
-        metadata: data.metadata != null ? JSON.stringify(data.metadata) : "{}",
+        metadata: metadataJson,
         shippedContent: null,
         updatedAt: now,
       });
@@ -78,7 +112,7 @@ export class PlanStore {
         data.gate_task_id ?? null,
         data.re_execute_gate_task_id ?? null,
         data.content,
-        data.metadata ?? null,
+        metadataJson,
         now,
       ]
     );
@@ -99,12 +133,7 @@ export class PlanStore {
         .limit(1);
       const row = rows[0];
       if (!row) return null;
-      let metadata: Record<string, unknown>;
-      try {
-        metadata = JSON.parse((row.metadata ?? "{}")) as Record<string, unknown>;
-      } catch {
-        metadata = {};
-      }
+      const metadata = this.parseMetadata(row.metadata);
       return {
         content: row.content ?? "",
         metadata,
@@ -120,12 +149,7 @@ export class PlanStore {
       [projectId, planId]
     );
     if (!row) return null;
-    let metadata: Record<string, unknown>;
-    try {
-      metadata = JSON.parse((row.metadata as string) || "{}") as Record<string, unknown>;
-    } catch {
-      metadata = {};
-    }
+    const metadata = this.parseMetadata(row.metadata);
     return {
       content: (row.content as string) ?? "",
       metadata,
@@ -150,12 +174,7 @@ export class PlanStore {
         .limit(1);
       const row = rows[0];
       if (!row) return null;
-      let metadata: Record<string, unknown>;
-      try {
-        metadata = JSON.parse((row.metadata ?? "{}")) as Record<string, unknown>;
-      } catch {
-        metadata = {};
-      }
+      const metadata = this.parseMetadata(row.metadata);
       return {
         plan_id: row.planId ?? "",
         content: row.content ?? "",
@@ -172,12 +191,7 @@ export class PlanStore {
       [projectId, epicId]
     );
     if (!row) return null;
-    let metadata: Record<string, unknown>;
-    try {
-      metadata = JSON.parse((row.metadata as string) || "{}") as Record<string, unknown>;
-    } catch {
-      metadata = {};
-    }
+    const metadata = this.parseMetadata(row.metadata);
     return {
       plan_id: (row.plan_id as string) ?? "",
       content: (row.content as string) ?? "",

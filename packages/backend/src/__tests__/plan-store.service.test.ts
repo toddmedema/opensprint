@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { PlanStore } from "../services/plan-store.service.js";
+import type { DrizzlePg } from "../db/app-db.js";
 
 function createDbClient() {
   return {
@@ -47,6 +48,52 @@ describe("PlanStore", () => {
       shipped_content: "shipped",
       updated_at: "2026-03-03T00:00:00Z",
     });
+  });
+
+  it("decodes double-encoded metadata on read", async () => {
+    const client = createDbClient();
+    client.queryOne.mockResolvedValue({
+      content: "# Plan",
+      metadata: JSON.stringify(
+        JSON.stringify({
+          planId: "plan-1",
+          epicId: "epic-1",
+          reviewedAt: null,
+        })
+      ),
+      shipped_content: null,
+      updated_at: "2026-03-03T00:00:00Z",
+    });
+    const store = new PlanStore(() => client);
+
+    await expect(store.planGet("proj-1", "plan-1")).resolves.toEqual({
+      content: "# Plan",
+      metadata: { planId: "plan-1", epicId: "epic-1", reviewedAt: null },
+      shipped_content: null,
+      updated_at: "2026-03-03T00:00:00Z",
+    });
+  });
+
+  it("does not double-encode metadata strings when inserting via drizzle", async () => {
+    const client = createDbClient();
+    const values = vi.fn().mockResolvedValue(undefined);
+    const db = {
+      insert: vi.fn().mockReturnValue({ values }),
+    };
+    const store = new PlanStore(() => client, async () => db as unknown as DrizzlePg);
+
+    const metadata = JSON.stringify({ planId: "plan-1", epicId: "epic-1" });
+    await store.planInsert("proj-1", "plan-1", {
+      epic_id: "epic-1",
+      content: "# Plan",
+      metadata,
+    });
+
+    expect(values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata,
+      })
+    );
   });
 
   it("throws PLAN_NOT_FOUND when updating missing plans", async () => {

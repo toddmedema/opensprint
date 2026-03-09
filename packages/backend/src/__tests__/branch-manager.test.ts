@@ -915,4 +915,41 @@ describe("BranchManager", () => {
       expect(stdout.trim()).toMatch(/^squash \d+ local commits for rebase$/);
     });
   });
+
+  describe("rebaseContinue", () => {
+    it("throws RebaseConflictError when next commit conflicts during rebase --continue", async () => {
+      await execAsync("git init", { cwd: repoPath });
+      await execAsync("git branch -M main", { cwd: repoPath });
+      await execAsync('git config user.email "test@test.com"', { cwd: repoPath });
+      await execAsync('git config user.name "Test"', { cwd: repoPath });
+
+      const filePath = path.join(repoPath, "conflict.txt");
+      await fs.writeFile(filePath, "line-1\nline-2\n");
+      await execAsync('git add conflict.txt && git commit -m "base"', { cwd: repoPath });
+
+      await execAsync("git checkout -b feature", { cwd: repoPath });
+      await fs.writeFile(filePath, "feature-1\nline-2\n");
+      await execAsync('git add conflict.txt && git commit -m "feature commit 1"', { cwd: repoPath });
+      await fs.writeFile(filePath, "feature-1\nfeature-2\n");
+      await execAsync('git add conflict.txt && git commit -m "feature commit 2"', { cwd: repoPath });
+
+      await execAsync("git checkout main", { cwd: repoPath });
+      await fs.writeFile(filePath, "main-1\nline-2\n");
+      await execAsync('git add conflict.txt && git commit -m "main commit 1"', { cwd: repoPath });
+      await fs.writeFile(filePath, "main-1\nmain-2\n");
+      await execAsync('git add conflict.txt && git commit -m "main commit 2"', { cwd: repoPath });
+
+      await execAsync("git checkout feature", { cwd: repoPath });
+      await expect(execAsync("git rebase main", { cwd: repoPath })).rejects.toThrow();
+
+      // Resolve first conflict, then rebaseContinue should surface the next conflict as RebaseConflictError.
+      await fs.writeFile(filePath, "feature-1\nmain-2\n");
+      await expect(branchManager.rebaseContinue(repoPath)).rejects.toMatchObject({
+        name: "RebaseConflictError",
+        conflictedFiles: expect.arrayContaining(["conflict.txt"]),
+      });
+
+      await branchManager.rebaseAbort(repoPath);
+    });
+  });
 });

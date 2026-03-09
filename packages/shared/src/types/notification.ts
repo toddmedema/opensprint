@@ -1,8 +1,8 @@
 /** Source of an open question (agent clarification request) */
 export type NotificationSource = "plan" | "prd" | "execute" | "eval";
 
-/** Kind of notification — open_question = agent clarification; api_blocked = API/auth failure; hil_approval = HIL approval (Approve/Reject) */
-export type NotificationKind = "open_question" | "api_blocked" | "hil_approval";
+/** Kind of notification — open_question = agent clarification; api_blocked = API/auth failure; hil_approval = HIL approval; agent_failed = agent run failed with surfaced error */
+export type NotificationKind = "open_question" | "api_blocked" | "hil_approval" | "agent_failed";
 
 /** Error code for api_blocked notifications (rate_limit, auth, out_of_credit, scope_compliance) */
 export type ApiBlockedErrorCode = "rate_limit" | "auth" | "out_of_credit" | "scope_compliance";

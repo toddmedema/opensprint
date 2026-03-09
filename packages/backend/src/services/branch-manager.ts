@@ -509,10 +509,22 @@ export class BranchManager {
    */
   async rebaseContinue(repoPath: string): Promise<void> {
     await this.git(repoPath, "add -A");
-    await shellExec("git -c core.editor=true rebase --continue", {
-      cwd: repoPath,
-      timeout: 30000,
-    });
+    try {
+      await shellExec("git -c core.editor=true rebase --continue", {
+        cwd: repoPath,
+        timeout: 30000,
+      });
+    } catch (rebaseErr) {
+      const rebaseActive = await this.isRebaseInProgress(repoPath);
+      if (!rebaseActive) {
+        throw rebaseErr;
+      }
+      const conflictedFiles = await this.getConflictedFiles(repoPath);
+      if (conflictedFiles.length === 0) {
+        throw rebaseErr;
+      }
+      throw new RebaseConflictError(conflictedFiles);
+    }
   }
 
   /**

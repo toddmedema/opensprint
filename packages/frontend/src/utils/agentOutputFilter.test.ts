@@ -63,7 +63,7 @@ describe("agentOutputFilter", () => {
       const f = createAgentOutputFilter();
       const chunk =
         '{"type":"thinking","subtype":"delta","text":"analyzing the codebase","session_id":"abc"}\n';
-      expect(f.filter(chunk)).toBe("analyzing the codebase\n");
+      expect(f.filter(chunk)).toBe("analyzing the codebase");
     });
 
     it("skips Cursor Composer thinking delta with empty text", () => {
@@ -239,6 +239,15 @@ describe("agentOutputFilter", () => {
         '{"type":"thinking","subtype":"delta","text":"checking filter"}\n' +
         '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Here is the fix."}]}}\n';
       expect(filterAgentOutput(raw)).toBe("checking filter\nHere is the fix.");
+    });
+
+    it("does not insert hard line breaks between thinking delta fragments", () => {
+      const f = createAgentOutputFilter();
+      const chunk =
+        '{"type":"thinking","subtype":"delta","text":"2. Allow users to r"}\n' +
+        '{"type":"thinking","subtype":"delta","text":"eorder API key entries"}\n' +
+        '{"type":"thinking","subtype":"delta","text":" by dragging rows"}\n';
+      expect(f.filter(chunk)).toBe("2. Allow users to reorder API key entries by dragging rows");
     });
   });
 });
