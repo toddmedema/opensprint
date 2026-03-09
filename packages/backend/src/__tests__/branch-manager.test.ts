@@ -4,7 +4,11 @@ import path from "path";
 import os from "os";
 import { exec } from "child_process";
 import { promisify } from "util";
-import { BranchManager, WorktreeBranchInUseError } from "../services/branch-manager.js";
+import {
+  BranchManager,
+  RebaseConflictError,
+  WorktreeBranchInUseError,
+} from "../services/branch-manager.js";
 import { heartbeatService } from "../services/heartbeat.service.js";
 
 vi.mock("../services/task-store.service.js", () => ({
@@ -120,6 +124,38 @@ describe("BranchManager", () => {
         cwd: repoPath,
       });
       expect(branchOut.trim()).toBe("opensprint/task-xyz");
+    });
+  });
+
+  describe("rebaseContinue", () => {
+    it("throws RebaseConflictError when the next commit conflicts during rebase --continue", async () => {
+      await execAsync("git init", { cwd: repoPath });
+      await execAsync("git branch -M main", { cwd: repoPath });
+      await execAsync('git config user.email "test@test.com"', { cwd: repoPath });
+      await execAsync('git config user.name "Test"', { cwd: repoPath });
+      await fs.writeFile(path.join(repoPath, "conflict.txt"), "base\n");
+      await execAsync('git add conflict.txt && git commit -m "initial"', { cwd: repoPath });
+
+      await execAsync("git checkout -b opensprint/rebase-multi-conflict", { cwd: repoPath });
+      await fs.writeFile(path.join(repoPath, "conflict.txt"), "feature-1\n");
+      await execAsync('git add conflict.txt && git commit -m "feature commit 1"', { cwd: repoPath });
+      await fs.writeFile(path.join(repoPath, "conflict.txt"), "feature-2\n");
+      await execAsync('git add conflict.txt && git commit -m "feature commit 2"', { cwd: repoPath });
+
+      await execAsync("git checkout main", { cwd: repoPath });
+      await fs.writeFile(path.join(repoPath, "conflict.txt"), "main-change\n");
+      await execAsync('git add conflict.txt && git commit -m "main change"', { cwd: repoPath });
+
+      await execAsync("git checkout opensprint/rebase-multi-conflict", { cwd: repoPath });
+      await expect(execAsync("git rebase main", { cwd: repoPath })).rejects.toBeDefined();
+
+      await fs.writeFile(path.join(repoPath, "conflict.txt"), "resolved-first-conflict\n");
+      await execAsync("git add conflict.txt", { cwd: repoPath });
+
+      await expect(branchManager.rebaseContinue(repoPath)).rejects.toBeInstanceOf(
+        RebaseConflictError
+      );
+      await expect(branchManager.getConflictedFiles(repoPath)).resolves.toEqual(["conflict.txt"]);
     });
   });
 

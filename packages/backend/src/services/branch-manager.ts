@@ -514,16 +514,16 @@ export class BranchManager {
         cwd: repoPath,
         timeout: 30000,
       });
-    } catch (rebaseErr) {
+    } catch (err) {
       const rebaseActive = await this.isRebaseInProgress(repoPath);
       if (!rebaseActive) {
-        throw rebaseErr;
+        throw err;
       }
       const conflictedFiles = await this.getConflictedFiles(repoPath);
-      if (conflictedFiles.length === 0) {
-        throw rebaseErr;
+      if (conflictedFiles.length > 0) {
+        throw new RebaseConflictError(conflictedFiles);
       }
-      throw new RebaseConflictError(conflictedFiles);
+      throw err;
     }
   }
 

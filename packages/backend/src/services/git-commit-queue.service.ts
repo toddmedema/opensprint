@@ -283,80 +283,83 @@ class GitCommitQueueImpl implements GitCommitQueueService {
         if (sharedRepoPath) {
           await this.branchManager.checkout(repoPath, job.branchName);
         }
-        let mergerConfig: { projectId: string; config: AgentConfig; testCommand?: string } | null =
-          null;
-        let pendingRebaseConflict: RebaseConflictError | null = null;
+        let rebaseConflict: RebaseConflictError | null = null;
         try {
           await this.branchManager.rebaseOntoMain(job.worktreePath, baseBranch);
         } catch (rebaseErr) {
           if (rebaseErr instanceof RebaseConflictError) {
-            pendingRebaseConflict = rebaseErr;
+            rebaseConflict = rebaseErr;
           } else {
             throw rebaseErr;
           }
         }
-        let rebaseRound = 0;
-        while (pendingRebaseConflict) {
-          rebaseRound += 1;
-          const conflictedFiles = pendingRebaseConflict.conflictedFiles;
-          if (rebaseRound > MAX_REBASE_RESOLUTION_ROUNDS) {
-            await this.branchManager.rebaseAbort(job.worktreePath);
-            throw new MergeJobError(
-              `Rebase conflict unresolved after ${MAX_REBASE_RESOLUTION_ROUNDS} round(s): ${conflictedFiles.join(", ")}`,
-              "rebase_before_merge",
-              conflictedFiles
-            );
-          }
-          mergerConfig ??= await this.getMergeAgentConfig(repoPath, job.taskId);
-          const { projectId, config, testCommand } = mergerConfig;
-          log.info("Rebase conflict detected, invoking merger agent", {
-            branchName: job.branchName,
-            conflictedFiles,
-            round: rebaseRound,
-          });
-          const resolved = await agentService.runMergerAgentAndWait({
-            projectId,
-            cwd: job.worktreePath,
-            config,
-            phase: "rebase_before_merge",
-            taskId: job.taskId,
-            branchName: job.branchName,
-            conflictedFiles,
-            testCommand,
-            baseBranch,
-          });
-          if (!resolved) {
-            await this.branchManager.rebaseAbort(job.worktreePath);
-            throw new MergeJobError(
-              `Rebase conflict in ${conflictedFiles.length} file(s): ${conflictedFiles.join(", ")}`,
-              "rebase_before_merge",
-              conflictedFiles
-            );
-          }
-          eventLogService
-            .append(repoPath, {
-              timestamp: new Date().toISOString(),
-              projectId,
-              taskId: job.taskId,
-              event: "merge.resolved",
-              data: {
-                stage: "rebase_before_merge",
-                branchName: job.branchName,
-                conflictedFiles,
-                resolvedBy: "merger",
-                round: rebaseRound,
-              },
-            })
-            .catch(() => {});
-          try {
-            await this.branchManager.rebaseContinue(job.worktreePath);
-            pendingRebaseConflict = null;
-          } catch (rebaseContinueErr) {
-            if (rebaseContinueErr instanceof RebaseConflictError) {
-              pendingRebaseConflict = rebaseContinueErr;
-              continue;
+        if (rebaseConflict) {
+          const { projectId, config, testCommand } = await this.getMergeAgentConfig(
+            repoPath,
+            job.taskId
+          );
+          const MAX_REBASE_CONFLICT_ROUNDS = 12;
+          let round = 0;
+          while (rebaseConflict) {
+            round += 1;
+            const conflictedFiles = rebaseConflict.conflictedFiles;
+            if (round > MAX_REBASE_CONFLICT_ROUNDS) {
+              await this.branchManager.rebaseAbort(job.worktreePath);
+              throw new MergeJobError(
+                `Rebase conflict unresolved after ${MAX_REBASE_CONFLICT_ROUNDS} attempts: ${conflictedFiles.join(", ")}`,
+                "rebase_before_merge",
+                conflictedFiles
+              );
             }
-            throw rebaseContinueErr;
+            log.info("Rebase conflict detected, invoking merger agent", {
+              branchName: job.branchName,
+              conflictedFiles,
+              round,
+            });
+            const resolved = await agentService.runMergerAgentAndWait({
+              projectId,
+              cwd: job.worktreePath,
+              config,
+              phase: "rebase_before_merge",
+              taskId: job.taskId,
+              branchName: job.branchName,
+              conflictedFiles,
+              testCommand,
+              baseBranch,
+            });
+            if (!resolved) {
+              await this.branchManager.rebaseAbort(job.worktreePath);
+              throw new MergeJobError(
+                `Rebase conflict in ${conflictedFiles.length} file(s): ${conflictedFiles.join(", ")}`,
+                "rebase_before_merge",
+                conflictedFiles
+              );
+            }
+            eventLogService
+              .append(repoPath, {
+                timestamp: new Date().toISOString(),
+                projectId,
+                taskId: job.taskId,
+                event: "merge.resolved",
+                data: {
+                  stage: "rebase_before_merge",
+                  branchName: job.branchName,
+                  conflictedFiles,
+                  resolvedBy: "merger",
+                  round,
+                },
+              })
+              .catch(() => {});
+            try {
+              await this.branchManager.rebaseContinue(job.worktreePath);
+              rebaseConflict = null;
+            } catch (continueErr) {
+              if (continueErr instanceof RebaseConflictError) {
+                rebaseConflict = continueErr;
+              } else {
+                throw continueErr;
+              }
+            }
           }
         }
         if (sharedRepoPath) {

@@ -854,81 +854,111 @@ export class MergeCoordinatorService {
     if (entry) await entry.promise;
   }
 
-  /**
-   * Resolve push-time rebase conflicts, including sequential conflicts surfaced by repeated
-   * `rebase --continue` calls, then push to origin.
-   */
-  private async resolvePushRebaseConflicts(
-    projectId: string,
-    repoPath: string,
-    baseBranch: string,
-    config: AgentConfig,
-    testCommand: string | undefined,
-    initialConflict: RebaseConflictError
-  ): Promise<void> {
-    let currentConflict = initialConflict;
-    for (let round = 1; round <= MAX_PUSH_REBASE_RESOLUTION_ROUNDS; round++) {
+  private async resolvePushRebaseConflicts(options: {
+    projectId: string;
+    repoPath: string;
+    baseBranch: string;
+    settings: Awaited<ReturnType<MergeCoordinatorHost["projectService"]["getSettings"]>>;
+    initialConflict: RebaseConflictError;
+  }): Promise<{ ok: true } | { ok: false; error: Error }> {
+    const { projectId, repoPath, baseBranch, settings, initialConflict } = options;
+    const MAX_PUSH_REBASE_CONFLICT_ROUNDS = 12;
+    let round = 0;
+    let pendingConflict: RebaseConflictError | null = initialConflict;
+
+    while (pendingConflict) {
+      round += 1;
+      if (round > MAX_PUSH_REBASE_CONFLICT_ROUNDS) {
+        const err = new Error(
+          `Push rebase conflict unresolved after ${MAX_PUSH_REBASE_CONFLICT_ROUNDS} attempts`
+        );
+        log.warn("Push rebase conflict exceeded max conflict-resolution rounds", {
+          projectId,
+          baseBranch,
+          maxRounds: MAX_PUSH_REBASE_CONFLICT_ROUNDS,
+        });
+        await this.host.branchManager.rebaseAbort(repoPath);
+        return { ok: false, error: err };
+      }
+
       log.info("Push rebase conflict, invoking merger agent", {
         projectId,
+        files: pendingConflict.conflictedFiles,
         round,
-        files: currentConflict.conflictedFiles,
       });
       const resolved = await this.host.runMergerAgentAndWait({
         projectId,
         cwd: repoPath,
-        config,
+        config: settings.simpleComplexityAgent as AgentConfig,
         phase: "push_rebase",
         taskId: "",
         branchName: baseBranch,
-        conflictedFiles: currentConflict.conflictedFiles,
-        testCommand,
+        conflictedFiles: pendingConflict.conflictedFiles,
+        testCommand: resolveTestCommand(settings),
         baseBranch,
       });
       if (!resolved) {
         log.warn("Merger agent failed to resolve push rebase conflicts", {
           projectId,
           round,
-          files: currentConflict.conflictedFiles,
         });
-        throw new RebaseConflictError(currentConflict.conflictedFiles);
+        await this.host.branchManager.rebaseAbort(repoPath);
+        return {
+          ok: false,
+          error: new RebaseConflictError(pendingConflict.conflictedFiles),
+        };
       }
+
+      try {
+        await this.host.branchManager.rebaseContinue(repoPath);
+        pendingConflict = null;
+      } catch (continueErr) {
+        if (continueErr instanceof RebaseConflictError) {
+          pendingConflict = continueErr;
+        } else {
+          log.warn("rebase --continue failed after merger", {
+            projectId,
+            continueErr,
+            round,
+          });
+          await this.host.branchManager.rebaseAbort(repoPath);
+          return {
+            ok: false,
+            error:
+              continueErr instanceof Error ? continueErr : new Error(String(continueErr)),
+          };
+        }
+      }
+    }
+
+    try {
+      await this.host.branchManager.pushMainToOrigin(repoPath, baseBranch);
+      log.info("Merger resolved push rebase conflicts, push succeeded", { projectId });
       eventLogService
         .append(repoPath, {
           timestamp: new Date().toISOString(),
           projectId,
           taskId: "",
-          event: "merge.resolved",
-          data: {
-            stage: "push_rebase",
-            branchName: baseBranch,
-            conflictedFiles: currentConflict.conflictedFiles,
-            resolvedBy: "merger",
-            round,
-          },
+          event: "push.succeeded",
         })
         .catch(() => {});
-      try {
-        await this.host.branchManager.rebaseContinue(repoPath);
-        await this.host.branchManager.pushMainToOrigin(repoPath, baseBranch);
-        return;
-      } catch (continueErr) {
-        if (continueErr instanceof RebaseConflictError) {
-          currentConflict = continueErr;
-          continue;
-        }
-        throw continueErr;
-      }
+      return { ok: true };
+    } catch (pushErr) {
+      log.warn("push to origin failed after resolving push rebase conflicts", {
+        projectId,
+        pushErr,
+      });
+      return {
+        ok: false,
+        error: pushErr instanceof Error ? pushErr : new Error(String(pushErr)),
+      };
     }
-    log.warn("Push rebase conflicts exceeded retry limit", {
-      projectId,
-      maxRounds: MAX_PUSH_REBASE_RESOLUTION_ROUNDS,
-      files: currentConflict.conflictedFiles,
-    });
-    throw new RebaseConflictError(currentConflict.conflictedFiles);
   }
 
   /**
-   * Push main to origin. On rebase conflict: run bounded merger rounds until rebase fully completes.
+   * Push main to origin.
+   * On rebase conflict: run merger/rebase-continue rounds until rebase is complete
+   * (bounded by MAX_PUSH_REBASE_CONFLICT_ROUNDS). If unresolved, abort and retry on next completion.
    */
   private async pushMainSafe(
     projectId: string,
@@ -973,50 +1003,26 @@ export class MergeCoordinatorService {
         .catch(() => {});
       return "published";
     } catch (err) {
-      let terminalError: unknown = err;
-      let stage: "push" | "push_rebase" = "push";
-      let conflictedFiles: string[] = [];
+      let terminalError: Error =
+        err instanceof Error ? err : new Error(String(err));
+      let pushStage: "push_rebase" | "push" = "push";
       if (err instanceof RebaseConflictError) {
-        stage = "push_rebase";
-        conflictedFiles = err.conflictedFiles;
-        try {
-          await this.resolvePushRebaseConflicts(
-            projectId,
-            repoPath,
-            baseBranch,
-            settings.simpleComplexityAgent as AgentConfig,
-            resolveTestCommand(settings),
-            err
-          );
-          log.info("Merger resolved push rebase conflicts, push succeeded", { projectId });
-          eventLogService
-            .append(repoPath, {
-              timestamp: new Date().toISOString(),
-              projectId,
-              taskId: "",
-              event: "push.succeeded",
-            })
-            .catch(() => {});
+        pushStage = "push_rebase";
+        const resolution = await this.resolvePushRebaseConflicts({
+          projectId,
+          repoPath,
+          baseBranch,
+          settings,
+          initialConflict: err,
+        });
+        if (resolution.ok) {
           return "published";
-        } catch (resolveErr) {
-          terminalError = resolveErr;
-          if (resolveErr instanceof RebaseConflictError) {
-            conflictedFiles = resolveErr.conflictedFiles;
-          }
-          log.warn("Push rebase resolution failed, will retry on next task completion", {
-            projectId,
-            resolveErr,
-            conflictedFiles,
-          });
-          await this.host.branchManager.rebaseAbort(repoPath);
         }
+        terminalError = resolution.error;
       } else {
         log.warn("Push failed, will retry on next task completion", { projectId, err });
       }
-      const reason =
-        terminalError instanceof Error
-          ? terminalError.message.slice(0, 500)
-          : String(terminalError).slice(0, 500);
+      const reason = terminalError.message.slice(0, 500);
       eventLogService
         .append(repoPath, {
           timestamp: new Date().toISOString(),
@@ -1025,8 +1031,9 @@ export class MergeCoordinatorService {
           event: "push.failed",
           data: {
             reason,
-            conflictedFiles,
-            stage,
+            conflictedFiles:
+              terminalError instanceof RebaseConflictError ? terminalError.conflictedFiles : [],
+            stage: pushStage,
           },
         })
         .catch(() => {});

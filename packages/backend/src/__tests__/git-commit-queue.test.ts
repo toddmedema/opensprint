@@ -197,6 +197,73 @@ describe.skipIf(!gitQueuePostgresOk)("GitCommitQueue", () => {
     expect(treeFiles).toContain("feature.ts");
   });
 
+  it("invokes merger for each sequential rebase conflict and still completes merge", async () => {
+    const projectHome = path.join(os.tmpdir(), `gq-rebase-multi-${Date.now()}`);
+    const originalHome = process.env.HOME;
+    process.env.HOME = projectHome;
+    const { agentService } = await import("../services/agent.service.js");
+    const mergerSpy = vi.spyOn(agentService, "runMergerAgentAndWait");
+    try {
+      const projectService = new ProjectService();
+      const project = await projectService.createProject({
+        name: "GQ Rebase Multi",
+        repoPath,
+        simpleComplexityAgent: { type: "cursor", model: "claude-sonnet-4", cliCommand: null },
+        complexComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+        deployment: { mode: "custom" },
+        hilConfig: DEFAULT_HIL_CONFIG,
+      });
+      const mod = (await import("../services/task-store.service.js")) as unknown as {
+        taskStore: TaskStoreService;
+      };
+      const taskStore = mod.taskStore;
+      await taskStore.init();
+      const task = await taskStore.create(project.id, "Multi conflict rebase merge", {
+        type: "task" as const,
+        priority: 1,
+      });
+
+      await fs.writeFile(path.join(repoPath, "conflict.txt"), "base\n");
+      await execAsync('git add conflict.txt && git commit -m "add conflict base"', { cwd: repoPath });
+      await execAsync("git checkout -b opensprint/task-multi-rebase", { cwd: repoPath });
+      await fs.writeFile(path.join(repoPath, "conflict.txt"), "feature-1\n");
+      await execAsync('git add conflict.txt && git commit -m "feature commit 1"', { cwd: repoPath });
+      await fs.writeFile(path.join(repoPath, "conflict.txt"), "feature-2\n");
+      await execAsync('git add conflict.txt && git commit -m "feature commit 2"', { cwd: repoPath });
+      await execAsync("git checkout main", { cwd: repoPath });
+      await fs.writeFile(path.join(repoPath, "conflict.txt"), "main-change\n");
+      await execAsync('git add conflict.txt && git commit -m "main change"', { cwd: repoPath });
+
+      let resolutionRound = 0;
+      mergerSpy.mockImplementation(async (options) => {
+        resolutionRound += 1;
+        const file = options.conflictedFiles[0];
+        if (!file) return false;
+        await fs.writeFile(path.join(options.cwd, file), `resolved-${resolutionRound}\n`);
+        await execAsync(`git add ${file}`, { cwd: options.cwd });
+        return true;
+      });
+
+      await gitCommitQueue.enqueueAndWait({
+        type: "worktree_merge",
+        repoPath,
+        worktreePath: repoPath,
+        branchName: "opensprint/task-multi-rebase",
+        taskId: task.id,
+        taskTitle: "Fallback title",
+      });
+
+      expect(mergerSpy).toHaveBeenCalledTimes(2);
+      const { stdout: logOut } = await execAsync("git log -1 --format=%s", { cwd: repoPath });
+      expect(logOut.trim()).toBe(`Closed ${task.id}: Multi conflict rebase merge`);
+      const mergedContent = await fs.readFile(path.join(repoPath, "conflict.txt"), "utf-8");
+      expect(mergedContent.trim()).toBe("resolved-2");
+    } finally {
+      mergerSpy.mockRestore();
+      process.env.HOME = originalHome;
+    }
+  });
+
   it("should merge a branch into custom baseBranch (develop)", async () => {
     await execAsync("git checkout -b develop", { cwd: repoPath });
     await execAsync("git checkout -b opensprint/task-develop", { cwd: repoPath });
