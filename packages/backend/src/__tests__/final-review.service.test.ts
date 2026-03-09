@@ -25,6 +25,7 @@ vi.mock("../services/plan.service.js", () => ({
       fileTree: "src/\n  index.ts\n",
       keyFilesContent: "// key files",
     }),
+    clearReviewedAtIfNewTasksAdded: vi.fn().mockResolvedValue(undefined),
   })),
 }));
 

@@ -1276,6 +1276,9 @@ ${planNew}`;
       }
     }
 
+    if (epicId) {
+      await this.clearReviewedAtIfNewTasksAdded(projectId, epicId);
+    }
     return this.getPlan(projectId, planId);
   }
 
@@ -1663,6 +1666,21 @@ ${planNew}`;
 
     broadcastToProject(projectId, { type: "plan.updated", planId });
     return this.getPlan(projectId, planId);
+  }
+
+  /**
+   * When new child tasks are added under an epic whose plan was already complete (reviewedAt set),
+   * clear reviewedAt so the plan returns to in_review until the user marks it complete again.
+   * Call this after adding tasks to an existing epic (e.g. feedback mapping, final-review task creation, reship delta).
+   */
+  async clearReviewedAtIfNewTasksAdded(projectId: string, epicId: string): Promise<void> {
+    const planRow = await this.taskStore.planGetByEpicId(projectId, epicId);
+    if (!planRow || planRow.metadata.reviewedAt == null) return;
+    const planId = planRow.plan_id;
+    const updatedMetadata = { ...planRow.metadata, reviewedAt: null };
+    await this.taskStore.planUpdateMetadata(projectId, planId, updatedMetadata);
+    log.info("Cleared reviewedAt after new tasks added to epic", { projectId, planId, epicId });
+    broadcastToProject(projectId, { type: "plan.updated", planId });
   }
 
   /**

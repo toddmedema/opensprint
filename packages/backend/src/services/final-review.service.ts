@@ -441,6 +441,9 @@ Rules:
         });
       }
     }
+    if (createdIds.length > 0) {
+      await this.planService.clearReviewedAtIfNewTasksAdded(projectId, epicId);
+    }
     return createdIds;
   }
 }

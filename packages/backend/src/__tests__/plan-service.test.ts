@@ -1259,4 +1259,52 @@ describe("PlanService createWithRetry usage", () => {
     const parsed = JSON.parse(metadataArg) as Record<string, unknown>;
     expect(parsed.reviewedAt).toBeNull();
   });
+
+  it("clearReviewedAtIfNewTasksAdded clears reviewedAt when plan had it set", async () => {
+    const plan = await planService.createPlan(projectId, {
+      title: "Complete Plan",
+      content: "# Complete\n\n## Overview\n\nContent.",
+      complexity: "low",
+    });
+    const planId = plan.metadata.planId;
+    const epicId = plan.metadata.epicId;
+    expect(epicId).toBe("epic-123");
+
+    const proj = mockPlanStore.get(projectId);
+    const row = proj?.get(planId);
+    expect(row).toBeDefined();
+    (row!.metadata as Record<string, unknown>).reviewedAt = "2025-03-09T12:00:00.000Z";
+
+    mockPlanUpdateMetadata.mockClear();
+    await planService.clearReviewedAtIfNewTasksAdded(projectId, epicId!);
+
+    expect(mockPlanGetByEpicId).toHaveBeenCalledWith(projectId, epicId);
+    expect(mockPlanUpdateMetadata).toHaveBeenCalledWith(
+      projectId,
+      planId,
+      expect.objectContaining({ reviewedAt: null })
+    );
+  });
+
+  it("clearReviewedAtIfNewTasksAdded does nothing when plan has no reviewedAt", async () => {
+    const plan = await planService.createPlan(projectId, {
+      title: "In Review Plan",
+      content: "# In Review\n\n## Overview\n\nContent.",
+      complexity: "low",
+    });
+    const epicId = plan.metadata.epicId;
+    expect((mockPlanStore.get(projectId)?.get(plan.metadata.planId)?.metadata as Record<string, unknown>).reviewedAt).toBeNull();
+
+    mockPlanUpdateMetadata.mockClear();
+    await planService.clearReviewedAtIfNewTasksAdded(projectId, epicId!);
+
+    expect(mockPlanGetByEpicId).toHaveBeenCalledWith(projectId, epicId);
+    expect(mockPlanUpdateMetadata).not.toHaveBeenCalled();
+  });
+
+  it("clearReviewedAtIfNewTasksAdded does nothing when no plan for epic", async () => {
+    mockPlanGetByEpicId.mockResolvedValueOnce(null);
+    await planService.clearReviewedAtIfNewTasksAdded(projectId, "nonexistent-epic");
+    expect(mockPlanUpdateMetadata).not.toHaveBeenCalled();
+  });
 });

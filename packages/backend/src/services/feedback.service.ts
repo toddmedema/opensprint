@@ -1171,6 +1171,9 @@ export class FeedbackService {
       }
     }
 
+    if (createdIds.length > 0 && parentEpicId) {
+      await this.planService.clearReviewedAtIfNewTasksAdded(projectId, parentEpicId);
+    }
     return createdIds;
   }
 
