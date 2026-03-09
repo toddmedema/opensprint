@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useMemo, useEffect, useLayoutEffect, memo } from "react";
 import { useNavigate } from "react-router-dom";
-import type { FeedbackItem, Notification, Task } from "@opensprint/shared";
+import type { FeedbackItem, Notification, Plan, Task } from "@opensprint/shared";
 import { PRIORITY_LABELS } from "@opensprint/shared";
 import {
   loadFeedbackFormDraft,
@@ -18,7 +18,7 @@ import {
   fetchFeedback,
 } from "../../store/slices/evalSlice";
 import { selectTaskSummariesForFeedback } from "../../store/slices/executeSlice";
-import { useTasks, useFeedback } from "../../api/hooks";
+import { useTasks, useFeedback, usePlans, useMarkPlanComplete } from "../../api/hooks";
 import { usePhaseLoadingState } from "../../hooks/usePhaseLoadingState";
 import { PhaseLoadingSpinner } from "../../components/PhaseLoadingSpinner";
 import { queryKeys } from "../../api/queryKeys";
@@ -116,6 +116,16 @@ function matchesStatusFilter(item: FeedbackItem, filter: FeedbackStatusFilter): 
 
 function countByStatus(feedback: FeedbackItem[], filter: FeedbackStatusFilter): number {
   return feedback.filter((item) => matchesStatusFilter(item, filter)).length;
+}
+
+/** Count for Pending filter: pending feedback + plans in_review */
+function countPending(feedback: FeedbackItem[], plansInReview: Plan[]): number {
+  return countByStatus(feedback, "pending") + plansInReview.length;
+}
+
+/** Count for Resolved filter: resolved feedback + plans complete */
+function countResolved(feedback: FeedbackItem[], plansComplete: Plan[]): number {
+  return countByStatus(feedback, "resolved") + plansComplete.length;
 }
 
 const VALID_FILTER_VALUES: FeedbackStatusFilter[] = ["all", "pending", "resolved", "cancelled"];
@@ -937,6 +947,49 @@ const FeedbackCard = memo(
   }
 );
 
+/** Plan review card for Evaluate: in_review shows "Mark complete", complete shows done state */
+function PlanReviewCard({
+  plan,
+  onMarkComplete,
+  isMarking,
+}: {
+  plan: Plan;
+  onMarkComplete: () => void;
+  isMarking: boolean;
+}) {
+  const isComplete = (plan.status as string) === "complete";
+  const title = formatPlanIdAsTitle(plan.metadata.planId);
+  return (
+    <div
+      className="card p-4"
+      data-testid={`plan-review-card-${plan.metadata.planId}`}
+      data-plan-status={plan.status}
+    >
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-sm font-medium text-theme-text">{title}</span>
+          <span className="text-xs text-theme-muted">
+            {plan.doneTaskCount}/{plan.taskCount} tasks
+          </span>
+        </div>
+        {isComplete ? (
+          <span className="text-xs text-theme-success-text">Complete</span>
+        ) : (
+          <button
+            type="button"
+            onClick={onMarkComplete}
+            disabled={isMarking}
+            className="btn-primary text-xs w-full sm:w-auto py-2 px-3 rounded-lg font-medium disabled:opacity-60"
+            data-testid="plan-mark-complete-button"
+          >
+            {isMarking ? "Marking…" : "Mark complete"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function EvalPhase({
   projectId,
   onNavigateToBuildTask,
@@ -947,6 +1000,17 @@ export function EvalPhase({
   const viewportWidth = useViewportWidth();
   const isMobile = viewportWidth < MOBILE_BREAKPOINT;
   const { data: tasksList = [] } = useTasks(projectId);
+  const plansQuery = usePlans(projectId);
+  const markPlanCompleteMutation = useMarkPlanComplete(projectId);
+  const plans = plansQuery.data?.plans ?? [];
+  const plansInReview = useMemo(
+    () => plans.filter((p) => (p.status as string) === "in_review"),
+    [plans]
+  );
+  const plansComplete = useMemo(
+    () => plans.filter((p) => (p.status as string) === "complete"),
+    [plans]
+  );
 
   /* ── Redux state ── */
   const feedback = useAppSelector((s) => s.eval.feedback);
@@ -1540,8 +1604,8 @@ export function EvalPhase({
             className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-3 sm:gap-4 mb-4"
             data-testid="eval-feedback-filter-toolbar"
           >
-            <h3 className="text-sm font-semibold text-theme-text">Feedback History</h3>
-            {feedback.length > 0 && (
+            <h3 className="text-sm font-semibold text-theme-text">Feedback &amp; plan reviews</h3>
+            {(feedback.length > 0 || plans.length > 0) && (
               <select
                 value={statusFilter}
                 onChange={(e) => {
@@ -1550,12 +1614,16 @@ export function EvalPhase({
                   saveFeedbackStatusFilter(value);
                 }}
                 className="input text-sm min-h-[44px] min-w-[44px] py-1.5 pl-3 w-auto min-w-[7rem] bg-theme-input-bg text-theme-input-text ring-theme-ring"
-                aria-label="Filter feedback by status"
+                aria-label="Filter feedback and plan reviews by status"
                 data-testid="feedback-status-filter"
               >
                 <option value="all">All ({countByStatus(feedback, "all")})</option>
-                <option value="pending">Pending ({countByStatus(feedback, "pending")})</option>
-                <option value="resolved">Resolved ({countByStatus(feedback, "resolved")})</option>
+                <option value="pending">
+                  Pending ({countPending(feedback, plansInReview)})
+                </option>
+                <option value="resolved">
+                  Resolved ({countResolved(feedback, plansComplete)})
+                </option>
                 {feedback.some((f) => f.status === "cancelled") && (
                   <option value="cancelled">
                     Cancelled ({countByStatus(feedback, "cancelled")})
@@ -1565,23 +1633,49 @@ export function EvalPhase({
             )}
           </div>
 
-          {showFeedbackEmptyState ? (
+          {showFeedbackEmptyState && plans.length === 0 ? (
             <div className="text-center py-10 text-theme-muted text-sm">
               No feedback submitted yet. Test your app and report findings above.
             </div>
-          ) : filteredFeedback.length === 0 ? (
+          ) : (statusFilter === "pending" && plansInReview.length === 0 && filteredFeedback.length === 0) ||
+            (statusFilter === "resolved" && plansComplete.length === 0 && filteredFeedback.length === 0) ||
+            (statusFilter === "all" && filteredFeedback.length === 0) ||
+            (statusFilter === "cancelled" && filteredFeedback.length === 0) ? (
             <div className="text-center py-10 text-theme-muted text-sm">
               {statusFilter === "all"
                 ? "No feedback yet."
                 : statusFilter === "pending"
-                  ? "No pending feedback yet."
+                  ? "No pending feedback or plans in review."
                   : statusFilter === "resolved"
-                    ? "No resolved feedback yet."
+                    ? "No resolved feedback or completed plans."
                     : "No cancelled feedback yet."}
             </div>
           ) : (
             <>
               <div className="space-y-3 flex flex-col">
+                {statusFilter === "pending" &&
+                  plansInReview.map((plan) => (
+                    <PlanReviewCard
+                      key={plan.metadata.planId}
+                      plan={plan}
+                      onMarkComplete={() =>
+                        markPlanCompleteMutation.mutate(plan.metadata.planId)
+                      }
+                      isMarking={
+                        markPlanCompleteMutation.isPending &&
+                        markPlanCompleteMutation.variables === plan.metadata.planId
+                      }
+                    />
+                  ))}
+                {statusFilter === "resolved" &&
+                  plansComplete.map((plan) => (
+                    <PlanReviewCard
+                      key={plan.metadata.planId}
+                      plan={plan}
+                      onMarkComplete={() => {}}
+                      isMarking={false}
+                    />
+                  ))}
                 {/* key=node.item.id preserves DOM identity when a single item is updated via WebSocket */}
                 {feedbackTree.map((node) => (
                   <FeedbackCard

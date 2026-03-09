@@ -115,6 +115,10 @@ vi.mock("../../api/client", () => ({
         })
       ),
     },
+    plans: {
+      list: vi.fn().mockResolvedValue({ plans: [], edges: [] }),
+      markPlanComplete: vi.fn().mockResolvedValue(undefined),
+    },
   },
 }));
 
@@ -1480,11 +1484,11 @@ describe("EvalPhase feedback form", () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByRole("heading", { name: "Feedback History" })).toBeInTheDocument();
+        expect(screen.getByRole("heading", { name: "Feedback & plan reviews" })).toBeInTheDocument();
       });
 
-      const heading = screen.getByRole("heading", { name: "Feedback History" });
-      expect(heading.textContent).toBe("Feedback History");
+      const heading = screen.getByRole("heading", { name: "Feedback & plan reviews" });
+      expect(heading.textContent).toBe("Feedback & plan reviews");
       expect(heading.textContent).not.toMatch(/\(\d+\)/);
     });
 

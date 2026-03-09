@@ -245,6 +245,65 @@ describe("api client", () => {
     });
   });
 
+  describe("plans", () => {
+    it("list calls GET /projects/:projectId/plans and returns plans with edges", async () => {
+      const mockGraph = {
+        plans: [
+          {
+            metadata: { planId: "p1", epicId: "e1", shippedAt: null, complexity: "medium" },
+            content: "# Plan",
+            status: "in_review",
+            taskCount: 2,
+            doneTaskCount: 2,
+            dependencyCount: 0,
+          },
+        ],
+        edges: [],
+      };
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ data: mockGraph }),
+      } as Response);
+
+      const result = await api.plans.list("proj-1");
+      expect(result).toEqual(mockGraph);
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/projects/proj-1/plans"),
+        expect.any(Object)
+      );
+    });
+
+    it("markPlanComplete calls POST /projects/:projectId/plans/:planId/mark-complete and returns plan", async () => {
+      const updatedPlan = {
+        metadata: {
+          planId: "p1",
+          epicId: "e1",
+          shippedAt: null,
+          reviewedAt: "2025-03-09T12:00:00.000Z",
+          complexity: "medium",
+        },
+        content: "# Plan",
+        status: "complete",
+        taskCount: 2,
+        doneTaskCount: 2,
+        dependencyCount: 0,
+      };
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ data: updatedPlan }),
+      } as Response);
+
+      const result = await api.plans.markPlanComplete("proj-1", "p1");
+      expect(result).toEqual(updatedPlan);
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/projects/proj-1/plans/p1/mark-complete"),
+        expect.objectContaining({ method: "POST" })
+      );
+    });
+  });
+
   describe("models", () => {
     it("list calls correct endpoint with provider", async () => {
       vi.mocked(fetch).mockResolvedValue({

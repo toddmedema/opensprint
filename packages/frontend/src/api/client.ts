@@ -337,6 +337,10 @@ export const api = {
       request<Plan>(`/projects/${projectId}/plans/${planId}/archive`, {
         method: "POST",
       }),
+    markPlanComplete: (projectId: string, planId: string) =>
+      request<Plan>(`/projects/${projectId}/plans/${planId}/mark-complete`, {
+        method: "POST",
+      }),
     delete: (projectId: string, planId: string) =>
       request<void>(`/projects/${projectId}/plans/${planId}`, { method: "DELETE" }),
     dependencies: (projectId: string) =>

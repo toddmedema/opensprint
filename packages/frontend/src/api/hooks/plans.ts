@@ -131,6 +131,17 @@ export function useArchivePlan(projectId: string) {
   });
 }
 
+export function useMarkPlanComplete(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (planId: string) => api.plans.markPlanComplete(projectId, planId),
+    onSuccess: (_, planId) => {
+      void qc.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.plans.detail(projectId, planId) });
+    },
+  });
+}
+
 export function useUpdatePlan(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
