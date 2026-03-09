@@ -15,6 +15,7 @@ describe("websocketSlice", () => {
       const state = store.getState().websocket as WebsocketState;
       expect(state.connected).toBe(false);
       expect(state.deliverToast).toBeNull();
+      expect(state.agentFailureToast).toBeNull();
     });
   });
 
@@ -71,6 +72,7 @@ describe("websocketSlice", () => {
       const state = store.getState().websocket as WebsocketState;
       expect(state.connected).toBe(false);
       expect(state.deliverToast).toBeNull();
+      expect(state.agentFailureToast).toBeNull();
     });
   });
 });

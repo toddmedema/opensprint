@@ -3,6 +3,8 @@
   "productName": "Open Sprint",
   "version": "0.1.0",
   "private": true,
+  "description": "Desktop packaging workspace for OpenSprint",
+  "author": "OpenSprint Team",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -14,13 +16,14 @@
   },
   "dependencies": {},
   "devDependencies": {
-    "electron": "^33.0.0",
+    "electron": "33.0.0",
     "electron-builder": "^25.0.0",
     "sharp": "^0.33.5"
   },
   "build": {
     "appId": "com.opensprint.app",
     "productName": "Open Sprint",
+    "electronVersion": "33.0.0",
     "directories": {
       "output": "dist"
     },

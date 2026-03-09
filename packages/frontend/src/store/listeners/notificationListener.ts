@@ -37,6 +37,12 @@ export function getMessageBasedHint(message: string): string | null {
   if (message.includes("already used by worktree")) {
     return "Retry the task; the app will clean up the conflicting worktree. If it persists, restart the backend.";
   }
+  if (
+    (message.includes("not available") && message.includes("slow pool")) ||
+    (message.includes("Composer") && message.includes("switch to Auto"))
+  ) {
+    return "Switch the model to Auto in Project Settings → Agent (or in Cursor), then retry the task.";
+  }
   return null;
 }
 

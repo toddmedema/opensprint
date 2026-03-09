@@ -121,7 +121,16 @@ function extractOutputHint(outputLog: string): string | null {
     .filter(Boolean)
     .filter((line) => !line.startsWith("{"));
   if (lines.length === 0) return null;
-  return compactExecutionText(lines[0], 240);
+  // Prefer last line that looks like a user-facing error/instruction (matches failure-handler extraction)
+  const errorLike =
+    /not available|please|switch to|error|invalid|required|cannot|unable|try |failed|rate limit|authentication|api key/i;
+  const lastMessageLike = [...lines].reverse().find((line) => {
+    if (line.length > 400) return false;
+    if (errorLike.test(line)) return true;
+    return /[.?]$/.test(line) || (line.length < 150 && !/^[\s\S]*[\d{"]$/.test(line));
+  });
+  const toSummarize = lastMessageLike ?? lines[lines.length - 1];
+  return toSummarize ? compactExecutionText(toSummarize.replace(/^\s*[A-Z]:\s*/i, "").trim(), 240) : null;
 }
 
 function summarizeEvent(event: OrchestratorEvent): TaskExecutionEventItem | null {

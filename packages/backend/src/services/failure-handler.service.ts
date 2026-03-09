@@ -143,7 +143,7 @@ export class FailureHandlerService {
     const agentErrorMatches = [...output.matchAll(/\[Agent error:\s*([^\]]+)\]/gi)];
     const latestAgentError = agentErrorMatches.at(-1)?.[1]?.trim();
     if (latestAgentError) {
-      return `${reason}. Agent error: ${latestAgentError}`.slice(0, NO_RESULT_REASON_LIMIT);
+      return latestAgentError.slice(0, NO_RESULT_REASON_LIMIT);
     }
 
     const lines = output
@@ -152,8 +152,26 @@ export class FailureHandlerService {
       .filter(Boolean);
     if (lines.length === 0) return reason;
 
-    const tail = lines.slice(-NO_RESULT_TAIL_LINES).join(" | ");
-    return `${reason}. Recent agent output: ${tail}`.slice(0, NO_RESULT_REASON_LIMIT);
+    // Prefer last non-JSON line that looks like a user-facing error or instruction (so we surface
+    // messages like "Composer 1.5 is not available in the slow pool. Please switch to Auto.")
+    const nonJsonLines = lines.filter((line) => !line.startsWith("{"));
+    const errorLike =
+      /not available|please|switch to|error|invalid|required|cannot|unable|try |failed|rate limit|authentication|api key/i;
+    const lastMessageLike = [...nonJsonLines].reverse().find((line) => {
+      if (line.length > 400) return false;
+      if (errorLike.test(line)) return true;
+      // Single sentence or short instruction (ends with . or ? or reads like a message)
+      return /[.?]$/.test(line) || (line.length < 150 && !/^[\s\S]*[\d{"]$/.test(line));
+    });
+    if (lastMessageLike) {
+      const cleaned = lastMessageLike.replace(/^\s*[A-Z]:\s*/i, "").trim();
+      if (cleaned.length > 0) return cleaned.slice(0, NO_RESULT_REASON_LIMIT);
+    }
+
+    // Fallback: last non-JSON lines only (avoid dumping NDJSON into the reason)
+    const tail = nonJsonLines.slice(-NO_RESULT_TAIL_LINES).join(" | ");
+    if (tail) return `${reason}. ${tail}`.slice(0, NO_RESULT_REASON_LIMIT);
+    return reason;
   }
 
   private isDiagnosedNoResultFailure(failureType: FailureType, reason: string): boolean {

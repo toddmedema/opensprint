@@ -13,7 +13,7 @@ import type {
   TaskPriority,
   Notification,
 } from "@opensprint/shared";
-import { setConnected, setDeliverToast } from "../slices/websocketSlice";
+import { setConnected, setDeliverToast, setAgentFailureToast } from "../slices/websocketSlice";
 import { addNotification, removeNotification } from "../slices/openQuestionsSlice";
 import { setConnectionError } from "../slices/connectionSlice";
 import {
@@ -340,6 +340,18 @@ export const websocketMiddleware: Middleware = (storeApi) => {
             reason: completed.reason,
           })
         );
+        if (
+          completed.status === "failed" &&
+          completed.reason &&
+          completed.reason.trim() !== ""
+        ) {
+          d(
+            setAgentFailureToast({
+              taskId: completed.taskId,
+              reason: completed.reason,
+            })
+          );
+        }
         break;
       }
 
