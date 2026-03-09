@@ -160,6 +160,7 @@ describe("MergeCoordinatorService", () => {
         getCumulativeAttemptsFromIssue: vi.fn().mockReturnValue(0),
         setConflictFiles: vi.fn().mockResolvedValue(undefined),
         setMergeStage: vi.fn().mockResolvedValue(undefined),
+        planGetByEpicId: vi.fn().mockResolvedValue(null),
       },
       branchManager: {
         waitForGitReady: vi.fn().mockResolvedValue(undefined),
@@ -631,6 +632,76 @@ describe("MergeCoordinatorService", () => {
         );
         expect(mockDeleteBranch).toHaveBeenCalledWith(repoPath, epicBranchName);
       });
+
+      const { triggerDeployForEvent } = await import("../services/deploy-trigger.service.js");
+      await vi.waitFor(() => {
+        expect(triggerDeployForEvent).toHaveBeenCalledWith(projectId, "each_task");
+      });
+      // Deliver gate: plan not complete (reviewedAt null) → do not trigger each_epic deploy
+      expect(triggerDeployForEvent).not.toHaveBeenCalledWith(projectId, "each_epic");
+    });
+
+    it("calls triggerDeployForEvent(projectId, 'each_epic') when plan is complete (reviewedAt set)", async () => {
+      const { finalReviewService } = await import("../services/final-review.service.js");
+      vi.mocked(finalReviewService.runFinalReview).mockResolvedValue(null);
+
+      const lastTaskId = "os-abc.2";
+      const epicWorktreeKey = "epic_os-abc";
+      const epicId = "os-abc";
+      mockGetSettings.mockResolvedValue({
+        simpleComplexityAgent: { type: "cursor", model: null },
+        complexComplexityAgent: { type: "cursor", model: null },
+        deployment: {},
+        gitWorkingMode: "worktree",
+        mergeStrategy: "per_epic",
+      });
+      hostState.slots = new Map([
+        [
+          lastTaskId,
+          {
+            ...makeSlot("/tmp/epic-wt"),
+            taskId: lastTaskId,
+            branchName: epicBranchName,
+            worktreeKey: epicWorktreeKey,
+          },
+        ],
+      ]);
+      mockHost.getState = vi.fn().mockImplementation(() => hostState);
+
+      const epicAndTasks = [
+        { id: epicId, title: "Epic", status: "open", issue_type: "epic" } as StoredTask,
+        { id: "os-abc.1", title: "Task 1", status: "closed", issue_type: "task" } as StoredTask,
+        { id: "os-abc.2", title: "Task 2", status: "open", issue_type: "task" } as StoredTask,
+      ];
+      const allImplClosedList = [
+        { ...epicAndTasks[0] },
+        { ...epicAndTasks[1] },
+        { ...epicAndTasks[2], status: "closed" },
+      ];
+      mockHost.taskStore.listAll
+        .mockResolvedValueOnce(epicAndTasks)
+        .mockResolvedValueOnce(allImplClosedList)
+        .mockResolvedValue(allImplClosedList);
+      vi.mocked(mockHost.taskStore.planGetByEpicId).mockResolvedValue({
+        plan_id: "plan-1",
+        content: "",
+        metadata: { reviewedAt: new Date().toISOString(), epicId },
+        shipped_content: null,
+        updated_at: new Date().toISOString(),
+      });
+
+      const lastTask = (): StoredTask => ({
+        ...makeEpicTask(),
+        id: lastTaskId,
+        title: "Epic task 2",
+      });
+
+      await coordinator.performMergeAndDone(
+        projectId,
+        repoPath,
+        lastTask(),
+        epicBranchName
+      );
 
       const { triggerDeployForEvent } = await import("../services/deploy-trigger.service.js");
       await vi.waitFor(() => {

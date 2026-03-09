@@ -82,6 +82,16 @@ export interface MergeCoordinatorHost {
     getCumulativeAttemptsFromIssue(issue: StoredTask): number;
     setConflictFiles(projectId: string, id: string, files: string[]): Promise<void>;
     setMergeStage(projectId: string, id: string, stage: string | null): Promise<void>;
+    planGetByEpicId(
+      projectId: string,
+      epicId: string
+    ): Promise<{
+      plan_id: string;
+      content: string;
+      metadata: Record<string, unknown>;
+      shipped_content: string | null;
+      updated_at: string;
+    } | null>;
   };
   branchManager: {
     waitForGitReady(wtPath: string): Promise<void>;
@@ -767,12 +777,25 @@ export class MergeCoordinatorService {
             log.warn("Final review flow failed", { projectId, epicId, err })
           );
         } else {
-          triggerDeployForEvent(projectId, "each_epic").catch((err) => {
-            log.warn("Auto-deploy on epic completion failed", { projectId, err });
-          });
+          const shouldDeploy = await this.shouldTriggerDeployForEpic(projectId, epicId);
+          if (shouldDeploy) {
+            triggerDeployForEvent(projectId, "each_epic").catch((err) => {
+              log.warn("Auto-deploy on epic completion failed", { projectId, err });
+            });
+          }
         }
       }
     }
+  }
+
+  /**
+   * Deliver gate: trigger deploy for epic only when plan is complete (reviewedAt set).
+   * When plan is in_review (reviewedAt null), do not trigger; user must mark plan complete first.
+   */
+  private async shouldTriggerDeployForEpic(projectId: string, epicId: string): Promise<boolean> {
+    const planRow = await this.host.taskStore.planGetByEpicId(projectId, epicId);
+    if (!planRow) return false;
+    return planRow.metadata?.reviewedAt != null;
   }
 
   /**
@@ -787,19 +810,25 @@ export class MergeCoordinatorService {
     const result = await finalReviewService.runFinalReview(projectId, epicId, repoPath);
 
     if (result === null) {
-      // No plan (deploy-fix epic) or agent failed — close epic and deploy
+      // No plan (deploy-fix epic) or agent failed — close epic; deploy only when plan is complete (reviewedAt set)
       await this.host.taskStore.close(projectId, epicId, "All tasks done");
-      triggerDeployForEvent(projectId, "each_epic").catch((err) => {
-        log.warn("Auto-deploy on epic completion failed", { projectId, err });
-      });
+      const shouldDeploy = await this.shouldTriggerDeployForEpic(projectId, epicId);
+      if (shouldDeploy) {
+        triggerDeployForEvent(projectId, "each_epic").catch((err) => {
+          log.warn("Auto-deploy on epic completion failed", { projectId, err });
+        });
+      }
       return;
     }
 
     if (result.status === "pass") {
       await this.host.taskStore.close(projectId, epicId, "All tasks done; final review passed");
-      triggerDeployForEvent(projectId, "each_epic").catch((err) => {
-        log.warn("Auto-deploy on epic completion failed", { projectId, err });
-      });
+      const shouldDeploy = await this.shouldTriggerDeployForEpic(projectId, epicId);
+      if (shouldDeploy) {
+        triggerDeployForEvent(projectId, "each_epic").catch((err) => {
+          log.warn("Auto-deploy on epic completion failed", { projectId, err });
+        });
+      }
       return;
     }
 

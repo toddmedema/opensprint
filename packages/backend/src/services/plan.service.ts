@@ -34,6 +34,7 @@ import { buildAutonomyDescription } from "./context-assembler.js";
 import { getCombinedInstructions } from "./agent-instructions.service.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
+import { triggerDeployForEvent } from "./deploy-trigger.service.js";
 import { broadcastToProject, sendPlanAgentOutputToProject } from "../websocket/index.js";
 import { appendPlanAgentOutput, clearPlanAgentOutput } from "./plan-agent-output-buffer.service.js";
 import { assertMigrationCompleteForResource } from "./migration-guard.service.js";
@@ -1665,6 +1666,9 @@ ${planNew}`;
     await this.taskStore.planUpdateMetadata(projectId, planId, updatedMetadata);
 
     broadcastToProject(projectId, { type: "plan.updated", planId });
+    triggerDeployForEvent(projectId, "each_epic").catch((err) =>
+      log.warn("Deploy trigger after mark-complete failed", { projectId, planId, err })
+    );
     return this.getPlan(projectId, planId);
   }
 
