@@ -17,8 +17,14 @@ const TRAY_REFRESH_MS = 10000;
 let mainWindow = null;
 let backendProcess = null;
 let tray = null;
+let isQuitting = false;
 
 app.setName(APP_NAME);
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  console.log(`${APP_NAME} is already running`);
+  app.exit(0);
+}
 
 function getPaths() {
   const isPackaged = app.isPackaged;
@@ -43,12 +49,16 @@ function getAppIconPath() {
   const frontendDir = isPackaged
     ? path.join(process.resourcesPath, "frontend")
     : path.join(__dirname, "desktop-resources", "frontend");
-  const candidates = [
-    "logo-512x512.png",
-    "logo-192x192.png",
-    "apple-touch-icon.png",
-    "favicon.ico",
-  ];
+  const candidates =
+    process.platform === "darwin"
+      ? [
+          "desktop-icon-mac.png",
+          "logo-512x512.png",
+          "logo-192x192.png",
+          "apple-touch-icon.png",
+          "favicon.ico",
+        ]
+      : ["logo-512x512.png", "logo-192x192.png", "apple-touch-icon.png", "favicon.ico"];
   for (const file of candidates) {
     const fullPath = path.join(frontendDir, file);
     if (fs.existsSync(fullPath)) return fullPath;
@@ -178,6 +188,9 @@ function createWindow() {
   });
   mainWindow.loadURL(`http://127.0.0.1:${BACKEND_PORT}`);
   mainWindow.on("close", (e) => {
+    if (isQuitting) {
+      return;
+    }
     e.preventDefault();
     mainWindow.hide();
   });
@@ -277,9 +290,7 @@ app.on("second-instance", () => {
 });
 
 app.whenReady().then(async () => {
-  const gotLock = app.requestSingleInstanceLock();
-  if (!gotLock) {
-    app.quit();
+  if (!gotSingleInstanceLock) {
     return;
   }
 
@@ -311,5 +322,6 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  isQuitting = true;
   killBackend();
 });

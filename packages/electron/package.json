@@ -40,15 +40,21 @@
     ],
     "mac": {
       "category": "public.app-category.developer-tools",
-      "target": ["dmg"],
-      "icon": "../frontend/public/logo-512x512.png"
+      "target": [
+        "dmg"
+      ],
+      "icon": "../frontend/public/desktop-icon-mac.png"
     },
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "../frontend/public/logo-512x512.png"
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "icon": "../frontend/public/logo-512x512.png"
     }
   }

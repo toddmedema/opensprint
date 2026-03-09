@@ -118,6 +118,10 @@ You can run OpenSprint as a desktop app (Electron) or build installable artifact
 - **Run desktop in development:** From the repo root, run `npm run start:desktop`. This builds the app once, then launches Electron. The window loads the backend-served UI at `http://127.0.0.1:3100`. Only one instance runs; relaunching focuses the existing window.
 - **Build installers:** Run `npm run build:desktop`. This builds shared, backend, and frontend, prepares a self-contained backend and frontend in `packages/electron/desktop-resources/`, then runs electron-builder. Output goes to `packages/electron/dist/` (e.g. `.dmg` on macOS, `.exe`/installer on Windows, `AppImage` on Linux). The packaged app requires Node.js on the system PATH so the backend process can start.
 
+### Publishing desktop releases
+
+Pushing a version tag (e.g. `v1.0.0`) triggers GitHub Actions to build the Electron app for macOS (DMG), Windows (installer .exe), and Linux (AppImage), and to attach those files to the GitHub Release for that tag. The workflow sets the app version from the tag so the built installers show the correct version.
+
 ## License
 
 [AGPL-3.0](LICENSE). Support or partnership: [contact@opensprint.ai](mailto:contact@opensprint.ai).
