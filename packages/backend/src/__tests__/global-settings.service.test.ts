@@ -301,6 +301,37 @@ describe("global-settings.service", () => {
         /databaseUrl must start with postgres/
       );
     });
+
+    it("preserves API key order when update sends reordered entries (drag-to-reorder)", async () => {
+      await setGlobalSettings({
+        apiKeys: {
+          ANTHROPIC_API_KEY: [
+            { id: "k1", value: "sk-ant-first" },
+            { id: "k2", value: "sk-ant-second" },
+            { id: "k3", value: "sk-ant-third" },
+          ],
+        },
+      });
+
+      const updated = await updateGlobalSettings({
+        apiKeys: {
+          ANTHROPIC_API_KEY: [
+            { id: "k3" },
+            { id: "k1" },
+            { id: "k2" },
+          ],
+        },
+      });
+
+      expect(updated.apiKeys?.ANTHROPIC_API_KEY?.map((e) => e.id)).toEqual(["k3", "k1", "k2"]);
+      expect(updated.apiKeys?.ANTHROPIC_API_KEY?.[0]).toMatchObject({
+        id: "k3",
+        value: "sk-ant-third",
+      });
+
+      const afterReload = await getGlobalSettings();
+      expect(afterReload.apiKeys?.ANTHROPIC_API_KEY?.map((e) => e.id)).toEqual(["k3", "k1", "k2"]);
+    });
   });
 
   describe("atomic write", () => {

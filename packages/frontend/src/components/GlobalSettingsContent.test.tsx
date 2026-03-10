@@ -224,6 +224,64 @@ describe("GlobalSettingsContent", () => {
     });
   });
 
+  it("persists reordered API keys via PUT when user drag-reorders (order saved and restored)", async () => {
+    mockGlobalSettingsGet.mockResolvedValue({
+      databaseUrl: "postgresql://user:***@localhost:5432/opensprint",
+      apiKeys: {
+        ANTHROPIC_API_KEY: [
+          { id: "k1", masked: "••••••••" },
+          { id: "k2", masked: "••••••••" },
+          { id: "k3", masked: "••••••••" },
+        ],
+      },
+    });
+    const reorderedResponse = {
+      databaseUrl: "postgresql://user:***@localhost:5432/opensprint",
+      apiKeys: {
+        ANTHROPIC_API_KEY: [
+          { id: "k3", masked: "••••••••" },
+          { id: "k1", masked: "••••••••" },
+          { id: "k2", masked: "••••••••" },
+        ],
+      },
+    };
+    mockGlobalSettingsPut.mockResolvedValue(reorderedResponse);
+
+    renderGlobalSettingsContent();
+
+    await screen.findByTestId("api-keys-section");
+    const rows = screen.getAllByTestId(/api-key-input-ANTHROPIC_API_KEY-/);
+    expect(rows).toHaveLength(3);
+    const targetRow = rows[0].closest("[data-index]") as HTMLElement;
+    expect(targetRow).toHaveAttribute("data-index", "0");
+
+    const dragData = JSON.stringify({ provider: "ANTHROPIC_API_KEY", fromIndex: 2 });
+    await act(async () => {
+      fireEvent.dragOver(targetRow, { dataTransfer: { getData: () => dragData } });
+      fireEvent.drop(targetRow, { dataTransfer: { getData: () => dragData } });
+    });
+
+    await waitFor(() => {
+      expect(mockGlobalSettingsPut).toHaveBeenCalledWith(
+        expect.objectContaining({
+          apiKeys: expect.objectContaining({
+            ANTHROPIC_API_KEY: [
+              expect.objectContaining({ id: "k3" }),
+              expect.objectContaining({ id: "k1" }),
+              expect.objectContaining({ id: "k2" }),
+            ],
+          }),
+        })
+      );
+    });
+    const putPayload = mockGlobalSettingsPut.mock.calls[0][0];
+    expect(putPayload.apiKeys.ANTHROPIC_API_KEY.map((e: { id: string }) => e.id)).toEqual([
+      "k3",
+      "k1",
+      "k2",
+    ]);
+  });
+
   it("preserves previously saved providers when a later save happens after masked reload state", async () => {
     mockGlobalSettingsPut
       .mockResolvedValueOnce({

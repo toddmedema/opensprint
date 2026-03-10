@@ -295,6 +295,35 @@ describe("Global Settings API", () => {
       expect(res.body.data.databaseUrl).toContain("localhost");
       expect(res.body.data.apiKeys.CURSOR_API_KEY).toEqual([{ id: "c1", masked: "••••••••" }]);
     });
+
+    it("persists apiKeys array order (drag-to-reorder); GET returns same order", async () => {
+      await setGlobalSettings({
+        apiKeys: {
+          ANTHROPIC_API_KEY: [
+            { id: "k1", value: "sk-ant-1" },
+            { id: "k2", value: "sk-ant-2" },
+            { id: "k3", value: "sk-ant-3" },
+          ],
+        },
+      });
+
+      const reordered = [
+        { id: "k3", value: "sk-ant-3" },
+        { id: "k1", value: "sk-ant-1" },
+        { id: "k2", value: "sk-ant-2" },
+      ];
+      const putRes = await request(app)
+        .put(`${API_PREFIX}/global-settings`)
+        .send({ apiKeys: { ANTHROPIC_API_KEY: reordered } });
+      expect(putRes.status).toBe(200);
+      const putIds = putRes.body.data.apiKeys.ANTHROPIC_API_KEY.map((e: { id: string }) => e.id);
+      expect(putIds).toEqual(["k3", "k1", "k2"]);
+
+      const getRes = await request(app).get(`${API_PREFIX}/global-settings`);
+      expect(getRes.status).toBe(200);
+      const getIds = getRes.body.data.apiKeys.ANTHROPIC_API_KEY.map((e: { id: string }) => e.id);
+      expect(getIds).toEqual(["k3", "k1", "k2"]);
+    });
   });
 
   describe("GET /global-settings/reveal-key/:provider/:id", () => {

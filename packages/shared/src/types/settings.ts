@@ -347,7 +347,7 @@ export interface ApiKeyEntry {
   invalidAt?: string;
 }
 
-/** API keys per provider: array of entries ordered by preference (first available used) */
+/** API keys per provider: array of entries ordered by preference (first available used). Order is persisted and restored on reload; user can drag-to-reorder in settings. */
 export type ApiKeys = Partial<Record<ApiKeyProvider, ApiKeyEntry[]>>;
 
 /** API key update entry; value may be omitted to preserve the stored key by id. */

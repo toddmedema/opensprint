@@ -371,4 +371,77 @@ describe("ApiKeysSection", () => {
 
     expect(screen.queryByTestId("api-key-retry-ANTHROPIC_API_KEY-k1")).not.toBeInTheDocument();
   });
+
+  it("shows drag handles when variant is global and provider has multiple keys", () => {
+    render(
+      <ApiKeysSection
+        apiKeys={{
+          ANTHROPIC_API_KEY: [
+            { id: "k1", masked: "••••••••" },
+            { id: "k2", masked: "••••••••" },
+          ],
+        }}
+        providers={["ANTHROPIC_API_KEY"]}
+        variant="global"
+        onApiKeysChange={onApiKeysChange}
+      />
+    );
+    expect(screen.getByTestId("api-key-drag-handle-ANTHROPIC_API_KEY-k1")).toBeInTheDocument();
+    expect(screen.getByTestId("api-key-drag-handle-ANTHROPIC_API_KEY-k2")).toBeInTheDocument();
+  });
+
+  it("does not show drag handles when variant is global but provider has only one key", () => {
+    render(
+      <ApiKeysSection
+        apiKeys={{
+          ANTHROPIC_API_KEY: [{ id: "k1", masked: "••••••••" }],
+        }}
+        providers={["ANTHROPIC_API_KEY"]}
+        variant="global"
+        onApiKeysChange={onApiKeysChange}
+      />
+    );
+    expect(screen.queryByTestId("api-key-drag-handle-ANTHROPIC_API_KEY-k1")).not.toBeInTheDocument();
+  });
+
+  it("calls onApiKeysChange with reordered entries when drop reorders keys", async () => {
+    const apiKeys = {
+      ANTHROPIC_API_KEY: [
+        { id: "k1", masked: "••••••••" },
+        { id: "k2", masked: "••••••••" },
+        { id: "k3", masked: "••••••••" },
+      ],
+    };
+    render(
+      <ApiKeysSection
+        apiKeys={apiKeys}
+        providers={["ANTHROPIC_API_KEY"]}
+        variant="global"
+        onApiKeysChange={onApiKeysChange}
+      />
+    );
+    const rows = screen.getAllByTestId(/api-key-input-ANTHROPIC_API_KEY-/);
+    expect(rows).toHaveLength(3);
+    const rowContainers = rows.map((r) => r.closest("[data-index]"));
+    const targetRow = rowContainers[0] as HTMLElement;
+    expect(targetRow).toHaveAttribute("data-index", "0");
+
+    const dragData = JSON.stringify({ provider: "ANTHROPIC_API_KEY", fromIndex: 2 });
+
+    await act(async () => {
+      fireEvent.dragOver(targetRow, { dataTransfer: { getData: () => dragData } });
+      fireEvent.drop(targetRow, { dataTransfer: { getData: () => dragData } });
+    });
+
+    expect(onApiKeysChange).toHaveBeenCalledWith({
+      ANTHROPIC_API_KEY: expect.arrayContaining([
+        expect.objectContaining({ id: "k3" }),
+        expect.objectContaining({ id: "k1" }),
+        expect.objectContaining({ id: "k2" }),
+      ]),
+    });
+    const payload = onApiKeysChange.mock.calls[onApiKeysChange.mock.calls.length - 1][0];
+    const order = payload.ANTHROPIC_API_KEY!.map((e) => e.id);
+    expect(order).toEqual(["k3", "k1", "k2"]);
+  });
 });

@@ -90,6 +90,8 @@ export function ApiKeysSection({
   const [revealedValues, setRevealedValues] = useState<Record<string, string>>({});
   const [revealingId, setRevealingId] = useState<string | null>(null);
   const [retryingId, setRetryingId] = useState<string | null>(null);
+  const [draggedEntryId, setDraggedEntryId] = useState<string | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const providers = providersProp ?? (settings ? getApiKeyProvidersForSection(settings) : []);
   const apiKeys = apiKeysProp ?? settings?.apiKeys;
@@ -273,6 +275,18 @@ export function ApiKeysSection({
     [getEntriesForProvider, newKeys, editedValues, emitApiKeysForProvider]
   );
 
+  const reorderKeys = useCallback(
+    (provider: ApiKeyProvider, fromIndex: number, toIndex: number) => {
+      if (fromIndex === toIndex) return;
+      const entries = getEntriesForProvider(provider);
+      const reordered = [...entries];
+      const [removed] = reordered.splice(fromIndex, 1);
+      reordered.splice(toIndex, 0, removed);
+      emitApiKeysForProvider(provider, reordered);
+    },
+    [getEntriesForProvider, emitApiKeysForProvider]
+  );
+
   if (providers.length === 0) return null;
 
   return (
@@ -292,7 +306,7 @@ export function ApiKeysSection({
                 {PROVIDER_LABELS[provider]}
               </label>
               <div className="space-y-3">
-                {entries.map((entry) => {
+                {entries.map((entry, index) => {
                   const isNew = newKeys[provider]?.some((x) => x.id === entry.id);
                   const hasValue = !!(
                     editedValues[entry.id] ??
@@ -320,8 +334,43 @@ export function ApiKeysSection({
                   const displayLabel =
                     editedLabels[entry.id] ??
                     (newKeys[provider]?.find((x) => x.id === entry.id)?.label ?? entry.label ?? "");
+                  const isDragging = draggedEntryId === entry.id;
+                  const isDropTarget = dragOverIndex === index;
                   return (
-                    <div key={entry.id} className="space-y-1">
+                    <div
+                      key={entry.id}
+                      className={`space-y-1 rounded-md transition-colors ${isDropTarget ? "ring-1 ring-brand-500 bg-theme-bg-elevated/50" : ""} ${isDragging ? "opacity-50" : ""}`}
+                      data-index={index}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.dataTransfer.dropEffect = "move";
+                        e.currentTarget.setAttribute("data-drop-target", "true");
+                        setDragOverIndex(index);
+                      }}
+                      onDragLeave={(e) => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                          setDragOverIndex(null);
+                        }
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const raw = e.dataTransfer.getData("text/plain");
+                        const targetIndex = index;
+                        setDraggedEntryId(null);
+                        setDragOverIndex(null);
+                        try {
+                          const { provider: sourceProvider, fromIndex } = JSON.parse(raw) as {
+                            provider: ApiKeyProvider;
+                            fromIndex: number;
+                          };
+                          if (sourceProvider === provider && fromIndex !== targetIndex) {
+                            reorderKeys(provider, fromIndex, targetIndex);
+                          }
+                        } catch {
+                          // ignore invalid drag data
+                        }
+                      }}
+                    >
                       <div className="flex gap-2 items-center">
                         <input
                           type="text"
@@ -333,6 +382,30 @@ export function ApiKeysSection({
                           data-testid={`api-key-label-${provider}-${entry.id}`}
                           aria-label="Key label"
                         />
+                        {variant === "global" && entries.length > 1 ? (
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            draggable
+                            onDragStart={(e) => {
+                              setDraggedEntryId(entry.id);
+                              e.dataTransfer.setData(
+                                "text/plain",
+                                JSON.stringify({ provider, fromIndex: index })
+                              );
+                              e.dataTransfer.effectAllowed = "move";
+                            }}
+                            onDragEnd={() => {
+                              setDraggedEntryId(null);
+                              setDragOverIndex(null);
+                            }}
+                            className="cursor-grab active:cursor-grabbing text-theme-muted hover:text-theme-text p-1 shrink-0 touch-none"
+                            aria-label="Drag to reorder"
+                            data-testid={`api-key-drag-handle-${provider}-${entry.id}`}
+                          >
+                            <DragHandleIcon className="w-4 h-4" />
+                          </div>
+                        ) : null}
                         <div className="flex-1 min-w-0">
                           <div className="relative flex">
                             <input
@@ -438,6 +511,19 @@ export function ApiKeysSection({
         })}
       </div>
     </div>
+  );
+}
+
+function DragHandleIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="currentColor"
+      viewBox="0 0 24 24"
+      aria-hidden
+    >
+      <path d="M8 6a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm8-12a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm0 6a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z" />
+    </svg>
   );
 }
 

@@ -1003,6 +1003,30 @@ describe("mergeApiKeysWithCurrent", () => {
       { id: "k1", value: "sk-ant-secret", label: "Staging" },
     ]);
   });
+
+  it("preserves order of incoming array (drag-to-reorder)", () => {
+    const current: ApiKeys = {
+      ANTHROPIC_API_KEY: [
+        { id: "k1", value: "v1" },
+        { id: "k2", value: "v2" },
+        { id: "k3", value: "v3" },
+      ],
+    };
+    const incoming = {
+      ANTHROPIC_API_KEY: [
+        { id: "k3", masked: "••••••••" },
+        { id: "k1", masked: "••••••••" },
+        { id: "k2", masked: "••••••••" },
+      ],
+    };
+    const result = mergeApiKeysWithCurrent(incoming, current);
+    expect(result?.ANTHROPIC_API_KEY?.map((e) => e.id)).toEqual(["k3", "k1", "k2"]);
+    expect(result?.ANTHROPIC_API_KEY).toEqual([
+      { id: "k3", value: "v3" },
+      { id: "k1", value: "v1" },
+      { id: "k2", value: "v2" },
+    ]);
+  });
 });
 
 describe("sanitizeApiKeys", () => {
