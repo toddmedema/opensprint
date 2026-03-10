@@ -336,7 +336,7 @@ export function Navbar({
                 active={isSettingsActive}
                 tone="accent"
                 variant="icon"
-                className="shrink-0 !pr-0"
+                className="shrink-0"
                 aria-label="Project settings"
                 title="Project settings"
               >
@@ -380,7 +380,7 @@ export function Navbar({
                 active={isSettingsActive}
                 tone="accent"
                 variant="icon"
-                className="shrink-0 !pr-0"
+                className="shrink-0"
                 aria-label="Settings"
                 title="Settings"
               >
@@ -422,7 +422,7 @@ export function Navbar({
                 active={isSettingsActive}
                 tone="accent"
                 variant="icon"
-                className="shrink-0 !pr-0"
+                className="shrink-0"
                 aria-label="Settings"
                 title="Settings"
               >
