@@ -17,6 +17,7 @@ import openQuestionsReducer, {
   addNotification as addOpenQuestionNotification,
 } from "../../store/slices/openQuestionsSlice";
 import notificationReducer from "../../store/slices/notificationSlice";
+import unreadPhaseReducer, { setPhaseUnread } from "../../store/slices/unreadPhaseSlice";
 
 function createPlanPhaseQueryClient() {
   return new QueryClient({
@@ -245,6 +246,7 @@ function createStore(
       execute: executeReducer,
       openQuestions: openQuestionsReducer,
       notification: notificationReducer,
+      unreadPhase: unreadPhaseReducer,
     },
     preloadedState: {
       plan: {
@@ -334,6 +336,23 @@ describe("PlanPhase Redux integration", () => {
 
     expect(screen.getByText("Archive Test Feature")).toBeInTheDocument();
     expect(screen.getByText(/archive test/i)).toBeInTheDocument();
+  });
+
+  it("clears plan phase unread when mounted with projectId", () => {
+    const store = createStore();
+    store.dispatch(setPhaseUnread({ projectId: "proj-1", phase: "plan" }));
+    expect(store.getState().unreadPhase["proj-1"]?.plan).toBe(true);
+
+    render(
+      <MemoryRouter>
+        <Provider store={store}>
+          <PlanPhase projectId="proj-1" />
+        </Provider>
+      </MemoryRouter>,
+      { wrapper: PlanPhaseWrapper }
+    );
+
+    expect(store.getState().unreadPhase["proj-1"]?.plan).toBeFalsy();
   });
 
   it("displays error from Redux and allows dismiss", async () => {
@@ -2851,6 +2870,7 @@ describe("PlanPhase Generate Plan", () => {
         plan: planReducer,
         execute: executeReducer,
         notification: notificationReducer,
+        unreadPhase: unreadPhaseReducer,
       },
       preloadedState: {
         plan: {

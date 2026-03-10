@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { act, render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Provider } from "react-redux";
@@ -10,6 +10,7 @@ import { SketchPhase } from "./SketchPhase";
 import { queryKeys } from "../../api/queryKeys";
 import sketchReducer from "../../store/slices/sketchSlice";
 import planReducer from "../../store/slices/planSlice";
+import unreadPhaseReducer, { setPhaseUnread } from "../../store/slices/unreadPhaseSlice";
 
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
@@ -119,6 +120,7 @@ function createStore(preloadedState?: {
     reducer: {
       sketch: sketchReducer,
       plan: planReducer,
+      unreadPhase: unreadPhaseReducer,
     },
     preloadedState: {
       sketch: {
@@ -204,6 +206,17 @@ describe("SketchPhase with sketchSlice", () => {
       prdChangedSinceLastRun: false,
       action: "plan",
     });
+  });
+
+  it("clears sketch phase unread when mounted with projectId", () => {
+    const store = createStore();
+    store.dispatch(setPhaseUnread({ projectId: "proj-1", phase: "sketch" }));
+    expect(store.getState().unreadPhase["proj-1"]?.sketch).toBe(true);
+
+    act(() => {
+      renderSketchPhase(store);
+    });
+    expect(store.getState().unreadPhase["proj-1"]?.sketch).toBeFalsy();
   });
 
   describe("initial prompt view (no PRD) — empty-state onboarding", () => {

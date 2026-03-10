@@ -34,6 +34,7 @@ import openQuestionsReducer, {
   addNotification as addOpenQuestionNotification,
 } from "../../store/slices/openQuestionsSlice";
 import websocketReducer, { setConnected } from "../../store/slices/websocketSlice";
+import unreadPhaseReducer, { setPhaseUnread } from "../../store/slices/unreadPhaseSlice";
 import { MOBILE_BREAKPOINT } from "../../lib/constants";
 const mockGet = vi.fn().mockResolvedValue({});
 const mockMarkDone = vi.fn().mockResolvedValue(undefined);
@@ -165,6 +166,7 @@ function createStore(
       eval: evalReducer,
       openQuestions: openQuestionsReducer,
       websocket: websocketReducer,
+      unreadPhase: unreadPhaseReducer,
     },
     preloadedState: {
       websocket: {
@@ -219,6 +221,22 @@ describe("ExecutePhase epic card task order", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockAgentsActive.mockResolvedValue([]);
+  });
+
+  it("clears execute phase unread when mounted with projectId", () => {
+    const store = createStore([]);
+    store.dispatch(setPhaseUnread({ projectId: "proj-1", phase: "execute" }));
+    expect(store.getState().unreadPhase["proj-1"]?.execute).toBe(true);
+
+    render(
+      <Provider store={store}>
+        <MemoryRouter>
+          <ExecutePhase projectId="proj-1" />
+        </MemoryRouter>
+      </Provider>
+    );
+
+    expect(store.getState().unreadPhase["proj-1"]?.execute).toBeFalsy();
   });
 
   it("All filter shows Ready and Up Next swimlanes instead of active and completed tasks", () => {
@@ -1465,7 +1483,12 @@ describe("ExecutePhase expandable search bar", () => {
       content: "# Other Epic",
     };
     const store = configureStore({
-      reducer: { project: projectReducer, plan: planReducer, execute: executeReducer },
+      reducer: {
+        project: projectReducer,
+        plan: planReducer,
+        execute: executeReducer,
+        unreadPhase: unreadPhaseReducer,
+      },
       preloadedState: {
         plan: {
           plans: [basePlan, plan2],
