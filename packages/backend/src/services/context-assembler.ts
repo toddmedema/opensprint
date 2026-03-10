@@ -151,6 +151,7 @@ export class ContextAssembler {
     } else {
       const agentInstructions = await getCombinedInstructions(repoPath, "reviewer");
       const reviewAngles = config.reviewAngles;
+      const includeGeneral = config.includeGeneralReview === true && reviewAngles && reviewAngles.length > 0;
       if (reviewAngles && reviewAngles.length > 0) {
         // Angle-specific: create review-angles/<angle>/ per angle
         for (const angle of reviewAngles as ReviewAngle[]) {
@@ -166,8 +167,9 @@ export class ContextAssembler {
             JSON.stringify({ ...config, reviewAngle: angle }, null, 2)
           );
         }
-      } else {
-        // General: single prompt at task dir
+      }
+      if (!reviewAngles || reviewAngles.length === 0 || includeGeneral) {
+        // General: single prompt at task dir (default or general+angles)
         const prompt = this.buildPromptWithInstructions(
           agentInstructions,
           this.generateReviewPrompt(config, context)

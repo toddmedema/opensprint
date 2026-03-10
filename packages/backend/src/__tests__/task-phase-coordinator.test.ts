@@ -95,6 +95,25 @@ describe("TaskPhaseCoordinator", () => {
     );
   });
 
+  it("waits for general and angle outcomes when includeGeneralReview is true", () => {
+    const resolve = vi.fn().mockResolvedValue(undefined);
+    const coord = new TaskPhaseCoordinator("t1", resolve, {
+      reviewAngles: ["security"],
+      includeGeneralReview: true,
+    });
+
+    coord.setTestOutcome(testPassed);
+    coord.setReviewOutcome(reviewApproved, "security");
+    expect(resolve).not.toHaveBeenCalled();
+
+    coord.setReviewOutcome(reviewApproved); // general (no angle)
+    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(resolve).toHaveBeenCalledWith(
+      testPassed,
+      expect.objectContaining({ status: "approved" })
+    );
+  });
+
   it("waits for all angle outcomes before resolving", () => {
     const resolve = vi.fn().mockResolvedValue(undefined);
     const coord = new TaskPhaseCoordinator("t1", resolve, {

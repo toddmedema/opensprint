@@ -378,9 +378,50 @@ describe("ProjectSettingsModal", () => {
         "proj-1",
         expect.objectContaining({
           reviewAngles: ["security"],
+          includeGeneralReview: true,
         })
       )
     );
+  });
+
+  it("adding an angle preserves General and existing angles (additive selection)", async () => {
+    mockGetSettings.mockResolvedValue({
+      ...mockSettings,
+      reviewAngles: ["security"],
+      includeGeneralReview: true,
+    });
+
+    renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
+    await waitForModalReady();
+
+    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
+    await userEvent.click(agentConfigTab);
+
+    await screen.findByText("Code Review");
+    const generalCheckbox = screen.getByRole("checkbox", { name: /^General$/i });
+    const securityCheckbox = screen.getByRole("checkbox", { name: /Security implications/i });
+    const designCheckbox = screen.getByRole("checkbox", {
+      name: /Design, UX and accessibility/i,
+    });
+    expect(generalCheckbox).toBeChecked();
+    expect(securityCheckbox).toBeChecked();
+    expect(designCheckbox).not.toBeChecked();
+
+    await userEvent.click(designCheckbox);
+
+    await waitFor(() =>
+      expect(mockUpdateSettings).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({
+          reviewAngles: expect.arrayContaining(["security", "design_ux_accessibility"]),
+          includeGeneralReview: true,
+        })
+      )
+    );
+    const call = mockUpdateSettings.mock.calls[mockUpdateSettings.mock.calls.length - 1];
+    expect(call[1].reviewAngles).toHaveLength(2);
+    expect(call[1].reviewAngles).toContain("security");
+    expect(call[1].reviewAngles).toContain("design_ux_accessibility");
   });
 
   it("shows pre-selected review agents when settings have them", async () => {

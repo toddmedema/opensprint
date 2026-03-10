@@ -30,8 +30,10 @@ const DEFAULT_REVIEW_KEY = "__general_review__";
 
 export interface TaskPhaseCoordinatorOptions {
   reviewAngles?: string[];
+  /** When true with reviewAngles non-empty, expect both general and angle outcomes (key __general_review__ + each angle). */
+  includeGeneralReview?: boolean;
   /**
-   * When provided and multiple angles are used, the synthesizer runs before resolving.
+   * When provided and multiple angles are used (and not includeGeneralReview), the synthesizer runs before resolving.
    * It receives all angle outcomes and returns a single synthesized ReviewOutcome.
    */
   synthesizeReviewResults?: (
@@ -55,10 +57,15 @@ export class TaskPhaseCoordinator {
     options?: TaskPhaseCoordinatorOptions
   ) {
     const angles = options?.reviewAngles?.filter(Boolean) ?? [];
-    this.expectedReviewKeys = new Set(angles.length > 0 ? angles : [DEFAULT_REVIEW_KEY]);
+    const includeGeneral = options?.includeGeneralReview === true && angles.length > 0;
+    this.expectedReviewKeys = new Set(
+      includeGeneral ? [DEFAULT_REVIEW_KEY, ...angles] : angles.length > 0 ? angles : [DEFAULT_REVIEW_KEY]
+    );
     this.synthesizeReviewResults = options?.synthesizeReviewResults;
     this.useSynthesis =
-      angles.length > 1 && typeof options?.synthesizeReviewResults === "function";
+      angles.length > 1 &&
+      !includeGeneral &&
+      typeof options?.synthesizeReviewResults === "function";
   }
 
   setTestOutcome(outcome: TestOutcome): void {

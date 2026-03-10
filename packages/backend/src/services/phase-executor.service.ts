@@ -355,6 +355,7 @@ export class PhaseExecutorService {
     const reviewAngles = [
       ...new Set((settings.reviewAngles ?? []).filter(Boolean)),
     ] as ReviewAngle[];
+    const includeGeneralReview = settings.includeGeneralReview === true && reviewAngles.length > 0;
     const useAngleSpecificReview = reviewAngles.length > 0;
 
     try {
@@ -383,6 +384,7 @@ export class PhaseExecutorService {
         aiAutonomyLevel: settings.aiAutonomyLevel,
         ...(settings.reviewAngles &&
           settings.reviewAngles.length > 0 && { reviewAngles: settings.reviewAngles }),
+        ...(includeGeneralReview && { includeGeneralReview: true }),
       };
 
       const taskDir = this.host.sessionManager.getActiveDir(wtPath, task.id);
@@ -446,9 +448,10 @@ export class PhaseExecutorService {
         branchName,
         worktreeKey: slot.worktreeKey ?? task.id,
         worktreePath: wtPath,
-        promptPath: useAngleSpecificReview
-          ? path.join(taskDir, "review-angles", reviewAngles[0]!, "prompt.md")
-          : path.join(taskDir, "prompt.md"),
+        promptPath:
+          includeGeneralReview || !useAngleSpecificReview
+            ? path.join(taskDir, "prompt.md")
+            : path.join(taskDir, "review-angles", reviewAngles[0]!, "prompt.md"),
         agentConfig,
         attempt: slot.attempt,
         createdAt: new Date().toISOString(),
@@ -462,6 +465,43 @@ export class PhaseExecutorService {
         path.join(mainRepoActiveDirReview, OPENSPRINT_PATHS.assignment),
         assignment
       );
+
+      const runGeneralAgent = () => {
+        this.host.lifecycleManager.run(
+          {
+            projectId,
+            taskId: task.id,
+            repoPath,
+            phase: "review",
+            wtPath,
+            branchName,
+            promptPath: path.join(taskDir, "prompt.md"),
+            agentConfig,
+            attempt: slot.attempt,
+            agentLabel: slot.taskTitle ?? task.id,
+            role: "reviewer",
+            onDone: (code) =>
+              this.callbacks.handleReviewDone(projectId, repoPath, task, branchName, code),
+            onStateChange: this.host.onAgentStateChange(projectId),
+          },
+          slot.agent,
+          slot.timers
+        );
+        eventLogService
+          .append(repoPath, {
+            timestamp: new Date().toISOString(),
+            projectId,
+            taskId: task.id,
+            event: "agent.spawned",
+            data: { phase: "review", model: agentConfig.model, attempt: slot.attempt },
+          })
+          .catch(() => {});
+      };
+
+      if (includeGeneralReview) {
+        slot.includeGeneralReview = true;
+        runGeneralAgent();
+      }
 
       if (useAngleSpecificReview) {
         slot.reviewAgents = new Map();

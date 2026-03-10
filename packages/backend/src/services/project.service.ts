@@ -159,6 +159,7 @@ function toCanonicalSettings(s: ProjectSettings): ProjectSettings {
     testCommand: s.testCommand ?? null,
     reviewMode: s.reviewMode ?? DEFAULT_REVIEW_MODE,
     ...(s.reviewAngles && s.reviewAngles.length > 0 && { reviewAngles: s.reviewAngles }),
+    ...(s.includeGeneralReview === true && { includeGeneralReview: true }),
     ...(s.maxConcurrentCoders !== undefined && { maxConcurrentCoders: s.maxConcurrentCoders }),
     ...(s.unknownScopeStrategy !== undefined && { unknownScopeStrategy: s.unknownScopeStrategy }),
     gitWorkingMode: s.gitWorkingMode ?? "worktree",

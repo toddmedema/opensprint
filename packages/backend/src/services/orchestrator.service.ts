@@ -187,6 +187,8 @@ export interface AgentSlot {
   infraRetries: number;
   timers: TimerRegistry;
   reviewAgents?: Map<ReviewAngle, ReviewAgentSlotState>;
+  /** When true, slot.agent is the general reviewer and reviewAgents are angle-specific (both run in parallel). */
+  includeGeneralReview?: boolean;
   fileScope?: FileScope;
   /** Coordinator for joining parallel test + review when both are enabled. */
   phaseCoordinator?: TaskPhaseCoordinator;
@@ -1350,6 +1352,22 @@ export class OrchestratorService {
     // Execute agents — derived from slots (single source of truth)
     for (const slot of state.slots.values()) {
       if (slot.phase === "review" && slot.reviewAgents && slot.reviewAgents.size > 0) {
+        if (slot.includeGeneralReview) {
+          agents.push({
+            id: buildReviewAgentId(slot.taskId, "general"),
+            taskId: slot.taskId,
+            phase: "review",
+            role: "reviewer",
+            label: slot.taskTitle ?? slot.taskId,
+            startedAt: slot.agent.startedAt || new Date().toISOString(),
+            branchName: slot.branchName,
+            name: "Reviewer (General)",
+            state: slot.agent.lifecycleState,
+            ...(slot.agent.lastOutputAtIso ? { lastOutputAt: slot.agent.lastOutputAtIso } : {}),
+            ...(slot.agent.suspendedAtIso ? { suspendedAt: slot.agent.suspendedAtIso } : {}),
+            ...(slot.agent.suspendReason ? { suspendReason: slot.agent.suspendReason } : {}),
+          });
+        }
         for (const reviewAgent of slot.reviewAgents.values()) {
           const optionLabel =
             REVIEW_ANGLE_OPTIONS.find((o) => o.value === reviewAgent.angle)?.label ??
@@ -2053,7 +2071,8 @@ export class OrchestratorService {
         ),
       {
         reviewAngles: settings.reviewAngles,
-        ...(angles.length > 1 && {
+        includeGeneralReview: settings.includeGeneralReview === true ? true : undefined,
+        ...(angles.length > 1 && !settings.includeGeneralReview && {
           synthesizeReviewResults: async (outcomes) => {
             const angleInputs = [...outcomes.entries()]
               .filter(([, o]) => o.result && (o.status === "approved" || o.status === "rejected"))

@@ -283,6 +283,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
       testCommand: string | null;
       reviewMode: ReviewMode;
       reviewAngles: ReviewAngle[];
+      includeGeneralReview?: boolean;
       maxConcurrentCoders: number;
       unknownScopeStrategy: UnknownScopeStrategy;
       enableHumanTeammates?: boolean;
@@ -348,6 +349,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
               testCommand: overrides?.testCommand ?? effSettings?.testCommand ?? undefined,
               reviewMode: overrides?.reviewMode ?? effSettings?.reviewMode ?? DEFAULT_REVIEW_MODE,
               reviewAngles: overrides?.reviewAngles ?? effSettings?.reviewAngles ?? undefined,
+              includeGeneralReview: overrides?.includeGeneralReview ?? effSettings?.includeGeneralReview ?? undefined,
               maxConcurrentCoders:
                 effGitMode === "branches"
                   ? 1
@@ -909,7 +911,8 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                               ? null
                               : (opt.value as ReviewAngle);
                             const angles = settings?.reviewAngles ?? [];
-                            const generalSelected = angles.length === 0;
+                            const includeGeneral = settings?.includeGeneralReview === true;
+                            const generalSelected = angles.length === 0 || includeGeneral;
                             const selected = isGeneral
                               ? generalSelected
                               : angleValue !== null && angles.includes(angleValue);
@@ -937,13 +940,18 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                                     if (disabled) return;
                                     if (isGeneral) {
                                       if (selected) {
-                                        return;
-                                      } else {
                                         setSettings((s) =>
-                                          s ? { ...s, reviewAngles: [] } : null
+                                          s ? { ...s, includeGeneralReview: false } : null
                                         );
                                         void persistSettings(undefined, {
-                                          reviewAngles: undefined,
+                                          includeGeneralReview: false,
+                                        });
+                                      } else {
+                                        setSettings((s) =>
+                                          s ? { ...s, includeGeneralReview: true } : null
+                                        );
+                                        void persistSettings(undefined, {
+                                          includeGeneralReview: true,
                                         });
                                       }
                                     } else {
@@ -953,12 +961,17 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                                         : angleValue
                                           ? [...current, angleValue]
                                           : current;
-                                      if (next.length === 0 && selected) return;
-                                      setSettings((s) =>
-                                        s ? { ...s, reviewAngles: next } : null
-                                      );
+                                      if (next.length === 0 && selected && !includeGeneral) return;
+                                      const wasGeneralOnly = current.length === 0 && generalSelected;
+                                      setSettings((s) => {
+                                        if (!s) return null;
+                                        const nextSettings = { ...s, reviewAngles: next };
+                                        if (wasGeneralOnly) nextSettings.includeGeneralReview = true;
+                                        return nextSettings;
+                                      });
                                       void persistSettings(undefined, {
                                         reviewAngles: next.length > 0 ? next : undefined,
+                                        ...(wasGeneralOnly && { includeGeneralReview: true }),
                                       });
                                     }
                                   }}

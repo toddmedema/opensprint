@@ -618,6 +618,8 @@ export interface ProjectSettings {
   reviewMode?: ReviewMode;
   /** Selected review angles for the review agent. When empty, all angles are covered by default. */
   reviewAngles?: ReviewAngle[];
+  /** When true with reviewAngles non-empty, run one general review agent plus one per angle. UI uses this so General stays selected when adding angles. */
+  includeGeneralReview?: boolean;
   /** Max concurrent Coder/Reviewer agents per project. 1 = v1 sequential behavior. */
   maxConcurrentCoders?: number;
   /** How to handle tasks with no file-scope prediction: "conservative" (serialize) or "optimistic" (parallelize, rely on merger) */
@@ -786,6 +788,7 @@ export function parseSettings(raw: unknown): ProjectSettings {
     mergeStrategy,
     worktreeBaseBranch: normalizeWorktreeBaseBranch(r?.worktreeBaseBranch),
     reviewAngles: parseReviewAngles(r?.reviewAngles),
+    includeGeneralReview: r?.includeGeneralReview === true ? true : undefined,
     enableHumanTeammates,
     teamMembers: parseTeamMembers(r?.teamMembers),
     selfImprovementFrequency,

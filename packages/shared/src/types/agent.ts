@@ -192,6 +192,8 @@ export interface ActiveTaskConfig {
   aiAutonomyLevel?: "confirm_all" | "major_only" | "full";
   /** Selected review angles for the review agent (security, performance, etc.). When empty, all angles are covered. */
   reviewAngles?: ReviewAngle[];
+  /** When true with reviewAngles non-empty, run one general review plus one per angle. */
+  includeGeneralReview?: boolean;
 }
 
 /** Agent session record (.opensprint/sessions/<task-id>-<attempt>.json) */
