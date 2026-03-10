@@ -144,6 +144,21 @@ export class PrdService {
     });
   }
 
+  /** Persist SPEC.md content for this version (for diff/history). Works with Postgres and SQLite. */
+  private async saveSnapshot(projectId: string, version: number, content: string): Promise<void> {
+    const created_at = new Date().toISOString();
+    await taskStore.runWrite(async (client) => {
+      await client.execute(
+        `INSERT INTO prd_snapshots (project_id, version, content, created_at)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (project_id, version) DO UPDATE SET
+           content = excluded.content,
+           created_at = excluded.created_at`,
+        [projectId, version, content, created_at]
+      );
+    });
+  }
+
   /**
    * Migrate from legacy prd.json or PRD.md to SPEC.md.
    * Returns the migrated Prd or null if no legacy file exists.
@@ -262,6 +277,7 @@ export class PrdService {
     const markdown = prdToSpecMarkdown(prd);
     await fs.writeFile(specPath, markdown, "utf-8");
     await this.saveMetadataToDb(projectId, prd);
+    await this.saveSnapshot(projectId, prd.version, markdown);
     const source = options?.source ?? "sketch";
     gitCommitQueue.enqueue({
       type: "prd_update",

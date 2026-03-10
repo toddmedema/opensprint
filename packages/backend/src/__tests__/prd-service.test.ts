@@ -20,6 +20,12 @@ const prdMetadataStore: Record<
   { version: number; change_log: string; section_versions: string }
 > = {};
 
+/** Key: "projectId:version". Used to verify prd_snapshots persistence. */
+const prdSnapshotsStore: Record<
+  string,
+  { project_id: string; version: number; content: string; created_at: string }
+> = {};
+
 vi.mock("../services/task-store.service.js", () => ({
   taskStore: {
     getDb: vi.fn().mockImplementation(() =>
@@ -34,6 +40,12 @@ vi.mock("../services/task-store.service.js", () => ({
                 section_versions: row.section_versions,
               };
           }
+          if (sql.includes("prd_snapshots") && params?.[0] != null && params?.[1] != null) {
+            const key = `${String(params[0])}:${Number(params[1])}`;
+            const row = prdSnapshotsStore[key];
+            if (row) return { ...row };
+            return undefined;
+          }
           return null;
         }),
       })
@@ -47,6 +59,18 @@ vi.mock("../services/task-store.service.js", () => ({
               version: Number(args[1]),
               change_log: String(args[2]),
               section_versions: String(args[3]),
+            };
+          }
+          if (sql.includes("prd_snapshots") && sql.includes("INSERT") && Array.isArray(args) && args.length >= 4) {
+            const projectId = String(args[0]);
+            const version = Number(args[1]);
+            const content = String(args[2]);
+            const created_at = String(args[3]);
+            prdSnapshotsStore[`${projectId}:${version}`] = {
+              project_id: projectId,
+              version,
+              content,
+              created_at,
             };
           }
         }),
@@ -97,6 +121,7 @@ describe("PrdService", () => {
 
   beforeEach(async () => {
     for (const k of Object.keys(prdMetadataStore)) delete prdMetadataStore[k];
+    for (const k of Object.keys(prdSnapshotsStore)) delete prdSnapshotsStore[k];
     prdService = new PrdService();
     await fs.mkdir(path.dirname(specPath), { recursive: true });
     await fs.writeFile(specPath, prdToSpecMarkdown(mockPrd as never), "utf-8");
@@ -233,5 +258,38 @@ describe("PrdService", () => {
     expect(history[1].source).toBe("plan");
     expect(history[0].documentVersion).toBe(1);
     expect(history[1].documentVersion).toBe(2);
+  });
+
+  it("should persist a prd_snapshot for the version after updateSection", async () => {
+    await prdService.updateSection(
+      "test-project",
+      "executive_summary",
+      "Updated summary content",
+      "sketch"
+    );
+
+    const snapshot = prdSnapshotsStore["test-project:1"];
+    expect(snapshot).toBeDefined();
+    expect(snapshot.project_id).toBe("test-project");
+    expect(snapshot.version).toBe(1);
+    expect(snapshot.content).toContain("Updated summary content");
+    expect(snapshot.created_at).toBeDefined();
+  });
+
+  it("should persist a prd_snapshot for the version after savePrd (via updateSections)", async () => {
+    await prdService.updateSections(
+      "test-project",
+      [
+        { section: "executive_summary", content: "New summary" },
+        { section: "problem_statement", content: "New problem" },
+      ],
+      "plan"
+    );
+
+    const snapshot = prdSnapshotsStore["test-project:1"];
+    expect(snapshot).toBeDefined();
+    expect(snapshot.version).toBe(1);
+    expect(snapshot.content).toContain("New summary");
+    expect(snapshot.content).toContain("New problem");
   });
 });

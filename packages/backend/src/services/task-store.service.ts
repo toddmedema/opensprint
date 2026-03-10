@@ -1497,6 +1497,9 @@ export class TaskStoreService {
       await client.execute(toPgParams("DELETE FROM prd_metadata WHERE project_id = ?"), [
         projectId,
       ]);
+      await client.execute(toPgParams("DELETE FROM prd_snapshots WHERE project_id = ?"), [
+        projectId,
+      ]);
       await client.execute(toPgParams("DELETE FROM project_conversations WHERE project_id = ?"), [
         projectId,
       ]);
