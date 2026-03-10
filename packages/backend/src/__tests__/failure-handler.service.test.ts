@@ -492,6 +492,34 @@ describe("FailureHandlerService", () => {
       );
     });
 
+    it("ignores punctuation-only no_result fragments when enriching the failure reason", async () => {
+      const slot = makeSlot("/tmp/worktree");
+      slot.agent.outputLog = ["}\n"];
+      mockHost.getState = vi.fn().mockReturnValue({
+        slots: new Map([[taskId, slot]]),
+        status: { totalFailed: 0, queueDepth: 0 },
+      });
+
+      await handler.handleTaskFailure(
+        projectId,
+        repoPath,
+        makeTask(),
+        branchName,
+        "Agent exited with code 1 without producing a result",
+        null,
+        "no_result"
+      );
+
+      expect(notificationService.createAgentFailed).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: expect.stringContaining("Agent exited with code 1 without producing a result"),
+        })
+      );
+      expect(notificationService.createAgentFailed).not.toHaveBeenCalledWith(
+        expect.objectContaining({ message: "}" })
+      );
+    });
+
     it("persists last_execution_summary when requeuing after a coding failure", async () => {
       const mockUpdate = vi.fn().mockResolvedValue(undefined);
       mockHost.taskStore = {

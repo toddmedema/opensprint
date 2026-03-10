@@ -1849,13 +1849,19 @@ export class OrchestratorService {
         : exitCode === 143 || exitCode === 137
           ? "agent_crash"
           : "no_result";
+      const noResultReason =
+        failureType === "no_result"
+          ? await this.extractNoResultReasonFromLogs(wtPath, task.id, slot.agent.outputLog)
+          : undefined;
       slot.agent.killedDueToTimeout = false;
       await this.failureHandler.handleTaskFailure(
         projectId,
         repoPath,
         task,
         branchName,
-        `Agent exited with code ${exitCode} without producing a result`,
+        `Agent exited with code ${exitCode} without producing a result${
+          noResultReason ? `. Recent agent output: ${noResultReason}` : ""
+        }`,
         null,
         failureType
       );
@@ -2221,6 +2227,139 @@ export class OrchestratorService {
     }
   }
 
+  private isMeaningfulNoResultFragment(fragment: string): boolean {
+    return /[A-Za-z0-9]/.test(fragment.replace(/[^A-Za-z0-9]+/g, ""));
+  }
+
+  private extractStructuredNoResultErrorFromJsonLine(line: string): string | undefined {
+    if (!line.startsWith("{")) return undefined;
+    try {
+      const parsed = JSON.parse(line) as Record<string, unknown>;
+      const message =
+        typeof parsed.message === "string"
+          ? parsed.message
+          : typeof parsed.error === "string"
+            ? parsed.error
+            : parsed.error &&
+                typeof parsed.error === "object" &&
+                typeof (parsed.error as Record<string, unknown>).message === "string"
+              ? ((parsed.error as Record<string, unknown>).message as string)
+              : typeof parsed.detail === "string"
+                ? parsed.detail
+                : undefined;
+      if (!message || !this.isMeaningfulNoResultFragment(message)) return undefined;
+      const type = typeof parsed.type === "string" ? parsed.type.toLowerCase() : "";
+      const subtype = typeof parsed.subtype === "string" ? parsed.subtype.toLowerCase() : "";
+      const status = typeof parsed.status === "string" ? parsed.status.toLowerCase() : "";
+      if (
+        type === "error" ||
+        subtype === "error" ||
+        status === "error" ||
+        message.toLowerCase().includes("error")
+      ) {
+        return message.trim();
+      }
+      return undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private extractNoResultReasonFromOutput(outputLog: string[]): string | undefined {
+    const output = outputLog.join("").replace(/\r/g, "").trim();
+    if (!output) return undefined;
+
+    const agentErrorMatches = [...output.matchAll(/\[Agent error:\s*([^\]]+)\]/gi)];
+    const latestAgentError = agentErrorMatches
+      .map((match) => match[1]?.trim() ?? "")
+      .filter((line) => this.isMeaningfulNoResultFragment(line))
+      .at(-1);
+    if (latestAgentError) {
+      return latestAgentError.slice(0, 240);
+    }
+
+    const lines = output
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (lines.length === 0) return undefined;
+
+    const structuredErrors = lines
+      .map((line) => this.extractStructuredNoResultErrorFromJsonLine(line))
+      .filter((line): line is string => Boolean(line))
+      .filter((line) => this.isMeaningfulNoResultFragment(line));
+    if (structuredErrors.length > 0) {
+      return structuredErrors.at(-1)?.slice(0, 240);
+    }
+
+    const nonJsonLines = lines
+      .filter((line) => !line.startsWith("{"))
+      .map((line) => line.replace(/^\s*[A-Z]:\s*/i, "").trim())
+      .filter((line) => !/^}+$/.test(line))
+      .filter((line) => this.isMeaningfulNoResultFragment(line));
+    if (nonJsonLines.length === 0) return undefined;
+
+    const errorLike =
+      /not available|please|switch to|error|invalid|required|cannot|unable|try |failed|rate limit|authentication|api key/i;
+    const preferred = [...nonJsonLines].reverse().find((line) => {
+      if (line.length > 400) return false;
+      if (errorLike.test(line)) return true;
+      return /[.?]$/.test(line) || (line.length < 150 && !/^[\s\S]*[\d{"]$/.test(line));
+    });
+    return (preferred ?? nonJsonLines.at(-1))?.slice(0, 240);
+  }
+
+  private async extractNoResultReasonFromLogs(
+    wtPath: string,
+    taskId: string,
+    outputLog: string[],
+    angle?: ReviewAngle
+  ): Promise<string | undefined> {
+    const fromMemory = this.extractNoResultReasonFromOutput(outputLog);
+    if (fromMemory) return fromMemory;
+
+    const outputLogPath = angle
+      ? path.join(
+          wtPath,
+          OPENSPRINT_PATHS.active,
+          taskId,
+          "review-angles",
+          angle,
+          OPENSPRINT_PATHS.agentOutputLog
+        )
+      : path.join(wtPath, OPENSPRINT_PATHS.active, taskId, OPENSPRINT_PATHS.agentOutputLog);
+    try {
+      const fileOutput = await fs.readFile(outputLogPath, "utf-8");
+      const fromFile = this.extractNoResultReasonFromOutput([fileOutput]);
+      if (fromFile) return fromFile;
+    } catch {
+      // Missing log file is expected for very-early failures.
+    }
+    return undefined;
+  }
+
+  private buildReviewNoResultFailureReason(reviewOutcome: ReviewOutcome): string {
+    const contexts = (reviewOutcome.failureContext ?? []).filter((ctx) => {
+      const hasAngle = typeof ctx.angle === "string" && ctx.angle.trim().length > 0;
+      const hasReason = typeof ctx.reason === "string" && ctx.reason.trim().length > 0;
+      return hasAngle || hasReason || ctx.exitCode !== null;
+    });
+    if (contexts.length === 0) {
+      return "One or more review agents exited without producing a valid result";
+    }
+
+    const details = contexts.map((ctx) => {
+      const label = ctx.angle ? `angle '${ctx.angle}'` : "general review";
+      let detail = `${label} exited with code ${ctx.exitCode ?? "null"} without producing a valid result`;
+      if (ctx.reason) {
+        detail += ` (${ctx.reason})`;
+      }
+      return detail;
+    });
+    if (details.length === 1) return details[0]!;
+    return `Review agents failed to produce valid results: ${details.join("; ")}`;
+  }
+
   private async handleReviewDone(
     projectId: string,
     repoPath: string,
@@ -2257,16 +2396,41 @@ export class OrchestratorService {
     const reviewAgentState = angle ? slot.reviewAgents?.get(angle) : undefined;
     const killedDueToTimeout =
       reviewAgentState?.agent.killedDueToTimeout ?? slot.agent.killedDueToTimeout;
+    const status: ReviewOutcome["status"] =
+      result?.status === "approved"
+        ? "approved"
+        : result?.status === "rejected"
+          ? "rejected"
+          : "no_result";
+    const noResultReason =
+      status === "no_result"
+        ? await this.extractNoResultReasonFromLogs(
+            wtPath,
+            task.id,
+            angle ? (reviewAgentState?.agent.outputLog ?? []) : slot.agent.outputLog,
+            angle
+          )
+        : undefined;
 
     // If coordinated with tests, report outcome and let the coordinator decide
     if (slot.phaseCoordinator) {
-      const status: ReviewOutcome["status"] =
-        result?.status === "approved"
-          ? "approved"
-          : result?.status === "rejected"
-            ? "rejected"
-            : "no_result";
-      slot.phaseCoordinator.setReviewOutcome({ status, result, exitCode }, angle);
+      slot.phaseCoordinator.setReviewOutcome(
+        {
+          status,
+          result,
+          exitCode,
+          ...(status === "no_result" && {
+            failureContext: [
+              {
+                ...(angle && { angle }),
+                exitCode,
+                ...(noResultReason && { reason: noResultReason }),
+              },
+            ],
+          }),
+        },
+        angle
+      );
       if (angle) {
         slot.reviewAgents?.delete(angle as ReviewAngle);
         if (slot.reviewAgents && slot.reviewAgents.size === 0) {
@@ -2295,8 +2459,8 @@ export class OrchestratorService {
         task,
         branchName,
         angle
-          ? `Review agent (${angle}) exited with code ${exitCode} without producing a valid result`
-          : `Review agent exited with code ${exitCode} without producing a valid result`,
+          ? `Review agent (${angle}) exited with code ${exitCode} without producing a valid result${noResultReason ? ` (${noResultReason})` : ""}`
+          : `Review agent exited with code ${exitCode} without producing a valid result${noResultReason ? ` (${noResultReason})` : ""}`,
         null,
         failureType
       );
@@ -2359,12 +2523,13 @@ export class OrchestratorService {
       );
     } else {
       const failureType: FailureType = "no_result";
+      const noResultReason = this.buildReviewNoResultFailureReason(reviewOutcome);
       await this.failureHandler.handleTaskFailure(
         projectId,
         repoPath,
         task,
         branchName,
-        "One or more review agents exited without producing a valid result",
+        noResultReason,
         null,
         failureType
       );
@@ -2581,12 +2746,11 @@ export class OrchestratorService {
       }
     }
 
+    await this.sessionManager.clearResult(wtPath, taskId);
     if (reviewAngles && reviewAngles.length > 0) {
       for (const angle of reviewAngles) {
         await this.sessionManager.clearResult(wtPath, taskId, angle);
       }
-    } else {
-      await this.sessionManager.clearResult(wtPath, taskId);
     }
   }
 

@@ -65,7 +65,7 @@ ${JSON_OUTPUT_PREAMBLE}
 
 **Fail-early when feedback is too vague:** When the feedback is too vague, ambiguous, or insufficient to categorize or create tasks (e.g. single word, unclear intent, missing context), return a non-empty \`open_questions\` array instead of categorizing. Do NOT create tasks or link to existing. The user will answer these questions before the Analyst proceeds. Use open_questions only when you genuinely cannot proceed; otherwise categorize normally.
 
-**open_questions rules:** (1) At most one "Are you sure?"-style confirmation per feedback cycle — no duplicate re-prompts. (2) When asking questions, prefer tradeoff questions when appropriate: present options A, B, C with pros and cons (e.g. "Option A: X (pros: …, cons: …). Option B: Y (pros: …, cons: …). Which do you prefer?"). Keep questions concise.
+**open_questions rules:** When asking questions, prefer tradeoff questions when appropriate: present options A, B, C with pros and cons (e.g. "Option A: X (pros: …, cons: …). Option B: Y (pros: …, cons: …). Which do you prefer?"). Keep questions concise. You may ask multiple questions when clarification would help; responses can be more thorough than yes/no.
 
 **Plan/epic association:** Associate feedback to a plan/epic ONLY when there is a VERY CLEAR link. When feedback does not clearly map to work in an existing plan/epic, use mapped_plan_id: null and mapped_epic_id: null. In that case, proposed_tasks create top-level (standalone) tasks — do not force feedback into an existing plan when the link is ambiguous.
 

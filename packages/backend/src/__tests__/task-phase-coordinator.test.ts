@@ -190,13 +190,28 @@ describe("TaskPhaseCoordinator", () => {
 
     coord.setTestOutcome(testPassed);
     coord.setReviewOutcome(reviewApproved, "security");
-    coord.setReviewOutcome({ status: "no_result", result: null, exitCode: 1 }, "performance");
+    coord.setReviewOutcome(
+      {
+        status: "no_result",
+        result: null,
+        exitCode: 1,
+        failureContext: [{ angle: "performance", exitCode: 1, reason: "Result file missing" }],
+      },
+      "performance"
+    );
 
     expect(resolve).toHaveBeenCalledTimes(1);
     expect(resolve).toHaveBeenCalledWith(
       testPassed,
       expect.objectContaining({
         status: "no_result",
+        failureContext: expect.arrayContaining([
+          expect.objectContaining({
+            angle: "performance",
+            exitCode: 1,
+            reason: "Result file missing",
+          }),
+        ]),
       })
     );
   });
@@ -247,7 +262,12 @@ describe("TaskPhaseCoordinator", () => {
     expect(resolve).toHaveBeenCalledTimes(1);
     expect(resolve).toHaveBeenCalledWith(
       testPassed,
-      expect.objectContaining({ status: "no_result" })
+      expect.objectContaining({
+        status: "no_result",
+        failureContext: expect.arrayContaining([
+          expect.objectContaining({ angle: "performance", exitCode: 1 }),
+        ]),
+      })
     );
   });
 

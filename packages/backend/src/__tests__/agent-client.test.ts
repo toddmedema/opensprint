@@ -626,6 +626,29 @@ describe("AgentClient", () => {
   });
 
   describe("spawnWithTaskFile", () => {
+    const createDetachedChild = (pid: number) => {
+      const listeners: Record<string, Array<(code?: number) => void>> = {};
+      const child = {
+        killed: false,
+        kill: vi.fn(() => {
+          child.killed = true;
+          for (const fn of listeners.close ?? []) {
+            fn(0);
+          }
+          return true;
+        }),
+        pid,
+        stdout: { on: vi.fn(), removeAllListeners: vi.fn() },
+        stderr: { on: vi.fn(), removeAllListeners: vi.fn() },
+        on: vi.fn((event: string, fn: (code?: number) => void) => {
+          (listeners[event] ??= []).push(fn);
+          return child;
+        }),
+        removeAllListeners: vi.fn(),
+      };
+      return child;
+    };
+
     it("should spawn Cursor agent with task content and workspace", async () => {
       const fs = await import("fs/promises");
       const path = await import("path");
@@ -1216,6 +1239,239 @@ describe("AgentClient", () => {
       );
 
       await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it("retries transient Cursor startup failures and succeeds without key rotation", async () => {
+      const fs = await import("fs/promises");
+      const path = await import("path");
+      const os = await import("os");
+      const tmpDir = path.join(os.tmpdir(), `agent-client-cursor-transient-${Date.now()}`);
+      const taskDir = path.join(tmpDir, ".opensprint/active/bd-a3f8.1");
+      await fs.mkdir(taskDir, { recursive: true });
+      const taskFilePath = path.join(taskDir, "prompt.md");
+      await fs.writeFile(taskFilePath, "# Task\n\nFix bug", "utf-8");
+      const outputLogPath = path.join(taskDir, "output.log");
+
+      mockGetNextKey.mockResolvedValue({ key: "cursor-key-1", keyId: "k1", source: "global" });
+
+      const makeChild = (exitCode: number, pid: number) => ({
+        killed: false,
+        kill: vi.fn(),
+        pid,
+        stdout: { on: vi.fn(), removeAllListeners: vi.fn() },
+        stderr: { on: vi.fn(), removeAllListeners: vi.fn() },
+        on: vi.fn((ev: string, fn: (code?: number) => void) => {
+          if (ev === "close") setTimeout(() => fn(exitCode), 20);
+          return { on: vi.fn(), removeAllListeners: vi.fn() };
+        }),
+        removeAllListeners: vi.fn(),
+      });
+
+      mockSpawn.mockReturnValueOnce(makeChild(1, 10101)).mockReturnValueOnce(makeChild(0, 10102));
+
+      const onOutput = vi.fn();
+      const onExit = vi.fn();
+      client.spawnWithTaskFile(
+        { type: "cursor", model: "composer-1.5", cliCommand: null },
+        taskFilePath,
+        tmpDir,
+        onOutput,
+        onExit,
+        "coder",
+        outputLogPath,
+        "proj-123"
+      );
+
+      await fs.writeFile(
+        outputLogPath,
+        "Error: Security command failed: Security process exited with code: 45\n",
+        "utf-8"
+      );
+
+      await vi.waitFor(
+        () => {
+          expect(onExit).toHaveBeenCalledWith(0);
+        },
+        { timeout: 4000 }
+      );
+
+      expect(mockRecordLimitHit).not.toHaveBeenCalled();
+      expect(mockGetNextKey).toHaveBeenCalledTimes(2);
+      expect(onOutput).toHaveBeenCalledWith(
+        expect.stringContaining("Retrying Cursor startup (1/2)")
+      );
+
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it("falls back to model auto when Cursor slow-pool capacity error is returned", async () => {
+      const fs = await import("fs/promises");
+      const path = await import("path");
+      const os = await import("os");
+      const tmpDir = path.join(os.tmpdir(), `agent-client-cursor-auto-fallback-${Date.now()}`);
+      const taskDir = path.join(tmpDir, ".opensprint/active/bd-a3f8.1");
+      await fs.mkdir(taskDir, { recursive: true });
+      const taskFilePath = path.join(taskDir, "prompt.md");
+      await fs.writeFile(taskFilePath, "# Task\n\nFix bug", "utf-8");
+      const outputLogPath = path.join(taskDir, "output.log");
+
+      mockGetNextKey.mockResolvedValue({ key: "cursor-key-1", keyId: "k1", source: "global" });
+
+      const makeChild = (exitCode: number, pid: number) => ({
+        killed: false,
+        kill: vi.fn(),
+        pid,
+        stdout: { on: vi.fn(), removeAllListeners: vi.fn() },
+        stderr: { on: vi.fn(), removeAllListeners: vi.fn() },
+        on: vi.fn((ev: string, fn: (code?: number) => void) => {
+          if (ev === "close") setTimeout(() => fn(exitCode), 20);
+          return { on: vi.fn(), removeAllListeners: vi.fn() };
+        }),
+        removeAllListeners: vi.fn(),
+      });
+
+      mockSpawn.mockReturnValueOnce(makeChild(1, 10201)).mockReturnValueOnce(makeChild(0, 10202));
+
+      const onOutput = vi.fn();
+      const onExit = vi.fn();
+      client.spawnWithTaskFile(
+        { type: "cursor", model: "composer-1.5", cliCommand: null },
+        taskFilePath,
+        tmpDir,
+        onOutput,
+        onExit,
+        "coder",
+        outputLogPath,
+        "proj-123"
+      );
+
+      await fs.writeFile(
+        outputLogPath,
+        "S: Increase limits for faster responses Composer 1.5 is not available in the slow pool. Please switch to Auto.\n",
+        "utf-8"
+      );
+
+      await vi.waitFor(
+        () => {
+          expect(onExit).toHaveBeenCalledWith(0);
+        },
+        { timeout: 4000 }
+      );
+
+      const firstArgs = mockSpawn.mock.calls[0]?.[1] as string[];
+      const secondArgs = mockSpawn.mock.calls[1]?.[1] as string[];
+      const firstModelIndex = firstArgs.indexOf("--model");
+      const secondModelIndex = secondArgs.indexOf("--model");
+      expect(firstArgs[firstModelIndex + 1]).toBe("composer-1.5");
+      expect(secondArgs[secondModelIndex + 1]).toBe("auto");
+      expect(mockRecordLimitHit).not.toHaveBeenCalled();
+      expect(onOutput).toHaveBeenCalledWith(
+        expect.stringContaining("Retrying with model auto")
+      );
+
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it("polls result.json next to the general prompt path", async () => {
+      const fs = await import("fs/promises");
+      const path = await import("path");
+      const os = await import("os");
+      const tmpDir = path.join(os.tmpdir(), `agent-client-result-general-${Date.now()}`);
+      try {
+        const taskDir = path.join(tmpDir, ".opensprint/active/os-general");
+        await fs.mkdir(taskDir, { recursive: true });
+        const taskFilePath = path.join(taskDir, "prompt.md");
+        const outputLogPath = path.join(taskDir, "agent-output.log");
+        await fs.writeFile(taskFilePath, "# Task\n\nGeneral review", "utf-8");
+        await fs.mkdir(path.join(tmpDir, ".opensprint/active/unrelated"), { recursive: true });
+        await fs.writeFile(
+          path.join(tmpDir, ".opensprint/active/unrelated/result.json"),
+          JSON.stringify({ status: "success" }),
+          "utf-8"
+        );
+
+        const mockChild = createDetachedChild(20001);
+        mockSpawn.mockReturnValue(mockChild);
+
+        const onExit = vi.fn();
+        client.spawnWithTaskFile(
+          { type: "cursor", model: "gpt-4", cliCommand: null },
+          taskFilePath,
+          tmpDir,
+          vi.fn(),
+          onExit,
+          "reviewer",
+          outputLogPath
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 2200));
+        expect(onExit).not.toHaveBeenCalled();
+
+        await fs.writeFile(path.join(taskDir, "result.json"), JSON.stringify({ status: "success" }), "utf-8");
+        await vi.waitFor(
+          () => {
+            expect(onExit).toHaveBeenCalledWith(0);
+          },
+          { timeout: 5000 }
+        );
+      } finally {
+        await fs.rm(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("polls angle result.json from prompt directory and ignores stale inferred paths", async () => {
+      const fs = await import("fs/promises");
+      const path = await import("path");
+      const os = await import("os");
+      const tmpDir = path.join(os.tmpdir(), `agent-client-result-angle-${Date.now()}`);
+      try {
+        const taskDir = path.join(tmpDir, ".opensprint/active/os-angle");
+        const angleDir = path.join(taskDir, "review-angles", "security");
+        await fs.mkdir(angleDir, { recursive: true });
+        const taskFilePath = path.join(angleDir, "prompt.md");
+        const outputLogPath = path.join(angleDir, "agent-output.log");
+        await fs.writeFile(taskFilePath, "# Task\n\nSecurity angle review", "utf-8");
+
+        // Regression guard: old polling logic inferred .opensprint/active/<angle>/result.json from outputLogPath.
+        const staleLegacyPath = path.join(tmpDir, ".opensprint/active/security");
+        await fs.mkdir(staleLegacyPath, { recursive: true });
+        await fs.writeFile(
+          path.join(staleLegacyPath, "result.json"),
+          JSON.stringify({ status: "success" }),
+          "utf-8"
+        );
+
+        const mockChild = createDetachedChild(20002);
+        mockSpawn.mockReturnValue(mockChild);
+
+        const onExit = vi.fn();
+        client.spawnWithTaskFile(
+          { type: "cursor", model: "gpt-4", cliCommand: null },
+          taskFilePath,
+          tmpDir,
+          vi.fn(),
+          onExit,
+          "reviewer",
+          outputLogPath
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 2200));
+        expect(onExit).not.toHaveBeenCalled();
+
+        await fs.writeFile(
+          path.join(angleDir, "result.json"),
+          JSON.stringify({ status: "approved" }),
+          "utf-8"
+        );
+        await vi.waitFor(
+          () => {
+            expect(onExit).toHaveBeenCalledWith(1);
+          },
+          { timeout: 5000 }
+        );
+      } finally {
+        await fs.rm(tmpDir, { recursive: true, force: true });
+      }
     });
 
     it("should return kill that terminates process with process group", async () => {

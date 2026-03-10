@@ -22,6 +22,12 @@ export interface ReviewOutcome {
   status: "approved" | "rejected" | "no_result" | "error";
   result?: ReviewAgentResult | null;
   exitCode: number | null;
+  /** Angle-aware context used to explain no_result / error outcomes. */
+  failureContext?: Array<{
+    angle?: string;
+    exitCode: number | null;
+    reason?: string;
+  }>;
 }
 
 export type PhaseResolution = (test: TestOutcome, review: ReviewOutcome) => Promise<void>;
@@ -165,10 +171,33 @@ export class TaskPhaseCoordinator {
       if (!this.reviewOutcomes.has(key)) return null;
     }
 
-    const outcomes = [...this.expectedReviewKeys].map((key) => this.reviewOutcomes.get(key)!);
-    const firstNoResult = outcomes.find((o) => o.status === "no_result" || o.status === "error");
-    if (firstNoResult) {
-      return { status: "no_result", result: null, exitCode: firstNoResult.exitCode };
+    const keyedOutcomes = [...this.expectedReviewKeys].map((key) => ({
+      key,
+      outcome: this.reviewOutcomes.get(key)!,
+    }));
+    const outcomes = keyedOutcomes.map(({ outcome }) => outcome);
+    const noResultOutcomes = keyedOutcomes.filter(
+      ({ outcome }) => outcome.status === "no_result" || outcome.status === "error"
+    );
+    if (noResultOutcomes.length > 0) {
+      const combinedContext = noResultOutcomes.flatMap(({ key, outcome }) => {
+        if (outcome.failureContext && outcome.failureContext.length > 0) {
+          return outcome.failureContext;
+        }
+        return [
+          {
+            angle: key === DEFAULT_REVIEW_KEY ? undefined : key,
+            exitCode: outcome.exitCode,
+          },
+        ];
+      });
+      const dedupedContext = [...new Map(combinedContext.map((ctx) => [JSON.stringify(ctx), ctx])).values()];
+      return {
+        status: "no_result",
+        result: null,
+        exitCode: noResultOutcomes[0]?.outcome.exitCode ?? null,
+        ...(dedupedContext.length > 0 && { failureContext: dedupedContext }),
+      };
     }
 
     const rejected = outcomes.filter((o) => o.status === "rejected");

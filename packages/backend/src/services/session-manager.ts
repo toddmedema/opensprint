@@ -181,16 +181,24 @@ export class SessionManager {
 
     // Copy active directory contents to session archive (agent-output.log, prompt.md, etc.)
     try {
-      const files = await fs.readdir(activeDirSource);
-      for (const file of files) {
-        if (file === OPENSPRINT_PATHS.heartbeat) continue;
-        const srcPath = path.join(activeDirSource, file);
-        const destPath = path.join(sessionDir, file);
-        const stat = await fs.stat(srcPath);
-        if (stat.isFile()) {
-          await fs.copyFile(srcPath, destPath);
+      const copyDirectoryRecursive = async (srcDir: string, destDir: string): Promise<void> => {
+        await fs.mkdir(destDir, { recursive: true });
+        const entries = await fs.readdir(srcDir);
+        for (const entry of entries) {
+          if (entry === OPENSPRINT_PATHS.heartbeat) continue;
+          const srcPath = path.join(srcDir, entry);
+          const destPath = path.join(destDir, entry);
+          const stat = await fs.stat(srcPath);
+          if (stat.isDirectory()) {
+            await copyDirectoryRecursive(srcPath, destPath);
+            continue;
+          }
+          if (stat.isFile()) {
+            await fs.copyFile(srcPath, destPath);
+          }
         }
-      }
+      };
+      await copyDirectoryRecursive(activeDirSource, sessionDir);
     } catch {
       // Active directory might not exist
     }

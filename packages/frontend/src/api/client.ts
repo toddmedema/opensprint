@@ -41,11 +41,9 @@ import type {
   AgentLogEntry,
   ExecuteTaskContext,
   EnvRuntimeResponse,
-} from "@opensprint/shared";
-import type {
   PlanVersionSummary,
   PlanVersionContent,
-} from "../../../shared/src/types/plan.js";
+} from "@opensprint/shared";
 import type { TaskListResponse } from "./taskList";
 
 /** API base; set VITE_API_BASE for production/staging (e.g. empty for same-origin, or full origin). */

@@ -139,12 +139,19 @@ export class FailureHandlerService {
     return `Demoted to priority ${params.currentPriority + 1}`;
   }
 
+  private isMeaningfulNoResultFragment(fragment: string): boolean {
+    return /[A-Za-z0-9]/.test(fragment.replace(/[^A-Za-z0-9]+/g, ""));
+  }
+
   private enrichNoResultReason(reason: string, outputLog: string[]): string {
     const output = outputLog.join("").replace(/\r/g, "").trim();
     if (!output) return reason;
 
     const agentErrorMatches = [...output.matchAll(/\[Agent error:\s*([^\]]+)\]/gi)];
-    const latestAgentError = agentErrorMatches.at(-1)?.[1]?.trim();
+    const latestAgentError = agentErrorMatches
+      .map((match) => match[1]?.trim() ?? "")
+      .filter((line) => this.isMeaningfulNoResultFragment(line))
+      .at(-1);
     if (latestAgentError) {
       return latestAgentError.slice(0, NO_RESULT_REASON_LIMIT);
     }
@@ -157,7 +164,11 @@ export class FailureHandlerService {
 
     // Prefer last non-JSON line that looks like a user-facing error or instruction (so we surface
     // messages like "Composer 1.5 is not available in the slow pool. Please switch to Auto.")
-    const nonJsonLines = lines.filter((line) => !line.startsWith("{"));
+    const nonJsonLines = lines
+      .filter((line) => !line.startsWith("{"))
+      .map((line) => line.replace(/^\s*[A-Z]:\s*/i, "").trim())
+      .filter((line) => this.isMeaningfulNoResultFragment(line));
+    if (nonJsonLines.length === 0) return reason;
     const errorLike =
       /not available|please|switch to|error|invalid|required|cannot|unable|try |failed|rate limit|authentication|api key/i;
     const lastMessageLike = [...nonJsonLines].reverse().find((line) => {
@@ -167,7 +178,7 @@ export class FailureHandlerService {
       return /[.?]$/.test(line) || (line.length < 150 && !/^[\s\S]*[\d{"]$/.test(line));
     });
     if (lastMessageLike) {
-      const cleaned = lastMessageLike.replace(/^\s*[A-Z]:\s*/i, "").trim();
+      const cleaned = lastMessageLike.trim();
       if (cleaned.length > 0) return cleaned.slice(0, NO_RESULT_REASON_LIMIT);
     }
 

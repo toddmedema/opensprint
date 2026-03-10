@@ -256,17 +256,14 @@ export class AgentService {
       return result;
     } finally {
       const completedAt = new Date().toISOString();
-      const recordAgentRunStat = (this as { recordAgentRunStat?: unknown }).recordAgentRunStat;
-      if (typeof recordAgentRunStat === "function") {
-        await recordAgentRunStat.call(this, {
-          tracking,
-          config: options.config,
-          projectId: options.projectId,
-          startedAt,
-          completedAt,
-          outcome,
-        } satisfies AgentRunStatParams);
-      }
+      await this.recordAgentRunStat({
+        tracking,
+        config: options.config,
+        projectId: options.projectId,
+        startedAt,
+        completedAt,
+        outcome,
+      } satisfies AgentRunStatParams);
       if (tracking) activeAgentsService.unregister(tracking.id);
     }
   }
@@ -352,18 +349,14 @@ export class AgentService {
         ? (code: number | null) => {
             if (shouldRecordStats) {
               const completedAt = new Date().toISOString();
-              const recordAgentRunStat = (this as { recordAgentRunStat?: unknown })
-                .recordAgentRunStat;
-              if (typeof recordAgentRunStat === "function") {
-                void recordAgentRunStat.call(this, {
-                  tracking,
-                  config,
-                  projectId: tracking?.projectId ?? options.projectId,
-                  startedAt,
-                  completedAt,
-                  outcome: code === 0 ? "success" : "failed",
-                } satisfies AgentRunStatParams);
-              }
+              void this.recordAgentRunStat({
+                tracking,
+                config,
+                projectId: tracking?.projectId ?? options.projectId,
+                startedAt,
+                completedAt,
+                outcome: code === 0 ? "success" : "failed",
+              } satisfies AgentRunStatParams);
             }
             if (tracking) {
               activeAgentsService.unregister(tracking.id);

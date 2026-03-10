@@ -431,7 +431,6 @@ describe("PhaseExecutorService", () => {
             heartbeatSubpath?: string;
           }
       );
-      // Each angle agent gets distinct output log and heartbeat paths
       expect(runParams.every((r) => r.outputLogPath?.includes("review-angles"))).toBe(true);
       expect(runParams.map((r) => r.heartbeatSubpath)).toEqual(
         expect.arrayContaining(["review-angles/security", "review-angles/performance"])
@@ -462,6 +461,74 @@ describe("PhaseExecutorService", () => {
         0,
         "performance"
       );
+    });
+
+    it("can serialize cursor review angles when OPENSPRINT_SERIALIZE_CURSOR_REVIEW_ANGLES=1", async () => {
+      const previous = process.env.OPENSPRINT_SERIALIZE_CURSOR_REVIEW_ANGLES;
+      process.env.OPENSPRINT_SERIALIZE_CURSOR_REVIEW_ANGLES = "1";
+      try {
+        mockGetSettings.mockResolvedValue({
+          testFramework: "vitest",
+          simpleComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+          complexComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+          reviewMode: "always",
+          reviewAngles: ["security", "performance"],
+          deployment: { mode: "custom", autoResolveFeedbackOnTaskCompletion: false },
+          maxConcurrentCoders: 1,
+          gitWorkingMode: "worktree",
+        });
+        mockBuildContext.mockResolvedValue({
+          taskId,
+          title: "Test task",
+          description: "",
+          prdExcerpt: "",
+          planContent: "",
+          dependencyOutputs: [],
+        });
+        const task = makeTask();
+        const slot = makeSlot();
+        const slots = new Map([[task.id, slot]]);
+        mockGetState.mockReturnValue({ slots, status: { queueDepth: 0 } });
+        (
+          mockHost.branchManager as { captureBranchDiff: ReturnType<typeof vi.fn> }
+        ).captureBranchDiff = vi.fn().mockResolvedValue("");
+
+        await phaseExecutor.executeReviewPhase(projectId, repoPath, task, slot.branchName);
+
+        expect(mockLifecycleRun).toHaveBeenCalledTimes(1);
+        const firstRun = mockLifecycleRun.mock.calls[0]?.[0] as {
+          promptPath: string;
+          onDone: (code: number | null) => Promise<void>;
+          outputLogPath?: string;
+          heartbeatSubpath?: string;
+        };
+        expect(firstRun.promptPath).toContain(path.join("review-angles", "security", "prompt.md"));
+        expect(firstRun.outputLogPath).toContain(path.join("review-angles", "security"));
+        expect(firstRun.heartbeatSubpath).toBe("review-angles/security");
+
+        await firstRun.onDone(0);
+
+        expect(mockLifecycleRun).toHaveBeenCalledTimes(2);
+        const secondRun = mockLifecycleRun.mock.calls[1]?.[0] as {
+          promptPath: string;
+          onDone: (code: number | null) => Promise<void>;
+          outputLogPath?: string;
+          heartbeatSubpath?: string;
+        };
+        expect(secondRun.promptPath).toContain(
+          path.join("review-angles", "performance", "prompt.md")
+        );
+        expect(secondRun.outputLogPath).toContain(path.join("review-angles", "performance"));
+        expect(secondRun.heartbeatSubpath).toBe("review-angles/performance");
+
+        await secondRun.onDone(0);
+      } finally {
+        if (previous == null) {
+          delete process.env.OPENSPRINT_SERIALIZE_CURSOR_REVIEW_ANGLES;
+        } else {
+          process.env.OPENSPRINT_SERIALIZE_CURSOR_REVIEW_ANGLES = previous;
+        }
+      }
     });
   });
 });

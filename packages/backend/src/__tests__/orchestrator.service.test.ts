@@ -545,6 +545,80 @@ describe("OrchestratorService (slot-based model)", () => {
     });
   });
 
+  describe("review no_result diagnostics", () => {
+    it("formats angle-aware no_result reasons for multi-angle failures", () => {
+      const reason = (
+        orchestrator as unknown as {
+          buildReviewNoResultFailureReason(outcome: {
+            status: "no_result";
+            result: null;
+            exitCode: number | null;
+            failureContext: Array<{ angle?: string; exitCode: number | null; reason?: string }>;
+          }): string;
+        }
+      ).buildReviewNoResultFailureReason({
+        status: "no_result",
+        result: null,
+        exitCode: 1,
+        failureContext: [
+          { angle: "security", exitCode: 1, reason: "missing result.json" },
+          { angle: "performance", exitCode: 0 },
+        ],
+      });
+
+      expect(reason).toContain("security");
+      expect(reason).toContain("performance");
+      expect(reason).toContain("missing result.json");
+    });
+
+    it("extracts structured error from JSON output and ignores init frames", () => {
+      const reason = (
+        orchestrator as unknown as {
+          extractNoResultReasonFromOutput(outputLog: string[]): string | undefined;
+        }
+      ).extractNoResultReasonFromOutput([
+        '{"type":"system","subtype":"init","apiKeySource":"env"}\n',
+        '{"type":"error","message":"Security command failed: Security process exited with code: 45"}\n',
+      ]);
+
+      expect(reason).toContain("Security command failed");
+    });
+
+    it("ignores punctuation-only fragments in no_result output parsing", () => {
+      const reason = (
+        orchestrator as unknown as {
+          extractNoResultReasonFromOutput(outputLog: string[]): string | undefined;
+        }
+      ).extractNoResultReasonFromOutput(["}\n", " \n"]);
+
+      expect(reason).toBeUndefined();
+    });
+  });
+
+  describe("preflightCheck", () => {
+    it("clears top-level and per-angle result files for review attempts", async () => {
+      await fs.mkdir(path.join(repoPath, "node_modules"), { recursive: true });
+      const invokePreflight = orchestrator as unknown as {
+        preflightCheck(
+          repoPath: string,
+          wtPath: string,
+          taskId: string,
+          baseBranch?: string,
+          reviewAngles?: Array<"security" | "performance">
+        ): Promise<void>;
+      };
+
+      await invokePreflight.preflightCheck(repoPath, repoPath, "task-preflight", "main", [
+        "security",
+        "performance",
+      ]);
+
+      expect(mockClearResult).toHaveBeenNthCalledWith(1, repoPath, "task-preflight");
+      expect(mockClearResult).toHaveBeenNthCalledWith(2, repoPath, "task-preflight", "security");
+      expect(mockClearResult).toHaveBeenNthCalledWith(3, repoPath, "task-preflight", "performance");
+    });
+  });
+
   describe("ensureRunning", () => {
     it("returns status with empty activeTasks when idle", async () => {
       mockTaskStoreReady.mockResolvedValue([]);

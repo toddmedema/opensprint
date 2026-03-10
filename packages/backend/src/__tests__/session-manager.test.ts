@@ -446,6 +446,53 @@ describe.skipIf(!sessionPostgresOk)("SessionManager", () => {
       expect(archived![0].outputLog.length).toBeLessThan(hugeLog.length);
       expect(archived![0].outputLog.endsWith("\n\n... [truncated]")).toBe(true);
     });
+
+    it("archives nested review-angles artifacts recursively", async () => {
+      const taskId = "task-nested";
+      const activeDir = path.join(repoPath, OPENSPRINT_PATHS.active, taskId);
+      const securityDir = path.join(activeDir, "review-angles", "security");
+      const performanceDir = path.join(activeDir, "review-angles", "performance");
+      await fs.mkdir(securityDir, { recursive: true });
+      await fs.mkdir(performanceDir, { recursive: true });
+      await fs.writeFile(path.join(activeDir, "agent-output.log"), "top-level log", "utf-8");
+      await fs.writeFile(path.join(securityDir, "result.json"), '{"status":"approved"}', "utf-8");
+      await fs.writeFile(
+        path.join(performanceDir, "agent-output.log"),
+        "performance angle log",
+        "utf-8"
+      );
+      await fs.writeFile(path.join(activeDir, OPENSPRINT_PATHS.heartbeat), "{}", "utf-8");
+
+      await manager.archiveSession(repoPath, taskId, 2, {
+        taskId,
+        attempt: 2,
+        agentType: "cursor",
+        agentModel: "gpt-4",
+        startedAt: "2024-01-01T00:00:00Z",
+        completedAt: "2024-01-01T00:05:00Z",
+        status: "failed",
+        outputLog: "review failed",
+        gitBranch: "opensprint/task-nested",
+        gitDiff: null,
+        testResults: null,
+        failureReason: "no_result",
+      });
+
+      const sessionDir = path.join(
+        getRuntimePath(repoPath, OPENSPRINT_PATHS.sessions),
+        `${taskId}-2`
+      );
+      await expect(
+        fs.readFile(path.join(sessionDir, "review-angles", "security", "result.json"), "utf-8")
+      ).resolves.toContain('"status":"approved"');
+      await expect(
+        fs.readFile(
+          path.join(sessionDir, "review-angles", "performance", "agent-output.log"),
+          "utf-8"
+        )
+      ).resolves.toContain("performance angle log");
+      await expect(fs.access(path.join(sessionDir, OPENSPRINT_PATHS.heartbeat))).rejects.toThrow();
+    });
   });
 
   describe("listSessions", () => {

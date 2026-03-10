@@ -1,12 +1,12 @@
 import { spawn, exec } from "child_process";
 import { readFileSync, openSync, closeSync, mkdirSync, appendFileSync } from "fs";
-import { open as fsOpen, stat as fsStat, readFile } from "fs/promises";
+import { open as fsOpen, stat as fsStat, readFile, rm as fsRm } from "fs/promises";
+import os from "os";
 import path from "path";
 import { promisify } from "util";
 import OpenAI from "openai";
 import { GoogleGenAI } from "@google/genai";
 import type { AgentConfig, ApiKeyProvider } from "@opensprint/shared";
-import { OPENSPRINT_PATHS } from "@opensprint/shared";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import {
@@ -42,6 +42,10 @@ const log = createLogger("agent-client");
 const OUTPUT_POLL_MS = 150;
 /** Poll for result.json so we can treat "wrote result but process still running" as done (e.g. Cursor) */
 const RESULT_POLL_MS = 2000;
+const CURSOR_TRANSIENT_RETRY_LIMIT = 2;
+const CURSOR_TRANSIENT_RETRY_BACKOFF_MS = 300;
+const CURSOR_SLOW_POOL_MESSAGE =
+  "Increase limits for faster responses Composer 1.5 is not available in the slow pool. Please switch to Auto.";
 
 /** ANSI codes for colorizing agent role in logs (only when stdout is a TTY) */
 const ANSI_BOLD_CYAN = "\x1b[1;96m";
@@ -213,6 +217,49 @@ function safeGeminiText(obj: { text?: string | (() => string) }): string {
  */
 function resolveCursorModel(model: string | null | undefined): string {
   return typeof model === "string" && model.trim().length > 0 ? model : "auto";
+}
+
+function isCursorSlowPoolError(output: string): boolean {
+  return /not available in the slow pool|increase limits for faster responses/i.test(output);
+}
+
+function isCursorTransientSpawnError(output: string): boolean {
+  return (
+    /security command failed[\s\S]*code:\s*45/i.test(output) ||
+    /ENOENT[\s\S]*cli-config\.json\.tmp[\s\S]*cli-config\.json/i.test(output)
+  );
+}
+
+function isCursorInitOnlyOutput(output: string): boolean {
+  const trimmed = output.trim();
+  if (!trimmed) return false;
+  const lines = trimmed
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return false;
+  return lines.every((line) => {
+    if (!line.startsWith("{")) return false;
+    try {
+      const parsed = JSON.parse(line) as { type?: string; subtype?: string };
+      return parsed.type === "system" && parsed.subtype === "init";
+    } catch {
+      return false;
+    }
+  });
+}
+
+function buildCursorTransientRetryReason(output: string): string {
+  if (/security command failed/i.test(output)) {
+    return "Cursor security helper failed";
+  }
+  if (/cli-config\.json\.tmp/i.test(output)) {
+    return "Cursor config write race detected";
+  }
+  if (isCursorInitOnlyOutput(output)) {
+    return "Cursor exited during initialization";
+  }
+  return "Cursor startup failed";
 }
 
 /** Format raw agent errors into user-friendly messages with remediation hints */
@@ -497,6 +544,9 @@ export class AgentClient {
   ): { kill: () => void; pid: number | null } {
     let innerHandle: { kill: () => void; pid: number | null } | null = null;
     let lastApiErrorKind: RotatableApiErrorKind | null = null;
+    let transientRetryCount = 0;
+    let autoModelFallbackUsed = false;
+    let lastSpawnStartedAt = 0;
     const handle: { kill: () => void; pid: number | null } = {
       get pid() {
         return innerHandle?.pid ?? null;
@@ -506,7 +556,16 @@ export class AgentClient {
       },
     };
 
+    const currentCursorConfig = (): AgentConfig =>
+      autoModelFallbackUsed ? { ...config, model: "auto" } : config;
+
+    const delay = (ms: number): Promise<void> =>
+      new Promise((resolve) => {
+        setTimeout(resolve, ms);
+      });
+
     const trySpawn = async (): Promise<void> => {
+      lastSpawnStartedAt = Date.now();
       const resolved = await getNextKey(projectId, "CURSOR_API_KEY");
       if (!resolved || !resolved.key.trim()) {
         const blockedKind = lastApiErrorKind ?? "rate_limit";
@@ -517,11 +576,13 @@ export class AgentClient {
         return;
       }
       const { key, keyId, source } = resolved;
+      const spawnConfig = currentCursorConfig();
 
       const stderrCollector = { stderr: "" };
 
       const wrappedOnExit = async (code: number | null) => {
         if (code === 0) {
+          transientRetryCount = 0;
           if (keyId !== ENV_FALLBACK_KEY_ID) {
             await clearLimitHit(projectId, "CURSOR_API_KEY", keyId, source);
           }
@@ -539,7 +600,9 @@ export class AgentClient {
           output = stderrCollector.stderr;
         }
         const apiErrorOutput = outputLogPath ? extractExplicitAgentErrors(output) : output;
-        const apiErrorKind = toRotatableApiErrorKind(apiErrorOutput);
+        const combinedOutput = [apiErrorOutput, output]
+          .filter((part) => typeof part === "string" && part.trim().length > 0)
+          .join("\n");
         if (apiErrorOutput && !output.includes("[Agent error:")) {
           onOutput(
             apiErrorOutput
@@ -549,6 +612,36 @@ export class AgentClient {
               .join("")
           );
         }
+
+        if (
+          !autoModelFallbackUsed &&
+          resolveCursorModel(config.model) !== "auto" &&
+          isCursorSlowPoolError(combinedOutput)
+        ) {
+          autoModelFallbackUsed = true;
+          transientRetryCount = 0;
+          onOutput(`[Agent error: ${CURSOR_SLOW_POOL_MESSAGE} Retrying with model auto.]\n`);
+          return trySpawn();
+        }
+
+        const elapsedMs = Date.now() - lastSpawnStartedAt;
+        const transientNoOutput =
+          elapsedMs < 5_000 &&
+          (combinedOutput.trim().length === 0 || isCursorInitOnlyOutput(combinedOutput));
+        if (
+          transientRetryCount < CURSOR_TRANSIENT_RETRY_LIMIT &&
+          (isCursorTransientSpawnError(combinedOutput) || transientNoOutput)
+        ) {
+          transientRetryCount += 1;
+          const retryReason = buildCursorTransientRetryReason(combinedOutput);
+          onOutput(
+            `[Agent error: ${retryReason}. Retrying Cursor startup (${transientRetryCount}/${CURSOR_TRANSIENT_RETRY_LIMIT}).]\n`
+          );
+          await delay(CURSOR_TRANSIENT_RETRY_BACKOFF_MS * transientRetryCount);
+          return trySpawn();
+        }
+
+        const apiErrorKind = toRotatableApiErrorKind(apiErrorOutput);
         if (apiErrorKind && keyId !== ENV_FALLBACK_KEY_ID) {
           lastApiErrorKind = apiErrorKind;
           if (apiErrorKind === "rate_limit") {
@@ -565,7 +658,7 @@ export class AgentClient {
       };
 
       innerHandle = this.doSpawnWithTaskFile(
-        config,
+        spawnConfig,
         taskFilePath,
         cwd,
         onOutput,
@@ -1093,9 +1186,22 @@ export class AgentClient {
       outputLogPath: outputLogPath ?? "(pipe)",
     });
 
+    let isolatedCursorConfigDir: string | null = null;
+    if (config.type === "cursor" && cursorEnvOverrides?.CURSOR_API_KEY) {
+      const baseConfigDir =
+        process.env.CURSOR_CONFIG_DIR?.trim() || path.join(os.tmpdir(), "opensprint-cursor-config");
+      const runConfigToken = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      isolatedCursorConfigDir = path.join(baseConfigDir, runConfigToken);
+      mkdirSync(isolatedCursorConfigDir, { recursive: true });
+    }
+
     const spawnEnv =
       config.type === "cursor" && cursorEnvOverrides
-        ? { ...process.env, ...cursorEnvOverrides }
+        ? {
+            ...process.env,
+            ...cursorEnvOverrides,
+            ...(isolatedCursorConfigDir ? { CURSOR_CONFIG_DIR: isolatedCursorConfigDir } : {}),
+          }
         : { ...process.env };
 
     const child = spawn(command, args, {
@@ -1151,6 +1257,9 @@ export class AgentClient {
         clearTimeout(sigkillAfterTermTimer);
         sigkillAfterTermTimer = null;
       }
+      if (isolatedCursorConfigDir) {
+        void fsRm(isolatedCursorConfigDir, { recursive: true, force: true }).catch(() => {});
+      }
     };
 
     /** Terminal statuses in result.json: agent has finished and reported outcome. */
@@ -1158,9 +1267,8 @@ export class AgentClient {
 
     const checkResultAndMaybeExit = async (): Promise<void> => {
       if (!outputLogPath || !cwd) return;
-      const taskDir = path.dirname(outputLogPath);
-      const taskId = path.basename(taskDir);
-      const resultPath = path.join(cwd, OPENSPRINT_PATHS.active, taskId, "result.json");
+      // Result path is always a sibling of the prompt/task file (general or angle-specific).
+      const resultPath = path.join(path.dirname(taskFilePath), "result.json");
       try {
         const raw = await readFile(resultPath, "utf-8");
         const parsed = JSON.parse(raw) as { status?: string };
@@ -1171,7 +1279,7 @@ export class AgentClient {
             resultPollTimer = null;
           }
           log.info("result.json present with terminal status; terminating agent process", {
-            taskId,
+            resultPath,
             status: parsed.status,
           });
           exitNotified = true;

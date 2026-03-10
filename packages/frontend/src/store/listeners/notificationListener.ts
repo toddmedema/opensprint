@@ -121,7 +121,10 @@ notificationListener.startListening({
     // Connection errors → single global banner, no per-request notifications.
     // Debounce re-show to avoid duplicate toasts when connection flickers.
     if (isConnectionError(error ?? { message: msg })) {
-      const lastRecovered = listenerApi.getState().connection?.lastRecoveredAt;
+      const state = listenerApi.getState() as {
+        connection?: { lastRecoveredAt?: number | null };
+      };
+      const lastRecovered = state.connection?.lastRecoveredAt;
       const RECOVERED_DEBOUNCE_MS = 2000;
       if (lastRecovered != null && Date.now() - lastRecovered < RECOVERED_DEBOUNCE_MS) return;
       listenerApi.dispatch(setConnectionError(true));

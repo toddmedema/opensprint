@@ -505,84 +505,132 @@ export class PhaseExecutorService {
 
       if (useAngleSpecificReview) {
         slot.reviewAgents = new Map();
-        await Promise.all(
-          reviewAngles.map(async (angle) => {
-            const angleDir = path.join(taskDir, "review-angles", angle);
-            const anglePromptPath = path.join(angleDir, "prompt.md");
-            const angleAssignment: TaskAssignmentLike = {
-              ...assignment,
-              promptPath: anglePromptPath,
-              angle,
-            };
+        const runAnglesSequentiallyForStability =
+          process.env.OPENSPRINT_SERIALIZE_CURSOR_REVIEW_ANGLES === "1" &&
+          agentConfig.type === "cursor" &&
+          reviewAngles.length > 1;
+        const pendingAngles = runAnglesSequentiallyForStability ? [...reviewAngles] : [];
 
-            await fs.mkdir(angleDir, { recursive: true });
-            await writeJsonAtomic(
-              path.join(angleDir, OPENSPRINT_PATHS.assignment),
-              angleAssignment
-            );
+        const spawnAngleReviewer = async (angle: ReviewAngle): Promise<void> => {
+          const angleDir = path.join(taskDir, "review-angles", angle);
+          const anglePromptPath = path.join(angleDir, "prompt.md");
+          const angleAssignment: TaskAssignmentLike = {
+            ...assignment,
+            promptPath: anglePromptPath,
+            angle,
+          };
 
-            const mainRepoAngleDir = path.join(mainRepoActiveDirReview, "review-angles", angle);
-            await fs.mkdir(mainRepoAngleDir, { recursive: true });
-            await writeJsonAtomic(
-              path.join(mainRepoAngleDir, OPENSPRINT_PATHS.assignment),
-              angleAssignment
-            );
+          await fs.mkdir(angleDir, { recursive: true });
+          await writeJsonAtomic(
+            path.join(angleDir, OPENSPRINT_PATHS.assignment),
+            angleAssignment
+          );
 
-            const angleAgent = this.createAgentRunState(angleAssignment.createdAt);
-            const angleTimers = new TimerRegistry();
-            slot.reviewAgents?.set(angle, { angle, agent: angleAgent, timers: angleTimers });
+          const mainRepoAngleDir = path.join(mainRepoActiveDirReview, "review-angles", angle);
+          await fs.mkdir(mainRepoAngleDir, { recursive: true });
+          await writeJsonAtomic(
+            path.join(mainRepoAngleDir, OPENSPRINT_PATHS.assignment),
+            angleAssignment
+          );
 
-            const angleOutputLogPath = path.join(
+          const angleAgent = this.createAgentRunState(angleAssignment.createdAt);
+          const angleTimers = new TimerRegistry();
+          slot.reviewAgents?.set(angle, { angle, agent: angleAgent, timers: angleTimers });
+
+          const angleOutputLogPath = path.join(
+            wtPath,
+            OPENSPRINT_PATHS.active,
+            task.id,
+            "review-angles",
+            angle,
+            OPENSPRINT_PATHS.agentOutputLog
+          );
+          const angleHeartbeatSubpath = `review-angles/${angle}`;
+
+          this.host.lifecycleManager.run(
+            {
+              projectId,
+              taskId: task.id,
+              repoPath,
+              phase: "review",
               wtPath,
-              OPENSPRINT_PATHS.active,
-              task.id,
-              "review-angles",
-              angle,
-              OPENSPRINT_PATHS.agentOutputLog
-            );
-            const angleHeartbeatSubpath = `review-angles/${angle}`;
+              branchName,
+              promptPath: anglePromptPath,
+              agentConfig,
+              attempt: slot.attempt,
+              agentLabel: slot.taskTitle ?? task.id,
+              role: "reviewer",
+              onDone: async (code) => {
+                await this.callbacks.handleReviewDone(
+                  projectId,
+                  repoPath,
+                  task,
+                  branchName,
+                  code,
+                  angle
+                );
 
-            this.host.lifecycleManager.run(
-              {
-                projectId,
-                taskId: task.id,
-                repoPath,
-                phase: "review",
-                wtPath,
-                branchName,
-                promptPath: anglePromptPath,
-                agentConfig,
-                attempt: slot.attempt,
-                agentLabel: slot.taskTitle ?? task.id,
-                role: "reviewer",
-                onDone: (code) =>
-                  this.callbacks.handleReviewDone(
+                if (!runAnglesSequentiallyForStability) return;
+
+                const currentSlot = this.host.getState(projectId).slots.get(task.id);
+                if (!currentSlot) {
+                  return;
+                }
+                const nextAngle = pendingAngles.shift();
+                if (!nextAngle) return;
+
+                try {
+                  await spawnAngleReviewer(nextAngle);
+                } catch (error) {
+                  log.error("Failed to spawn serialized review angle", {
+                    projectId,
+                    taskId: task.id,
+                    angle: nextAngle,
+                    error,
+                  });
+                  await this.callbacks.handleTaskFailure(
                     projectId,
                     repoPath,
                     task,
                     branchName,
-                    code,
-                    angle
-                  ),
-                onStateChange: this.host.onAgentStateChange(projectId),
-                outputLogPath: angleOutputLogPath,
-                heartbeatSubpath: angleHeartbeatSubpath,
+                    `Failed to spawn review angle '${nextAngle}': ${String(error)}`,
+                    null,
+                    "agent_crash"
+                  );
+                }
               },
-              angleAgent,
-              angleTimers
-            );
+              onStateChange: this.host.onAgentStateChange(projectId),
+              outputLogPath: angleOutputLogPath,
+              heartbeatSubpath: angleHeartbeatSubpath,
+            },
+            angleAgent,
+            angleTimers
+          );
 
-            eventLogService
-              .append(repoPath, {
-                timestamp: new Date().toISOString(),
-                projectId,
-                taskId: task.id,
-                event: "agent.spawned",
-                data: { phase: "review", model: agentConfig.model, attempt: slot.attempt, angle },
-              })
-              .catch(() => {});
-          })
-        );
+          eventLogService
+            .append(repoPath, {
+              timestamp: new Date().toISOString(),
+              projectId,
+              taskId: task.id,
+              event: "agent.spawned",
+              data: { phase: "review", model: agentConfig.model, attempt: slot.attempt, angle },
+            })
+            .catch(() => {});
+        };
+
+        if (runAnglesSequentiallyForStability) {
+          log.info("Running cursor review angles sequentially for stability", {
+            projectId,
+            taskId: task.id,
+            reviewAngles,
+          });
+          const firstAngle = pendingAngles.shift();
+          if (firstAngle) {
+            await spawnAngleReviewer(firstAngle);
+          }
+        } else {
+          await Promise.all(reviewAngles.map(async (angle) => spawnAngleReviewer(angle)));
+        }
       } else {
         slot.reviewAgents = undefined;
         this.host.lifecycleManager.run(
