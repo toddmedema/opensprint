@@ -213,6 +213,7 @@ const FULL_TRUNCATE_TABLES = [
   "orchestrator_counters",
   "deployments",
   "plans",
+  "plan_versions",
   "auditor_runs",
   "open_questions",
   "prd_metadata",
@@ -259,6 +260,7 @@ export async function resetProjectScopedTestData(
   await client.execute("DELETE FROM orchestrator_counters WHERE project_id = $1", [projectId]);
   await client.execute("DELETE FROM deployments WHERE project_id = $1", [projectId]);
   await client.execute("DELETE FROM plans WHERE project_id = $1", [projectId]);
+  await client.execute("DELETE FROM plan_versions WHERE project_id = $1", [projectId]);
   await client.execute("DELETE FROM auditor_runs WHERE project_id = $1", [projectId]);
   await client.execute("DELETE FROM open_questions WHERE project_id = $1", [projectId]);
   await client.execute("DELETE FROM prd_metadata WHERE project_id = $1", [projectId]);
