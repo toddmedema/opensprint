@@ -1853,7 +1853,7 @@ describe("EvalPhase feedback form", () => {
         expect(screen.getByRole("option", { name: "Resolved (2)" })).toBeInTheDocument();
       });
 
-      it("plan review card shows Plan badge, plan id, summary and Mark complete with aria-label", async () => {
+      it("plan review card shows Plan badge, summary, link left, Mark complete and Reply right (same layout as Feedback card)", async () => {
         const planInReview = createMockPlan({ planId: "my-feature-plan", status: "in_review" });
         const queryClient = createQueryClientWithFeedbackAndPlans([], [planInReview]);
         const store = createStore({ evalFeedback: [] });
@@ -1869,13 +1869,16 @@ describe("EvalPhase feedback form", () => {
         await waitFor(() => expect(screen.getByTestId("feedback-status-filter")).toBeInTheDocument());
 
         expect(screen.getByTestId("plan-review-card-my-feature-plan")).toBeInTheDocument();
+        expect(screen.getByTestId("plan-review-card-actions-row")).toBeInTheDocument();
+        expect(screen.getByTestId("plan-review-card-plan-link")).toBeInTheDocument();
         expect(screen.getByText("Plan")).toBeInTheDocument();
-        expect(screen.getByText("My Feature Plan")).toBeInTheDocument();
-        expect(screen.getByText("my-feature-plan")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: /View plan My Feature Plan/i })).toBeInTheDocument();
         expect(screen.getByText("All 3 tasks done")).toBeInTheDocument();
         const markCompleteBtn = screen.getByRole("button", { name: /Mark plan complete: My Feature Plan/i });
         expect(markCompleteBtn).toBeInTheDocument();
         expect(markCompleteBtn).toHaveAttribute("aria-label", "Mark plan complete: My Feature Plan");
+        expect(screen.getByRole("button", { name: /Reply to plan My Feature Plan/i })).toBeInTheDocument();
+        expect(screen.getByTestId("plan-reply-button")).toBeInTheDocument();
       });
 
       it("combined review list has role list and aria-label for accessibility", async () => {

@@ -1023,7 +1023,7 @@ const FeedbackCard = memo(
   }
 );
 
-/** Plan review card for Evaluate: in_review shows "Mark complete", complete shows done state. Same card style as feedback cards with Plan badge. */
+/** Plan review card for Evaluate: same layout as Feedback card — embedded plan link left, Resolve (Mark complete) and Reply right. */
 function PlanReviewCard({
   plan,
   projectId,
@@ -1052,6 +1052,7 @@ function PlanReviewCard({
       data-testid={`plan-review-card-${planId}`}
       data-plan-status={plan.status}
     >
+      {/* Content: badge + summary (same pattern as Feedback card content) */}
       <div className="mb-2 overflow-hidden">
         <span
           className="float-right ml-2 mb-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-theme-border-subtle text-theme-muted flex-shrink-0"
@@ -1059,11 +1060,9 @@ function PlanReviewCard({
         >
           Plan
         </span>
-        <p className="text-sm text-theme-text font-medium min-w-0">{title}</p>
-        <p className="text-xs text-theme-muted font-mono mt-0.5">{planId}</p>
+        <p className="text-sm text-theme-text min-w-0">{summary}</p>
       </div>
-      <p className="text-xs text-theme-muted mb-2">{summary}</p>
-      {/* Same layout as Feedback card: link left, actions (Resolve-equivalent + Reply) right */}
+      {/* Same layout as Feedback card: embedded link left, Resolve + Reply right */}
       <div
         className="mt-1 flex flex-wrap items-center justify-between gap-2"
         data-testid="plan-review-card-actions-row"
@@ -1107,10 +1106,10 @@ function PlanReviewCard({
               className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-theme-muted hover:bg-theme-border-subtle hover:text-theme-text transition-colors"
               title="Reply to plan (chat with planning agent)"
               aria-label={`Reply to plan ${title}`}
-              data-testid="plan-reply-to-plan-button"
+              data-testid="plan-reply-button"
             >
               <ReplyIcon className="w-4 h-4" />
-              Reply to plan
+              Reply
             </button>
           )}
         </div>
