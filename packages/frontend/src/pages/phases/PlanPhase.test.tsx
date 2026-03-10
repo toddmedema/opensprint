@@ -1666,6 +1666,38 @@ describe("PlanPhase executePlan thunk", () => {
     });
   });
 
+  it("dispatches executePlan with version_number when Execute vN is clicked", async () => {
+    mockGetCrossEpicDependencies.mockResolvedValue({ prerequisitePlanIds: [] });
+    const plans = [
+      {
+        ...basePlan,
+        status: "planning" as const,
+        metadata: { ...basePlan.metadata },
+        lastExecutedVersionNumber: 1,
+      },
+    ];
+    mockPlansList.mockResolvedValue({ plans, edges: [] });
+    const store = createStore(plans);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <Provider store={store}>
+          <PlanPhase projectId="proj-1" />
+        </Provider>
+      </MemoryRouter>,
+      { wrapper: PlanPhaseWrapper }
+    );
+
+    const executeBtn = await screen.findByRole("button", { name: "Execute v1" });
+    await user.click(executeBtn);
+
+    await waitFor(() => {
+      expect(mockExecute).toHaveBeenCalledWith("proj-1", "archive-test-feature", {
+        version_number: 1,
+      });
+    });
+  });
+
   it("shows cross-epic modal and passes prerequisites when user confirms", async () => {
     mockGetCrossEpicDependencies.mockResolvedValue({
       prerequisitePlanIds: ["user-auth", "feature-base"],
@@ -1700,9 +1732,11 @@ describe("PlanPhase executePlan thunk", () => {
     await user.click(screen.getByRole("button", { name: /Proceed/ }));
 
     await waitFor(() => {
-      expect(mockExecute).toHaveBeenCalledWith("proj-1", "archive-test-feature", {
-        prerequisitePlanIds: ["user-auth", "feature-base"],
-      });
+      expect(mockExecute).toHaveBeenCalledWith(
+        "proj-1",
+        "archive-test-feature",
+        expect.objectContaining({ prerequisitePlanIds: ["user-auth", "feature-base"] })
+      );
     });
   });
 });

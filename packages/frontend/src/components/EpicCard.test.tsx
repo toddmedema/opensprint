@@ -494,8 +494,32 @@ describe("EpicCard", () => {
       />
     );
 
-    const executeButtons = screen.getAllByRole("button", { name: /^execute$/i });
+    const executeButtons = screen.getAllByRole("button", { name: /^Execute$/i });
     expect(executeButtons.find((b) => b.tagName === "BUTTON")).toBeInTheDocument();
+  });
+
+  it("shows Execute vN when plan has lastExecutedVersionNumber", () => {
+    const plan: Plan = {
+      ...basePlan,
+      status: "planning",
+      taskCount: 2,
+      lastExecutedVersionNumber: 7,
+    };
+    renderWithStore(
+      <EpicCard
+        plan={plan}
+        tasks={tasks}
+        executingPlanId={null}
+        reExecutingPlanId={null}
+        planTasksPlanIds={[]}
+        onSelect={vi.fn()}
+        onShip={vi.fn()}
+        onPlanTasks={vi.fn()}
+        onReship={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Execute v7" })).toBeInTheDocument();
   });
 
   it("calls onShip when Execute is clicked", async () => {
@@ -516,7 +540,7 @@ describe("EpicCard", () => {
       />
     );
 
-    const shipButtons = screen.getAllByRole("button", { name: /^execute$/i });
+    const shipButtons = screen.getAllByRole("button", { name: /^Execute$/i });
     await user.click(shipButtons.find((b) => b.tagName === "BUTTON")!);
     expect(onShip).toHaveBeenCalledTimes(1);
   });

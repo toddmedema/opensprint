@@ -334,6 +334,8 @@ export function EpicCard({
                     </svg>
                     Executing…
                   </>
+                ) : plan.lastExecutedVersionNumber != null ? (
+                  `Execute v${plan.lastExecutedVersionNumber}`
                 ) : (
                   "Execute"
                 )}

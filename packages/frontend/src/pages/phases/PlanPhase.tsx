@@ -497,7 +497,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
     }
   }, [reExecutingPlanId, dispatch]);
 
-  const handleShip = async (planId: string) => {
+  const handleShip = async (planId: string, versionNumber?: number) => {
     dispatch(setExecutingPlanId(planId));
     try {
       const deps = await api.plans.getCrossEpicDependencies(projectId, planId);
@@ -509,7 +509,9 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
     } catch {
       // Cross-epic deps check failed; proceed with execute
     }
-    const result = await dispatch(executePlan({ projectId, planId }));
+    const result = await dispatch(
+      executePlan({ projectId, planId, version_number: versionNumber })
+    );
     if (executePlan.fulfilled.match(result)) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
     }
@@ -519,7 +521,11 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
     if (!crossEpicModal) return;
     const { planId, prerequisitePlanIds } = crossEpicModal;
     setCrossEpicModal(null);
-    const result = await dispatch(executePlan({ projectId, planId, prerequisitePlanIds }));
+    const plan = plans.find((p) => p.metadata.planId === planId);
+    const versionNumber = plan?.lastExecutedVersionNumber;
+    const result = await dispatch(
+      executePlan({ projectId, planId, prerequisitePlanIds, version_number: versionNumber })
+    );
     if (executePlan.fulfilled.match(result)) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
     }
@@ -608,12 +614,15 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
           setCrossEpicModal({ planId, prerequisitePlanIds: deps.prerequisitePlanIds });
           break;
         }
+        const plan = plansReadyToExecute.find((p) => p.metadata.planId === planId);
+        const versionNumber = plan?.lastExecutedVersionNumber;
         const result = await dispatch(
           executePlan({
             projectId,
             planId,
             prerequisitePlanIds:
               deps.prerequisitePlanIds.length > 0 ? deps.prerequisitePlanIds : undefined,
+            version_number: versionNumber,
           })
         );
         void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
@@ -911,7 +920,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                       planTasksPlanIds={planTasksPlanIds}
                       executeError={executeError}
                       onSelect={() => handleSelectPlan(plan)}
-                      onShip={() => handleShip(plan.metadata.planId)}
+                      onShip={() => handleShip(plan.metadata.planId, plan.lastExecutedVersionNumber)}
                       onPlanTasks={() => handlePlanTasks(plan.metadata.planId)}
                       onReship={() => handleReship(plan.metadata.planId)}
                       onClearError={() => dispatch(clearExecuteError())}
