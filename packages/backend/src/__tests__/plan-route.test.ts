@@ -1262,7 +1262,7 @@ Updated description for task two.`;
       expect(prompt).toContain("Edited to v2"); // plan_new = current content
     });
 
-    it("re-execute without version_number uses last_executed_version_number for Auditor plan_old", async () => {
+    it("re-execute without version_number uses last_executed_version_number for Auditor (plan_old)", async () => {
       mockPlanningAgentInvoke.mockReset();
       mockPlanningAgentInvoke.mockImplementation((opts: { messages?: Array<{ content: string }> }) => {
         const content = opts.messages?.[0]?.content ?? "";
@@ -1279,8 +1279,8 @@ Updated description for task two.`;
       });
 
       const planBody = {
-        title: "Re-execute Last Exec Plan",
-        content: "# Re-execute Last Exec\n\n## Overview\n\nExecuted (v1).",
+        title: "Re-execute No Version Plan",
+        content: "# Re-execute No Version\n\n## Overview\n\nShipped (v1).",
         complexity: "medium",
         tasks: [
           { title: "Task A", description: "First", priority: 0, dependsOn: [] },
@@ -1299,7 +1299,7 @@ Updated description for task two.`;
       );
       await request(app)
         .put(`${API_PREFIX}/projects/${projectId}/plans/${planId}`)
-        .send({ content: "# Re-execute Last Exec\n\n## Overview\n\nEdited (v2)." });
+        .send({ content: "# Re-execute No Version\n\n## Overview\n\nEdited to v2." });
 
       const _project = await projectService.getProject(projectId);
       const allIssues = await taskStore.listAll(projectId);
@@ -1314,6 +1314,7 @@ Updated description for task two.`;
         `${API_PREFIX}/projects/${projectId}/plans/${planId}/mark-complete`
       );
 
+      // No body: backend must use last_executed_version_number for plan_old
       const reshipRes = await request(app).post(
         `${API_PREFIX}/projects/${projectId}/plans/${planId}/re-execute`
       );
@@ -1327,8 +1328,8 @@ Updated description for task two.`;
       expect(auditorCall).toBeDefined();
       const prompt = (auditorCall![0] as { messages?: Array<{ content: string }> }).messages?.[0]
         ?.content ?? "";
-      expect(prompt).toContain("Executed (v1)"); // plan_old = last_executed_version (v1)
-      expect(prompt).toContain("Edited (v2)"); // plan_new = current content
+      expect(prompt).toContain("Shipped (v1)"); // plan_old = last executed (v1) content
+      expect(prompt).toContain("Edited to v2"); // plan_new = current content
     });
   });
 

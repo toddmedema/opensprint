@@ -1582,6 +1582,52 @@ describe("PlanService createWithRetry usage", () => {
     });
   });
 
+  it("reshipPlan without options calls shipPlan with lastExecutedVersionNumber when none started", async () => {
+    mockTaskStoreCreateMany.mockResolvedValue([
+      { id: "epic-123.1", title: "Task A", type: "task" },
+      { id: "epic-123.2", title: "Task B", type: "task" },
+    ]);
+    const plan = await planService.createPlan(projectId, {
+      title: "Re-execute Last Version Plan",
+      content: "# Plan\n\nContent.",
+      complexity: "low",
+      tasks: [
+        { title: "Task A", description: "First", priority: 0, dependsOn: [] },
+        { title: "Task B", description: "Second", priority: 1, dependsOn: [] },
+      ],
+    });
+    const planId = plan.metadata.planId;
+    // Set last_executed_version_number without running full ship (avoids task generation in test)
+    const proj = mockPlanStore.get(projectId);
+    const row = proj?.get(planId);
+    expect(row).toBeDefined();
+    row!.last_executed_version_number = 1;
+    if (row!.metadata) (row!.metadata as Record<string, unknown>).reviewedAt = new Date().toISOString();
+
+    // None started: all children open; getPlan must return complete so we need to mock it
+    mockTaskStoreListAll.mockResolvedValue([
+      { id: "epic-123", status: "open", type: "epic" },
+      { id: "epic-123.1", status: "open", type: "task" },
+      { id: "epic-123.2", status: "open", type: "task" },
+    ]);
+    const planWithComplete = await planService.getPlan(projectId, planId);
+    const completePlan = {
+      ...planWithComplete,
+      status: "complete" as const,
+      lastExecutedVersionNumber: 1,
+    };
+    const getPlanSpy = vi.spyOn(planService, "getPlan").mockResolvedValue(completePlan);
+    const shipPlanSpy = vi
+      .spyOn(planService, "shipPlan")
+      .mockResolvedValue(completePlan as Awaited<ReturnType<PlanService["shipPlan"]>>);
+
+    await planService.reshipPlan(projectId, planId);
+
+    expect(shipPlanSpy).toHaveBeenCalledWith(projectId, planId, { version_number: 1 });
+    getPlanSpy.mockRestore();
+    shipPlanSpy.mockRestore();
+  });
+
   it("shipPlan routes to planTasks when no tasks (two-phase flow), then unblocks epic", async () => {
     mockInvokePlanningAgent.mockImplementation((opts: { tracking?: { label?: string } }) => {
       if (opts.tracking?.label === "Task generation") {

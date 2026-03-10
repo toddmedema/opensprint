@@ -1411,7 +1411,14 @@ export class PlanService {
         for (const child of toDelete) {
           await this.taskStore.delete(projectId, child.id);
         }
-        return this.shipPlan(projectId, planId, options);
+        // Re-execute runs last-executed version when version_number not provided
+        const shipOptions =
+          options?.version_number != null
+            ? options
+            : plan.lastExecutedVersionNumber != null
+              ? { version_number: plan.lastExecutedVersionNumber }
+              : undefined;
+        return this.shipPlan(projectId, planId, shipOptions);
       }
       if (!allDone && children.length > 0) {
         throw new AppError(
