@@ -586,8 +586,8 @@ function AgentLogContent({
       <div className="flex items-center justify-between gap-4">
         <p className="text-theme-muted text-sm">
           {projectId
-            ? "Past agent runs for this project (most recent first)."
-            : "Past agent runs across all projects (most recent first)."}
+            ? "Past agent runs for this project."
+            : "Past agent runs across all projects."}
         </p>
         <button
           type="button"

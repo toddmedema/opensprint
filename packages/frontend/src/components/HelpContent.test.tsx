@@ -101,6 +101,26 @@ describe("HelpContent", () => {
     expect(api.help.analytics).toHaveBeenCalledWith("proj-1");
   });
 
+  it("Agent log tab shows intro text without (most recent first)", async () => {
+    const user = userEvent.setup();
+    render(<HelpContent />);
+
+    await user.click(screen.getByRole("tab", { name: "Agent log" }));
+
+    expect(screen.getByText("Past agent runs across all projects.")).toBeInTheDocument();
+    expect(screen.queryByText(/most recent first/)).not.toBeInTheDocument();
+  });
+
+  it("Agent log tab shows project-scoped intro when project provided", async () => {
+    const user = userEvent.setup();
+    render(<HelpContent project={{ id: "proj-1", name: "My Project" }} />);
+
+    await user.click(screen.getByRole("tab", { name: "Agent log" }));
+
+    expect(screen.getByText("Past agent runs for this project.")).toBeInTheDocument();
+    expect(screen.queryByText(/most recent first/)).not.toBeInTheDocument();
+  });
+
   it("Agent log tab shows table and calls agentLog API", async () => {
     const user = userEvent.setup();
     vi.mocked(api.help.agentLog).mockResolvedValue([
