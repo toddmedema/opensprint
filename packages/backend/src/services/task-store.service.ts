@@ -1773,6 +1773,49 @@ export class TaskStoreService {
     return this.planStore.planGetShippedContent(projectId, planId);
   }
 
+  async planUpdateVersionNumbers(
+    projectId: string,
+    planId: string,
+    updates: { current_version_number?: number; last_executed_version_number?: number | null }
+  ): Promise<void> {
+    return this.withWriteLock(async () => {
+      await this.ensureInitialized();
+      await this.planStore.planUpdateVersionNumbers(projectId, planId, updates);
+    });
+  }
+
+  async planVersionList(projectId: string, planId: string): Promise<PlanVersionListItem[]> {
+    await this.ensureInitialized();
+    return this.planVersionStore.list(projectId, planId);
+  }
+
+  async planVersionGetByVersionNumber(
+    projectId: string,
+    planId: string,
+    versionNumber: number
+  ): Promise<PlanVersionRow> {
+    await this.ensureInitialized();
+    return this.planVersionStore.getByVersionNumber(projectId, planId, versionNumber);
+  }
+
+  async planVersionInsert(data: PlanVersionInsert): Promise<PlanVersionRow> {
+    return this.withWriteLock(async () => {
+      await this.ensureInitialized();
+      return this.planVersionStore.insert(data);
+    });
+  }
+
+  async planVersionSetExecutedVersion(
+    projectId: string,
+    planId: string,
+    versionNumber: number
+  ): Promise<void> {
+    return this.withWriteLock(async () => {
+      await this.ensureInitialized();
+      await this.planVersionStore.setExecutedVersion(projectId, planId, versionNumber);
+    });
+  }
+
   async planDelete(projectId: string, planId: string): Promise<boolean> {
     return this.withWriteLock(async () => {
       await this.ensureInitialized();
@@ -1797,14 +1840,6 @@ export class TaskStoreService {
   ): Promise<PlanVersionRow> {
     await this.ensureInitialized();
     return this.planVersionStore.getByVersionNumber(projectId, planId, versionNumber);
-  }
-
-  /** Insert a plan version (e.g. on execute or for tests). */
-  async planVersionInsert(data: PlanVersionInsert): Promise<PlanVersionRow> {
-    return this.withWriteLock(async () => {
-      await this.ensureInitialized();
-      return this.planVersionStore.insert(data);
-    });
   }
 
   // ──── Auditor run storage (final review Auditor execution records) ────

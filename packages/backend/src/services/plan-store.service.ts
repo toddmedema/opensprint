@@ -326,6 +326,49 @@ export class PlanStore {
     );
   }
 
+  /** Update current_version_number and/or last_executed_version_number. Only provided fields are updated. */
+  async planUpdateVersionNumbers(
+    projectId: string,
+    planId: string,
+    updates: { current_version_number?: number; last_executed_version_number?: number | null }
+  ): Promise<void> {
+    const existing = await this.planGet(projectId, planId);
+    if (!existing) {
+      throw new AppError(404, ErrorCodes.PLAN_NOT_FOUND, `Plan ${planId} not found`, { planId });
+    }
+    const current_version_number =
+      updates.current_version_number !== undefined
+        ? updates.current_version_number
+        : existing.current_version_number;
+    const last_executed_version_number =
+      updates.last_executed_version_number !== undefined
+        ? updates.last_executed_version_number
+        : existing.last_executed_version_number;
+
+    const db = this.getDrizzle ? await this.getDrizzle() : null;
+    if (db) {
+      const result = await db
+        .update(plansTable)
+        .set({
+          currentVersionNumber: current_version_number,
+          lastExecutedVersionNumber: last_executed_version_number,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(and(eq(plansTable.projectId, projectId), eq(plansTable.planId, planId)));
+      if (result.rowCount === 0) {
+        throw new AppError(404, ErrorCodes.PLAN_NOT_FOUND, `Plan ${planId} not found`, { planId });
+      }
+      return;
+    }
+    const client = this.getClient();
+    await client.execute(
+      toPgParams(
+        "UPDATE plans SET current_version_number = ?, last_executed_version_number = ?, updated_at = ? WHERE project_id = ? AND plan_id = ?"
+      ),
+      [current_version_number, last_executed_version_number, new Date().toISOString(), projectId, planId]
+    );
+  }
+
   async planSetShippedContent(
     projectId: string,
     planId: string,

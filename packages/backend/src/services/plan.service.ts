@@ -1246,11 +1246,65 @@ export class PlanService {
       }
     }
 
+    // Before unblocking: persist current plan as a version (new if content changed), mark it executed, set last_executed_version_number
+    const versions = await this.taskStore.planVersionList(projectId, planId);
+    const latest = versions[0];
+    let versionToExecute: number;
+    let versionContent: string;
+
+    if (latest) {
+      const fullLatest = await this.taskStore.planVersionGetByVersionNumber(
+        projectId,
+        planId,
+        latest.version_number
+      );
+      if (fullLatest.content === plan.content) {
+        versionToExecute = latest.version_number;
+        versionContent = plan.content;
+      } else {
+        const nextVersion = latest.version_number + 1;
+        await this.taskStore.planVersionInsert({
+          project_id: projectId,
+          plan_id: planId,
+          version_number: nextVersion,
+          title: getEpicTitleFromPlanContent(plan.content, planId) || null,
+          content: plan.content,
+          metadata: JSON.stringify(plan.metadata),
+          is_executed_version: false,
+        });
+        await this.taskStore.planUpdateVersionNumbers(projectId, planId, {
+          current_version_number: nextVersion,
+        });
+        versionToExecute = nextVersion;
+        versionContent = plan.content;
+      }
+    } else {
+      await this.taskStore.planVersionInsert({
+        project_id: projectId,
+        plan_id: planId,
+        version_number: 1,
+        title: getEpicTitleFromPlanContent(plan.content, planId) || null,
+        content: plan.content,
+        metadata: JSON.stringify(plan.metadata),
+        is_executed_version: false,
+      });
+      await this.taskStore.planUpdateVersionNumbers(projectId, planId, {
+        current_version_number: 1,
+      });
+      versionToExecute = 1;
+      versionContent = plan.content;
+    }
+
+    await this.taskStore.planVersionSetExecutedVersion(projectId, planId, versionToExecute);
+    await this.taskStore.planUpdateVersionNumbers(projectId, planId, {
+      last_executed_version_number: versionToExecute,
+    });
+
     // Unblock epic (Execute!) — tasks become eligible per their own deps
     await this.taskStore.update(projectId, epicId, { status: "open" });
 
-    // Save plan content for next Re-execute (plan_old = this content)
-    await this.taskStore.planSetShippedContent(projectId, planId, plan.content);
+    // Save plan content for next Re-execute (plan_old = this content); use version content
+    await this.taskStore.planSetShippedContent(projectId, planId, versionContent);
 
     // Update metadata
     plan.metadata.shippedAt = new Date().toISOString();
@@ -1265,7 +1319,7 @@ export class PlanService {
       await this.chatService.syncPrdFromPlanShip(
         projectId,
         planId,
-        plan.content,
+        versionContent,
         plan.metadata.complexity
       );
     } catch (err) {

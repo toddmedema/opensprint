@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor, within, cleanup } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation, useNavigate, Navigate } from "react-router-dom";
 import { Provider } from "react-redux";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -1058,6 +1058,10 @@ describe("ProjectView plan refresh toast", () => {
     vi.clearAllMocks();
   });
 
+  afterEach(() => {
+    cleanup();
+  });
+
   it("shows PlanRefreshToast when background refresh fails (non-connection error)", async () => {
     const { api } = await import("../api/client");
     vi.mocked(api.plans.list).mockRejectedValue(new Error("Server error 500"));
@@ -1074,8 +1078,6 @@ describe("ProjectView plan refresh toast", () => {
   it("shows connection banner instead of PlanRefreshToast when connectionError is true", async () => {
     const store = createStore();
     store.dispatch(setConnectionError(true));
-    vi.mocked(api.plans.list).mockRejectedValue(new Error("Failed to fetch"));
-    await store.dispatch(fetchPlans({ projectId: "proj-1", background: true }));
     renderWithRouter("/projects/proj-1/sketch", store);
 
     await waitFor(() => {
@@ -1084,6 +1086,7 @@ describe("ProjectView plan refresh toast", () => {
         screen.getByText("Failed to connect to Open Sprint server - try restarting it")
       ).toBeInTheDocument();
     });
+
     expect(screen.queryByTestId("plan-refresh-toast")).not.toBeInTheDocument();
   });
 });

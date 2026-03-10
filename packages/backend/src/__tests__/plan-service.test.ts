@@ -160,6 +160,128 @@ const mockPlanGetShippedContent = vi
     const row = proj?.get(planId);
     return row?.shipped_content ?? null;
   });
+
+/** In-memory plan versions for shipPlan versioning tests. Key = `${projectId}:${planId}` */
+const mockPlanVersionsByKey = new Map<
+  string,
+  Array<{
+    version_number: number;
+    title: string | null;
+    content: string;
+    metadata: string | null;
+    is_executed_version: boolean;
+  }>
+>();
+
+const mockPlanVersionList = vi.fn().mockImplementation(async (projectId: string, planId: string) => {
+  const key = `${projectId}:${planId}`;
+  const list = mockPlanVersionsByKey.get(key) ?? [];
+  return list
+    .slice()
+    .sort((a, b) => b.version_number - a.version_number)
+    .map((v) => ({
+      id: v.version_number,
+      project_id: projectId,
+      plan_id: planId,
+      version_number: v.version_number,
+      title: v.title,
+      created_at: new Date().toISOString(),
+      is_executed_version: v.is_executed_version,
+    }));
+});
+
+const mockPlanVersionGetByVersionNumber = vi
+  .fn()
+  .mockImplementation(
+    async (
+      projectId: string,
+      planId: string,
+      versionNumber: number
+    ): Promise<{
+      id: number;
+      project_id: string;
+      plan_id: string;
+      version_number: number;
+      title: string | null;
+      content: string;
+      metadata: string | null;
+      created_at: string;
+      is_executed_version: boolean;
+    }> => {
+      const key = `${projectId}:${planId}`;
+      const list = mockPlanVersionsByKey.get(key) ?? [];
+      const v = list.find((x) => x.version_number === versionNumber);
+      if (!v) throw new Error(`Plan version ${versionNumber} not found`);
+      return {
+        id: versionNumber,
+        project_id: projectId,
+        plan_id: planId,
+        version_number: v.version_number,
+        title: v.title,
+        content: v.content,
+        metadata: v.metadata,
+        created_at: new Date().toISOString(),
+        is_executed_version: v.is_executed_version,
+      };
+    }
+  );
+
+const mockPlanVersionInsert = vi.fn().mockImplementation(async (data: {
+  project_id: string;
+  plan_id: string;
+  version_number: number;
+  title?: string | null;
+  content: string;
+  metadata?: string | null;
+  is_executed_version?: boolean;
+}) => {
+  const key = `${data.project_id}:${data.plan_id}`;
+  let list = mockPlanVersionsByKey.get(key);
+  if (!list) {
+    list = [];
+    mockPlanVersionsByKey.set(key, list);
+  }
+  list.push({
+    version_number: data.version_number,
+    title: data.title ?? null,
+    content: data.content,
+    metadata: data.metadata ?? null,
+    is_executed_version: data.is_executed_version ?? false,
+  });
+  return {
+    id: data.version_number,
+    project_id: data.project_id,
+    plan_id: data.plan_id,
+    version_number: data.version_number,
+    title: data.title ?? null,
+    content: data.content,
+    metadata: data.metadata ?? null,
+    created_at: new Date().toISOString(),
+    is_executed_version: data.is_executed_version ?? false,
+  };
+});
+
+const mockPlanVersionSetExecutedVersion = vi.fn().mockResolvedValue(undefined);
+
+const mockPlanUpdateVersionNumbers = vi
+  .fn()
+  .mockImplementation(
+    async (
+      projectId: string,
+      planId: string,
+      updates: { current_version_number?: number; last_executed_version_number?: number | null }
+    ) => {
+      const proj = mockPlanStore.get(projectId);
+      const row = proj?.get(planId);
+      if (row) {
+        if (updates.current_version_number !== undefined)
+          row.current_version_number = updates.current_version_number;
+        if (updates.last_executed_version_number !== undefined)
+          row.last_executed_version_number = updates.last_executed_version_number;
+      }
+    }
+  );
+
 const mockPlanGetByEpicId = vi
   .fn()
   .mockImplementation(async (projectId: string, epicId: string) => {
@@ -201,6 +323,11 @@ vi.mock("../services/task-store.service.js", () => {
     planUpdateMetadata: (...args: unknown[]) => mockPlanUpdateMetadata(...args),
     planSetShippedContent: (...args: unknown[]) => mockPlanSetShippedContent(...args),
     planGetShippedContent: (...args: unknown[]) => mockPlanGetShippedContent(...args),
+    planVersionList: (...args: unknown[]) => mockPlanVersionList(...args),
+    planVersionGetByVersionNumber: (...args: unknown[]) => mockPlanVersionGetByVersionNumber(...args),
+    planVersionInsert: (...args: unknown[]) => mockPlanVersionInsert(...args),
+    planVersionSetExecutedVersion: (...args: unknown[]) => mockPlanVersionSetExecutedVersion(...args),
+    planUpdateVersionNumbers: (...args: unknown[]) => mockPlanUpdateVersionNumbers(...args),
     show: (...args: unknown[]) => mockTaskStoreShow(...args),
     init: vi.fn().mockResolvedValue(undefined),
     syncForPush: vi.fn().mockResolvedValue(undefined),
@@ -242,6 +369,7 @@ describe("PlanService createWithRetry usage", () => {
     vi.clearAllMocks();
     mockPlanStore.clear();
     mockPlanVersionsStore.clear();
+    mockPlanVersionsByKey.clear();
     mockInvokePlanningAgent.mockResolvedValue({
       content: JSON.stringify({ complexity: "medium" }),
     });
@@ -483,6 +611,165 @@ describe("PlanService createWithRetry usage", () => {
       projectId,
       "epic-123",
       expect.objectContaining({ status: "open" })
+    );
+  });
+
+  it("shipPlan first Execute creates v1 and sets last_executed_version_number", async () => {
+    mockTaskStoreCreateMany.mockResolvedValue([
+      { id: "epic-123.1", title: "Task A", type: "task" },
+      { id: "epic-123.2", title: "Task B", type: "task" },
+    ]);
+    mockTaskStoreAddDependencies.mockResolvedValue(undefined);
+    mockTaskStoreListAll.mockResolvedValue([
+      { id: "epic-123", status: "blocked", type: "epic" },
+      { id: "epic-123.1", status: "open", type: "task" },
+      { id: "epic-123.2", status: "open", type: "task" },
+    ]);
+
+    const plan = await planService.createPlan(projectId, {
+      title: "Versioned Plan",
+      content: "# Versioned Plan\n\n## Overview\n\nFirst version.",
+      complexity: "low",
+      tasks: [
+        { title: "Task A", description: "First", priority: 0, dependsOn: [] },
+        { title: "Task B", description: "Second", priority: 1, dependsOn: ["Task A"] },
+      ],
+    });
+    const planId = plan.metadata.planId;
+
+    await planService.shipPlan(projectId, planId);
+
+    expect(mockPlanVersionInsert).toHaveBeenCalledTimes(1);
+    expect(mockPlanVersionInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        project_id: projectId,
+        plan_id: planId,
+        version_number: 1,
+        content: "# Versioned Plan\n\n## Overview\n\nFirst version.",
+      })
+    );
+    expect(mockPlanUpdateVersionNumbers).toHaveBeenCalledWith(
+      projectId,
+      planId,
+      expect.objectContaining({ current_version_number: 1 })
+    );
+    expect(mockPlanUpdateVersionNumbers).toHaveBeenCalledWith(
+      projectId,
+      planId,
+      expect.objectContaining({ last_executed_version_number: 1 })
+    );
+    expect(mockPlanVersionSetExecutedVersion).toHaveBeenCalledWith(projectId, planId, 1);
+    expect(mockPlanSetShippedContent).toHaveBeenCalledWith(
+      projectId,
+      planId,
+      "# Versioned Plan\n\n## Overview\n\nFirst version."
+    );
+  });
+
+  it("shipPlan after edit creates new version (v2)", async () => {
+    mockTaskStoreCreateMany.mockResolvedValue([
+      { id: "epic-123.1", title: "Task A", type: "task" },
+      { id: "epic-123.2", title: "Task B", type: "task" },
+    ]);
+    mockTaskStoreAddDependencies.mockResolvedValue(undefined);
+    mockTaskStoreListAll.mockResolvedValue([
+      { id: "epic-123", status: "blocked", type: "epic" },
+      { id: "epic-123.1", status: "open", type: "task" },
+      { id: "epic-123.2", status: "open", type: "task" },
+    ]);
+
+    const plan = await planService.createPlan(projectId, {
+      title: "Edit Then Execute",
+      content: "# Edit Then Execute\n\n## Overview\n\nOriginal.",
+      complexity: "low",
+      tasks: [
+        { title: "Task A", description: "First", priority: 0, dependsOn: [] },
+        { title: "Task B", description: "Second", priority: 1, dependsOn: ["Task A"] },
+      ],
+    });
+    const planId = plan.metadata.planId;
+
+    await planService.shipPlan(projectId, planId);
+    expect(mockPlanVersionInsert).toHaveBeenCalledTimes(1);
+    expect(mockPlanVersionInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ version_number: 1, content: "# Edit Then Execute\n\n## Overview\n\nOriginal." })
+    );
+
+    mockPlanVersionInsert.mockClear();
+    mockPlanUpdateVersionNumbers.mockClear();
+
+    // Simulate user editing plan content
+    const proj = mockPlanStore.get(projectId);
+    const row = proj?.get(planId);
+    expect(row).toBeDefined();
+    row!.content = "# Edit Then Execute\n\n## Overview\n\nEdited content.";
+
+    await planService.shipPlan(projectId, planId);
+
+    expect(mockPlanVersionInsert).toHaveBeenCalledTimes(1);
+    expect(mockPlanVersionInsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        project_id: projectId,
+        plan_id: planId,
+        version_number: 2,
+        content: "# Edit Then Execute\n\n## Overview\n\nEdited content.",
+      })
+    );
+    expect(mockPlanUpdateVersionNumbers).toHaveBeenCalledWith(
+      projectId,
+      planId,
+      expect.objectContaining({ current_version_number: 2 })
+    );
+    expect(mockPlanUpdateVersionNumbers).toHaveBeenCalledWith(
+      projectId,
+      planId,
+      expect.objectContaining({ last_executed_version_number: 2 })
+    );
+    expect(mockPlanVersionSetExecutedVersion).toHaveBeenCalledWith(projectId, planId, 2);
+    expect(mockPlanSetShippedContent).toHaveBeenCalledWith(
+      projectId,
+      planId,
+      "# Edit Then Execute\n\n## Overview\n\nEdited content."
+    );
+  });
+
+  it("shipPlan when content unchanged does not create new version (reuses current)", async () => {
+    mockTaskStoreCreateMany.mockResolvedValue([
+      { id: "epic-123.1", title: "Task A", type: "task" },
+      { id: "epic-123.2", title: "Task B", type: "task" },
+    ]);
+    mockTaskStoreAddDependencies.mockResolvedValue(undefined);
+    mockTaskStoreListAll.mockResolvedValue([
+      { id: "epic-123", status: "blocked", type: "epic" },
+      { id: "epic-123.1", status: "open", type: "task" },
+      { id: "epic-123.2", status: "open", type: "task" },
+    ]);
+
+    const plan = await planService.createPlan(projectId, {
+      title: "Same Content Plan",
+      content: "# Same Content\n\n## Overview\n\nUnchanged.",
+      complexity: "low",
+      tasks: [
+        { title: "Task A", description: "First", priority: 0, dependsOn: [] },
+        { title: "Task B", description: "Second", priority: 1, dependsOn: ["Task A"] },
+      ],
+    });
+    const planId = plan.metadata.planId;
+
+    await planService.shipPlan(projectId, planId);
+    expect(mockPlanVersionInsert).toHaveBeenCalledTimes(1);
+    mockPlanVersionInsert.mockClear();
+    mockPlanUpdateVersionNumbers.mockClear();
+
+    // Second ship without editing content: should NOT insert a new version
+    await planService.shipPlan(projectId, planId);
+
+    expect(mockPlanVersionInsert).not.toHaveBeenCalled();
+    expect(mockPlanVersionSetExecutedVersion).toHaveBeenCalledWith(projectId, planId, 1);
+    expect(mockPlanUpdateVersionNumbers).toHaveBeenCalledWith(
+      projectId,
+      planId,
+      expect.objectContaining({ last_executed_version_number: 1 })
     );
   });
 
