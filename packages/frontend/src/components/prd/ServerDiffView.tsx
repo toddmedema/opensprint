@@ -2,9 +2,16 @@
  * Server diff view — renders API diff format (lines with type, text, line numbers).
  * Used by HIL approval (proposed-diff) and Sketch version list (version diff).
  * Does not duplicate PrdDiffView; consumes the backend/API response format.
+ *
+ * Large-diff performance: When the diff has more than INITIAL_DIFF_LINE_CAP lines,
+ * only the first N lines are rendered initially with a "Show more" control to expand.
+ * This keeps the DOM and initial render fast for very large SPEC.md diffs. Full
+ * virtualization (e.g. windowing) is deferred for scope.
  */
-
 import { useCallback, useEffect, useRef, useState } from "react";
+
+/** Max lines rendered initially for large diffs; expand via "Show more". Exported for tests. */
+export const INITIAL_DIFF_LINE_CAP = 500;
 
 /** Single line in the server diff (API format) */
 export interface ServerDiffLine {
@@ -42,12 +49,17 @@ export function ServerDiffView({
 }: ServerDiffViewProps) {
   const { lines, summary } = diff;
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const lineRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  const isCapped = lines.length > INITIAL_DIFF_LINE_CAP && !expanded;
+  const visibleLines = isCapped ? lines.slice(0, INITIAL_DIFF_LINE_CAP) : lines;
+  const hiddenCount = lines.length - visibleLines.length;
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (lines.length === 0) return;
-      const maxIndex = lines.length - 1;
+      if (visibleLines.length === 0) return;
+      const maxIndex = visibleLines.length - 1;
       if (e.key === "ArrowDown") {
         e.preventDefault();
         setFocusedIndex((i) => (i === null ? 0 : Math.min(i + 1, maxIndex)));
@@ -62,7 +74,7 @@ export function ServerDiffView({
         setFocusedIndex(maxIndex);
       }
     },
-    [lines.length]
+    [visibleLines.length]
   );
 
   useEffect(() => {
@@ -110,8 +122,9 @@ export function ServerDiffView({
         {lines.length === 0 ? (
           <div className="p-3 text-theme-muted" data-testid="server-diff-no-changes">No changes</div>
         ) : (
+          <>
           <pre className="m-0 p-0 whitespace-pre-wrap break-words">
-            {lines.map((line, i) => {
+            {visibleLines.map((line, i) => {
               const isAdd = line.type === "add";
               const isRemove = line.type === "remove";
               const bg = isAdd
@@ -160,6 +173,19 @@ export function ServerDiffView({
               );
             })}
           </pre>
+          {isCapped && (
+            <div className="px-3 py-2 border-t border-theme-border bg-theme-surface-muted">
+              <button
+                type="button"
+                onClick={() => setExpanded(true)}
+                className="text-sm text-theme-accent hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-theme-ring rounded"
+                data-testid="server-diff-show-more"
+              >
+                Show more ({hiddenCount} more line{hiddenCount !== 1 ? "s" : ""})
+              </button>
+            </div>
+          )}
+          </>
         )}
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ServerDiffView } from "./ServerDiffView";
+import { ServerDiffView, INITIAL_DIFF_LINE_CAP } from "./ServerDiffView";
 
 const mockDiff = {
   lines: [
@@ -118,5 +118,43 @@ describe("ServerDiffView", () => {
     render(<ServerDiffView diff={diffNoSummary} />);
     expect(screen.getByTestId("server-diff-view")).toBeInTheDocument();
     expect(screen.queryByText(/\+1 −1/)).not.toBeInTheDocument();
+  });
+
+  it("does not show Show more for normal-sized diff (under cap)", () => {
+    render(<ServerDiffView diff={mockDiff} />);
+    expect(screen.queryByTestId("server-diff-show-more")).not.toBeInTheDocument();
+    expect(screen.getByText("Last line")).toBeInTheDocument();
+  });
+
+  it("caps very large diff initially and shows Show more button", () => {
+    const manyLines = Array.from({ length: INITIAL_DIFF_LINE_CAP + 10 }, (_, i) => ({
+      type: "context" as const,
+      text: `Line ${i + 1}`,
+      oldLineNumber: i + 1,
+      newLineNumber: i + 1,
+    }));
+    const largeDiff = { lines: manyLines };
+    render(<ServerDiffView diff={largeDiff} />);
+    expect(screen.getByTestId("server-diff-show-more")).toBeInTheDocument();
+    expect(screen.getByText(/Show more \(10 more lines\)/)).toBeInTheDocument();
+    expect(screen.getByText("Line 1")).toBeInTheDocument();
+    expect(screen.getByText(`Line ${INITIAL_DIFF_LINE_CAP}`)).toBeInTheDocument();
+    expect(screen.queryByText(`Line ${INITIAL_DIFF_LINE_CAP + 1}`)).not.toBeInTheDocument();
+  });
+
+  it("expands to show all lines when Show more is clicked", async () => {
+    const user = userEvent.setup();
+    const manyLines = Array.from({ length: INITIAL_DIFF_LINE_CAP + 5 }, (_, i) => ({
+      type: "context" as const,
+      text: `Row ${i + 1}`,
+      oldLineNumber: i + 1,
+      newLineNumber: i + 1,
+    }));
+    render(<ServerDiffView diff={{ lines: manyLines }} />);
+    const showMore = screen.getByTestId("server-diff-show-more");
+    expect(showMore).toBeInTheDocument();
+    await user.click(showMore);
+    expect(screen.queryByTestId("server-diff-show-more")).not.toBeInTheDocument();
+    expect(screen.getByText(`Row ${INITIAL_DIFF_LINE_CAP + 5}`)).toBeInTheDocument();
   });
 });
