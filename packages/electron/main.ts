@@ -450,6 +450,22 @@ function refreshTrayMenu(): Promise<void> {
     if (img.isEmpty()) img = nativeImage.createFromPath(normalPath);
     if (isTemplate && !img.isEmpty()) img.setTemplateImage(true);
     tray.setImage(img);
+    // On macOS, force multiple setImage calls so the menu bar status item redraws and the
+    // notification dot is removed immediately without requiring app focus.
+    if (process.platform === "darwin" && tray && !tray.isDestroyed()) {
+      const applyIcon = (): void => {
+        if (!tray || tray.isDestroyed()) return;
+        const imgNext = nativeImage.createFromPath(iconPath);
+        const imgToUse = imgNext.isEmpty() ? nativeImage.createFromPath(normalPath) : imgNext;
+        if (isTemplate && !imgToUse.isEmpty()) imgToUse.setTemplateImage(true);
+        tray!.setImage(imgToUse);
+      };
+      setImmediate(applyIcon);
+      // When switching to no-dot, a delayed third setImage helps macOS reliably clear the dot.
+      if (!useDotIcon) {
+        setTimeout(applyIcon, 100);
+      }
+    }
     if (process.platform === "darwin") {
       const showCount =
         (settingsRes?.data as { showRunningAgentCountInMenuBar?: boolean } | undefined)
@@ -705,6 +721,10 @@ app.whenReady().then(async () => {
       if (wc && !wc.isDestroyed()) wc.stopFindInPage(action);
     }
   );
+
+  ipcMain.handle("refresh-tray", () => {
+    return refreshTrayMenu();
+  });
 
   globalShortcut.register("CommandOrControl+F", focusAndOpenFindBar);
 

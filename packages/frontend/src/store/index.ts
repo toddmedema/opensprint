@@ -18,6 +18,7 @@ import { agentOutputFilterMiddleware } from "./middleware/agentOutputFilterMiddl
 import { notificationListener } from "./listeners/notificationListener";
 import { planTasksListener } from "./listeners/planTasksListener";
 import { executeListeners } from "./listeners/executeListeners";
+import { trayRefreshListener } from "./listeners/trayRefreshListener";
 
 export const store = configureStore({
   reducer: {
@@ -45,7 +46,8 @@ export const store = configureStore({
       .prepend(
         notificationListener.middleware,
         planTasksListener.middleware,
-        executeListeners.middleware
+        executeListeners.middleware,
+        trayRefreshListener.middleware
       ),
 });
 

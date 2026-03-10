@@ -19,4 +19,5 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("find-in-page", text, options ?? {}),
   stopFindInPage: (action: "clearSelection" | "keepSelection" | "activateSelection") =>
     ipcRenderer.invoke("stop-find-in-page", action),
+  refreshTray: () => ipcRenderer.invoke("refresh-tray"),
 });
