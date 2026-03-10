@@ -33,6 +33,7 @@ function isEditableElement(target: EventTarget | null): boolean {
  * - 1/2/3/4/5: switch to Sketch/Plan/Execute/Evaluate/Deliver (when on a project)
  * - ~ (Backquote): go to home
  * - Escape: open settings (project settings if in a project, else global)
+ * - ? or F1: open help (project help if in a project, else global; same navigation as Settings)
  */
 /** Parse projectId from pathname when under /projects/:projectId/... (ElectronShortcuts is outside Routes so useParams is empty). */
 function projectIdFromPathname(pathname: string): string | undefined {
@@ -87,6 +88,18 @@ export function ElectronShortcuts() {
         } else {
           e.preventDefault();
           navigate("/settings");
+        }
+        return;
+      }
+
+      // ? or F1: open help in same context as help icon (project when path is under /projects/:id, else global)
+      if (key === "?" || key === "F1") {
+        e.preventDefault();
+        e.stopPropagation();
+        if (projectId) {
+          navigate(`/projects/${projectId}/help`);
+        } else {
+          navigate("/help");
         }
       }
     },

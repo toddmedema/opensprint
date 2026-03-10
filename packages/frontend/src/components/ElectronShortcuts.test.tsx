@@ -215,4 +215,88 @@ describe("ElectronShortcuts", () => {
     await waitFor(() => {}, { timeout: 100 });
     expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/sketch");
   });
+
+  it("? opens project help when on a project route (same context as help icon)", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/p1/sketch"]}>
+        <ElectronShortcuts />
+        <Routes>
+          <Route path="/projects/:projectId/:phase" element={<LocationDisplay />} />
+          <Route path="/projects/:projectId/help" element={<LocationDisplay />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/sketch");
+    await act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "?", bubbles: true })
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/help");
+    });
+  });
+
+  it("F1 opens project help when on a project route (same context as help icon)", async () => {
+    render(
+      <MemoryRouter initialEntries={["/projects/p1/plan"]}>
+        <ElectronShortcuts />
+        <Routes>
+          <Route path="/projects/:projectId/:phase" element={<LocationDisplay />} />
+          <Route path="/projects/:projectId/help" element={<LocationDisplay />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/plan");
+    await act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "F1", bubbles: true })
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/help");
+    });
+  });
+
+  it("? opens global help when not in a project", async () => {
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <ElectronShortcuts />
+        <Routes>
+          <Route path="/" element={<LocationDisplay />} />
+          <Route path="/help" element={<LocationDisplay />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/");
+    await act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "?", bubbles: true })
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("/help");
+    });
+  });
+
+  it("F1 opens global help when not in a project", async () => {
+    render(
+      <MemoryRouter initialEntries={["/settings"]}>
+        <ElectronShortcuts />
+        <Routes>
+          <Route path="/settings" element={<LocationDisplay />} />
+          <Route path="/help" element={<LocationDisplay />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/settings");
+    await act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "F1", bubbles: true })
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("/help");
+    });
+  });
 });
