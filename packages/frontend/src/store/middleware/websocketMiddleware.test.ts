@@ -20,6 +20,8 @@ import planReducer from "../slices/planSlice";
 import executeReducer, { selectTasks } from "../slices/executeSlice";
 import evalReducer, { setFeedback } from "../slices/evalSlice";
 import deliverReducer from "../slices/deliverSlice";
+import routeReducer, { setRoute } from "../slices/routeSlice";
+import unreadPhaseReducer from "../slices/unreadPhaseSlice";
 
 /** Mock WebSocket that allows controlling open/close/message events */
 class MockWebSocket {
@@ -134,6 +136,8 @@ describe("websocketMiddleware", () => {
         execute: executeReducer,
         eval: evalReducer,
         deliver: deliverReducer,
+        route: routeReducer,
+        unreadPhase: unreadPhaseReducer,
       },
       middleware: (getDefaultMiddleware) =>
         getDefaultMiddleware({
@@ -368,6 +372,131 @@ describe("websocketMiddleware", () => {
         expect(mockInvalidateQueries).toHaveBeenCalledWith({
           queryKey: queryKeys.tasks.list("proj-1"),
         });
+      });
+    });
+
+    describe("plan phase unread (plan.generated / plan.updated)", () => {
+      it("dispatches setPhaseUnread(plan) when route project differs from event project", async () => {
+        const store = createStore();
+        store.dispatch(setRoute({ projectId: "proj-2", phase: "sketch" }));
+        store.dispatch(wsConnect({ projectId: "proj-1" }));
+        wsInstance!.simulateOpen();
+        await vi.waitFor(() => store.getState().websocket.connected);
+
+        wsInstance!.simulateMessage({ type: "plan.updated", planId: "plan-123" });
+
+        await vi.waitFor(() => {
+          expect(store.getState().unreadPhase["proj-1"]?.plan).toBe(true);
+        });
+      });
+
+      it("dispatches setPhaseUnread(plan) when same project but currentPhase !== plan", async () => {
+        const store = createStore();
+        store.dispatch(setRoute({ projectId: "proj-1", phase: "sketch" }));
+        store.dispatch(wsConnect({ projectId: "proj-1" }));
+        wsInstance!.simulateOpen();
+        await vi.waitFor(() => store.getState().websocket.connected);
+
+        wsInstance!.simulateMessage({ type: "plan.updated", planId: "plan-123" });
+
+        await vi.waitFor(() => {
+          expect(store.getState().unreadPhase["proj-1"]?.plan).toBe(true);
+        });
+      });
+
+      it("does not dispatch setPhaseUnread(plan) when same project and currentPhase is plan", async () => {
+        const store = createStore();
+        store.dispatch(setRoute({ projectId: "proj-1", phase: "plan" }));
+        store.dispatch(wsConnect({ projectId: "proj-1" }));
+        wsInstance!.simulateOpen();
+        await vi.waitFor(() => store.getState().websocket.connected);
+
+        wsInstance!.simulateMessage({ type: "plan.updated", planId: "plan-123" });
+
+        await vi.waitFor(() => {
+          expect(mockInvalidateQueries).toHaveBeenCalledWith({
+            queryKey: queryKeys.plans.list("proj-1"),
+          });
+        });
+        expect(store.getState().unreadPhase["proj-1"]?.plan).not.toBe(true);
+      });
+
+      it("plan.generated: dispatches setPhaseUnread(plan) when different project", async () => {
+        const store = createStore();
+        store.dispatch(setRoute({ projectId: "proj-2", phase: "plan" }));
+        store.dispatch(wsConnect({ projectId: "proj-1" }));
+        wsInstance!.simulateOpen();
+        await vi.waitFor(() => store.getState().websocket.connected);
+
+        wsInstance!.simulateMessage({ type: "plan.generated", planId: "plan-new-456" });
+
+        await vi.waitFor(() => {
+          expect(store.getState().unreadPhase["proj-1"]?.plan).toBe(true);
+        });
+      });
+
+      it("plan.generated: does not dispatch setPhaseUnread when same project and phase plan", async () => {
+        const store = createStore();
+        store.dispatch(setRoute({ projectId: "proj-1", phase: "plan" }));
+        store.dispatch(wsConnect({ projectId: "proj-1" }));
+        wsInstance!.simulateOpen();
+        await vi.waitFor(() => store.getState().websocket.connected);
+
+        wsInstance!.simulateMessage({ type: "plan.generated", planId: "plan-new-456" });
+
+        await vi.waitFor(() => {
+          expect(mockInvalidateQueries).toHaveBeenCalledWith({
+            queryKey: queryKeys.plans.list("proj-1"),
+          });
+        });
+        expect(store.getState().unreadPhase["proj-1"]?.plan).not.toBe(true);
+      });
+    });
+
+    describe("sketch phase unread (prd.updated)", () => {
+      it("dispatches setPhaseUnread(sketch) when route project differs from event project", async () => {
+        const store = createStore();
+        store.dispatch(setRoute({ projectId: "proj-2", phase: "sketch" }));
+        store.dispatch(wsConnect({ projectId: "proj-1" }));
+        wsInstance!.simulateOpen();
+        await vi.waitFor(() => store.getState().websocket.connected);
+
+        wsInstance!.simulateMessage({ type: "prd.updated", section: "overview", version: 2 });
+
+        await vi.waitFor(() => {
+          expect(store.getState().unreadPhase["proj-1"]?.sketch).toBe(true);
+        });
+      });
+
+      it("dispatches setPhaseUnread(sketch) when same project but currentPhase !== sketch", async () => {
+        const store = createStore();
+        store.dispatch(setRoute({ projectId: "proj-1", phase: "plan" }));
+        store.dispatch(wsConnect({ projectId: "proj-1" }));
+        wsInstance!.simulateOpen();
+        await vi.waitFor(() => store.getState().websocket.connected);
+
+        wsInstance!.simulateMessage({ type: "prd.updated", section: "overview", version: 2 });
+
+        await vi.waitFor(() => {
+          expect(store.getState().unreadPhase["proj-1"]?.sketch).toBe(true);
+        });
+      });
+
+      it("does not dispatch setPhaseUnread(sketch) when same project and currentPhase is sketch", async () => {
+        const store = createStore();
+        store.dispatch(setRoute({ projectId: "proj-1", phase: "sketch" }));
+        store.dispatch(wsConnect({ projectId: "proj-1" }));
+        wsInstance!.simulateOpen();
+        await vi.waitFor(() => store.getState().websocket.connected);
+
+        wsInstance!.simulateMessage({ type: "prd.updated", section: "overview", version: 2 });
+
+        await vi.waitFor(() => {
+          expect(mockInvalidateQueries).toHaveBeenCalledWith({
+            queryKey: queryKeys.prd.detail("proj-1"),
+          });
+        });
+        expect(store.getState().unreadPhase["proj-1"]?.sketch).not.toBe(true);
       });
     });
 
