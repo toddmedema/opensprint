@@ -32,6 +32,7 @@ import {
 } from "./harmonizer.service.js";
 import { buildAutonomyDescription } from "./context-assembler.js";
 import { getCombinedInstructions } from "./agent-instructions.service.js";
+import { maybeAutoRespond } from "./open-question-autoresolve.service.js";
 import { activeAgentsService } from "./active-agents.service.js";
 
 const log = createLogger("chat");
@@ -643,6 +644,7 @@ export class ChatService {
             kind: "open_question",
           },
         });
+        void maybeAutoRespond(projectId, notification);
         displayContent = "I need a bit more detail before generating the plan.";
       } else {
         const plan = await this.createPlanFromDraftSpec(projectId, parsed);

@@ -28,6 +28,7 @@ import { JSON_OUTPUT_PREAMBLE } from "../utils/agent-prompts.js";
 import { triggerDeployForEvent } from "./deploy-trigger.service.js";
 import { buildAutonomyDescription } from "./context-assembler.js";
 import { getCombinedInstructions } from "./agent-instructions.service.js";
+import { maybeAutoRespond } from "./open-question-autoresolve.service.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("feedback");
@@ -595,6 +596,7 @@ export class FeedbackService {
               resolvedAt: notification.resolvedAt,
             },
           });
+          void maybeAutoRespond(projectId, notification);
           await this.enqueueForCategorization(projectId, item.id);
           return;
         }

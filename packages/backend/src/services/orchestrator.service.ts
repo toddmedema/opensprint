@@ -46,6 +46,7 @@ import { activeAgentsService } from "./active-agents.service.js";
 import { recoveryService, type RecoveryHost, type GuppAssignment } from "./recovery.service.js";
 import { FeedbackService } from "./feedback.service.js";
 import { notificationService } from "./notification.service.js";
+import { maybeAutoRespond } from "./open-question-autoresolve.service.js";
 import { broadcastToProject } from "../websocket/index.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { extractJsonFromAgentResponse } from "../utils/json-extract.js";
@@ -1956,6 +1957,7 @@ export class OrchestratorService {
             kind: "open_question",
           },
         });
+        void maybeAutoRespond(projectId, notification);
         await this.taskStore.update(projectId, task.id, {
           assignee: "",
           status: "blocked",

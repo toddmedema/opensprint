@@ -42,6 +42,7 @@ import { titleFromFirstHeading } from "./migrate-plan-versions.service.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { extractJsonFromAgentResponse } from "../utils/json-extract.js";
 import { createLogger } from "../utils/logger.js";
+import { maybeAutoRespond } from "./open-question-autoresolve.service.js";
 
 const log = createLogger("plan");
 const PLAN_TEMPLATE_STRUCTURE = PLAN_MARKDOWN_SECTIONS.join(", ");
@@ -2238,6 +2239,7 @@ Field rules: complexity: low, medium, high, or very_high (plan-level).
           kind: "open_question",
         },
       });
+      void maybeAutoRespond(projectId, notification);
       return {
         status: "needs_clarification",
         draftId,
