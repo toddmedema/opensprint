@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CloseButton } from "../CloseButton";
 import { useSubmitShortcut } from "../../hooks/useSubmitShortcut";
 
@@ -9,6 +9,14 @@ export interface AddPlanModalProps {
 
 export function AddPlanModal({ onGenerate, onClose }: AddPlanModalProps) {
   const [featureDescription, setFeatureDescription] = useState("");
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
 
   const handleGenerate = () => {
     const description = featureDescription.trim();
@@ -27,6 +35,9 @@ export function AddPlanModal({ onGenerate, onClose }: AddPlanModalProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-theme-overlay backdrop-blur-sm" onClick={onClose} />
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Add Plan"
         className="relative bg-theme-surface rounded-xl shadow-2xl w-full max-w-lg mx-4 flex flex-col"
         onClick={(e) => e.stopPropagation()}
         data-testid="add-plan-modal"

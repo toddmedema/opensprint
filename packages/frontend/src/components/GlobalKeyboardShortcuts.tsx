@@ -28,11 +28,28 @@ function isEditableElement(target: EventTarget | null): boolean {
   return false;
 }
 
+/** True if a modal/dialog is open so Escape should close it instead of opening settings. */
+function isModalOpen(): boolean {
+  const modal = document.querySelector("[role='dialog'], [aria-modal='true']");
+  if (!modal || !(modal instanceof HTMLElement)) return false;
+  // Consider only visible modals (exclude hidden or detached)
+  const style = window.getComputedStyle(modal);
+  return style.display !== "none" && style.visibility !== "hidden";
+}
+
+/** True if the event target is inside a modal/dialog so Escape should close it, not open settings. */
+function isFocusInModal(e: KeyboardEvent): boolean {
+  const target = e.target;
+  if (!target || !(target instanceof Element)) return false;
+  const dialog = target.closest("[role='dialog'], [aria-modal='true']");
+  return Boolean(dialog);
+}
+
 /**
  * Registers global keyboard shortcuts (web and Electron):
  * - 1/2/3/4/5: switch to Sketch/Plan/Execute/Evaluate/Deliver (when on a project)
  * - ~ (Backquote): go to home
- * - Escape: open settings (project settings if in a project, else global)
+ * - Escape: close modal if one is open; otherwise open settings (project if in a project, else global)
  * - ? or F1: open help (project help if in a project, else global; same navigation as Settings)
  */
 /** Parse projectId from pathname when under /projects/:projectId/... (GlobalKeyboardShortcuts is outside Routes so useParams is empty). */
@@ -79,8 +96,12 @@ export function GlobalKeyboardShortcuts() {
         return;
       }
 
-      // Escape: open settings in same context as settings icon (project when path is under /projects/:id, else global)
+      // Escape: close modal if one is open; do NOT open settings (let modal's handler close it)
       if (key === "Escape") {
+        if (isModalOpen() || isFocusInModal(e)) {
+          e.preventDefault();
+          return;
+        }
         if (projectId) {
           e.preventDefault();
           navigate(`/projects/${projectId}/settings`);

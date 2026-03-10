@@ -1,4 +1,4 @@
-import { describe, it, expect, act } from "vitest";
+import { describe, it, expect } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import { GlobalKeyboardShortcuts } from "./GlobalKeyboardShortcuts";
@@ -188,6 +188,30 @@ describe("GlobalKeyboardShortcuts", () => {
     });
     await waitFor(() => {}, { timeout: 100 });
     expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/sketch");
+  });
+
+  it("Escape when a modal is open does not open settings (modal can close instead)", async () => {
+    const { unmount } = render(
+      <MemoryRouter initialEntries={["/projects/p1/sketch"]}>
+        <GlobalKeyboardShortcuts />
+        <div role="dialog" aria-modal="true" data-testid="mock-modal">
+          Mock modal
+        </div>
+        <Routes>
+          <Route path="/projects/:projectId/:phase" element={<LocationDisplay />} />
+          <Route path="/projects/:projectId/settings" element={<LocationDisplay />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByTestId("mock-modal")).toBeInTheDocument();
+    await act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+      );
+    });
+    await waitFor(() => {}, { timeout: 100 });
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/sketch");
+    unmount();
   });
 
   it("? opens project help when on a project route (same context as help icon)", async () => {

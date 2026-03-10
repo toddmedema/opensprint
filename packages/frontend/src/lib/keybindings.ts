@@ -26,7 +26,7 @@ export function getKeyboardShortcuts(): KeyboardShortcutEntry[] {
     { action: "Go to Evaluate", keys: "4", context: "When in a project" },
     { action: "Go to Deliver", keys: "5", context: "When in a project" },
     { action: "Go to Home", keys: "` or ~" },
-    { action: "Open Settings", keys: "Escape" },
+    { action: "Open Settings", keys: "Escape", context: "When no modal is open (Escape closes modal first)" },
     { action: "Open Help", keys: "? or F1" },
     { action: "Submit message", keys: submitKeys, context: "In chat or feedback input" },
   ];
