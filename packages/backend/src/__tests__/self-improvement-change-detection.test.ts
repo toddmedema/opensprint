@@ -135,4 +135,34 @@ describe("hasCodeChangesSince", () => {
     });
     expect(result).toBe(true);
   });
+
+  it("returns false and does not throw when sinceCommitSha is invalid", async () => {
+    await execAsync("git init", { cwd: tempDir });
+    await execAsync("git config user.email test@test.com", { cwd: tempDir });
+    await execAsync("git config user.name Test", { cwd: tempDir });
+    await execAsync("git checkout -b main", { cwd: tempDir });
+    await fs.writeFile(path.join(tempDir, "f"), "a");
+    await execAsync("git add f && git commit -m first", { cwd: tempDir });
+
+    await expect(
+      hasRepoChangedSince(tempDir, { sinceCommitSha: "deadbeef1234567890" })
+    ).resolves.toBe(false);
+  });
+
+  it("returns false and does not throw when baseBranch does not exist", async () => {
+    await execAsync("git init", { cwd: tempDir });
+    await execAsync("git config user.email test@test.com", { cwd: tempDir });
+    await execAsync("git config user.name Test", { cwd: tempDir });
+    await execAsync("git checkout -b main", { cwd: tempDir });
+    await fs.writeFile(path.join(tempDir, "f"), "a");
+    await execAsync("git add f && git commit -m first", { cwd: tempDir });
+    const sha = await runGit(tempDir, "git rev-parse HEAD");
+
+    await expect(
+      hasRepoChangedSince(tempDir, {
+        sinceCommitSha: sha,
+        baseBranch: "branch-does-not-exist",
+      })
+    ).resolves.toBe(false);
+  });
 });
