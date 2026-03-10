@@ -1,4 +1,5 @@
 import { useState, useRef, useLayoutEffect, useCallback, useEffect, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import type { AgentRole, TaskAnalytics, AgentLogEntry } from "@opensprint/shared";
 import {
   AGENT_ROLE_CANONICAL_ORDER,
@@ -13,6 +14,7 @@ import { NavButton } from "./layout/NavButton";
 import { HelpAnalyticsChart } from "./HelpAnalyticsChart";
 import { api } from "../api/client";
 import { ASSET_BASE, NAVBAR_HEIGHT } from "../lib/constants";
+import { getKeyboardShortcuts } from "../lib/keybindings";
 
 export interface HelpContentProps {
   /** Optional project context (per-project view vs homepage) */
@@ -21,14 +23,40 @@ export interface HelpContentProps {
   onClose?: () => void;
 }
 
-type TabId = "ask" | "meet" | "analytics" | "agentLog";
+type TabId = "ask" | "meet" | "analytics" | "agentLog" | "shortcuts";
+
+const VALID_TAB_IDS: TabId[] = ["ask", "meet", "analytics", "agentLog", "shortcuts"];
 
 /**
- * Shared Help content with four tabs: Ask a Question, Meet your Team, Analytics, and Agent log.
+ * Shared Help content with five tabs: Ask a Question, Meet your Team, Analytics, Agent log, and Keyboard Shortcuts.
  * Used by HelpModal (legacy) and HelpPage (full-screen).
  */
 export function HelpContent({ project, onClose }: HelpContentProps) {
-  const [activeTab, setActiveTab] = useState<TabId>("ask");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const initialTab: TabId =
+    tabParam && VALID_TAB_IDS.includes(tabParam as TabId) ? (tabParam as TabId) : "ask";
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
+
+  // Sync tab from URL so /help?tab=shortcuts opens Keyboard Shortcuts
+  useEffect(() => {
+    if (tabParam && VALID_TAB_IDS.includes(tabParam as TabId) && tabParam !== activeTab) {
+      setActiveTab(tabParam as TabId);
+    }
+  }, [tabParam]);
+
+  const setTab = useCallback(
+    (tab: TabId) => {
+      setActiveTab(tab);
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (tab === "ask") next.delete("tab");
+        else next.set("tab", tab);
+        return next;
+      });
+    },
+    [setSearchParams]
+  );
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -43,7 +71,7 @@ export function HelpContent({ project, onClose }: HelpContentProps) {
           <NavButton
             active={activeTab === "ask"}
             tone="accent"
-            onClick={() => setActiveTab("ask")}
+            onClick={() => setTab("ask")}
             role="tab"
             aria-selected={activeTab === "ask"}
             aria-controls="help-tabpanel-ask"
@@ -54,7 +82,7 @@ export function HelpContent({ project, onClose }: HelpContentProps) {
           <NavButton
             active={activeTab === "meet"}
             tone="accent"
-            onClick={() => setActiveTab("meet")}
+            onClick={() => setTab("meet")}
             role="tab"
             aria-selected={activeTab === "meet"}
             aria-controls="help-tabpanel-meet"
@@ -65,7 +93,7 @@ export function HelpContent({ project, onClose }: HelpContentProps) {
           <NavButton
             active={activeTab === "analytics"}
             tone="accent"
-            onClick={() => setActiveTab("analytics")}
+            onClick={() => setTab("analytics")}
             role="tab"
             aria-selected={activeTab === "analytics"}
             aria-controls="help-tabpanel-analytics"
@@ -76,13 +104,24 @@ export function HelpContent({ project, onClose }: HelpContentProps) {
           <NavButton
             active={activeTab === "agentLog"}
             tone="accent"
-            onClick={() => setActiveTab("agentLog")}
+            onClick={() => setTab("agentLog")}
             role="tab"
             aria-selected={activeTab === "agentLog"}
             aria-controls="help-tabpanel-agent-log"
             id="help-tab-agent-log"
           >
             Agent log
+          </NavButton>
+          <NavButton
+            active={activeTab === "shortcuts"}
+            tone="accent"
+            onClick={() => setTab("shortcuts")}
+            role="tab"
+            aria-selected={activeTab === "shortcuts"}
+            aria-controls="help-tabpanel-shortcuts"
+            id="help-tab-shortcuts"
+          >
+            Keyboard Shortcuts
           </NavButton>
         </div>
         <div className="absolute right-4 sm:right-6 top-1/2 -translate-y-1/2 flex items-center">
@@ -147,6 +186,16 @@ export function HelpContent({ project, onClose }: HelpContentProps) {
               className="flex-1 overflow-y-auto min-h-0"
             >
               <AgentLogContent projectId={project?.id ?? null} showProjectColumn={!project} />
+            </div>
+          )}
+          {activeTab === "shortcuts" && (
+            <div
+              id="help-tabpanel-shortcuts"
+              role="tabpanel"
+              aria-labelledby="help-tab-shortcuts"
+              className="flex-1 overflow-y-auto min-h-0"
+            >
+              <KeyboardShortcutsContent />
             </div>
           )}
         </div>
@@ -698,6 +747,42 @@ function AgentLogContent({
           onClose={() => setLogModalSessionId(null)}
         />
       )}
+    </div>
+  );
+}
+
+function KeyboardShortcutsContent() {
+  const shortcuts = getKeyboardShortcuts();
+  return (
+    <div className="flex flex-col gap-4" data-testid="keyboard-shortcuts-content">
+      <p className="text-theme-muted text-sm">
+        Shortcuts are sourced from the app keybindings and match actual behavior.
+      </p>
+      <div className="overflow-x-auto rounded-lg border border-theme-border">
+        <table className="w-full text-sm" role="table">
+          <thead>
+            <tr className="border-b border-theme-border bg-theme-surface-muted">
+              <th className="px-4 py-2 text-left font-medium text-theme-text">Action</th>
+              <th className="px-4 py-2 text-left font-medium text-theme-text">Keys</th>
+              <th className="px-4 py-2 text-left font-medium text-theme-text">Context</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shortcuts.map((entry, i) => (
+              <tr
+                key={i}
+                className="border-b border-theme-border last:border-b-0 hover:bg-theme-border-subtle/50"
+              >
+                <td className="px-4 py-2 text-theme-text">{entry.action}</td>
+                <td className="px-4 py-2 font-mono text-theme-text">{entry.keys}</td>
+                <td className="px-4 py-2 text-theme-muted text-xs">
+                  {entry.context ?? "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

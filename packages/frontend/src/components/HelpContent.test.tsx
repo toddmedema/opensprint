@@ -1,8 +1,21 @@
+import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { HelpContent } from "./HelpContent";
 import { api } from "../api/client";
+
+function renderHelpContent(
+  props: React.ComponentProps<typeof HelpContent> = {},
+  initialEntries: string[] = ["/help"]
+) {
+  return render(
+    <MemoryRouter initialEntries={initialEntries}>
+      <HelpContent {...props} />
+    </MemoryRouter>
+  );
+}
 
 vi.mock("../api/client", () => ({
   api: {
@@ -30,13 +43,14 @@ describe("HelpContent", () => {
     vi.mocked(api.help.agentLog).mockResolvedValue([]);
   });
 
-  it("renders four tabs: Ask a Question (default), Meet your Team, Analytics, and Agent log", () => {
-    render(<HelpContent />);
+  it("renders five tabs: Ask a Question (default), Meet your Team, Analytics, Agent log, and Keyboard Shortcuts", () => {
+    renderHelpContent();
 
     expect(screen.getByRole("tab", { name: "Ask a Question" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Meet your Team" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Analytics" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Agent log" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Keyboard Shortcuts" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Ask a Question" })).toHaveAttribute(
       "aria-selected",
       "true"
@@ -46,7 +60,7 @@ describe("HelpContent", () => {
 
   it("switches to Meet your Team tab and shows agent grid", async () => {
     const user = userEvent.setup();
-    render(<HelpContent />);
+    renderHelpContent();
 
     await user.click(screen.getByRole("tab", { name: "Meet your Team" }));
 
@@ -62,7 +76,7 @@ describe("HelpContent", () => {
 
   it("Meet your Team view shows only agent icons — no chat input or chat UI", async () => {
     const user = userEvent.setup();
-    render(<HelpContent />);
+    renderHelpContent();
 
     await user.click(screen.getByRole("tab", { name: "Meet your Team" }));
 
@@ -73,14 +87,14 @@ describe("HelpContent", () => {
   });
 
   it("shows project context in Ask a Question when project provided", () => {
-    render(<HelpContent project={{ id: "proj-1", name: "My Project" }} />);
+    renderHelpContent({ project: { id: "proj-1", name: "My Project" } });
 
     expect(screen.getByText(/Ask about My Project/)).toBeInTheDocument();
   });
 
   it("switches to Analytics tab and shows chart", async () => {
     const user = userEvent.setup();
-    render(<HelpContent />);
+    renderHelpContent();
 
     await user.click(screen.getByRole("tab", { name: "Analytics" }));
 
@@ -94,7 +108,7 @@ describe("HelpContent", () => {
 
   it("Analytics tab scopes to project when project provided", async () => {
     const user = userEvent.setup();
-    render(<HelpContent project={{ id: "proj-1", name: "My Project" }} />);
+    renderHelpContent({ project: { id: "proj-1", name: "My Project" } });
 
     await user.click(screen.getByRole("tab", { name: "Analytics" }));
 
@@ -103,7 +117,7 @@ describe("HelpContent", () => {
 
   it("Agent log tab shows intro text without (most recent first)", async () => {
     const user = userEvent.setup();
-    render(<HelpContent />);
+    renderHelpContent();
 
     await user.click(screen.getByRole("tab", { name: "Agent log" }));
 
@@ -113,7 +127,7 @@ describe("HelpContent", () => {
 
   it("Agent log tab shows project-scoped intro when project provided", async () => {
     const user = userEvent.setup();
-    render(<HelpContent project={{ id: "proj-1", name: "My Project" }} />);
+    renderHelpContent({ project: { id: "proj-1", name: "My Project" } });
 
     await user.click(screen.getByRole("tab", { name: "Agent log" }));
 
@@ -132,7 +146,7 @@ describe("HelpContent", () => {
         endTime: "2025-03-01T11:00:00Z",
       },
     ]);
-    render(<HelpContent />);
+    renderHelpContent();
 
     await user.click(screen.getByRole("tab", { name: "Agent log" }));
 
@@ -149,7 +163,7 @@ describe("HelpContent", () => {
 
   it("Agent log tab scopes to project when project provided", async () => {
     const user = userEvent.setup();
-    render(<HelpContent project={{ id: "proj-1", name: "My Project" }} />);
+    renderHelpContent({ project: { id: "proj-1", name: "My Project" } });
 
     await user.click(screen.getByRole("tab", { name: "Agent log" }));
 
@@ -162,7 +176,7 @@ describe("HelpContent", () => {
       { model: "", role: "Coder", durationMs: 10000, endTime: "2025-03-01T12:00:00Z" },
       { model: "Cursor Composer 1.5", role: "Reviewer", durationMs: 20000, endTime: "2025-03-01T11:00:00Z" },
     ]);
-    render(<HelpContent />);
+    renderHelpContent();
 
     await user.click(screen.getByRole("tab", { name: "Agent log" }));
 
@@ -176,7 +190,7 @@ describe("HelpContent", () => {
       { model: "claude-sonnet-4", role: "Coder", durationMs: 45000, endTime: "2025-03-01T12:00:00Z", sessionId: 1 },
       { model: "claude-sonnet-4", role: "Reviewer", durationMs: 120000, endTime: "2025-03-01T11:00:00Z" },
     ]);
-    render(<HelpContent />);
+    renderHelpContent();
 
     await user.click(screen.getByRole("tab", { name: "Agent log" }));
 
@@ -191,7 +205,7 @@ describe("HelpContent", () => {
       { model: "claude-sonnet-4", role: "Coder", durationMs: 45000, endTime: "2025-03-01T12:00:00Z", sessionId: 1 },
     ]);
     vi.mocked(api.help.sessionLog).mockResolvedValue({ content: "Raw session output line 1\nLine 2" });
-    render(<HelpContent />);
+    renderHelpContent();
 
     await user.click(screen.getByRole("tab", { name: "Agent log" }));
     await user.click(screen.getByRole("button", { name: "View session log" }));
@@ -208,7 +222,7 @@ describe("HelpContent", () => {
         content: `Message ${i + 1}`,
       })),
     });
-    render(<HelpContent />);
+    renderHelpContent();
 
     const messagesEl = await screen.findByTestId("help-chat-messages");
     expect(messagesEl).toHaveClass("overflow-y-auto");
@@ -217,5 +231,33 @@ describe("HelpContent", () => {
     const input = screen.getByRole("textbox", { name: "Help chat message" });
     expect(input).toBeInTheDocument();
     expect(input.closest("form") ?? input.parentElement).toBeInTheDocument();
+  });
+
+  it("Keyboard Shortcuts tab shows all shortcuts with action and keys", async () => {
+    const user = userEvent.setup();
+    renderHelpContent();
+
+    await user.click(screen.getByRole("tab", { name: "Keyboard Shortcuts" }));
+
+    expect(screen.getByRole("tab", { name: "Keyboard Shortcuts" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    expect(screen.getByTestId("keyboard-shortcuts-content")).toBeInTheDocument();
+    expect(screen.getByText("Go to Sketch")).toBeInTheDocument();
+    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(screen.getByText("Open Help")).toBeInTheDocument();
+    expect(screen.getByText("? or F1")).toBeInTheDocument();
+    expect(screen.getAllByText("When in a project").length).toBeGreaterThan(0);
+  });
+
+  it("opens Keyboard Shortcuts tab when URL has tab=shortcuts", () => {
+    renderHelpContent({}, ["/help?tab=shortcuts"]);
+
+    expect(screen.getByRole("tab", { name: "Keyboard Shortcuts" })).toHaveAttribute(
+      "aria-selected",
+      "true"
+    );
+    expect(screen.getByTestId("keyboard-shortcuts-content")).toBeInTheDocument();
   });
 });

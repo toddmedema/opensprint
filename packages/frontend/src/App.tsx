@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, type ReactNode } from "react";
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation, useParams } from "react-router-dom";
 import { Home } from "./pages/Home";
 import { ProjectSetup } from "./pages/ProjectSetup";
 import { CreateNewProjectPage } from "./pages/CreateNewProjectPage";
@@ -39,6 +39,15 @@ function LazyRoute({ children }: { children: ReactNode }) {
   return <Suspense fallback={<RouteFallback />}>{children}</Suspense>;
 }
 
+/** Redirects /help/shortcuts to /help?tab=shortcuts (or project help equivalent). */
+function HelpShortcutsRedirect() {
+  const { projectId } = useParams<{ projectId: string }>();
+  if (projectId) {
+    return <Navigate to={`/projects/${projectId}/help?tab=shortcuts`} replace />;
+  }
+  return <Navigate to="/help?tab=shortcuts" replace />;
+}
+
 /** Clears route state when not viewing a project (home, settings, help, or project create/setup). */
 function RouteSync() {
   const location = useLocation();
@@ -69,6 +78,7 @@ export function App() {
           </LazyRoute>
         }
       />
+      <Route path="/help/shortcuts" element={<HelpShortcutsRedirect />} />
       <Route
         path="/help"
         element={
@@ -81,6 +91,7 @@ export function App() {
       <Route path="/projects/create-new" element={<CreateNewProjectPage />} />
       <Route path="/projects/:projectId" element={<ProjectShell />}>
         <Route index element={<Navigate to="sketch" replace />} />
+        <Route path="help/shortcuts" element={<HelpShortcutsRedirect />} />
         <Route
           path="help"
           element={

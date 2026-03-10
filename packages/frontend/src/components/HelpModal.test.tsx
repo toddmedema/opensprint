@@ -1,9 +1,19 @@
+import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { renderWithProviders } from "../test/test-utils";
 import { HelpModal } from "./HelpModal";
 import { api } from "../api/client";
+
+function renderHelpModal(props: React.ComponentProps<typeof HelpModal>) {
+  return renderWithProviders(
+    <MemoryRouter>
+      <HelpModal {...props} />
+    </MemoryRouter>
+  );
+}
 
 vi.mock("../api/client", () => ({
   api: {
@@ -19,12 +29,13 @@ describe("HelpModal", () => {
     vi.mocked(api.help.chat).mockReset();
     vi.mocked(api.help.history).mockResolvedValue({ messages: [] });
   });
-  it("renders Help modal with four tabs, Ask a Question default", () => {
-    renderWithProviders(<HelpModal onClose={vi.fn()} />);
+  it("renders Help modal with five tabs, Ask a Question default", () => {
+    renderHelpModal({ onClose: vi.fn() });
 
     expect(screen.getByRole("dialog", { name: /help/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Ask a Question" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Meet your Team" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Keyboard Shortcuts" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Ask a Question" })).toHaveAttribute(
       "aria-selected",
       "true"
@@ -34,7 +45,7 @@ describe("HelpModal", () => {
 
   it("switches to Meet your Team tab and shows agent grid", async () => {
     const user = userEvent.setup();
-    renderWithProviders(<HelpModal onClose={vi.fn()} />);
+    renderHelpModal({ onClose: vi.fn() });
 
     await user.click(screen.getByRole("tab", { name: "Meet your Team" }));
 
@@ -50,7 +61,7 @@ describe("HelpModal", () => {
 
   it("Meet your Team tab shows agent roles and phases", async () => {
     const user = userEvent.setup();
-    renderWithProviders(<HelpModal onClose={vi.fn()} />);
+    renderHelpModal({ onClose: vi.fn() });
 
     await user.click(screen.getByRole("tab", { name: "Meet your Team" }));
 
@@ -64,9 +75,7 @@ describe("HelpModal", () => {
   });
 
   it("shows project context in Ask a Question when project provided", () => {
-    renderWithProviders(
-      <HelpModal onClose={vi.fn()} project={{ id: "proj-1", name: "My Project" }} />
-    );
+    renderHelpModal({ onClose: vi.fn(), project: { id: "proj-1", name: "My Project" } });
 
     expect(screen.getByText(/Ask about My Project/)).toBeInTheDocument();
   });
@@ -74,7 +83,7 @@ describe("HelpModal", () => {
   it("calls onClose when close button is clicked", async () => {
     const onClose = vi.fn();
     const user = userEvent.setup();
-    renderWithProviders(<HelpModal onClose={onClose} />);
+    renderHelpModal({ onClose });
 
     const dialog = screen.getByRole("dialog", { name: /help/i });
     await user.click(within(dialog).getByRole("button", { name: /close help/i }));
@@ -83,7 +92,7 @@ describe("HelpModal", () => {
 
   it("calls onClose when backdrop is clicked", () => {
     const onClose = vi.fn();
-    renderWithProviders(<HelpModal onClose={onClose} />);
+    renderHelpModal({ onClose });
 
     const backdrop = screen.getByTestId("help-modal-backdrop");
     fireEvent.click(backdrop);
@@ -92,7 +101,7 @@ describe("HelpModal", () => {
 
   it("calls onClose when Escape key is pressed", () => {
     const onClose = vi.fn();
-    renderWithProviders(<HelpModal onClose={onClose} />);
+    renderHelpModal({ onClose });
 
     const dialog = screen.getByRole("dialog", { name: /help/i });
     fireEvent.keyDown(dialog, { key: "Escape" });
@@ -100,7 +109,7 @@ describe("HelpModal", () => {
   });
 
   it("is accessible with aria attributes", () => {
-    renderWithProviders(<HelpModal onClose={vi.fn()} />);
+    renderHelpModal({ onClose: vi.fn() });
 
     const dialog = screen.getByRole("dialog", { name: /help/i });
     expect(dialog).toHaveAttribute("aria-modal", "true");
@@ -108,7 +117,7 @@ describe("HelpModal", () => {
   });
 
   it("has max-height 90vh for viewport-relative sizing on large screens", () => {
-    renderWithProviders(<HelpModal onClose={vi.fn()} />);
+    renderHelpModal({ onClose: vi.fn() });
 
     const modalContent = screen.getByTestId("help-modal-content");
     expect(modalContent).toHaveClass("max-h-[90vh]");
@@ -117,7 +126,7 @@ describe("HelpModal", () => {
   it("Ask a Question tab shows chat input and sends messages", async () => {
     vi.mocked(api.help.chat).mockResolvedValue({ message: "Here is my response." });
     const user = userEvent.setup();
-    renderWithProviders(<HelpModal onClose={vi.fn()} />);
+    renderHelpModal({ onClose: vi.fn() });
 
     expect(screen.getByTestId("help-chat-messages")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Ask a question...")).toBeInTheDocument();
@@ -137,9 +146,7 @@ describe("HelpModal", () => {
   it("Ask a Question tab passes projectId when in project view", async () => {
     vi.mocked(api.help.chat).mockResolvedValue({ message: "Project context." });
     const user = userEvent.setup();
-    renderWithProviders(
-      <HelpModal onClose={vi.fn()} project={{ id: "proj-1", name: "My Project" }} />
-    );
+    renderHelpModal({ onClose: vi.fn(), project: { id: "proj-1", name: "My Project" } });
 
     await user.type(screen.getByPlaceholderText("Ask a question..."), "What plans exist?");
     await user.click(screen.getByRole("button", { name: "Send" }));
@@ -158,7 +165,7 @@ describe("HelpModal", () => {
         { role: "assistant", content: "OpenSprint is an AI-powered workflow tool." },
       ],
     });
-    renderWithProviders(<HelpModal onClose={vi.fn()} />);
+    renderHelpModal({ onClose: vi.fn() });
 
     await waitFor(() => {
       expect(screen.getByText("What is OpenSprint?")).toBeInTheDocument();
@@ -174,9 +181,7 @@ describe("HelpModal", () => {
         { role: "assistant", content: "Answer" },
       ],
     });
-    renderWithProviders(
-      <HelpModal onClose={vi.fn()} project={{ id: "proj-1", name: "My Project" }} />
-    );
+    renderHelpModal({ onClose: vi.fn(), project: { id: "proj-1", name: "My Project" } });
 
     await waitFor(() => {
       expect(screen.getByText("Project question")).toBeInTheDocument();
@@ -185,7 +190,7 @@ describe("HelpModal", () => {
   });
 
   it("focuses chat input when Help modal opens", async () => {
-    renderWithProviders(<HelpModal onClose={vi.fn()} />);
+    renderHelpModal({ onClose: vi.fn() });
 
     await waitFor(() => {
       const input = screen.getByPlaceholderText("Ask a question...");
@@ -195,7 +200,7 @@ describe("HelpModal", () => {
 
   it("focuses chat input when switching back to Ask a Question tab", async () => {
     const user = userEvent.setup();
-    renderWithProviders(<HelpModal onClose={vi.fn()} />);
+    renderHelpModal({ onClose: vi.fn() });
 
     await user.click(screen.getByRole("tab", { name: "Meet your Team" }));
     await user.click(screen.getByRole("tab", { name: "Ask a Question" }));
@@ -214,7 +219,7 @@ describe("HelpModal", () => {
     vi.mocked(api.help.chat).mockReturnValue(chatPromise);
 
     const user = userEvent.setup();
-    renderWithProviders(<HelpModal onClose={vi.fn()} />);
+    renderHelpModal({ onClose: vi.fn() });
 
     await user.type(screen.getByPlaceholderText("Ask a question..."), "Hello");
     await user.click(screen.getByRole("button", { name: "Send" }));
