@@ -372,16 +372,6 @@ export function ApiKeysSection({
                       }}
                     >
                       <div className="flex gap-2 items-center">
-                        <input
-                          type="text"
-                          className="input text-sm w-32 shrink-0"
-                          placeholder="Label"
-                          value={displayLabel}
-                          onChange={(e) => updateEntryLabel(provider, entry.id, e.target.value)}
-                          autoComplete="off"
-                          data-testid={`api-key-label-${provider}-${entry.id}`}
-                          aria-label="Key label"
-                        />
                         {variant === "global" && entries.length > 1 ? (
                           <div
                             role="button"
@@ -406,6 +396,16 @@ export function ApiKeysSection({
                             <DragHandleIcon className="w-4 h-4" />
                           </div>
                         ) : null}
+                        <input
+                          type="text"
+                          className="input text-sm w-32 shrink-0"
+                          placeholder="Label"
+                          value={displayLabel}
+                          onChange={(e) => updateEntryLabel(provider, entry.id, e.target.value)}
+                          autoComplete="off"
+                          data-testid={`api-key-label-${provider}-${entry.id}`}
+                          aria-label="Key label"
+                        />
                         <div className="flex-1 min-w-0">
                           <div className="relative flex">
                             <input

@@ -390,6 +390,37 @@ describe("ApiKeysSection", () => {
     expect(screen.getByTestId("api-key-drag-handle-ANTHROPIC_API_KEY-k2")).toBeInTheDocument();
   });
 
+  it("each API key row displays [handle][label][key] in DOM order (global variant, multiple keys)", () => {
+    render(
+      <ApiKeysSection
+        apiKeys={{
+          ANTHROPIC_API_KEY: [
+            { id: "k1", masked: "••••••••" },
+            { id: "k2", masked: "••••••••" },
+          ],
+        }}
+        providers={["ANTHROPIC_API_KEY"]}
+        variant="global"
+        onApiKeysChange={onApiKeysChange}
+      />
+    );
+    const keyInputs = screen.getAllByTestId(/api-key-input-ANTHROPIC_API_KEY-/);
+    expect(keyInputs).toHaveLength(2);
+    const DOCUMENT_POSITION_FOLLOWING = 4;
+    for (let i = 0; i < keyInputs.length; i++) {
+      const row = keyInputs[i].closest("[data-index]");
+      expect(row).toBeInTheDocument();
+      const handle = row!.querySelector(`[data-testid="api-key-drag-handle-ANTHROPIC_API_KEY-k${i + 1}"]`);
+      const label = row!.querySelector(`[data-testid="api-key-label-ANTHROPIC_API_KEY-k${i + 1}"]`);
+      const key = row!.querySelector(`[data-testid="api-key-input-ANTHROPIC_API_KEY-k${i + 1}"]`);
+      expect(handle).toBeInTheDocument();
+      expect(label).toBeInTheDocument();
+      expect(key).toBeInTheDocument();
+      expect((handle as Node).compareDocumentPosition(label as Node) & DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+      expect((label as Node).compareDocumentPosition(key as Node) & DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    }
+  });
+
   it("does not show drag handles when variant is global but provider has only one key", () => {
     render(
       <ApiKeysSection
