@@ -59,6 +59,10 @@ Add under Sketch Phase (or PRD Storage):
 
 - **SPEC.md as Sketch output:** The Sketch phase PRD is saved as SPEC.md at the repository root—a flat markdown file with standard section headers. This replaces the previous prd.json format to provide a standardized, AI-agent-friendly specification that tools and agents can consume directly.
 
+- **PRD change approval diff view:** When a human-in-the-loop request is for PRD/SPEC approval, the approval UI shows a diff of the proposed SPEC.md changes (unified or split view). Users approve or reject from the same screen.
+
+- **Sketch version-list diff:** From the Sketch page version list (PRD history), users can open "Compare to current" or "View diff" for any previous version to see a diff of that version vs current SPEC.md.
+
 Add under Execute Phase (Code Review):
 
 - **Multi-angle parallel review:** When review angles are empty, one general Reviewer runs (scope + code quality). When 1+ angles are selected, N parallel Reviewers run (one per angle); all must approve for overall approval.
@@ -81,9 +85,15 @@ Replace all references to `prd.json` with `SPEC.md`. The Sketch phase PRD is sto
 
 **LM Studio agent:** Agent type `lmstudio` uses the OpenAI-compatible Chat Completions API at a configurable base URL (default `http://localhost:1234`). Optional `baseUrl` in agent config; no API key. Invoke (planning) and spawnWithTaskFile (Coder/Reviewer) use in-process HTTP with custom baseURL. GET /models supports `provider=lmstudio` and optional `baseUrl` query; returns models from the local LM Studio server. Enables fully offline agent execution.
 
+**PRD change approval and version diffs:** When the Harmonizer (or any flow) proposes SPEC.md changes and the user is prompted to approve via the Human Notification System, the UI displays a diff of the proposed changes (GitHub/PR-review style). The backend computes the diff on demand: for HIL approval, between current SPEC.md and the proposed content via `GET /projects/:id/prd/proposed-diff?requestId=<hilRequestId>`; for the Sketch version list, between a selected previous version and current SPEC via `GET /projects/:id/prd/diff?fromVersion=<versionId>`. A line-based diff runs server-side; no diff is embedded in WebSocket payloads. Full SPEC.md snapshots are stored on each write, keyed by version, for version-list diff. A reusable DiffView component is used in the HIL approval UI and in the Sketch page "Compare to current" flow.
+
 ## Data Model
 
 **PRD (PRDDocument):** Stored as `SPEC.md` at repository root. A flat markdown file with standard section headers. The backend parses SPEC.md for API responses and structured editing; the canonical on-disk format is markdown. Optional metadata (version, change_log) may be stored in `.opensprint/spec-metadata.json` for versioning and section-level diffing. Entity relationship: PRD (1:1, SPEC.md).
+
+**Snapshot store (version-list diff):** On each SPEC write, full SPEC.md content is saved keyed by version (e.g. in prd_metadata or a dedicated snapshot store). The version-diff endpoint retrieves the snapshot for the requested fromVersion and diffs it against current SPEC.md.
+
+**HIL proposed-diff:** Pending PRD-approval HIL requests may include a reference (e.g. requestId) and proposal reference so the backend can look up proposed content when `GET /projects/:id/prd/proposed-diff?requestId=...` is called; the full diff is not stored in the payload.
 
 **AgentConfig (shared):** Includes optional `baseUrl?: string` when `type === "lmstudio"` (default `http://localhost:1234`). **AgentType** union includes `"lmstudio"`.
 
@@ -99,7 +109,7 @@ Replace all references to `prd.json` with `SPEC.md`. The Sketch phase PRD is sto
 
 **Global Settings:** GET/PUT `/global-settings` — Returns and accepts `databaseUrl` (masked in response) and `apiKeys` (masked: `{id, masked, limitHitAt}` per provider). Supports multiple keys per provider (ANTHROPIC_API_KEY, CURSOR_API_KEY); merge semantics on PUT (preserve existing when value omitted).
 
-**PRD:** GET/PUT `/projects/:id/prd`, GET `/projects/:id/prd/:section`, GET `/projects/:id/prd/history`
+**PRD:** GET/PUT `/projects/:id/prd`, GET `/projects/:id/prd/:section`, GET `/projects/:id/prd/history`, GET `/projects/:id/prd/proposed-diff?requestId=<hilRequestId>` — returns diff for that PRD-approval HIL request (200: diff lines and summary; 404 if not found or not PRD-approval), GET `/projects/:id/prd/diff?fromVersion=<versionId>&toVersion=<versionId|'current'>` — returns diff between fromVersion and toVersion or current (200: fromVersion, toVersion, diff; 404 if version unavailable).
 
 **Plans:** GET/POST `/projects/:id/plans`, GET/PUT `/projects/:id/plans/:planId`, POST `/projects/:id/plans/:planId/execute`, POST `/projects/:id/plans/:planId/re-execute`, GET `/projects/:id/plans/dependencies`
 
@@ -116,14 +126,6 @@ Replace all references to `prd.json` with `SPEC.md`. The Sketch phase PRD is sto
 **Chat:** POST `/projects/:id/chat`, GET `/projects/:id/chat/history`
 
 **Agents:** GET `/projects/:id/agents/instructions` — Returns `{ content: string }` (AGENTS.md). PUT `/projects/:id/agents/instructions` — Body `{ content: string }`, writes to repo root AGENTS.md. GET `/projects/:id/agents/active` — Returns active agents; when multi-angle review is active, multiple entries per task may appear (e.g., `Reviewer (Security)`, `Reviewer (Performance)`).
-
-### WebSocket (`ws://localhost:<port>/ws/projects/:id`)
-
-**Server → Client:** `task.updated`, `task.blocked`, `agent.output`, `agent.completed`, `prd.updated`, `execute.status`, `hil.request`, `feedback.mapped`, `deploy.started`, `deploy.completed`, `deploy.output`
-
-`execute.status` payload includes `activeTasks`; when multi-angle review is active, multiple entries per task may appear.
-
-**Client → Server:** `agent.subscribe`, `agent.unsubscribe`, `hil.respond`
 
 ## Non-Functional Requirements
 
