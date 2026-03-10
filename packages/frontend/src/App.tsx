@@ -5,7 +5,7 @@ import { ProjectSetup } from "./pages/ProjectSetup";
 import { CreateNewProjectPage } from "./pages/CreateNewProjectPage";
 import { ProjectShell } from "./pages/ProjectShell";
 import { ProjectView } from "./pages/ProjectView";
-import { ElectronShortcuts } from "./components/ElectronShortcuts";
+import { GlobalKeyboardShortcuts } from "./components/GlobalKeyboardShortcuts";
 import { useAppDispatch } from "./store";
 import { setRoute } from "./store/slices/routeSlice";
 
@@ -56,7 +56,7 @@ export function App() {
   return (
     <>
       <RouteSync />
-      <ElectronShortcuts />
+      <GlobalKeyboardShortcuts />
       <Routes>
       <Route path="/" element={<Home />} />
       <Route

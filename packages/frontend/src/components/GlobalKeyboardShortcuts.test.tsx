@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, act } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
-import { ElectronShortcuts } from "./ElectronShortcuts";
+import { GlobalKeyboardShortcuts } from "./GlobalKeyboardShortcuts";
 
 function LocationDisplay() {
   const loc = useLocation();
@@ -21,37 +21,11 @@ function dispatchKeydown(key: string, options?: { code?: string; metaKey?: boole
   return ev;
 }
 
-describe("ElectronShortcuts", () => {
-  const originalElectron = (window as unknown as { electron?: unknown }).electron;
-
-  beforeEach(() => {
-    (window as unknown as { electron?: { isElectron: boolean } }).electron = { isElectron: true };
-  });
-
-  afterEach(() => {
-    (window as unknown as { electron?: unknown }).electron = originalElectron;
-  });
-
-  it("does nothing when not in Electron", async () => {
-    (window as unknown as { electron?: { isElectron: boolean } }).electron = { isElectron: false };
-    render(
-      <MemoryRouter initialEntries={["/projects/p1/sketch"]}>
-        <ElectronShortcuts />
-        <Routes>
-          <Route path="/projects/:projectId/:phase" element={<LocationDisplay />} />
-        </Routes>
-      </MemoryRouter>
-    );
-    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/sketch");
-    dispatchKeydown("2");
-    await waitFor(() => {}, { timeout: 100 });
-    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/sketch");
-  });
-
+describe("GlobalKeyboardShortcuts", () => {
   it("1–5 switch to Sketch/Plan/Execute/Evaluate/Deliver when on a project", async () => {
     render(
       <MemoryRouter initialEntries={["/projects/p1/sketch"]}>
-        <ElectronShortcuts />
+        <GlobalKeyboardShortcuts />
         <Routes>
           <Route path="/projects/:projectId/:phase" element={<LocationDisplay />} />
           <Route path="/" element={<LocationDisplay />} />
@@ -100,7 +74,7 @@ describe("ElectronShortcuts", () => {
   it("~ (backquote) navigates to home", async () => {
     render(
       <MemoryRouter initialEntries={["/projects/p1/sketch"]}>
-        <ElectronShortcuts />
+        <GlobalKeyboardShortcuts />
         <Routes>
           <Route path="/projects/:projectId/:phase" element={<LocationDisplay />} />
           <Route path="/" element={<LocationDisplay />} />
@@ -119,7 +93,7 @@ describe("ElectronShortcuts", () => {
   it("phase shortcuts require no modifier (Cmd+1 does not navigate)", async () => {
     render(
       <MemoryRouter initialEntries={["/projects/p1/sketch"]}>
-        <ElectronShortcuts />
+        <GlobalKeyboardShortcuts />
         <Routes>
           <Route path="/projects/:projectId/:phase" element={<LocationDisplay />} />
         </Routes>
@@ -136,7 +110,7 @@ describe("ElectronShortcuts", () => {
   it("Escape from project route opens project settings (same as settings icon)", async () => {
     render(
       <MemoryRouter initialEntries={["/projects/p1/sketch"]}>
-        <ElectronShortcuts />
+        <GlobalKeyboardShortcuts />
         <Routes>
           <Route path="/projects/:projectId/:phase" element={<LocationDisplay />} />
           <Route path="/projects/:projectId/settings" element={<LocationDisplay />} />
@@ -157,7 +131,7 @@ describe("ElectronShortcuts", () => {
   it("Escape from outside project opens global settings (same as settings icon)", async () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <ElectronShortcuts />
+        <GlobalKeyboardShortcuts />
         <Routes>
           <Route path="/" element={<LocationDisplay />} />
           <Route path="/settings" element={<LocationDisplay />} />
@@ -178,7 +152,7 @@ describe("ElectronShortcuts", () => {
   it("Escape from project settings page stays in project settings", async () => {
     render(
       <MemoryRouter initialEntries={["/projects/p1/settings"]}>
-        <ElectronShortcuts />
+        <GlobalKeyboardShortcuts />
         <Routes>
           <Route path="/projects/:projectId/settings" element={<LocationDisplay />} />
         </Routes>
@@ -197,7 +171,7 @@ describe("ElectronShortcuts", () => {
   it("Escape does not open settings when focus is in an input", async () => {
     render(
       <MemoryRouter initialEntries={["/projects/p1/sketch"]}>
-        <ElectronShortcuts />
+        <GlobalKeyboardShortcuts />
         <input data-testid="input" />
         <Routes>
           <Route path="/projects/:projectId/:phase" element={<LocationDisplay />} />
@@ -219,7 +193,7 @@ describe("ElectronShortcuts", () => {
   it("? opens project help when on a project route (same context as help icon)", async () => {
     render(
       <MemoryRouter initialEntries={["/projects/p1/sketch"]}>
-        <ElectronShortcuts />
+        <GlobalKeyboardShortcuts />
         <Routes>
           <Route path="/projects/:projectId/:phase" element={<LocationDisplay />} />
           <Route path="/projects/:projectId/help" element={<LocationDisplay />} />
@@ -240,7 +214,7 @@ describe("ElectronShortcuts", () => {
   it("F1 opens project help when on a project route (same context as help icon)", async () => {
     render(
       <MemoryRouter initialEntries={["/projects/p1/plan"]}>
-        <ElectronShortcuts />
+        <GlobalKeyboardShortcuts />
         <Routes>
           <Route path="/projects/:projectId/:phase" element={<LocationDisplay />} />
           <Route path="/projects/:projectId/help" element={<LocationDisplay />} />
@@ -261,7 +235,7 @@ describe("ElectronShortcuts", () => {
   it("? opens global help when not in a project", async () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <ElectronShortcuts />
+        <GlobalKeyboardShortcuts />
         <Routes>
           <Route path="/" element={<LocationDisplay />} />
           <Route path="/help" element={<LocationDisplay />} />
@@ -282,7 +256,7 @@ describe("ElectronShortcuts", () => {
   it("F1 opens global help when not in a project", async () => {
     render(
       <MemoryRouter initialEntries={["/settings"]}>
-        <ElectronShortcuts />
+        <GlobalKeyboardShortcuts />
         <Routes>
           <Route path="/settings" element={<LocationDisplay />} />
           <Route path="/help" element={<LocationDisplay />} />

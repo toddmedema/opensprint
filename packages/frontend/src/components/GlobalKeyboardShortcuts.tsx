@@ -29,13 +29,13 @@ function isEditableElement(target: EventTarget | null): boolean {
 }
 
 /**
- * Registers Electron-only keyboard shortcuts when window.electron?.isElectron:
+ * Registers global keyboard shortcuts (web and Electron):
  * - 1/2/3/4/5: switch to Sketch/Plan/Execute/Evaluate/Deliver (when on a project)
  * - ~ (Backquote): go to home
  * - Escape: open settings (project settings if in a project, else global)
  * - ? or F1: open help (project help if in a project, else global; same navigation as Settings)
  */
-/** Parse projectId from pathname when under /projects/:projectId/... (ElectronShortcuts is outside Routes so useParams is empty). */
+/** Parse projectId from pathname when under /projects/:projectId/... (GlobalKeyboardShortcuts is outside Routes so useParams is empty). */
 function projectIdFromPathname(pathname: string): string | undefined {
   const m = pathname.match(/^\/projects\/([^/]+)(?:\/|$)/);
   if (!m) return undefined;
@@ -44,14 +44,13 @@ function projectIdFromPathname(pathname: string): string | undefined {
   return id;
 }
 
-export function ElectronShortcuts() {
+export function GlobalKeyboardShortcuts() {
   const navigate = useNavigate();
   const location = useLocation();
   const projectId = projectIdFromPathname(location.pathname);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      if (!window.electron?.isElectron) return;
       if (isEditableElement(e.target)) return;
 
       const key = e.key;
