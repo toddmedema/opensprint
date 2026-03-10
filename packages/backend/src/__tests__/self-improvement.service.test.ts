@@ -156,4 +156,59 @@ describe("SelfImprovementService", () => {
       spy.mockRestore();
     });
   });
+
+  describe("runIfDue", () => {
+    it("returns frequency_not_due and does not run when frequency is never", async () => {
+      const { ProjectService } = await import("../services/project.service.js");
+      const runnerMod = await import("../services/self-improvement-runner.service.js");
+      const runSpy = vi.spyOn(runnerMod, "runSelfImprovement");
+      vi.mocked(ProjectService).mockImplementation(
+        () =>
+          ({
+            getProject: vi.fn().mockResolvedValue({ id: projectId, repoPath: "/tmp/repo" }),
+            getSettings: vi.fn().mockResolvedValue({
+              selfImprovementFrequency: "never",
+              selfImprovementLastRunAt: undefined,
+              worktreeBaseBranch: "main",
+            }),
+          }) as never
+      );
+      service = new SelfImprovementService();
+
+      const result = await service.runIfDue(projectId, {
+        trigger: "after_each_plan",
+        planId: "plan-1",
+      });
+
+      expect(result).toEqual({ tasksCreated: 0, skipped: "frequency_not_due" });
+      expect(runSpy).not.toHaveBeenCalled();
+      runSpy.mockRestore();
+    });
+
+    it("calls run and returns its result when frequency is after_each_plan and changes exist", async () => {
+      const { ProjectService } = await import("../services/project.service.js");
+      const { taskStore } = await import("../services/task-store.service.js");
+      vi.mocked(ProjectService).mockImplementation(
+        () =>
+          ({
+            getProject: vi.fn().mockResolvedValue({ id: projectId, repoPath: "/tmp/repo" }),
+            getSettings: vi.fn().mockResolvedValue({
+              selfImprovementFrequency: "after_each_plan",
+              selfImprovementLastRunAt: undefined,
+              worktreeBaseBranch: "main",
+            }),
+          }) as never
+      );
+      service = new SelfImprovementService();
+      vi.mocked(taskStore.create).mockResolvedValue({ id: "os-1", title: "Task" } as never);
+
+      const result = await service.runIfDue(projectId, {
+        trigger: "after_each_plan",
+        planId: "plan-1",
+      });
+
+      expect(result).toMatchObject({ tasksCreated: 1, runId: expect.any(String) });
+      expect(taskStore.create).toHaveBeenCalled();
+    });
+  });
 });

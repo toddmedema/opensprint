@@ -106,6 +106,12 @@ vi.mock("../services/final-review.service.js", () => ({
   },
 }));
 
+vi.mock("../services/self-improvement.service.js", () => ({
+  selfImprovementService: {
+    runIfDue: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
 vi.mock("../services/notification.service.js", () => ({
   notificationService: {
     create: vi.fn().mockResolvedValue(undefined),
@@ -456,6 +462,7 @@ describe("MergeCoordinatorService", () => {
 
   it("runs final review when last task of epic completes and closes epic on pass", async () => {
     const { finalReviewService } = await import("../services/final-review.service.js");
+    const { selfImprovementService } = await import("../services/self-improvement.service.js");
     vi.mocked(finalReviewService.runFinalReview).mockResolvedValue({
       status: "pass",
       assessment: "Implementation meets plan scope.",
@@ -465,6 +472,13 @@ describe("MergeCoordinatorService", () => {
       { id: "os-abc", title: "Epic", status: "open", issue_type: "epic" } as never,
       { id: "os-abc.1", title: "Task 1", status: "closed", issue_type: "task" } as never,
     ]);
+    vi.mocked(mockHost.taskStore.planGetByEpicId).mockResolvedValue({
+      plan_id: "plan-1",
+      content: "",
+      metadata: {},
+      shipped_content: null,
+      updated_at: new Date().toISOString(),
+    });
 
     await coordinator.postCompletionAsync(projectId, repoPath, "os-abc.1");
 
@@ -476,6 +490,52 @@ describe("MergeCoordinatorService", () => {
       "os-abc",
       "All tasks done; final review passed"
     );
+    expect(selfImprovementService.runIfDue).toHaveBeenCalledWith(projectId, {
+      trigger: "after_each_plan",
+      planId: "plan-1",
+    });
+  });
+
+  it("invokes runIfDue when epic already closed and plan exists (after_each_plan hook)", async () => {
+    const { selfImprovementService } = await import("../services/self-improvement.service.js");
+    mockHost.taskStore.listAll.mockResolvedValue([
+      { id: "os-abc", title: "Epic", status: "closed", issue_type: "epic" } as never,
+      { id: "os-abc.1", title: "Task 1", status: "closed", issue_type: "task" } as never,
+    ]);
+    vi.mocked(mockHost.taskStore.planGetByEpicId).mockResolvedValue({
+      plan_id: "plan-2",
+      content: "",
+      metadata: {},
+      shipped_content: null,
+      updated_at: new Date().toISOString(),
+    });
+
+    await coordinator.postCompletionAsync(projectId, repoPath, "os-abc.1");
+
+    await vi.waitFor(() => {
+      expect(selfImprovementService.runIfDue).toHaveBeenCalledWith(projectId, {
+        trigger: "after_each_plan",
+        planId: "plan-2",
+      });
+    });
+  });
+
+  it("does not invoke runIfDue when epic closes but no plan (e.g. deploy-fix epic)", async () => {
+    const { finalReviewService } = await import("../services/final-review.service.js");
+    const { selfImprovementService } = await import("../services/self-improvement.service.js");
+    vi.mocked(finalReviewService.runFinalReview).mockResolvedValue(null);
+    mockHost.taskStore.listAll.mockResolvedValue([
+      { id: "os-xyz", title: "Epic", status: "open", issue_type: "epic" } as never,
+      { id: "os-xyz.1", title: "Task 1", status: "closed", issue_type: "task" } as never,
+    ]);
+    vi.mocked(mockHost.taskStore.planGetByEpicId).mockResolvedValue(null);
+
+    await coordinator.postCompletionAsync(projectId, repoPath, "os-xyz.1");
+
+    await vi.waitFor(() => {
+      expect(mockHost.taskStore.close).toHaveBeenCalledWith(projectId, "os-xyz", "All tasks done");
+    });
+    expect(selfImprovementService.runIfDue).not.toHaveBeenCalled();
   });
 
   it("creates tasks and nudges when final review finds issues", async () => {

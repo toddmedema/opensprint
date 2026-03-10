@@ -24,6 +24,7 @@ import { eventLogService } from "./event-log.service.js";
 import { triggerDeployForEvent } from "./deploy-trigger.service.js";
 import { finalReviewService } from "./final-review.service.js";
 import { notificationService } from "./notification.service.js";
+import { selfImprovementService } from "./self-improvement.service.js";
 import { broadcastToProject } from "../websocket/index.js";
 import type { TimerRegistry } from "./timer-registry.js";
 import { createLogger } from "../utils/logger.js";
@@ -784,6 +785,12 @@ export class MergeCoordinatorService {
               log.warn("Auto-deploy on epic completion failed", { projectId, err });
             });
           }
+          const planRow = await this.host.taskStore.planGetByEpicId(projectId, epicId);
+          if (planRow) {
+            selfImprovementService
+              .runIfDue(projectId, { trigger: "after_each_plan", planId: planRow.plan_id })
+              .catch((err) => log.warn("Self-improvement after plan completion failed", { projectId, epicId, err }));
+          }
         }
       }
     }
@@ -819,6 +826,12 @@ export class MergeCoordinatorService {
           log.warn("Auto-deploy on epic completion failed", { projectId, err });
         });
       }
+      const planRow = await this.host.taskStore.planGetByEpicId(projectId, epicId);
+      if (planRow) {
+        selfImprovementService
+          .runIfDue(projectId, { trigger: "after_each_plan", planId: planRow.plan_id })
+          .catch((err) => log.warn("Self-improvement after plan completion failed", { projectId, epicId, err }));
+      }
       return;
     }
 
@@ -829,6 +842,12 @@ export class MergeCoordinatorService {
         triggerDeployForEvent(projectId, "each_epic").catch((err) => {
           log.warn("Auto-deploy on epic completion failed", { projectId, err });
         });
+      }
+      const planRow = await this.host.taskStore.planGetByEpicId(projectId, epicId);
+      if (planRow) {
+        selfImprovementService
+          .runIfDue(projectId, { trigger: "after_each_plan", planId: planRow.plan_id })
+          .catch((err) => log.warn("Self-improvement after plan completion failed", { projectId, epicId, err }));
       }
       return;
     }
