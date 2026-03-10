@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { sortPlansByStatus } from "../types/plan.js";
-import type { Plan, PlanMetadata, PlanStatus } from "../types/plan.js";
+import type {
+  Plan,
+  PlanMetadata,
+  PlanStatus,
+  PlanVersionSummary,
+  PlanVersionContent,
+} from "../types/plan.js";
 import { PLAN_STATUS_ORDER } from "../constants/index.js";
 
 function createPlan(id: string, status: PlanStatus): Plan {
@@ -18,6 +24,55 @@ function createPlan(id: string, status: PlanStatus): Plan {
     dependencyCount: 0,
   };
 }
+
+describe("Plan version types", () => {
+  it("PlanVersionSummary has id, version_number, created_at, optional is_executed_version", () => {
+    const summary: PlanVersionSummary = {
+      id: "v-1",
+      version_number: 1,
+      created_at: "2025-03-09T12:00:00.000Z",
+    };
+    expect(summary.version_number).toBe(1);
+    const withExecuted: PlanVersionSummary = { ...summary, is_executed_version: true };
+    expect(withExecuted.is_executed_version).toBe(true);
+  });
+
+  it("PlanVersionContent has version_number, title, content, optional metadata, created_at, optional is_executed_version", () => {
+    const content: PlanVersionContent = {
+      version_number: 2,
+      title: "My Plan",
+      content: "# My Plan\n\nBody",
+      created_at: "2025-03-09T12:00:00.000Z",
+    };
+    expect(content.version_number).toBe(2);
+    expect(content.title).toBe("My Plan");
+    const withMeta: PlanVersionContent = {
+      ...content,
+      metadata: {
+        planId: "p1",
+        epicId: "e1",
+        shippedAt: null,
+        complexity: "medium",
+      },
+      is_executed_version: true,
+    };
+    expect(withMeta.metadata?.planId).toBe("p1");
+    expect(withMeta.is_executed_version).toBe(true);
+  });
+
+  it("Plan accepts optional currentVersionNumber and lastExecutedVersionNumber", () => {
+    const planWithout: Plan = createPlan("p1", "planning");
+    expect(planWithout.currentVersionNumber).toBeUndefined();
+    expect(planWithout.lastExecutedVersionNumber).toBeUndefined();
+    const planWith: Plan = {
+      ...createPlan("p1", "building"),
+      currentVersionNumber: 3,
+      lastExecutedVersionNumber: 2,
+    };
+    expect(planWith.currentVersionNumber).toBe(3);
+    expect(planWith.lastExecutedVersionNumber).toBe(2);
+  });
+});
 
 describe("PlanMetadata", () => {
   it("accepts optional reviewedAt as null or ISO timestamp", () => {

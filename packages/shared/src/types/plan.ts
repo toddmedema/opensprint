@@ -24,6 +24,24 @@ export interface PlanMockup {
   content: string;
 }
 
+/** Summary of a plan version (for list/API) */
+export interface PlanVersionSummary {
+  id: string;
+  version_number: number;
+  created_at: string;
+  is_executed_version?: boolean;
+}
+
+/** Full content of a plan version (for display/API) */
+export interface PlanVersionContent {
+  version_number: number;
+  title: string;
+  content: string;
+  metadata?: PlanMetadata;
+  created_at: string;
+  is_executed_version?: boolean;
+}
+
 /** Metadata for a Plan (stored in task store plans.metadata) */
 export interface PlanMetadata {
   planId: string;
@@ -46,6 +64,10 @@ export interface Plan {
   dependencyCount: number;
   /** ISO date string of plan markdown file mtime */
   lastModified?: string;
+  /** Current (latest) plan version number; present when versioning is used */
+  currentVersionNumber?: number;
+  /** Version number that was last executed; present when versioning is used */
+  lastExecutedVersionNumber?: number;
 }
 
 /** Dependency edge between Plans for the dependency graph */
