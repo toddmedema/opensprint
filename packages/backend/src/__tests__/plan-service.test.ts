@@ -77,7 +77,7 @@ const mockListPlanVersions = vi
         .map((v) => ({ version_number: v.version_number }));
     }
   );
-const mockPlanVersionInsert = vi
+const mockPlanVersionInsertForStore = vi
   .fn()
   .mockImplementation(
     async (data: {
@@ -248,6 +248,19 @@ const mockPlanVersionInsert = vi.fn().mockImplementation(async (data: {
     metadata: data.metadata ?? null,
     is_executed_version: data.is_executed_version ?? false,
   });
+  // Also write to mockPlanVersionsStore so mockListPlanVersions (updatePlan flow) sees versions
+  let proj = mockPlanVersionsStore.get(data.project_id);
+  if (!proj) {
+    proj = new Map();
+    mockPlanVersionsStore.set(data.project_id, proj);
+  }
+  const storeList = proj.get(data.plan_id) ?? [];
+  storeList.push({
+    version_number: data.version_number,
+    content: data.content,
+    title: data.title ?? null,
+  });
+  proj.set(data.plan_id, storeList);
   return {
     id: data.version_number,
     project_id: data.project_id,
@@ -730,6 +743,51 @@ describe("PlanService createWithRetry usage", () => {
       projectId,
       planId,
       "# Edit Then Execute\n\n## Overview\n\nEdited content."
+    );
+  });
+
+  it("shipPlan with version_number loads that version, sets last_executed, ships that content (no new version)", async () => {
+    mockTaskStoreCreateMany.mockResolvedValue([
+      { id: "epic-123.1", title: "Task A", type: "task" },
+      { id: "epic-123.2", title: "Task B", type: "task" },
+    ]);
+    mockTaskStoreAddDependencies.mockResolvedValue(undefined);
+    mockTaskStoreListAll.mockResolvedValue([
+      { id: "epic-123", status: "blocked", type: "epic" },
+      { id: "epic-123.1", status: "open", type: "task" },
+      { id: "epic-123.2", status: "open", type: "task" },
+    ]);
+
+    const plan = await planService.createPlan(projectId, {
+      title: "Execute Version Plan",
+      content: "# Execute Version\n\n## Overview\n\nCurrent.",
+      complexity: "low",
+      tasks: [
+        { title: "Task A", description: "First", priority: 0, dependsOn: [] },
+        { title: "Task B", description: "Second", priority: 1, dependsOn: ["Task A"] },
+      ],
+    });
+    const planId = plan.metadata.planId;
+    const key = `${projectId}:${planId}`;
+    mockPlanVersionsByKey.set(key, [
+      { version_number: 1, title: "V1", content: "# V1\n\nContent one.", metadata: null, is_executed_version: false },
+      { version_number: 2, title: "V2", content: "# V2\n\nContent two.", metadata: null, is_executed_version: false },
+    ]);
+
+    mockPlanVersionInsert.mockClear();
+    await planService.shipPlan(projectId, planId, { version_number: 2 });
+
+    expect(mockPlanVersionInsert).not.toHaveBeenCalled();
+    expect(mockPlanVersionSetExecutedVersion).toHaveBeenCalledWith(projectId, planId, 2);
+    expect(mockPlanUpdateVersionNumbers).toHaveBeenCalledWith(
+      projectId,
+      planId,
+      expect.objectContaining({ last_executed_version_number: 2 })
+    );
+    expect(mockPlanSetShippedContent).toHaveBeenCalledWith(
+      projectId,
+      planId,
+      "# V2\n\nContent two."
     );
   });
 
@@ -1368,6 +1426,71 @@ describe("PlanService createWithRetry usage", () => {
       statusCode: 400,
       message: "Re-execute is only available for plans that have been marked complete.",
     });
+  });
+
+  it("reshipPlan with version_number uses that version content for plan_old", async () => {
+    mockInvokePlanningAgent.mockImplementation((opts: { tracking?: { label?: string } }) => {
+      if (opts.tracking?.label === "Re-execute: audit & delta tasks") {
+        return Promise.resolve({
+          content: JSON.stringify({
+            status: "no_changes_needed",
+            capability_summary: "Done",
+            tasks: [],
+          }),
+        });
+      }
+      return Promise.resolve({ content: JSON.stringify({ complexity: "medium" }) });
+    });
+    mockTaskStoreCreateMany.mockResolvedValue([
+      { id: "epic-123.1", title: "Task A", type: "task" },
+      { id: "epic-123.2", title: "Task B", type: "task" },
+    ]);
+    mockTaskStoreAddDependencies.mockResolvedValue(undefined);
+
+    const plan = await planService.createPlan(projectId, {
+      title: "Reship Version Plan",
+      content: "# Reship Version\n\n## Overview\n\nCurrent.",
+      complexity: "low",
+      tasks: [
+        { title: "Task A", description: "First", priority: 0, dependsOn: [] },
+        { title: "Task B", description: "Second", priority: 1, dependsOn: ["Task A"] },
+      ],
+    });
+    const planId = plan.metadata.planId;
+    mockTaskStoreListAll.mockResolvedValue([
+      { id: "epic-123", status: "open", type: "epic" },
+      { id: "epic-123.1", status: "closed", type: "task" },
+      { id: "epic-123.2", status: "closed", type: "task" },
+    ]);
+    await planService.shipPlan(projectId, planId);
+
+    const key = `${projectId}:${planId}`;
+    mockPlanVersionsByKey.set(key, [
+      { version_number: 1, title: "V1", content: "# V1\n\nOld content.", metadata: null, is_executed_version: true },
+      { version_number: 2, title: "V2", content: "# V2\n\nNew content.", metadata: null, is_executed_version: false },
+    ]);
+    mockTaskStoreListAll.mockResolvedValue([
+      { id: "epic-123", status: "open", type: "epic" },
+      { id: "epic-123.1", status: "closed", type: "task" },
+      { id: "epic-123.2", status: "closed", type: "task" },
+    ]);
+    await mockPlanSetShippedContent(projectId, planId, "# V1\n\nOld content.");
+    const row = mockPlanStore.get(projectId)?.get(planId);
+    if (row) (row.metadata as Record<string, unknown>).reviewedAt = new Date().toISOString();
+
+    mockPlanVersionGetByVersionNumber.mockClear();
+    await planService.reshipPlan(projectId, planId, { version_number: 1 });
+
+    expect(mockPlanVersionGetByVersionNumber).toHaveBeenCalledWith(projectId, planId, 1);
+    expect(mockInvokePlanningAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            content: expect.stringContaining("# V1\n\nOld content."),
+          }),
+        ]),
+      })
+    );
   });
 
   it("reshipPlan throws 400 when plan status is building (epic open, tasks not all closed)", async () => {

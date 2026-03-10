@@ -1192,6 +1192,75 @@ Updated description for task two.`;
         );
       }
     );
+
+    it("re-execute with version_number uses that version content for Auditor (plan_old)", async () => {
+      mockPlanningAgentInvoke.mockReset();
+      mockPlanningAgentInvoke.mockImplementation((opts: { messages?: Array<{ content: string }> }) => {
+        const content = opts.messages?.[0]?.content ?? "";
+        if (content.includes("plan_old.md") && content.includes("plan_new.md")) {
+          return Promise.resolve({
+            content: JSON.stringify({
+              status: "no_changes_needed",
+              capability_summary: "All done",
+              tasks: [],
+            }),
+          });
+        }
+        return Promise.resolve({ content: '{"status":"no_changes_needed"}' });
+      });
+
+      const planBody = {
+        title: "Re-execute Version Plan",
+        content: "# Re-execute Version\n\n## Overview\n\nInitial (v1).",
+        complexity: "medium",
+        tasks: [
+          { title: "Task A", description: "First", priority: 0, dependsOn: [] },
+          { title: "Task B", description: "Second", priority: 1, dependsOn: [] },
+        ],
+      };
+      const createRes = await request(app)
+        .post(`${API_PREFIX}/projects/${projectId}/plans`)
+        .send(planBody);
+      expect(createRes.status).toBe(201);
+      const planId = createRes.body.data.metadata.planId;
+      const epicId = createRes.body.data.metadata.epicId;
+
+      await request(app).post(
+        `${API_PREFIX}/projects/${projectId}/plans/${planId}/execute`
+      );
+      await request(app)
+        .put(`${API_PREFIX}/projects/${projectId}/plans/${planId}`)
+        .send({ content: "# Re-execute Version\n\n## Overview\n\nEdited to v2." });
+
+      const _project = await projectService.getProject(projectId);
+      const allIssues = await taskStore.listAll(projectId);
+      const planTasks = allIssues.filter(
+        (i: { id: string; issue_type?: string; type?: string }) =>
+          i.id.startsWith(epicId + ".") && (i.issue_type ?? i.type) !== "epic"
+      );
+      for (const task of planTasks) {
+        await taskStore.close(projectId, (task as { id: string }).id, "Done");
+      }
+      await request(app).post(
+        `${API_PREFIX}/projects/${projectId}/plans/${planId}/mark-complete`
+      );
+
+      const reshipRes = await request(app)
+        .post(`${API_PREFIX}/projects/${projectId}/plans/${planId}/re-execute`)
+        .send({ version_number: 1 });
+      expect(reshipRes.status).toBe(200);
+
+      const auditorCall = mockPlanningAgentInvoke.mock.calls.find(
+        (c) =>
+          (c[0] as { tracking?: { label?: string } })?.tracking?.label ===
+          "Re-execute: audit & delta tasks"
+      );
+      expect(auditorCall).toBeDefined();
+      const prompt = (auditorCall![0] as { messages?: Array<{ content: string }> }).messages?.[0]
+        ?.content ?? "";
+      expect(prompt).toContain("Initial (v1)"); // plan_old = v1 content
+      expect(prompt).toContain("Edited to v2"); // plan_new = current content
+    });
   });
 
   describe("POST /projects/:id/plans/generate", () => {
@@ -1883,6 +1952,64 @@ Feature that depends on auth.
       const planBRow = await taskStore.planGet(projectId, planBId);
       expect(planARow?.metadata.shippedAt).toBeTruthy();
       expect(planBRow?.metadata.shippedAt).toBeTruthy();
+    });
+  });
+
+  describe("POST /projects/:id/plans/:planId/execute with version_number", () => {
+    it("executes specified version: sets last_executed and ships that version content", async () => {
+      const planBody = {
+        title: "Version Execute Plan",
+        content: "# Version Execute\n\n## Overview\n\nInitial.",
+        complexity: "low",
+        tasks: [
+          { title: "Task A", description: "First", priority: 0, dependsOn: [] },
+          { title: "Task B", description: "Second", priority: 1, dependsOn: [] },
+        ],
+      };
+      const createRes = await request(app)
+        .post(`${API_PREFIX}/projects/${projectId}/plans`)
+        .send(planBody);
+      expect(createRes.status).toBe(201);
+      const planId = createRes.body.data.metadata.planId;
+
+      // Create versions 1 and 2 (e.g. from prior edits)
+      await request(app)
+        .put(`${API_PREFIX}/projects/${projectId}/plans/${planId}`)
+        .send({ content: "# Version Execute\n\n## Overview\n\nFirst save." });
+      await request(app)
+        .put(`${API_PREFIX}/projects/${projectId}/plans/${planId}`)
+        .send({ content: "# Version Execute\n\n## Overview\n\nSecond save (v2)." });
+
+      // Execute with version_number 3 (v1=initial, v2=First save, v3=Second save (v2))
+      const executeRes = await request(app)
+        .post(`${API_PREFIX}/projects/${projectId}/plans/${planId}/execute`)
+        .send({ version_number: 3 });
+      expect(executeRes.status).toBe(200);
+
+      const planRow = await taskStore.planGet(projectId, planId);
+      expect(planRow?.last_executed_version_number).toBe(3);
+      const shipped = await taskStore.planGetShippedContent(projectId, planId);
+      expect(shipped).toContain("Second save (v2)");
+    });
+
+    it("returns 404 when version_number does not exist", async () => {
+      const planBody = {
+        title: "No Version Plan",
+        content: "# No Version\n\nContent.",
+        complexity: "low",
+        tasks: [{ title: "Task A", description: "First", priority: 0, dependsOn: [] }],
+      };
+      const createRes = await request(app)
+        .post(`${API_PREFIX}/projects/${projectId}/plans`)
+        .send(planBody);
+      expect(createRes.status).toBe(201);
+      const planId = createRes.body.data.metadata.planId;
+
+      const executeRes = await request(app)
+        .post(`${API_PREFIX}/projects/${projectId}/plans/${planId}/execute`)
+        .send({ version_number: 99 });
+      expect(executeRes.status).toBe(404);
+      expect(executeRes.body.error?.code).toBe("PLAN_VERSION_NOT_FOUND");
     });
   });
 

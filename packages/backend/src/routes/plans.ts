@@ -225,20 +225,33 @@ plansRouter.post("/:planId/plan-tasks", async (req: Request<PlanParams>, res, ne
 });
 
 // POST /projects/:projectId/plans/:planId/execute — Execute! (approve Plan for execution)
-// Optional body: { prerequisitePlanIds?: string[] } — auto-queue these plans first in dependency order
+// Optional body: { prerequisitePlanIds?: string[]; version_number?: number }
+// If version_number provided, run ship with that version's content and set as last_executed.
 plansRouter.post(
   "/:planId/execute",
-  async (req: Request<PlanParams & { body?: { prerequisitePlanIds?: string[] } }>, res, next) => {
+  async (
+    req: Request<
+      PlanParams,
+      unknown,
+      { prerequisitePlanIds?: string[]; version_number?: number }
+    >,
+    res,
+    next
+  ) => {
     try {
       const prerequisitePlanIds = req.body?.prerequisitePlanIds ?? [];
+      const version_number = req.body?.version_number;
+      const options =
+        version_number != null ? { version_number } : undefined;
       const plan =
         prerequisitePlanIds.length > 0
           ? await planService.shipPlanWithPrerequisites(
               req.params.projectId,
               req.params.planId,
-              prerequisitePlanIds
+              prerequisitePlanIds,
+              options
             )
-          : await planService.shipPlan(req.params.projectId, req.params.planId);
+          : await planService.shipPlan(req.params.projectId, req.params.planId, options);
       // Nudge orchestrator to pick up newly-available tasks (PRDv2 §5.7 event-driven dispatch)
       orchestratorService.nudge(req.params.projectId);
       const body: ApiResponse<Plan> = { data: plan };
@@ -250,17 +263,32 @@ plansRouter.post(
 );
 
 // POST /projects/:projectId/plans/:planId/re-execute — Re-execute an updated Plan
-plansRouter.post("/:planId/re-execute", async (req: Request<PlanParams>, res, next) => {
-  try {
-    const plan = await planService.reshipPlan(req.params.projectId, req.params.planId);
-    // Nudge orchestrator to pick up newly-available tasks (PRDv2 §5.7 event-driven dispatch)
-    orchestratorService.nudge(req.params.projectId);
-    const body: ApiResponse<Plan> = { data: plan };
-    res.json(body);
-  } catch (err) {
-    next(err);
+// Optional body: { version_number?: number }. Else uses last_executed_version_number for version content.
+plansRouter.post(
+  "/:planId/re-execute",
+  async (
+    req: Request<PlanParams, unknown, { version_number?: number }>,
+    res,
+    next
+  ) => {
+    try {
+      const version_number = req.body?.version_number;
+      const options =
+        version_number != null ? { version_number } : undefined;
+      const plan = await planService.reshipPlan(
+        req.params.projectId,
+        req.params.planId,
+        options
+      );
+      // Nudge orchestrator to pick up newly-available tasks (PRDv2 §5.7 event-driven dispatch)
+      orchestratorService.nudge(req.params.projectId);
+      const body: ApiResponse<Plan> = { data: plan };
+      res.json(body);
+    } catch (err) {
+      next(err);
+    }
   }
-});
+);
 
 // POST /projects/:projectId/plans/:planId/archive — Archive plan (close all ready/open tasks)
 plansRouter.post("/:planId/archive", async (req: Request<PlanParams>, res, next) => {

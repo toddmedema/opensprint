@@ -1214,14 +1214,42 @@ export class PlanService {
     return this.getPlan(projectId, planId);
   }
 
-  /** Build It! — auto-generate tasks if needed, unblock epic to make tasks eligible */
-  async shipPlan(projectId: string, planId: string): Promise<Plan> {
+  /** Build It! — auto-generate tasks if needed, unblock epic to make tasks eligible.
+   * When options.version_number is provided, load that version from plan_versions, set as last_executed, and run ship with that content.
+   * When omitted, use current plan content and existing create-version-on-execute behavior.
+   */
+  async shipPlan(
+    projectId: string,
+    planId: string,
+    options?: { version_number?: number }
+  ): Promise<Plan> {
     let plan = await this.getPlan(projectId, planId);
     const repoPath = await this.getRepoPath(projectId);
+    const versionNumberParam = options?.version_number;
 
-    // Two-phase flow: when plan has no implementation tasks, route to Plan Tasks first
+    let versionContent: string;
+    let versionToExecute: number;
+
+    if (versionNumberParam != null) {
+      // Load specified version; use its content for ship (set as last_executed, no new version created)
+      const versionRow = await this.taskStore.planVersionGetByVersionNumber(
+        projectId,
+        planId,
+        versionNumberParam
+      );
+      versionContent = versionRow.content;
+      versionToExecute = versionNumberParam;
+    } else {
+      versionContent = plan.content;
+      versionToExecute = 0; // set below from current/latest version logic
+    }
+
+    // Two-phase flow: when plan has no implementation tasks, route to Plan Tasks first (use current or version content per param)
     if (plan.taskCount === 0 && plan.metadata.epicId) {
       plan = await this.planTasks(projectId, planId);
+      if (versionNumberParam == null) {
+        versionContent = plan.content;
+      }
     }
 
     const epicId = plan.metadata.epicId;
@@ -1229,11 +1257,12 @@ export class PlanService {
       throw new AppError(400, ErrorCodes.NO_EPIC, "Plan has no epic");
     }
 
-    // If no implementation tasks exist, auto-generate them from the plan spec
+    // If no implementation tasks exist, auto-generate them from the plan spec (use version content when executing a version)
     let tasksGenerated = 0;
     if (plan.taskCount === 0) {
+      const planForGen = versionNumberParam != null ? { ...plan, content: versionContent } : plan;
       try {
-        const genResult = await this.generateAndCreateTasks(projectId, repoPath, plan);
+        const genResult = await this.generateAndCreateTasks(projectId, repoPath, planForGen);
         tasksGenerated = genResult.count;
         if (tasksGenerated > 0) {
           // Auto-review: mark already-implemented tasks as done
@@ -1246,53 +1275,53 @@ export class PlanService {
       }
     }
 
-    // Before unblocking: persist current plan as a version (new if content changed), mark it executed, set last_executed_version_number
-    const versions = await this.taskStore.planVersionList(projectId, planId);
-    const latest = versions[0];
-    let versionToExecute: number;
-    let versionContent: string;
+    // Resolve version to execute and content: either from param or create/reuse current version
+    if (versionNumberParam == null) {
+      const versions = await this.taskStore.planVersionList(projectId, planId);
+      const latest = versions[0];
 
-    if (latest) {
-      const fullLatest = await this.taskStore.planVersionGetByVersionNumber(
-        projectId,
-        planId,
-        latest.version_number
-      );
-      if (fullLatest.content === plan.content) {
-        versionToExecute = latest.version_number;
-        versionContent = plan.content;
+      if (latest) {
+        const fullLatest = await this.taskStore.planVersionGetByVersionNumber(
+          projectId,
+          planId,
+          latest.version_number
+        );
+        if (fullLatest.content === plan.content) {
+          versionToExecute = latest.version_number;
+          versionContent = plan.content;
+        } else {
+          const nextVersion = latest.version_number + 1;
+          await this.taskStore.planVersionInsert({
+            project_id: projectId,
+            plan_id: planId,
+            version_number: nextVersion,
+            title: getEpicTitleFromPlanContent(plan.content, planId) || null,
+            content: plan.content,
+            metadata: JSON.stringify(plan.metadata),
+            is_executed_version: false,
+          });
+          await this.taskStore.planUpdateVersionNumbers(projectId, planId, {
+            current_version_number: nextVersion,
+          });
+          versionToExecute = nextVersion;
+          versionContent = plan.content;
+        }
       } else {
-        const nextVersion = latest.version_number + 1;
         await this.taskStore.planVersionInsert({
           project_id: projectId,
           plan_id: planId,
-          version_number: nextVersion,
+          version_number: 1,
           title: getEpicTitleFromPlanContent(plan.content, planId) || null,
           content: plan.content,
           metadata: JSON.stringify(plan.metadata),
           is_executed_version: false,
         });
         await this.taskStore.planUpdateVersionNumbers(projectId, planId, {
-          current_version_number: nextVersion,
+          current_version_number: 1,
         });
-        versionToExecute = nextVersion;
+        versionToExecute = 1;
         versionContent = plan.content;
       }
-    } else {
-      await this.taskStore.planVersionInsert({
-        project_id: projectId,
-        plan_id: planId,
-        version_number: 1,
-        title: getEpicTitleFromPlanContent(plan.content, planId) || null,
-        content: plan.content,
-        metadata: JSON.stringify(plan.metadata),
-        is_executed_version: false,
-      });
-      await this.taskStore.planUpdateVersionNumbers(projectId, planId, {
-        current_version_number: 1,
-      });
-      versionToExecute = 1;
-      versionContent = plan.content;
     }
 
     await this.taskStore.planVersionSetExecutedVersion(projectId, planId, versionToExecute);
@@ -1336,8 +1365,14 @@ export class PlanService {
     return { ...plan, status: "building" };
   }
 
-  /** Rebuild an updated Plan — PRD §7.2.2: Auditor performs capability audit and delta task generation */
-  async reshipPlan(projectId: string, planId: string): Promise<Plan> {
+  /** Rebuild an updated Plan — PRD §7.2.2: Auditor performs capability audit and delta task generation.
+   * Optional options.version_number: use that version's content for plan_old (Auditor). Else use last_executed_version_number, then shipped content.
+   */
+  async reshipPlan(
+    projectId: string,
+    planId: string,
+    options?: { version_number?: number }
+  ): Promise<Plan> {
     const plan = await this.getPlan(projectId, planId);
     const repoPath = await this.getRepoPath(projectId);
     const epicId = plan.metadata.epicId;
@@ -1376,7 +1411,7 @@ export class PlanService {
         for (const child of toDelete) {
           await this.taskStore.delete(projectId, child.id);
         }
-        return this.shipPlan(projectId, planId);
+        return this.shipPlan(projectId, planId, options);
       }
       if (!allDone && children.length > 0) {
         throw new AppError(
@@ -1402,9 +1437,27 @@ export class PlanService {
       epicId ?? ""
     );
 
-    const planOld =
-      (await this.taskStore.planGetShippedContent(projectId, planId)) ??
-      "# Plan (no previous shipped version)";
+    // plan_old: use specified version_number, else last_executed_version_number, else shipped content
+    let planOld: string;
+    const versionForOld = options?.version_number ?? plan.lastExecutedVersionNumber;
+    if (versionForOld != null) {
+      try {
+        const versionRow = await this.taskStore.planVersionGetByVersionNumber(
+          projectId,
+          planId,
+          versionForOld
+        );
+        planOld = versionRow.content;
+      } catch {
+        planOld =
+          (await this.taskStore.planGetShippedContent(projectId, planId)) ??
+          "# Plan (no previous shipped version)";
+      }
+    } else {
+      planOld =
+        (await this.taskStore.planGetShippedContent(projectId, planId)) ??
+        "# Plan (no previous shipped version)";
+    }
     const planNew = plan.content;
 
     const auditorPrompt = buildAuditorPrompt(planId, epicId ?? "");
@@ -1464,7 +1517,7 @@ ${planNew}`;
     const auditorResult = parseAuditorResult(auditorResponse.content);
     if (!auditorResult || auditorResult.status === "failed") {
       log.error("Auditor failed or returned invalid result, falling back to full rebuild");
-      return this.shipPlan(projectId, planId);
+      return this.shipPlan(projectId, planId, options);
     }
 
     if (
@@ -1753,16 +1806,18 @@ ${planNew}`;
   /**
    * Execute a plan and its prerequisites in dependency order.
    * Prerequisites must be in topological order (as returned by getCrossEpicDependencies).
+   * Optional options.version_number applies only to the target planId (not prerequisites).
    */
   async shipPlanWithPrerequisites(
     projectId: string,
     planId: string,
-    prerequisitePlanIds: string[]
+    prerequisitePlanIds: string[],
+    options?: { version_number?: number }
   ): Promise<Plan> {
     for (const prereqId of prerequisitePlanIds) {
       await this.shipPlan(projectId, prereqId);
     }
-    return this.shipPlan(projectId, planId);
+    return this.shipPlan(projectId, planId, options);
   }
 
   /** Get plan status for Sketch CTA (plan/replan/none). PRD §7.1.5 */

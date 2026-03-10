@@ -368,10 +368,18 @@ export const api = {
         body: JSON.stringify(body),
       });
     },
-    reExecute: (projectId: string, planId: string) =>
-      request<Plan>(`/projects/${projectId}/plans/${planId}/re-execute`, {
+    reExecute: (
+      projectId: string,
+      planId: string,
+      options?: { version_number?: number }
+    ) => {
+      const body: { version_number?: number } = {};
+      if (options?.version_number != null) body.version_number = options.version_number;
+      return request<Plan>(`/projects/${projectId}/plans/${planId}/re-execute`, {
         method: "POST",
-      }),
+        body: Object.keys(body).length > 0 ? JSON.stringify(body) : undefined,
+      });
+    },
     archive: (projectId: string, planId: string) =>
       request<Plan>(`/projects/${projectId}/plans/${planId}/archive`, {
         method: "POST",
