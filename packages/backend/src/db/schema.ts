@@ -156,19 +156,40 @@ CREATE INDEX IF NOT EXISTS idx_deployments_project_id ON deployments(project_id)
 -- Plans (SQL-only: content and metadata moved from .opensprint/plans/)
 -- gate_task_id nullable for epic-blocked model (no gate tasks)
 CREATE TABLE IF NOT EXISTS plans (
-    project_id              TEXT NOT NULL,
-    plan_id                  TEXT NOT NULL,
-    epic_id                  TEXT NOT NULL,
-    gate_task_id             TEXT,
-    re_execute_gate_task_id  TEXT,
-    content                  TEXT NOT NULL,
-    metadata                 TEXT NOT NULL,
-    shipped_content          TEXT,
-    updated_at               TEXT NOT NULL,
+    project_id                   TEXT NOT NULL,
+    plan_id                      TEXT NOT NULL,
+    epic_id                      TEXT NOT NULL,
+    gate_task_id                 TEXT,
+    re_execute_gate_task_id      TEXT,
+    content                      TEXT NOT NULL,
+    metadata                     TEXT NOT NULL,
+    shipped_content              TEXT,
+    updated_at                   TEXT NOT NULL,
+    current_version_number       INTEGER NOT NULL DEFAULT 1,
+    last_executed_version_number INTEGER,
     PRIMARY KEY (project_id, plan_id)
 );
 CREATE INDEX IF NOT EXISTS idx_plans_project_id ON plans(project_id);
 CREATE INDEX IF NOT EXISTS idx_plans_project_epic ON plans(project_id, epic_id);
+
+-- Plan versions (snapshots per plan: on execute or explicit save)
+CREATE TABLE IF NOT EXISTS plan_versions (
+    id                   SERIAL PRIMARY KEY,
+    project_id           TEXT NOT NULL,
+    plan_id              TEXT NOT NULL,
+    version_number       INTEGER NOT NULL,
+    title                TEXT,
+    content              TEXT NOT NULL,
+    metadata             TEXT,
+    created_at           TEXT NOT NULL,
+    is_executed_version  BOOLEAN NOT NULL DEFAULT FALSE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_plan_versions_project_plan_version
+  ON plan_versions(project_id, plan_id, version_number);
+
+-- Add version columns for existing plans tables (no-op if columns exist)
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS current_version_number INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS last_executed_version_number INTEGER;
 
 -- Auditor runs (final review Auditor execution records, enables plan-centric lookup and deep-linking)
 CREATE TABLE IF NOT EXISTS auditor_runs (
@@ -409,19 +430,35 @@ CREATE TABLE IF NOT EXISTS deployments (
 CREATE INDEX IF NOT EXISTS idx_deployments_project_id ON deployments(project_id);
 
 CREATE TABLE IF NOT EXISTS plans (
-    project_id              TEXT NOT NULL,
-    plan_id                  TEXT NOT NULL,
-    epic_id                  TEXT NOT NULL,
-    gate_task_id             TEXT,
-    re_execute_gate_task_id  TEXT,
-    content                  TEXT NOT NULL,
-    metadata                 TEXT NOT NULL,
-    shipped_content          TEXT,
-    updated_at               TEXT NOT NULL,
+    project_id                   TEXT NOT NULL,
+    plan_id                      TEXT NOT NULL,
+    epic_id                      TEXT NOT NULL,
+    gate_task_id                 TEXT,
+    re_execute_gate_task_id      TEXT,
+    content                      TEXT NOT NULL,
+    metadata                     TEXT NOT NULL,
+    shipped_content              TEXT,
+    updated_at                   TEXT NOT NULL,
+    current_version_number       INTEGER NOT NULL DEFAULT 1,
+    last_executed_version_number INTEGER,
     PRIMARY KEY (project_id, plan_id)
 );
 CREATE INDEX IF NOT EXISTS idx_plans_project_id ON plans(project_id);
 CREATE INDEX IF NOT EXISTS idx_plans_project_epic ON plans(project_id, epic_id);
+
+CREATE TABLE IF NOT EXISTS plan_versions (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id           TEXT NOT NULL,
+    plan_id              TEXT NOT NULL,
+    version_number       INTEGER NOT NULL,
+    title                TEXT,
+    content              TEXT NOT NULL,
+    metadata             TEXT,
+    created_at           TEXT NOT NULL,
+    is_executed_version  INTEGER NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_plan_versions_project_plan_version
+  ON plan_versions(project_id, plan_id, version_number);
 
 CREATE TABLE IF NOT EXISTS auditor_runs (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -510,6 +547,8 @@ CREATE TABLE IF NOT EXISTS repo_file_migrations (
 
 ALTER TABLE agent_stats ADD COLUMN IF NOT EXISTS role TEXT;
 ALTER TABLE open_questions ADD COLUMN IF NOT EXISTS scope_change_metadata TEXT;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS current_version_number INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS last_executed_version_number INTEGER;
 `;
 
 /** Strip leading comment-only and empty lines so statements starting with "-- Comment\nCREATE ..." are executed. */

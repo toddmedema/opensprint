@@ -16,4 +16,4 @@ export {
 } from "./sqlite-client.js";
 export { toPgParams, toSqliteParams } from "./sql-params.js";
 export type { AppDb, DrizzlePg } from "./app-db.js";
-export { plansTable } from "./drizzle-schema-pg.js";
+export { plansTable, planVersionsTable } from "./drizzle-schema-pg.js";
