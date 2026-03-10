@@ -50,6 +50,36 @@ export function useSinglePlan(
   });
 }
 
+export function usePlanVersions(
+  projectId: string | undefined,
+  planId: string | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.plans.versions(projectId ?? "", planId ?? ""),
+    queryFn: () => api.plans.listVersions(projectId!, planId!),
+    enabled: Boolean(projectId) && Boolean(planId) && options?.enabled !== false,
+  });
+}
+
+export function usePlanVersion(
+  projectId: string | undefined,
+  planId: string | undefined,
+  versionNumber: number | undefined,
+  options?: { enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.plans.version(projectId ?? "", planId ?? "", versionNumber ?? 0),
+    queryFn: () => api.plans.getVersion(projectId!, planId!, versionNumber!),
+    enabled:
+      Boolean(projectId) &&
+      Boolean(planId) &&
+      versionNumber != null &&
+      versionNumber > 0 &&
+      options?.enabled !== false,
+  });
+}
+
 export function usePlanChat(
   projectId: string | undefined,
   context: string | undefined,
@@ -100,6 +130,7 @@ export function useExecutePlan(projectId: string) {
     onSuccess: (_, { planId }) => {
       void qc.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
       void qc.invalidateQueries({ queryKey: queryKeys.plans.detail(projectId, planId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.plans.versions(projectId, planId) });
       void qc.invalidateQueries({ queryKey: queryKeys.plans.auditorRuns(projectId, planId) });
       void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
       void qc.invalidateQueries({ queryKey: queryKeys.execute.status(projectId) });

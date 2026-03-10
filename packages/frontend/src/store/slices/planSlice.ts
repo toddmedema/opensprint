@@ -374,7 +374,10 @@ const planSlice = createSlice({
         state.loading = false;
         const msg = action.error.message || "Failed to load plans";
         if (background) {
-          state.backgroundError = msg;
+          // Don't show plan refresh toast for connection/network errors; connection banner handles that
+          if (msg !== "Failed to fetch") {
+            state.backgroundError = msg;
+          }
         } else {
           state.error = msg;
         }
