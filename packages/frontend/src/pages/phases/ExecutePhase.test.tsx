@@ -1151,6 +1151,31 @@ describe("ExecutePhase epic merge mode indicator", () => {
     expect(screen.getByTestId("execute-self-improvement-indicator")).toBeInTheDocument();
     expect(screen.getByText("Self-improvement review in progress")).toBeInTheDocument();
   });
+
+  it("hides self-improvement indicator when selfImprovementRunInProgress is false", async () => {
+    const tasks = [
+      {
+        id: "epic-1.1",
+        title: "Task A",
+        epicId: "epic-1",
+        kanbanColumn: "ready",
+        priority: 0,
+        assignee: null,
+      },
+    ];
+    const store = createStore(tasks, { selfImprovementRunInProgress: false });
+    render(
+      <MemoryRouter>
+        <Provider store={store}>
+          <ExecutePhase projectId="proj-1" />
+        </Provider>
+      </MemoryRouter>
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("execute-filter-toolbar")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("execute-self-improvement-indicator")).not.toBeInTheDocument();
+  });
 });
 
 describe("ExecutePhase expandable search bar", () => {
