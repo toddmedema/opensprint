@@ -620,7 +620,7 @@ export class ContextAssembler {
     prompt += `- [ ] **Clarity** — Code is readable; naming is clear; complex logic has explanatory comments\n`;
     prompt += `- [ ] **No dead code** — No commented-out code, unused imports, or orphaned functions\n`;
     prompt += `- [ ] **Test coverage** — Aim for 80–90% for new/changed code. Tests verify behavior aligned with the spec; cover happy paths, important edge/error paths, and boundaries. Avoid demanding near-100% or over-precise tests that break on small refactors.\n`;
-    prompt += `- [ ] **Orchestrator validation status is green** — inspect \`${testStatusPath}\` before approving. Do not approve while it says \`PENDING\`, \`FAILED\`, or \`ERROR\`\n`;
+    prompt += `- [ ] **Orchestrator validation status reviewed** — inspect \`${testStatusPath}\`. If it says \`FAILED\` or \`ERROR\`, reject and cite the failure. If it says \`PENDING\`, continue your code review and do not reject solely for pending status.\n`;
     prompt += `- [ ] **Consistent style** — Follows existing codebase patterns and conventions\n\n`;
 
     prompt += `## Working directory\n\n`;
@@ -635,7 +635,7 @@ export class ContextAssembler {
     }
     prompt += `3. Walk through the checklist above, checking each item.\n`;
     prompt += `4. Do NOT rerun the full-suite command \`${config.testCommand}\` from this review prompt. The orchestrator runs validation in parallel and writes the result to \`${testStatusPath}\`.\n`;
-    prompt += `   Before approving, open that file. If it says \`FAILED\` or \`ERROR\`, reject and cite the relevant failure. If it still says \`PENDING\`, wait briefly and re-check before you finalize.\n`;
+    prompt += `   Before finalizing, open that file. If it says \`FAILED\` or \`ERROR\`, reject and cite the relevant failure. If it says \`PENDING\`, continue based on code quality/scope findings and do not reject solely for pending status.\n`;
     prompt += `5. If prior reviews rejected this task, verify each previously cited issue was resolved. If not, reject and list which issues remain.\n`;
     prompt += `6. Write your result to \`.opensprint/active/${config.taskId}/result.json\` using this exact JSON format:\n`;
     prompt += `   If approving (do NOT merge — the orchestrator will merge after you exit):\n`;
@@ -735,7 +735,7 @@ export class ContextAssembler {
     }
     prompt += `3. Walk through the checklist above for ${angleLabel}.\n`;
     prompt += `4. Do NOT rerun the full-suite command \`${config.testCommand}\` from this review prompt. The orchestrator runs validation in parallel and writes the result to \`${testStatusPath}\`.\n`;
-    prompt += `   Before approving, open that file. If it says \`FAILED\` or \`ERROR\`, reject and cite the relevant failure. If it still says \`PENDING\`, wait briefly and re-check before you finalize.\n`;
+    prompt += `   Before finalizing, open that file. If it says \`FAILED\` or \`ERROR\`, reject and cite the relevant failure. If it says \`PENDING\`, continue based on ${angleLabel} findings and do not reject solely for pending status.\n`;
     prompt += `5. Write your result to \`.opensprint/active/${config.taskId}/review-angles/${angle}/result.json\` using this exact JSON format:\n`;
     prompt += `   If approving:\n`;
     prompt += `   \`\`\`json\n`;

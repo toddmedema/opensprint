@@ -41,6 +41,8 @@ const {
   mockGetRepoPath,
   mockGetProjectByRepoPath,
   mockGetSettings,
+  mockGetValidationTimeoutMs,
+  mockRecordValidationDuration,
   mockCreateTaskWorktree,
   mockCreateOrCheckoutBranch,
   mockEnsureRepoNodeModules,
@@ -108,6 +110,8 @@ const {
   mockGetRepoPath: vi.fn(),
   mockGetProjectByRepoPath: vi.fn().mockResolvedValue({ id: "proj-1", repoPath: "/tmp/repo" }),
   mockGetSettings: vi.fn(),
+  mockGetValidationTimeoutMs: vi.fn(),
+  mockRecordValidationDuration: vi.fn().mockResolvedValue(undefined),
   mockCreateTaskWorktree: vi.fn(),
   mockCreateOrCheckoutBranch: vi.fn(),
   mockEnsureRepoNodeModules: vi.fn(),
@@ -221,6 +225,8 @@ vi.mock("../services/project.service.js", () => ({
     getRepoPath: mockGetRepoPath,
     getProjectByRepoPath: mockGetProjectByRepoPath,
     getSettings: mockGetSettings,
+    getValidationTimeoutMs: mockGetValidationTimeoutMs,
+    recordValidationDuration: mockRecordValidationDuration,
   })),
 }));
 
@@ -485,6 +491,8 @@ describe("OrchestratorService (slot-based model)", () => {
     mockGetProject.mockResolvedValue({ id: projectId });
     mockGetRepoPath.mockResolvedValue(repoPath);
     mockGetSettings.mockResolvedValue(defaultSettings);
+    mockGetValidationTimeoutMs.mockResolvedValue(300_000);
+    mockRecordValidationDuration.mockResolvedValue(undefined);
     mockRecoverOrphanedTasks.mockResolvedValue({ recovered: [] });
     mockRecoverFromStaleHeartbeats.mockResolvedValue({ recovered: [] });
     mockFindOrphanedAssignments.mockResolvedValue([]);
@@ -527,6 +535,7 @@ describe("OrchestratorService (slot-based model)", () => {
       failed: 0,
       rawOutput: "",
       executedCommand: "npm test",
+      scope: "full",
     });
     mockListSessions.mockResolvedValue([]);
     mockBuildContext.mockResolvedValue({
@@ -574,6 +583,33 @@ describe("OrchestratorService (slot-based model)", () => {
       expect(formatReviewFeedback(result)).toBe(
         "Review rejected (no details provided by review agent)."
       );
+    });
+  });
+
+  describe("pending validation review rejection handling", () => {
+    it("detects pending-only orchestrator status rejection", () => {
+      const isPendingOnly = (orchestrator as unknown as {
+        isPendingValidationOnlyRejection: (result: ReviewAgentResult) => boolean;
+      }).isPendingValidationOnlyRejection.bind(orchestrator);
+
+      expect(
+        isPendingOnly({
+          status: "rejected",
+          summary:
+            "Review rejected: Orchestrator test status in .opensprint/active/os-1234/context/orchestrator-test-status.md is PENDING.",
+          notes: "",
+        })
+      ).toBe(true);
+
+      expect(
+        isPendingOnly({
+          status: "rejected",
+          summary:
+            "Review rejected: Orchestrator test status in .opensprint/active/os-1234/context/orchestrator-test-status.md is PENDING.",
+          issues: ["packages/backend/src/x.ts:12 regression in parsing"],
+          notes: "",
+        })
+      ).toBe(false);
     });
   });
 
@@ -727,6 +763,7 @@ describe("OrchestratorService (slot-based model)", () => {
         failed: 0,
         rawOutput: "ok",
         executedCommand: "node ./node_modules/vitest/vitest.mjs related --run src/foo.ts",
+        scope: "scoped",
       });
       mockGetActiveDir.mockImplementation((base: string, tid: string) =>
         path.join(base, ".opensprint", "active", tid)
@@ -757,7 +794,8 @@ describe("OrchestratorService (slot-based model)", () => {
         expect(mockRunScopedTests).toHaveBeenCalledWith(
           repoPath,
           ["src/foo.ts"],
-          expect.any(String)
+          expect.any(String),
+          expect.objectContaining({ timeoutMs: expect.any(Number) })
         );
       });
       await vi.waitFor(() => {
@@ -836,6 +874,7 @@ describe("OrchestratorService (slot-based model)", () => {
         failed: 0,
         rawOutput: "ok",
         executedCommand: "node ./node_modules/vitest/vitest.mjs related --run src/foo.ts",
+        scope: "scoped",
       });
       vi.mocked(heartbeatService.readHeartbeat).mockResolvedValue({
         processGroupLeaderPid: 4343,

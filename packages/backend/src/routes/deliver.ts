@@ -495,6 +495,7 @@ export async function runDeployAsync(
         details: [],
         rawOutput: "",
         executedCommand: null,
+        scope: "full",
       };
     } else {
       const testCommand = resolveTestCommand(settings);

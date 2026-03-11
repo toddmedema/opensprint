@@ -347,6 +347,10 @@ export const VALID_SELF_IMPROVEMENT_FREQUENCIES: SelfImprovementFrequency[] = [
   "weekly",
 ];
 
+/** Bounds for project-level validation timeout override and adaptive timeout values. */
+export const MIN_VALIDATION_TIMEOUT_MS = 60_000;
+export const MAX_VALIDATION_TIMEOUT_MS = 3_600_000;
+
 /** Self-improvement frequency options for UI dropdown */
 export const SELF_IMPROVEMENT_FREQUENCY_OPTIONS: {
   value: SelfImprovementFrequency;
@@ -629,6 +633,20 @@ export interface ProjectSettings {
   testFramework: string | null;
   /** Test command (auto-detected from package.json, default: npm test, overridable) */
   testCommand?: string | null;
+  /**
+   * Optional project-level override for orchestrator validation timeout (milliseconds).
+   * Use null/undefined to fall back to adaptive timeout.
+   */
+  validationTimeoutMsOverride?: number | null;
+  /**
+   * Internal rolling timings used to adapt validation timeout per project.
+   * `scoped` tracks related/scoped test runs, `full` tracks full-suite runs.
+   */
+  validationTimingProfile?: {
+    scoped?: number[];
+    full?: number[];
+    updatedAt?: string;
+  };
   /** When to invoke the review agent after coding completes (default: "always") */
   reviewMode?: ReviewMode;
   /** Selected review angles for the review agent. When empty, all angles are covered by default. */
@@ -727,6 +745,45 @@ const VALID_REVIEW_ANGLES: ReviewAngle[] = [
   "design_ux_accessibility",
 ];
 
+function parseValidationTimeoutMsOverride(raw: unknown): number | null | undefined {
+  if (raw === null) return null;
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return undefined;
+  const rounded = Math.round(raw);
+  if (rounded < MIN_VALIDATION_TIMEOUT_MS || rounded > MAX_VALIDATION_TIMEOUT_MS) {
+    return undefined;
+  }
+  return rounded;
+}
+
+function normalizeTimingSamples(raw: unknown): number[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const samples = raw
+    .filter((v): v is number => typeof v === "number" && Number.isFinite(v))
+    .map((v) => Math.round(v))
+    .filter((v) => v >= 0);
+  if (samples.length === 0) return undefined;
+  return samples.slice(-50);
+}
+
+function parseValidationTimingProfile(
+  raw: unknown
+): ProjectSettings["validationTimingProfile"] | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const profile = raw as Record<string, unknown>;
+  const scoped = normalizeTimingSamples(profile.scoped);
+  const full = normalizeTimingSamples(profile.full);
+  const updatedAt =
+    typeof profile.updatedAt === "string" && profile.updatedAt.trim()
+      ? profile.updatedAt.trim()
+      : undefined;
+  if (!scoped && !full && !updatedAt) return undefined;
+  return {
+    ...(scoped && { scoped }),
+    ...(full && { full }),
+    ...(updatedAt && { updatedAt }),
+  };
+}
+
 function parseReviewAngles(raw: unknown): ReviewAngle[] | undefined {
   if (!Array.isArray(raw) || raw.length === 0) return undefined;
   const filtered = raw.filter(
@@ -806,6 +863,8 @@ export function parseSettings(raw: unknown): ProjectSettings {
     worktreeBaseBranch: normalizeWorktreeBaseBranch(r?.worktreeBaseBranch),
     reviewAngles: parseReviewAngles(r?.reviewAngles),
     includeGeneralReview: r?.includeGeneralReview === true ? true : undefined,
+    validationTimeoutMsOverride: parseValidationTimeoutMsOverride(r?.validationTimeoutMsOverride),
+    validationTimingProfile: parseValidationTimingProfile(r?.validationTimingProfile),
     enableHumanTeammates,
     teamMembers: parseTeamMembers(r?.teamMembers),
     selfImprovementFrequency,

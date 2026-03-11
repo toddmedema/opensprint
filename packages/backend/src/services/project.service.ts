@@ -19,6 +19,8 @@ import {
   DEFAULT_AI_AUTONOMY_LEVEL,
   DEFAULT_DEPLOYMENT_CONFIG,
   DEFAULT_REVIEW_MODE,
+  MIN_VALIDATION_TIMEOUT_MS,
+  MAX_VALIDATION_TIMEOUT_MS,
   getTestCommandForFramework,
   hilConfigFromAiAutonomyLevel,
   parseSettings,
@@ -37,6 +39,7 @@ import {
   setSettingsInStore,
   deleteSettingsFromStore,
   getSettingsWithMetaFromStore,
+  updateSettingsInStore,
 } from "./settings-store.service.js";
 import { deleteFeedbackAssetsForProject } from "./feedback-store.service.js";
 import { BranchManager } from "./branch-manager.js";
@@ -63,6 +66,11 @@ import { classifyInitError, attemptRecovery } from "./scaffold-recovery.service.
 
 const execAsync = promisify(exec);
 const log = createLogger("project");
+
+const DEFAULT_VALIDATION_TIMEOUT_MS = 300_000;
+const VALIDATION_TIMEOUT_BUFFER_MS = 30_000;
+const VALIDATION_TIMEOUT_MULTIPLIER = 1.8;
+const VALIDATION_TIMING_SAMPLE_LIMIT = 30;
 
 /** Next midnight UTC (daily) or next Sunday 00:00 UTC (weekly). Used for nextRunAt in settings response. */
 function getNextScheduledSelfImprovementRunAt(
@@ -136,6 +144,26 @@ function normalizeRepoPath(p: string): string {
   return p.trim().replace(/\/+$/, "") || "";
 }
 
+function clampValidationTimeoutMs(raw: number): number {
+  if (!Number.isFinite(raw)) return DEFAULT_VALIDATION_TIMEOUT_MS;
+  const rounded = Math.round(raw);
+  return Math.min(MAX_VALIDATION_TIMEOUT_MS, Math.max(MIN_VALIDATION_TIMEOUT_MS, rounded));
+}
+
+function percentile(values: number[], p: number): number {
+  if (values.length === 0) return DEFAULT_VALIDATION_TIMEOUT_MS;
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor((sorted.length - 1) * p)));
+  return sorted[idx]!;
+}
+
+function normalizeValidationSample(raw: number): number | null {
+  if (!Number.isFinite(raw)) return null;
+  const rounded = Math.round(raw);
+  if (rounded <= 0) return null;
+  return Math.min(rounded, MAX_VALIDATION_TIMEOUT_MS);
+}
+
 /** Default agent config used when creating or repairing settings (e.g. adopt path). */
 const DEFAULT_AGENT_CONFIG = {
   type: "cursor" as const,
@@ -153,6 +181,7 @@ function buildDefaultSettings(): ProjectSettings {
     hilConfig: { ...DEFAULT_HIL_CONFIG },
     testFramework: null,
     testCommand: null,
+    validationTimeoutMsOverride: null,
     reviewMode: DEFAULT_REVIEW_MODE,
     gitWorkingMode: "worktree",
     mergeStrategy: "per_task",
@@ -173,6 +202,31 @@ function toCanonicalSettings(s: ProjectSettings): ProjectSettings {
     hilConfig: hilConfigFromAiAutonomyLevel(aiAutonomyLevel),
     testFramework: s.testFramework ?? null,
     testCommand: s.testCommand ?? null,
+    validationTimeoutMsOverride:
+      typeof s.validationTimeoutMsOverride === "number"
+        ? clampValidationTimeoutMs(s.validationTimeoutMsOverride)
+        : null,
+    ...(s.validationTimingProfile && {
+      validationTimingProfile: {
+        ...(Array.isArray(s.validationTimingProfile.scoped) &&
+          s.validationTimingProfile.scoped.length > 0 && {
+            scoped: s.validationTimingProfile.scoped
+              .map((sample) => normalizeValidationSample(sample))
+              .filter((sample): sample is number => sample !== null)
+              .slice(-VALIDATION_TIMING_SAMPLE_LIMIT),
+          }),
+        ...(Array.isArray(s.validationTimingProfile.full) &&
+          s.validationTimingProfile.full.length > 0 && {
+            full: s.validationTimingProfile.full
+              .map((sample) => normalizeValidationSample(sample))
+              .filter((sample): sample is number => sample !== null)
+              .slice(-VALIDATION_TIMING_SAMPLE_LIMIT),
+          }),
+        ...(s.validationTimingProfile.updatedAt && {
+          updatedAt: s.validationTimingProfile.updatedAt,
+        }),
+      },
+    }),
     reviewMode: s.reviewMode ?? DEFAULT_REVIEW_MODE,
     ...(s.reviewAngles && s.reviewAngles.length > 0 && { reviewAngles: s.reviewAngles }),
     ...(s.includeGeneralReview === true && { includeGeneralReview: true }),
@@ -871,6 +925,76 @@ export class ProjectService {
     };
   }
 
+  /**
+   * Compute project-specific validation timeout from manual override or adaptive history.
+   * Scoped and full-suite runs keep separate rolling duration samples.
+   */
+  async getValidationTimeoutMs(
+    projectId: string,
+    scope: "scoped" | "full"
+  ): Promise<number> {
+    const settings = await this.getSettings(projectId);
+    if (typeof settings.validationTimeoutMsOverride === "number") {
+      return clampValidationTimeoutMs(settings.validationTimeoutMsOverride);
+    }
+
+    const profile = settings.validationTimingProfile;
+    const scoped = (profile?.scoped ?? []).filter((v): v is number => typeof v === "number");
+    const full = (profile?.full ?? []).filter((v): v is number => typeof v === "number");
+    const samples =
+      scope === "scoped"
+        ? scoped.length > 0
+          ? scoped
+          : full
+        : full.length > 0
+          ? full
+          : scoped;
+
+    if (samples.length === 0) {
+      return DEFAULT_VALIDATION_TIMEOUT_MS;
+    }
+
+    const p95 = percentile(samples, 0.95);
+    const adaptive = Math.round(p95 * VALIDATION_TIMEOUT_MULTIPLIER + VALIDATION_TIMEOUT_BUFFER_MS);
+    return clampValidationTimeoutMs(adaptive);
+  }
+
+  /**
+   * Record validation duration sample for adaptive timeout tuning.
+   * Stored in project settings as a rolling window.
+   */
+  async recordValidationDuration(
+    projectId: string,
+    scope: "scoped" | "full",
+    durationMs: number
+  ): Promise<void> {
+    const sample = normalizeValidationSample(durationMs);
+    if (sample === null) return;
+
+    const defaults = buildDefaultSettings();
+    await updateSettingsInStore(projectId, defaults, (current) => {
+      const normalized = toCanonicalSettings(parseSettings(current));
+      const existing = normalized.validationTimingProfile ?? {};
+      const scopedSamples =
+        scope === "scoped"
+          ? [...(existing.scoped ?? []), sample].slice(-VALIDATION_TIMING_SAMPLE_LIMIT)
+          : (existing.scoped ?? []);
+      const fullSamples =
+        scope === "full"
+          ? [...(existing.full ?? []), sample].slice(-VALIDATION_TIMING_SAMPLE_LIMIT)
+          : (existing.full ?? []);
+
+      return toCanonicalSettings({
+        ...normalized,
+        validationTimingProfile: {
+          ...(scopedSamples.length > 0 && { scoped: scopedSamples }),
+          ...(fullSamples.length > 0 && { full: fullSamples }),
+          updatedAt: new Date().toISOString(),
+        },
+      });
+    });
+  }
+
   /** Update project settings (persisted in global store). */
   async updateSettings(
     projectId: string,
@@ -884,11 +1008,13 @@ export class ProjectService {
       selfImprovementLastRunAt: _stripLastRunAt,
       selfImprovementLastCommitSha: _stripLastSha,
       nextRunAt: _stripNextRunAt,
+      validationTimingProfile: _stripValidationTimingProfile,
       ...sanitizedUpdates
     } = updates as Partial<ProjectSettings> & {
       selfImprovementLastRunAt?: unknown;
       selfImprovementLastCommitSha?: unknown;
       nextRunAt?: unknown;
+      validationTimingProfile?: unknown;
     };
 
     // Validate agent config if provided (accept new or legacy keys)
@@ -990,6 +1116,35 @@ export class ProjectService {
       sanitizedUpdates.autoExecutePlans !== undefined
         ? sanitizedUpdates.autoExecutePlans === true
         : (current.autoExecutePlans ?? false);
+    if (
+      sanitizedUpdates.validationTimeoutMsOverride !== undefined &&
+      sanitizedUpdates.validationTimeoutMsOverride !== null &&
+      (typeof sanitizedUpdates.validationTimeoutMsOverride !== "number" ||
+        !Number.isFinite(sanitizedUpdates.validationTimeoutMsOverride))
+    ) {
+      throw new AppError(
+        400,
+        ErrorCodes.INVALID_INPUT,
+        "validationTimeoutMsOverride must be a number (milliseconds) or null"
+      );
+    }
+    if (
+      typeof sanitizedUpdates.validationTimeoutMsOverride === "number" &&
+      (sanitizedUpdates.validationTimeoutMsOverride < MIN_VALIDATION_TIMEOUT_MS ||
+        sanitizedUpdates.validationTimeoutMsOverride > MAX_VALIDATION_TIMEOUT_MS)
+    ) {
+      throw new AppError(
+        400,
+        ErrorCodes.INVALID_INPUT,
+        `validationTimeoutMsOverride must be between ${MIN_VALIDATION_TIMEOUT_MS} and ${MAX_VALIDATION_TIMEOUT_MS} milliseconds`
+      );
+    }
+    const validationTimeoutMsOverride =
+      sanitizedUpdates.validationTimeoutMsOverride === undefined
+        ? (current.validationTimeoutMsOverride ?? null)
+        : sanitizedUpdates.validationTimeoutMsOverride === null
+          ? null
+          : clampValidationTimeoutMs(sanitizedUpdates.validationTimeoutMsOverride);
     const effectiveSettings: ProjectSettings = {
       ...current,
       ...sanitizedUpdates,
@@ -1002,6 +1157,7 @@ export class ProjectService {
       mergeStrategy,
       selfImprovementFrequency,
       autoExecutePlans,
+      validationTimeoutMsOverride,
     };
     const updated: ProjectSettings = {
       ...effectiveSettings,

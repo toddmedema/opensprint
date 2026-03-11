@@ -5,7 +5,12 @@ import os from "os";
 import { ProjectService } from "../services/project.service.js";
 import { notificationService } from "../services/notification.service.js";
 import { setGlobalSettings } from "../services/global-settings.service.js";
-import { DEFAULT_HIL_CONFIG, DEFAULT_REVIEW_MODE } from "@opensprint/shared";
+import {
+  DEFAULT_HIL_CONFIG,
+  DEFAULT_REVIEW_MODE,
+  MIN_VALIDATION_TIMEOUT_MS,
+  MAX_VALIDATION_TIMEOUT_MS,
+} from "@opensprint/shared";
 
 // Full mock so we never load task-store.service (which pulls in drizzle). ProjectService only needs
 // listAll, deleteOpenQuestionsByProjectId, deleteByProjectId for these tests.
@@ -789,6 +794,65 @@ describe("ProjectService", () => {
     await projectService.updateSettings(project.id, { selfImprovementFrequency: "after_each_plan" });
     const withPlan = await projectService.getSettingsWithRuntimeState(project.id);
     expect(withPlan.nextRunAt).toBeUndefined();
+  });
+
+  it("uses validationTimeoutMsOverride when set and validates bounds", async () => {
+    const repoPath = path.join(tempDir, "validation-timeout-override");
+    const project = await projectService.createProject({
+      name: "Validation Timeout Override",
+      repoPath,
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+    });
+
+    await projectService.updateSettings(project.id, {
+      validationTimeoutMsOverride: MIN_VALIDATION_TIMEOUT_MS + 45_000,
+    });
+
+    await expect(
+      projectService.updateSettings(project.id, {
+        validationTimeoutMsOverride: MIN_VALIDATION_TIMEOUT_MS - 1,
+      })
+    ).rejects.toMatchObject({ statusCode: 400, code: "INVALID_INPUT" });
+
+    await expect(
+      projectService.updateSettings(project.id, {
+        validationTimeoutMsOverride: MAX_VALIDATION_TIMEOUT_MS + 1,
+      })
+    ).rejects.toMatchObject({ statusCode: 400, code: "INVALID_INPUT" });
+
+    const timeoutMs = await projectService.getValidationTimeoutMs(project.id, "scoped");
+    expect(timeoutMs).toBe(MIN_VALIDATION_TIMEOUT_MS + 45_000);
+  });
+
+  it("records validation timings and derives adaptive timeout per scope", async () => {
+    const repoPath = path.join(tempDir, "validation-timeout-adaptive");
+    const project = await projectService.createProject({
+      name: "Validation Timeout Adaptive",
+      repoPath,
+      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
+      deployment: { mode: "custom" },
+      hilConfig: DEFAULT_HIL_CONFIG,
+    });
+
+    const initial = await projectService.getValidationTimeoutMs(project.id, "scoped");
+    expect(initial).toBe(300_000);
+
+    await projectService.recordValidationDuration(project.id, "scoped", 20_000);
+    await projectService.recordValidationDuration(project.id, "scoped", 30_000);
+    await projectService.recordValidationDuration(project.id, "scoped", 25_000);
+
+    const adaptiveScoped = await projectService.getValidationTimeoutMs(project.id, "scoped");
+    expect(adaptiveScoped).toBeGreaterThanOrEqual(MIN_VALIDATION_TIMEOUT_MS);
+    expect(adaptiveScoped).toBeLessThan(300_000);
+
+    await projectService.recordValidationDuration(project.id, "full", 420_000);
+    const adaptiveFull = await projectService.getValidationTimeoutMs(project.id, "full");
+    expect(adaptiveFull).toBeGreaterThan(300_000);
+    expect(adaptiveFull).toBeLessThanOrEqual(MAX_VALIDATION_TIMEOUT_MS);
   });
 
   it("should strip testFailuresAndRetries from hilConfig when reading settings (PRD §6.5.1)", async () => {

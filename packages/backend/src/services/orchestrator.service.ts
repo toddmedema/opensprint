@@ -37,7 +37,7 @@ import type { SessionManager } from "./session-manager.js";
 import { getCombinedInstructions } from "./agent-instructions.service.js";
 import { buildSummarizerPrompt, countWords } from "./summarizer.service.js";
 import type { TaskContext } from "./context-assembler.js";
-import { TestRunner } from "./test-runner.js";
+import { TestRunner, type ScopedTestResult } from "./test-runner.js";
 import { activeAgentsService } from "./active-agents.service.js";
 import { recoveryService, type RecoveryHost, type GuppAssignment } from "./recovery.service.js";
 import { FeedbackService } from "./feedback.service.js";
@@ -1657,7 +1657,8 @@ export class OrchestratorService {
       const reviewMode = settings.reviewMode ?? DEFAULT_REVIEW_MODE;
 
       if (reviewMode === "never") {
-        const scopedResult = await this.testRunner.runScopedTests(
+        const scopedResult = await this.runAdaptiveValidation(
+          projectId,
           wtPath,
           changedFiles,
           testCommand
@@ -1785,6 +1786,73 @@ export class OrchestratorService {
     }
   }
 
+  private async runAdaptiveValidation(
+    projectId: string,
+    wtPath: string,
+    changedFiles: string[],
+    testCommand?: string
+  ): Promise<ScopedTestResult> {
+    const preferredScope: "scoped" | "full" = changedFiles.length > 0 ? "scoped" : "full";
+    const timeoutMs = await this.projectService.getValidationTimeoutMs(projectId, preferredScope);
+    const startedAt = Date.now();
+    try {
+      const scopedResult = await this.testRunner.runScopedTests(
+        wtPath,
+        changedFiles,
+        testCommand,
+        { timeoutMs }
+      );
+      const durationMs = Date.now() - startedAt;
+      void this.projectService
+        .recordValidationDuration(projectId, scopedResult.scope, durationMs)
+        .catch((err) => {
+          log.warn("Failed to persist validation timing sample", { projectId, durationMs, err });
+        });
+      return scopedResult;
+    } catch (err) {
+      const durationMs = Date.now() - startedAt;
+      void this.projectService
+        .recordValidationDuration(projectId, preferredScope, durationMs)
+        .catch(() => {});
+      throw err;
+    }
+  }
+
+  private isPendingValidationFragment(text: string): boolean {
+    const normalized = text.toLowerCase();
+    const mentionsPending = normalized.includes("pending");
+    const mentionsOrchestrator = normalized.includes("orchestrator");
+    const mentionsValidation =
+      normalized.includes("validation") ||
+      normalized.includes("test status") ||
+      normalized.includes("orchestrator-test-status");
+    const mentionsStatusFile = normalized.includes("orchestrator-test-status.md");
+    if (!(mentionsPending && ((mentionsOrchestrator && mentionsValidation) || mentionsStatusFile))) {
+      return false;
+    }
+
+    // Do not treat concrete code findings as pending-only.
+    return !/\bpackages\/|\.tsx?\b|\.jsx?\b|line\s+\d+/i.test(text);
+  }
+
+  private isPendingValidationOnlyRejection(result: ReviewAgentResult): boolean {
+    const summary = result.summary?.trim() ?? "";
+    const notes = result.notes?.trim() ?? "";
+    const issues = (result.issues ?? []).map((issue) => issue.trim()).filter(Boolean);
+    const fragments = [summary, ...issues, notes].filter(Boolean);
+    if (fragments.length === 0) return false;
+
+    const hasPendingMention = fragments.some((fragment) =>
+      this.isPendingValidationFragment(fragment)
+    );
+    if (!hasPendingMention) return false;
+
+    if (summary && !this.isPendingValidationFragment(summary)) return false;
+    if (issues.some((issue) => !this.isPendingValidationFragment(issue))) return false;
+
+    return true;
+  }
+
   /**
    * Clear rate limit notifications when system is demonstrably working
    * (review agent starting or coding success with reviewMode=never).
@@ -1869,8 +1937,7 @@ export class OrchestratorService {
     );
     slot.phaseCoordinator = coordinator;
 
-    this.testRunner
-      .runScopedTests(wtPath, changedFiles, testCommand)
+    this.runAdaptiveValidation(projectId, wtPath, changedFiles, testCommand)
       .then(async (scopedResult) => {
         const sl = this.getState(projectId).slots.get(task.id);
         if (!sl) {
@@ -2145,6 +2212,14 @@ export class OrchestratorService {
     if (reviewOutcome.status === "approved") {
       await this.mergeCoordinator.performMergeAndDone(projectId, repoPath, task, branchName);
     } else if (reviewOutcome.status === "rejected") {
+      if (this.isPendingValidationOnlyRejection(reviewOutcome.result!)) {
+        log.warn("Ignoring review rejection caused only by pending validation status", {
+          projectId,
+          taskId: task.id,
+        });
+        await this.mergeCoordinator.performMergeAndDone(projectId, repoPath, task, branchName);
+        return;
+      }
       await this.handleReviewRejection(
         projectId,
         repoPath,

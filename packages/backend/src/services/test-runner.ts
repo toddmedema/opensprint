@@ -23,6 +23,12 @@ export interface ScopedTestResult extends TestResults {
   rawOutput: string;
   /** Actual command executed after scoped/full-suite resolution */
   executedCommand: string | null;
+  /** Whether validation ran a scoped command or the full suite command. */
+  scope: "scoped" | "full";
+}
+
+interface RunTestsOptions {
+  timeoutMs?: number;
 }
 
 /**
@@ -46,33 +52,47 @@ export class TestRunner {
   async runScopedTests(
     repoPath: string,
     changedFiles: string[],
-    testCommand?: string
+    testCommand?: string,
+    options?: RunTestsOptions
   ): Promise<ScopedTestResult> {
     const testFiles = changedFiles.filter((f) => /\.(test|spec)\.(ts|tsx|js|jsx)$/.test(f));
     const detectedFramework = await this.detectScopedFramework(repoPath, testCommand);
 
     let command: string | undefined;
+    let scope: "scoped" | "full" = "full";
     if (testFiles.length > 0 && detectedFramework === "vitest") {
       command = this.buildVitestCommand("run", testFiles);
+      scope = "scoped";
     } else if (testFiles.length > 0 && detectedFramework === "jest") {
       command = `npx jest ${testFiles.join(" ")}`;
+      scope = "scoped";
     } else if (changedFiles.length > 0 && detectedFramework === "vitest") {
       command = this.buildVitestCommand("related", changedFiles);
+      scope = "scoped";
     } else if (changedFiles.length > 0 && detectedFramework === "jest") {
       command = `npx jest --findRelatedTests ${changedFiles.join(" ")}`;
+      scope = "scoped";
     } else {
       command = testCommand;
     }
 
-    const result = await this.runTestsWithOutput(repoPath, command);
-    return result;
+    const result = await this.runTestsWithOutput(repoPath, command, options);
+    return { ...result, scope };
   }
 
   /**
    * Run tests and return both structured results and raw output.
    */
-  async runTestsWithOutput(repoPath: string, testCommand?: string): Promise<ScopedTestResult> {
+  async runTestsWithOutput(
+    repoPath: string,
+    testCommand?: string,
+    options?: RunTestsOptions
+  ): Promise<ScopedTestResult> {
     const command = testCommand || (await this.detectTestCommand(repoPath));
+    const timeoutMs =
+      typeof options?.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+        ? Math.round(options.timeoutMs)
+        : TEST_TIMEOUT_MS;
 
     if (!command) {
       return {
@@ -83,15 +103,20 @@ export class TestRunner {
         details: [],
         rawOutput: "",
         executedCommand: null,
+        scope: "full",
       };
     }
 
-    const { stdout, stderr, exitCode } = await this.execWithProcessGroup(command, repoPath);
+    const { stdout, stderr, exitCode } = await this.execWithProcessGroup(
+      command,
+      repoPath,
+      timeoutMs
+    );
     const rawOutput = stdout + "\n" + stderr;
 
     if (exitCode === 0) {
       const parsed = this.parseTestOutput(rawOutput, command);
-      return { ...parsed, rawOutput, executedCommand: command };
+      return { ...parsed, rawOutput, executedCommand: command, scope: "full" };
     }
 
     const results = this.parseTestOutput(rawOutput, command);
@@ -111,18 +136,23 @@ export class TestRunner {
         ],
         rawOutput,
         executedCommand: command,
+        scope: "full",
       };
     }
 
-    return { ...results, rawOutput, executedCommand: command };
+    return { ...results, rawOutput, executedCommand: command, scope: "full" };
   }
 
   /**
    * Run tests for a project and return structured results.
    */
-  async runTests(repoPath: string, testCommand?: string): Promise<TestResults> {
-    const result = await this.runTestsWithOutput(repoPath, testCommand);
-    const { rawOutput: _, executedCommand: __, ...testResults } = result;
+  async runTests(
+    repoPath: string,
+    testCommand?: string,
+    options?: RunTestsOptions
+  ): Promise<TestResults> {
+    const result = await this.runTestsWithOutput(repoPath, testCommand, options);
+    const { rawOutput: _, executedCommand: __, scope: ___, ...testResults } = result;
     return testResults;
   }
 
@@ -132,7 +162,8 @@ export class TestRunner {
    */
   private execWithProcessGroup(
     command: string,
-    cwd: string
+    cwd: string,
+    timeoutMs: number
   ): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
     return new Promise((resolve) => {
       let stdout = "";
@@ -169,7 +200,7 @@ export class TestRunner {
 
       const timeout = setTimeout(() => {
         killProcessGroup();
-      }, TEST_TIMEOUT_MS);
+      }, timeoutMs);
 
       child.stdout.on("data", (data: Buffer) => {
         if (stdout.length < MAX_BUFFER_BYTES) stdout += data.toString();
