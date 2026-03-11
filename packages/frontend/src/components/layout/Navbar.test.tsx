@@ -1083,6 +1083,9 @@ describe("Navbar", () => {
     await user.click(createNewButton);
 
     expect(await screen.findByTestId("onboarding-page")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-intended")).toHaveTextContent(
+      /\/projects\/create-new/
+    );
   });
 
   it("navigates to /onboarding when Add Existing Project clicked and no API keys", async () => {
@@ -1114,6 +1117,35 @@ describe("Navbar", () => {
     await user.click(addExistingButton);
 
     expect(await screen.findByTestId("onboarding-page")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-intended")).toHaveTextContent(
+      /\/projects\/add-existing/
+    );
+  });
+
+  it("on global-status error navigates to route (fallback)", async () => {
+    mockGetGlobalStatus.mockRejectedValue(new Error("network error"));
+    const user = userEvent.setup();
+    render(
+      <ThemeProvider>
+        <DisplayPreferencesProvider>
+          <Provider store={createStore()}>
+            <QueryClientProvider client={queryClient}>
+              <MemoryRouter initialEntries={["/"]}>
+                <Routes>
+                  <Route path="/" element={<Navbar project={null} />} />
+                  <Route path="/projects/create-new" element={<div data-testid="create-new-page">Create New</div>} />
+                </Routes>
+              </MemoryRouter>
+            </QueryClientProvider>
+          </Provider>
+        </DisplayPreferencesProvider>
+      </ThemeProvider>
+    );
+    const trigger = screen.getByRole("button", { name: /All Projects/i });
+    await user.click(trigger);
+    const createNewButton = screen.getByRole("button", { name: /Create New Project/i });
+    await user.click(createNewButton);
+    expect(await screen.findByTestId("create-new-page")).toBeInTheDocument();
   });
 
   it("theme is configurable from settings page", async () => {

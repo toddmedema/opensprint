@@ -240,6 +240,9 @@ describe("HomeScreen", () => {
     await user.click(screen.getByTestId("create-new-button"));
 
     expect(await screen.findByTestId("onboarding-page")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-intended")).toHaveTextContent(
+      /\/projects\/create-new/
+    );
   });
 
   it("navigates to /onboarding when Add Existing clicked and no API keys", async () => {
@@ -263,6 +266,33 @@ describe("HomeScreen", () => {
     await user.click(screen.getByTestId("add-existing-button"));
 
     expect(await screen.findByTestId("onboarding-page")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-intended")).toHaveTextContent(
+      /\/projects\/add-existing/
+    );
+  });
+
+  it("on global-status error navigates to route (fallback)", async () => {
+    mockProjectsList.mockResolvedValue([]);
+    mockGetGlobalStatus.mockRejectedValue(new Error("network error"));
+    const user = userEvent.setup();
+
+    function LocationDisplay() {
+      return <div data-testid="location">{useLocation().pathname}</div>;
+    }
+
+    renderApp(
+      <>
+        <HomeScreen />
+        <LocationDisplay />
+      </>
+    );
+
+    await screen.findByTestId("create-new-button");
+    await user.click(screen.getByTestId("create-new-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("/projects/create-new");
+    });
   });
 
   it("clicking project card navigates to project sketch", async () => {
