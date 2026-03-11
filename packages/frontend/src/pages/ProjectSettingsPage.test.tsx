@@ -318,6 +318,23 @@ describe("ProjectSettingsPage", () => {
     });
   });
 
+  it("navigating to ?tab=workflow shows Workflow tab active and workflow content", async () => {
+    renderProjectSettingsPage("/projects/proj-1/settings?tab=workflow");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("settings-modal")).toBeInTheDocument();
+    });
+
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    expect(workflowTab).toBeInTheDocument();
+    expect(workflowTab).toHaveAttribute("data-testid", "settings-tab-workflow");
+
+    expect(screen.getByTestId("workflow-tab-content")).toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/projects/proj-1/settings?tab=workflow"
+    );
+  });
+
   it("switching to Global tab keeps URL within project scope (does not navigate to /settings)", async () => {
     const user = userEvent.setup();
     renderProjectSettingsPage();

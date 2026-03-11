@@ -5,11 +5,12 @@ import { NAVBAR_HEIGHT } from "../../lib/constants";
  * Third-level navigation bar for Settings sub-tabs (Project mode only).
  * Uses NavButton for consistent topbar-style nav button styling.
  */
-export type SettingsSubTab = "basics" | "agents" | "deployment" | "hil" | "team";
+export type SettingsSubTab = "basics" | "agents" | "workflow" | "deployment" | "hil" | "team";
 
 const TABS: { key: SettingsSubTab; label: string }[] = [
   { key: "basics", label: "Project Info" },
   { key: "agents", label: "Agent Config" },
+  { key: "workflow", label: "Workflow" },
   { key: "deployment", label: "Deliver" },
   { key: "hil", label: "Autonomy" },
   { key: "team", label: "Team" },

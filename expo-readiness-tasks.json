@@ -1,0 +1,127 @@
+{
+  "open_questions": [
+    "EAS project linking: Does `eas init --id <projectId>` support non-interactive use? If not, writing expo.extra.eas.projectId directly to app.json is the fallback. Confirm preferred approach before implementing."
+  ],
+  "tasks": [
+    {
+      "title": "Add ExpoReadinessResponse type to shared package",
+      "description": "Add ExpoReadinessResponse interface to packages/shared/src/types/deploy.ts with expoInstalled: boolean, expoConfigured: boolean, authOk: boolean, easProjectLinked: boolean, missing: string[], prompt?: string. Export from shared package. Verify with: npm run build in packages/shared",
+      "priority": 0,
+      "dependsOn": [],
+      "complexity": 1,
+      "files": {
+        "modify": ["packages/shared/src/types/deploy.ts"],
+        "create": [],
+        "test": []
+      }
+    },
+    {
+      "title": "Add isEasProjectLinked utility for EAS project detection",
+      "description": "Create a new utility function that checks if an Expo project is linked to EAS. Check app.json/app.config.js for expo.extra.eas.projectId first; if not found, optionally run `npx eas-cli project:info` (or equivalent) to detect linked project. Return boolean. Handle errors gracefully (e.g. EAS CLI not installed, network failure) by returning false. File: packages/backend/src/utils/expo-eas-linked.ts. Add unit tests in packages/backend/src/utils/__tests__/expo-eas-linked.test.ts mocking exec. Verify with: npm test -- expo-eas-linked",
+      "priority": 0,
+      "dependsOn": [],
+      "complexity": 4,
+      "files": {
+        "create": ["packages/backend/src/utils/expo-eas-linked.ts", "packages/backend/src/utils/__tests__/expo-eas-linked.test.ts"],
+        "modify": [],
+        "test": ["packages/backend/src/utils/__tests__/expo-eas-linked.test.ts"]
+      }
+    },
+    {
+      "title": "Add GET /projects/:projectId/deliver/expo-readiness endpoint",
+      "description": "Add GET /projects/:projectId/deliver/expo-readiness route in packages/backend/src/routes/deliver.ts (before /:deployId so path is not captured). Returns 200 with { data: { expoInstalled: boolean, expoConfigured: boolean, authOk: boolean, easProjectLinked: boolean, missing: string[], prompt?: string } }. Use isExpoInstalled (expo-install.ts), getExpoConfigStatus (expo-config.ts), checkExpoAuth (expo-auth-check.ts), and isEasProjectLinked (new). Build missing array from false checks; include prompt from checkExpoAuth when authOk is false. Return 400 when deployment.mode !== 'expo'; 404 when project not found; 500 on invalid repo path. Verify with: npm test -- deploy-route",
+      "priority": 0,
+      "dependsOn": ["Add ExpoReadinessResponse type to shared package", "Add isEasProjectLinked utility for EAS project detection"],
+      "complexity": 5,
+      "files": {
+        "modify": ["packages/backend/src/routes/deliver.ts"],
+        "create": [],
+        "test": ["packages/backend/src/__tests__/deploy-route.test.ts"]
+      }
+    },
+    {
+      "title": "Add easProjectId to DeploymentConfig and extend PUT deliver/settings",
+      "description": "Add optional easProjectId?: string to DeploymentConfig in packages/shared/src/types/settings.ts when mode is expo. Update migrateDeploymentConfig to accept and persist easProjectId. Ensure PUT /projects/:projectId/deliver/settings accepts easProjectId in the deployment body. The existing route merges deployment into settings; no backend route change needed beyond ensuring the type allows it. Add migration for legacy projects. Verify with: npm test -- settings.test",
+      "priority": 0,
+      "dependsOn": [],
+      "complexity": 2,
+      "files": {
+        "modify": ["packages/shared/src/types/settings.ts", "packages/shared/src/__tests__/settings.test.ts"],
+        "create": [],
+        "test": ["packages/shared/src/__tests__/settings.test.ts"]
+      }
+    },
+    {
+      "title": "Implement EAS project linking before first deploy",
+      "description": "When easProjectId (or expoConfig.projectId) is set in deployment settings, before running eas deploy in runExpoDeployAsync: (1) Check if app.json already has expo.extra.eas.projectId; (2) If not, write expo.extra.eas.projectId into app.json, or run `npx eas-cli init --id <id>` non-interactively if supported. Prefer writing app.json directly for reliability. Add to runExpoDeployAsync in packages/backend/src/routes/deliver.ts after ensureExpoConfig and before ensureEasConfig. On failure, emit error to log and complete deploy with failure. Verify with: npm test -- deliver",
+      "priority": 1,
+      "dependsOn": ["Add easProjectId to DeploymentConfig and extend PUT deliver/settings"],
+      "complexity": 6,
+      "files": {
+        "modify": ["packages/backend/src/routes/deliver.ts"],
+        "create": ["packages/backend/src/utils/expo-eas-project-link.ts"],
+        "test": ["packages/backend/src/__tests__/deploy-route.test.ts"]
+      }
+    },
+    {
+      "title": "Add expo-readiness API client and query hook",
+      "description": "Add api.deliver.expoReadiness(projectId) in packages/frontend/src/api/client.ts returning the readiness response. Add queryKeys.deliver.expoReadiness(projectId) in packages/frontend/src/api/queryKeys.ts. Add useExpoReadiness(projectId) hook in packages/frontend/src/api/hooks/deliver.ts that fetches when projectId is set and deployment mode is expo. Export ExpoReadinessResponse type from shared or define in frontend. Verify with: npm test -- client.test",
+      "priority": 1,
+      "dependsOn": ["Add ExpoReadinessResponse type to shared package", "Add GET /projects/:projectId/deliver/expo-readiness endpoint"],
+      "complexity": 3,
+      "files": {
+        "modify": ["packages/frontend/src/api/client.ts", "packages/frontend/src/api/queryKeys.ts", "packages/frontend/src/api/hooks/deliver.ts"],
+        "create": [],
+        "test": ["packages/frontend/src/api/client.test.ts"]
+      }
+    },
+    {
+      "title": "Add Expo readiness banner to Deliver phase when auth missing",
+      "description": "In DeliverPhase.tsx, when mode is expo: fetch expo-readiness on mount and when deploy mode is Expo. When readiness indicates !authOk, show a prominent banner above deploy buttons: 'Expo deployment requires an access token. Add it in Settings → Expo API Token.' with 'Open Settings' button that calls onOpenGlobalSettings (or onOpenSettings). Reuse existing expoDeployError handling pattern. Banner should appear before user clicks Deploy. Deploy buttons remain enabled; auth failure still returns 400 with existing prompt. Verify with: npm test -- DeliverPhase",
+      "priority": 1,
+      "dependsOn": ["Add expo-readiness API client and query hook"],
+      "complexity": 4,
+      "files": {
+        "modify": ["packages/frontend/src/pages/phases/DeliverPhase.tsx"],
+        "create": [],
+        "test": ["packages/frontend/src/pages/phases/DeliverPhase.test.tsx"]
+      }
+    },
+    {
+      "title": "Add optional EAS project ID field to Project Settings deployment tab",
+      "description": "In ProjectSettingsModal.tsx, when deployment.mode === 'expo', add an optional 'EAS Project ID' input field in the Expo section (below or alongside channel). Label: 'EAS Project ID'. Helper text: 'Link to an existing Expo project. Leave blank to create one on first deploy.' Store in deployment.expoConfig.projectId (or easProjectId if added to type). Ensure updateDeployment persists it. Verify with: npm test -- ProjectSettingsModal",
+      "priority": 2,
+      "dependsOn": ["Add easProjectId to DeploymentConfig and extend PUT deliver/settings"],
+      "complexity": 3,
+      "files": {
+        "modify": ["packages/frontend/src/components/ProjectSettingsModal.tsx"],
+        "create": [],
+        "test": ["packages/frontend/src/components/ProjectSettingsModal.test.tsx"]
+      }
+    },
+    {
+      "title": "Add Setup status / Ready to deploy indicator for Expo in Deliver phase",
+      "description": "When expo-readiness returns all checks true (expoInstalled, expoConfigured, authOk, easProjectLinked), show a brief 'Ready to deploy' or green check indicator in the Deliver phase toolbar or above deploy buttons. When any check is false, the existing auth banner (from prior task) or a compact 'Setup required' state is shown. Optional: when expoInstalled or expoConfigured is false, show 'Setting up Expo…' during first deploy (live log already shows this). No blocking modal. Verify with: npm test -- DeliverPhase",
+      "priority": 2,
+      "dependsOn": ["Add Expo readiness banner to Deliver phase when auth missing"],
+      "complexity": 3,
+      "files": {
+        "modify": ["packages/frontend/src/pages/phases/DeliverPhase.tsx"],
+        "create": [],
+        "test": ["packages/frontend/src/pages/phases/DeliverPhase.test.tsx"]
+      }
+    },
+    {
+      "title": "Unit tests for expo-readiness route",
+      "description": "Add unit tests in packages/backend/src/__tests__/ for the expo-readiness endpoint. Mock isExpoInstalled, getExpoConfigStatus, checkExpoAuth, isEasProjectLinked. Test: (1) 200 with all true returns correct shape; (2) 200 with authOk false includes missing and prompt; (3) 400 when mode is not expo; (4) 404 when project not found; (5) missing array correctly populated from false checks. Verify with: npm test -- deploy-route",
+      "priority": 2,
+      "dependsOn": ["Add GET /projects/:projectId/deliver/expo-readiness endpoint"],
+      "complexity": 4,
+      "files": {
+        "modify": ["packages/backend/src/__tests__/deploy-route.test.ts"],
+        "create": [],
+        "test": ["packages/backend/src/__tests__/deploy-route.test.ts"]
+      }
+    },
+  ]
+}

@@ -71,6 +71,10 @@ Add under Execute Phase (Git / Worktree):
 
 - **Worktree base branch:** When Git working mode is Worktree, a configurable base branch (default `main`) allows users to create task branches from and merge into a non-main branch (e.g. `beta`). Sync and push use `origin/<baseBranch>`. Reviewer diff uses `baseBranch...taskBranch`. Branches mode ignores this setting.
 
+Add under Project Settings:
+
+- **Agent Config and Workflow tab split:** Project settings are organized into two tabs. Agent Config focuses on "who runs the work" (Simple/Complex provider + model rows, Agent Instructions in Advanced). Workflow focuses on "how the work runs" (test command, code review, self-improvement, git, parallelism). URL `?tab=workflow` supported. Provider-specific prerequisite messaging; error copy points to Global Settings.
+
 Add under Agent backends:
 
 - **LM Studio (local):** Users can select LM Studio as an agent type for planning and Execute. Optional base URL (default http://localhost:1234), model selection from models loaded in LM Studio; no API key required. Enables fully offline operation with local models.
@@ -86,6 +90,8 @@ Replace all references to `prd.json` with `SPEC.md`. The Sketch phase PRD is sto
 **LM Studio agent:** Agent type `lmstudio` uses the OpenAI-compatible Chat Completions API at a configurable base URL (default `http://localhost:1234`). Optional `baseUrl` in agent config; no API key. Invoke (planning) and spawnWithTaskFile (Coder/Reviewer) use in-process HTTP with custom baseURL. GET /models supports `provider=lmstudio` and optional `baseUrl` query; returns models from the local LM Studio server. Enables fully offline agent execution.
 
 **PRD change approval and version diffs:** When the Harmonizer (or any flow) proposes SPEC.md changes and the user is prompted to approve via the Human Notification System, the UI displays a diff of the proposed changes (GitHub/PR-review style). The backend computes the diff on demand: for HIL approval, between current SPEC.md and the proposed content via `GET /projects/:id/prd/proposed-diff?requestId=<hilRequestId>`; for the Sketch version list, between a selected previous version and current SPEC via `GET /projects/:id/prd/diff?fromVersion=<versionId>`. A line-based diff runs server-side; no diff is embedded in WebSocket payloads. Full SPEC.md snapshots are stored on each write, keyed by version, for version-list diff. A reusable DiffView component is used in the HIL approval UI and in the Sketch page "Compare to current" flow.
+
+**Project settings structure:** Project settings use two tabs: Agent Config (who runs the work) and Workflow (how the work runs). Agent Config contains Simple/Complex provider and model selection, Agent Instructions (collapsed under Advanced), and provider-specific prerequisite messaging. Simple agents handle low/medium complexity tasks; Complex agents handle high/very_high. Workflow tab groups controls into Execution Strategy (git mode, base branch, merge strategy, parallelism, unknown scope), Quality Gates (test command, code review mode + angles), and Continuous Improvement (self-improvement frequency). Error copy for missing API keys points users to Global Settings.
 
 ## Data Model
 

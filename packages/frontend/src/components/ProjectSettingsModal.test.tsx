@@ -142,6 +142,7 @@ describe("ProjectSettingsModal", () => {
     expect(screen.getByTestId("settings-sub-tabs-bar")).toBeInTheDocument();
     expect(screen.getByText("Project Info")).toBeInTheDocument();
     expect(screen.getByText("Agent Config")).toBeInTheDocument();
+    expect(screen.getByText("Workflow")).toBeInTheDocument();
     expect(screen.getByText("Deliver")).toBeInTheDocument();
     expect(screen.getByText("Autonomy")).toBeInTheDocument();
     expect(screen.getByText("Team")).toBeInTheDocument();
@@ -227,7 +228,7 @@ describe("ProjectSettingsModal", () => {
 
     await screen.findByText(/API key required/);
     const link = screen.getByTestId("configure-api-keys-link");
-    expect(link).toHaveTextContent("Configure API keys in Settings");
+    expect(link).toHaveTextContent("Configure in Global Settings → API keys");
     expect(link).toHaveAttribute("href", "/projects/proj-1/settings?level=global");
     expect(screen.queryByPlaceholderText("sk-ant-...")).not.toBeInTheDocument();
     expect(screen.queryByPlaceholderText("key_...")).not.toBeInTheDocument();
@@ -249,8 +250,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     await screen.findByText("Code Review");
     expect(
@@ -270,8 +271,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     await screen.findByText("Code Review");
     const reviewModeSelect = screen.getByTestId("review-mode-select");
@@ -284,8 +285,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     await screen.findByText("Code Review");
     const reviewModeSelect = screen.getByTestId("review-mode-select");
@@ -308,8 +309,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     await screen.findByText("Code Review");
     const multiselect = screen.getByTestId("review-agents-multiselect");
@@ -324,8 +325,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     await screen.findByText("Code Review");
     const generalCheckbox = screen.getByRole("checkbox", { name: /^General$/i });
@@ -339,8 +340,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     await screen.findByText("Code Review");
     const securityCheckbox = screen.getByRole("checkbox", { name: /Security implications/i });
@@ -354,8 +355,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     await screen.findByText("Code Review");
     expect(screen.getByText("Review agents")).toBeInTheDocument();
@@ -394,8 +395,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     await screen.findByText("Code Review");
     const generalCheckbox = screen.getByRole("checkbox", { name: /^General$/i });
@@ -434,8 +435,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     await screen.findByText("Code Review");
     const performanceCheckbox = screen.getByRole("checkbox", {
@@ -467,8 +468,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     await screen.findByText("Code Review");
     const performanceCheckbox = screen.getByRole("checkbox", {
@@ -500,8 +501,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     await screen.findByText("Code Review");
     const securityCheckbox = screen.getByRole("checkbox", { name: /Security implications/i });
@@ -529,8 +530,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     await screen.findByText("Code Review");
     const securityCheckbox = screen.getByRole("checkbox", { name: /Security implications/i });
@@ -547,8 +548,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     await screen.findByText("Code Review");
     const securityCheckbox = screen.getByRole("checkbox", { name: /Security implications/i });
@@ -559,8 +560,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     await screen.findByText("Self-improvement");
     expect(
@@ -577,8 +578,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     await screen.findByTestId("self-improvement-frequency-select");
     await userEvent.selectOptions(
@@ -602,8 +603,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     const select = await screen.findByTestId("self-improvement-frequency-select");
     expect(select).toHaveValue("weekly");
@@ -618,8 +619,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     await screen.findByText("Self-improvement");
     expect(
@@ -636,8 +637,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     const lastRun = await screen.findByTestId("self-improvement-last-run");
     expect(lastRun).toHaveTextContent("Last run:");
@@ -654,8 +655,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     const nextRun = await screen.findByTestId("self-improvement-next-run");
     expect(nextRun).toHaveTextContent("Next run:");
@@ -1049,7 +1050,7 @@ describe("ProjectSettingsModal", () => {
 
     await screen.findByText("Task Complexity");
     expect(
-      screen.getByText(/Simple: routine tasks. Complex: challenging tasks/)
+      screen.getByText(/Simple = low\/medium tasks.*Complex = high\/very_high tasks/)
     ).toBeInTheDocument();
     expect(screen.getByText("Simple")).toBeInTheDocument();
     expect(screen.getByText("Complex")).toBeInTheDocument();
@@ -1087,12 +1088,12 @@ describe("ProjectSettingsModal", () => {
     );
   });
 
-  it("Agent Config tab shows parallelism slider defaulting to 1", async () => {
+  it("Workflow tab shows parallelism slider defaulting to 1", async () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     await screen.findByText("Parallelism");
     const slider = screen.getByTestId("max-concurrent-coders-slider");
@@ -1111,8 +1112,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     await screen.findByText("Parallelism");
     const slider = screen.getByTestId("max-concurrent-coders-slider");
@@ -1129,12 +1130,12 @@ describe("ProjectSettingsModal", () => {
     );
   });
 
-  it("Agent Config tab shows Git working mode directly above Parallelism in Worktree mode", async () => {
+  it("Workflow tab shows Git working mode directly above Parallelism in Worktree mode", async () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     const gitWorkingModeHeading = screen.getByText("Git working mode");
     const parallelismHeading = screen.getByText("Parallelism");
@@ -1143,12 +1144,12 @@ describe("ProjectSettingsModal", () => {
     );
   });
 
-  it("Agent Config tab shows Git working mode dropdown defaulting to Worktree", async () => {
+  it("Workflow tab shows Git working mode dropdown defaulting to Worktree", async () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     const select = screen.getByTestId("git-working-mode-select");
     expect(select).toBeInTheDocument();
@@ -1162,8 +1163,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     const baseBranchInput = screen.getByTestId("worktree-base-branch-input");
     expect(baseBranchInput).toBeInTheDocument();
@@ -1184,8 +1185,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     expect(screen.getByTestId("git-remote-mode")).toHaveTextContent("Checking remote configuration...");
     expect(screen.getByTestId("git-runtime-refresh-status")).toHaveTextContent(
@@ -1217,8 +1218,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     expect(screen.getByTestId("git-remote-mode")).toHaveTextContent("Checking remote configuration...");
     await waitFor(() => expect(mockGetSettings).toHaveBeenCalledTimes(2), { timeout: 2500 });
@@ -1234,8 +1235,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     const select = screen.getByTestId("git-working-mode-select");
     await userEvent.selectOptions(select, "branches");
@@ -1249,8 +1250,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     const select = screen.getByTestId("git-working-mode-select");
     await userEvent.selectOptions(select, "branches");
@@ -1271,8 +1272,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     const baseBranchInput = screen.getByTestId("worktree-base-branch-input");
     fireEvent.change(baseBranchInput, { target: { value: "develop" } });
@@ -1290,8 +1291,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     const baseBranchInput = screen.getByTestId("worktree-base-branch-input");
     fireEvent.change(baseBranchInput, { target: { value: "my branch" } });
@@ -1312,8 +1313,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     const select = screen.getByTestId("git-working-mode-select");
     await userEvent.selectOptions(select, "branches");
@@ -1322,12 +1323,12 @@ describe("ProjectSettingsModal", () => {
     expect(screen.getByTestId("worktree-base-branch-input")).toHaveValue("main");
   });
 
-  it("Agent Config tab shows Merge strategy select defaulting to Per task with help text", async () => {
+  it("Workflow tab shows Merge strategy select defaulting to Per task with help text", async () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     const select = screen.getByTestId("merge-strategy-select");
     expect(select).toBeInTheDocument();
@@ -1347,8 +1348,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     const select = screen.getByTestId("merge-strategy-select");
     await userEvent.selectOptions(select, "per_epic");
@@ -1366,8 +1367,8 @@ describe("ProjectSettingsModal", () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
+    const workflowTab = screen.getByRole("button", { name: "Workflow" });
+    await userEvent.click(workflowTab);
 
     const select = screen.getByTestId("merge-strategy-select");
     expect(select).toHaveValue("per_epic");

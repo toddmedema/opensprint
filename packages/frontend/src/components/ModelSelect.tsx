@@ -100,15 +100,15 @@ export function ModelSelect({
           ? "LM Studio is not reachable. Check the server URL in Settings."
           : "No models — start LM Studio and load a model"
         : provider === "claude"
-          ? "Check ANTHROPIC_API_KEY in .env"
+          ? "Anthropic API key required — configure in Global Settings → API keys"
           : provider === "claude-cli"
             ? "Ensure claude CLI is installed"
             : provider === "cursor"
-              ? "Check CURSOR_API_KEY in .env"
+              ? "Cursor API key required — configure in Global Settings → API keys"
               : provider === "openai"
-                ? "Check OPENAI_API_KEY in .env"
+                ? "OpenAI API key required — configure in Global Settings → API keys"
                 : provider === "google"
-                  ? "Check GOOGLE_API_KEY in .env"
+                  ? "Google API key required — configure in Global Settings → API keys"
                   : "";
     const displayMessage = provider === "lmstudio" ? hint : error;
     const optionLabel =
