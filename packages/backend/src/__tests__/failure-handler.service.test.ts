@@ -404,7 +404,7 @@ describe("FailureHandlerService", () => {
     it("blocks diagnosed no_result startup failures without blind retries", async () => {
       const slot = makeSlot("/tmp/worktree");
       slot.agent.outputLog = [
-        "[Agent error: Cursor agent not found. Install: curl https://cursor.com/install -fsS | bash]\n",
+        "[Agent error: Cursor agent CLI was not found. Install: Unix/macOS/Linux: curl https://cursor.com/install -fsS | bash. Windows (PowerShell): irm 'https://cursor.com/install?win32=true' | iex. Then restart your terminal.]\n",
       ];
       const mockUpdate = vi.fn().mockResolvedValue(undefined);
       const mockDeleteAssignment = vi.fn().mockResolvedValue(undefined);

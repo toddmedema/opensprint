@@ -744,6 +744,50 @@ describe("AgentClient", () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
     });
 
+    it("emits Windows-compatible install instructions when Cursor CLI not found (ENOENT)", async () => {
+      const fs = await import("fs/promises");
+      const path = await import("path");
+      const os = await import("os");
+      const tmpDir = path.join(os.tmpdir(), `agent-client-cursor-enoent-${Date.now()}`);
+      await fs.mkdir(path.dirname(path.join(tmpDir, ".opensprint/active/bd-a3f8.1/prompt.md")), {
+        recursive: true,
+      });
+      const taskFilePath = path.join(tmpDir, ".opensprint/active/bd-a3f8.1/prompt.md");
+      await fs.writeFile(taskFilePath, "# Task\n\nImplement login", "utf-8");
+
+      const handlers: Record<string, (err: NodeJS.ErrnoException) => void> = {};
+      const mockChild = {
+        killed: false,
+        kill: vi.fn(),
+        stdout: { on: vi.fn(), removeAllListeners: vi.fn() },
+        stderr: { on: vi.fn(), removeAllListeners: vi.fn() },
+        on: vi.fn((event: string, handler: (err: NodeJS.ErrnoException) => void) => {
+          handlers[event] = handler;
+          return mockChild;
+        }),
+        removeAllListeners: vi.fn(),
+      };
+      mockSpawn.mockReturnValue(mockChild);
+
+      const config: AgentConfig = { type: "cursor", model: null, cliCommand: null };
+      const onOutput = vi.fn();
+      const onExit = vi.fn();
+
+      client.spawnWithTaskFile(config, taskFilePath, tmpDir, onOutput, onExit);
+
+      const err = new Error("spawn agent ENOENT") as NodeJS.ErrnoException;
+      err.code = "ENOENT";
+      handlers["error"]!(err);
+
+      expect(onOutput).toHaveBeenCalledWith(
+        expect.stringContaining("[Agent error: Cursor agent CLI was not found. Install:")
+      );
+      expect(onOutput.mock.calls[0][0]).toContain("Unix/macOS/Linux: curl https://cursor.com/install -fsS | bash");
+      expect(onOutput.mock.calls[0][0]).toContain("Windows (PowerShell): irm 'https://cursor.com/install?win32=true' | iex");
+
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
     it("should pass --model auto for Cursor task-file spawn when model is null", async () => {
       const fs = await import("fs/promises");
       const path = await import("path");

@@ -181,7 +181,7 @@ export class FailureHandlerService {
       /requires authentication/i,
       /run `?agent login`?/i,
       /no cursor api key available/i,
-      /cursor agent not found/i,
+      /cursor agent(\s+cli)?\s+(was\s+)?not found/i,
       /claude cli was not found/i,
       /command not found/i,
       /could not read task file/i,

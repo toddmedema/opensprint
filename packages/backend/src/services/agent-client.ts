@@ -60,6 +60,14 @@ function colorizeRole(role: string): string {
   return role;
 }
 
+/** Cursor CLI install instructions for Unix and Windows (avoids bash-not-found on Windows). */
+function getCursorCliInstallInstructions(): string {
+  return (
+    "Unix/macOS/Linux: curl https://cursor.com/install -fsS | bash. " +
+    "Windows (PowerShell): irm 'https://cursor.com/install?win32=true' | iex"
+  );
+}
+
 /** Build full prompt from system prompt, conversation history, and final user message (Human/Assistant format). */
 function buildFullPrompt(options: {
   systemPrompt?: string;
@@ -393,7 +401,7 @@ function formatAgentError(
     lower.includes("not found")
   ) {
     if (agentType === "cursor") {
-      return "Cursor agent CLI was not found. Install: curl https://cursor.com/install -fsS | bash. Then restart your terminal.";
+      return `Cursor agent CLI was not found. Install: ${getCursorCliInstallInstructions()}. Then restart your terminal.`;
     }
     if (agentType === "claude" || agentType === "claude-cli") {
       return "Claude Code CLI was not found. Install it from https://docs.anthropic.com/en/docs/claude-code/getting-started or via npm: npm install -g @anthropic-ai/claude-code";
@@ -1672,7 +1680,7 @@ export class AgentClient {
     child.on("error", (err: NodeJS.ErrnoException) => {
       const friendly =
         err.code === "ENOENT" && config.type === "cursor"
-          ? "Cursor agent not found. Install: curl https://cursor.com/install -fsS | bash"
+          ? `Cursor agent CLI was not found. Install: ${getCursorCliInstallInstructions()}. Then restart your terminal.`
           : err.code === "ENOENT" && (config.type === "claude" || config.type === "claude-cli")
             ? "Claude Code CLI not found. Install from https://docs.anthropic.com/en/docs/claude-code/getting-started or npm install -g @anthropic-ai/claude-code"
             : err.message;
