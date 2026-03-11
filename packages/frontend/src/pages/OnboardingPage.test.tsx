@@ -8,6 +8,7 @@ import { renderApp } from "../test/test-utils";
 import { api } from "../api/client";
 
 const mockGetPrerequisites = vi.fn();
+const mockGetGlobalStatus = vi.fn();
 const mockNavigate = vi.fn();
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -17,6 +18,7 @@ vi.mock("../api/client", async (importOriginal) => {
     api: {
       env: {
         getPrerequisites: (...args: unknown[]) => mockGetPrerequisites(...args),
+        getGlobalStatus: (...args: unknown[]) => mockGetGlobalStatus(...args),
         validateKey: vi.fn(),
         saveKey: vi.fn(),
         setGlobalSettings: vi.fn(),
@@ -49,6 +51,8 @@ describe("OnboardingPage", () => {
   beforeEach(() => {
     mockGetPrerequisites.mockReset();
     mockGetPrerequisites.mockResolvedValue({ missing: [], platform: "darwin" });
+    mockGetGlobalStatus.mockReset();
+    mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: false, useCustomCli: false });
     mockNavigate.mockClear();
     vi.mocked(api.env.validateKey).mockReset();
     vi.mocked(api.env.saveKey).mockReset();
