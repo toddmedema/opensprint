@@ -1,9 +1,45 @@
 import fs from "fs/promises";
 import path from "path";
+import { exec } from "child_process";
+import { promisify } from "util";
 
+const execAsync = promisify(exec);
 const APP_JSON = "app.json";
 
 type JsonObject = Record<string, unknown>;
+
+/**
+ * Check if the project is linked to an EAS project.
+ * Returns true if app.json has expo.extra.eas.projectId set, or if `eas project:info` succeeds.
+ */
+export async function isEasProjectLinked(repoPath: string): Promise<boolean> {
+  const appJsonPath = path.join(repoPath, APP_JSON);
+  try {
+    const raw = await fs.readFile(appJsonPath, "utf-8");
+    const parsed = JSON.parse(raw) as JsonObject;
+    const root = toObject(parsed);
+    const expo = toObject(root.expo);
+    const extra = toObject(expo.extra);
+    const eas = toObject(extra.eas);
+    const projectId = eas.projectId;
+    if (typeof projectId === "string" && projectId.trim().length > 0) {
+      return true;
+    }
+  } catch {
+    // No app.json or invalid — fall through to eas project:info
+  }
+
+  try {
+    await execAsync("npx eas-cli project:info", {
+      cwd: repoPath,
+      timeout: 15000,
+      env: { ...process.env },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export type EnsureEasProjectIdInAppJsonResult =
   | { ok: true; status: "already-linked" | "linked" }

@@ -549,6 +549,122 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
     });
   });
 
+  describe("GET /projects/:projectId/deliver/expo-readiness", () => {
+    it("should return 200 with correct shape when all checks pass", async () => {
+      const saved = process.env.EXPO_TOKEN;
+      process.env.EXPO_TOKEN = "test-expo-token-readiness";
+
+      await request(app)
+        .put(`${API_PREFIX}/projects/${projectId}/deliver/settings`)
+        .send({ mode: "expo" });
+
+      await fs.writeFile(
+        path.join(tempDir, "my-project", "app.json"),
+        JSON.stringify({
+          expo: {
+            name: "TestApp",
+            slug: "test-app",
+            extra: { eas: { projectId: "test-eas-project-id" } },
+          },
+        })
+      );
+
+      const res = await request(app).get(
+        `${API_PREFIX}/projects/${projectId}/deliver/expo-readiness`
+      );
+
+      process.env.EXPO_TOKEN = saved;
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({
+        expoInstalled: true,
+        expoConfigured: true,
+        authOk: true,
+        easProjectLinked: true,
+        missing: [],
+      });
+      expect(Array.isArray(res.body.data.missing)).toBe(true);
+      expect(res.body.data.prompt).toBeUndefined();
+    });
+
+    it("should return 200 with missing and prompt when authOk is false", async () => {
+      const saved = process.env.EXPO_TOKEN;
+      delete process.env.EXPO_TOKEN;
+
+      await request(app)
+        .put(`${API_PREFIX}/projects/${projectId}/deliver/settings`)
+        .send({ mode: "expo" });
+
+      await fs.writeFile(
+        path.join(tempDir, "my-project", "app.json"),
+        JSON.stringify({
+          expo: {
+            name: "TestApp",
+            slug: "test-app",
+            extra: { eas: { projectId: "test-eas-project-id" } },
+          },
+        })
+      );
+
+      const res = await request(app).get(
+        `${API_PREFIX}/projects/${projectId}/deliver/expo-readiness`
+      );
+
+      process.env.EXPO_TOKEN = saved;
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.authOk).toBe(false);
+      expect(res.body.data.missing).toContain("auth");
+      expect(res.body.data.prompt).toBeDefined();
+      expect(typeof res.body.data.prompt).toBe("string");
+      expect(res.body.data.prompt).toContain("expo.dev");
+    });
+
+    it("should return 400 when deployment mode is not expo", async () => {
+      const res = await request(app).get(
+        `${API_PREFIX}/projects/${projectId}/deliver/expo-readiness`
+      );
+
+      expect(res.status).toBe(400);
+      expect(res.body.error?.code).toBe("EXPO_REQUIRED");
+      expect(res.body.error?.message).toContain("expo");
+    });
+
+    it("should return 404 when project not found", async () => {
+      const res = await request(app).get(
+        `${API_PREFIX}/projects/nonexistent-id/deliver/expo-readiness`
+      );
+
+      expect(res.status).toBe(404);
+      expect(res.body.error?.code).toBe("PROJECT_NOT_FOUND");
+    });
+
+    it("should populate missing array from false checks", async () => {
+      const saved = process.env.EXPO_TOKEN;
+      process.env.EXPO_TOKEN = "test-token-for-missing-array";
+
+      await request(app)
+        .put(`${API_PREFIX}/projects/${projectId}/deliver/settings`)
+        .send({ mode: "expo" });
+      // No app.json: expoConfigured and easProjectLinked false; expo in package.json so expoInstalled true
+      const res = await request(app).get(
+        `${API_PREFIX}/projects/${projectId}/deliver/expo-readiness`
+      );
+
+      process.env.EXPO_TOKEN = saved;
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.expoInstalled).toBe(true);
+      expect(res.body.data.expoConfigured).toBe(false);
+      expect(res.body.data.easProjectLinked).toBe(false);
+      expect(res.body.data.authOk).toBe(true);
+      expect(res.body.data.missing).toContain("expo_configured");
+      expect(res.body.data.missing).toContain("eas_project_linked");
+      expect(res.body.data.missing).not.toContain("auth");
+      expect(res.body.data.missing).not.toContain("expo_installed");
+    });
+  });
+
   describe("POST /projects/:projectId/deliver/:deployId/rollback", () => {
     it("should mark original deploy as rolled_back on success", { timeout: 30000 }, async () => {
       const res1 = await request(app).post(`${API_PREFIX}/projects/${projectId}/deliver`);

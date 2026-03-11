@@ -24,10 +24,10 @@ import { testRunner } from "../services/test-runner.js";
 import { createFixEpicFromTestOutput } from "../services/deploy-fix-epic.service.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { getExpoDeployCommand } from "../utils/expo-deploy-command.js";
-import { ensureExpoInstalled } from "../utils/expo-install.js";
-import { ensureExpoConfig } from "../utils/expo-config.js";
+import { ensureExpoInstalled, isExpoInstalled } from "../utils/expo-install.js";
+import { ensureExpoConfig, getExpoConfigStatus } from "../utils/expo-config.js";
 import { checkExpoAuth } from "../utils/expo-auth-check.js";
-import { ensureEasProjectIdInAppJson } from "../utils/eas-project-link.js";
+import { ensureEasProjectIdInAppJson, isEasProjectLinked } from "../utils/eas-project-link.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("deliver");
@@ -378,6 +378,74 @@ router.post(
     } catch (err) {
       activeDeployments.delete(req.params.projectId);
       throw err;
+    }
+  })
+);
+
+// GET /projects/:projectId/deliver/expo-readiness — Expo readiness checks (must be before /:deployId)
+router.get(
+  "/expo-readiness",
+  wrapAsync(async (req: Request<ProjectParams>, res) => {
+    const { projectId } = req.params;
+    const project = await projectService.getProject(projectId);
+    const settings = await projectService.getSettings(projectId);
+
+    if (settings.deployment.mode !== "expo") {
+      res.status(400).json({
+        error: {
+          code: "EXPO_REQUIRED",
+          message: "Expo readiness is only available when deployment mode is 'expo'",
+        },
+      });
+      return;
+    }
+
+    const repoPath = project.repoPath;
+    try {
+      const [expoInstalled, configStatus, authCheck, easProjectLinked] = await Promise.all([
+        isExpoInstalled(repoPath),
+        getExpoConfigStatus(repoPath),
+        checkExpoAuth(repoPath),
+        isEasProjectLinked(repoPath),
+      ]);
+
+      const expoConfigured = configStatus.configured;
+      const authOk = authCheck.ok;
+
+      const missing: string[] = [];
+      if (!expoInstalled) missing.push("expo_installed");
+      if (!expoConfigured) missing.push("expo_configured");
+      if (!authOk) missing.push("auth");
+      if (!easProjectLinked) missing.push("eas_project_linked");
+
+      const data: {
+        expoInstalled: boolean;
+        expoConfigured: boolean;
+        authOk: boolean;
+        easProjectLinked: boolean;
+        missing: string[];
+        prompt?: string;
+      } = {
+        expoInstalled,
+        expoConfigured,
+        authOk,
+        easProjectLinked,
+        missing,
+      };
+      if (!authOk && "prompt" in authCheck) {
+        data.prompt = authCheck.prompt;
+      }
+
+      const body: ApiResponse<typeof data> = { data };
+      res.status(200).json(body);
+    } catch (err) {
+      log.error("Expo readiness check failed", { projectId, repoPath, err });
+      res.status(500).json({
+        error: {
+          code: "INVALID_REPO_PATH",
+          message: "Invalid or inaccessible repository path",
+        },
+      });
     }
   })
 );
