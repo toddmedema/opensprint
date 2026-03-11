@@ -195,8 +195,12 @@ export class PlanDecomposeGenerateService {
 
     let tasksGenerated = 0;
     let parseFailureReason: string | undefined;
+    const planWithEpic: Plan = {
+      ...plan,
+      metadata: { ...plan.metadata, epicId: epicId ?? plan.metadata.epicId },
+    };
     try {
-      const genResult = await this.generateAndCreateTasks(projectId, repoPath, plan);
+      const genResult = await this.generateAndCreateTasks(projectId, repoPath, planWithEpic);
       tasksGenerated = genResult.count;
       parseFailureReason = genResult.parseFailureReason;
       if (tasksGenerated > 0) {
