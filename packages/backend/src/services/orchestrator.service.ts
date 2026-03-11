@@ -18,11 +18,8 @@ import {
   getAgentForPlanningRole,
   getAgentName,
   getAgentNameForRole,
-  getAgentForComplexity,
-  getProviderForAgentType,
   AGENT_NAMES,
   AGENT_NAMES_BY_ROLE,
-  isAgentAssignee,
   OPEN_QUESTION_BLOCK_REASON,
   REVIEW_ANGLE_OPTIONS,
   type PlanComplexity,
@@ -30,7 +27,6 @@ import {
 } from "@opensprint/shared";
 import {
   taskStore as taskStoreSingleton,
-  resolveEpicId,
   type StoredTask,
 } from "./task-store.service.js";
 import { ProjectService } from "./project.service.js";
@@ -70,9 +66,7 @@ import {
 import { reviewSynthesizerService } from "./review-synthesizer.service.js";
 import { validateTransition } from "./task-state-machine.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
-import { getNextKey } from "./api-key-resolver.service.js";
-import { isExhausted, clearExhausted } from "./api-key-exhausted.service.js";
-import { getComplexityForAgent } from "./plan-complexity.js";
+import { isExhausted } from "./api-key-exhausted.service.js";
 import {
   buildTaskLastExecutionSummary,
   compactExecutionText,
@@ -90,6 +84,26 @@ import {
   getOrchestratorTestStatusFsPath,
 } from "./orchestrator-test-status.js";
 import { isSelfImprovementRunInProgress } from "./self-improvement-runner.service.js";
+import {
+  OrchestratorStatusService,
+  buildReviewAgentId,
+  REVIEW_ANGLE_ACTIVE_LABELS,
+  type StateForStatus,
+  type OrchestratorCounters,
+} from "./orchestrator-status.service.js";
+import { OrchestratorLoopService } from "./orchestrator-loop.service.js";
+import {
+  buildOrchestratorRecoveryHost,
+  type OrchestratorRecoveryHost,
+} from "./orchestrator-recovery.service.js";
+import {
+  OrchestratorDispatchService,
+  type OrchestratorDispatchHost,
+} from "./orchestrator-dispatch.service.js";
+import {
+  extractNoResultReasonFromLogs,
+  buildReviewNoResultFailureReason,
+} from "./no-result-reason.service.js";
 
 const log = createLogger("orchestrator");
 
@@ -97,11 +111,6 @@ import type { FailureType, RetryContext } from "./orchestrator-phase-context.js"
 
 /** Loop kicker interval: 60s — restarts idle orchestrator loop (distinct from 5-min WatchdogService health patrol). */
 const LOOP_KICKER_INTERVAL_MS = 60 * 1000;
-
-/** If runLoop is blocked in an await longer than this, force recovery so nudge can start a fresh loop (avoids agents "hanging" for hours). */
-const LOOP_STUCK_GUARD_MS = 5 * 60 * 1000;
-/** Temporary throttle: start at most one new coder per loop pass while no_result failures are under investigation. */
-const MAX_NEW_TASKS_PER_LOOP = 1;
 
 /**
  * GUPP-style assignment file: everything an agent needs to self-start.
@@ -141,19 +150,6 @@ export function formatReviewFeedback(result: ReviewAgentResult): string {
     return "Review rejected (no details provided by review agent).";
   }
   return parts.join("");
-}
-
-const REVIEW_AGENT_ID_DELIMITER = "--review--";
-const REVIEW_ANGLE_ACTIVE_LABELS: Record<ReviewAngle, string> = {
-  security: "Security",
-  performance: "Performance",
-  test_coverage: "Test Coverage",
-  code_quality: "Code Quality",
-  design_ux_accessibility: "Design/UX",
-};
-
-function buildReviewAgentId(taskId: string, angle: string): string {
-  return `${taskId}${REVIEW_AGENT_ID_DELIMITER}${angle}`;
 }
 
 /** Results carried over from coding phase to review/merge */
@@ -228,13 +224,6 @@ type TransitionTarget =
   | { to: "complete"; taskId: string }
   | { to: "fail"; taskId: string };
 
-/** Persisted counters (lightweight replacement for orchestrator-state.json) */
-interface OrchestratorCounters {
-  totalDone: number;
-  totalFailed: number;
-  queueDepth: number;
-}
-
 /**
  * Build orchestrator service.
  * Manages the multi-agent build loop: poll bd ready -> assign -> spawn agent -> monitor -> handle result.
@@ -258,6 +247,17 @@ export class OrchestratorService {
   private maxSlotsCache = new Map<string, number>();
   private failureHandler = new FailureHandlerService(this as unknown as FailureHandlerHost);
   private mergeCoordinator = new MergeCoordinatorService(this as unknown as MergeCoordinatorHost);
+  private _statusService: OrchestratorStatusService | null = null;
+  private get statusService(): OrchestratorStatusService {
+    if (!this._statusService)
+      this._statusService = new OrchestratorStatusService(
+        this.taskStore,
+        this.projectService
+      );
+    return this._statusService;
+  }
+  private loopService = new OrchestratorLoopService(this as unknown as import("./orchestrator-loop.service.js").OrchestratorLoopHost);
+  private dispatchService = new OrchestratorDispatchService(this as unknown as OrchestratorDispatchHost);
 
   private get projectService(): ProjectService {
     if (!this._projectService) this._projectService = new ProjectService();
@@ -350,45 +350,7 @@ export class OrchestratorService {
 
   /** Build activeTasks array from current slots for status/broadcast */
   private buildActiveTasks(state: OrchestratorState): OrchestratorStatus["activeTasks"] {
-    const tasks: OrchestratorStatus["activeTasks"] = [];
-    for (const slot of state.slots.values()) {
-      if (slot.phase === "review" && slot.reviewAgents && slot.reviewAgents.size > 0) {
-        for (const reviewAgent of slot.reviewAgents.values()) {
-          const angleLabel =
-            REVIEW_ANGLE_ACTIVE_LABELS[reviewAgent.angle] ??
-            REVIEW_ANGLE_OPTIONS.find((o) => o.value === reviewAgent.angle)?.label ??
-            reviewAgent.angle;
-          tasks.push({
-            taskId: slot.taskId,
-            phase: slot.phase,
-            startedAt: reviewAgent.agent.startedAt || new Date().toISOString(),
-            state: reviewAgent.agent.lifecycleState,
-            id: buildReviewAgentId(slot.taskId, reviewAgent.angle),
-            name: `Reviewer (${angleLabel})`,
-            ...(reviewAgent.agent.lastOutputAtIso
-              ? { lastOutputAt: reviewAgent.agent.lastOutputAtIso }
-              : {}),
-            ...(reviewAgent.agent.suspendedAtIso
-              ? { suspendedAt: reviewAgent.agent.suspendedAtIso }
-              : {}),
-            ...(reviewAgent.agent.suspendReason
-              ? { suspendReason: reviewAgent.agent.suspendReason }
-              : {}),
-          });
-        }
-        continue;
-      }
-      tasks.push({
-        taskId: slot.taskId,
-        phase: slot.phase,
-        startedAt: slot.agent.startedAt || new Date().toISOString(),
-        state: slot.agent.lifecycleState,
-        ...(slot.agent.lastOutputAtIso ? { lastOutputAt: slot.agent.lastOutputAtIso } : {}),
-        ...(slot.agent.suspendedAtIso ? { suspendedAt: slot.agent.suspendedAtIso } : {}),
-        ...(slot.agent.suspendReason ? { suspendReason: slot.agent.suspendReason } : {}),
-      });
-    }
-    return tasks;
+    return this.statusService.buildActiveTasks(state as unknown as StateForStatus);
   }
 
   /**
@@ -536,47 +498,13 @@ export class OrchestratorService {
 
   // ─── Counters Persistence (SQL-only) ───
 
-  private async persistCounters(projectId: string, _repoPath: string): Promise<void> {
+  private async persistCounters(projectId: string, repoPath: string): Promise<void> {
     const state = this.getState(projectId);
-    const now = new Date().toISOString();
-    try {
-      await taskStoreSingleton.runWrite(async (client) => {
-        await client.execute(
-          `INSERT INTO orchestrator_counters (project_id, total_done, total_failed, queue_depth, updated_at)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT(project_id) DO UPDATE SET
-             total_done = excluded.total_done,
-             total_failed = excluded.total_failed,
-             queue_depth = excluded.queue_depth,
-             updated_at = excluded.updated_at`,
-          [
-            projectId,
-            state.status.totalDone,
-            state.status.totalFailed,
-            state.status.queueDepth,
-            now,
-          ]
-        );
-      });
-    } catch (err) {
-      log.warn("Failed to persist counters", { err });
-    }
+    await this.statusService.persistCounters(projectId, repoPath, state as unknown as StateForStatus);
   }
 
   private async loadCounters(repoPath: string): Promise<OrchestratorCounters | null> {
-    const project = await this.projectService.getProjectByRepoPath(repoPath);
-    if (!project) return null;
-    const client = await taskStoreSingleton.getDb();
-    const row = await client.queryOne(
-      "SELECT total_done, total_failed, queue_depth FROM orchestrator_counters WHERE project_id = $1",
-      [project.id]
-    );
-    if (!row) return null;
-    return {
-      totalDone: row.total_done as number,
-      totalFailed: row.total_failed as number,
-      queueDepth: row.queue_depth as number,
-    };
+    return this.statusService.loadCounters(repoPath);
   }
 
   // ─── Crash Recovery (GUPP-style: scan assignment.json files) ───
@@ -1109,73 +1037,54 @@ export class OrchestratorService {
     return true;
   }
 
+  /** Remove a slot for recovery (stale task or cleanup). Used by RecoveryService. */
+  async removeStaleSlot(projectId: string, taskId: string, repoPath: string): Promise<void> {
+    const state = this.getState(projectId);
+    const slot = state.slots.get(taskId);
+    if (!slot) return;
+
+    if (slot.agent.activeProcess) {
+      try {
+        slot.agent.activeProcess.kill();
+      } catch {
+        // Process may already be dead
+      }
+      slot.agent.activeProcess = null;
+    }
+    const wtPath = slot.worktreePath ?? repoPath;
+    await heartbeatService.deleteHeartbeat(wtPath, taskId);
+    if (slot.worktreePath && slot.worktreePath !== repoPath) {
+      try {
+        await this.branchManager.removeTaskWorktree(repoPath, slot.worktreeKey ?? taskId, slot.worktreePath);
+      } catch {
+        // Best effort; worktree may already be gone
+      }
+    }
+    await this.deleteAssignmentAt(repoPath, taskId, slot.worktreePath ?? undefined);
+    this.removeSlot(state, taskId);
+  }
+
+  /** Handle recoverable heartbeat gap (reattach or resume with suspend reason). Used by RecoveryService. */
+  async handleRecoverableHeartbeatGap(
+    projectId: string,
+    repoPath: string,
+    task: StoredTask,
+    assignment: GuppAssignment
+  ): Promise<boolean> {
+    if (assignment.phase === "review") {
+      return this.resumeRecoveredReviewPhase(projectId, repoPath, task, assignment, {
+        pidAlive: true,
+        suspendReason: "heartbeat_gap",
+      });
+    }
+    return this.reattachRecoveredCodingTask(projectId, repoPath, task, assignment, {
+      suspendReason: "heartbeat_gap",
+    });
+  }
+
   /** Build a RecoveryHost for the unified RecoveryService */
   private buildRecoveryHost(): RecoveryHost {
-    return {
-      getSlottedTaskIds: (projectId: string) => this.getSlottedTaskIds(projectId),
-      getActiveAgentIds: (projectId: string) =>
-        activeAgentsService.list(projectId).map((a) => a.id),
-      reattachSlot: async (
-        projectId: string,
-        repoPath: string,
-        task: StoredTask,
-        assignment: GuppAssignment
-      ): Promise<boolean> =>
-        this.reattachRecoveredCodingTask(projectId, repoPath, task, assignment),
-      resumeReviewPhase: async (
-        projectId: string,
-        repoPath: string,
-        task: StoredTask,
-        assignment: GuppAssignment,
-        options: { pidAlive: boolean }
-      ): Promise<boolean> =>
-        this.resumeRecoveredReviewPhase(projectId, repoPath, task, assignment, options),
-      handleRecoverableHeartbeatGap: async (
-        projectId: string,
-        repoPath: string,
-        task: StoredTask,
-        assignment: GuppAssignment
-      ): Promise<boolean> => {
-        if (assignment.phase === "review") {
-          return this.resumeRecoveredReviewPhase(projectId, repoPath, task, assignment, {
-            pidAlive: true,
-            suspendReason: "heartbeat_gap",
-          });
-        }
-        return this.reattachRecoveredCodingTask(projectId, repoPath, task, assignment, {
-          suspendReason: "heartbeat_gap",
-        });
-      },
-      removeStaleSlot: async (
-        projectId: string,
-        taskId: string,
-        repoPath: string
-      ): Promise<void> => {
-        const state = this.getState(projectId);
-        const slot = state.slots.get(taskId);
-        if (!slot) return;
-
-        if (slot.agent.activeProcess) {
-          try {
-            slot.agent.activeProcess.kill();
-          } catch {
-            // Process may already be dead
-          }
-          slot.agent.activeProcess = null;
-        }
-        const wtPath = slot.worktreePath ?? repoPath;
-        await heartbeatService.deleteHeartbeat(wtPath, taskId);
-        if (slot.worktreePath && slot.worktreePath !== repoPath) {
-          try {
-            await this.branchManager.removeTaskWorktree(repoPath, slot.worktreeKey ?? taskId, slot.worktreePath);
-          } catch {
-            // Best effort; worktree may already be gone
-          }
-        }
-        await this.deleteAssignmentAt(repoPath, taskId, slot.worktreePath ?? undefined);
-        this.removeSlot(state, taskId);
-      },
-    };
+    return buildOrchestratorRecoveryHost(this as unknown as OrchestratorRecoveryHost);
   }
 
   getRecoveryHost(): RecoveryHost {
@@ -1308,9 +1217,47 @@ export class OrchestratorService {
     return [...state.slots.keys()];
   }
 
+  /** Active agent IDs (planning + execute) for recovery/orphan detection. */
+  getActiveAgentIds(projectId: string): string[] {
+    return activeAgentsService.list(projectId).map((a) => a.id);
+  }
+
   /** Invalidate maxSlots cache for a project (e.g. after settings change). Next runLoop will refresh. */
   invalidateMaxSlotsCache(projectId: string): void {
     this.maxSlotsCache.delete(projectId);
+  }
+
+  /** Used by OrchestratorLoopService host interface. */
+  getProjectService(): ProjectService {
+    return this.projectService;
+  }
+  /** Used by OrchestratorLoopService host interface. */
+  getTaskStore(): typeof taskStoreSingleton {
+    return this.taskStore;
+  }
+  /** Used by OrchestratorLoopService host interface. */
+  getTaskScheduler(): TaskScheduler {
+    return this.taskScheduler;
+  }
+  /** Used by OrchestratorDispatchService host interface. */
+  getBranchManager(): BranchManager {
+    return this.branchManager;
+  }
+  /** Used by OrchestratorDispatchService host interface. */
+  getFileScopeAnalyzer(): FileScopeAnalyzer {
+    return this.fileScopeAnalyzer;
+  }
+  /** Used by OrchestratorLoopService host interface. */
+  getFeedbackService(): FeedbackService {
+    return this.feedbackService;
+  }
+  /** Used by OrchestratorLoopService host interface. */
+  getMaxSlotsCache(): Map<string, number> {
+    return this.maxSlotsCache;
+  }
+  /** Used by OrchestratorLoopService host interface. */
+  setMaxSlotsCache(projectId: string, value: number): void {
+    this.maxSlotsCache.set(projectId, value);
   }
 
   /**
@@ -1446,305 +1393,11 @@ export class OrchestratorService {
     task: StoredTask,
     slotQueueDepth: number
   ): Promise<void> {
-    const state = this.getState(projectId);
-    log.info("Picking task", { projectId, taskId: task.id, title: task.title });
-
-    const assignee = getAgentName(state.nextCoderIndex);
-    state.nextCoderIndex += 1;
-
-    await this.taskStore.update(projectId, task.id, {
-      status: "in_progress",
-      assignee,
-    });
-    const cumulativeAttempts = this.taskStore.getCumulativeAttemptsFromIssue(task);
-    const settings = await this.projectService.getSettings(projectId);
-    const mergeStrategy = settings.mergeStrategy ?? "per_task";
-    const allIssues = await this.taskStore.listAll(projectId);
-    const epicId = resolveEpicId(task.id, allIssues);
-    const useEpicBranch =
-      mergeStrategy === "per_epic" && epicId != null;
-    const branchName = useEpicBranch
-      ? `opensprint/epic_${epicId}`
-      : `opensprint/${task.id}`;
-    const worktreeKey = useEpicBranch ? `epic_${epicId}` : task.id;
-
-    const slot = this.createSlot(
-      task.id,
-      task.title ?? null,
-      branchName,
-      cumulativeAttempts + 1,
-      assignee,
-      worktreeKey
-    );
-    slot.fileScope = await this.fileScopeAnalyzer.predict(
-      projectId,
-      repoPath,
-      task,
-      this.taskStore
-    );
-
-    this.transition(projectId, {
-      to: "start_task",
-      taskId: task.id,
-      taskTitle: task.title ?? null,
-      branchName,
-      attempt: cumulativeAttempts + 1,
-      queueDepth: slotQueueDepth,
-      slot,
-    });
-
-    await this.persistCounters(projectId, repoPath);
-    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
-    await this.branchManager.ensureOnMain(repoPath, baseBranch);
-    await this.executeCodingPhase(projectId, repoPath, task, slot, undefined);
+    await this.dispatchService.dispatchTask(projectId, repoPath, task, slotQueueDepth);
   }
 
   private async runLoop(projectId: string): Promise<void> {
-    const state = this.getState(projectId);
-
-    const myRunId = (state.loopRunId ?? 0) + 1;
-    state.loopRunId = myRunId;
-    state.loopActive = true;
-    state.globalTimers.clear("loop");
-
-    // If runLoop blocks in an await (e.g. context assembly, task store, network), the 60s loop kicker
-    // keeps calling nudge() but nudge returns early because loopActive is true. This guard forces
-    // recovery after LOOP_STUCK_GUARD_MS so a fresh runLoop can start and agents can make progress.
-    state.globalTimers.setTimeout(
-      "loopStuckGuard",
-      () => {
-        if (state.loopRunId !== myRunId) return;
-        log.warn("Orchestrator loop stuck (timeout), recovering so work can resume", {
-          projectId,
-          stuckRunId: myRunId,
-        });
-        state.loopRunId = myRunId + 1;
-        state.loopActive = false;
-        this.nudge(projectId);
-      },
-      LOOP_STUCK_GUARD_MS
-    );
-
-    try {
-      // Gastown-style mailbox: process one queued feedback (Analyst) before coding work
-      // Atomic claim prevents duplicate processing when multiple loop runs race
-      const nextFeedbackId = await this.feedbackService.claimNextPendingFeedbackId(projectId);
-      if (nextFeedbackId) {
-        log.info("Processing queued feedback with Analyst", {
-          projectId,
-          feedbackId: nextFeedbackId,
-        });
-        try {
-          await this.feedbackService.processFeedbackWithAnalyst(projectId, nextFeedbackId);
-          // Broadcast execute.status so UI updates pendingFeedbackCategorizations immediately
-          // (feedback.updated is emitted by FeedbackService; this syncs the "Categorizing" state)
-          const status = await this.getStatus(projectId);
-          broadcastToProject(projectId, {
-            type: "execute.status",
-            activeTasks: status.activeTasks,
-            queueDepth: status.queueDepth,
-            selfImprovementRunInProgress: status.selfImprovementRunInProgress,
-            ...(status.pendingFeedbackCategorizations && {
-              pendingFeedbackCategorizations: status.pendingFeedbackCategorizations,
-            }),
-          });
-        } catch (err) {
-          log.error("Analyst failed for queued feedback; leaving in inbox for retry", {
-            projectId,
-            feedbackId: nextFeedbackId,
-            err,
-          });
-        }
-        if (state.loopRunId === myRunId) state.loopActive = false;
-        this.nudge(projectId);
-        return;
-      }
-
-      const repoPath = await this.projectService.getRepoPath(projectId);
-      const settings = await this.projectService.getSettings(projectId);
-      const maxSlots =
-        settings.gitWorkingMode === "branches" ? 1 : (settings.maxConcurrentCoders ?? 1);
-      this.maxSlotsCache.set(projectId, maxSlots);
-
-      const { tasks: readyTasksRaw, allIssues } =
-        await this.taskStore.readyWithStatusMap(projectId);
-
-      let readyTasks = readyTasksRaw.filter((t) => (t.issue_type ?? t.type) !== "epic");
-      readyTasks = readyTasks.filter((t) => (t.issue_type ?? t.type) !== "chore");
-      readyTasks = readyTasks.filter((t) => (t.status as string) !== "blocked");
-      // Exclude tasks that already have an active slot
-      readyTasks = readyTasks.filter((t) => !state.slots.has(t.id));
-      // Exclude human-assigned tasks from agent dispatch
-      readyTasks = readyTasks.filter((t) => !t.assignee || isAgentAssignee(t.assignee));
-
-      state.status.queueDepth = readyTasks.length;
-
-      // Block task assignment while a PRD/SPEC HIL approval is open (Harmonizer proposed SPEC changes).
-      // Ensures no work that depends on the PRD runs until the user approves or closes the request.
-      const hasPendingPrdSpecHil = await notificationService.hasOpenPrdSpecHilApproval(projectId);
-      if (hasPendingPrdSpecHil) {
-        log.info("Open PRD/SPEC HIL approval — blocking task assignment until resolved", {
-          projectId,
-        });
-        if (state.loopRunId === myRunId) state.loopActive = false;
-        broadcastToProject(projectId, {
-          type: "execute.status",
-          activeTasks: this.buildActiveTasks(state),
-          queueDepth: state.status.queueDepth,
-          selfImprovementRunInProgress: isSelfImprovementRunInProgress(projectId),
-        });
-        return;
-      }
-
-      const slotsAvailable = maxSlots - state.slots.size;
-      if (readyTasks.length === 0 || slotsAvailable <= 0) {
-        log.info("No ready tasks or no slots available, going idle", {
-          projectId,
-          readyTasks: readyTasks.length,
-          slotsAvailable,
-        });
-        if (state.loopRunId === myRunId) state.loopActive = false;
-        broadcastToProject(projectId, {
-          type: "execute.status",
-          activeTasks: this.buildActiveTasks(state),
-          queueDepth: state.status.queueDepth,
-          selfImprovementRunInProgress: isSelfImprovementRunInProgress(projectId),
-        });
-        return;
-      }
-
-      const selected = await this.taskScheduler.selectTasks(
-        projectId,
-        repoPath,
-        readyTasks,
-        state.slots,
-        maxSlots,
-        {
-          allIssues,
-          unknownScopeStrategy: settings.unknownScopeStrategy ?? "conservative",
-        }
-      );
-
-      // Re-check exhausted providers: if getNextKey returns a key now, clear exhausted
-      for (const provider of ["ANTHROPIC_API_KEY", "CURSOR_API_KEY", "OPENAI_API_KEY"] as const) {
-        if (isExhausted(projectId, provider)) {
-          const resolved = await getNextKey(projectId, provider);
-          if (resolved?.key?.trim()) {
-            clearExhausted(projectId, provider);
-            log.info("API keys available again, cleared exhausted", { projectId, provider });
-          }
-        }
-      }
-
-      // Filter out tasks whose required provider is exhausted
-      const dispatchableTasks: typeof selected = [];
-      for (const st of selected) {
-        const complexity = await getComplexityForAgent(
-          projectId,
-          repoPath,
-          st.task,
-          this.taskStore
-        );
-        const agentConfig = getAgentForComplexity(settings, complexity);
-        const provider = getProviderForAgentType(agentConfig.type);
-        if (provider && isExhausted(projectId, provider)) {
-          log.info("Skipping task: provider exhausted", {
-            projectId,
-            taskId: st.task.id,
-            provider,
-          });
-          continue;
-        }
-        dispatchableTasks.push(st);
-      }
-
-      const dispatchBatch = dispatchableTasks.slice(0, MAX_NEW_TASKS_PER_LOOP);
-      if (dispatchableTasks.length > dispatchBatch.length) {
-        log.info("Dispatch capped for stability; deferring additional ready tasks", {
-          projectId,
-          selectedTasks: dispatchableTasks.length,
-          dispatchingNow: dispatchBatch.length,
-        });
-      }
-
-      if (dispatchableTasks.length === 0) {
-        log.info("No dispatchable tasks after conflict-aware scheduling or provider exhaustion", {
-          projectId,
-          readyTasks: readyTasks.length,
-          activeSlots: state.slots.size,
-        });
-        // Ensure UI sees api_blocked when agents stopped due to exhausted API keys (e.g. user was on home/another project when exhaustion was first detected)
-        await this.ensureApiBlockedNotificationsForExhaustedProviders(projectId);
-        if (state.loopRunId === myRunId) state.loopActive = false;
-        broadcastToProject(projectId, {
-          type: "execute.status",
-          activeTasks: this.buildActiveTasks(state),
-          queueDepth: state.status.queueDepth,
-          selfImprovementRunInProgress: isSelfImprovementRunInProgress(projectId),
-        });
-        return;
-      }
-
-      for (let i = 0; i < dispatchBatch.length; i++) {
-        const selectedTask = dispatchBatch[i]!;
-        try {
-          await this.dispatchTask(
-            projectId,
-            repoPath,
-            selectedTask.task,
-            Math.max(0, selected.length - (i + 1))
-          );
-        } catch (error) {
-          if (error instanceof WorktreeBranchInUseError) {
-            const failedTask = selectedTask.task;
-            log.warn("Worktree branch in use by active agent, failing task and freeing slot", {
-              projectId,
-              taskId: failedTask.id,
-              otherPath: error.otherPath,
-              otherTaskId: error.otherTaskId,
-            });
-            this.removeSlot(state, failedTask.id);
-            try {
-              await this.taskStore.update(projectId, failedTask.id, {
-                status: "open",
-                assignee: "",
-              });
-            } catch (revertErr) {
-              log.warn("Failed to revert task status", {
-                taskId: failedTask.id,
-                err: revertErr,
-              });
-            }
-            broadcastToProject(projectId, {
-              type: "agent.completed",
-              taskId: failedTask.id,
-              status: "failed",
-              testResults: null,
-              reason: error.message.slice(0, 500),
-            });
-            broadcastToProject(projectId, {
-              type: "execute.status",
-              activeTasks: this.buildActiveTasks(state),
-              queueDepth: state.status.queueDepth,
-              selfImprovementRunInProgress: isSelfImprovementRunInProgress(projectId),
-            });
-            continue;
-          }
-          throw error;
-        }
-      }
-
-      // Mark loop as idle so nudge can fire again for additional slots
-      if (state.loopRunId === myRunId) state.loopActive = false;
-    } catch (error) {
-      log.error(`Orchestrator loop error for project ${projectId}`, { error });
-      if (state.loopRunId === myRunId) {
-        state.loopActive = false;
-        state.globalTimers.setTimeout("loop", () => this.runLoop(projectId), 10000);
-      }
-    } finally {
-      state.globalTimers.clear("loopStuckGuard");
-    }
+    await this.loopService.runLoop(projectId);
   }
 
   private async executeCodingPhase(
@@ -1952,7 +1605,7 @@ export class OrchestratorService {
           : "no_result";
       const noResultReason =
         failureType === "no_result"
-          ? await this.extractNoResultReasonFromLogs(wtPath, task.id, slot.agent.outputLog)
+          ? await extractNoResultReasonFromLogs(wtPath, task.id, slot.agent.outputLog)
           : undefined;
       slot.agent.killedDueToTimeout = false;
       const noResultMessage =
@@ -2329,139 +1982,6 @@ export class OrchestratorService {
     }
   }
 
-  private isMeaningfulNoResultFragment(fragment: string): boolean {
-    return /[A-Za-z0-9]/.test(fragment.replace(/[^A-Za-z0-9]+/g, ""));
-  }
-
-  private extractStructuredNoResultErrorFromJsonLine(line: string): string | undefined {
-    if (!line.startsWith("{")) return undefined;
-    try {
-      const parsed = JSON.parse(line) as Record<string, unknown>;
-      const message =
-        typeof parsed.message === "string"
-          ? parsed.message
-          : typeof parsed.error === "string"
-            ? parsed.error
-            : parsed.error &&
-                typeof parsed.error === "object" &&
-                typeof (parsed.error as Record<string, unknown>).message === "string"
-              ? ((parsed.error as Record<string, unknown>).message as string)
-              : typeof parsed.detail === "string"
-                ? parsed.detail
-                : undefined;
-      if (!message || !this.isMeaningfulNoResultFragment(message)) return undefined;
-      const type = typeof parsed.type === "string" ? parsed.type.toLowerCase() : "";
-      const subtype = typeof parsed.subtype === "string" ? parsed.subtype.toLowerCase() : "";
-      const status = typeof parsed.status === "string" ? parsed.status.toLowerCase() : "";
-      if (
-        type === "error" ||
-        subtype === "error" ||
-        status === "error" ||
-        message.toLowerCase().includes("error")
-      ) {
-        return message.trim();
-      }
-      return undefined;
-    } catch {
-      return undefined;
-    }
-  }
-
-  private extractNoResultReasonFromOutput(outputLog: string[]): string | undefined {
-    const output = outputLog.join("").replace(/\r/g, "").trim();
-    if (!output) return undefined;
-
-    const agentErrorMatches = [...output.matchAll(/\[Agent error:\s*([^\]]+)\]/gi)];
-    const latestAgentError = agentErrorMatches
-      .map((match) => match[1]?.trim() ?? "")
-      .filter((line) => this.isMeaningfulNoResultFragment(line))
-      .at(-1);
-    if (latestAgentError) {
-      return latestAgentError.slice(0, 240);
-    }
-
-    const lines = output
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-    if (lines.length === 0) return undefined;
-
-    const structuredErrors = lines
-      .map((line) => this.extractStructuredNoResultErrorFromJsonLine(line))
-      .filter((line): line is string => Boolean(line))
-      .filter((line) => this.isMeaningfulNoResultFragment(line));
-    if (structuredErrors.length > 0) {
-      return structuredErrors.at(-1)?.slice(0, 240);
-    }
-
-    const nonJsonLines = lines
-      .filter((line) => !line.startsWith("{"))
-      .map((line) => line.replace(/^\s*[A-Z]:\s*/i, "").trim())
-      .filter((line) => !/^}+$/.test(line))
-      .filter((line) => this.isMeaningfulNoResultFragment(line));
-    if (nonJsonLines.length === 0) return undefined;
-
-    const errorLike =
-      /not available|please|switch to|error|invalid|required|cannot|unable|try |failed|rate limit|authentication|api key/i;
-    const preferred = [...nonJsonLines].reverse().find((line) => {
-      if (line.length > 400) return false;
-      if (errorLike.test(line)) return true;
-      return /[.?]$/.test(line) || (line.length < 150 && !/^[\s\S]*[\d{"]$/.test(line));
-    });
-    return (preferred ?? nonJsonLines.at(-1))?.slice(0, 240);
-  }
-
-  private async extractNoResultReasonFromLogs(
-    wtPath: string,
-    taskId: string,
-    outputLog: string[],
-    angle?: ReviewAngle
-  ): Promise<string | undefined> {
-    const fromMemory = this.extractNoResultReasonFromOutput(outputLog);
-    if (fromMemory) return fromMemory;
-
-    const outputLogPath = angle
-      ? path.join(
-          wtPath,
-          OPENSPRINT_PATHS.active,
-          taskId,
-          "review-angles",
-          angle,
-          OPENSPRINT_PATHS.agentOutputLog
-        )
-      : path.join(wtPath, OPENSPRINT_PATHS.active, taskId, OPENSPRINT_PATHS.agentOutputLog);
-    try {
-      const fileOutput = await fs.readFile(outputLogPath, "utf-8");
-      const fromFile = this.extractNoResultReasonFromOutput([fileOutput]);
-      if (fromFile) return fromFile;
-    } catch {
-      // Missing log file is expected for very-early failures.
-    }
-    return undefined;
-  }
-
-  private buildReviewNoResultFailureReason(reviewOutcome: ReviewOutcome): string {
-    const contexts = (reviewOutcome.failureContext ?? []).filter((ctx) => {
-      const hasAngle = typeof ctx.angle === "string" && ctx.angle.trim().length > 0;
-      const hasReason = typeof ctx.reason === "string" && ctx.reason.trim().length > 0;
-      return hasAngle || hasReason || ctx.exitCode !== null;
-    });
-    if (contexts.length === 0) {
-      return "One or more review agents exited without producing a valid result";
-    }
-
-    const details = contexts.map((ctx) => {
-      const label = ctx.angle ? `angle '${ctx.angle}'` : "general review";
-      let detail = `${label} exited with code ${ctx.exitCode ?? "null"} without producing a valid result`;
-      if (ctx.reason) {
-        detail += ` (${ctx.reason})`;
-      }
-      return detail;
-    });
-    if (details.length === 1) return details[0]!;
-    return `Review agents failed to produce valid results: ${details.join("; ")}`;
-  }
-
   private async handleReviewDone(
     projectId: string,
     repoPath: string,
@@ -2506,7 +2026,7 @@ export class OrchestratorService {
           : "no_result";
     const noResultReason =
       status === "no_result"
-        ? await this.extractNoResultReasonFromLogs(
+        ? await extractNoResultReasonFromLogs(
             wtPath,
             task.id,
             angle ? (reviewAgentState?.agent.outputLog ?? []) : slot.agent.outputLog,
@@ -2625,7 +2145,7 @@ export class OrchestratorService {
       );
     } else {
       const failureType: FailureType = "no_result";
-      const noResultReason = this.buildReviewNoResultFailureReason(reviewOutcome);
+      const noResultReason = buildReviewNoResultFailureReason(reviewOutcome);
       await this.failureHandler.handleTaskFailure(
         projectId,
         repoPath,

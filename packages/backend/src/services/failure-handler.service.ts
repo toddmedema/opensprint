@@ -30,6 +30,10 @@ import {
 } from "./task-execution-summary.js";
 import { resolveBaseBranch } from "../utils/git-repo-state.js";
 import { buildTestFailureRetrySummary } from "./orchestrator-test-status.js";
+import {
+  isMeaningfulNoResultFragment,
+  extractNoResultReasonFromOutput,
+} from "./no-result-reason.service.js";
 
 const log = createLogger("failure-handler");
 
@@ -139,22 +143,12 @@ export class FailureHandlerService {
     return `Demoted to priority ${params.currentPriority + 1}`;
   }
 
-  private isMeaningfulNoResultFragment(fragment: string): boolean {
-    return /[A-Za-z0-9]/.test(fragment.replace(/[^A-Za-z0-9]+/g, ""));
-  }
-
   private enrichNoResultReason(reason: string, outputLog: string[]): string {
+    const extracted = extractNoResultReasonFromOutput(outputLog, NO_RESULT_REASON_LIMIT);
+    if (extracted) return extracted;
+
     const output = outputLog.join("").replace(/\r/g, "").trim();
     if (!output) return reason;
-
-    const agentErrorMatches = [...output.matchAll(/\[Agent error:\s*([^\]]+)\]/gi)];
-    const latestAgentError = agentErrorMatches
-      .map((match) => match[1]?.trim() ?? "")
-      .filter((line) => this.isMeaningfulNoResultFragment(line))
-      .at(-1);
-    if (latestAgentError) {
-      return latestAgentError.slice(0, NO_RESULT_REASON_LIMIT);
-    }
 
     const lines = output
       .split("\n")
@@ -162,25 +156,11 @@ export class FailureHandlerService {
       .filter(Boolean);
     if (lines.length === 0) return reason;
 
-    // Prefer last non-JSON line that looks like a user-facing error or instruction (so we surface
-    // messages like "Composer 1.5 is not available in the slow pool. Please switch to Auto.")
     const nonJsonLines = lines
       .filter((line) => !line.startsWith("{"))
       .map((line) => line.replace(/^\s*[A-Z]:\s*/i, "").trim())
-      .filter((line) => this.isMeaningfulNoResultFragment(line));
+      .filter((line) => isMeaningfulNoResultFragment(line));
     if (nonJsonLines.length === 0) return reason;
-    const errorLike =
-      /not available|please|switch to|error|invalid|required|cannot|unable|try |failed|rate limit|authentication|api key/i;
-    const lastMessageLike = [...nonJsonLines].reverse().find((line) => {
-      if (line.length > 400) return false;
-      if (errorLike.test(line)) return true;
-      // Single sentence or short instruction (ends with . or ? or reads like a message)
-      return /[.?]$/.test(line) || (line.length < 150 && !/^[\s\S]*[\d{"]$/.test(line));
-    });
-    if (lastMessageLike) {
-      const cleaned = lastMessageLike.trim();
-      if (cleaned.length > 0) return cleaned.slice(0, NO_RESULT_REASON_LIMIT);
-    }
 
     // Fallback: last non-JSON lines only (avoid dumping NDJSON into the reason)
     const tail = nonJsonLines.slice(-NO_RESULT_TAIL_LINES).join(" | ");

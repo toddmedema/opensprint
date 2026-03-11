@@ -3,6 +3,10 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { OrchestratorService, formatReviewFeedback } from "../services/orchestrator.service.js";
+import {
+  buildReviewNoResultFailureReason,
+  extractNoResultReasonFromOutput,
+} from "../services/no-result-reason.service.js";
 import { heartbeatService } from "../services/heartbeat.service.js";
 import type { ReviewAgentResult } from "@opensprint/shared";
 
@@ -563,16 +567,7 @@ describe("OrchestratorService (slot-based model)", () => {
 
   describe("review no_result diagnostics", () => {
     it("formats angle-aware no_result reasons for multi-angle failures", () => {
-      const reason = (
-        orchestrator as unknown as {
-          buildReviewNoResultFailureReason(outcome: {
-            status: "no_result";
-            result: null;
-            exitCode: number | null;
-            failureContext: Array<{ angle?: string; exitCode: number | null; reason?: string }>;
-          }): string;
-        }
-      ).buildReviewNoResultFailureReason({
+      const reason = buildReviewNoResultFailureReason({
         status: "no_result",
         result: null,
         exitCode: 1,
@@ -588,11 +583,7 @@ describe("OrchestratorService (slot-based model)", () => {
     });
 
     it("extracts structured error from JSON output and ignores init frames", () => {
-      const reason = (
-        orchestrator as unknown as {
-          extractNoResultReasonFromOutput(outputLog: string[]): string | undefined;
-        }
-      ).extractNoResultReasonFromOutput([
+      const reason = extractNoResultReasonFromOutput([
         '{"type":"system","subtype":"init","apiKeySource":"env"}\n',
         '{"type":"error","message":"Security command failed: Security process exited with code: 45"}\n',
       ]);
@@ -601,11 +592,7 @@ describe("OrchestratorService (slot-based model)", () => {
     });
 
     it("ignores punctuation-only fragments in no_result output parsing", () => {
-      const reason = (
-        orchestrator as unknown as {
-          extractNoResultReasonFromOutput(outputLog: string[]): string | undefined;
-        }
-      ).extractNoResultReasonFromOutput(["}\n", " \n"]);
+      const reason = extractNoResultReasonFromOutput(["}\n", " \n"]);
 
       expect(reason).toBeUndefined();
     });
