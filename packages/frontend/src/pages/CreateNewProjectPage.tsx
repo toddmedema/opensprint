@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { getPrereqInstallUrl } from "../lib/prerequisites";
 import { getProjectPhasePath } from "../lib/phaseRouting";
 import { Layout } from "../components/layout/Layout";
 import { FolderBrowser } from "../components/FolderBrowser";
@@ -29,13 +30,6 @@ type ActionableError = {
   missing?: string[];
 };
 
-/** Download URLs for prerequisite installers; opens in system browser (Electron uses openExternal). */
-function getPrereqInstallUrl(tool: string, platform?: string): string {
-  if (tool === "Git" && platform === "win32") return "https://git-scm.com/download/win";
-  if (tool === "Git") return "https://git-scm.com/";
-  if (tool === "Node.js") return "https://nodejs.org/";
-  return "#";
-}
 
 const STEPS: { key: Step; label: string }[] = [
   { key: "basics", label: "Basics" },

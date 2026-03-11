@@ -9,17 +9,9 @@ import { addNotification } from "../store/slices/notificationSlice";
 import { CloseButton } from "./CloseButton";
 import { GITHUB_REPO_URL, HOMEPAGE_CONTAINER_CLASS } from "../lib/constants";
 import { getDropdownPositionLeftAligned } from "../lib/dropdownViewport";
+import { PREREQ_ITEMS, getPrereqInstallUrl } from "../lib/prerequisites";
 import { useModalA11y } from "../hooks/useModalA11y";
 import type { Project } from "@opensprint/shared";
-
-const PREREQ_ITEMS = ["Git", "Node.js"] as const;
-
-function getPrereqInstallUrl(tool: string, platform?: string): string {
-  if (tool === "Git" && platform === "win32") return "https://git-scm.com/download/win";
-  if (tool === "Git") return "https://git-scm.com/";
-  if (tool === "Node.js") return "https://nodejs.org/";
-  return "#";
-}
 
 const DROPDOWN_MIN_WIDTH = 140;
 
