@@ -158,3 +158,71 @@ export function extractJsonFromAgentResponse<T>(content: string, requiredKey?: s
 
   return null;
 }
+
+/**
+ * Extract and parse a JSON array from AI agent response content.
+ * Scans left-to-right for balanced JSON array candidates, ignoring brackets inside strings.
+ * Use when the agent returns an array with leading/trailing text (e.g. "Here are the items:\n[...]").
+ */
+export function extractJsonArrayFromAgentResponse<T>(content: string): T[] | null {
+  if (!content) return null;
+
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaping = false;
+
+  for (let i = 0; i < content.length; i++) {
+    const ch = content[i];
+
+    if (start >= 0) {
+      if (escaping) {
+        escaping = false;
+        continue;
+      }
+
+      if (ch === "\\") {
+        if (inString) escaping = true;
+        continue;
+      }
+
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+
+      if (inString) continue;
+
+      if (ch === "[" || ch === "{") {
+        depth += 1;
+        continue;
+      }
+
+      if (ch === "]" || ch === "}") {
+        depth -= 1;
+        if (depth === 0 && content[start] === "[") {
+          const candidate = content.slice(start, i + 1);
+          const parsed = parseJsonCandidate<T[]>(candidate);
+          if (parsed && Array.isArray(parsed)) {
+            return parsed;
+          }
+          start = -1;
+          inString = false;
+          escaping = false;
+        }
+        continue;
+      }
+
+      continue;
+    }
+
+    if (ch === "[") {
+      start = i;
+      depth = 1;
+      inString = false;
+      escaping = false;
+    }
+  }
+
+  return null;
+}

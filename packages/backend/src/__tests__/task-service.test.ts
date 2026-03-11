@@ -58,6 +58,7 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
       removeLabel: vi.fn(),
       getBlockersFromIssue: vi.fn().mockReturnValue([]),
       planGet: vi.fn(),
+      planGetByEpicId: vi.fn(),
       planUpdateMetadata: vi.fn(),
       syncForPush: vi.fn(),
       listRecentlyCompletedTasks: vi.fn().mockResolvedValue([]),
@@ -124,6 +125,12 @@ vi.mock("fs/promises", async (importOriginal) => {
     rm: vi.fn().mockResolvedValue(undefined),
   };
 });
+
+const mockTriggerDeployForEvent = vi.fn().mockResolvedValue([]);
+vi.mock("../services/deploy-trigger.service.js", () => ({
+  triggerDeploy: vi.fn().mockResolvedValue(null),
+  triggerDeployForEvent: (...args: unknown[]) => mockTriggerDeployForEvent(...args),
+}));
 
 const defaultIssues: StoredTask[] = [
   {
@@ -621,6 +628,74 @@ describe("TaskService", () => {
 
     const result = await taskService.markDone("proj-1", "task-1");
     expect(result.taskClosed).toBe(true);
+  });
+
+  it("markDone does not trigger deploy when last task of epic is closed and plan is in_review (no reviewedAt)", async () => {
+    const { taskStore } = await import("../services/task-store.service.js");
+    const epicId = "epic-1";
+    const taskId = "epic-1.1";
+    // show(): task is open so we proceed to close it
+    vi.mocked(taskStore.show).mockResolvedValue({
+      id: taskId,
+      title: "Task",
+      issue_type: "task",
+      status: "open",
+    } as StoredTask);
+    // listAll() is called after close(); return task as closed so allClosed is true
+    mockTaskStoreState.listAll = [
+      { id: epicId, title: "Epic", issue_type: "epic", status: "open" } as StoredTask,
+      { id: taskId, title: "Task", issue_type: "task", status: "closed" } as StoredTask,
+    ];
+    vi.mocked(taskStore.close).mockResolvedValue(undefined as never);
+    vi.mocked(taskStore.planGetByEpicId).mockResolvedValue({
+      plan_id: "plan-1",
+      content: "",
+      metadata: { reviewedAt: null },
+      shipped_content: null,
+      updated_at: "",
+      current_version_number: 1,
+      last_executed_version_number: null,
+    });
+    mockTriggerDeployForEvent.mockClear();
+
+    const result = await taskService.markDone("proj-1", taskId);
+
+    expect(result.taskClosed).toBe(true);
+    expect(result.epicClosed).toBe(true);
+    expect(mockTriggerDeployForEvent).not.toHaveBeenCalled();
+  });
+
+  it("markDone triggers deploy when last task of epic is closed and plan is complete (reviewedAt set)", async () => {
+    const { taskStore } = await import("../services/task-store.service.js");
+    const epicId = "epic-1";
+    const taskId = "epic-1.1";
+    vi.mocked(taskStore.show).mockResolvedValue({
+      id: taskId,
+      title: "Task",
+      issue_type: "task",
+      status: "open",
+    } as StoredTask);
+    mockTaskStoreState.listAll = [
+      { id: epicId, title: "Epic", issue_type: "epic", status: "open" } as StoredTask,
+      { id: taskId, title: "Task", issue_type: "task", status: "closed" } as StoredTask,
+    ];
+    vi.mocked(taskStore.close).mockResolvedValue(undefined as never);
+    vi.mocked(taskStore.planGetByEpicId).mockResolvedValue({
+      plan_id: "plan-1",
+      content: "",
+      metadata: { reviewedAt: "2025-03-09T12:00:00.000Z" },
+      shipped_content: null,
+      updated_at: "",
+      current_version_number: 1,
+      last_executed_version_number: null,
+    });
+    mockTriggerDeployForEvent.mockClear();
+
+    const result = await taskService.markDone("proj-1", taskId);
+
+    expect(result.taskClosed).toBe(true);
+    expect(result.epicClosed).toBe(true);
+    expect(mockTriggerDeployForEvent).toHaveBeenCalledWith("proj-1", "each_epic");
   });
 
   it("unblock updates task status via task store", async () => {

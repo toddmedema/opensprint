@@ -23,7 +23,7 @@ describe("getTestCommandForFramework", () => {
     { framework: null, expected: "" },
     { framework: "none" as const, expected: "" },
     { framework: "jest" as const, expected: "npm test" },
-    { framework: "vitest" as const, expected: "npx vitest run" },
+    { framework: "vitest" as const, expected: "node ./node_modules/vitest/vitest.mjs run" },
   ])("returns $expected for $framework", ({ framework, expected }) => {
     expect(getTestCommandForFramework(framework)).toBe(expected);
   });
@@ -37,7 +37,7 @@ describe("resolveTestCommand", () => {
     },
     {
       project: { testCommand: null, testFramework: "vitest" as const },
-      expected: "npx vitest run",
+      expected: "node ./node_modules/vitest/vitest.mjs run",
     },
     {
       project: { testCommand: null, testFramework: null },

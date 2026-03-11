@@ -303,7 +303,7 @@ describe("after-each-plan self-improvement integration", () => {
   it("triggers self-improvement and creates tasks with source self-improvement when plan is complete and change detection returns true", async () => {
     mockHasCodeChangesSince.mockResolvedValue(true);
     mockInvokePlanningAgent.mockResolvedValue({
-      content: '[{"title":"Add tests","description":"Unit tests for X"}]',
+      content: '[{"title":"Add tests","description":"Unit tests for X","priority":1,"complexity":3}]',
     });
 
     mockHost.taskStore.listAll.mockResolvedValue([
@@ -331,8 +331,12 @@ describe("after-each-plan self-improvement integration", () => {
       "Add tests",
       expect.objectContaining({
         description: "Unit tests for X",
+        priority: 1,
+        complexity: 3,
         extra: expect.objectContaining({
           source: "self-improvement",
+          aiAssignedPriority: true,
+          aiAssignedComplexity: true,
         }),
       })
     );

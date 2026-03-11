@@ -45,7 +45,7 @@ describe("test-framework.service", () => {
       const result = await detectTestFramework(repoPath);
       expect(result).toEqual({
         framework: "vitest",
-        testCommand: "npx vitest run",
+        testCommand: "node ./node_modules/vitest/vitest.mjs run",
       });
     });
 
@@ -101,7 +101,7 @@ describe("test-framework.service", () => {
       const result = await detectTestFramework(repoPath);
       expect(result).toEqual({
         framework: "vitest",
-        testCommand: "npx vitest run",
+        testCommand: "node ./node_modules/vitest/vitest.mjs run",
       });
     });
 
@@ -124,7 +124,7 @@ describe("test-framework.service", () => {
       const result = await detectTestFramework(repoPath);
       expect(result).toEqual({
         framework: "vitest",
-        testCommand: "npx vitest run",
+        testCommand: "node ./node_modules/vitest/vitest.mjs run",
       });
     });
 
@@ -141,7 +141,7 @@ describe("test-framework.service", () => {
       const result = await detectTestFramework(repoPath);
       expect(result).toEqual({
         framework: "vitest",
-        testCommand: "npx vitest run",
+        testCommand: "node ./node_modules/vitest/vitest.mjs run",
       });
     });
 

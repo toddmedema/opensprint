@@ -208,7 +208,7 @@ export class TestRunner {
         typeof pkg.scripts?.test === "string" ? pkg.scripts.test.trim().toLowerCase() : "";
 
       if (testScript.includes("vitest")) {
-        return "npx vitest run";
+        return "node ./node_modules/vitest/vitest.mjs run";
       }
       if (testScript.includes("jest")) {
         return "npx jest";
@@ -219,10 +219,10 @@ export class TestRunner {
 
     // Check for common test configs before falling back to a generic package.json test script.
     const configs = [
-      { file: "vitest.workspace.ts", cmd: "npx vitest run" },
-      { file: "vitest.workspace.js", cmd: "npx vitest run" },
-      { file: "vitest.config.ts", cmd: "npx vitest run" },
-      { file: "vitest.config.js", cmd: "npx vitest run" },
+      { file: "vitest.workspace.ts", cmd: "node ./node_modules/vitest/vitest.mjs run" },
+      { file: "vitest.workspace.js", cmd: "node ./node_modules/vitest/vitest.mjs run" },
+      { file: "vitest.config.ts", cmd: "node ./node_modules/vitest/vitest.mjs run" },
+      { file: "vitest.config.js", cmd: "node ./node_modules/vitest/vitest.mjs run" },
       { file: "jest.config.js", cmd: "npx jest" },
       { file: "jest.config.ts", cmd: "npx jest" },
       { file: "pytest.ini", cmd: "pytest" },
@@ -317,7 +317,10 @@ export class TestRunner {
 
   private buildVitestCommand(mode: "run" | "related", files: string[]): string {
     const fileArgs = files.join(" ").trim();
-    const base = mode === "run" ? "npx vitest run" : "npx vitest related --run";
+    const base =
+      mode === "run"
+        ? "node ./node_modules/vitest/vitest.mjs run"
+        : "node ./node_modules/vitest/vitest.mjs related --run";
     return fileArgs ? `${base} ${fileArgs}` : base;
   }
 

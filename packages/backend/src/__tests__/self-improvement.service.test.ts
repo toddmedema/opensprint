@@ -29,7 +29,7 @@ vi.mock("../services/task-store.service.js", () => ({
 vi.mock("../services/agent.service.js", () => ({
   agentService: {
     invokePlanningAgent: vi.fn().mockResolvedValue({
-      content: '[{"title":"Add tests","description":"Unit tests for X"}]',
+      content: '[{"title":"Add tests","description":"Unit tests for X","priority":1,"complexity":3}]',
     }),
   },
 }));
@@ -132,10 +132,14 @@ describe("SelfImprovementService", () => {
         "Add tests",
         expect.objectContaining({
           description: "Unit tests for X",
+          priority: 1,
+          complexity: 3,
           extra: expect.objectContaining({
             source: "self-improvement",
             runId: "int-run-1",
             planId: "plan-1",
+            aiAssignedPriority: true,
+            aiAssignedComplexity: true,
           }),
         })
       );

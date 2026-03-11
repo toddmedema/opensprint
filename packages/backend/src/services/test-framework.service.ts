@@ -28,7 +28,7 @@ export async function detectTestFramework(repoPath: string): Promise<DetectedTes
         return { framework: "cypress", testCommand: "npx cypress run" };
       }
       if (deps["vitest"]) {
-        return { framework: "vitest", testCommand: "npx vitest run" };
+        return { framework: "vitest", testCommand: "node ./node_modules/vitest/vitest.mjs run" };
       }
       if (deps["jest"]) {
         return { framework: "jest", testCommand: "npm test" };
@@ -37,7 +37,7 @@ export async function detectTestFramework(repoPath: string): Promise<DetectedTes
         return { framework: "mocha", testCommand: "npm test" };
       }
       if (testScript.includes("vitest")) {
-        return { framework: "vitest", testCommand: "npx vitest run" };
+        return { framework: "vitest", testCommand: "node ./node_modules/vitest/vitest.mjs run" };
       }
       if (testScript.includes("playwright")) {
         return { framework: "playwright", testCommand: "npx playwright test" };
@@ -60,10 +60,10 @@ export async function detectTestFramework(repoPath: string): Promise<DetectedTes
 
     // Check for config files before falling back to a generic package.json test script.
     const configs: { file: string; framework: string; command: string }[] = [
-      { file: "vitest.workspace.ts", framework: "vitest", command: "npx vitest run" },
-      { file: "vitest.workspace.js", framework: "vitest", command: "npx vitest run" },
-      { file: "vitest.config.ts", framework: "vitest", command: "npx vitest run" },
-      { file: "vitest.config.js", framework: "vitest", command: "npx vitest run" },
+      { file: "vitest.workspace.ts", framework: "vitest", command: "node ./node_modules/vitest/vitest.mjs run" },
+      { file: "vitest.workspace.js", framework: "vitest", command: "node ./node_modules/vitest/vitest.mjs run" },
+      { file: "vitest.config.ts", framework: "vitest", command: "node ./node_modules/vitest/vitest.mjs run" },
+      { file: "vitest.config.js", framework: "vitest", command: "node ./node_modules/vitest/vitest.mjs run" },
       { file: "jest.config.js", framework: "jest", command: "npx jest" },
       { file: "jest.config.ts", framework: "jest", command: "npx jest" },
       { file: "playwright.config.ts", framework: "playwright", command: "npx playwright test" },

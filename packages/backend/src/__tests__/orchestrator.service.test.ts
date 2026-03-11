@@ -720,7 +720,7 @@ describe("OrchestratorService (slot-based model)", () => {
         passed: 3,
         failed: 0,
         rawOutput: "ok",
-        executedCommand: "npx vitest related --run src/foo.ts",
+        executedCommand: "node ./node_modules/vitest/vitest.mjs related --run src/foo.ts",
       });
       mockGetActiveDir.mockImplementation((base: string, tid: string) =>
         path.join(base, ".opensprint", "active", tid)
@@ -770,7 +770,7 @@ describe("OrchestratorService (slot-based model)", () => {
       );
       await vi.waitFor(async () => {
         await expect(fs.readFile(statusPath, "utf-8")).resolves.toContain(
-          "Validation command: `npx vitest related --run src/foo.ts`"
+          "Validation command: `node ./node_modules/vitest/vitest.mjs related --run src/foo.ts`"
         );
       });
     });
@@ -829,7 +829,7 @@ describe("OrchestratorService (slot-based model)", () => {
         passed: 3,
         failed: 0,
         rawOutput: "ok",
-        executedCommand: "npx vitest related --run src/foo.ts",
+        executedCommand: "node ./node_modules/vitest/vitest.mjs related --run src/foo.ts",
       });
       vi.mocked(heartbeatService.readHeartbeat).mockResolvedValue({
         processGroupLeaderPid: 4343,

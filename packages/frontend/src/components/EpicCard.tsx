@@ -419,6 +419,7 @@ export function EpicCard({
                 disabled={isMarkCompletePending}
                 className="btn-primary text-xs w-full py-2 rounded-lg font-medium inline-flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
                 data-testid="plan-mark-complete-button"
+                title="Mark plan complete"
                 aria-label="Mark plan complete"
               >
                 {isMarkCompletePending ? "Marking complete…" : "Mark complete"}
@@ -433,6 +434,8 @@ export function EpicCard({
                 }}
                 className="btn-secondary text-xs w-full py-2 rounded-lg font-medium inline-flex items-center justify-center"
                 data-testid="go-to-evaluate-button"
+                title="Review this plan in Evaluate phase"
+                aria-label="Review in Evaluate"
               >
                 Review in Evaluate
               </button>

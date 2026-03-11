@@ -15,7 +15,7 @@ describe("orchestrator-test-status", () => {
   it("renders failing test details for reviewers", () => {
     const content = buildOrchestratorTestStatusContent({
       status: "failed",
-      testCommand: "npx vitest run",
+      testCommand: "node ./node_modules/vitest/vitest.mjs run",
       results: {
         passed: 12,
         failed: 2,

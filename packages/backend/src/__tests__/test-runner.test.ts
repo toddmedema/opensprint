@@ -165,27 +165,31 @@ describe("TestRunner", () => {
       const result = await runner.runScopedTests(
         "/tmp/repo",
         ["src/foo.test.ts", "src/bar.ts"],
-        "npx vitest run"
+        "node ./node_modules/vitest/vitest.mjs run"
       );
 
       expect(mockSpawn).toHaveBeenCalledWith(
         "sh",
-        ["-c", "npx vitest run src/foo.test.ts"],
+        ["-c", "node ./node_modules/vitest/vitest.mjs run src/foo.test.ts"],
         expect.any(Object)
       );
       expect(result.passed).toBe(2);
-      expect(result.executedCommand).toBe("npx vitest run src/foo.test.ts");
+      expect(result.executedCommand).toBe("node ./node_modules/vitest/vitest.mjs run src/foo.test.ts");
     });
 
     it("uses vitest related for changed source files", async () => {
       const output = "Tests: 3 passed, 0 failed, 0 skipped, 3 total";
       mockSpawn.mockReturnValue(createMockChild(output, "", 0));
 
-      await runner.runScopedTests("/tmp/repo", ["src/foo.ts", "src/bar.ts"], "npx vitest run");
+      await runner.runScopedTests(
+        "/tmp/repo",
+        ["src/foo.ts", "src/bar.ts"],
+        "node ./node_modules/vitest/vitest.mjs run"
+      );
 
       expect(mockSpawn).toHaveBeenCalledWith(
         "sh",
-        ["-c", "npx vitest related --run src/foo.ts src/bar.ts"],
+        ["-c", "node ./node_modules/vitest/vitest.mjs related --run src/foo.ts src/bar.ts"],
         expect.any(Object)
       );
     });
@@ -231,7 +235,7 @@ describe("TestRunner", () => {
 
       expect(mockSpawn).toHaveBeenCalledWith(
         "sh",
-        ["-c", "npx vitest related --run src/foo.ts"],
+        ["-c", "node ./node_modules/vitest/vitest.mjs related --run src/foo.ts"],
         expect.any(Object)
       );
     });

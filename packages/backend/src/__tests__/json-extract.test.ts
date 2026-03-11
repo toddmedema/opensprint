@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { extractJsonFromAgentResponse } from "../utils/json-extract.js";
+import {
+  extractJsonFromAgentResponse,
+  extractJsonArrayFromAgentResponse,
+} from "../utils/json-extract.js";
 
 describe("extractJsonFromAgentResponse", () => {
   describe("with requiredKey", () => {
@@ -179,5 +182,53 @@ Raise review quality with stricter defaults.",
       expect(result!.title).toBe("Large Plan");
       expect(result!.content).toContain("## Testing Strategy");
     });
+  });
+});
+
+describe("extractJsonArrayFromAgentResponse", () => {
+  it("extracts JSON array with leading text (e.g. enrichment agent response)", () => {
+    const content = `Here are the items with priority and complexity:
+[{"title":"Add tests","priority":1,"complexity":3},{"title":"Refactor API","priority":0,"complexity":7}]`;
+    const result = extractJsonArrayFromAgentResponse<Array<{ title: string; priority: number; complexity: number }>>(
+      content
+    );
+    expect(result).not.toBeNull();
+    expect(result).toHaveLength(2);
+    expect(result![0]).toEqual({ title: "Add tests", priority: 1, complexity: 3 });
+    expect(result![1]).toEqual({ title: "Refactor API", priority: 0, complexity: 7 });
+  });
+
+  it("extracts bare JSON array", () => {
+    const content = '[{"title":"A","priority":1}]';
+    const result = extractJsonArrayFromAgentResponse<Array<{ title: string; priority: number }>>(
+      content
+    );
+    expect(result).not.toBeNull();
+    expect(result).toHaveLength(1);
+    expect(result![0]).toEqual({ title: "A", priority: 1 });
+  });
+
+  it("returns null when no JSON array exists", () => {
+    const content = "No JSON array here, just plain text";
+    const result = extractJsonArrayFromAgentResponse<unknown[]>(content);
+    expect(result).toBeNull();
+  });
+
+  it("returns null for empty string", () => {
+    expect(extractJsonArrayFromAgentResponse<unknown[]>("")).toBeNull();
+  });
+
+  it("extracts first array when multiple arrays exist", () => {
+    const content = 'Before [{"x":1}] after [{"y":2}]';
+    const result = extractJsonArrayFromAgentResponse<Array<{ x?: number; y?: number }>>(content);
+    expect(result).not.toBeNull();
+    expect(result).toHaveLength(1);
+    expect(result![0]).toEqual({ x: 1 });
+  });
+
+  it("returns null when array is malformed", () => {
+    const content = 'Here [{"title":"A" invalid}]';
+    const result = extractJsonArrayFromAgentResponse<Array<{ title: string }>>(content);
+    expect(result).toBeNull();
   });
 });

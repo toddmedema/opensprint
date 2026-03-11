@@ -94,7 +94,7 @@ export const PRIORITY_LABELS: Record<number, string> = {
 /** Test framework options for setup (PRD §8.3, §10.2) */
 export const TEST_FRAMEWORKS = [
   { id: "jest", label: "Jest", command: "npm test" },
-  { id: "vitest", label: "Vitest", command: "npx vitest run" },
+  { id: "vitest", label: "Vitest", command: "node ./node_modules/vitest/vitest.mjs run" },
   { id: "playwright", label: "Playwright", command: "npx playwright test" },
   { id: "cypress", label: "Cypress", command: "npx cypress run" },
   { id: "pytest", label: "pytest", command: "pytest" },

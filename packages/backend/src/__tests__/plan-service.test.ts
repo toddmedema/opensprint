@@ -2156,4 +2156,90 @@ describe("PlanService createWithRetry usage", () => {
     await planService.clearReviewedAtIfNewTasksAdded(projectId, "nonexistent-epic");
     expect(mockPlanUpdateMetadata).not.toHaveBeenCalled();
   });
+
+  describe("markPlanComplete", () => {
+    it("sets reviewedAt and returns plan with status complete when all epic tasks are closed", async () => {
+      const planId = "mark-complete-plan";
+      const epicId = "epic-mark-complete";
+      await mockPlanInsert(projectId, planId, {
+        content: "# Mark Complete Plan\n\n## Overview\n\nContent.",
+        metadata: JSON.stringify({
+          planId,
+          epicId,
+          shippedAt: null,
+          complexity: "medium",
+        }),
+      });
+      mockTaskStoreListAll.mockResolvedValue([
+        { id: epicId, status: "open", type: "epic" },
+        { id: `${epicId}.1`, status: "closed", type: "task" },
+        { id: `${epicId}.2`, status: "closed", type: "task" },
+      ]);
+
+      const plan = await planService.markPlanComplete(projectId, planId);
+
+      expect(plan.status).toBe("complete");
+      expect(plan.metadata.reviewedAt).toBeDefined();
+      expect(typeof plan.metadata.reviewedAt).toBe("string");
+      expect(mockPlanUpdateMetadata).toHaveBeenCalledWith(
+        projectId,
+        planId,
+        expect.objectContaining({
+          reviewedAt: expect.any(String),
+        })
+      );
+    });
+
+    it("returns 400 when plan has open tasks", async () => {
+      const planId = "open-tasks-plan";
+      const epicId = "epic-open";
+      await mockPlanInsert(projectId, planId, {
+        content: "# Open Tasks Plan\n\n## Overview\n\nContent.",
+        metadata: JSON.stringify({
+          planId,
+          epicId,
+          shippedAt: null,
+          complexity: "medium",
+        }),
+      });
+      mockTaskStoreListAll.mockResolvedValue([
+        { id: epicId, status: "open", type: "epic" },
+        { id: `${epicId}.1`, status: "closed", type: "task" },
+        { id: `${epicId}.2`, status: "open", type: "task" },
+      ]);
+
+      await expect(planService.markPlanComplete(projectId, planId)).rejects.toMatchObject({
+        statusCode: 400,
+        code: "INVALID_INPUT",
+        message: expect.stringContaining("open tasks"),
+      });
+      expect(mockPlanUpdateMetadata).not.toHaveBeenCalled();
+    });
+
+    it("is idempotent when reviewedAt already set (returns current plan)", async () => {
+      const planId = "already-complete-plan";
+      const epicId = "epic-already";
+      const reviewedAt = "2025-03-09T12:00:00.000Z";
+      await mockPlanInsert(projectId, planId, {
+        content: "# Already Complete\n\n## Overview\n\nContent.",
+        metadata: JSON.stringify({
+          planId,
+          epicId,
+          shippedAt: null,
+          reviewedAt,
+          complexity: "medium",
+        }),
+      });
+      mockTaskStoreListAll.mockResolvedValue([
+        { id: epicId, status: "open", type: "epic" },
+        { id: `${epicId}.1`, status: "closed", type: "task" },
+      ]);
+
+      const plan = await planService.markPlanComplete(projectId, planId);
+
+      expect(plan.status).toBe("complete");
+      expect(plan.metadata.reviewedAt).toBe(reviewedAt);
+      expect(mockPlanUpdateMetadata).not.toHaveBeenCalled();
+    });
+  });
 });

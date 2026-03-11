@@ -642,10 +642,13 @@ export class TaskService {
           await this.taskStore.close(projectId, epicId, "All tasks done", true);
           epicClosed = true;
 
-          // PRD §7.5.3: Auto-deploy on epic completion when user manually marks last task done
-          triggerDeployForEvent(projectId, "each_epic").catch((err) => {
-            log.warn("Auto-deploy on epic completion failed", { projectId, err });
-          });
+          // PRD §7.5.3: Auto-deploy only when plan is complete (human approved). When plan is in_review (reviewedAt null), do not trigger; user must mark plan complete first.
+          const planRow = await this.taskStore.planGetByEpicId(projectId, epicId);
+          if (planRow?.metadata?.reviewedAt != null) {
+            triggerDeployForEvent(projectId, "each_epic").catch((err) => {
+              log.warn("Auto-deploy on epic completion failed", { projectId, err });
+            });
+          }
         }
       }
     }
