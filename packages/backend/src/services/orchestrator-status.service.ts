@@ -3,7 +3,11 @@
  * Extracted from OrchestratorService for clarity and testability.
  */
 
-import type { OrchestratorStatus } from "@opensprint/shared";
+import type {
+  AgentRuntimeState,
+  AgentSuspendReason,
+  OrchestratorStatus,
+} from "@opensprint/shared";
 import { REVIEW_ANGLE_OPTIONS } from "@opensprint/shared";
 import { taskStore as taskStoreSingleton } from "./task-store.service.js";
 import type { ProjectService } from "./project.service.js";
@@ -85,7 +89,7 @@ export class OrchestratorStatusService {
             taskId: slot.taskId,
             phase: slot.phase,
             startedAt: reviewAgent.agent.startedAt || new Date().toISOString(),
-            state: reviewAgent.agent.lifecycleState,
+            state: reviewAgent.agent.lifecycleState as AgentRuntimeState,
             id: buildReviewAgentId(slot.taskId, reviewAgent.angle),
             name: `Reviewer (${angleLabel})`,
             ...(reviewAgent.agent.lastOutputAtIso
@@ -95,7 +99,7 @@ export class OrchestratorStatusService {
               ? { suspendedAt: reviewAgent.agent.suspendedAtIso }
               : {}),
             ...(reviewAgent.agent.suspendReason
-              ? { suspendReason: reviewAgent.agent.suspendReason }
+              ? { suspendReason: reviewAgent.agent.suspendReason as AgentSuspendReason }
               : {}),
           });
         }
@@ -105,10 +109,12 @@ export class OrchestratorStatusService {
         taskId: slot.taskId,
         phase: slot.phase,
         startedAt: slot.agent.startedAt || new Date().toISOString(),
-        state: slot.agent.lifecycleState,
+        state: slot.agent.lifecycleState as AgentRuntimeState,
         ...(slot.agent.lastOutputAtIso ? { lastOutputAt: slot.agent.lastOutputAtIso } : {}),
         ...(slot.agent.suspendedAtIso ? { suspendedAt: slot.agent.suspendedAtIso } : {}),
-        ...(slot.agent.suspendReason ? { suspendReason: slot.agent.suspendReason } : {}),
+        ...(slot.agent.suspendReason
+          ? { suspendReason: slot.agent.suspendReason as AgentSuspendReason }
+          : {}),
       });
     }
     return tasks;

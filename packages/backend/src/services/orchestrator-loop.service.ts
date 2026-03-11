@@ -151,7 +151,7 @@ export class OrchestratorLoopService {
         settings.gitWorkingMode === "branches" ? 1 : (settings.maxConcurrentCoders ?? 1);
       this.host.setMaxSlotsCache(projectId, maxSlots);
 
-      const taskStore = this.host.getTaskStore() as TaskStoreService;
+      const taskStore = this.host.getTaskStore() as unknown as TaskStoreService;
       const { tasks: readyTasksRaw, allIssues } =
         await taskStore.readyWithStatusMap(projectId);
 

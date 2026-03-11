@@ -10,6 +10,13 @@ const log = createLogger("scaffold-recovery");
 
 const RECOVERY_TIMEOUT_MS = 120_000;
 const VERIFY_TIMEOUT_MS = 15_000;
+/**
+ * Key-resolution context for pre-project scaffolding flows.
+ * Scaffolding runs before a real project record exists, but AgentClient still
+ * needs a projectId to resolve CURSOR_API_KEY from global settings (instead of
+ * falling back to Cursor keychain/session auth).
+ */
+const SCAFFOLD_RECOVERY_PROJECT_ID = "__scaffold_recovery__";
 
 export type InitErrorCategory =
   | "missing_node"
@@ -251,6 +258,7 @@ export async function attemptRecovery(
       systemPrompt:
         "You are a system administrator fixing a development environment issue. Execute commands to resolve the problem. Be concise.",
       cwd: projectPath,
+      projectId: SCAFFOLD_RECOVERY_PROJECT_ID,
     });
     agentOutput = response.content;
   } catch (err) {

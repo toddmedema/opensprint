@@ -109,6 +109,7 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
   const [upgradeLoading, setUpgradeLoading] = useState(false);
   const [upgradeError, setUpgradeError] = useState<string | null>(null);
   const initialLoadRef = useRef(true);
+  const lastSyncedDatabaseUrlRef = useRef("");
 
   const notifySaveState = useCallback(
     (status: SaveStatus) => {
@@ -152,7 +153,9 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
     api.globalSettings
       .get()
       .then((res) => {
-        setDatabaseUrl(res.databaseUrl ?? "");
+        const fetchedDatabaseUrl = res.databaseUrl ?? "";
+        setDatabaseUrl(fetchedDatabaseUrl);
+        lastSyncedDatabaseUrlRef.current = fetchedDatabaseUrl.trim();
         setDatabaseDialect(res.databaseDialect);
         setApiKeys(res.apiKeys);
         setExpoTokenConfigured(res.expoTokenConfigured ?? false);
@@ -162,6 +165,7 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
       })
       .catch(() => {
         setDatabaseUrl("");
+        lastSyncedDatabaseUrlRef.current = "";
         setApiKeys(undefined);
       })
       .finally(() => {
@@ -175,6 +179,7 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
     if (databaseUrlLoading || initialLoadRef.current) return;
     const trimmed = databaseUrl.trim();
     if (!trimmed || trimmed.includes("***")) return;
+    if (trimmed === lastSyncedDatabaseUrlRef.current) return;
 
     const t = setTimeout(() => {
       setDatabaseUrlError(null);
@@ -185,7 +190,9 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
       api.globalSettings
         .put({ databaseUrl: trimmed })
         .then((res) => {
-          setDatabaseUrl(res.databaseUrl);
+          const savedDatabaseUrl = res.databaseUrl ?? "";
+          lastSyncedDatabaseUrlRef.current = savedDatabaseUrl.trim();
+          setDatabaseUrl(savedDatabaseUrl);
           if (res.databaseDialect !== undefined) setDatabaseDialect(res.databaseDialect);
           void queryClient.invalidateQueries({ queryKey: DB_STATUS_QUERY_KEY });
           scheduleSaveComplete(startTime);

@@ -121,10 +121,17 @@ export function assertGitIdentityConfigured(
   options?: { appError?: boolean }
 ): void {
   if (identity.valid) return;
+  throwGitIdentityPreflightError(identity, options?.appError);
+}
+
+function throwGitIdentityPreflightError(
+  identity: GitIdentityState,
+  appError?: boolean
+): never {
   const message =
     "Git author identity is required before OpenSprint can create commits. Configure user.name and user.email, then try again.";
   const commands = buildGitIdentityCommands();
-  if (options?.appError !== false) {
+  if (appError !== false) {
     throw new AppError(400, ErrorCodes.GIT_IDENTITY_REQUIRED, message, {
       missingFields: [
         ...(identity.name ? [] : ["user.name"]),
@@ -169,8 +176,7 @@ export async function ensureGitIdentityConfigured(
 
   const updatedIdentity = await readGitIdentity(repoPath);
   if (updatedIdentity.valid) return updatedIdentity;
-  assertGitIdentityConfigured(updatedIdentity, { appError: options?.appError });
-  return updatedIdentity;
+  throwGitIdentityPreflightError(updatedIdentity, options?.appError);
 }
 
 function isValidBranchName(raw: string | null | undefined): raw is string {

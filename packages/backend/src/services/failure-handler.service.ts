@@ -26,7 +26,6 @@ import { notificationService } from "./notification.service.js";
 import {
   buildTaskLastExecutionSummary,
   compactExecutionText,
-  persistTaskLastExecutionSummary,
 } from "./task-execution-summary.js";
 import { resolveBaseBranch } from "../utils/git-repo-state.js";
 import { buildTestFailureRetrySummary } from "./orchestrator-test-status.js";
@@ -41,6 +40,12 @@ const INFRA_FAILURE_TYPES: FailureType[] = ["agent_crash", "timeout", "merge_con
 const MAX_INFRA_RETRIES = 2;
 const NO_RESULT_TAIL_LINES = 8;
 const NO_RESULT_REASON_LIMIT = 1200;
+const NEXT_RETRY_CONTEXT_KEY = "next_retry_context";
+const RETRY_CONTEXT_FAILURE_LIMIT = 2000;
+const RETRY_CONTEXT_REVIEW_LIMIT = 4000;
+const RETRY_CONTEXT_TEST_OUTPUT_LIMIT = 6000;
+const RETRY_CONTEXT_TEST_FAILURES_LIMIT = 2000;
+const RETRY_CONTEXT_DIFF_LIMIT = 6000;
 
 export interface FailureHandlerHost {
   getState(projectId: string): {
@@ -186,6 +191,54 @@ export class FailureHandlerService {
       /timed out after 5 minutes/i,
     ];
     return fatalPatterns.some((pattern) => pattern.test(reason));
+  }
+
+  private truncateRetryContextText(value: string | undefined, limit: number): string | undefined {
+    if (!value) return undefined;
+    const compact = compactExecutionText(value, limit);
+    return compact === "" ? undefined : compact;
+  }
+
+  private buildPersistedRetryContext(params: {
+    failureType: FailureType;
+    previousFailure: string;
+    reviewFeedback?: string;
+    previousTestOutput?: string;
+    previousTestFailures?: string;
+    previousDiff?: string;
+  }): RetryContext {
+    const context: RetryContext = {
+      previousFailure:
+        this.truncateRetryContextText(params.previousFailure, RETRY_CONTEXT_FAILURE_LIMIT) ??
+        params.previousFailure.slice(0, RETRY_CONTEXT_FAILURE_LIMIT),
+      failureType: params.failureType,
+    };
+    const reviewFeedback = this.truncateRetryContextText(
+      params.reviewFeedback,
+      RETRY_CONTEXT_REVIEW_LIMIT
+    );
+    if (reviewFeedback) {
+      context.reviewFeedback = reviewFeedback;
+    }
+    const previousTestOutput = this.truncateRetryContextText(
+      params.previousTestOutput,
+      RETRY_CONTEXT_TEST_OUTPUT_LIMIT
+    );
+    if (previousTestOutput) {
+      context.previousTestOutput = previousTestOutput;
+    }
+    const previousTestFailures = this.truncateRetryContextText(
+      params.previousTestFailures,
+      RETRY_CONTEXT_TEST_FAILURES_LIMIT
+    );
+    if (previousTestFailures) {
+      context.previousTestFailures = previousTestFailures;
+    }
+    const previousDiff = this.truncateRetryContextText(params.previousDiff, RETRY_CONTEXT_DIFF_LIMIT);
+    if (previousDiff) {
+      context.previousDiff = previousDiff;
+    }
+    return context;
   }
 
   async handleTaskFailure(
@@ -358,6 +411,19 @@ export class FailureHandlerService {
       // Branch may not exist
     }
 
+    const previousTestFailures = buildTestFailureRetrySummary(
+      slot.phaseResult.testResults,
+      slot.phaseResult.testOutput || undefined
+    );
+    const persistedRetryContext = this.buildPersistedRetryContext({
+      failureType,
+      previousFailure: effectiveReason,
+      reviewFeedback,
+      previousDiff,
+      previousTestOutput: slot.phaseResult.testOutput || undefined,
+      previousTestFailures,
+    });
+
     if (failureType !== "review_rejection") {
       const session = await this.host.sessionManager.createSession(repoPath, {
         taskId: task.id,
@@ -400,7 +466,6 @@ export class FailureHandlerService {
         failureType,
         summary: `${failureSummary}. Waiting for API issue to be resolved.`,
       });
-      await persistTaskLastExecutionSummary(this.host.taskStore, projectId, task.id, retrySummary);
       await this.revertOrRemoveWorktree(repoPath, task.id, branchName, slot, gitWorkingMode, {
         baseBranch,
       });
@@ -411,6 +476,7 @@ export class FailureHandlerService {
           assignee: "",
           extra: {
             last_execution_summary: retrySummary,
+            [NEXT_RETRY_CONTEXT_KEY]: persistedRetryContext,
           },
         });
       } catch (err) {
@@ -449,7 +515,8 @@ export class FailureHandlerService {
         failureType,
         slot.phase,
         agentConfig.model ?? null,
-        slot.phase === "review" ? { effectiveReason, apiErrorKind } : undefined
+        slot.phase === "review" ? { effectiveReason, apiErrorKind } : undefined,
+        persistedRetryContext
       );
       return;
     }
@@ -474,7 +541,8 @@ export class FailureHandlerService {
         failureType,
         slot.phase,
         agentConfig.model ?? null,
-        slot.phase === "review" ? { effectiveReason, apiErrorKind } : undefined
+        slot.phase === "review" ? { effectiveReason, apiErrorKind } : undefined,
+        persistedRetryContext
       );
       return;
     }
@@ -487,7 +555,12 @@ export class FailureHandlerService {
         failureType,
         summary: `${failureSummary}. ${nextAction}`,
       });
-      await persistTaskLastExecutionSummary(this.host.taskStore, projectId, task.id, retrySummary);
+      await this.host.taskStore.update(projectId, task.id, {
+        extra: {
+          last_execution_summary: retrySummary,
+          [NEXT_RETRY_CONTEXT_KEY]: persistedRetryContext,
+        },
+      });
       eventLogService
         .append(repoPath, {
           timestamp: new Date().toISOString(),
@@ -515,10 +588,6 @@ export class FailureHandlerService {
       });
 
       await this.host.persistCounters(projectId, repoPath);
-      const previousTestFailures = buildTestFailureRetrySummary(
-        slot.phaseResult.testResults,
-        slot.phaseResult.testOutput || undefined
-      );
       await this.host.executeCodingPhase(projectId, repoPath, task, slot, {
         previousFailure: effectiveReason,
         reviewFeedback,
@@ -549,7 +618,12 @@ export class FailureHandlerService {
         failureType,
         summary: `${failureSummary}. ${nextAction}`,
       });
-      await persistTaskLastExecutionSummary(this.host.taskStore, projectId, task.id, retrySummary);
+      await this.host.taskStore.update(projectId, task.id, {
+        extra: {
+          last_execution_summary: retrySummary,
+          [NEXT_RETRY_CONTEXT_KEY]: persistedRetryContext,
+        },
+      });
       eventLogService
         .append(repoPath, {
           timestamp: new Date().toISOString(),
@@ -574,11 +648,6 @@ export class FailureHandlerService {
       log.info(`Retrying ${task.id} (attempt ${slot.attempt}), preserving branch`);
 
       await this.host.persistCounters(projectId, repoPath);
-      const previousTestFailures = buildTestFailureRetrySummary(
-        slot.phaseResult.testResults,
-        slot.phaseResult.testOutput || undefined
-      );
-
       await this.host.executeCodingPhase(projectId, repoPath, task, slot, {
         previousFailure: effectiveReason,
         reviewFeedback,
@@ -605,7 +674,8 @@ export class FailureHandlerService {
           failureType,
           slot.phase,
           agentConfig.model ?? null,
-          slot.phase === "review" ? { effectiveReason, apiErrorKind } : undefined
+          slot.phase === "review" ? { effectiveReason, apiErrorKind } : undefined,
+          persistedRetryContext
         );
       } else {
         const newPriority = currentPriority + 1;
@@ -627,6 +697,7 @@ export class FailureHandlerService {
             priority: newPriority,
             extra: {
               last_execution_summary: demoteSummary,
+              [NEXT_RETRY_CONTEXT_KEY]: persistedRetryContext,
             },
           });
         } catch {
@@ -705,7 +776,8 @@ export class FailureHandlerService {
     failureType: FailureType,
     phase: "coding" | "review",
     model?: string | null,
-    notificationContext?: { effectiveReason: string; apiErrorKind: AgentApiErrorKind | null }
+    notificationContext?: { effectiveReason: string; apiErrorKind: AgentApiErrorKind | null },
+    retryContext?: RetryContext
   ): Promise<void> {
     log.info(`Blocking ${task.id} after ${cumulativeAttempts} cumulative failures at max priority`);
     const blockSummary = buildTaskLastExecutionSummary({
@@ -727,6 +799,7 @@ export class FailureHandlerService {
         block_reason: "Coding Failure",
         extra: {
           last_execution_summary: blockSummary,
+          [NEXT_RETRY_CONTEXT_KEY]: retryContext ?? null,
         },
       });
     } catch (err) {

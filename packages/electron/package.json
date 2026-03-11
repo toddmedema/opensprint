@@ -1,21 +1,32 @@
 {
   "name": "@opensprint/electron",
   "productName": "Open Sprint",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Desktop packaging workspace for OpenSprint",
   "author": "OpenSprint Team",
   "main": "dist/main.js",
   "scripts": {
     "compile": "tsc",
+    "prepare:resources": "node scripts/prepare-desktop-resources.js",
+    "prepare:resources:win:x64": "node scripts/prepare-desktop-resources.js --platform win32 --arch x64",
+    "prepare:resources:win:arm64": "node scripts/prepare-desktop-resources.js --platform win32 --arch arm64",
+    "prepare:resources:mac:x64": "node scripts/prepare-desktop-resources.js --platform darwin --arch x64",
+    "prepare:resources:mac:arm64": "node scripts/prepare-desktop-resources.js --platform darwin --arch arm64",
+    "prepare:resources:linux:x64": "node scripts/prepare-desktop-resources.js --platform linux --arch x64",
+    "prepare:resources:linux:arm64": "node scripts/prepare-desktop-resources.js --platform linux --arch arm64",
     "start": "npm run compile && electron .",
-    "build": "npm run compile && electron-builder",
-    "build:dir": "npm run compile && electron-builder --dir",
-    "build:mac": "npm run compile && electron-builder --mac",
-    "build:win": "npm run compile && electron-builder --win --x64",
-    "build:win:x64": "npm run compile && electron-builder --win --x64",
-    "build:win:arm64": "npm run compile && electron-builder --win --arm64",
-    "build:linux": "npm run compile && electron-builder --linux"
+    "build": "npm run prepare:resources && npm run compile && electron-builder",
+    "build:dir": "npm run prepare:resources && npm run compile && electron-builder --dir",
+    "build:mac": "node scripts/build-target.js --platform darwin",
+    "build:mac:x64": "node scripts/build-target.js --platform darwin --arch x64",
+    "build:mac:arm64": "node scripts/build-target.js --platform darwin --arch arm64",
+    "build:win": "npm run build:win:x64",
+    "build:win:x64": "node scripts/build-target.js --platform win32 --arch x64",
+    "build:win:arm64": "node scripts/build-target.js --platform win32 --arch arm64",
+    "build:linux": "node scripts/build-target.js --platform linux",
+    "build:linux:x64": "node scripts/build-target.js --platform linux --arch x64",
+    "build:linux:arm64": "node scripts/build-target.js --platform linux --arch arm64"
   },
   "dependencies": {},
   "devDependencies": {
@@ -59,7 +70,13 @@
       "target": [
         "nsis"
       ],
+      "artifactName": "${productName} Setup ${version}-${arch}.${ext}",
       "icon": "../frontend/public/logo-512x512.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "include": "build/uninstaller.nsh",
+      "deleteAppDataOnUninstall": true
     },
     "linux": {
       "target": [

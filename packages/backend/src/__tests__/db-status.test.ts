@@ -55,6 +55,27 @@ describe("classifyDbConnectionError", () => {
       "The database rejected the connection; check the username, password, and database name in your settings."
     );
   });
+
+  it("returns sqlite runtime guidance for native module load failures", () => {
+    expect(
+      classifyDbConnectionError(
+        {
+          code: "ERR_DLOPEN_FAILED",
+          message:
+            "The module '/tmp/better_sqlite3.node' was compiled against a different Node.js version",
+        },
+        "sqlite"
+      )
+    ).toBe(
+      "OpenSprint could not load its SQLite runtime. The desktop installation may be incomplete or built for the wrong CPU architecture. Reinstall OpenSprint using the installer that matches your machine (x64 or arm64)."
+    );
+  });
+
+  it("returns sqlite permission guidance for EACCES", () => {
+    expect(classifyDbConnectionError({ code: "EACCES" }, "sqlite")).toBe(
+      "OpenSprint could not open the database file because of file permissions. Check that the configured folder is writable."
+    );
+  });
 });
 
 describe("GET /db-status", () => {

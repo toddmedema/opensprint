@@ -662,6 +662,51 @@ describe("AgentClient", () => {
       return child;
     };
 
+    it("should spawn Claude CLI with --print prompt content (no --task-file)", async () => {
+      const fs = await import("fs/promises");
+      const path = await import("path");
+      const os = await import("os");
+      const tmpDir = path.join(os.tmpdir(), `agent-client-claude-cli-${Date.now()}`);
+      const taskDir = path.join(tmpDir, ".opensprint/active/os-claude-cli.1");
+      await fs.mkdir(taskDir, { recursive: true });
+      const taskFilePath = path.join(taskDir, "prompt.md");
+      await fs.writeFile(taskFilePath, "# Task\n\nImplement login", "utf-8");
+
+      const mockChild = {
+        killed: false,
+        kill: vi.fn(),
+        pid: 33001,
+        stdout: { on: vi.fn(), removeAllListeners: vi.fn() },
+        stderr: { on: vi.fn(), removeAllListeners: vi.fn() },
+        on: vi.fn(() => ({ on: vi.fn(), removeAllListeners: vi.fn() })),
+        removeAllListeners: vi.fn(),
+      };
+      mockSpawn.mockReturnValue(mockChild);
+
+      const config: AgentConfig = {
+        type: "claude-cli",
+        model: "claude-sonnet-4-20250514",
+        cliCommand: null,
+      };
+      client.spawnWithTaskFile(config, taskFilePath, tmpDir, vi.fn(), vi.fn());
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        "claude",
+        expect.any(Array),
+        expect.objectContaining({ cwd: tmpDir, detached: true })
+      );
+      const args = mockSpawn.mock.calls[0][1] as string[];
+      expect(args).not.toContain("--task-file");
+      const printIndex = args.indexOf("--print");
+      expect(printIndex).toBeGreaterThanOrEqual(0);
+      expect(args[printIndex + 1]).toContain("Implement login");
+      const modelIndex = args.indexOf("--model");
+      expect(modelIndex).toBeGreaterThanOrEqual(0);
+      expect(args[modelIndex + 1]).toBe("claude-sonnet-4-20250514");
+
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
     it("should spawn Cursor agent with task content and workspace", async () => {
       const fs = await import("fs/promises");
       const path = await import("path");

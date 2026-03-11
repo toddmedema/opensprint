@@ -21,6 +21,12 @@ export const projectsRouter = Router();
 
 type ProjectParams = { id: string };
 
+/** Normalize Express param to string (params.id can be string | string[]). */
+function getProjectId(req: Request): string {
+  const id = req.params.id;
+  return Array.isArray(id) ? id[0] ?? "" : id ?? "";
+}
+
 // GET /projects — List all projects
 projectsRouter.get(
   "/",
@@ -103,7 +109,7 @@ projectsRouter.get(
 projectsRouter.get(
   "/:id",
   wrapAsync(async (req, res) => {
-    const project = await projectService.getProject(req.params.id);
+    const project = await projectService.getProject(getProjectId(req));
     const body: ApiResponse<Project> = { data: project };
     res.json(body);
   })
@@ -113,8 +119,9 @@ projectsRouter.get(
 projectsRouter.put(
   "/:id",
   wrapAsync(async (req, res) => {
+    const projectId = getProjectId(req);
     const { project, repoPathChanged } = await projectService.updateProject(
-      req.params.id,
+      projectId,
       req.body
     );
 
@@ -122,7 +129,6 @@ projectsRouter.put(
     // Await ensureRunning so the orchestrator is fully initialized before responding;
     // otherwise subsequent requests may hit the old directory or a half-ready state.
     if (repoPathChanged) {
-      const projectId = req.params.id;
       log.info("repoPath changed, restarting orchestrator", { projectId });
       orchestratorService.stopProject(projectId);
       await orchestratorService.ensureRunning(projectId);
@@ -159,7 +165,7 @@ projectsRouter.delete(
 projectsRouter.get(
   "/:id/settings",
   wrapAsync(async (req, res) => {
-    const settings = await projectService.getSettingsWithRuntimeState(req.params.id);
+    const settings = await projectService.getSettingsWithRuntimeState(getProjectId(req));
     res.json({ data: settings });
   })
 );
@@ -168,7 +174,7 @@ projectsRouter.get(
 projectsRouter.put(
   "/:id/settings",
   wrapAsync(async (req, res) => {
-    const projectId = req.params.id;
+    const projectId = getProjectId(req);
     const { apiKeys: _omit, ...bodyWithoutApiKeys } = req.body as Record<string, unknown>;
     const settings = await projectService.updateSettings(projectId, bodyWithoutApiKeys);
     await orchestratorService.refreshMaxSlotsAndNudge(projectId);

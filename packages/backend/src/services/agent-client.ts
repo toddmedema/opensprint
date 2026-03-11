@@ -395,7 +395,7 @@ function formatAgentError(
       return "Cursor agent CLI was not found. Install: curl https://cursor.com/install -fsS | bash. Then restart your terminal.";
     }
     if (agentType === "claude" || agentType === "claude-cli") {
-      return "claude CLI was not found. Install it from https://docs.anthropic.com/cli or via npm: npm install -g @anthropic-ai/cli";
+      return "Claude Code CLI was not found. Install it from https://docs.anthropic.com/en/docs/claude-code/getting-started or via npm: npm install -g @anthropic-ai/claude-code";
     }
   }
 
@@ -1379,13 +1379,29 @@ export class AgentClient {
 
     switch (config.type) {
       case "claude":
-      case "claude-cli":
+      case "claude-cli": {
         command = "claude";
-        args = ["--task-file", taskFilePath];
+        let taskContent: string;
+        try {
+          taskContent = readFileSync(taskFilePath, "utf-8");
+        } catch (readErr) {
+          const msg = getErrorMessage(readErr);
+          throw new AppError(
+            500,
+            ErrorCodes.AGENT_TASK_FILE_READ_FAILED,
+            `Could not read task file: ${taskFilePath}. ${msg}`,
+            {
+              taskFilePath,
+              cause: msg,
+            }
+          );
+        }
+        args = ["--print", taskContent];
         if (config.model) {
-          args.push("--model", config.model);
+          args.unshift("--model", config.model);
         }
         break;
+      }
       case "cursor": {
         let taskContent: string;
         try {
@@ -1656,7 +1672,7 @@ export class AgentClient {
         err.code === "ENOENT" && config.type === "cursor"
           ? "Cursor agent not found. Install: curl https://cursor.com/install -fsS | bash"
           : err.code === "ENOENT" && (config.type === "claude" || config.type === "claude-cli")
-            ? "claude CLI not found. Install from https://docs.anthropic.com/cli"
+            ? "Claude Code CLI not found. Install from https://docs.anthropic.com/en/docs/claude-code/getting-started or npm install -g @anthropic-ai/claude-code"
             : err.message;
       onOutput(`[Agent error: ${friendly}]\n`);
       cleanup();

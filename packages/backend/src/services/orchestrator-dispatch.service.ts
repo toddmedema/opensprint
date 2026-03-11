@@ -6,10 +6,59 @@
 import { getAgentName } from "@opensprint/shared";
 import type { StoredTask } from "./task-store.service.js";
 import { resolveEpicId } from "./task-store.service.js";
+import type { FailureType, RetryContext } from "./orchestrator-phase-context.js";
 import { resolveBaseBranch } from "../utils/git-repo-state.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("orchestrator-dispatch");
+
+const NEXT_RETRY_CONTEXT_KEY = "next_retry_context";
+
+const FAILURE_TYPES: FailureType[] = [
+  "test_failure",
+  "review_rejection",
+  "agent_crash",
+  "repo_preflight",
+  "timeout",
+  "no_result",
+  "merge_conflict",
+  "coding_failure",
+];
+
+function extractRetryContext(task: StoredTask): RetryContext | undefined {
+  const raw = (task as Record<string, unknown>)[NEXT_RETRY_CONTEXT_KEY];
+  if (!raw || typeof raw !== "object") return undefined;
+  const record = raw as Record<string, unknown>;
+  const retryContext: RetryContext = {};
+  if (typeof record.previousFailure === "string" && record.previousFailure.trim() !== "") {
+    retryContext.previousFailure = record.previousFailure;
+  }
+  if (typeof record.reviewFeedback === "string" && record.reviewFeedback.trim() !== "") {
+    retryContext.reviewFeedback = record.reviewFeedback;
+  }
+  if (typeof record.previousTestOutput === "string" && record.previousTestOutput.trim() !== "") {
+    retryContext.previousTestOutput = record.previousTestOutput;
+  }
+  if (
+    typeof record.previousTestFailures === "string" &&
+    record.previousTestFailures.trim() !== ""
+  ) {
+    retryContext.previousTestFailures = record.previousTestFailures;
+  }
+  if (typeof record.previousDiff === "string" && record.previousDiff.trim() !== "") {
+    retryContext.previousDiff = record.previousDiff;
+  }
+  if (
+    typeof record.failureType === "string" &&
+    FAILURE_TYPES.includes(record.failureType as FailureType)
+  ) {
+    retryContext.failureType = record.failureType as FailureType;
+  }
+  if (Object.keys(retryContext).length === 0) return undefined;
+  // Re-dispatched tasks should start from a fresh branch/worktree.
+  retryContext.useExistingBranch = false;
+  return retryContext;
+}
 
 /** Slot shape required by dispatch (must have branchName, fileScope assignable). */
 export interface DispatchSlotLike {
@@ -74,7 +123,7 @@ export interface OrchestratorDispatchHost {
     repoPath: string,
     task: StoredTask,
     slot: DispatchSlotLike,
-    retryContext?: unknown
+    retryContext?: RetryContext
   ): Promise<void>;
 }
 
@@ -89,6 +138,7 @@ export class OrchestratorDispatchService {
   ): Promise<void> {
     const state = this.host.getState(projectId);
     log.info("Picking task", { projectId, taskId: task.id, title: task.title });
+    const retryContext = extractRetryContext(task);
 
     const assignee = getAgentName(state.nextCoderIndex);
     state.nextCoderIndex += 1;
@@ -97,6 +147,9 @@ export class OrchestratorDispatchService {
     await taskStore.update(projectId, task.id, {
       status: "in_progress",
       assignee,
+      ...(retryContext != null && {
+        extra: { [NEXT_RETRY_CONTEXT_KEY]: null },
+      }),
     });
     const cumulativeAttempts = taskStore.getCumulativeAttemptsFromIssue(task);
     const settings = await this.host.getProjectService().getSettings(projectId);
@@ -137,6 +190,6 @@ export class OrchestratorDispatchService {
     await this.host.persistCounters(projectId, repoPath);
     const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
     await this.host.getBranchManager().ensureOnMain(repoPath, baseBranch);
-    await this.host.executeCodingPhase(projectId, repoPath, task, slot, undefined);
+    await this.host.executeCodingPhase(projectId, repoPath, task, slot, retryContext);
   }
 }

@@ -452,15 +452,36 @@ export interface GitRuntimeStatus {
 
 export type DatabaseDialect = "postgres" | "sqlite";
 
+const SQLITE_PATH_RE = /^(?:[./]|[a-zA-Z]:[\\/]|\\\\)|\.(?:sqlite3?|db)$/i;
+const LEGACY_SQLITE_PREFIX_RE = /^sqlite:(?!\/\/)/i;
+const LEGACY_FILE_PREFIX_RE = /^file:(?!\/\/)/i;
+
+/**
+ * Historically, some UI flows wrote shorthand values like sqlite:C:\path or file:/abs/path.
+ * Normalize these legacy forms back to canonical SQLite path/URL inputs.
+ */
+function normalizeLegacySqliteDatabaseUrl(value: string): string {
+  let normalized = value.trim();
+  let guard = 0;
+  while (LEGACY_SQLITE_PREFIX_RE.test(normalized) && guard < 16) {
+    normalized = normalized.replace(/^sqlite:/i, "").trim();
+    guard += 1;
+  }
+  if (LEGACY_FILE_PREFIX_RE.test(normalized)) {
+    normalized = normalized.replace(/^file:/i, "").trim();
+  }
+  return normalized;
+}
+
 /**
  * Return the database dialect from a validated database URL.
  * Use after validateDatabaseUrl so the URL is known to be valid.
  */
 export function getDatabaseDialect(url: string): DatabaseDialect {
-  const trimmed = url.trim();
+  const trimmed = normalizeLegacySqliteDatabaseUrl(url);
   if (/^postgres(ql)?:\/\//i.test(trimmed)) return "postgres";
   if (/^sqlite:\/\//i.test(trimmed) || /^file:\/\//i.test(trimmed)) return "sqlite";
-  if (/^[./]|\.(sqlite3?|db)$/i.test(trimmed)) return "sqlite";
+  if (SQLITE_PATH_RE.test(trimmed)) return "sqlite";
   return "postgres";
 }
 
@@ -473,7 +494,7 @@ export function validateDatabaseUrl(url: string): string {
   if (typeof url !== "string" || !url.trim()) {
     throw new Error("databaseUrl must be a non-empty string");
   }
-  const trimmed = url.trim();
+  const trimmed = normalizeLegacySqliteDatabaseUrl(url);
 
   if (/^postgres(ql)?:\/\//i.test(trimmed)) {
     try {
@@ -509,7 +530,7 @@ export function validateDatabaseUrl(url: string): string {
     }
   }
 
-  if (/^[./]|\.(sqlite3?|db)$/i.test(trimmed)) {
+  if (SQLITE_PATH_RE.test(trimmed)) {
     return trimmed;
   }
 
@@ -520,27 +541,13 @@ export function validateDatabaseUrl(url: string): string {
 
 /**
  * Mask a database URL for API responses: host/port visible, password redacted for Postgres;
- * for SQLite/file URLs returns a short label (e.g. "sqlite:./data/db.sqlite") without full path.
+ * for SQLite/file URLs returns a canonical SQLite URL/path string.
  */
 export function maskDatabaseUrl(url: string): string {
   if (typeof url !== "string" || !url.trim()) return "";
-  const trimmed = url.trim();
+  const trimmed = normalizeLegacySqliteDatabaseUrl(url);
   if (getDatabaseDialect(trimmed) === "sqlite") {
-    try {
-      if (/^sqlite:\/\//i.test(trimmed)) {
-        const parsed = new URL(trimmed);
-        const path = (parsed.pathname || parsed.hostname || "").replace(/^\//, "") || "db";
-        return `sqlite:${path}`;
-      }
-      if (/^file:\/\//i.test(trimmed)) {
-        const parsed = new URL(trimmed);
-        const path = parsed.pathname?.replace(/^\//, "") || "db";
-        return `file:${path}`;
-      }
-      return trimmed.startsWith("/") ? `file:${trimmed}` : `sqlite:${trimmed}`;
-    } catch {
-      return "sqlite:***";
-    }
+    return trimmed;
   }
   try {
     const parsed = new URL(trimmed);

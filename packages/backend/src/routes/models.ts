@@ -338,9 +338,9 @@ async function getModelsWithCoalescingByKey(
 }
 
 const CLAUDE_CLI_DEFAULT_MODELS: ModelOption[] = [
-  { id: "claude-sonnet-4-20250514", displayName: "Claude Sonnet 4" },
-  { id: "claude-opus-4-20250514", displayName: "Claude Opus 4" },
-  { id: "claude-haiku-35-20241022", displayName: "Claude 3.5 Haiku" },
+  { id: "claude-sonnet-4-6", displayName: "Claude Sonnet 4.6" },
+  { id: "claude-opus-4-6", displayName: "Claude Opus 4.6" },
+  { id: "claude-haiku-4-5-20251001", displayName: "Claude Haiku 4.5" },
 ];
 
 /**

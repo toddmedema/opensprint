@@ -362,7 +362,7 @@ function TaskDetailSidebarInner({
                   projectId,
                   taskId: selectedTask,
                   parentTaskId,
-                  type,
+                  type: type as "blocks" | "related" | "parent-child",
                 })
               ).unwrap();
             }}

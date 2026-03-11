@@ -166,6 +166,9 @@ describe("attemptRecovery", () => {
 
     const result = await attemptRecovery(classification, "/tmp/project", agentConfig);
     expect(mockInvoke).toHaveBeenCalledOnce();
+    expect(mockInvoke).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "__scaffold_recovery__" })
+    );
     expect(result.success).toBe(true);
     expect(result.category).toBe("missing_node");
     expect(result.agentOutput).toBe("Installed node successfully");
@@ -189,6 +192,7 @@ describe("attemptRecovery", () => {
     expect(call.prompt).toContain("/tmp/my-project");
     expect(call.prompt).toContain("npm: command not found");
     expect(call.cwd).toBe("/tmp/my-project");
+    expect(call.projectId).toBe("__scaffold_recovery__");
     expect(call.config).toBe(agentConfig);
   });
 

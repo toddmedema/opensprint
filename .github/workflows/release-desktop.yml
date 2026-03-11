@@ -34,7 +34,8 @@ jobs:
           TAG_VERSION: ${{ github.ref_name }}
         run: node scripts/set-version-from-tag.js
       - run: npm ci
-      - run: npm run build:desktop
+      - run: npm run build
+      - run: npm run build:mac -w packages/electron
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
@@ -57,7 +58,6 @@ jobs:
         run: node scripts/set-version-from-tag.js
       - run: npm ci
       - run: npm run build
-      - run: node packages/electron/scripts/prepare-desktop-resources.js
       - run: npm run build:win:x64 -w packages/electron
       - run: npm run build:win:arm64 -w packages/electron
       - uses: softprops/action-gh-release@v2
@@ -81,7 +81,8 @@ jobs:
           TAG_VERSION: ${{ github.ref_name }}
         run: node scripts/set-version-from-tag.js
       - run: npm ci
-      - run: npm run build:desktop
+      - run: npm run build
+      - run: npm run build:linux -w packages/electron
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}

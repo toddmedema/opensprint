@@ -352,6 +352,23 @@ describe("GlobalSettingsContent", () => {
     expect(input).toHaveValue("postgresql://user:***@localhost:5432/opensprint");
   });
 
+  it("does not auto-save the database URL immediately after initial load", async () => {
+    mockGlobalSettingsGet.mockResolvedValue({
+      databaseUrl: "sqlite:sqlite:C:\\Users\\test\\.opensprint\\data\\opensprint.sqlite",
+      databaseDialect: "sqlite",
+      apiKeys: undefined,
+    });
+
+    renderGlobalSettingsContent();
+
+    await screen.findByTestId("database-url-input");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 450));
+    });
+
+    expect(mockGlobalSettingsPut).not.toHaveBeenCalled();
+  });
+
   it("saves database URL after debounce on change", async () => {
     mockGlobalSettingsPut.mockResolvedValue({
       databaseUrl: "postgresql://user:***@db.example.com:5432/opensprint",

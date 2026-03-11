@@ -553,6 +553,49 @@ describe("FailureHandlerService", () => {
         })
       );
     });
+
+    it("persists retry context (including review feedback) when demoting after repeated review rejections", async () => {
+      const slot = makeSlot("/tmp/worktree");
+      slot.phase = "review";
+      slot.attempt = 3; // demotion point
+      mockHost.getState = vi.fn().mockReturnValue({
+        slots: new Map([[taskId, slot]]),
+        status: { totalFailed: 0, queueDepth: 0 },
+      });
+      const mockUpdate = vi.fn().mockResolvedValue(undefined);
+      mockHost.taskStore = {
+        ...mockHost.taskStore,
+        update: mockUpdate,
+      };
+
+      await handler.handleTaskFailure(
+        projectId,
+        repoPath,
+        makeTask(),
+        branchName,
+        "Review rejected",
+        null,
+        "review_rejection",
+        "Add mark-complete endpoint and in_review status derivation."
+      );
+
+      expect(mockUpdate).toHaveBeenCalledWith(
+        projectId,
+        taskId,
+        expect.objectContaining({
+          status: "open",
+          assignee: "",
+          priority: 3,
+          extra: expect.objectContaining({
+            next_retry_context: expect.objectContaining({
+              previousFailure: "Review rejected",
+              reviewFeedback: "Add mark-complete endpoint and in_review status derivation.",
+              failureType: "review_rejection",
+            }),
+          }),
+        })
+      );
+    });
   });
 
   describe("review failure notifications and execution diagnostics", () => {

@@ -245,22 +245,22 @@ export function SimplifiedAgentsStep({
           <p className="text-sm text-theme-warning-text">
             <strong>Claude CLI not found.</strong> Install it from{" "}
             <a
-              href="https://docs.anthropic.com/en/docs/claude-code/overview"
+              href="https://docs.anthropic.com/en/docs/claude-code/getting-started"
               target="_blank"
               rel="noopener noreferrer"
               className="underline hover:opacity-80"
             >
               docs.anthropic.com
             </a>{" "}
-            and run <code className="font-mono text-xs">claude login</code> to authenticate.
+            and run <code className="font-mono text-xs">claude</code> to complete authentication.
           </p>
         </div>
       )}
       {usesClaudeCli && !claudeCliMissing && (
         <div className="p-3 rounded-lg bg-theme-info-bg border border-theme-info-border">
           <p className="text-sm text-theme-info-text">
-            Using locally-installed Claude CLI. Make sure you have authenticated with{" "}
-            <code className="font-mono text-xs">claude login</code>.
+            Using locally-installed Claude CLI. Make sure you have authenticated by running{" "}
+            <code className="font-mono text-xs">claude</code> at least once.
           </p>
         </div>
       )}

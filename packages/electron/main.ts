@@ -26,6 +26,8 @@ const EXISTING_BACKEND_WAIT_MS = 5000;
 const BACKEND_PORT_SEARCH_LIMIT = 20;
 const BACKEND_FORCE_KILL_MS = 5000;
 const TRAY_REFRESH_MS = 10000;
+const DB_STARTUP_POLL_MS = 500;
+const DB_STARTUP_TIMEOUT_MS = 10000;
 
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
@@ -134,6 +136,15 @@ function getApiBase(): string {
   return `${getBackendOrigin()}/api/v1`;
 }
 
+type DatabaseDialect = "sqlite" | "postgres" | "unknown";
+
+interface DbStartupStatus {
+  ok: boolean;
+  message: string | null;
+  state: string;
+  dialect: DatabaseDialect;
+}
+
 function fetchJson(url: string, timeoutMs = 500): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const req = http.get(url, (res) => {
@@ -153,6 +164,95 @@ function fetchJson(url: string, timeoutMs = 500): Promise<Record<string, unknown
       reject(new Error("Timeout"));
     });
   });
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseDbStatus(payload: Record<string, unknown>): Omit<DbStartupStatus, "dialect"> | null {
+  const data = payload.data;
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return null;
+  }
+  const obj = data as Record<string, unknown>;
+  if (typeof obj.ok !== "boolean") {
+    return null;
+  }
+  return {
+    ok: obj.ok,
+    message: typeof obj.message === "string" ? obj.message : null,
+    state: typeof obj.state === "string" ? obj.state : "unknown",
+  };
+}
+
+function parseDatabaseDialect(payload: Record<string, unknown>): DatabaseDialect {
+  const data = payload.data;
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return "unknown";
+  }
+  const rawDialect = (data as Record<string, unknown>).databaseDialect;
+  if (rawDialect === "sqlite" || rawDialect === "postgres") {
+    return rawDialect;
+  }
+  return "unknown";
+}
+
+async function waitForDatabaseStartupStatus(timeoutMs = DB_STARTUP_TIMEOUT_MS): Promise<DbStartupStatus> {
+  const start = Date.now();
+  let lastStatus: Omit<DbStartupStatus, "dialect"> = {
+    ok: false,
+    message: "Database status did not become ready during startup.",
+    state: "unknown",
+  };
+  let dialect: DatabaseDialect = "unknown";
+
+  while (Date.now() - start < timeoutMs) {
+    const [statusPayload, settingsPayload] = await Promise.all([
+      fetchJson(`${getApiBase()}/db-status`, 1_500).catch(() => null),
+      dialect === "unknown"
+        ? fetchJson(`${getApiBase()}/global-settings`, 1_500).catch(() => null)
+        : Promise.resolve(null),
+    ]);
+
+    if (settingsPayload) {
+      dialect = parseDatabaseDialect(settingsPayload);
+    }
+
+    if (statusPayload) {
+      const parsed = parseDbStatus(statusPayload);
+      if (parsed) {
+        lastStatus = parsed;
+        if (parsed.ok) {
+          return { ...parsed, dialect };
+        }
+      }
+    }
+
+    await delay(DB_STARTUP_POLL_MS);
+  }
+
+  return { ...lastStatus, dialect };
+}
+
+function maybeShowDatabaseStartupDialog(status: DbStartupStatus): void {
+  if (status.ok || !app.isPackaged) return;
+
+  const intro =
+    status.dialect === "sqlite"
+      ? "Open Sprint started, but could not initialize its local SQLite database."
+      : "Open Sprint started, but could not connect to the configured database.";
+  const guidance =
+    status.dialect === "sqlite"
+      ? "This is often caused by a missing or incompatible desktop runtime dependency, or a path/permission issue for the database file."
+      : "Check your database URL and connectivity in Settings.";
+  const reason = status.message ?? "Unknown database startup error.";
+  const detail =
+    `${intro}\n\nReason: ${reason}\n\n${guidance}` +
+    (backendLogPath ? `\n\nBackend log: ${backendLogPath}` : "");
+
+  loadBootScreen(`Database unavailable: ${reason}`);
+  dialog.showErrorBox("Database Setup Error", detail);
 }
 
 function probeDesktopBackend(timeoutMs = 1000): Promise<boolean> {
@@ -326,26 +426,70 @@ function closeBackendLogStream(): void {
   backendLogStream = null;
 }
 
-function startBackend(): ChildProcess {
-  const { backendDir, backendEntry, frontendDist } = getPaths();
-  backendLaunchError = null;
-  const backendLog = app.isPackaged ? ensureBackendLogStream() : null;
+function isDirectory(candidate: string): boolean {
+  if (!candidate.trim()) return false;
+  try {
+    return fs.statSync(candidate).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function getNvmNodeBinPaths(homeDir: string): string[] {
+  const nvmDir = process.env.NVM_DIR?.trim() || path.join(homeDir, ".nvm");
+  const bins: string[] = [];
+  const currentBin = path.join(nvmDir, "current", "bin");
+  if (isDirectory(currentBin)) {
+    bins.push(currentBin);
+  }
+
+  const versionsDir = path.join(nvmDir, "versions", "node");
+  try {
+    for (const entry of fs.readdirSync(versionsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const versionBin = path.join(versionsDir, entry.name, "bin");
+      if (isDirectory(versionBin)) {
+        bins.push(versionBin);
+      }
+    }
+  } catch {
+    // No nvm directory on this machine.
+  }
+
+  return bins;
+}
+
+function buildBackendPath(existingPath: string): string {
   const pathDelimiter = process.platform === "win32" ? ";" : ":";
-  const existingPath = process.env.PATH ?? "";
+  const homeDir = os.homedir();
   const preferredPathEntries = [
-    path.join(os.homedir(), ".local", "bin"),
-    path.join(os.homedir(), ".cursor", "bin"),
+    path.join(homeDir, ".local", "bin"),
+    path.join(homeDir, ".cursor", "bin"),
+    path.join(homeDir, ".volta", "bin"),
+    path.join(homeDir, ".fnm", "current", "bin"),
+    path.join(homeDir, ".asdf", "shims"),
+    path.join(homeDir, ".mise", "shims"),
+    path.join(homeDir, ".nodenv", "shims"),
+    ...getNvmNodeBinPaths(homeDir),
     "/opt/homebrew/bin",
     "/usr/local/bin",
     "/usr/bin",
     "/bin",
-  ];
-  const normalizedPath = [
+  ].filter(isDirectory);
+
+  return [
     ...new Set([
-      ...preferredPathEntries.filter((entry) => entry.trim().length > 0),
+      ...preferredPathEntries,
       ...existingPath.split(pathDelimiter).filter((entry) => entry.trim().length > 0),
     ]),
   ].join(pathDelimiter);
+}
+
+function startBackend(): ChildProcess {
+  const { backendDir, backendEntry, frontendDist } = getPaths();
+  backendLaunchError = null;
+  const backendLog = app.isPackaged ? ensureBackendLogStream() : null;
+  const normalizedPath = buildBackendPath(process.env.PATH ?? "");
 
   const env: NodeJS.ProcessEnv = {
     ...process.env,
@@ -695,6 +839,10 @@ function sendNavigateSettings(): void {
 }
 
 function setApplicationMenu(): void {
+  if (process.platform === "win32") {
+    Menu.setApplicationMenu(null);
+    return;
+  }
   const isMac = process.platform === "darwin";
   const template = [
     ...(isMac
@@ -966,6 +1114,10 @@ app.whenReady().then(async () => {
     app.exit(1);
     return;
   }
+
+  loadBootScreen("Checking database connectivity...");
+  const dbStartupStatus = await waitForDatabaseStartupStatus();
+  maybeShowDatabaseStartupDialog(dbStartupStatus);
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     await mainWindow.loadURL(getBackendOrigin());

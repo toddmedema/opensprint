@@ -1402,6 +1402,22 @@ describe("validateDatabaseUrl", () => {
     expect(validateDatabaseUrl("file.db")).toBe("file.db");
   });
 
+  it("normalizes legacy sqlite:/file: shorthand prefixes", () => {
+    expect(validateDatabaseUrl("sqlite:./data/opensprint.sqlite")).toBe("./data/opensprint.sqlite");
+    expect(validateDatabaseUrl("sqlite:sqlite:./data/opensprint.sqlite")).toBe(
+      "./data/opensprint.sqlite"
+    );
+    expect(validateDatabaseUrl("file:/var/lib/opensprint/db.sqlite")).toBe(
+      "/var/lib/opensprint/db.sqlite"
+    );
+    expect(validateDatabaseUrl("sqlite:file:///var/lib/opensprint/db.sqlite")).toBe(
+      "file:///var/lib/opensprint/db.sqlite"
+    );
+    expect(validateDatabaseUrl("sqlite:C:\\Users\\me\\opensprint.sqlite")).toBe(
+      "C:\\Users\\me\\opensprint.sqlite"
+    );
+  });
+
   it("throws for sqlite:// or file:// without path", () => {
     expect(() => validateDatabaseUrl("sqlite://")).toThrow(/path for SQLite/);
     expect(() => validateDatabaseUrl("file://")).toThrow(/path for SQLite/);
@@ -1453,10 +1469,16 @@ describe("maskDatabaseUrl", () => {
     expect(maskDatabaseUrl("not-a-url")).toBe("***");
   });
 
-  it("masks SQLite URLs without exposing full path", () => {
-    expect(maskDatabaseUrl("sqlite:///path/to/db.sqlite")).toContain("sqlite:");
-    expect(maskDatabaseUrl("file:///abs/db.db")).toContain("file:");
-    expect(maskDatabaseUrl("./data/db.sqlite")).toBe("sqlite:./data/db.sqlite");
+  it("returns canonical SQLite URLs and paths unchanged", () => {
+    expect(maskDatabaseUrl("sqlite:///path/to/db.sqlite")).toBe("sqlite:///path/to/db.sqlite");
+    expect(maskDatabaseUrl("file:///abs/db.db")).toBe("file:///abs/db.db");
+    expect(maskDatabaseUrl("./data/db.sqlite")).toBe("./data/db.sqlite");
+  });
+
+  it("normalizes legacy SQLite shorthand to canonical path/URL", () => {
+    expect(maskDatabaseUrl("sqlite:./data/db.sqlite")).toBe("./data/db.sqlite");
+    expect(maskDatabaseUrl("sqlite:sqlite:./data/db.sqlite")).toBe("./data/db.sqlite");
+    expect(maskDatabaseUrl("file:/var/lib/db.sqlite")).toBe("/var/lib/db.sqlite");
   });
 });
 

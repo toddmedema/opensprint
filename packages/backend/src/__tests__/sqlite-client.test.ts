@@ -35,4 +35,26 @@ describe("resolveSqlitePath", () => {
       platformSpy.mockRestore();
     }
   });
+
+  it("normalizes legacy repeated sqlite: prefixes", () => {
+    const platformSpy = vi.spyOn(process, "platform", "get").mockReturnValue("linux");
+    try {
+      expect(resolveSqlitePath("sqlite:sqlite:./data/opensprint.sqlite")).toBe(
+        path.resolve("./data/opensprint.sqlite")
+      );
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+
+  it("normalizes legacy file:/ shorthand to a path", () => {
+    const platformSpy = vi.spyOn(process, "platform", "get").mockReturnValue("linux");
+    try {
+      expect(resolveSqlitePath("file:/tmp/opensprint.sqlite")).toBe(
+        path.resolve("/tmp/opensprint.sqlite")
+      );
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
 });

@@ -675,15 +675,15 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                               <p className="text-sm text-theme-warning-text">
                                 <strong>Claude CLI not found.</strong> Install it from{" "}
                                 <a
-                                  href="https://docs.anthropic.com/en/docs/claude-code/overview"
+                                  href="https://docs.anthropic.com/en/docs/claude-code/getting-started"
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="underline hover:opacity-80"
                                 >
                                   docs.anthropic.com
                                 </a>{" "}
-                                and run <code className="font-mono text-xs">claude login</code> to
-                                authenticate.
+                                and run <code className="font-mono text-xs">claude</code> to
+                                complete authentication.
                               </p>
                             </div>
                           )}

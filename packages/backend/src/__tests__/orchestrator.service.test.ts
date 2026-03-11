@@ -8,6 +8,8 @@ import {
   extractNoResultReasonFromOutput,
 } from "../services/no-result-reason.service.js";
 import { heartbeatService } from "../services/heartbeat.service.js";
+import { RepoPreflightError } from "../utils/git-repo-state.js";
+import { ErrorCodes } from "../middleware/error-codes.js";
 import type { ReviewAgentResult } from "@opensprint/shared";
 
 // Avoid loading drizzle-orm/pg-core when task-store mock uses importOriginal (vitest resolution can fail)
@@ -623,6 +625,47 @@ describe("OrchestratorService (slot-based model)", () => {
       expect(mockClearResult).toHaveBeenNthCalledWith(1, repoPath, "task-preflight");
       expect(mockClearResult).toHaveBeenNthCalledWith(2, repoPath, "task-preflight", "security");
       expect(mockClearResult).toHaveBeenNthCalledWith(3, repoPath, "task-preflight", "performance");
+    });
+
+    it("propagates git identity preflight errors unchanged", async () => {
+      await fs.mkdir(path.join(repoPath, "node_modules"), { recursive: true });
+      const expected = new RepoPreflightError(
+        "Git identity missing",
+        ErrorCodes.GIT_IDENTITY_REQUIRED
+      );
+      mockEnsureGitIdentityConfigured.mockRejectedValueOnce(expected);
+      const invokePreflight = orchestrator as unknown as {
+        preflightCheck(
+          repoPath: string,
+          wtPath: string,
+          taskId: string,
+          baseBranch?: string,
+          reviewAngles?: Array<"security" | "performance">
+        ): Promise<void>;
+      };
+
+      await expect(
+        invokePreflight.preflightCheck(repoPath, repoPath, "task-preflight", "main")
+      ).rejects.toBe(expected);
+    });
+
+    it("does not remap unexpected identity check errors to repo preflight", async () => {
+      await fs.mkdir(path.join(repoPath, "node_modules"), { recursive: true });
+      const expected = new ReferenceError("assertGitIdentityConfigured is not defined");
+      mockEnsureGitIdentityConfigured.mockRejectedValueOnce(expected);
+      const invokePreflight = orchestrator as unknown as {
+        preflightCheck(
+          repoPath: string,
+          wtPath: string,
+          taskId: string,
+          baseBranch?: string,
+          reviewAngles?: Array<"security" | "performance">
+        ): Promise<void>;
+      };
+
+      await expect(
+        invokePreflight.preflightCheck(repoPath, repoPath, "task-preflight", "main")
+      ).rejects.toBe(expected);
     });
   });
 

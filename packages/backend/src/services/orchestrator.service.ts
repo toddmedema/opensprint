@@ -2339,14 +2339,7 @@ export class OrchestratorService {
     }
     await this.branchManager.waitForGitReady(wtPath);
     const repoState = await inspectGitRepoState(repoPath, baseBranch);
-    try {
-      await ensureGitIdentityConfigured(repoPath, { appError: false });
-    } catch (error) {
-      if (error instanceof RepoPreflightError) {
-        throw error;
-      }
-      throw new RepoPreflightError(String(error), ErrorCodes.GIT_IDENTITY_REQUIRED);
-    }
+    await ensureGitIdentityConfigured(repoPath, { appError: false });
     try {
       await ensureBaseBranchExists(repoPath, repoState.baseBranch);
     } catch (error) {
