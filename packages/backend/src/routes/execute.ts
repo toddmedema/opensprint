@@ -4,14 +4,15 @@ import { orchestratorService } from "../services/orchestrator.service.js";
 import type { TaskService } from "../services/task.service.js";
 import { eventLogService, type OrchestratorEvent } from "../services/event-log.service.js";
 import type { ProjectService } from "../services/project.service.js";
+import type { SessionManager } from "../services/session-manager.js";
 import type { ApiResponse, OrchestratorStatus, TaskExecutionDiagnostics } from "@opensprint/shared";
 import { taskStore } from "../services/task-store.service.js";
-import { sessionManager } from "../services/session-manager.js";
 import { TaskExecutionDiagnosticsService } from "../services/task-execution-diagnostics.service.js";
 
 export function createExecuteRouter(
   taskService: TaskService,
-  projectService: ProjectService
+  projectService: ProjectService,
+  sessionManager: SessionManager
 ): Router {
   const router = Router({ mergeParams: true });
   const diagnosticsService = new TaskExecutionDiagnosticsService(

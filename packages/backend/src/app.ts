@@ -3,16 +3,16 @@ import express from "express";
 import cors from "cors";
 import { errorHandler } from "./middleware/error-handler.js";
 import { apiErrorNotificationMiddleware } from "./middleware/api-error-notification.js";
-import { projectsRouter } from "./routes/projects.js";
+import { createProjectsRouter } from "./routes/projects.js";
 import { prdRouter } from "./routes/prd.js";
-import { plansRouter } from "./routes/plans.js";
+import { createPlansRouter } from "./routes/plans.js";
 import { chatRouter } from "./routes/chat.js";
 import { createExecuteRouter } from "./routes/execute.js";
-import { deliverRouter } from "./routes/deliver.js";
+import { createDeliverRouter } from "./routes/deliver.js";
 import { agentsRouter } from "./routes/agents.js";
 import { createTasksRouter } from "./routes/tasks.js";
 import { createTasksAnalyticsRouter } from "./routes/tasks-analytics.js";
-import { createAppServices } from "./composition.js";
+import { createAppServices, type AppServices } from "./composition.js";
 import { feedbackRouter } from "./routes/feedback.js";
 import { projectNotificationsRouter, globalNotificationsRouter } from "./routes/notifications.js";
 import { fsRouter } from "./routes/fs.js";
@@ -27,9 +27,10 @@ import { wrapAsync } from "./middleware/wrap-async.js";
 import { requireDatabase } from "./middleware/require-database.js";
 import { orchestratorService } from "./services/orchestrator.service.js";
 
-export function createApp() {
+export function createApp(services?: AppServices) {
   const app = express();
-  const { taskService, projectService } = createAppServices();
+  const svc = services ?? createAppServices();
+  const { taskService, projectService, planService, sessionManager } = svc;
 
   app.use(cors());
   app.use(express.json({ limit: "10mb" }));
@@ -66,16 +67,16 @@ export function createApp() {
   app.use(`${API_PREFIX}/global-settings`, globalSettingsRouter);
   app.use(`${API_PREFIX}/help`, requireDatabase, helpRouter);
   app.use(`${API_PREFIX}/projects/:projectId/plan-status`, requireDatabase);
-  app.use(`${API_PREFIX}/projects`, projectsRouter);
+  app.use(`${API_PREFIX}/projects`, createProjectsRouter(projectService, planService));
   app.use(`${API_PREFIX}/projects/:projectId/prd`, requireDatabase, prdRouter);
-  app.use(`${API_PREFIX}/projects/:projectId/plans`, requireDatabase, plansRouter);
+  app.use(`${API_PREFIX}/projects/:projectId/plans`, requireDatabase, createPlansRouter(planService));
   app.use(`${API_PREFIX}/projects/:projectId/chat`, requireDatabase, chatRouter);
   app.use(
     `${API_PREFIX}/projects/:projectId/execute`,
     requireDatabase,
-    createExecuteRouter(taskService, projectService)
+    createExecuteRouter(taskService, projectService, sessionManager)
   );
-  app.use(`${API_PREFIX}/projects/:projectId/deliver`, requireDatabase, deliverRouter);
+  app.use(`${API_PREFIX}/projects/:projectId/deliver`, requireDatabase, createDeliverRouter(projectService));
   app.use(`${API_PREFIX}/projects/:projectId/agents`, requireDatabase, agentsRouter);
   app.use(
     `${API_PREFIX}/projects/:projectId/tasks`,

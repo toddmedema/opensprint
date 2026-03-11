@@ -92,8 +92,11 @@ vi.mock("../services/feedback.service.js", () => ({
 }));
 
 vi.mock("../services/session-manager.js", () => {
-  const MockSessionManager = vi.fn().mockImplementation(function (this: Record<string, unknown>) {
-    // Rely on prototype methods so vi.spyOn(SessionManager.prototype, ...) is invoked
+  const MockSessionManager = vi.fn().mockImplementation(function (
+    this: Record<string, unknown>,
+    _projectService?: unknown
+  ) {
+    // Accept optional projectService for DI; rely on prototype methods for vi.spyOn
   });
   const proto = (MockSessionManager as unknown as { prototype: Record<string, unknown> }).prototype;
   proto.loadSessionsTestResultsOnlyGroupedByTaskId = vi.fn().mockResolvedValue(new Map());
@@ -166,7 +169,7 @@ describe("TaskService", () => {
       new ProjectService(),
       taskStore,
       new FeedbackService(),
-      new SessionManager(),
+      new SessionManager(new ProjectService()),
       new ContextAssembler(),
       new BranchManager(),
       mockOrchestrator

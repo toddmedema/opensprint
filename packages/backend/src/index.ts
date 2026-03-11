@@ -2,6 +2,7 @@ import path from "path";
 import { config } from "dotenv";
 import { createServer } from "http";
 import { createApp } from "./app.js";
+import { createAppServices } from "./composition.js";
 import { acquirePidFile, removePidFile } from "./pid-file.js";
 import { wireDatabaseLifecycle, stopDatabaseFeatures } from "./startup.js";
 
@@ -42,8 +43,11 @@ const port = parseInt(process.env.PORT || String(DEFAULT_API_PORT), 10);
 
 acquirePidFile(port);
 
-const app = createApp();
+const services = createAppServices();
+const app = createApp(services);
 const server = createServer(app);
+
+wireDatabaseLifecycle(services);
 
 // Attach WebSocket server (inject getLiveOutput for push-backfill on agent.subscribe)
 setupWebSocket(server, {
@@ -52,8 +56,6 @@ setupWebSocket(server, {
 
 // Wire TaskStoreService to emit task create/update/close events via WebSocket
 wireTaskStoreEvents(broadcastToProject);
-
-wireDatabaseLifecycle();
 
 const FLUSH_PERSIST_TIMEOUT_MS = 15000;
 

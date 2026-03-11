@@ -38,13 +38,16 @@ function hasValidRepoPath(project: { repoPath: string }): boolean {
 /**
  * Initialize the always-on orchestrator for all projects with valid repo paths.
  * Starts the watchdog, blocked-auto-retry, and session retention services.
+ * @param projectService - When provided (from composition root), use it; otherwise create a new instance.
  */
-export async function initAlwaysOnOrchestrator(): Promise<void> {
-  const projectService = new ProjectService();
+export async function initAlwaysOnOrchestrator(
+  projectService?: ProjectService
+): Promise<void> {
+  const projectServiceToUse = projectService ?? new ProjectService();
   const feedbackService = new FeedbackService();
 
   try {
-    const projects = await projectService.listProjects();
+    const projects = await projectServiceToUse.listProjects();
     if (projects.length === 0) {
       logOrchestrator.info("No projects found");
       return;
@@ -72,18 +75,17 @@ export async function initAlwaysOnOrchestrator(): Promise<void> {
     });
 
     // Start independent watchdog; targets refreshed each cycle so deleted projects are not patrolled
-    const projectServiceForWatchdog = new ProjectService();
     sessionRetentionService.start();
 
     watchdogService.start(async () => {
-      const projects = await projectServiceForWatchdog.listProjects();
+      const projects = await projectServiceToUse.listProjects();
       return projects
         .filter(hasValidRepoPath)
         .map((p) => ({ projectId: p.id, repoPath: p.repoPath }));
     });
 
     startBlockedAutoRetry(async () => {
-      const projects = await projectServiceForWatchdog.listProjects();
+      const projects = await projectServiceToUse.listProjects();
       return projects
         .filter(hasValidRepoPath)
         .map((p) => ({ projectId: p.id, repoPath: p.repoPath }));
@@ -176,8 +178,13 @@ export async function stopDatabaseFeatures(): Promise<void> {
 
 /**
  * Start database-backed features: init app DB, task store, schedulers, and orchestrator.
+ * @param databaseUrl - Database connection URL
+ * @param projectService - Optional project service from composition root (avoids ad-hoc instances)
  */
-export async function startDatabaseFeatures(databaseUrl: string): Promise<void> {
+export async function startDatabaseFeatures(
+  databaseUrl: string,
+  projectService?: ProjectService
+): Promise<void> {
   if (databaseFeaturesStarted) {
     return;
   }
@@ -195,7 +202,7 @@ export async function startDatabaseFeatures(databaseUrl: string): Promise<void> 
       databaseFeaturesStarted = true;
       startNightlyDeployScheduler();
       startSelfImprovementScheduler();
-      await initAlwaysOnOrchestrator();
+      await initAlwaysOnOrchestrator(projectService);
     } catch (err) {
       if (nextAppDb) {
         await nextAppDb.close().catch(() => {});
@@ -213,13 +220,18 @@ export async function startDatabaseFeatures(databaseUrl: string): Promise<void> 
   await databaseFeaturesStartPromise;
 }
 
+/** Services from composition root; when set, startup uses them to avoid ad-hoc instances. */
+let lifecycleProjectService: ProjectService | undefined;
+
 /**
  * Wire database runtime lifecycle handlers to start/stop database features.
+ * @param services - Optional app services from composition root (provides projectService for startup)
  */
-export function wireDatabaseLifecycle(): void {
+export function wireDatabaseLifecycle(services?: { projectService: ProjectService }): void {
+  lifecycleProjectService = services?.projectService;
   databaseRuntime.setLifecycleHandlers({
     onConnected: async ({ databaseUrl }) => {
-      await startDatabaseFeatures(databaseUrl);
+      await startDatabaseFeatures(databaseUrl, lifecycleProjectService);
     },
     onDisconnected: async () => {
       await stopDatabaseFeatures();

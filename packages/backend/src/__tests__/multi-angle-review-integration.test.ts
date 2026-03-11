@@ -27,6 +27,10 @@ import type { StoredTask } from "../services/task-store.service.js";
 import type { AgentSlotLike } from "../services/orchestrator-phase-context.js";
 import type { ReviewAgentResult } from "@opensprint/shared";
 
+const mockProjectServiceForSession = {
+  getProjectByRepoPath: vi.fn().mockResolvedValue(null),
+};
+
 // Avoid loading drizzle-orm/pg-core (vitest resolution can fail in some workspaces)
 vi.mock("drizzle-orm", () => ({ and: (...args: unknown[]) => args, eq: (a: unknown, b: unknown) => [a, b] }));
 vi.mock("../db/drizzle-schema-pg.js", () => ({ plansTable: {} }));
@@ -198,7 +202,7 @@ describe("Multi-angle review flow — integration", () => {
           assembleTaskDirectory: realAssembler.assembleTaskDirectory.bind(realAssembler),
         };
       })(),
-      sessionManager: new SessionManager(),
+      sessionManager: new SessionManager(mockProjectServiceForSession as never),
       testRunner: {} as PhaseExecutorHost["testRunner"],
       lifecycleManager: { run: mockLifecycleRun } as PhaseExecutorHost["lifecycleManager"],
       persistCounters: mockPersistCounters,
@@ -469,7 +473,7 @@ describe("Multi-angle review flow — integration", () => {
       const resolve = vi.fn().mockResolvedValue(undefined);
       const coord = new TaskPhaseCoordinator(taskId, resolve, {});
 
-      const sessionManager = new SessionManager();
+      const sessionManager = new SessionManager(mockProjectServiceForSession as never);
 
       const mockHandleReviewDone = vi.fn().mockImplementation(
         async (

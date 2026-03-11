@@ -9,7 +9,7 @@ import type {
 import { getCodebaseContextFromRepo, hasExistingCode as hasExistingCodeInRepo } from "./plan/plan-codebase-context.js";
 import { assembleReExecuteContext as assembleReExecuteContextFromModule } from "./plan/plan-codebase-context.js";
 import { ProjectService } from "./project.service.js";
-import { taskStore as taskStoreSingleton, type StoredTask } from "./task-store.service.js";
+import { taskStore as taskStoreSingleton, type TaskStoreService, type StoredTask } from "./task-store.service.js";
 import { ChatService } from "./chat.service.js";
 import { notificationService } from "./notification.service.js";
 import { PrdService } from "./prd.service.js";
@@ -21,8 +21,17 @@ import { PlanPlanningRunService } from "./plan-planning-run.service.js";
 import { PlanComplexityEvaluationService } from "./plan-complexity-evaluation.service.js";
 
 export class PlanService {
-  private projectService = new ProjectService();
-  private taskStore = taskStoreSingleton;
+  private readonly projectService: ProjectService;
+  private readonly taskStore: TaskStoreService;
+
+  constructor(
+    projectService?: ProjectService,
+    taskStore?: TaskStoreService
+  ) {
+    this.projectService = projectService ?? new ProjectService();
+    this.taskStore = taskStore ?? taskStoreSingleton;
+  }
+
   private chatService = new ChatService();
   private prdService = new PrdService();
 

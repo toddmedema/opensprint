@@ -16,7 +16,7 @@ import {
 } from "@opensprint/shared";
 import { deploymentService } from "../services/deployment-service.js";
 import { deployStorageService } from "../services/deploy-storage.service.js";
-import { ProjectService } from "../services/project.service.js";
+import type { ProjectService } from "../services/project.service.js";
 import { orchestratorService } from "../services/orchestrator.service.js";
 import { broadcastToProject } from "../websocket/index.js";
 import { ensureEasConfig } from "../services/eas-config.js";
@@ -31,17 +31,23 @@ import { ensureEasProjectIdInAppJson } from "../utils/eas-project-link.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("deliver");
-const projectService = new ProjectService();
 
-export const deliverRouter = Router({ mergeParams: true });
+/** Current deliver phase status for a project (deployment records) */
+export interface DeliverStatusResponse {
+  activeDeployId: string | null;
+  currentDeploy: DeploymentRecord | null;
+}
+
+export function createDeliverRouter(projectService: ProjectService): Router {
+  const router = Router({ mergeParams: true });
 
 type ProjectParams = { projectId: string };
 type DeployIdParams = { projectId: string; deployId: string };
 
 /** True when repoPath is under the system temp dir (e.g. test env). Used to skip pre-deploy tests and await in-process. */
 function isRepoInTempDir(repoPath: string): boolean {
-  const resolvedRepo = path.resolve(repoPath);
-  const tmpDir = path.resolve(os.tmpdir());
+  const resolvedRepo = path.resolve(repoPath).replace(/^\/private/, "");
+  const tmpDir = path.resolve(os.tmpdir()).replace(/^\/private/, "");
   return resolvedRepo.startsWith(tmpDir + path.sep) || resolvedRepo === tmpDir;
 }
 
@@ -75,11 +81,8 @@ async function completeDeploy(
   });
 }
 
-/** Current deliver phase status for a project (deployment records) */
-export interface DeliverStatusResponse {
-  activeDeployId: string | null;
-  currentDeploy: DeploymentRecord | null;
-}
+/** Captured reference for use in async callbacks (avoids ReferenceError when module runs in deferred context). */
+const completeDeployFn = completeDeploy;
 
 /** Get git commit hash at HEAD in repo (git rev-parse HEAD) */
 function getCommitHash(repoPath: string): string | null {
@@ -96,7 +99,7 @@ const activeDeployments = new Map<string, string>();
 
 // POST /projects/:projectId/deliver — Trigger deployment (Deliver phase)
 // Body: { target?: string } — target name from targets array; defaults to getDefaultDeploymentTarget()
-deliverRouter.post(
+router.post(
   "/",
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     try {
@@ -174,7 +177,7 @@ deliverRouter.post(
 );
 
 // GET /projects/:projectId/deliver/status — Current deployment status (Deliver phase)
-deliverRouter.get(
+router.get(
   "/status",
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const { projectId } = req.params;
@@ -195,7 +198,7 @@ deliverRouter.get(
 );
 
 // GET /projects/:projectId/deliver/history — Deployment history (Deliver phase)
-deliverRouter.get(
+router.get(
   "/history",
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const { projectId } = req.params;
@@ -209,7 +212,7 @@ deliverRouter.get(
 );
 
 // PUT /projects/:projectId/deliver/settings — Update deployment settings (must be before /:deployId)
-deliverRouter.put(
+router.put(
   "/settings",
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const { projectId } = req.params;
@@ -234,7 +237,7 @@ deliverRouter.put(
 
 // POST /projects/:projectId/deliver/cancel — Clear stuck delivering state (in-memory + mark running/pending as failed)
 // Must be before /:deployId so "cancel" is not captured as deployId
-deliverRouter.post(
+router.post(
   "/cancel",
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const { projectId } = req.params;
@@ -244,7 +247,7 @@ deliverRouter.post(
 
     const latest = await deployStorageService.getLatestDeploy(projectId);
     if (latest && (latest.status === "running" || latest.status === "pending")) {
-      await completeDeploy(projectId, latest.id, {
+      await completeDeployFn(projectId, latest.id, {
         success: false,
         error: "Cancelled (deliver state reset)",
       });
@@ -258,7 +261,7 @@ deliverRouter.post(
 // POST /projects/:projectId/deliver/expo-deploy — Expo deploy (beta or prod) with export + eas deploy
 // Body: { variant: "beta" | "prod" }
 // Must be before /:deployId/rollback so "expo-deploy" is not captured as deployId
-deliverRouter.post(
+router.post(
   "/expo-deploy",
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     try {
@@ -379,70 +382,78 @@ deliverRouter.post(
   })
 );
 
-// POST /projects/:projectId/deliver/:deployId/rollback — Rollback to a deployment
-deliverRouter.post(
-  "/:deployId/rollback",
-  wrapAsync(async (req: Request<DeployIdParams>, res) => {
-    const { projectId, deployId } = req.params;
-    const record = await deployStorageService.getRecord(projectId, deployId);
-    if (!record) {
-      res.status(404).json({
-        error: { code: "NOT_FOUND", message: `Deployment ${deployId} not found` },
-      });
-      return;
-    }
-
-    const project = await projectService.getProject(projectId);
-    const settings = await projectService.getSettings(projectId);
-
-    const recordTarget =
-      record.target && typeof record.target === "string" ? record.target : "production";
-    const targetConfig = getDeploymentTargetConfig(settings.deployment, recordTarget);
-    const rollbackCommand = targetConfig?.rollbackCommand ?? settings.deployment.rollbackCommand;
-
-    if (settings.deployment.mode === "custom" && rollbackCommand) {
-      const latest = await deployStorageService.getLatestDeploy(projectId);
-      const rolledBackDeployId = latest && latest.id !== deployId ? latest.id : null;
-
-      const commitHash = getCommitHash(project.repoPath);
-      const target = getDefaultDeploymentTarget(settings.deployment);
-      const mode = settings.deployment.mode ?? "custom";
-
-      const rollbackRecord = await deployStorageService.createRecord(projectId, deployId, {
-        commitHash,
-        target,
-        mode,
-      });
-      broadcastToProject(projectId, { type: "deliver.started", deployId: rollbackRecord.id });
-      await deployStorageService.updateRecord(projectId, rollbackRecord.id, { status: "running" });
-
-      const rollbackPromise = runRollbackAsync(
-        projectId,
-        rollbackRecord.id,
-        project.repoPath,
-        rollbackCommand,
-        rolledBackDeployId
-      ).catch((err) => {
-        log.error("Rollback failed", { rollbackId: rollbackRecord.id, err });
-      });
-
-      if (isRepoInTempDir(project.repoPath)) {
-        await rollbackPromise;
+  // POST /projects/:projectId/deliver/:deployId/rollback — Rollback to a deployment
+  router.post(
+    "/:deployId/rollback",
+    wrapAsync(async (req: Request<DeployIdParams>, res) => {
+      const { projectId, deployId } = req.params;
+      const record = await deployStorageService.getRecord(projectId, deployId);
+      if (!record) {
+        res.status(404).json({
+          error: { code: "NOT_FOUND", message: `Deployment ${deployId} not found` },
+        });
+        return;
       }
 
-      const body: ApiResponse<{ deployId: string }> = { data: { deployId: rollbackRecord.id } };
-      res.status(202).json(body);
-    } else {
-      res.status(501).json({
-        error: {
-          code: "NOT_IMPLEMENTED",
-          message:
-            "Rollback is only supported for custom deployment with rollbackCommand configured",
-        },
-      });
-    }
-  })
-);
+      const project = await projectService.getProject(projectId);
+      const settings = await projectService.getSettings(projectId);
+
+      const recordTarget =
+        record.target && typeof record.target === "string" ? record.target : "production";
+      const targetConfig = getDeploymentTargetConfig(settings.deployment, recordTarget);
+      const rollbackCommand = targetConfig?.rollbackCommand ?? settings.deployment.rollbackCommand;
+
+      if (settings.deployment.mode === "custom" && rollbackCommand) {
+        const latest = await deployStorageService.getLatestDeploy(projectId);
+        const rolledBackDeployId = latest && latest.id !== deployId ? latest.id : null;
+
+        const commitHash = getCommitHash(project.repoPath);
+        const target = getDefaultDeploymentTarget(settings.deployment);
+        const mode = settings.deployment.mode ?? "custom";
+
+        const rollbackRecord = await deployStorageService.createRecord(projectId, deployId, {
+          commitHash,
+          target,
+          mode,
+        });
+        broadcastToProject(projectId, { type: "deliver.started", deployId: rollbackRecord.id });
+        await deployStorageService.updateRecord(projectId, rollbackRecord.id, { status: "running" });
+
+        const rollbackPromise = runRollbackAsync(
+          projectId,
+          rollbackRecord.id,
+          project.repoPath,
+          rollbackCommand,
+          rolledBackDeployId,
+          completeDeployFn
+        ).catch((err) => {
+          log.error("Rollback failed", {
+            rollbackId: rollbackRecord.id,
+            err,
+            message: getErrorMessage(err),
+          });
+        });
+
+        if (isRepoInTempDir(project.repoPath)) {
+          await rollbackPromise;
+        }
+
+        const body: ApiResponse<{ deployId: string }> = { data: { deployId: rollbackRecord.id } };
+        res.status(202).json(body);
+      } else {
+        res.status(501).json({
+          error: {
+            code: "NOT_IMPLEMENTED",
+            message:
+              "Rollback is only supported for custom deployment with rollbackCommand configured",
+          },
+        });
+      }
+    })
+  );
+
+  return router;
+}
 
 /** Run deployment asynchronously with streaming output.
  * PRD §7.5.2: Runs pre-deploy test suite first. If tests fail, creates fix epic via Planner and aborts.
@@ -508,7 +519,7 @@ export async function runDeployAsync(
       if (fixResult) {
         emit(`Fix epic created: ${fixResult.epicId} (${fixResult.taskCount} tasks)\n`);
       }
-      await completeDeploy(projectId, deployId, {
+      await completeDeployFn(projectId, deployId, {
         success: false,
         error: failMsg,
         fixEpicId: fixResult?.epicId ?? null,
@@ -533,7 +544,7 @@ export async function runDeployAsync(
   } catch (err) {
     const msg = getErrorMessage(err);
     emit(`Error: ${msg}\n`);
-    await completeDeploy(projectId, deployId, { success: false, error: msg });
+    await completeDeployFn(projectId, deployId, { success: false, error: msg });
   }
 }
 
@@ -557,7 +568,7 @@ const deployHandlers: Record<
     const authCheck = await checkExpoAuth(ctx.repoPath);
     if (!authCheck.ok) {
       ctx.emit(`${authCheck.prompt}\n`);
-      await completeDeploy(ctx.projectId, ctx.deployId, {
+      await completeDeployFn(ctx.projectId, ctx.deployId, {
         success: false,
         error: authCheck.message,
       });
@@ -594,7 +605,7 @@ const deployHandlers: Record<
         (chunk) => ctx.emit(chunk),
         ctx.envVars
       );
-      await completeDeploy(ctx.projectId, ctx.deployId, { success: true });
+      await completeDeployFn(ctx.projectId, ctx.deployId, { success: true });
     } else if (webhookUrl) {
       const result = await deploymentService.deployWithWebhook(
         ctx.projectId,
@@ -602,13 +613,13 @@ const deployHandlers: Record<
         ctx.envVars
       );
       ctx.emit(`Webhook POST to ${webhookUrl}\n`);
-      await completeDeploy(ctx.projectId, ctx.deployId, {
+      await completeDeployFn(ctx.projectId, ctx.deployId, {
         success: result.success,
         url: result.url,
         error: result.error,
       });
     } else {
-      await completeDeploy(ctx.projectId, ctx.deployId, {
+      await completeDeployFn(ctx.projectId, ctx.deployId, {
         success: false,
         error:
           "No custom deployment command or webhook URL configured",
@@ -616,7 +627,7 @@ const deployHandlers: Record<
     }
   },
   unknown: async (ctx) => {
-    await completeDeploy(ctx.projectId, ctx.deployId, {
+    await completeDeployFn(ctx.projectId, ctx.deployId, {
       success: false,
       error: `Unknown deployment mode: ${ctx.settings.deployment.mode}`,
     });
@@ -638,7 +649,7 @@ async function runExpoDeployAsync(
   try {
     if (isRepoInTempDir(repoPath)) {
       emit(`Skipping Expo CLI in temp repo for test environment (${variant}).\n`);
-      await completeDeploy(projectId, deployId, { success: true });
+      await completeDeployFn(projectId, deployId, { success: true });
       return;
     }
 
@@ -646,7 +657,7 @@ async function runExpoDeployAsync(
     const ensureResult = await ensureExpoInstalled(repoPath, emit);
     if (!ensureResult.ok) {
       emit(`Expo installation required but failed: ${ensureResult.error}\n`);
-      await completeDeploy(projectId, deployId, {
+      await completeDeployFn(projectId, deployId, {
         success: false,
         error: ensureResult.error,
       });
@@ -659,7 +670,7 @@ async function runExpoDeployAsync(
     );
     if (!configResult.ok) {
       emit(`Expo configuration failed: ${configResult.error}\n`);
-      await completeDeploy(projectId, deployId, {
+      await completeDeployFn(projectId, deployId, {
         success: false,
         error: configResult.error,
       });
@@ -688,7 +699,7 @@ async function runExpoDeployAsync(
             err: initErr,
           });
           emit(`${initMsg}\n`);
-          await completeDeploy(projectId, deployId, { success: false, error: initMsg });
+          await completeDeployFn(projectId, deployId, { success: false, error: initMsg });
           return;
         }
       } else if (!projectLinkResult.ok) {
@@ -702,18 +713,18 @@ async function runExpoDeployAsync(
           code: projectLinkResult.code,
         });
         emit(`${linkMsg}\n`);
-        await completeDeploy(projectId, deployId, { success: false, error: linkMsg });
+        await completeDeployFn(projectId, deployId, { success: false, error: linkMsg });
         return;
       }
     }
     await ensureEasConfig(repoPath);
     emit(`Running: ${cmd}\n`);
     await runCommandStreaming("sh", ["-c", cmd], repoPath, emit, envVars);
-    await completeDeploy(projectId, deployId, { success: true });
+    await completeDeployFn(projectId, deployId, { success: true });
   } catch (err) {
     const msg = getErrorMessage(err);
     emit(`Error: ${msg}\n`);
-    await completeDeploy(projectId, deployId, { success: false, error: msg });
+    await completeDeployFn(projectId, deployId, { success: false, error: msg });
   }
 }
 
@@ -730,7 +741,8 @@ async function runRollbackAsync(
   deployId: string,
   repoPath: string,
   rollbackCommand: string,
-  rolledBackDeployId: string | null
+  rolledBackDeployId: string | null,
+  complete: typeof completeDeployFn
 ): Promise<void> {
   const emit = (chunk: string) => {
     const p = deployStorageService.appendLog(projectId, deployId, chunk);
@@ -746,11 +758,21 @@ async function runRollbackAsync(
         rolledBackBy: deployId,
       });
     }
-    await completeDeploy(projectId, deployId, { success: true });
+    await complete(projectId, deployId, { success: true });
   } catch (err) {
     const msg = getErrorMessage(err);
     emit(`Error: ${msg}\n`);
-    await completeDeploy(projectId, deployId, { success: false, error: msg });
+    try {
+      await complete(projectId, deployId, { success: false, error: msg });
+    } catch (completeErr) {
+      log.error("Rollback completeDeploy failed", {
+        projectId,
+        deployId,
+        err: completeErr,
+        message: getErrorMessage(completeErr),
+      });
+      throw completeErr;
+    }
   }
 }
 
@@ -784,12 +806,8 @@ function runCommandStreaming(
       capture(data.toString());
     });
 
-    proc.on("close", async (code) => {
-      try {
-        await Promise.all(pendingOutput);
-      } catch {
-        // Log writes are best-effort; don't fail the deploy
-      }
+    proc.on("close", (code) => {
+      // Do not await pendingOutput so we don't block on log writes (avoids hang when storage is slow or locked)
       if (code === 0) {
         resolve();
       } else {

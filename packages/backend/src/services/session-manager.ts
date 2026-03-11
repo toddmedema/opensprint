@@ -13,21 +13,21 @@ import type {
 import { ensureRuntimeDir, getRuntimePath } from "../utils/runtime-dir.js";
 import { getSafeTaskActiveDir } from "../utils/path-safety.js";
 import { taskStore } from "./task-store.service.js";
-import { ProjectService } from "./project.service.js";
+import type { ProjectService } from "./project.service.js";
 import { LOG_DIFF_TRUNCATE_AT_CHARS, truncateToThreshold } from "../utils/log-diff-truncation.js";
-
-const projectService = new ProjectService();
-
-async function repoPathToProjectId(repoPath: string): Promise<string> {
-  const project = await projectService.getProjectByRepoPath(repoPath);
-  if (project) return project.id;
-  return "repo:" + crypto.createHash("sha256").update(repoPath).digest("hex").slice(0, 12);
-}
 
 /**
  * Manages active task directories and session archival.
  */
 export class SessionManager {
+  constructor(private readonly projectService: ProjectService) {}
+
+  private async repoPathToProjectId(repoPath: string): Promise<string> {
+    const project = await this.projectService.getProjectByRepoPath(repoPath);
+    if (project) return project.id;
+    return "repo:" + crypto.createHash("sha256").update(repoPath).digest("hex").slice(0, 12);
+  }
+
   /**
    * Get the active task directory path.
    */
@@ -134,7 +134,7 @@ export class SessionManager {
     session: AgentSession,
     worktreePath?: string
   ): Promise<void> {
-    const projectId = await repoPathToProjectId(repoPath);
+    const projectId = await this.repoPathToProjectId(repoPath);
     const truncatedOutputLog = truncateToThreshold(session.outputLog, LOG_DIFF_TRUNCATE_AT_CHARS);
     const truncatedGitDiff = truncateToThreshold(session.gitDiff, LOG_DIFF_TRUNCATE_AT_CHARS);
     await taskStore.runWrite(async (client) => {
@@ -229,7 +229,7 @@ export class SessionManager {
     taskId: string,
     attempt: number
   ): Promise<AgentSession | null> {
-    const projectId = await repoPathToProjectId(repoPath);
+    const projectId = await this.repoPathToProjectId(repoPath);
     const client = await taskStore.getDb();
     const row = await client.queryOne(
       "SELECT task_id, attempt, agent_type, agent_model, started_at, completed_at, status, output_log, git_branch, git_diff, test_results, failure_reason, summary FROM agent_sessions WHERE project_id = $1 AND task_id = $2 AND attempt = $3",
@@ -243,7 +243,7 @@ export class SessionManager {
    * List all sessions for a task from DB.
    */
   async listSessions(repoPath: string, taskId: string): Promise<AgentSession[]> {
-    const projectId = await repoPathToProjectId(repoPath);
+    const projectId = await this.repoPathToProjectId(repoPath);
     const client = await taskStore.getDb();
     const rows = await client.query(
       "SELECT task_id, attempt, agent_type, agent_model, started_at, completed_at, status, output_log, git_branch, git_diff, test_results, failure_reason, summary FROM agent_sessions WHERE project_id = $1 AND task_id = $2 ORDER BY attempt ASC",
@@ -256,7 +256,7 @@ export class SessionManager {
    * Load all sessions for the project from DB, grouped by task ID.
    */
   async loadSessionsGroupedByTaskId(repoPath: string): Promise<Map<string, AgentSession[]>> {
-    const projectId = await repoPathToProjectId(repoPath);
+    const projectId = await this.repoPathToProjectId(repoPath);
     const client = await taskStore.getDb();
     const rows = await client.query(
       "SELECT task_id, attempt, agent_type, agent_model, started_at, completed_at, status, output_log, git_branch, git_diff, test_results, failure_reason, summary FROM agent_sessions WHERE project_id = $1 ORDER BY task_id, attempt ASC",
@@ -283,7 +283,7 @@ export class SessionManager {
   async loadSessionsTestResultsOnlyGroupedByTaskId(
     repoPath: string
   ): Promise<Map<string, Array<{ testResults: TestResults | null }>>> {
-    const projectId = await repoPathToProjectId(repoPath);
+    const projectId = await this.repoPathToProjectId(repoPath);
     const client = await taskStore.getDb();
     const rows = await client.query(
       `SELECT a.task_id, a.attempt, a.test_results
@@ -328,6 +328,3 @@ function rowToSession(row: Record<string, unknown>): AgentSession {
     summary: row.summary as string | undefined,
   };
 }
-
-/** Single shared instance for composition, execute router, and orchestrator. */
-export const sessionManager = new SessionManager();

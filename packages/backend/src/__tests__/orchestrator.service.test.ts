@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { OrchestratorService, formatReviewFeedback } from "../services/orchestrator.service.js";
+import { sessionManager as mockSessionManager } from "../services/session-manager.js";
 import {
   buildReviewNoResultFailureReason,
   extractNoResultReasonFromOutput,
@@ -475,6 +476,7 @@ describe("OrchestratorService (slot-based model)", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     orchestrator = new OrchestratorService();
+    orchestrator.setSessionManager(mockSessionManager);
 
     repoPath = path.join(os.tmpdir(), `orchestrator-test-${Date.now()}`);
     await fs.mkdir(repoPath, { recursive: true });

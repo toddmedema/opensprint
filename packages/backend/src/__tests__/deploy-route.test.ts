@@ -7,6 +7,7 @@ import os from "os";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { createApp } from "../app.js";
+import { createAppServices } from "../composition.js";
 import { ProjectService } from "../services/project.service.js";
 import { API_PREFIX, DEFAULT_HIL_CONFIG } from "@opensprint/shared";
 
@@ -69,11 +70,13 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
   });
 
   beforeEach(async () => {
-    app = createApp();
-    projectService = new ProjectService();
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-deploy-route-test-"));
     originalHome = process.env.HOME;
     process.env.HOME = tempDir;
+
+    const services = createAppServices();
+    app = createApp(services);
+    projectService = services.projectService;
 
     const repoPath = path.join(tempDir, "my-project");
     await fs.mkdir(repoPath, { recursive: true });
@@ -93,8 +96,8 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
       complexComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
       deployment: {
         mode: "custom",
-        customCommand: "echo deployed",
-        rollbackCommand: "echo rolled-back",
+        customCommand: "true",
+        rollbackCommand: "true",
         target: "staging",
       },
       hilConfig: DEFAULT_HIL_CONFIG,
@@ -578,26 +581,27 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
       expect(rollbackRes.status).toBe(202);
       const rollbackDeployId = rollbackRes.body.data.deployId;
 
-      await new Promise((r) => setTimeout(r, 500));
+      // Poll until rollback record reaches a terminal state (server may or may not await in-process)
+      let records: { id: string; status?: string; rolledBackBy?: string }[] = [];
+      for (let i = 0; i < 20; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        historyRes = await request(app).get(
+          `${API_PREFIX}/projects/${projectId}/deliver/history?limit=5`
+        );
+        expect(historyRes.status).toBe(200);
+        records = historyRes.body?.data ?? [];
+        const rollbackRecord = records.find((r) => r.id === rollbackDeployId);
+        if (rollbackRecord?.status === "success" || rollbackRecord?.status === "failed") break;
+      }
 
-      historyRes = await request(app).get(
-        `${API_PREFIX}/projects/${projectId}/deliver/history?limit=5`
-      );
-      expect(historyRes.status).toBe(200);
-      const records = historyRes.body?.data;
-      expect(records).toBeDefined();
-      expect(Array.isArray(records)).toBe(true);
-
-      const rollbackRecord = (records as { id: string }[]).find((r) => r.id === rollbackDeployId);
+      const rollbackRecord = records.find((r) => r.id === rollbackDeployId);
       expect(rollbackRecord).toBeDefined();
-      expect(rollbackRecord.status).toBe("success");
+      expect(rollbackRecord!.status).toBe("success");
 
-      const rolledBackRecord = (records as { id: string; rolledBackBy?: string }[]).find(
-        (r) => r.id === currentDeploy.id
-      );
+      const rolledBackRecord = records.find((r) => r.id === currentDeploy.id);
       expect(rolledBackRecord).toBeDefined();
-      expect(rolledBackRecord.status).toBe("rolled_back");
-      expect(rolledBackRecord.rolledBackBy).toBe(rollbackDeployId);
+      expect(rolledBackRecord!.status).toBe("rolled_back");
+      expect(rolledBackRecord!.rolledBackBy).toBe(rollbackDeployId);
     });
   });
 });

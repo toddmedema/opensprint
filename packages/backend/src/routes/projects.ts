@@ -1,7 +1,7 @@
 import { Router, Request } from "express";
 import { wrapAsync } from "../middleware/wrap-async.js";
-import { ProjectService } from "../services/project.service.js";
-import { PlanService } from "../services/plan.service.js";
+import type { ProjectService } from "../services/project.service.js";
+import type { PlanService } from "../services/plan.service.js";
 import { orchestratorService } from "../services/orchestrator.service.js";
 import { taskStore } from "../services/task-store.service.js";
 import type {
@@ -14,10 +14,12 @@ import type {
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("projects");
-const projectService = new ProjectService();
-const planService = new PlanService();
 
-export const projectsRouter = Router();
+export function createProjectsRouter(
+  projectService: ProjectService,
+  planService: PlanService
+): Router {
+  const router = Router();
 
 type ProjectParams = { id: string };
 
@@ -27,8 +29,8 @@ function getProjectId(req: Request): string {
   return Array.isArray(id) ? id[0] ?? "" : id ?? "";
 }
 
-// GET /projects — List all projects
-projectsRouter.get(
+  // GET /projects — List all projects
+  router.get(
   "/",
   wrapAsync(async (_req, res) => {
     const projects = await projectService.listProjects();
@@ -37,8 +39,8 @@ projectsRouter.get(
   })
 );
 
-// POST /projects — Create a new project
-projectsRouter.post(
+  // POST /projects — Create a new project
+  router.post(
   "/",
   wrapAsync(async (req, res) => {
     const request = req.body as CreateProjectRequest;
@@ -48,8 +50,8 @@ projectsRouter.post(
   })
 );
 
-// POST /projects/scaffold — Scaffold new project from template (Create New wizard)
-projectsRouter.post(
+  // POST /projects/scaffold — Scaffold new project from template (Create New wizard)
+  router.post(
   "/scaffold",
   wrapAsync(async (req, res) => {
     const request = req.body as ScaffoldProjectRequest;
@@ -59,8 +61,8 @@ projectsRouter.post(
   })
 );
 
-// GET /projects/:id/sketch — Sketch phase resource (returns project; chat/prd under /chat, /prd)
-projectsRouter.get(
+  // GET /projects/:id/sketch — Sketch phase resource (returns project; chat/prd under /chat, /prd)
+  router.get(
   "/:id/sketch",
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const project = await projectService.getProject(req.params.id);
@@ -69,8 +71,8 @@ projectsRouter.get(
   })
 );
 
-// GET /projects/:id/plan-status — Plan it / Replan it CTA visibility (PRD §7.1.5)
-projectsRouter.get(
+  // GET /projects/:id/plan-status — Plan it / Replan it CTA visibility (PRD §7.1.5)
+  router.get(
   "/:id/plan-status",
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const status = await planService.getPlanStatus(req.params.id);
@@ -78,8 +80,8 @@ projectsRouter.get(
   })
 );
 
-// GET /projects/:id/sketch-context — Sketch empty-state: hasExistingCode for "Generate from codebase" visibility
-projectsRouter.get(
+  // GET /projects/:id/sketch-context — Sketch empty-state: hasExistingCode for "Generate from codebase" visibility
+  router.get(
   "/:id/sketch-context",
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const hasExistingCode = await planService.hasExistingCode(req.params.id);
@@ -87,8 +89,8 @@ projectsRouter.get(
   })
 );
 
-// GET /projects/:id/self-improvement/history — List recent self-improvement runs (timestamp, status, tasksCreatedCount)
-projectsRouter.get(
+  // GET /projects/:id/self-improvement/history — List recent self-improvement runs (timestamp, status, tasksCreatedCount)
+  router.get(
   "/:id/self-improvement/history",
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const projectId = req.params.id;
@@ -105,8 +107,8 @@ projectsRouter.get(
   })
 );
 
-// GET /projects/:id — Get project details
-projectsRouter.get(
+  // GET /projects/:id — Get project details
+  router.get(
   "/:id",
   wrapAsync(async (req, res) => {
     const project = await projectService.getProject(getProjectId(req));
@@ -115,8 +117,8 @@ projectsRouter.get(
   })
 );
 
-// PUT /projects/:id — Update project
-projectsRouter.put(
+  // PUT /projects/:id — Update project
+  router.put(
   "/:id",
   wrapAsync(async (req, res) => {
     const projectId = getProjectId(req);
@@ -139,8 +141,8 @@ projectsRouter.put(
   })
 );
 
-// POST /projects/:id/archive — Archive project (remove from UI only, keep data)
-projectsRouter.post(
+  // POST /projects/:id/archive — Archive project (remove from UI only, keep data)
+  router.post(
   "/:id/archive",
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const projectId = req.params.id;
@@ -150,8 +152,8 @@ projectsRouter.post(
   })
 );
 
-// DELETE /projects/:id — Delete project (remove from UI and delete .opensprint directory)
-projectsRouter.delete(
+  // DELETE /projects/:id — Delete project (remove from UI and delete .opensprint directory)
+  router.delete(
   "/:id",
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const projectId = req.params.id;
@@ -161,8 +163,8 @@ projectsRouter.delete(
   })
 );
 
-// GET /projects/:id/settings — Get project settings (apiKeys not included; stored in global settings only)
-projectsRouter.get(
+  // GET /projects/:id/settings — Get project settings (apiKeys not included; stored in global settings only)
+  router.get(
   "/:id/settings",
   wrapAsync(async (req, res) => {
     const settings = await projectService.getSettingsWithRuntimeState(getProjectId(req));
@@ -170,8 +172,8 @@ projectsRouter.get(
   })
 );
 
-// PUT /projects/:id/settings — Update project settings (apiKeys not accepted; use global settings)
-projectsRouter.put(
+  // PUT /projects/:id/settings — Update project settings (apiKeys not accepted; use global settings)
+  router.put(
   "/:id/settings",
   wrapAsync(async (req, res) => {
     const projectId = getProjectId(req);
@@ -180,4 +182,7 @@ projectsRouter.put(
     await orchestratorService.refreshMaxSlotsAndNudge(projectId);
     res.json({ data: settings });
   })
-);
+  );
+
+  return router;
+}

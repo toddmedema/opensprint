@@ -80,12 +80,16 @@ const sessionTaskStoreMod = await import("../services/task-store.service.js");
 const sessionPostgresOk =
   (sessionTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
 
+const mockProjectService = {
+  getProjectByRepoPath: vi.fn().mockResolvedValue(null),
+};
+
 /** Pure path tests that run without Postgres */
 describe("SessionManager getResultPath", () => {
   let manager: SessionManager;
 
   beforeEach(() => {
-    manager = new SessionManager();
+    manager = new SessionManager(mockProjectService as never);
   });
 
   it("returns result.json path when angle is undefined", () => {
@@ -116,7 +120,7 @@ describe.skipIf(!sessionPostgresOk)("SessionManager", () => {
 
   beforeEach(async () => {
     if (!testClientRef.current) throw new Error("Postgres required");
-    manager = new SessionManager();
+    manager = new SessionManager(mockProjectService as never);
     repoPath = path.join(os.tmpdir(), `opensprint-session-test-${Date.now()}`);
     await fs.mkdir(repoPath, { recursive: true });
     const { taskStore } = await import("../services/task-store.service.js");

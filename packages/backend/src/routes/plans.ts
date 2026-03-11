@@ -1,6 +1,6 @@
 import { Router, Request } from "express";
 import { wrapAsync } from "../middleware/wrap-async.js";
-import { PlanService } from "../services/plan.service.js";
+import type { PlanService } from "../services/plan.service.js";
 import { orchestratorService } from "../services/orchestrator.service.js";
 import { taskStore } from "../services/task-store.service.js";
 import type {
@@ -12,15 +12,14 @@ import type {
   GeneratePlanResult,
 } from "@opensprint/shared";
 
-const planService = new PlanService();
-
-export const plansRouter = Router({ mergeParams: true });
+export function createPlansRouter(planService: PlanService): Router {
+  const router = Router({ mergeParams: true });
 
 type ProjectParams = { projectId: string };
 type PlanParams = { projectId: string; planId: string };
 
 // POST /projects/:projectId/plans/decompose — AI decompose PRD into plans + tasks (must be before :planId)
-plansRouter.post(
+router.post(
   "/decompose",
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const result = await planService.decomposeFromPrd(req.params.projectId);
@@ -30,7 +29,7 @@ plansRouter.post(
 );
 
 // POST /projects/:projectId/plans/generate — AI generate a plan from freeform feature description
-plansRouter.post(
+router.post(
   "/generate",
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const { description } = req.body as { description?: string };
@@ -48,7 +47,7 @@ plansRouter.post(
 );
 
 // POST /projects/:projectId/plans/suggest — AI suggest plans from PRD (no creation; for user to accept/modify)
-plansRouter.post(
+router.post(
   "/suggest",
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const result = await planService.suggestPlans(req.params.projectId);
@@ -58,7 +57,7 @@ plansRouter.post(
 );
 
 // GET /projects/:projectId/plans — List all Plans with dependency graph (single call)
-plansRouter.get(
+router.get(
   "/",
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const graph = await planService.listPlansWithDependencyGraph(req.params.projectId);
@@ -68,7 +67,7 @@ plansRouter.get(
 );
 
 // POST /projects/:projectId/plans — Create a new Plan
-plansRouter.post(
+router.post(
   "/",
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const plan = await planService.createPlan(req.params.projectId, req.body);
@@ -78,7 +77,7 @@ plansRouter.post(
 );
 
 // GET /projects/:projectId/plans/dependencies — Get dependency graph
-plansRouter.get(
+router.get(
   "/dependencies",
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const graph = await planService.getDependencyGraph(req.params.projectId);
@@ -88,7 +87,7 @@ plansRouter.get(
 );
 
 // GET /projects/:projectId/plans/:planId/cross-epic-dependencies — Prerequisites still in Planning
-plansRouter.get(
+router.get(
   "/:planId/cross-epic-dependencies",
   wrapAsync(async (req: Request<PlanParams>, res) => {
     const result = await planService.getCrossEpicDependencies(
@@ -101,7 +100,7 @@ plansRouter.get(
 );
 
 // GET /projects/:projectId/plans/:planId/auditor-runs — List Auditor runs for a plan (plan-centric lookup)
-plansRouter.get(
+router.get(
   "/:planId/auditor-runs",
   wrapAsync(async (req: Request<PlanParams>, res) => {
     const runs = await taskStore.listAuditorRunsByPlanId(
@@ -115,7 +114,7 @@ plansRouter.get(
 
 // POST /projects/:projectId/plans/:planId/mark-complete — Mark plan complete (set reviewedAt when all tasks closed)
 // Registered before generic :planId so /mark-complete is not captured as a planId
-plansRouter.post(
+router.post(
   "/:planId/mark-complete",
   wrapAsync(async (req: Request<PlanParams>, res) => {
     const plan = await planService.markPlanComplete(req.params.projectId, req.params.planId);
@@ -128,7 +127,7 @@ type VersionParams = PlanParams & { versionNumber: string };
 
 // GET /projects/:projectId/plans/:planId/versions — List plan versions (newest first).
 // When the plan has no versions (first load), create version 1 from current content so UI and execute flow are consistent.
-plansRouter.get(
+router.get(
   "/:planId/versions",
   wrapAsync(async (req: Request<PlanParams>, res) => {
     await planService.getPlan(req.params.projectId, req.params.planId);
@@ -146,7 +145,7 @@ plansRouter.get(
 );
 
 // GET /projects/:projectId/plans/:planId/versions/:versionNumber — Get plan version by number
-plansRouter.get(
+router.get(
   "/:planId/versions/:versionNumber",
   wrapAsync(async (req: Request<VersionParams>, res) => {
     await planService.getPlan(req.params.projectId, req.params.planId);
@@ -184,7 +183,7 @@ plansRouter.get(
 );
 
 // GET /projects/:projectId/plans/:planId — Get Plan details
-plansRouter.get(
+router.get(
   "/:planId",
   wrapAsync(async (req: Request<PlanParams>, res) => {
     const plan = await planService.getPlan(req.params.projectId, req.params.planId);
@@ -194,7 +193,7 @@ plansRouter.get(
 );
 
 // PUT /projects/:projectId/plans/:planId — Update Plan markdown
-plansRouter.put(
+router.put(
   "/:planId",
   wrapAsync(async (req: Request<PlanParams>, res) => {
     const plan = await planService.updatePlan(req.params.projectId, req.params.planId, req.body);
@@ -204,7 +203,7 @@ plansRouter.put(
 );
 
 // POST /projects/:projectId/plans/:planId/plan-tasks — Plan Tasks (create epic if missing, then AI-generate tasks)
-plansRouter.post(
+router.post(
   "/:planId/plan-tasks",
   wrapAsync(async (req: Request<PlanParams>, res) => {
     const plan = await planService.planTasks(req.params.projectId, req.params.planId);
@@ -216,7 +215,7 @@ plansRouter.post(
 // POST /projects/:projectId/plans/:planId/execute — Execute! (approve Plan for execution)
 // Optional body: { prerequisitePlanIds?: string[]; version_number?: number }
 // If version_number provided, run ship with that version's content and set as last_executed.
-plansRouter.post(
+router.post(
   "/:planId/execute",
   wrapAsync(
     async (
@@ -250,7 +249,7 @@ plansRouter.post(
 
 // POST /projects/:projectId/plans/:planId/re-execute — Re-execute an updated Plan
 // Optional body: { version_number?: number }. Else uses last_executed_version_number for version content.
-plansRouter.post(
+router.post(
   "/:planId/re-execute",
   wrapAsync(
     async (
@@ -274,7 +273,7 @@ plansRouter.post(
 );
 
 // POST /projects/:projectId/plans/:planId/archive — Archive plan (close all ready/open tasks)
-plansRouter.post(
+router.post(
   "/:planId/archive",
   wrapAsync(async (req: Request<PlanParams>, res) => {
     const plan = await planService.archivePlan(req.params.projectId, req.params.planId);
@@ -284,10 +283,13 @@ plansRouter.post(
 );
 
 // DELETE /projects/:projectId/plans/:planId — Delete plan from database
-plansRouter.delete(
+router.delete(
   "/:planId",
   wrapAsync(async (req: Request<PlanParams>, res) => {
     await planService.deletePlan(req.params.projectId, req.params.planId);
     res.status(204).send();
   })
 );
+
+  return router;
+}
