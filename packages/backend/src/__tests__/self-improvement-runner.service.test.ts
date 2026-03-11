@@ -280,6 +280,42 @@ describe("SelfImprovementRunnerService", () => {
     expect(updateSettingsInStore).not.toHaveBeenCalled();
   });
 
+  it("creates fallback task for Validating test coverage when Cursor security exit 45 occurs", async () => {
+    const { ProjectService } = await import("../services/project.service.js");
+    const { agentService } = await import("../services/agent.service.js");
+    const { taskStore } = await import("../services/task-store.service.js");
+    const { updateSettingsInStore } = await import("../services/settings-store.service.js");
+    vi.mocked(ProjectService).mockImplementation(
+      () =>
+        ({
+          getProject: vi.fn().mockResolvedValue({ id: "proj-1", repoPath: "/tmp/repo" }),
+          getSettings: vi.fn().mockResolvedValue({
+            simpleComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+            complexComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+            reviewAngles: ["test_coverage"],
+          }),
+        }) as never
+    );
+    const securityError =
+      "Security command failed: Security process exited with code: 45";
+    vi.mocked(agentService.invokePlanningAgent).mockRejectedValueOnce(
+      new Error(securityError)
+    );
+
+    const service = new SelfImprovementRunnerService();
+    await service.runSelfImprovement(projectId);
+
+    expect(taskStore.create).toHaveBeenCalledWith(
+      projectId,
+      "Self-improvement (Validating test coverage): run failed",
+      expect.objectContaining({
+        description: securityError,
+        extra: expect.objectContaining({ source: "self-improvement" }),
+      })
+    );
+    expect(updateSettingsInStore).not.toHaveBeenCalled();
+  });
+
   it("does not update lastRunAt when all Reviewer invocations fail", async () => {
     const { agentService } = await import("../services/agent.service.js");
     const { updateSettingsInStore } = await import("../services/settings-store.service.js");

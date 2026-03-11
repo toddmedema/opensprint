@@ -1298,7 +1298,7 @@ describe("AgentClient", () => {
       expect(mockRecordLimitHit).not.toHaveBeenCalled();
       expect(mockGetNextKey).toHaveBeenCalledTimes(2);
       expect(onOutput).toHaveBeenCalledWith(
-        expect.stringContaining("Retrying Cursor startup (1/2)")
+        expect.stringContaining("Retrying Cursor startup (1/5)")
       );
 
       await fs.rm(tmpDir, { recursive: true, force: true });

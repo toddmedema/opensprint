@@ -42,8 +42,8 @@ const log = createLogger("agent-client");
 const OUTPUT_POLL_MS = 150;
 /** Poll for result.json so we can treat "wrote result but process still running" as done (e.g. Cursor) */
 const RESULT_POLL_MS = 2000;
-const CURSOR_TRANSIENT_RETRY_LIMIT = 2;
-const CURSOR_TRANSIENT_RETRY_BACKOFF_MS = 300;
+const CURSOR_TRANSIENT_RETRY_LIMIT = 5;
+const CURSOR_TRANSIENT_RETRY_BACKOFF_MS = 600;
 const CURSOR_SLOW_POOL_MESSAGE =
   "Increase limits for faster responses Composer 1.5 is not available in the slow pool. Please switch to Auto.";
 
@@ -275,6 +275,14 @@ function formatAgentError(
     (lower.includes("authentication required") || lower.includes("run 'agent login'"))
   ) {
     return "Cursor agent requires authentication. Either run `agent login` in your terminal, or add CURSOR_API_KEY to your project .env file. Get a key from Cursor → Settings → Integrations → User API Keys.";
+  }
+
+  // Cursor: security helper exit 45 (transient; retries usually succeed)
+  if (
+    agentType === "cursor" &&
+    (lower.includes("security command failed") || (lower.includes("security process") && lower.includes("code") && lower.includes("45")))
+  ) {
+    return "Cursor security helper failed (exit 45). Retrying usually helps; if it persists, try running the agent from a terminal or restarting Cursor.";
   }
 
   // Cursor/Claude: command not found (ENOENT)
