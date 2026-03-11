@@ -1,19 +1,15 @@
 import { useEffect, useState } from "react";
 import { CloseButton } from "./CloseButton";
 import { api, isConnectionError } from "../api/client";
+import {
+  AGENT_PROVIDER_OPTIONS,
+  type AgentProviderValue,
+} from "../lib/agentProviders";
 
 const BODY_COPY =
   "At least one agent API key is required to use Open Sprint. Or, select 'Custom/CLI' if you'll be using your own agent or a CLI integration rather than an API.";
 
-type ProviderOption = "claude" | "cursor" | "openai" | "google" | "custom";
-
-const PROVIDER_OPTIONS: { value: ProviderOption; label: string }[] = [
-  { value: "claude", label: "Claude" },
-  { value: "cursor", label: "Cursor" },
-  { value: "openai", label: "OpenAI" },
-  { value: "google", label: "Google" },
-  { value: "custom", label: "Custom/CLI" },
-];
+const NO_KEY_MESSAGE = "No API key needed — you're good to go.";
 
 function EyeIcon({ className }: { className?: string }) {
   return (
@@ -67,22 +63,24 @@ export function ApiKeySetupModal({
   onCancel,
   intendedRoute: _intendedRoute,
 }: ApiKeySetupModalProps) {
-  const [provider, setProvider] = useState<ProviderOption>("claude");
+  const [provider, setProvider] = useState<AgentProviderValue>("claude");
   const [keyValue, setKeyValue] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const needsKeyInput =
-    provider === "claude" ||
-    provider === "cursor" ||
-    provider === "openai" ||
-    provider === "google";
+  const providerOption = AGENT_PROVIDER_OPTIONS.find((o) => o.value === provider);
+  const needsKeyInput = providerOption?.needsKeyInput ?? true;
 
   const handleSave = async () => {
     setError(null);
     setSaving(true);
     try {
+      if (provider === "lmstudio") {
+        onComplete();
+        setSaving(false);
+        return;
+      }
       if (provider === "custom") {
         await api.env.setGlobalSettings({ useCustomCli: true });
       } else {
@@ -92,7 +90,7 @@ export function ApiKeySetupModal({
           setSaving(false);
           return;
         }
-        const apiProvider =
+        const apiProvider: "claude" | "cursor" | "openai" | "google" =
           provider === "claude"
             ? "claude"
             : provider === "cursor"
@@ -129,7 +127,10 @@ export function ApiKeySetupModal({
     }
   };
 
-  const canSave = provider === "custom" || (needsKeyInput && keyValue.trim().length > 0);
+  const canSave =
+    provider === "custom" ||
+    provider === "lmstudio" ||
+    (needsKeyInput && keyValue.trim().length > 0);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -182,19 +183,25 @@ export function ApiKeySetupModal({
               className="input w-full"
               value={provider}
               onChange={(e) => {
-                setProvider(e.target.value as ProviderOption);
+                setProvider(e.target.value as AgentProviderValue);
                 setKeyValue("");
                 setError(null);
               }}
               data-testid="api-key-provider-select"
             >
-              {PROVIDER_OPTIONS.map((opt) => (
+              {AGENT_PROVIDER_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
               ))}
             </select>
           </div>
+
+          {!needsKeyInput && (
+            <p className="text-sm text-theme-muted" data-testid="api-key-no-key-message">
+              {NO_KEY_MESSAGE}
+            </p>
+          )}
 
           {needsKeyInput && (
             <div>

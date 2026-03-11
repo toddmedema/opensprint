@@ -127,7 +127,7 @@ export function HomeScreen() {
       if (hasAnyKey || useCustomCli) {
         navigate(route);
       } else {
-        navigate("/settings");
+        navigate(`/onboarding?intended=${encodeURIComponent(route)}`);
       }
     } catch {
       navigate(route);

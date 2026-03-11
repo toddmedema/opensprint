@@ -113,7 +113,7 @@ describe("OnboardingPage", () => {
     );
   });
 
-  it("renders Agent setup placeholder section", async () => {
+  it("renders Agent setup section with provider dropdown and LM Studio option", async () => {
     renderOnboarding();
 
     await waitFor(() => {
@@ -122,6 +122,9 @@ describe("OnboardingPage", () => {
     const section = screen.getByTestId("onboarding-agent-setup");
     expect(section).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Agent setup" })).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-provider-select")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "LM Studio (local)" })).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-continue-button")).toBeInTheDocument();
   });
 
   it("supports optional intended query param", async () => {

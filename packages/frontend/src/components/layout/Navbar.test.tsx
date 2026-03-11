@@ -31,6 +31,7 @@ const mockProjectsList = vi.fn();
 const mockProjectsGet = vi.fn();
 const mockGetGlobalStatus = vi.fn();
 const mockGetKeys = vi.fn();
+const mockGetPrerequisites = vi.fn();
 const mockModelsList = vi.fn();
 vi.mock("../../api/client", () => ({
   api: {
@@ -47,6 +48,7 @@ vi.mock("../../api/client", () => ({
     env: {
       getKeys: (...args: unknown[]) => mockGetKeys(...args),
       getGlobalStatus: (...args: unknown[]) => mockGetGlobalStatus(...args),
+      getPrerequisites: (...args: unknown[]) => mockGetPrerequisites(...args),
     },
     models: {
       list: (...args: unknown[]) => mockModelsList(...args),
@@ -100,6 +102,7 @@ beforeEach(() => {
   mockProjectsList.mockResolvedValue([]);
   mockProjectsGet.mockResolvedValue(undefined);
   mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: true, useCustomCli: false });
+  mockGetPrerequisites.mockResolvedValue({ missing: [], platform: "darwin" });
   mockGetSettings.mockResolvedValue(mockSettings);
   mockGetKeys.mockResolvedValue({
     anthropic: true,
@@ -1051,11 +1054,11 @@ describe("Navbar", () => {
     expect(screen.getByTestId("theme-option-light")).toBeInTheDocument();
   });
 
-  it("navigates to /settings when Create New Project clicked and no API keys", async () => {
+  it("navigates to /onboarding when Create New Project clicked and no API keys", async () => {
     mockProjectsList.mockResolvedValue([]);
     mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: false, useCustomCli: false });
     const user = userEvent.setup();
-    const { SettingsPage } = await import("../../pages/SettingsPage");
+    const { OnboardingPage } = await import("../../pages/OnboardingPage");
     render(
       <ThemeProvider>
         <DisplayPreferencesProvider>
@@ -1064,7 +1067,7 @@ describe("Navbar", () => {
               <MemoryRouter initialEntries={["/"]}>
                 <Routes>
                   <Route path="/" element={<Navbar project={null} />} />
-                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/onboarding" element={<OnboardingPage />} />
                 </Routes>
               </MemoryRouter>
             </QueryClientProvider>
@@ -1079,14 +1082,14 @@ describe("Navbar", () => {
     const createNewButton = screen.getByRole("button", { name: /Create New Project/i });
     await user.click(createNewButton);
 
-    expect(await screen.findByTestId("settings-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("onboarding-page")).toBeInTheDocument();
   });
 
-  it("navigates to /settings when Add Existing Project clicked and no API keys", async () => {
+  it("navigates to /onboarding when Add Existing Project clicked and no API keys", async () => {
     mockProjectsList.mockResolvedValue([]);
     mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: false, useCustomCli: false });
     const user = userEvent.setup();
-    const { SettingsPage } = await import("../../pages/SettingsPage");
+    const { OnboardingPage } = await import("../../pages/OnboardingPage");
     render(
       <ThemeProvider>
         <DisplayPreferencesProvider>
@@ -1095,7 +1098,7 @@ describe("Navbar", () => {
               <MemoryRouter initialEntries={["/"]}>
                 <Routes>
                   <Route path="/" element={<Navbar project={null} />} />
-                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/onboarding" element={<OnboardingPage />} />
                 </Routes>
               </MemoryRouter>
             </QueryClientProvider>
@@ -1110,7 +1113,7 @@ describe("Navbar", () => {
     const addExistingButton = screen.getByRole("button", { name: /Add Existing Project/i });
     await user.click(addExistingButton);
 
-    expect(await screen.findByTestId("settings-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("onboarding-page")).toBeInTheDocument();
   });
 
   it("theme is configurable from settings page", async () => {

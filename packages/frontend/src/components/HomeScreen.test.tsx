@@ -219,7 +219,7 @@ describe("HomeScreen", () => {
     expect(screen.getByTestId("location")).toHaveTextContent("/projects/add-existing");
   });
 
-  it("navigates to /settings when Create New clicked and no API keys", async () => {
+  it("navigates to /onboarding when Create New clicked and no API keys", async () => {
     vi.stubGlobal(
       "matchMedia",
       vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
@@ -228,21 +228,21 @@ describe("HomeScreen", () => {
     mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: false, useCustomCli: false });
     const user = userEvent.setup();
 
-    const { SettingsPage } = await import("../pages/SettingsPage");
+    const { OnboardingPage } = await import("../pages/OnboardingPage");
     renderApp(
       <Routes>
         <Route path="/" element={<HomeScreen />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/onboarding" element={<OnboardingPage />} />
       </Routes>
     );
 
     await screen.findByTestId("create-new-button");
     await user.click(screen.getByTestId("create-new-button"));
 
-    expect(await screen.findByTestId("settings-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("onboarding-page")).toBeInTheDocument();
   });
 
-  it("navigates to /settings when Add Existing clicked and no API keys", async () => {
+  it("navigates to /onboarding when Add Existing clicked and no API keys", async () => {
     vi.stubGlobal(
       "matchMedia",
       vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
@@ -251,18 +251,18 @@ describe("HomeScreen", () => {
     mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: false, useCustomCli: false });
     const user = userEvent.setup();
 
-    const { SettingsPage } = await import("../pages/SettingsPage");
+    const { OnboardingPage } = await import("../pages/OnboardingPage");
     renderApp(
       <Routes>
         <Route path="/" element={<HomeScreen />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/onboarding" element={<OnboardingPage />} />
       </Routes>
     );
 
     await screen.findByTestId("add-existing-button");
     await user.click(screen.getByTestId("add-existing-button"));
 
-    expect(await screen.findByTestId("settings-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("onboarding-page")).toBeInTheDocument();
   });
 
   it("clicking project card navigates to project sketch", async () => {

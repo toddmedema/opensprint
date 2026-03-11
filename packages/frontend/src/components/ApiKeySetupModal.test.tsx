@@ -39,7 +39,7 @@ describe("ApiKeySetupModal", () => {
     expect(screen.getByText(/Custom\/CLI.*own agent/)).toBeInTheDocument();
   });
 
-  it("shows provider dropdown with Claude, Cursor, OpenAI, Custom/CLI", () => {
+  it("shows provider dropdown with Claude, Cursor, OpenAI, Google, LM Studio, Custom/CLI", () => {
     render(
       <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
@@ -50,10 +50,12 @@ describe("ApiKeySetupModal", () => {
     expect(screen.getByRole("option", { name: "Claude" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Cursor" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "OpenAI" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Google" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "LM Studio (local)" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Custom/CLI" })).toBeInTheDocument();
   });
 
-  it("shows password input when Claude, Cursor, or OpenAI selected", () => {
+  it("shows password input when Claude, Cursor, OpenAI, or Google selected", () => {
     render(
       <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
@@ -72,6 +74,38 @@ describe("ApiKeySetupModal", () => {
     await user.selectOptions(screen.getByTestId("api-key-provider-select"), "Custom/CLI");
 
     expect(screen.queryByTestId("api-key-input")).not.toBeInTheDocument();
+    expect(screen.getByTestId("api-key-no-key-message")).toHaveTextContent(
+      "No API key needed — you're good to go."
+    );
+  });
+
+  it("hides key input when LM Studio selected and shows no-key message", async () => {
+    const user = userEvent.setup();
+    render(
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
+    );
+
+    await user.selectOptions(screen.getByTestId("api-key-provider-select"), "LM Studio (local)");
+
+    expect(screen.queryByTestId("api-key-input")).not.toBeInTheDocument();
+    expect(screen.getByTestId("api-key-no-key-message")).toHaveTextContent(
+      "No API key needed — you're good to go."
+    );
+  });
+
+  it("LM Studio Save calls onComplete without any API calls", async () => {
+    const user = userEvent.setup();
+    render(
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
+    );
+
+    await user.selectOptions(screen.getByTestId("api-key-provider-select"), "LM Studio (local)");
+    await user.click(screen.getByTestId("api-key-save-button"));
+
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(api.env.setGlobalSettings).not.toHaveBeenCalled();
+    expect(api.env.validateKey).not.toHaveBeenCalled();
+    expect(api.env.saveKey).not.toHaveBeenCalled();
   });
 
   it("toggles password visibility with eye icon", async () => {
@@ -304,6 +338,17 @@ describe("ApiKeySetupModal", () => {
     );
 
     await user.selectOptions(screen.getByTestId("api-key-provider-select"), "Custom/CLI");
+    expect(screen.getByTestId("api-key-save-button")).not.toBeDisabled();
+  });
+
+  it("Save button always enabled for LM Studio", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
+    );
+
+    await user.selectOptions(screen.getByTestId("api-key-provider-select"), "LM Studio (local)");
     expect(screen.getByTestId("api-key-save-button")).not.toBeDisabled();
   });
 });
