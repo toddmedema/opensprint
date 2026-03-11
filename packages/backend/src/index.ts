@@ -1,9 +1,9 @@
-import fs from "fs";
-import os from "os";
 import path from "path";
 import { config } from "dotenv";
 import { createServer } from "http";
 import { createApp } from "./app.js";
+import { acquirePidFile, removePidFile } from "./pid-file.js";
+import { wireDatabaseLifecycle, stopDatabaseFeatures } from "./startup.js";
 
 // Load .env from monorepo root (must run before any code that reads process.env)
 config({ path: path.resolve(process.cwd(), ".env") });
@@ -16,111 +16,25 @@ import {
   broadcastToProject,
 } from "./websocket/index.js";
 import { DEFAULT_API_PORT } from "@opensprint/shared";
-import { ProjectService } from "./services/project.service.js";
 import { taskStore } from "./services/task-store.service.js";
 import { wireTaskStoreEvents } from "./task-store-events.js";
-import { FeedbackService } from "./services/feedback.service.js";
 import { orchestratorService } from "./services/orchestrator.service.js";
-import { watchdogService } from "./services/watchdog.service.js";
-import { sessionRetentionService } from "./services/session-retention.service.js";
 import { startProcessReaper, stopProcessReaper } from "./services/process-reaper.js";
-import {
-  startNightlyDeployScheduler,
-  stopNightlyDeployScheduler,
-} from "./services/nightly-deploy-scheduler.service.js";
-import {
-  startSelfImprovementScheduler,
-  stopSelfImprovementScheduler,
-} from "./services/self-improvement-scheduler.service.js";
-import {
-  startBlockedAutoRetry,
-  stopBlockedAutoRetry,
-} from "./services/blocked-auto-retry.service.js";
 import {
   killAllTrackedAgentProcesses,
   clearAgentProcessRegistry,
 } from "./services/agent-process-registry.js";
 import { createLogger } from "./utils/logger.js";
 import { getErrorMessage } from "./utils/error-utils.js";
-import { initAppDb } from "./db/app-db.js";
-import type { AppDb } from "./db/app-db.js";
 import { databaseRuntime } from "./services/database-runtime.service.js";
 import { openBrowser } from "./utils/open-browser.js";
 
 const logStartup = createLogger("startup");
-const logOrchestrator = createLogger("orchestrator");
 const logShutdown = createLogger("shutdown");
 
 const port = parseInt(process.env.PORT || String(DEFAULT_API_PORT), 10);
 
-// --- PID file management ---
-const home = process.env.HOME ?? process.env.USERPROFILE ?? os.homedir();
-const pidDir = path.join(home, ".opensprint");
-const pidFile = path.join(pidDir, `server-${port}.pid`);
-
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0); // signal 0 = existence check, doesn't actually kill
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function waitForProcessExit(pid: number, timeoutMs: number): boolean {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (!isProcessAlive(pid)) return true;
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200);
-  }
-  return !isProcessAlive(pid);
-}
-
-function acquirePidFile(): void {
-  try {
-    const content = fs.readFileSync(pidFile, "utf-8").trim();
-    const oldPid = parseInt(content, 10);
-    if (!isNaN(oldPid) && isProcessAlive(oldPid)) {
-      if (oldPid === process.pid) return; // re-entrant call
-      // During tsx watch restarts, the old process may still be in its exit sequence.
-      // Wait briefly before giving up.
-      logStartup.info("Waiting for previous process to exit", { pid: oldPid });
-      if (!waitForProcessExit(oldPid, 3000)) {
-        logStartup.error("Another OpenSprint server is already running", {
-          port,
-          pid: oldPid,
-          hint: `Kill it with: kill ${oldPid} or kill -9 ${oldPid}`,
-        });
-        process.exit(1);
-      }
-      logStartup.info("Previous process has exited", { pid: oldPid });
-    } else if (!isNaN(oldPid)) {
-      logStartup.info("Removing stale PID file", { pid: oldPid });
-    }
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      logStartup.warn("Could not read PID file", { err: getErrorMessage(err) });
-    }
-  }
-
-  // Write our PID
-  fs.mkdirSync(pidDir, { recursive: true });
-  fs.writeFileSync(pidFile, String(process.pid), "utf-8");
-}
-
-function removePidFile(): void {
-  try {
-    const content = fs.readFileSync(pidFile, "utf-8").trim();
-    // Only remove if it's our PID (guard against race conditions)
-    if (parseInt(content, 10) === process.pid) {
-      fs.unlinkSync(pidFile);
-    }
-  } catch {
-    // Best effort — file may already be gone
-  }
-}
-
-acquirePidFile();
+acquirePidFile(port);
 
 const app = createApp();
 const server = createServer(app);
@@ -132,190 +46,8 @@ setupWebSocket(server, {
 
 // Wire TaskStoreService to emit task create/update/close events via WebSocket
 wireTaskStoreEvents(broadcastToProject);
-let appDb: AppDb | null = null;
-let databaseFeaturesStarted = false;
-let databaseFeaturesStartPromise: Promise<void> | null = null;
 
-function hasValidRepoPath(project: { repoPath: string }): boolean {
-  return fs.existsSync(project.repoPath) && fs.existsSync(path.join(project.repoPath, ".git"));
-}
-
-async function initAlwaysOnOrchestrator(): Promise<void> {
-  const projectService = new ProjectService();
-  const feedbackService = new FeedbackService();
-
-  try {
-    const projects = await projectService.listProjects();
-    if (projects.length === 0) {
-      logOrchestrator.info("No projects found");
-      return;
-    }
-
-    // Prune projects whose repoPath no longer contains a git repo (stale temp dirs, deleted repos)
-    const validProjects = projects.filter((p) => {
-      if (!hasValidRepoPath(p)) {
-        logOrchestrator.warn("Skipping project — repoPath is not a valid git repo", {
-          name: p.name,
-          repoPath: p.repoPath,
-        });
-        return false;
-      }
-      return true;
-    });
-
-    if (validProjects.length === 0) {
-      logOrchestrator.info("No projects with valid repo paths found");
-      return;
-    }
-
-    logOrchestrator.info("Starting always-on orchestrator", {
-      projectCount: validProjects.length,
-    });
-
-    // Start independent watchdog; targets refreshed each cycle so deleted projects are not patrolled
-    const projectServiceForWatchdog = new ProjectService();
-    sessionRetentionService.start();
-
-    watchdogService.start(async () => {
-      const projects = await projectServiceForWatchdog.listProjects();
-      return projects
-        .filter(hasValidRepoPath)
-        .map((p) => ({ projectId: p.id, repoPath: p.repoPath }));
-    });
-
-    startBlockedAutoRetry(async () => {
-      const projects = await projectServiceForWatchdog.listProjects();
-      return projects
-        .filter(hasValidRepoPath)
-        .map((p) => ({ projectId: p.id, repoPath: p.repoPath }));
-    });
-
-    for (const project of validProjects) {
-      try {
-        // Auto-start always-on orchestrator for each project (PRDv2 §5.7)
-        await orchestratorService.ensureRunning(project.id);
-
-        const allTasks = await taskStore.list(project.id);
-        const nonEpicTasks = allTasks.filter(
-          (t) => (t.issue_type ?? (t as Record<string, unknown>).type) !== "epic"
-        );
-        const inProgress = nonEpicTasks.filter((t) => t.status === "in_progress");
-        const open = nonEpicTasks.filter((t) => t.status === "open");
-
-        const status = await orchestratorService.getStatus(project.id);
-        const agentRunning = status.activeTasks.length > 0;
-
-        logOrchestrator.info("Project status", {
-          name: project.name,
-          openCount: open.length,
-          inProgressCount: inProgress.length,
-          agentRunning,
-        });
-
-        if (inProgress.length > 0) {
-          for (const task of inProgress) {
-            const assignee = task.assignee ?? "unassigned";
-            logOrchestrator.info("In-progress task", {
-              taskId: task.id,
-              title: task.title,
-              assignee,
-            });
-          }
-        }
-        // Enqueue any pending feedback for orchestrator (Gastown-style mailbox); nudge to process
-        feedbackService
-          .retryPendingCategorizations(project.id)
-          .then((enqueued) => {
-            if (enqueued > 0) orchestratorService.nudge(project.id);
-          })
-          .catch((err) => {
-            logOrchestrator.warn("Pending feedback enqueue failed", {
-              name: project.name,
-              err: getErrorMessage(err),
-            });
-          });
-      } catch (err) {
-        logOrchestrator.warn("Could not read tasks for project", {
-          name: project.name,
-          err: getErrorMessage(err),
-        });
-      }
-    }
-  } catch (err) {
-    logOrchestrator.warn("Status check failed", { err: getErrorMessage(err) });
-  }
-}
-
-async function stopDatabaseFeatures(): Promise<void> {
-  if (!databaseFeaturesStarted && !appDb) {
-    return;
-  }
-  stopNightlyDeployScheduler();
-  stopSelfImprovementScheduler();
-  stopBlockedAutoRetry();
-  watchdogService.stop();
-  sessionRetentionService.stop();
-  orchestratorService.stopAll();
-  await taskStore.closePool().catch((err) => {
-    logShutdown.warn("Could not close task store pool", {
-      err: getErrorMessage(err),
-    });
-  });
-  if (appDb) {
-    await appDb.close().catch((err) => {
-      logShutdown.warn("Could not close app database", {
-        err: getErrorMessage(err),
-      });
-    });
-    appDb = null;
-  }
-  databaseFeaturesStarted = false;
-}
-
-async function startDatabaseFeatures(databaseUrl: string): Promise<void> {
-  if (databaseFeaturesStarted) {
-    return;
-  }
-  if (databaseFeaturesStartPromise) {
-    await databaseFeaturesStartPromise;
-    return;
-  }
-
-  databaseFeaturesStartPromise = (async () => {
-    let nextAppDb: AppDb | null = null;
-    try {
-      nextAppDb = await initAppDb(databaseUrl);
-      await taskStore.init(databaseUrl, nextAppDb);
-      appDb = nextAppDb;
-      databaseFeaturesStarted = true;
-      startNightlyDeployScheduler();
-      startSelfImprovementScheduler();
-      await initAlwaysOnOrchestrator();
-    } catch (err) {
-      if (nextAppDb) {
-        await nextAppDb.close().catch(() => {});
-      }
-      appDb = null;
-      await taskStore.closePool().catch(() => {});
-      databaseFeaturesStarted = false;
-      databaseRuntime.handleOperationalFailure(err);
-      throw err;
-    } finally {
-      databaseFeaturesStartPromise = null;
-    }
-  })();
-
-  await databaseFeaturesStartPromise;
-}
-
-databaseRuntime.setLifecycleHandlers({
-  onConnected: async ({ databaseUrl }) => {
-    await startDatabaseFeatures(databaseUrl);
-  },
-  onDisconnected: async () => {
-    await stopDatabaseFeatures();
-  },
-});
+wireDatabaseLifecycle();
 
 const FLUSH_PERSIST_TIMEOUT_MS = 15000;
 
@@ -341,7 +73,7 @@ const shutdown = async () => {
 
   await taskStore.closePool();
 
-  removePidFile();
+  removePidFile(port);
   closeWebSocket();
   server.close(() => {
     logShutdown.info("Server closed.");
@@ -355,7 +87,7 @@ const shutdown = async () => {
 
 // Handle server errors (especially EADDRINUSE) before calling listen
 server.on("error", (err: NodeJS.ErrnoException) => {
-  removePidFile();
+  removePidFile(port);
   if (err.code === "EADDRINUSE") {
     logStartup.error("Port already in use", {
       port,
