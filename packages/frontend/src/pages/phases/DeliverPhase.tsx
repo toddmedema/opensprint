@@ -238,10 +238,26 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
 
   const isDeploying = deliverLoading || expoDeployLoading || !!activeDeployId;
 
+  const isExpoMode = settings?.deployment?.mode === "expo";
+  const expoReady =
+    isExpoMode &&
+    !!expoReadiness &&
+    expoReadiness.expoInstalled &&
+    expoReadiness.expoConfigured &&
+    expoReadiness.authOk &&
+    expoReadiness.easProjectLinked;
   const showExpoAuthBanner =
-    settings?.deployment?.mode === "expo" &&
-    expoReadiness &&
-    expoReadiness.authOk === false;
+    isExpoMode && !!expoReadiness && expoReadiness.authOk === false;
+  const showExpoSetupRequired =
+    isExpoMode &&
+    !!expoReadiness &&
+    !expoReady &&
+    expoReadiness.authOk !== false; // other gaps (install, config, EAS link)
+  const showSettingUpExpo =
+    isExpoMode &&
+    !!expoReadiness &&
+    isDeploying &&
+    (!expoReadiness.expoInstalled || !expoReadiness.expoConfigured);
 
   const deliverEmptyStateProps = {
     title: EMPTY_STATE_COPY.deliver.title,
@@ -280,11 +296,41 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
           </div>
         )}
         <div
-          className="phase-toolbar w-full px-4 sm:px-6 flex items-center justify-end py-0.5 bg-theme-surface shrink-0 border-b border-theme-border"
+          className="phase-toolbar w-full px-4 sm:px-6 flex items-center justify-between gap-2 py-0.5 bg-theme-surface shrink-0 border-b border-theme-border"
           style={{ height: PHASE_TOOLBAR_HEIGHT }}
           data-testid="deliver-top-bar"
         >
-          <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
+          {isExpoMode && expoReadiness && (
+            <div className="flex items-center gap-2 min-w-0 shrink" data-testid="expo-setup-status">
+              {expoReady && !isDeploying && (
+                <span
+                  className="inline-flex items-center gap-1.5 text-sm text-theme-status-done"
+                  data-testid="expo-ready-indicator"
+                >
+                  <span className="inline-block w-4 h-4 rounded-full bg-theme-status-done flex items-center justify-center" aria-hidden>
+                    <svg className="w-2.5 h-2.5 text-theme-surface" viewBox="0 0 12 12" fill="currentColor" stroke="currentColor" strokeWidth="2">
+                      <path d="M2 6l3 3 5-6" />
+                    </svg>
+                  </span>
+                  Ready to deploy
+                </span>
+              )}
+              {showExpoSetupRequired && (
+                <span
+                  className="inline-flex items-center gap-1.5 text-sm text-theme-muted"
+                  data-testid="expo-setup-required"
+                >
+                  Setup required
+                </span>
+              )}
+              {showSettingUpExpo && (
+                <span className="text-sm text-theme-muted" data-testid="expo-setting-up">
+                  Setting up Expo…
+                </span>
+              )}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0 ml-auto">
             {settings?.deployment?.mode === "expo" ? (
               isDeploying ? (
                 <>

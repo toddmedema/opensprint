@@ -313,6 +313,119 @@ describe("DeliverPhase", () => {
     expect(screen.queryByTestId("expo-readiness-auth-banner")).not.toBeInTheDocument();
   });
 
+  it("shows Ready to deploy indicator when Expo mode and all readiness checks true", async () => {
+    mockGetSettings.mockResolvedValueOnce({
+      deployment: { mode: "expo" },
+    });
+    mockExpoReadiness.mockResolvedValueOnce({
+      expoInstalled: true,
+      expoConfigured: true,
+      authOk: true,
+      easProjectLinked: true,
+      missing: [],
+    });
+    const store = createStore();
+    renderWithRouter(store);
+    const indicator = await screen.findByTestId("expo-ready-indicator");
+    expect(indicator).toHaveTextContent("Ready to deploy");
+    expect(screen.getByTestId("expo-setup-status")).toContainElement(indicator);
+  });
+
+  it("shows Setup required when Expo mode and any readiness check false (e.g. easProjectLinked)", async () => {
+    mockGetSettings.mockResolvedValueOnce({
+      deployment: { mode: "expo" },
+    });
+    mockExpoReadiness.mockResolvedValueOnce({
+      expoInstalled: true,
+      expoConfigured: true,
+      authOk: true,
+      easProjectLinked: false,
+      missing: ["easProjectLinked"],
+    });
+    const store = createStore();
+    renderWithRouter(store);
+    const setupRequired = await screen.findByTestId("expo-setup-required");
+    expect(setupRequired).toHaveTextContent("Setup required");
+  });
+
+  it("shows Setup required when Expo mode and expoConfigured false", async () => {
+    mockGetSettings.mockResolvedValueOnce({
+      deployment: { mode: "expo" },
+    });
+    mockExpoReadiness.mockResolvedValueOnce({
+      expoInstalled: true,
+      expoConfigured: false,
+      authOk: true,
+      easProjectLinked: true,
+      missing: ["expoConfigured"],
+    });
+    const store = createStore();
+    renderWithRouter(store);
+    expect(await screen.findByTestId("expo-setup-required")).toHaveTextContent("Setup required");
+  });
+
+  it("does not show Ready to deploy when authOk is false (shows auth banner instead)", async () => {
+    mockGetSettings.mockResolvedValueOnce({
+      deployment: { mode: "expo" },
+    });
+    mockExpoReadiness.mockResolvedValueOnce({
+      expoInstalled: true,
+      expoConfigured: true,
+      authOk: false,
+      easProjectLinked: true,
+      missing: ["auth"],
+    });
+    const store = createStore();
+    renderWithRouter(store);
+    await screen.findByTestId("expo-readiness-auth-banner");
+    expect(screen.queryByTestId("expo-ready-indicator")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("expo-setup-required")).not.toBeInTheDocument();
+  });
+
+  it("shows Setting up Expo… during deploy when expoInstalled or expoConfigured false", async () => {
+    mockGetSettings.mockResolvedValueOnce({
+      deployment: { mode: "expo" },
+    });
+    mockExpoReadiness.mockResolvedValueOnce({
+      expoInstalled: false,
+      expoConfigured: false,
+      authOk: true,
+      easProjectLinked: true,
+      missing: ["expoInstalled", "expoConfigured"],
+    });
+    const store = createStore({
+      activeDeployId: "deploy-1",
+      history: [
+        {
+          id: "deploy-1",
+          projectId: "proj-1",
+          status: "running",
+          startedAt: new Date().toISOString(),
+          completedAt: null,
+          log: [],
+        },
+      ],
+    });
+    renderWithRouter(store);
+    await waitFor(() => {
+      expect(screen.getByTestId("expo-setting-up")).toHaveTextContent("Setting up Expo…");
+    });
+  });
+
+  it("does not show expo setup status block when mode is not expo", async () => {
+    mockGetSettings.mockResolvedValueOnce({
+      deployment: {
+        mode: "custom",
+        targets: [{ name: "production", command: "echo deploy", isDefault: true }],
+      },
+    });
+    const store = createStore();
+    renderWithRouter(store);
+    await screen.findByTestId("deploy-to-production-button");
+    expect(screen.queryByTestId("expo-setup-status")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("expo-ready-indicator")).not.toBeInTheDocument();
+  });
+
   it("positions Deploy buttons on right side of top bar (Expo mode)", async () => {
     mockGetSettings.mockResolvedValueOnce({
       deployment: { mode: "expo" },
