@@ -695,13 +695,20 @@ function sendNavigateSettings(): void {
 }
 
 function setApplicationMenu(): void {
+  const isMac = process.platform === "darwin";
   const template = [
-    ...(process.platform === "darwin"
+    ...(isMac
       ? [
           {
             label: app.name,
             submenu: [
               { role: "about" as const },
+              {
+                label: "Settings…",
+                accelerator: "CommandOrControl+,",
+                click: sendNavigateSettings,
+              },
+              { label: "Help", click: sendNavigateHelp },
               { type: "separator" as const },
               { role: "hide" as const },
               { role: "hideOthers" as const },
@@ -731,8 +738,7 @@ function setApplicationMenu(): void {
         { role: "reload" as const },
         { role: "toggleDevTools" as const },
         { type: "separator" as const },
-        { label: "Settings", click: sendNavigateSettings },
-        { type: "separator" as const },
+        ...(!isMac ? [{ label: "Settings", click: sendNavigateSettings }, { type: "separator" as const }] : []),
         { role: "resetZoom" as const },
         { role: "zoomIn" as const },
         { role: "zoomOut" as const },
@@ -741,18 +747,19 @@ function setApplicationMenu(): void {
       ],
     },
     {
-      label: "Help",
-      submenu: [{ label: "Open Help", click: sendNavigateHelp }],
-    },
-    {
       label: "Window",
       submenu: [
         { role: "minimize" as const },
         { role: "zoom" as const },
-        ...(process.platform === "darwin"
+        ...(isMac
           ? [{ type: "separator" as const }, { role: "front" as const }]
           : [{ role: "close" as const }]),
       ],
+    },
+    {
+      label: "Help",
+      role: "help" as const,
+      submenu: [{ label: "Open Help", click: sendNavigateHelp }],
     },
   ] as MenuItemConstructorOptions[];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
