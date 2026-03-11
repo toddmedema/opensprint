@@ -1,5 +1,15 @@
 import type { DeploymentTarget } from "./settings.js";
 
+/** Response shape for GET /projects/:id/deliver/expo-readiness */
+export interface ExpoReadinessResponse {
+  expoInstalled: boolean;
+  expoConfigured: boolean;
+  authOk: boolean;
+  easProjectLinked: boolean;
+  missing: string[];
+  prompt?: string;
+}
+
 /** Deployment record stored at .opensprint/deployments/<deploy-id>.json */
 export interface DeploymentRecord {
   id: string;
