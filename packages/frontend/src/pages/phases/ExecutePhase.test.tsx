@@ -1695,7 +1695,7 @@ describe("ExecutePhase mobile layout", () => {
     localStorage.setItem("opensprint.executeView", "kanban");
   });
 
-  it("main scroll area has responsive padding (p-4 on mobile, sm:p-6)", () => {
+  it("main scroll area has responsive padding (reduced top pt-2/sm:pt-3, px-4/sm:px-6, pb-4/sm:pb-6)", () => {
     const tasks = [
       {
         id: "epic-1.1",
@@ -1716,7 +1716,7 @@ describe("ExecutePhase mobile layout", () => {
     );
 
     const mainScroll = screen.getByTestId("execute-main-scroll");
-    expect(mainScroll).toHaveClass("p-4", "sm:p-6");
+    expect(mainScroll).toHaveClass("pt-2", "sm:pt-3", "px-4", "sm:px-6", "pb-4", "sm:pb-6");
   });
 
   it("filter toolbar has responsive padding (px-4 on mobile, sm:px-6)", () => {

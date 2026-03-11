@@ -347,7 +347,7 @@ export function ExecutePhase({
 
         <div
           ref={executeScrollRef}
-          className="flex-1 min-h-0 overflow-auto p-4 sm:p-6"
+          className="flex-1 min-h-0 overflow-auto pt-2 sm:pt-3 px-4 sm:px-6 pb-4 sm:pb-6"
           data-testid="execute-main-scroll"
         >
           {showTasksEmptyState ? (
@@ -367,7 +367,7 @@ export function ExecutePhase({
               inLineSwimlanes.length > 0 ||
               blockedSwimlanes.length > 0 ||
               planningSwimlanes.length > 0 ? (
-                <div className="space-y-8">
+                <div className="space-y-8 [&>section:not(:first-child)>h2]:mt-8">
                   {readySwimlanes.length > 0 && (
                     <section data-testid="execute-section-ready">
                       <h2 className="text-sm font-semibold text-theme-muted tracking-wide uppercase mb-4">
