@@ -5,7 +5,11 @@ import notificationReducer, { addNotification } from "../slices/notificationSlic
 import connectionReducer, { setConnectionError, dbStatusRestored } from "../slices/connectionSlice";
 import websocketReducer, { setDeliverToast } from "../slices/websocketSlice";
 import openQuestionsReducer from "../slices/openQuestionsSlice";
-import { notificationListener, CONNECTION_TOAST_MESSAGE_PATTERN } from "./notificationListener";
+import {
+  notificationListener,
+  CONNECTION_TOAST_MESSAGE_PATTERN,
+  getApiErrorHint,
+} from "./notificationListener";
 import { DB_STATUS_QUERY_KEY } from "../../api/hooks/db-status";
 
 const mockIsConnectionError = vi.fn();
@@ -38,6 +42,14 @@ function createStore(preloadedState?: { connection?: { connectionError: boolean;
       getDefaultMiddleware().prepend(notificationListener.middleware),
   });
 }
+
+describe("getApiErrorHint", () => {
+  it("returns Global Settings copy for ANTHROPIC_API_KEY_MISSING", () => {
+    expect(getApiErrorHint("ANTHROPIC_API_KEY_MISSING")).toBe(
+      "Add Anthropic API key in Global Settings → API keys."
+    );
+  });
+});
 
 describe("notificationListener", () => {
   beforeEach(() => {

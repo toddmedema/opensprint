@@ -23,7 +23,7 @@ export function getApiErrorHint(code: string | undefined): string | null {
     AGENT_INVOKE_FAILED: "Check agent login or Project Settings → Agent Config.",
     AGENT_CLI_REQUIRED: "Install the agent CLI (see Project Settings → Agent Config).",
     CURSOR_API_ERROR: "Check Cursor agent login or API key in Project Settings.",
-    ANTHROPIC_API_KEY_MISSING: "Add ANTHROPIC_API_KEY in Project Settings or .env.",
+    ANTHROPIC_API_KEY_MISSING: "Add Anthropic API key in Global Settings → API keys.",
     ISSUE_NOT_FOUND: "Task or session may have been removed.",
     SESSION_NOT_FOUND: "Task or session may have been removed.",
     PROJECT_NOT_FOUND: "Project may have been removed.",

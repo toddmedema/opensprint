@@ -42,6 +42,13 @@ describe("ModelSelect", () => {
     expect(screen.getByRole("alert")).toBeInTheDocument();
   });
 
+  it("shows Global Settings hint for claude when models list fails", async () => {
+    mockModelsList.mockRejectedValue(new Error("Invalid API key"));
+    render(<ModelSelect provider="claude" value={null} onChange={() => {}} />);
+    const globalSettingsCopy = await screen.findByText(/Global Settings → API keys/);
+    expect(globalSettingsCopy).toBeInTheDocument();
+  });
+
   it("renders model options and calls onChange when selection changes", async () => {
     mockModelsList.mockResolvedValue([
       { id: "claude-3-5-sonnet", displayName: "Claude 3.5 Sonnet" },
