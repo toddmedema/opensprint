@@ -58,6 +58,24 @@ describe("CrossEpicConfirmModal", () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
+  it("calls onCancel when Escape is pressed", async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+    const onCancel = vi.fn();
+    render(
+      <CrossEpicConfirmModal
+        planId="feature-x"
+        prerequisitePlanIds={["user-auth"]}
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+      />
+    );
+
+    await user.keyboard("{Escape}");
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
   it("shows Executing… when confirming", () => {
     render(
       <CrossEpicConfirmModal

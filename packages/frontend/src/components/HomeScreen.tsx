@@ -9,6 +9,7 @@ import { addNotification } from "../store/slices/notificationSlice";
 import { CloseButton } from "./CloseButton";
 import { GITHUB_REPO_URL, HOMEPAGE_CONTAINER_CLASS } from "../lib/constants";
 import { getDropdownPositionLeftAligned } from "../lib/dropdownViewport";
+import { useModalA11y } from "../hooks/useModalA11y";
 import type { Project } from "@opensprint/shared";
 
 const DROPDOWN_MIN_WIDTH = 140;
@@ -39,6 +40,8 @@ interface ProjectActionConfirmModalProps {
   onCancel: () => void;
   confirming?: boolean;
   children?: React.ReactNode;
+  /** Ref to element that opened the modal; focus returns here on close */
+  triggerRef?: React.RefObject<HTMLElement | null>;
 }
 
 function ProjectActionConfirmModal({
@@ -48,16 +51,26 @@ function ProjectActionConfirmModal({
   onCancel,
   confirming = false,
   children,
+  triggerRef,
 }: ProjectActionConfirmModalProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  useModalA11y({ containerRef, onClose: onCancel, triggerRef, isOpen: true });
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-theme-overlay backdrop-blur-sm" onClick={onCancel} />
       <div
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="project-action-modal-title"
         className="relative bg-theme-surface rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-theme-border shrink-0">
-          <h2 className="text-lg font-semibold text-theme-text">{title}</h2>
+          <h2 id="project-action-modal-title" className="text-lg font-semibold text-theme-text">
+            {title}
+          </h2>
           <CloseButton onClick={onCancel} ariaLabel="Close modal" />
         </div>
         <div className="px-5 py-4 min-h-0 overflow-y-auto">
@@ -94,6 +107,7 @@ export function HomeScreen() {
   const [confirming, setConfirming] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const modalTriggerRef = useRef<HTMLElement | null>(null);
 
   const handleCreateOrAddClick = async (
     route: "/projects/create-new" | "/projects/add-existing"
@@ -145,9 +159,21 @@ export function HomeScreen() {
         setMenuAnchorRect(null);
       }
     }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        const trigger = menuRef.current?.querySelector("button");
+        setMenuOpenId(null);
+        setMenuAnchorRect(null);
+        requestAnimationFrame(() => trigger?.focus());
+      }
+    }
     if (menuOpenId) {
       document.addEventListener("mousedown", handleClickOutside);
-      return () => document.removeEventListener("mousedown", handleClickOutside);
+      document.addEventListener("keydown", handleKeyDown);
+      return () => {
+        document.removeEventListener("mousedown", handleClickOutside);
+        document.removeEventListener("keydown", handleKeyDown);
+      };
     }
   }, [menuOpenId]);
 
@@ -298,6 +324,8 @@ export function HomeScreen() {
                             type="button"
                             role="menuitem"
                             onClick={() => {
+                              modalTriggerRef.current =
+                                menuRef.current?.querySelector("button") ?? null;
                               setArchiveModal(project);
                               setMenuOpenId(null);
                               setMenuAnchorRect(null);
@@ -310,6 +338,8 @@ export function HomeScreen() {
                             type="button"
                             role="menuitem"
                             onClick={() => {
+                              modalTriggerRef.current =
+                                menuRef.current?.querySelector("button") ?? null;
                               setDeleteModal(project);
                               setMenuOpenId(null);
                               setMenuAnchorRect(null);
@@ -336,6 +366,7 @@ export function HomeScreen() {
           onConfirm={handleArchive}
           onCancel={() => setArchiveModal(null)}
           confirming={confirming}
+          triggerRef={modalTriggerRef}
         />
       )}
 
@@ -346,6 +377,7 @@ export function HomeScreen() {
           onConfirm={handleDelete}
           onCancel={() => setDeleteModal(null)}
           confirming={confirming}
+          triggerRef={modalTriggerRef}
         />
       )}
 

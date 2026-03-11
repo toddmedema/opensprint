@@ -319,6 +319,42 @@ describe("HomeScreen", () => {
     expect(mockArchive).not.toHaveBeenCalled();
   });
 
+  it("Escape closes Archive modal", async () => {
+    mockProjectsList.mockResolvedValue([mockProject]);
+    const user = userEvent.setup();
+
+    renderHomeScreen();
+
+    await screen.findByText("My Project");
+    await user.click(screen.getByTestId("project-card-menu-proj-1"));
+    await user.click(screen.getByRole("menuitem", { name: /archive/i }));
+
+    expect(screen.getByRole("dialog", { name: /archive project/i })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog", { name: /archive project/i })).not.toBeInTheDocument();
+    expect(mockArchive).not.toHaveBeenCalled();
+  });
+
+  it("Escape closes project dropdown and returns focus to kebab button", async () => {
+    mockProjectsList.mockResolvedValue([mockProject]);
+    const user = userEvent.setup();
+
+    renderHomeScreen();
+
+    await screen.findByText("My Project");
+    const menuButton = screen.getByTestId("project-card-menu-proj-1");
+    await user.click(menuButton);
+
+    expect(screen.getByTestId("project-card-dropdown-proj-1")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByTestId("project-card-dropdown-proj-1")).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(menuButton);
+  });
+
   it("Proceed on Archive calls archive API and refreshes list", async () => {
     mockProjectsList.mockResolvedValue([mockProject]);
     mockArchive.mockResolvedValue(undefined);

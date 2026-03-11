@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useRef } from "react";
 import { CloseButton } from "../CloseButton";
 import { useSubmitShortcut } from "../../hooks/useSubmitShortcut";
+import { useModalA11y } from "../../hooks/useModalA11y";
 
 export interface AddPlanModalProps {
   onGenerate: (description: string) => void;
@@ -9,14 +10,8 @@ export interface AddPlanModalProps {
 
 export function AddPlanModal({ onGenerate, onClose }: AddPlanModalProps) {
   const [featureDescription, setFeatureDescription] = useState("");
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  const containerRef = useRef<HTMLDivElement>(null);
+  useModalA11y({ containerRef, onClose, isOpen: true });
 
   const handleGenerate = () => {
     const description = featureDescription.trim();
@@ -35,6 +30,7 @@ export function AddPlanModal({ onGenerate, onClose }: AddPlanModalProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-theme-overlay backdrop-blur-sm" onClick={onClose} />
       <div
+        ref={containerRef}
         role="dialog"
         aria-modal="true"
         aria-label="Add Plan"

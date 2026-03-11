@@ -1,5 +1,7 @@
+import { useRef } from "react";
 import { CloseButton } from "./CloseButton";
 import { formatPlanIdAsTitle } from "../lib/formatting";
+import { useModalA11y } from "../hooks/useModalA11y";
 
 export interface CrossEpicConfirmModalProps {
   planId: string;
@@ -17,6 +19,8 @@ export function CrossEpicConfirmModal({
 }: CrossEpicConfirmModalProps) {
   const prereqTitles = prerequisitePlanIds.map(formatPlanIdAsTitle);
   const prereqList = prereqTitles.join(", ");
+  const containerRef = useRef<HTMLDivElement>(null);
+  useModalA11y({ containerRef, onClose: onCancel, isOpen: true });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -25,12 +29,18 @@ export function CrossEpicConfirmModal({
 
       {/* Modal */}
       <div
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cross-epic-modal-title"
         className="relative bg-theme-surface rounded-xl shadow-2xl w-full max-w-lg mx-4 flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-theme-border">
-          <h2 className="text-lg font-semibold text-theme-text">Cross-epic dependencies</h2>
+          <h2 id="cross-epic-modal-title" className="text-lg font-semibold text-theme-text">
+            Cross-epic dependencies
+          </h2>
           <CloseButton onClick={onCancel} ariaLabel="Close cross-epic confirmation modal" />
         </div>
 

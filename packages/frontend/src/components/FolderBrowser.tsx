@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "../api/client";
 import { CloseButton } from "./CloseButton";
+import { useModalA11y } from "../hooks/useModalA11y";
 
 interface FolderBrowserProps {
   initialPath?: string;
@@ -75,16 +76,27 @@ export function FolderBrowser({ initialPath, onSelect, onCancel }: FolderBrowser
     }
   };
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  useModalA11y({ containerRef, onClose: onCancel, isOpen: true });
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-theme-overlay backdrop-blur-sm" onClick={onCancel} />
 
       {/* Dialog */}
-      <div className="relative bg-theme-surface rounded-xl shadow-2xl w-full max-w-xl mx-4 flex flex-col max-h-[80vh]">
+      <div
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="folder-browser-title"
+        className="relative bg-theme-surface rounded-xl shadow-2xl w-full max-w-xl mx-4 flex flex-col max-h-[80vh]"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-theme-border">
-          <h2 className="text-lg font-semibold text-theme-text">Select Folder</h2>
+          <h2 id="folder-browser-title" className="text-lg font-semibold text-theme-text">
+            Select Folder
+          </h2>
           <CloseButton onClick={onCancel} ariaLabel="Close folder browser" />
         </div>
 

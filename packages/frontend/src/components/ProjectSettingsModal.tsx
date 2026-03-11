@@ -8,6 +8,7 @@ import {
   lazy,
   Suspense,
 } from "react";
+import { useModalA11y } from "../hooks/useModalA11y";
 import { useSearchParams, Link } from "react-router-dom";
 import { FolderBrowser } from "./FolderBrowser";
 import { CloseButton } from "./CloseButton";
@@ -447,6 +448,13 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
       onClose();
     }, [settings, loading, persistSettings, onClose]);
 
+    const settingsModalRef = useRef<HTMLDivElement>(null);
+    useModalA11y({
+      containerRef: settingsModalRef,
+      onClose: () => void handleClose(),
+      isOpen: !fullScreen,
+    });
+
     const saveOnBlurRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const scheduleSaveOnBlur = useCallback(() => {
       if (saveOnBlurRef.current) clearTimeout(saveOnBlurRef.current);
@@ -536,7 +544,16 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
             <SettingsSubTabsBar activeTab={activeTab} onTabChange={switchTab} />
           </>
         )}
-        <div className={contentClass} data-testid="settings-modal">
+        <div
+          ref={settingsModalRef}
+          className={contentClass}
+          data-testid="settings-modal"
+          {...(!fullScreen && {
+            role: "dialog",
+            "aria-modal": true,
+            "aria-label": "Project settings",
+          })}
+        >
           {!fullScreen && (
             <div
               className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-theme-border"
