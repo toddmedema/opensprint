@@ -16,6 +16,7 @@ const {
   mockDeliverStatus,
   mockExpoDeploy,
   mockDeliverDeploy,
+  mockExpoReadiness,
 } = vi.hoisted(() => ({
   mockGetSettings: vi.fn().mockResolvedValue({
     deployment: {
@@ -27,6 +28,13 @@ const {
   mockDeliverStatus: vi.fn().mockResolvedValue({ activeDeployId: null, currentDeploy: null }),
   mockExpoDeploy: vi.fn().mockResolvedValue({ deployId: "expo-1" }),
   mockDeliverDeploy: vi.fn().mockResolvedValue({ deployId: "d1" }),
+  mockExpoReadiness: vi.fn().mockResolvedValue({
+    expoInstalled: true,
+    expoConfigured: true,
+    authOk: true,
+    easProjectLinked: true,
+    missing: [],
+  }),
 }));
 
 vi.mock("../../api/client", () => ({
@@ -38,6 +46,7 @@ vi.mock("../../api/client", () => ({
     deliver: {
       status: (...args: unknown[]) => mockDeliverStatus(...args),
       history: (...args: unknown[]) => mockDeliverHistory(...args),
+      expoReadiness: (...args: unknown[]) => mockExpoReadiness(...args),
       deploy: (...args: unknown[]) => mockDeliverDeploy(...args),
       expoDeploy: (...args: unknown[]) => mockExpoDeploy(...args),
       rollback: vi.fn().mockResolvedValue({}),
@@ -260,6 +269,48 @@ describe("DeliverPhase", () => {
     renderWithRouter(store, "proj-1", () => {});
     await waitFor(() => expect(mockGetSettings).toHaveBeenCalled());
     expect(screen.queryByTestId("deliver-configure-targets-link")).not.toBeInTheDocument();
+  });
+
+  it("shows Expo auth banner above deploy buttons when mode is expo and readiness.authOk is false", async () => {
+    mockGetSettings.mockResolvedValueOnce({
+      deployment: { mode: "expo" },
+    });
+    mockExpoReadiness.mockResolvedValueOnce({
+      expoInstalled: true,
+      expoConfigured: true,
+      authOk: false,
+      easProjectLinked: true,
+      missing: ["auth"],
+    });
+    const onOpenSettings = vi.fn();
+    const store = createStore();
+    renderWithRouter(store, "proj-1", onOpenSettings);
+    const banner = await screen.findByTestId("expo-readiness-auth-banner");
+    expect(banner).toHaveTextContent(
+      "Expo deployment requires an access token. Add it in Settings → Expo API Token."
+    );
+    const openSettingsBtn = screen.getByTestId("expo-readiness-open-settings");
+    expect(openSettingsBtn).toHaveTextContent("Open Settings");
+    fireEvent.click(openSettingsBtn);
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not show Expo auth banner when mode is expo but readiness.authOk is true", async () => {
+    queryClient.clear();
+    mockGetSettings.mockResolvedValueOnce({
+      deployment: { mode: "expo" },
+    });
+    mockExpoReadiness.mockResolvedValueOnce({
+      expoInstalled: true,
+      expoConfigured: true,
+      authOk: true,
+      easProjectLinked: true,
+      missing: [],
+    });
+    const store = createStore();
+    renderWithRouter(store, "proj-1");
+    await screen.findByTestId("deploy-beta-button");
+    expect(screen.queryByTestId("expo-readiness-auth-banner")).not.toBeInTheDocument();
   });
 
   it("positions Deploy buttons on right side of top bar (Expo mode)", async () => {

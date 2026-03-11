@@ -14,7 +14,7 @@ import {
   setSelectedDeployId,
   deliverCompleted,
 } from "../../store/slices/deliverSlice";
-import { useDeliverStatus, useDeliverHistory } from "../../api/hooks";
+import { useDeliverStatus, useDeliverHistory, useExpoReadiness } from "../../api/hooks";
 import { queryKeys } from "../../api/queryKeys";
 import { api } from "../../api/client";
 import { useViewportWidth } from "../../hooks/useViewportWidth";
@@ -165,6 +165,10 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
   useDeliverStatus(projectId, { refetchInterval: polling ? 1000 : undefined });
   useDeliverHistory(projectId, undefined, { refetchInterval: polling ? 1000 : undefined });
 
+  const { data: expoReadiness } = useExpoReadiness(effectiveProjectId, {
+    deploymentMode: settings?.deployment?.mode ?? undefined,
+  });
+
   useEffect(() => {
     api.projects
       .getSettings(projectId)
@@ -234,6 +238,11 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
 
   const isDeploying = deliverLoading || expoDeployLoading || !!activeDeployId;
 
+  const showExpoAuthBanner =
+    settings?.deployment?.mode === "expo" &&
+    expoReadiness &&
+    expoReadiness.authOk === false;
+
   const deliverEmptyStateProps = {
     title: EMPTY_STATE_COPY.deliver.title,
     description: EMPTY_STATE_COPY.deliver.description,
@@ -250,6 +259,26 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
   return (
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
+        {showExpoAuthBanner && (
+          <div
+            className="mx-4 sm:mx-6 mt-2 mb-0 p-4 bg-theme-error-bg border border-theme-error-border rounded-lg text-sm text-theme-error-text shrink-0"
+            data-testid="expo-readiness-auth-banner"
+          >
+            Expo deployment requires an access token. Add it in Settings → Expo API Token.
+            {(onOpenGlobalSettings ?? onOpenSettings) && (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={onOpenGlobalSettings ?? onOpenSettings}
+                  className="text-brand-600 hover:text-brand-700 font-medium underline"
+                  data-testid="expo-readiness-open-settings"
+                >
+                  Open Settings
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         <div
           className="phase-toolbar w-full px-4 sm:px-6 flex items-center justify-end py-0.5 bg-theme-surface shrink-0 border-b border-theme-border"
           style={{ height: PHASE_TOOLBAR_HEIGHT }}
