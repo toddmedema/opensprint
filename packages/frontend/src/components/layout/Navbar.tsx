@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { NavButton } from "./NavButton";
 import type { Project, ProjectPhase } from "@opensprint/shared";
 import { NAVBAR_HEIGHT } from "../../lib/constants";
-import { shouldRightAlignDropdown } from "../../lib/dropdownViewport";
+import { getDropdownPositionViewportAware } from "../../lib/dropdownViewport";
 import { useAppSelector, useAppDispatch } from "../../store";
 import { selectTasks } from "../../store/slices/executeSlice";
 import {
@@ -47,9 +48,10 @@ export function Navbar({
   const location = useLocation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [projectDropdownAlignRight, setProjectDropdownAlignRight] = useState(false);
+  const [projectDropdownRect, setProjectDropdownRect] = useState<DOMRect | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const projectTriggerRef = useRef<HTMLButtonElement>(null);
+  const projectDropdownMenuRef = useRef<HTMLDivElement>(null);
 
   const isSettingsActive = Boolean(
     location.pathname === "/settings" ||
@@ -131,7 +133,10 @@ export function Navbar({
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      const inTrigger = dropdownRef.current?.contains(target);
+      const inMenu = projectDropdownMenuRef.current?.contains(target);
+      if (!inTrigger && !inMenu) {
         setDropdownOpen(false);
       }
     }
@@ -141,11 +146,12 @@ export function Navbar({
     }
   }, [dropdownOpen]);
 
-  useEffect(() => {
+  // useLayoutEffect ensures rect is set before paint so dropdown appears immediately when opened
+  useLayoutEffect(() => {
     if (dropdownOpen && projectTriggerRef.current) {
-      setProjectDropdownAlignRight(
-        shouldRightAlignDropdown(projectTriggerRef.current.getBoundingClientRect())
-      );
+      setProjectDropdownRect(projectTriggerRef.current.getBoundingClientRect());
+    } else {
+      setProjectDropdownRect(null);
     }
   }, [dropdownOpen]);
 
@@ -224,51 +230,61 @@ export function Navbar({
                 </svg>
               </span>
             </button>
-            {dropdownOpen && (
-              <div
-                className={`absolute top-full mt-1 min-w-[200px] max-w-[min(280px,calc(100vw-2rem))] max-h-[min(280px,calc(100vh-6rem))] overflow-y-auto bg-theme-surface border border-theme-border rounded-lg shadow-lg py-1 z-50 ${projectDropdownAlignRight ? "right-0 left-auto" : "left-0 right-auto"}`}
-                role="listbox"
-              >
-                {projects.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    role="option"
-                    aria-selected={p.id === project?.id}
-                    onClick={() => {
-                      setDropdownOpen(false);
-                      navigate(getProjectPhasePath(p.id, currentPhase ?? "sketch"));
-                    }}
-                    className={`w-full text-left px-4 py-2 text-sm transition-colors ${
-                      p.id === project?.id
-                        ? "bg-theme-info-bg text-theme-info-text font-medium"
-                        : "text-theme-muted hover:bg-theme-info-bg"
-                    }`}
-                  >
-                    {p.name}
-                  </button>
-                ))}
-                {projects.length === 0 && (
-                  <div className="px-4 py-3 text-sm text-theme-muted">No projects</div>
-                )}
-                <div className="border-t border-theme-border-subtle mt-1 pt-1 space-y-0.5">
-                  <button
-                    type="button"
-                    onClick={() => handleCreateOrAddClick("/projects/add-existing")}
-                    className="w-full text-left px-4 py-2 text-sm text-theme-text font-medium hover:bg-theme-info-bg transition-colors"
-                  >
-                    Add Existing Project
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleCreateOrAddClick("/projects/create-new")}
-                    className="w-full text-left px-4 py-2 text-sm text-theme-text font-medium hover:bg-theme-info-bg transition-colors"
-                  >
-                    Create New Project
-                  </button>
-                </div>
-              </div>
-            )}
+            {dropdownOpen &&
+              projectDropdownRect &&
+              typeof document !== "undefined" &&
+              createPortal(
+                <div
+                  ref={projectDropdownMenuRef}
+                  data-testid="navbar-project-dropdown"
+                  style={getDropdownPositionViewportAware(projectDropdownRect, {
+                    minWidth: 200,
+                    estimatedHeight: 280,
+                  })}
+                  className="fixed z-[9999] min-w-[200px] max-w-[min(280px,calc(100vw-2rem))] bg-theme-surface border border-theme-border rounded-lg shadow-lg py-1"
+                  role="listbox"
+                >
+                  {projects.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      role="option"
+                      aria-selected={p.id === project?.id}
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        navigate(getProjectPhasePath(p.id, currentPhase ?? "sketch"));
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                        p.id === project?.id
+                          ? "bg-theme-info-bg text-theme-info-text font-medium"
+                          : "text-theme-muted hover:bg-theme-info-bg"
+                      }`}
+                    >
+                      {p.name}
+                    </button>
+                  ))}
+                  {projects.length === 0 && (
+                    <div className="px-4 py-3 text-sm text-theme-muted">No projects</div>
+                  )}
+                  <div className="border-t border-theme-border-subtle mt-1 pt-1 space-y-0.5">
+                    <button
+                      type="button"
+                      onClick={() => handleCreateOrAddClick("/projects/add-existing")}
+                      className="w-full text-left px-4 py-2 text-sm text-theme-text font-medium hover:bg-theme-info-bg transition-colors"
+                    >
+                      Add Existing Project
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCreateOrAddClick("/projects/create-new")}
+                      className="w-full text-left px-4 py-2 text-sm text-theme-text font-medium hover:bg-theme-info-bg transition-colors"
+                    >
+                      Create New Project
+                    </button>
+                  </div>
+                </div>,
+                document.body
+              )}
           </div>
         </div>
 

@@ -300,6 +300,32 @@ describe("Navbar", () => {
     expect(nonSelectedOption).toHaveClass("hover:bg-theme-info-bg");
   });
 
+  it("project selector dropdown shows full list when opened (projects + Add/Create buttons)", async () => {
+    const projects = [
+      {
+        id: "proj-1",
+        name: "Project A",
+        repoPath: "/path/a",
+        currentPhase: "sketch" as const,
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      },
+    ];
+    mockProjectsList.mockResolvedValue(projects);
+    const user = userEvent.setup();
+    renderNavbar(<Navbar project={projects[0]} currentPhase="sketch" onPhaseChange={vi.fn()} />);
+
+    const trigger = screen.getByRole("button", { name: /Project A/i });
+    await user.click(trigger);
+
+    const dropdown = screen.getByTestId("navbar-project-dropdown");
+    expect(dropdown).toBeInTheDocument();
+    expect(dropdown).toBeVisible();
+    expect(screen.getByRole("option", { name: "Project A" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Add Existing Project/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Create New Project/i })).toBeInTheDocument();
+  });
+
   it("uses responsive edge spacing (pl/pr-4 on mobile, pl/pr-6 on md+) so logo left matches Settings right", () => {
     renderNavbar(<Navbar project={null} />);
     const nav = screen.getByRole("navigation");
