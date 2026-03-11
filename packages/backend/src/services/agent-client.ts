@@ -4,6 +4,7 @@ import { open as fsOpen, stat as fsStat, readFile, rm as fsRm } from "fs/promise
 import os from "os";
 import path from "path";
 import { promisify } from "util";
+import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { GoogleGenAI } from "@google/genai";
 import type { AgentConfig, ApiKeyProvider } from "@opensprint/shared";
@@ -402,7 +403,13 @@ function getProviderBlockedMessage(
   kind: RotatableApiErrorKind
 ): string {
   const providerLabel =
-    provider === "OPENAI_API_KEY" ? "OpenAI" : provider === "GOOGLE_API_KEY" ? "Google" : "Cursor";
+    provider === "ANTHROPIC_API_KEY"
+      ? "Anthropic"
+      : provider === "OPENAI_API_KEY"
+        ? "OpenAI"
+        : provider === "GOOGLE_API_KEY"
+          ? "Google"
+          : "Cursor";
   if (kind === "rate_limit") {
     return `Your API key(s) for ${providerLabel} have hit their limit. Please increase your budget or add another key.`;
   }
@@ -515,6 +522,18 @@ export class AgentClient {
     outputLogPath?: string,
     projectId?: string
   ): { kill: () => void; pid: number | null } {
+    if (config.type === "claude") {
+      return this.spawnClaudeWithTaskFile(
+        config,
+        taskFilePath,
+        cwd,
+        onOutput,
+        onExit,
+        agentRole,
+        outputLogPath,
+        projectId
+      );
+    }
     if (config.type === "openai") {
       return this.spawnOpenAIWithTaskFile(
         config,
@@ -885,6 +904,149 @@ export class AgentClient {
 
     run().catch((err) => {
       log.error("spawnOpenAIWithTaskFile failed", { err });
+      Promise.resolve(onExit(1)).catch(() => {});
+    });
+
+    return handle;
+  }
+
+  /**
+   * Claude API with task file: run API call in-process, stream to onOutput, simulate exit code.
+   * No subprocess spawn; uses getNextKey/recordLimitHit/clearLimitHit for key rotation.
+   */
+  private spawnClaudeWithTaskFile(
+    config: AgentConfig,
+    taskFilePath: string,
+    cwd: string,
+    onOutput: (chunk: string) => void,
+    onExit: (code: number | null) => void | Promise<void>,
+    agentRole?: string,
+    outputLogPath?: string,
+    projectId?: string
+  ): { kill: () => void; pid: number | null } {
+    let aborted = false;
+    const handle: { kill: () => void; pid: number | null } = {
+      pid: null,
+      kill() {
+        aborted = true;
+      },
+    };
+
+    if (outputLogPath) {
+      mkdirSync(path.dirname(outputLogPath), { recursive: true });
+    }
+
+    const emit = (chunk: string) => {
+      onOutput(chunk);
+      if (outputLogPath) {
+        try {
+          appendFileSync(outputLogPath, chunk);
+        } catch {
+          // ignore
+        }
+      }
+    };
+
+    const run = async (): Promise<void> => {
+      let taskContent: string;
+      try {
+        taskContent = await readFile(taskFilePath, "utf-8");
+      } catch (readErr) {
+        const msg = getErrorMessage(readErr);
+        log.error("Claude task file read failed", { taskFilePath, err: msg });
+        emit(`[Agent error: Could not read task file: ${msg}]\n`);
+        return Promise.resolve(onExit(1)).catch((e) => log.error("onExit failed", { err: e }));
+      }
+
+      const model = config.model ?? "claude-sonnet-4-20250514";
+      const systemPrompt = `You are a coding agent. Execute the task described in the user message. Output your work directly.`;
+
+      const triedKeyIds = new Set<string>();
+      let lastError: unknown;
+
+      const tryCall = async (): Promise<void> => {
+        if (aborted) return;
+
+        const resolved = projectId
+          ? await getNextKey(projectId, "ANTHROPIC_API_KEY")
+          : {
+              key: process.env.ANTHROPIC_API_KEY || "",
+              keyId: ENV_FALLBACK_KEY_ID,
+              source: "env" as KeySource,
+            };
+        const exhaustedKind = toRotatableApiErrorKind(lastError) ?? "rate_limit";
+
+        if (!resolved || !resolved.key.trim()) {
+          const msg = lastError ? getErrorMessage(lastError) : "No Anthropic API key available";
+          emit(`[Agent error: ${msg}]\n`);
+          if (projectId) {
+            markExhausted(projectId, "ANTHROPIC_API_KEY");
+            await notifyProviderBlocked(projectId, "ANTHROPIC_API_KEY", exhaustedKind);
+          }
+          return Promise.resolve(onExit(1)).catch((e) => log.error("onExit failed", { err: e }));
+        }
+
+        const { key, keyId, source } = resolved;
+        if (triedKeyIds.has(keyId)) {
+          const msg = getErrorMessage(lastError);
+          emit(`[Agent error: ${msg}]\n`);
+          if (projectId) {
+            markExhausted(projectId, "ANTHROPIC_API_KEY");
+            await notifyProviderBlocked(projectId, "ANTHROPIC_API_KEY", exhaustedKind);
+          }
+          return Promise.resolve(onExit(1)).catch((e) => log.error("onExit failed", { err: e }));
+        }
+        triedKeyIds.add(keyId);
+
+        const client = new Anthropic({ apiKey: key });
+        try {
+          const stream = client.messages.stream({
+            model,
+            max_tokens: 16384,
+            system: systemPrompt,
+            messages: [{ role: "user" as const, content: taskContent }],
+          });
+
+          let fullContent = "";
+          stream.on("text", (text) => {
+            if (!aborted) {
+              fullContent += text;
+              emit(text);
+            }
+          });
+
+          await stream.finalMessage();
+
+          if (aborted) return;
+
+          if (projectId && keyId !== ENV_FALLBACK_KEY_ID) {
+            await clearLimitHit(projectId, "ANTHROPIC_API_KEY", keyId, source);
+          }
+
+          log.info("Claude coding agent completed", { outputLen: fullContent.length });
+          return Promise.resolve(onExit(0)).catch((e) => log.error("onExit failed", { err: e }));
+        } catch (error: unknown) {
+          lastError = error;
+          const apiErrorKind = toRotatableApiErrorKind(error);
+          if (projectId && apiErrorKind && keyId !== ENV_FALLBACK_KEY_ID) {
+            if (apiErrorKind === "rate_limit") {
+              await recordLimitHit(projectId, "ANTHROPIC_API_KEY", keyId, source);
+            } else {
+              await recordInvalidKey(projectId, "ANTHROPIC_API_KEY", keyId, source);
+            }
+            return tryCall();
+          }
+          const msg = getErrorMessage(error);
+          emit(`[Agent error: ${msg}]\n`);
+          return Promise.resolve(onExit(1)).catch((e) => log.error("onExit failed", { err: e }));
+        }
+      };
+
+      return tryCall();
+    };
+
+    run().catch((err) => {
+      log.error("spawnClaudeWithTaskFile failed", { err });
       Promise.resolve(onExit(1)).catch(() => {});
     });
 

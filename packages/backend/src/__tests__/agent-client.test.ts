@@ -98,6 +98,19 @@ vi.mock("@google/genai", () => ({
   })),
 }));
 
+const { mockAnthropicStream } = vi.hoisted(() => ({
+  mockAnthropicStream: vi.fn(),
+}));
+
+vi.mock("@anthropic-ai/sdk", () => ({
+  default: vi.fn().mockImplementation(() => ({
+    messages: {
+      stream: (opts: { model: string; max_tokens: number; system: string; messages: unknown[] }) =>
+        mockAnthropicStream(opts),
+    },
+  })),
+}));
+
 vi.mock("util", () => ({
   promisify: (
     _fn: (
@@ -919,6 +932,72 @@ describe("AgentClient", () => {
       expect(mockClearLimitHit).toHaveBeenCalledWith(
         "proj-google",
         "GOOGLE_API_KEY",
+        "k1",
+        "global"
+      );
+
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it("should run Claude API in-process for spawnWithTaskFile (no subprocess, no --task-file)", async () => {
+      const fs = await import("fs/promises");
+      const path = await import("path");
+      const os = await import("os");
+      const tmpDir = path.join(os.tmpdir(), `agent-client-claude-${Date.now()}`);
+      const taskDir = path.join(tmpDir, ".opensprint/active/os-claude.1");
+      await fs.mkdir(taskDir, { recursive: true });
+      const taskFilePath = path.join(taskDir, "prompt.md");
+      await fs.writeFile(taskFilePath, "# Task\n\nAdd a button", "utf-8");
+
+      mockGetNextKey.mockResolvedValue({ key: "sk-ant-claude-spawn", keyId: "k1", source: "global" });
+      mockAnthropicStream.mockImplementation(() => {
+        const stream = {
+          on: vi.fn((ev: string, fn: (text: string) => void) => {
+            if (ev === "text") {
+              setImmediate(() => {
+                fn("Claude ");
+                fn("API ");
+                fn("output.");
+              });
+            }
+            return stream;
+          }),
+          finalMessage: vi.fn().mockResolvedValue({ content: [{ type: "text", text: "Claude API output." }] }),
+        };
+        return stream;
+      });
+
+      const onOutput = vi.fn();
+      const onExit = vi.fn();
+      const config: AgentConfig = { type: "claude", model: "claude-sonnet-4", cliCommand: null };
+
+      const { kill, pid } = client.spawnWithTaskFile(
+        config,
+        taskFilePath,
+        tmpDir,
+        onOutput,
+        onExit,
+        "coder",
+        undefined,
+        "proj-claude"
+      );
+
+      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(pid).toBeNull();
+      expect(kill).toBeDefined();
+
+      await vi.waitFor(
+        () => {
+          expect(onExit).toHaveBeenCalledWith(0);
+        },
+        { timeout: 2000 }
+      );
+      expect(onOutput).toHaveBeenCalledWith("Claude ");
+      expect(onOutput).toHaveBeenCalledWith("API ");
+      expect(onOutput).toHaveBeenCalledWith("output.");
+      expect(mockClearLimitHit).toHaveBeenCalledWith(
+        "proj-claude",
+        "ANTHROPIC_API_KEY",
         "k1",
         "global"
       );
