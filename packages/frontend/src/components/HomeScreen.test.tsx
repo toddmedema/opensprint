@@ -219,7 +219,7 @@ describe("HomeScreen", () => {
     expect(screen.getByTestId("location")).toHaveTextContent("/projects/add-existing");
   });
 
-  it("navigates to /onboarding when Create New clicked and no API keys", async () => {
+  it("navigates to /onboarding?intended=/projects/create-new when Create New clicked and no API keys", async () => {
     vi.stubGlobal(
       "matchMedia",
       vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
@@ -245,7 +245,7 @@ describe("HomeScreen", () => {
     );
   });
 
-  it("navigates to /onboarding when Add Existing clicked and no API keys", async () => {
+  it("navigates to /onboarding?intended=/projects/add-existing when Add Existing clicked and no API keys", async () => {
     vi.stubGlobal(
       "matchMedia",
       vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }))
@@ -269,6 +269,54 @@ describe("HomeScreen", () => {
     expect(screen.getByTestId("onboarding-intended")).toHaveTextContent(
       /\/projects\/add-existing/
     );
+  });
+
+  it("when useCustomCli true, Create New navigates to /projects/create-new", async () => {
+    mockProjectsList.mockResolvedValue([]);
+    mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: false, useCustomCli: true });
+    const user = userEvent.setup();
+
+    function LocationDisplay() {
+      return <div data-testid="location">{useLocation().pathname}</div>;
+    }
+
+    renderApp(
+      <>
+        <HomeScreen />
+        <LocationDisplay />
+      </>
+    );
+
+    await screen.findByTestId("create-new-button");
+    await user.click(screen.getByTestId("create-new-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("/projects/create-new");
+    });
+  });
+
+  it("when useCustomCli true, Add Existing navigates to /projects/add-existing", async () => {
+    mockProjectsList.mockResolvedValue([]);
+    mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: false, useCustomCli: true });
+    const user = userEvent.setup();
+
+    function LocationDisplay() {
+      return <div data-testid="location">{useLocation().pathname}</div>;
+    }
+
+    renderApp(
+      <>
+        <HomeScreen />
+        <LocationDisplay />
+      </>
+    );
+
+    await screen.findByTestId("add-existing-button");
+    await user.click(screen.getByTestId("add-existing-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).toHaveTextContent("/projects/add-existing");
+    });
   });
 
   it("on global-status error navigates to route (fallback)", async () => {

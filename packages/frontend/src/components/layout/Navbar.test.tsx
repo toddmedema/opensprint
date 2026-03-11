@@ -1054,7 +1054,7 @@ describe("Navbar", () => {
     expect(screen.getByTestId("theme-option-light")).toBeInTheDocument();
   });
 
-  it("navigates to /onboarding when Create New Project clicked and no API keys", async () => {
+  it("navigates to /onboarding?intended=/projects/create-new when Create New Project clicked and no API keys", async () => {
     mockProjectsList.mockResolvedValue([]);
     mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: false, useCustomCli: false });
     const user = userEvent.setup();
@@ -1088,7 +1088,7 @@ describe("Navbar", () => {
     );
   });
 
-  it("navigates to /onboarding when Add Existing Project clicked and no API keys", async () => {
+  it("navigates to /onboarding?intended=/projects/add-existing when Add Existing Project clicked and no API keys", async () => {
     mockProjectsList.mockResolvedValue([]);
     mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: false, useCustomCli: false });
     const user = userEvent.setup();
@@ -1120,6 +1120,60 @@ describe("Navbar", () => {
     expect(screen.getByTestId("onboarding-intended")).toHaveTextContent(
       /\/projects\/add-existing/
     );
+  });
+
+  it("when useCustomCli true, Create New Project navigates to /projects/create-new", async () => {
+    mockProjectsList.mockResolvedValue([]);
+    mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: false, useCustomCli: true });
+    const user = userEvent.setup();
+    render(
+      <ThemeProvider>
+        <DisplayPreferencesProvider>
+          <Provider store={createStore()}>
+            <QueryClientProvider client={queryClient}>
+              <MemoryRouter initialEntries={["/"]}>
+                <Routes>
+                  <Route path="/" element={<Navbar project={null} />} />
+                  <Route path="/projects/create-new" element={<div data-testid="create-new-page">Create New</div>} />
+                </Routes>
+              </MemoryRouter>
+            </QueryClientProvider>
+          </Provider>
+        </DisplayPreferencesProvider>
+      </ThemeProvider>
+    );
+    const trigger = screen.getByRole("button", { name: /All Projects/i });
+    await user.click(trigger);
+    const createNewButton = screen.getByRole("button", { name: /Create New Project/i });
+    await user.click(createNewButton);
+    expect(await screen.findByTestId("create-new-page")).toBeInTheDocument();
+  });
+
+  it("when useCustomCli true, Add Existing Project navigates to /projects/add-existing", async () => {
+    mockProjectsList.mockResolvedValue([]);
+    mockGetGlobalStatus.mockResolvedValue({ hasAnyKey: false, useCustomCli: true });
+    const user = userEvent.setup();
+    render(
+      <ThemeProvider>
+        <DisplayPreferencesProvider>
+          <Provider store={createStore()}>
+            <QueryClientProvider client={queryClient}>
+              <MemoryRouter initialEntries={["/"]}>
+                <Routes>
+                  <Route path="/" element={<Navbar project={null} />} />
+                  <Route path="/projects/add-existing" element={<div data-testid="add-existing-page">Add Existing</div>} />
+                </Routes>
+              </MemoryRouter>
+            </QueryClientProvider>
+          </Provider>
+        </DisplayPreferencesProvider>
+      </ThemeProvider>
+    );
+    const trigger = screen.getByRole("button", { name: /All Projects/i });
+    await user.click(trigger);
+    const addExistingButton = screen.getByRole("button", { name: /Add Existing Project/i });
+    await user.click(addExistingButton);
+    expect(await screen.findByTestId("add-existing-page")).toBeInTheDocument();
   });
 
   it("on global-status error navigates to route (fallback)", async () => {
