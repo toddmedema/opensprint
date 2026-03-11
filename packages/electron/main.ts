@@ -534,6 +534,22 @@ function focusAndOpenFindBar(): void {
   }
 }
 
+function sendNavigateHelp(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+    mainWindow.webContents.send("navigate-help");
+  }
+}
+
+function sendNavigateSettings(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+    mainWindow.webContents.send("navigate-settings");
+  }
+}
+
 function setApplicationMenu(): void {
   const template = [
     ...(process.platform === "darwin"
@@ -571,12 +587,18 @@ function setApplicationMenu(): void {
         { role: "reload" as const },
         { role: "toggleDevTools" as const },
         { type: "separator" as const },
+        { label: "Settings", click: sendNavigateSettings },
+        { type: "separator" as const },
         { role: "resetZoom" as const },
         { role: "zoomIn" as const },
         { role: "zoomOut" as const },
         { type: "separator" as const },
         { role: "togglefullscreen" as const },
       ],
+    },
+    {
+      label: "Help",
+      submenu: [{ label: "Open Help", click: sendNavigateHelp }],
     },
     {
       label: "Window",

@@ -4,6 +4,8 @@ declare global {
   interface Window {
     electron?: {
       isElectron: true;
+      onNavigateHelp: (callback: () => void) => () => void;
+      onNavigateSettings: (callback: () => void) => () => void;
       onOpenFindBar: (callback: () => void) => () => void;
       onFindResult: (callback: (result: { activeMatchOrdinal: number; matches: number; finalUpdate: boolean }) => void) => () => void;
       findInPage: (text: string, options?: { forward?: boolean; findNext?: boolean; caseSensitive?: boolean }) => Promise<void>;

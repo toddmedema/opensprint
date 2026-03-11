@@ -866,6 +866,44 @@ describe("Navbar", () => {
     expect(settingsLink).toHaveAttribute("href", "/settings");
   });
 
+  it("hides Help and Settings from nav when running in Electron (they are in app menus)", async () => {
+    const prev = (typeof window !== "undefined" && (window as unknown as { electron?: unknown }).electron);
+    if (typeof window !== "undefined") (window as unknown as { electron: { isElectron: true } }).electron = { isElectron: true };
+    mockProjectsList.mockResolvedValue([
+      {
+        id: "proj-1",
+        name: "Project A",
+        repoPath: "/path/a",
+        currentPhase: "sketch" as const,
+        createdAt: "2025-01-01T00:00:00Z",
+        updatedAt: "2025-01-01T00:00:00Z",
+      },
+    ]);
+    renderNavbar(
+      <Navbar
+        project={{
+          id: "proj-1",
+          name: "Project A",
+          repoPath: "/path/a",
+          currentPhase: "sketch",
+          createdAt: "2025-01-01T00:00:00Z",
+          updatedAt: "2025-01-01T00:00:00Z",
+        }}
+        currentPhase="sketch"
+        onPhaseChange={vi.fn()}
+      />
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("tablist", { name: "Phase navigation" })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("link", { name: "Help" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Project settings" })).not.toBeInTheDocument();
+    if (typeof window !== "undefined") {
+      if (prev !== undefined) (window as unknown as { electron: unknown }).electron = prev;
+      else delete (window as unknown as { electron?: unknown }).electron;
+    }
+  });
+
   it("homepage shows settings link when projects exist", async () => {
     const projects = [
       {

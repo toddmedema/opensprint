@@ -65,6 +65,7 @@ export function GlobalKeyboardShortcuts() {
   const navigate = useNavigate();
   const location = useLocation();
   const projectId = projectIdFromPathname(location.pathname);
+  const isElectron = typeof window !== "undefined" && Boolean(window.electron?.isElectron);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
@@ -96,24 +97,26 @@ export function GlobalKeyboardShortcuts() {
         return;
       }
 
-      // Escape: close modal if one is open; do NOT open settings (let modal's handler close it)
+      // Escape: close modal if one is open; otherwise open settings (web only; in Electron, Settings is in app menu)
       if (key === "Escape") {
         if (isModalOpen() || isFocusInModal(e)) {
           e.preventDefault();
           return;
         }
-        if (projectId) {
-          e.preventDefault();
-          navigate(`/projects/${projectId}/settings`);
-        } else {
-          e.preventDefault();
-          navigate("/settings");
+        if (!isElectron) {
+          if (projectId) {
+            e.preventDefault();
+            navigate(`/projects/${projectId}/settings`);
+          } else {
+            e.preventDefault();
+            navigate("/settings");
+          }
         }
         return;
       }
 
-      // ? or F1: open help in same context as help icon (project when path is under /projects/:id, else global)
-      if (key === "?" || key === "F1") {
+      // ? or F1: open help (web only; in Electron, Help is in app menu)
+      if (!isElectron && (key === "?" || key === "F1")) {
         e.preventDefault();
         e.stopPropagation();
         if (projectId) {
@@ -130,6 +133,24 @@ export function GlobalKeyboardShortcuts() {
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
   }, [handleKeyDown]);
+
+  // Electron app menu: Help and Settings trigger navigate via IPC; handle here so we have router context
+  useEffect(() => {
+    const electron = typeof window !== "undefined" ? window.electron : undefined;
+    if (!electron?.onNavigateHelp || !electron?.onNavigateSettings) return;
+    const unHelp = electron.onNavigateHelp(() => {
+      if (projectId) navigate(`/projects/${projectId}/help`);
+      else navigate("/help");
+    });
+    const unSettings = electron.onNavigateSettings(() => {
+      if (projectId) navigate(`/projects/${projectId}/settings`);
+      else navigate("/settings");
+    });
+    return () => {
+      unHelp();
+      unSettings();
+    };
+  }, [navigate, projectId]);
 
   return null;
 }

@@ -297,4 +297,214 @@ describe("GlobalKeyboardShortcuts", () => {
       expect(screen.getByTestId("location")).toHaveTextContent("/help");
     });
   });
+
+  it("in Electron, Escape does not open settings (Settings is in app menu)", async () => {
+    const prev = typeof window !== "undefined" ? (window as unknown as { electron?: unknown }).electron : undefined;
+    if (typeof window !== "undefined") {
+      (window as unknown as { electron: { isElectron: true; onNavigateHelp: () => () => void; onNavigateSettings: () => () => void } }).electron = {
+        isElectron: true,
+        onNavigateHelp: () => () => {},
+        onNavigateSettings: () => () => {},
+      };
+    }
+    render(
+      <MemoryRouter initialEntries={["/projects/p1/sketch"]}>
+        <GlobalKeyboardShortcuts />
+        <Routes>
+          <Route path="/projects/:projectId/:phase" element={<LocationDisplay />} />
+          <Route path="/projects/:projectId/settings" element={<LocationDisplay />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/sketch");
+    await act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    await waitFor(() => {}, { timeout: 100 });
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/sketch");
+    if (typeof window !== "undefined") (window as unknown as { electron: unknown }).electron = prev;
+  });
+
+  it("in Electron, ? does not open help (Help is in app menu)", async () => {
+    const prev = typeof window !== "undefined" ? (window as unknown as { electron?: unknown }).electron : undefined;
+    if (typeof window !== "undefined") {
+      (window as unknown as { electron: { isElectron: true; onNavigateHelp: () => () => void; onNavigateSettings: () => () => void } }).electron = {
+        isElectron: true,
+        onNavigateHelp: () => () => {},
+        onNavigateSettings: () => () => {},
+      };
+    }
+    render(
+      <MemoryRouter initialEntries={["/projects/p1/sketch"]}>
+        <GlobalKeyboardShortcuts />
+        <Routes>
+          <Route path="/projects/:projectId/:phase" element={<LocationDisplay />} />
+          <Route path="/projects/:projectId/help" element={<LocationDisplay />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/sketch");
+    await act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "?", bubbles: true }));
+    });
+    await waitFor(() => {}, { timeout: 100 });
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/sketch");
+    if (typeof window !== "undefined") (window as unknown as { electron: unknown }).electron = prev;
+  });
+
+  it("Electron app menu: Help callback navigates to /help when not in project", async () => {
+    let helpCallback: (() => void) | undefined;
+    const prev = typeof window !== "undefined" ? (window as unknown as { electron?: unknown }).electron : undefined;
+    if (typeof window !== "undefined") {
+      (window as unknown as {
+        electron: {
+          isElectron: true;
+          onNavigateHelp: (cb: () => void) => () => void;
+          onNavigateSettings: (cb: () => void) => () => void;
+        };
+      }).electron = {
+        isElectron: true,
+        onNavigateHelp: (cb) => {
+          helpCallback = cb;
+          return () => {};
+        },
+        onNavigateSettings: () => () => {},
+      };
+    }
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <GlobalKeyboardShortcuts />
+        <Routes>
+          <Route path="/" element={<LocationDisplay />} />
+          <Route path="/help" element={<LocationDisplay />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/");
+    await waitFor(() => {
+      expect(helpCallback).toBeDefined();
+    });
+    await act(() => {
+      helpCallback!();
+    });
+    expect(screen.getByTestId("location")).toHaveTextContent("/help");
+    if (typeof window !== "undefined") (window as unknown as { electron: unknown }).electron = prev;
+  });
+
+  it("Electron app menu: Help callback navigates to project help when in project", async () => {
+    let helpCallback: (() => void) | undefined;
+    const prev = typeof window !== "undefined" ? (window as unknown as { electron?: unknown }).electron : undefined;
+    if (typeof window !== "undefined") {
+      (window as unknown as {
+        electron: {
+          isElectron: true;
+          onNavigateHelp: (cb: () => void) => () => void;
+          onNavigateSettings: (cb: () => void) => () => void;
+        };
+      }).electron = {
+        isElectron: true,
+        onNavigateHelp: (cb) => {
+          helpCallback = cb;
+          return () => {};
+        },
+        onNavigateSettings: () => () => {},
+      };
+    }
+    render(
+      <MemoryRouter initialEntries={["/projects/p1/sketch"]}>
+        <GlobalKeyboardShortcuts />
+        <Routes>
+          <Route path="/projects/:projectId/:phase" element={<LocationDisplay />} />
+          <Route path="/projects/:projectId/help" element={<LocationDisplay />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/sketch");
+    await waitFor(() => {
+      expect(helpCallback).toBeDefined();
+    });
+    await act(() => {
+      helpCallback!();
+    });
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/help");
+    if (typeof window !== "undefined") (window as unknown as { electron: unknown }).electron = prev;
+  });
+
+  it("Electron app menu: Settings callback navigates to /settings when not in project", async () => {
+    let settingsCallback: (() => void) | undefined;
+    const prev = typeof window !== "undefined" ? (window as unknown as { electron?: unknown }).electron : undefined;
+    if (typeof window !== "undefined") {
+      (window as unknown as {
+        electron: {
+          isElectron: true;
+          onNavigateHelp: (cb: () => void) => () => void;
+          onNavigateSettings: (cb: () => void) => () => void;
+        };
+      }).electron = {
+        isElectron: true,
+        onNavigateHelp: () => () => {},
+        onNavigateSettings: (cb) => {
+          settingsCallback = cb;
+          return () => {};
+        },
+      };
+    }
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <GlobalKeyboardShortcuts />
+        <Routes>
+          <Route path="/" element={<LocationDisplay />} />
+          <Route path="/settings" element={<LocationDisplay />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/");
+    await waitFor(() => {
+      expect(settingsCallback).toBeDefined();
+    });
+    await act(() => {
+      settingsCallback!();
+    });
+    expect(screen.getByTestId("location")).toHaveTextContent("/settings");
+    if (typeof window !== "undefined") (window as unknown as { electron: unknown }).electron = prev;
+  });
+
+  it("Electron app menu: Settings callback navigates to project settings when in project", async () => {
+    let settingsCallback: (() => void) | undefined;
+    const prev = typeof window !== "undefined" ? (window as unknown as { electron?: unknown }).electron : undefined;
+    if (typeof window !== "undefined") {
+      (window as unknown as {
+        electron: {
+          isElectron: true;
+          onNavigateHelp: (cb: () => void) => () => void;
+          onNavigateSettings: (cb: () => void) => () => void;
+        };
+      }).electron = {
+        isElectron: true,
+        onNavigateHelp: () => () => {},
+        onNavigateSettings: (cb) => {
+          settingsCallback = cb;
+          return () => {};
+        },
+      };
+    }
+    render(
+      <MemoryRouter initialEntries={["/projects/p1/plan"]}>
+        <GlobalKeyboardShortcuts />
+        <Routes>
+          <Route path="/projects/:projectId/:phase" element={<LocationDisplay />} />
+          <Route path="/projects/:projectId/settings" element={<LocationDisplay />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/plan");
+    await waitFor(() => {
+      expect(settingsCallback).toBeDefined();
+    });
+    await act(() => {
+      settingsCallback!();
+    });
+    expect(screen.getByTestId("location")).toHaveTextContent("/projects/p1/settings");
+    if (typeof window !== "undefined") (window as unknown as { electron: unknown }).electron = prev;
+  });
 });

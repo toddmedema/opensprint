@@ -2,6 +2,16 @@ import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("electron", {
   isElectron: true,
+  onNavigateHelp: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on("navigate-help", handler);
+    return () => ipcRenderer.removeListener("navigate-help", handler);
+  },
+  onNavigateSettings: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on("navigate-settings", handler);
+    return () => ipcRenderer.removeListener("navigate-settings", handler);
+  },
   onOpenFindBar: (callback: () => void) => {
     const handler = () => callback();
     ipcRenderer.on("open-find-bar", handler);
