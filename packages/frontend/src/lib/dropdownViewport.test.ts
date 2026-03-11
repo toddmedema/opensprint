@@ -76,6 +76,13 @@ describe("dropdownViewport", () => {
       const style = getDropdownPositionLeftAligned(rect, { minWidth: 140 });
       expect(style.left).toBeGreaterThanOrEqual(8);
     });
+
+    it("omits minWidth when 0 so dropdown sizes to content and left-aligns to trigger", () => {
+      const rect = new DOMRect(100, 100, 80, 40);
+      const style = getDropdownPositionLeftAligned(rect, { minWidth: 0 });
+      expect(style.minWidth).toBeUndefined();
+      expect(style.left).toBe(100);
+    });
   });
 
   describe("shouldRightAlignDropdown", () => {

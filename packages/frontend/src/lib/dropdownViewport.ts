@@ -96,15 +96,18 @@ export function getDropdownPositionLeftAligned(
   const spaceAbove = anchorRect.top - SAFE_INSET;
   const useBottomUp = isMobile && spaceBelow < estimatedHeight && spaceAbove > spaceBelow;
 
-  const left = Math.max(
-    SAFE_INSET,
-    Math.min(anchorRect.right - minWidth, vw - minWidth - SAFE_INSET)
-  );
+  const left =
+    minWidth > 0
+      ? Math.max(
+          SAFE_INSET,
+          Math.min(anchorRect.right - minWidth, vw - minWidth - SAFE_INSET)
+        )
+      : Math.max(SAFE_INSET, anchorRect.left);
 
   const base = {
     position: "fixed" as const,
     left,
-    minWidth,
+    ...(minWidth > 0 ? { minWidth } : {}),
     maxWidth: `${vw - left - SAFE_INSET}px`,
     maxHeight: "90vh",
     overflowY: "auto" as const,

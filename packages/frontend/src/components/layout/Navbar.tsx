@@ -268,10 +268,10 @@ export function Navbar({
                   ref={projectDropdownMenuRef}
                   data-testid="navbar-project-dropdown"
                   style={getDropdownPositionViewportAware(projectDropdownRect, {
-                    minWidth: 200,
+                    minWidth: 0,
                     estimatedHeight: 280,
                   })}
-                  className="fixed z-[9999] min-w-[200px] max-w-[min(280px,calc(100vw-2rem))] bg-theme-surface border border-theme-border rounded-lg shadow-lg py-1"
+                  className="fixed z-[9999] w-max min-w-0 max-w-[min(280px,calc(100vw-2rem))] bg-theme-surface border border-theme-border rounded-lg shadow-lg py-1"
                   role="listbox"
                 >
                   {projects.map((p) => (
