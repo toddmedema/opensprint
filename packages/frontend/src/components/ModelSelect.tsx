@@ -8,6 +8,8 @@ interface ModelSelectProps {
   onChange: (modelId: string | null) => void;
   disabled?: boolean;
   className?: string;
+  /** ID for label association (htmlFor) */
+  id?: string;
   /** Project ID for API key resolution when listing models (project-level keys) */
   projectId?: string;
   /** LM Studio base URL (e.g. http://localhost:1234); used when provider is lmstudio */
@@ -30,6 +32,7 @@ export function ModelSelect({
   baseUrl,
   refreshTrigger,
   onBlur,
+  id,
 }: ModelSelectProps) {
   const [models, setModels] = useState<ModelOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -70,6 +73,7 @@ export function ModelSelect({
     return (
       <input
         type="text"
+        id={id}
         className={className}
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value || null)}
@@ -83,7 +87,7 @@ export function ModelSelect({
 
   if (loading) {
     return (
-      <select className={className} disabled aria-label="Model selection" aria-busy="true">
+      <select id={id} className={className} disabled aria-label="Model selection" aria-busy="true">
         <option>Loading models…</option>
       </select>
     );
@@ -111,7 +115,7 @@ export function ModelSelect({
       provider === "lmstudio" ? "No models" : `No models${hint ? ` (${hint})` : ""}`;
     return (
       <div className="space-y-1" role="group" aria-label="Model selection">
-        <select className={className} disabled aria-label="Model selection" aria-invalid="true">
+        <select id={id} className={className} disabled aria-label="Model selection" aria-invalid="true">
           <option value="">{optionLabel}</option>
         </select>
         <p className="text-xs text-theme-warning-text" role="alert" aria-live="polite">
@@ -124,6 +128,7 @@ export function ModelSelect({
   if (models.length === 0) {
     return (
       <select
+        id={id}
         className={className}
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value || null)}
@@ -145,6 +150,7 @@ export function ModelSelect({
 
   return (
     <select
+      id={id}
       className={className}
       value={value ?? ""}
       onChange={(e) => onChange(e.target.value || null)}

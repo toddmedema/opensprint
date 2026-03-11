@@ -49,8 +49,9 @@ export function KillAgentConfirmDialog({
         {/* Content */}
         <div className="px-5 py-4 space-y-4">
           <p className="text-sm text-theme-text">Are you sure you want to kill this agent?</p>
-          <label className="flex items-center gap-2 cursor-pointer">
+          <label htmlFor="kill-agent-dont-show-again" className="flex items-center gap-2 cursor-pointer">
             <input
+              id="kill-agent-dont-show-again"
               type="checkbox"
               checked={dontShowAgain}
               onChange={(e) => setDontShowAgain(e.target.checked)}

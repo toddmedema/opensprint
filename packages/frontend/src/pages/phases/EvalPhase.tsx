@@ -1825,10 +1825,11 @@ export function EvalPhase({
             className="card p-5 mb-8"
             data-testid="main-feedback-drop-zone"
           >
-            <label className="block text-sm font-medium text-theme-text mb-2">
+            <label htmlFor="eval-feedback-input" className="block text-sm font-medium text-theme-text mb-2">
               What did you find?
             </label>
             <textarea
+              id="eval-feedback-input"
               ref={feedbackInputRef}
               className="input min-h-[100px] mb-3"
               value={input}

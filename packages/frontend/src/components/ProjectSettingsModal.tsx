@@ -585,10 +585,11 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                 {activeTab === "basics" && (
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-theme-text mb-1">
+                      <label htmlFor="project-name" className="block text-sm font-medium text-theme-text mb-1">
                         Project Name
                       </label>
                       <input
+                        id="project-name"
                         type="text"
                         className="input"
                         value={name}
@@ -598,11 +599,12 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-theme-text mb-1">
+                      <label htmlFor="project-folder" className="block text-sm font-medium text-theme-text mb-1">
                         Project folder
                       </label>
                       <div className="flex gap-2">
                         <input
+                          id="project-folder"
                           type="text"
                           className="input font-mono text-sm flex-1"
                           value={repoPath}
@@ -703,10 +705,11 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                             Simple
                           </span>
                           <div className="flex-1 min-w-[140px]">
-                            <label className="block text-xs font-medium text-theme-muted mb-1">
+                            <label htmlFor="simple-provider-select" className="block text-xs font-medium text-theme-muted mb-1">
                               Provider
                             </label>
                             <select
+                              id="simple-provider-select"
                               className="input w-full"
                               value={simpleComplexityAgent.type}
                               onChange={(e) =>
@@ -727,10 +730,11 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                         </div>
                         {simpleComplexityAgent.type === "lmstudio" && (
                           <div className="flex-1 min-w-[180px]">
-                            <label className="block text-xs font-medium text-theme-muted mb-1">
+                            <label htmlFor="simple-base-url" className="block text-xs font-medium text-theme-muted mb-1">
                               Base URL
                             </label>
                             <input
+                              id="simple-base-url"
                               type="text"
                               className="input w-full font-mono text-sm"
                               placeholder={DEFAULT_LMSTUDIO_BASE_URL}
@@ -746,10 +750,11 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                         )}
                         {simpleComplexityAgent.type !== "custom" ? (
                           <div className="flex-1 min-w-[140px]">
-                            <label className="block text-xs font-medium text-theme-muted mb-1">
+                            <label htmlFor="simple-agent-select" className="block text-xs font-medium text-theme-muted mb-1">
                               Agent
                             </label>
                             <ModelSelect
+                              id="simple-agent-select"
                               provider={simpleComplexityAgent.type}
                               value={simpleComplexityAgent.model}
                               onChange={(id) => updateSimpleComplexityAgent({ model: id })}
@@ -765,10 +770,11 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                           </div>
                         ) : (
                             <div className="flex-1 min-w-[200px]">
-                              <label className="block text-xs font-medium text-theme-muted mb-1">
+                              <label htmlFor="simple-cli-command" className="block text-xs font-medium text-theme-muted mb-1">
                                 CLI command
                               </label>
                               <input
+                                id="simple-cli-command"
                                 type="text"
                                 className="input w-full font-mono text-sm"
                                 placeholder="e.g. my-agent or /usr/local/bin/my-agent --model gpt-4"
@@ -790,10 +796,11 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                             Complex
                           </span>
                           <div className="flex-1 min-w-[140px]">
-                            <label className="block text-xs font-medium text-theme-muted mb-1">
+                            <label htmlFor="complex-provider-select" className="block text-xs font-medium text-theme-muted mb-1">
                               Provider
                             </label>
                             <select
+                              id="complex-provider-select"
                               className="input w-full"
                               value={complexComplexityAgent.type}
                               onChange={(e) =>
@@ -812,10 +819,11 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                         </div>
                         {complexComplexityAgent.type === "lmstudio" && (
                           <div className="flex-1 min-w-[180px]">
-                            <label className="block text-xs font-medium text-theme-muted mb-1">
+                            <label htmlFor="complex-base-url" className="block text-xs font-medium text-theme-muted mb-1">
                               Base URL
                             </label>
                             <input
+                              id="complex-base-url"
                               type="text"
                               className="input w-full font-mono text-sm"
                               placeholder={DEFAULT_LMSTUDIO_BASE_URL}
@@ -831,10 +839,11 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                         )}
                         {complexComplexityAgent.type !== "custom" ? (
                           <div className="flex-1 min-w-[140px]">
-                            <label className="block text-xs font-medium text-theme-muted mb-1">
+                            <label htmlFor="complex-agent-select" className="block text-xs font-medium text-theme-muted mb-1">
                               Agent
                             </label>
                             <ModelSelect
+                              id="complex-agent-select"
                               provider={complexComplexityAgent.type}
                               value={complexComplexityAgent.model}
                               onChange={(id) => updateComplexComplexityAgent({ model: id })}
@@ -850,10 +859,11 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                           </div>
                         ) : (
                           <div className="flex-1 min-w-[200px]">
-                            <label className="block text-xs font-medium text-theme-muted mb-1">
+                            <label htmlFor="complex-cli-command" className="block text-xs font-medium text-theme-muted mb-1">
                               CLI command
                             </label>
                             <input
+                              id="complex-cli-command"
                               type="text"
                               className="input w-full font-mono text-sm"
                               placeholder="e.g. my-agent or /usr/local/bin/my-agent --model gpt-4"
@@ -918,10 +928,10 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                           <option value="on-failure-only">On Failure Only</option>
                         </select>
                       </div>
-                      <div>
-                        <label className="block text-xs font-medium text-theme-muted mb-2">
+                      <div role="group" aria-labelledby="review-agents-heading">
+                        <span id="review-agents-heading" className="block text-xs font-medium text-theme-muted mb-2">
                           Review agents
-                        </label>
+                        </span>
                         <p className="text-xs text-theme-muted mb-2">
                           Leave empty for one general review. Select one or more angles for
                           parallel angle-specific reviews.
@@ -947,6 +957,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                             return (
                               <label
                                 key={opt.value}
+                                htmlFor={`review-agent-${opt.value}`}
                                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-colors text-sm ${
                                   disabled
                                     ? "cursor-not-allowed opacity-90"
@@ -958,6 +969,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                                 }`}
                               >
                                 <input
+                                  id={`review-agent-${opt.value}`}
                                   type="checkbox"
                                   checked={selected}
                                   disabled={disabled}
@@ -1033,10 +1045,11 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                         </p>
                       ))}
                       <div className="flex flex-wrap items-center gap-3">
-                        <label className="block text-xs font-medium text-theme-muted">
+                        <label htmlFor="self-improvement-frequency-select" className="block text-xs font-medium text-theme-muted">
                           Self-improvement frequency
                         </label>
                         <select
+                          id="self-improvement-frequency-select"
                           data-testid="self-improvement-frequency-select"
                           className="input w-48"
                           value={settings?.selfImprovementFrequency ?? "never"}
@@ -1127,7 +1140,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                     ) : null}
                     <div>
                       <div className="mb-4">
-                        <label className="block text-sm font-medium text-theme-text mb-1">
+                        <label htmlFor="worktree-base-branch-input" className="block text-sm font-medium text-theme-text mb-1">
                           Base branch
                         </label>
                         <p className="text-xs text-theme-muted mb-2">
@@ -1135,6 +1148,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                           alphanumeric, slash, underscore, hyphen, or dot.
                         </p>
                         <input
+                          id="worktree-base-branch-input"
                           type="text"
                           className="input w-full max-w-xs"
                           value={settings?.worktreeBaseBranch ?? "main"}
@@ -1194,13 +1208,14 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                         </p>
                         <div className="space-y-4">
                           <div>
-                            <label className="block text-sm font-medium text-theme-text mb-2">
+                            <label htmlFor="max-concurrent-coders-slider" className="block text-sm font-medium text-theme-text mb-2">
                               Max Concurrent Coders:{" "}
                               <span className="font-bold">
                                 {settings?.maxConcurrentCoders ?? 1}
                               </span>
                             </label>
                             <input
+                              id="max-concurrent-coders-slider"
                               type="range"
                               min={1}
                               max={10}
@@ -1222,7 +1237,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                           </div>
                           {(settings?.maxConcurrentCoders ?? 1) > 1 && (
                             <div>
-                              <label className="block text-sm font-medium text-theme-text mb-1">
+                              <label htmlFor="unknown-scope-strategy-select" className="block text-sm font-medium text-theme-text mb-1">
                                 Unknown Scope Strategy
                               </label>
                               <p className="text-xs text-theme-muted mb-2">
@@ -1232,6 +1247,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                                 unclear?
                               </p>
                               <select
+                                id="unknown-scope-strategy-select"
                                 className="input"
                                 value={settings?.unknownScopeStrategy ?? "optimistic"}
                                 onChange={(e) => {
@@ -1273,8 +1289,9 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                       </p>
                       {getDeploymentTargetsForUi(deployment).map((target) => (
                         <div key={target.name} className="flex items-center justify-between gap-3">
-                          <label className="text-sm text-theme-text shrink-0">{target.name}:</label>
+                          <label htmlFor={`auto-deploy-trigger-${target.name}`} className="text-sm text-theme-text shrink-0">{target.name}:</label>
                           <select
+                            id={`auto-deploy-trigger-${target.name}`}
                             value={target.autoDeployTrigger ?? "none"}
                             onChange={(e) => {
                               const trigger = e.target.value as AutoDeployTrigger;
@@ -1304,11 +1321,12 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                           </select>
                         </div>
                       ))}
-                      <label className="flex items-center justify-between gap-3 cursor-pointer">
+                      <label htmlFor="auto-resolve-feedback-toggle" className="flex items-center justify-between gap-3 cursor-pointer">
                         <span className="text-sm text-theme-text">
                           Auto-resolve feedback when tasks done
                         </span>
                         <input
+                          id="auto-resolve-feedback-toggle"
                           type="checkbox"
                           checked={deployment.autoResolveFeedbackOnTaskCompletion ?? false}
                           onChange={(e) =>
@@ -1326,12 +1344,13 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                       </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-theme-text mb-3">
+                      <label htmlFor="deployment-mode-expo" className="block text-sm font-medium text-theme-text mb-3">
                         Delivery Mode
                       </label>
                       <div className="space-y-3">
-                        <label className="flex items-start gap-3 p-3 rounded-lg border border-theme-border hover:border-theme-info-border cursor-pointer transition-colors">
+                        <label htmlFor="deployment-mode-expo" className="flex items-start gap-3 p-3 rounded-lg border border-theme-border hover:border-theme-info-border cursor-pointer transition-colors" aria-label="Expo.dev - Automatic delivery for React Native and web projects">
                           <input
+                            id="deployment-mode-expo"
                             type="radio"
                             name="deployment"
                             value="expo"
@@ -1351,8 +1370,9 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                             </p>
                           </div>
                         </label>
-                        <label className="flex items-start gap-3 p-3 rounded-lg border border-theme-border hover:border-theme-info-border cursor-pointer transition-colors">
+                        <label htmlFor="deployment-mode-custom" className="flex items-start gap-3 p-3 rounded-lg border border-theme-border hover:border-theme-info-border cursor-pointer transition-colors" aria-label="Custom Pipeline - Command or webhook triggered after Execute completion">
                           <input
+                            id="deployment-mode-custom"
                             type="radio"
                             name="deployment"
                             value="custom"
@@ -1398,8 +1418,9 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                                   }}
                                   onBlur={scheduleSaveOnBlur}
                                 />
-                                <label className="flex items-center gap-1 text-xs">
+                                <label htmlFor={`deployment-target-default-${i}`} className="flex items-center gap-1 text-xs">
                                   <input
+                                    id={`deployment-target-default-${i}`}
                                     type="checkbox"
                                     checked={t.isDefault ?? false}
                                     className="rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
@@ -1778,8 +1799,9 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
 
                 {activeTab === "team" && (
                   <div className="space-y-4" data-testid="team-tab-content">
-                    <label className="flex items-center gap-2 cursor-pointer">
+                    <label htmlFor="enable-human-teammates-checkbox" className="flex items-center gap-2 cursor-pointer">
                       <input
+                        id="enable-human-teammates-checkbox"
                         type="checkbox"
                         checked={enableHumanTeammates}
                         onChange={(e) => setEnableHumanTeammates(e.target.checked)}

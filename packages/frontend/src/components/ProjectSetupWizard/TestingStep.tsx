@@ -16,7 +16,7 @@ export function TestingStep({
   return (
     <div className="space-y-4" data-testid="testing-step">
       <div>
-        <label className="block text-sm font-medium text-theme-text mb-3">Test Framework</label>
+        <label htmlFor="testing-framework-select" className="block text-sm font-medium text-theme-text mb-3">Test Framework</label>
         <p className="text-xs text-theme-muted mb-3">
           Open Sprint uses this to run tests during the Execute phase. We detect from your project
           when possible.
@@ -32,7 +32,7 @@ export function TestingStep({
             </strong>
           </p>
         )}
-        <select className="input w-full" value={value} onChange={(e) => onChange(e.target.value)}>
+        <select id="testing-framework-select" className="input w-full" value={value} onChange={(e) => onChange(e.target.value)}>
           {TEST_FRAMEWORKS.map((f) => (
             <option key={f.id} value={f.id}>
               {f.label}

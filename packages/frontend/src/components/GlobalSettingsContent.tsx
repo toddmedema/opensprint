@@ -681,8 +681,9 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
       </div>
       {typeof window !== "undefined" && window.electron?.isElectron && (
         <div data-testid="desktop-notification-dot-section">
-          <label className="flex items-center gap-2 cursor-pointer">
+          <label htmlFor="show-notification-dot-in-menu-bar" className="flex items-center gap-2 cursor-pointer">
             <input
+              id="show-notification-dot-in-menu-bar"
               type="checkbox"
               checked={showNotificationDotInMenuBar}
               onChange={async (e) => {
@@ -706,8 +707,9 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
           <p className="text-xs text-theme-muted mt-1 ml-6">
             When unchecked, the tray icon will not show a dot when you have pending notifications.
           </p>
-          <label className="flex items-center gap-2 cursor-pointer mt-3">
+          <label htmlFor="show-running-agent-count-in-menu-bar" className="flex items-center gap-2 cursor-pointer mt-3">
             <input
+              id="show-running-agent-count-in-menu-bar"
               type="checkbox"
               checked={showRunningAgentCountInMenuBar}
               onChange={async (e) => {

@@ -20,10 +20,11 @@ export function DeploymentStep({
   return (
     <div className="space-y-4" data-testid="deployment-step">
       <div>
-        <label className="block text-sm font-medium text-theme-text mb-3">Delivery Mode</label>
-        <div className="space-y-3">
-          <label className="flex items-start gap-3 p-3 rounded-lg border border-theme-border hover:border-theme-info-border cursor-pointer transition-colors">
+        <span id="deployment-mode-label" className="block text-sm font-medium text-theme-text mb-3">Delivery Mode</span>
+        <div className="space-y-3" role="group" aria-labelledby="deployment-mode-label">
+          <label htmlFor="deployment-mode-expo" aria-label="Expo.dev - Automatic delivery for React Native and web projects" className="flex items-start gap-3 p-3 rounded-lg border border-theme-border hover:border-theme-info-border cursor-pointer transition-colors">
             <input
+              id="deployment-mode-expo"
               type="radio"
               name="deployment"
               value="expo"
@@ -38,8 +39,9 @@ export function DeploymentStep({
               </p>
             </div>
           </label>
-          <label className="flex items-start gap-3 p-3 rounded-lg border border-theme-border hover:border-theme-info-border cursor-pointer transition-colors">
+          <label htmlFor="deployment-mode-custom" aria-label="Custom Pipeline - Command or webhook triggered after Execute completion" className="flex items-start gap-3 p-3 rounded-lg border border-theme-border hover:border-theme-info-border cursor-pointer transition-colors">
             <input
+              id="deployment-mode-custom"
               type="radio"
               name="deployment"
               value="custom"
@@ -59,10 +61,11 @@ export function DeploymentStep({
       {mode === "custom" && (
         <div className="space-y-3 pt-2 border-t border-theme-border">
           <div>
-            <label className="block text-sm font-medium text-theme-text mb-1">
+            <label htmlFor="deployment-command-input" className="block text-sm font-medium text-theme-text mb-1">
               Delivery command
             </label>
             <input
+              id="deployment-command-input"
               type="text"
               className="input w-full font-mono text-sm"
               placeholder="e.g. ./deploy.sh or vercel deploy --prod"
@@ -75,8 +78,9 @@ export function DeploymentStep({
           </div>
           <div className="text-sm text-theme-muted text-center">— or —</div>
           <div>
-            <label className="block text-sm font-medium text-theme-text mb-1">Webhook URL</label>
+            <label htmlFor="deployment-webhook-input" className="block text-sm font-medium text-theme-text mb-1">Webhook URL</label>
             <input
+              id="deployment-webhook-input"
               type="url"
               className="input w-full font-mono text-sm"
               placeholder="https://api.example.com/deploy"

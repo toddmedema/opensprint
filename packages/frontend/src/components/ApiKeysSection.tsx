@@ -302,7 +302,7 @@ export function ApiKeysSection({
           const entries = getEntriesForProvider(provider);
           return (
             <div key={provider} className="mb-4">
-              <label className="block text-xs font-medium text-theme-muted mb-2">
+              <label htmlFor={`api-key-add-${provider}`} className="block text-xs font-medium text-theme-muted mb-2">
                 {PROVIDER_LABELS[provider]}
               </label>
               <div className="space-y-3">
@@ -497,6 +497,7 @@ export function ApiKeysSection({
                   );
                 })}
                 <button
+                  id={`api-key-add-${provider}`}
                   type="button"
                   onClick={() => addKey(provider)}
                   className="btn-secondary text-sm"

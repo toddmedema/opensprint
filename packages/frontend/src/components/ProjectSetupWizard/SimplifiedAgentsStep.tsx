@@ -162,10 +162,11 @@ export function SimplifiedAgentsStep({
             {needsAnthropic && (
               <div className="flex gap-2 items-end">
                 <div className="flex-1">
-                  <label className="block text-xs font-medium text-theme-muted mb-1">
+                  <label htmlFor="simplified-anthropic-api-key" className="block text-xs font-medium text-theme-muted mb-1">
                     ANTHROPIC_API_KEY (Claude API)
                   </label>
                   <input
+                    id="simplified-anthropic-api-key"
                     type="password"
                     className="input font-mono text-sm"
                     placeholder="sk-ant-..."
@@ -187,10 +188,11 @@ export function SimplifiedAgentsStep({
             {needsCursor && (
               <div className="flex gap-2 items-end">
                 <div className="flex-1">
-                  <label className="block text-xs font-medium text-theme-muted mb-1">
+                  <label htmlFor="simplified-cursor-api-key" className="block text-xs font-medium text-theme-muted mb-1">
                     CURSOR_API_KEY
                   </label>
                   <input
+                    id="simplified-cursor-api-key"
                     type="password"
                     className="input font-mono text-sm"
                     placeholder="key_..."
@@ -212,10 +214,11 @@ export function SimplifiedAgentsStep({
             {needsOpenai && (
               <div className="flex gap-2 items-end">
                 <div className="flex-1">
-                  <label className="block text-xs font-medium text-theme-muted mb-1">
+                  <label htmlFor="simplified-openai-api-key" className="block text-xs font-medium text-theme-muted mb-1">
                     OPENAI_API_KEY
                   </label>
                   <input
+                    id="simplified-openai-api-key"
                     type="password"
                     className="input font-mono text-sm"
                     placeholder="sk-..."
@@ -271,8 +274,9 @@ export function SimplifiedAgentsStep({
           <div className="flex flex-wrap items-end gap-3">
             <span className="w-16 text-sm font-medium text-theme-text shrink-0">Simple</span>
             <div className="flex-1 min-w-[140px]">
-              <label className="block text-sm font-medium text-theme-text mb-1">Provider</label>
+              <label htmlFor="simplified-simple-provider-select" className="block text-sm font-medium text-theme-text mb-1">Provider</label>
               <select
+                id="simplified-simple-provider-select"
                 className="input w-full"
                 value={simpleComplexityAgent.type}
                 onChange={(e) =>
@@ -293,8 +297,9 @@ export function SimplifiedAgentsStep({
             </div>
             {simpleComplexityAgent.type === "lmstudio" && (
               <div className="flex-1 min-w-[180px]">
-                <label className="block text-sm font-medium text-theme-text mb-1">Base URL</label>
+                <label htmlFor="simplified-simple-base-url" className="block text-sm font-medium text-theme-text mb-1">Base URL</label>
                 <input
+                  id="simplified-simple-base-url"
                   type="text"
                   className="input w-full font-mono text-sm"
                   placeholder={DEFAULT_LMSTUDIO_BASE_URL}
@@ -310,8 +315,9 @@ export function SimplifiedAgentsStep({
             )}
             {simpleComplexityAgent.type !== "custom" ? (
               <div className="flex-1 min-w-[140px]">
-                <label className="block text-sm font-medium text-theme-text mb-1">Agent</label>
+                <label htmlFor="simplified-simple-agent-select" className="block text-sm font-medium text-theme-text mb-1">Agent</label>
                 <ModelSelect
+                  id="simplified-simple-agent-select"
                   provider={simpleComplexityAgent.type}
                   value={simpleComplexityAgent.model || null}
                   onChange={(id) =>
@@ -327,10 +333,11 @@ export function SimplifiedAgentsStep({
               </div>
             ) : (
               <div className="flex-1 min-w-[200px]">
-                <label className="block text-sm font-medium text-theme-text mb-1">
+                <label htmlFor="simplified-simple-cli-command" className="block text-sm font-medium text-theme-text mb-1">
                   CLI command
                 </label>
                 <input
+                  id="simplified-simple-cli-command"
                   type="text"
                   className="input w-full font-mono text-sm"
                   placeholder="e.g. my-agent or /usr/local/bin/my-agent --model gpt-4"
@@ -349,8 +356,9 @@ export function SimplifiedAgentsStep({
           <div className="flex flex-wrap items-end gap-3">
             <span className="w-16 text-sm font-medium text-theme-text shrink-0">Complex</span>
             <div className="flex-1 min-w-[140px]">
-              <label className="block text-sm font-medium text-theme-text mb-1">Provider</label>
+              <label htmlFor="simplified-complex-provider-select" className="block text-sm font-medium text-theme-text mb-1">Provider</label>
               <select
+                id="simplified-complex-provider-select"
                 className="input w-full"
                 value={complexComplexityAgent.type}
                 onChange={(e) =>
@@ -371,8 +379,9 @@ export function SimplifiedAgentsStep({
             </div>
             {complexComplexityAgent.type === "lmstudio" && (
               <div className="flex-1 min-w-[180px]">
-                <label className="block text-sm font-medium text-theme-text mb-1">Base URL</label>
+                <label htmlFor="simplified-complex-base-url" className="block text-sm font-medium text-theme-text mb-1">Base URL</label>
                 <input
+                  id="simplified-complex-base-url"
                   type="text"
                   className="input w-full font-mono text-sm"
                   placeholder={DEFAULT_LMSTUDIO_BASE_URL}
@@ -388,8 +397,9 @@ export function SimplifiedAgentsStep({
             )}
             {complexComplexityAgent.type !== "custom" ? (
               <div className="flex-1 min-w-[140px]">
-                <label className="block text-sm font-medium text-theme-text mb-1">Agent</label>
+                <label htmlFor="simplified-complex-agent-select" className="block text-sm font-medium text-theme-text mb-1">Agent</label>
                 <ModelSelect
+                  id="simplified-complex-agent-select"
                   provider={complexComplexityAgent.type}
                   value={complexComplexityAgent.model || null}
                   onChange={(id) =>
@@ -405,10 +415,11 @@ export function SimplifiedAgentsStep({
               </div>
             ) : (
               <div className="flex-1 min-w-[200px]">
-                <label className="block text-sm font-medium text-theme-text mb-1">
+                <label htmlFor="simplified-complex-cli-command" className="block text-sm font-medium text-theme-text mb-1">
                   CLI command
                 </label>
                 <input
+                  id="simplified-complex-cli-command"
                   type="text"
                   className="input w-full font-mono text-sm"
                   placeholder="e.g. my-agent or /usr/local/bin/my-agent --model gpt-4"
