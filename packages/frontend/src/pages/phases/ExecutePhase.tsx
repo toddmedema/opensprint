@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "../../store";
 import {
   setSelectedTaskId,
@@ -39,6 +40,9 @@ import { ExecuteFilterToolbar } from "../../components/execute/ExecuteFilterTool
 import { TaskDetailSidebar } from "../../components/execute/TaskDetailSidebar";
 import { TimelineList } from "../../components/execute/TimelineList";
 import { clearPhaseUnread } from "../../store/slices/unreadPhaseSlice";
+import { PhaseEmptyState, PhaseEmptyStateLogo } from "../../components/PhaseEmptyState";
+import { getProjectPhasePath } from "../../lib/phaseRouting";
+import { EMPTY_STATE_COPY } from "../../lib/emptyStateCopy";
 
 interface ExecutePhaseProps {
   projectId: string;
@@ -56,6 +60,7 @@ export function ExecutePhase({
   onClose: onCloseProp,
 }: ExecutePhaseProps) {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   useEffect(() => {
     dispatch(clearPhaseUnread({ projectId, phase: "execute" }));
   }, [dispatch, projectId]);
@@ -346,9 +351,16 @@ export function ExecutePhase({
           data-testid="execute-main-scroll"
         >
           {showTasksEmptyState ? (
-            <div className="text-center py-10 text-theme-muted">
-              No tasks yet. Ship a Plan to start generating tasks.
-            </div>
+            <PhaseEmptyState
+              title={EMPTY_STATE_COPY.execute.title}
+              description={EMPTY_STATE_COPY.execute.description}
+              illustration={<PhaseEmptyStateLogo />}
+              primaryAction={{
+                label: EMPTY_STATE_COPY.execute.primaryActionLabel,
+                onClick: () => navigate(getProjectPhasePath(projectId, "plan")),
+                "data-testid": "empty-state-go-to-plan",
+              }}
+            />
           ) : viewMode === "kanban" ? (
             useReadyInLineSections || usePlanningSection ? (
               readySwimlanes.length > 0 ||

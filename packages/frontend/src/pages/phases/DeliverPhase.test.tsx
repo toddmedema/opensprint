@@ -127,9 +127,7 @@ describe("DeliverPhase", () => {
   it("shows empty state when no deliveries", async () => {
     const store = createStore();
     renderWithRouter(store);
-    expect(
-      await screen.findByText(/No deliveries yet\. Configure targets and deploy\./)
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/No deliveries yet/)).toBeInTheDocument();
   });
 
   it("renders live log panel", () => {

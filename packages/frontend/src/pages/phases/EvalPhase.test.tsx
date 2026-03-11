@@ -411,7 +411,7 @@ describe("EvalPhase feedback loading state", () => {
       { store }
     );
     await waitFor(() => {
-      expect(screen.getByText(/No feedback submitted yet/)).toBeInTheDocument();
+      expect(screen.getByText(/No feedback yet/)).toBeInTheDocument();
     });
     expect(screen.queryByTestId("feedback-loading-spinner")).not.toBeInTheDocument();
   });

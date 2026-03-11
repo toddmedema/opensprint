@@ -40,6 +40,7 @@ import { AddPlanModal } from "../../components/plan/AddPlanModal";
 import { PlanFilterToolbar, type PlanViewMode } from "../../components/plan/PlanFilterToolbar";
 import { AuditorRunsSection } from "../../components/plan/AuditorRunsSection";
 import { EpicCard } from "../../components/EpicCard";
+import { PhaseEmptyState, PhaseEmptyStateLogo } from "../../components/PhaseEmptyState";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
 import { ChatInput } from "../../components/ChatInput";
 import { OpenQuestionsBlock } from "../../components/OpenQuestionsBlock";
@@ -50,6 +51,7 @@ import { useAutoScroll } from "../../hooks/useAutoScroll";
 import { VirtualizedAgentOutput } from "../../components/execute/VirtualizedAgentOutput";
 import { CollapsibleSection } from "../../components/execute/CollapsibleSection";
 import { formatUptime } from "../../lib/formatting";
+import { EMPTY_STATE_COPY } from "../../lib/emptyStateCopy";
 import { AGENT_ROLE_LABELS } from "@opensprint/shared";
 import { useScrollToQuestion } from "../../hooks/useScrollToQuestion";
 import { useOpenQuestionNotifications } from "../../hooks/useOpenQuestionNotifications";
@@ -968,12 +970,16 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
               )}
 
               {showPlansEmptyState ? (
-                <div className="text-center py-10">
-                  <p className="text-theme-muted">
-                    No plans yet. Click &ldquo;New Plan&rdquo; in the topbar to generate a plan, or
-                    use &ldquo;Plan it&rdquo; from the Sketch phase.
-                  </p>
-                </div>
+                <PhaseEmptyState
+                  title={EMPTY_STATE_COPY.plan.title}
+                  description={EMPTY_STATE_COPY.plan.description}
+                  illustration={<PhaseEmptyStateLogo />}
+                  primaryAction={{
+                    label: EMPTY_STATE_COPY.plan.primaryActionLabel,
+                    onClick: () => setAddPlanModalOpen(true),
+                    "data-testid": "empty-state-new-plan",
+                  }}
+                />
               ) : filteredAndSortedPlans.length === 0 && optimisticPlans.length === 0 ? (
                 <div className="text-center py-10">
                   <p className="text-theme-muted">

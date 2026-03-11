@@ -34,8 +34,10 @@ import { useImageAttachment } from "../../hooks/useImageAttachment";
 import { useScrollToQuestion } from "../../hooks/useScrollToQuestion";
 import { useViewportWidth } from "../../hooks/useViewportWidth";
 import { MOBILE_BREAKPOINT } from "../../lib/constants";
+import { EMPTY_STATE_COPY } from "../../lib/emptyStateCopy";
 import { useOpenQuestionNotifications } from "../../hooks/useOpenQuestionNotifications";
 import { SketchLogoLoading } from "../../components/PhaseLoadingFallback";
+import { PhaseEmptyStateLogo } from "../../components/PhaseEmptyState";
 import { HilApprovalBlock } from "../../components/HilApprovalBlock";
 import { OpenQuestionsBlock } from "../../components/OpenQuestionsBlock";
 import { ImageAttachmentThumbnails, ImageAttachmentButton } from "../../components/ImageAttachment";
@@ -651,24 +653,19 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
           </div>
         )}
 
-        {/* Branding / Open Sprint logo with gentle slow pulse */}
+        {/* Branding / Open Sprint logo with gentle slow pulse — aligned with PhaseEmptyState pattern */}
         <div className="mb-8 text-center">
           <div
             className="w-10 h-10 mx-auto mb-4 flex items-center justify-center animate-logo-pulse-slow"
             aria-hidden
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" className="w-10 h-10">
-              <polygon points="4,10 36,40 4,70" fill="#c7d2fe" />
-              <polygon points="22,10 54,40 22,70" fill="#818cf8" />
-              <polygon points="40,10 72,40 40,70" fill="#4f46e5" />
-            </svg>
+            <PhaseEmptyStateLogo className="w-10 h-10" />
           </div>
           <h1 className="text-3xl font-bold text-theme-text tracking-tight">
-            What do you want to build?
+            {EMPTY_STATE_COPY.sketch.title}
           </h1>
           <p className="text-theme-muted mt-2 max-w-md mx-auto">
-            Describe your app idea and Open Sprint will generate a comprehensive product requirements
-            document for you.
+            {EMPTY_STATE_COPY.sketch.description}
           </p>
         </div>
 
@@ -701,8 +698,8 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
                 onClick={handleInitialSubmit}
                 disabled={sending || initialInput.trim().length < 10}
                 className="min-h-[44px] min-w-[44px] px-4 rounded-full bg-brand-600 text-white flex items-center justify-center gap-2 hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-md text-sm font-medium"
-                title="Sketch it"
-                aria-label="Sketch it"
+                title={EMPTY_STATE_COPY.sketch.primaryActionLabel}
+                aria-label={EMPTY_STATE_COPY.sketch.primaryActionLabel}
                 data-testid="sketch-it-button"
               >
                 {sending ? (
@@ -712,10 +709,10 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
                       data-testid="sketch-it-spinner"
                       aria-hidden
                     />
-                    <span>Sketch it</span>
+                    <span>{EMPTY_STATE_COPY.sketch.primaryActionLabel}</span>
                   </>
                 ) : (
-                  <span>Sketch it</span>
+                  <span>{EMPTY_STATE_COPY.sketch.primaryActionLabel}</span>
                 )}
               </button>
             </div>

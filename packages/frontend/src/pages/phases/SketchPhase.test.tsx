@@ -7,6 +7,7 @@ import { Provider } from "react-redux";
 import { MemoryRouter } from "react-router-dom";
 import { configureStore } from "@reduxjs/toolkit";
 import { SketchPhase } from "./SketchPhase";
+import { EMPTY_STATE_COPY } from "../../lib/emptyStateCopy";
 import { queryKeys } from "../../api/queryKeys";
 import sketchReducer from "../../store/slices/sketchSlice";
 import planReducer from "../../store/slices/planSlice";
@@ -303,8 +304,15 @@ describe("SketchPhase with sketchSlice", () => {
     it("renders central prompt when prdContent is empty", () => {
       renderSketchPhase();
       expect(screen.getByText("What do you want to build?")).toBeInTheDocument();
-      expect(screen.getByText(/Describe your app idea and Open Sprint will generate/)).toBeInTheDocument();
+      expect(screen.getByText("Describe your app idea and Open Sprint will generate a PRD.")).toBeInTheDocument();
       expect(screen.getByRole("textbox")).toBeInTheDocument();
+    });
+
+    it("uses EMPTY_STATE_COPY for empty state title, description, and primary action", () => {
+      renderSketchPhase();
+      expect(screen.getByText(EMPTY_STATE_COPY.sketch.title)).toBeInTheDocument();
+      expect(screen.getByText(EMPTY_STATE_COPY.sketch.description)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: EMPTY_STATE_COPY.sketch.primaryActionLabel })).toBeInTheDocument();
     });
 
     it("renders file upload button in empty state", () => {

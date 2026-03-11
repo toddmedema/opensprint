@@ -41,6 +41,7 @@ import { api } from "../../api/client";
 import { CONTENT_CONTAINER_CLASS, MOBILE_BREAKPOINT } from "../../lib/constants";
 import { shouldRightAlignDropdown } from "../../lib/dropdownViewport";
 import { getProjectPhasePath } from "../../lib/phaseRouting";
+import { EMPTY_STATE_COPY } from "../../lib/emptyStateCopy";
 import { formatPlanIdAsTitle } from "../../lib/formatting";
 import { parsePlanContent, getPlanOverview } from "../../lib/planContentUtils";
 import { HilApprovalBlock } from "../../components/HilApprovalBlock";
@@ -49,6 +50,7 @@ import { useViewportWidth } from "../../hooks/useViewportWidth";
 import { CloseButton } from "../../components/CloseButton";
 import { ChatInput } from "../../components/ChatInput";
 import { getPlanChatMessageDisplay } from "./PlanPhase";
+import { PhaseEmptyState, PhaseEmptyStateLogo } from "../../components/PhaseEmptyState";
 
 /** Reply icon (message turn / corner up-right) */
 function ReplyIcon({ className }: { className?: string }) {
@@ -2015,9 +2017,19 @@ export function EvalPhase({
           </div>
 
           {showFeedbackEmptyState && plans.length === 0 ? (
-            <div className="text-center py-10 text-theme-muted text-sm">
-              No feedback submitted yet. Test your app and report findings above.
-            </div>
+            <PhaseEmptyState
+              title={EMPTY_STATE_COPY.eval.title}
+              description={EMPTY_STATE_COPY.eval.description}
+              illustration={<PhaseEmptyStateLogo />}
+              primaryAction={{
+                label: EMPTY_STATE_COPY.eval.primaryActionLabel,
+                onClick: () => {
+                  feedbackInputRef.current?.scrollIntoView({ behavior: "smooth" });
+                  feedbackInputRef.current?.focus();
+                },
+                "data-testid": "empty-state-report-finding",
+              }}
+            />
           ) : filteredUnifiedList.length === 0 ? (
             <div className="text-center py-10 text-theme-muted text-sm">
               {evalSearchQuery.trim() !== ""

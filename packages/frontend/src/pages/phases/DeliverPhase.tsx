@@ -20,6 +20,8 @@ import { api } from "../../api/client";
 import { useViewportWidth } from "../../hooks/useViewportWidth";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
 import { CloseButton } from "../../components/CloseButton";
+import { PhaseEmptyState, PhaseEmptyStateLogo } from "../../components/PhaseEmptyState";
+import { EMPTY_STATE_COPY } from "../../lib/emptyStateCopy";
 import { createPortal } from "react-dom";
 
 /** Normalize target for display (staging → Staging, production → Production, custom as-is) */
@@ -231,6 +233,19 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
   };
 
   const isDeploying = deliverLoading || expoDeployLoading || !!activeDeployId;
+
+  const deliverEmptyStateProps = {
+    title: EMPTY_STATE_COPY.deliver.title,
+    description: EMPTY_STATE_COPY.deliver.description,
+    illustration: <PhaseEmptyStateLogo />,
+    primaryAction: onOpenSettings
+      ? {
+          label: EMPTY_STATE_COPY.deliver.primaryActionLabel,
+          onClick: onOpenSettings,
+          "data-testid": "empty-state-configure-targets",
+        }
+      : undefined,
+  };
 
   return (
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
@@ -453,9 +468,7 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
                 {historyLoading ? (
                   <div className="p-4 text-center text-sm text-theme-muted">Loading…</div>
                 ) : history.length === 0 ? (
-                  <div className="p-4 text-center text-sm text-theme-muted">
-                    No deliveries yet. Configure targets and deploy.
-                  </div>
+                  <PhaseEmptyState {...deliverEmptyStateProps} />
                 ) : filteredHistory.length === 0 ? (
                   <div className="p-4 text-center text-sm text-theme-muted">
                     No deployments match this filter.
@@ -598,9 +611,7 @@ export function DeliverPhase({ projectId, onOpenSettings, onOpenGlobalSettings }
                   {historyLoading ? (
                     <div className="p-4 text-center text-sm text-theme-muted">Loading…</div>
                   ) : history.length === 0 ? (
-                    <div className="p-4 text-center text-sm text-theme-muted">
-                      No deliveries yet. Configure targets and deploy.
-                    </div>
+                    <PhaseEmptyState {...deliverEmptyStateProps} />
                   ) : filteredHistory.length === 0 ? (
                     <div className="p-4 text-center text-sm text-theme-muted">
                       No deployments match this filter.
