@@ -34,6 +34,7 @@ import type {
   Notification,
   DeploymentRecord,
   DeploymentConfig,
+  ExpoReadinessResponse,
   HelpChatRequest,
   HelpChatResponse,
   HelpChatHistory,
@@ -472,6 +473,8 @@ export const api = {
 
   // ─── Deliver (phase API for deployment records) ───
   deliver: {
+    expoReadiness: (projectId: string) =>
+      request<ExpoReadinessResponse>(`/projects/${projectId}/deliver/expo-readiness`),
     deploy: (projectId: string, target?: string) =>
       request<{ deployId: string }>(`/projects/${projectId}/deliver`, {
         method: "POST",

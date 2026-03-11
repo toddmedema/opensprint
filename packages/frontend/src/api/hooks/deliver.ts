@@ -3,6 +3,20 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../client";
 import { queryKeys } from "../queryKeys";
 
+export function useExpoReadiness(
+  projectId: string | undefined,
+  options?: { deploymentMode?: "expo" | "custom"; enabled?: boolean }
+) {
+  return useQuery({
+    queryKey: queryKeys.deliver.expoReadiness(projectId ?? ""),
+    queryFn: () => api.deliver.expoReadiness(projectId!),
+    enabled:
+      Boolean(projectId) &&
+      options?.deploymentMode === "expo" &&
+      options?.enabled !== false,
+  });
+}
+
 export function useDeliverStatus(
   projectId: string | undefined,
   options?: { enabled?: boolean; refetchInterval?: number }

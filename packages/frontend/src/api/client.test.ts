@@ -116,6 +116,51 @@ describe("api client", () => {
     });
   });
 
+  describe("deliver", () => {
+    it("expoReadiness calls GET /projects/:projectId/deliver/expo-readiness and returns readiness", async () => {
+      const readiness = {
+        expoInstalled: true,
+        expoConfigured: true,
+        authOk: true,
+        easProjectLinked: true,
+        missing: [] as string[],
+      };
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ data: readiness }),
+      } as Response);
+
+      const result = await api.deliver.expoReadiness("proj-1");
+      expect(result).toEqual(readiness);
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/projects/proj-1/deliver/expo-readiness"),
+        expect.any(Object)
+      );
+    });
+
+    it("expoReadiness returns missing and prompt when auth not ok", async () => {
+      const readiness = {
+        expoInstalled: true,
+        expoConfigured: true,
+        authOk: false,
+        easProjectLinked: false,
+        missing: ["auth", "easProjectLinked"],
+        prompt: "Add your Expo token in Settings.",
+      };
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ data: readiness }),
+      } as Response);
+
+      const result = await api.deliver.expoReadiness("proj-1");
+      expect(result.authOk).toBe(false);
+      expect(result.missing).toEqual(["auth", "easProjectLinked"]);
+      expect(result.prompt).toBe("Add your Expo token in Settings.");
+    });
+  });
+
   describe("projects", () => {
     it("get calls correct endpoint", async () => {
       vi.mocked(fetch).mockResolvedValue({
