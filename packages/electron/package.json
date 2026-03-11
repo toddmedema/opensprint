@@ -76,7 +76,7 @@
     "nsis": {
       "oneClick": false,
       "include": "build/uninstaller.nsh",
-      "deleteAppDataOnUninstall": true
+      "deleteAppDataOnUninstall": false
     },
     "linux": {
       "target": [

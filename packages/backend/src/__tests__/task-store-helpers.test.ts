@@ -102,9 +102,21 @@ describe("task-store-helpers", () => {
       ).not.toThrow();
     });
 
+    it("does not throw when releasing an in-progress task assignment", () => {
+      expect(() =>
+        validateAssigneeChange("in_progress", { status: "blocked", assignee: "" }, "os-1")
+      ).not.toThrow();
+      expect(() =>
+        validateAssigneeChange("in_progress", { status: "closed", assignee: null }, "os-1")
+      ).not.toThrow();
+    });
+
     it("throws when changing assignee while in progress", () => {
       expect(() =>
         validateAssigneeChange("in_progress", { assignee: "other" }, "os-1")
+      ).toThrow(AppError);
+      expect(() =>
+        validateAssigneeChange("in_progress", { status: "blocked", assignee: "other" }, "os-1")
       ).toThrow(AppError);
     });
   });

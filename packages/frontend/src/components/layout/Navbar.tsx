@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
+import type { CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { NavButton } from "./NavButton";
@@ -208,8 +209,13 @@ export function Navbar({
           data-testid="navbar-left-slot"
           className={`flex items-center gap-1 md:gap-2 min-w-0 ${isElectronMac ? "pl-[62px] md:pl-[68px]" : ""}`}
         >
-          {/* On macOS Electron, leave left space for native traffic lights, then show logo + project picker. */}
-          <Link to="/" className="flex items-center gap-2" data-testid="navbar-logo-link">
+          {/* On macOS Electron, leave left space for native traffic lights, then show logo + project picker. On Windows, no-drag so logo and dropdown are clickable. */}
+          <Link
+            to="/"
+            className="flex items-center gap-2"
+            data-testid="navbar-logo-link"
+            style={isElectronWin ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
+          >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 80 80"
@@ -226,6 +232,7 @@ export function Navbar({
             data-testid="navbar-project-select"
             className="relative hidden min-[800px]:flex items-center min-w-0"
             ref={dropdownRef}
+            style={isElectronWin ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
           >
             <button
               ref={projectTriggerRef}
@@ -311,8 +318,11 @@ export function Navbar({
           </div>
         </div>
 
-        {/* Center: Phase Tabs — viewport-centered via grid; horizontally scrollable on mobile */}
-        <div className="flex justify-center min-w-0 overflow-x-auto px-1 md:px-0 items-stretch [&::-webkit-scrollbar]:h-1">
+        {/* Center: Phase Tabs — viewport-centered via grid; horizontally scrollable on mobile. On Windows, no-drag so tabs are clickable. */}
+        <div
+          className="flex justify-center min-w-0 overflow-x-auto px-1 md:px-0 items-stretch [&::-webkit-scrollbar]:h-1"
+          style={isElectronWin ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
+        >
           {project && currentPhase && onPhaseChange ? (
             <div
               className="flex items-stretch gap-1 bg-theme-border-subtle rounded-lg py-0 px-1 shrink-0 self-stretch min-h-0"
@@ -351,8 +361,11 @@ export function Navbar({
           ) : null}
         </div>
 
-        {/* Right: Active agents + Help + Settings (Help/Settings only in web; in Electron they're in app menus). On Windows, window controls at end. */}
-        <div className="flex items-center justify-end [&>*:not(:first-child)]:pl-1 md:[&>*:not(:first-child)]:pl-3">
+        {/* Right: Active agents + Help + Settings (Help/Settings only in web; in Electron they're in app menus). On Windows, no-drag so buttons are clickable; window controls at end. */}
+        <div
+          className="flex items-center justify-end [&>*:not(:first-child)]:pl-1 md:[&>*:not(:first-child)]:pl-3"
+          style={isElectronWin ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
+        >
           {project ? (
             <>
               {showAgentDropdown && <ActiveAgentsList projectId={project.id} />}

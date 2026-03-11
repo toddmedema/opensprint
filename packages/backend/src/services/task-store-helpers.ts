@@ -71,7 +71,11 @@ export function validateAssigneeChange(
     options.status === "in_progress" && options.assignee !== undefined;
   if (options.claim || claimLikeTransition || options.assignee === undefined) return;
   const reopening = options.status === "open";
-  if (currentStatus === "in_progress" && !reopening) {
+  const assigneeCleared = options.assignee == null || options.assignee.trim() === "";
+  const transitioningOutOfInProgress =
+    options.status !== undefined && options.status !== "in_progress";
+  const releasingAssignment = transitioningOutOfInProgress && assigneeCleared;
+  if (currentStatus === "in_progress" && !reopening && !releasingAssignment) {
     throw new AppError(
       400,
       ErrorCodes.ASSIGNEE_LOCKED,

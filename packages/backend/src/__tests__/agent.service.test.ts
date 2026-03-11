@@ -369,10 +369,13 @@ describe("AgentService", () => {
           _config: unknown,
           _path: unknown,
           _cwd: unknown,
-          _onOutput: unknown,
+          onOutput: (chunk: string) => void,
           onExit: (code: number | null) => void
         ) => {
-          setImmediate(() => onExit(0));
+          setImmediate(() => {
+            onOutput("Resolved conflict in src/conflict.ts\n");
+            onExit(0);
+          });
           return { kill: vi.fn(), pid: 12345 };
         }
       );
@@ -404,6 +407,16 @@ describe("AgentService", () => {
         cwd: "/tmp/repo",
         timeout: 10_000,
       });
+      const sessionInsert = mockDbClient.execute.mock.calls.find(
+        (call) => typeof call[0] === "string" && call[0].includes("INSERT INTO agent_sessions")
+      );
+      expect(sessionInsert).toBeDefined();
+      const sessionParams = sessionInsert?.[1] as unknown[];
+      expect(sessionParams[0]).toBe("proj-123");
+      expect(sessionParams[2]).toBe(1);
+      expect(sessionParams[3]).toBe("cursor");
+      expect(sessionParams[7]).toBe("success");
+      expect(String(sessionParams[8])).toContain("Resolved conflict in src/conflict.ts");
     });
 
     it("returns false when merger agent exits with non-zero code", async () => {
@@ -432,6 +445,15 @@ describe("AgentService", () => {
       });
 
       expect(result).toBe(false);
+      const sessionInsert = mockDbClient.execute.mock.calls.find(
+        (call) => typeof call[0] === "string" && call[0].includes("INSERT INTO agent_sessions")
+      );
+      expect(sessionInsert).toBeDefined();
+      const sessionParams = sessionInsert?.[1] as unknown[];
+      expect(sessionParams[0]).toBe("proj-123");
+      expect(sessionParams[3]).toBe("claude");
+      expect(sessionParams[7]).toBe("failed");
+      expect(String(sessionParams[8]).length).toBeGreaterThan(0);
     });
 
     it("uses baseBranch in merger prompt when provided", async () => {

@@ -30,6 +30,7 @@ import {
 import { getCombinedInstructions } from "./agent-instructions.service.js";
 import { taskStore } from "./task-store.service.js";
 import { createLogger } from "../utils/logger.js";
+import { LOG_DIFF_TRUNCATE_AT_CHARS, truncateToThreshold } from "../utils/log-diff-truncation.js";
 
 const log = createLogger("agent-service");
 
@@ -188,6 +189,19 @@ type AgentRunStatParams = {
   projectId?: string;
   startedAt: string;
   completedAt: string;
+  outcome: "success" | "failed";
+};
+
+type MergerSessionRecordParams = {
+  runId: string;
+  projectId: string;
+  config: AgentConfig;
+  branchName: string;
+  phase: MergerPhase;
+  taskId: string;
+  startedAt: string;
+  completedAt: string;
+  outputLog: string;
   outcome: "success" | "failed";
 };
 
@@ -460,6 +474,51 @@ export class AgentService {
     }
   }
 
+  private async recordMergerSession(params: MergerSessionRecordParams): Promise<void> {
+    const taskLabel = params.taskId.trim() || "(no task id)";
+    const fallbackOutput =
+      `[Merger ${params.outcome}] phase=${params.phase} task=${taskLabel} branch=${params.branchName}\n`;
+    const outputLog = params.outputLog.trim().length > 0 ? params.outputLog : fallbackOutput;
+    const truncatedOutput = truncateToThreshold(outputLog, LOG_DIFF_TRUNCATE_AT_CHARS);
+    const failureReason =
+      params.outcome === "failed" ? "Merger agent could not resolve conflicts cleanly." : null;
+    const summary =
+      params.outcome === "success"
+        ? `Merger resolved ${params.phase} conflicts for ${taskLabel} on ${params.branchName}.`
+        : `Merger failed to resolve ${params.phase} conflicts for ${taskLabel} on ${params.branchName}.`;
+
+    try {
+      await taskStore.runWrite(async (client) => {
+        await client.execute(
+          `INSERT INTO agent_sessions (project_id, task_id, attempt, agent_type, agent_model, started_at, completed_at, status, output_log, git_branch, git_diff, test_results, failure_reason, summary)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          [
+            params.projectId,
+            params.runId,
+            1,
+            params.config.type,
+            params.config.model ?? "",
+            params.startedAt,
+            params.completedAt,
+            params.outcome,
+            truncatedOutput,
+            params.branchName,
+            null,
+            null,
+            failureReason,
+            summary,
+          ]
+        );
+      });
+    } catch (err) {
+      log.warn("Failed to record merger session log", {
+        projectId: params.projectId,
+        runId: params.runId,
+        err: getErrorMessage(err),
+      });
+    }
+  }
+
   private async buildMergerPrompt(options: RunMergerAgentOptions): Promise<string> {
     const baseBranch = options.baseBranch ?? "main";
     const [agentInstructions, statusShort, diffFilterU, mainLog, branchDiffStat] =
@@ -555,6 +614,9 @@ ${branchDiffStat || "(no output)"}
    * the caller then runs rebase --continue or merge --continue.
    */
   async runMergerAgentAndWait(options: RunMergerAgentOptions): Promise<boolean> {
+    const runId = `merger-${options.projectId}-${options.taskId || "push"}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const startedAt = new Date().toISOString();
+    const outputChunks: string[] = [];
     const promptPath = path.join(
       os.tmpdir(),
       `opensprint-merger-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.md`
@@ -564,11 +626,11 @@ ${branchDiffStat || "(no output)"}
       const exitedCleanly = await new Promise<boolean>((resolve) => {
         this.invokeMergerAgent(promptPath, options.config, {
           cwd: options.cwd,
-          onOutput: () => {},
+          onOutput: (chunk) => outputChunks.push(chunk),
           onExit: (code) => resolve(code === 0),
           projectId: options.projectId,
           tracking: {
-            id: `merger-${options.projectId}-${options.taskId}-${Date.now()}`,
+            id: runId,
             projectId: options.projectId,
             phase: "execute",
             role: "merger",
@@ -577,10 +639,21 @@ ${branchDiffStat || "(no output)"}
           },
         });
       });
-      if (!exitedCleanly) {
-        return false;
-      }
-      return this.verifyMergerResult(options.cwd);
+      const verified = exitedCleanly ? await this.verifyMergerResult(options.cwd) : false;
+      const completedAt = new Date().toISOString();
+      await this.recordMergerSession({
+        runId,
+        projectId: options.projectId,
+        config: options.config,
+        branchName: options.branchName,
+        phase: options.phase,
+        taskId: options.taskId,
+        startedAt,
+        completedAt,
+        outputLog: outputChunks.join(""),
+        outcome: verified ? "success" : "failed",
+      });
+      return verified;
     } finally {
       await fs.unlink(promptPath).catch(() => {});
     }
