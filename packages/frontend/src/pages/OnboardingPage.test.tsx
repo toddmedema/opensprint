@@ -166,6 +166,86 @@ describe("OnboardingPage", () => {
     expect(screen.queryByTestId("onboarding-intended")).not.toBeInTheDocument();
   });
 
+  it("completion with no intended param navigates to /", async () => {
+    const user = userEvent.setup();
+    renderOnboarding(["/onboarding"]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("prereq-row-git")).toBeInTheDocument();
+    });
+    await user.selectOptions(screen.getByTestId("onboarding-provider-select"), "LM Studio (local)");
+    await user.click(screen.getByTestId("onboarding-continue-button"));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith("/");
+    });
+  });
+
+  it("completion with intended=/projects/create-new navigates to Create New flow", async () => {
+    const user = userEvent.setup();
+    renderOnboarding(["/onboarding?intended=/projects/create-new"]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("prereq-row-git")).toBeInTheDocument();
+    });
+    await user.selectOptions(screen.getByTestId("onboarding-provider-select"), "LM Studio (local)");
+    await user.click(screen.getByTestId("onboarding-continue-button"));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith("/projects/create-new");
+    });
+  });
+
+  it("explicit intended=/ is allowed and completion navigates to /", async () => {
+    const user = userEvent.setup();
+    renderOnboarding(["/onboarding?intended=/"]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("prereq-row-git")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("onboarding-intended")).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByTestId("onboarding-provider-select"), "LM Studio (local)");
+    await user.click(screen.getByTestId("onboarding-continue-button"));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith("/");
+    });
+  });
+
+  it("invalid intended param is sanitized and completion navigates to /", async () => {
+    const user = userEvent.setup();
+    renderOnboarding(["/onboarding?intended=/settings"]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("prereq-row-git")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("onboarding-intended")).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByTestId("onboarding-provider-select"), "LM Studio (local)");
+    await user.click(screen.getByTestId("onboarding-continue-button"));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith("/");
+    });
+  });
+
+  it("intended /projects/:id navigates to that path on completion", async () => {
+    const user = userEvent.setup();
+    renderOnboarding(["/onboarding?intended=/projects/abc123/settings"]);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("prereq-row-git")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("onboarding-intended")).toHaveTextContent(
+      "Intended destination: /projects/abc123/settings"
+    );
+    await user.selectOptions(screen.getByTestId("onboarding-provider-select"), "LM Studio (local)");
+    await user.click(screen.getByTestId("onboarding-continue-button"));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith("/projects/abc123/settings");
+    });
+  });
+
   it("selecting provider toggles key visibility: cloud shows key input, LM Studio and Custom show no-key message", async () => {
     const user = userEvent.setup();
     renderOnboarding();

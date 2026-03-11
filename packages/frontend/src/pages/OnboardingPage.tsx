@@ -12,6 +12,23 @@ type PrerequisitesState = { missing: string[]; platform: string } | null;
 
 const NO_KEY_MESSAGE = "No API key needed — you're good to go.";
 
+/**
+ * Sanitize intended redirect path to prevent open redirect.
+ * Allowed: /, /projects/create-new, /projects/add-existing, /projects/<id>, /projects/<id>/...
+ */
+function sanitizeIntended(path: string | null | undefined): string {
+  const p = typeof path === "string" ? path.trim() : "";
+  if (p === "" || !p.startsWith("/")) return "/";
+  if (p === "/") return "/";
+  if (p === "/projects/create-new" || p === "/projects/add-existing") return p;
+  if (p.startsWith("/projects/")) {
+    const after = p.slice("/projects/".length);
+    const firstSegment = after.split("/")[0];
+    if (firstSegment.length > 0) return p;
+  }
+  return "/";
+}
+
 function EyeIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -57,7 +74,8 @@ function EyeOffIcon({ className }: { className?: string }) {
 export function OnboardingPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const intended = searchParams.get("intended") ?? undefined;
+  const intendedRaw = searchParams.get("intended") ?? undefined;
+  const intended = sanitizeIntended(intendedRaw);
   const [prerequisites, setPrerequisites] = useState<PrerequisitesState>(null);
   const [provider, setProvider] = useState<AgentProviderValue>("claude");
   const [keyValue, setKeyValue] = useState("");
@@ -80,13 +98,13 @@ export function OnboardingPage() {
     setSaving(true);
     try {
       if (provider === "lmstudio") {
-        navigate(intended ?? "/");
+        navigate(intended);
         setSaving(false);
         return;
       }
       if (provider === "custom") {
         await api.env.setGlobalSettings({ useCustomCli: true });
-        navigate(intended ?? "/");
+        navigate(intended);
         setSaving(false);
         return;
       }
@@ -119,7 +137,7 @@ export function OnboardingPage() {
               ? "OPENAI_API_KEY"
               : "GOOGLE_API_KEY";
       await api.env.saveKey(envKey, value);
-      navigate(intended ?? "/");
+      navigate(intended);
     } catch (err) {
       const message = isConnectionError(err)
         ? "Unable to connect. Please check your network and try again."
@@ -320,7 +338,7 @@ export function OnboardingPage() {
             </div>
           </section>
 
-          {intended !== undefined && (
+          {intended !== "/" && (
             <p className="text-theme-muted text-xs" data-testid="onboarding-intended">
               Intended destination: {intended}
             </p>
