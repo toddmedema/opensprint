@@ -182,7 +182,32 @@ describe("ChatService - Plan phase agent registry", () => {
 
   afterEach(async () => {
     process.env.HOME = originalHome;
-    await fs.rm(tempDir, { recursive: true, force: true });
+    // Recursive removal so .git/objects and other nested dirs are removed reliably (avoids ENOTEMPTY in CI).
+    // Remove repo path (contains .git) first, then temp dir; use async fs.rm with retries for CI flakiness.
+    const rmRecursive = (dir: string) => fs.rm(dir, { recursive: true, force: true });
+    const removeWithRetry = async (dir: string) => {
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          await rmRecursive(dir);
+          return;
+        } catch (err: unknown) {
+          const code = err && typeof err === "object" && "code" in err ? (err as NodeJS.ErrnoException).code : undefined;
+          if (code === "ENOTEMPTY" && attempt < 3) {
+            await new Promise((r) => setTimeout(r, 50 * attempt));
+            continue;
+          }
+          throw err;
+        }
+      }
+    };
+    try {
+      if (repoPath) await removeWithRetry(repoPath);
+      if (tempDir) await removeWithRetry(tempDir);
+    } catch (err: unknown) {
+      const code = err && typeof err === "object" && "code" in err ? (err as NodeJS.ErrnoException).code : undefined;
+      if (code === "ENOENT") return;
+      throw err;
+    }
   });
 
   describe("syncPrdFromPlanShip", () => {
