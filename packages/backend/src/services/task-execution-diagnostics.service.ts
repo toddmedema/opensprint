@@ -32,6 +32,10 @@ function asStringArray(value: unknown): string[] {
     : [];
 }
 
+function asBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
 function extractMergeStageFromTask(task: StoredTask): string | null {
   const labels = Array.isArray(task.labels) ? task.labels : [];
   const label = labels.find((item) => item.startsWith("merge_stage:"));
@@ -50,6 +54,31 @@ function extractConflictFilesFromTask(task: StoredTask): string[] {
   } catch {
     return [];
   }
+}
+
+function buildQualityGateMergeSummary(data: JsonRecord): string | null {
+  const command = asString(data.qualityGateCommand);
+  const firstErrorLine = asString(data.qualityGateFirstErrorLine);
+  const autoRepairAttempted = asBoolean(data.qualityGateAutoRepairAttempted) === true;
+  const autoRepairSucceeded = asBoolean(data.qualityGateAutoRepairSucceeded) === true;
+  const autoRepairCommands = asStringArray(data.qualityGateAutoRepairCommands);
+  const category = asString(data.qualityGateCategory);
+  if (!command && !firstErrorLine && !category) return null;
+
+  const summaryParts: string[] = [];
+  summaryParts.push("Quality gate failed");
+  if (command) summaryParts.push(`cmd: ${command}`);
+  if (firstErrorLine) summaryParts.push(`error: ${compactExecutionText(firstErrorLine, 220)}`);
+  if (autoRepairAttempted) {
+    const commands = autoRepairCommands.length > 0 ? autoRepairCommands.join(" -> ") : "auto-repair";
+    const status = autoRepairSucceeded ? "succeeded" : "failed";
+    summaryParts.push(`repair: ${commands} (${status})`);
+  }
+  if (category === "environment_setup") {
+    summaryParts.push("category: environment_setup");
+  }
+
+  return compactExecutionText(summaryParts.join(" | "), 500);
 }
 
 function labelForPhase(phase: TaskExecutionPhase): string {
@@ -278,7 +307,10 @@ function summarizeEvent(event: OrchestratorEvent): TaskExecutionEventItem | null
     const outcome: TaskExecutionOutcome = resolvedBy === "blocked" ? "blocked" : "requeued";
     const mergeStage = asString(data.stage);
     const reason = asString(data.reason);
+    const qualityGateSummary =
+      mergeStage === "quality_gate" ? buildQualityGateMergeSummary(data) : null;
     const summary =
+      qualityGateSummary ??
       asString(data.summary) ??
       compactExecutionText(
         `Merge failed${mergeStage ? ` during ${mergeStage}` : ""}${reason ? `: ${reason}` : ""}`,

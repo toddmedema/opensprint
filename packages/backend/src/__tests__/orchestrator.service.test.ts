@@ -46,6 +46,7 @@ const {
   mockCreateTaskWorktree,
   mockCreateOrCheckoutBranch,
   mockEnsureRepoNodeModules,
+  mockEnsureDependenciesHealthy,
   mockSyncMainWithOrigin,
   mockRemoveTaskWorktree,
   mockDeleteBranch,
@@ -115,6 +116,7 @@ const {
   mockCreateTaskWorktree: vi.fn(),
   mockCreateOrCheckoutBranch: vi.fn(),
   mockEnsureRepoNodeModules: vi.fn(),
+  mockEnsureDependenciesHealthy: vi.fn(),
   mockSyncMainWithOrigin: vi.fn(),
   mockRemoveTaskWorktree: vi.fn(),
   mockDeleteBranch: vi.fn(),
@@ -245,6 +247,7 @@ vi.mock("../services/branch-manager.js", () => {
       createTaskWorktree: mockCreateTaskWorktree,
       createOrCheckoutBranch: mockCreateOrCheckoutBranch,
       ensureRepoNodeModules: mockEnsureRepoNodeModules,
+      ensureDependenciesHealthy: mockEnsureDependenciesHealthy,
       syncMainWithOrigin: mockSyncMainWithOrigin,
       removeTaskWorktree: mockRemoveTaskWorktree,
       deleteBranch: mockDeleteBranch,
@@ -512,6 +515,14 @@ describe("OrchestratorService (slot-based model)", () => {
       valid: true,
     });
     mockResolveBaseBranch.mockResolvedValue("main");
+    mockEnsureDependenciesHealthy.mockResolvedValue({
+      healthy: true,
+      checkOutput: "",
+      repairAttempted: false,
+      repairSucceeded: false,
+      repairCommands: [],
+      repairOutput: "",
+    });
     mockTaskStoreGetStatusMap.mockResolvedValue(new Map());
     mockTaskStoreListAll.mockResolvedValue([]);
     mockTaskStoreGetBlockersFromIssue.mockReturnValue([]);
@@ -708,6 +719,34 @@ describe("OrchestratorService (slot-based model)", () => {
       await expect(
         invokePreflight.preflightCheck(repoPath, repoPath, "task-preflight", "main")
       ).rejects.toBe(expected);
+    });
+
+    it("throws dependency setup preflight error when dependency health remains unhealthy", async () => {
+      await fs.mkdir(path.join(repoPath, "node_modules"), { recursive: true });
+      mockEnsureDependenciesHealthy.mockResolvedValueOnce({
+        healthy: false,
+        checkOutput: "Cannot find module 'better-sqlite3'",
+        repairAttempted: true,
+        repairSucceeded: false,
+        repairCommands: ["npm ci", "npm install"],
+        repairOutput: "npm ci failed",
+      });
+      const invokePreflight = orchestrator as unknown as {
+        preflightCheck(
+          repoPath: string,
+          wtPath: string,
+          taskId: string,
+          baseBranch?: string,
+          reviewAngles?: Array<"security" | "performance">
+        ): Promise<void>;
+      };
+
+      await expect(
+        invokePreflight.preflightCheck(repoPath, repoPath, "task-preflight", "main")
+      ).rejects.toMatchObject({
+        name: "RepoPreflightError",
+        code: ErrorCodes.DEPENDENCY_SETUP_FAILED,
+      });
     });
   });
 

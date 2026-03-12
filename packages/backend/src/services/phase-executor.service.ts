@@ -101,6 +101,14 @@ export class PhaseExecutorService {
     };
   }
 
+  private formatRepoPreflightFailure(error: RepoPreflightError): string {
+    const commands =
+      Array.isArray(error.commands) && error.commands.length > 0
+        ? ` Suggested commands: ${error.commands.join(" ; ")}`
+        : "";
+    return `[${error.code}] ${error.message}${commands}`;
+  }
+
   async executeCodingPhase(
     projectId: string,
     repoPath: string,
@@ -322,12 +330,14 @@ export class PhaseExecutorService {
       await this.host.persistCounters(projectId, repoPath);
     } catch (error) {
       log.error(`Coding phase failed for task ${task.id}`, { error });
+      const failureReason =
+        error instanceof RepoPreflightError ? this.formatRepoPreflightFailure(error) : String(error);
       await this.callbacks.handleTaskFailure(
         projectId,
         repoPath,
         task,
         branchName,
-        String(error),
+        failureReason,
         null,
         error instanceof RepoPreflightError ? "repo_preflight" : "agent_crash"
       );
@@ -668,12 +678,14 @@ export class PhaseExecutorService {
       await this.host.persistCounters(projectId, repoPath);
     } catch (error) {
       log.error(`Review phase failed for task ${task.id}`, { error });
+      const failureReason =
+        error instanceof RepoPreflightError ? this.formatRepoPreflightFailure(error) : String(error);
       await this.callbacks.handleTaskFailure(
         projectId,
         repoPath,
         task,
         branchName,
-        String(error),
+        failureReason,
         null,
         error instanceof RepoPreflightError ? "repo_preflight" : "agent_crash"
       );

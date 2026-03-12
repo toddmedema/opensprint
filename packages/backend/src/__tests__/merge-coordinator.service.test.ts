@@ -80,7 +80,15 @@ vi.mock("../services/git-commit-queue.service.js", () => ({
       message: string,
       public readonly stage: "rebase_before_merge" | "merge_to_main" | "quality_gate",
       public readonly conflictedFiles: string[],
-      public readonly resolvedBy: "requeued" | "blocked" = "requeued"
+      public readonly resolvedBy: "requeued" | "blocked" = "requeued",
+      public readonly qualityGateFailure?: {
+        command: string;
+        firstErrorLine: string;
+        category?: "environment_setup" | "quality_gate";
+        autoRepairAttempted?: boolean;
+        autoRepairSucceeded?: boolean;
+        autoRepairCommands?: string[];
+      }
     ) {
       super(message);
       this.name = "MergeJobError";
@@ -513,6 +521,24 @@ describe("MergeCoordinatorService", () => {
       expect.objectContaining({
         status: "open",
         extra: expect.objectContaining({
+          last_execution_summary: expect.objectContaining({
+            summary: expect.stringContaining("cmd: npm run lint"),
+          }),
+          next_retry_context: expect.objectContaining({
+            previousFailure: expect.stringContaining("quality gate failed"),
+            failureType: "coding_failure",
+          }),
+        }),
+      })
+    );
+    expect(mockHost.taskStore.update).toHaveBeenCalledWith(
+      projectId,
+      taskId,
+      expect.objectContaining({
+        extra: expect.objectContaining({
+          last_execution_summary: expect.objectContaining({
+            summary: expect.stringContaining("error: eslint found errors"),
+          }),
           next_retry_context: expect.objectContaining({
             previousFailure: expect.stringContaining("quality gate failed"),
             failureType: "coding_failure",
@@ -540,12 +566,99 @@ describe("MergeCoordinatorService", () => {
         status: "blocked",
         block_reason: "Merge Failure",
         extra: expect.objectContaining({
+          last_execution_summary: expect.objectContaining({
+            summary: expect.stringContaining("cmd: npm run lint"),
+          }),
           next_retry_context: expect.objectContaining({
             previousFailure: expect.stringContaining("quality gate failed"),
             failureType: "coding_failure",
           }),
         }),
       })
+    );
+    expect(mockHost.taskStore.update).toHaveBeenCalledWith(
+      projectId,
+      taskId,
+      expect.objectContaining({
+        extra: expect.objectContaining({
+          last_execution_summary: expect.objectContaining({
+            summary: expect.stringContaining("error: eslint found errors"),
+          }),
+          next_retry_context: expect.objectContaining({
+            previousFailure: expect.stringContaining("quality gate failed"),
+            failureType: "coding_failure",
+          }),
+        }),
+      })
+    );
+  });
+
+  it("requeues once for environment-setup quality-gate failures", async () => {
+    mockHost.runMergeQualityGates = vi.fn().mockResolvedValue({
+      command: "npm run build",
+      reason: "Dependency setup check failed",
+      output: "Cannot find module 'better-sqlite3'",
+      firstErrorLine: "Cannot find module 'better-sqlite3'",
+      category: "environment_setup",
+      autoRepairAttempted: true,
+      autoRepairSucceeded: false,
+      autoRepairCommands: ["npm ci", "npm install"],
+    });
+
+    await coordinator.performMergeAndDone(projectId, repoPath, makeTask(), branchName);
+
+    expect(mockHost.taskStore.update).toHaveBeenCalledWith(
+      projectId,
+      taskId,
+      expect.objectContaining({
+        status: "open",
+        extra: expect.objectContaining({
+          quality_gate_env_requeue_count: 1,
+          last_execution_summary: expect.objectContaining({
+            summary: expect.stringContaining("category: environment_setup"),
+          }),
+        }),
+      })
+    );
+    expect(mockHost.taskStore.comment).toHaveBeenCalledWith(
+      projectId,
+      taskId,
+      expect.stringContaining("due environment setup")
+    );
+  });
+
+  it("blocks on second environment-setup quality-gate failure", async () => {
+    mockHost.taskStore.show = vi
+      .fn()
+      .mockResolvedValue({ ...makeTask(), quality_gate_env_requeue_count: 1 } as never);
+    mockHost.runMergeQualityGates = vi.fn().mockResolvedValue({
+      command: "npm run build",
+      reason: "Dependency setup check failed",
+      output: "Cannot find module 'better-sqlite3'",
+      firstErrorLine: "Cannot find module 'better-sqlite3'",
+      category: "environment_setup",
+      autoRepairAttempted: true,
+      autoRepairSucceeded: false,
+      autoRepairCommands: ["npm ci", "npm install"],
+    });
+
+    await coordinator.performMergeAndDone(projectId, repoPath, makeTask(), branchName);
+
+    expect(mockHost.taskStore.update).toHaveBeenCalledWith(
+      projectId,
+      taskId,
+      expect.objectContaining({
+        status: "blocked",
+        block_reason: "Merge Failure",
+        extra: expect.objectContaining({
+          quality_gate_env_requeue_count: 2,
+        }),
+      })
+    );
+    expect(mockHost.taskStore.comment).toHaveBeenCalledWith(
+      projectId,
+      taskId,
+      expect.stringContaining("Blocked after repeated environment setup quality-gate failures")
     );
   });
 

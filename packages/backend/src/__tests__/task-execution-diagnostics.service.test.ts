@@ -166,6 +166,52 @@ describe("TaskExecutionDiagnosticsService", () => {
     );
   });
 
+  it("prefers actionable quality-gate merge summaries when structured fields exist", async () => {
+    taskStore.show.mockResolvedValue({
+      id: taskId,
+      status: "open",
+      labels: ["attempts:2", "merge_stage:quality_gate"],
+      block_reason: null,
+      last_execution_summary: null,
+    });
+    taskStore.getCumulativeAttemptsFromIssue.mockReturnValue(2);
+    sessionManager.listSessions.mockResolvedValue([]);
+    mockReadForTask.mockResolvedValue([
+      {
+        timestamp: "2026-03-02T12:00:00.000Z",
+        projectId,
+        taskId,
+        event: "merge.failed",
+        data: {
+          attempt: 2,
+          stage: "quality_gate",
+          resolvedBy: "requeued",
+          summary: "Attempt 2 quality-gate failed: Pre-merge quality gates failed",
+          qualityGateCategory: "environment_setup",
+          qualityGateCommand: "npm run build",
+          qualityGateFirstErrorLine: "Cannot find module 'better-sqlite3'",
+          qualityGateAutoRepairAttempted: true,
+          qualityGateAutoRepairSucceeded: false,
+          qualityGateAutoRepairCommands: ["npm ci", "npm install"],
+          nextAction: "Requeued for retry",
+        },
+      },
+    ]);
+
+    const service = new TaskExecutionDiagnosticsService(
+      projectService as never,
+      taskStore as never,
+      sessionManager as never
+    );
+
+    const diagnostics = await service.getDiagnostics(projectId, taskId);
+
+    expect(diagnostics.latestSummary).toContain("cmd: npm run build");
+    expect(diagnostics.latestSummary).toContain("error: Cannot find module");
+    expect(diagnostics.latestSummary).toContain("repair: npm ci -> npm install (failed)");
+    expect(diagnostics.latestSummary).toContain("category: environment_setup");
+  });
+
   it("surfaces running tool-wait diagnostics for active attempts", async () => {
     taskStore.show.mockResolvedValue({
       id: taskId,

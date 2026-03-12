@@ -37,6 +37,8 @@ const log = createLogger("merge-coordinator");
 const _MAX_PUSH_REBASE_RESOLUTION_ROUNDS = 12;
 const NEXT_RETRY_CONTEXT_KEY = "next_retry_context";
 const MERGE_RETRY_CONTEXT_FAILURE_LIMIT = 1200;
+const QUALITY_GATE_ENV_REQUEUE_COUNT_KEY = "quality_gate_env_requeue_count";
+const QUALITY_GATE_ENV_REQUEUE_LIMIT = 1;
 
 /** One-sentence explanation for merge failures shown to users (conflicts with main in same files). */
 const HUMAN_MERGE_FAILURE_MESSAGE =
@@ -59,6 +61,12 @@ export interface MergeQualityGateFailure {
   command: string;
   reason: string;
   output: string;
+  firstErrorLine?: string;
+  category?: "environment_setup" | "quality_gate";
+  autoRepairAttempted?: boolean;
+  autoRepairSucceeded?: boolean;
+  autoRepairCommands?: string[];
+  autoRepairOutput?: string;
 }
 
 export interface MergeSlot {
@@ -279,6 +287,63 @@ export class MergeCoordinatorService {
     };
   }
 
+  private getFirstNonEmptyLine(text: string): string | null {
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (trimmed.length > 0) return trimmed;
+    }
+    return null;
+  }
+
+  private getQualityGateFirstErrorLine(failure: MergeQualityGateFailure): string {
+    const explicit = failure.firstErrorLine?.trim();
+    if (explicit) return explicit;
+    return (
+      this.getFirstNonEmptyLine(failure.output) ??
+      this.getFirstNonEmptyLine(failure.reason) ??
+      "Unknown quality gate failure"
+    );
+  }
+
+  private getQualityGateFailureDetails(mergeErr: Error): MergeJobError["qualityGateFailure"] | null {
+    if (!(mergeErr instanceof MergeJobError) || mergeErr.stage !== "quality_gate") return null;
+    return mergeErr.qualityGateFailure ?? null;
+  }
+
+  private isEnvironmentSetupQualityGateFailure(mergeErr: Error): boolean {
+    return this.getQualityGateFailureDetails(mergeErr)?.category === "environment_setup";
+  }
+
+  private getNumericExtra(issue: StoredTask, key: string): number {
+    const raw = (issue as Record<string, unknown>)[key];
+    return typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
+  }
+
+  private buildQualityGateSummaryDetail(mergeErr: Error): string | null {
+    const qualityGateFailure = this.getQualityGateFailureDetails(mergeErr);
+    if (!qualityGateFailure) return null;
+
+    const command = qualityGateFailure.command?.trim();
+    const firstErrorLine = qualityGateFailure.firstErrorLine?.trim();
+
+    const details: string[] = [];
+    if (command) details.push(`cmd: ${command}`);
+    if (firstErrorLine) details.push(`error: ${compactExecutionText(firstErrorLine, 220)}`);
+    if (qualityGateFailure.autoRepairAttempted) {
+      const commands =
+        qualityGateFailure.autoRepairCommands && qualityGateFailure.autoRepairCommands.length > 0
+          ? qualityGateFailure.autoRepairCommands.join(" -> ")
+          : "auto-repair";
+      const result = qualityGateFailure.autoRepairSucceeded ? "ok" : "failed";
+      details.push(`repair: ${commands} (${result})`);
+    }
+    if (qualityGateFailure.category === "environment_setup") {
+      details.push("category: environment_setup");
+    }
+    if (details.length === 0) return null;
+    return details.join(" | ");
+  }
+
   private async ensureMergeQualityGates(options: MergeQualityGateRunOptions): Promise<void> {
     if (!this.host.runMergeQualityGates) return;
     const failure = await this.host.runMergeQualityGates(options);
@@ -287,10 +352,20 @@ export class MergeCoordinatorService {
     const reason = failure.reason.trim().slice(0, 500) || "Unknown quality gate failure";
     const outputSnippet = failure.output.trim().slice(0, 1200);
     const detail = outputSnippet.length > 0 ? ` | ${outputSnippet}` : "";
+    const firstErrorLine = this.getQualityGateFirstErrorLine(failure).slice(0, 300);
     throw new MergeJobError(
       `Quality gate failed (${failure.command}): ${reason}${detail}`,
       "quality_gate",
-      []
+      [],
+      "requeued",
+      {
+        command: failure.command,
+        firstErrorLine,
+        category: failure.category,
+        autoRepairAttempted: failure.autoRepairAttempted,
+        autoRepairSucceeded: failure.autoRepairSucceeded,
+        autoRepairCommands: failure.autoRepairCommands,
+      }
     );
   }
 
@@ -638,13 +713,32 @@ export class MergeCoordinatorService {
       const scopeConfidence = this.getScopeConfidence(freshIssue);
       const mergeFailureReason = mergeErr.message?.slice(0, 500) ?? "Merge failed";
       const stageLabel = isQualityGateFailure ? "quality-gate" : "merge";
+      const qualityGateFailureDetails = this.getQualityGateFailureDetails(mergeErr);
+      const isEnvironmentSetupQualityGateFailure =
+        isQualityGateFailure && this.isEnvironmentSetupQualityGateFailure(mergeErr);
+      const qualityGateEnvRequeueCount = this.getNumericExtra(
+        freshIssue,
+        QUALITY_GATE_ENV_REQUEUE_COUNT_KEY
+      );
+      const shouldBlockForEnvironmentSetup =
+        isEnvironmentSetupQualityGateFailure &&
+        qualityGateEnvRequeueCount >= QUALITY_GATE_ENV_REQUEUE_LIMIT;
+      const qualityGateSummaryDetail = isQualityGateFailure
+        ? this.buildQualityGateSummaryDetail(mergeErr)
+        : null;
+      const qualityGateSummarySuffix = qualityGateSummaryDetail
+        ? ` (${qualityGateSummaryDetail})`
+        : "";
+      const qualityGateCommentDetail = qualityGateSummaryDetail
+        ? ` Details: ${qualityGateSummaryDetail}.`
+        : "";
       const retryContext = this.buildRetryContextForMergeFailure(
         normalizedStage,
         mergeFailureReason
       );
 
       const maxMergeFailures = BACKOFF_FAILURE_THRESHOLD * 2;
-      if (cumulativeAttempts >= maxMergeFailures) {
+      if (shouldBlockForEnvironmentSetup || cumulativeAttempts >= maxMergeFailures) {
         log.info(`Blocking ${task.id} after ${cumulativeAttempts} ${stageLabel} failures`);
         const blockedSummary = buildTaskLastExecutionSummary({
           attempt: cumulativeAttempts,
@@ -652,7 +746,7 @@ export class MergeCoordinatorService {
           phase: "merge",
           blockReason: "Merge Failure",
           summary: compactExecutionText(
-            `Attempt ${cumulativeAttempts} ${stageLabel} failed: ${humanFailureMessage}`,
+            `Attempt ${cumulativeAttempts} ${stageLabel} failed: ${humanFailureMessage}${qualityGateSummarySuffix}`,
             500
           ),
         });
@@ -663,13 +757,18 @@ export class MergeCoordinatorService {
           extra: {
             last_execution_summary: blockedSummary,
             [NEXT_RETRY_CONTEXT_KEY]: retryContext,
+            [QUALITY_GATE_ENV_REQUEUE_COUNT_KEY]: isEnvironmentSetupQualityGateFailure
+              ? qualityGateEnvRequeueCount + 1
+              : 0,
           },
         });
         await this.host.taskStore.comment(
           projectId,
           task.id,
           isQualityGateFailure
-            ? `Blocked after ${cumulativeAttempts} consecutive quality-gate failures. ${humanFailureMessage}`
+            ? isEnvironmentSetupQualityGateFailure
+              ? `Blocked after repeated environment setup quality-gate failures. ${humanFailureMessage}${qualityGateCommentDetail}`
+              : `Blocked after ${cumulativeAttempts} consecutive quality-gate failures. ${humanFailureMessage}${qualityGateCommentDetail}`
             : `Blocked after ${cumulativeAttempts} consecutive merge failures. ${humanFailureMessage}`
         );
         broadcastToProject(projectId, {
@@ -696,6 +795,15 @@ export class MergeCoordinatorService {
               blockReason: "Merge Failure",
               scopeConfidence,
               summary: blockedSummary.summary,
+              qualityGateCategory: qualityGateFailureDetails?.category ?? null,
+              qualityGateCommand: qualityGateFailureDetails?.command ?? null,
+              qualityGateFirstErrorLine: qualityGateFailureDetails?.firstErrorLine ?? null,
+              qualityGateAutoRepairAttempted:
+                qualityGateFailureDetails?.autoRepairAttempted ?? false,
+              qualityGateAutoRepairSucceeded:
+                qualityGateFailureDetails?.autoRepairSucceeded ?? false,
+              qualityGateAutoRepairCommands:
+                qualityGateFailureDetails?.autoRepairCommands ?? [],
               nextAction: "Blocked pending investigation",
             },
           })
@@ -726,7 +834,7 @@ export class MergeCoordinatorService {
         outcome: "requeued",
         phase: "merge",
         summary: compactExecutionText(
-          `Attempt ${cumulativeAttempts} ${stageLabel} failed: ${humanFailureMessage}`,
+          `Attempt ${cumulativeAttempts} ${stageLabel} failed: ${humanFailureMessage}${qualityGateSummarySuffix}`,
           500
         ),
       });
@@ -736,13 +844,18 @@ export class MergeCoordinatorService {
         extra: {
           last_execution_summary: requeuedSummary,
           [NEXT_RETRY_CONTEXT_KEY]: retryContext,
+          [QUALITY_GATE_ENV_REQUEUE_COUNT_KEY]: isEnvironmentSetupQualityGateFailure
+            ? qualityGateEnvRequeueCount + 1
+            : 0,
         },
       });
       await this.host.taskStore.comment(
         projectId,
         task.id,
         isQualityGateFailure
-          ? `Pre-merge quality gates failed. Task requeued — next run will retry after fixes. ${humanFailureMessage}`
+          ? isEnvironmentSetupQualityGateFailure
+            ? `Pre-merge quality gates failed due environment setup. Auto-repair was attempted and the task was requeued once. ${humanFailureMessage}${qualityGateCommentDetail}`
+            : `Pre-merge quality gates failed. Task requeued — next run will retry after fixes. ${humanFailureMessage}${qualityGateCommentDetail}`
           : `Merge conflict with current main. Task requeued — next run will rebase and retry. ${humanFailureMessage}`
       );
       eventLogService
@@ -760,6 +873,14 @@ export class MergeCoordinatorService {
             resolvedBy: "requeued",
             scopeConfidence,
             summary: requeuedSummary.summary,
+            qualityGateCategory: qualityGateFailureDetails?.category ?? null,
+            qualityGateCommand: qualityGateFailureDetails?.command ?? null,
+            qualityGateFirstErrorLine: qualityGateFailureDetails?.firstErrorLine ?? null,
+            qualityGateAutoRepairAttempted:
+              qualityGateFailureDetails?.autoRepairAttempted ?? false,
+            qualityGateAutoRepairSucceeded:
+              qualityGateFailureDetails?.autoRepairSucceeded ?? false,
+            qualityGateAutoRepairCommands: qualityGateFailureDetails?.autoRepairCommands ?? [],
             nextAction: "Requeued for retry",
           },
         })

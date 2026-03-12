@@ -34,7 +34,15 @@ export class MergeJobError extends Error {
     message: string,
     public readonly stage: "rebase_before_merge" | "merge_to_main" | "quality_gate",
     public readonly conflictedFiles: string[],
-    public readonly resolvedBy: "requeued" | "blocked" = "requeued"
+    public readonly resolvedBy: "requeued" | "blocked" = "requeued",
+    public readonly qualityGateFailure?: {
+      command: string;
+      firstErrorLine: string;
+      category?: "environment_setup" | "quality_gate";
+      autoRepairAttempted?: boolean;
+      autoRepairSucceeded?: boolean;
+      autoRepairCommands?: string[];
+    }
   ) {
     super(message);
     this.name = "MergeJobError";

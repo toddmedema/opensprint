@@ -31,7 +31,7 @@ import {
 } from "./task-store.service.js";
 import { ProjectService } from "./project.service.js";
 import { agentService, createProcessGroupHandle } from "./agent.service.js";
-import { BranchManager } from "./branch-manager.js";
+import { BranchManager, type DependencyHealthResult } from "./branch-manager.js";
 import { ContextAssembler } from "./context-assembler.js";
 import type { SessionManager } from "./session-manager.js";
 import { getCombinedInstructions } from "./agent-instructions.service.js";
@@ -118,6 +118,8 @@ import type { FailureType, RetryContext } from "./orchestrator-phase-context.js"
 
 /** Loop kicker interval: 60s — restarts idle orchestrator loop (distinct from 5-min WatchdogService health patrol). */
 const LOOP_KICKER_INTERVAL_MS = 60 * 1000;
+const QUALITY_GATE_FAILURE_OUTPUT_LIMIT = 4000;
+const QUALITY_GATE_FAILURE_REASON_LIMIT = 500;
 
 /**
  * GUPP-style assignment file: everything an agent needs to self-start.
@@ -2418,6 +2420,64 @@ export class OrchestratorService {
     return context;
   }
 
+  private getFirstNonEmptyLine(text: string): string | null {
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (trimmed.length > 0) return trimmed;
+    }
+    return null;
+  }
+
+  private extractShellFailure(
+    command: string,
+    err: unknown
+  ): { reason: string; output: string; firstErrorLine: string } {
+    const e = err as { stdout?: string; stderr?: string; message?: string };
+    const output = [e.stdout ?? "", e.stderr ?? ""]
+      .filter((part) => part.trim().length > 0)
+      .join("\n")
+      .trim()
+      .slice(0, QUALITY_GATE_FAILURE_OUTPUT_LIMIT);
+    const reason = (e.message ?? `Command failed: ${command}`).slice(
+      0,
+      QUALITY_GATE_FAILURE_REASON_LIMIT
+    );
+    const firstErrorLine =
+      this.getFirstNonEmptyLine(output) ??
+      this.getFirstNonEmptyLine(reason) ??
+      "Unknown quality gate failure";
+    return { reason, output, firstErrorLine };
+  }
+
+  private buildDependencySetupFailureMessage(result: DependencyHealthResult): string {
+    const firstError =
+      this.getFirstNonEmptyLine(result.checkOutput) ??
+      this.getFirstNonEmptyLine(result.repairOutput) ??
+      "Dependency health check failed";
+    const commands = result.repairCommands.length > 0 ? result.repairCommands : ["npm ci", "npm install"];
+    return [
+      "Dependency setup check failed after automatic repair.",
+      compactExecutionText(firstError, 300),
+      `Suggested commands: ${commands.join(" ; ")}`,
+    ].join(" ");
+  }
+
+  private async ensureDependenciesHealthyForTask(
+    repoPath: string,
+    wtPath: string,
+    options?: { throwOnFailure?: boolean }
+  ): Promise<DependencyHealthResult> {
+    const result = await this.branchManager.ensureDependenciesHealthy(repoPath, wtPath);
+    if (options?.throwOnFailure && !result.healthy) {
+      throw new RepoPreflightError(
+        this.buildDependencySetupFailureMessage(result),
+        ErrorCodes.DEPENDENCY_SETUP_FAILED,
+        result.repairCommands.length > 0 ? result.repairCommands : ["npm ci", "npm install"]
+      );
+    }
+    return result;
+  }
+
   private async preflightCheck(
     repoPath: string,
     wtPath: string,
@@ -2451,6 +2511,8 @@ export class OrchestratorService {
         await this.branchManager.symlinkNodeModules(repoPath, wtPath);
       }
     }
+
+    await this.ensureDependenciesHealthyForTask(repoPath, wtPath, { throwOnFailure: true });
 
     await this.sessionManager.clearResult(wtPath, taskId);
     if (reviewAngles && reviewAngles.length > 0) {
@@ -2498,20 +2560,74 @@ export class OrchestratorService {
           timeout: timeoutMs,
         });
       } catch (err) {
-        const e = err as { stdout?: string; stderr?: string; message?: string };
-        const output = [e.stdout ?? "", e.stderr ?? ""]
-          .filter((part) => part.trim().length > 0)
-          .join("\n")
-          .trim()
-          .slice(0, 4000);
-        const reason = (e.message ?? `Command failed: ${command}`).slice(0, 500);
+        const initialFailure = this.extractShellFailure(command, err);
+        const dependencyHealth = await this.ensureDependenciesHealthyForTask(
+          options.repoPath,
+          options.worktreePath
+        );
+        const dependencyIssueDetected =
+          !dependencyHealth.healthy || dependencyHealth.repairAttempted;
+
+        if (dependencyHealth.repairAttempted && dependencyHealth.healthy) {
+          try {
+            log.info("Retrying quality gate after dependency auto-repair", {
+              projectId: options.projectId,
+              taskId: options.taskId,
+              command,
+              repairCommands: dependencyHealth.repairCommands,
+            });
+            await shellExec(command, {
+              cwd,
+              timeout: timeoutMs,
+            });
+            continue;
+          } catch (retryErr) {
+            const retryFailure = this.extractShellFailure(command, retryErr);
+            log.warn("Pre-merge quality gate failed after dependency auto-repair retry", {
+              projectId: options.projectId,
+              taskId: options.taskId,
+              command,
+              reason: retryFailure.reason,
+            });
+            return {
+              command,
+              reason: retryFailure.reason,
+              output: retryFailure.output,
+              firstErrorLine: retryFailure.firstErrorLine,
+              category: "environment_setup",
+              autoRepairAttempted: true,
+              autoRepairSucceeded: true,
+              autoRepairCommands: dependencyHealth.repairCommands,
+              autoRepairOutput: dependencyHealth.repairOutput.slice(
+                0,
+                QUALITY_GATE_FAILURE_OUTPUT_LIMIT
+              ),
+            };
+          }
+        }
+
+        const category = dependencyIssueDetected ? "environment_setup" : "quality_gate";
+        const reason =
+          category === "environment_setup" && !dependencyHealth.healthy
+            ? this.buildDependencySetupFailureMessage(dependencyHealth)
+            : initialFailure.reason;
         log.warn("Pre-merge quality gate failed", {
           projectId: options.projectId,
           taskId: options.taskId,
           command,
           reason,
         });
-        return { command, reason, output };
+        return {
+          command,
+          reason,
+          output: initialFailure.output,
+          firstErrorLine: initialFailure.firstErrorLine,
+          category,
+          autoRepairAttempted: dependencyHealth.repairAttempted,
+          autoRepairSucceeded: dependencyHealth.repairAttempted && dependencyHealth.healthy,
+          autoRepairCommands: dependencyHealth.repairCommands,
+          autoRepairOutput: dependencyHealth.repairOutput.slice(0, QUALITY_GATE_FAILURE_OUTPUT_LIMIT),
+        };
       }
     }
 

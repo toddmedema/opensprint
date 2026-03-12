@@ -305,6 +305,62 @@ describe("FailureHandlerService", () => {
     });
   });
 
+  describe("dependency preflight failures", () => {
+    it("requeues once for dependency setup preflight failures", async () => {
+      await handler.handleTaskFailure(
+        projectId,
+        repoPath,
+        makeTask(),
+        branchName,
+        "[DEPENDENCY_SETUP_FAILED] Dependency setup check failed after automatic repair.",
+        null,
+        "repo_preflight"
+      );
+
+      expect(mockHost.taskStore.update).toHaveBeenCalledWith(
+        projectId,
+        taskId,
+        expect.objectContaining({
+          status: "open",
+          assignee: "",
+          extra: expect.objectContaining({
+            preflight_env_requeue_count: 1,
+            next_retry_context: expect.objectContaining({
+              failureType: "repo_preflight",
+            }),
+          }),
+        })
+      );
+      expect(mockHost.nudge).toHaveBeenCalled();
+    });
+
+    it("blocks on second dependency setup preflight failure", async () => {
+      const taskWithRetry = {
+        ...makeTask(),
+        preflight_env_requeue_count: 1,
+      } as unknown as ReturnType<typeof makeTask>;
+      await handler.handleTaskFailure(
+        projectId,
+        repoPath,
+        taskWithRetry,
+        branchName,
+        "[DEPENDENCY_SETUP_FAILED] Dependency setup check failed after automatic repair.",
+        null,
+        "repo_preflight"
+      );
+
+      expect(mockHost.taskStore.update).toHaveBeenCalledWith(
+        projectId,
+        taskId,
+        expect.objectContaining({
+          status: "blocked",
+          block_reason: "Coding Failure",
+        })
+      );
+      expect(mockHost.executeCodingPhase).not.toHaveBeenCalled();
+    });
+  });
+
   it("passes highlighted test failures into coder retry context", async () => {
     const slot = makeSlot("/tmp/worktree");
     slot.phaseResult.testResults = {

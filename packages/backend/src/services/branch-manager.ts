@@ -73,8 +73,19 @@ export interface CreateTaskWorktreeOptions {
   worktreeKey?: string;
 }
 
-/** Max time (ms) for npm install when ensuring node_modules exists */
-const NPM_INSTALL_TIMEOUT_MS = 120_000;
+const NPM_HEALTH_CHECK_TIMEOUT_MS = 90_000;
+const NPM_REPAIR_TIMEOUT_MS = 10 * 60 * 1000;
+const DEPENDENCY_HEALTH_CHECK_COMMAND = "npm ls --depth=0 --workspaces";
+const DEPENDENCY_REPAIR_COMMANDS = ["npm ci", "npm install"] as const;
+
+export interface DependencyHealthResult {
+  healthy: boolean;
+  checkOutput: string;
+  repairAttempted: boolean;
+  repairSucceeded: boolean;
+  repairCommands: string[];
+  repairOutput: string;
+}
 
 /** Cross-platform shell quoting: cmd.exe double-quote on Windows, bash single-quote elsewhere. */
 function shellQuote(value: string): string {
@@ -1054,7 +1065,7 @@ export class BranchManager {
 
   /**
    * Ensure node_modules exists in the given repo. If missing and package.json exists,
-   * runs npm install. Public for Branches mode (agent runs in main repo; no worktree symlink).
+   * runs dependency repair commands. Public for Branches mode (agent runs in main repo; no worktree symlink).
    * @returns true if node_modules exists after this call, false otherwise
    */
   async ensureRepoNodeModules(repoPath: string): Promise<boolean> {
@@ -1063,7 +1074,7 @@ export class BranchManager {
 
   /**
    * Ensure node_modules exists in the main repo. If missing and package.json exists,
-   * runs npm install. Used before symlinking so worktrees have dependencies.
+   * runs dependency repair commands. Used before symlinking so worktrees have dependencies.
    * @returns true if node_modules exists after this call, false otherwise
    */
   private async ensureNodeModules(repoPath: string): Promise<boolean> {
@@ -1082,25 +1093,127 @@ export class BranchManager {
       return false;
     }
 
-    try {
-      await shellExec("npm install", {
-        cwd: repoPath,
-        timeout: NPM_INSTALL_TIMEOUT_MS,
+    const repair = await this.repairDependencies(repoPath, "missing node_modules");
+    if (!repair.success) {
+      log.warn("Dependency repair failed while ensuring node_modules", {
+        repoPath,
+        attemptedCommands: repair.commands,
       });
-      await fs.access(srcRoot);
-      return true;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      log.warn("npm install failed", { repoPath, err: msg });
       return false;
     }
+    try {
+      await fs.access(srcRoot);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async ensureDependenciesHealthy(
+    repoPath: string,
+    wtPath?: string
+  ): Promise<DependencyHealthResult> {
+    const pkgPath = path.join(repoPath, "package.json");
+    try {
+      await fs.access(pkgPath);
+    } catch {
+      return {
+        healthy: true,
+        checkOutput: "",
+        repairAttempted: false,
+        repairSucceeded: false,
+        repairCommands: [],
+        repairOutput: "",
+      };
+    }
+
+    const initialHealth = await this.runDependencyHealthCheck(repoPath);
+    if (initialHealth.healthy) {
+      return {
+        healthy: true,
+        checkOutput: initialHealth.output,
+        repairAttempted: false,
+        repairSucceeded: false,
+        repairCommands: [],
+        repairOutput: "",
+      };
+    }
+
+    const repair = await this.repairDependencies(repoPath, "dependency health check failed");
+    if (repair.success && wtPath && wtPath !== repoPath) {
+      await this.symlinkNodeModules(repoPath, wtPath);
+    }
+    const postRepairHealth = await this.runDependencyHealthCheck(repoPath);
+    return {
+      healthy: postRepairHealth.healthy,
+      checkOutput: postRepairHealth.output,
+      repairAttempted: true,
+      repairSucceeded: repair.success,
+      repairCommands: repair.commands,
+      repairOutput: repair.output,
+    };
+  }
+
+  private async runDependencyHealthCheck(
+    repoPath: string
+  ): Promise<{ healthy: boolean; output: string }> {
+    try {
+      const { stdout, stderr } = await shellExec(DEPENDENCY_HEALTH_CHECK_COMMAND, {
+        cwd: repoPath,
+        timeout: NPM_HEALTH_CHECK_TIMEOUT_MS,
+      });
+      const output = [stdout, stderr].filter(Boolean).join("\n").trim().slice(0, 4000);
+      return { healthy: true, output };
+    } catch (err) {
+      const output = getErrorText(err).trim().slice(0, 4000);
+      return { healthy: false, output };
+    }
+  }
+
+  private async repairDependencies(
+    repoPath: string,
+    context: string
+  ): Promise<{ success: boolean; commands: string[]; output: string }> {
+    const attempts: string[] = [];
+    const outputs: string[] = [];
+    for (const command of DEPENDENCY_REPAIR_COMMANDS) {
+      attempts.push(command);
+      try {
+        const { stdout, stderr } = await shellExec(command, {
+          cwd: repoPath,
+          timeout: NPM_REPAIR_TIMEOUT_MS,
+        });
+        const output = [stdout, stderr].filter(Boolean).join("\n").trim();
+        if (output) outputs.push(`[${command}] ${output}`);
+        return {
+          success: true,
+          commands: attempts,
+          output: outputs.join("\n").slice(0, 4000),
+        };
+      } catch (err) {
+        const output = getErrorText(err).trim();
+        if (output) outputs.push(`[${command}] ${output}`);
+        log.warn("Dependency repair command failed", {
+          repoPath,
+          command,
+          context,
+          err: output || String(err),
+        });
+      }
+    }
+
+    return {
+      success: false,
+      commands: attempts,
+      output: outputs.join("\n").slice(0, 4000),
+    };
   }
 
   /**
    * Symlink node_modules directories from the main repo into a worktree.
    * Handles both root node_modules and any per-package node_modules
    * (e.g. .vite caches in workspace packages).
-   * If the main repo lacks node_modules, runs npm install first.
+   * If the main repo lacks node_modules, runs dependency repair first.
    */
   async symlinkNodeModules(repoPath: string, wtPath: string): Promise<void> {
     // Safety: never symlink into the main repo itself
