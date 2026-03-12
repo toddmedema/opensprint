@@ -88,6 +88,8 @@ const {
   mockEnsureBaseBranchExists,
   mockEnsureGitIdentityConfigured,
   mockResolveBaseBranch,
+  mockShellExec,
+  mockGetMergeQualityGateCommands,
   mockIsSelfImprovementRunInProgress,
   mockHasOpenPrdSpecHilApproval,
 } = vi.hoisted(() => ({
@@ -159,6 +161,8 @@ const {
   mockEnsureBaseBranchExists: vi.fn(),
   mockEnsureGitIdentityConfigured: vi.fn(),
   mockResolveBaseBranch: vi.fn(),
+  mockShellExec: vi.fn(),
+  mockGetMergeQualityGateCommands: vi.fn(),
   mockIsSelfImprovementRunInProgress: vi.fn().mockReturnValue(false),
   mockHasOpenPrdSpecHilApproval: vi.fn().mockResolvedValue(false),
 }));
@@ -390,6 +394,14 @@ vi.mock("../utils/git-repo-state.js", async (importOriginal) => {
   };
 });
 
+vi.mock("../utils/shell-exec.js", () => ({
+  shellExec: (...args: unknown[]) => mockShellExec(...args),
+}));
+
+vi.mock("../services/merge-quality-gates.js", () => ({
+  getMergeQualityGateCommands: (...args: unknown[]) => mockGetMergeQualityGateCommands(...args),
+}));
+
 vi.mock("../services/crash-recovery.service.js", () => ({
   CrashRecoveryService: vi.fn().mockImplementation(() => ({
     findOrphanedAssignments: mockFindOrphanedAssignments,
@@ -517,6 +529,8 @@ describe("OrchestratorService (slot-based model)", () => {
       email: "test@test.com",
       valid: true,
     });
+    mockShellExec.mockResolvedValue({ stdout: "", stderr: "" });
+    mockGetMergeQualityGateCommands.mockReturnValue(["npm run lint", "npm run test"]);
     mockResolveBaseBranch.mockResolvedValue("main");
     mockCheckDependencyIntegrity.mockResolvedValue(undefined);
     mockEnsureDependenciesHealthy.mockResolvedValue({
@@ -767,6 +781,180 @@ describe("OrchestratorService (slot-based model)", () => {
         name: "RepoPreflightError",
         code: ErrorCodes.REPO_DEPENDENCIES_INVALID,
       });
+    });
+  });
+
+  describe("runMergeQualityGates", () => {
+    const taskId = "task-quality-gate";
+    const branchName = "opensprint/task-quality-gate";
+    const baseBranch = "main";
+    const worktreePath = path.join(os.tmpdir(), "opensprint-quality-gate-worktree");
+
+    const runMergeQualityGates = () =>
+      orchestrator.runMergeQualityGates({
+        projectId,
+        repoPath,
+        worktreePath,
+        taskId,
+        branchName,
+        baseBranch,
+      });
+
+    it("does not auto-repair when failure has no env fingerprint", async () => {
+      const previousNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "development";
+      try {
+        mockShellExec.mockRejectedValueOnce({
+          message: "Command failed: npm run lint",
+          stderr: "src/foo.ts: error TS2304: Cannot find name 'x'",
+        });
+
+        const failure = await runMergeQualityGates();
+
+        expect(failure).toMatchObject({
+          command: "npm run lint",
+          category: "quality_gate",
+          autoRepairAttempted: false,
+          autoRepairSucceeded: false,
+        });
+        expect(mockShellExec).toHaveBeenCalledTimes(1);
+        expect(mockShellExec).toHaveBeenCalledWith(
+          "npm run lint",
+          expect.objectContaining({ cwd: worktreePath })
+        );
+        expect(mockSymlinkNodeModules).not.toHaveBeenCalled();
+      } finally {
+        process.env.NODE_ENV = previousNodeEnv;
+      }
+    });
+
+    it("runs one env auto-repair and continues gates when retry succeeds", async () => {
+      const previousNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "development";
+      try {
+        mockShellExec
+          .mockRejectedValueOnce({
+            message: "Command failed: npm run lint",
+            stderr: "Error: MODULE_NOT_FOUND: Cannot find module 'typescript'",
+          })
+          .mockResolvedValueOnce({ stdout: "added 1 package", stderr: "" })
+          .mockResolvedValueOnce({ stdout: "", stderr: "" })
+          .mockResolvedValueOnce({ stdout: "", stderr: "" });
+
+        const failure = await runMergeQualityGates();
+
+        expect(failure).toBeNull();
+        expect(mockShellExec.mock.calls.map((call) => call[0])).toEqual([
+          "npm run lint",
+          "npm ci",
+          "npm run lint",
+          "npm run test",
+        ]);
+        expect(mockSymlinkNodeModules).toHaveBeenCalledTimes(1);
+        expect(mockSymlinkNodeModules).toHaveBeenCalledWith(repoPath, worktreePath);
+      } finally {
+        process.env.NODE_ENV = previousNodeEnv;
+      }
+    });
+
+    it("classifies as environment_setup when retry still matches env fingerprint", async () => {
+      const previousNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "development";
+      try {
+        mockShellExec
+          .mockRejectedValueOnce({
+            message: "Command failed: npm run lint",
+            stderr: "Cannot find module 'eslint'",
+          })
+          .mockResolvedValueOnce({ stdout: "", stderr: "" })
+          .mockRejectedValueOnce({
+            message: "Command failed: npm run lint",
+            stderr: "MODULE_NOT_FOUND: Cannot find module 'eslint'",
+          });
+
+        const failure = await runMergeQualityGates();
+
+        expect(failure).toMatchObject({
+          command: "npm run lint",
+          category: "environment_setup",
+          autoRepairAttempted: true,
+          autoRepairSucceeded: true,
+        });
+        expect(mockShellExec).toHaveBeenCalledTimes(3);
+        expect(mockShellExec.mock.calls.map((call) => call[0])).toEqual([
+          "npm run lint",
+          "npm ci",
+          "npm run lint",
+        ]);
+      } finally {
+        process.env.NODE_ENV = previousNodeEnv;
+      }
+    });
+
+    it("downgrades to quality_gate when retry fails without env fingerprint", async () => {
+      const previousNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "development";
+      try {
+        mockShellExec
+          .mockRejectedValueOnce({
+            message: "Command failed: npm run lint",
+            stderr: "Cannot find module 'eslint'",
+          })
+          .mockResolvedValueOnce({ stdout: "", stderr: "" })
+          .mockRejectedValueOnce({
+            message: "Command failed: npm run lint",
+            stderr: "src/foo.ts: error TS2304: Cannot find name 'x'",
+          });
+
+        const failure = await runMergeQualityGates();
+
+        expect(failure).toMatchObject({
+          command: "npm run lint",
+          category: "quality_gate",
+          autoRepairAttempted: true,
+          autoRepairSucceeded: true,
+        });
+        expect(mockShellExec).toHaveBeenCalledTimes(3);
+      } finally {
+        process.env.NODE_ENV = previousNodeEnv;
+      }
+    });
+
+    it("retries the gate once even when npm ci repair fails", async () => {
+      const previousNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "development";
+      try {
+        mockShellExec
+          .mockRejectedValueOnce({
+            message: "Command failed: npm run lint",
+            stderr: "Cannot find module 'eslint'",
+          })
+          .mockRejectedValueOnce({
+            message: "Command failed: npm ci",
+            stderr: "npm ERR! network timeout",
+          })
+          .mockRejectedValueOnce({
+            message: "Command failed: npm run lint",
+            stderr: "src/foo.ts: error TS2304: Cannot find name 'x'",
+          });
+
+        const failure = await runMergeQualityGates();
+
+        expect(failure).toMatchObject({
+          command: "npm run lint",
+          category: "quality_gate",
+          autoRepairAttempted: true,
+          autoRepairSucceeded: false,
+        });
+        expect(mockShellExec.mock.calls.map((call) => call[0])).toEqual([
+          "npm run lint",
+          "npm ci",
+          "npm run lint",
+        ]);
+        expect(mockSymlinkNodeModules).toHaveBeenCalledTimes(1);
+      } finally {
+        process.env.NODE_ENV = previousNodeEnv;
+      }
     });
   });
 
