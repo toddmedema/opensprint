@@ -150,6 +150,9 @@ describe("TaskExecutionDiagnosticsService", () => {
     expect(diagnostics.cumulativeAttempts).toBe(6);
     expect(diagnostics.latestOutcome).toBe("blocked");
     expect(diagnostics.latestSummary).toContain("merge failed during merge_to_main");
+    expect((diagnostics as { latestQualityGateDetail?: unknown }).latestQualityGateDetail).toBe(
+      undefined
+    );
     expect(diagnostics.attempts[0]).toEqual(
       expect.objectContaining({
         attempt: 6,
@@ -191,6 +194,8 @@ describe("TaskExecutionDiagnosticsService", () => {
           failedGateCommand: "npm run build",
           failedGateReason: "Command failed with exit code 1",
           failedGateOutputSnippet: "Cannot find module 'better-sqlite3'",
+          worktreePath: "/tmp/worktree/os-eeac.39",
+          qualityGateFirstErrorLine: "Cannot find module 'better-sqlite3'",
           qualityGateAutoRepairAttempted: true,
           qualityGateAutoRepairSucceeded: false,
           qualityGateAutoRepairCommands: ["npm ci", "npm install"],
@@ -206,11 +211,29 @@ describe("TaskExecutionDiagnosticsService", () => {
     );
 
     const diagnostics = await service.getDiagnostics(projectId, taskId);
+    const diagnosticsQualityGate = diagnostics as {
+      latestQualityGateDetail?: unknown;
+      timeline: Array<{ qualityGateDetail?: unknown }>;
+    };
 
     expect(diagnostics.latestSummary).toContain("cmd: npm run build");
     expect(diagnostics.latestSummary).toContain("error: Cannot find module");
     expect(diagnostics.latestSummary).toContain("repair: npm ci -> npm install (failed)");
     expect(diagnostics.latestSummary).toContain("category: environment_setup");
+    expect(diagnosticsQualityGate.latestQualityGateDetail).toEqual({
+      command: "npm run build",
+      reason: "Command failed with exit code 1",
+      outputSnippet: "Cannot find module 'better-sqlite3'",
+      worktreePath: "/tmp/worktree/os-eeac.39",
+      firstErrorLine: "Cannot find module 'better-sqlite3'",
+    });
+    expect(diagnosticsQualityGate.timeline[0]?.qualityGateDetail).toEqual({
+      command: "npm run build",
+      reason: "Command failed with exit code 1",
+      outputSnippet: "Cannot find module 'better-sqlite3'",
+      worktreePath: "/tmp/worktree/os-eeac.39",
+      firstErrorLine: "Cannot find module 'better-sqlite3'",
+    });
   });
 
   it("surfaces running tool-wait diagnostics for active attempts", async () => {

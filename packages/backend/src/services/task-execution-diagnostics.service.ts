@@ -13,6 +13,19 @@ import { eventLogService, type OrchestratorEvent } from "./event-log.service.js"
 import { compactExecutionText, parseTaskLastExecutionSummary } from "./task-execution-summary.js";
 
 type JsonRecord = Record<string, unknown>;
+type QualityGateDetail = {
+  command?: string | null;
+  reason?: string | null;
+  outputSnippet?: string | null;
+  worktreePath?: string | null;
+  firstErrorLine?: string | null;
+};
+type TaskExecutionEventItemWithQualityGate = TaskExecutionEventItem & {
+  qualityGateDetail?: QualityGateDetail | null;
+};
+type TaskExecutionDiagnosticsWithQualityGate = TaskExecutionDiagnostics & {
+  latestQualityGateDetail?: QualityGateDetail | null;
+};
 
 function asRecord(value: unknown): JsonRecord | null {
   return value && typeof value === "object" ? (value as JsonRecord) : null;
@@ -65,14 +78,49 @@ function extractConflictFilesFromTask(task: StoredTask): string[] {
   }
 }
 
-function buildQualityGateMergeSummary(data: JsonRecord): string | null {
-  const command = asString(data.failedGateCommand) ?? asString(data.qualityGateCommand);
-  const failedGateReason = asString(data.failedGateReason);
-  const failedGateOutputSnippet = asString(data.failedGateOutputSnippet);
+function extractQualityGateDetail(data: JsonRecord): QualityGateDetail | null {
+  const nested = asRecord(data.qualityGateDetail);
+  const command =
+    asString(data.failedGateCommand) ?? asString(data.qualityGateCommand) ?? asString(nested?.command);
+  const reason = asString(data.failedGateReason) ?? asString(nested?.reason);
+  const outputSnippet =
+    asString(data.failedGateOutputSnippet) ?? asString(nested?.outputSnippet);
+  const worktreePath = asString(data.worktreePath) ?? asString(nested?.worktreePath);
   const firstErrorLine =
     asString(data.qualityGateFirstErrorLine) ??
-    firstNonEmptyLine(failedGateOutputSnippet) ??
-    firstNonEmptyLine(failedGateReason);
+    asString(data.firstErrorLine) ??
+    asString(nested?.firstErrorLine) ??
+    firstNonEmptyLine(outputSnippet) ??
+    firstNonEmptyLine(reason);
+  if (!command && !reason && !outputSnippet && !worktreePath && !firstErrorLine) return null;
+  return {
+    command: command ?? null,
+    reason: reason ?? null,
+    outputSnippet: outputSnippet ?? null,
+    worktreePath: worktreePath ?? null,
+    firstErrorLine: firstErrorLine ?? null,
+  };
+}
+
+function withQualityGateDetail(
+  item: TaskExecutionEventItem,
+  detail: QualityGateDetail | null
+): TaskExecutionEventItem {
+  if (!detail) return item;
+  (item as TaskExecutionEventItemWithQualityGate).qualityGateDetail = detail;
+  return item;
+}
+
+function eventQualityGateDetail(event: TaskExecutionEventItem | null): QualityGateDetail | null {
+  if (!event) return null;
+  return (event as TaskExecutionEventItemWithQualityGate).qualityGateDetail ?? null;
+}
+
+function buildQualityGateMergeSummary(data: JsonRecord): string | null {
+  const detail = extractQualityGateDetail(data);
+  const command = detail?.command ?? null;
+  const failedGateReason = detail?.reason ?? null;
+  const firstErrorLine = detail?.firstErrorLine ?? null;
   const autoRepairAttempted = asBoolean(data.qualityGateAutoRepairAttempted) === true;
   const autoRepairSucceeded = asBoolean(data.qualityGateAutoRepairSucceeded) === true;
   const autoRepairCommands = asStringArray(data.qualityGateAutoRepairCommands);
@@ -283,21 +331,25 @@ function summarizeEvent(event: OrchestratorEvent): TaskExecutionEventItem | null
   if (event.event === "task.failed") {
     const phase = phaseFromUnknown(data.phase, "coding");
     const reason = asString(data.reason);
+    const qualityGateDetail = extractQualityGateDetail(data);
     const summary =
       asString(data.summary) ??
       (reason ? `${labelForPhase(phase)} failed: ${compactExecutionText(reason, 360)}` : null) ??
       `${labelForPhase(phase)} failed`;
-    return {
-      at: event.timestamp,
-      attempt,
-      phase,
-      outcome: "failed",
-      title: titleForOutcome(phase, "failed"),
-      summary,
-      failureType: asString(data.failureType),
-      model: asString(data.model),
-      nextAction: asString(data.nextAction) ?? defaultNextAction("requeued"),
-    };
+    return withQualityGateDetail(
+      {
+        at: event.timestamp,
+        attempt,
+        phase,
+        outcome: "failed",
+        title: titleForOutcome(phase, "failed"),
+        summary,
+        failureType: asString(data.failureType),
+        model: asString(data.model),
+        nextAction: asString(data.nextAction) ?? defaultNextAction("requeued"),
+      },
+      qualityGateDetail
+    );
   }
 
   if (event.event === "review.rejected") {
@@ -322,6 +374,7 @@ function summarizeEvent(event: OrchestratorEvent): TaskExecutionEventItem | null
     const outcome: TaskExecutionOutcome = resolvedBy === "blocked" ? "blocked" : "requeued";
     const mergeStage = asString(data.stage);
     const reason = asString(data.reason);
+    const qualityGateDetail = extractQualityGateDetail(data);
     const qualityGateSummary =
       mergeStage === "quality_gate" ? buildQualityGateMergeSummary(data) : null;
     const summary =
@@ -331,7 +384,8 @@ function summarizeEvent(event: OrchestratorEvent): TaskExecutionEventItem | null
         `Merge failed${mergeStage ? ` during ${mergeStage}` : ""}${reason ? `: ${reason}` : ""}`,
         500
       );
-    return {
+    return withQualityGateDetail(
+      {
       at: event.timestamp,
       attempt,
       phase: "merge",
@@ -342,12 +396,16 @@ function summarizeEvent(event: OrchestratorEvent): TaskExecutionEventItem | null
       mergeStage,
       conflictedFiles: asStringArray(data.conflictedFiles),
       nextAction: asString(data.nextAction) ?? defaultNextAction(outcome),
-    };
+      },
+      qualityGateDetail
+    );
   }
 
   if (event.event === "task.requeued") {
     const phase = phaseFromUnknown(data.phase, "orchestrator");
-    return {
+    const qualityGateDetail = extractQualityGateDetail(data);
+    return withQualityGateDetail(
+      {
       at: event.timestamp,
       attempt,
       phase,
@@ -357,7 +415,9 @@ function summarizeEvent(event: OrchestratorEvent): TaskExecutionEventItem | null
       failureType: asString(data.failureType),
       blockReason: asString(data.blockReason),
       nextAction: asString(data.nextAction) ?? defaultNextAction("requeued"),
-    };
+      },
+      qualityGateDetail
+    );
   }
 
   if (event.event === "task.demoted") {
@@ -376,19 +436,23 @@ function summarizeEvent(event: OrchestratorEvent): TaskExecutionEventItem | null
 
   if (event.event === "task.blocked") {
     const phase = phaseFromUnknown(data.phase, "orchestrator");
-    return {
-      at: event.timestamp,
-      attempt,
-      phase,
-      outcome: "blocked",
-      title: "Task blocked",
-      summary: asString(data.summary) ?? asString(data.reason) ?? "Task blocked",
-      failureType: asString(data.failureType),
-      blockReason: asString(data.blockReason),
-      mergeStage: asString(data.mergeStage),
-      conflictedFiles: asStringArray(data.conflictedFiles),
-      nextAction: asString(data.nextAction) ?? defaultNextAction("blocked"),
-    };
+    const qualityGateDetail = extractQualityGateDetail(data);
+    return withQualityGateDetail(
+      {
+        at: event.timestamp,
+        attempt,
+        phase,
+        outcome: "blocked",
+        title: "Task blocked",
+        summary: asString(data.summary) ?? asString(data.reason) ?? "Task blocked",
+        failureType: asString(data.failureType),
+        blockReason: asString(data.blockReason),
+        mergeStage: asString(data.mergeStage),
+        conflictedFiles: asStringArray(data.conflictedFiles),
+        nextAction: asString(data.nextAction) ?? defaultNextAction("blocked"),
+      },
+      qualityGateDetail
+    );
   }
 
   return null;
@@ -538,8 +602,9 @@ export class TaskExecutionDiagnosticsService {
     const latestTimelineEvent = timeline.at(-1) ?? null;
     const latestEvent =
       [...timeline].reverse().find((event) => event.outcome !== "running") ?? null;
+    const taskQualityGateDetail = extractQualityGateDetail(asRecord(task) ?? {});
 
-    return {
+    const diagnostics: TaskExecutionDiagnostics = {
       taskId,
       taskStatus: task.status,
       blockReason: task.block_reason ?? null,
@@ -560,5 +625,15 @@ export class TaskExecutionDiagnosticsService {
       attempts,
       timeline,
     };
+    const latestQualityGateDetail =
+      eventQualityGateDetail(latestTimelineEvent) ??
+      eventQualityGateDetail(latestEvent) ??
+      taskQualityGateDetail ??
+      null;
+    if (latestQualityGateDetail) {
+      (diagnostics as TaskExecutionDiagnosticsWithQualityGate).latestQualityGateDetail =
+        latestQualityGateDetail;
+    }
+    return diagnostics;
   }
 }

@@ -23,6 +23,14 @@ export interface TaskLastExecutionSummary {
   summary: string;
 }
 
+export interface QualityGateDiagnosticDetail {
+  command?: string | null;
+  reason?: string | null;
+  outputSnippet?: string | null;
+  worktreePath?: string | null;
+  firstErrorLine?: string | null;
+}
+
 export interface TaskExecutionEventItem {
   at: string;
   attempt: number | null;
@@ -36,6 +44,7 @@ export interface TaskExecutionEventItem {
   conflictedFiles?: string[];
   model?: string | null;
   nextAction?: string | null;
+  qualityGateDetail?: QualityGateDiagnosticDetail | null;
 }
 
 export interface TaskExecutionAttemptItem {
@@ -63,6 +72,7 @@ export interface TaskExecutionDiagnostics {
   latestFailureType?: string | null;
   latestOutcome: TaskExecutionOutcome | null;
   latestNextAction?: string | null;
+  latestQualityGateDetail?: QualityGateDiagnosticDetail | null;
   attempts: TaskExecutionAttemptItem[];
   timeline: TaskExecutionEventItem[];
 }
