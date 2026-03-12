@@ -41,6 +41,7 @@ export class PlanComplexityEvaluationService {
     const systemPrompt = `${COMPLEXITY_EVALUATION_SYSTEM_PROMPT}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
     const response = await agentService.invokePlanningAgent({
       projectId,
+      role: "planner",
       config: getAgentForPlanningRole(settings, "planner"),
       messages: [{ role: "user", content: prompt }],
       systemPrompt,

@@ -2396,6 +2396,7 @@ export class OrchestratorService {
     try {
       const summarizerResponse = await agentService.invokePlanningAgent({
         projectId,
+        role: "summarizer",
         config: getAgentForPlanningRole(settings, "summarizer", planComplexity),
         messages: [{ role: "user", content: summarizerPrompt }],
         systemPrompt,

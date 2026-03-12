@@ -61,6 +61,8 @@ export interface AgentTrackingInfo {
 export interface InvokePlanningAgentOptions {
   /** Project ID (required for Claude API key resolution and retry) */
   projectId: string;
+  /** Agent role for agent log (required so every planning run is recorded) */
+  role: AgentRole;
   /** Agent configuration (model from config) */
   config: AgentConfig;
   /** Conversation messages in order */
@@ -186,6 +188,10 @@ export interface RunMergerAgentOptions {
 
 type AgentRunStatParams = {
   tracking?: AgentTrackingInfo;
+  /** Role for agent log (used when tracking is absent) */
+  role?: AgentRole;
+  /** Run id for agent_stats task_id (used when tracking is absent) */
+  runId?: string;
   config: AgentConfig;
   projectId?: string;
   startedAt: string;
@@ -273,6 +279,8 @@ export class AgentService {
       const completedAt = new Date().toISOString();
       await this.recordAgentRunStat({
         tracking,
+        role: options.role,
+        runId: tracking?.id ?? `planning-${options.projectId}-${startedAt}`,
         config: options.config,
         projectId: options.projectId,
         startedAt,
@@ -425,13 +433,15 @@ export class AgentService {
   }
 
   private async recordAgentRunStat(params: AgentRunStatParams): Promise<void> {
-    const { tracking, config, projectId, startedAt, completedAt, outcome } = params;
+    const { tracking, role: paramRole, runId, config, projectId, startedAt, completedAt, outcome } =
+      params;
     const targetProjectId = tracking?.projectId ?? projectId;
-    if (!tracking?.role || !targetProjectId) return;
+    const role = tracking?.role ?? paramRole;
+    const taskId = tracking?.id ?? runId;
+    if (!role || !targetProjectId) return;
 
     const model = config.model?.trim() ? config.model : "unknown";
-    const agentId = `${tracking.role}-${config.type}-${config.model ?? "default"}`;
-    const taskId = tracking.id;
+    const agentId = `${role}-${config.type}-${config.model ?? "default"}`;
     const durationMs = Math.max(0, new Date(completedAt).getTime() - new Date(startedAt).getTime());
 
     try {
@@ -443,7 +453,7 @@ export class AgentService {
             targetProjectId,
             taskId,
             agentId,
-            tracking.role,
+            role,
             model,
             1,
             startedAt,
@@ -469,7 +479,7 @@ export class AgentService {
     } catch (err) {
       log.warn("Failed to record agent run stat", {
         projectId: targetProjectId,
-        role: tracking.role,
+        role,
         err: getErrorMessage(err),
       });
     }

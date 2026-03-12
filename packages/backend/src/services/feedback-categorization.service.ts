@@ -180,6 +180,7 @@ export class FeedbackCategorizationService {
     try {
       const response = await agentService.invokePlanningAgent({
         projectId,
+        role: "analyst",
         config: getAgentForPlanningRole(settings, "analyst"),
         messages: [
           {

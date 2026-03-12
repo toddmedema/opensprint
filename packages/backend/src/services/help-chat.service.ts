@@ -344,6 +344,7 @@ export class HelpChatService {
       const effectiveProjectId = projectId ?? "help-homepage";
       const response = await agentService.invokePlanningAgent({
         projectId: effectiveProjectId,
+        role: "dreamer",
         config: agentConfig,
         messages,
         systemPrompt,

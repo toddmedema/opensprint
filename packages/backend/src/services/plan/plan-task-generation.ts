@@ -121,6 +121,7 @@ export async function generateAndCreateTasks(deps: PlanTaskGenerationDeps): Prom
   ];
   const response = await agentService.invokePlanningAgent({
     projectId,
+    role: "planner",
     config: plannerConfig,
     messages: initialMessages,
     systemPrompt: taskGenSystemPrompt,
@@ -158,6 +159,7 @@ export async function generateAndCreateTasks(deps: PlanTaskGenerationDeps): Prom
 
     const retryResponse = await agentService.invokePlanningAgent({
       projectId,
+      role: "planner",
       config: plannerConfig,
       messages: retryMessages,
       systemPrompt: taskGenSystemPrompt,

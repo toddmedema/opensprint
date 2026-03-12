@@ -572,6 +572,7 @@ export class ChatService {
       });
       const response = await agentService.invokePlanningAgent({
         projectId,
+        role: trackingRole,
         config: agentConfig,
         messages,
         systemPrompt,
@@ -772,6 +773,7 @@ export class ChatService {
 
     const response = await agentService.invokePlanningAgent({
       projectId,
+      role: "harmonizer",
       config: agentConfig,
       messages: [{ role: "user", content: prompt }],
       systemPrompt,
@@ -833,6 +835,7 @@ export class ChatService {
 
     const response = await agentService.invokePlanningAgent({
       projectId,
+      role: "harmonizer",
       config: agentConfig,
       messages: [{ role: "user", content: prompt }],
       systemPrompt,
@@ -913,6 +916,7 @@ export class ChatService {
 
     const response = await agentService.invokePlanningAgent({
       projectId,
+      role: "harmonizer",
       config: agentConfig,
       messages: [{ role: "user", content: prompt }],
       systemPrompt,

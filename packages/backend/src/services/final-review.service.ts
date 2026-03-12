@@ -171,6 +171,7 @@ Assess the implementation against the plan scope. Return JSON with status, asses
     try {
       const response = await agentService.invokePlanningAgent({
         projectId,
+        role: "auditor",
         config: getAgentForPlanningRole(settings, "auditor"),
         messages: [{ role: "user", content: basePrompt }],
         systemPrompt: finalReviewSystemPrompt,
@@ -236,6 +237,7 @@ Respond with ONLY valid JSON (no markdown):
       try {
         const response = await agentService.invokePlanningAgent({
           projectId,
+          role: "auditor",
           config,
           messages: [{ role: "user", content: prompt }],
           systemPrompt: angleSystemPrompt,
@@ -311,6 +313,7 @@ Rules:
     try {
       const response = await agentService.invokePlanningAgent({
         projectId,
+        role: "auditor",
         config: getAgentForPlanningRole(settings, "auditor"),
         messages: [{ role: "user", content: prompt }],
         systemPrompt: synthesizerSystemPrompt,

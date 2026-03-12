@@ -52,6 +52,7 @@ export async function runAutoReviewPlanAgainstRepo(
     const autoReviewSystemPrompt = `${AUTO_REVIEW_SYSTEM_PROMPT}\n\n${await getCombinedInstructions(deps.repoPath, "planner")}`;
     const response = await agentService.invokePlanningAgent({
       projectId: deps.projectId,
+      role: "planner",
       config: getAgentForPlanningRole(deps.settings as ProjectSettings, "planner"),
       messages: [{ role: "user", content: prompt }],
       systemPrompt: autoReviewSystemPrompt,

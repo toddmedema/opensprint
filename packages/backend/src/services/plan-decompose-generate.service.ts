@@ -255,6 +255,7 @@ export class PlanDecomposeGenerateService {
     const suggestSystemPrompt = `${systemPrompt}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
     const response = await agentService.invokePlanningAgent({
       projectId,
+      role: "planner",
       config: getAgentForPlanningRole(settings, "planner"),
       messages: [{ role: "user", content: prompt }],
       systemPrompt: suggestSystemPrompt,
@@ -291,6 +292,7 @@ export class PlanDecomposeGenerateService {
     const decomposeSystemPrompt = `${systemPrompt}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
     const response = await agentService.invokePlanningAgent({
       projectId,
+      role: "planner",
       config: getAgentForPlanningRole(settings, "planner"),
       messages: [{ role: "user", content: prompt }],
       systemPrompt: decomposeSystemPrompt,
@@ -379,6 +381,7 @@ Field rules: complexity: low, medium, high, or very_high (plan-level).
     const generateSystemPrompt = `${systemPromptWithAutonomy}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
     const response = await agentService.invokePlanningAgent({
       projectId,
+      role: "planner",
       config: getAgentForPlanningRole(settings, "planner"),
       messages: [{ role: "user", content: prompt }],
       systemPrompt: generateSystemPrompt,

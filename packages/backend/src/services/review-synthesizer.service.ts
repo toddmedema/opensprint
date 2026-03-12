@@ -81,6 +81,7 @@ Synthesize the above into a single report. Output ONLY valid JSON with status, s
     try {
       const response = await agentService.invokePlanningAgent({
         projectId,
+        role: "reviewer",
         config: agentConfig,
         messages: [{ role: "user", content: prompt }],
         systemPrompt,

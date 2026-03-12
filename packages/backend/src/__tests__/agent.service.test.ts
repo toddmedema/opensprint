@@ -177,6 +177,7 @@ describe("AgentService", () => {
 
       await service.invokePlanningAgent({
         projectId: "proj-plan-stats",
+        role: "planner",
         config: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
         messages: [{ role: "user", content: "Plan this" }],
         tracking: {
@@ -203,6 +204,29 @@ describe("AgentService", () => {
           "success",
         ])
       );
+    });
+
+    it("records planning invocations without tracking into agent_stats when role is provided", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "sk-ant-test", keyId: "k1", source: "global" });
+      mockMessagesCreate.mockResolvedValue({
+        content: [{ type: "text", text: "Dreamer response" }],
+      });
+
+      await service.invokePlanningAgent({
+        projectId: "proj-dreamer-no-tracking",
+        role: "dreamer",
+        config: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
+        messages: [{ role: "user", content: "Answer this" }],
+      });
+
+      const insertCall = mockDbClient.execute.mock.calls.find(
+        (call) => typeof call[0] === "string" && call[0].includes("INSERT INTO agent_stats")
+      );
+      expect(insertCall).toBeDefined();
+      const args = insertCall?.[1] as unknown[];
+      expect(args?.[0]).toBe("proj-dreamer-no-tracking");
+      expect(String(args?.[1])).toMatch(/^planning-proj-dreamer-no-tracking-/);
+      expect(args?.[3]).toBe("dreamer");
     });
 
     it("records merger runs via invokeCodingAgent role tracking", () => {
@@ -555,6 +579,7 @@ describe("AgentService", () => {
 
       const result = await service.invokePlanningAgent({
         projectId,
+        role: "dreamer",
         config: claudeConfig,
         messages: [{ role: "user", content: "Hi" }],
       });
@@ -580,6 +605,7 @@ describe("AgentService", () => {
 
       const result = await service.invokePlanningAgent({
         projectId,
+        role: "dreamer",
         config: claudeConfig,
         messages: [{ role: "user", content: "Hi" }],
       });
@@ -607,6 +633,7 @@ describe("AgentService", () => {
       await expect(
         service.invokePlanningAgent({
           projectId,
+          role: "dreamer",
           config: claudeConfig,
           messages: [{ role: "user", content: "Hi" }],
         })
@@ -622,6 +649,7 @@ describe("AgentService", () => {
       await expect(
         service.invokePlanningAgent({
           projectId,
+          role: "dreamer",
           config: claudeConfig,
           messages: [{ role: "user", content: "Hi" }],
         })
@@ -646,6 +674,7 @@ describe("AgentService", () => {
 
       const result = await service.invokePlanningAgent({
         projectId,
+        role: "dreamer",
         config: claudeConfig,
         messages: [{ role: "user", content: "Hi" }],
         onChunk,
@@ -674,6 +703,7 @@ describe("AgentService", () => {
 
       const result = await service.invokePlanningAgent({
         projectId,
+        role: "dreamer",
         config: openaiConfig,
         messages: [{ role: "user", content: "Hi" }],
       });
@@ -692,6 +722,7 @@ describe("AgentService", () => {
 
       const result = await service.invokePlanningAgent({
         projectId,
+        role: "dreamer",
         config: { type: "openai", model: "gpt-5.3-codex", cliCommand: null },
         messages: [{ role: "user", content: "Hi" }],
       });
@@ -717,6 +748,7 @@ describe("AgentService", () => {
 
       const result = await service.invokePlanningAgent({
         projectId,
+        role: "dreamer",
         config: openaiConfig,
         messages: [{ role: "user", content: "Hi" }],
       });
@@ -733,6 +765,7 @@ describe("AgentService", () => {
       await expect(
         service.invokePlanningAgent({
           projectId,
+          role: "dreamer",
           config: openaiConfig,
           messages: [{ role: "user", content: "Hi" }],
         })
@@ -753,6 +786,7 @@ describe("AgentService", () => {
 
       const result = await service.invokePlanningAgent({
         projectId,
+        role: "dreamer",
         config: openaiConfig,
         messages: [{ role: "user", content: "Hi" }],
         onChunk,
@@ -775,6 +809,7 @@ describe("AgentService", () => {
 
       const result = await service.invokePlanningAgent({
         projectId,
+        role: "dreamer",
         config: { type: "openai", model: "gpt-5.3-codex", cliCommand: null },
         messages: [{ role: "user", content: "Hi" }],
         onChunk,

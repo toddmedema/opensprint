@@ -331,6 +331,7 @@ ${planNew}`;
         (await getCombinedInstructions(repoPath, "auditor"));
       auditorResponse = await agentService.invokePlanningAgent({
         projectId,
+        role: "auditor",
         config: getAgentForPlanningRole(settings, "auditor", plan.metadata.complexity),
         messages: [{ role: "user", content: auditorFullPrompt }],
         systemPrompt: auditorSystemPrompt,

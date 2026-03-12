@@ -97,6 +97,7 @@ ${questionTexts.map((t) => `- ${t}`).join("\n")}`;
 
     const response = await agentService.invokePlanningAgent({
       projectId,
+      role: "dreamer",
       config: agentConfig,
       messages: [{ role: "user", content: prompt }],
       systemPrompt,

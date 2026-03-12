@@ -136,6 +136,7 @@ export async function enrichPriorityAndComplexity(
     try {
       const response = await agentService.invokePlanningAgent({
         projectId,
+        role: "auditor",
         config,
         messages: [{ role: "user", content: userPrompt }],
         systemPrompt,
@@ -575,6 +576,7 @@ Review the codebase and output a structured list of improvement tasks (JSON arra
       try {
         const response = await agentService.invokePlanningAgent({
           projectId,
+          role: "auditor",
           config,
           messages: [{ role: "user", content: userPrompt }],
           systemPrompt,
