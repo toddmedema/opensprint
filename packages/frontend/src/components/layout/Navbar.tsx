@@ -190,7 +190,7 @@ export function Navbar({
       className="relative z-[60] flex items-stretch bg-theme-surface shrink-0 overflow-hidden py-0"
       style={{
         height: NAVBAR_HEIGHT,
-        ...(isElectronWin ? { WebkitAppRegion: "drag" } : {}),
+        ...(isElectronWin || isElectronMac ? { WebkitAppRegion: "drag" } : {}),
       }}
     >
       {/* Bottom border overlay — ensures continuous line across full width, above phase buttons */}
@@ -212,7 +212,7 @@ export function Navbar({
             to="/"
             className="flex items-center gap-2"
             data-testid="navbar-logo-link"
-            style={isElectronWin ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
+            style={isElectronWin || isElectronMac ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -230,7 +230,7 @@ export function Navbar({
             data-testid="navbar-project-select"
             className="relative hidden min-[800px]:flex items-center min-w-0"
             ref={dropdownRef}
-            style={isElectronWin ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
+            style={isElectronWin || isElectronMac ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
           >
             <button
               ref={projectTriggerRef}
@@ -319,7 +319,7 @@ export function Navbar({
         {/* Center: Phase Tabs — viewport-centered via grid; horizontally scrollable on mobile. On Windows, no-drag so tabs are clickable. */}
         <div
           className="flex justify-center min-w-0 overflow-x-auto px-1 md:px-0 items-stretch [&::-webkit-scrollbar]:h-1"
-          style={isElectronWin ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
+          style={isElectronWin || isElectronMac ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
         >
           {project && currentPhase && onPhaseChange ? (
             <div
@@ -363,7 +363,7 @@ export function Navbar({
         <div
           data-testid="navbar-right-slot"
           className={`flex items-center justify-end [&>*:not(:first-child)]:pl-1 md:[&>*:not(:first-child)]:pl-3 ${isElectronMac ? "pr-0" : ""}`}
-          style={isElectronWin ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
+          style={isElectronWin || isElectronMac ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
         >
           {project ? (
             <>
