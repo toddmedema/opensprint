@@ -387,7 +387,7 @@ export function Navbar({
                     active={isSettingsActive}
                     tone="accent"
                     variant="icon"
-                    className="shrink-0"
+                    className={`shrink-0${isElectronWin ? " -mr-[5px]" : ""}`}
                     aria-label="Project settings"
                     title="Project settings"
                   >
@@ -433,7 +433,7 @@ export function Navbar({
                     active={isSettingsActive}
                     tone="accent"
                     variant="icon"
-                    className="shrink-0"
+                    className={`shrink-0${isElectronWin ? " -mr-[5px]" : ""}`}
                     aria-label="Settings"
                     title="Settings"
                   >
@@ -477,7 +477,7 @@ export function Navbar({
                     active={isSettingsActive}
                     tone="accent"
                     variant="icon"
-                    className="shrink-0"
+                    className={`shrink-0${isElectronWin ? " -mr-[5px]" : ""}`}
                     aria-label="Settings"
                     title="Settings"
                   >
@@ -505,7 +505,7 @@ export function Navbar({
           )}
           {isElectronWin && (
             <div
-              className="flex items-stretch ml-2"
+              className="flex items-stretch ml-[3px]"
               style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
               data-testid="navbar-window-controls"
             >

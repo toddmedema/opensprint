@@ -349,6 +349,41 @@ describe("Navbar", () => {
     }
   });
 
+  it("on Windows Electron, settings icon has 5px less right margin in top nav", async () => {
+    const prev =
+      typeof window !== "undefined" && (window as unknown as { electron?: unknown }).electron;
+    if (typeof window !== "undefined") {
+      (window as unknown as {
+        electron: {
+          isElectron: true;
+          platform: string;
+          getWindowMaximized: () => Promise<boolean>;
+          onWindowMaximized: (cb: () => void) => () => void;
+          onWindowUnmaximized: (cb: () => void) => () => void;
+          minimizeWindow: () => Promise<void>;
+          maximizeWindow: () => Promise<void>;
+          closeWindow: () => Promise<void>;
+        };
+      }).electron = {
+        isElectron: true,
+        platform: "win32",
+        getWindowMaximized: vi.fn().mockResolvedValue(false),
+        onWindowMaximized: vi.fn(() => () => {}),
+        onWindowUnmaximized: vi.fn(() => () => {}),
+        minimizeWindow: vi.fn().mockResolvedValue(undefined),
+        maximizeWindow: vi.fn().mockResolvedValue(undefined),
+        closeWindow: vi.fn().mockResolvedValue(undefined),
+      };
+    }
+    renderNavbar(<Navbar project={null} />);
+    const settingsLink = await screen.findByRole("link", { name: "Settings" });
+    expect(settingsLink).toHaveClass("-mr-[5px]");
+    if (typeof window !== "undefined") {
+      if (prev !== undefined) (window as unknown as { electron: unknown }).electron = prev;
+      else delete (window as unknown as { electron?: unknown }).electron;
+    }
+  });
+
   it("hides project select below 800px breakpoint (uses hidden min-[800px]:flex)", () => {
     renderNavbar(<Navbar project={null} />);
     const projectSelect = screen.getByTestId("navbar-project-select");
