@@ -541,41 +541,6 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
       []
     );
 
-    const getProviderLabel = (provider: AgentType): string => {
-      switch (provider) {
-        case "claude":
-          return "Claude (API)";
-        case "claude-cli":
-          return "Claude (CLI)";
-        case "cursor":
-          return "Cursor";
-        case "openai":
-          return "OpenAI";
-        case "google":
-          return "Google (Gemini)";
-        case "lmstudio":
-          return "LM Studio (local)";
-        case "custom":
-          return "Custom CLI";
-        default:
-          return provider;
-      }
-    };
-
-    const getRowSummary = (
-      rowLabel: "Simple" | "Complex",
-      agent: typeof simpleComplexityAgent
-    ): string => {
-      const provider = getProviderLabel(agent.type);
-      const modelSummary =
-        agent.type === "custom"
-          ? (agent.cliCommand?.trim() ? `CLI: ${agent.cliCommand.trim()}` : "CLI command not set")
-          : agent.model?.trim()
-            ? agent.model
-            : "Auto model";
-      return `${rowLabel} currently uses ${provider} / ${modelSummary}.`;
-    };
-
     const renderProviderPrerequisite = (
       rowKey: "simple" | "complex",
       rowLabel: "Simple" | "Complex",
@@ -960,9 +925,6 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                             </div>
                           )}
                         </div>
-                        <p className="text-xs text-theme-muted" data-testid="simple-row-summary">
-                          {getRowSummary("Simple", simpleComplexityAgent)}
-                        </p>
                         {renderProviderPrerequisite(
                           "simple",
                           "Simple",
@@ -1057,9 +1019,6 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                             </div>
                           )}
                         </div>
-                        <p className="text-xs text-theme-muted" data-testid="complex-row-summary">
-                          {getRowSummary("Complex", complexComplexityAgent)}
-                        </p>
                         {renderProviderPrerequisite(
                           "complex",
                           "Complex",

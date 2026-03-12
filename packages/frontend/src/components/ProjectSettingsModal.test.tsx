@@ -1144,7 +1144,7 @@ describe("ProjectSettingsModal", () => {
     );
   });
 
-  it("Agent Config tab shows row-level summaries with provider and model", async () => {
+  it("Agent Config tab has no sub help text under Simple or Complex agent selection", async () => {
     renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
     await waitForModalReady();
 
@@ -1152,39 +1152,8 @@ describe("ProjectSettingsModal", () => {
     await userEvent.click(agentConfigTab);
 
     await screen.findByText("Task Complexity");
-
-    const simpleSummary = screen.getByTestId("simple-row-summary");
-    expect(simpleSummary).toHaveTextContent(
-      "Simple currently uses Claude (API) / claude-3-5-sonnet."
-    );
-
-    const complexSummary = screen.getByTestId("complex-row-summary");
-    expect(complexSummary).toHaveTextContent(
-      "Complex currently uses Claude (API) / claude-3-5-sonnet."
-    );
-  });
-
-  it("Agent Config row summaries show Cursor / Auto model when Cursor has no model", async () => {
-    mockGetSettings.mockResolvedValue({
-      ...mockSettings,
-      simpleComplexityAgent: { type: "cursor" as const, model: null, cliCommand: null },
-      complexComplexityAgent: { type: "cursor" as const, model: null, cliCommand: null },
-    });
-
-    renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
-    await waitForModalReady();
-
-    const agentConfigTab = screen.getByRole("button", { name: "Agent Config" });
-    await userEvent.click(agentConfigTab);
-
-    await screen.findByText("Task Complexity");
-
-    expect(screen.getByTestId("simple-row-summary")).toHaveTextContent(
-      "Simple currently uses Cursor / Auto model."
-    );
-    expect(screen.getByTestId("complex-row-summary")).toHaveTextContent(
-      "Complex currently uses Cursor / Auto model."
-    );
+    expect(screen.queryByTestId("simple-row-summary")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("complex-row-summary")).not.toBeInTheDocument();
   });
 
   it("Agent Config tab shows single Task Complexity section with Simple and Complex rows", async () => {
