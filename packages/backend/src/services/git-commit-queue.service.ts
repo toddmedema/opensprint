@@ -42,6 +42,7 @@ export class MergeJobError extends Error {
       autoRepairAttempted?: boolean;
       autoRepairSucceeded?: boolean;
       autoRepairCommands?: string[];
+      autoRepairOutput?: string;
     }
   ) {
     super(message);

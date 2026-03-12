@@ -39,6 +39,10 @@ const NEXT_RETRY_CONTEXT_KEY = "next_retry_context";
 const MERGE_RETRY_CONTEXT_FAILURE_LIMIT = 1200;
 const QUALITY_GATE_ENV_REQUEUE_COUNT_KEY = "quality_gate_env_requeue_count";
 const QUALITY_GATE_ENV_REQUEUE_LIMIT = 1;
+const BASELINE_QUALITY_GATE_CACHE_MS = 60_000;
+const BASELINE_QUALITY_GATE_PAUSE_MS = 5 * 60_000;
+const BASELINE_QUALITY_GATE_PAUSED_UNTIL_KEY = "merge_quality_gate_paused_until";
+const BASELINE_QUALITY_GATE_NOTIFICATION_SOURCE_ID = "merge-quality-gate-baseline";
 
 /** One-sentence explanation for merge failures shown to users (conflicts with main in same files). */
 const HUMAN_MERGE_FAILURE_MESSAGE =
@@ -206,6 +210,13 @@ export class MergeCoordinatorService {
   private pushCompletion = new Map<string, { promise: Promise<void>; resolve: () => void }>();
   /** Branch/worktree cleanup deferred until push succeeds. */
   private pendingCleanup = new Map<string, Map<string, CleanupTarget>>();
+  /** Cached baseline quality-gate result per project/base branch. */
+  private baselineQualityGateCache = new Map<
+    string,
+    { checkedAtMs: number; failure: MergeQualityGateFailure | null }
+  >();
+  /** Dedupes baseline gate notifications while baseline remains unhealthy. */
+  private baselineQualityGateNotified = new Set<string>();
 
   constructor(private host: MergeCoordinatorHost) {}
 
@@ -361,12 +372,200 @@ export class MergeCoordinatorService {
       {
         command: failure.command,
         firstErrorLine,
-        category: failure.category,
-        autoRepairAttempted: failure.autoRepairAttempted,
-        autoRepairSucceeded: failure.autoRepairSucceeded,
+        category: failure.category ?? "quality_gate",
+        autoRepairAttempted: failure.autoRepairAttempted ?? false,
+        autoRepairSucceeded: failure.autoRepairSucceeded ?? false,
         autoRepairCommands: failure.autoRepairCommands,
+        autoRepairOutput: failure.autoRepairOutput,
       }
     );
+  }
+
+  private baselineCacheKey(projectId: string, baseBranch: string): string {
+    return `${projectId}:${baseBranch}`;
+  }
+
+  private async getBaselineQualityGateFailure(
+    projectId: string,
+    repoPath: string,
+    baseBranch: string
+  ): Promise<MergeQualityGateFailure | null> {
+    if (!this.host.runMergeQualityGates) return null;
+
+    const cacheKey = this.baselineCacheKey(projectId, baseBranch);
+    const now = Date.now();
+    const cached = this.baselineQualityGateCache.get(cacheKey);
+    if (cached && now - cached.checkedAtMs < BASELINE_QUALITY_GATE_CACHE_MS) {
+      return cached.failure;
+    }
+
+    const failure = await this.host.runMergeQualityGates({
+      projectId,
+      repoPath,
+      worktreePath: repoPath,
+      taskId: `baseline:${baseBranch}`,
+      branchName: baseBranch,
+      baseBranch,
+    });
+    this.baselineQualityGateCache.set(cacheKey, { checkedAtMs: now, failure });
+    if (!failure) {
+      this.baselineQualityGateNotified.delete(cacheKey);
+      await this.resolveBaselineQualityGateNotifications(projectId, baseBranch);
+    }
+    return failure;
+  }
+
+  private async createBaselineQualityGateNotification(
+    projectId: string,
+    baseBranch: string,
+    detail: string
+  ): Promise<void> {
+    const cacheKey = this.baselineCacheKey(projectId, baseBranch);
+    if (this.baselineQualityGateNotified.has(cacheKey)) return;
+
+    try {
+      const notification = await notificationService.createAgentFailed({
+        projectId,
+        source: "execute",
+        sourceId: `${BASELINE_QUALITY_GATE_NOTIFICATION_SOURCE_ID}:${baseBranch}`,
+        message: compactExecutionText(
+          `Merge queue paused: baseline quality gates on ${baseBranch} are failing. ${detail}`,
+          1800
+        ),
+      });
+      this.baselineQualityGateNotified.add(cacheKey);
+      broadcastToProject(projectId, {
+        type: "notification.added",
+        notification,
+      });
+    } catch (err) {
+      log.warn("Failed to create baseline quality-gate notification", {
+        projectId,
+        baseBranch,
+        err,
+      });
+    }
+  }
+
+  private async resolveBaselineQualityGateNotifications(
+    projectId: string,
+    baseBranch: string
+  ): Promise<void> {
+    const sourceId = `${BASELINE_QUALITY_GATE_NOTIFICATION_SOURCE_ID}:${baseBranch}`;
+    try {
+      const notifications = await notificationService.listByProject(projectId);
+      const baselineNotifications = notifications.filter(
+        (n) =>
+          n.kind === "agent_failed" &&
+          n.source === "execute" &&
+          n.sourceId === sourceId &&
+          n.status === "open"
+      );
+      for (const notification of baselineNotifications) {
+        await notificationService.resolve(projectId, notification.id);
+        broadcastToProject(projectId, {
+          type: "notification.resolved",
+          notificationId: notification.id,
+          projectId,
+          source: notification.source,
+          sourceId: notification.sourceId,
+        });
+      }
+    } catch (err) {
+      log.warn("Failed to resolve baseline quality-gate notifications", {
+        projectId,
+        baseBranch,
+        err,
+      });
+    }
+  }
+
+  private async pauseMergeForBaselineQualityGateFailure(
+    projectId: string,
+    repoPath: string,
+    task: StoredTask,
+    baseBranch: string,
+    failure: MergeQualityGateFailure
+  ): Promise<void> {
+    const firstErrorLine = this.getQualityGateFirstErrorLine(failure);
+    const detail = compactExecutionText(
+      `cmd: ${failure.command} | error: ${compactExecutionText(firstErrorLine, 220)}`,
+      380
+    );
+    const attempt =
+      Math.max(1, this.host.taskStore.getCumulativeAttemptsFromIssue(task) + 1) || 1;
+    const pausedUntil = new Date(Date.now() + BASELINE_QUALITY_GATE_PAUSE_MS).toISOString();
+    const requeuedSummary = buildTaskLastExecutionSummary({
+      attempt,
+      outcome: "requeued",
+      phase: "merge",
+      summary: compactExecutionText(
+        `Merge paused: baseline quality gates on ${baseBranch} are failing (${detail}).`,
+        500
+      ),
+    });
+    const retryContext: RetryContext = {
+      previousFailure: compactExecutionText(
+        `baseline quality gates failed on ${baseBranch}: ${failure.reason}`,
+        MERGE_RETRY_CONTEXT_FAILURE_LIMIT
+      ),
+      failureType: "coding_failure",
+    };
+
+    await this.host.taskStore.setMergeStage(projectId, task.id, "quality_gate");
+    await this.host.taskStore.update(projectId, task.id, {
+      status: "open",
+      assignee: "",
+      extra: {
+        last_execution_summary: requeuedSummary,
+        [NEXT_RETRY_CONTEXT_KEY]: retryContext,
+        [BASELINE_QUALITY_GATE_PAUSED_UNTIL_KEY]: pausedUntil,
+      },
+    });
+    await this.host.taskStore.comment(
+      projectId,
+      task.id,
+      `Merge paused because baseline quality gates on ${baseBranch} are failing. ${HUMAN_QUALITY_GATE_FAILURE_MESSAGE} Details: ${detail}.`
+    );
+    await this.createBaselineQualityGateNotification(projectId, baseBranch, detail);
+    eventLogService
+      .append(repoPath, {
+        timestamp: new Date().toISOString(),
+        projectId,
+        taskId: task.id,
+        event: "merge.failed",
+        data: {
+          reason: `Baseline quality gates failing on ${baseBranch}: ${failure.reason}`,
+          stage: "quality_gate",
+          branchName: baseBranch,
+          conflictedFiles: [],
+          attempt,
+          resolvedBy: "requeued",
+          scopeConfidence: this.getScopeConfidence(task),
+          summary: requeuedSummary.summary,
+          nextAction: "Paused until baseline quality gates pass",
+          qualityGateCategory: failure.category ?? "quality_gate",
+          qualityGateCommand: failure.command,
+          qualityGateFirstErrorLine: firstErrorLine,
+        },
+      })
+      .catch(() => {});
+    eventLogService
+      .append(repoPath, {
+        timestamp: new Date().toISOString(),
+        projectId,
+        taskId: task.id,
+        event: "task.requeued",
+        data: {
+          attempt,
+          phase: "merge",
+          mergeStage: "quality_gate",
+          conflictedFiles: [],
+          summary: requeuedSummary.summary,
+          nextAction: "Paused until baseline quality gates pass",
+        },
+      })
+      .catch(() => {});
   }
 
   private async releaseMergeSlot(
@@ -550,6 +749,22 @@ export class MergeCoordinatorService {
 
       // Last task in epic: merge epic branch to main, then push and cleanup via postCompletionAsync
       try {
+        const baselineFailure = await this.getBaselineQualityGateFailure(
+          projectId,
+          repoPath,
+          baseBranch
+        );
+        if (baselineFailure) {
+          await this.pauseMergeForBaselineQualityGateFailure(
+            projectId,
+            repoPath,
+            task,
+            baseBranch,
+            baselineFailure
+          );
+          await this.releaseMergeSlot(projectId, repoPath, "fail", task.id);
+          return;
+        }
         await this.ensureMergeQualityGates({
           projectId,
           repoPath,
@@ -590,6 +805,18 @@ export class MergeCoordinatorService {
 
     // 2. Attempt merge inside the serialized queue. Rebase now happens there.
     try {
+      const baselineFailure = await this.getBaselineQualityGateFailure(projectId, repoPath, baseBranch);
+      if (baselineFailure) {
+        await this.pauseMergeForBaselineQualityGateFailure(
+          projectId,
+          repoPath,
+          task,
+          baseBranch,
+          baselineFailure
+        );
+        await this.releaseMergeSlot(projectId, repoPath, "fail", task.id);
+        return;
+      }
       await this.ensureMergeQualityGates({
         projectId,
         repoPath,

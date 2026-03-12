@@ -705,6 +705,27 @@ suite("TaskStoreService", () => {
       expect(result[0].issue_type).toBe("task");
     });
 
+    it("skips tasks paused by baseline quality-gate window until pause expires", async () => {
+      const pausedTask = await store.create(TEST_PROJECT_ID, "Paused merge task", { type: "task" });
+      await store.update(TEST_PROJECT_ID, pausedTask.id, {
+        extra: {
+          merge_quality_gate_paused_until: new Date(Date.now() + 60_000).toISOString(),
+        },
+      });
+
+      const readyDuringPause = await store.ready(TEST_PROJECT_ID);
+      expect(readyDuringPause.map((t) => t.id)).not.toContain(pausedTask.id);
+
+      await store.update(TEST_PROJECT_ID, pausedTask.id, {
+        extra: {
+          merge_quality_gate_paused_until: new Date(Date.now() - 60_000).toISOString(),
+        },
+      });
+
+      const readyAfterPause = await store.ready(TEST_PROJECT_ID);
+      expect(readyAfterPause.map((t) => t.id)).toContain(pausedTask.id);
+    });
+
     it("should exclude tasks in blocked epic (epic-blocked model)", async () => {
       const epic = await store.create(TEST_PROJECT_ID, "Plan Epic", { type: "epic" });
       await store.create(TEST_PROJECT_ID, "Task under epic", {

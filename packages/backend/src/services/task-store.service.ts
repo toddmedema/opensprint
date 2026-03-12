@@ -512,6 +512,13 @@ export class TaskStoreService {
     for (const issue of allIssues) {
       if (issue.status !== "open") continue;
       if (issue.issue_type === "epic") continue;
+      const mergePausedUntilRaw = (issue as Record<string, unknown>).merge_quality_gate_paused_until;
+      if (typeof mergePausedUntilRaw === "string") {
+        const mergePausedUntilMs = Date.parse(mergePausedUntilRaw);
+        if (Number.isFinite(mergePausedUntilMs) && mergePausedUntilMs > Date.now()) {
+          continue;
+        }
+      }
 
       // Exclude tasks in blocked epic (walk up to find epic parent)
       const epicId = this.getPlanEpicId(issue, allIssues);

@@ -71,6 +71,10 @@ const mockGetSettings = vi.fn();
 const mockGitQueueDrain = vi.fn();
 const mockGitQueueEnqueueAndWait = vi.fn();
 const mockNotificationCreate = vi.fn();
+const mockNotificationCreateAgentFailed = vi.fn();
+const mockNotificationListByProject = vi.fn();
+const mockNotificationResolve = vi.fn();
+const mockBroadcastToProject = vi.fn();
 const mockResolveBaseBranch = vi.fn();
 const mockInspectGitRepoState = vi.fn();
 
@@ -88,6 +92,7 @@ vi.mock("../services/git-commit-queue.service.js", () => ({
         autoRepairAttempted?: boolean;
         autoRepairSucceeded?: boolean;
         autoRepairCommands?: string[];
+        autoRepairOutput?: string;
       }
     ) {
       super(message);
@@ -120,11 +125,14 @@ vi.mock("../services/event-log.service.js", () => ({
 vi.mock("../services/notification.service.js", () => ({
   notificationService: {
     create: (...args: unknown[]) => mockNotificationCreate(...args),
+    createAgentFailed: (...args: unknown[]) => mockNotificationCreateAgentFailed(...args),
+    listByProject: (...args: unknown[]) => mockNotificationListByProject(...args),
+    resolve: (...args: unknown[]) => mockNotificationResolve(...args),
   },
 }));
 
 vi.mock("../websocket/index.js", () => ({
-  broadcastToProject: vi.fn(),
+  broadcastToProject: (...args: unknown[]) => mockBroadcastToProject(...args),
 }));
 
 vi.mock("../services/deploy-trigger.service.js", () => ({
@@ -186,6 +194,30 @@ describe("MergeCoordinatorService", () => {
     mockGitQueueDrain.mockResolvedValue(undefined);
     mockGitQueueEnqueueAndWait.mockResolvedValue(undefined);
     mockNotificationCreate.mockResolvedValue(undefined);
+    mockNotificationCreateAgentFailed.mockResolvedValue({
+      id: "af-1",
+      projectId,
+      source: "execute",
+      sourceId: "merge-quality-gate-baseline:main",
+      questions: [],
+      status: "open",
+      createdAt: new Date().toISOString(),
+      resolvedAt: null,
+      kind: "agent_failed",
+    });
+    mockNotificationListByProject.mockResolvedValue([]);
+    mockNotificationResolve.mockResolvedValue({
+      id: "af-1",
+      projectId,
+      source: "execute",
+      sourceId: "merge-quality-gate-baseline:main",
+      questions: [],
+      status: "resolved",
+      createdAt: new Date().toISOString(),
+      resolvedAt: new Date().toISOString(),
+      kind: "agent_failed",
+    });
+    mockBroadcastToProject.mockReset();
     mockResolveBaseBranch.mockImplementation(
       async (_repoPath: string, preferredBaseBranch?: string | null) => preferredBaseBranch ?? "main"
     );
@@ -496,10 +528,13 @@ describe("MergeCoordinatorService", () => {
   });
 
   it("requeues task when pre-merge quality gate fails", async () => {
-    mockHost.runMergeQualityGates = vi.fn().mockResolvedValue({
-      command: "npm run lint",
-      reason: "Command failed with exit code 1",
-      output: "eslint found errors",
+    mockHost.runMergeQualityGates = vi.fn().mockImplementation(async (options) => {
+      if (options.worktreePath === repoPath) return null; // baseline gate passes in this test
+      return {
+        command: "npm run lint",
+        reason: "Command failed with exit code 1",
+        output: "eslint found errors",
+      };
     });
 
     await coordinator.performMergeAndDone(projectId, repoPath, makeTask(), branchName);
@@ -551,10 +586,13 @@ describe("MergeCoordinatorService", () => {
   it("persists retry context when quality-gate failures reach blocked threshold", async () => {
     (mockHost.taskStore.getCumulativeAttemptsFromIssue as unknown as ReturnType<typeof vi.fn>)
       .mockReturnValue(5);
-    mockHost.runMergeQualityGates = vi.fn().mockResolvedValue({
-      command: "npm run lint",
-      reason: "Command failed with exit code 1",
-      output: "eslint found errors",
+    mockHost.runMergeQualityGates = vi.fn().mockImplementation(async (options) => {
+      if (options.worktreePath === repoPath) return null; // baseline gate passes in this test
+      return {
+        command: "npm run lint",
+        reason: "Command failed with exit code 1",
+        output: "eslint found errors",
+      };
     });
 
     await coordinator.performMergeAndDone(projectId, repoPath, makeTask(), branchName);
@@ -593,16 +631,128 @@ describe("MergeCoordinatorService", () => {
     );
   });
 
-  it("requeues once for environment-setup quality-gate failures", async () => {
+  it("pauses merge when baseline quality gates on main fail and emits one blocker notification", async () => {
     mockHost.runMergeQualityGates = vi.fn().mockResolvedValue({
-      command: "npm run build",
-      reason: "Dependency setup check failed",
-      output: "Cannot find module 'better-sqlite3'",
-      firstErrorLine: "Cannot find module 'better-sqlite3'",
-      category: "environment_setup",
-      autoRepairAttempted: true,
-      autoRepairSucceeded: false,
-      autoRepairCommands: ["npm ci", "npm install"],
+      command: "npm run test",
+      reason: "Command failed: npm run test",
+      output: "stderr | baseline failure",
+      firstErrorLine: "stderr | baseline failure",
+      category: "quality_gate",
+    });
+
+    await coordinator.performMergeAndDone(projectId, repoPath, makeTask(), branchName);
+
+    expect(mockGitQueueEnqueueAndWait).not.toHaveBeenCalled();
+    expect(mockHost.taskStore.setMergeStage).toHaveBeenCalledWith(
+      projectId,
+      taskId,
+      "quality_gate"
+    );
+    expect(mockHost.taskStore.update).toHaveBeenCalledWith(
+      projectId,
+      taskId,
+      expect.objectContaining({
+        status: "open",
+        assignee: "",
+        extra: expect.objectContaining({
+          merge_quality_gate_paused_until: expect.any(String),
+          last_execution_summary: expect.objectContaining({
+            summary: expect.stringContaining(
+              "Merge paused: baseline quality gates on main are failing"
+            ),
+          }),
+        }),
+      })
+    );
+    expect(mockNotificationCreateAgentFailed).toHaveBeenCalledTimes(1);
+    expect(mockNotificationCreateAgentFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId,
+        source: "execute",
+        sourceId: "merge-quality-gate-baseline:main",
+      })
+    );
+
+    hostState.slots.set(taskId, makeSlot());
+    await coordinator.performMergeAndDone(projectId, repoPath, makeTask(), branchName);
+    expect(mockNotificationCreateAgentFailed).toHaveBeenCalledTimes(1);
+    expect(mockHost.runMergeQualityGates).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves baseline blocker notification when baseline quality gates recover", async () => {
+    let nowMs = 1_000_000;
+    const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => nowMs);
+    try {
+      mockHost.runMergeQualityGates = vi.fn().mockResolvedValue({
+        command: "npm run test",
+        reason: "Command failed: npm run test",
+        output: "stderr | baseline failure",
+        firstErrorLine: "stderr | baseline failure",
+        category: "quality_gate",
+      });
+
+      await coordinator.performMergeAndDone(projectId, repoPath, makeTask(), branchName);
+      expect(mockNotificationCreateAgentFailed).toHaveBeenCalledTimes(1);
+
+      mockNotificationListByProject.mockResolvedValueOnce([
+        {
+          id: "af-baseline",
+          projectId,
+          source: "execute",
+          sourceId: "merge-quality-gate-baseline:main",
+          questions: [],
+          status: "open",
+          createdAt: new Date().toISOString(),
+          resolvedAt: null,
+          kind: "agent_failed",
+        },
+      ]);
+      mockNotificationResolve.mockResolvedValueOnce({
+        id: "af-baseline",
+        projectId,
+        source: "execute",
+        sourceId: "merge-quality-gate-baseline:main",
+        questions: [],
+        status: "resolved",
+        createdAt: new Date().toISOString(),
+        resolvedAt: new Date().toISOString(),
+        kind: "agent_failed",
+      });
+
+      // Baseline checks are cached for 60s; move beyond TTL so recovery is re-evaluated.
+      nowMs += 61_000;
+      hostState.slots.set(taskId, makeSlot());
+      mockHost.runMergeQualityGates = vi.fn().mockResolvedValue(null);
+      await coordinator.performMergeAndDone(projectId, repoPath, makeTask(), branchName);
+
+      expect(mockNotificationResolve).toHaveBeenCalledWith(projectId, "af-baseline");
+      expect(mockBroadcastToProject).toHaveBeenCalledWith(
+        projectId,
+        expect.objectContaining({
+          type: "notification.resolved",
+          notificationId: "af-baseline",
+          source: "execute",
+          sourceId: "merge-quality-gate-baseline:main",
+        })
+      );
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("requeues once for environment-setup quality-gate failures", async () => {
+    mockHost.runMergeQualityGates = vi.fn().mockImplementation(async (options) => {
+      if (options.worktreePath === repoPath) return null; // baseline gate passes in this test
+      return {
+        command: "npm run build",
+        reason: "Dependency setup check failed",
+        output: "Cannot find module 'better-sqlite3'",
+        firstErrorLine: "Cannot find module 'better-sqlite3'",
+        category: "environment_setup",
+        autoRepairAttempted: true,
+        autoRepairSucceeded: false,
+        autoRepairCommands: ["npm ci", "npm install"],
+      };
     });
 
     await coordinator.performMergeAndDone(projectId, repoPath, makeTask(), branchName);
@@ -631,15 +781,18 @@ describe("MergeCoordinatorService", () => {
     mockHost.taskStore.show = vi
       .fn()
       .mockResolvedValue({ ...makeTask(), quality_gate_env_requeue_count: 1 } as never);
-    mockHost.runMergeQualityGates = vi.fn().mockResolvedValue({
-      command: "npm run build",
-      reason: "Dependency setup check failed",
-      output: "Cannot find module 'better-sqlite3'",
-      firstErrorLine: "Cannot find module 'better-sqlite3'",
-      category: "environment_setup",
-      autoRepairAttempted: true,
-      autoRepairSucceeded: false,
-      autoRepairCommands: ["npm ci", "npm install"],
+    mockHost.runMergeQualityGates = vi.fn().mockImplementation(async (options) => {
+      if (options.worktreePath === repoPath) return null; // baseline gate passes in this test
+      return {
+        command: "npm run build",
+        reason: "Dependency setup check failed",
+        output: "Cannot find module 'better-sqlite3'",
+        firstErrorLine: "Cannot find module 'better-sqlite3'",
+        category: "environment_setup",
+        autoRepairAttempted: true,
+        autoRepairSucceeded: false,
+        autoRepairCommands: ["npm ci", "npm install"],
+      };
     });
 
     await coordinator.performMergeAndDone(projectId, repoPath, makeTask(), branchName);

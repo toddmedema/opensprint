@@ -10,6 +10,10 @@ concurrency:
   group: merge-gate-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   quality-gates:
     name: "${{ matrix.gate }}"
