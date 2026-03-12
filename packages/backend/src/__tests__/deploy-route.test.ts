@@ -85,6 +85,9 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
   let tempDir: string;
   let projectId: string;
   let originalHome: string | undefined;
+  let refreshMaxSlotsSpy:
+    | ReturnType<typeof vi.spyOn<typeof orchestratorService, "refreshMaxSlotsAndNudge">>
+    | undefined;
 
   afterAll(async () => {
     const mod = (await import("../services/task-store.service.js")) as { _testPool?: { end: () => Promise<void> } };
@@ -92,6 +95,9 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
   });
 
   beforeEach(async () => {
+    refreshMaxSlotsSpy = vi
+      .spyOn(orchestratorService, "refreshMaxSlotsAndNudge")
+      .mockResolvedValue(undefined);
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-deploy-route-test-"));
     originalHome = process.env.HOME;
     process.env.HOME = tempDir;
@@ -128,6 +134,7 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
   });
 
   afterEach(async () => {
+    refreshMaxSlotsSpy?.mockRestore();
     process.env.HOME = originalHome;
     try {
       await fs.rm(tempDir, { recursive: true, force: true });
@@ -206,16 +213,11 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
     });
 
     it("should trigger orchestrator refreshMaxSlotsAndNudge so changes take effect immediately", async () => {
-      const refreshSpy = vi
-        .spyOn(orchestratorService, "refreshMaxSlotsAndNudge")
-        .mockResolvedValue(undefined);
-
       await request(app)
         .put(`${API_PREFIX}/projects/${projectId}/deliver/settings`)
         .send({ mode: "custom", customCommand: "npm run deploy" });
 
-      expect(refreshSpy).toHaveBeenCalledWith(projectId);
-      refreshSpy.mockRestore();
+      expect(refreshMaxSlotsSpy).toHaveBeenCalledWith(projectId);
     });
 
     it("should accept and persist autoDeployTrigger per target and autoResolveFeedbackOnTaskCompletion (PRD §7.5.3, §10.2)", async () => {
@@ -399,7 +401,7 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
         `${API_PREFIX}/projects/${projectId}/deliver/history?limit=1`
       );
       for (let i = 0; i < 20 && (historyRes.body.data?.length ?? 0) === 0; i++) {
-        await new Promise((r) => setTimeout(r, 500));
+        await new Promise((r) => setTimeout(r, 100));
         historyRes = await request(app).get(
           `${API_PREFIX}/projects/${projectId}/deliver/history?limit=1`
         );
@@ -544,7 +546,7 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
         `${API_PREFIX}/projects/${projectId}/deliver/history?limit=1`
       );
       for (let i = 0; i < 20 && (historyRes.body.data?.length ?? 0) === 0; i++) {
-        await new Promise((r) => setTimeout(r, 500));
+        await new Promise((r) => setTimeout(r, 100));
         historyRes = await request(app).get(
           `${API_PREFIX}/projects/${projectId}/deliver/history?limit=1`
         );
@@ -567,7 +569,7 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
         `${API_PREFIX}/projects/${projectId}/deliver/history?limit=1`
       );
       for (let i = 0; i < 20 && (historyRes.body.data?.length ?? 0) === 0; i++) {
-        await new Promise((r) => setTimeout(r, 500));
+        await new Promise((r) => setTimeout(r, 100));
         historyRes = await request(app).get(
           `${API_PREFIX}/projects/${projectId}/deliver/history?limit=1`
         );
@@ -699,7 +701,7 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
         `${API_PREFIX}/projects/${projectId}/deliver/history?limit=5`
       );
       for (let i = 0; i < 20 && (historyRes.body.data?.length ?? 0) < 2; i++) {
-        await new Promise((r) => setTimeout(r, 500));
+        await new Promise((r) => setTimeout(r, 100));
         historyRes = await request(app).get(
           `${API_PREFIX}/projects/${projectId}/deliver/history?limit=5`
         );
@@ -721,7 +723,7 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
       // Poll until rollback record reaches a terminal state (server may or may not await in-process)
       let records: { id: string; status?: string; rolledBackBy?: string }[] = [];
       for (let i = 0; i < 20; i++) {
-        await new Promise((r) => setTimeout(r, 500));
+        await new Promise((r) => setTimeout(r, 100));
         historyRes = await request(app).get(
           `${API_PREFIX}/projects/${projectId}/deliver/history?limit=5`
         );

@@ -1,5 +1,7 @@
 import { spawn } from "child_process";
+import { randomUUID } from "crypto";
 import fs from "fs/promises";
+import os from "os";
 import path from "path";
 import type { TestResults, TestResultDetail } from "@opensprint/shared";
 import { registerAgentProcess, unregisterAgentProcess } from "./agent-process-registry.js";
@@ -29,6 +31,27 @@ export interface ScopedTestResult extends TestResults {
 
 interface RunTestsOptions {
   timeoutMs?: number;
+}
+
+interface VitestJsonAssertionResult {
+  fullName?: string;
+  title?: string;
+  status?: string;
+  duration?: number;
+  failureMessages?: string[];
+}
+
+interface VitestJsonTestResult {
+  name?: string;
+  assertionResults?: VitestJsonAssertionResult[];
+}
+
+interface VitestJsonReport {
+  numPassedTests?: number;
+  numFailedTests?: number;
+  numPendingTests?: number;
+  numTotalTests?: number;
+  testResults?: VitestJsonTestResult[];
 }
 
 /**
@@ -107,19 +130,39 @@ export class TestRunner {
       };
     }
 
+    const { command: preparedCommand, vitestJsonReportPath } =
+      this.withVitestJsonReporter(command, repoPath);
     const { stdout, stderr, exitCode } = await this.execWithProcessGroup(
-      command,
+      preparedCommand,
       repoPath,
       timeoutMs
     );
     const rawOutput = stdout + "\n" + stderr;
+    const parsedVitestJson = await this.parseVitestJsonReport(vitestJsonReportPath);
 
     if (exitCode === 0) {
-      const parsed = this.parseTestOutput(rawOutput, command);
-      return { ...parsed, rawOutput, executedCommand: command, scope: "full" };
+      const parsed = parsedVitestJson ?? this.parseTestOutput(rawOutput, preparedCommand);
+      return { ...parsed, rawOutput, executedCommand: preparedCommand, scope: "full" };
     }
 
-    const results = this.parseTestOutput(rawOutput, command);
+    const results = parsedVitestJson ?? this.parseTestOutput(rawOutput, preparedCommand);
+    if (results.failed === 0) {
+      const fallbackFailure: TestResultDetail = {
+        name: "Test execution",
+        status: "failed",
+        duration: 0,
+        error: stderr || "Test command exited with non-zero status",
+      };
+      return {
+        ...results,
+        failed: 1,
+        total: Math.max(results.total, results.passed + results.skipped + 1),
+        details: [...results.details, fallbackFailure],
+        rawOutput,
+        executedCommand: preparedCommand,
+        scope: "full",
+      };
+    }
     if (results.total === 0) {
       return {
         passed: 0,
@@ -135,12 +178,12 @@ export class TestRunner {
           },
         ],
         rawOutput,
-        executedCommand: command,
+        executedCommand: preparedCommand,
         scope: "full",
       };
     }
 
-    return { ...results, rawOutput, executedCommand: command, scope: "full" };
+    return { ...results, rawOutput, executedCommand: preparedCommand, scope: "full" };
   }
 
   /**
@@ -295,9 +338,15 @@ export class TestRunner {
     let skipped = 0;
 
     // Vitest/Jest summary pattern: "Tests: X passed, Y failed, Z skipped, W total"
-    const summaryMatch = output.match(
+    let summaryMatch = output.match(
       /Tests?:\s*(?:(\d+)\s+passed)?(?:,?\s*(\d+)\s+failed)?(?:,?\s*(\d+)\s+skipped)?(?:,?\s*(\d+)\s+total)?/i
     );
+    // Vitest v2 summary pattern: "Tests  2010 passed | 9 skipped (2019)"
+    if (!summaryMatch) {
+      summaryMatch = output.match(
+        /Tests?\s+(?:(\d+)\s+passed)?(?:\s*\|\s*(\d+)\s+failed)?(?:\s*\|\s*(\d+)\s+skipped)?(?:\s*\((\d+)\))?/i
+      );
+    }
 
     if (summaryMatch) {
       passed = parseInt(summaryMatch[1] || "0", 10);
@@ -344,6 +393,98 @@ export class TestRunner {
       total: passed + failed + skipped || details.length,
       details,
     };
+  }
+
+  private isVitestCommand(command: string): boolean {
+    return /\bvitest\b|vitest\.mjs/.test(command);
+  }
+
+  private extractOutputFileArg(command: string): string | null {
+    const match = command.match(/(?:^|\s)--outputFile(?:=|\s+)("[^"]+"|'[^']+'|\S+)/);
+    if (!match || !match[1]) return null;
+    const value = match[1].trim();
+    return value.replace(/^['"]|['"]$/g, "");
+  }
+
+  private withVitestJsonReporter(
+    command: string,
+    repoPath: string
+  ): { command: string; vitestJsonReportPath: string | null } {
+    if (!this.isVitestCommand(command)) {
+      return { command, vitestJsonReportPath: null };
+    }
+
+    const outputFileArg = this.extractOutputFileArg(command);
+    const hasJsonReporter = /--reporter(?:=|\s+)json\b/.test(command);
+
+    if (outputFileArg && hasJsonReporter) {
+      const reportPath = path.isAbsolute(outputFileArg)
+        ? outputFileArg
+        : path.join(repoPath, outputFileArg);
+      return { command, vitestJsonReportPath: reportPath };
+    }
+
+    if (outputFileArg && !hasJsonReporter) {
+      // Respect explicit output files from user commands; fall back to text parsing.
+      return { command, vitestJsonReportPath: null };
+    }
+
+    const reportFile = path.join(os.tmpdir(), `opensprint-vitest-${randomUUID()}.json`);
+    const reporterArg = hasJsonReporter ? "" : " --reporter=json";
+    return {
+      command: `${command}${reporterArg} --outputFile=${reportFile}`,
+      vitestJsonReportPath: reportFile,
+    };
+  }
+
+  private async parseVitestJsonReport(reportPath: string | null): Promise<TestResults | null> {
+    if (!reportPath) return null;
+
+    try {
+      const raw = await fs.readFile(reportPath, "utf-8");
+      const parsed = JSON.parse(raw) as VitestJsonReport;
+      const details: TestResultDetail[] = [];
+      let derivedPassed = 0;
+      let derivedFailed = 0;
+      let derivedSkipped = 0;
+
+      for (const suite of parsed.testResults ?? []) {
+        for (const assertion of suite.assertionResults ?? []) {
+          const rawStatus = assertion.status ?? "passed";
+          const status: "passed" | "failed" | "skipped" =
+            rawStatus === "passed" ? "passed" : rawStatus === "failed" ? "failed" : "skipped";
+          if (status === "passed") derivedPassed += 1;
+          else if (status === "failed") derivedFailed += 1;
+          else derivedSkipped += 1;
+
+          const failureMessages = (assertion.failureMessages ?? []).filter(Boolean);
+          details.push({
+            name: assertion.fullName || assertion.title || suite.name || "Unnamed test",
+            status,
+            duration: typeof assertion.duration === "number" ? assertion.duration : 0,
+            ...(status === "failed" && failureMessages.length > 0
+              ? { error: failureMessages.join("\n") }
+              : {}),
+          });
+        }
+      }
+
+      const passed =
+        typeof parsed.numPassedTests === "number" ? parsed.numPassedTests : derivedPassed;
+      const failed =
+        typeof parsed.numFailedTests === "number" ? parsed.numFailedTests : derivedFailed;
+      const skipped =
+        typeof parsed.numPendingTests === "number" ? parsed.numPendingTests : derivedSkipped;
+      const total =
+        typeof parsed.numTotalTests === "number" ? parsed.numTotalTests : passed + failed + skipped;
+
+      if (total === 0 && details.length === 0) return null;
+      return { passed, failed, skipped, total, details };
+    } catch {
+      return null;
+    } finally {
+      await fs.rm(reportPath, { force: true }).catch(() => {});
+    }
   }
 
   private buildVitestCommand(mode: "run" | "related", files: string[]): string {

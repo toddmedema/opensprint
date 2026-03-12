@@ -183,8 +183,9 @@ export async function createTestPostgresClient(): Promise<{
     if (dbName === APP_DB_NAME) {
       throw new TestDatabaseRefusedError();
     }
-    // Log once per process so test runs show which DB is used (confirms isolation from app DB).
-    if (!process.env.OPENSPRINT_TEST_DB_LOGGED) {
+    // Optional debug banner for local troubleshooting only.
+    // Enable with OPENSPRINT_TEST_VERBOSE_DB=1.
+    if (!process.env.OPENSPRINT_TEST_DB_LOGGED && process.env.OPENSPRINT_TEST_VERBOSE_DB === "1") {
       (process.env as NodeJS.ProcessEnv).OPENSPRINT_TEST_DB_LOGGED = "1";
       const scope = schema ? ` schema=${schema}` : "";
       console.warn(`[test-db-helper] Tests using database: ${dbName}${scope}`);

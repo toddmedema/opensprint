@@ -341,7 +341,11 @@ export class PlanCrudService {
 
     const validation = validatePlanContent(content);
     if (validation.warnings.length > 0) {
-      log.warn("Plan validation", { planId, warnings: validation.warnings });
+      if (process.env.VITEST) {
+        log.debug("Plan validation", { planId, warnings: validation.warnings });
+      } else {
+        log.warn("Plan validation", { planId, warnings: validation.warnings });
+      }
     }
 
     const epicComplexity = planComplexityToTask(complexity);
@@ -464,7 +468,11 @@ export class PlanCrudService {
 
     const validation = validatePlanContent(body.content);
     if (validation.warnings.length > 0) {
-      log.warn("Plan validation on update", { planId, warnings: validation.warnings });
+      if (process.env.VITEST) {
+        log.debug("Plan validation on update", { planId, warnings: validation.warnings });
+      } else {
+        log.warn("Plan validation on update", { planId, warnings: validation.warnings });
+      }
     }
 
     await syncPlanTasksFromContent(projectId, planId, body.content);

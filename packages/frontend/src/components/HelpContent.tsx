@@ -38,16 +38,18 @@ export function HelpContent({ project, onClose }: HelpContentProps) {
     tabParam && VALID_TAB_IDS.includes(tabParam as TabId) ? (tabParam as TabId) : "ask";
   const [activeTab, setActiveTab] = useState<TabId>(initialTab);
 
-  // Sync tab from URL so /help?tab=shortcuts opens Keyboard Shortcuts
+  // Sync tab from URL so /help?tab=shortcuts opens Keyboard Shortcuts.
+  // Treat missing/invalid tab values as "ask".
   useEffect(() => {
-    if (tabParam && VALID_TAB_IDS.includes(tabParam as TabId) && tabParam !== activeTab) {
-      setActiveTab(tabParam as TabId);
+    const nextTab: TabId =
+      tabParam && VALID_TAB_IDS.includes(tabParam as TabId) ? (tabParam as TabId) : "ask";
+    if (nextTab !== activeTab) {
+      setActiveTab(nextTab);
     }
   }, [activeTab, tabParam]);
 
   const setTab = useCallback(
     (tab: TabId) => {
-      setActiveTab(tab);
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev);
         if (tab === "ask") next.delete("tab");

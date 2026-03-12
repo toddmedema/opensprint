@@ -1828,7 +1828,7 @@ describe("AgentClient", () => {
           outputLogPath
         );
 
-        await new Promise((resolve) => setTimeout(resolve, 2200));
+        await new Promise((resolve) => setTimeout(resolve, 250));
         expect(onExit).not.toHaveBeenCalled();
 
         await fs.writeFile(path.join(taskDir, "result.json"), JSON.stringify({ status: "success" }), "utf-8");
@@ -1836,7 +1836,7 @@ describe("AgentClient", () => {
           () => {
             expect(onExit).toHaveBeenCalledWith(0);
           },
-          { timeout: 5000 }
+          { timeout: 3000 }
         );
       } finally {
         await fs.rm(tmpDir, { recursive: true, force: true });
@@ -1879,7 +1879,7 @@ describe("AgentClient", () => {
           outputLogPath
         );
 
-        await new Promise((resolve) => setTimeout(resolve, 2200));
+        await new Promise((resolve) => setTimeout(resolve, 250));
         expect(onExit).not.toHaveBeenCalled();
 
         await fs.writeFile(
@@ -1891,7 +1891,7 @@ describe("AgentClient", () => {
           () => {
             expect(onExit).toHaveBeenCalledWith(1);
           },
-          { timeout: 5000 }
+          { timeout: 3000 }
         );
       } finally {
         await fs.rm(tmpDir, { recursive: true, force: true });

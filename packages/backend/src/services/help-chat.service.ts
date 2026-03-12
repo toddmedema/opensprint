@@ -51,7 +51,7 @@ const MAX_DOCS_CHARS = 12000;
 const OPENSPRINT_HELP_DOCS_PATH = "docs/opensprint-help-context.md";
 
 /** Load Open Sprint internal docs for Help Chat context. Returns empty string if file not found. */
-async function loadOpen SprintDocs(): Promise<string> {
+async function loadOpenSprintDocs(): Promise<string> {
   try {
     const servicesDir = path.dirname(fileURLToPath(import.meta.url));
     const docsPath = path.resolve(servicesDir, "..", "..", OPENSPRINT_HELP_DOCS_PATH);
@@ -291,7 +291,7 @@ export class HelpChatService {
       isProjectView && projectId
         ? this.buildProjectContext(projectId)
         : this.buildHomepageContext(),
-      loadOpen SprintDocs(),
+      loadOpenSprintDocs(),
     ]);
 
     const docsSection =

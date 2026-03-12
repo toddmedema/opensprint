@@ -217,8 +217,14 @@ describe("Settings API lifecycle", () => {
   let tempDir: string;
   let projectId: string;
   let originalHome: string | undefined;
+  let refreshMaxSlotsSpy:
+    | ReturnType<typeof vi.spyOn<typeof orchestratorService, "refreshMaxSlotsAndNudge">>
+    | undefined;
 
   beforeEach(async () => {
+    refreshMaxSlotsSpy = vi
+      .spyOn(orchestratorService, "refreshMaxSlotsAndNudge")
+      .mockResolvedValue(undefined);
     app = createApp();
     projectService = new ProjectService();
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-settings-api-"));
@@ -246,6 +252,7 @@ describe("Settings API lifecycle", () => {
   });
 
   afterEach(async () => {
+    refreshMaxSlotsSpy?.mockRestore();
     process.env.HOME = originalHome;
     await fs.rm(tempDir, { recursive: true, force: true });
   });
@@ -329,16 +336,11 @@ describe("Settings API lifecycle", () => {
   });
 
   it("PUT /api/v1/projects/:id/settings triggers orchestrator nudge so changes take effect immediately", async () => {
-    const refreshSpy = vi
-      .spyOn(orchestratorService, "refreshMaxSlotsAndNudge")
-      .mockResolvedValue(undefined);
-
     await request(app)
       .put(`${API_PREFIX}/projects/${projectId}/settings`)
       .send({ maxConcurrentCoders: 3 });
 
-    expect(refreshSpy).toHaveBeenCalledWith(projectId);
-    refreshSpy.mockRestore();
+    expect(refreshMaxSlotsSpy).toHaveBeenCalledWith(projectId);
   });
 
   it("PUT /api/v1/projects/:id/settings accepts and persists teamMembers; GET returns it", async () => {

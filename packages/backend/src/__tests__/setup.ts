@@ -11,6 +11,7 @@ process.env.GIT_AUTHOR_EMAIL = process.env.GIT_AUTHOR_EMAIL || "test@opensprint.
 process.env.GIT_COMMITTER_NAME = process.env.GIT_COMMITTER_NAME || process.env.GIT_AUTHOR_NAME;
 process.env.GIT_COMMITTER_EMAIL =
   process.env.GIT_COMMITTER_EMAIL || process.env.GIT_AUTHOR_EMAIL;
+process.env.OPENSPRINT_RESULT_POLL_MS = process.env.OPENSPRINT_RESULT_POLL_MS || "100";
 
 vi.mock("@google/genai", () => ({
   GoogleGenAI: vi.fn().mockImplementation(() => ({

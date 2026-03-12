@@ -43,7 +43,10 @@ const log = createLogger("agent-client");
 
 const OUTPUT_POLL_MS = 150;
 /** Poll for result.json so we can treat "wrote result but process still running" as done (e.g. Cursor) */
-const RESULT_POLL_MS = 2000;
+const RESULT_POLL_MS = (() => {
+  const raw = Number(process.env.OPENSPRINT_RESULT_POLL_MS ?? "");
+  return Number.isFinite(raw) && raw > 0 ? Math.round(raw) : 2000;
+})();
 const CURSOR_TRANSIENT_RETRY_LIMIT = 5;
 const CURSOR_TRANSIENT_RETRY_BACKOFF_MS = 600;
 const CURSOR_SLOW_POOL_MESSAGE =
@@ -58,6 +61,14 @@ function colorizeRole(role: string): string {
     return `${ANSI_BOLD_CYAN}${role}${ANSI_RESET}`;
   }
   return role;
+}
+
+function shouldMirrorChildProcessOutput(): boolean {
+  const override = process.env.OPENSPRINT_AGENT_STREAM_MIRROR;
+  if (override === "1") return true;
+  if (override === "0") return false;
+  if (process.env.VITEST) return false;
+  return typeof process.stdout?.isTTY === "boolean" && process.stdout.isTTY;
 }
 
 /** Cursor CLI install instructions for Unix and Windows (avoids bash-not-found on Windows). */
@@ -2016,17 +2027,22 @@ export class AgentClient {
           // ignore
         }
       };
+      const mirrorOutput = shouldMirrorChildProcessOutput();
 
       child.stdout?.on("data", (data: Buffer) => {
         const chunk = data.toString();
         stdout += chunk;
-        safeWrite(process.stdout, chunk);
+        if (mirrorOutput) {
+          safeWrite(process.stdout, chunk);
+        }
       });
 
       child.stderr?.on("data", (data: Buffer) => {
         const chunk = data.toString();
         stderr += chunk;
-        safeWrite(process.stderr, chunk);
+        if (mirrorOutput) {
+          safeWrite(process.stderr, chunk);
+        }
       });
 
       child.on("close", (code) => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Task } from "@opensprint/shared";
 import type { Plan } from "@opensprint/shared";
@@ -252,15 +252,19 @@ export function TimelineList({
     [showBlockedSection, bySection]
   );
 
-  const items = useMemo((): TimelineItem[] => {
-    const result: TimelineItem[] = [];
-    const getRelativeTime = (task: Task): string => {
+  const getRelativeTime = useCallback(
+    (task: Task): string => {
       const isActive = task.kanbanColumn === "in_progress" || task.kanbanColumn === "in_review";
       if (isActive && taskIdToStartedAt[task.id]) {
         return formatUptime(taskIdToStartedAt[task.id]);
       }
       return formatTimestamp(task.updatedAt || task.createdAt || "");
-    };
+    },
+    [taskIdToStartedAt]
+  );
+
+  const items = useMemo((): TimelineItem[] => {
+    const result: TimelineItem[] = [];
     for (const { key, tasks: sectionTasks } of sections) {
       if (sectionTasks.length === 0) continue;
       result.push({ type: "header", key, label: SECTION_LABELS[key] });
@@ -278,7 +282,7 @@ export function TimelineList({
       }
     }
     return result;
-  }, [sections, epicIdToTitle, onUnblock, taskIdToStartedAt, projectId, teamMembers, enableHumanTeammates]);
+  }, [sections, epicIdToTitle, getRelativeTime, onUnblock, projectId, teamMembers, enableHumanTeammates]);
 
   const taskIdToIndex = useMemo(() => {
     const m = new Map<string, number>();

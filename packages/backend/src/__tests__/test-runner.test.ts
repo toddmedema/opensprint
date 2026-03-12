@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import path from "path";
 import os from "os";
+import fsSync from "fs";
 import fs from "fs/promises";
 import { TestRunner } from "../services/test-runner.js";
 
@@ -68,6 +69,49 @@ describe("TestRunner", () => {
   });
 
   describe("runTestsWithOutput", () => {
+    it("parses Vitest JSON reporter output when available", async () => {
+      mockSpawn.mockImplementation((_cmd: string, args: string[]) => {
+        const command = args[1] ?? "";
+        const outputFileMatch = command.match(/--outputFile=(\S+)/);
+        const outputFile = outputFileMatch?.[1];
+        expect(outputFile).toBeTruthy();
+        const report = {
+          numPassedTests: 2,
+          numFailedTests: 1,
+          numPendingTests: 1,
+          numTotalTests: 4,
+          testResults: [
+            {
+              name: "sample.test.ts",
+              assertionResults: [
+                { fullName: "a", status: "passed", duration: 1 },
+                { fullName: "b", status: "failed", duration: 2, failureMessages: ["boom"] },
+                { fullName: "c", status: "pending", duration: 0 },
+                { fullName: "d", status: "passed", duration: 1 },
+              ],
+            },
+          ],
+        };
+        fsSync.writeFileSync(outputFile!, JSON.stringify(report), "utf-8");
+        return createMockChild("", "", 1);
+      });
+
+      const result = await runner.runTestsWithOutput(
+        "/tmp/repo",
+        "node ./node_modules/vitest/vitest.mjs run"
+      );
+
+      expect(result.passed).toBe(2);
+      expect(result.failed).toBe(1);
+      expect(result.skipped).toBe(1);
+      expect(result.total).toBe(4);
+      expect(result.details.some((d) => d.status === "failed" && d.error?.includes("boom"))).toBe(true);
+
+      const invoked = (mockSpawn.mock.calls[0]?.[1] as string[] | undefined)?.[1] ?? "";
+      expect(invoked).toContain("--reporter=json");
+      expect(invoked).toContain("--outputFile=");
+    });
+
     it("parses Vitest-style output and returns structured results on success", async () => {
       const output =
         "Tests: 5 passed, 0 failed, 2 skipped, 7 total\n✓ test one (10 ms)\n✓ test two (5 ms)";
@@ -82,6 +126,18 @@ describe("TestRunner", () => {
       expect(result.rawOutput).toContain(output);
       expect(result.executedCommand).toBe("npm test");
       expect(mockSpawn).toHaveBeenCalledWith("sh", ["-c", "npm test"], expect.any(Object));
+    });
+
+    it("parses Vitest v2 summary format", async () => {
+      const output = "Tests  10 passed | 2 failed | 1 skipped (13)";
+      mockSpawn.mockReturnValue(createMockChild(output, "", 1));
+
+      const result = await runner.runTestsWithOutput("/tmp/repo", "npm test");
+
+      expect(result.passed).toBe(10);
+      expect(result.failed).toBe(2);
+      expect(result.skipped).toBe(1);
+      expect(result.total).toBe(13);
     });
 
     it("uses cmd.exe shell invocation on Windows", async () => {
@@ -168,13 +224,14 @@ describe("TestRunner", () => {
         "node ./node_modules/vitest/vitest.mjs run"
       );
 
-      expect(mockSpawn).toHaveBeenCalledWith(
-        "sh",
-        ["-c", "node ./node_modules/vitest/vitest.mjs run src/foo.test.ts"],
-        expect.any(Object)
-      );
+      const invoked = (mockSpawn.mock.calls[0]?.[1] as string[] | undefined)?.[1] ?? "";
+      expect(invoked).toContain("node ./node_modules/vitest/vitest.mjs run src/foo.test.ts");
+      expect(invoked).toContain("--reporter=json");
+      expect(invoked).toContain("--outputFile=");
       expect(result.passed).toBe(2);
-      expect(result.executedCommand).toBe("node ./node_modules/vitest/vitest.mjs run src/foo.test.ts");
+      expect(result.executedCommand).toContain(
+        "node ./node_modules/vitest/vitest.mjs run src/foo.test.ts"
+      );
     });
 
     it("uses vitest related for changed source files", async () => {
@@ -187,11 +244,12 @@ describe("TestRunner", () => {
         "node ./node_modules/vitest/vitest.mjs run"
       );
 
-      expect(mockSpawn).toHaveBeenCalledWith(
-        "sh",
-        ["-c", "node ./node_modules/vitest/vitest.mjs related --run src/foo.ts src/bar.ts"],
-        expect.any(Object)
+      const invoked = (mockSpawn.mock.calls[0]?.[1] as string[] | undefined)?.[1] ?? "";
+      expect(invoked).toContain(
+        "node ./node_modules/vitest/vitest.mjs related --run src/foo.ts src/bar.ts"
       );
+      expect(invoked).toContain("--reporter=json");
+      expect(invoked).toContain("--outputFile=");
     });
 
     it("scopes jest to changed test files when test command includes jest", async () => {
@@ -233,11 +291,10 @@ describe("TestRunner", () => {
         await fs.rm(repoPath, { recursive: true, force: true }).catch(() => {});
       }
 
-      expect(mockSpawn).toHaveBeenCalledWith(
-        "sh",
-        ["-c", "node ./node_modules/vitest/vitest.mjs related --run src/foo.ts"],
-        expect.any(Object)
-      );
+      const invoked = (mockSpawn.mock.calls[0]?.[1] as string[] | undefined)?.[1] ?? "";
+      expect(invoked).toContain("node ./node_modules/vitest/vitest.mjs related --run src/foo.ts");
+      expect(invoked).toContain("--reporter=json");
+      expect(invoked).toContain("--outputFile=");
     });
 
     it("uses full test command when no scoped runner can be inferred", async () => {
