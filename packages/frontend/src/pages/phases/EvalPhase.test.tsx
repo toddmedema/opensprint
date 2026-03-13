@@ -14,6 +14,7 @@ import {
   EVALUATE_FEEDBACK_FILTER_KEY,
   FEEDBACK_LOADING_DEBOUNCE_MS,
   FEEDBACK_CATEGORIZATION_POLL_INTERVAL_MS,
+  FEEDBACK_TEXT_COLLAPSE_LINES,
 } from "./EvalPhase";
 import { FEEDBACK_FORM_DRAFT_KEY_PREFIX } from "../../lib/feedbackFormStorage";
 import { CONTENT_CONTAINER_CLASS, MOBILE_BREAKPOINT } from "../../lib/constants";
@@ -4310,6 +4311,99 @@ describe("EvalPhase feedback form", () => {
       await waitFor(() => {
         expect(screen.queryByText("Drop here for new feedback")).not.toBeInTheDocument();
       });
+    });
+  });
+
+  describe("feedback text show more / show less", () => {
+    it("does not show toggle for short feedback (≤15 lines)", async () => {
+      const shortLines = Array.from(
+        { length: FEEDBACK_TEXT_COLLAPSE_LINES },
+        (_, i) => `ShortFbLine${i + 1}`
+      ).join("\n");
+      const feedback: FeedbackItem[] = [
+        { ...mockFeedbackItems[0], id: "fb-short", text: shortLines },
+        ...mockFeedbackItems.slice(1),
+      ];
+      const store = createStore({ evalFeedback: feedback });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedback);
+      renderWithProviders(
+        <MemoryRouter>
+          <EvalPhase projectId="proj-1" />
+        </MemoryRouter>,
+        { store, queryClient }
+      );
+
+      await waitFor(() => expect(screen.getByText("Bug 2")).toBeInTheDocument());
+      // First card has exactly 15 lines → no show more/less toggle
+      const toggles = screen.queryAllByTestId("feedback-text-toggle");
+      expect(toggles).toHaveLength(0);
+    });
+
+    it("truncates long feedback and shows show more button", async () => {
+      const longLines = Array.from({ length: FEEDBACK_TEXT_COLLAPSE_LINES + 5 }, (_, i) => `Row ${i + 1}`).join("\n");
+      const feedback: FeedbackItem[] = [
+        { ...mockFeedbackItems[0], id: "fb-long", text: longLines },
+        ...mockFeedbackItems.slice(1),
+      ];
+      const store = createStore({ evalFeedback: feedback });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedback);
+      renderWithProviders(
+        <MemoryRouter>
+          <EvalPhase projectId="proj-1" />
+        </MemoryRouter>,
+        { store, queryClient }
+      );
+
+      const toggles = await screen.findAllByTestId("feedback-text-toggle");
+      expect(toggles.length).toBeGreaterThanOrEqual(1);
+      expect(toggles[0]).toHaveTextContent("show more");
+    });
+
+    it("show more expands to full text and toggles to show less", async () => {
+      const user = userEvent.setup();
+      const longLines = Array.from({ length: FEEDBACK_TEXT_COLLAPSE_LINES + 3 }, (_, i) => `Line ${i + 1}`).join("\n");
+      const feedback: FeedbackItem[] = [
+        { ...mockFeedbackItems[0], id: "fb-long", text: longLines },
+        ...mockFeedbackItems.slice(1),
+      ];
+      const store = createStore({ evalFeedback: feedback });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedback);
+      renderWithProviders(
+        <MemoryRouter>
+          <EvalPhase projectId="proj-1" />
+        </MemoryRouter>,
+        { store, queryClient }
+      );
+
+      const toggles = await screen.findAllByTestId("feedback-text-toggle");
+      expect(toggles[0]).toHaveTextContent("show more");
+      await user.click(toggles[0]);
+      await waitFor(() => {
+        expect(toggles[0]).toHaveTextContent("show less");
+      });
+    });
+
+    it("show less collapses back to truncated view", async () => {
+      const user = userEvent.setup();
+      const longLines = Array.from({ length: FEEDBACK_TEXT_COLLAPSE_LINES + 2 }, (_, i) => `Row ${i + 1}`).join("\n");
+      const feedback: FeedbackItem[] = [
+        { ...mockFeedbackItems[0], id: "fb-long", text: longLines },
+        ...mockFeedbackItems.slice(1),
+      ];
+      const store = createStore({ evalFeedback: feedback });
+      const queryClient = createQueryClientWithFeedbackPreloaded(feedback);
+      renderWithProviders(
+        <MemoryRouter>
+          <EvalPhase projectId="proj-1" />
+        </MemoryRouter>,
+        { store, queryClient }
+      );
+
+      const toggles = await screen.findAllByTestId("feedback-text-toggle");
+      await user.click(toggles[0]);
+      await waitFor(() => expect(toggles[0]).toHaveTextContent("show less"));
+      await user.click(toggles[0]);
+      await waitFor(() => expect(toggles[0]).toHaveTextContent("show more"));
     });
   });
 });

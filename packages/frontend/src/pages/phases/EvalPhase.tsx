@@ -458,6 +458,8 @@ interface FeedbackCardProps {
 }
 
 const FADE_OUT_DURATION_MS = 500;
+/** When feedback text exceeds this many lines, it is collapsed with a show more/less toggle. */
+export const FEEDBACK_TEXT_COLLAPSE_LINES = 15;
 
 const FeedbackCard = memo(
   function FeedbackCard({
@@ -499,6 +501,7 @@ const FeedbackCard = memo(
     const replyInputRef = useRef<HTMLTextAreaElement>(null);
     const [answerText, setAnswerText] = useState("");
     const [imageModalSrc, setImageModalSrc] = useState<string | null>(null);
+    const [feedbackTextExpanded, setFeedbackTextExpanded] = useState(false);
     const replyImages = useImageAttachment();
     const isReplying = replyingToId === item.id;
     const isCollapsed = collapsedIds.has(item.id);
@@ -736,9 +739,38 @@ const FeedbackCard = memo(
                   )}
                 </>
               )}
-              <p className="text-sm text-theme-text whitespace-pre-wrap break-words min-w-0">
-                {item.text ?? "(No feedback text)"}
-              </p>
+              {(() => {
+                const raw = item.text ?? "";
+                const displayText = raw || "(No feedback text)";
+                const lines = displayText.split("\n");
+                const isLong = lines.length > FEEDBACK_TEXT_COLLAPSE_LINES;
+                const truncated =
+                  isLong && !feedbackTextExpanded
+                    ? lines.slice(0, FEEDBACK_TEXT_COLLAPSE_LINES).join("\n")
+                    : displayText;
+                return (
+                  <div className="min-w-0">
+                    <p className="text-sm text-theme-text whitespace-pre-wrap break-words">
+                      {truncated}
+                    </p>
+                    {isLong && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setFeedbackTextExpanded((prev) => !prev);
+                        }}
+                        className="mt-1 text-xs text-theme-muted hover:text-theme-text hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-theme-ring rounded"
+                        aria-expanded={feedbackTextExpanded}
+                        data-testid="feedback-text-toggle"
+                      >
+                        {feedbackTextExpanded ? "show less" : "show more"}
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             {item.images && item.images.length > 0 && (
