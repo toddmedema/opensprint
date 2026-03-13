@@ -459,7 +459,8 @@ User authentication.
     expect(prompt).toContain("### Highlighted Test Failures");
     expect(prompt).toContain("src/foo.test.ts > auth > rejects invalid token");
     expect(prompt).toContain("AssertionError: expected 401 to be 403");
-    expect(prompt).toContain("### Test Output");
+    expect(prompt).toContain("### Condensed Test Output");
+    expect(prompt).toContain("full raw output is omitted by default");
   });
 
   it("should include User clarification section in coding prompt when userClarification is provided", async () => {

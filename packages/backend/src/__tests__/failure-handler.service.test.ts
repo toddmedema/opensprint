@@ -377,6 +377,7 @@ describe("FailureHandlerService", () => {
 
   it("passes highlighted test failures into coder retry context", async () => {
     const slot = makeSlot("/tmp/worktree");
+    slot.phaseResult.validationCommand = "node ./node_modules/vitest/vitest.mjs run src/foo.test.ts";
     slot.phaseResult.testResults = {
       passed: 0,
       failed: 1,
@@ -417,6 +418,20 @@ describe("FailureHandlerService", () => {
       expect.objectContaining({
         previousTestFailures:
           "- src/foo.test.ts > auth > rejects invalid token — AssertionError: expected 401 to be 403 // Object.is equality",
+        previousTestOutput: expect.stringContaining(
+          "Failed command: node ./node_modules/vitest/vitest.mjs run src/foo.test.ts"
+        ),
+      })
+    );
+    expect(mockExecuteCodingPhase).toHaveBeenCalledWith(
+      projectId,
+      repoPath,
+      expect.objectContaining({ id: taskId }),
+      expect.objectContaining({ taskId }),
+      expect.objectContaining({
+        previousTestOutput: expect.stringContaining(
+          "First failure: AssertionError: expected 401 to be 403 // Object.is equality"
+        ),
       })
     );
   });

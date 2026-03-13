@@ -46,7 +46,7 @@ const NO_RESULT_REASON_LIMIT = 1200;
 const NEXT_RETRY_CONTEXT_KEY = "next_retry_context";
 const RETRY_CONTEXT_FAILURE_LIMIT = 2000;
 const RETRY_CONTEXT_REVIEW_LIMIT = 4000;
-const RETRY_CONTEXT_TEST_OUTPUT_LIMIT = 6000;
+const RETRY_CONTEXT_TEST_OUTPUT_LIMIT = 2500;
 const RETRY_CONTEXT_TEST_FAILURES_LIMIT = 2000;
 const RETRY_CONTEXT_DIFF_LIMIT = 6000;
 const FAILURE_DIAGNOSTIC_OUTPUT_LIMIT = 1800;
@@ -323,6 +323,8 @@ export class FailureHandlerService {
     for (const line of text.split(/\r?\n/)) {
       const trimmed = line.trim();
       if (!trimmed) continue;
+      if (/^(?:FAIL|✗|✕)\b/i.test(trimmed)) continue;
+      if (/^●\s+/.test(trimmed)) continue;
       if (FAILURE_DIAGNOSTIC_NOISE_PATTERNS.some((pattern) => pattern.test(trimmed))) continue;
       return compactExecutionText(trimmed, FAILURE_DIAGNOSTIC_LINE_LIMIT);
     }
@@ -376,6 +378,33 @@ export class FailureHandlerService {
       worktreePath,
       firstErrorLine: firstErrorLine ?? null,
     };
+  }
+
+  private buildRetryTestOutput(params: {
+    testResults?: TestResults | null;
+    testOutput?: string;
+    validationCommand?: string | null;
+  }): string | undefined {
+    const command = params.validationCommand?.trim() || null;
+    const firstError =
+      this.firstFailedTestError(params.testResults) ??
+      this.firstActionableFailureOutputLine(params.testOutput ?? "");
+    const outputSnippet = this.toFailureOutputSnippet(params.testOutput);
+    const resultSummary =
+      params.testResults != null
+        ? `Result: ${params.testResults.failed} failed, ${params.testResults.passed} passed, ${params.testResults.skipped} skipped, ${params.testResults.total} total`
+        : null;
+
+    const lines: string[] = [];
+    if (resultSummary) lines.push(resultSummary);
+    if (command) lines.push(`Failed command: ${command}`);
+    if (firstError) lines.push(`First failure: ${firstError}`);
+    if (outputSnippet) {
+      lines.push("Output snippet:");
+      lines.push(outputSnippet);
+    }
+    if (lines.length === 0) return undefined;
+    return lines.join("\n");
   }
 
   private failureDiagnosticFields(
@@ -580,12 +609,17 @@ export class FailureHandlerService {
       slot.phaseResult.testResults,
       slot.phaseResult.testOutput || undefined
     );
+    const previousTestOutput = this.buildRetryTestOutput({
+      testResults: slot.phaseResult.testResults,
+      testOutput: slot.phaseResult.testOutput || undefined,
+      validationCommand: slot.phaseResult.validationCommand,
+    });
     const persistedRetryContext = this.buildPersistedRetryContext({
       failureType,
       previousFailure: effectiveReason,
       reviewFeedback,
       previousDiff,
-      previousTestOutput: slot.phaseResult.testOutput || undefined,
+      previousTestOutput,
       previousTestFailures,
     });
 
@@ -765,7 +799,7 @@ export class FailureHandlerService {
         reviewFeedback,
         useExistingBranch: true,
         previousDiff,
-        previousTestOutput: slot.phaseResult.testOutput || undefined,
+        previousTestOutput,
         previousTestFailures,
         failureType,
       });
@@ -827,7 +861,7 @@ export class FailureHandlerService {
         reviewFeedback,
         useExistingBranch: true,
         previousDiff,
-        previousTestOutput: slot.phaseResult.testOutput || undefined,
+        previousTestOutput,
         previousTestFailures,
         failureType,
       });

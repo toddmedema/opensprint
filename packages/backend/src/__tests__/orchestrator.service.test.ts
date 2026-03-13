@@ -828,6 +828,32 @@ describe("OrchestratorService (slot-based model)", () => {
       }
     });
 
+    it("surfaces the first meaningful compiler/test error line on gate failure", async () => {
+      const previousNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "development";
+      try {
+        mockShellExec.mockRejectedValueOnce({
+          message: "Command failed: npm run lint",
+          stderr: [
+            "> eslint .",
+            "npm ERR! code 1",
+            "npm ERR! path /tmp/repo",
+            "src/foo.ts: error TS2304: Cannot find name 'x'",
+          ].join("\n"),
+        });
+
+        const failure = await runMergeQualityGates();
+
+        expect(failure).toMatchObject({
+          command: "npm run lint",
+          category: "quality_gate",
+          firstErrorLine: "src/foo.ts: error TS2304: Cannot find name 'x'",
+        });
+      } finally {
+        process.env.NODE_ENV = previousNodeEnv;
+      }
+    });
+
     it("runs one env auto-repair and continues gates when retry succeeds", async () => {
       const previousNodeEnv = process.env.NODE_ENV;
       process.env.NODE_ENV = "development";

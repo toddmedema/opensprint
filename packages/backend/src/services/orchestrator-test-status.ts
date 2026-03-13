@@ -2,8 +2,24 @@ import path from "path";
 import { OPENSPRINT_PATHS, type TestResults } from "@opensprint/shared";
 
 export const ORCHESTRATOR_TEST_STATUS_FILE = "orchestrator-test-status.md";
+const MAX_OUTPUT_SNIPPET_CHARS = 1_800;
+const MAX_OUTPUT_SNIPPET_LINES = 40;
 const MAX_OUTPUT_CHARS = 20_000;
 const MAX_HIGHLIGHTED_FAILURES = 8;
+const PRIMARY_ERROR_NOISE_PATTERNS: RegExp[] = [
+  /^>\s+/,
+  /^at\s+/i,
+  /^❯\s+/,
+  /^›\s+/,
+  /^node:/i,
+  /^[-=]{3,}$/,
+  /^⎯+/,
+  /^Test Files\b/i,
+  /^Tests\b/i,
+  /^Start at\b/i,
+  /^Duration\b/i,
+  /^npm (err!|error)\s+(code|path|command|errno|syscall|lifecycle)\b/i,
+];
 
 export type OrchestratorTestStatus =
   | {
@@ -59,17 +75,29 @@ export function buildOrchestratorTestStatusContent(status: OrchestratorTestStatu
       break;
     case "failed":
       content += buildResultsSummary(status.results);
+      content += buildPrimaryDiagnosticSection({
+        testCommand: status.testCommand,
+        results: status.results,
+        rawOutput: status.rawOutput,
+      });
       content += buildFailureHighlightsSection(status.results, status.rawOutput);
       content +=
         "\nAutomated validation failed. Do not approve this implementation while this file shows `FAILED`.\n";
+      content += buildOutputSnippetSection(status.rawOutput);
       content += buildRawOutputSection(status.rawOutput);
       break;
     case "error":
       content +=
         "The orchestrator could not complete automated validation. Do not approve this implementation while this file shows `ERROR`.\n";
+      content += buildPrimaryDiagnosticSection({
+        testCommand: status.testCommand,
+        rawOutput: status.rawOutput,
+        fallbackError: status.errorMessage,
+      });
       if (status.errorMessage?.trim()) {
         content += `\n## Error\n\n${status.errorMessage.trim()}\n`;
       }
+      content += buildOutputSnippetSection(status.rawOutput);
       content += buildRawOutputSection(status.rawOutput);
       break;
   }
@@ -113,11 +141,14 @@ function buildResultsSummary(results?: TestResults | null): string {
 function buildRawOutputSection(rawOutput?: string | null): string {
   const trimmed = rawOutput?.trim();
   if (!trimmed) return "";
+  if (!shouldIncludeFullRawOutput()) {
+    return "\nFull raw output is omitted by default to reduce agent context noise. Set `OPENSPRINT_INCLUDE_FULL_TEST_OUTPUT=1` to include it.\n";
+  }
 
   const clipped =
     trimmed.length > MAX_OUTPUT_CHARS ? `${trimmed.slice(0, MAX_OUTPUT_CHARS)}\n...[truncated]` : trimmed;
 
-  return `\n## Raw Output\n\n\`\`\`text\n${clipped}\n\`\`\`\n`;
+  return `\n<details>\n<summary>Full Raw Output</summary>\n\n\`\`\`text\n${clipped}\n\`\`\`\n\n</details>\n`;
 }
 
 interface FailureHighlight {
@@ -140,6 +171,34 @@ function buildFailureHighlightsSection(
   }
   lines.push("");
   return `${lines.join("\n")}\n`;
+}
+
+function buildPrimaryDiagnosticSection(params: {
+  testCommand?: string | null;
+  results?: TestResults | null;
+  rawOutput?: string | null;
+  fallbackError?: string | null;
+}): string {
+  const failedCommand = params.testCommand?.trim() || null;
+  const firstHighlight = mergeFailureHighlights(params.results, params.rawOutput)[0] ?? null;
+  const firstError =
+    firstHighlight?.error?.trim() ||
+    extractFirstMeaningfulErrorLine(params.rawOutput) ||
+    params.fallbackError?.trim() ||
+    null;
+  if (!failedCommand && !firstError) return "";
+
+  const lines = ["", "## Primary Diagnostic", ""];
+  if (failedCommand) lines.push(`- Failed command: \`${failedCommand}\``);
+  if (firstError) lines.push(`- First failure: ${firstError}`);
+  lines.push("");
+  return `${lines.join("\n")}\n`;
+}
+
+function buildOutputSnippetSection(rawOutput?: string | null): string {
+  const snippet = extractOutputSnippet(rawOutput);
+  if (!snippet) return "";
+  return `\n## Output Snippet\n\n\`\`\`text\n${snippet}\n\`\`\`\n`;
 }
 
 function mergeFailureHighlights(
@@ -212,6 +271,59 @@ function extractFailureHighlightsFromRawOutput(rawOutput?: string | null): Failu
   return dedupeFailureHighlights(highlights);
 }
 
+function extractFirstMeaningfulErrorLine(rawOutput?: string | null): string | null {
+  const trimmed = rawOutput?.trim();
+  if (!trimmed) return null;
+  for (const rawLine of trimmed.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (parseFailureHeader(line)) continue;
+    if (isPrimaryErrorNoiseLine(line)) continue;
+    return normalizeFailureMessage(line);
+  }
+  return null;
+}
+
+function extractOutputSnippet(rawOutput?: string | null): string | null {
+  const trimmed = rawOutput?.trim();
+  if (!trimmed) return null;
+  const lines = trimmed.split(/\r?\n/);
+  if (lines.length === 0) return null;
+
+  const firstSignalLine = lines.findIndex((rawLine) => {
+    const line = rawLine.trim();
+    return Boolean(parseFailureHeader(line) || isLikelyErrorLine(line));
+  });
+  const start = firstSignalLine >= 0 ? Math.max(0, firstSignalLine - 2) : 0;
+
+  const selected: string[] = [];
+  let length = 0;
+  let endedEarly = false;
+  for (let i = start; i < lines.length; i += 1) {
+    const line = lines[i] ?? "";
+    const nextLength = length + line.length + 1;
+    if (selected.length >= MAX_OUTPUT_SNIPPET_LINES || nextLength > MAX_OUTPUT_SNIPPET_CHARS) {
+      endedEarly = true;
+      break;
+    }
+    selected.push(line);
+    length = nextLength;
+  }
+
+  if (selected.length === 0) return null;
+  const snippet = selected.join("\n").trim();
+  if (!snippet) return null;
+  return endedEarly ? `${snippet}\n...[truncated]` : snippet;
+}
+
+function isLikelyErrorLine(line: string): boolean {
+  if (!line) return false;
+  if (parseFailureHeader(line)) return true;
+  return /(assertionerror|typeerror|referenceerror|syntaxerror|error:|failed|cannot find|not found)/i.test(
+    line
+  );
+}
+
 function parseFailureHeader(line?: string): string | null {
   if (!line) return null;
 
@@ -273,6 +385,10 @@ function isNoiseLine(line: string): boolean {
   );
 }
 
+function isPrimaryErrorNoiseLine(line: string): boolean {
+  return PRIMARY_ERROR_NOISE_PATTERNS.some((pattern) => pattern.test(line));
+}
+
 function isHighSignalErrorLine(line: string): boolean {
   return /(AssertionError|TypeError|ReferenceError|SyntaxError|Error:|Expected|expected)/i.test(line);
 }
@@ -311,4 +427,8 @@ function preferFailureName(detailName: string, rawName?: string): string {
     return rawName;
   }
   return detailName;
+}
+
+function shouldIncludeFullRawOutput(): boolean {
+  return process.env.OPENSPRINT_INCLUDE_FULL_TEST_OUTPUT === "1";
 }

@@ -174,7 +174,7 @@ export interface ActiveTaskConfig {
   phase: AgentPhase;
   previousFailure: string | null;
   reviewFeedback: string | null;
-  /** Full test runner output from the previous failed attempt */
+  /** Condensed test diagnostics from the previous failed attempt */
   previousTestOutput?: string | null;
   /** Concise highlighted failures from the previous orchestrator-owned test run */
   previousTestFailures?: string | null;

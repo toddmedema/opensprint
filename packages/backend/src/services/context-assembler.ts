@@ -506,7 +506,8 @@ export class ContextAssembler {
         if (config.previousTestFailures?.trim()) {
           prompt += `### Highlighted Test Failures\n\n${config.previousTestFailures.trim()}\n\n`;
         }
-        prompt += `### Test Output\n\n\`\`\`\n${config.previousTestOutput.slice(0, 5000)}\n\`\`\`\n\n`;
+        prompt += `### Condensed Test Output\n\n\`\`\`\n${config.previousTestOutput.slice(0, 2000)}\n\`\`\`\n\n`;
+        prompt += `The full raw output is omitted by default so you can focus on the first actionable failure.\n\n`;
         prompt += `Focus fixes on the specific failing assertions. Avoid broad refactors unless the failure indicates a design flaw. Fix the failing tests without breaking the passing ones.\n\n`;
       }
     }

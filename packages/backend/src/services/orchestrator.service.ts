@@ -132,6 +132,18 @@ const QUALITY_GATE_ENV_FINGERPRINTS: RegExp[] = [
   /could not locate the bindings file/i,
   /was compiled against a different node\.js version/i,
 ];
+const QUALITY_GATE_NOISE_LINE_PATTERNS: RegExp[] = [
+  /^>\s+/,
+  /^npm (err!|error)\s+(code|path|command|errno|syscall|lifecycle)\b/i,
+  /^at\s+\S+/i,
+  /^node:/i,
+  /^[-=]{3,}$/,
+  /^⎯+/,
+  /^Test Files\b/i,
+  /^Tests\b/i,
+  /^Start at\b/i,
+  /^Duration\b/i,
+];
 
 /**
  * GUPP-style assignment file: everything an agent needs to self-start.
@@ -2450,6 +2462,16 @@ export class OrchestratorService {
     return null;
   }
 
+  private getFirstMeaningfulQualityGateLine(text: string): string | null {
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      if (QUALITY_GATE_NOISE_LINE_PATTERNS.some((pattern) => pattern.test(trimmed))) continue;
+      return trimmed;
+    }
+    return null;
+  }
+
   private extractShellFailure(
     command: string,
     err: unknown
@@ -2465,6 +2487,7 @@ export class OrchestratorService {
       QUALITY_GATE_FAILURE_REASON_LIMIT
     );
     const firstErrorLine =
+      this.getFirstMeaningfulQualityGateLine(output) ??
       this.getFirstNonEmptyLine(output) ??
       this.getFirstNonEmptyLine(reason) ??
       "Unknown quality gate failure";
