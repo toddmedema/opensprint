@@ -174,7 +174,7 @@ describe("TimelineList", () => {
     expect(planningIdx).toBeLessThan(completedIdx);
   });
 
-  it("rows display correct status badge, priority icon, title, epic name", () => {
+  it("rows display priority icon, title, epic name (no row status icon; section header shows status)", () => {
     const tasks = [
       createMockTask({
         id: "task-1",
@@ -191,7 +191,7 @@ describe("TimelineList", () => {
     );
 
     expect(screen.getByText("Implement login")).toBeInTheDocument();
-    expect(screen.getByTitle("In Progress")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "In Progress" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /critical/i })).toBeInTheDocument();
     expect(screen.getByText("Authentication")).toBeInTheDocument();
   });
@@ -479,6 +479,23 @@ describe("TimelineList", () => {
     );
 
     expect(screen.getByTestId("timeline-list")).toBeInTheDocument();
+  });
+
+  it("section headers are sticky so they stay visible when scrolling", () => {
+    const tasks = [
+      createMockTask({ id: "a", kanbanColumn: "in_progress" }),
+      createMockTask({ id: "b", kanbanColumn: "done" }),
+    ];
+    renderWithProviders(
+      <TimelineList tasks={tasks} plans={[]} onTaskSelect={vi.fn()} {...defaultListProps} />
+    );
+
+    const activeSection = screen.getByTestId("timeline-section-active");
+    const completedSection = screen.getByTestId("timeline-section-completed");
+    const stickyWrapper = activeSection.querySelector(".sticky");
+    expect(stickyWrapper).toBeInTheDocument();
+    expect(stickyWrapper).toHaveClass("top-0", "z-10");
+    expect(completedSection.querySelector(".sticky")).toBeInTheDocument();
   });
 
   it("renders timeline-row-{taskId} on each row", () => {

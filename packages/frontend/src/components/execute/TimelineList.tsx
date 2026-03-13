@@ -11,7 +11,6 @@ import {
 import { isTaskInPlanningPlan, isSelfImprovementTask } from "../../lib/executeTaskFilter";
 import { getEpicTitleFromPlan } from "../../lib/planContentUtils";
 import { formatUptime, formatTimestamp } from "../../lib/formatting";
-import { TaskStatusBadge, COLUMN_LABELS } from "../kanban";
 import { PriorityIcon } from "../PriorityIcon";
 import { ComplexityIcon } from "../ComplexityIcon";
 import { AssigneeSelector } from "./AssigneeSelector";
@@ -95,11 +94,6 @@ function TimelineRow({
           onClick={() => onTaskSelect(task.id)}
           className="flex-1 flex items-center gap-3 text-left hover:bg-theme-info-bg/50 transition-colors text-sm min-w-0"
         >
-          <TaskStatusBadge
-            column={task.kanbanColumn}
-            size="xs"
-            title={COLUMN_LABELS[task.kanbanColumn]}
-          />
           <PriorityIcon priority={task.priority ?? 1} size="xs" />
           <ComplexityIcon complexity={task.complexity} size="xs" />
           <span className="flex-1 min-w-0 truncate font-medium text-theme-text" title={task.title}>
@@ -329,9 +323,11 @@ export function TimelineList({
         ({ key, tasks: sectionTasks }) =>
           sectionTasks.length > 0 && (
             <section key={key} data-testid={`timeline-section-${key}`}>
-              <h3 className="text-xs font-semibold text-theme-muted tracking-wide uppercase px-4 pt-6 pb-[2px] mb-[7px] border-b border-theme-border-subtle">
-                {SECTION_LABELS[key]}
-              </h3>
+              <div className="sticky top-0 z-10 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-6 pb-[2px] mb-[7px] border-b border-theme-border-subtle bg-theme-bg/95 backdrop-blur-sm">
+                <h3 className="text-xs font-semibold text-theme-muted tracking-wide uppercase">
+                  {SECTION_LABELS[key]}
+                </h3>
+              </div>
               <ul className="divide-y divide-theme-border-subtle">
                 {sectionTasks.map((task) => (
                   <TimelineRow
