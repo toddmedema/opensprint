@@ -243,6 +243,55 @@ describe("TaskExecutionDiagnosticsService", () => {
     });
   });
 
+  it("falls back to command + reason when quality-gate output snippet and firstErrorLine are missing", async () => {
+    taskStore.show.mockResolvedValue({
+      id: taskId,
+      status: "open",
+      labels: ["attempts:5", "merge_stage:quality_gate"],
+      block_reason: null,
+      last_execution_summary: null,
+    });
+    taskStore.getCumulativeAttemptsFromIssue.mockReturnValue(5);
+    sessionManager.listSessions.mockResolvedValue([]);
+    mockReadForTask.mockResolvedValue([
+      {
+        timestamp: "2026-03-02T12:00:00.000Z",
+        projectId,
+        taskId,
+        event: "merge.failed",
+        data: {
+          attempt: 5,
+          stage: "quality_gate",
+          resolvedBy: "requeued",
+          qualityGateCategory: "quality_gate",
+          failedGateCommand: "npm run build",
+          failedGateReason: "Command failed with exit code 1",
+          nextAction: "Requeued for retry",
+        },
+      },
+    ]);
+
+    const service = new TaskExecutionDiagnosticsService(
+      projectService as never,
+      taskStore as never,
+      sessionManager as never
+    );
+
+    const diagnostics = await service.getDiagnostics(projectId, taskId);
+    const diagnosticsQualityGate = diagnostics as {
+      latestQualityGateDetail?: unknown;
+    };
+
+    expect(diagnostics.latestSummary).toContain("npm run build: Command failed with exit code 1");
+    expect(diagnosticsQualityGate.latestQualityGateDetail).toEqual({
+      command: "npm run build",
+      reason: "Command failed with exit code 1",
+      outputSnippet: null,
+      worktreePath: null,
+      firstErrorLine: "Command failed with exit code 1",
+    });
+  });
+
   it("prefers the latest execution failure detail over stale task-level gate metadata after requeue", async () => {
     taskStore.show.mockResolvedValue({
       id: taskId,

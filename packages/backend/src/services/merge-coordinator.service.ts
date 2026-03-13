@@ -343,6 +343,7 @@ export class MergeCoordinatorService {
       reason: string | null;
       outputSnippet: string | null;
       worktreePath: string | null;
+      firstErrorLine: string | null;
     } | null;
   } {
     const failedGateCommand = qualityGateFailure?.command?.trim() || null;
@@ -354,11 +355,13 @@ export class MergeCoordinatorService {
       qualityGateFailure?.worktreePath?.trim() ||
       fallbackWorktreePath?.trim() ||
       null;
+    const firstErrorLine = qualityGateFailure?.firstErrorLine?.trim() || null;
     const hasDetail =
       failedGateCommand != null ||
       failedGateReason != null ||
       failedGateOutputSnippet != null ||
-      worktreePath != null;
+      worktreePath != null ||
+      firstErrorLine != null;
     return {
       failedGateCommand,
       failedGateReason,
@@ -370,6 +373,7 @@ export class MergeCoordinatorService {
             reason: failedGateReason,
             outputSnippet: failedGateOutputSnippet,
             worktreePath,
+            firstErrorLine,
           }
         : null,
     };
@@ -570,6 +574,7 @@ export class MergeCoordinatorService {
       reason: failedGateReason,
       outputSnippet: failedGateOutputSnippet,
       worktreePath,
+      firstErrorLine,
     };
     const attempt =
       Math.max(1, this.host.taskStore.getCumulativeAttemptsFromIssue(task) + 1) || 1;

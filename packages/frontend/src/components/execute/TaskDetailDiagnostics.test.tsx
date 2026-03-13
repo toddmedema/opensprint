@@ -134,6 +134,84 @@ describe("TaskDetailDiagnostics", () => {
     );
   });
 
+  it("derives primary message from output snippet when firstErrorLine is omitted", () => {
+    render(
+      <TaskDetailDiagnostics
+        task={null}
+        diagnostics={{
+          taskId: "task-2",
+          taskStatus: "requeued",
+          cumulativeAttempts: 4,
+          latestSummary: "Quality gate failed",
+          latestOutcome: "requeued",
+          latestNextAction: "Run npm ci and retry.",
+          latestQualityGateDetail: {
+            command: "npm run build",
+            reason: "Command failed with exit code 1",
+            outputSnippet: "\nCannot find module 'typescript'\nRequire stack:\n- /tmp/build.js",
+            worktreePath: "/tmp/opensprint/os-d350.9",
+          },
+          timeline: [],
+          attempts: [
+            {
+              attempt: 4,
+              finalPhase: "merge",
+              finalOutcome: "requeued",
+              finalSummary: "Quality gate failed",
+              sessionAttemptStatuses: [],
+            },
+          ],
+        }}
+        diagnosticsLoading={false}
+      />
+    );
+
+    expect(screen.getByTestId("execution-diagnostics-primary-message")).toHaveTextContent(
+      "npm run build | Cannot find module 'typescript'"
+    );
+  });
+
+  it("derives primary message from reason when snippet and firstErrorLine are missing", async () => {
+    const user = userEvent.setup();
+    render(
+      <TaskDetailDiagnostics
+        task={null}
+        diagnostics={{
+          taskId: "task-3",
+          taskStatus: "requeued",
+          cumulativeAttempts: 5,
+          latestSummary: "Quality gate failed",
+          latestOutcome: "requeued",
+          latestNextAction: "Run npm ci and retry.",
+          latestQualityGateDetail: {
+            command: "npm run build",
+            reason: "Command failed with exit code 1",
+            worktreePath: "/tmp/opensprint/os-d350.9",
+          },
+          timeline: [],
+          attempts: [
+            {
+              attempt: 5,
+              finalPhase: "merge",
+              finalOutcome: "requeued",
+              finalSummary: "Quality gate failed",
+              sessionAttemptStatuses: [],
+            },
+          ],
+        }}
+        diagnosticsLoading={false}
+      />
+    );
+
+    expect(screen.getByTestId("execution-diagnostics-primary-message")).toHaveTextContent(
+      "npm run build | Command failed with exit code 1"
+    );
+    await user.click(screen.getByTestId("execution-diagnostics-details-toggle"));
+    expect(screen.getByTestId("execution-diagnostics-details-reason")).toHaveTextContent(
+      "Command failed with exit code 1"
+    );
+  });
+
   it("keeps legacy summary rendering when structured detail payload is missing", () => {
     render(
       <TaskDetailDiagnostics

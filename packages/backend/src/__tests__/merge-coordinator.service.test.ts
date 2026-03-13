@@ -572,6 +572,7 @@ describe("MergeCoordinatorService", () => {
             reason: "Command failed with exit code 1",
             outputSnippet: "eslint found errors",
             worktreePath: "/tmp/worktree",
+            firstErrorLine: "eslint found errors",
           }),
           last_execution_summary: expect.objectContaining({
             summary: expect.stringContaining("cmd: npm run lint"),
@@ -613,6 +614,7 @@ describe("MergeCoordinatorService", () => {
           reason: "Command failed with exit code 1",
           outputSnippet: "eslint found errors",
           worktreePath: "/tmp/worktree",
+          firstErrorLine: "eslint found errors",
         }),
       })
     );
@@ -664,6 +666,7 @@ describe("MergeCoordinatorService", () => {
             reason: "Command failed with exit code 1",
             outputSnippet: "eslint found errors",
             worktreePath: "/tmp/worktree",
+            firstErrorLine: "eslint found errors",
           }),
           last_execution_summary: expect.objectContaining({
             summary: expect.stringContaining("cmd: npm run lint"),

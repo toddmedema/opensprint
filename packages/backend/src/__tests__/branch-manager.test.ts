@@ -209,6 +209,41 @@ describe("BranchManager", () => {
       shellExecSpy.mockRestore();
     });
 
+    it("re-links worktree node_modules after successful repair before passing", async () => {
+      await fs.writeFile(path.join(repoPath, "package.json"), JSON.stringify({ name: "repo" }));
+      const wtPath = path.join(repoPath, ".wt-task");
+      const commands: string[] = [];
+      let healthCheckCalls = 0;
+      const shellExecSpy = vi
+        .spyOn(shellExecModule, "shellExec")
+        .mockImplementation(async (command: string) => {
+          commands.push(command);
+          if (command === "npm ls --depth=0") {
+            healthCheckCalls += 1;
+            if (healthCheckCalls === 1) {
+              throw new Error("missing module before repair");
+            }
+            return { stdout: "ok", stderr: "" };
+          }
+          if (command === "npm ci") {
+            return { stdout: "installed", stderr: "" };
+          }
+          throw new Error(`Unexpected command: ${command}`);
+        });
+      const symlinkSpy = vi
+        .spyOn(branchManager, "symlinkNodeModules")
+        .mockResolvedValue(undefined);
+
+      await branchManager.checkDependencyIntegrity(repoPath, wtPath);
+
+      expect(commands).toEqual(["npm ls --depth=0", "npm ci", "npm ls --depth=0"]);
+      expect(commands.filter((command) => command === "npm ci")).toHaveLength(1);
+      expect(symlinkSpy).toHaveBeenCalledTimes(1);
+      expect(symlinkSpy).toHaveBeenCalledWith(repoPath, wtPath);
+      shellExecSpy.mockRestore();
+      symlinkSpy.mockRestore();
+    });
+
     it("throws RepoPreflightError with remediation when health stays invalid", async () => {
       await fs.writeFile(path.join(repoPath, "package.json"), JSON.stringify({ name: "repo" }));
       const commands: string[] = [];
@@ -239,6 +274,71 @@ describe("BranchManager", () => {
       expect(commands).toEqual(["npm ls --depth=0", "npm ci", "npm ls --depth=0"]);
       expect(commands.filter((command) => command === "npm ci")).toHaveLength(1);
       shellExecSpy.mockRestore();
+    });
+
+    it("does not loop repair when npm ci succeeds but deps stay unhealthy", async () => {
+      await fs.writeFile(path.join(repoPath, "package.json"), JSON.stringify({ name: "repo" }));
+      const commands: string[] = [];
+      let healthCheckCalls = 0;
+      const shellExecSpy = vi
+        .spyOn(shellExecModule, "shellExec")
+        .mockImplementation(async (command: string) => {
+          commands.push(command);
+          if (command === "npm ls --depth=0") {
+            healthCheckCalls += 1;
+            throw new Error(
+              healthCheckCalls === 1 ? "missing module before repair" : "still missing after repair"
+            );
+          }
+          if (command === "npm ci") {
+            return { stdout: "installed", stderr: "" };
+          }
+          throw new Error(`Unexpected command: ${command}`);
+        });
+
+      await expect(branchManager.checkDependencyIntegrity(repoPath)).rejects.toMatchObject({
+        name: "RepoPreflightError",
+        code: ErrorCodes.REPO_DEPENDENCIES_INVALID,
+      });
+      expect(commands).toEqual(["npm ls --depth=0", "npm ci", "npm ls --depth=0"]);
+      expect(commands.filter((command) => command === "npm ci")).toHaveLength(1);
+      shellExecSpy.mockRestore();
+    });
+
+    it("re-links worktree once and still fails when deps remain unhealthy after repair", async () => {
+      await fs.writeFile(path.join(repoPath, "package.json"), JSON.stringify({ name: "repo" }));
+      const wtPath = path.join(repoPath, ".wt-task");
+      const commands: string[] = [];
+      let healthCheckCalls = 0;
+      const shellExecSpy = vi
+        .spyOn(shellExecModule, "shellExec")
+        .mockImplementation(async (command: string) => {
+          commands.push(command);
+          if (command === "npm ls --depth=0") {
+            healthCheckCalls += 1;
+            throw new Error(
+              healthCheckCalls === 1 ? "missing module before repair" : "still missing after repair"
+            );
+          }
+          if (command === "npm ci") {
+            return { stdout: "installed", stderr: "" };
+          }
+          throw new Error(`Unexpected command: ${command}`);
+        });
+      const symlinkSpy = vi
+        .spyOn(branchManager, "symlinkNodeModules")
+        .mockResolvedValue(undefined);
+
+      await expect(branchManager.checkDependencyIntegrity(repoPath, wtPath)).rejects.toMatchObject({
+        name: "RepoPreflightError",
+        code: ErrorCodes.REPO_DEPENDENCIES_INVALID,
+      });
+      expect(commands).toEqual(["npm ls --depth=0", "npm ci", "npm ls --depth=0"]);
+      expect(commands.filter((command) => command === "npm ci")).toHaveLength(1);
+      expect(symlinkSpy).toHaveBeenCalledTimes(1);
+      expect(symlinkSpy).toHaveBeenCalledWith(repoPath, wtPath);
+      shellExecSpy.mockRestore();
+      symlinkSpy.mockRestore();
     });
   });
 

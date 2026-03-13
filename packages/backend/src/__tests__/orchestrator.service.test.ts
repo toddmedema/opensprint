@@ -956,6 +956,47 @@ describe("OrchestratorService (slot-based model)", () => {
         process.env.NODE_ENV = previousNodeEnv;
       }
     });
+
+    it("persists repair metadata and performs only one retry when symlink repair step fails", async () => {
+      const previousNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = "development";
+      try {
+        mockShellExec
+          .mockRejectedValueOnce({
+            message: "Command failed: npm run lint",
+            stderr: "Cannot find module 'eslint'",
+          })
+          .mockResolvedValueOnce({
+            stdout: "added 1 package",
+            stderr: "",
+          })
+          .mockRejectedValueOnce({
+            message: "Command failed: npm run lint",
+            stderr: "MODULE_NOT_FOUND: Cannot find module 'eslint'",
+          });
+        mockSymlinkNodeModules.mockRejectedValueOnce(new Error("EPERM: symlink failed"));
+
+        const failure = await runMergeQualityGates();
+
+        expect(failure).toMatchObject({
+          command: "npm run lint",
+          category: "environment_setup",
+          autoRepairAttempted: true,
+          autoRepairSucceeded: false,
+          autoRepairCommands: ["npm ci", "symlinkNodeModules"],
+        });
+        expect(failure?.autoRepairOutput).toContain("[npm ci] added 1 package");
+        expect(failure?.autoRepairOutput).toContain("[symlinkNodeModules] EPERM: symlink failed");
+        expect(mockShellExec.mock.calls.map((call) => call[0])).toEqual([
+          "npm run lint",
+          "npm ci",
+          "npm run lint",
+        ]);
+        expect(mockSymlinkNodeModules).toHaveBeenCalledTimes(1);
+      } finally {
+        process.env.NODE_ENV = previousNodeEnv;
+      }
+    });
   });
 
   describe("ensureRunning", () => {
