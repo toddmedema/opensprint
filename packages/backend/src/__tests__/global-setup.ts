@@ -13,6 +13,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const URL_FILE = path.resolve(__dirname, "../../.vitest-postgres-url");
+const RUN_ID_FILE = path.resolve(__dirname, "../../.vitest-run-id");
 const RUN_ID_ENV = "OPENSPRINT_VITEST_RUN_ID";
 
 /** Native Postgres test DB URL. Tests must never use the app DB (opensprint). */
@@ -70,4 +71,8 @@ export default async function globalSetup() {
   }
 
   await fs.writeFile(URL_FILE, NATIVE_TEST_URL, "utf-8");
+  const runId = process.env[RUN_ID_ENV];
+  if (runId) {
+    await fs.writeFile(RUN_ID_FILE, runId, "utf-8");
+  }
 }

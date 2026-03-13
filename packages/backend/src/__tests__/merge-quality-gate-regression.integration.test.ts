@@ -115,24 +115,22 @@ describe("Cross-service quality-gate regression integration", () => {
       .mockResolvedValue(undefined);
 
     let worktreeLintCalls = 0;
-    mockShellExec.mockImplementation(
-      async (command: string, options?: { cwd?: string }) => {
-        if (command === "npm run lint" && options?.cwd === repoPath) {
-          return { stdout: "baseline ok", stderr: "" };
-        }
-        if (command === "npm run lint" && options?.cwd === worktreePath) {
-          worktreeLintCalls += 1;
-          throw {
-            message: "Command failed: npm run lint",
-            stderr: "Cannot find module 'eslint'",
-          };
-        }
-        if (command === "npm ci" && options?.cwd === repoPath) {
-          return { stdout: "added 1 package", stderr: "" };
-        }
-        throw new Error(`Unexpected command: ${command} (${options?.cwd ?? "no-cwd"})`);
+    mockShellExec.mockImplementation(async (command: string, options?: { cwd?: string }) => {
+      if (command === "npm run lint" && options?.cwd === repoPath) {
+        return { stdout: "baseline ok", stderr: "" };
       }
-    );
+      if (command === "npm run lint" && options?.cwd === worktreePath) {
+        worktreeLintCalls += 1;
+        throw {
+          message: "Command failed: npm run lint",
+          stderr: "Cannot find module 'eslint'",
+        };
+      }
+      if (command === "npm ci" && options?.cwd === repoPath) {
+        return { stdout: "added 1 package", stderr: "" };
+      }
+      throw new Error(`Unexpected command: ${command} (${options?.cwd ?? "no-cwd"})`);
+    });
 
     const slot: MergeSlot = {
       taskId,
@@ -155,9 +153,11 @@ describe("Cross-service quality-gate regression integration", () => {
     const updates: Array<Record<string, unknown>> = [];
     const mockTaskStoreUpdate = vi
       .fn()
-      .mockImplementation(async (_projectId: string, _id: string, fields: Record<string, unknown>) => {
-        updates.push(fields);
-      });
+      .mockImplementation(
+        async (_projectId: string, _id: string, fields: Record<string, unknown>) => {
+          updates.push(fields);
+        }
+      );
 
     const host: MergeCoordinatorHost = {
       getState: vi.fn().mockImplementation(() => state),
@@ -218,9 +218,7 @@ describe("Cross-service quality-gate regression integration", () => {
     await coordinator.performMergeAndDone(projectId, repoPath, task as never, branchName);
 
     expect(worktreeLintCalls).toBe(2);
-    expect(
-      mockShellExec.mock.calls.filter((call) => call[0] === "npm ci")
-    ).toHaveLength(1);
+    expect(mockShellExec.mock.calls.filter((call) => call[0] === "npm ci")).toHaveLength(1);
     expect(symlinkSpy).toHaveBeenCalledTimes(1);
     expect(symlinkSpy).toHaveBeenCalledWith(repoPath, worktreePath);
     expect(mockTaskStoreUpdate).toHaveBeenCalledWith(
@@ -325,21 +323,19 @@ describe("Cross-service quality-gate regression integration", () => {
       .mockResolvedValue(undefined);
 
     let worktreeLintCalls = 0;
-    mockShellExec.mockImplementation(
-      async (command: string, options?: { cwd?: string }) => {
-        if (command === "npm run lint" && options?.cwd === repoPath) {
-          return { stdout: "baseline ok", stderr: "" };
-        }
-        if (command === "npm run lint" && options?.cwd === worktreePath) {
-          worktreeLintCalls += 1;
-          throw {
-            message: "Command failed: npm run lint",
-            stderr: "src/foo.ts: error TS2304: Cannot find name 'x'",
-          };
-        }
-        throw new Error(`Unexpected command: ${command} (${options?.cwd ?? "no-cwd"})`);
+    mockShellExec.mockImplementation(async (command: string, options?: { cwd?: string }) => {
+      if (command === "npm run lint" && options?.cwd === repoPath) {
+        return { stdout: "baseline ok", stderr: "" };
       }
-    );
+      if (command === "npm run lint" && options?.cwd === worktreePath) {
+        worktreeLintCalls += 1;
+        throw {
+          message: "Command failed: npm run lint",
+          stderr: "src/foo.ts: error TS2304: Cannot find name 'x'",
+        };
+      }
+      throw new Error(`Unexpected command: ${command} (${options?.cwd ?? "no-cwd"})`);
+    });
 
     const slot: MergeSlot = {
       taskId,
@@ -362,9 +358,11 @@ describe("Cross-service quality-gate regression integration", () => {
     const updates: Array<Record<string, unknown>> = [];
     const mockTaskStoreUpdate = vi
       .fn()
-      .mockImplementation(async (_projectId: string, _id: string, fields: Record<string, unknown>) => {
-        updates.push(fields);
-      });
+      .mockImplementation(
+        async (_projectId: string, _id: string, fields: Record<string, unknown>) => {
+          updates.push(fields);
+        }
+      );
 
     const host: MergeCoordinatorHost = {
       getState: vi.fn().mockImplementation(() => state),

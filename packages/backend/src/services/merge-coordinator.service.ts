@@ -354,9 +354,7 @@ export class MergeCoordinatorService {
       qualityGateFailure?.outputSnippet ?? qualityGateFailure?.firstErrorLine ?? null
     );
     const worktreePath =
-      qualityGateFailure?.worktreePath?.trim() ||
-      fallbackWorktreePath?.trim() ||
-      null;
+      qualityGateFailure?.worktreePath?.trim() || fallbackWorktreePath?.trim() || null;
     const firstErrorLine = qualityGateFailure?.firstErrorLine?.trim() || null;
     const hasDetail =
       failedGateCommand != null ||

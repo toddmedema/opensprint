@@ -59,6 +59,22 @@ function getFirstNonEmptyLine(value: string | null | undefined): string | null {
   );
 }
 
+/** Runner/npm noise we skip when looking for the first meaningful error line. */
+const NOISE_LINE = /^\s*(>|npm ERR!)/;
+
+/** Lines that look like a real compiler/test error (file:line, error TS, Error:, etc.). */
+const MEANINGFUL_ERROR_LINE =
+  /error\s+TS\d+|Error:|AssertionError:|:\s*error\s|Cannot find|failed|FAIL\s|\.(ts|tsx|js|jsx):\d+/i;
+
+function getFirstMeaningfulErrorLine(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const lines = value.split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0);
+  const meaningful = lines.find(
+    (line) => !NOISE_LINE.test(line) && MEANINGFUL_ERROR_LINE.test(line)
+  );
+  return meaningful ?? getFirstNonEmptyLine(value);
+}
+
 function extractShellFailure(
   command: string,
   err: unknown
@@ -74,7 +90,10 @@ function extractShellFailure(
     QUALITY_GATE_FAILURE_REASON_LIMIT
   );
   const firstErrorLine =
-    getFirstNonEmptyLine(output) ?? getFirstNonEmptyLine(reason) ?? "Unknown quality gate failure";
+    getFirstMeaningfulErrorLine(output) ??
+    getFirstNonEmptyLine(output) ??
+    getFirstNonEmptyLine(reason) ??
+    "Unknown quality gate failure";
   return { reason, output, firstErrorLine };
 }
 

@@ -377,7 +377,8 @@ describe("FailureHandlerService", () => {
 
   it("passes highlighted test failures into coder retry context", async () => {
     const slot = makeSlot("/tmp/worktree");
-    slot.phaseResult.validationCommand = "node ./node_modules/vitest/vitest.mjs run src/foo.test.ts";
+    slot.phaseResult.validationCommand =
+      "node ./node_modules/vitest/vitest.mjs run src/foo.test.ts";
     slot.phaseResult.testResults = {
       passed: 0,
       failed: 1,

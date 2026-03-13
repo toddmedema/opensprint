@@ -230,9 +230,7 @@ describe("BranchManager", () => {
           }
           throw new Error(`Unexpected command: ${command}`);
         });
-      const symlinkSpy = vi
-        .spyOn(branchManager, "symlinkNodeModules")
-        .mockResolvedValue(undefined);
+      const symlinkSpy = vi.spyOn(branchManager, "symlinkNodeModules").mockResolvedValue(undefined);
 
       await branchManager.checkDependencyIntegrity(repoPath, wtPath);
 
@@ -325,9 +323,7 @@ describe("BranchManager", () => {
           }
           throw new Error(`Unexpected command: ${command}`);
         });
-      const symlinkSpy = vi
-        .spyOn(branchManager, "symlinkNodeModules")
-        .mockResolvedValue(undefined);
+      const symlinkSpy = vi.spyOn(branchManager, "symlinkNodeModules").mockResolvedValue(undefined);
 
       await expect(branchManager.checkDependencyIntegrity(repoPath, wtPath)).rejects.toMatchObject({
         name: "RepoPreflightError",

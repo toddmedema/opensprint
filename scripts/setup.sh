@@ -133,9 +133,10 @@ ensure_local_postgres_role_and_databases_via_password() {
 DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${OS_USER}') THEN
-    CREATE ROLE ${OS_USER} WITH LOGIN PASSWORD '${OS_PASSWORD}';
+    CREATE ROLE ${OS_USER} WITH LOGIN PASSWORD '${OS_PASSWORD}' CREATEDB;
   ELSE
     ALTER ROLE ${OS_USER} WITH PASSWORD '${OS_PASSWORD}';
+    ALTER ROLE ${OS_USER} CREATEDB;
   END IF;
 END
 \$\$;
@@ -162,9 +163,10 @@ ensure_local_postgres_role_and_databases_via_peer_auth() {
 DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${OS_USER}') THEN
-    CREATE ROLE ${OS_USER} WITH LOGIN PASSWORD '${OS_PASSWORD}';
+    CREATE ROLE ${OS_USER} WITH LOGIN PASSWORD '${OS_PASSWORD}' CREATEDB;
   ELSE
     ALTER ROLE ${OS_USER} WITH PASSWORD '${OS_PASSWORD}';
+    ALTER ROLE ${OS_USER} CREATEDB;
   END IF;
 END
 \$\$;
@@ -196,14 +198,14 @@ install_and_start_postgres_mac() {
     echo "==> Homebrew not found. Install from https://brew.sh or use a remote Postgres and set databaseUrl in ~/.opensprint/global-settings.json"
     return 1
   fi
-  if ! brew list postgresql@16 >/dev/null 2>&1 && ! brew list postgresql >/dev/null 2>&1; then
+  if ! brew list postgresql@18 >/dev/null 2>&1 && ! brew list postgresql >/dev/null 2>&1; then
     echo "==> Installing PostgreSQL via Homebrew..."
-    brew install postgresql@16 2>/dev/null || brew install postgresql
+    brew install postgresql@18 2>/dev/null || brew install postgresql
   fi
-  # Prefer postgresql@16 if present, else postgresql
-  if brew list postgresql@16 >/dev/null 2>&1; then
-    PG_PREFIX="$(brew --prefix postgresql@16)"
-    brew services start postgresql@16 2>/dev/null || true
+  # Prefer postgresql@18 if present, else postgresql
+  if brew list postgresql@18 >/dev/null 2>&1; then
+    PG_PREFIX="$(brew --prefix postgresql@18)"
+    brew services start postgresql@18 2>/dev/null || true
   else
     PG_PREFIX="$(brew --prefix postgresql)"
     brew services start postgresql 2>/dev/null || true
@@ -225,9 +227,10 @@ install_and_start_postgres_mac() {
     echo "==> PostgreSQL ready (user ${OS_USER}, databases ${OS_DB} and ${OS_TEST_DB})"
     return 0
   fi
-  # Create role and database (idempotent; ignore errors if already exist)
-  psql -d postgres -c "CREATE ROLE ${OS_USER} WITH LOGIN PASSWORD '${OS_PASSWORD}';" 2>/dev/null || \
+  # Create role and database (idempotent; ignore errors if already exist). CREATEDB lets test teardown recreate opensprint_test.
+  psql -d postgres -c "CREATE ROLE ${OS_USER} WITH LOGIN PASSWORD '${OS_PASSWORD}' CREATEDB;" 2>/dev/null || \
     psql -d postgres -c "ALTER ROLE ${OS_USER} WITH PASSWORD '${OS_PASSWORD}';" 2>/dev/null || true
+  psql -d postgres -c "ALTER ROLE ${OS_USER} CREATEDB;" 2>/dev/null || true
   psql -d postgres -c "CREATE DATABASE ${OS_DB} OWNER ${OS_USER};" 2>/dev/null || true
   psql -d postgres -c "CREATE DATABASE ${OS_TEST_DB} OWNER ${OS_USER};" 2>/dev/null || true
   echo "==> PostgreSQL ready (user ${OS_USER}, databases ${OS_DB} and ${OS_TEST_DB})"

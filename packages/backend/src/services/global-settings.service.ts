@@ -91,7 +91,7 @@ export async function getGlobalSettings(): Promise<GlobalSettings> {
 
 /**
  * Get the effective database URL. Precedence: DATABASE_URL env (12-factor), then
- * databaseUrl from global settings, then default postgresql://opensprint:opensprint@localhost:5432/opensprint.
+ * databaseUrl from global settings, then default SQLite path (~/.opensprint/data/opensprint.sqlite).
  * Never stored in the database; only in ~/.opensprint/global-settings.json or env.
  */
 export async function getDatabaseUrl(): Promise<string> {

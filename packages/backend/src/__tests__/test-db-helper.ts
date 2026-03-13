@@ -9,6 +9,7 @@
  */
 
 import { randomUUID } from "crypto";
+import { readFileSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -19,6 +20,7 @@ import { runSchema } from "../db/schema.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const URL_FILE = path.resolve(__dirname, "../../.vitest-postgres-url");
+const RUN_ID_FILE = path.resolve(__dirname, "../../.vitest-run-id");
 const VITEST_RUN_ID_ENV = "OPENSPRINT_VITEST_RUN_ID";
 // Use a different database name than the app default (opensprint) so test setup (e.g. DELETE FROM tasks)
 // never wipes the database the running app is using when TEST_DATABASE_URL is unset and no container URL exists.
@@ -71,9 +73,23 @@ function getVitestWorkerId(): string | null {
   return null;
 }
 
+/** Run ID from env or from file written by global-setup (so workers have it). */
+let cachedRunId: string | null | undefined = undefined;
 function getVitestRunId(): string | null {
-  const runId = process.env[VITEST_RUN_ID_ENV]?.trim();
-  return runId || null;
+  if (cachedRunId !== undefined) return cachedRunId;
+  const fromEnv = process.env[VITEST_RUN_ID_ENV]?.trim();
+  if (fromEnv) {
+    cachedRunId = fromEnv;
+    return cachedRunId;
+  }
+  try {
+    const fromFile = readFileSync(RUN_ID_FILE, "utf-8")?.trim();
+    cachedRunId = fromFile || null;
+    return cachedRunId;
+  } catch {
+    cachedRunId = null;
+    return null;
+  }
 }
 
 /** Schema names that have already had runSchema applied in this process (per worker). */

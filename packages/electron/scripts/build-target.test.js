@@ -37,7 +37,9 @@ describe("build-target", () => {
   });
 
   it("throws for unsupported platform", () => {
-    expect(() => resolveTargetPlatform({ platform: "freebsd" })).toThrow(/Unsupported target platform/);
+    expect(() => resolveTargetPlatform({ platform: "freebsd" })).toThrow(
+      /Unsupported target platform/
+    );
   });
 
   it("resolves valid target arch and throws for unsupported arch", () => {
