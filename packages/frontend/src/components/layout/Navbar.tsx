@@ -387,7 +387,7 @@ export function Navbar({
                     active={isSettingsActive}
                     tone="accent"
                     variant="icon"
-                    className={`shrink-0${isElectronWin ? " -mr-[5px]" : ""}`}
+                    className={`shrink-0${isElectronWin ? " -mr-[5px]" : ""}${isElectronMac ? " mr-1" : ""}`}
                     aria-label="Project settings"
                     title="Project settings"
                   >
@@ -433,7 +433,7 @@ export function Navbar({
                     active={isSettingsActive}
                     tone="accent"
                     variant="icon"
-                    className={`shrink-0${isElectronWin ? " -mr-[5px]" : ""}`}
+                    className={`shrink-0${isElectronWin ? " -mr-[5px]" : ""}${isElectronMac ? " mr-1" : ""}`}
                     aria-label="Settings"
                     title="Settings"
                   >
@@ -477,7 +477,7 @@ export function Navbar({
                     active={isSettingsActive}
                     tone="accent"
                     variant="icon"
-                    className={`shrink-0${isElectronWin ? " -mr-[5px]" : ""}`}
+                    className={`shrink-0${isElectronWin ? " -mr-[5px]" : ""}${isElectronMac ? " mr-1" : ""}`}
                     aria-label="Settings"
                     title="Settings"
                   >
