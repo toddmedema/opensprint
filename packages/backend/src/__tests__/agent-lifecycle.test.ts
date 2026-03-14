@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
 import { AgentLifecycleManager } from "../services/agent-lifecycle.js";
 import type { AgentRunState, AgentRunParams } from "../services/agent-lifecycle.js";
 import { TimerRegistry } from "../services/timer-registry.js";
@@ -205,6 +208,44 @@ describe("AgentLifecycleManager", () => {
       await capturedOnExit?.(1);
 
       expect(baseParams.onDone).toHaveBeenCalledTimes(1);
+    });
+
+    it("finalizes the run when terminal result.json appears even if the agent never exits", async () => {
+      vi.useFakeTimers();
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-lifecycle-run-"));
+      const promptPath = path.join(tmpDir, "prompt.md");
+      const onDone = vi.fn().mockResolvedValue(undefined);
+      const handle = { kill: vi.fn(), pid: 9999 };
+      await fs.writeFile(promptPath, "prompt", "utf-8");
+
+      mockInvokeCodingAgent.mockImplementation(() => handle);
+
+      manager.run(
+        {
+          ...baseParams,
+          repoPath: tmpDir,
+          wtPath: tmpDir,
+          promptPath,
+          onDone,
+        },
+        runState,
+        timers
+      );
+
+      await fs.writeFile(
+        path.join(tmpDir, "result.json"),
+        JSON.stringify({ status: "approved" }),
+        "utf-8"
+      );
+
+      await vi.advanceTimersByTimeAsync(600);
+
+      expect(handle.kill).toHaveBeenCalledTimes(1);
+      expect(onDone).toHaveBeenCalledWith(0);
+      expect(runState.activeProcess).toBeNull();
+      expect(runState.exitHandled).toBe(true);
+      expect(mockDeleteHeartbeat).toHaveBeenCalledWith(tmpDir, "task-1", undefined);
+      vi.useRealTimers();
     });
 
     it("does not timeout while a shell tool call is still active", async () => {
@@ -461,6 +502,42 @@ describe("AgentLifecycleManager", () => {
 
       expect(timers.has("outputTail")).toBe(false);
       expect(onDone).toHaveBeenCalledWith(null);
+      vi.useRealTimers();
+    });
+
+    it("finalizes recovered runs from terminal result.json even if the process stays alive", async () => {
+      vi.useFakeTimers();
+      const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-lifecycle-recover-"));
+      const promptPath = path.join(tmpDir, "prompt.md");
+      const handle = { kill: vi.fn(), pid: 9999 };
+      const onDone = vi.fn().mockResolvedValue(undefined);
+      await fs.writeFile(promptPath, "prompt", "utf-8");
+      await fs.writeFile(
+        path.join(tmpDir, "result.json"),
+        JSON.stringify({ status: "approved" }),
+        "utf-8"
+      );
+
+      await manager.resumeMonitoring(
+        handle,
+        {
+          ...baseParams,
+          repoPath: tmpDir,
+          wtPath: tmpDir,
+          promptPath,
+          onDone,
+        },
+        runState,
+        timers
+      );
+
+      await vi.advanceTimersByTimeAsync(600);
+
+      expect(handle.kill).toHaveBeenCalledTimes(1);
+      expect(onDone).toHaveBeenCalledWith(0);
+      expect(runState.activeProcess).toBeNull();
+      expect(runState.exitHandled).toBe(true);
+      expect(timers.has("outputTail")).toBe(false);
       vi.useRealTimers();
     });
   });

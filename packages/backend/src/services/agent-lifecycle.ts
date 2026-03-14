@@ -25,9 +25,15 @@ const log = createLogger("agent-lifecycle");
 
 /** Poll interval for tailing agent output file after GUPP recovery (must match agent-client for consistency) */
 const OUTPUT_POLL_MS = 150;
+/** Poll for terminal result.json in case the agent writes completion but process/external callback lags or wedges. */
+const RESULT_POLL_MS = (() => {
+  const raw = Number(process.env.OPENSPRINT_RESULT_POLL_MS ?? "");
+  return Number.isFinite(raw) && raw > 0 ? raw : 500;
+})();
 /** Allow long-running shell/tool execution (e.g. npm test) to finish and report back before inactivity kills the agent. */
 const ACTIVE_TOOL_CALL_TIMEOUT_MS = 15 * 60 * 1000;
 const RECOVERY_TAIL_BYTES = 256 * 1024;
+const RESULT_TERMINAL_STATUSES = new Set(["success", "failed", "approved", "rejected"]);
 
 /** Check whether a PID is still running */
 function isPidAlive(pid: number): boolean {
@@ -182,6 +188,15 @@ export class AgentLifecycleManager {
     });
 
     this.startHeartbeat(runState, wtPath, taskId, timers, heartbeatSubpath);
+    this.startResultMonitor(
+      promptPath,
+      runState,
+      wtPath,
+      taskId,
+      timers,
+      onDone,
+      heartbeatSubpath
+    );
     this.startInactivityMonitor(
       runState,
       wtPath,
@@ -248,6 +263,14 @@ export class AgentLifecycleManager {
     };
 
     this.startHeartbeat(runState, wtPath, taskId, timers);
+    this.startResultMonitor(
+      params.promptPath,
+      runState,
+      wtPath,
+      taskId,
+      timers,
+      wrappedOnDone
+    );
     this.startInactivityMonitor(
       runState,
       wtPath,
@@ -301,6 +324,58 @@ export class AgentLifecycleManager {
       summary,
     });
     await params.onStateChange?.();
+  }
+
+  private startResultMonitor(
+    promptPath: string,
+    runState: AgentRunState,
+    wtPath: string,
+    taskId: string,
+    timers: TimerRegistry,
+    onDone: (exitCode: number | null) => Promise<void>,
+    heartbeatSubpath?: string
+  ): void {
+    const resultPath = path.join(path.dirname(promptPath), "result.json");
+    let checkInFlight = false;
+
+    timers.setInterval(
+      "result",
+      () => {
+        if (runState.exitHandled || checkInFlight) return;
+        checkInFlight = true;
+        fs.readFile(resultPath, "utf-8")
+          .then(async (raw) => {
+            const parsed = JSON.parse(raw) as { status?: string };
+            const status = typeof parsed?.status === "string" ? parsed.status.toLowerCase() : "";
+            if (!RESULT_TERMINAL_STATUSES.has(status) || runState.exitHandled) return;
+
+            const exitCode = status === "success" || status === "approved" ? 0 : 1;
+            const activeProcess = runState.activeProcess;
+            runState.exitHandled = true;
+            runState.activeProcess = null;
+            this.cleanupTimers(timers);
+            log.info("Terminal result.json detected by lifecycle monitor", {
+              taskId,
+              resultPath,
+              status,
+            });
+            try {
+              activeProcess?.kill();
+            } catch {
+              // Best effort; the result file already gives us the terminal outcome.
+            }
+            await heartbeatService.deleteHeartbeat(wtPath, taskId, heartbeatSubpath).catch(() => {});
+            await onDone(exitCode);
+          })
+          .catch(() => {
+            // Missing result, invalid JSON, or missing terminal status — keep polling.
+          })
+          .finally(() => {
+            checkInFlight = false;
+          });
+      },
+      RESULT_POLL_MS
+    );
   }
 
   /**
@@ -482,6 +557,7 @@ export class AgentLifecycleManager {
   private cleanupTimers(timers: TimerRegistry): void {
     timers.clear("heartbeat");
     timers.clear("inactivity");
+    timers.clear("result");
   }
 
   private setRunningState(runState: AgentRunState, atMs: number): void {
