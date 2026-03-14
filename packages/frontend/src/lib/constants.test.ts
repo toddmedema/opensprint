@@ -72,9 +72,9 @@ describe("constants", () => {
   });
 
   describe("GITHUB_REPO_URL", () => {
-    it("points to Open Sprint GitHub repository", () => {
-      expect(GITHUB_REPO_URL).toContain("github.com");
-      expect(GITHUB_REPO_URL).toContain("opensprint");
+    it("points to Open Sprint GitHub repository (opensprint, not opensprint.dev)", () => {
+      expect(GITHUB_REPO_URL).toBe("https://github.com/toddmedema/opensprint");
+      expect(GITHUB_REPO_URL).not.toContain("opensprint.dev");
     });
   });
 

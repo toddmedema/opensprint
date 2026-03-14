@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { GITHUB_REPO_URL } from "../lib/constants";
 import { getPrereqInstallUrl } from "../lib/prerequisites";
 import { getProjectPhasePath } from "../lib/phaseRouting";
 import { Layout } from "../components/layout/Layout";
@@ -482,7 +483,7 @@ export function CreateNewProjectPage() {
                   </select>
                   <p className="mt-2 text-sm text-theme-text-secondary">
                     <a
-                      href="https://github.com/toddmedema/opensprint/issues/new"
+                      href={`${GITHUB_REPO_URL}/issues/new`}
                       target="_blank"
                       rel="noreferrer"
                       className="underline underline-offset-2 hover:text-theme-text"

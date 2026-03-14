@@ -21,7 +21,7 @@ export const PHASE_TOOLBAR_HEIGHT = 48;
 export const PHASE_TOOLBAR_BUTTON_SIZE = 32;
 
 /** Open Sprint GitHub repository URL. */
-export const GITHUB_REPO_URL = "https://github.com/toddmedema/opensprint.dev";
+export const GITHUB_REPO_URL = "https://github.com/toddmedema/opensprint";
 
 /**
  * Tailwind classes for content containers that must share the same width.

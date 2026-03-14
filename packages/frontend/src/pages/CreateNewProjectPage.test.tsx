@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { CreateNewProjectPage } from "./CreateNewProjectPage";
 import { ApiError } from "../api/client";
+import { GITHUB_REPO_URL } from "../lib/constants";
 
 function LocationDisplay() {
   return <div data-testid="location">{useLocation().pathname}</div>;
@@ -152,7 +153,7 @@ describe("CreateNewProjectPage", () => {
     expect(screen.getByTestId("template-select")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Request a template" })).toHaveAttribute(
       "href",
-      "https://github.com/toddmedema/opensprint/issues/new"
+      `${GITHUB_REPO_URL}/issues/new`
     );
   });
 
