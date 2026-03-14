@@ -396,69 +396,66 @@ export function WorkflowSettingsContent({
         className="space-y-4 p-4 rounded-lg bg-theme-bg-elevated border border-theme-border"
         data-testid="workflow-continuous-improvement-card"
       >
-        <div>
+        <div className="space-y-2">
           <h3 className="text-sm font-semibold text-theme-text">Continuous Improvement</h3>
           <p className="text-xs text-theme-muted">
-            Schedule review-driven maintenance passes over recent code changes.
+            When the codebase has changed, a review runs with your code review lenses and creates
+            improvement tasks.
           </p>
-        </div>
-
-        <div data-testid="self-improvement-section">
-          <p className="text-xs text-theme-muted mb-2">
-            When the codebase has changed since the last run, a review runs using your code review
-            lenses and creates improvement tasks.
-          </p>
-          {(draftSettings.selfImprovementFrequency ?? "never") === "after_each_plan" && (
-            <p className="text-xs text-theme-muted mb-2">
-              Runs once after a plan&apos;s execution is fully complete (all tasks done and merged),
-              not when you click Execute.
-            </p>
-          )}
-          <div className="flex flex-wrap items-center gap-3">
-            <label
-              htmlFor="self-improvement-frequency-select"
-              className="block text-xs font-medium text-theme-muted"
-            >
-              Self-improvement frequency
-            </label>
-            <select
-              id="self-improvement-frequency-select"
-              data-testid="self-improvement-frequency-select"
-              className="input w-48"
-              value={draftSettings.selfImprovementFrequency ?? "never"}
-              onChange={(e) => {
-                const value = e.target.value as SelfImprovementFrequency;
-                applySettingsUpdate((s) => ({ ...s, selfImprovementFrequency: value }));
-                void persistSettings(undefined, {
-                  selfImprovementFrequency: value,
-                });
-              }}
-            >
-              {SELF_IMPROVEMENT_FREQUENCY_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+          <div data-testid="self-improvement-section" className="flex flex-col gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <label
+                htmlFor="self-improvement-frequency-select"
+                className="block text-xs font-medium text-theme-muted"
+              >
+                Self-improvement frequency
+              </label>
+              <select
+                id="self-improvement-frequency-select"
+                data-testid="self-improvement-frequency-select"
+                className="input w-48"
+                value={draftSettings.selfImprovementFrequency ?? "never"}
+                onChange={(e) => {
+                  const value = e.target.value as SelfImprovementFrequency;
+                  applySettingsUpdate((s) => ({ ...s, selfImprovementFrequency: value }));
+                  void persistSettings(undefined, {
+                    selfImprovementFrequency: value,
+                  });
+                }}
+              >
+                {SELF_IMPROVEMENT_FREQUENCY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {(draftSettings.selfImprovementLastRunAt || draftSettings.nextRunAt) && (
+              <p
+                className="text-xs text-theme-muted flex flex-nowrap items-center gap-x-3"
+                data-testid="self-improvement-run-schedule"
+              >
+                {draftSettings.selfImprovementLastRunAt && (
+                  <span data-testid="self-improvement-last-run">
+                    Last run:{" "}
+                    {new Date(draftSettings.selfImprovementLastRunAt).toLocaleString(undefined, {
+                      dateStyle: "short",
+                      timeStyle: "short",
+                    })}
+                  </span>
+                )}
+                {draftSettings.nextRunAt && (
+                  <span data-testid="self-improvement-next-run">
+                    Next run:{" "}
+                    {new Date(draftSettings.nextRunAt).toLocaleString(undefined, {
+                      dateStyle: "short",
+                      timeStyle: "short",
+                    })}
+                  </span>
+                )}
+              </p>
+            )}
           </div>
-          {draftSettings.selfImprovementLastRunAt && (
-            <p className="text-xs text-theme-muted mt-2" data-testid="self-improvement-last-run">
-              Last run:{" "}
-              {new Date(draftSettings.selfImprovementLastRunAt).toLocaleString(undefined, {
-                dateStyle: "short",
-                timeStyle: "short",
-              })}
-            </p>
-          )}
-          {draftSettings.nextRunAt && (
-            <p className="text-xs text-theme-muted mt-2" data-testid="self-improvement-next-run">
-              Next run:{" "}
-              {new Date(draftSettings.nextRunAt).toLocaleString(undefined, {
-                dateStyle: "short",
-                timeStyle: "short",
-              })}
-            </p>
-          )}
         </div>
       </section>
     </div>

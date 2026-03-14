@@ -621,7 +621,7 @@ describe("ProjectSettingsModal", () => {
     await screen.findByText(/Self-improvement/);
     expect(
       screen.getByText(
-        /When the codebase has changed since the last run, a review runs using your code review lenses and creates improvement tasks\./
+        /When the codebase has changed, a review runs with your code review lenses and creates improvement tasks\./
       )
     ).toBeInTheDocument();
     const select = screen.getByTestId("self-improvement-frequency-select");
@@ -678,7 +678,7 @@ describe("ProjectSettingsModal", () => {
 
     await screen.findByText(/Self-improvement/);
     expect(
-      screen.getByText(/When the codebase has changed since the last run, a review runs/)
+      screen.getByText(/When the codebase has changed, a review runs with your code review lenses/)
     ).toBeInTheDocument();
   });
 
