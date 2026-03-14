@@ -253,10 +253,10 @@ export function EpicCard({
           </div>
         )}
 
-        {/* Nested subtasks */}
+        {/* Nested subtasks — no fixed-height scroll; list expands with content */}
         {tasks.length > 0 && (
           <div className="mb-3 rounded-lg bg-theme-surface-muted/80 ring-1 ring-theme-border overflow-hidden">
-            <ul className="space-y-0.5 p-2 max-h-24 overflow-y-auto">
+            <ul className="space-y-0.5 p-2">
               {tasks.map((task) => (
                 <li
                   key={task.id}
