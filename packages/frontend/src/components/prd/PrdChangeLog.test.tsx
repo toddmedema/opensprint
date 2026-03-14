@@ -98,27 +98,11 @@ describe("PrdChangeLog", () => {
 
   it("shows loading then diff content in modal", async () => {
     const user = userEvent.setup();
+    let resolveDiff: ((value: unknown) => void) | null = null;
     mockGetVersionDiff.mockImplementation(
       () =>
         new Promise((resolve) => {
-          setTimeout(
-            () =>
-              resolve({
-                fromVersion: "3",
-                toVersion: "current",
-                diff: {
-                  lines: [
-                    {
-                      type: "add",
-                      text: "New line",
-                      newLineNumber: 1,
-                    },
-                  ],
-                  summary: { additions: 1, deletions: 0 },
-                },
-              }),
-            10
-          );
+          resolveDiff = resolve;
         })
     );
 
@@ -133,6 +117,21 @@ describe("PrdChangeLog", () => {
 
     await user.click(screen.getByTestId("compare-to-current"));
     expect(await screen.findByTestId("version-diff-loading")).toBeInTheDocument();
+
+    resolveDiff?.({
+      fromVersion: "3",
+      toVersion: "current",
+      diff: {
+        lines: [
+          {
+            type: "add",
+            text: "New line",
+            newLineNumber: 1,
+          },
+        ],
+        summary: { additions: 1, deletions: 0 },
+      },
+    });
 
     await screen.findByTestId("server-diff-view");
     expect(screen.queryByTestId("version-diff-loading")).not.toBeInTheDocument();

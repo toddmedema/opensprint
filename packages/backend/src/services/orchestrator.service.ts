@@ -789,6 +789,197 @@ export class OrchestratorService {
     return fallbackReason;
   }
 
+  private getRecoveredWorktreeKey(assignment: GuppAssignment): string | undefined {
+    return (
+      assignment.worktreeKey ??
+      (assignment.branchName.startsWith("opensprint/epic_")
+        ? assignment.branchName.slice("opensprint/".length)
+        : undefined)
+    );
+  }
+
+  private getTerminalResultExitCode(result: { status?: string } | null | undefined): number | null {
+    const status = typeof result?.status === "string" ? result.status.toLowerCase() : "";
+    if (!["success", "failed", "approved", "rejected"].includes(status)) {
+      return null;
+    }
+    return status === "success" || status === "approved" ? 0 : 1;
+  }
+
+  private getReviewAngleFromAssignment(assignment: GuppAssignment): ReviewAngle | undefined {
+    const match = assignment.promptPath.match(/[\\/]+review-angles[\\/]+([^\\/]+)[\\/]+prompt\.md$/);
+    if (!match) return undefined;
+    const angle = match[1];
+    return REVIEW_ANGLE_OPTIONS.some((option) => option.value === angle)
+      ? (angle as ReviewAngle)
+      : undefined;
+  }
+
+  private async hydrateRecoveredOutputLog(
+    agent: AgentRunState,
+    promptPath: string
+  ): Promise<void> {
+    const outputLogPath = path.join(path.dirname(promptPath), OPENSPRINT_PATHS.agentOutputLog);
+    try {
+      const output = await fs.readFile(outputLogPath, "utf-8");
+      if (!output) return;
+      agent.outputLog = [output];
+      agent.outputLogBytes = Buffer.byteLength(output);
+      const now = Date.now();
+      agent.lastOutputTime = now;
+      agent.lastOutputAtIso = new Date(now).toISOString();
+    } catch {
+      // Best-effort hydration for session archival.
+    }
+  }
+
+  async handleCompletedRecoveredAssignment(
+    projectId: string,
+    repoPath: string,
+    task: StoredTask,
+    assignment: GuppAssignment
+  ): Promise<boolean> {
+    return assignment.phase === "review"
+      ? this.resumeRecoveredReviewFromTerminalResult(projectId, repoPath, task, assignment)
+      : this.resumeRecoveredCodingFromTerminalResult(projectId, repoPath, task, assignment);
+  }
+
+  private async resumeRecoveredCodingFromTerminalResult(
+    projectId: string,
+    repoPath: string,
+    task: StoredTask,
+    assignment: GuppAssignment
+  ): Promise<boolean> {
+    try {
+      await fs.access(assignment.worktreePath);
+    } catch {
+      return false;
+    }
+
+    const result = (await this.sessionManager.readResult(
+      assignment.worktreePath,
+      task.id
+    )) as CodingAgentResult | null;
+    const exitCode = this.getTerminalResultExitCode(result);
+    if (exitCode == null) return false;
+
+    const state = this.getState(projectId);
+    let slot = state.slots.get(task.id);
+    if (!slot) {
+      const assignee = task.assignee ?? getAgentName(0);
+      slot = this.createSlot(
+        task.id,
+        task.title ?? null,
+        assignment.branchName,
+        assignment.attempt,
+        assignee,
+        this.getRecoveredWorktreeKey(assignment)
+      );
+      slot.worktreePath = assignment.worktreePath;
+      slot.agent.startedAt = assignment.createdAt;
+      await this.hydrateRecoveredOutputLog(slot.agent, assignment.promptPath);
+      this.transition(projectId, {
+        to: "start_task",
+        taskId: task.id,
+        taskTitle: slot.taskTitle,
+        branchName: assignment.branchName,
+        attempt: assignment.attempt,
+        queueDepth: state.status.queueDepth,
+        slot,
+      });
+
+      const coderIdx = AGENT_NAMES.indexOf(task.assignee as (typeof AGENT_NAMES)[number]);
+      if (coderIdx >= 0) {
+        state.nextCoderIndex = Math.max(state.nextCoderIndex, coderIdx + 1);
+      }
+    }
+
+    await this.handleCodingDone(projectId, repoPath, task, assignment.branchName, exitCode);
+    return true;
+  }
+
+  private async resumeRecoveredReviewFromTerminalResult(
+    projectId: string,
+    repoPath: string,
+    task: StoredTask,
+    assignment: GuppAssignment
+  ): Promise<boolean> {
+    const settings = await this.projectService.getSettings(projectId);
+    const reviewMode = settings.reviewMode ?? DEFAULT_REVIEW_MODE;
+    if (reviewMode === "never") return false;
+
+    try {
+      await fs.access(assignment.worktreePath);
+    } catch {
+      return false;
+    }
+
+    const angle = this.getReviewAngleFromAssignment(assignment);
+    const result = await this.readReviewResult(assignment.worktreePath, task.id, angle);
+    const exitCode = this.getTerminalResultExitCode(result);
+    if (exitCode == null) return false;
+
+    const state = this.getState(projectId);
+    let slot = state.slots.get(task.id);
+    if (!slot) {
+      const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+      let changedFiles: string[] = [];
+      try {
+        changedFiles = await this.branchManager.getChangedFiles(
+          repoPath,
+          assignment.branchName,
+          baseBranch
+        );
+      } catch {
+        // Fall back to configured/full suite.
+      }
+
+      const reviewerList = AGENT_NAMES_BY_ROLE.reviewer ?? [];
+      const reviewerAssignee =
+        typeof task.assignee === "string" && reviewerList.includes(task.assignee)
+          ? task.assignee
+          : getAgentNameForRole("reviewer", state.nextReviewerIndex);
+      const reviewerIdx = reviewerList.indexOf(reviewerAssignee);
+      if (reviewerIdx >= 0) {
+        state.nextReviewerIndex = Math.max(state.nextReviewerIndex, reviewerIdx + 1);
+      } else {
+        state.nextReviewerIndex += 1;
+      }
+
+      slot = this.createSlot(
+        task.id,
+        task.title ?? null,
+        assignment.branchName,
+        assignment.attempt,
+        reviewerAssignee,
+        this.getRecoveredWorktreeKey(assignment)
+      );
+      slot.worktreePath = assignment.worktreePath;
+      slot.agent.startedAt = assignment.createdAt;
+      await this.hydrateRecoveredOutputLog(slot.agent, assignment.promptPath);
+      state.slots.set(task.id, slot);
+      this.transition(projectId, {
+        to: "enter_review",
+        taskId: task.id,
+        queueDepth: state.status.queueDepth,
+        assignee: reviewerAssignee,
+      });
+      await this.persistCounters(projectId, repoPath);
+      await this.startReviewCoordinatorAndTests(
+        projectId,
+        repoPath,
+        task,
+        assignment.branchName,
+        settings,
+        changedFiles
+      );
+      await this.clearRateLimitNotifications(projectId);
+    }
+
+    await this.handleReviewDone(projectId, repoPath, task, assignment.branchName, exitCode, angle);
+    return true;
+  }
+
   private async reattachRecoveredCodingTask(
     projectId: string,
     repoPath: string,
@@ -826,18 +1017,13 @@ export class OrchestratorService {
 
     log.info("Recovery: re-attaching to running agent", { taskId: task.id });
     const assignee = task.assignee ?? getAgentName(0);
-    const worktreeKey =
-      assignment.worktreeKey ??
-      (assignment.branchName.startsWith("opensprint/epic_")
-        ? assignment.branchName.slice("opensprint/".length)
-        : undefined);
     const slot = this.createSlot(
       task.id,
       task.title ?? null,
       assignment.branchName,
       assignment.attempt,
       assignee,
-      worktreeKey
+      this.getRecoveredWorktreeKey(assignment)
     );
     slot.worktreePath = assignment.worktreePath;
     slot.agent.startedAt = assignment.createdAt;
@@ -983,18 +1169,13 @@ export class OrchestratorService {
       state.nextReviewerIndex = Math.max(state.nextReviewerIndex, reviewerIdx + 1);
     else state.nextReviewerIndex += 1;
 
-    const worktreeKey =
-      assignment.worktreeKey ??
-      (assignment.branchName.startsWith("opensprint/epic_")
-        ? assignment.branchName.slice("opensprint/".length)
-        : undefined);
     const slot = this.createSlot(
       task.id,
       task.title ?? null,
       assignment.branchName,
       assignment.attempt,
       reviewerAssignee,
-      worktreeKey
+      this.getRecoveredWorktreeKey(assignment)
     );
     slot.worktreePath = assignment.worktreePath;
     slot.agent.startedAt = assignment.createdAt;

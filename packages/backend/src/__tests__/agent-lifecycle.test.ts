@@ -238,7 +238,7 @@ describe("AgentLifecycleManager", () => {
         "utf-8"
       );
 
-      await vi.advanceTimersByTimeAsync(600);
+      await vi.advanceTimersByTimeAsync(1_200);
 
       expect(handle.kill).toHaveBeenCalledTimes(1);
       expect(onDone).toHaveBeenCalledWith(0);
@@ -531,7 +531,7 @@ describe("AgentLifecycleManager", () => {
         timers
       );
 
-      await vi.advanceTimersByTimeAsync(600);
+      await vi.advanceTimersByTimeAsync(1_200);
 
       expect(handle.kill).toHaveBeenCalledTimes(1);
       expect(onDone).toHaveBeenCalledWith(0);

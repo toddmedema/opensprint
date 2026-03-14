@@ -1250,6 +1250,7 @@ describe("OrchestratorService (slot-based model)", () => {
           getSlottedTaskIds: expect.any(Function),
           getActiveAgentIds: expect.any(Function),
           reattachSlot: expect.any(Function),
+          handleCompletedAssignment: expect.any(Function),
           removeStaleSlot: expect.any(Function),
         }),
         { includeGupp: true }
@@ -1419,6 +1420,119 @@ describe("OrchestratorService (slot-based model)", () => {
       expect(resumed).toBe(true);
       expect(mockCreateProcessGroupHandle).toHaveBeenCalledWith(4343);
       expect(mockInvokeReviewAgent).not.toHaveBeenCalled();
+    });
+
+    it("completes recovered coding assignments from terminal result.json without respawning the coder", async () => {
+      const task = {
+        ...makeTask("task-coding-complete"),
+        status: "in_progress",
+        assignee: "Frodo",
+      };
+      const host = orchestrator.getRecoveryHost();
+      const activeDir = path.join(repoPath, ".opensprint", "active", task.id);
+
+      await fs.mkdir(activeDir, { recursive: true });
+      await fs.writeFile(path.join(activeDir, "agent-output.log"), "Recovered coding output\n");
+      mockReadResult.mockResolvedValue({
+        status: "success",
+        summary: "Recovered cleanly",
+        filesChanged: [],
+        testsWritten: 0,
+        testsPassed: 0,
+        notes: "",
+      });
+
+      const completed = await host.handleCompletedAssignment?.(
+        projectId,
+        repoPath,
+        task as never,
+        {
+          taskId: task.id,
+          projectId,
+          phase: "coding",
+          branchName: `opensprint/${task.id}`,
+          worktreePath: repoPath,
+          promptPath: path.join(activeDir, "prompt.md"),
+          agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
+          attempt: 2,
+          createdAt: "2026-03-02T10:00:00.000Z",
+        }
+      );
+
+      expect(completed).toBe(true);
+      expect(mockInvokeCodingAgent).not.toHaveBeenCalled();
+      await vi.waitFor(() => {
+        expect(mockGitQueueEnqueueAndWait).toHaveBeenCalledWith(
+          expect.objectContaining({
+            taskId: task.id,
+            branchName: `opensprint/${task.id}`,
+          })
+        );
+      });
+      expect(mockTaskStoreClose).toHaveBeenCalledWith(projectId, task.id, expect.any(String));
+    });
+
+    it("completes recovered angle-specific review assignments from terminal result.json without respawning the reviewer", async () => {
+      const task = {
+        ...makeTask("task-review-complete"),
+        status: "in_progress",
+        assignee: "Boromir",
+      };
+      const host = orchestrator.getRecoveryHost();
+      const angleDir = path.join(
+        repoPath,
+        ".opensprint",
+        "active",
+        task.id,
+        "review-angles",
+        "security"
+      );
+
+      mockGetSettings.mockResolvedValue({
+        ...defaultSettings,
+        reviewMode: "always",
+        reviewAngles: ["security"],
+        includeGeneralReview: false,
+        simpleComplexityAgent: { type: "cursor", model: "gpt-5", cliCommand: null },
+        complexComplexityAgent: { type: "cursor", model: "gpt-5", cliCommand: null },
+      });
+      mockGetChangedFiles.mockResolvedValue(["src/foo.ts"]);
+      await fs.mkdir(angleDir, { recursive: true });
+      await fs.writeFile(
+        path.join(angleDir, "result.json"),
+        JSON.stringify({ status: "approved", summary: "Looks good", notes: "" }),
+        "utf-8"
+      );
+      await fs.writeFile(path.join(angleDir, "agent-output.log"), "Recovered review output\n");
+
+      const completed = await host.handleCompletedAssignment?.(
+        projectId,
+        repoPath,
+        task as never,
+        {
+          taskId: task.id,
+          projectId,
+          phase: "review",
+          branchName: `opensprint/${task.id}`,
+          worktreePath: repoPath,
+          promptPath: path.join(angleDir, "prompt.md"),
+          agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
+          attempt: 2,
+          createdAt: "2026-03-02T10:00:00.000Z",
+        }
+      );
+
+      expect(completed).toBe(true);
+      expect(mockInvokeReviewAgent).not.toHaveBeenCalled();
+      await vi.waitFor(() => {
+        expect(mockGitQueueEnqueueAndWait).toHaveBeenCalledWith(
+          expect.objectContaining({
+            taskId: task.id,
+            branchName: `opensprint/${task.id}`,
+          })
+        );
+      });
+      expect(mockTaskStoreClose).toHaveBeenCalledWith(projectId, task.id, expect.any(String));
     });
   });
 

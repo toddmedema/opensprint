@@ -249,6 +249,58 @@ describe("RecoveryService — stale heartbeat recovery", () => {
     );
   });
 
+  it("completes orphaned assignments with terminal result.json during startup recovery", async () => {
+    const completedHost = {
+      ...host,
+      handleCompletedAssignment: vi.fn().mockResolvedValue(true),
+    };
+    const promptDir = path.join(tmpDir, ".opensprint", "active", "task-stale");
+    await fs.mkdir(promptDir, { recursive: true });
+    await fs.writeFile(
+      path.join(promptDir, "result.json"),
+      JSON.stringify({ status: "success", summary: "done" }),
+      "utf-8"
+    );
+
+    vi.mocked(taskStore.listAll).mockResolvedValue([
+      {
+        id: "task-stale",
+        status: "in_progress",
+        assignee: "Frodo",
+      } as never,
+    ]);
+    mockFindOrphanedAssignments.mockResolvedValue([
+      {
+        taskId: "task-stale",
+        assignment: {
+          taskId: "task-stale",
+          projectId: "proj-1",
+          phase: "coding",
+          branchName: "opensprint/task-stale",
+          worktreePath: tmpDir,
+          promptPath: path.join(promptDir, "prompt.md"),
+          agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
+          attempt: 2,
+          createdAt: new Date().toISOString(),
+        },
+      },
+    ]);
+
+    const result = await service.runFullRecovery("proj-1", tmpDir, completedHost, {
+      includeGupp: true,
+    });
+
+    expect(completedHost.handleCompletedAssignment).toHaveBeenCalledWith(
+      "proj-1",
+      tmpDir,
+      expect.objectContaining({ id: "task-stale" }),
+      expect.objectContaining({ phase: "coding", attempt: 2 })
+    );
+    expect(result.reattached).toEqual(["task-stale"]);
+    expect(result.requeued).toEqual([]);
+    expect(vi.mocked(taskStore.update)).not.toHaveBeenCalled();
+  });
+
   it("reattaches a stale heartbeat with a live process-group leader when assignment is present", async () => {
     const recoverableHost = {
       ...host,
@@ -286,6 +338,60 @@ describe("RecoveryService — stale heartbeat recovery", () => {
     const result = await service.runFullRecovery("proj-1", tmpDir, recoverableHost);
 
     expect(recoverableHost.handleRecoverableHeartbeatGap).toHaveBeenCalledWith(
+      "proj-1",
+      tmpDir,
+      expect.objectContaining({ id: "task-stale" }),
+      expect.objectContaining({ phase: "coding", attempt: 2 })
+    );
+    expect(result.reattached).toEqual(["task-stale"]);
+    expect(result.requeued).toEqual([]);
+    expect(vi.mocked(taskStore.update)).not.toHaveBeenCalled();
+  });
+
+  it("completes stale-heartbeat tasks when the orphaned assignment already has terminal result.json", async () => {
+    const completedHost = {
+      ...host,
+      handleCompletedAssignment: vi.fn().mockResolvedValue(true),
+    };
+    const promptDir = path.join(tmpDir, ".opensprint", "active", "task-stale");
+    await fs.mkdir(promptDir, { recursive: true });
+    await fs.writeFile(
+      path.join(promptDir, "result.json"),
+      JSON.stringify({ status: "success", summary: "done" }),
+      "utf-8"
+    );
+
+    mockFindStaleHeartbeats.mockResolvedValue([
+      {
+        taskId: "task-stale",
+        heartbeat: {
+          processGroupLeaderPid: TEST_PID,
+          lastOutputTimestamp: Date.now() - 3 * 60 * 1000,
+          heartbeatTimestamp: Date.now() - 3 * 60 * 1000,
+        },
+      },
+    ]);
+    mockReadAssignmentAt.mockResolvedValue({
+      taskId: "task-stale",
+      projectId: "proj-1",
+      phase: "coding",
+      branchName: "opensprint/task-stale",
+      worktreePath: tmpDir,
+      promptPath: path.join(promptDir, "prompt.md"),
+      agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
+      attempt: 2,
+      createdAt: new Date().toISOString(),
+    });
+
+    process.kill = mockKill as unknown as typeof process.kill;
+    mockKill.mockImplementation((_pid: number, signal: number | string) => {
+      if (signal === 0) throw new Error("No such process");
+      throw new Error("Should not send kill signals for terminal results");
+    });
+
+    const result = await service.runFullRecovery("proj-1", tmpDir, completedHost);
+
+    expect(completedHost.handleCompletedAssignment).toHaveBeenCalledWith(
       "proj-1",
       tmpDir,
       expect.objectContaining({ id: "task-stale" }),

@@ -30,6 +30,12 @@ export interface OrchestratorRecoveryHost {
     task: StoredTask,
     assignment: GuppAssignment
   ): Promise<boolean>;
+  handleCompletedRecoveredAssignment(
+    projectId: string,
+    repoPath: string,
+    task: StoredTask,
+    assignment: GuppAssignment
+  ): Promise<boolean>;
   removeStaleSlot(projectId: string, taskId: string, repoPath: string): Promise<void>;
 }
 
@@ -44,6 +50,8 @@ export function buildOrchestratorRecoveryHost(host: OrchestratorRecoveryHost): R
       host.resumeRecoveredReviewPhase(projectId, repoPath, task, assignment, options),
     handleRecoverableHeartbeatGap: (projectId, repoPath, task, assignment) =>
       host.handleRecoverableHeartbeatGap(projectId, repoPath, task, assignment),
+    handleCompletedAssignment: (projectId, repoPath, task, assignment) =>
+      host.handleCompletedRecoveredAssignment(projectId, repoPath, task, assignment),
     removeStaleSlot: (projectId, taskId, repoPath) =>
       host.removeStaleSlot(projectId, taskId, repoPath),
   };

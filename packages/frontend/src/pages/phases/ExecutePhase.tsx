@@ -163,7 +163,7 @@ export function ExecutePhase({
       refetchInterval: effectiveSelectedTask && !isDoneTask ? 1000 : false,
     }
   );
-  const prevWsConnectedRef = useRef<boolean | null>(null);
+  const prevWsConnectedRef = useRef(wsConnected);
 
   // Merge task detail into list cache so Redux sync gets it
   useEffect(() => {
@@ -194,7 +194,6 @@ export function ExecutePhase({
   useEffect(() => {
     const prev = prevWsConnectedRef.current;
     prevWsConnectedRef.current = wsConnected;
-    if (prev == null) return;
     if (!effectiveSelectedTask || isDoneTask) return;
     if (!prev && wsConnected) {
       void liveOutputQuery.refetch();

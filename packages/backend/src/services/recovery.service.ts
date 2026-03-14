@@ -59,6 +59,13 @@ export interface RecoveryHost {
     task: StoredTask,
     assignment: GuppAssignment
   ): Promise<boolean>;
+  /** Called when an orphaned assignment already has a terminal result.json and should be completed instead of requeued. */
+  handleCompletedAssignment?(
+    projectId: string,
+    repoPath: string,
+    task: StoredTask,
+    assignment: GuppAssignment
+  ): Promise<boolean>;
   /** Called to remove a slot whose task no longer exists in task store */
   removeStaleSlot?(projectId: string, taskId: string, repoPath: string): Promise<void>;
 }
@@ -96,7 +103,10 @@ export class RecoveryService {
     const result: RecoveryResult = { reattached: [], requeued: [], cleaned: [] };
 
     // 1. GUPP crash recovery (startup only)
-    if (opts.includeGupp && host.reattachSlot) {
+    if (
+      opts.includeGupp &&
+      (host.reattachSlot || host.resumeReviewPhase || host.handleCompletedAssignment)
+    ) {
       const guppResult = await this.recoverFromAssignments(projectId, repoPath, host);
       result.reattached.push(...guppResult.reattached);
       result.requeued.push(...guppResult.requeued);
@@ -198,6 +208,22 @@ export class RecoveryService {
         heartbeat.processGroupLeaderPid > 0 &&
         isProcessAlive(heartbeat.processGroupLeaderPid);
 
+      if (!pidAlive && host.handleCompletedAssignment) {
+        const terminalResult = await this.readTerminalAssignmentResult(assignment);
+        if (terminalResult) {
+          const completed = await host.handleCompletedAssignment(
+            projectId,
+            repoPath,
+            task,
+            assignment
+          );
+          if (completed) {
+            reattached.push(taskId);
+            continue;
+          }
+        }
+      }
+
       if (pidAlive && assignment.phase === "coding" && host.reattachSlot) {
         const attached = await host.reattachSlot(projectId, repoPath, task, assignment);
         if (attached) {
@@ -277,6 +303,22 @@ export class RecoveryService {
           const exceededSuspendGrace =
             Date.now() - heartbeat.lastOutputTimestamp > AGENT_SUSPEND_GRACE_MS;
           const assignment = await this.readAssignment(repoPath, taskId);
+
+          if (!pidAlive && assignment && host.handleCompletedAssignment) {
+            const terminalResult = await this.readTerminalAssignmentResult(assignment);
+            if (terminalResult) {
+              const completed = await host.handleCompletedAssignment(
+                projectId,
+                repoPath,
+                task,
+                assignment
+              );
+              if (completed) {
+                reattached.push(taskId);
+                continue;
+              }
+            }
+          }
 
           if (
             pidAlive &&
@@ -499,6 +541,18 @@ export class RecoveryService {
       return (
         (await readAssignmentAt(worktreePath, taskId)) ?? (await readAssignmentAt(repoPath, taskId))
       );
+    } catch {
+      return null;
+    }
+  }
+
+  private async readTerminalAssignmentResult(assignment: GuppAssignment): Promise<string | null> {
+    const resultPath = path.join(path.dirname(assignment.promptPath), "result.json");
+    try {
+      const raw = await fs.readFile(resultPath, "utf-8");
+      const parsed = JSON.parse(raw) as { status?: string };
+      const status = typeof parsed?.status === "string" ? parsed.status.toLowerCase() : "";
+      return ["success", "failed", "approved", "rejected"].includes(status) ? status : null;
     } catch {
       return null;
     }
