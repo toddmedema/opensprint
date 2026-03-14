@@ -5,6 +5,7 @@ import os from "os";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { OrphanRecoveryService } from "../services/orphan-recovery.service.js";
+import { resetLogLevelCache } from "../utils/logger.js";
 
 const execAsync = promisify(exec);
 
@@ -194,6 +195,9 @@ describe("OrphanRecoveryService", () => {
   });
 
   it("should log warning when recovering orphaned tasks", async () => {
+    const originalLogLevel = process.env.LOG_LEVEL;
+    process.env.LOG_LEVEL = "warn";
+    resetLogLevelCache();
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockListInProgress = [{ id: "task-1", status: "in_progress", assignee: "Frodo" }];
 
@@ -201,6 +205,8 @@ describe("OrphanRecoveryService", () => {
 
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Recovered orphaned tasks"));
     warnSpy.mockRestore();
+    process.env.LOG_LEVEL = originalLogLevel;
+    resetLogLevelCache();
   });
 
   it("should commit uncommitted changes as WIP before removing worktree", async () => {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { store, useAppDispatch, useAppSelector } from "../../store";
+import { useAppDispatch, useAppSelector } from "../../store";
 import {
   setSelectedTaskId,
   setAgentOutputBackfill,
@@ -54,12 +54,6 @@ interface ExecutePhaseProps {
   onClose?: () => void;
 }
 
-const EMPTY_ACTIVE_TASKS: NonNullable<ReturnType<typeof store.getState>["execute"]["activeTasks"]> =
-  [];
-const EMPTY_TASK_START_TIMES: NonNullable<
-  ReturnType<typeof store.getState>["execute"]["taskIdToStartedAt"]
-> = {};
-
 export function ExecutePhase({
   projectId,
   initialTaskIdFromUrl,
@@ -110,10 +104,8 @@ export function ExecutePhase({
   /** Resolve selection from Redux or URL so sidebar shows on first paint when opening with ?task= */
   const effectiveSelectedTask = selectedTask ?? initialTaskIdFromUrl ?? null;
   const loading = useAppSelector((s) => s.execute?.async?.tasks?.loading ?? false);
-  const activeTasks = useAppSelector((s) => s.execute?.activeTasks ?? EMPTY_ACTIVE_TASKS);
-  const taskIdToStartedAt = useAppSelector(
-    (s) => s.execute?.taskIdToStartedAt ?? EMPTY_TASK_START_TIMES
-  );
+  const activeTasks = useAppSelector((s) => s.execute?.activeTasks ?? []);
+  const taskIdToStartedAt = useAppSelector((s) => s.execute?.taskIdToStartedAt ?? {});
   const wsConnected = useAppSelector((s) => s.websocket?.connected ?? false);
   const selectedTaskFromStore = useAppSelector((s) =>
     effectiveSelectedTask ? (selectTaskById(s, effectiveSelectedTask) ?? null) : null

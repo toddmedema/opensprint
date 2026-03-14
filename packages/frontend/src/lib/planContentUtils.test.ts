@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { parsePlanContent, serializePlanContent, getPlanOverview } from "./planContentUtils";
+import {
+  parsePlanContent,
+  serializePlanContent,
+  getPlanOverview,
+  parsePlanBodySections,
+  serializePlanBodySections,
+} from "./planContentUtils";
 
 describe("planContentUtils", () => {
   describe("parsePlanContent", () => {
@@ -96,6 +102,53 @@ describe("planContentUtils", () => {
     it("handles both empty", () => {
       const result = serializePlanContent("", "");
       expect(result).toBe("");
+    });
+  });
+
+  describe("parsePlanBodySections", () => {
+    it("returns single Overview section when body has no ## headers", () => {
+      const body = "Some intro text.\n\nMore text.";
+      expect(parsePlanBodySections(body)).toEqual([
+        { title: "Overview", content: "Some intro text.\n\nMore text." },
+      ]);
+    });
+
+    it("splits body by ## headers", () => {
+      const body = "## Overview\n\nOverview text.\n\n## Acceptance Criteria\n\n- Item 1\n- Item 2";
+      expect(parsePlanBodySections(body)).toEqual([
+        { title: "Overview", content: "Overview text." },
+        { title: "Acceptance Criteria", content: "- Item 1\n- Item 2" },
+      ]);
+    });
+
+    it("puts content before first ## into Overview", () => {
+      const body = "Intro paragraph.\n\n## Overview\n\nOverview content.";
+      expect(parsePlanBodySections(body)).toEqual([
+        { title: "Overview", content: "Intro paragraph." },
+        { title: "Overview", content: "Overview content." },
+      ]);
+    });
+
+    it("returns single Overview with empty content for empty body", () => {
+      expect(parsePlanBodySections("")).toEqual([{ title: "Overview", content: "" }]);
+    });
+  });
+
+  describe("serializePlanBodySections", () => {
+    it("joins sections with ## title and content", () => {
+      const sections = [
+        { title: "Overview", content: "Overview text." },
+        { title: "Acceptance Criteria", content: "- Item 1" },
+      ];
+      expect(serializePlanBodySections(sections)).toBe(
+        "## Overview\n\nOverview text.\n\n## Acceptance Criteria\n\n- Item 1"
+      );
+    });
+
+    it("round-trips with parsePlanBodySections", () => {
+      const body = "## Overview\n\nText.\n\n## Mockup\n\nMockup content.";
+      const sections = parsePlanBodySections(body);
+      expect(serializePlanBodySections(sections)).toBe(body);
     });
   });
 });

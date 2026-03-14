@@ -69,3 +69,58 @@ export function serializePlanContent(title: string, body: string): string {
   if (!trimmedBody) return `# ${trimmedTitle}`;
   return `# ${trimmedTitle}\n\n${trimmedBody}`;
 }
+
+/** Section from plan body: ## Title and its content (no leading ## line in content). */
+export interface PlanBodySection {
+  title: string;
+  content: string;
+}
+
+/**
+ * Splits plan body by ## section headers. Content before the first ## goes into an "Overview" section.
+ * If there are no ## headers, returns a single section with title "Overview" and the full body.
+ */
+export function parsePlanBodySections(body: string): PlanBodySection[] {
+  const trimmed = (body ?? "").trim();
+  if (!trimmed) {
+    return [{ title: "Overview", content: "" }];
+  }
+  const sections: PlanBodySection[] = [];
+  const lines = trimmed.split("\n");
+  let currentTitle = "Overview";
+  let currentLines: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const match = line.match(/^##\s+(.+)$/);
+    if (match) {
+      if (currentLines.length > 0) {
+        sections.push({
+          title: currentTitle,
+          content: currentLines.join("\n").trim(),
+        });
+      }
+      currentTitle = match[1].trim() || "Section";
+      currentLines = [];
+    } else {
+      currentLines.push(line);
+    }
+  }
+  sections.push({
+    title: currentTitle,
+    content: currentLines.join("\n").trim(),
+  });
+  return sections;
+}
+
+/**
+ * Joins section titles and content back into plan body (## Title\n\ncontent).
+ */
+export function serializePlanBodySections(sections: PlanBodySection[]): string {
+  return sections
+    .map((s) => {
+      const t = s.title.trim() || "Section";
+      const c = (s.content ?? "").trim();
+      return c ? `## ${t}\n\n${c}` : `## ${t}`;
+    })
+    .join("\n\n");
+}

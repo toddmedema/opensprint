@@ -1,25 +1,19 @@
 import { createSelector } from "@reduxjs/toolkit";
 import type { Task, TaskSummary, KanbanColumn, TaskPriority } from "@opensprint/shared";
-import type { ExecuteRootState, ExecuteState } from "./executeTypes";
+import type { ExecuteRootState } from "./executeTypes";
 
-const EMPTY_TASKS_BY_ID: ExecuteState["tasksById"] = {};
-const EMPTY_TASK_IDS: string[] = [];
-const EMPTY_ACTIVE_TASKS: ExecuteState["activeTasks"] = [];
-const EMPTY_AGENT_OUTPUT_BY_TASK_ID: ExecuteState["agentOutput"] = {};
 const EMPTY_AGENT_OUTPUT: string[] = [];
-const EMPTY_COMPLETION_STATE: ExecuteState["completionStateByTaskId"] = {};
 const EMPTY_FEEDBACK_TASK_SUMMARIES: Array<{
   id: string;
   kanbanColumn: Task["kanbanColumn"];
 }> = [];
-const EMPTY_EPIC_TASKS: Task[] = [];
 
 /** Ordered tasks derived from tasksById + taskIdsOrder (no duplicates). Applies in_review from activeTasks so list API can skip getStatus. */
 export const selectTasks = createSelector(
   [
-    (state: ExecuteRootState) => state.execute?.tasksById ?? EMPTY_TASKS_BY_ID,
-    (state: ExecuteRootState) => state.execute?.taskIdsOrder ?? EMPTY_TASK_IDS,
-    (state: ExecuteRootState) => state.execute?.activeTasks ?? EMPTY_ACTIVE_TASKS,
+    (state: ExecuteRootState) => state.execute?.tasksById ?? {},
+    (state: ExecuteRootState) => state.execute?.taskIdsOrder ?? [],
+    (state: ExecuteRootState) => state.execute?.activeTasks ?? [],
   ],
   (tasksById, taskIdsOrder, activeTasks): Task[] => {
     const reviewTaskIds = new Set(
@@ -50,7 +44,7 @@ export const selectTaskSummaries = createSelector(
 
 export const selectSelectedTaskOutput = createSelector(
   [
-    (state: ExecuteRootState) => state.execute?.agentOutput ?? EMPTY_AGENT_OUTPUT_BY_TASK_ID,
+    (state: ExecuteRootState) => state.execute?.agentOutput ?? {},
     (_state: ExecuteRootState, taskId: string | null | undefined) => taskId ?? null,
   ],
   (agentOutput, taskId): string[] => {
@@ -61,7 +55,7 @@ export const selectSelectedTaskOutput = createSelector(
 
 export const selectCompletionState = createSelector(
   [
-    (state: ExecuteRootState) => state.execute?.completionStateByTaskId ?? EMPTY_COMPLETION_STATE,
+    (state: ExecuteRootState) => state.execute?.completionStateByTaskId ?? {},
     (_state: ExecuteRootState, taskId: string | null | undefined) => taskId ?? null,
   ],
   (completionStateByTaskId, taskId) => {
@@ -79,7 +73,7 @@ export const selectTaskSummariesForFeedback = createSelector([selectTasks], (tas
 export function selectTaskById(state: ExecuteRootState, taskId: string): Task | undefined {
   const task = state.execute?.tasksById?.[taskId];
   if (!task) return undefined;
-  const activeTasks = state.execute?.activeTasks ?? EMPTY_ACTIVE_TASKS;
+  const activeTasks = state.execute?.activeTasks ?? [];
   const inReview = activeTasks.some((a) => a.taskId === taskId && a.phase === "review");
   if (task.kanbanColumn === "in_progress" && inReview) {
     return { ...task, kanbanColumn: "in_review" };
@@ -108,7 +102,7 @@ export const selectTaskSummary = createSelector(
 export const selectTasksForEpic = createSelector(
   [selectTasks, (_state: ExecuteRootState, epicId: string | undefined) => epicId ?? ""],
   (tasks, epicId): Task[] => {
-    if (!epicId) return EMPTY_EPIC_TASKS;
+    if (!epicId) return [];
     return tasks.filter((t) => t.epicId === epicId);
   }
 );

@@ -197,13 +197,6 @@ interface PlanPhaseProps {
   onNavigateToBuildTask?: (taskId: string) => void;
 }
 
-const EMPTY_AUDITOR_OUTPUT_BY_PLAN_ID: Record<string, string> = {};
-const EMPTY_ACTIVE_AGENTS: NonNullable<ReturnType<typeof store.getState>["execute"]["activeAgents"]> =
-  [];
-const EMPTY_OPTIMISTIC_PLANS: NonNullable<
-  ReturnType<typeof store.getState>["plan"]["optimisticPlans"]
-> = [];
-
 export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) {
   const dispatch = useAppDispatch();
   const queryClient = useQueryClient();
@@ -250,16 +243,12 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
   const executingPlanId = useAppSelector((s) => s.plan.executingPlanId);
   const reExecutingPlanId = useAppSelector((s) => s.plan.reExecutingPlanId);
   const planTasksPlanIds = useAppSelector((s) => s.plan.planTasksPlanIds);
-  const auditorOutputByPlanId = useAppSelector(
-    (s) => s.plan.auditorOutputByPlanId ?? EMPTY_AUDITOR_OUTPUT_BY_PLAN_ID
-  );
+  const auditorOutputByPlanId = useAppSelector((s) => s.plan.auditorOutputByPlanId ?? {});
   const wsConnected = useAppSelector((s) => s.websocket?.connected ?? false);
-  const activeAgents = useAppSelector((s) => s.execute?.activeAgents ?? EMPTY_ACTIVE_AGENTS);
+  const activeAgents = useAppSelector((s) => s.execute?.activeAgents ?? []);
   const archivingPlanId = useAppSelector((s) => s.plan.archivingPlanId);
   const deletingPlanId = useAppSelector((s) => s.plan.deletingPlanId);
-  const optimisticPlans = useAppSelector(
-    (s) => s.plan.optimisticPlans ?? EMPTY_OPTIMISTIC_PLANS
-  );
+  const optimisticPlans = useAppSelector((s) => s.plan.optimisticPlans ?? []);
   const planError = useAppSelector((s) => s.plan.error);
   const executeError = useAppSelector((s) => s.plan.executeError);
 
@@ -281,6 +270,8 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
   const [chatInput, setChatInput] = useState("");
   const [chatSending, setChatSending] = useState(false);
   const [tasksSectionExpanded, setTasksSectionExpanded] = useState(true);
+  const [mockupsSectionExpanded, setMockupsSectionExpanded] = useState(true);
+  const [refineSectionExpanded, setRefineSectionExpanded] = useState(true);
   const [viewMode, setViewMode] = useState<PlanViewMode>(() => {
     if (typeof window === "undefined") return "card";
     try {
@@ -1231,12 +1222,18 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                     className="flex-1 overflow-y-auto min-h-0 flex flex-col"
                   >
                     {body}
-                    {/* Mockups */}
+                    {/* Mockups — collapsible (matches Execute sidebar section styling) */}
                     {selectedPlan.metadata.mockups && selectedPlan.metadata.mockups.length > 0 && (
-                      <div className="p-4 border-b border-theme-border">
-                        <h4 className="text-xs font-medium text-theme-muted uppercase tracking-wide mb-2">
-                          Mockups
-                        </h4>
+                      <CollapsibleSection
+                        title="Mockups"
+                        expanded={mockupsSectionExpanded}
+                        onToggle={() => setMockupsSectionExpanded((e) => !e)}
+                        expandAriaLabel="Expand Mockups"
+                        collapseAriaLabel="Collapse Mockups"
+                        contentId="plan-mockups-content"
+                        headerId="plan-mockups-header"
+                        contentClassName="p-4 pt-0"
+                      >
                         <div className="space-y-3">
                           {selectedPlan.metadata.mockups.map((mockup, i) => (
                             <div
@@ -1254,25 +1251,21 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                             </div>
                           ))}
                         </div>
-                      </div>
+                      </CollapsibleSection>
                     )}
 
-                    {/* Tasks — collapsible */}
-                    <div className="border-b border-theme-border">
-                      <button
-                        type="button"
-                        onClick={() => setTasksSectionExpanded(!tasksSectionExpanded)}
-                        className="w-full flex items-center justify-between p-4 text-left hover:bg-theme-border-subtle/50 transition-colors"
-                      >
-                        <h4 className="text-xs font-medium text-theme-muted uppercase tracking-wide">
-                          Tasks ({selectedPlanTasks.length})
-                        </h4>
-                        <span className="text-theme-muted text-xs">
-                          {tasksSectionExpanded ? "▼" : "▶"}
-                        </span>
-                      </button>
-                      {tasksSectionExpanded && (
-                        <div className="px-4 pb-4 space-y-2">
+                    {/* Tasks — collapsible (matches Execute sidebar section styling) */}
+                    <CollapsibleSection
+                      title={`Tasks (${selectedPlanTasks.length})`}
+                      expanded={tasksSectionExpanded}
+                      onToggle={() => setTasksSectionExpanded((e) => !e)}
+                      expandAriaLabel="Expand Tasks"
+                      collapseAriaLabel="Collapse Tasks"
+                      contentId="plan-tasks-content"
+                      headerId="plan-tasks-header"
+                      contentClassName="px-4 pt-0"
+                    >
+                      <div className="space-y-2">
                           {selectedPlanTasks.length === 0 ? (
                             <div className="space-y-2">
                               {!autoExecutePlans && (
@@ -1353,9 +1346,8 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                               </button>
                             ))
                           )}
-                        </div>
-                      )}
-                    </div>
+                      </div>
+                    </CollapsibleSection>
 
                     {/* Auditor live output — when Re-execute is running */}
                     {reExecutingPlanId === selectedPlan.metadata.planId && (
@@ -1417,18 +1409,24 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                       />
                     )}
 
-                    {/* Chat messages */}
-                    <div
-                      className="p-4"
-                      data-testid="plan-chat-messages"
-                      {...(selectedPlanNotification && {
-                        "data-question-id": selectedPlanNotification.id,
-                      })}
+                    {/* Refine with AI — collapsible (matches Execute sidebar section styling) */}
+                    <CollapsibleSection
+                      title="Refine with AI"
+                      expanded={refineSectionExpanded}
+                      onToggle={() => setRefineSectionExpanded((e) => !e)}
+                      expandAriaLabel="Expand Refine with AI"
+                      collapseAriaLabel="Collapse Refine with AI"
+                      contentId="plan-refine-content"
+                      headerId="plan-refine-header"
+                      contentClassName="p-4 pt-0"
                     >
-                      <h4 className="text-xs font-medium text-theme-muted uppercase tracking-wide mb-3">
-                        Refine with AI
-                      </h4>
-                      <div className="space-y-3">
+                      <div
+                        className="space-y-3"
+                        data-testid="plan-chat-messages"
+                        {...(selectedPlanNotification && {
+                          "data-question-id": selectedPlanNotification.id,
+                        })}
+                      >
                         {currentChatMessages.length === 0 && (
                           <p className="text-sm text-theme-muted">
                             Chat with the planning agent to refine this plan. Ask questions, suggest
@@ -1463,7 +1461,7 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                         )}
                         <div ref={messagesEndRef} />
                       </div>
-                    </div>
+                    </CollapsibleSection>
                   </div>
                 </>
               )}
@@ -1478,17 +1476,23 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
               </div>
               <div ref={sidebarScrollRef} className="flex-1 overflow-y-auto min-h-0 flex flex-col">
                 <div className="p-4 text-sm text-theme-muted">Loading plan...</div>
-                <div
-                  className="p-4"
-                  data-testid="plan-chat-messages"
-                  {...(selectedPlanNotification && {
-                    "data-question-id": selectedPlanNotification.id,
-                  })}
+                <CollapsibleSection
+                  title="Refine with AI"
+                  expanded={refineSectionExpanded}
+                  onToggle={() => setRefineSectionExpanded((e) => !e)}
+                  expandAriaLabel="Expand Refine with AI"
+                  collapseAriaLabel="Collapse Refine with AI"
+                  contentId="plan-refine-content"
+                  headerId="plan-refine-header"
+                  contentClassName="p-4 pt-0"
                 >
-                  <h4 className="text-xs font-medium text-theme-muted uppercase tracking-wide mb-3">
-                    Refine with AI
-                  </h4>
-                  <div className="space-y-3">
+                  <div
+                    className="space-y-3"
+                    data-testid="plan-chat-messages"
+                    {...(selectedPlanNotification && {
+                      "data-question-id": selectedPlanNotification.id,
+                    })}
+                  >
                     {currentChatMessages.length === 0 && (
                       <p className="text-sm text-theme-muted">
                         Chat with the planning agent to refine this plan. Ask questions, suggest
@@ -1523,13 +1527,13 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                     )}
                     <div ref={messagesEndRef} />
                   </div>
-                </div>
+                </CollapsibleSection>
               </div>
             </>
           )}
 
-          {/* Pinned chat input at bottom */}
-          <div className="shrink-0 border-t border-theme-border p-4 bg-theme-bg">
+          {/* Pinned chat input at bottom (no divider — matches Execute sidebar) */}
+          <div className="shrink-0 p-4 bg-theme-bg">
             <ChatInput
               value={chatInput}
               onChange={setChatInput}

@@ -1,8 +1,14 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import type { Plan } from "@opensprint/shared";
 import { formatPlanIdAsTitle } from "../../lib/formatting";
-import { parsePlanContent, serializePlanContent } from "../../lib/planContentUtils";
+import {
+  parsePlanContent,
+  serializePlanContent,
+  parsePlanBodySections,
+  serializePlanBodySections,
+} from "../../lib/planContentUtils";
 import { PrdSectionEditor } from "../prd/PrdSectionEditor";
+import { CollapsibleSection } from "../execute/CollapsibleSection";
 import { usePlanVersions, usePlanVersion } from "../../api/hooks";
 
 /** Matches PrdSectionEditor / Sketch phase debounce for consistency */
@@ -167,15 +173,29 @@ export function PlanDetailContent({
     }
   }, []);
 
-  const handleBodySave = useCallback(
-    (sectionKey: string, newBody: string) => {
+  const sections = useMemo(
+    () => parsePlanBodySections(viewBody === "_No content yet_" ? "" : viewBody),
+    [viewBody]
+  );
+
+  const [sectionExpanded, setSectionExpanded] = useState<Record<number, boolean>>(() => ({}));
+  const setSectionExpandedAt = useCallback((index: number, expanded: boolean) => {
+    setSectionExpanded((prev) => ({ ...prev, [index]: expanded }));
+  }, []);
+
+  const handleSectionSave = useCallback(
+    (sectionIndex: number, newSectionContent: string) => {
+      const updated = sections.map((s, i) =>
+        i === sectionIndex ? { ...s, content: newSectionContent } : s
+      );
+      const newBody = serializePlanBodySections(updated);
       lastBodyRef.current = newBody;
-      const newContent = serializePlanContent(titleValue || displayTitle, newBody);
-      if (newContent !== (plan.content ?? "")) {
-        onContentSave(newContent);
+      const fullContent = serializePlanContent(titleValue || displayTitle, newBody);
+      if (fullContent !== (plan.content ?? "")) {
+        onContentSave(fullContent);
       }
     },
-    [titleValue, displayTitle, plan.content, onContentSave]
+    [sections, titleValue, displayTitle, plan.content, onContentSave]
   );
 
   const header = (
@@ -257,34 +277,50 @@ export function PlanDetailContent({
   );
 
   const bodySlot = (
-    <div className="px-4 pt-4 pb-4">
+    <div>
       {versionLoadError && (
         <div
-          className="mb-3 px-3 py-2 rounded-lg border border-theme-error-border bg-theme-error-bg/50 text-theme-error-text text-sm"
+          className="mb-3 mx-4 px-3 py-2 rounded-lg border border-theme-error-border bg-theme-error-bg/50 text-theme-error-text text-sm"
           data-testid="plan-version-not-found"
           role="alert"
         >
           Version not found. Showing current version.
         </div>
       )}
-      <div
-        data-testid="plan-markdown-editor"
-        className="prose prose-sm max-w-none bg-theme-surface px-4 pt-4 pb-4 rounded-lg border border-theme-border text-theme-text text-xs [&>div>:first-child]:!mt-0"
-      >
-        {isViewingPastVersion && versionQuery.isLoading ? (
-          <div className="text-theme-muted text-sm py-2" data-testid="plan-version-loading">
-            Loading version…
-          </div>
-        ) : (
-          <PrdSectionEditor
-            sectionKey="plan-body"
-            markdown={viewBody}
-            onSave={handleBodySave}
-            disabled={isReadOnly}
-            lightMode
-          />
-        )}
-      </div>
+      {isViewingPastVersion && versionQuery.isLoading ? (
+        <div className="p-4 text-theme-muted text-sm py-2" data-testid="plan-version-loading">
+          Loading version…
+        </div>
+      ) : (
+        sections.map((section, index) => (
+          <CollapsibleSection
+            key={`${section.title}-${index}`}
+            title={section.title}
+            expanded={sectionExpanded[index] ?? true}
+            onToggle={() => setSectionExpandedAt(index, !(sectionExpanded[index] ?? true))}
+            expandAriaLabel={`Expand ${section.title}`}
+            collapseAriaLabel={`Collapse ${section.title}`}
+            contentId={`plan-section-${index}-content`}
+            headerId={`plan-section-${index}-header`}
+            contentClassName="p-4 pt-0"
+          >
+            <div
+              data-testid="plan-markdown-editor"
+              className="prose prose-sm max-w-none text-theme-text text-xs [&>div>:first-child]:!mt-0"
+            >
+              <PrdSectionEditor
+                sectionKey={`plan-section-${index}`}
+                markdown={section.content || "_No content yet_"}
+                onSave={(_key, md) =>
+                  handleSectionSave(index, !md || md === "_No content yet_" ? "" : md)
+                }
+                disabled={isReadOnly}
+                lightMode
+              />
+            </div>
+          </CollapsibleSection>
+        ))
+      )}
     </div>
   );
 

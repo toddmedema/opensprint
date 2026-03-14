@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { WatchdogService } from "../services/watchdog.service.js";
+import { resetLogLevelCache } from "../utils/logger.js";
 
 vi.mock("../services/recovery.service.js", () => ({
   recoveryService: {
@@ -139,6 +140,9 @@ describe("WatchdogService", () => {
   });
 
   it("logs recovered tasks when runFullRecovery returns requeued (agent assignee no-process reset)", async () => {
+    const originalLogLevel = process.env.LOG_LEVEL;
+    process.env.LOG_LEVEL = "warn";
+    resetLogLevelCache();
     vi.mocked(recoveryService.runFullRecovery).mockResolvedValueOnce({
       reattached: [],
       requeued: ["task-orphan-1", "task-orphan-2"],
@@ -157,5 +161,7 @@ describe("WatchdogService", () => {
     expect(logged).toContain("task-orphan-2");
     expect(logged).toContain("2");
     warnSpy.mockRestore();
+    process.env.LOG_LEVEL = originalLogLevel;
+    resetLogLevelCache();
   });
 });

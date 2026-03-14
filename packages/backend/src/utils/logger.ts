@@ -2,7 +2,7 @@
  * Structured logging utility for the backend.
  * Provides consistent [namespace] prefixes and optional context objects.
  * LOG_LEVEL env var controls verbosity: debug | info | warn | error.
- * Default is info in app runtime, warn in Vitest to reduce test I/O noise.
+ * Default is info in app runtime, error in Vitest to reduce test I/O noise.
  */
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
@@ -14,13 +14,23 @@ const LEVEL_ORDER: Record<LogLevel, number> = {
   error: 3,
 };
 
+function isVitestRuntime(): boolean {
+  return Boolean(
+    process.env.VITEST ||
+      process.env.VITEST_WORKER_ID ||
+      process.env.VITEST_POOL_ID ||
+      process.env.NODE_ENV === "test" ||
+      process.env.TEST === "true"
+  );
+}
+
 function getLogLevel(): LogLevel {
   const raw = process.env.LOG_LEVEL?.toLowerCase();
   if (raw) {
     if (raw in LEVEL_ORDER) return raw as LogLevel;
     return "info";
   }
-  if (process.env.VITEST) return "warn";
+  if (isVitestRuntime()) return "error";
   return "info";
 }
 

@@ -5,8 +5,10 @@ import { createTasksRouter } from "../routes/tasks.js";
 import type { TaskService } from "../services/task.service.js";
 import { requestIdMiddleware } from "../middleware/request-id.js";
 import { API_PREFIX } from "@opensprint/shared";
+import { resetLogLevelCache } from "../utils/logger.js";
 
 describe("GET /:taskId logging", () => {
+  const originalLogLevel = process.env.LOG_LEVEL;
   let mockGetTask: ReturnType<typeof vi.fn>;
   let logSpy: ReturnType<typeof vi.spyOn>;
   let warnSpy: ReturnType<typeof vi.spyOn>;
@@ -23,6 +25,8 @@ describe("GET /:taskId logging", () => {
   };
 
   beforeEach(() => {
+    process.env.LOG_LEVEL = "warn";
+    resetLogLevelCache();
     mockGetTask = vi.fn().mockResolvedValue(fakeTask);
     const taskService = {
       getTask: mockGetTask,
@@ -38,6 +42,8 @@ describe("GET /:taskId logging", () => {
   });
 
   afterEach(() => {
+    process.env.LOG_LEVEL = originalLogLevel;
+    resetLogLevelCache();
     logSpy.mockRestore();
     warnSpy.mockRestore();
   });

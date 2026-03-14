@@ -13,10 +13,12 @@ vi.mock("../../api/hooks", () => ({
 
 vi.mock("../prd/PrdSectionEditor", () => ({
   PrdSectionEditor: ({
+    sectionKey,
     markdown,
     onSave,
     disabled,
   }: {
+    sectionKey: string;
     markdown: string;
     onSave: (key: string, md: string) => void;
     disabled?: boolean;
@@ -25,7 +27,7 @@ vi.mock("../prd/PrdSectionEditor", () => ({
       <span data-testid="body-markdown">{markdown}</span>
       <button
         type="button"
-        onClick={() => onSave("plan-body", "Updated body content")}
+        onClick={() => onSave(sectionKey, "Updated body content")}
         disabled={disabled}
       >
         Save body
@@ -73,10 +75,12 @@ describe("PlanDetailContent", () => {
     expect(titleInput).toHaveValue("Plan Phase - Feature Decomposition");
   });
 
-  it("renders plan body editor", () => {
+  it("renders plan body editor as collapsible sections", () => {
     render(<PlanDetailContent plan={mockPlan} onContentSave={onContentSave} />);
+    expect(screen.getByRole("button", { name: /overview/i })).toBeInTheDocument();
     expect(screen.getByTestId("plan-body-editor")).toBeInTheDocument();
-    expect(screen.getByTestId("body-markdown")).toHaveTextContent("## Overview");
+    // Body is split by ##; Overview section content is the text under ## Overview
+    expect(screen.getByTestId("body-markdown")).toHaveTextContent("Implement the Plan phase.");
   });
 
   it("calls onContentSave when title is changed and blurred", async () => {
@@ -101,7 +105,7 @@ describe("PlanDetailContent", () => {
     await user.click(saveButton);
 
     expect(onContentSave).toHaveBeenCalledWith(
-      "# Plan Phase - Feature Decomposition\n\nUpdated body content"
+      "# Plan Phase - Feature Decomposition\n\n## Overview\n\nUpdated body content"
     );
   });
 
@@ -182,13 +186,11 @@ describe("PlanDetailContent", () => {
     expect(screen.getByRole("button", { name: /archive/i })).toBeInTheDocument();
   });
 
-  it("renders plan markdown editor with theme-aware styles", () => {
+  it("renders plan markdown editor with theme-aware styles (Execute sidebar style)", () => {
     render(<PlanDetailContent plan={mockPlan} onContentSave={onContentSave} />);
     const editorContainer = screen.getByTestId("plan-markdown-editor");
     expect(editorContainer).toBeInTheDocument();
     expect(editorContainer.className).toMatch(/text-theme-text/);
-    expect(editorContainer.className).toMatch(/bg-theme-surface/);
-    expect(editorContainer.className).toMatch(/border-theme-border/);
   });
 
   it("trims body markdown before passing to editor (no spurious blank space at top)", () => {
@@ -197,28 +199,19 @@ describe("PlanDetailContent", () => {
       content: "# My Plan\n\n\n\n## Overview\n\nContent with leading newlines in body.",
     };
     render(<PlanDetailContent plan={planWithLeadingNewlines} onContentSave={onContentSave} />);
-    const bodyMarkdown = screen.getByTestId("body-markdown").textContent;
+    const bodyMarkdown = screen.getByTestId("body-markdown").textContent ?? "";
     expect(bodyMarkdown).not.toMatch(/^\s/);
-    expect(bodyMarkdown).toContain("## Overview");
+    expect(bodyMarkdown).toContain("Content with leading newlines in body.");
   });
 
-  it("uses matching top, bottom, and side padding on markdown editor container", () => {
+  it("uses collapsible section content padding (Execute sidebar style)", () => {
     render(<PlanDetailContent plan={mockPlan} onContentSave={onContentSave} />);
     const editorContainer = screen.getByTestId("plan-markdown-editor");
-    expect(editorContainer.className).toMatch(/pt-4/);
-    expect(editorContainer.className).toMatch(/pb-4/);
-    expect(editorContainer.className).toMatch(/px-4/);
     expect(editorContainer.className).toContain("first-child");
-  });
-
-  it("body wrapper has matching top, bottom, and side padding (feedback 2djyh7)", () => {
-    render(<PlanDetailContent plan={mockPlan} onContentSave={onContentSave} />);
-    const editorContainer = screen.getByTestId("plan-markdown-editor");
-    const bodyWrapper = editorContainer.parentElement;
-    expect(bodyWrapper).toBeInTheDocument();
-    expect(bodyWrapper?.className).toMatch(/pt-4/);
-    expect(bodyWrapper?.className).toMatch(/pb-4/);
-    expect(bodyWrapper?.className).toMatch(/px-4/);
+    const contentWrapper = editorContainer.closest('[id="plan-section-0-content"]');
+    expect(contentWrapper).toBeInTheDocument();
+    expect(contentWrapper?.className).toMatch(/pt-0/);
+    expect(contentWrapper?.className).toMatch(/p-4|px-4/);
   });
 
   it("renders header with title aligned to top and no HR (border-b)", () => {

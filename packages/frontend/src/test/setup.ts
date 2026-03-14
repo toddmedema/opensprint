@@ -1,31 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, vi } from "vitest";
 
-const SUPPRESSED_TEST_WARNING_PATTERNS = [
-  /^An update to .* inside a test was not wrapped in act/,
-  /^A suspended resource finished loading inside a test, but the event was not wrapped in act/,
-  /^Selector unknown returned a different result when called with the same parameters\./,
-];
-
-function shouldSuppressKnownTestNoise(args: unknown[]): boolean {
-  if (args.length === 0) return false;
-  const [firstArg] = args;
-  if (typeof firstArg !== "string") return false;
-  return SUPPRESSED_TEST_WARNING_PATTERNS.some((pattern) => pattern.test(firstArg));
-}
-
-const originalConsoleError = console.error.bind(console);
-console.error = (...args: Parameters<typeof console.error>) => {
-  if (shouldSuppressKnownTestNoise(args)) return;
-  originalConsoleError(...args);
-};
-
-const originalConsoleWarn = console.warn.bind(console);
-console.warn = (...args: Parameters<typeof console.warn>) => {
-  if (shouldSuppressKnownTestNoise(args)) return;
-  originalConsoleWarn(...args);
-};
-
 afterEach(() => {
   vi.useRealTimers();
 });

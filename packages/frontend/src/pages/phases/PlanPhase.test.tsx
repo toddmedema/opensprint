@@ -527,11 +527,13 @@ describe("PlanPhase Redux integration", () => {
     // Sidebar Tasks count is 2 (epic-a only); if filter failed it would show 3
     expect(screen.getByText("Tasks (2)")).toBeInTheDocument();
     // Epic B Task appears only in Plan B card, not in sidebar (selectTasksForEpic filters by epicId)
-    const sidebarTasksSection = screen.getByText("Tasks (2)").closest(".border-b");
-    expect(sidebarTasksSection).toBeInTheDocument();
-    expect(within(sidebarTasksSection!).getByText("Epic A Task 1")).toBeInTheDocument();
-    expect(within(sidebarTasksSection!).getByText("Epic A Task 2")).toBeInTheDocument();
-    expect(within(sidebarTasksSection!).queryByText("Epic B Task")).not.toBeInTheDocument();
+    const tasksHeading = screen.getByText("Tasks (2)");
+    expect(tasksHeading).toBeInTheDocument();
+    const tasksSection = tasksHeading.closest("div")?.parentElement;
+    expect(tasksSection).toBeInTheDocument();
+    expect(within(tasksSection!).getByText("Epic A Task 1")).toBeInTheDocument();
+    expect(within(tasksSection!).getByText("Epic A Task 2")).toBeInTheDocument();
+    expect(within(tasksSection!).queryByText("Epic B Task")).not.toBeInTheDocument();
   });
 
   it("search filters plan cards by title and content", () => {
@@ -769,7 +771,7 @@ describe("PlanPhase inline editing", () => {
     );
 
     expect(screen.getByRole("textbox", { name: /title/i })).toBeInTheDocument();
-    expect(container.querySelector('[data-prd-section="plan-body"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-testid="plan-markdown-editor"]')).toBeInTheDocument();
   });
 
   it("does not render duplicate plan title in sidebar header", () => {
@@ -825,7 +827,7 @@ describe("PlanPhase inline editing", () => {
     );
   });
 
-  it("renders plan markdown in sidebar with matching top, bottom, and side padding", () => {
+  it("renders plan markdown in sidebar with collapsible section styling (Execute sidebar style)", () => {
     const store = createStore();
     const { container } = render(
       <MemoryRouter>
@@ -837,9 +839,6 @@ describe("PlanPhase inline editing", () => {
     );
     const editorContainer = container.querySelector('[data-testid="plan-markdown-editor"]');
     expect(editorContainer).toBeInTheDocument();
-    expect(editorContainer?.className).toMatch(/pt-4/);
-    expect(editorContainer?.className).toMatch(/pb-4/);
-    expect(editorContainer?.className).toMatch(/px-4/);
     expect(editorContainer?.className).toContain("first-child");
   });
 });

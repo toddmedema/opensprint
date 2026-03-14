@@ -53,6 +53,7 @@ import { normalizeCodingStatus, normalizeReviewStatus } from "./result-normalize
 import { eventLogService } from "./event-log.service.js";
 import { createLogger } from "../utils/logger.js";
 import { PhaseExecutorService, type PhaseExecutorHost } from "./phase-executor.service.js";
+import { agentIdentityService } from "./agent-identity.service.js";
 import { FailureHandlerService, type FailureHandlerHost } from "./failure-handler.service.js";
 import {
   MergeCoordinatorService,
@@ -1792,6 +1793,24 @@ export class OrchestratorService {
           },
         });
         void maybeAutoRespond(projectId, notification);
+        const settings = await this.projectService.getSettings(projectId);
+        const agentConfig = settings.simpleComplexityAgent;
+        agentIdentityService
+          .recordAttempt(repoPath, {
+            taskId: task.id,
+            agentId: `${agentConfig.type}-${agentConfig.model ?? "default"}`,
+            role: "coder",
+            model: agentConfig.model ?? "unknown",
+            attempt: slot.attempt,
+            startedAt: slot.agent.startedAt ?? new Date().toISOString(),
+            completedAt: new Date().toISOString(),
+            outcome: "coding_failure",
+            durationMs: Math.max(
+              0,
+              Date.now() - new Date(slot.agent.startedAt ?? Date.now()).getTime()
+            ),
+          })
+          .catch((err) => log.warn("Failed to record coder run for Agent Log (open_questions)", { err }));
         await this.taskStore.update(projectId, task.id, {
           assignee: "",
           status: "blocked",
@@ -2162,6 +2181,29 @@ export class OrchestratorService {
 
     // If coordinated with tests, report outcome and let the coordinator decide
     if (slot.phaseCoordinator) {
+      if (status === "approved") {
+        const runAgent = reviewAgentState?.agent ?? slot.agent;
+        const settings = await this.projectService.getSettings(projectId);
+        const agentConfig = settings.simpleComplexityAgent;
+        agentIdentityService
+          .recordAttempt(repoPath, {
+            taskId: task.id,
+            agentId: `${agentConfig.type}-${agentConfig.model ?? "default"}`,
+            role: "reviewer",
+            model: agentConfig.model ?? "unknown",
+            attempt: slot.attempt,
+            startedAt: runAgent.startedAt ?? new Date().toISOString(),
+            completedAt: new Date().toISOString(),
+            outcome: "success",
+            durationMs: Math.max(
+              0,
+              Date.now() - new Date(runAgent.startedAt ?? Date.now()).getTime()
+            ),
+          })
+          .catch((err) =>
+            log.warn("Failed to record reviewer run for Agent Log (coordinated approved)", { err })
+          );
+      }
       slot.phaseCoordinator.setReviewOutcome(
         {
           status,
@@ -2190,6 +2232,26 @@ export class OrchestratorService {
 
     // Non-coordinated path (reviewMode="never" doesn't reach here, but defensive)
     if (result && result.status === "approved") {
+      const settings = await this.projectService.getSettings(projectId);
+      const agentConfig = settings.simpleComplexityAgent;
+      agentIdentityService
+        .recordAttempt(repoPath, {
+          taskId: task.id,
+          agentId: `${agentConfig.type}-${agentConfig.model ?? "default"}`,
+          role: "reviewer",
+          model: agentConfig.model ?? "unknown",
+          attempt: slot.attempt,
+          startedAt: slot.agent.startedAt ?? new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+          outcome: "success",
+          durationMs: Math.max(
+            0,
+            Date.now() - new Date(slot.agent.startedAt ?? Date.now()).getTime()
+          ),
+        })
+        .catch((err) =>
+          log.warn("Failed to record reviewer run for Agent Log (approved)", { err })
+        );
       await this.mergeCoordinator.performMergeAndDone(projectId, repoPath, task, branchName);
     } else if (result && result.status === "rejected") {
       await this.handleReviewRejection(projectId, repoPath, task, branchName, result);

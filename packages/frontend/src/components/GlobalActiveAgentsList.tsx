@@ -173,12 +173,11 @@ const GlobalAgentDropdownItem = memo(function GlobalAgentDropdownItem({
  */
 /** Icon size for inline agent icons in the button (~20% larger than previous 1.25rem). */
 const BUTTON_AGENT_ICON_SIZE = "1.5rem";
-const EMPTY_GLOBAL_AGENT_ENTRIES: AgentWithProject[] = [];
 
 export function GlobalActiveAgentsList() {
   const { runningAgentsDisplayMode } = useDisplayPreferences();
   const dispatch = useAppDispatch();
-  const entries = useAppSelector((s) => s.global?.globalActiveAgents ?? EMPTY_GLOBAL_AGENT_ENTRIES);
+  const entries = useAppSelector((s) => s.global?.globalActiveAgents ?? []);
   const loadedOnce = useAppSelector((s) => s.global?.globalAgentsLoadedOnce ?? false);
   /** Only show loading when never loaded; use cached list when refreshing (avoids flash on open) */
   const showLoading = !loadedOnce;

@@ -41,6 +41,8 @@ describe("createLogger", () => {
   });
 
   it("warn uses console.warn", () => {
+    process.env.LOG_LEVEL = "warn";
+    resetLogLevelCache();
     const log = createLogger("orchestrator");
     log.warn("Warning message", { code: 42 });
     expect(console.warn).toHaveBeenCalledWith('[orchestrator] Warning message {"code":42}');

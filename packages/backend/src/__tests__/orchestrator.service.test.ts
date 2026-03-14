@@ -98,6 +98,7 @@ const {
   mockHasOpenPrdSpecHilApproval,
   mockNotificationCreate,
   mockMaybeAutoRespond,
+  mockRecordAttempt,
 } = vi.hoisted(() => ({
   mockBroadcastToProject: vi.fn(),
   mockSendAgentOutputToProject: vi.fn(),
@@ -182,6 +183,7 @@ const {
     resolvedAt: null,
   }),
   mockMaybeAutoRespond: vi.fn().mockResolvedValue(undefined),
+  mockRecordAttempt: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../websocket/index.js", () => ({
@@ -340,6 +342,12 @@ vi.mock("../services/agent.service.js", () => ({
     invokeMergerAgent: mockInvokeMergerAgent,
   },
   createProcessGroupHandle: mockCreateProcessGroupHandle,
+}));
+
+vi.mock("../services/agent-identity.service.js", () => ({
+  agentIdentityService: {
+    recordAttempt: (...args: unknown[]) => mockRecordAttempt(...args),
+  },
 }));
 
 vi.mock("../services/deployment-service.js", () => ({
@@ -785,6 +793,14 @@ describe("OrchestratorService (slot-based model)", () => {
       );
       expect(mockTaskStoreComment).not.toHaveBeenCalled();
       expect(mockMaybeAutoRespond).toHaveBeenCalled();
+      expect(mockRecordAttempt).toHaveBeenCalledWith(
+        repoPath,
+        expect.objectContaining({
+          taskId: task.id,
+          role: "coder",
+          outcome: "coding_failure",
+        })
+      );
     });
 
     it("turns assistant chat clarification output into blocked open questions", async () => {
