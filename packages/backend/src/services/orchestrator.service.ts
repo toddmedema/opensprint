@@ -1633,6 +1633,15 @@ export class OrchestratorService {
     return this.phaseExecutor.executeCodingPhase(projectId, repoPath, task, slot, retryContext);
   }
 
+  private async performMergeRetry(
+    projectId: string,
+    repoPath: string,
+    task: StoredTask,
+    slot: AgentSlot
+  ): Promise<void> {
+    await this.mergeCoordinator.performMergeAndDone(projectId, repoPath, task, slot.branchName);
+  }
+
   /** Provider display name for API-blocked notifications */
   private static getProviderDisplayName(
     provider: import("@opensprint/shared").ApiKeyProvider

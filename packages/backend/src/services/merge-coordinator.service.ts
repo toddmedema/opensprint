@@ -36,6 +36,8 @@ import type { RetryContext } from "./orchestrator-phase-context.js";
 const log = createLogger("merge-coordinator");
 const _MAX_PUSH_REBASE_RESOLUTION_ROUNDS = 12;
 const NEXT_RETRY_CONTEXT_KEY = "next_retry_context";
+const MERGE_RETRY_MODE_KEY = "merge_retry_mode";
+const BASELINE_MERGE_RETRY_MODE = "baseline_wait";
 const MERGE_RETRY_CONTEXT_FAILURE_LIMIT = 1200;
 const QUALITY_GATE_OUTPUT_SNIPPET_LIMIT = 1800;
 const BASELINE_QUALITY_GATE_CACHE_MS = 60_000;
@@ -627,6 +629,7 @@ export class MergeCoordinatorService {
       extra: {
         last_execution_summary: requeuedSummary,
         [NEXT_RETRY_CONTEXT_KEY]: retryContext,
+        [MERGE_RETRY_MODE_KEY]: BASELINE_MERGE_RETRY_MODE,
         [BASELINE_QUALITY_GATE_PAUSED_UNTIL_KEY]: pausedUntil,
         failedGateCommand: failure.command,
         failedGateReason,

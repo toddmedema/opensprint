@@ -13,6 +13,9 @@ import { createLogger } from "../utils/logger.js";
 const log = createLogger("orchestrator-dispatch");
 
 const NEXT_RETRY_CONTEXT_KEY = "next_retry_context";
+const MERGE_RETRY_MODE_KEY = "merge_retry_mode";
+const BASELINE_MERGE_RETRY_MODE = "baseline_wait";
+const BASELINE_QUALITY_GATE_PAUSED_UNTIL_KEY = "merge_quality_gate_paused_until";
 
 const FAILURE_TYPES: FailureType[] = [
   "test_failure",
@@ -61,6 +64,18 @@ function extractRetryContext(task: StoredTask): RetryContext | undefined {
   return retryContext;
 }
 
+function extractMergeResumeState(
+  task: StoredTask
+): { worktreePath: string } | undefined {
+  const mode = (task as Record<string, unknown>)[MERGE_RETRY_MODE_KEY];
+  const worktreePath = (task as Record<string, unknown>).worktreePath;
+  if (mode !== BASELINE_MERGE_RETRY_MODE) return undefined;
+  if (typeof worktreePath !== "string" || worktreePath.trim() === "") return undefined;
+  return {
+    worktreePath: worktreePath.trim(),
+  };
+}
+
 /** Slot shape required by dispatch (must have branchName, fileScope assignable). */
 export interface DispatchSlotLike {
   taskId: string;
@@ -88,7 +103,7 @@ export interface OrchestratorDispatchHost {
     taskTitle: string | null,
     branchName: string,
     attempt: number,
-    assignee: string,
+    assignee?: string,
     worktreeKey?: string
   ): DispatchSlotLike;
   transition(
@@ -130,6 +145,12 @@ export interface OrchestratorDispatchHost {
     slot: DispatchSlotLike,
     retryContext?: RetryContext
   ): Promise<void>;
+  performMergeRetry(
+    projectId: string,
+    repoPath: string,
+    task: StoredTask,
+    slot: DispatchSlotLike
+  ): Promise<void>;
 }
 
 export class OrchestratorDispatchService {
@@ -144,16 +165,26 @@ export class OrchestratorDispatchService {
     const state = this.host.getState(projectId);
     log.info("Picking task", { projectId, taskId: task.id, title: task.title });
     const retryContext = extractRetryContext(task);
+    const mergeResumeState = extractMergeResumeState(task);
 
-    const assignee = getAgentName(state.nextCoderIndex);
-    state.nextCoderIndex += 1;
+    let assignee: string | undefined;
+    if (!mergeResumeState) {
+      assignee = getAgentName(state.nextCoderIndex);
+      state.nextCoderIndex += 1;
+    }
 
     const taskStore = this.host.getTaskStore();
     await taskStore.update(projectId, task.id, {
       status: "in_progress",
-      assignee,
-      ...(retryContext != null && {
-        extra: { [NEXT_RETRY_CONTEXT_KEY]: null },
+      ...(assignee !== undefined && { assignee }),
+      ...((retryContext != null || mergeResumeState != null) && {
+        extra: {
+          ...(retryContext != null && { [NEXT_RETRY_CONTEXT_KEY]: null }),
+          ...(mergeResumeState && {
+            [MERGE_RETRY_MODE_KEY]: null,
+            [BASELINE_QUALITY_GATE_PAUSED_UNTIL_KEY]: null,
+          }),
+        },
       }),
     });
     const cumulativeAttempts = taskStore.getCumulativeAttemptsFromIssue(task);
@@ -173,6 +204,9 @@ export class OrchestratorDispatchService {
       assignee,
       worktreeKey
     );
+    if (mergeResumeState) {
+      slot.worktreePath = mergeResumeState.worktreePath;
+    }
     slot.fileScope = await this.host
       .getFileScopeAnalyzer()
       .predict(projectId, repoPath, task, { listAll: (p: string) => taskStore.listAll(p) });
@@ -190,6 +224,10 @@ export class OrchestratorDispatchService {
     await this.host.persistCounters(projectId, repoPath);
     const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
     await this.host.getBranchManager().ensureOnMain(repoPath, baseBranch);
+    if (mergeResumeState) {
+      await this.host.performMergeRetry(projectId, repoPath, task, slot);
+      return;
+    }
     await this.host.executeCodingPhase(projectId, repoPath, task, slot, retryContext);
   }
 }

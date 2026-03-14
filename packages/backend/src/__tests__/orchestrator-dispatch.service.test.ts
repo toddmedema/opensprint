@@ -29,6 +29,7 @@ describe("OrchestratorDispatchService", () => {
     listAll: ReturnType<typeof vi.fn>;
   };
   let executeCodingPhase: ReturnType<typeof vi.fn>;
+  let performMergeRetry: ReturnType<typeof vi.fn>;
   let host: OrchestratorDispatchHost;
   let service: OrchestratorDispatchService;
 
@@ -55,6 +56,7 @@ describe("OrchestratorDispatchService", () => {
       listAll: vi.fn().mockResolvedValue([]),
     };
     executeCodingPhase = vi.fn().mockResolvedValue(undefined);
+    performMergeRetry = vi.fn().mockResolvedValue(undefined);
     host = {
       getState: vi.fn().mockReturnValue(state),
       createSlot: vi.fn().mockImplementation(
@@ -63,7 +65,7 @@ describe("OrchestratorDispatchService", () => {
           taskTitle: string | null,
           branchName: string,
           attempt: number,
-          assignee: string,
+          assignee?: string,
           worktreeKey?: string
         ) =>
           ({
@@ -89,6 +91,7 @@ describe("OrchestratorDispatchService", () => {
         .fn()
         .mockReturnValue({ predict: vi.fn().mockResolvedValue({ modify: ["a.ts"] }) }),
       executeCodingPhase,
+      performMergeRetry,
     };
     service = new OrchestratorDispatchService(host);
   });
@@ -178,5 +181,44 @@ describe("OrchestratorDispatchService", () => {
         useExistingBranch: false,
       })
     );
+  });
+
+  it("resumes baseline-paused tasks at merge instead of relaunching a coder", async () => {
+    const task = {
+      ...baseTask("os-3456"),
+      worktreePath: "/tmp/repo/.worktrees/os-3456",
+      merge_retry_mode: "baseline_wait",
+      merge_quality_gate_paused_until: "2026-03-14T10:00:00.000Z",
+      next_retry_context: {
+        previousFailure: "baseline quality gates failed on main: Command failed: npm run lint",
+        failureType: "coding_failure",
+      },
+    } as StoredTask;
+
+    await service.dispatchTask(projectId, repoPath, task, 2);
+
+    expect(taskStore.update).toHaveBeenCalledWith(
+      projectId,
+      task.id,
+      expect.objectContaining({
+        status: "in_progress",
+        extra: {
+          next_retry_context: null,
+          merge_retry_mode: null,
+          merge_quality_gate_paused_until: null,
+        },
+      })
+    );
+    expect(performMergeRetry).toHaveBeenCalledWith(
+      projectId,
+      repoPath,
+      task,
+      expect.objectContaining({
+        taskId: task.id,
+        branchName: `opensprint/${task.id}`,
+        worktreePath: "/tmp/repo/.worktrees/os-3456",
+      })
+    );
+    expect(executeCodingPhase).not.toHaveBeenCalled();
   });
 });
