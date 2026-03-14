@@ -141,7 +141,18 @@ describe("open-question-autoresolve", () => {
     });
     await maybeAutoRespond("proj-1", notification);
 
-    expect(mocks.mockInvokePlanningAgent).toHaveBeenCalled();
+    expect(mocks.mockInvokePlanningAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "proj-1",
+        role: "dreamer",
+        tracking: expect.objectContaining({
+          projectId: "proj-1",
+          phase: "execute",
+          role: "dreamer",
+          label: "Open-question auto-response",
+        }),
+      })
+    );
     expect(mocks.mockSendMessage).toHaveBeenCalledWith("proj-1", {
       message: "Use PostgreSQL for the backend.",
       context: "execute:task-1",

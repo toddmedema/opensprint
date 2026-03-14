@@ -7,16 +7,16 @@
  */
 
 import { taskStore } from "./task-store.service.js";
-import { AgentClient } from "./agent-client.js";
+import { agentService } from "./agent.service.js";
 import { ProjectService } from "./project.service.js";
 import { getAgentForPlanningRole } from "@opensprint/shared";
 import { extractJsonFromAgentResponse } from "../utils/json-extract.js";
 import { createLogger } from "../utils/logger.js";
+import { getCombinedInstructions } from "./agent-instructions.service.js";
 
 const log = createLogger("deploy-fix-epic");
 const projectService = new ProjectService();
 // taskStore imported as singleton from task-store.service.js
-const agentClient = new AgentClient();
 
 const FIX_EPIC_SYSTEM_PROMPT = `You are the Planner agent for Open Sprint (PRD §12.3.2). Your task is to analyze failed test output and produce a structured list of fix tasks.
 
@@ -87,15 +87,25 @@ ${testOutput.slice(0, 30000)}
 \`\`\`
 
 Output your response as JSON with status and tasks array.`;
+  const runId = `deploy-fix-epic-${projectId}-${Date.now()}`;
+  const systemPrompt = `${FIX_EPIC_SYSTEM_PROMPT}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
 
   let response;
   try {
-    response = await agentClient.invoke({
-      config: getAgentForPlanningRole(settings, "planner"),
-      prompt,
-      systemPrompt: FIX_EPIC_SYSTEM_PROMPT,
-      cwd: repoPath,
+    response = await agentService.invokePlanningAgent({
       projectId,
+      role: "planner",
+      config: getAgentForPlanningRole(settings, "planner"),
+      messages: [{ role: "user", content: prompt }],
+      systemPrompt,
+      cwd: repoPath,
+      tracking: {
+        id: runId,
+        projectId,
+        phase: "deliver",
+        role: "planner",
+        label: "Create deploy fix epic",
+      },
     });
   } catch (err) {
     log.error("Planning agent invocation failed", { err });

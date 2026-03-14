@@ -61,6 +61,7 @@ vi.mock("../services/task-store.service.js", async () => {
 });
 
 const mockInvokePlanningAgent = vi.fn();
+const mockRecordAgentRun = vi.fn();
 const mockRegister = vi.fn();
 const mockUnregister = vi.fn();
 
@@ -95,6 +96,7 @@ vi.mock("../services/agent.service.js", () => ({
         if (tracking) mockUnregister(tracking.id);
       }
     },
+    recordAgentRun: (...args: unknown[]) => mockRecordAgentRun(...args),
   },
 }));
 
@@ -372,6 +374,28 @@ describe("ChatService - Plan phase agent registry", () => {
       const hilDesc = mockHilEvaluate.mock.calls[0][2];
       expect(hilDesc).toContain("Technical Architecture");
       expect(hilDesc).toContain("Scope change feedback");
+    });
+  });
+
+  describe("sendMessage execute context", () => {
+    it("records analyst run stats for execute replies without invoking planning agent", async () => {
+      const response = await chatService.sendMessage(projectId, {
+        message: "Use PostgreSQL for storage",
+        context: "execute:os-1234.1",
+      });
+
+      expect(response.message).toContain("Answer received");
+      expect(mockInvokePlanningAgent).not.toHaveBeenCalled();
+      expect(mockRegister).toHaveBeenCalledTimes(1);
+      expect(mockUnregister).toHaveBeenCalledTimes(1);
+      expect(mockRecordAgentRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId,
+          role: "analyst",
+          runId: expect.stringMatching(/^execute-reply-/),
+          outcome: "success",
+        })
+      );
     });
   });
 });

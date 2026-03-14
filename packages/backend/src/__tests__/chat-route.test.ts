@@ -53,6 +53,7 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
 });
 
 const mockInvokePlanningAgent = vi.fn();
+const mockRecordAgentRun = vi.fn();
 const mockRegister = vi.fn();
 const mockUnregister = vi.fn();
 
@@ -80,6 +81,7 @@ vi.mock("../services/agent.service.js", () => ({
         }
       }
     },
+    recordAgentRun: (...args: unknown[]) => mockRecordAgentRun(...args),
   },
 }));
 
@@ -473,6 +475,14 @@ Let me know if you want to refine further.`,
     expect(res.status).toBe(200);
     expect(res.body.data.message).toContain("Answer received");
     expect(mockInvokePlanningAgent.mock.calls.length).toBe(callCountBefore);
+    expect(mockRecordAgentRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId,
+        role: "analyst",
+        runId: expect.stringMatching(/^execute-reply-/),
+        outcome: "success",
+      })
+    );
 
     const historyRes = await request(app).get(
       `${API_PREFIX}/projects/${projectId}/chat/history?context=execute:os-abc.1`
@@ -855,6 +865,14 @@ A simple marketing site for Open Sprint.
       expect(res.status).toBe(200);
       expect(res.body.data.message).toContain("Answer received");
       expect(mockInvokePlanningAgent).not.toHaveBeenCalled();
+      expect(mockRecordAgentRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId,
+          role: "analyst",
+          runId: expect.stringMatching(/^execute-reply-/),
+          outcome: "success",
+        })
+      );
       expect(mockRegister).toHaveBeenCalledTimes(1);
       expect(mockRegister).toHaveBeenCalledWith(
         expect.stringMatching(/^execute-reply-/),

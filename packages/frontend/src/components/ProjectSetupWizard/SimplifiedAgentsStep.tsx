@@ -333,7 +333,7 @@ export function SimplifiedAgentsStep({
         </p>
         <div className="space-y-4">
           {/* Row 1: Simple */}
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <span className="w-16 text-sm font-medium text-theme-text shrink-0">Simple</span>
             <div className="flex-1 min-w-[140px]">
               <label
@@ -433,7 +433,7 @@ export function SimplifiedAgentsStep({
             )}
           </div>
           {/* Row 2: Complex */}
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <span className="w-16 text-sm font-medium text-theme-text shrink-0">Complex</span>
             <div className="flex-1 min-w-[140px]">
               <label

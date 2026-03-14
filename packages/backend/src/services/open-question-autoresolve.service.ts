@@ -70,6 +70,7 @@ export async function maybeAutoRespond(
 
     const questionTexts = notification.questions.map((q) => q.text).filter(Boolean);
     if (questionTexts.length === 0) return;
+    const { source, sourceId, id: notificationId } = notification;
 
     const prd = await getPrdService()
       .getPrd(projectId)
@@ -96,6 +97,8 @@ ${questionTexts.map((t) => `- ${t}`).join("\n")}`;
     const systemPrompt =
       `You are the Dreamer agent. Answer the user's question using only the provided PRD/spec context. Output only the answer text.` +
       (instructions ? `\n\n${instructions}` : "");
+    const trackingPhase = source === "prd" ? "sketch" : source;
+    const trackingId = `open-question-autoresolve-${projectId}-${notificationId}-${Date.now()}`;
 
     const response = await agentService.invokePlanningAgent({
       projectId,
@@ -104,6 +107,13 @@ ${questionTexts.map((t) => `- ${t}`).join("\n")}`;
       messages: [{ role: "user", content: prompt }],
       systemPrompt,
       cwd: repoPath,
+      tracking: {
+        id: trackingId,
+        projectId,
+        phase: trackingPhase,
+        role: "dreamer",
+        label: "Open-question auto-response",
+      },
     });
 
     const rawAnswer = (response?.content ?? "").trim();
@@ -116,8 +126,6 @@ ${questionTexts.map((t) => `- ${t}`).join("\n")}`;
       });
       return;
     }
-
-    const { source, sourceId, id: notificationId } = notification;
 
     switch (source) {
       case "execute": {

@@ -186,6 +186,16 @@ export interface RunMergerAgentOptions {
   baseBranch?: string;
 }
 
+export interface RecordAgentRunOptions {
+  projectId: string;
+  role: AgentRole;
+  config: AgentConfig;
+  runId: string;
+  startedAt: string;
+  completedAt: string;
+  outcome: "success" | "failed";
+}
+
 type AgentRunStatParams = {
   tracking?: AgentTrackingInfo;
   /** Role for agent log (used when tracking is absent) */
@@ -430,6 +440,22 @@ export class AgentService {
       ...options,
       agentRole: "merger",
     });
+  }
+
+  /**
+   * Record an agent run for flows that do not invoke an external model but should
+   * still appear in Help -> Agent Logs (for example, lightweight analyst reply processing).
+   */
+  async recordAgentRun(options: RecordAgentRunOptions): Promise<void> {
+    await this.recordAgentRunStat({
+      role: options.role,
+      runId: options.runId,
+      config: options.config,
+      projectId: options.projectId,
+      startedAt: options.startedAt,
+      completedAt: options.completedAt,
+      outcome: options.outcome,
+    } satisfies AgentRunStatParams);
   }
 
   private async recordAgentRunStat(params: AgentRunStatParams): Promise<void> {

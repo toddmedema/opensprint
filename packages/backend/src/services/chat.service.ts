@@ -420,16 +420,21 @@ export class ChatService {
 
     const conversation = await this.getOrCreateConversation(projectId, context);
 
-    // Execute chat: store user answer with task context for Coder; no agent invocation
+    // Execute chat: store user answer with task context for Coder. No model call is required,
+    // but we still record an Analyst run so Help -> Agent Logs reflects the processing flow.
     if (isExecuteContext && taskId) {
       const agentId = `execute-reply-${projectId}-${taskId}-${conversation.id}-${Date.now()}`;
+      const startedAt = new Date().toISOString();
+      const settings = await this.projectService.getSettings(projectId);
+      const analystConfig = getAgentForPlanningRole(settings, "analyst");
+      let outcome: "success" | "failed" = "failed";
       activeAgentsService.register(
         agentId,
         projectId,
         "execute",
         "analyst",
         "Processing reply",
-        new Date().toISOString(),
+        startedAt,
         undefined,
         undefined,
         undefined,
@@ -456,11 +461,21 @@ export class ChatService {
         };
         conversation.messages.push(assistantMessage);
         await this.saveConversation(projectId, conversation);
+        outcome = "success";
         return {
           message: assistantMessage.content,
         };
       } finally {
         activeAgentsService.unregister(agentId);
+        await agentService.recordAgentRun({
+          projectId,
+          role: "analyst",
+          config: analystConfig,
+          runId: agentId,
+          startedAt,
+          completedAt: new Date().toISOString(),
+          outcome,
+        });
       }
     }
 

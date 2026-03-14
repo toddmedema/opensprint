@@ -8,7 +8,7 @@ import { TaskStoreService } from "../services/task-store.service.js";
 import { DEFAULT_HIL_CONFIG } from "@opensprint/shared";
 
 const {
-  mockInvoke,
+  mockInvokePlanningAgent,
   mockTaskStoreCreate,
   mockTaskStoreCreateWithRetry,
   mockTaskStoreUpdate,
@@ -19,7 +19,7 @@ const {
   mockTaskStoreListAll,
   mockPlanInsert,
 } = vi.hoisted(() => {
-  const mockInvoke = vi.fn().mockResolvedValue({
+  const mockInvokePlanningAgent = vi.fn().mockResolvedValue({
     content: JSON.stringify({
       status: "success",
       tasks: [
@@ -50,7 +50,7 @@ const {
   const mockTaskStoreListAll = vi.fn().mockResolvedValue([]);
   const mockPlanInsert = vi.fn().mockResolvedValue(undefined);
   return {
-    mockInvoke,
+    mockInvokePlanningAgent,
     mockTaskStoreCreate,
     mockTaskStoreCreateWithRetry,
     mockTaskStoreUpdate,
@@ -63,8 +63,10 @@ const {
   };
 });
 
-vi.mock("../services/agent-client.js", () => ({
-  AgentClient: vi.fn().mockImplementation(() => ({ invoke: mockInvoke })),
+vi.mock("../services/agent.service.js", () => ({
+  agentService: {
+    invokePlanningAgent: (...args: unknown[]) => mockInvokePlanningAgent(...args),
+  },
 }));
 
 vi.mock("../services/task-store.service.js", () => {
@@ -123,7 +125,7 @@ describe("deploy-fix-epic service", () => {
       { id: "fix-1", title: "Fix auth test", status: "ready" },
     ]);
 
-    mockInvoke.mockResolvedValue({
+    mockInvokePlanningAgent.mockResolvedValue({
       content: JSON.stringify({
         status: "success",
         tasks: [
@@ -168,7 +170,7 @@ describe("deploy-fix-epic service", () => {
   });
 
   it("returns null when agent returns failed status", async () => {
-    mockInvoke.mockResolvedValueOnce({
+    mockInvokePlanningAgent.mockResolvedValueOnce({
       content: JSON.stringify({ status: "failed", tasks: [] }),
     });
 
@@ -221,6 +223,18 @@ describe("deploy-fix-epic service", () => {
     expect(result).not.toBeNull();
     expect(result!.epicId).toBeDefined();
     expect(result!.taskCount).toBe(2);
+    expect(mockInvokePlanningAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId,
+        role: "planner",
+        tracking: expect.objectContaining({
+          projectId,
+          phase: "deliver",
+          role: "planner",
+          label: "Create deploy fix epic",
+        }),
+      })
+    );
 
     expect(mockTaskStoreCreate).toHaveBeenCalledWith(
       projectId,

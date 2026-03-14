@@ -315,6 +315,35 @@ describe("AgentService", () => {
       );
       expect(insertCalls).toHaveLength(0);
     });
+
+    it("records explicit synthetic agent runs into agent_stats", async () => {
+      await service.recordAgentRun({
+        projectId: "proj-explicit-run",
+        role: "analyst",
+        config: { type: "cursor", model: null, cliCommand: null },
+        runId: "execute-reply-proj-explicit-run-os-1-123456",
+        startedAt: "2026-03-13T12:00:00.000Z",
+        completedAt: "2026-03-13T12:00:02.500Z",
+        outcome: "success",
+      });
+
+      const insertCall = mockDbClient.execute.mock.calls.find(
+        (call) => typeof call[0] === "string" && call[0].includes("INSERT INTO agent_stats")
+      );
+      expect(insertCall).toBeDefined();
+      expect(insertCall?.[1]).toEqual(
+        expect.arrayContaining([
+          "proj-explicit-run",
+          "execute-reply-proj-explicit-run-os-1-123456",
+          "analyst-cursor-default",
+          "analyst",
+          "unknown",
+          1,
+          "success",
+          2500,
+        ])
+      );
+    });
   });
 
   describe("createProcessGroupHandle", () => {

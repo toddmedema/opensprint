@@ -851,7 +851,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                       </h3>
                       <div className="space-y-4">
                         {/* Row 1: Simple */}
-                        <div className="flex flex-wrap items-end gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
                           <span className="w-16 text-sm font-medium text-theme-text shrink-0">
                             Simple
                           </span>
@@ -955,7 +955,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                         </div>
                         {renderProviderPrerequisite("simple", "Simple", simpleComplexityAgent.type)}
                         {/* Row 2: Complex */}
-                        <div className="flex flex-wrap items-end gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
                           <span className="w-16 text-sm font-medium text-theme-text shrink-0">
                             Complex
                           </span>
