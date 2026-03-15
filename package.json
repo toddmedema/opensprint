@@ -39,7 +39,7 @@
     "start:desktop": "bash scripts/check-linux-desktop-prereqs.sh && npm run build && node packages/electron/scripts/prepare-desktop-resources.js && npm run start -w packages/electron"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": "24.x"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

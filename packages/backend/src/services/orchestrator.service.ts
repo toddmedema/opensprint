@@ -807,7 +807,9 @@ export class OrchestratorService {
   }
 
   private getReviewAngleFromAssignment(assignment: GuppAssignment): ReviewAngle | undefined {
-    const match = assignment.promptPath.match(/[\\/]+review-angles[\\/]+([^\\/]+)[\\/]+prompt\.md$/);
+    const match = assignment.promptPath.match(
+      /[\\/]+review-angles[\\/]+([^\\/]+)[\\/]+prompt\.md$/
+    );
     if (!match) return undefined;
     const angle = match[1];
     return REVIEW_ANGLE_OPTIONS.some((option) => option.value === angle)
@@ -815,10 +817,7 @@ export class OrchestratorService {
       : undefined;
   }
 
-  private async hydrateRecoveredOutputLog(
-    agent: AgentRunState,
-    promptPath: string
-  ): Promise<void> {
+  private async hydrateRecoveredOutputLog(agent: AgentRunState, promptPath: string): Promise<void> {
     const outputLogPath = path.join(path.dirname(promptPath), OPENSPRINT_PATHS.agentOutputLog);
     try {
       const output = await fs.readFile(outputLogPath, "utf-8");
@@ -2000,7 +1999,9 @@ export class OrchestratorService {
               Date.now() - new Date(slot.agent.startedAt ?? Date.now()).getTime()
             ),
           })
-          .catch((err) => log.warn("Failed to record coder run for Agent Log (open_questions)", { err }));
+          .catch((err) =>
+            log.warn("Failed to record coder run for Agent Log (open_questions)", { err })
+          );
         await this.taskStore.update(projectId, task.id, {
           assignee: "",
           status: "blocked",

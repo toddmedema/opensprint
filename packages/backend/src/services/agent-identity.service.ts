@@ -24,7 +24,8 @@ async function repoPathToProjectId(repoPath: string): Promise<string> {
 
   const project = await projectService.getProjectByRepoPath(repoPath);
   const projectId =
-    project?.id ?? "repo:" + crypto.createHash("sha256").update(repoPath).digest("hex").slice(0, 12);
+    project?.id ??
+    "repo:" + crypto.createHash("sha256").update(repoPath).digest("hex").slice(0, 12);
   repoPathProjectIdCache.set(repoPath, projectId);
   return projectId;
 }

@@ -31,10 +31,7 @@ import { createLogger } from "../utils/logger.js";
 import { buildTaskLastExecutionSummary, compactExecutionText } from "./task-execution-summary.js";
 import { inspectGitRepoState, resolveBaseBranch } from "../utils/git-repo-state.js";
 import { getMergeQualityGateCommands } from "./merge-quality-gates.js";
-import type {
-  RetryContext,
-  RetryQualityGateDetail,
-} from "./orchestrator-phase-context.js";
+import type { RetryContext, RetryQualityGateDetail } from "./orchestrator-phase-context.js";
 
 const log = createLogger("merge-coordinator");
 const _MAX_PUSH_REBASE_RESOLUTION_ROUNDS = 12;
@@ -501,20 +498,14 @@ export class MergeCoordinatorService {
     return `${projectId}:${baseBranch}`;
   }
 
-  private isBaselineQualityGateRemediationTask(
-    task: StoredTask,
-    baseBranch: string
-  ): boolean {
+  private isBaselineQualityGateRemediationTask(task: StoredTask, baseBranch: string): boolean {
     const source = (task as { source?: unknown }).source;
     const kind = (task as { selfImprovementKind?: unknown }).selfImprovementKind;
     const sourceId = (task as { baselineQualityGateSource?: unknown }).baselineQualityGateSource;
     const taskBaseBranch = (task as { baselineBaseBranch?: unknown }).baselineBaseBranch;
 
     if (source !== "self-improvement") return false;
-    if (
-      kind !== "baseline-quality-gate" &&
-      sourceId !== BASELINE_QUALITY_GATE_TASK_SOURCE
-    ) {
+    if (kind !== "baseline-quality-gate" && sourceId !== BASELINE_QUALITY_GATE_TASK_SOURCE) {
       return false;
     }
     if (typeof taskBaseBranch === "string" && taskBaseBranch.trim() !== "") {

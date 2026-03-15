@@ -28,7 +28,9 @@
       "title": "Backend unit tests for computeKanbanColumn waiting_to_merge and API payload",
       "description": "In packages/backend/src/__tests__/task-service.test.ts: Add tests for computeKanbanColumn: (1) Task with status open and merge_stage label (e.g. merge_stage:quality_gate) and no merge_quality_gate_paused_until returns waiting_to_merge. (2) Task with status open, merge_stage set, and future merge_quality_gate_paused_until in extra returns waiting_to_merge (same value). (3) Task without merge_stage returns unchanged (ready or backlog per existing logic). (4) Assert listTasks and getTask responses include kanbanColumn: 'waiting_to_merge' and when applicable mergePausedUntil (ISO string) and mergeWaitingOnMain: true. Use mock task store state with labels and extra as needed. Verification: Run npm test -- --testPathPattern=task-service.test in packages/backend.",
       "priority": 1,
-      "dependsOn": ["Compute waiting_to_merge in task.service computeKanbanColumn and add optional API fields"],
+      "dependsOn": [
+        "Compute waiting_to_merge in task.service computeKanbanColumn and add optional API fields"
+      ],
       "complexity": 4,
       "files": {
         "modify": ["packages/backend/src/__tests__/task-service.test.ts"],
@@ -40,7 +42,9 @@
       "title": "Add kanbanColumn and optional merge fields to WebSocket task events",
       "description": "Backend: (1) In packages/shared/src/types/websocket.ts, add optional kanbanColumn?: KanbanColumn to TaskUpdatedEvent; add optional kanbanColumn?, mergePausedUntil?, mergeWaitingOnMain? to TaskEventPayload. (2) In packages/backend/src/task-store-events.ts: For task.updated, compute kanbanColumn when status==='open' and getMergeStageFromIssue(task) is set (quality_gate, merge_to_main, rebase_before_merge) as 'waiting_to_merge'; compute mergePausedUntil (ISO when extra.merge_quality_gate_paused_until is future) and mergeWaitingOnMain (boolean); include kanbanColumn, mergePausedUntil, mergeWaitingOnMain in the task.updated payload. For task.created and task.closed, extend storedTaskToPayload to include kanbanColumn (same logic: if open and merge_stage set then waiting_to_merge else derive from status e.g. mapStatusToKanban) and optional mergePausedUntil/mergeWaitingOnMain. Use getMergeStageFromIssue from task-store-helpers; read merge_quality_gate_paused_until from task (StoredTask with extra spread). Frontend: (3) In packages/frontend/src/store/slices/executeTaskList.ts, in taskUpdated reducer, when action.payload includes kanbanColumn use it instead of mapStatusToKanban(status). (4) In packages/frontend/src/store/slices/executeThunks.ts, in taskEventPayloadToTask, use p.kanbanColumn when present, else mapStatusToKanban(p.status); pass through mergePausedUntil and mergeWaitingOnMain when present. Acceptance: Event-stream and WebSocket task payloads include kanbanColumn and optional merge fields; list updates in real time without refetch. Verification: Run backend tests for task-store-events if any; run frontend tests for executeTaskList and executeThunks; manual check that task.updated with new fields updates UI.",
       "priority": 1,
-      "dependsOn": ["Compute waiting_to_merge in task.service computeKanbanColumn and add optional API fields"],
+      "dependsOn": [
+        "Compute waiting_to_merge in task.service computeKanbanColumn and add optional API fields"
+      ],
       "complexity": 6,
       "files": {
         "modify": [

@@ -718,21 +718,23 @@ describe("OrchestratorService (slot-based model)", () => {
     it("turns structured terminal clarification output into blocked open questions", async () => {
       const { task } = setupSingleTaskFlow("task-open-question");
       mockReadResult.mockResolvedValue(null);
-      mockNotificationCreate.mockImplementation(async (input: {
-        projectId: string;
-        source: string;
-        sourceId: string;
-        questions: Array<{ id: string; text: string }>;
-      }) => ({
-        id: "oq-1",
-        projectId: input.projectId,
-        source: input.source,
-        sourceId: input.sourceId,
-        questions: input.questions,
-        status: "open",
-        createdAt: "2026-03-13T23:12:13.000Z",
-        resolvedAt: null,
-      }));
+      mockNotificationCreate.mockImplementation(
+        async (input: {
+          projectId: string;
+          source: string;
+          sourceId: string;
+          questions: Array<{ id: string; text: string }>;
+        }) => ({
+          id: "oq-1",
+          projectId: input.projectId,
+          source: input.source,
+          sourceId: input.sourceId,
+          questions: input.questions,
+          status: "open",
+          createdAt: "2026-03-13T23:12:13.000Z",
+          resolvedAt: null,
+        })
+      );
 
       await orchestrator.ensureRunning(projectId);
       await vi.waitFor(() => {
@@ -806,21 +808,23 @@ describe("OrchestratorService (slot-based model)", () => {
     it("turns assistant chat clarification output into blocked open questions", async () => {
       const { task } = setupSingleTaskFlow("task-open-question-chat");
       mockReadResult.mockResolvedValue(null);
-      mockNotificationCreate.mockImplementation(async (input: {
-        projectId: string;
-        source: string;
-        sourceId: string;
-        questions: Array<{ id: string; text: string }>;
-      }) => ({
-        id: "oq-2",
-        projectId: input.projectId,
-        source: input.source,
-        sourceId: input.sourceId,
-        questions: input.questions,
-        status: "open",
-        createdAt: "2026-03-13T23:22:13.000Z",
-        resolvedAt: null,
-      }));
+      mockNotificationCreate.mockImplementation(
+        async (input: {
+          projectId: string;
+          source: string;
+          sourceId: string;
+          questions: Array<{ id: string; text: string }>;
+        }) => ({
+          id: "oq-2",
+          projectId: input.projectId,
+          source: input.source,
+          sourceId: input.sourceId,
+          questions: input.questions,
+          status: "open",
+          createdAt: "2026-03-13T23:22:13.000Z",
+          resolvedAt: null,
+        })
+      );
 
       await orchestrator.ensureRunning(projectId);
       await vi.waitFor(() => {
@@ -1465,22 +1469,17 @@ describe("OrchestratorService (slot-based model)", () => {
         notes: "",
       });
 
-      const completed = await host.handleCompletedAssignment?.(
+      const completed = await host.handleCompletedAssignment?.(projectId, repoPath, task as never, {
+        taskId: task.id,
         projectId,
-        repoPath,
-        task as never,
-        {
-          taskId: task.id,
-          projectId,
-          phase: "coding",
-          branchName: `opensprint/${task.id}`,
-          worktreePath: repoPath,
-          promptPath: path.join(activeDir, "prompt.md"),
-          agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
-          attempt: 2,
-          createdAt: "2026-03-02T10:00:00.000Z",
-        }
-      );
+        phase: "coding",
+        branchName: `opensprint/${task.id}`,
+        worktreePath: repoPath,
+        promptPath: path.join(activeDir, "prompt.md"),
+        agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
+        attempt: 2,
+        createdAt: "2026-03-02T10:00:00.000Z",
+      });
 
       expect(completed).toBe(true);
       expect(mockInvokeCodingAgent).not.toHaveBeenCalled();
@@ -1528,22 +1527,17 @@ describe("OrchestratorService (slot-based model)", () => {
       );
       await fs.writeFile(path.join(angleDir, "agent-output.log"), "Recovered review output\n");
 
-      const completed = await host.handleCompletedAssignment?.(
+      const completed = await host.handleCompletedAssignment?.(projectId, repoPath, task as never, {
+        taskId: task.id,
         projectId,
-        repoPath,
-        task as never,
-        {
-          taskId: task.id,
-          projectId,
-          phase: "review",
-          branchName: `opensprint/${task.id}`,
-          worktreePath: repoPath,
-          promptPath: path.join(angleDir, "prompt.md"),
-          agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
-          attempt: 2,
-          createdAt: "2026-03-02T10:00:00.000Z",
-        }
-      );
+        phase: "review",
+        branchName: `opensprint/${task.id}`,
+        worktreePath: repoPath,
+        promptPath: path.join(angleDir, "prompt.md"),
+        agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
+        attempt: 2,
+        createdAt: "2026-03-02T10:00:00.000Z",
+      });
 
       expect(completed).toBe(true);
       expect(mockInvokeReviewAgent).not.toHaveBeenCalled();

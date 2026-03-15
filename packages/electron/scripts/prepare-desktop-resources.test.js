@@ -11,8 +11,8 @@ const {
 
 describe("prepare-desktop-resources", () => {
   it("normalizes semver prefixes", () => {
-    expect(normalizeElectronVersion("^35.1.0")).toBe("35.1.0");
-    expect(normalizeElectronVersion("  ~35.7.5 ")).toBe("35.7.5");
+    expect(normalizeElectronVersion("^41.0.0")).toBe("41.0.0");
+    expect(normalizeElectronVersion("  ~41.0.2 ")).toBe("41.0.2");
   });
 
   it("prefers the installed Electron version for native rebuilds", () => {

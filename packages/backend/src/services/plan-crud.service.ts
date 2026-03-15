@@ -470,9 +470,7 @@ export class PlanCrudService {
     }
 
     const epicId = (row.metadata?.epicId as string) ?? "";
-    const { total: taskCount } = epicId
-      ? await this.countTasks(projectId, epicId)
-      : { total: 0 };
+    const { total: taskCount } = epicId ? await this.countTasks(projectId, epicId) : { total: 0 };
     const versioningRow = {
       content: row.content,
       metadata: row.metadata,

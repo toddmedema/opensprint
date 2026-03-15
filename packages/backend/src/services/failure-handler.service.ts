@@ -505,7 +505,10 @@ export class FailureHandlerService {
     const apiErrorKind = classifyAgentApiError(
       new Error(effectiveReason)
     ) as AgentApiErrorKind | null;
-    const offlineConnectivityFailure = this.isOfflineConnectivityFailure(failureType, effectiveReason);
+    const offlineConnectivityFailure = this.isOfflineConnectivityFailure(
+      failureType,
+      effectiveReason
+    );
     const failSettings = await this.host.projectService.getSettings(projectId);
     const agentConfig = failSettings.simpleComplexityAgent;
     const agentProvider = getProviderForAgentType(
@@ -520,19 +523,13 @@ export class FailureHandlerService {
         offlineConnectivityFailure,
       }
     );
-    let providerOutageBackoff:
-      | {
-          attempts: number;
-          durationMs: number;
-          until: string;
-        }
-      | null = null;
+    let providerOutageBackoff: {
+      attempts: number;
+      durationMs: number;
+      until: string;
+    } | null = null;
     if (cursorProviderOutageFailure && agentProvider === "CURSOR_API_KEY") {
-      providerOutageBackoff = markProviderOutageBackoff(
-        projectId,
-        agentProvider,
-        effectiveReason
-      );
+      providerOutageBackoff = markProviderOutageBackoff(projectId, agentProvider, effectiveReason);
       nextAction = `Pause new Cursor launches until ${providerOutageBackoff.until}`;
     }
     // Surface failures in the notification system only when not a review-phase failure, or when

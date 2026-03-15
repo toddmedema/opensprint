@@ -17,10 +17,10 @@ const LEVEL_ORDER: Record<LogLevel, number> = {
 function isVitestRuntime(): boolean {
   return Boolean(
     process.env.VITEST ||
-      process.env.VITEST_WORKER_ID ||
-      process.env.VITEST_POOL_ID ||
-      process.env.NODE_ENV === "test" ||
-      process.env.TEST === "true"
+    process.env.VITEST_WORKER_ID ||
+    process.env.VITEST_POOL_ID ||
+    process.env.NODE_ENV === "test" ||
+    process.env.TEST === "true"
   );
 }
 

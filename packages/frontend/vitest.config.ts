@@ -17,9 +17,9 @@ export default defineConfig({
     environment: "jsdom",
     include: ["src/**/*.test.{ts,tsx}", "src/**/*.e2e.test.{ts,tsx}"],
     setupFiles: ["./src/test/setup.ts"],
-    pool: "threads",
+    pool: "forks",
     poolOptions: {
-      threads: { minThreads: 1, maxThreads: 4 },
+      forks: { minForks: 1, maxForks: 4 },
     },
     testTimeout: 30_000,
     teardownTimeout: 10_000,

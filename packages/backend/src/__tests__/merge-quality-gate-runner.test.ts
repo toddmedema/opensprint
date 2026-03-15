@@ -50,7 +50,9 @@ Received: 200
       expect.objectContaining({
         command: "npm run test",
         firstErrorLine: "AssertionError: expected 200 to be 201",
-        outputSnippet: expect.stringContaining("FAIL  src/example.test.ts > Example > still renders"),
+        outputSnippet: expect.stringContaining(
+          "FAIL  src/example.test.ts > Example > still renders"
+        ),
       })
     );
     expect(failure?.outputSnippet).toContain("Expected: 201");

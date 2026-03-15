@@ -25,7 +25,7 @@ Implement the steps below in order. Each step is self-contained so another agent
 - **Add file**: `.github/workflows/release-desktop.yml`
 - **Trigger**: `on: push: tags: ['v*']`
 - **Permissions**: `contents: write` (so the job can create/update releases and upload assets).
-- **Conventions**: Use Node 20 (match repo `engines`). Use `npm ci` for installs. Use `actions/setup-node` with `cache: 'npm'` for faster runs.
+- **Conventions**: Use Node 24 (match repo `engines`). Use `npm ci` for installs. Use `actions/setup-node` with `cache: 'npm'` for faster runs.
 
 ---
 
@@ -50,7 +50,7 @@ Implement the steps below in order. Each step is self-contained so another agent
 - **Needs**: `create-release`
 - **Steps**:
   1. Checkout.
-  2. Setup Node 20 with npm cache.
+  2. Setup Node 24 with npm cache.
   3. Set env `TAG_VERSION: ${{ github.ref_name }}`.
   4. Run `node scripts/set-version-from-tag.js`.
   5. Run `npm ci`.
@@ -65,7 +65,7 @@ Implement the steps below in order. Each step is self-contained so another agent
 - **Job id**: `build-windows`
 - **Runner**: `windows-latest`
 - **Needs**: `create-release`
-- **Steps**: Same as build-mac (checkout, Node 20, `TAG_VERSION`, `set-version-from-tag.js`, `npm ci`, `npm run build:desktop`), then upload with `files: packages/electron/dist/*.exe` (NSIS installer only; no blockmap required for this plan).
+- **Steps**: Same as build-mac (checkout, Node 24, `TAG_VERSION`, `set-version-from-tag.js`, `npm ci`, `npm run build:desktop`), then upload with `files: packages/electron/dist/*.exe` (NSIS installer only; no blockmap required for this plan).
 
 ---
 
@@ -74,7 +74,7 @@ Implement the steps below in order. Each step is self-contained so another agent
 - **Job id**: `build-linux`
 - **Runner**: `ubuntu-latest`
 - **Needs**: `create-release`
-- **Steps**: Same as build-mac (checkout, Node 20, `TAG_VERSION`, `set-version-from-tag.js`, `npm ci`, `npm run build:desktop`), then upload with `files: packages/electron/dist/*.AppImage`.
+- **Steps**: Same as build-mac (checkout, Node 24, `TAG_VERSION`, `set-version-from-tag.js`, `npm ci`, `npm run build:desktop`), then upload with `files: packages/electron/dist/*.AppImage`.
 
 ---
 

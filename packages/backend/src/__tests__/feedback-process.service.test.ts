@@ -30,7 +30,9 @@ describe("feedback-process.service", () => {
     const getFeedback = vi
       .fn()
       .mockResolvedValueOnce({ ...pendingItem })
-      .mockRejectedValueOnce(new AppError(404, ErrorCodes.FEEDBACK_NOT_FOUND, "Not found", { feedbackId }));
+      .mockRejectedValueOnce(
+        new AppError(404, ErrorCodes.FEEDBACK_NOT_FOUND, "Not found", { feedbackId })
+      );
 
     const categorize = vi.fn().mockResolvedValue({
       done: false,

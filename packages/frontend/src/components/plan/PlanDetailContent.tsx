@@ -180,8 +180,7 @@ export function PlanDetailContent({
 
   /** When structured mockups exist in metadata, hide the markdown "Mockup(s)" section to avoid duplicate sections. */
   const sectionsToRender = useMemo(() => {
-    const hasStructuredMockups =
-      plan.metadata.mockups && plan.metadata.mockups.length > 0;
+    const hasStructuredMockups = plan.metadata.mockups && plan.metadata.mockups.length > 0;
     if (!hasStructuredMockups) return sections.map((s, i) => ({ section: s, originalIndex: i }));
     return sections
       .map((s, i) => ({ section: s, originalIndex: i }))
@@ -327,10 +326,7 @@ export function PlanDetailContent({
                 sectionKey={`plan-section-${originalIndex}`}
                 markdown={section.content || "_No content yet_"}
                 onSave={(_key, md) =>
-                  handleSectionSave(
-                    originalIndex,
-                    !md || md === "_No content yet_" ? "" : md
-                  )
+                  handleSectionSave(originalIndex, !md || md === "_No content yet_" ? "" : md)
                 }
                 disabled={isReadOnly}
                 lightMode

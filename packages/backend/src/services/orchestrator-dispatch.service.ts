@@ -129,9 +129,7 @@ function extractRetryContext(task: StoredTask): RetryContext | undefined {
   return retryContext;
 }
 
-function extractMergeResumeState(
-  task: StoredTask
-): { worktreePath: string } | undefined {
+function extractMergeResumeState(task: StoredTask): { worktreePath: string } | undefined {
   const mode = (task as Record<string, unknown>)[MERGE_RETRY_MODE_KEY];
   const worktreePath = (task as Record<string, unknown>).worktreePath;
   if (mode !== BASELINE_MERGE_RETRY_MODE) return undefined;

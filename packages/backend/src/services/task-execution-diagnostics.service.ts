@@ -240,12 +240,18 @@ function titleForOutcome(phase: TaskExecutionPhase, outcome: TaskExecutionOutcom
   return `${labelForPhase(phase)} completed`;
 }
 
-function mergeBlockReasonForStage(mergeStage: string | null, fallback: string | null): string | null {
+function mergeBlockReasonForStage(
+  mergeStage: string | null,
+  fallback: string | null
+): string | null {
   if (fallback) return fallback;
   return mergeStage === "quality_gate" ? "Quality Gate Failure" : "Merge Failure";
 }
 
-function mergeFailureTypeForStage(mergeStage: string | null, fallback: string | null): string | null {
+function mergeFailureTypeForStage(
+  mergeStage: string | null,
+  fallback: string | null
+): string | null {
   if (fallback) return fallback;
   return mergeStage === "quality_gate" ? "merge_quality_gate" : "merge_conflict";
 }
@@ -455,9 +461,10 @@ function summarizeEvent(event: OrchestratorEvent): TaskExecutionEventItem | null
     const reason = asString(data.reason);
     const qualityGateDetail = extractQualityGateDetail(data);
     const qualityGateSummary = buildActionableFailureSummaryFromData(data);
-    const blockReason = outcome === "blocked"
-      ? mergeBlockReasonForStage(mergeStage, asString(data.blockReason))
-      : null;
+    const blockReason =
+      outcome === "blocked"
+        ? mergeBlockReasonForStage(mergeStage, asString(data.blockReason))
+        : null;
     const failureType = mergeFailureTypeForStage(mergeStage, asString(data.failureType));
     const summary = summarizeMergeFailure({
       mergeStage,
@@ -622,8 +629,7 @@ function buildAttemptItem(
   const reviewModel =
     attemptEvents.find((event) => event.phase === "review" && event.model)?.model ?? null;
 
-  const finalOutcome =
-    terminalEvent?.outcome ?? sessionDerived?.finalOutcome ?? "running";
+  const finalOutcome = terminalEvent?.outcome ?? sessionDerived?.finalOutcome ?? "running";
   const noTerminalFallback =
     finalOutcome === "running"
       ? `Attempt ${attempt} is in progress`

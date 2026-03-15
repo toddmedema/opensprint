@@ -39,9 +39,16 @@ describe("provider-outage-backoff", () => {
     const projectId = "proj-backoff-expiry";
     const startMs = Date.parse("2026-03-15T13:00:00.000Z");
 
-    markProviderOutageBackoff(projectId, "CURSOR_API_KEY", "Failed to reach the Cursor API", startMs);
+    markProviderOutageBackoff(
+      projectId,
+      "CURSOR_API_KEY",
+      "Failed to reach the Cursor API",
+      startMs
+    );
 
-    expect(getProviderOutageBackoff(projectId, "CURSOR_API_KEY", startMs + 4 * 60_000)).not.toBeNull();
+    expect(
+      getProviderOutageBackoff(projectId, "CURSOR_API_KEY", startMs + 4 * 60_000)
+    ).not.toBeNull();
     expect(getProviderOutageBackoff(projectId, "CURSOR_API_KEY", startMs + 6 * 60_000)).toBeNull();
   });
 });

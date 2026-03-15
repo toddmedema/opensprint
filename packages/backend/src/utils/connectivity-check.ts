@@ -41,7 +41,10 @@ function parseSocketTarget(value: string): { host: string; port: number; display
   };
 }
 
-async function checkUrlConnectivity(url: string, timeoutMs: number): Promise<ConnectivityCheckResult> {
+async function checkUrlConnectivity(
+  url: string,
+  timeoutMs: number
+): Promise<ConnectivityCheckResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -102,7 +105,12 @@ export async function checkInternetConnectivity(): Promise<ConnectivityCheckResu
     return checkUrlConnectivity(target, timeoutMs);
   }
   const socketTarget = parseSocketTarget(target);
-  return checkSocketConnectivity(socketTarget.host, socketTarget.port, timeoutMs, socketTarget.display);
+  return checkSocketConnectivity(
+    socketTarget.host,
+    socketTarget.port,
+    timeoutMs,
+    socketTarget.display
+  );
 }
 
 export function buildLostInternetMessage(target: string): string {

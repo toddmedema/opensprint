@@ -139,10 +139,7 @@ function hasPythonDistutils(pythonPath) {
   try {
     execFileSync(
       pythonPath,
-      [
-        "-c",
-        "import distutils.version; import sys; sys.stdout.write('ok')",
-      ],
+      ["-c", "import distutils.version; import sys; sys.stdout.write('ok')"],
       {
         stdio: ["ignore", "pipe", "pipe"],
       }
@@ -460,7 +457,7 @@ async function bundleBackendRuntime(backendOut) {
     bundle: true,
     platform: "node",
     format: "cjs",
-    target: ["node20"],
+    target: ["node24"],
     minify: true,
     sourcemap: false,
     legalComments: "none",

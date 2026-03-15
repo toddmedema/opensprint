@@ -1266,86 +1266,80 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                       contentClassName="px-4 pt-0"
                     >
                       <div className="space-y-2">
-                          {selectedPlanTasks.length === 0 ? (
-                            <div className="space-y-2">
-                              {!autoExecutePlans && (
-                                <p className="text-sm text-theme-muted">
-                                  Use the chat to refine the plan, then click Generate Tasks when
-                                  you&apos;re ready to break it down into specific tickets
-                                </p>
-                              )}
-                              {autoExecutePlans ? (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    selectedPlan && handleShipOrGenerateAndShip(selectedPlan)
-                                  }
-                                  disabled={
-                                    !!executingPlanId ||
-                                    (planTasksPlanIds ?? []).includes(selectedPlan.metadata.planId)
-                                  }
-                                  className="btn-primary text-sm w-full py-2 rounded-lg font-medium inline-flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
-                                  data-testid="execute-button-sidebar"
-                                >
-                                  {(planTasksPlanIds ?? []).includes(
-                                    selectedPlan.metadata.planId
-                                  ) || executingPlanId === selectedPlan.metadata.planId
-                                    ? "Generating & executing…"
-                                    : "Execute"}
-                                </button>
-                              ) : (planTasksPlanIds ?? []).includes(
-                                  selectedPlan.metadata.planId
-                                ) ? (
-                                <p
-                                  className="text-sm text-theme-muted"
-                                  aria-busy="true"
-                                  aria-label="Planning tasks"
-                                  data-testid="plan-tasks-loading-sidebar"
-                                >
-                                  Planning tasks…
-                                </p>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handlePlanTasks(selectedPlan.metadata.planId)}
-                                  className="btn-primary text-sm w-full py-2 rounded-lg font-medium inline-flex items-center justify-center"
-                                  data-testid="plan-tasks-button-sidebar"
-                                >
-                                  Generate Tasks
-                                </button>
-                              )}
-                            </div>
-                          ) : (
-                            selectedPlanTasks.map((task) => (
+                        {selectedPlanTasks.length === 0 ? (
+                          <div className="space-y-2">
+                            {!autoExecutePlans && (
+                              <p className="text-sm text-theme-muted">
+                                Use the chat to refine the plan, then click Generate Tasks when
+                                you&apos;re ready to break it down into specific tickets
+                              </p>
+                            )}
+                            {autoExecutePlans ? (
                               <button
-                                key={task.id}
                                 type="button"
-                                onClick={() => onNavigateToBuildTask?.(task.id)}
-                                className="w-full flex items-center gap-2 p-2 bg-theme-surface rounded-lg border border-theme-border text-sm text-left hover:border-theme-info-border hover:bg-theme-info-bg/50 transition-colors cursor-pointer"
+                                onClick={() =>
+                                  selectedPlan && handleShipOrGenerateAndShip(selectedPlan)
+                                }
+                                disabled={
+                                  !!executingPlanId ||
+                                  (planTasksPlanIds ?? []).includes(selectedPlan.metadata.planId)
+                                }
+                                className="btn-primary text-sm w-full py-2 rounded-lg font-medium inline-flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+                                data-testid="execute-button-sidebar"
                               >
-                                <span
-                                  className={`shrink-0 w-2 h-2 rounded-full ${
-                                    task.kanbanColumn === "done"
-                                      ? "bg-theme-success-solid"
-                                      : task.kanbanColumn === "in_progress" ||
-                                          task.kanbanColumn === "in_review"
-                                        ? "bg-theme-info-solid"
-                                        : "bg-theme-ring"
-                                  }`}
-                                  title={task.kanbanColumn}
-                                />
-                                <span
-                                  className="flex-1 truncate text-theme-text"
-                                  title={task.title}
-                                >
-                                  {task.title}
-                                </span>
-                                <span className="shrink-0 text-xs text-theme-muted capitalize">
-                                  {task.kanbanColumn.replace(/_/g, " ")}
-                                </span>
+                                {(planTasksPlanIds ?? []).includes(selectedPlan.metadata.planId) ||
+                                executingPlanId === selectedPlan.metadata.planId
+                                  ? "Generating & executing…"
+                                  : "Execute"}
                               </button>
-                            ))
-                          )}
+                            ) : (planTasksPlanIds ?? []).includes(selectedPlan.metadata.planId) ? (
+                              <p
+                                className="text-sm text-theme-muted"
+                                aria-busy="true"
+                                aria-label="Planning tasks"
+                                data-testid="plan-tasks-loading-sidebar"
+                              >
+                                Planning tasks…
+                              </p>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handlePlanTasks(selectedPlan.metadata.planId)}
+                                className="btn-primary text-sm w-full py-2 rounded-lg font-medium inline-flex items-center justify-center"
+                                data-testid="plan-tasks-button-sidebar"
+                              >
+                                Generate Tasks
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          selectedPlanTasks.map((task) => (
+                            <button
+                              key={task.id}
+                              type="button"
+                              onClick={() => onNavigateToBuildTask?.(task.id)}
+                              className="w-full flex items-center gap-2 p-2 bg-theme-surface rounded-lg border border-theme-border text-sm text-left hover:border-theme-info-border hover:bg-theme-info-bg/50 transition-colors cursor-pointer"
+                            >
+                              <span
+                                className={`shrink-0 w-2 h-2 rounded-full ${
+                                  task.kanbanColumn === "done"
+                                    ? "bg-theme-success-solid"
+                                    : task.kanbanColumn === "in_progress" ||
+                                        task.kanbanColumn === "in_review"
+                                      ? "bg-theme-info-solid"
+                                      : "bg-theme-ring"
+                                }`}
+                                title={task.kanbanColumn}
+                              />
+                              <span className="flex-1 truncate text-theme-text" title={task.title}>
+                                {task.title}
+                              </span>
+                              <span className="shrink-0 text-xs text-theme-muted capitalize">
+                                {task.kanbanColumn.replace(/_/g, " ")}
+                              </span>
+                            </button>
+                          ))
+                        )}
                       </div>
                     </CollapsibleSection>
 

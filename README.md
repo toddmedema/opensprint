@@ -9,7 +9,7 @@
 Prerequisites:
 
 - [Git](https://git-scm.com/install/)
-- [Node.js 20+](https://nodejs.org/en/download)
+- [Node.js 24.x](https://nodejs.org/en/download)
 - Git identity configured:
   - `git config --global user.name "Your Name"`
   - `git config --global user.email "you@example.com"`
@@ -46,7 +46,7 @@ See [Upgrading to PostgreSQL](#upgrading-to-postgresql) for migration options.
 
 ### Windows
 
-You will need to install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) with Node.js: open PowerShell as admin, run `wsl --install`, reboot, then open the WSL application and [install Node.js 20+](https://stackoverflow.com/a/75739322). Open Sprint uses SQLite by default in WSL; for PostgreSQL, install it in WSL and set `databaseUrl` in Settings.
+You will need to install [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install) with Node.js: open PowerShell as admin, run `wsl --install`, reboot, then open the WSL application and [install Node.js 24.x](https://nodejs.org/en/download). Open Sprint uses SQLite by default in WSL; for PostgreSQL, install it in WSL and set `databaseUrl` in Settings.
 
 Then, from the default ~ directory, run:
 
@@ -140,7 +140,7 @@ See **[CONTRIBUTING.md](CONTRIBUTING.md)** for setup, quality checks, submitting
 
 You can run Open Sprint as a desktop app (Electron) or build installable artifacts.
 
-**Prerequisites:** Same as Quick Start (Node.js 20+). The desktop app uses SQLite by default; config and data live in `~/.opensprint` (see [Database](#database) and [PostgreSQL Setup FAQ](#postgresql-setup-faq)).
+**Prerequisites:** Same as Quick Start (Node.js 24.x). The desktop app uses SQLite by default; config and data live in `~/.opensprint` (see [Database](#database) and [PostgreSQL Setup FAQ](#postgresql-setup-faq)).
 
 **Linux runtime prerequisites (Electron):** Install common desktop libs before running `npm run start:desktop` or launching the Linux AppImage (for example on Ubuntu/Debian: `sudo apt-get install -y libgtk-3-0 libnss3 libasound2 libxss1 libxtst6 libatspi2.0-0 libsecret-1-0 libnotify4 libcups2 libgbm1`).  
 For AppImage specifically, install FUSE2 (`libfuse2`) or AppImage may fail to launch.

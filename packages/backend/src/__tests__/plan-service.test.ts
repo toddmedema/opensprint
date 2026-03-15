@@ -276,32 +276,36 @@ mockPlanVersionInsert.mockImplementation(
   }
 );
 
-const mockPlanVersionUpdateContent = vi.fn().mockImplementation(
-  async (
-    projectId: string,
-    planId: string,
-    versionNumber: number,
-    content: string,
-    title?: string | null
-  ) => {
-    const key = `${projectId}:${planId}`;
-    const list = mockPlanVersionsByKey.get(key);
-    if (list) {
-      const v = list.find((x) => x.version_number === versionNumber);
-      if (v) {
-        v.content = content;
-        v.title = title ?? null;
+const mockPlanVersionUpdateContent = vi
+  .fn()
+  .mockImplementation(
+    async (
+      projectId: string,
+      planId: string,
+      versionNumber: number,
+      content: string,
+      title?: string | null
+    ) => {
+      const key = `${projectId}:${planId}`;
+      const list = mockPlanVersionsByKey.get(key);
+      if (list) {
+        const v = list.find((x) => x.version_number === versionNumber);
+        if (v) {
+          v.content = content;
+          v.title = title ?? null;
+        }
+      }
+      const proj = mockPlanVersionsStore.get(projectId);
+      const storeList = proj?.get(planId) ?? [];
+      const entry = storeList.find(
+        (x: { version_number: number }) => x.version_number === versionNumber
+      );
+      if (entry) {
+        entry.content = content;
+        entry.title = title ?? null;
       }
     }
-    const proj = mockPlanVersionsStore.get(projectId);
-    const storeList = proj?.get(planId) ?? [];
-    const entry = storeList.find((x: { version_number: number }) => x.version_number === versionNumber);
-    if (entry) {
-      entry.content = content;
-      entry.title = title ?? null;
-    }
-  }
-);
+  );
 
 const mockPlanVersionSetExecutedVersion = vi.fn().mockResolvedValue(undefined);
 

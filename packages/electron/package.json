@@ -31,10 +31,10 @@
   },
   "dependencies": {},
   "devDependencies": {
-    "@electron/rebuild": "^3.6.1",
+    "@electron/rebuild": "^4.0.3",
     "vitest": "^2.1.0",
-    "electron": "35.7.5",
-    "electron-builder": "^25.0.0",
+    "electron": "41.0.2",
+    "electron-builder": "^26.8.1",
     "esbuild": "^0.25.12",
     "sharp": "^0.33.5",
     "typescript": "^5.7.2"
@@ -42,7 +42,7 @@
   "build": {
     "appId": "com.opensprint.app",
     "productName": "Open Sprint",
-    "electronVersion": "35.7.5",
+    "electronVersion": "41.0.2",
     "afterPack": "./scripts/after-pack-ad-hoc-sign.js",
     "compression": "maximum",
     "directories": {

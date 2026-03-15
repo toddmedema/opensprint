@@ -86,8 +86,7 @@ describe("PlanDetailContent", () => {
   it("hides markdown Mockup(s) section when plan has structured metadata.mockups to avoid duplicate sections", () => {
     const planWithMockups: Plan = {
       ...mockPlan,
-      content:
-        "# My Plan\n\n## Overview\n\nSummary.\n\n## Mockup\n\nASCII wireframe here.",
+      content: "# My Plan\n\n## Overview\n\nSummary.\n\n## Mockup\n\nASCII wireframe here.",
       metadata: {
         ...mockPlan.metadata,
         mockups: [{ title: "Screen 1", content: "wireframe content" }],

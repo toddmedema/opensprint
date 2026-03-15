@@ -41,23 +41,16 @@ async function hashFile(absolutePath: string): Promise<string> {
 }
 
 async function captureSnapshot(repoPath: string): Promise<RepoSnapshot> {
-  const [
-    head,
-    branch,
-    worktreeDiff,
-    stagedDiff,
-    worktreePathsOut,
-    stagedPathsOut,
-    untrackedOut,
-  ] = await Promise.all([
-    runGit(repoPath, "git rev-parse HEAD"),
-    runGit(repoPath, "git branch --show-current"),
-    runGit(repoPath, `git diff --no-ext-diff --binary -- . ${EXCLUDED_PATHSPEC}`),
-    runGit(repoPath, `git diff --cached --no-ext-diff --binary -- . ${EXCLUDED_PATHSPEC}`),
-    runGit(repoPath, `git diff --name-only -- . ${EXCLUDED_PATHSPEC}`),
-    runGit(repoPath, `git diff --cached --name-only -- . ${EXCLUDED_PATHSPEC}`),
-    runGit(repoPath, "git ls-files --others --exclude-standard"),
-  ]);
+  const [head, branch, worktreeDiff, stagedDiff, worktreePathsOut, stagedPathsOut, untrackedOut] =
+    await Promise.all([
+      runGit(repoPath, "git rev-parse HEAD"),
+      runGit(repoPath, "git branch --show-current"),
+      runGit(repoPath, `git diff --no-ext-diff --binary -- . ${EXCLUDED_PATHSPEC}`),
+      runGit(repoPath, `git diff --cached --no-ext-diff --binary -- . ${EXCLUDED_PATHSPEC}`),
+      runGit(repoPath, `git diff --name-only -- . ${EXCLUDED_PATHSPEC}`),
+      runGit(repoPath, `git diff --cached --name-only -- . ${EXCLUDED_PATHSPEC}`),
+      runGit(repoPath, "git ls-files --others --exclude-standard"),
+    ]);
 
   const untrackedFiles: Array<{ path: string; hash: string }> = [];
   for (const relativePath of normalizeLines(untrackedOut)) {

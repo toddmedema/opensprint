@@ -188,15 +188,7 @@ export class AgentLifecycleManager {
     });
 
     this.startHeartbeat(runState, wtPath, taskId, timers, heartbeatSubpath);
-    this.startResultMonitor(
-      promptPath,
-      runState,
-      wtPath,
-      taskId,
-      timers,
-      onDone,
-      heartbeatSubpath
-    );
+    this.startResultMonitor(promptPath, runState, wtPath, taskId, timers, onDone, heartbeatSubpath);
     this.startInactivityMonitor(
       runState,
       wtPath,
@@ -263,14 +255,7 @@ export class AgentLifecycleManager {
     };
 
     this.startHeartbeat(runState, wtPath, taskId, timers);
-    this.startResultMonitor(
-      params.promptPath,
-      runState,
-      wtPath,
-      taskId,
-      timers,
-      wrappedOnDone
-    );
+    this.startResultMonitor(params.promptPath, runState, wtPath, taskId, timers, wrappedOnDone);
     this.startInactivityMonitor(
       runState,
       wtPath,
@@ -364,7 +349,9 @@ export class AgentLifecycleManager {
             } catch {
               // Best effort; the result file already gives us the terminal outcome.
             }
-            await heartbeatService.deleteHeartbeat(wtPath, taskId, heartbeatSubpath).catch(() => {});
+            await heartbeatService
+              .deleteHeartbeat(wtPath, taskId, heartbeatSubpath)
+              .catch(() => {});
             await onDone(exitCode);
           })
           .catch(() => {

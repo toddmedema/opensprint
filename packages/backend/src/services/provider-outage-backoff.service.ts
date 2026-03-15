@@ -40,10 +40,7 @@ export function markProviderOutageBackoff(
   cleanupExpiredBackoff(projectId, provider, nowMs);
   const projectBackoffs = getProjectBackoffs(projectId);
   const previous = projectBackoffs.get(provider);
-  const attempts = Math.min(
-    PROVIDER_OUTAGE_BACKOFF_STEPS_MS.length,
-    (previous?.attempts ?? 0) + 1
-  );
+  const attempts = Math.min(PROVIDER_OUTAGE_BACKOFF_STEPS_MS.length, (previous?.attempts ?? 0) + 1);
   const durationMs = PROVIDER_OUTAGE_BACKOFF_STEPS_MS[attempts - 1]!;
   const untilMs = nowMs + durationMs;
   projectBackoffs.set(provider, {

@@ -4,6 +4,6 @@
   "private": true,
   "description": "Pinned runtime dependency tree for the Electron backend bundle",
   "dependencies": {
-    "better-sqlite3": "11.10.0"
+    "better-sqlite3": "12.8.0"
   }
 }

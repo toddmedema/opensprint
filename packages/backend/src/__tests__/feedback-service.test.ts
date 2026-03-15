@@ -2350,9 +2350,7 @@ describe.skipIf(!feedbackServicePostgresOk)("FeedbackService", () => {
         .mockResolvedValueOnce({ id: "task-done-a", status: "open" })
         .mockResolvedValueOnce({ id: "task-done-b", status: "closed" });
 
-      await expect(
-        feedbackService.cancelFeedback(projectId, "fb-cancel-5")
-      ).rejects.toMatchObject({
+      await expect(feedbackService.cancelFeedback(projectId, "fb-cancel-5")).rejects.toMatchObject({
         statusCode: 409,
         code: "FEEDBACK_HAS_DONE_TASK",
         message: expect.stringContaining("at least one linked task is done"),

@@ -37,7 +37,11 @@ export async function cancelFeedback(
   for (const entry of activeAgentsService.listEntries(projectId)) {
     if (entry.feedbackId === feedbackId) {
       activeAgentsService.unregister(entry.id);
-      log.info("Unregistered Analyst agent on cancel", { projectId, feedbackId, agentId: entry.id });
+      log.info("Unregistered Analyst agent on cancel", {
+        projectId,
+        feedbackId,
+        agentId: entry.id,
+      });
     }
   }
 
