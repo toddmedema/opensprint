@@ -50,7 +50,7 @@ Maintainers will review and merge when ready. By contributing, you agree that yo
 - `packages/shared` — Shared types and constants
 - `packages/electron` — Electron desktop app
 
-Product spec: `PRD.md`. Architecture and commands: [README](README.md#architecture-at-a-glance).
+Product spec: `SPEC.md`. Architecture and commands: [README](README.md#architecture-at-a-glance).
 
 ## Developing on Open Sprint with Open Sprint
 
