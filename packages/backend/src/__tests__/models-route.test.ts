@@ -311,22 +311,23 @@ describe("Models API", () => {
     it("uses cache on second Cursor request", async () => {
       process.env.CURSOR_API_KEY = "cursor-test-key";
       const mockJson = vi.fn().mockResolvedValue({ models: ["gpt-4"] });
-      globalThis.fetch = vi.fn().mockResolvedValue({
+      const cursorFetch = vi.fn().mockResolvedValue({
         ok: true,
         json: mockJson,
         text: () => Promise.resolve(""),
       });
+      vi.stubGlobal("fetch", cursorFetch);
 
       const res1 = await request(app).get(`${API_PREFIX}/models?provider=cursor`);
       expect(res1.status).toBe(200);
       expect(res1.body.data).toHaveLength(1);
-      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      expect(cursorFetch).toHaveBeenCalledTimes(1);
 
       const res2 = await request(app).get(`${API_PREFIX}/models?provider=cursor`);
       expect(res2.status).toBe(200);
       expect(res2.body.data).toHaveLength(1);
-      expect(globalThis.fetch).toHaveBeenCalledTimes(1); // no additional call
-    }, 10_000);
+      expect(cursorFetch).toHaveBeenCalledTimes(1); // no additional call — cache hit
+    });
 
     it("fetches and returns OpenAI models when API key is set", async () => {
       process.env.OPENAI_API_KEY = "sk-openai-test";
