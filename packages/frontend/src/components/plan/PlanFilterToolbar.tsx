@@ -185,14 +185,14 @@ export function PlanFilterToolbar({
           <button
             type="button"
             onClick={() => setBulkMenuOpen((open) => !open)}
-            className="btn-secondary px-2.5 min-h-[32px] min-w-[32px] rounded-sm inline-flex items-center gap-1"
+            className="btn-secondary px-2.5 min-h-[32px] min-w-[32px] rounded-sm inline-flex items-center justify-center"
             data-testid="plan-bulk-actions-button"
-            aria-label="Open bulk actions"
+            aria-label="Bulk actions"
             aria-expanded={bulkMenuOpen}
             aria-haspopup="menu"
+            title="Bulk actions"
           >
             <KebabIcon className="w-4 h-4" />
-            <span className="hidden sm:inline">Bulk</span>
           </button>
           {bulkMenuOpen && (
             <div

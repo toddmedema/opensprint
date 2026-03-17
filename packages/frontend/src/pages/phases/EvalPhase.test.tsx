@@ -927,7 +927,9 @@ describe("EvalPhase feedback form", () => {
       await user.click(screen.getByTestId("feedback-answer-submit"));
 
       await waitFor(() => {
-        expect(api.notifications.resolve).toHaveBeenCalledWith("proj-1", "oq-1");
+        expect(api.notifications.resolve).toHaveBeenCalledWith("proj-1", "oq-1", {
+          responses: [{ questionId: "q1", answer: "Login screen" }],
+        });
       });
       expect(api.feedback.recategorize).toHaveBeenCalledWith("proj-1", "fb-1", "Login screen");
     });
@@ -981,7 +983,9 @@ describe("EvalPhase feedback form", () => {
       const answerInput = screen.getByTestId("feedback-answer-input");
       await user.type(answerInput, "Login screen{Enter}");
       await waitFor(() => {
-        expect(api.notifications.resolve).toHaveBeenCalledWith("proj-1", "oq-1");
+        expect(api.notifications.resolve).toHaveBeenCalledWith("proj-1", "oq-1", {
+          responses: [{ questionId: "q1", answer: "Login screen" }],
+        });
       });
       expect(api.feedback.recategorize).toHaveBeenCalledWith("proj-1", "fb-1", "Login screen");
     });

@@ -2959,7 +2959,9 @@ describe("PlanPhase Generate Plan", () => {
         "General volunteers and mentors",
         "plan-draft:draft-2"
       );
-      expect(mockNotificationResolve).toHaveBeenCalledWith("proj-1", "oq-draft-2");
+      expect(mockNotificationResolve).toHaveBeenCalledWith("proj-1", "oq-draft-2", {
+        responses: [{ questionId: "q1", answer: "General volunteers and mentors" }],
+      });
       expect(store.getState().plan.selectedPlanId).toBe("volunteer-signup-form");
     });
   });

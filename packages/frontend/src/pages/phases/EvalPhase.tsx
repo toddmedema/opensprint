@@ -445,7 +445,12 @@ interface FeedbackCardProps {
   /** Map of feedbackId -> notification for nested cards to look up their notification */
   notificationByFeedbackId?: Record<string, Notification>;
   /** Resolve notification and re-enqueue feedback for Analyst retry with answer */
-  onAnswerOpenQuestion?: (feedbackId: string, notificationId: string, answer: string) => void;
+  onAnswerOpenQuestion?: (
+    feedbackId: string,
+    notificationId: string,
+    answer: string,
+    questionIds?: string[]
+  ) => void;
   /** Resolve notification without re-enqueueing (dismiss) */
   onDismissOpenQuestion?: (feedbackId: string, notificationId: string) => void;
   /** Whether answer/dismiss is in progress */
@@ -616,7 +621,8 @@ const FeedbackCard = memo(
     const handleAnswerOpenQuestion = useCallback(() => {
       if (!notification || !answerText.trim() || !onAnswerOpenQuestion || answeringOpenQuestion)
         return;
-      onAnswerOpenQuestion(item.id, notification.id, answerText.trim());
+      const questionIds = notification.questions?.map((q) => q.id);
+      onAnswerOpenQuestion(item.id, notification.id, answerText.trim(), questionIds);
       setAnswerText("");
     }, [answerText, onAnswerOpenQuestion, answeringOpenQuestion, item.id, notification]);
 
@@ -2095,11 +2101,20 @@ export function EvalPhase({
   const answeringOpenQuestion = answerNotificationId != null;
 
   const handleAnswerOpenQuestion = useCallback(
-    async (feedbackId: string, notificationId: string, answer: string) => {
+    async (
+      feedbackId: string,
+      notificationId: string,
+      answer: string,
+      questionIds?: string[]
+    ) => {
       if (!answer.trim()) return;
       setAnswerNotificationId(notificationId);
       try {
-        await api.notifications.resolve(projectId, notificationId);
+        const responses =
+          questionIds?.map((questionId) => ({ questionId, answer: answer.trim() })) ?? [];
+        await api.notifications.resolve(projectId, notificationId, {
+          ...(responses.length ? { responses } : {}),
+        });
         const updated = await dispatch(
           recategorizeFeedback({ projectId, feedbackId, answer: answer.trim() })
         ).unwrap();

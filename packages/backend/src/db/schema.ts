@@ -234,6 +234,7 @@ CREATE INDEX IF NOT EXISTS idx_open_questions_project_id ON open_questions(proje
 CREATE INDEX IF NOT EXISTS idx_open_questions_status ON open_questions(status);
 -- Add scope_change_metadata for existing tables (no-op if column exists)
 ALTER TABLE open_questions ADD COLUMN IF NOT EXISTS scope_change_metadata TEXT;
+ALTER TABLE open_questions ADD COLUMN IF NOT EXISTS responses TEXT;
 
 -- PRD metadata (version/changeLog/sectionVersions) moved from .opensprint/spec-metadata.json
 CREATE TABLE IF NOT EXISTS prd_metadata (
@@ -589,6 +590,7 @@ CREATE TABLE IF NOT EXISTS repo_file_migrations (
 
 ALTER TABLE agent_stats ADD COLUMN IF NOT EXISTS role TEXT;
 ALTER TABLE open_questions ADD COLUMN IF NOT EXISTS scope_change_metadata TEXT;
+ALTER TABLE open_questions ADD COLUMN IF NOT EXISTS responses TEXT;
 ALTER TABLE plans ADD COLUMN IF NOT EXISTS current_version_number INTEGER NOT NULL DEFAULT 1;
 ALTER TABLE plans ADD COLUMN IF NOT EXISTS last_executed_version_number INTEGER;
 `;

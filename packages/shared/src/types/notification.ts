@@ -13,6 +13,12 @@ export interface OpenQuestionItem {
   createdAt: string;
 }
 
+/** User response to an open question (persisted when resolving with answer). */
+export interface NotificationResponseItem {
+  questionId: string;
+  answer: string;
+}
+
 /** Proposed PRD section update with content for diff display */
 export interface ScopeChangeProposedUpdate {
   section: string;
@@ -42,4 +48,6 @@ export interface Notification {
   errorCode?: ApiBlockedErrorCode;
   /** For hil_approval + scopeChanges: proposed PRD updates for diff display */
   scopeChangeMetadata?: ScopeChangeMetadata;
+  /** When resolved with answers: persisted response per question (agent-question protocol). */
+  responses?: NotificationResponseItem[];
 }

@@ -138,7 +138,12 @@ describe("OpenQuestionsBlock", () => {
 
     await waitFor(() => {
       expect(onAnswerSent).toHaveBeenCalledWith("Web and mobile");
-      expect(api.notifications.resolve).toHaveBeenCalledWith("proj-1", "oq-abc123");
+      expect(api.notifications.resolve).toHaveBeenCalledWith("proj-1", "oq-abc123", {
+        responses: [
+          { questionId: "q1", answer: "Web and mobile" },
+          { questionId: "q2", answer: "Web and mobile" },
+        ],
+      });
       expect(onResolved).toHaveBeenCalled();
     });
   });

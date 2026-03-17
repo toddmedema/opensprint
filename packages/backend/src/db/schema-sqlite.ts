@@ -283,5 +283,6 @@ export function getSqliteAlterStatements(): Array<{ table: string; column: strin
   return [
     { table: "agent_stats", column: "role", def: "TEXT" },
     { table: "open_questions", column: "scope_change_metadata", def: "TEXT" },
+    { table: "open_questions", column: "responses", def: "TEXT" },
   ];
 }

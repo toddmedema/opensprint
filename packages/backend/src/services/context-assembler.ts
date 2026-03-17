@@ -15,6 +15,7 @@ import { getCombinedInstructions } from "./agent-instructions.service.js";
 import { getMergeQualityGateCommands } from "./merge-quality-gates.js";
 import type { TaskStoreService } from "./task-store.service.js";
 import type { StoredTask } from "./task-store.service.js";
+import { notificationService } from "./notification.service.js";
 import { getRuntimePath } from "../utils/runtime-dir.js";
 import { getSafeTaskActiveDir } from "../utils/path-safety.js";
 import { getOrchestratorTestStatusPromptPath } from "./orchestrator-test-status.js";
@@ -260,6 +261,16 @@ export class ContextAssembler {
       }
     } catch {
       // Conversation may not exist; proceed without user clarification
+    }
+    if (!userClarification) {
+      const storedResponses = await notificationService.getResolvedResponsesForTask(
+        projectId,
+        "execute",
+        taskId
+      );
+      if (storedResponses?.length) {
+        userClarification = storedResponses.map((r) => r.answer).join("\n\n").trim();
+      }
     }
 
     return {

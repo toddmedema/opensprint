@@ -140,6 +140,31 @@ describe("PlanFilterToolbar", () => {
     expect(screen.queryByTestId("plan-bulk-actions-button")).not.toBeInTheDocument();
   });
 
+  it("shows bulk actions as icon-only button with accessible name (no Bulk label)", () => {
+    render(
+      <PlanFilterToolbar
+        statusFilter="all"
+        setStatusFilter={vi.fn()}
+        planCountByStatus={{ all: 2, planning: 1, building: 1, in_review: 0, complete: 0 }}
+        viewMode="card"
+        onViewModeChange={vi.fn()}
+        plansWithNoTasksCount={2}
+        plansReadyToExecuteCount={2}
+        planAllInProgress={false}
+        executeAllInProgress={false}
+        executingPlanId={null}
+        planTasksPlanIds={[]}
+        onPlanAllTasks={vi.fn()}
+        onExecuteAll={vi.fn()}
+        onAddPlan={vi.fn()}
+      />
+    );
+    const bulkButton = screen.getByTestId("plan-bulk-actions-button");
+    expect(bulkButton).toHaveAttribute("aria-label", "Bulk actions");
+    expect(bulkButton).toHaveAttribute("title", "Bulk actions");
+    expect(bulkButton).not.toHaveTextContent("Bulk");
+  });
+
   it("opens bulk actions menu and exposes secondary action buttons", async () => {
     const user = userEvent.setup();
     render(

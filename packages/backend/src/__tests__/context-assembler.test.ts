@@ -25,6 +25,12 @@ vi.mock("../services/task-store.service.js", () => ({
   TaskStoreService: vi.fn(),
 }));
 
+vi.mock("../services/notification.service.js", () => ({
+  notificationService: {
+    getResolvedResponsesForTask: vi.fn().mockResolvedValue(null),
+  },
+}));
+
 vi.mock("../services/branch-manager.js", () => ({
   BranchManager: vi.fn().mockImplementation(() => ({
     getDiff: vi.fn().mockResolvedValue(""),

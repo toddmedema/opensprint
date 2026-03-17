@@ -19,7 +19,11 @@ const globalNotificationsRouter = Router();
 
 type ProjectParams = { projectId: string };
 type NotificationParams = { projectId: string; notificationId: string };
-type ResolveBody = { approved?: boolean };
+type ResolveBody = {
+  approved?: boolean;
+  /** Agent-question responses: persisted when resolving open_question with answer. */
+  responses?: Array<{ questionId: string; answer: string }>;
+};
 
 // POST /projects/:projectId/notifications/:notificationId/retry-rate-limit — Check keys available, resolve rate-limit notifications, nudge orchestrator
 projectNotificationsRouter.post(
@@ -102,13 +106,17 @@ projectNotificationsRouter.get(
 );
 
 // PATCH /projects/:projectId/notifications/:notificationId — Resolve notification
-// Body: { approved?: boolean } for hil_approval notifications (true=approve, false/dismiss=reject)
+// Body: { approved?: boolean } for hil_approval; { responses?: [{ questionId, answer }] } for open_question
 projectNotificationsRouter.patch(
   "/:notificationId",
   wrapAsync(async (req: Request<NotificationParams, unknown, ResolveBody>, res) => {
     const { projectId, notificationId } = req.params;
     const approved = req.body?.approved;
-    const notification = await notificationService.resolve(projectId, notificationId);
+    const responses = req.body?.responses;
+    const notification = await notificationService.resolve(projectId, notificationId, {
+      approved,
+      responses,
+    });
 
     // HIL approval: notify waiting workflow of user's choice
     if (notification.kind === "hil_approval") {

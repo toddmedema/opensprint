@@ -461,6 +461,79 @@ describe.skipIf(!notifPostgresOk)("NotificationService", () => {
       expect(err).toBeInstanceOf(AppError);
       expect((err as AppError).statusCode).toBe(404);
     });
+
+    it("persists and returns responses when resolving with answers", async () => {
+      const created = await service.create({
+        projectId: "proj-resp",
+        source: "execute",
+        sourceId: "task-1",
+        questions: [
+          { id: "q1", text: "Which option?" },
+          { id: "q2", text: "Deadline?" },
+        ],
+      });
+
+      const responses = [
+        { questionId: "q1", answer: "Option A" },
+        { questionId: "q2", answer: "End of sprint" },
+      ];
+      const resolved = await service.resolve("proj-resp", created.id, { responses });
+
+      expect(resolved.status).toBe("resolved");
+      expect(resolved.resolvedAt).toBeTruthy();
+      expect(resolved.responses).toEqual(responses);
+
+      const found = await service.getById("proj-resp", created.id);
+      expect(found?.status).toBe("resolved");
+      expect(found?.responses).toEqual(responses);
+    });
+  });
+
+  describe("getResolvedResponsesForTask", () => {
+    it("returns null when no resolved notification with responses exists", async () => {
+      const result = await service.getResolvedResponsesForTask("proj-g", "execute", "task-99");
+      expect(result).toBeNull();
+    });
+
+    it("returns persisted responses for the task", async () => {
+      const created = await service.create({
+        projectId: "proj-g",
+        source: "execute",
+        sourceId: "task-1",
+        questions: [{ id: "q1", text: "Clarify?" }],
+      });
+      await service.resolve("proj-g", created.id, {
+        responses: [{ questionId: "q1", answer: "Use REST API" }],
+      });
+
+      const result = await service.getResolvedResponsesForTask("proj-g", "execute", "task-1");
+      expect(result).toEqual([{ questionId: "q1", answer: "Use REST API" }]);
+    });
+
+    it("returns most recent when multiple resolved notifications exist", async () => {
+      const first = await service.create({
+        projectId: "proj-g",
+        source: "execute",
+        sourceId: "task-2",
+        questions: [{ id: "q1", text: "Q?" }],
+      });
+      await service.resolve("proj-g", first.id, {
+        responses: [{ questionId: "q1", answer: "First answer" }],
+      });
+
+      const second = await service.create({
+        projectId: "proj-g",
+        source: "execute",
+        sourceId: "task-2",
+        questions: [{ id: "q1", text: "Q again?" }],
+      });
+      await service.resolve("proj-g", second.id, {
+        responses: [{ questionId: "q1", answer: "Second answer" }],
+      });
+
+      const result = await service.getResolvedResponsesForTask("proj-g", "execute", "task-2");
+      expect(result).toEqual([{ questionId: "q1", answer: "Second answer" }]);
+    });
   });
 
   describe("deleteByProject", () => {

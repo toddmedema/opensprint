@@ -210,6 +210,33 @@ describe.skipIf(!notificationsPostgresOk)("Notifications REST API", () => {
     expect((updated as { block_reason?: string | null }).block_reason ?? null).toBeFalsy();
   });
 
+  it("PATCH with body.responses persists and returns responses", async () => {
+    const created = await notificationService.create({
+      projectId,
+      source: "execute",
+      sourceId: "task-answer",
+      questions: [
+        { id: "q1", text: "Which approach?" },
+        { id: "q2", text: "Timeline?" },
+      ],
+    });
+
+    const responses = [
+      { questionId: "q1", answer: "Use the existing API" },
+      { questionId: "q2", answer: "This sprint" },
+    ];
+    const res = await request(app)
+      .patch(`${API_PREFIX}/projects/${projectId}/notifications/${created.id}`)
+      .send({ responses });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe("resolved");
+    expect(res.body.data.responses).toEqual(responses);
+
+    const found = await notificationService.getById(projectId, created.id);
+    expect(found?.responses).toEqual(responses);
+  });
+
   describe("POST /projects/:id/notifications/:nid/retry-rate-limit", () => {
     it("resolves rate-limit notifications when keys are available", async () => {
       await setGlobalSettings({

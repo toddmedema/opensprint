@@ -82,6 +82,11 @@ function generateId(): string {
   return "oq-" + crypto.randomBytes(4).toString("hex");
 }
 
+export interface NotificationResponseItem {
+  questionId: string;
+  answer: string;
+}
+
 function rowToNotification(row: Record<string, unknown>): Notification {
   const questions: OpenQuestionItem[] = JSON.parse((row.questions as string) || "[]");
   const kind =
@@ -91,6 +96,10 @@ function rowToNotification(row: Record<string, unknown>): Notification {
   const scopeChangeMetadataRaw = row.scope_change_metadata as string | undefined;
   const scopeChangeMetadata = scopeChangeMetadataRaw
     ? (JSON.parse(scopeChangeMetadataRaw) as ScopeChangeMetadata)
+    : undefined;
+  const responsesRaw = row.responses as string | undefined;
+  const responses: NotificationResponseItem[] | undefined = responsesRaw
+    ? (JSON.parse(responsesRaw) as NotificationResponseItem[])
     : undefined;
   return {
     id: row.id as string,
@@ -104,6 +113,7 @@ function rowToNotification(row: Record<string, unknown>): Notification {
     kind,
     errorCode,
     scopeChangeMetadata,
+    ...(responses?.length ? { responses } : {}),
   };
 }
 
@@ -405,6 +415,31 @@ export class NotificationService {
   }
 
   /**
+   * Get the most recently resolved open_question notification for a task (source=execute, sourceId=taskId)
+   * that has persisted responses. Used by context assembler to inject user answers into the Coder prompt.
+   */
+  async getResolvedResponsesForTask(
+    projectId: string,
+    source: NotificationSource,
+    sourceId: string
+  ): Promise<NotificationResponseItem[] | null> {
+    const client = await taskStore.getDb();
+    const row = await client.queryOne(
+      `SELECT responses FROM open_questions
+       WHERE project_id = $1 AND source = $2 AND source_id = $3 AND status = 'resolved' AND kind = 'open_question' AND responses IS NOT NULL AND responses != ''
+       ORDER BY resolved_at DESC LIMIT 1`,
+      [projectId, source, sourceId]
+    );
+    if (!row?.responses) return null;
+    try {
+      const parsed = JSON.parse(row.responses as string) as NotificationResponseItem[];
+      return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Get a notification by ID (read-only). Returns null when not found.
    * Used by the proposed-diff endpoint to fetch a hil_approval notification by requestId.
    */
@@ -420,8 +455,13 @@ export class NotificationService {
 
   /**
    * Resolve a notification by ID. Project ID is required for scoping.
+   * When options.responses is provided (e.g. agent-question answer), persists and returns them.
    */
-  async resolve(projectId: string, notificationId: string): Promise<Notification> {
+  async resolve(
+    projectId: string,
+    notificationId: string,
+    options?: { approved?: boolean; responses?: NotificationResponseItem[] }
+  ): Promise<Notification> {
     const client = await taskStore.getDb();
     const row = await client.queryOne(
       "SELECT * FROM open_questions WHERE id = $1 AND project_id = $2",
@@ -438,21 +478,38 @@ export class NotificationService {
     }
 
     const resolvedAt = new Date().toISOString();
+    const responsesJson =
+      options?.responses && options.responses.length > 0
+        ? JSON.stringify(options.responses)
+        : null;
 
     await taskStore.runWrite(async (tx) => {
-      await tx.execute(
-        "UPDATE open_questions SET status = 'resolved', resolved_at = $1 WHERE id = $2 AND project_id = $3",
-        [resolvedAt, notificationId, projectId]
-      );
+      if (responsesJson != null) {
+        await tx.execute(
+          "UPDATE open_questions SET status = 'resolved', resolved_at = $1, responses = $2 WHERE id = $3 AND project_id = $4",
+          [resolvedAt, responsesJson, notificationId, projectId]
+        );
+      } else {
+        await tx.execute(
+          "UPDATE open_questions SET status = 'resolved', resolved_at = $1 WHERE id = $2 AND project_id = $3",
+          [resolvedAt, notificationId, projectId]
+        );
+      }
     });
 
-    log.info("Resolved notification", { notificationId, projectId });
+    log.info("Resolved notification", {
+      notificationId,
+      projectId,
+      withResponses: (options?.responses?.length ?? 0) > 0,
+    });
 
     const notification = rowToNotification(row);
+    const persistedResponses = options?.responses ?? undefined;
     return {
       ...notification,
       status: "resolved",
       resolvedAt,
+      ...(persistedResponses?.length ? { responses: persistedResponses } : {}),
     };
   }
 

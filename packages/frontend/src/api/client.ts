@@ -565,7 +565,11 @@ export const api = {
         method: "DELETE",
       }),
     clearAllGlobal: () => request<{ deletedCount: number }>("/notifications", { method: "DELETE" }),
-    resolve: (projectId: string, notificationId: string, body?: { approved?: boolean }) =>
+    resolve: (
+      projectId: string,
+      notificationId: string,
+      body?: { approved?: boolean; responses?: Array<{ questionId: string; answer: string }> }
+    ) =>
       request<Notification>(`/projects/${projectId}/notifications/${notificationId}`, {
         method: "PATCH",
         body: body ? JSON.stringify(body) : undefined,

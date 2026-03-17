@@ -61,12 +61,16 @@ export function OpenQuestionsBlock({
     try {
       await onAnswerSent(trimmed);
       setAnswerText("");
-      await api.notifications.resolve(projectId, notification.id);
+      const responses =
+        notification.questions?.map((q) => ({ questionId: q.id, answer: trimmed })) ?? [];
+      await api.notifications.resolve(projectId, notification.id, {
+        ...(responses.length ? { responses } : {}),
+      });
       onResolved();
     } finally {
       setAnswerSubmitting(false);
     }
-  }, [answerText, onAnswerSent, projectId, notification.id, onResolved]);
+  }, [answerText, onAnswerSent, projectId, notification.id, notification.questions, onResolved]);
 
   const handleRetry = useCallback(async () => {
     setRetryError(null);
