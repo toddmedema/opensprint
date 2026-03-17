@@ -191,6 +191,15 @@ describe("PlanFilterToolbar", () => {
     expect(screen.getByTestId("execute-all-button")).toBeInTheDocument();
   });
 
+  it("renders search icon to the left of Add plan button in the action bar", () => {
+    renderToolbar();
+    const searchControl = screen.getByTestId("plan-search-expand");
+    const addPlanButton = screen.getByTestId("add-plan-button");
+    expect(
+      searchControl.compareDocumentPosition(addPlanButton) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   it("expands and closes the search UI and updates the input value", async () => {
     const user = userEvent.setup();
     const props = renderToolbar();

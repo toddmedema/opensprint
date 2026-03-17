@@ -171,6 +171,68 @@ export function PlanFilterToolbar({
 
   const right = (
     <>
+      {handleSearchExpand &&
+      handleSearchClose &&
+      handleSearchKeyDown &&
+      setSearchInputValue &&
+      searchInputRef ? (
+        searchExpanded ? (
+          <div
+            className="flex items-center gap-1 animate-fade-in"
+            data-testid="plan-search-expanded"
+          >
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchInputValue}
+              onChange={(e) => setSearchInputValue(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              placeholder="Search plans…"
+              className="w-48 sm:w-56 px-3 py-1.5 text-sm bg-theme-surface-muted rounded-md text-theme-text placeholder:text-theme-muted border border-theme-border focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:border-brand-500 transition-all"
+              aria-label="Search plans"
+            />
+            <button
+              type="button"
+              onClick={handleSearchClose}
+              className="p-1.5 min-h-[32px] min-w-[32px] rounded-sm text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle transition-colors inline-flex items-center justify-center"
+              aria-label="Close search"
+              data-testid="plan-search-close"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={handleSearchExpand}
+            className="p-1.5 min-h-[32px] min-w-[32px] rounded-sm text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle transition-colors inline-flex items-center justify-center"
+            aria-label="Expand search"
+            data-testid="plan-search-expand"
+          >
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+          </button>
+        )
+      ) : null}
+
       <button
         type="button"
         onClick={onAddPlan}
@@ -234,68 +296,6 @@ export function PlanFilterToolbar({
           )}
         </div>
       )}
-
-      {handleSearchExpand &&
-      handleSearchClose &&
-      handleSearchKeyDown &&
-      setSearchInputValue &&
-      searchInputRef ? (
-        searchExpanded ? (
-          <div
-            className="flex items-center gap-1 animate-fade-in"
-            data-testid="plan-search-expanded"
-          >
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={searchInputValue}
-              onChange={(e) => setSearchInputValue(e.target.value)}
-              onKeyDown={handleSearchKeyDown}
-              placeholder="Search plans…"
-              className="w-48 sm:w-56 px-3 py-1.5 text-sm bg-theme-surface-muted rounded-md text-theme-text placeholder:text-theme-muted border border-theme-border focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:border-brand-500 transition-all"
-              aria-label="Search plans"
-            />
-            <button
-              type="button"
-              onClick={handleSearchClose}
-              className="p-1.5 min-h-[32px] min-w-[32px] rounded-sm text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle transition-colors inline-flex items-center justify-center"
-              aria-label="Close search"
-              data-testid="plan-search-close"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={handleSearchExpand}
-            className="p-1.5 min-h-[32px] min-w-[32px] rounded-sm text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle transition-colors inline-flex items-center justify-center"
-            aria-label="Expand search"
-            data-testid="plan-search-expand"
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <path d="m21 21-4.35-4.35" />
-            </svg>
-          </button>
-        )
-      ) : null}
 
       <ViewToggle
         compact
