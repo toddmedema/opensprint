@@ -12,6 +12,7 @@ import { BranchManager } from "./branch-manager.js";
 import { PrdService } from "./prd.service.js";
 import { ChatService } from "./chat.service.js";
 import { getCombinedInstructions } from "./agent-instructions.service.js";
+import { getMergeQualityGateCommands } from "./merge-quality-gates.js";
 import type { TaskStoreService } from "./task-store.service.js";
 import type { StoredTask } from "./task-store.service.js";
 import { getRuntimePath } from "../utils/runtime-dir.js";
@@ -467,6 +468,9 @@ export class ContextAssembler {
   }
 
   private generateCodingPrompt(config: ActiveTaskConfig, context: TaskContext): string {
+    const mergeQualityGateList = getMergeQualityGateCommands()
+      .map((command) => `\`${command}\``)
+      .join(", ");
     let prompt = `# Task: ${context.title}\n\n`;
     prompt += `Implement the task. Do not re-explain the task or list options — start implementing.\n\n`;
     prompt += `## Objective\n\n${context.description}\n\n`;
@@ -505,7 +509,8 @@ export class ContextAssembler {
 
     prompt += `${config.useExistingBranch ? "4" : "3"}. Write comprehensive tests (unit, and integration where applicable).\n`;
     prompt += `${config.useExistingBranch ? "5" : "4"}. **Commit after each logical unit** — with descriptive messages (e.g., "Add login API endpoint", "Add auth tests"). Do not wait until the end to commit. This protects your work if the process is interrupted.\n`;
-    prompt += `${config.useExistingBranch ? "6" : "5"}. Run the smallest relevant non-watch verification for the workspaces you touch while iterating. Prefer scoped tests first, and add scoped build/typecheck and lint commands whenever your changes could affect them (for example TypeScript, exported interfaces, build config, or linted frontend/backend code). Do NOT run the full-suite command \`${config.testCommand}\` or other root-wide validation commands yourself unless the task explicitly requires it; the orchestrator runs final validation after you finish. Never use watch mode or leave test processes running in the background.\n`;
+    prompt += `${config.useExistingBranch ? "6" : "5"}. Run the smallest relevant non-watch verification for the workspaces you touch while iterating. Prefer scoped tests first, and add scoped build/typecheck and lint commands whenever your changes could affect them (for example TypeScript, exported interfaces, build config, or linted frontend/backend code).\n`;
+    prompt += `   Before writing \`result.json\`, leave the branch in a state where the merge quality gates can pass. If you touched shared packages, exported APIs/types, cross-workspace code, root scripts, or build/lint/test configuration, run the relevant root gate commands yourself (merge quality gates: ${mergeQualityGateList}). The orchestrator will rerun automated validation after you finish. Never use watch mode or leave test processes running in the background.\n`;
     const resultJsonPath =
       config.repoPath && config.taskId
         ? path.join(config.repoPath, ".opensprint", "active", config.taskId, "result.json")
@@ -727,11 +732,11 @@ export class ContextAssembler {
     prompt += `- [ ] **Clarity** — Code is readable; naming is clear; complex logic has explanatory comments\n`;
     prompt += `- [ ] **No dead code** — No commented-out code, unused imports, or orphaned functions\n`;
     prompt += `- [ ] **Test coverage** — Aim for 80–90% for new/changed code. Tests verify behavior aligned with the spec; cover happy paths, important edge/error paths, and boundaries. Avoid demanding near-100% or over-precise tests that break on small refactors.\n`;
-    prompt += `- [ ] **Orchestrator validation status reviewed** — inspect \`${testStatusPath}\`. If it says \`FAILED\` or \`ERROR\`, reject and cite the failure. If it says \`PENDING\`, continue your code review and do not reject solely for pending status.\n`;
+    prompt += `- [ ] **Orchestrator validation status reviewed** — inspect \`${testStatusPath}\`. This file tracks automated validation, including the merge quality gates. If it says \`FAILED\` or \`ERROR\`, reject and cite the failure. If it says \`PENDING\`, continue your code review and do not reject solely for pending status.\n`;
     prompt += `- [ ] **Consistent style** — Follows existing codebase patterns and conventions\n\n`;
 
     prompt += `## Working directory\n\n`;
-    prompt += `The **repository root** is the directory that contains \`package.json\`, \`packages/backend\`, \`packages/frontend\`, etc. You MUST run any \`git\` commands from that directory. Its path is in \`.opensprint/active/${config.taskId}/config.json\` as \`repoPath\`. The orchestrator writes live validation status to \`${testStatusPath}\`. If you need a targeted test reproduction, change to the repo root first, e.g. \`cd "$(jq -r .repoPath .opensprint/active/${config.taskId}/config.json)"\` (or \`cd <repoPath>\` using the value from config.json). Do not run \`${config.testCommand}\` from this review prompt; the orchestrator runs validation separately.\n\n`;
+    prompt += `The **repository root** is the directory that contains \`package.json\`, \`packages/backend\`, \`packages/frontend\`, etc. You MUST run any \`git\` commands from that directory. Its path is in \`.opensprint/active/${config.taskId}/config.json\` as \`repoPath\`. The orchestrator writes live validation status to \`${testStatusPath}\`. If you need a targeted test reproduction, change to the repo root first, e.g. \`cd "$(jq -r .repoPath .opensprint/active/${config.taskId}/config.json)"\` (or \`cd <repoPath>\` using the value from config.json). Do not rerun the full repo validation or merge quality gates from this review prompt; the orchestrator runs them separately.\n\n`;
 
     prompt += `## Instructions\n\n`;
     prompt += `1. Read the original ticket, acceptance criteria, and context files above to fully understand the scope.\n`;
@@ -741,7 +746,7 @@ export class ContextAssembler {
       prompt += `2. Review the diff: \`git diff main...${config.branch}\`\n`;
     }
     prompt += `3. Walk through the checklist above, checking each item.\n`;
-    prompt += `4. Do NOT rerun the full-suite command \`${config.testCommand}\` from this review prompt. The orchestrator runs validation in parallel and writes the result to \`${testStatusPath}\`.\n`;
+    prompt += `4. Do NOT rerun the full repo validation or merge quality gates from this review prompt. The orchestrator runs validation in parallel and writes the result to \`${testStatusPath}\`.\n`;
     prompt += `   Before finalizing, open that file. If it says \`FAILED\` or \`ERROR\`, reject and cite the relevant failure. If it says \`PENDING\`, continue based on code quality/scope findings and do not reject solely for pending status.\n`;
     prompt += `5. If prior reviews rejected this task, verify each previously cited issue was resolved. If not, reject and list which issues remain.\n`;
     if (context.isFeedbackTask) {
@@ -842,7 +847,7 @@ export class ContextAssembler {
     }
 
     prompt += `## Working directory\n\n`;
-    prompt += `The **repository root** is the directory that contains \`package.json\`, \`packages/backend\`, \`packages/frontend\`, etc. You MUST run any \`git\` commands from that directory. Its path is in \`.opensprint/active/${config.taskId}/review-angles/${angle}/config.json\` as \`repoPath\`. The orchestrator writes live validation status to \`${testStatusPath}\`. If you need a targeted test reproduction, change to the repo root first. Do not run \`${config.testCommand}\` from this review prompt; the orchestrator runs validation separately.\n\n`;
+    prompt += `The **repository root** is the directory that contains \`package.json\`, \`packages/backend\`, \`packages/frontend\`, etc. You MUST run any \`git\` commands from that directory. Its path is in \`.opensprint/active/${config.taskId}/review-angles/${angle}/config.json\` as \`repoPath\`. The orchestrator writes live validation status to \`${testStatusPath}\`. If you need a targeted test reproduction, change to the repo root first. Do not rerun the full repo validation or merge quality gates from this review prompt; the orchestrator runs them separately.\n\n`;
 
     prompt += `## Instructions\n\n`;
     prompt += `1. Read the original ticket and context files above.\n`;
@@ -852,7 +857,7 @@ export class ContextAssembler {
       prompt += `2. Review the diff: \`git diff main...${config.branch}\`\n`;
     }
     prompt += `3. Walk through the checklist above for ${angleLabel}.\n`;
-    prompt += `4. Do NOT rerun the full-suite command \`${config.testCommand}\` from this review prompt. The orchestrator runs validation in parallel and writes the result to \`${testStatusPath}\`.\n`;
+    prompt += `4. Do NOT rerun the full repo validation or merge quality gates from this review prompt. The orchestrator runs validation in parallel and writes the result to \`${testStatusPath}\`.\n`;
     prompt += `   Before finalizing, open that file. If it says \`FAILED\` or \`ERROR\`, reject and cite the relevant failure. If it says \`PENDING\`, continue based on ${angleLabel} findings and do not reject solely for pending status.\n`;
     prompt += `5. Write your result to \`.opensprint/active/${config.taskId}/review-angles/${angle}/result.json\` using this exact JSON format:\n`;
     prompt += `   If approving:\n`;

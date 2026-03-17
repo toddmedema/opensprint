@@ -53,6 +53,7 @@ export interface AgentSlotLike {
     testResults: TestResults | null;
     testOutput: string;
     validationCommand?: string | null;
+    qualityGateDetail?: RetryQualityGateDetail | null;
   };
   infraRetries: number;
   agent: { outputLog: string[]; startedAt: string; killedDueToTimeout: boolean };

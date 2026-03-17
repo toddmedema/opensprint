@@ -90,6 +90,7 @@ export interface MergeSlot {
     codingSummary: string;
     testResults: TestResults | null;
     testOutput: string;
+    qualityGateDetail?: RetryQualityGateDetail | null;
   };
   agent: { outputLog: string[]; startedAt: string };
 }

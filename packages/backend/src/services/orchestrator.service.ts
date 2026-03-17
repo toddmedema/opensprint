@@ -63,6 +63,7 @@ import {
   type MergeQualityGateRunOptions,
 } from "./merge-coordinator.service.js";
 import { runMergeQualityGates as runMergeQualityGatesShared } from "./merge-quality-gate-runner.js";
+import { getMergeQualityGateCommands } from "./merge-quality-gates.js";
 import {
   TaskPhaseCoordinator,
   type TestOutcome,
@@ -113,7 +114,11 @@ import {
 
 const log = createLogger("orchestrator");
 
-import type { FailureType, RetryContext } from "./orchestrator-phase-context.js";
+import type {
+  FailureType,
+  RetryContext,
+  RetryQualityGateDetail,
+} from "./orchestrator-phase-context.js";
 
 /** Loop kicker interval: 60s — restarts idle orchestrator loop (distinct from 5-min WatchdogService health patrol). */
 const LOOP_KICKER_INTERVAL_MS = 60 * 1000;
@@ -165,6 +170,7 @@ interface PhaseResult {
   testResults: TestResults | null;
   testOutput: string;
   validationCommand?: string | null;
+  qualityGateDetail?: RetryQualityGateDetail | null;
 }
 
 interface ReviewAgentSlotState {
@@ -364,6 +370,7 @@ export class OrchestratorService {
         testResults: null,
         testOutput: "",
         validationCommand: null,
+        qualityGateDetail: null,
       },
       infraRetries: 0,
       timers: new TimerRegistry(),
@@ -1902,6 +1909,7 @@ export class OrchestratorService {
         );
         slot.phaseResult.testOutput = scopedResult.rawOutput;
         slot.phaseResult.validationCommand = scopedResult.executedCommand ?? testCommand ?? null;
+        this.clearQualityGateDetail(slot.phaseResult);
         if (scopedResult.failed > 0) {
           await this.failureHandler.handleTaskFailure(
             projectId,
@@ -1915,6 +1923,38 @@ export class OrchestratorService {
           return;
         }
         slot.phaseResult.testResults = scopedResult;
+        const qualityGateFailure = await this.runMergeQualityGates({
+          projectId,
+          repoPath,
+          worktreePath: wtPath,
+          taskId: task.id,
+          branchName,
+          baseBranch,
+        });
+        if (qualityGateFailure) {
+          const detail = this.applyQualityGateFailure(
+            slot.phaseResult,
+            qualityGateFailure,
+            wtPath
+          );
+          await this.failureHandler.handleTaskFailure(
+            projectId,
+            repoPath,
+            task,
+            branchName,
+            this.formatQualityGateFailureReason(
+              detail,
+              qualityGateFailure.category === "environment_setup"
+                ? "environment_setup"
+                : "merge_quality_gate"
+            ),
+            null,
+            qualityGateFailure.category === "environment_setup"
+              ? "environment_setup"
+              : "merge_quality_gate"
+          );
+          return;
+        }
         await this.branchManager.commitWip(wtPath, task.id);
         await this.clearRateLimitNotifications(projectId);
         await this.mergeCoordinator.performMergeAndDone(projectId, repoPath, task, branchName);
@@ -2077,6 +2117,57 @@ export class OrchestratorService {
     }
   }
 
+  private clearQualityGateDetail(phaseResult: PhaseResult): void {
+    phaseResult.qualityGateDetail = null;
+  }
+
+  private toQualityGateDetail(
+    failure: MergeQualityGateFailure,
+    fallbackWorktreePath: string
+  ): RetryQualityGateDetail {
+    return {
+      command: failure.command,
+      reason: failure.reason?.trim().slice(0, 500) || "Unknown quality gate failure",
+      outputSnippet:
+        compactExecutionText((failure.outputSnippet ?? failure.output ?? "").trim(), 1800) || null,
+      worktreePath: failure.worktreePath ?? fallbackWorktreePath,
+      firstErrorLine:
+        failure.firstErrorLine?.trim().slice(0, 300) ||
+        compactExecutionText((failure.outputSnippet ?? failure.output ?? "").trim(), 300) ||
+        null,
+    };
+  }
+
+  private applyQualityGateFailure(
+    phaseResult: PhaseResult,
+    failure: MergeQualityGateFailure,
+    fallbackWorktreePath: string
+  ): RetryQualityGateDetail {
+    const detail = this.toQualityGateDetail(failure, fallbackWorktreePath);
+    phaseResult.validationCommand = detail.command ?? null;
+    phaseResult.testOutput = failure.outputSnippet ?? failure.output ?? "";
+    phaseResult.qualityGateDetail = detail;
+    return detail;
+  }
+
+  private formatQualityGateFailureReason(
+    detail: RetryQualityGateDetail | null | undefined,
+    failureType: FailureType
+  ): string {
+    const command = detail?.command?.trim();
+    const reason =
+      detail?.reason?.trim() ||
+      detail?.firstErrorLine?.trim() ||
+      "Pre-merge quality gates failed";
+    const firstErrorLine = detail?.firstErrorLine?.trim();
+    const prefix =
+      failureType === "environment_setup" ? "Environment setup failed" : "Quality gate failed";
+    const commandPart = command ? ` (${command})` : "";
+    const detailPart =
+      firstErrorLine && firstErrorLine !== reason ? `: ${reason} | ${firstErrorLine}` : `: ${reason}`;
+    return compactExecutionText(`${prefix}${commandPart}${detailPart}`, 500);
+  }
+
   private isPendingValidationFragment(text: string): boolean {
     const normalized = text.toLowerCase();
     const mentionsPending = normalized.includes("pending");
@@ -2147,6 +2238,8 @@ export class OrchestratorService {
     if (!slot) return;
     const wtPath = slot.worktreePath ?? repoPath;
     const testCommand = resolveTestCommand(settings) || undefined;
+    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+    const mergeQualityGates = getMergeQualityGateCommands();
     const angles = (settings.reviewAngles ?? []).filter(Boolean);
     await this.writeReviewTestStatus(
       task.id,
@@ -2155,6 +2248,7 @@ export class OrchestratorService {
       buildOrchestratorTestStatusContent({
         status: "pending",
         testCommand,
+        mergeQualityGates,
       })
     );
     const coordinator = new TaskPhaseCoordinator(
@@ -2210,6 +2304,7 @@ export class OrchestratorService {
             buildOrchestratorTestStatusContent({
               status: "error",
               testCommand,
+              mergeQualityGates,
               errorMessage: "Slot removed during tests",
             })
           );
@@ -2221,6 +2316,7 @@ export class OrchestratorService {
         }
         sl.phaseResult.testOutput = scopedResult.rawOutput;
         sl.phaseResult.validationCommand = scopedResult.executedCommand ?? testCommand ?? null;
+        this.clearQualityGateDetail(sl.phaseResult);
         if (scopedResult.failed > 0) {
           const validationCommand = scopedResult.executedCommand ?? testCommand;
           await this.writeReviewTestStatus(
@@ -2230,6 +2326,7 @@ export class OrchestratorService {
             buildOrchestratorTestStatusContent({
               status: "failed",
               testCommand: validationCommand,
+              mergeQualityGates,
               results: scopedResult,
               rawOutput: scopedResult.rawOutput,
             })
@@ -2242,6 +2339,42 @@ export class OrchestratorService {
         } else {
           sl.phaseResult.testResults = scopedResult;
           await this.branchManager.commitWip(wtPath, task.id);
+          const qualityGateFailure = await this.runMergeQualityGates({
+            projectId,
+            repoPath,
+            worktreePath: wtPath,
+            taskId: task.id,
+            branchName,
+            baseBranch,
+          });
+          if (qualityGateFailure) {
+            const detail = this.applyQualityGateFailure(
+              sl.phaseResult,
+              qualityGateFailure,
+              wtPath
+            );
+            await this.writeReviewTestStatus(
+              task.id,
+              repoPath,
+              wtPath,
+              buildOrchestratorTestStatusContent({
+                status: "failed",
+                testCommand: qualityGateFailure.command,
+                mergeQualityGates,
+                rawOutput: qualityGateFailure.outputSnippet ?? qualityGateFailure.output,
+              })
+            );
+            coordinator.setTestOutcome({
+              status: "failed",
+              failureType:
+                qualityGateFailure.category === "environment_setup"
+                  ? "environment_setup"
+                  : "merge_quality_gate",
+              rawOutput: qualityGateFailure.outputSnippet ?? qualityGateFailure.output,
+              qualityGateDetail: detail,
+            });
+            return;
+          }
           const validationCommand = scopedResult.executedCommand ?? testCommand;
           await this.writeReviewTestStatus(
             task.id,
@@ -2250,6 +2383,7 @@ export class OrchestratorService {
             buildOrchestratorTestStatusContent({
               status: "passed",
               testCommand: validationCommand,
+              mergeQualityGates,
               results: scopedResult,
             })
           );
@@ -2265,6 +2399,7 @@ export class OrchestratorService {
           buildOrchestratorTestStatusContent({
             status: "error",
             testCommand,
+            mergeQualityGates,
             errorMessage: String(err),
           })
         );
@@ -2489,6 +2624,27 @@ export class OrchestratorService {
 
     // Test failure takes priority over review outcome
     if (testOutcome.status === "failed") {
+      if (
+        testOutcome.failureType === "merge_quality_gate" ||
+        testOutcome.failureType === "environment_setup"
+      ) {
+        if (testOutcome.qualityGateDetail) {
+          slot.phaseResult.qualityGateDetail = testOutcome.qualityGateDetail;
+        }
+        await this.failureHandler.handleTaskFailure(
+          projectId,
+          repoPath,
+          task,
+          branchName,
+          this.formatQualityGateFailureReason(
+            slot.phaseResult.qualityGateDetail ?? testOutcome.qualityGateDetail,
+            testOutcome.failureType
+          ),
+          null,
+          testOutcome.failureType
+        );
+        return;
+      }
       const r = testOutcome.results!;
       await this.failureHandler.handleTaskFailure(
         projectId,
@@ -2502,6 +2658,27 @@ export class OrchestratorService {
       return;
     }
     if (testOutcome.status === "error") {
+      if (
+        testOutcome.failureType === "merge_quality_gate" ||
+        testOutcome.failureType === "environment_setup"
+      ) {
+        if (testOutcome.qualityGateDetail) {
+          slot.phaseResult.qualityGateDetail = testOutcome.qualityGateDetail;
+        }
+        await this.failureHandler.handleTaskFailure(
+          projectId,
+          repoPath,
+          task,
+          branchName,
+          this.formatQualityGateFailureReason(
+            slot.phaseResult.qualityGateDetail ?? testOutcome.qualityGateDetail,
+            testOutcome.failureType
+          ),
+          null,
+          testOutcome.failureType
+        );
+        return;
+      }
       await this.failureHandler.handleTaskFailure(
         projectId,
         repoPath,

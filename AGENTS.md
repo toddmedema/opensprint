@@ -13,7 +13,7 @@ Task tracking is handled internally by `TaskStoreService` backed by **SQLite (de
 When Open Sprint spawns an Execute agent:
 
 1. The task branch and worktree are already prepared. Do not create or switch branches unless the task prompt explicitly tells you to recover git state.
-2. Implement the requested change and run the smallest relevant non-watch verification for touched workspaces while iterating. Use scoped tests first, and add scoped build/typecheck and lint commands when your changes could affect them.
+2. Implement the requested change and run the smallest relevant non-watch verification for touched workspaces while iterating. Use scoped tests first, add scoped build/typecheck and lint commands when your changes could affect them, and leave the branch in a state where the merge quality gates (`npm run build`, `npm run lint`, `npm run test`) are expected to pass before you report success.
 3. Commit incremental logical units while working so crash recovery can preserve progress.
 4. Report completion only by writing the exact `result.json` payload requested in the task prompt. Do not call `TaskStoreService.close()` from feature code.
 5. If blocked by ambiguity, return `status: "failed"` with `open_questions` instead of guessing.

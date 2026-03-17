@@ -178,9 +178,8 @@ User authentication.
       "Run the smallest relevant non-watch verification for the workspaces you touch while iterating"
     );
     expect(prompt).toContain("add scoped build/typecheck and lint commands");
-    expect(prompt).toContain(
-      "Do NOT run the full-suite command `npm test` or other root-wide validation commands yourself"
-    );
+    expect(prompt).toContain("Before writing `result.json`, leave the branch in a state");
+    expect(prompt).toContain("merge quality gates: `npm run build`, `npm run lint`, `npm run test`");
     expect(prompt).toContain("Never use watch mode");
     expect(prompt).toContain("Never run destructive cleanup commands");
     // Terminology: use "done" and "finish" instead of "complete" (feedback consistency)
@@ -973,20 +972,21 @@ User authentication.
     expect(prompt).toContain("Error handling");
     expect(prompt).toContain("Test coverage");
     expect(prompt).toContain("Orchestrator validation status reviewed");
+    expect(prompt).toContain("including the merge quality gates");
     expect(prompt).toContain(".opensprint/active/bd-a3f8.2/context/orchestrator-test-status.md");
 
     // Working directory (so reviewer knows the repo root for git or targeted repro steps)
     expect(prompt).toContain("## Working directory");
     expect(prompt).toContain("config.json");
     expect(prompt).toContain("repoPath");
-    expect(prompt).toContain("Do not run `npm test` from this review prompt");
+    expect(prompt).toContain("Do not rerun the full repo validation or merge quality gates");
     expect(prompt).toContain("writes live validation status");
 
     // Instructions
     expect(prompt).toContain("## Instructions");
     expect(prompt).toContain("Read the original ticket");
     expect(prompt).toContain(`git diff main...opensprint/bd-a3f8.2`);
-    expect(prompt).toContain("Do NOT rerun the full-suite command `npm test`");
+    expect(prompt).toContain("Do NOT rerun the full repo validation or merge quality gates");
     expect(prompt).toContain("Before finalizing, open that file");
     expect(prompt).toContain("If it says `FAILED` or `ERROR`, reject");
     expect(prompt).toContain("If it says `PENDING`, continue based on code quality/scope findings");
@@ -1141,7 +1141,9 @@ User authentication.
     expect(securityPrompt).toContain("focusing only on this angle: Security implications");
     expect(securityPrompt).toContain("Review Checklist — Security implications");
     expect(securityPrompt).toContain("No injection vulnerabilities");
-    expect(securityPrompt).toContain("Do NOT rerun the full-suite command `npm test`");
+    expect(securityPrompt).toContain(
+      "Do NOT rerun the full repo validation or merge quality gates"
+    );
     expect(securityPrompt).toContain(
       ".opensprint/active/bd-a3f8.2/context/orchestrator-test-status.md"
     );

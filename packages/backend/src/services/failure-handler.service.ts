@@ -16,7 +16,11 @@ import {
   TASK_COMPLEXITY_MIN,
 } from "@opensprint/shared";
 import type { StoredTask } from "./task-store.service.js";
-import type { FailureType, RetryContext } from "./orchestrator-phase-context.js";
+import type {
+  FailureType,
+  RetryContext,
+  RetryQualityGateDetail,
+} from "./orchestrator-phase-context.js";
 import { agentIdentityService, type AttemptOutcome } from "./agent-identity.service.js";
 import { eventLogService } from "./event-log.service.js";
 import { broadcastToProject } from "../websocket/index.js";
@@ -161,6 +165,7 @@ export interface FailureSlot {
     testResults: TestResults | null;
     testOutput: string;
     validationCommand?: string | null;
+    qualityGateDetail?: RetryQualityGateDetail | null;
   };
   agent: { outputLog: string[]; startedAt: string; killedDueToTimeout: boolean };
 }
@@ -268,6 +273,7 @@ export class FailureHandlerService {
     previousTestOutput?: string;
     previousTestFailures?: string;
     previousDiff?: string;
+    qualityGateDetail?: RetryQualityGateDetail | null;
   }): RetryContext {
     const context: RetryContext = {
       previousFailure:
@@ -302,6 +308,11 @@ export class FailureHandlerService {
     );
     if (previousDiff) {
       context.previousDiff = previousDiff;
+    }
+    if (params.qualityGateDetail) {
+      context.qualityGateDetail = {
+        ...params.qualityGateDetail,
+      };
     }
     return context;
   }
@@ -382,6 +393,34 @@ export class FailureHandlerService {
     slot: FailureSlot;
     testResults?: TestResults | null;
   }): FailureDiagnosticDetail | null {
+    const structuredQualityGateDetail = params.slot.phaseResult.qualityGateDetail;
+    if (
+      (params.failureType === "merge_quality_gate" ||
+        params.failureType === "environment_setup") &&
+      structuredQualityGateDetail
+    ) {
+      return {
+        command:
+          structuredQualityGateDetail.command?.trim() ||
+          params.slot.phaseResult.validationCommand?.trim() ||
+          this.extractCommandFromFailureReason(params.reason),
+        reason:
+          structuredQualityGateDetail.reason?.trim() ||
+          (params.reason.trim() ? params.reason.trim().slice(0, 500) : null),
+        outputSnippet:
+          structuredQualityGateDetail.outputSnippet?.trim() ||
+          this.toFailureOutputSnippet(params.slot.phaseResult.testOutput),
+        worktreePath:
+          structuredQualityGateDetail.worktreePath?.trim() ||
+          params.slot.worktreePath?.trim() ||
+          null,
+        firstErrorLine:
+          structuredQualityGateDetail.firstErrorLine?.trim() ||
+          this.firstActionableFailureOutputLine(params.slot.phaseResult.testOutput) ||
+          this.firstActionableReasonLine(params.reason),
+      };
+    }
+
     const validationOutput =
       params.failureType === "test_failure" ? params.slot.phaseResult.testOutput : "";
     const command =
@@ -655,15 +694,17 @@ export class FailureHandlerService {
       // Branch may not exist
     }
 
-    const previousTestFailures = buildTestFailureRetrySummary(
-      slot.phaseResult.testResults,
-      slot.phaseResult.testOutput || undefined
-    );
-    const previousTestOutput = this.buildRetryTestOutput({
-      testResults: slot.phaseResult.testResults,
-      testOutput: slot.phaseResult.testOutput || undefined,
-      validationCommand: slot.phaseResult.validationCommand,
-    });
+    const includePreviousTestContext = failureType === "test_failure";
+    const previousTestFailures = includePreviousTestContext
+      ? buildTestFailureRetrySummary(slot.phaseResult.testResults, slot.phaseResult.testOutput || undefined)
+      : undefined;
+    const previousTestOutput = includePreviousTestContext
+      ? this.buildRetryTestOutput({
+          testResults: slot.phaseResult.testResults,
+          testOutput: slot.phaseResult.testOutput || undefined,
+          validationCommand: slot.phaseResult.validationCommand,
+        })
+      : undefined;
     const persistedRetryContext = this.buildPersistedRetryContext({
       failureType,
       previousFailure: effectiveReason,
@@ -671,6 +712,7 @@ export class FailureHandlerService {
       previousDiff,
       previousTestOutput,
       previousTestFailures,
+      qualityGateDetail: failureDiagnosticDetail ?? slot.phaseResult.qualityGateDetail ?? null,
     });
 
     if (failureType !== "review_rejection") {
@@ -861,6 +903,7 @@ export class FailureHandlerService {
         previousDiff,
         previousTestOutput,
         previousTestFailures,
+        qualityGateDetail: failureDiagnosticDetail ?? slot.phaseResult.qualityGateDetail ?? undefined,
         failureType,
       });
       return;
@@ -923,6 +966,7 @@ export class FailureHandlerService {
         previousDiff,
         previousTestOutput,
         previousTestFailures,
+        qualityGateDetail: failureDiagnosticDetail ?? slot.phaseResult.qualityGateDetail ?? undefined,
         failureType,
       });
     } else {

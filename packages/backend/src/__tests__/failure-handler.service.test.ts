@@ -533,6 +533,70 @@ describe("FailureHandlerService", () => {
     );
   });
 
+  it("persists structured merge-quality-gate diagnostics in coder retry context", async () => {
+    const slot = makeSlot("/tmp/worktree");
+    slot.phaseResult.validationCommand = "npm run lint";
+    slot.phaseResult.testResults = {
+      passed: 3,
+      failed: 0,
+      skipped: 0,
+      total: 3,
+      details: [],
+    };
+    slot.phaseResult.testOutput = "src/foo.ts: error TS2304: Cannot find name 'x'";
+    slot.phaseResult.qualityGateDetail = {
+      command: "npm run lint",
+      reason: "Command failed: npm run lint",
+      outputSnippet: "src/foo.ts: error TS2304: Cannot find name 'x'",
+      worktreePath: "/tmp/worktree",
+      firstErrorLine: "src/foo.ts: error TS2304: Cannot find name 'x'",
+    };
+    mockHost.getState = vi.fn().mockReturnValue({
+      slots: new Map([[taskId, slot]]),
+      status: { totalFailed: 0, queueDepth: 0 },
+    });
+
+    await handler.handleTaskFailure(
+      projectId,
+      repoPath,
+      makeTask(),
+      branchName,
+      "Quality gate failed (npm run lint): Command failed: npm run lint",
+      null,
+      "merge_quality_gate"
+    );
+
+    expect(mockExecuteCodingPhase).toHaveBeenCalledWith(
+      projectId,
+      repoPath,
+      expect.objectContaining({ id: taskId }),
+      expect.objectContaining({ taskId }),
+      expect.objectContaining({
+        failureType: "merge_quality_gate",
+        qualityGateDetail: expect.objectContaining({
+          command: "npm run lint",
+          firstErrorLine: "src/foo.ts: error TS2304: Cannot find name 'x'",
+        }),
+        previousTestOutput: undefined,
+        previousTestFailures: undefined,
+      })
+    );
+    expect(mockHost.taskStore.update).toHaveBeenCalledWith(
+      projectId,
+      taskId,
+      expect.objectContaining({
+        extra: expect.objectContaining({
+          failedGateCommand: "npm run lint",
+          firstErrorLine: "src/foo.ts: error TS2304: Cannot find name 'x'",
+          qualityGateDetail: expect.objectContaining({
+            command: "npm run lint",
+            reason: "Command failed: npm run lint",
+          }),
+        }),
+      })
+    );
+  });
+
   describe("failure comment", () => {
     it("includes explicit inactivity message for timeout failures", async () => {
       const mockComment = vi.fn().mockResolvedValue(undefined);

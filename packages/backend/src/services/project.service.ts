@@ -121,7 +121,7 @@ const OPENSPRINT_RUNTIME_CONTRACT_SECTION = [
   "Open Sprint manages task state internally. Do not use external task CLIs.",
   "",
   "- Execute agents start in a prepared worktree with the task branch already checked out.",
-  "- Run the smallest relevant non-watch verification for touched workspaces while iterating. Use scoped tests first, and add scoped build/typecheck and lint commands when your changes could affect them.",
+  "- Run the smallest relevant non-watch verification for touched workspaces while iterating. Use scoped tests first, add scoped build/typecheck and lint commands when your changes could affect them, and leave the branch in a state where the merge quality gates (`npm run build`, `npm run lint`, `npm run test`) are expected to pass before reporting success.",
   "- Report completion or blocking questions by writing the exact `.opensprint/active/<task-id>/result.json` payload requested in the task prompt.",
   "- Commit incremental logical units while working so crash recovery can preserve progress.",
   '- If blocked by ambiguity, return `status: "failed"` with `open_questions` instead of guessing.',

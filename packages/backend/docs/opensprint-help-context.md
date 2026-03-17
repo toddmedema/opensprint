@@ -17,7 +17,7 @@ Task tracking is handled internally by `TaskStoreService` backed by **SQLite (de
 ### Execute Agent Contract
 
 - Execute agents start in a prepared worktree with the task branch already checked out.
-- They run the smallest relevant non-watch verification for touched workspaces while iterating, using scoped tests first and scoped build/typecheck and lint commands when the change could affect them.
+- They run the smallest relevant non-watch verification for touched workspaces while iterating, using scoped tests first and scoped build/typecheck and lint commands when the change could affect them, and they leave the branch in a state where the merge quality gates (`npm run build`, `npm run lint`, `npm run test`) are expected to pass before reporting success.
 - They report completion or blocking questions by writing the exact `result.json` payload requested in the task prompt.
 - They should commit incremental logical units while working so crash recovery can preserve progress.
 - They must not push, merge, or close tasks manually; the orchestrator handles validation, task state, merging, and remote publication.

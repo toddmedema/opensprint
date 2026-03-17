@@ -7,6 +7,7 @@
  */
 
 import type { TestResults, ReviewAgentResult } from "@opensprint/shared";
+import type { FailureType, RetryQualityGateDetail } from "./orchestrator-phase-context.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("phase-coordinator");
@@ -16,6 +17,8 @@ export interface TestOutcome {
   results?: TestResults;
   rawOutput?: string;
   errorMessage?: string;
+  failureType?: FailureType;
+  qualityGateDetail?: RetryQualityGateDetail | null;
 }
 
 export interface ReviewOutcome {

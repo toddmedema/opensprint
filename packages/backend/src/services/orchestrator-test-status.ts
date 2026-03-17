@@ -25,17 +25,20 @@ export type OrchestratorTestStatus =
   | {
       status: "pending";
       testCommand?: string | null;
+      mergeQualityGates?: string[] | null;
       updatedAt?: string;
     }
   | {
       status: "passed";
       testCommand?: string | null;
+      mergeQualityGates?: string[] | null;
       results?: TestResults | null;
       updatedAt?: string;
     }
   | {
       status: "failed";
       testCommand?: string | null;
+      mergeQualityGates?: string[] | null;
       results?: TestResults | null;
       rawOutput?: string | null;
       updatedAt?: string;
@@ -43,6 +46,7 @@ export type OrchestratorTestStatus =
   | {
       status: "error";
       testCommand?: string | null;
+      mergeQualityGates?: string[] | null;
       errorMessage?: string | null;
       rawOutput?: string | null;
       updatedAt?: string;
@@ -69,15 +73,23 @@ export function buildOrchestratorTestStatusContent(status: OrchestratorTestStatu
   content += `- Status: \`${status.status.toUpperCase()}\`\n`;
   content += `- Updated: \`${updatedAt}\`\n`;
   content += `- Validation command: \`${command}\`\n\n`;
+  const mergeQualityGates =
+    status.mergeQualityGates?.filter((gate) => gate.trim().length > 0).join("`, `") ?? "";
+  if (mergeQualityGates) {
+    content += `- Merge quality gates: \`${mergeQualityGates}\`\n\n`;
+  }
 
   switch (status.status) {
     case "pending":
       content +=
-        "The orchestrator is still running automated validation. Before approving, re-open this file. Do not approve while the status is `PENDING`.\n";
+        "The orchestrator is still running automated validation. This includes merge quality gates when configured. Before approving, re-open this file. Do not approve while the status is `PENDING`.\n";
       break;
     case "passed":
       content += buildResultsSummary(status.results);
-      content += "\nAutomated validation has passed.\n";
+      content +=
+        mergeQualityGates.length > 0
+          ? "\nAutomated validation has passed, including the configured merge quality gates.\n"
+          : "\nAutomated validation has passed.\n";
       break;
     case "failed":
       content += buildResultsSummary(status.results);
