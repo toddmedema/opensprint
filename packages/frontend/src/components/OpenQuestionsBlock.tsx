@@ -18,8 +18,8 @@ export interface OpenQuestionsBlockProps {
   source: NotificationSource;
   /** For plan: planId. For execute: taskId. Used for chat context. */
   sourceId: string;
-  /** Called when notification is resolved (after Dismiss or successful Answer) */
-  onResolved: () => void;
+  /** Called when notification is resolved (after Dismiss or successful Answer). Receives resolved notification when answer was submitted (so UI can show reply). When dismissing an already-resolved card, called with (undefined, notificationId) so parent can remove it from the list. */
+  onResolved: (resolved?: Notification, notificationIdToRemove?: string) => void;
   /** When provided, Answer sends via this callback (plan chat, task chat). */
   onAnswerSent?: (message: string) => Promise<void>;
 }
@@ -44,6 +44,10 @@ export function OpenQuestionsBlock({
   const navigate = useNavigate();
 
   const handleDismiss = useCallback(async () => {
+    if (notification.status === "resolved") {
+      onResolved(undefined, notification.id);
+      return;
+    }
     setDismissLoading(true);
     try {
       await api.notifications.resolve(projectId, notification.id);
@@ -51,7 +55,7 @@ export function OpenQuestionsBlock({
     } catch {
       setDismissLoading(false);
     }
-  }, [projectId, notification.id, onResolved]);
+  }, [projectId, notification.id, notification.status, onResolved]);
 
   const handleAnswer = useCallback(async () => {
     const trimmed = answerText.trim();
@@ -63,10 +67,10 @@ export function OpenQuestionsBlock({
       setAnswerText("");
       const responses =
         notification.questions?.map((q) => ({ questionId: q.id, answer: trimmed })) ?? [];
-      await api.notifications.resolve(projectId, notification.id, {
+      const resolved = await api.notifications.resolve(projectId, notification.id, {
         ...(responses.length ? { responses } : {}),
       });
-      onResolved();
+      onResolved(resolved);
     } finally {
       setAnswerSubmitting(false);
     }
@@ -89,6 +93,9 @@ export function OpenQuestionsBlock({
   const questions = notification.questions ?? [];
   if (questions.length === 0) return null;
 
+  const isResolvedWithReply =
+    notification.status === "resolved" && (notification.responses?.length ?? 0) > 0;
+
   const isApiBlocked = notification.kind === "api_blocked";
   const isAgentFailed = notification.kind === "agent_failed";
   const apiBlockedLabel = notification.errorCode
@@ -108,7 +115,13 @@ export function OpenQuestionsBlock({
       data-testid="open-questions-block"
     >
       <h4 className="text-xs font-medium text-theme-muted uppercase tracking-wide mb-2">
-        {isApiBlocked ? "API blocked" : isAgentFailed ? "Agent failed" : "Open questions"}
+        {isResolvedWithReply
+          ? "Answered"
+          : isApiBlocked
+            ? "API blocked"
+            : isAgentFailed
+              ? "Agent failed"
+              : "Open questions"}
       </h4>
       <p className="text-xs text-theme-muted mb-2">
         {isAgentFailed ? (
@@ -153,8 +166,13 @@ export function OpenQuestionsBlock({
           </li>
         ))}
       </ul>
+      {isResolvedWithReply && (
+        <div className="text-sm text-theme-muted mb-3" data-testid="open-questions-reply">
+          Your answer: {notification.responses!.map((r) => r.answer).join(" ")}
+        </div>
+      )}
       <div className="flex flex-col gap-2">
-        {!isApiBlocked && !isAgentFailed && onAnswerSent && (
+        {!isResolvedWithReply && !isApiBlocked && !isAgentFailed && onAnswerSent && (
           <div className="flex gap-2">
             <input
               type="text"

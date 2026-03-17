@@ -37,6 +37,11 @@ import {
 } from "../../hooks/useExecuteSwimlanes";
 import { useScrollToQuestion } from "../../hooks/useScrollToQuestion";
 import { useOpenQuestionNotifications } from "../../hooks/useOpenQuestionNotifications";
+import {
+  updateNotification,
+  removeNotification,
+} from "../../store/slices/openQuestionsSlice";
+import type { Notification } from "@opensprint/shared";
 import { ExecuteFilterToolbar } from "../../components/execute/ExecuteFilterToolbar";
 import { TaskDetailSidebar } from "../../components/execute/TaskDetailSidebar";
 import { TimelineList } from "../../components/execute/TimelineList";
@@ -626,7 +631,20 @@ export function ExecutePhase({
               onDeleteTask: handleDeleteTask,
               onSelectTask: (taskId) => dispatch(setSelectedTaskId(taskId)),
               onNavigateToPlan,
-              onOpenQuestionResolved: refetchNotifications,
+              onOpenQuestionResolved: (resolved?: Notification, notificationIdToRemove?: string) => {
+                if (resolved) dispatch(updateNotification(resolved));
+                if (notificationIdToRemove) {
+                  dispatch(removeNotification({ projectId, notificationId: notificationIdToRemove }));
+                }
+                refetchNotifications();
+                // Refresh task data so UI shows task as unblocked; backend already unblocks and nudges orchestrator
+                if (resolved?.source === "execute" && resolved?.sourceId) {
+                  void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
+                  void queryClient.invalidateQueries({
+                    queryKey: queryKeys.tasks.detail(projectId, resolved.sourceId),
+                  });
+                }
+              },
             }}
           />
         </ResizableSidebar>

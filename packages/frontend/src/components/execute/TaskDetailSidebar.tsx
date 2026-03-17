@@ -60,7 +60,7 @@ export interface TaskDetailCallbacks {
   onDeleteTask: () => void | Promise<void>;
   onSelectTask: (taskId: string) => void;
   onNavigateToPlan?: (planId: string) => void;
-  onOpenQuestionResolved?: () => void;
+  onOpenQuestionResolved?: (resolved?: Notification, notificationIdToRemove?: string) => void;
 }
 
 export interface TaskDetailSidebarProps {

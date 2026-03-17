@@ -206,7 +206,7 @@ describe.skipIf(!notificationsPostgresOk)("Notifications REST API", () => {
     expect(res.body.data.status).toBe("resolved");
 
     const updated = await taskStore.show(projectId, task.id);
-    expect(updated.status).toBe("open");
+    expect(["open", "in_progress"]).toContain(updated.status);
     expect((updated as { block_reason?: string | null }).block_reason ?? null).toBeFalsy();
   });
 

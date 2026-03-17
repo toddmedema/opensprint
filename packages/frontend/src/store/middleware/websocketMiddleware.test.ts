@@ -22,6 +22,10 @@ import evalReducer, { setFeedback } from "../slices/evalSlice";
 import deliverReducer from "../slices/deliverSlice";
 import routeReducer, { setRoute } from "../slices/routeSlice";
 import unreadPhaseReducer from "../slices/unreadPhaseSlice";
+import openQuestionsReducer, {
+  addNotification,
+  updateNotification,
+} from "../slices/openQuestionsSlice";
 
 /** Mock WebSocket that allows controlling open/close/message events */
 class MockWebSocket {
@@ -147,6 +151,7 @@ describe("websocketMiddleware", () => {
         deliver: deliverReducer,
         route: routeReducer,
         unreadPhase: unreadPhaseReducer,
+        openQuestions: openQuestionsReducer,
       },
       middleware: (getDefaultMiddleware) =>
         getDefaultMiddleware({
@@ -573,6 +578,68 @@ describe("websocketMiddleware", () => {
       await vi.waitFor(() => {
         expect(mockInvalidateQueries).toHaveBeenCalledWith({
           queryKey: queryKeys.tasks.list("proj-1"),
+        });
+      });
+    });
+
+    describe("notification.resolved", () => {
+      it("does not remove notification when it is already resolved (show reply until dismiss)", async () => {
+        const store = createStore();
+        const resolvedNotification = {
+          id: "oq-1",
+          projectId: "proj-1",
+          source: "execute" as const,
+          sourceId: "task-1",
+          questions: [{ id: "q1", text: "Which approach?" }],
+          status: "resolved" as const,
+          resolvedAt: "2025-01-01T00:00:00Z",
+          createdAt: "2025-01-01T00:00:00Z",
+          responses: [{ questionId: "q1", answer: "Use REST" }],
+        };
+        store.dispatch(updateNotification(resolvedNotification));
+        store.dispatch(wsConnect({ projectId: "proj-1" }));
+        wsInstance!.simulateOpen();
+        await vi.waitFor(() => store.getState().websocket.connected);
+
+        wsInstance!.simulateMessage({
+          type: "notification.resolved",
+          projectId: "proj-1",
+          notificationId: "oq-1",
+        });
+
+        await vi.waitFor(() => {
+          const list = store.getState().openQuestions?.byProject?.["proj-1"] ?? [];
+          expect(list.some((n) => n.id === "oq-1")).toBe(true);
+          expect(list.find((n) => n.id === "oq-1")?.status).toBe("resolved");
+        });
+      });
+
+      it("removes notification when it is open (normal resolve from other client)", async () => {
+        const store = createStore();
+        const openNotification = {
+          id: "oq-2",
+          projectId: "proj-1",
+          source: "execute" as const,
+          sourceId: "task-2",
+          questions: [{ id: "q1", text: "Clarify?" }],
+          status: "open" as const,
+          resolvedAt: null,
+          createdAt: "2025-01-01T00:00:00Z",
+        };
+        store.dispatch(addNotification(openNotification));
+        store.dispatch(wsConnect({ projectId: "proj-1" }));
+        wsInstance!.simulateOpen();
+        await vi.waitFor(() => store.getState().websocket.connected);
+
+        wsInstance!.simulateMessage({
+          type: "notification.resolved",
+          projectId: "proj-1",
+          notificationId: "oq-2",
+        });
+
+        await vi.waitFor(() => {
+          const list = store.getState().openQuestions?.byProject?.["proj-1"] ?? [];
+          expect(list.some((n) => n.id === "oq-2")).toBe(false);
         });
       });
     });

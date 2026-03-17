@@ -14,7 +14,12 @@ import type {
   Notification,
 } from "@opensprint/shared";
 import { setConnected, setDeliverToast } from "../slices/websocketSlice";
-import { addNotification, removeNotification } from "../slices/openQuestionsSlice";
+import {
+  addNotification,
+  removeNotification,
+  selectProjectNotifications,
+  type OpenQuestionsState,
+} from "../slices/openQuestionsSlice";
 import { setConnectionError } from "../slices/connectionSlice";
 import {
   appendAgentOutput,
@@ -567,6 +572,15 @@ export const websocketMiddleware: Middleware = (storeApi) => {
           notificationId: string;
           projectId: string;
         };
+        // Keep resolved notification in state when already updated (e.g. after user submitted answer)
+        // so the UI can show "Answered" and the reply until the user dismisses.
+        const state = storeApi.getState() as { openQuestions?: OpenQuestionsState };
+        const projectNotifications = selectProjectNotifications(state, ev.projectId);
+        const existing = projectNotifications.find((n) => n.id === ev.notificationId);
+        if (existing?.status === "resolved") {
+          // Already updated optimistically; leave in state so reply is visible
+          break;
+        }
         d(removeNotification({ projectId: ev.projectId, notificationId: ev.notificationId }));
         break;
       }

@@ -8,7 +8,7 @@ export interface TaskDetailOpenQuestionsProps {
   selectedTask: string;
   task: Task | null;
   openQuestionNotification: Notification | null | undefined;
-  onOpenQuestionResolved?: () => void;
+  onOpenQuestionResolved?: (resolved?: Notification, notificationIdToRemove?: string) => void;
 }
 
 export function TaskDetailOpenQuestions({
@@ -26,7 +26,9 @@ export function TaskDetailOpenQuestions({
       projectId={projectId}
       source="execute"
       sourceId={selectedTask}
-      onResolved={onOpenQuestionResolved ?? (() => {})}
+      onResolved={(resolved, notificationIdToRemove) =>
+        onOpenQuestionResolved?.(resolved, notificationIdToRemove)
+      }
       onAnswerSent={async (message) => {
         const taskContext = {
           id: task.id,

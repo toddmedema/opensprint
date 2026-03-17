@@ -83,6 +83,26 @@ const openQuestionsSlice = createSlice({
       }
       state.global = state.global.filter((x) => x.id !== notificationId);
     },
+    /** Update notification (e.g. after resolve with responses so UI can show reply) */
+    updateNotification(state, action: PayloadAction<Notification>) {
+      const n = action.payload;
+      if (!state.byProject[n.projectId]) {
+        state.byProject[n.projectId] = [];
+      }
+      const projectList = state.byProject[n.projectId];
+      const idx = projectList.findIndex((x) => x.id === n.id);
+      if (idx >= 0) {
+        projectList[idx] = n;
+      } else {
+        projectList.unshift(n);
+      }
+      const globalIdx = state.global.findIndex((x) => x.id === n.id);
+      if (globalIdx >= 0) {
+        state.global[globalIdx] = n;
+      } else {
+        state.global.unshift(n);
+      }
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -93,7 +113,15 @@ const openQuestionsSlice = createSlice({
       })
       .addCase(fetchProjectNotifications.fulfilled, (state, action) => {
         const id = action.meta.arg;
-        state.byProject[id] = action.payload ?? [];
+        const fromApi = action.payload ?? [];
+        const current = state.byProject[id] ?? [];
+        const resolvedInState = current.filter((n) => n.status === "resolved");
+        const apiIds = new Set(fromApi.map((n) => n.id));
+        const keptResolved = resolvedInState.filter((n) => !apiIds.has(n.id));
+        state.byProject[id] = [...fromApi, ...keptResolved];
+        state.global = state.global
+          .filter((n) => n.projectId !== id)
+          .concat(state.byProject[id]);
         if (state.async.project[id]) state.async.project[id].loading = false;
       })
       .addCase(fetchProjectNotifications.rejected, (state, action) => {
@@ -127,7 +155,8 @@ const openQuestionsSlice = createSlice({
   },
 });
 
-export const { addNotification, removeNotification } = openQuestionsSlice.actions;
+export const { addNotification, removeNotification, updateNotification } =
+  openQuestionsSlice.actions;
 export const selectProjectNotifications = (
   state: { openQuestions?: OpenQuestionsState },
   projectId: string | null | undefined

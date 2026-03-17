@@ -163,6 +163,53 @@ describe("OpenQuestionsBlock", () => {
     expect(screen.getByTestId("open-questions-answer-btn")).toBeDisabled();
   });
 
+  it("shows Your answer and reply text when notification is resolved with responses", () => {
+    const resolvedNotification: Notification = {
+      ...mockNotification,
+      status: "resolved",
+      resolvedAt: "2025-01-01T00:02:00Z",
+      responses: [{ questionId: "q1", answer: "Web and mobile" }],
+    };
+    renderWithRouter(
+      <OpenQuestionsBlock
+        notification={resolvedNotification}
+        projectId="proj-1"
+        source="execute"
+        sourceId="task-1"
+        onResolved={onResolved}
+        onAnswerSent={onAnswerSent}
+      />
+    );
+    expect(screen.getByTestId("open-questions-reply")).toHaveTextContent("Your answer:");
+    expect(screen.getByTestId("open-questions-reply")).toHaveTextContent("Web and mobile");
+    expect(screen.getByText("Answered")).toBeInTheDocument();
+    expect(screen.queryByTestId("open-questions-answer-input")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("open-questions-answer-btn")).not.toBeInTheDocument();
+  });
+
+  it("Dismiss on resolved notification calls onResolved(undefined, id) without calling API", async () => {
+    const user = userEvent.setup();
+    const resolvedNotification: Notification = {
+      ...mockNotification,
+      status: "resolved",
+      resolvedAt: "2025-01-01T00:02:00Z",
+      responses: [{ questionId: "q1", answer: "Done" }],
+    };
+    renderWithRouter(
+      <OpenQuestionsBlock
+        notification={resolvedNotification}
+        projectId="proj-1"
+        source="execute"
+        sourceId="task-1"
+        onResolved={onResolved}
+        onAnswerSent={onAnswerSent}
+      />
+    );
+    await user.click(screen.getByTestId("open-questions-dismiss-btn"));
+    expect(api.notifications.resolve).not.toHaveBeenCalled();
+    expect(onResolved).toHaveBeenCalledWith(undefined, "oq-abc123");
+  });
+
   it("does not render Answer input when onAnswerSent is not provided", () => {
     renderWithRouter(
       <OpenQuestionsBlock

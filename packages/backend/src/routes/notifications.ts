@@ -131,7 +131,7 @@ projectNotificationsRouter.patch(
       sourceId: notification.sourceId,
     });
 
-    // When source=execute, unblock the task so orchestrator can re-pick it
+    // When source=execute, unblock the task and nudge orchestrator so agent picks up the response promptly
     if (notification.source === "execute" && notification.sourceId) {
       const taskId = notification.sourceId;
       try {
@@ -142,6 +142,7 @@ projectNotificationsRouter.patch(
       } catch {
         // Task may not exist or already unblocked
       }
+      orchestratorService.nudge(projectId);
     }
 
     const body: ApiResponse<Notification> = { data: notification };

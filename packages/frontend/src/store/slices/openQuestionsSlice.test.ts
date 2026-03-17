@@ -3,6 +3,7 @@ import { configureStore } from "@reduxjs/toolkit";
 import openQuestionsReducer, {
   addNotification,
   removeNotification,
+  updateNotification,
   fetchProjectNotifications,
   fetchGlobalNotifications,
   clearAllByProject,
@@ -76,6 +77,43 @@ describe("openQuestionsSlice", () => {
     const state = store.getState().openQuestions;
     expect(state.byProject["proj-1"]).toHaveLength(0);
     expect(state.global).toHaveLength(0);
+  });
+
+  it("updateNotification updates existing notification (e.g. after resolve with responses)", () => {
+    const store = configureStore({ reducer: { openQuestions: openQuestionsReducer } });
+    store.dispatch(addNotification(sampleNotification));
+    const resolved = {
+      ...sampleNotification,
+      status: "resolved" as const,
+      resolvedAt: "2025-01-01T00:02:00Z",
+      responses: [{ questionId: "q1", answer: "Web and mobile" }],
+    };
+    store.dispatch(updateNotification(resolved));
+    const state = store.getState().openQuestions;
+    expect(state.byProject["proj-1"]).toHaveLength(1);
+    expect(state.byProject["proj-1"][0].status).toBe("resolved");
+    expect(state.byProject["proj-1"][0].responses).toEqual([
+      { questionId: "q1", answer: "Web and mobile" },
+    ]);
+    expect(state.global[0].status).toBe("resolved");
+  });
+
+  it("fetchProjectNotifications keeps resolved notifications in state when refetching", async () => {
+    const resolved = {
+      ...sampleNotification,
+      id: "oq-resolved",
+      status: "resolved" as const,
+      resolvedAt: "2025-01-01T00:02:00Z",
+      responses: [{ questionId: "q1", answer: "Done" }],
+    };
+    const store = configureStore({ reducer: { openQuestions: openQuestionsReducer } });
+    store.dispatch(addNotification(resolved));
+    mockListByProject.mockResolvedValue([{ ...sampleNotification, id: "oq-2" }]);
+    await store.dispatch(fetchProjectNotifications("proj-1"));
+    const state = store.getState().openQuestions;
+    expect(state.byProject["proj-1"].map((n) => n.id)).toContain("oq-resolved");
+    expect(state.byProject["proj-1"].map((n) => n.id)).toContain("oq-2");
+    expect(state.byProject["proj-1"]).toHaveLength(2);
   });
 
   it("fetchProjectNotifications populates byProject", async () => {
