@@ -287,6 +287,7 @@ describe("FailureHandlerService", () => {
       );
 
       expect(mockRemoveTaskWorktree).toHaveBeenCalledWith(repoPath, taskId, "/tmp/worktree");
+      expect(mockDeleteBranch).toHaveBeenCalledWith(repoPath, branchName);
       expect(mockRevertAndReturnToMain).not.toHaveBeenCalled();
     });
 
@@ -431,6 +432,7 @@ describe("FailureHandlerService", () => {
       expect.objectContaining({ id: taskId }),
       expect.objectContaining({ taskId }),
       expect.objectContaining({
+        useExistingBranch: false,
         previousTestFailures:
           "- src/foo.test.ts > auth > rejects invalid token — AssertionError: expected 401 to be 403 // Object.is equality",
         previousTestOutput: expect.stringContaining(
@@ -449,6 +451,7 @@ describe("FailureHandlerService", () => {
         ),
       })
     );
+    expect(mockDeleteBranch).toHaveBeenCalledWith(repoPath, branchName);
   });
 
   it("persists structured execution diagnostics for test-failure requeues", async () => {

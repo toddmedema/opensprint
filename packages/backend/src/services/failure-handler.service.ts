@@ -762,6 +762,7 @@ export class FailureHandlerService {
       });
       await this.revertOrRemoveWorktree(repoPath, task.id, branchName, slot, gitWorkingMode, {
         baseBranch,
+        deleteBranch: true,
       });
       await this.host.deleteAssignment(repoPath, task.id);
       try {
@@ -800,6 +801,7 @@ export class FailureHandlerService {
       });
       await this.revertOrRemoveWorktree(repoPath, task.id, branchName, slot, gitWorkingMode, {
         baseBranch,
+        deleteBranch: true,
       });
       await this.host.deleteAssignment(repoPath, task.id);
       await this.blockTask(
@@ -827,6 +829,7 @@ export class FailureHandlerService {
       });
       await this.revertOrRemoveWorktree(repoPath, task.id, branchName, slot, gitWorkingMode, {
         baseBranch,
+        deleteBranch: true,
       });
       await this.host.deleteAssignment(repoPath, task.id);
       await this.blockTask(
@@ -886,13 +889,14 @@ export class FailureHandlerService {
 
       await this.revertOrRemoveWorktree(repoPath, task.id, branchName, slot, gitWorkingMode, {
         baseBranch,
+        deleteBranch: true,
       });
 
       await this.host.persistCounters(projectId, repoPath);
       await this.host.executeCodingPhase(projectId, repoPath, task, slot, {
         previousFailure: effectiveReason,
         reviewFeedback,
-        useExistingBranch: true,
+        useExistingBranch: false,
         previousDiff,
         previousTestOutput,
         previousTestFailures,
@@ -946,16 +950,17 @@ export class FailureHandlerService {
         .catch(() => {});
       await this.revertOrRemoveWorktree(repoPath, task.id, branchName, slot, gitWorkingMode, {
         baseBranch,
+        deleteBranch: true,
       });
 
       slot.attempt = cumulativeAttempts + 1;
-      log.info(`Retrying ${task.id} (attempt ${slot.attempt}), preserving branch`);
+      log.info(`Retrying ${task.id} (attempt ${slot.attempt}) with clean branch state`);
 
       await this.host.persistCounters(projectId, repoPath);
       await this.host.executeCodingPhase(projectId, repoPath, task, slot, {
         previousFailure: effectiveReason,
         reviewFeedback,
-        useExistingBranch: true,
+        useExistingBranch: false,
         previousDiff,
         previousTestOutput,
         previousTestFailures,
