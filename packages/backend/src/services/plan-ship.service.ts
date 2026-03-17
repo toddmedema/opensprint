@@ -269,7 +269,12 @@ export class PlanShipService {
       }
     }
 
-    if (plan.status !== "complete") {
+    // Allow re-execute when plan was marked complete (reviewedAt) and has an executed version,
+    // even if current version has no tasks (status is "planning").
+    const canReExecute =
+      plan.lastExecutedVersionNumber != null &&
+      (plan.metadata.reviewedAt != null || plan.status === "complete");
+    if (!canReExecute) {
       throw new AppError(
         400,
         ErrorCodes.INVALID_INPUT,

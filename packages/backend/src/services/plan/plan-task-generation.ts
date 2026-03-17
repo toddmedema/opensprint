@@ -208,6 +208,7 @@ export async function generateAndCreateTasks(deps: PlanTaskGenerationDeps): Prom
   const rawTasks = parsedOutput.rawTasks;
   const tasks = rawTasks.map((t) => normalizePlannerTask(t, rawTasks));
 
+  const sourceVersion = plan.currentVersionNumber ?? 1;
   const inputs = tasks.map((task) => ({
     title: task.title,
     type: "task" as const,
@@ -215,6 +216,7 @@ export async function generateAndCreateTasks(deps: PlanTaskGenerationDeps): Prom
     priority: Math.min(4, Math.max(0, task.priority ?? 2)),
     parentId: epicId,
     ...(task.complexity != null && { complexity: task.complexity }),
+    extra: { sourcePlanVersionNumber: sourceVersion },
   }));
   const created = await taskStore.createMany(projectId, inputs);
   const taskIdMap = new Map<string, string>();

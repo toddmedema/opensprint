@@ -51,6 +51,8 @@ export interface CreateInput {
   parentId?: string;
   /** Task-level complexity (1-10). Persisted in complexity column. */
   complexity?: number;
+  /** Merge into extra JSON (e.g. sourcePlanVersionNumber for plan-version-aware tasks). */
+  extra?: Record<string, unknown>;
 }
 
 /** Callback invoked when a task is created, updated, or closed. Used to emit WebSocket events. */

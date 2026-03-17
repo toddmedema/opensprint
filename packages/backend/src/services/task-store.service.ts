@@ -762,6 +762,8 @@ export class TaskStoreService {
           const priority = input.priority ?? 2;
           const complexity = clampTaskComplexity(input.complexity);
 
+          const extraJson =
+            input.extra != null ? JSON.stringify(input.extra) : "{}";
           await tx.execute(
             toPgParams(
               `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, complexity, extra)
@@ -777,7 +779,7 @@ export class TaskStoreService {
               now,
               now,
               complexity ?? null,
-              "{}",
+              extraJson,
             ]
           );
 

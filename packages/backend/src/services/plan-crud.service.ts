@@ -134,18 +134,37 @@ export class PlanCrudService {
     return infos;
   }
 
-  /** Count tasks under an epic (implementation tasks only). */
+  /**
+   * Resolve the plan version number for a task (from extra.sourcePlanVersionNumber or source_plan_version_number).
+   * Legacy tasks without the field are treated as version 1.
+   */
+  private static getTaskPlanVersion(task: StoredTask): number {
+    const raw = (task as Record<string, unknown>).sourcePlanVersionNumber ??
+      (task as Record<string, unknown>).source_plan_version_number;
+    return typeof raw === "number" && raw >= 1 ? raw : 1;
+  }
+
+  /**
+   * Count tasks under an epic (implementation tasks only).
+   * When versionNumber is set, counts only tasks for that plan version (version-aware).
+   */
   private async countTasks(
     projectId: string,
     epicId: string,
+    versionNumber?: number,
     allIssues?: StoredTask[]
   ): Promise<{ total: number; done: number }> {
     try {
       const issues = allIssues ?? (await this.taskStore.listAll(projectId));
-      const children = issues.filter(
+      let children = issues.filter(
         (issue: StoredTask) =>
           issue.id.startsWith(epicId + ".") && (issue.issue_type ?? issue.type) !== "epic"
       );
+      if (versionNumber !== undefined) {
+        children = children.filter(
+          (issue: StoredTask) => PlanCrudService.getTaskPlanVersion(issue) === versionNumber
+        );
+      }
       const done = children.filter(
         (issue: StoredTask) => (issue.status as string) === "closed"
       ).length;
@@ -184,18 +203,22 @@ export class PlanCrudService {
       mockups: (row.metadata.mockups as PlanMetadata["mockups"]) ?? undefined,
     };
 
+    const currentVersion = row.current_version_number ?? 1;
     let status: Plan["status"] = "planning";
     const { total, done } = metadata.epicId
       ? opts?.allIssues
-        ? await this.countTasks(projectId, metadata.epicId, opts.allIssues)
-        : await this.countTasks(projectId, metadata.epicId, undefined)
+        ? await this.countTasks(projectId, metadata.epicId, currentVersion, opts.allIssues)
+        : await this.countTasks(projectId, metadata.epicId, currentVersion)
       : { total: 0, done: 0 };
 
     const allTasksDone = total > 0 && done === total;
     const statusWhenAllDone: Plan["status"] =
       metadata.reviewedAt != null ? "complete" : "in_review";
 
-    if (metadata.epicId && opts?.allIssues) {
+    // When current version has no tasks, plan is in planning state (Generate Tasks visible).
+    if (total === 0) {
+      status = "planning";
+    } else if (metadata.epicId && opts?.allIssues) {
       const epicIssue = opts.allIssues.find((i) => i.id === metadata.epicId);
       const epicStatus = (epicIssue?.status as string) ?? "open";
       if (epicStatus === "blocked") {
@@ -470,7 +493,10 @@ export class PlanCrudService {
     }
 
     const epicId = (row.metadata?.epicId as string) ?? "";
-    const { total: taskCount } = epicId ? await this.countTasks(projectId, epicId) : { total: 0 };
+    const currentVersion = row.current_version_number ?? 1;
+    const { total: taskCount } = epicId
+      ? await this.countTasks(projectId, epicId, currentVersion)
+      : { total: 0 };
     const versioningRow = {
       content: row.content,
       metadata: row.metadata,
@@ -510,21 +536,25 @@ export class PlanCrudService {
     return this.getPlan(projectId, planId);
   }
 
-  /** Mark plan complete: set reviewedAt when all epic tasks are closed. */
+  /** Mark plan complete: set reviewedAt when all tasks for the current plan version are closed. */
   async markPlanComplete(projectId: string, planId: string): Promise<Plan> {
     const plan = await this.getPlan(projectId, planId);
 
     const epicId = plan.metadata.epicId;
+    const currentVersion = plan.currentVersionNumber ?? 1;
     if (epicId) {
       const allIssues = await this.taskStore.listAll(projectId);
       const children = allIssues.filter(
         (issue: StoredTask) =>
           issue.id.startsWith(epicId + ".") && (issue.issue_type ?? issue.type) !== "epic"
       );
-      const allClosed = children.every(
+      const versionChildren = children.filter(
+        (issue: StoredTask) => PlanCrudService.getTaskPlanVersion(issue) === currentVersion
+      );
+      const allClosed = versionChildren.every(
         (issue: StoredTask) => (issue.status as string) === "closed"
       );
-      if (children.length > 0 && !allClosed) {
+      if (versionChildren.length > 0 && !allClosed) {
         throw new AppError(
           400,
           ErrorCodes.INVALID_INPUT,
@@ -563,7 +593,7 @@ export class PlanCrudService {
     broadcastToProject(projectId, { type: "plan.updated", planId });
   }
 
-  /** Archive a plan: close all ready/open tasks to done. */
+  /** Archive a plan: close all ready/open tasks for the current plan version. */
   async archivePlan(projectId: string, planId: string): Promise<Plan> {
     const plan = await this.getPlan(projectId, planId);
     await this.getRepoPath(projectId);
@@ -573,13 +603,17 @@ export class PlanCrudService {
     }
 
     const epicId = plan.metadata.epicId;
+    const currentVersion = plan.currentVersionNumber ?? 1;
     const allIssues = await this.taskStore.listAll(projectId);
     const planTasks = allIssues.filter(
       (issue: StoredTask) =>
         issue.id.startsWith(epicId + ".") && (issue.issue_type ?? issue.type) !== "epic"
     );
+    const versionTasks = planTasks.filter(
+      (issue: StoredTask) => PlanCrudService.getTaskPlanVersion(issue) === currentVersion
+    );
 
-    const toClose = planTasks.filter((task) => ((task.status as string) ?? "open") === "open");
+    const toClose = versionTasks.filter((task) => ((task.status as string) ?? "open") === "open");
     if (toClose.length > 0) {
       await this.taskStore.closeMany(
         projectId,

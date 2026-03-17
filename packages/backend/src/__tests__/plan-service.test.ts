@@ -1997,6 +1997,37 @@ describe("PlanService createWithRetry usage", () => {
     expect(plan.status).toBe("planning");
   });
 
+  it("getPlan returns planning and taskCount 0 when current version has no tasks (version-aware)", async () => {
+    const planId = "version-aware-planning";
+    const epicId = "epic-va";
+    const metadata = {
+      planId,
+      epicId,
+      shippedAt: new Date().toISOString(),
+      complexity: "medium",
+    };
+    await mockPlanInsert(projectId, planId, {
+      content: "# Version Aware\n\n## Overview\n\nCurrent (v2).",
+      metadata: JSON.stringify(metadata),
+    });
+    const proj = mockPlanStore.get(projectId);
+    const row = proj?.get(planId);
+    expect(row).toBeDefined();
+    row!.current_version_number = 2;
+    // Tasks belong to version 1 only (e.g. v1 was executed, user created v2).
+    mockTaskStoreListAll.mockResolvedValue([
+      { id: epicId, status: "open", type: "epic" },
+      { id: `${epicId}.1`, status: "closed", type: "task", sourcePlanVersionNumber: 1 },
+      { id: `${epicId}.2`, status: "closed", type: "task", sourcePlanVersionNumber: 1 },
+    ]);
+    mockTaskStoreShow.mockResolvedValue({ status: "open" });
+
+    const plan = await planService.getPlan(projectId, planId);
+    expect(plan.taskCount).toBe(0);
+    expect(plan.status).toBe("planning");
+    expect(plan.currentVersionNumber).toBe(2);
+  });
+
   it("getPlan status: building when epic is open and tasks pending", async () => {
     const planId = "status-building";
     const epicId = "epic-building";
@@ -2206,7 +2237,7 @@ describe("PlanService createWithRetry usage", () => {
     expect(after.lastExecutedVersionNumber).toBeUndefined();
   });
 
-  it("updatePlan with tasks creates new plan version on each save; two saves yield three versions", async () => {
+  it("updatePlan with tasks creates new version on first save; second save updates current version in place when it has no tasks (version-aware)", async () => {
     const plan = await planService.createPlan(projectId, {
       title: "V Plan",
       content: "# V Plan\n\nInitial.",
@@ -2214,17 +2245,19 @@ describe("PlanService createWithRetry usage", () => {
     });
     const planId = plan.metadata.planId as string;
     const epicId = plan.metadata.epicId as string;
+    // Tasks without sourcePlanVersionNumber count as version 1 (legacy).
     mockTaskStoreListAll.mockResolvedValue([
       { id: `${epicId}.1`, issue_type: "task", status: "open", title: "A task" },
     ]);
     await planService.updatePlan(projectId, planId, { content: "# V Plan\n\nFirst save." });
+    // Current version is now v2 with 0 tasks (v1 had the task). Second save updates v2 in place.
     await planService.updatePlan(projectId, planId, { content: "# V Plan\n\nSecond save." });
     const versions = await mockListPlanVersions(projectId, planId);
-    expect(versions).toHaveLength(3);
+    expect(versions).toHaveLength(2);
     const numbers = versions.map((v) => v.version_number).sort((a, b) => a - b);
-    expect(numbers).toEqual([1, 2, 3]);
+    expect(numbers).toEqual([1, 2]);
     const after = await planService.getPlan(projectId, planId);
-    expect(after.currentVersionNumber).toBe(3);
+    expect(after.currentVersionNumber).toBe(2);
     expect(after.content).toBe("# V Plan\n\nSecond save.");
     expect(after.lastExecutedVersionNumber).toBeUndefined();
   });

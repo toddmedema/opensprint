@@ -446,7 +446,7 @@ describe.skipIf(!planRoutePostgresOk)("Plan REST endpoints - task decomposition"
     expect(versionsRes.body.data.versions[0].version_number).toBe(1);
   });
 
-  it("PUT /projects/:id/plans/:planId with tasks creates new plan version on each save; list versions returns three", async () => {
+  it("PUT /projects/:id/plans/:planId with tasks creates new version on first save; second save updates current version in place (version-aware)", async () => {
     const planBody = {
       title: "Versioned Feature",
       content: "# Versioned Feature\n\n## Overview\n\nInitial content.",
@@ -474,10 +474,10 @@ describe.skipIf(!planRoutePostgresOk)("Plan REST endpoints - task decomposition"
       `${API_PREFIX}/projects/${projectId}/plans/${planId}/versions`
     );
     expect(versionsRes.status).toBe(200);
-    expect(versionsRes.body.data.versions).toHaveLength(3);
+    expect(versionsRes.body.data.versions).toHaveLength(2);
     const versions = versionsRes.body.data.versions as Array<{ version_number: number }>;
     const numbers = versions.map((v) => v.version_number).sort((a, b) => a - b);
-    expect(numbers).toEqual([1, 2, 3]);
+    expect(numbers).toEqual([1, 2]);
   });
 
   it("PUT /projects/:id/plans/:planId returns 404 when plan does not exist", async () => {
@@ -1907,7 +1907,8 @@ Feature that depends on auth.
         `${API_PREFIX}/projects/${projectId}/plans/${planId}/versions`
       );
       expect(listAfterUpdates.status).toBe(200);
-      expect(listAfterUpdates.body.data.versions).toHaveLength(3);
+      // Version-aware: execute created v1; first update creates v2; second update edits v2 in place (v2 has no tasks).
+      expect(listAfterUpdates.body.data.versions).toHaveLength(2);
       const executed = listAfterUpdates.body.data.versions.find(
         (v: { is_executed_version: boolean }) => v.is_executed_version
       );
@@ -2160,7 +2161,7 @@ Feature that depends on auth.
     it("executes specified version: sets last_executed and ships that version content", async () => {
       const planBody = {
         title: "Version Execute Plan",
-        content: "# Version Execute\n\n## Overview\n\nInitial.",
+        content: "# Version Execute\n\n## Overview\n\nInitial (v1).",
         complexity: "low",
         tasks: [
           { title: "Task A", description: "First", priority: 0, dependsOn: [] },
@@ -2173,24 +2174,22 @@ Feature that depends on auth.
       expect(createRes.status).toBe(201);
       const planId = createRes.body.data.metadata.planId;
 
-      // Create versions 1 and 2 (e.g. from prior edits)
-      await request(app)
-        .put(`${API_PREFIX}/projects/${projectId}/plans/${planId}`)
-        .send({ content: "# Version Execute\n\n## Overview\n\nFirst save." });
-      await request(app)
-        .put(`${API_PREFIX}/projects/${projectId}/plans/${planId}`)
-        .send({ content: "# Version Execute\n\n## Overview\n\nSecond save (v2)." });
+      // Ensure v1 exists in plan_versions (list versions triggers ensurePlanHasAtLeastOneVersion).
+      const listRes = await request(app).get(
+        `${API_PREFIX}/projects/${projectId}/plans/${planId}/versions`
+      );
+      expect(listRes.status).toBe(200);
+      expect(listRes.body.data.versions).toHaveLength(1);
 
-      // Execute with version_number 3 (v1=initial, v2=First save, v3=Second save (v2))
       const executeRes = await request(app)
         .post(`${API_PREFIX}/projects/${projectId}/plans/${planId}/execute`)
-        .send({ version_number: 3 });
+        .send({ version_number: 1 });
       expect(executeRes.status).toBe(200);
 
       const planRow = await taskStore.planGet(projectId, planId);
-      expect(planRow?.last_executed_version_number).toBe(3);
+      expect(planRow?.last_executed_version_number).toBe(1);
       const shipped = await taskStore.planGetShippedContent(projectId, planId);
-      expect(shipped).toContain("Second save (v2)");
+      expect(shipped).toContain("Initial (v1)");
     });
 
     it("returns 404 when version_number does not exist", async () => {
