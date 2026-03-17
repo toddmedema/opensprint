@@ -4,7 +4,7 @@ Thanks for your interest in contributing. This guide explains how to get set up,
 
 ## Getting started
 
-1. **Prerequisites:** Git, [Node.js 20+](https://nodejs.org/), and a configured git identity (`user.name`, `user.email`).
+1. **Prerequisites:** Git, [Node.js 24.x](https://nodejs.org/), and a configured git identity (`user.name`, `user.email`).
 2. **Clone and run:** See the [README Quick Start](README.md#quick-start). From the repo root:
    ```bash
    npm run setup
