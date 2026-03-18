@@ -14,11 +14,7 @@ import type { PlanService } from "../services/plan.service.js";
 import { orchestratorService } from "../services/orchestrator.service.js";
 import { selfImprovementService } from "../services/self-improvement.service.js";
 import { taskStore } from "../services/task-store.service.js";
-import type {
-  ApiResponse,
-  Project,
-  ScaffoldProjectResponse,
-} from "@opensprint/shared";
+import type { ApiResponse, Project, ScaffoldProjectResponse } from "@opensprint/shared";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("projects");

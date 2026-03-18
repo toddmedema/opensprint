@@ -39,10 +39,7 @@ agentsRouter.put(
   validateBody(agentInstructionsBodySchema),
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     await projectService.getProject(req.params.projectId);
-    await agentInstructionsService.setGeneralInstructions(
-      req.params.projectId,
-      req.body.content
-    );
+    await agentInstructionsService.setGeneralInstructions(req.params.projectId, req.body.content);
     res.status(200).json({ data: { saved: true } });
   })
 );

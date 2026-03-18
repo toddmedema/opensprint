@@ -1939,11 +1939,7 @@ export class OrchestratorService {
           baseBranch,
         });
         if (qualityGateFailure) {
-          const detail = this.applyQualityGateFailure(
-            slot.phaseResult,
-            qualityGateFailure,
-            wtPath
-          );
+          const detail = this.applyQualityGateFailure(slot.phaseResult, qualityGateFailure, wtPath);
           await this.failureHandler.handleTaskFailure(
             projectId,
             repoPath,
@@ -2163,9 +2159,7 @@ export class OrchestratorService {
   ): string {
     const command = detail?.command?.trim();
     const reason =
-      detail?.reason?.trim() ||
-      detail?.firstErrorLine?.trim() ||
-      "Pre-merge quality gates failed";
+      detail?.reason?.trim() || detail?.firstErrorLine?.trim() || "Pre-merge quality gates failed";
     const firstErrorLine = detail?.firstErrorLine?.trim();
     const prefix =
       failureType === "environment_setup"
@@ -2173,7 +2167,9 @@ export class OrchestratorService {
         : getFailureTypeTitle("quality_gate");
     const commandPart = command ? ` (${command})` : "";
     const detailPart =
-      firstErrorLine && firstErrorLine !== reason ? `: ${reason} | ${firstErrorLine}` : `: ${reason}`;
+      firstErrorLine && firstErrorLine !== reason
+        ? `: ${reason} | ${firstErrorLine}`
+        : `: ${reason}`;
     return compactExecutionText(`${prefix}${commandPart}${detailPart}`, 500);
   }
 
@@ -2357,11 +2353,7 @@ export class OrchestratorService {
             baseBranch,
           });
           if (qualityGateFailure) {
-            const detail = this.applyQualityGateFailure(
-              sl.phaseResult,
-              qualityGateFailure,
-              wtPath
-            );
+            const detail = this.applyQualityGateFailure(sl.phaseResult, qualityGateFailure, wtPath);
             await this.writeReviewTestStatus(
               task.id,
               repoPath,

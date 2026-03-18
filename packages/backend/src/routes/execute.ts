@@ -38,7 +38,11 @@ export function createExecuteRouter(
     validateBody(executePrepareBodySchema),
     wrapAsync(async (req: Request<PrepareParams>, res) => {
       const { projectId, taskId } = req.params;
-      const b = req.body as { phase?: "coding" | "review"; createBranch?: boolean; attempt?: number };
+      const b = req.body as {
+        phase?: "coding" | "review";
+        createBranch?: boolean;
+        attempt?: number;
+      };
       const taskDir = await taskService.prepareTaskDirectory(projectId, taskId, {
         phase: b.phase ?? "coding",
         createBranch: b.createBranch !== false,
@@ -104,7 +108,11 @@ export function createExecuteRouter(
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const { projectId } = req.params;
       const repoPath = await projectService.getRepoPath(projectId);
-      const { since, taskId, count } = req.query as { since?: string; taskId?: string; count?: number };
+      const { since, taskId, count } = req.query as {
+        since?: string;
+        taskId?: string;
+        count?: number;
+      };
 
       let events: OrchestratorEvent[];
       if (taskId) {

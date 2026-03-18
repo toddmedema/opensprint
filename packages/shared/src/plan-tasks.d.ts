@@ -7,8 +7,8 @@
  * - ## Instructions section with ### N. Title blocks (same format)
  */
 export interface ParsedPlanTask {
-    title: string;
-    description: string;
+  title: string;
+  description: string;
 }
 /**
  * Parse tasks from plan markdown content.

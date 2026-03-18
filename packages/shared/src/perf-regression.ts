@@ -62,7 +62,8 @@ export function checkPerfRegressions(
   const regressions: PerfRegression[] = [];
 
   if (baseline.load.loadComplete > 0 && current.load.loadComplete > 0) {
-    const deltaPct = ((current.load.loadComplete - baseline.load.loadComplete) / baseline.load.loadComplete) * 100;
+    const deltaPct =
+      ((current.load.loadComplete - baseline.load.loadComplete) / baseline.load.loadComplete) * 100;
     if (deltaPct > deltas.loadCompletePct) {
       regressions.push({
         metric: "loadComplete",
@@ -105,7 +106,8 @@ export function checkPerfRegressions(
   }
 
   if (baseline.memory.jsHeapUsed > 0 && current.memory.jsHeapUsed > 0) {
-    const deltaPct = ((current.memory.jsHeapUsed - baseline.memory.jsHeapUsed) / baseline.memory.jsHeapUsed) * 100;
+    const deltaPct =
+      ((current.memory.jsHeapUsed - baseline.memory.jsHeapUsed) / baseline.memory.jsHeapUsed) * 100;
     if (deltaPct > deltas.heapUsedPct) {
       regressions.push({
         metric: "jsHeapUsed",

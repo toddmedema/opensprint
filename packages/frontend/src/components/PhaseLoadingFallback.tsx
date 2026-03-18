@@ -31,10 +31,7 @@ export function SketchLogoLoading({
   status?: string;
 } = {}) {
   return (
-    <div
-      className="flex flex-1 min-h-0 items-center justify-center"
-      data-testid={containerTestId}
-    >
+    <div className="flex flex-1 min-h-0 items-center justify-center" data-testid={containerTestId}>
       <div
         className="flex flex-col items-center justify-center gap-3"
         data-testid={spinnerTestId}

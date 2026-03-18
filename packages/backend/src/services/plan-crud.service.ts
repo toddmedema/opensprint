@@ -139,7 +139,8 @@ export class PlanCrudService {
    * Legacy tasks without the field are treated as version 1.
    */
   private static getTaskPlanVersion(task: StoredTask): number {
-    const raw = (task as Record<string, unknown>).sourcePlanVersionNumber ??
+    const raw =
+      (task as Record<string, unknown>).sourcePlanVersionNumber ??
       (task as Record<string, unknown>).source_plan_version_number;
     return typeof raw === "number" && raw >= 1 ? raw : 1;
   }

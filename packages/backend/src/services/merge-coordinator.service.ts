@@ -285,9 +285,7 @@ export class MergeCoordinatorService {
   }
 
   private getHumanFailureMessage(stage: MergeFailureStage): string {
-    return stage === "quality_gate"
-      ? QUALITY_GATE_FAILURE_MESSAGE
-      : HUMAN_MERGE_FAILURE_MESSAGE;
+    return stage === "quality_gate" ? QUALITY_GATE_FAILURE_MESSAGE : HUMAN_MERGE_FAILURE_MESSAGE;
   }
 
   private getMergeFailureBlockReason(stage: MergeFailureStage): string {

@@ -3,14 +3,25 @@
  * Each Plan markdown file follows a standardized template with required sections.
  */
 /** Required section headings per PRD §7.2.3 (in order) */
-export declare const PLAN_MARKDOWN_SECTIONS: readonly ["Overview", "Acceptance Criteria", "Technical Approach", "Dependencies", "Data Model Changes", "API Specification", "UI/UX Requirements", "Edge Cases and Error Handling", "Testing Strategy", "Estimated Complexity"];
+export declare const PLAN_MARKDOWN_SECTIONS: readonly [
+  "Overview",
+  "Acceptance Criteria",
+  "Technical Approach",
+  "Dependencies",
+  "Data Model Changes",
+  "API Specification",
+  "UI/UX Requirements",
+  "Edge Cases and Error Handling",
+  "Testing Strategy",
+  "Estimated Complexity",
+];
 export type PlanSectionName = (typeof PLAN_MARKDOWN_SECTIONS)[number];
 /** Result of validating plan content against the template */
 export interface PlanValidationResult {
-    /** Section headings that are missing from the content */
-    missing: PlanSectionName[];
-    /** Warning messages (e.g., missing sections) */
-    warnings: string[];
+  /** Section headings that are missing from the content */
+  missing: PlanSectionName[];
+  /** Warning messages (e.g., missing sections) */
+  warnings: string[];
 }
 /**
  * Returns the Plan markdown template with the given feature title.

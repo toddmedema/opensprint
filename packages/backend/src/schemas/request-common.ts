@@ -56,9 +56,7 @@ export const notificationParamsSchema = z.object({
 export const notificationResolveBodySchema = z
   .object({
     approved: z.boolean().optional(),
-    responses: z
-      .array(z.object({ questionId: z.string(), answer: z.string() }))
-      .optional(),
+    responses: z.array(z.object({ questionId: z.string(), answer: z.string() })).optional(),
   })
   .optional()
   .default({});

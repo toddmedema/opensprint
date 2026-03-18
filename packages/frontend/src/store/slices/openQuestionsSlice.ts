@@ -119,9 +119,7 @@ const openQuestionsSlice = createSlice({
         const apiIds = new Set(fromApi.map((n) => n.id));
         const keptResolved = resolvedInState.filter((n) => !apiIds.has(n.id));
         state.byProject[id] = [...fromApi, ...keptResolved];
-        state.global = state.global
-          .filter((n) => n.projectId !== id)
-          .concat(state.byProject[id]);
+        state.global = state.global.filter((n) => n.projectId !== id).concat(state.byProject[id]);
         if (state.async.project[id]) state.async.project[id].loading = false;
       })
       .addCase(fetchProjectNotifications.rejected, (state, action) => {

@@ -1,1 +1,2668 @@
-{"numTotalTestSuites":74,"numPassedTestSuites":74,"numFailedTestSuites":0,"numPendingTestSuites":0,"numTotalTests":281,"numPassedTests":281,"numFailedTests":0,"numPendingTests":0,"numTodoTests":0,"snapshot":{"added":0,"failure":false,"filesAdded":0,"filesRemoved":0,"filesRemovedList":[],"filesUnmatched":0,"filesUpdated":0,"matched":0,"total":0,"unchecked":0,"uncheckedKeysByFile":[],"unmatched":0,"updated":0,"didUpdate":false},"startTime":1773533538414,"success":true,"testResults":[{"assertionResults":[{"ancestorTitles":["AgentRole and slot mapping","getSlotForRole"],"fullName":"AgentRole and slot mapping getSlotForRole returns coding for coder and reviewer","status":"passed","title":"returns coding for coder and reviewer","duration":0.6638750000000186,"failureMessages":[],"meta":{}},{"ancestorTitles":["AgentRole and slot mapping","getSlotForRole"],"fullName":"AgentRole and slot mapping getSlotForRole returns planning for all other roles","status":"passed","title":"returns planning for all other roles","duration":0.15287499999999454,"failureMessages":[],"meta":{}},{"ancestorTitles":["AgentRole and slot mapping","AGENT_ROLE_LABELS"],"fullName":"AgentRole and slot mapping AGENT_ROLE_LABELS has human-readable label for each role","status":"passed","title":"has human-readable label for each role","duration":0.1679589999999962,"failureMessages":[],"meta":{}},{"ancestorTitles":["AgentRole and slot mapping","AGENT_ROLE_CANONICAL_ORDER"],"fullName":"AgentRole and slot mapping AGENT_ROLE_CANONICAL_ORDER matches README/PRD agent table order","status":"passed","title":"matches README/PRD agent table order","duration":0.4032500000000141,"failureMessages":[],"meta":{}},{"ancestorTitles":["AgentRole and slot mapping","AGENT_ROLE_PHASES"],"fullName":"AgentRole and slot mapping AGENT_ROLE_PHASES has phase(s) for each role matching README table","status":"passed","title":"has phase(s) for each role matching README table","duration":0.30487499999998136,"failureMessages":[],"meta":{}},{"ancestorTitles":["AgentRole and slot mapping","AGENT_ROLE_DESCRIPTIONS"],"fullName":"AgentRole and slot mapping AGENT_ROLE_DESCRIPTIONS has entry for all 9 roles in AGENT_ROLE_CANONICAL_ORDER","status":"passed","title":"has entry for all 9 roles in AGENT_ROLE_CANONICAL_ORDER","duration":0.39866700000004585,"failureMessages":[],"meta":{}},{"ancestorTitles":["AgentRole and slot mapping","AGENT_ROLE_DESCRIPTIONS"],"fullName":"AgentRole and slot mapping AGENT_ROLE_DESCRIPTIONS matches README table descriptions exactly for all 9 agents","status":"passed","title":"matches README table descriptions exactly for all 9 agents","duration":0.1547090000000253,"failureMessages":[],"meta":{}},{"ancestorTitles":["AgentRole and slot mapping","sortAgentsByCanonicalOrder"],"fullName":"AgentRole and slot mapping sortAgentsByCanonicalOrder sorts agents by canonical role order","status":"passed","title":"sorts agents by canonical role order","duration":0.14587499999998954,"failureMessages":[],"meta":{}},{"ancestorTitles":["AgentRole and slot mapping","sortAgentsByCanonicalOrder"],"fullName":"AgentRole and slot mapping sortAgentsByCanonicalOrder sorts entries with getAgent when provided","status":"passed","title":"sorts entries with getAgent when provided","duration":0.09516700000000355,"failureMessages":[],"meta":{}},{"ancestorTitles":["AgentRole and slot mapping","sortAgentsByCanonicalOrder"],"fullName":"AgentRole and slot mapping sortAgentsByCanonicalOrder uses phase-derived role when role is missing (coding→coder, review→reviewer)","status":"passed","title":"uses phase-derived role when role is missing (coding→coder, review→reviewer)","duration":0.0911670000000413,"failureMessages":[],"meta":{}},{"ancestorTitles":["AgentRole and slot mapping","AGENT_ROLE_PHASES (consistency check)"],"fullName":"AgentRole and slot mapping AGENT_ROLE_PHASES (consistency check) has phase(s) for each role matching agent.ts source of truth","status":"passed","title":"has phase(s) for each role matching agent.ts source of truth","duration":0.1860409999999888,"failureMessages":[],"meta":{}},{"ancestorTitles":["AgentRole and slot mapping","AGENT_ROLE_PHASES (consistency check)"],"fullName":"AgentRole and slot mapping AGENT_ROLE_PHASES (consistency check) covers all roles in AGENT_ROLE_CANONICAL_ORDER","status":"passed","title":"covers all roles in AGENT_ROLE_CANONICAL_ORDER","duration":0.3423339999999939,"failureMessages":[],"meta":{}},{"ancestorTitles":["AgentRole and slot mapping","AGENT_ROLE_PHASES (consistency check)"],"fullName":"AgentRole and slot mapping AGENT_ROLE_PHASES (consistency check) matches README table phases for all 9 agents","status":"passed","title":"matches README table phases for all 9 agents","duration":0.18274999999999864,"failureMessages":[],"meta":{}},{"ancestorTitles":["AgentRole and slot mapping","getRoleDisplayLabel"],"fullName":"AgentRole and slot mapping getRoleDisplayLabel returns role label only when name is absent","status":"passed","title":"returns role label only when name is absent","duration":0.12700000000000955,"failureMessages":[],"meta":{}},{"ancestorTitles":["AgentRole and slot mapping","getRoleDisplayLabel"],"fullName":"AgentRole and slot mapping getRoleDisplayLabel returns role (name) when name is present","status":"passed","title":"returns role (name) when name is present","duration":0.0827499999999759,"failureMessages":[],"meta":{}},{"ancestorTitles":["AgentRole and slot mapping","getRoleDisplayLabel"],"fullName":"AgentRole and slot mapping getRoleDisplayLabel falls back to phase label when role is unknown","status":"passed","title":"falls back to phase label when role is unknown","duration":0.07983299999995097,"failureMessages":[],"meta":{}},{"ancestorTitles":["AgentRole and slot mapping","getRoleDisplayLabel"],"fullName":"AgentRole and slot mapping getRoleDisplayLabel ignores empty or whitespace-only name","status":"passed","title":"ignores empty or whitespace-only name","duration":0.07787500000000591,"failureMessages":[],"meta":{}}],"startTime":1773533538566,"endTime":1773533538570.0798,"status":"passed","message":"","name":"/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/agent.test.ts"},{"assertionResults":[{"ancestorTitles":["build config (production dist output)"],"fullName":"build config (production dist output) tsconfig.build.json has outDir ./dist","status":"passed","title":"tsconfig.build.json has outDir ./dist","duration":0.7120419999999967,"failureMessages":[],"meta":{}},{"ancestorTitles":["build config (production dist output)"],"fullName":"build config (production dist output) tsconfig.build.json has rootDir ./src","status":"passed","title":"tsconfig.build.json has rootDir ./src","duration":0.13075000000003456,"failureMessages":[],"meta":{}},{"ancestorTitles":["build config (production dist output)"],"fullName":"build config (production dist output) package.json build script uses tsconfig.build.json","status":"passed","title":"package.json build script uses tsconfig.build.json","duration":0.15874999999994088,"failureMessages":[],"meta":{}},{"ancestorTitles":["build config (production dist output)"],"fullName":"build config (production dist output) package.json exports dist for production (import/require)","status":"passed","title":"package.json exports dist for production (import/require)","duration":0.15812499999992724,"failureMessages":[],"meta":{}},{"ancestorTitles":["build config (production dist output)"],"fullName":"build config (production dist output) build produces dist/index.js and dist/index.d.ts when run","status":"passed","title":"build produces dist/index.js and dist/index.d.ts when run","duration":0.11012500000003911,"failureMessages":[],"meta":{}}],"startTime":1773533539008,"endTime":1773533539009.1587,"status":"passed","message":"","name":"/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/build-config.test.ts"},{"assertionResults":[{"ancestorTitles":["COMMIT_MESSAGE_TITLE_MAX_LENGTH"],"fullName":"COMMIT_MESSAGE_TITLE_MAX_LENGTH is 45 for commit message / task title display truncation","status":"passed","title":"is 45 for commit message / task title display truncation","duration":0.6729579999999942,"failureMessages":[],"meta":{}},{"ancestorTitles":["getTestCommandForFramework"],"fullName":"getTestCommandForFramework returns '' for null","status":"passed","title":"returns '' for null","duration":0.1001250000000482,"failureMessages":[],"meta":{}},{"ancestorTitles":["getTestCommandForFramework"],"fullName":"getTestCommandForFramework returns '' for 'none'","status":"passed","title":"returns '' for 'none'","duration":0.0529589999999871,"failureMessages":[],"meta":{}},{"ancestorTitles":["getTestCommandForFramework"],"fullName":"getTestCommandForFramework returns 'npm test' for 'jest'","status":"passed","title":"returns 'npm test' for 'jest'","duration":0.057332999999971435,"failureMessages":[],"meta":{}},{"ancestorTitles":["getTestCommandForFramework"],"fullName":"getTestCommandForFramework returns 'node ./node_modules/vitest/vitest.mjs…' for 'vitest'","status":"passed","title":"returns 'node ./node_modules/vitest/vitest.mjs…' for 'vitest'","duration":0.04704100000003564,"failureMessages":[],"meta":{}},{"ancestorTitles":["resolveTestCommand"],"fullName":"resolveTestCommand resolves 'pytest'","status":"passed","title":"resolves 'pytest'","duration":0.07587499999999636,"failureMessages":[],"meta":{}},{"ancestorTitles":["resolveTestCommand"],"fullName":"resolveTestCommand resolves 'node ./node_modules/vitest/vitest.mjs…'","status":"passed","title":"resolves 'node ./node_modules/vitest/vitest.mjs…'","duration":0.049541999999973996,"failureMessages":[],"meta":{}},{"ancestorTitles":["resolveTestCommand"],"fullName":"resolveTestCommand resolves 'npm test'","status":"passed","title":"resolves 'npm test'","duration":0.04520800000000236,"failureMessages":[],"meta":{}},{"ancestorTitles":["resolveTestCommand"],"fullName":"resolveTestCommand resolves 'npm test'","status":"passed","title":"resolves 'npm test'","duration":0.046041000000059285,"failureMessages":[],"meta":{}},{"ancestorTitles":["agent naming"],"fullName":"agent naming maps slot +0 to 'Frodo'","status":"passed","title":"maps slot +0 to 'Frodo'","duration":0.07366700000000037,"failureMessages":[],"meta":{}},{"ancestorTitles":["agent naming"],"fullName":"agent naming maps slot 1 to 'Samwise'","status":"passed","title":"maps slot 1 to 'Samwise'","duration":0.04712500000005093,"failureMessages":[],"meta":{}},{"ancestorTitles":["agent naming"],"fullName":"agent naming maps slot 13 to 'Frodo'","status":"passed","title":"maps slot 13 to 'Frodo'","duration":0.04558399999996254,"failureMessages":[],"meta":{}},{"ancestorTitles":["agent naming"],"fullName":"agent naming maps 'coder' slot +0 to 'Frodo'","status":"passed","title":"maps 'coder' slot +0 to 'Frodo'","duration":0.07600000000002183,"failureMessages":[],"meta":{}},{"ancestorTitles":["agent naming"],"fullName":"agent naming maps 'reviewer' slot +0 to 'Boromir'","status":"passed","title":"maps 'reviewer' slot +0 to 'Boromir'","duration":0.06516599999997652,"failureMessages":[],"meta":{}},{"ancestorTitles":["agent naming"],"fullName":"agent naming maps 'dreamer' slot +0 to 'Gandalf'","status":"passed","title":"maps 'dreamer' slot +0 to 'Gandalf'","duration":0.04975000000001728,"failureMessages":[],"meta":{}},{"ancestorTitles":["agent naming"],"fullName":"agent naming wraps role-specific names by modulo","status":"passed","title":"wraps role-specific names by modulo","duration":0.08841700000004948,"failureMessages":[],"meta":{}},{"ancestorTitles":["agent naming"],"fullName":"agent naming falls back to the coder pool for unknown roles","status":"passed","title":"falls back to the coder pool for unknown roles","duration":0.0584999999999809,"failureMessages":[],"meta":{}},{"ancestorTitles":["isAgentAssignee"],"fullName":"isAgentAssignee returns true for 'Frodo'","status":"passed","title":"returns true for 'Frodo'","duration":0.0670830000000251,"failureMessages":[],"meta":{}},{"ancestorTitles":["isAgentAssignee"],"fullName":"isAgentAssignee returns true for 'Boromir'","status":"passed","title":"returns true for 'Boromir'","duration":0.04745900000000347,"failureMessages":[],"meta":{}},{"ancestorTitles":["isAgentAssignee"],"fullName":"isAgentAssignee returns false for 'agent-1'","status":"passed","title":"returns false for 'agent-1'","duration":0.04574999999999818,"failureMessages":[],"meta":{}},{"ancestorTitles":["isAgentAssignee"],"fullName":"isAgentAssignee returns false for null","status":"passed","title":"returns false for null","duration":0.04679199999998218,"failureMessages":[],"meta":{}},{"ancestorTitles":["isAgentAssignee"],"fullName":"isAgentAssignee returns false for undefined","status":"passed","title":"returns false for undefined","duration":0.04645800000002964,"failureMessages":[],"meta":{}},{"ancestorTitles":["isAgentAssignee"],"fullName":"isAgentAssignee returns false for ''","status":"passed","title":"returns false for ''","duration":0.14237500000001546,"failureMessages":[],"meta":{}},{"ancestorTitles":["isBlockedByTechnicalError"],"fullName":"isBlockedByTechnicalError returns true for 'Merge Failure'","status":"passed","title":"returns true for 'Merge Failure'","duration":0.07466699999997672,"failureMessages":[],"meta":{}},{"ancestorTitles":["isBlockedByTechnicalError"],"fullName":"isBlockedByTechnicalError returns true for 'Coding Failure'","status":"passed","title":"returns true for 'Coding Failure'","duration":0.0470829999999296,"failureMessages":[],"meta":{}},{"ancestorTitles":["isBlockedByTechnicalError"],"fullName":"isBlockedByTechnicalError returns false for 'Open Question'","status":"passed","title":"returns false for 'Open Question'","duration":0.04566700000009405,"failureMessages":[],"meta":{}},{"ancestorTitles":["isBlockedByTechnicalError"],"fullName":"isBlockedByTechnicalError returns false for 'API Blocked'","status":"passed","title":"returns false for 'API Blocked'","duration":0.04316700000003948,"failureMessages":[],"meta":{}},{"ancestorTitles":["isBlockedByTechnicalError"],"fullName":"isBlockedByTechnicalError returns false for 'Waiting for Human'","status":"passed","title":"returns false for 'Waiting for Human'","duration":0.042708000000061475,"failureMessages":[],"meta":{}},{"ancestorTitles":["isBlockedByTechnicalError"],"fullName":"isBlockedByTechnicalError returns false for null","status":"passed","title":"returns false for null","duration":0.042749999999955435,"failureMessages":[],"meta":{}},{"ancestorTitles":["isBlockedByTechnicalError"],"fullName":"isBlockedByTechnicalError returns false for undefined","status":"passed","title":"returns false for undefined","duration":0.04216699999994944,"failureMessages":[],"meta":{}},{"ancestorTitles":["isBlockedByTechnicalError"],"fullName":"isBlockedByTechnicalError returns false for ''","status":"passed","title":"returns false for ''","duration":0.042832999999973254,"failureMessages":[],"meta":{}},{"ancestorTitles":["technical block constants"],"fullName":"technical block constants keep the known technical reasons","status":"passed","title":"keep the known technical reasons","duration":0.438083000000006,"failureMessages":[],"meta":{}},{"ancestorTitles":["technical block constants"],"fullName":"technical block constants uses an eight-hour blocked retry interval","status":"passed","title":"uses an eight-hour blocked retry interval","duration":0.06299999999998818,"failureMessages":[],"meta":{}}],"startTime":1773533538825,"endTime":1773533538828.063,"status":"passed","message":"","name":"/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/constants.test.ts"},{"assertionResults":[{"ancestorTitles":["desktop artifact names (fixed for permalinks)"],"fullName":"desktop artifact names (fixed for permalinks) electron build.mac.artifactName is set and does not contain version","status":"passed","title":"electron build.mac.artifactName is set and does not contain version","duration":0.8150000000000546,"failureMessages":[],"meta":{}},{"ancestorTitles":["desktop artifact names (fixed for permalinks)"],"fullName":"desktop artifact names (fixed for permalinks) electron build.win.artifactName is set and does not contain version","status":"passed","title":"electron build.win.artifactName is set and does not contain version","duration":0.15237500000000637,"failureMessages":[],"meta":{}},{"ancestorTitles":["desktop artifact names (fixed for permalinks)"],"fullName":"desktop artifact names (fixed for permalinks) electron build.linux.artifactName is set and does not contain version","status":"passed","title":"electron build.linux.artifactName is set and does not contain version","duration":0.12412499999993543,"failureMessages":[],"meta":{}}],"startTime":1773533539110,"endTime":1773533539111.1523,"status":"passed","message":"","name":"/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/desktop-artifact-names.test.ts"},{"assertionResults":[{"ancestorTitles":["dev config (source-direct imports)"],"fullName":"dev config (source-direct imports) root dev script removes shared/dist and starts concurrently","status":"passed","title":"root dev script removes shared/dist and starts concurrently","duration":0.8892089999999939,"failureMessages":[],"meta":{}},{"ancestorTitles":["dev config (source-direct imports)"],"fullName":"dev config (source-direct imports) frontend vite.config aliases @opensprint/shared to source","status":"passed","title":"frontend vite.config aliases @opensprint/shared to source","duration":0.25379200000003266,"failureMessages":[],"meta":{}},{"ancestorTitles":["dev config (source-direct imports)"],"fullName":"dev config (source-direct imports) backend vitest.config aliases @opensprint/shared to source","status":"passed","title":"backend vitest.config aliases @opensprint/shared to source","duration":0.1500419999999849,"failureMessages":[],"meta":{}},{"ancestorTitles":["dev config (source-direct imports)"],"fullName":"dev config (source-direct imports) frontend vitest.config aliases @opensprint/shared to source","status":"passed","title":"frontend vitest.config aliases @opensprint/shared to source","duration":0.1422080000000392,"failureMessages":[],"meta":{}},{"ancestorTitles":["dev config (source-direct imports)"],"fullName":"dev config (source-direct imports) shared package exports have src fallback when dist absent","status":"passed","title":"shared package exports have src fallback when dist absent","duration":0.1537089999999921,"failureMessages":[],"meta":{}},{"ancestorTitles":["dev config (source-direct imports)"],"fullName":"dev config (source-direct imports) dev script runs shared in watch mode alongside backend and frontend","status":"passed","title":"dev script runs shared in watch mode alongside backend and frontend","duration":0.1294589999999971,"failureMessages":[],"meta":{}},{"ancestorTitles":["dev config (source-direct imports)"],"fullName":"dev config (source-direct imports) dev script starts both backend and frontend via concurrently","status":"passed","title":"dev script starts both backend and frontend via concurrently","duration":0.11445799999995643,"failureMessages":[],"meta":{}},{"ancestorTitles":["dev config (source-direct imports)"],"fullName":"dev config (source-direct imports) setup script builds shared before applying database schema","status":"passed","title":"setup script builds shared before applying database schema","duration":0.20220799999998462,"failureMessages":[],"meta":{}},{"ancestorTitles":["dev config (source-direct imports)"],"fullName":"dev config (source-direct imports) setup script falls back from opensprint login to postgres login for local bootstrap","status":"passed","title":"setup script falls back from opensprint login to postgres login for local bootstrap","duration":0.2591660000000502,"failureMessages":[],"meta":{}},{"ancestorTitles":["dev config (source-direct imports)"],"fullName":"dev config (source-direct imports) setup script runs local credential bootstrap even when WSL skips service management","status":"passed","title":"setup script runs local credential bootstrap even when WSL skips service management","duration":0.13433300000002646,"failureMessages":[],"meta":{}},{"ancestorTitles":["dev config (source-direct imports)"],"fullName":"dev config (source-direct imports) setup script supports sudo-based peer auth bootstrap for WSL postgres installs","status":"passed","title":"setup script supports sudo-based peer auth bootstrap for WSL postgres installs","duration":0.14262500000000955,"failureMessages":[],"meta":{}}],"startTime":1773533538683,"endTime":1773533538685.2593,"status":"passed","message":"","name":"/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/dev-config.test.ts"},{"assertionResults":[{"ancestorTitles":["parsePlanTasks"],"fullName":"parsePlanTasks returns empty array when content is empty","status":"passed","title":"returns empty array when content is empty","duration":0.9466670000000477,"failureMessages":[],"meta":{}},{"ancestorTitles":["parsePlanTasks"],"fullName":"parsePlanTasks returns empty array when no Tasks or Instructions section","status":"passed","title":"returns empty array when no Tasks or Instructions section","duration":0.22933399999999438,"failureMessages":[],"meta":{}},{"ancestorTitles":["parsePlanTasks"],"fullName":"parsePlanTasks parses ## Tasks section with ### Title blocks","status":"passed","title":"parses ## Tasks section with ### Title blocks","duration":0.7312920000000531,"failureMessages":[],"meta":{}},{"ancestorTitles":["parsePlanTasks"],"fullName":"parsePlanTasks parses numbered ### headings (e.g. ### 1. Title)","status":"passed","title":"parses numbered ### headings (e.g. ### 1. Title)","duration":0.21162500000002638,"failureMessages":[],"meta":{}},{"ancestorTitles":["parsePlanTasks"],"fullName":"parsePlanTasks uses ## Instructions when ## Tasks is absent","status":"passed","title":"uses ## Instructions when ## Tasks is absent","duration":0.142708999999968,"failureMessages":[],"meta":{}},{"ancestorTitles":["parsePlanTasks"],"fullName":"parsePlanTasks prefers ## Tasks over ## Instructions","status":"passed","title":"prefers ## Tasks over ## Instructions","duration":0.1149159999999938,"failureMessages":[],"meta":{}},{"ancestorTitles":["parsePlanTasks"],"fullName":"parsePlanTasks handles case-insensitive section names","status":"passed","title":"handles case-insensitive section names","duration":0.17391699999996035,"failureMessages":[],"meta":{}},{"ancestorTitles":["parsePlanTasks"],"fullName":"parsePlanTasks handles task with empty description","status":"passed","title":"handles task with empty description","duration":0.13591700000006313,"failureMessages":[],"meta":{}}],"startTime":1773533538902,"endTime":1773533538905.136,"status":"passed","message":"","name":"/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/plan-tasks.test.ts"},{"assertionResults":[{"ancestorTitles":["plan-template","PLAN_MARKDOWN_SECTIONS"],"fullName":"plan-template PLAN_MARKDOWN_SECTIONS includes all PRD §7.2.3 required sections","status":"passed","title":"includes all PRD §7.2.3 required sections","duration":0.9378329999999551,"failureMessages":[],"meta":{}},{"ancestorTitles":["plan-template","getPlanTemplate"],"fullName":"plan-template getPlanTemplate returns template with feature title as H1","status":"passed","title":"returns template with feature title as H1","duration":0.2129579999999578,"failureMessages":[],"meta":{}},{"ancestorTitles":["plan-template","getPlanTemplate"],"fullName":"plan-template getPlanTemplate includes all required sections","status":"passed","title":"includes all required sections","duration":0.19016700000008768,"failureMessages":[],"meta":{}},{"ancestorTitles":["plan-template","getPlanTemplate"],"fullName":"plan-template getPlanTemplate handles empty title by using 'Feature'","status":"passed","title":"handles empty title by using 'Feature'","duration":0.06966699999998127,"failureMessages":[],"meta":{}},{"ancestorTitles":["plan-template","getPlanTemplate"],"fullName":"plan-template getPlanTemplate trims whitespace from title","status":"passed","title":"trims whitespace from title","duration":0.06941599999993286,"failureMessages":[],"meta":{}},{"ancestorTitles":["plan-template","validatePlanContent"],"fullName":"plan-template validatePlanContent returns no missing sections when all are present","status":"passed","title":"returns no missing sections when all are present","duration":0.869083000000046,"failureMessages":[],"meta":{}},{"ancestorTitles":["plan-template","validatePlanContent"],"fullName":"plan-template validatePlanContent identifies missing sections","status":"passed","title":"identifies missing sections","duration":0.8013339999999971,"failureMessages":[],"meta":{}},{"ancestorTitles":["plan-template","validatePlanContent"],"fullName":"plan-template validatePlanContent handles empty content","status":"passed","title":"handles empty content","duration":0.14320899999995618,"failureMessages":[],"meta":{}},{"ancestorTitles":["plan-template","validatePlanContent"],"fullName":"plan-template validatePlanContent handles content with only whitespace","status":"passed","title":"handles content with only whitespace","duration":0.1496669999999085,"failureMessages":[],"meta":{}},{"ancestorTitles":["plan-template","validatePlanContent"],"fullName":"plan-template validatePlanContent matches section with parenthetical (e.g. Acceptance Criteria (with testable conditions))","status":"passed","title":"matches section with parenthetical (e.g. Acceptance Criteria (with testable conditions))","duration":0.11483300000008967,"failureMessages":[],"meta":{}},{"ancestorTitles":["plan-template","validatePlanContent"],"fullName":"plan-template validatePlanContent is case-insensitive for section matching","status":"passed","title":"is case-insensitive for section matching","duration":0.10466699999994944,"failureMessages":[],"meta":{}}],"startTime":1773533538792,"endTime":1773533538796.1497,"status":"passed","message":"","name":"/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/plan-template.test.ts"},{"assertionResults":[{"ancestorTitles":["Plan version types"],"fullName":"Plan version types PlanVersionSummary has id, version_number, created_at, optional is_executed_version","status":"passed","title":"PlanVersionSummary has id, version_number, created_at, optional is_executed_version","duration":0.7347080000000688,"failureMessages":[],"meta":{}},{"ancestorTitles":["Plan version types"],"fullName":"Plan version types PlanVersionContent has version_number, title, content, optional metadata, created_at, optional is_executed_version","status":"passed","title":"PlanVersionContent has version_number, title, content, optional metadata, created_at, optional is_executed_version","duration":0.13566600000001472,"failureMessages":[],"meta":{}},{"ancestorTitles":["Plan version types"],"fullName":"Plan version types Plan accepts optional currentVersionNumber and lastExecutedVersionNumber","status":"passed","title":"Plan accepts optional currentVersionNumber and lastExecutedVersionNumber","duration":0.12166700000000219,"failureMessages":[],"meta":{}},{"ancestorTitles":["PlanMetadata"],"fullName":"PlanMetadata accepts optional reviewedAt as null or ISO timestamp","status":"passed","title":"accepts optional reviewedAt as null or ISO timestamp","duration":0.11225000000001728,"failureMessages":[],"meta":{}},{"ancestorTitles":["PLAN_STATUS_ORDER"],"fullName":"PLAN_STATUS_ORDER orders planning < building < in_review < complete","status":"passed","title":"orders planning < building < in_review < complete","duration":0.1037499999999909,"failureMessages":[],"meta":{}},{"ancestorTitles":["sortPlansByStatus"],"fullName":"sortPlansByStatus 'orders planning before building befor…'","status":"passed","title":"'orders planning before building befor…'","duration":0.4195829999999887,"failureMessages":[],"meta":{}},{"ancestorTitles":["sortPlansByStatus"],"fullName":"sortPlansByStatus 'preserves relative order inside the s…'","status":"passed","title":"'preserves relative order inside the s…'","duration":0.07237499999996544,"failureMessages":[],"meta":{}},{"ancestorTitles":["sortPlansByStatus"],"fullName":"sortPlansByStatus returns a new array without mutating the input order","status":"passed","title":"returns a new array without mutating the input order","duration":0.2387499999999818,"failureMessages":[],"meta":{}},{"ancestorTitles":["sortPlansByStatus"],"fullName":"sortPlansByStatus handles an empty array","status":"passed","title":"handles an empty array","duration":0.15299999999990632,"failureMessages":[],"meta":{}},{"ancestorTitles":["sortPlansByStatus"],"fullName":"sortPlansByStatus sends unknown statuses to the end via the fallback order","status":"passed","title":"sends unknown statuses to the end via the fallback order","duration":0.09470899999996618,"failureMessages":[],"meta":{}}],"startTime":1773533538716,"endTime":1773533538719.153,"status":"passed","message":"","name":"/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/plan.test.ts"},{"assertionResults":[{"ancestorTitles":["DEFAULT_HIL_CONFIG"],"fullName":"DEFAULT_HIL_CONFIG defaults all three categories to automated for new projects","status":"passed","title":"defaults all three categories to automated for new projects","duration":0.7998329999999783,"failureMessages":[],"meta":{}},{"ancestorTitles":["getAgentForComplexity"],"fullName":"getAgentForComplexity should return simpleComplexityAgent for low","status":"passed","title":"should return simpleComplexityAgent for low","duration":0.13016599999997425,"failureMessages":[],"meta":{}},{"ancestorTitles":["getAgentForComplexity"],"fullName":"getAgentForComplexity should return simpleComplexityAgent for medium","status":"passed","title":"should return simpleComplexityAgent for medium","duration":0.07637499999998454,"failureMessages":[],"meta":{}},{"ancestorTitles":["getAgentForComplexity"],"fullName":"getAgentForComplexity should return complexComplexityAgent for high","status":"passed","title":"should return complexComplexityAgent for high","duration":0.07120800000001282,"failureMessages":[],"meta":{}},{"ancestorTitles":["getAgentForComplexity"],"fullName":"getAgentForComplexity should return complexComplexityAgent for very_high","status":"passed","title":"should return complexComplexityAgent for very_high","duration":0.06654100000002927,"failureMessages":[],"meta":{}},{"ancestorTitles":["getAgentForComplexity"],"fullName":"getAgentForComplexity should return simpleComplexityAgent when complexity is undefined","status":"passed","title":"should return simpleComplexityAgent when complexity is undefined","duration":0.06329099999999244,"failureMessages":[],"meta":{}},{"ancestorTitles":["getAgentForPlanningRole"],"fullName":"getAgentForPlanningRole Dreamer always returns complexComplexityAgent","status":"passed","title":"Dreamer always returns complexComplexityAgent","duration":0.11462499999998954,"failureMessages":[],"meta":{}},{"ancestorTitles":["getAgentForPlanningRole"],"fullName":"getAgentForPlanningRole Analyst always returns simpleComplexityAgent","status":"passed","title":"Analyst always returns simpleComplexityAgent","duration":0.15412500000002183,"failureMessages":[],"meta":{}},{"ancestorTitles":["getAgentForPlanningRole"],"fullName":"getAgentForPlanningRole Planner/Harmonizer/Auditor/Summarizer inherit plan complexity","status":"passed","title":"Planner/Harmonizer/Auditor/Summarizer inherit plan complexity","duration":0.42487500000004275,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings"],"fullName":"parseSettings should pass through two-tier format unchanged","status":"passed","title":"should pass through two-tier format unchanged","duration":0.39345800000000963,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings"],"fullName":"parseSettings should default both tiers when missing","status":"passed","title":"should default both tiers when missing","duration":0.47937500000000455,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings"],"fullName":"parseSettings should default gitWorkingMode to worktree when parseSettings receives empty object","status":"passed","title":"should default gitWorkingMode to worktree when parseSettings receives empty object","duration":0.07120799999995597,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings"],"fullName":"parseSettings should use provided simple/complex when present","status":"passed","title":"should use provided simple/complex when present","duration":0.1027080000000069,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings"],"fullName":"parseSettings should default gitWorkingMode to worktree when missing","status":"passed","title":"should default gitWorkingMode to worktree when missing","duration":0.07041699999996354,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings"],"fullName":"parseSettings should default gitWorkingMode to worktree when invalid","status":"passed","title":"should default gitWorkingMode to worktree when invalid","duration":0.07800000000003138,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings"],"fullName":"parseSettings should preserve gitWorkingMode branches when valid","status":"passed","title":"should preserve gitWorkingMode branches when valid","duration":0.06637499999999363,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings"],"fullName":"parseSettings should preserve gitWorkingMode worktree when valid","status":"passed","title":"should preserve gitWorkingMode worktree when valid","duration":0.06583299999999781,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings"],"fullName":"parseSettings should parse and preserve valid reviewAngles","status":"passed","title":"should parse and preserve valid reviewAngles","duration":0.1133750000000191,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings"],"fullName":"parseSettings should filter invalid reviewAngles and return undefined when empty","status":"passed","title":"should filter invalid reviewAngles and return undefined when empty","duration":0.07654200000001765,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings"],"fullName":"parseSettings should return undefined for reviewAngles when array is empty","status":"passed","title":"should return undefined for reviewAngles when array is empty","duration":0.07825000000002547,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings"],"fullName":"parseSettings should parse enableHumanTeammates (default false)","status":"passed","title":"should parse enableHumanTeammates (default false)","duration":0.11587500000001683,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings"],"fullName":"parseSettings should round-trip teamMembers through parseSettings","status":"passed","title":"should round-trip teamMembers through parseSettings","duration":0.19479200000000674,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings"],"fullName":"parseSettings should filter invalid teamMembers entries and trim id/name","status":"passed","title":"should filter invalid teamMembers entries and trim id/name","duration":0.10783399999996846,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings"],"fullName":"parseSettings should return empty array for teamMembers when array is empty (explicit clear)","status":"passed","title":"should return empty array for teamMembers when array is empty (explicit clear)","duration":0.07645800000000236,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings"],"fullName":"parseSettings should preserve a valid aiAutonomyLevel","status":"passed","title":"should preserve a valid aiAutonomyLevel","duration":0.08320799999995643,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","mergeStrategy"],"fullName":"parseSettings mergeStrategy should default to per_task when parseSettings receives empty object","status":"passed","title":"should default to per_task when parseSettings receives empty object","duration":0.08195800000004283,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","mergeStrategy"],"fullName":"parseSettings mergeStrategy should yield per_epic when mergeStrategy is per_epic","status":"passed","title":"should yield per_epic when mergeStrategy is per_epic","duration":0.09520800000001373,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","mergeStrategy"],"fullName":"parseSettings mergeStrategy should yield per_task when mergeStrategy is per_task","status":"passed","title":"should yield per_task when mergeStrategy is per_task","duration":0.07375000000001819,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","mergeStrategy"],"fullName":"parseSettings mergeStrategy should normalize invalid mergeStrategy to per_task","status":"passed","title":"should normalize invalid mergeStrategy to per_task","duration":0.13795799999996916,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","mergeStrategy"],"fullName":"parseSettings mergeStrategy should normalize non-string mergeStrategy to per_task","status":"passed","title":"should normalize non-string mergeStrategy to per_task","duration":0.07149999999995771,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","mergeStrategy"],"fullName":"parseSettings mergeStrategy should default to per_task when mergeStrategy is missing","status":"passed","title":"should default to per_task when mergeStrategy is missing","duration":0.08387500000003456,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","mergeStrategy"],"fullName":"parseSettings mergeStrategy should preserve mergeStrategy on round-trip","status":"passed","title":"should preserve mergeStrategy on round-trip","duration":0.14195899999998574,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","worktreeBaseBranch"],"fullName":"parseSettings worktreeBaseBranch should default to main when parseSettings receives empty object","status":"passed","title":"should default to main when parseSettings receives empty object","duration":0.07208300000002055,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","worktreeBaseBranch"],"fullName":"parseSettings worktreeBaseBranch should default to main when worktreeBaseBranch is empty string","status":"passed","title":"should default to main when worktreeBaseBranch is empty string","duration":0.08316600000000562,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","worktreeBaseBranch"],"fullName":"parseSettings worktreeBaseBranch should default to main when worktreeBaseBranch is whitespace only","status":"passed","title":"should default to main when worktreeBaseBranch is whitespace only","duration":0.06925000000001091,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","worktreeBaseBranch"],"fullName":"parseSettings worktreeBaseBranch should default to main when worktreeBaseBranch contains invalid chars (spaces)","status":"passed","title":"should default to main when worktreeBaseBranch contains invalid chars (spaces)","duration":0.06725000000000136,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","worktreeBaseBranch"],"fullName":"parseSettings worktreeBaseBranch should default to main when worktreeBaseBranch contains invalid chars","status":"passed","title":"should default to main when worktreeBaseBranch contains invalid chars","duration":0.06795799999997598,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","worktreeBaseBranch"],"fullName":"parseSettings worktreeBaseBranch should preserve valid worktreeBaseBranch main","status":"passed","title":"should preserve valid worktreeBaseBranch main","duration":0.12825000000003683,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","worktreeBaseBranch"],"fullName":"parseSettings worktreeBaseBranch should preserve valid worktreeBaseBranch with slash","status":"passed","title":"should preserve valid worktreeBaseBranch with slash","duration":0.06866600000000744,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","worktreeBaseBranch"],"fullName":"parseSettings worktreeBaseBranch should preserve valid worktreeBaseBranch with underscore, hyphen, dot","status":"passed","title":"should preserve valid worktreeBaseBranch with underscore, hyphen, dot","duration":0.06820800000002691,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","worktreeBaseBranch"],"fullName":"parseSettings worktreeBaseBranch should trim valid worktreeBaseBranch","status":"passed","title":"should trim valid worktreeBaseBranch","duration":0.13245799999998553,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","worktreeBaseBranch"],"fullName":"parseSettings worktreeBaseBranch should default to main when worktreeBaseBranch is not a string","status":"passed","title":"should default to main when worktreeBaseBranch is not a string","duration":0.06733299999996234,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","selfImprovementFrequency"],"fullName":"parseSettings selfImprovementFrequency VALID_SELF_IMPROVEMENT_FREQUENCIES contains never, after_each_plan, daily, weekly","status":"passed","title":"VALID_SELF_IMPROVEMENT_FREQUENCIES contains never, after_each_plan, daily, weekly","duration":0.08037500000000364,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","selfImprovementFrequency"],"fullName":"parseSettings selfImprovementFrequency SELF_IMPROVEMENT_FREQUENCY_OPTIONS has one option per frequency with labels","status":"passed","title":"SELF_IMPROVEMENT_FREQUENCY_OPTIONS has one option per frequency with labels","duration":0.5912919999999531,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","selfImprovementFrequency"],"fullName":"parseSettings selfImprovementFrequency should default to never when parseSettings receives empty object","status":"passed","title":"should default to never when parseSettings receives empty object","duration":0.8337080000000014,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","selfImprovementFrequency"],"fullName":"parseSettings selfImprovementFrequency should default to never when selfImprovementFrequency is missing","status":"passed","title":"should default to never when selfImprovementFrequency is missing","duration":0.10149999999998727,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","selfImprovementFrequency"],"fullName":"parseSettings selfImprovementFrequency should preserve valid selfImprovementFrequency values","status":"passed","title":"should preserve valid selfImprovementFrequency values","duration":0.1538330000000201,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","selfImprovementFrequency"],"fullName":"parseSettings selfImprovementFrequency should normalize invalid selfImprovementFrequency to never","status":"passed","title":"should normalize invalid selfImprovementFrequency to never","duration":0.07120900000001029,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","selfImprovementFrequency"],"fullName":"parseSettings selfImprovementFrequency should pass through selfImprovementLastRunAt and selfImprovementLastCommitSha when present","status":"passed","title":"should pass through selfImprovementLastRunAt and selfImprovementLastCommitSha when present","duration":0.11750000000000682,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","selfImprovementFrequency"],"fullName":"parseSettings selfImprovementFrequency should leave selfImprovementLastRunAt and selfImprovementLastCommitSha undefined when missing or invalid","status":"passed","title":"should leave selfImprovementLastRunAt and selfImprovementLastCommitSha undefined when missing or invalid","duration":0.08637499999997544,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","autoExecutePlans"],"fullName":"parseSettings autoExecutePlans should default to false when parseSettings receives empty object","status":"passed","title":"should default to false when parseSettings receives empty object","duration":0.06862499999999727,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","autoExecutePlans"],"fullName":"parseSettings autoExecutePlans should default to false when autoExecutePlans is missing","status":"passed","title":"should default to false when autoExecutePlans is missing","duration":0.06437500000004093,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","autoExecutePlans"],"fullName":"parseSettings autoExecutePlans should preserve true when autoExecutePlans is true","status":"passed","title":"should preserve true when autoExecutePlans is true","duration":0.08191600000003518,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings","autoExecutePlans"],"fullName":"parseSettings autoExecutePlans should normalize non-boolean to false","status":"passed","title":"should normalize non-boolean to false","duration":0.0837500000000091,"failureMessages":[],"meta":{}},{"ancestorTitles":["getDefaultDeploymentTarget"],"fullName":"getDefaultDeploymentTarget returns first isDefault target when targets exist","status":"passed","title":"returns first isDefault target when targets exist","duration":0.10124999999999318,"failureMessages":[],"meta":{}},{"ancestorTitles":["getDefaultDeploymentTarget"],"fullName":"getDefaultDeploymentTarget returns first target when no isDefault and targets exist","status":"passed","title":"returns first target when no isDefault and targets exist","duration":0.06137499999999818,"failureMessages":[],"meta":{}},{"ancestorTitles":["getDefaultDeploymentTarget"],"fullName":"getDefaultDeploymentTarget returns config.target when no targets array","status":"passed","title":"returns config.target when no targets array","duration":0.057540999999957876,"failureMessages":[],"meta":{}},{"ancestorTitles":["getDefaultDeploymentTarget"],"fullName":"getDefaultDeploymentTarget returns production when no targets and no target","status":"passed","title":"returns production when no targets and no target","duration":0.05020900000005213,"failureMessages":[],"meta":{}},{"ancestorTitles":["getDeploymentTargetConfig"],"fullName":"getDeploymentTargetConfig returns target config by name","status":"passed","title":"returns target config by name","duration":0.4542500000000018,"failureMessages":[],"meta":{}},{"ancestorTitles":["getDeploymentTargetConfig"],"fullName":"getDeploymentTargetConfig returns undefined when target not found","status":"passed","title":"returns undefined when target not found","duration":0.0660829999999919,"failureMessages":[],"meta":{}},{"ancestorTitles":["getDeploymentTargetConfig"],"fullName":"getDeploymentTargetConfig returns undefined when no targets","status":"passed","title":"returns undefined when no targets","duration":0.052917000000036296,"failureMessages":[],"meta":{}},{"ancestorTitles":["getTargetsForDeployEvent"],"fullName":"getTargetsForDeployEvent returns targets with matching autoDeployTrigger","status":"passed","title":"returns targets with matching autoDeployTrigger","duration":0.1497910000000502,"failureMessages":[],"meta":{}},{"ancestorTitles":["getTargetsForDeployEvent"],"fullName":"getTargetsForDeployEvent treats missing autoDeployTrigger as none","status":"passed","title":"treats missing autoDeployTrigger as none","duration":0.0745420000000081,"failureMessages":[],"meta":{}},{"ancestorTitles":["getTargetsForDeployEvent"],"fullName":"getTargetsForDeployEvent returns empty array when no targets","status":"passed","title":"returns empty array when no targets","duration":0.08237500000001319,"failureMessages":[],"meta":{}},{"ancestorTitles":["getTargetsForDeployEvent"],"fullName":"getTargetsForDeployEvent returns empty array when targets is empty","status":"passed","title":"returns empty array when targets is empty","duration":0.05466599999999744,"failureMessages":[],"meta":{}},{"ancestorTitles":["getTargetsForNightlyDeploy"],"fullName":"getTargetsForNightlyDeploy returns targets with autoDeployTrigger nightly","status":"passed","title":"returns targets with autoDeployTrigger nightly","duration":0.0877500000000282,"failureMessages":[],"meta":{}},{"ancestorTitles":["getTargetsForNightlyDeploy"],"fullName":"getTargetsForNightlyDeploy returns empty array when no nightly targets","status":"passed","title":"returns empty array when no nightly targets","duration":0.06187499999998636,"failureMessages":[],"meta":{}},{"ancestorTitles":["getTargetsForNightlyDeploy"],"fullName":"getTargetsForNightlyDeploy returns empty array when targets is empty","status":"passed","title":"returns empty array when targets is empty","duration":0.058166999999968994,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings deployment migration"],"fullName":"parseSettings deployment migration migrates autoDeployOnEpicCompletion to default target autoDeployTrigger","status":"passed","title":"migrates autoDeployOnEpicCompletion to default target autoDeployTrigger","duration":0.5327080000000137,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings deployment migration"],"fullName":"parseSettings deployment migration migrates autoDeployOnEvalResolution to default target autoDeployTrigger","status":"passed","title":"migrates autoDeployOnEvalResolution to default target autoDeployTrigger","duration":0.17908399999998892,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings deployment migration"],"fullName":"parseSettings deployment migration migrates both flags: autoDeployOnEpicCompletion takes precedence","status":"passed","title":"migrates both flags: autoDeployOnEpicCompletion takes precedence","duration":0.16879199999999628,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings deployment migration"],"fullName":"parseSettings deployment migration migrates to existing default target in targets array","status":"passed","title":"migrates to existing default target in targets array","duration":0.18241699999998673,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings deployment migration"],"fullName":"parseSettings deployment migration does not add migration when legacy flags are false or absent","status":"passed","title":"does not add migration when legacy flags are false or absent","duration":0.10899999999998045,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings deployment migration"],"fullName":"parseSettings deployment migration migrates top-level envVars into default target when targets exist","status":"passed","title":"migrates top-level envVars into default target when targets exist","duration":0.2878329999999778,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings deployment migration"],"fullName":"parseSettings deployment migration migrates top-level envVars into staging and production targets when no targets (Expo)","status":"passed","title":"migrates top-level envVars into staging and production targets when no targets (Expo)","duration":0.23733400000003257,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings deployment migration"],"fullName":"parseSettings deployment migration accepts and persists easProjectId when mode is expo","status":"passed","title":"accepts and persists easProjectId when mode is expo","duration":0.0899159999999597,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings deployment migration"],"fullName":"parseSettings deployment migration migrates legacy expoConfig.projectId to easProjectId when mode is expo","status":"passed","title":"migrates legacy expoConfig.projectId to easProjectId when mode is expo","duration":0.09366699999998218,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings deployment migration"],"fullName":"parseSettings deployment migration prefers easProjectId over expoConfig.projectId when both present","status":"passed","title":"prefers easProjectId over expoConfig.projectId when both present","duration":0.07070800000002464,"failureMessages":[],"meta":{}},{"ancestorTitles":["getDeploymentTargetsForUi"],"fullName":"getDeploymentTargetsForUi returns synthetic staging and production for expo mode with no targets","status":"passed","title":"returns synthetic staging and production for expo mode with no targets","duration":0.1851670000000354,"failureMessages":[],"meta":{}},{"ancestorTitles":["getDeploymentTargetsForUi"],"fullName":"getDeploymentTargetsForUi returns targets array for custom mode","status":"passed","title":"returns targets array for custom mode","duration":0.12520799999998644,"failureMessages":[],"meta":{}},{"ancestorTitles":["getDeploymentTargetsForUi"],"fullName":"getDeploymentTargetsForUi returns empty array for custom mode with no targets","status":"passed","title":"returns empty array for custom mode with no targets","duration":0.05675000000002228,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProviderForAgentType"],"fullName":"getProviderForAgentType returns ANTHROPIC_API_KEY for claude","status":"passed","title":"returns ANTHROPIC_API_KEY for claude","duration":0.0665000000000191,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProviderForAgentType"],"fullName":"getProviderForAgentType returns CURSOR_API_KEY for cursor","status":"passed","title":"returns CURSOR_API_KEY for cursor","duration":0.04800000000000182,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProviderForAgentType"],"fullName":"getProviderForAgentType returns OPENAI_API_KEY for openai","status":"passed","title":"returns OPENAI_API_KEY for openai","duration":0.04720900000000938,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProviderForAgentType"],"fullName":"getProviderForAgentType returns GOOGLE_API_KEY for google","status":"passed","title":"returns GOOGLE_API_KEY for google","duration":0.04829100000000608,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProviderForAgentType"],"fullName":"getProviderForAgentType returns null for claude-cli and custom","status":"passed","title":"returns null for claude-cli and custom","duration":0.05791599999997743,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProviderForAgentType"],"fullName":"getProviderForAgentType returns null for lmstudio (excluded from API key provider resolution)","status":"passed","title":"returns null for lmstudio (excluded from API key provider resolution)","duration":0.04450000000002774,"failureMessages":[],"meta":{}},{"ancestorTitles":["API_KEY_PROVIDERS"],"fullName":"API_KEY_PROVIDERS includes ANTHROPIC_API_KEY, CURSOR_API_KEY, OPENAI_API_KEY, and GOOGLE_API_KEY","status":"passed","title":"includes ANTHROPIC_API_KEY, CURSOR_API_KEY, OPENAI_API_KEY, and GOOGLE_API_KEY","duration":0.32612499999999045,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateApiKeyEntry"],"fullName":"validateApiKeyEntry accepts valid entry with id and value","status":"passed","title":"accepts valid entry with id and value","duration":0.12033299999995961,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateApiKeyEntry"],"fullName":"validateApiKeyEntry accepts entry with limitHitAt","status":"passed","title":"accepts entry with limitHitAt","duration":0.06804199999999128,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateApiKeyEntry"],"fullName":"validateApiKeyEntry accepts entry with invalidAt","status":"passed","title":"accepts entry with invalidAt","duration":0.061416999999948985,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateApiKeyEntry"],"fullName":"validateApiKeyEntry trims id","status":"passed","title":"trims id","duration":0.051541999999983545,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateApiKeyEntry"],"fullName":"validateApiKeyEntry throws when entry is not an object","status":"passed","title":"throws when entry is not an object","duration":0.456875000000025,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateApiKeyEntry"],"fullName":"validateApiKeyEntry throws when id is missing or empty","status":"passed","title":"throws when id is missing or empty","duration":0.1692499999999768,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateApiKeyEntry"],"fullName":"validateApiKeyEntry throws when value is not a string","status":"passed","title":"throws when value is not a string","duration":0.075458000000026,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateApiKeyEntry"],"fullName":"validateApiKeyEntry throws when limitHitAt is present but not a string","status":"passed","title":"throws when limitHitAt is present but not a string","duration":0.08249999999998181,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateApiKeyEntry"],"fullName":"validateApiKeyEntry throws when invalidAt is present but not a string","status":"passed","title":"throws when invalidAt is present but not a string","duration":0.0927499999999668,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateApiKeyEntry"],"fullName":"validateApiKeyEntry accepts optional label and includes it in output","status":"passed","title":"accepts optional label and includes it in output","duration":0.07595900000001166,"failureMessages":[],"meta":{}},{"ancestorTitles":["mergeApiKeysWithCurrent"],"fullName":"mergeApiKeysWithCurrent returns current when incoming is null or invalid","status":"passed","title":"returns current when incoming is null or invalid","duration":0.15866599999998243,"failureMessages":[],"meta":{}},{"ancestorTitles":["mergeApiKeysWithCurrent"],"fullName":"mergeApiKeysWithCurrent preserves value when id exists and value omitted (masked)","status":"passed","title":"preserves value when id exists and value omitted (masked)","duration":0.09179100000000062,"failureMessages":[],"meta":{}},{"ancestorTitles":["mergeApiKeysWithCurrent"],"fullName":"mergeApiKeysWithCurrent replaces value when new value provided","status":"passed","title":"replaces value when new value provided","duration":0.07079199999998309,"failureMessages":[],"meta":{}},{"ancestorTitles":["mergeApiKeysWithCurrent"],"fullName":"mergeApiKeysWithCurrent removes providers not in incoming (replace semantics)","status":"passed","title":"removes providers not in incoming (replace semantics)","duration":0.07991600000002563,"failureMessages":[],"meta":{}},{"ancestorTitles":["mergeApiKeysWithCurrent"],"fullName":"mergeApiKeysWithCurrent adds new entry with new id","status":"passed","title":"adds new entry with new id","duration":0.11112499999995862,"failureMessages":[],"meta":{}},{"ancestorTitles":["mergeApiKeysWithCurrent"],"fullName":"mergeApiKeysWithCurrent merges OPENAI_API_KEY entries","status":"passed","title":"merges OPENAI_API_KEY entries","duration":0.06716599999998607,"failureMessages":[],"meta":{}},{"ancestorTitles":["mergeApiKeysWithCurrent"],"fullName":"mergeApiKeysWithCurrent preserves label when value omitted (masked)","status":"passed","title":"preserves label when value omitted (masked)","duration":0.07233300000001464,"failureMessages":[],"meta":{}},{"ancestorTitles":["mergeApiKeysWithCurrent"],"fullName":"mergeApiKeysWithCurrent uses incoming label when provided","status":"passed","title":"uses incoming label when provided","duration":0.0690829999999778,"failureMessages":[],"meta":{}},{"ancestorTitles":["mergeApiKeysWithCurrent"],"fullName":"mergeApiKeysWithCurrent preserves order of incoming array (drag-to-reorder)","status":"passed","title":"preserves order of incoming array (drag-to-reorder)","duration":0.10199999999997544,"failureMessages":[],"meta":{}},{"ancestorTitles":["sanitizeApiKeys"],"fullName":"sanitizeApiKeys returns undefined for null","status":"passed","title":"returns undefined for null","duration":0.08320800000001327,"failureMessages":[],"meta":{}},{"ancestorTitles":["sanitizeApiKeys"],"fullName":"sanitizeApiKeys returns undefined for non-object","status":"passed","title":"returns undefined for non-object","duration":0.06375000000002728,"failureMessages":[],"meta":{}},{"ancestorTitles":["sanitizeApiKeys"],"fullName":"sanitizeApiKeys returns undefined for empty object","status":"passed","title":"returns undefined for empty object","duration":0.048958999999968,"failureMessages":[],"meta":{}},{"ancestorTitles":["sanitizeApiKeys"],"fullName":"sanitizeApiKeys sanitizes valid apiKeys for known providers","status":"passed","title":"sanitizes valid apiKeys for known providers","duration":0.1150000000000091,"failureMessages":[],"meta":{}},{"ancestorTitles":["sanitizeApiKeys"],"fullName":"sanitizeApiKeys preserves label when present","status":"passed","title":"preserves label when present","duration":0.06320799999997462,"failureMessages":[],"meta":{}},{"ancestorTitles":["sanitizeApiKeys"],"fullName":"sanitizeApiKeys ignores unknown provider keys","status":"passed","title":"ignores unknown provider keys","duration":0.053167000000030384,"failureMessages":[],"meta":{}},{"ancestorTitles":["sanitizeApiKeys"],"fullName":"sanitizeApiKeys skips invalid entries within array","status":"passed","title":"skips invalid entries within array","duration":0.10966700000000174,"failureMessages":[],"meta":{}},{"ancestorTitles":["isLimitHitExpired"],"fullName":"isLimitHitExpired returns true when limitHitAt is undefined","status":"passed","title":"returns true when limitHitAt is undefined","duration":0.06729100000001154,"failureMessages":[],"meta":{}},{"ancestorTitles":["isLimitHitExpired"],"fullName":"isLimitHitExpired returns true when limitHitAt is older than 24h","status":"passed","title":"returns true when limitHitAt is older than 24h","duration":0.07979100000000017,"failureMessages":[],"meta":{}},{"ancestorTitles":["isLimitHitExpired"],"fullName":"isLimitHitExpired returns false when limitHitAt is within 24h","status":"passed","title":"returns false when limitHitAt is within 24h","duration":0.05329199999999901,"failureMessages":[],"meta":{}},{"ancestorTitles":["isLimitHitExpired"],"fullName":"isLimitHitExpired returns true for invalid ISO string","status":"passed","title":"returns true for invalid ISO string","duration":0.05920799999995552,"failureMessages":[],"meta":{}},{"ancestorTitles":["isLimitHitExpired"],"fullName":"isLimitHitExpired returns true when date coercion throws","status":"passed","title":"returns true when date coercion throws","duration":0.14299999999997226,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings — apiKeys ignored (stored in global settings only)"],"fullName":"parseSettings — apiKeys ignored (stored in global settings only) does not include apiKeys in output (project-level keys removed)","status":"passed","title":"does not include apiKeys in output (project-level keys removed)","duration":0.09741599999995287,"failureMessages":[],"meta":{}},{"ancestorTitles":["parseSettings — apiKeys ignored (stored in global settings only)"],"fullName":"parseSettings — apiKeys ignored (stored in global settings only) does not include apiKeys when absent","status":"passed","title":"does not include apiKeys when absent","duration":0.0666659999999979,"failureMessages":[],"meta":{}},{"ancestorTitles":["maskApiKeysForResponse"],"fullName":"maskApiKeysForResponse returns undefined for undefined apiKeys","status":"passed","title":"returns undefined for undefined apiKeys","duration":0.0787499999999568,"failureMessages":[],"meta":{}},{"ancestorTitles":["maskApiKeysForResponse"],"fullName":"maskApiKeysForResponse returns undefined for empty apiKeys","status":"passed","title":"returns undefined for empty apiKeys","duration":0.04733300000003737,"failureMessages":[],"meta":{}},{"ancestorTitles":["maskApiKeysForResponse"],"fullName":"maskApiKeysForResponse masks values and preserves id and marker timestamps","status":"passed","title":"masks values and preserves id and marker timestamps","duration":0.11733300000003055,"failureMessages":[],"meta":{}},{"ancestorTitles":["maskApiKeysForResponse"],"fullName":"maskApiKeysForResponse never includes value in output","status":"passed","title":"never includes value in output","duration":0.08183300000001736,"failureMessages":[],"meta":{}},{"ancestorTitles":["maskApiKeysForResponse"],"fullName":"maskApiKeysForResponse preserves label in masked output","status":"passed","title":"preserves label in masked output","duration":0.07108299999998735,"failureMessages":[],"meta":{}},{"ancestorTitles":["DEFAULT_DATABASE_URL"],"fullName":"DEFAULT_DATABASE_URL is the local Docker Postgres URL (deprecated, use getDefaultDatabaseUrl for default)","status":"passed","title":"is the local Docker Postgres URL (deprecated, use getDefaultDatabaseUrl for default)","duration":0.04829100000000608,"failureMessages":[],"meta":{}},{"ancestorTitles":["getDefaultDatabaseUrl"],"fullName":"getDefaultDatabaseUrl returns path under homedir ending in opensprint.sqlite","status":"passed","title":"returns path under homedir ending in opensprint.sqlite","duration":0.14666599999998198,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateDatabaseUrl"],"fullName":"validateDatabaseUrl accepts valid postgresql URL","status":"passed","title":"accepts valid postgresql URL","duration":0.2751670000000104,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateDatabaseUrl"],"fullName":"validateDatabaseUrl accepts valid postgres URL","status":"passed","title":"accepts valid postgres URL","duration":0.19375000000002274,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateDatabaseUrl"],"fullName":"validateDatabaseUrl accepts remote Supabase-style URL","status":"passed","title":"accepts remote Supabase-style URL","duration":0.06354099999998652,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateDatabaseUrl"],"fullName":"validateDatabaseUrl trims whitespace","status":"passed","title":"trims whitespace","duration":0.055916000000024724,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateDatabaseUrl"],"fullName":"validateDatabaseUrl throws when empty or not a string","status":"passed","title":"throws when empty or not a string","duration":0.19745899999998073,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateDatabaseUrl"],"fullName":"validateDatabaseUrl throws when scheme is not postgres/postgresql or SQLite path","status":"passed","title":"throws when scheme is not postgres/postgresql or SQLite path","duration":0.3347079999999778,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateDatabaseUrl"],"fullName":"validateDatabaseUrl accepts SQLite URLs and paths","status":"passed","title":"accepts SQLite URLs and paths","duration":0.10858400000000756,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateDatabaseUrl"],"fullName":"validateDatabaseUrl normalizes legacy sqlite:/file: shorthand prefixes","status":"passed","title":"normalizes legacy sqlite:/file: shorthand prefixes","duration":0.1382499999999709,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateDatabaseUrl"],"fullName":"validateDatabaseUrl throws for sqlite:// or file:// without path","status":"passed","title":"throws for sqlite:// or file:// without path","duration":0.12858400000004622,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateDatabaseUrl"],"fullName":"validateDatabaseUrl throws when URL is malformed (missing host)","status":"passed","title":"throws when URL is malformed (missing host)","duration":0.077083000000016,"failureMessages":[],"meta":{}},{"ancestorTitles":["validateDatabaseUrl"],"fullName":"validateDatabaseUrl throws the generic parser error for malformed PostgreSQL URLs","status":"passed","title":"throws the generic parser error for malformed PostgreSQL URLs","duration":0.08066700000000537,"failureMessages":[],"meta":{}},{"ancestorTitles":["getDatabaseDialect"],"fullName":"getDatabaseDialect returns postgres for postgres/postgresql URLs","status":"passed","title":"returns postgres for postgres/postgresql URLs","duration":0.09558300000003328,"failureMessages":[],"meta":{}},{"ancestorTitles":["getDatabaseDialect"],"fullName":"getDatabaseDialect returns sqlite for sqlite/file URLs and paths","status":"passed","title":"returns sqlite for sqlite/file URLs and paths","duration":0.10095899999998892,"failureMessages":[],"meta":{}},{"ancestorTitles":["maskDatabaseUrl"],"fullName":"maskDatabaseUrl redacts password, keeps host and port visible","status":"passed","title":"redacts password, keeps host and port visible","duration":0.0987079999999878,"failureMessages":[],"meta":{}},{"ancestorTitles":["maskDatabaseUrl"],"fullName":"maskDatabaseUrl handles URL without password","status":"passed","title":"handles URL without password","duration":0.07208300000002055,"failureMessages":[],"meta":{}},{"ancestorTitles":["maskDatabaseUrl"],"fullName":"maskDatabaseUrl returns empty string for empty input","status":"passed","title":"returns empty string for empty input","duration":0.05870799999996734,"failureMessages":[],"meta":{}},{"ancestorTitles":["maskDatabaseUrl"],"fullName":"maskDatabaseUrl returns *** for invalid URL","status":"passed","title":"returns *** for invalid URL","duration":0.05645800000002055,"failureMessages":[],"meta":{}},{"ancestorTitles":["maskDatabaseUrl"],"fullName":"maskDatabaseUrl returns canonical SQLite URLs and paths unchanged","status":"passed","title":"returns canonical SQLite URLs and paths unchanged","duration":0.0705000000000382,"failureMessages":[],"meta":{}},{"ancestorTitles":["maskDatabaseUrl"],"fullName":"maskDatabaseUrl normalizes legacy SQLite shorthand to canonical path/URL","status":"passed","title":"normalizes legacy SQLite shorthand to canonical path/URL","duration":0.1063329999999496,"failureMessages":[],"meta":{}},{"ancestorTitles":["isLocalDatabaseUrl"],"fullName":"isLocalDatabaseUrl returns true for localhost","status":"passed","title":"returns true for localhost","duration":0.10900000000003729,"failureMessages":[],"meta":{}},{"ancestorTitles":["isLocalDatabaseUrl"],"fullName":"isLocalDatabaseUrl returns true for 127.0.0.1","status":"passed","title":"returns true for 127.0.0.1","duration":0.061540999999976975,"failureMessages":[],"meta":{}},{"ancestorTitles":["isLocalDatabaseUrl"],"fullName":"isLocalDatabaseUrl returns false for remote hosts","status":"passed","title":"returns false for remote hosts","duration":0.06766599999997425,"failureMessages":[],"meta":{}},{"ancestorTitles":["isLocalDatabaseUrl"],"fullName":"isLocalDatabaseUrl returns false for invalid URL","status":"passed","title":"returns false for invalid URL","duration":0.13266599999997197,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProvidersInUse"],"fullName":"getProvidersInUse returns ANTHROPIC_API_KEY when claude in use","status":"passed","title":"returns ANTHROPIC_API_KEY when claude in use","duration":0.12766599999997652,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProvidersInUse"],"fullName":"getProvidersInUse returns CURSOR_API_KEY only when both agents are cursor","status":"passed","title":"returns CURSOR_API_KEY only when both agents are cursor","duration":0.06587500000000546,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProvidersInUse"],"fullName":"getProvidersInUse returns ANTHROPIC_API_KEY for claude-cli","status":"passed","title":"returns ANTHROPIC_API_KEY for claude-cli","duration":0.055334000000016204,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProvidersInUse"],"fullName":"getProvidersInUse returns OPENAI_API_KEY when openai in use","status":"passed","title":"returns OPENAI_API_KEY when openai in use","duration":0.05470900000000256,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProvidersInUse"],"fullName":"getProvidersInUse returns OPENAI_API_KEY with other providers when mixed","status":"passed","title":"returns OPENAI_API_KEY with other providers when mixed","duration":0.13341700000000856,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProvidersInUse"],"fullName":"getProvidersInUse does not add a provider for lmstudio (excluded from API key resolution)","status":"passed","title":"does not add a provider for lmstudio (excluded from API key resolution)","duration":0.06312500000001364,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProvidersRequiringApiKeys"],"fullName":"getProvidersRequiringApiKeys returns ANTHROPIC_API_KEY for claude only (not claude-cli)","status":"passed","title":"returns ANTHROPIC_API_KEY for claude only (not claude-cli)","duration":0.087333000000001,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProvidersRequiringApiKeys"],"fullName":"getProvidersRequiringApiKeys returns CURSOR_API_KEY when cursor in use","status":"passed","title":"returns CURSOR_API_KEY when cursor in use","duration":0.05700000000001637,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProvidersRequiringApiKeys"],"fullName":"getProvidersRequiringApiKeys returns both when claude and cursor in use","status":"passed","title":"returns both when claude and cursor in use","duration":0.05725000000001046,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProvidersRequiringApiKeys"],"fullName":"getProvidersRequiringApiKeys returns empty for claude-cli and custom only","status":"passed","title":"returns empty for claude-cli and custom only","duration":0.05412499999999909,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProvidersRequiringApiKeys"],"fullName":"getProvidersRequiringApiKeys returns OPENAI_API_KEY when openai in use","status":"passed","title":"returns OPENAI_API_KEY when openai in use","duration":0.05229199999996581,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProvidersRequiringApiKeys"],"fullName":"getProvidersRequiringApiKeys returns OPENAI_API_KEY with other providers when mixed","status":"passed","title":"returns OPENAI_API_KEY with other providers when mixed","duration":0.11241699999999355,"failureMessages":[],"meta":{}},{"ancestorTitles":["getProvidersRequiringApiKeys"],"fullName":"getProvidersRequiringApiKeys does not add a provider for lmstudio (excluded from API key resolution)","status":"passed","title":"does not add a provider for lmstudio (excluded from API key resolution)","duration":0.05729199999996126,"failureMessages":[],"meta":{}}],"startTime":1773533538580,"endTime":1773533538601.1333,"status":"passed","message":"","name":"/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/settings.test.ts"},{"assertionResults":[{"ancestorTitles":["spec-serializer"],"fullName":"spec-serializer round-trips Prd to markdown and back","status":"passed","title":"round-trips Prd to markdown and back","duration":1.1050000000000182,"failureMessages":[],"meta":{}},{"ancestorTitles":["spec-serializer"],"fullName":"spec-serializer handles dynamic sections (e.g. competitive_landscape)","status":"passed","title":"handles dynamic sections (e.g. competitive_landscape)","duration":0.1634999999999991,"failureMessages":[],"meta":{}},{"ancestorTitles":["spec-serializer"],"fullName":"spec-serializer handles empty sections","status":"passed","title":"handles empty sections","duration":0.09795800000006238,"failureMessages":[],"meta":{}}],"startTime":1773533538932,"endTime":1773533538934.1636,"status":"passed","message":"","name":"/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/spec-serializer.test.ts"},{"assertionResults":[{"ancestorTitles":["complexityToDisplay"],"fullName":"complexityToDisplay returns Simple for 1-5","status":"passed","title":"returns Simple for 1-5","duration":0.7619589999999334,"failureMessages":[],"meta":{}},{"ancestorTitles":["complexityToDisplay"],"fullName":"complexityToDisplay returns Complex for 6-10","status":"passed","title":"returns Complex for 6-10","duration":0.1316669999999931,"failureMessages":[],"meta":{}},{"ancestorTitles":["complexityToDisplay"],"fullName":"complexityToDisplay returns null for undefined or invalid","status":"passed","title":"returns null for undefined or invalid","duration":0.11599999999998545,"failureMessages":[],"meta":{}},{"ancestorTitles":["clampTaskComplexity"],"fullName":"clampTaskComplexity returns value for valid integer 1-10","status":"passed","title":"returns value for valid integer 1-10","duration":0.2671669999999722,"failureMessages":[],"meta":{}},{"ancestorTitles":["clampTaskComplexity"],"fullName":"clampTaskComplexity returns undefined for invalid types","status":"passed","title":"returns undefined for invalid types","duration":0.12412499999993543,"failureMessages":[],"meta":{}},{"ancestorTitles":["clampTaskComplexity"],"fullName":"clampTaskComplexity returns undefined for out-of-range integers","status":"passed","title":"returns undefined for out-of-range integers","duration":0.0815420000000131,"failureMessages":[],"meta":{}},{"ancestorTitles":["clampTaskComplexity"],"fullName":"clampTaskComplexity exports valid range constants","status":"passed","title":"exports valid range constants","duration":0.07862499999998818,"failureMessages":[],"meta":{}}],"startTime":1773533539037,"endTime":1773533539039.267,"status":"passed","message":"","name":"/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/task-complexity.test.ts"},{"assertionResults":[{"ancestorTitles":["getEpicId"],"fullName":"getEpicId returns 'opensprint.dev-xyz.2' for 'opensprint.dev-xyz.2.1'","status":"passed","title":"returns 'opensprint.dev-xyz.2' for 'opensprint.dev-xyz.2.1'","duration":0.630457999999976,"failureMessages":[],"meta":{}},{"ancestorTitles":["getEpicId"],"fullName":"getEpicId returns 'opensprint.dev-8rx.10' for 'opensprint.dev-8rx.10.0'","status":"passed","title":"returns 'opensprint.dev-8rx.10' for 'opensprint.dev-8rx.10.0'","duration":0.09925000000009732,"failureMessages":[],"meta":{}},{"ancestorTitles":["getEpicId"],"fullName":"getEpicId returns 'bd-a3f8' for 'bd-a3f8.1'","status":"passed","title":"returns 'bd-a3f8' for 'bd-a3f8.1'","duration":0.06158400000003894,"failureMessages":[],"meta":{}},{"ancestorTitles":["getEpicId"],"fullName":"getEpicId returns 'opensprint.dev-xyz' for 'opensprint.dev-xyz.2'","status":"passed","title":"returns 'opensprint.dev-xyz' for 'opensprint.dev-xyz.2'","duration":0.04975000000001728,"failureMessages":[],"meta":{}},{"ancestorTitles":["getEpicId"],"fullName":"getEpicId returns 'opensprint.dev-8rx' for 'opensprint.dev-8rx.10'","status":"passed","title":"returns 'opensprint.dev-8rx' for 'opensprint.dev-8rx.10'","duration":0.05141600000001745,"failureMessages":[],"meta":{}},{"ancestorTitles":["getEpicId"],"fullName":"getEpicId returns 'opensprint.dev-xyz' for 'opensprint.dev-xyz'","status":"passed","title":"returns 'opensprint.dev-xyz' for 'opensprint.dev-xyz'","duration":0.04624999999998636,"failureMessages":[],"meta":{}},{"ancestorTitles":["getEpicId"],"fullName":"getEpicId returns 'bd-a3f8' for 'bd-a3f8'","status":"passed","title":"returns 'bd-a3f8' for 'bd-a3f8'","duration":0.04679199999998218,"failureMessages":[],"meta":{}},{"ancestorTitles":["getEpicId"],"fullName":"getEpicId returns 'epic1' for 'epic1'","status":"passed","title":"returns 'epic1' for 'epic1'","duration":0.04979100000002745,"failureMessages":[],"meta":{}},{"ancestorTitles":["getEpicId"],"fullName":"getEpicId returns 'a.b.c' for 'a.b.c.123'","status":"passed","title":"returns 'a.b.c' for 'a.b.c.123'","duration":0.04787499999997635,"failureMessages":[],"meta":{}}],"startTime":1773533539143,"endTime":1773533539144.0994,"status":"passed","message":"","name":"/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/task-ids.test.ts"}]}
+{
+  "numTotalTestSuites": 74,
+  "numPassedTestSuites": 74,
+  "numFailedTestSuites": 0,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 281,
+  "numPassedTests": 281,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "numTodoTests": 0,
+  "snapshot": {
+    "added": 0,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0,
+    "didUpdate": false
+  },
+  "startTime": 1773533538414,
+  "success": true,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["AgentRole and slot mapping", "getSlotForRole"],
+          "fullName": "AgentRole and slot mapping getSlotForRole returns coding for coder and reviewer",
+          "status": "passed",
+          "title": "returns coding for coder and reviewer",
+          "duration": 0.6638750000000186,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["AgentRole and slot mapping", "getSlotForRole"],
+          "fullName": "AgentRole and slot mapping getSlotForRole returns planning for all other roles",
+          "status": "passed",
+          "title": "returns planning for all other roles",
+          "duration": 0.15287499999999454,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["AgentRole and slot mapping", "AGENT_ROLE_LABELS"],
+          "fullName": "AgentRole and slot mapping AGENT_ROLE_LABELS has human-readable label for each role",
+          "status": "passed",
+          "title": "has human-readable label for each role",
+          "duration": 0.1679589999999962,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["AgentRole and slot mapping", "AGENT_ROLE_CANONICAL_ORDER"],
+          "fullName": "AgentRole and slot mapping AGENT_ROLE_CANONICAL_ORDER matches README/PRD agent table order",
+          "status": "passed",
+          "title": "matches README/PRD agent table order",
+          "duration": 0.4032500000000141,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["AgentRole and slot mapping", "AGENT_ROLE_PHASES"],
+          "fullName": "AgentRole and slot mapping AGENT_ROLE_PHASES has phase(s) for each role matching README table",
+          "status": "passed",
+          "title": "has phase(s) for each role matching README table",
+          "duration": 0.30487499999998136,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["AgentRole and slot mapping", "AGENT_ROLE_DESCRIPTIONS"],
+          "fullName": "AgentRole and slot mapping AGENT_ROLE_DESCRIPTIONS has entry for all 9 roles in AGENT_ROLE_CANONICAL_ORDER",
+          "status": "passed",
+          "title": "has entry for all 9 roles in AGENT_ROLE_CANONICAL_ORDER",
+          "duration": 0.39866700000004585,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["AgentRole and slot mapping", "AGENT_ROLE_DESCRIPTIONS"],
+          "fullName": "AgentRole and slot mapping AGENT_ROLE_DESCRIPTIONS matches README table descriptions exactly for all 9 agents",
+          "status": "passed",
+          "title": "matches README table descriptions exactly for all 9 agents",
+          "duration": 0.1547090000000253,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["AgentRole and slot mapping", "sortAgentsByCanonicalOrder"],
+          "fullName": "AgentRole and slot mapping sortAgentsByCanonicalOrder sorts agents by canonical role order",
+          "status": "passed",
+          "title": "sorts agents by canonical role order",
+          "duration": 0.14587499999998954,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["AgentRole and slot mapping", "sortAgentsByCanonicalOrder"],
+          "fullName": "AgentRole and slot mapping sortAgentsByCanonicalOrder sorts entries with getAgent when provided",
+          "status": "passed",
+          "title": "sorts entries with getAgent when provided",
+          "duration": 0.09516700000000355,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["AgentRole and slot mapping", "sortAgentsByCanonicalOrder"],
+          "fullName": "AgentRole and slot mapping sortAgentsByCanonicalOrder uses phase-derived role when role is missing (coding→coder, review→reviewer)",
+          "status": "passed",
+          "title": "uses phase-derived role when role is missing (coding→coder, review→reviewer)",
+          "duration": 0.0911670000000413,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["AgentRole and slot mapping", "AGENT_ROLE_PHASES (consistency check)"],
+          "fullName": "AgentRole and slot mapping AGENT_ROLE_PHASES (consistency check) has phase(s) for each role matching agent.ts source of truth",
+          "status": "passed",
+          "title": "has phase(s) for each role matching agent.ts source of truth",
+          "duration": 0.1860409999999888,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["AgentRole and slot mapping", "AGENT_ROLE_PHASES (consistency check)"],
+          "fullName": "AgentRole and slot mapping AGENT_ROLE_PHASES (consistency check) covers all roles in AGENT_ROLE_CANONICAL_ORDER",
+          "status": "passed",
+          "title": "covers all roles in AGENT_ROLE_CANONICAL_ORDER",
+          "duration": 0.3423339999999939,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["AgentRole and slot mapping", "AGENT_ROLE_PHASES (consistency check)"],
+          "fullName": "AgentRole and slot mapping AGENT_ROLE_PHASES (consistency check) matches README table phases for all 9 agents",
+          "status": "passed",
+          "title": "matches README table phases for all 9 agents",
+          "duration": 0.18274999999999864,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["AgentRole and slot mapping", "getRoleDisplayLabel"],
+          "fullName": "AgentRole and slot mapping getRoleDisplayLabel returns role label only when name is absent",
+          "status": "passed",
+          "title": "returns role label only when name is absent",
+          "duration": 0.12700000000000955,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["AgentRole and slot mapping", "getRoleDisplayLabel"],
+          "fullName": "AgentRole and slot mapping getRoleDisplayLabel returns role (name) when name is present",
+          "status": "passed",
+          "title": "returns role (name) when name is present",
+          "duration": 0.0827499999999759,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["AgentRole and slot mapping", "getRoleDisplayLabel"],
+          "fullName": "AgentRole and slot mapping getRoleDisplayLabel falls back to phase label when role is unknown",
+          "status": "passed",
+          "title": "falls back to phase label when role is unknown",
+          "duration": 0.07983299999995097,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["AgentRole and slot mapping", "getRoleDisplayLabel"],
+          "fullName": "AgentRole and slot mapping getRoleDisplayLabel ignores empty or whitespace-only name",
+          "status": "passed",
+          "title": "ignores empty or whitespace-only name",
+          "duration": 0.07787500000000591,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1773533538566,
+      "endTime": 1773533538570.0798,
+      "status": "passed",
+      "message": "",
+      "name": "/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/agent.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["build config (production dist output)"],
+          "fullName": "build config (production dist output) tsconfig.build.json has outDir ./dist",
+          "status": "passed",
+          "title": "tsconfig.build.json has outDir ./dist",
+          "duration": 0.7120419999999967,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["build config (production dist output)"],
+          "fullName": "build config (production dist output) tsconfig.build.json has rootDir ./src",
+          "status": "passed",
+          "title": "tsconfig.build.json has rootDir ./src",
+          "duration": 0.13075000000003456,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["build config (production dist output)"],
+          "fullName": "build config (production dist output) package.json build script uses tsconfig.build.json",
+          "status": "passed",
+          "title": "package.json build script uses tsconfig.build.json",
+          "duration": 0.15874999999994088,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["build config (production dist output)"],
+          "fullName": "build config (production dist output) package.json exports dist for production (import/require)",
+          "status": "passed",
+          "title": "package.json exports dist for production (import/require)",
+          "duration": 0.15812499999992724,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["build config (production dist output)"],
+          "fullName": "build config (production dist output) build produces dist/index.js and dist/index.d.ts when run",
+          "status": "passed",
+          "title": "build produces dist/index.js and dist/index.d.ts when run",
+          "duration": 0.11012500000003911,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1773533539008,
+      "endTime": 1773533539009.1587,
+      "status": "passed",
+      "message": "",
+      "name": "/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/build-config.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["COMMIT_MESSAGE_TITLE_MAX_LENGTH"],
+          "fullName": "COMMIT_MESSAGE_TITLE_MAX_LENGTH is 45 for commit message / task title display truncation",
+          "status": "passed",
+          "title": "is 45 for commit message / task title display truncation",
+          "duration": 0.6729579999999942,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getTestCommandForFramework"],
+          "fullName": "getTestCommandForFramework returns '' for null",
+          "status": "passed",
+          "title": "returns '' for null",
+          "duration": 0.1001250000000482,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getTestCommandForFramework"],
+          "fullName": "getTestCommandForFramework returns '' for 'none'",
+          "status": "passed",
+          "title": "returns '' for 'none'",
+          "duration": 0.0529589999999871,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getTestCommandForFramework"],
+          "fullName": "getTestCommandForFramework returns 'npm test' for 'jest'",
+          "status": "passed",
+          "title": "returns 'npm test' for 'jest'",
+          "duration": 0.057332999999971435,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getTestCommandForFramework"],
+          "fullName": "getTestCommandForFramework returns 'node ./node_modules/vitest/vitest.mjs…' for 'vitest'",
+          "status": "passed",
+          "title": "returns 'node ./node_modules/vitest/vitest.mjs…' for 'vitest'",
+          "duration": 0.04704100000003564,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["resolveTestCommand"],
+          "fullName": "resolveTestCommand resolves 'pytest'",
+          "status": "passed",
+          "title": "resolves 'pytest'",
+          "duration": 0.07587499999999636,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["resolveTestCommand"],
+          "fullName": "resolveTestCommand resolves 'node ./node_modules/vitest/vitest.mjs…'",
+          "status": "passed",
+          "title": "resolves 'node ./node_modules/vitest/vitest.mjs…'",
+          "duration": 0.049541999999973996,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["resolveTestCommand"],
+          "fullName": "resolveTestCommand resolves 'npm test'",
+          "status": "passed",
+          "title": "resolves 'npm test'",
+          "duration": 0.04520800000000236,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["resolveTestCommand"],
+          "fullName": "resolveTestCommand resolves 'npm test'",
+          "status": "passed",
+          "title": "resolves 'npm test'",
+          "duration": 0.046041000000059285,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["agent naming"],
+          "fullName": "agent naming maps slot +0 to 'Frodo'",
+          "status": "passed",
+          "title": "maps slot +0 to 'Frodo'",
+          "duration": 0.07366700000000037,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["agent naming"],
+          "fullName": "agent naming maps slot 1 to 'Samwise'",
+          "status": "passed",
+          "title": "maps slot 1 to 'Samwise'",
+          "duration": 0.04712500000005093,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["agent naming"],
+          "fullName": "agent naming maps slot 13 to 'Frodo'",
+          "status": "passed",
+          "title": "maps slot 13 to 'Frodo'",
+          "duration": 0.04558399999996254,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["agent naming"],
+          "fullName": "agent naming maps 'coder' slot +0 to 'Frodo'",
+          "status": "passed",
+          "title": "maps 'coder' slot +0 to 'Frodo'",
+          "duration": 0.07600000000002183,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["agent naming"],
+          "fullName": "agent naming maps 'reviewer' slot +0 to 'Boromir'",
+          "status": "passed",
+          "title": "maps 'reviewer' slot +0 to 'Boromir'",
+          "duration": 0.06516599999997652,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["agent naming"],
+          "fullName": "agent naming maps 'dreamer' slot +0 to 'Gandalf'",
+          "status": "passed",
+          "title": "maps 'dreamer' slot +0 to 'Gandalf'",
+          "duration": 0.04975000000001728,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["agent naming"],
+          "fullName": "agent naming wraps role-specific names by modulo",
+          "status": "passed",
+          "title": "wraps role-specific names by modulo",
+          "duration": 0.08841700000004948,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["agent naming"],
+          "fullName": "agent naming falls back to the coder pool for unknown roles",
+          "status": "passed",
+          "title": "falls back to the coder pool for unknown roles",
+          "duration": 0.0584999999999809,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isAgentAssignee"],
+          "fullName": "isAgentAssignee returns true for 'Frodo'",
+          "status": "passed",
+          "title": "returns true for 'Frodo'",
+          "duration": 0.0670830000000251,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isAgentAssignee"],
+          "fullName": "isAgentAssignee returns true for 'Boromir'",
+          "status": "passed",
+          "title": "returns true for 'Boromir'",
+          "duration": 0.04745900000000347,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isAgentAssignee"],
+          "fullName": "isAgentAssignee returns false for 'agent-1'",
+          "status": "passed",
+          "title": "returns false for 'agent-1'",
+          "duration": 0.04574999999999818,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isAgentAssignee"],
+          "fullName": "isAgentAssignee returns false for null",
+          "status": "passed",
+          "title": "returns false for null",
+          "duration": 0.04679199999998218,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isAgentAssignee"],
+          "fullName": "isAgentAssignee returns false for undefined",
+          "status": "passed",
+          "title": "returns false for undefined",
+          "duration": 0.04645800000002964,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isAgentAssignee"],
+          "fullName": "isAgentAssignee returns false for ''",
+          "status": "passed",
+          "title": "returns false for ''",
+          "duration": 0.14237500000001546,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isBlockedByTechnicalError"],
+          "fullName": "isBlockedByTechnicalError returns true for 'Merge Failure'",
+          "status": "passed",
+          "title": "returns true for 'Merge Failure'",
+          "duration": 0.07466699999997672,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isBlockedByTechnicalError"],
+          "fullName": "isBlockedByTechnicalError returns true for 'Coding Failure'",
+          "status": "passed",
+          "title": "returns true for 'Coding Failure'",
+          "duration": 0.0470829999999296,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isBlockedByTechnicalError"],
+          "fullName": "isBlockedByTechnicalError returns false for 'Open Question'",
+          "status": "passed",
+          "title": "returns false for 'Open Question'",
+          "duration": 0.04566700000009405,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isBlockedByTechnicalError"],
+          "fullName": "isBlockedByTechnicalError returns false for 'API Blocked'",
+          "status": "passed",
+          "title": "returns false for 'API Blocked'",
+          "duration": 0.04316700000003948,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isBlockedByTechnicalError"],
+          "fullName": "isBlockedByTechnicalError returns false for 'Waiting for Human'",
+          "status": "passed",
+          "title": "returns false for 'Waiting for Human'",
+          "duration": 0.042708000000061475,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isBlockedByTechnicalError"],
+          "fullName": "isBlockedByTechnicalError returns false for null",
+          "status": "passed",
+          "title": "returns false for null",
+          "duration": 0.042749999999955435,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isBlockedByTechnicalError"],
+          "fullName": "isBlockedByTechnicalError returns false for undefined",
+          "status": "passed",
+          "title": "returns false for undefined",
+          "duration": 0.04216699999994944,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isBlockedByTechnicalError"],
+          "fullName": "isBlockedByTechnicalError returns false for ''",
+          "status": "passed",
+          "title": "returns false for ''",
+          "duration": 0.042832999999973254,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["technical block constants"],
+          "fullName": "technical block constants keep the known technical reasons",
+          "status": "passed",
+          "title": "keep the known technical reasons",
+          "duration": 0.438083000000006,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["technical block constants"],
+          "fullName": "technical block constants uses an eight-hour blocked retry interval",
+          "status": "passed",
+          "title": "uses an eight-hour blocked retry interval",
+          "duration": 0.06299999999998818,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1773533538825,
+      "endTime": 1773533538828.063,
+      "status": "passed",
+      "message": "",
+      "name": "/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/constants.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["desktop artifact names (fixed for permalinks)"],
+          "fullName": "desktop artifact names (fixed for permalinks) electron build.mac.artifactName is set and does not contain version",
+          "status": "passed",
+          "title": "electron build.mac.artifactName is set and does not contain version",
+          "duration": 0.8150000000000546,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["desktop artifact names (fixed for permalinks)"],
+          "fullName": "desktop artifact names (fixed for permalinks) electron build.win.artifactName is set and does not contain version",
+          "status": "passed",
+          "title": "electron build.win.artifactName is set and does not contain version",
+          "duration": 0.15237500000000637,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["desktop artifact names (fixed for permalinks)"],
+          "fullName": "desktop artifact names (fixed for permalinks) electron build.linux.artifactName is set and does not contain version",
+          "status": "passed",
+          "title": "electron build.linux.artifactName is set and does not contain version",
+          "duration": 0.12412499999993543,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1773533539110,
+      "endTime": 1773533539111.1523,
+      "status": "passed",
+      "message": "",
+      "name": "/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/desktop-artifact-names.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["dev config (source-direct imports)"],
+          "fullName": "dev config (source-direct imports) root dev script removes shared/dist and starts concurrently",
+          "status": "passed",
+          "title": "root dev script removes shared/dist and starts concurrently",
+          "duration": 0.8892089999999939,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["dev config (source-direct imports)"],
+          "fullName": "dev config (source-direct imports) frontend vite.config aliases @opensprint/shared to source",
+          "status": "passed",
+          "title": "frontend vite.config aliases @opensprint/shared to source",
+          "duration": 0.25379200000003266,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["dev config (source-direct imports)"],
+          "fullName": "dev config (source-direct imports) backend vitest.config aliases @opensprint/shared to source",
+          "status": "passed",
+          "title": "backend vitest.config aliases @opensprint/shared to source",
+          "duration": 0.1500419999999849,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["dev config (source-direct imports)"],
+          "fullName": "dev config (source-direct imports) frontend vitest.config aliases @opensprint/shared to source",
+          "status": "passed",
+          "title": "frontend vitest.config aliases @opensprint/shared to source",
+          "duration": 0.1422080000000392,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["dev config (source-direct imports)"],
+          "fullName": "dev config (source-direct imports) shared package exports have src fallback when dist absent",
+          "status": "passed",
+          "title": "shared package exports have src fallback when dist absent",
+          "duration": 0.1537089999999921,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["dev config (source-direct imports)"],
+          "fullName": "dev config (source-direct imports) dev script runs shared in watch mode alongside backend and frontend",
+          "status": "passed",
+          "title": "dev script runs shared in watch mode alongside backend and frontend",
+          "duration": 0.1294589999999971,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["dev config (source-direct imports)"],
+          "fullName": "dev config (source-direct imports) dev script starts both backend and frontend via concurrently",
+          "status": "passed",
+          "title": "dev script starts both backend and frontend via concurrently",
+          "duration": 0.11445799999995643,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["dev config (source-direct imports)"],
+          "fullName": "dev config (source-direct imports) setup script builds shared before applying database schema",
+          "status": "passed",
+          "title": "setup script builds shared before applying database schema",
+          "duration": 0.20220799999998462,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["dev config (source-direct imports)"],
+          "fullName": "dev config (source-direct imports) setup script falls back from opensprint login to postgres login for local bootstrap",
+          "status": "passed",
+          "title": "setup script falls back from opensprint login to postgres login for local bootstrap",
+          "duration": 0.2591660000000502,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["dev config (source-direct imports)"],
+          "fullName": "dev config (source-direct imports) setup script runs local credential bootstrap even when WSL skips service management",
+          "status": "passed",
+          "title": "setup script runs local credential bootstrap even when WSL skips service management",
+          "duration": 0.13433300000002646,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["dev config (source-direct imports)"],
+          "fullName": "dev config (source-direct imports) setup script supports sudo-based peer auth bootstrap for WSL postgres installs",
+          "status": "passed",
+          "title": "setup script supports sudo-based peer auth bootstrap for WSL postgres installs",
+          "duration": 0.14262500000000955,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1773533538683,
+      "endTime": 1773533538685.2593,
+      "status": "passed",
+      "message": "",
+      "name": "/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/dev-config.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["parsePlanTasks"],
+          "fullName": "parsePlanTasks returns empty array when content is empty",
+          "status": "passed",
+          "title": "returns empty array when content is empty",
+          "duration": 0.9466670000000477,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parsePlanTasks"],
+          "fullName": "parsePlanTasks returns empty array when no Tasks or Instructions section",
+          "status": "passed",
+          "title": "returns empty array when no Tasks or Instructions section",
+          "duration": 0.22933399999999438,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parsePlanTasks"],
+          "fullName": "parsePlanTasks parses ## Tasks section with ### Title blocks",
+          "status": "passed",
+          "title": "parses ## Tasks section with ### Title blocks",
+          "duration": 0.7312920000000531,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parsePlanTasks"],
+          "fullName": "parsePlanTasks parses numbered ### headings (e.g. ### 1. Title)",
+          "status": "passed",
+          "title": "parses numbered ### headings (e.g. ### 1. Title)",
+          "duration": 0.21162500000002638,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parsePlanTasks"],
+          "fullName": "parsePlanTasks uses ## Instructions when ## Tasks is absent",
+          "status": "passed",
+          "title": "uses ## Instructions when ## Tasks is absent",
+          "duration": 0.142708999999968,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parsePlanTasks"],
+          "fullName": "parsePlanTasks prefers ## Tasks over ## Instructions",
+          "status": "passed",
+          "title": "prefers ## Tasks over ## Instructions",
+          "duration": 0.1149159999999938,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parsePlanTasks"],
+          "fullName": "parsePlanTasks handles case-insensitive section names",
+          "status": "passed",
+          "title": "handles case-insensitive section names",
+          "duration": 0.17391699999996035,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parsePlanTasks"],
+          "fullName": "parsePlanTasks handles task with empty description",
+          "status": "passed",
+          "title": "handles task with empty description",
+          "duration": 0.13591700000006313,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1773533538902,
+      "endTime": 1773533538905.136,
+      "status": "passed",
+      "message": "",
+      "name": "/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/plan-tasks.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["plan-template", "PLAN_MARKDOWN_SECTIONS"],
+          "fullName": "plan-template PLAN_MARKDOWN_SECTIONS includes all PRD §7.2.3 required sections",
+          "status": "passed",
+          "title": "includes all PRD §7.2.3 required sections",
+          "duration": 0.9378329999999551,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["plan-template", "getPlanTemplate"],
+          "fullName": "plan-template getPlanTemplate returns template with feature title as H1",
+          "status": "passed",
+          "title": "returns template with feature title as H1",
+          "duration": 0.2129579999999578,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["plan-template", "getPlanTemplate"],
+          "fullName": "plan-template getPlanTemplate includes all required sections",
+          "status": "passed",
+          "title": "includes all required sections",
+          "duration": 0.19016700000008768,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["plan-template", "getPlanTemplate"],
+          "fullName": "plan-template getPlanTemplate handles empty title by using 'Feature'",
+          "status": "passed",
+          "title": "handles empty title by using 'Feature'",
+          "duration": 0.06966699999998127,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["plan-template", "getPlanTemplate"],
+          "fullName": "plan-template getPlanTemplate trims whitespace from title",
+          "status": "passed",
+          "title": "trims whitespace from title",
+          "duration": 0.06941599999993286,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["plan-template", "validatePlanContent"],
+          "fullName": "plan-template validatePlanContent returns no missing sections when all are present",
+          "status": "passed",
+          "title": "returns no missing sections when all are present",
+          "duration": 0.869083000000046,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["plan-template", "validatePlanContent"],
+          "fullName": "plan-template validatePlanContent identifies missing sections",
+          "status": "passed",
+          "title": "identifies missing sections",
+          "duration": 0.8013339999999971,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["plan-template", "validatePlanContent"],
+          "fullName": "plan-template validatePlanContent handles empty content",
+          "status": "passed",
+          "title": "handles empty content",
+          "duration": 0.14320899999995618,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["plan-template", "validatePlanContent"],
+          "fullName": "plan-template validatePlanContent handles content with only whitespace",
+          "status": "passed",
+          "title": "handles content with only whitespace",
+          "duration": 0.1496669999999085,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["plan-template", "validatePlanContent"],
+          "fullName": "plan-template validatePlanContent matches section with parenthetical (e.g. Acceptance Criteria (with testable conditions))",
+          "status": "passed",
+          "title": "matches section with parenthetical (e.g. Acceptance Criteria (with testable conditions))",
+          "duration": 0.11483300000008967,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["plan-template", "validatePlanContent"],
+          "fullName": "plan-template validatePlanContent is case-insensitive for section matching",
+          "status": "passed",
+          "title": "is case-insensitive for section matching",
+          "duration": 0.10466699999994944,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1773533538792,
+      "endTime": 1773533538796.1497,
+      "status": "passed",
+      "message": "",
+      "name": "/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/plan-template.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["Plan version types"],
+          "fullName": "Plan version types PlanVersionSummary has id, version_number, created_at, optional is_executed_version",
+          "status": "passed",
+          "title": "PlanVersionSummary has id, version_number, created_at, optional is_executed_version",
+          "duration": 0.7347080000000688,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["Plan version types"],
+          "fullName": "Plan version types PlanVersionContent has version_number, title, content, optional metadata, created_at, optional is_executed_version",
+          "status": "passed",
+          "title": "PlanVersionContent has version_number, title, content, optional metadata, created_at, optional is_executed_version",
+          "duration": 0.13566600000001472,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["Plan version types"],
+          "fullName": "Plan version types Plan accepts optional currentVersionNumber and lastExecutedVersionNumber",
+          "status": "passed",
+          "title": "Plan accepts optional currentVersionNumber and lastExecutedVersionNumber",
+          "duration": 0.12166700000000219,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["PlanMetadata"],
+          "fullName": "PlanMetadata accepts optional reviewedAt as null or ISO timestamp",
+          "status": "passed",
+          "title": "accepts optional reviewedAt as null or ISO timestamp",
+          "duration": 0.11225000000001728,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["PLAN_STATUS_ORDER"],
+          "fullName": "PLAN_STATUS_ORDER orders planning < building < in_review < complete",
+          "status": "passed",
+          "title": "orders planning < building < in_review < complete",
+          "duration": 0.1037499999999909,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["sortPlansByStatus"],
+          "fullName": "sortPlansByStatus 'orders planning before building befor…'",
+          "status": "passed",
+          "title": "'orders planning before building befor…'",
+          "duration": 0.4195829999999887,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["sortPlansByStatus"],
+          "fullName": "sortPlansByStatus 'preserves relative order inside the s…'",
+          "status": "passed",
+          "title": "'preserves relative order inside the s…'",
+          "duration": 0.07237499999996544,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["sortPlansByStatus"],
+          "fullName": "sortPlansByStatus returns a new array without mutating the input order",
+          "status": "passed",
+          "title": "returns a new array without mutating the input order",
+          "duration": 0.2387499999999818,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["sortPlansByStatus"],
+          "fullName": "sortPlansByStatus handles an empty array",
+          "status": "passed",
+          "title": "handles an empty array",
+          "duration": 0.15299999999990632,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["sortPlansByStatus"],
+          "fullName": "sortPlansByStatus sends unknown statuses to the end via the fallback order",
+          "status": "passed",
+          "title": "sends unknown statuses to the end via the fallback order",
+          "duration": 0.09470899999996618,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1773533538716,
+      "endTime": 1773533538719.153,
+      "status": "passed",
+      "message": "",
+      "name": "/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/plan.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["DEFAULT_HIL_CONFIG"],
+          "fullName": "DEFAULT_HIL_CONFIG defaults all three categories to automated for new projects",
+          "status": "passed",
+          "title": "defaults all three categories to automated for new projects",
+          "duration": 0.7998329999999783,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getAgentForComplexity"],
+          "fullName": "getAgentForComplexity should return simpleComplexityAgent for low",
+          "status": "passed",
+          "title": "should return simpleComplexityAgent for low",
+          "duration": 0.13016599999997425,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getAgentForComplexity"],
+          "fullName": "getAgentForComplexity should return simpleComplexityAgent for medium",
+          "status": "passed",
+          "title": "should return simpleComplexityAgent for medium",
+          "duration": 0.07637499999998454,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getAgentForComplexity"],
+          "fullName": "getAgentForComplexity should return complexComplexityAgent for high",
+          "status": "passed",
+          "title": "should return complexComplexityAgent for high",
+          "duration": 0.07120800000001282,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getAgentForComplexity"],
+          "fullName": "getAgentForComplexity should return complexComplexityAgent for very_high",
+          "status": "passed",
+          "title": "should return complexComplexityAgent for very_high",
+          "duration": 0.06654100000002927,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getAgentForComplexity"],
+          "fullName": "getAgentForComplexity should return simpleComplexityAgent when complexity is undefined",
+          "status": "passed",
+          "title": "should return simpleComplexityAgent when complexity is undefined",
+          "duration": 0.06329099999999244,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getAgentForPlanningRole"],
+          "fullName": "getAgentForPlanningRole Dreamer always returns complexComplexityAgent",
+          "status": "passed",
+          "title": "Dreamer always returns complexComplexityAgent",
+          "duration": 0.11462499999998954,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getAgentForPlanningRole"],
+          "fullName": "getAgentForPlanningRole Analyst always returns simpleComplexityAgent",
+          "status": "passed",
+          "title": "Analyst always returns simpleComplexityAgent",
+          "duration": 0.15412500000002183,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getAgentForPlanningRole"],
+          "fullName": "getAgentForPlanningRole Planner/Harmonizer/Auditor/Summarizer inherit plan complexity",
+          "status": "passed",
+          "title": "Planner/Harmonizer/Auditor/Summarizer inherit plan complexity",
+          "duration": 0.42487500000004275,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings"],
+          "fullName": "parseSettings should pass through two-tier format unchanged",
+          "status": "passed",
+          "title": "should pass through two-tier format unchanged",
+          "duration": 0.39345800000000963,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings"],
+          "fullName": "parseSettings should default both tiers when missing",
+          "status": "passed",
+          "title": "should default both tiers when missing",
+          "duration": 0.47937500000000455,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings"],
+          "fullName": "parseSettings should default gitWorkingMode to worktree when parseSettings receives empty object",
+          "status": "passed",
+          "title": "should default gitWorkingMode to worktree when parseSettings receives empty object",
+          "duration": 0.07120799999995597,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings"],
+          "fullName": "parseSettings should use provided simple/complex when present",
+          "status": "passed",
+          "title": "should use provided simple/complex when present",
+          "duration": 0.1027080000000069,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings"],
+          "fullName": "parseSettings should default gitWorkingMode to worktree when missing",
+          "status": "passed",
+          "title": "should default gitWorkingMode to worktree when missing",
+          "duration": 0.07041699999996354,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings"],
+          "fullName": "parseSettings should default gitWorkingMode to worktree when invalid",
+          "status": "passed",
+          "title": "should default gitWorkingMode to worktree when invalid",
+          "duration": 0.07800000000003138,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings"],
+          "fullName": "parseSettings should preserve gitWorkingMode branches when valid",
+          "status": "passed",
+          "title": "should preserve gitWorkingMode branches when valid",
+          "duration": 0.06637499999999363,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings"],
+          "fullName": "parseSettings should preserve gitWorkingMode worktree when valid",
+          "status": "passed",
+          "title": "should preserve gitWorkingMode worktree when valid",
+          "duration": 0.06583299999999781,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings"],
+          "fullName": "parseSettings should parse and preserve valid reviewAngles",
+          "status": "passed",
+          "title": "should parse and preserve valid reviewAngles",
+          "duration": 0.1133750000000191,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings"],
+          "fullName": "parseSettings should filter invalid reviewAngles and return undefined when empty",
+          "status": "passed",
+          "title": "should filter invalid reviewAngles and return undefined when empty",
+          "duration": 0.07654200000001765,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings"],
+          "fullName": "parseSettings should return undefined for reviewAngles when array is empty",
+          "status": "passed",
+          "title": "should return undefined for reviewAngles when array is empty",
+          "duration": 0.07825000000002547,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings"],
+          "fullName": "parseSettings should parse enableHumanTeammates (default false)",
+          "status": "passed",
+          "title": "should parse enableHumanTeammates (default false)",
+          "duration": 0.11587500000001683,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings"],
+          "fullName": "parseSettings should round-trip teamMembers through parseSettings",
+          "status": "passed",
+          "title": "should round-trip teamMembers through parseSettings",
+          "duration": 0.19479200000000674,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings"],
+          "fullName": "parseSettings should filter invalid teamMembers entries and trim id/name",
+          "status": "passed",
+          "title": "should filter invalid teamMembers entries and trim id/name",
+          "duration": 0.10783399999996846,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings"],
+          "fullName": "parseSettings should return empty array for teamMembers when array is empty (explicit clear)",
+          "status": "passed",
+          "title": "should return empty array for teamMembers when array is empty (explicit clear)",
+          "duration": 0.07645800000000236,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings"],
+          "fullName": "parseSettings should preserve a valid aiAutonomyLevel",
+          "status": "passed",
+          "title": "should preserve a valid aiAutonomyLevel",
+          "duration": 0.08320799999995643,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "mergeStrategy"],
+          "fullName": "parseSettings mergeStrategy should default to per_task when parseSettings receives empty object",
+          "status": "passed",
+          "title": "should default to per_task when parseSettings receives empty object",
+          "duration": 0.08195800000004283,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "mergeStrategy"],
+          "fullName": "parseSettings mergeStrategy should yield per_epic when mergeStrategy is per_epic",
+          "status": "passed",
+          "title": "should yield per_epic when mergeStrategy is per_epic",
+          "duration": 0.09520800000001373,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "mergeStrategy"],
+          "fullName": "parseSettings mergeStrategy should yield per_task when mergeStrategy is per_task",
+          "status": "passed",
+          "title": "should yield per_task when mergeStrategy is per_task",
+          "duration": 0.07375000000001819,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "mergeStrategy"],
+          "fullName": "parseSettings mergeStrategy should normalize invalid mergeStrategy to per_task",
+          "status": "passed",
+          "title": "should normalize invalid mergeStrategy to per_task",
+          "duration": 0.13795799999996916,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "mergeStrategy"],
+          "fullName": "parseSettings mergeStrategy should normalize non-string mergeStrategy to per_task",
+          "status": "passed",
+          "title": "should normalize non-string mergeStrategy to per_task",
+          "duration": 0.07149999999995771,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "mergeStrategy"],
+          "fullName": "parseSettings mergeStrategy should default to per_task when mergeStrategy is missing",
+          "status": "passed",
+          "title": "should default to per_task when mergeStrategy is missing",
+          "duration": 0.08387500000003456,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "mergeStrategy"],
+          "fullName": "parseSettings mergeStrategy should preserve mergeStrategy on round-trip",
+          "status": "passed",
+          "title": "should preserve mergeStrategy on round-trip",
+          "duration": 0.14195899999998574,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "worktreeBaseBranch"],
+          "fullName": "parseSettings worktreeBaseBranch should default to main when parseSettings receives empty object",
+          "status": "passed",
+          "title": "should default to main when parseSettings receives empty object",
+          "duration": 0.07208300000002055,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "worktreeBaseBranch"],
+          "fullName": "parseSettings worktreeBaseBranch should default to main when worktreeBaseBranch is empty string",
+          "status": "passed",
+          "title": "should default to main when worktreeBaseBranch is empty string",
+          "duration": 0.08316600000000562,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "worktreeBaseBranch"],
+          "fullName": "parseSettings worktreeBaseBranch should default to main when worktreeBaseBranch is whitespace only",
+          "status": "passed",
+          "title": "should default to main when worktreeBaseBranch is whitespace only",
+          "duration": 0.06925000000001091,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "worktreeBaseBranch"],
+          "fullName": "parseSettings worktreeBaseBranch should default to main when worktreeBaseBranch contains invalid chars (spaces)",
+          "status": "passed",
+          "title": "should default to main when worktreeBaseBranch contains invalid chars (spaces)",
+          "duration": 0.06725000000000136,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "worktreeBaseBranch"],
+          "fullName": "parseSettings worktreeBaseBranch should default to main when worktreeBaseBranch contains invalid chars",
+          "status": "passed",
+          "title": "should default to main when worktreeBaseBranch contains invalid chars",
+          "duration": 0.06795799999997598,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "worktreeBaseBranch"],
+          "fullName": "parseSettings worktreeBaseBranch should preserve valid worktreeBaseBranch main",
+          "status": "passed",
+          "title": "should preserve valid worktreeBaseBranch main",
+          "duration": 0.12825000000003683,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "worktreeBaseBranch"],
+          "fullName": "parseSettings worktreeBaseBranch should preserve valid worktreeBaseBranch with slash",
+          "status": "passed",
+          "title": "should preserve valid worktreeBaseBranch with slash",
+          "duration": 0.06866600000000744,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "worktreeBaseBranch"],
+          "fullName": "parseSettings worktreeBaseBranch should preserve valid worktreeBaseBranch with underscore, hyphen, dot",
+          "status": "passed",
+          "title": "should preserve valid worktreeBaseBranch with underscore, hyphen, dot",
+          "duration": 0.06820800000002691,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "worktreeBaseBranch"],
+          "fullName": "parseSettings worktreeBaseBranch should trim valid worktreeBaseBranch",
+          "status": "passed",
+          "title": "should trim valid worktreeBaseBranch",
+          "duration": 0.13245799999998553,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "worktreeBaseBranch"],
+          "fullName": "parseSettings worktreeBaseBranch should default to main when worktreeBaseBranch is not a string",
+          "status": "passed",
+          "title": "should default to main when worktreeBaseBranch is not a string",
+          "duration": 0.06733299999996234,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "selfImprovementFrequency"],
+          "fullName": "parseSettings selfImprovementFrequency VALID_SELF_IMPROVEMENT_FREQUENCIES contains never, after_each_plan, daily, weekly",
+          "status": "passed",
+          "title": "VALID_SELF_IMPROVEMENT_FREQUENCIES contains never, after_each_plan, daily, weekly",
+          "duration": 0.08037500000000364,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "selfImprovementFrequency"],
+          "fullName": "parseSettings selfImprovementFrequency SELF_IMPROVEMENT_FREQUENCY_OPTIONS has one option per frequency with labels",
+          "status": "passed",
+          "title": "SELF_IMPROVEMENT_FREQUENCY_OPTIONS has one option per frequency with labels",
+          "duration": 0.5912919999999531,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "selfImprovementFrequency"],
+          "fullName": "parseSettings selfImprovementFrequency should default to never when parseSettings receives empty object",
+          "status": "passed",
+          "title": "should default to never when parseSettings receives empty object",
+          "duration": 0.8337080000000014,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "selfImprovementFrequency"],
+          "fullName": "parseSettings selfImprovementFrequency should default to never when selfImprovementFrequency is missing",
+          "status": "passed",
+          "title": "should default to never when selfImprovementFrequency is missing",
+          "duration": 0.10149999999998727,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "selfImprovementFrequency"],
+          "fullName": "parseSettings selfImprovementFrequency should preserve valid selfImprovementFrequency values",
+          "status": "passed",
+          "title": "should preserve valid selfImprovementFrequency values",
+          "duration": 0.1538330000000201,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "selfImprovementFrequency"],
+          "fullName": "parseSettings selfImprovementFrequency should normalize invalid selfImprovementFrequency to never",
+          "status": "passed",
+          "title": "should normalize invalid selfImprovementFrequency to never",
+          "duration": 0.07120900000001029,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "selfImprovementFrequency"],
+          "fullName": "parseSettings selfImprovementFrequency should pass through selfImprovementLastRunAt and selfImprovementLastCommitSha when present",
+          "status": "passed",
+          "title": "should pass through selfImprovementLastRunAt and selfImprovementLastCommitSha when present",
+          "duration": 0.11750000000000682,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "selfImprovementFrequency"],
+          "fullName": "parseSettings selfImprovementFrequency should leave selfImprovementLastRunAt and selfImprovementLastCommitSha undefined when missing or invalid",
+          "status": "passed",
+          "title": "should leave selfImprovementLastRunAt and selfImprovementLastCommitSha undefined when missing or invalid",
+          "duration": 0.08637499999997544,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "autoExecutePlans"],
+          "fullName": "parseSettings autoExecutePlans should default to false when parseSettings receives empty object",
+          "status": "passed",
+          "title": "should default to false when parseSettings receives empty object",
+          "duration": 0.06862499999999727,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "autoExecutePlans"],
+          "fullName": "parseSettings autoExecutePlans should default to false when autoExecutePlans is missing",
+          "status": "passed",
+          "title": "should default to false when autoExecutePlans is missing",
+          "duration": 0.06437500000004093,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "autoExecutePlans"],
+          "fullName": "parseSettings autoExecutePlans should preserve true when autoExecutePlans is true",
+          "status": "passed",
+          "title": "should preserve true when autoExecutePlans is true",
+          "duration": 0.08191600000003518,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings", "autoExecutePlans"],
+          "fullName": "parseSettings autoExecutePlans should normalize non-boolean to false",
+          "status": "passed",
+          "title": "should normalize non-boolean to false",
+          "duration": 0.0837500000000091,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getDefaultDeploymentTarget"],
+          "fullName": "getDefaultDeploymentTarget returns first isDefault target when targets exist",
+          "status": "passed",
+          "title": "returns first isDefault target when targets exist",
+          "duration": 0.10124999999999318,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getDefaultDeploymentTarget"],
+          "fullName": "getDefaultDeploymentTarget returns first target when no isDefault and targets exist",
+          "status": "passed",
+          "title": "returns first target when no isDefault and targets exist",
+          "duration": 0.06137499999999818,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getDefaultDeploymentTarget"],
+          "fullName": "getDefaultDeploymentTarget returns config.target when no targets array",
+          "status": "passed",
+          "title": "returns config.target when no targets array",
+          "duration": 0.057540999999957876,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getDefaultDeploymentTarget"],
+          "fullName": "getDefaultDeploymentTarget returns production when no targets and no target",
+          "status": "passed",
+          "title": "returns production when no targets and no target",
+          "duration": 0.05020900000005213,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getDeploymentTargetConfig"],
+          "fullName": "getDeploymentTargetConfig returns target config by name",
+          "status": "passed",
+          "title": "returns target config by name",
+          "duration": 0.4542500000000018,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getDeploymentTargetConfig"],
+          "fullName": "getDeploymentTargetConfig returns undefined when target not found",
+          "status": "passed",
+          "title": "returns undefined when target not found",
+          "duration": 0.0660829999999919,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getDeploymentTargetConfig"],
+          "fullName": "getDeploymentTargetConfig returns undefined when no targets",
+          "status": "passed",
+          "title": "returns undefined when no targets",
+          "duration": 0.052917000000036296,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getTargetsForDeployEvent"],
+          "fullName": "getTargetsForDeployEvent returns targets with matching autoDeployTrigger",
+          "status": "passed",
+          "title": "returns targets with matching autoDeployTrigger",
+          "duration": 0.1497910000000502,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getTargetsForDeployEvent"],
+          "fullName": "getTargetsForDeployEvent treats missing autoDeployTrigger as none",
+          "status": "passed",
+          "title": "treats missing autoDeployTrigger as none",
+          "duration": 0.0745420000000081,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getTargetsForDeployEvent"],
+          "fullName": "getTargetsForDeployEvent returns empty array when no targets",
+          "status": "passed",
+          "title": "returns empty array when no targets",
+          "duration": 0.08237500000001319,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getTargetsForDeployEvent"],
+          "fullName": "getTargetsForDeployEvent returns empty array when targets is empty",
+          "status": "passed",
+          "title": "returns empty array when targets is empty",
+          "duration": 0.05466599999999744,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getTargetsForNightlyDeploy"],
+          "fullName": "getTargetsForNightlyDeploy returns targets with autoDeployTrigger nightly",
+          "status": "passed",
+          "title": "returns targets with autoDeployTrigger nightly",
+          "duration": 0.0877500000000282,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getTargetsForNightlyDeploy"],
+          "fullName": "getTargetsForNightlyDeploy returns empty array when no nightly targets",
+          "status": "passed",
+          "title": "returns empty array when no nightly targets",
+          "duration": 0.06187499999998636,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getTargetsForNightlyDeploy"],
+          "fullName": "getTargetsForNightlyDeploy returns empty array when targets is empty",
+          "status": "passed",
+          "title": "returns empty array when targets is empty",
+          "duration": 0.058166999999968994,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings deployment migration"],
+          "fullName": "parseSettings deployment migration migrates autoDeployOnEpicCompletion to default target autoDeployTrigger",
+          "status": "passed",
+          "title": "migrates autoDeployOnEpicCompletion to default target autoDeployTrigger",
+          "duration": 0.5327080000000137,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings deployment migration"],
+          "fullName": "parseSettings deployment migration migrates autoDeployOnEvalResolution to default target autoDeployTrigger",
+          "status": "passed",
+          "title": "migrates autoDeployOnEvalResolution to default target autoDeployTrigger",
+          "duration": 0.17908399999998892,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings deployment migration"],
+          "fullName": "parseSettings deployment migration migrates both flags: autoDeployOnEpicCompletion takes precedence",
+          "status": "passed",
+          "title": "migrates both flags: autoDeployOnEpicCompletion takes precedence",
+          "duration": 0.16879199999999628,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings deployment migration"],
+          "fullName": "parseSettings deployment migration migrates to existing default target in targets array",
+          "status": "passed",
+          "title": "migrates to existing default target in targets array",
+          "duration": 0.18241699999998673,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings deployment migration"],
+          "fullName": "parseSettings deployment migration does not add migration when legacy flags are false or absent",
+          "status": "passed",
+          "title": "does not add migration when legacy flags are false or absent",
+          "duration": 0.10899999999998045,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings deployment migration"],
+          "fullName": "parseSettings deployment migration migrates top-level envVars into default target when targets exist",
+          "status": "passed",
+          "title": "migrates top-level envVars into default target when targets exist",
+          "duration": 0.2878329999999778,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings deployment migration"],
+          "fullName": "parseSettings deployment migration migrates top-level envVars into staging and production targets when no targets (Expo)",
+          "status": "passed",
+          "title": "migrates top-level envVars into staging and production targets when no targets (Expo)",
+          "duration": 0.23733400000003257,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings deployment migration"],
+          "fullName": "parseSettings deployment migration accepts and persists easProjectId when mode is expo",
+          "status": "passed",
+          "title": "accepts and persists easProjectId when mode is expo",
+          "duration": 0.0899159999999597,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings deployment migration"],
+          "fullName": "parseSettings deployment migration migrates legacy expoConfig.projectId to easProjectId when mode is expo",
+          "status": "passed",
+          "title": "migrates legacy expoConfig.projectId to easProjectId when mode is expo",
+          "duration": 0.09366699999998218,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings deployment migration"],
+          "fullName": "parseSettings deployment migration prefers easProjectId over expoConfig.projectId when both present",
+          "status": "passed",
+          "title": "prefers easProjectId over expoConfig.projectId when both present",
+          "duration": 0.07070800000002464,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getDeploymentTargetsForUi"],
+          "fullName": "getDeploymentTargetsForUi returns synthetic staging and production for expo mode with no targets",
+          "status": "passed",
+          "title": "returns synthetic staging and production for expo mode with no targets",
+          "duration": 0.1851670000000354,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getDeploymentTargetsForUi"],
+          "fullName": "getDeploymentTargetsForUi returns targets array for custom mode",
+          "status": "passed",
+          "title": "returns targets array for custom mode",
+          "duration": 0.12520799999998644,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getDeploymentTargetsForUi"],
+          "fullName": "getDeploymentTargetsForUi returns empty array for custom mode with no targets",
+          "status": "passed",
+          "title": "returns empty array for custom mode with no targets",
+          "duration": 0.05675000000002228,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProviderForAgentType"],
+          "fullName": "getProviderForAgentType returns ANTHROPIC_API_KEY for claude",
+          "status": "passed",
+          "title": "returns ANTHROPIC_API_KEY for claude",
+          "duration": 0.0665000000000191,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProviderForAgentType"],
+          "fullName": "getProviderForAgentType returns CURSOR_API_KEY for cursor",
+          "status": "passed",
+          "title": "returns CURSOR_API_KEY for cursor",
+          "duration": 0.04800000000000182,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProviderForAgentType"],
+          "fullName": "getProviderForAgentType returns OPENAI_API_KEY for openai",
+          "status": "passed",
+          "title": "returns OPENAI_API_KEY for openai",
+          "duration": 0.04720900000000938,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProviderForAgentType"],
+          "fullName": "getProviderForAgentType returns GOOGLE_API_KEY for google",
+          "status": "passed",
+          "title": "returns GOOGLE_API_KEY for google",
+          "duration": 0.04829100000000608,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProviderForAgentType"],
+          "fullName": "getProviderForAgentType returns null for claude-cli and custom",
+          "status": "passed",
+          "title": "returns null for claude-cli and custom",
+          "duration": 0.05791599999997743,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProviderForAgentType"],
+          "fullName": "getProviderForAgentType returns null for lmstudio (excluded from API key provider resolution)",
+          "status": "passed",
+          "title": "returns null for lmstudio (excluded from API key provider resolution)",
+          "duration": 0.04450000000002774,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["API_KEY_PROVIDERS"],
+          "fullName": "API_KEY_PROVIDERS includes ANTHROPIC_API_KEY, CURSOR_API_KEY, OPENAI_API_KEY, and GOOGLE_API_KEY",
+          "status": "passed",
+          "title": "includes ANTHROPIC_API_KEY, CURSOR_API_KEY, OPENAI_API_KEY, and GOOGLE_API_KEY",
+          "duration": 0.32612499999999045,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateApiKeyEntry"],
+          "fullName": "validateApiKeyEntry accepts valid entry with id and value",
+          "status": "passed",
+          "title": "accepts valid entry with id and value",
+          "duration": 0.12033299999995961,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateApiKeyEntry"],
+          "fullName": "validateApiKeyEntry accepts entry with limitHitAt",
+          "status": "passed",
+          "title": "accepts entry with limitHitAt",
+          "duration": 0.06804199999999128,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateApiKeyEntry"],
+          "fullName": "validateApiKeyEntry accepts entry with invalidAt",
+          "status": "passed",
+          "title": "accepts entry with invalidAt",
+          "duration": 0.061416999999948985,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateApiKeyEntry"],
+          "fullName": "validateApiKeyEntry trims id",
+          "status": "passed",
+          "title": "trims id",
+          "duration": 0.051541999999983545,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateApiKeyEntry"],
+          "fullName": "validateApiKeyEntry throws when entry is not an object",
+          "status": "passed",
+          "title": "throws when entry is not an object",
+          "duration": 0.456875000000025,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateApiKeyEntry"],
+          "fullName": "validateApiKeyEntry throws when id is missing or empty",
+          "status": "passed",
+          "title": "throws when id is missing or empty",
+          "duration": 0.1692499999999768,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateApiKeyEntry"],
+          "fullName": "validateApiKeyEntry throws when value is not a string",
+          "status": "passed",
+          "title": "throws when value is not a string",
+          "duration": 0.075458000000026,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateApiKeyEntry"],
+          "fullName": "validateApiKeyEntry throws when limitHitAt is present but not a string",
+          "status": "passed",
+          "title": "throws when limitHitAt is present but not a string",
+          "duration": 0.08249999999998181,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateApiKeyEntry"],
+          "fullName": "validateApiKeyEntry throws when invalidAt is present but not a string",
+          "status": "passed",
+          "title": "throws when invalidAt is present but not a string",
+          "duration": 0.0927499999999668,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateApiKeyEntry"],
+          "fullName": "validateApiKeyEntry accepts optional label and includes it in output",
+          "status": "passed",
+          "title": "accepts optional label and includes it in output",
+          "duration": 0.07595900000001166,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["mergeApiKeysWithCurrent"],
+          "fullName": "mergeApiKeysWithCurrent returns current when incoming is null or invalid",
+          "status": "passed",
+          "title": "returns current when incoming is null or invalid",
+          "duration": 0.15866599999998243,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["mergeApiKeysWithCurrent"],
+          "fullName": "mergeApiKeysWithCurrent preserves value when id exists and value omitted (masked)",
+          "status": "passed",
+          "title": "preserves value when id exists and value omitted (masked)",
+          "duration": 0.09179100000000062,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["mergeApiKeysWithCurrent"],
+          "fullName": "mergeApiKeysWithCurrent replaces value when new value provided",
+          "status": "passed",
+          "title": "replaces value when new value provided",
+          "duration": 0.07079199999998309,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["mergeApiKeysWithCurrent"],
+          "fullName": "mergeApiKeysWithCurrent removes providers not in incoming (replace semantics)",
+          "status": "passed",
+          "title": "removes providers not in incoming (replace semantics)",
+          "duration": 0.07991600000002563,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["mergeApiKeysWithCurrent"],
+          "fullName": "mergeApiKeysWithCurrent adds new entry with new id",
+          "status": "passed",
+          "title": "adds new entry with new id",
+          "duration": 0.11112499999995862,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["mergeApiKeysWithCurrent"],
+          "fullName": "mergeApiKeysWithCurrent merges OPENAI_API_KEY entries",
+          "status": "passed",
+          "title": "merges OPENAI_API_KEY entries",
+          "duration": 0.06716599999998607,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["mergeApiKeysWithCurrent"],
+          "fullName": "mergeApiKeysWithCurrent preserves label when value omitted (masked)",
+          "status": "passed",
+          "title": "preserves label when value omitted (masked)",
+          "duration": 0.07233300000001464,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["mergeApiKeysWithCurrent"],
+          "fullName": "mergeApiKeysWithCurrent uses incoming label when provided",
+          "status": "passed",
+          "title": "uses incoming label when provided",
+          "duration": 0.0690829999999778,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["mergeApiKeysWithCurrent"],
+          "fullName": "mergeApiKeysWithCurrent preserves order of incoming array (drag-to-reorder)",
+          "status": "passed",
+          "title": "preserves order of incoming array (drag-to-reorder)",
+          "duration": 0.10199999999997544,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["sanitizeApiKeys"],
+          "fullName": "sanitizeApiKeys returns undefined for null",
+          "status": "passed",
+          "title": "returns undefined for null",
+          "duration": 0.08320800000001327,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["sanitizeApiKeys"],
+          "fullName": "sanitizeApiKeys returns undefined for non-object",
+          "status": "passed",
+          "title": "returns undefined for non-object",
+          "duration": 0.06375000000002728,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["sanitizeApiKeys"],
+          "fullName": "sanitizeApiKeys returns undefined for empty object",
+          "status": "passed",
+          "title": "returns undefined for empty object",
+          "duration": 0.048958999999968,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["sanitizeApiKeys"],
+          "fullName": "sanitizeApiKeys sanitizes valid apiKeys for known providers",
+          "status": "passed",
+          "title": "sanitizes valid apiKeys for known providers",
+          "duration": 0.1150000000000091,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["sanitizeApiKeys"],
+          "fullName": "sanitizeApiKeys preserves label when present",
+          "status": "passed",
+          "title": "preserves label when present",
+          "duration": 0.06320799999997462,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["sanitizeApiKeys"],
+          "fullName": "sanitizeApiKeys ignores unknown provider keys",
+          "status": "passed",
+          "title": "ignores unknown provider keys",
+          "duration": 0.053167000000030384,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["sanitizeApiKeys"],
+          "fullName": "sanitizeApiKeys skips invalid entries within array",
+          "status": "passed",
+          "title": "skips invalid entries within array",
+          "duration": 0.10966700000000174,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isLimitHitExpired"],
+          "fullName": "isLimitHitExpired returns true when limitHitAt is undefined",
+          "status": "passed",
+          "title": "returns true when limitHitAt is undefined",
+          "duration": 0.06729100000001154,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isLimitHitExpired"],
+          "fullName": "isLimitHitExpired returns true when limitHitAt is older than 24h",
+          "status": "passed",
+          "title": "returns true when limitHitAt is older than 24h",
+          "duration": 0.07979100000000017,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isLimitHitExpired"],
+          "fullName": "isLimitHitExpired returns false when limitHitAt is within 24h",
+          "status": "passed",
+          "title": "returns false when limitHitAt is within 24h",
+          "duration": 0.05329199999999901,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isLimitHitExpired"],
+          "fullName": "isLimitHitExpired returns true for invalid ISO string",
+          "status": "passed",
+          "title": "returns true for invalid ISO string",
+          "duration": 0.05920799999995552,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isLimitHitExpired"],
+          "fullName": "isLimitHitExpired returns true when date coercion throws",
+          "status": "passed",
+          "title": "returns true when date coercion throws",
+          "duration": 0.14299999999997226,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings — apiKeys ignored (stored in global settings only)"],
+          "fullName": "parseSettings — apiKeys ignored (stored in global settings only) does not include apiKeys in output (project-level keys removed)",
+          "status": "passed",
+          "title": "does not include apiKeys in output (project-level keys removed)",
+          "duration": 0.09741599999995287,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["parseSettings — apiKeys ignored (stored in global settings only)"],
+          "fullName": "parseSettings — apiKeys ignored (stored in global settings only) does not include apiKeys when absent",
+          "status": "passed",
+          "title": "does not include apiKeys when absent",
+          "duration": 0.0666659999999979,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["maskApiKeysForResponse"],
+          "fullName": "maskApiKeysForResponse returns undefined for undefined apiKeys",
+          "status": "passed",
+          "title": "returns undefined for undefined apiKeys",
+          "duration": 0.0787499999999568,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["maskApiKeysForResponse"],
+          "fullName": "maskApiKeysForResponse returns undefined for empty apiKeys",
+          "status": "passed",
+          "title": "returns undefined for empty apiKeys",
+          "duration": 0.04733300000003737,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["maskApiKeysForResponse"],
+          "fullName": "maskApiKeysForResponse masks values and preserves id and marker timestamps",
+          "status": "passed",
+          "title": "masks values and preserves id and marker timestamps",
+          "duration": 0.11733300000003055,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["maskApiKeysForResponse"],
+          "fullName": "maskApiKeysForResponse never includes value in output",
+          "status": "passed",
+          "title": "never includes value in output",
+          "duration": 0.08183300000001736,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["maskApiKeysForResponse"],
+          "fullName": "maskApiKeysForResponse preserves label in masked output",
+          "status": "passed",
+          "title": "preserves label in masked output",
+          "duration": 0.07108299999998735,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["DEFAULT_DATABASE_URL"],
+          "fullName": "DEFAULT_DATABASE_URL is the local Docker Postgres URL (deprecated, use getDefaultDatabaseUrl for default)",
+          "status": "passed",
+          "title": "is the local Docker Postgres URL (deprecated, use getDefaultDatabaseUrl for default)",
+          "duration": 0.04829100000000608,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getDefaultDatabaseUrl"],
+          "fullName": "getDefaultDatabaseUrl returns path under homedir ending in opensprint.sqlite",
+          "status": "passed",
+          "title": "returns path under homedir ending in opensprint.sqlite",
+          "duration": 0.14666599999998198,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateDatabaseUrl"],
+          "fullName": "validateDatabaseUrl accepts valid postgresql URL",
+          "status": "passed",
+          "title": "accepts valid postgresql URL",
+          "duration": 0.2751670000000104,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateDatabaseUrl"],
+          "fullName": "validateDatabaseUrl accepts valid postgres URL",
+          "status": "passed",
+          "title": "accepts valid postgres URL",
+          "duration": 0.19375000000002274,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateDatabaseUrl"],
+          "fullName": "validateDatabaseUrl accepts remote Supabase-style URL",
+          "status": "passed",
+          "title": "accepts remote Supabase-style URL",
+          "duration": 0.06354099999998652,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateDatabaseUrl"],
+          "fullName": "validateDatabaseUrl trims whitespace",
+          "status": "passed",
+          "title": "trims whitespace",
+          "duration": 0.055916000000024724,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateDatabaseUrl"],
+          "fullName": "validateDatabaseUrl throws when empty or not a string",
+          "status": "passed",
+          "title": "throws when empty or not a string",
+          "duration": 0.19745899999998073,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateDatabaseUrl"],
+          "fullName": "validateDatabaseUrl throws when scheme is not postgres/postgresql or SQLite path",
+          "status": "passed",
+          "title": "throws when scheme is not postgres/postgresql or SQLite path",
+          "duration": 0.3347079999999778,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateDatabaseUrl"],
+          "fullName": "validateDatabaseUrl accepts SQLite URLs and paths",
+          "status": "passed",
+          "title": "accepts SQLite URLs and paths",
+          "duration": 0.10858400000000756,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateDatabaseUrl"],
+          "fullName": "validateDatabaseUrl normalizes legacy sqlite:/file: shorthand prefixes",
+          "status": "passed",
+          "title": "normalizes legacy sqlite:/file: shorthand prefixes",
+          "duration": 0.1382499999999709,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateDatabaseUrl"],
+          "fullName": "validateDatabaseUrl throws for sqlite:// or file:// without path",
+          "status": "passed",
+          "title": "throws for sqlite:// or file:// without path",
+          "duration": 0.12858400000004622,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateDatabaseUrl"],
+          "fullName": "validateDatabaseUrl throws when URL is malformed (missing host)",
+          "status": "passed",
+          "title": "throws when URL is malformed (missing host)",
+          "duration": 0.077083000000016,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["validateDatabaseUrl"],
+          "fullName": "validateDatabaseUrl throws the generic parser error for malformed PostgreSQL URLs",
+          "status": "passed",
+          "title": "throws the generic parser error for malformed PostgreSQL URLs",
+          "duration": 0.08066700000000537,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getDatabaseDialect"],
+          "fullName": "getDatabaseDialect returns postgres for postgres/postgresql URLs",
+          "status": "passed",
+          "title": "returns postgres for postgres/postgresql URLs",
+          "duration": 0.09558300000003328,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getDatabaseDialect"],
+          "fullName": "getDatabaseDialect returns sqlite for sqlite/file URLs and paths",
+          "status": "passed",
+          "title": "returns sqlite for sqlite/file URLs and paths",
+          "duration": 0.10095899999998892,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["maskDatabaseUrl"],
+          "fullName": "maskDatabaseUrl redacts password, keeps host and port visible",
+          "status": "passed",
+          "title": "redacts password, keeps host and port visible",
+          "duration": 0.0987079999999878,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["maskDatabaseUrl"],
+          "fullName": "maskDatabaseUrl handles URL without password",
+          "status": "passed",
+          "title": "handles URL without password",
+          "duration": 0.07208300000002055,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["maskDatabaseUrl"],
+          "fullName": "maskDatabaseUrl returns empty string for empty input",
+          "status": "passed",
+          "title": "returns empty string for empty input",
+          "duration": 0.05870799999996734,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["maskDatabaseUrl"],
+          "fullName": "maskDatabaseUrl returns *** for invalid URL",
+          "status": "passed",
+          "title": "returns *** for invalid URL",
+          "duration": 0.05645800000002055,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["maskDatabaseUrl"],
+          "fullName": "maskDatabaseUrl returns canonical SQLite URLs and paths unchanged",
+          "status": "passed",
+          "title": "returns canonical SQLite URLs and paths unchanged",
+          "duration": 0.0705000000000382,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["maskDatabaseUrl"],
+          "fullName": "maskDatabaseUrl normalizes legacy SQLite shorthand to canonical path/URL",
+          "status": "passed",
+          "title": "normalizes legacy SQLite shorthand to canonical path/URL",
+          "duration": 0.1063329999999496,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isLocalDatabaseUrl"],
+          "fullName": "isLocalDatabaseUrl returns true for localhost",
+          "status": "passed",
+          "title": "returns true for localhost",
+          "duration": 0.10900000000003729,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isLocalDatabaseUrl"],
+          "fullName": "isLocalDatabaseUrl returns true for 127.0.0.1",
+          "status": "passed",
+          "title": "returns true for 127.0.0.1",
+          "duration": 0.061540999999976975,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isLocalDatabaseUrl"],
+          "fullName": "isLocalDatabaseUrl returns false for remote hosts",
+          "status": "passed",
+          "title": "returns false for remote hosts",
+          "duration": 0.06766599999997425,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["isLocalDatabaseUrl"],
+          "fullName": "isLocalDatabaseUrl returns false for invalid URL",
+          "status": "passed",
+          "title": "returns false for invalid URL",
+          "duration": 0.13266599999997197,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProvidersInUse"],
+          "fullName": "getProvidersInUse returns ANTHROPIC_API_KEY when claude in use",
+          "status": "passed",
+          "title": "returns ANTHROPIC_API_KEY when claude in use",
+          "duration": 0.12766599999997652,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProvidersInUse"],
+          "fullName": "getProvidersInUse returns CURSOR_API_KEY only when both agents are cursor",
+          "status": "passed",
+          "title": "returns CURSOR_API_KEY only when both agents are cursor",
+          "duration": 0.06587500000000546,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProvidersInUse"],
+          "fullName": "getProvidersInUse returns ANTHROPIC_API_KEY for claude-cli",
+          "status": "passed",
+          "title": "returns ANTHROPIC_API_KEY for claude-cli",
+          "duration": 0.055334000000016204,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProvidersInUse"],
+          "fullName": "getProvidersInUse returns OPENAI_API_KEY when openai in use",
+          "status": "passed",
+          "title": "returns OPENAI_API_KEY when openai in use",
+          "duration": 0.05470900000000256,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProvidersInUse"],
+          "fullName": "getProvidersInUse returns OPENAI_API_KEY with other providers when mixed",
+          "status": "passed",
+          "title": "returns OPENAI_API_KEY with other providers when mixed",
+          "duration": 0.13341700000000856,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProvidersInUse"],
+          "fullName": "getProvidersInUse does not add a provider for lmstudio (excluded from API key resolution)",
+          "status": "passed",
+          "title": "does not add a provider for lmstudio (excluded from API key resolution)",
+          "duration": 0.06312500000001364,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProvidersRequiringApiKeys"],
+          "fullName": "getProvidersRequiringApiKeys returns ANTHROPIC_API_KEY for claude only (not claude-cli)",
+          "status": "passed",
+          "title": "returns ANTHROPIC_API_KEY for claude only (not claude-cli)",
+          "duration": 0.087333000000001,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProvidersRequiringApiKeys"],
+          "fullName": "getProvidersRequiringApiKeys returns CURSOR_API_KEY when cursor in use",
+          "status": "passed",
+          "title": "returns CURSOR_API_KEY when cursor in use",
+          "duration": 0.05700000000001637,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProvidersRequiringApiKeys"],
+          "fullName": "getProvidersRequiringApiKeys returns both when claude and cursor in use",
+          "status": "passed",
+          "title": "returns both when claude and cursor in use",
+          "duration": 0.05725000000001046,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProvidersRequiringApiKeys"],
+          "fullName": "getProvidersRequiringApiKeys returns empty for claude-cli and custom only",
+          "status": "passed",
+          "title": "returns empty for claude-cli and custom only",
+          "duration": 0.05412499999999909,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProvidersRequiringApiKeys"],
+          "fullName": "getProvidersRequiringApiKeys returns OPENAI_API_KEY when openai in use",
+          "status": "passed",
+          "title": "returns OPENAI_API_KEY when openai in use",
+          "duration": 0.05229199999996581,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProvidersRequiringApiKeys"],
+          "fullName": "getProvidersRequiringApiKeys returns OPENAI_API_KEY with other providers when mixed",
+          "status": "passed",
+          "title": "returns OPENAI_API_KEY with other providers when mixed",
+          "duration": 0.11241699999999355,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getProvidersRequiringApiKeys"],
+          "fullName": "getProvidersRequiringApiKeys does not add a provider for lmstudio (excluded from API key resolution)",
+          "status": "passed",
+          "title": "does not add a provider for lmstudio (excluded from API key resolution)",
+          "duration": 0.05729199999996126,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1773533538580,
+      "endTime": 1773533538601.1333,
+      "status": "passed",
+      "message": "",
+      "name": "/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/settings.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["spec-serializer"],
+          "fullName": "spec-serializer round-trips Prd to markdown and back",
+          "status": "passed",
+          "title": "round-trips Prd to markdown and back",
+          "duration": 1.1050000000000182,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["spec-serializer"],
+          "fullName": "spec-serializer handles dynamic sections (e.g. competitive_landscape)",
+          "status": "passed",
+          "title": "handles dynamic sections (e.g. competitive_landscape)",
+          "duration": 0.1634999999999991,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["spec-serializer"],
+          "fullName": "spec-serializer handles empty sections",
+          "status": "passed",
+          "title": "handles empty sections",
+          "duration": 0.09795800000006238,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1773533538932,
+      "endTime": 1773533538934.1636,
+      "status": "passed",
+      "message": "",
+      "name": "/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/spec-serializer.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["complexityToDisplay"],
+          "fullName": "complexityToDisplay returns Simple for 1-5",
+          "status": "passed",
+          "title": "returns Simple for 1-5",
+          "duration": 0.7619589999999334,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["complexityToDisplay"],
+          "fullName": "complexityToDisplay returns Complex for 6-10",
+          "status": "passed",
+          "title": "returns Complex for 6-10",
+          "duration": 0.1316669999999931,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["complexityToDisplay"],
+          "fullName": "complexityToDisplay returns null for undefined or invalid",
+          "status": "passed",
+          "title": "returns null for undefined or invalid",
+          "duration": 0.11599999999998545,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["clampTaskComplexity"],
+          "fullName": "clampTaskComplexity returns value for valid integer 1-10",
+          "status": "passed",
+          "title": "returns value for valid integer 1-10",
+          "duration": 0.2671669999999722,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["clampTaskComplexity"],
+          "fullName": "clampTaskComplexity returns undefined for invalid types",
+          "status": "passed",
+          "title": "returns undefined for invalid types",
+          "duration": 0.12412499999993543,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["clampTaskComplexity"],
+          "fullName": "clampTaskComplexity returns undefined for out-of-range integers",
+          "status": "passed",
+          "title": "returns undefined for out-of-range integers",
+          "duration": 0.0815420000000131,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["clampTaskComplexity"],
+          "fullName": "clampTaskComplexity exports valid range constants",
+          "status": "passed",
+          "title": "exports valid range constants",
+          "duration": 0.07862499999998818,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1773533539037,
+      "endTime": 1773533539039.267,
+      "status": "passed",
+      "message": "",
+      "name": "/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/task-complexity.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": ["getEpicId"],
+          "fullName": "getEpicId returns 'opensprint.dev-xyz.2' for 'opensprint.dev-xyz.2.1'",
+          "status": "passed",
+          "title": "returns 'opensprint.dev-xyz.2' for 'opensprint.dev-xyz.2.1'",
+          "duration": 0.630457999999976,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getEpicId"],
+          "fullName": "getEpicId returns 'opensprint.dev-8rx.10' for 'opensprint.dev-8rx.10.0'",
+          "status": "passed",
+          "title": "returns 'opensprint.dev-8rx.10' for 'opensprint.dev-8rx.10.0'",
+          "duration": 0.09925000000009732,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getEpicId"],
+          "fullName": "getEpicId returns 'bd-a3f8' for 'bd-a3f8.1'",
+          "status": "passed",
+          "title": "returns 'bd-a3f8' for 'bd-a3f8.1'",
+          "duration": 0.06158400000003894,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getEpicId"],
+          "fullName": "getEpicId returns 'opensprint.dev-xyz' for 'opensprint.dev-xyz.2'",
+          "status": "passed",
+          "title": "returns 'opensprint.dev-xyz' for 'opensprint.dev-xyz.2'",
+          "duration": 0.04975000000001728,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getEpicId"],
+          "fullName": "getEpicId returns 'opensprint.dev-8rx' for 'opensprint.dev-8rx.10'",
+          "status": "passed",
+          "title": "returns 'opensprint.dev-8rx' for 'opensprint.dev-8rx.10'",
+          "duration": 0.05141600000001745,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getEpicId"],
+          "fullName": "getEpicId returns 'opensprint.dev-xyz' for 'opensprint.dev-xyz'",
+          "status": "passed",
+          "title": "returns 'opensprint.dev-xyz' for 'opensprint.dev-xyz'",
+          "duration": 0.04624999999998636,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getEpicId"],
+          "fullName": "getEpicId returns 'bd-a3f8' for 'bd-a3f8'",
+          "status": "passed",
+          "title": "returns 'bd-a3f8' for 'bd-a3f8'",
+          "duration": 0.04679199999998218,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getEpicId"],
+          "fullName": "getEpicId returns 'epic1' for 'epic1'",
+          "status": "passed",
+          "title": "returns 'epic1' for 'epic1'",
+          "duration": 0.04979100000002745,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": ["getEpicId"],
+          "fullName": "getEpicId returns 'a.b.c' for 'a.b.c.123'",
+          "status": "passed",
+          "title": "returns 'a.b.c' for 'a.b.c.123'",
+          "duration": 0.04787499999997635,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1773533539143,
+      "endTime": 1773533539144.0994,
+      "status": "passed",
+      "message": "",
+      "name": "/private/var/folders/63/x5pqqrr97890ppg92y81t4qc0000gn/T/opensprint-worktrees/os-d665/packages/shared/src/__tests__/task-ids.test.ts"
+    }
+  ]
+}

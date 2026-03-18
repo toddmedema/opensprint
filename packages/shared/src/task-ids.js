@@ -11,7 +11,7 @@
  * @returns The epic ID (parent prefix when id ends with .digits, otherwise id)
  */
 export function getEpicId(id) {
-    const m = id.match(/^(.+)\.(\d+)$/);
-    return m ? m[1] : id;
+  const m = id.match(/^(.+)\.(\d+)$/);
+  return m ? m[1] : id;
 }
 //# sourceMappingURL=task-ids.js.map

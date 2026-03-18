@@ -294,7 +294,9 @@ describe("TestRunner", () => {
       }
 
       const invoked = (mockSpawn.mock.calls[0]?.[1] as string[] | undefined)?.[1] ?? "";
-      expect(invoked).toContain("node ./node_modules/vitest/vitest.mjs related --run --testTimeout=30000 src/foo.ts");
+      expect(invoked).toContain(
+        "node ./node_modules/vitest/vitest.mjs related --run --testTimeout=30000 src/foo.ts"
+      );
       expect(invoked).toContain("--reporter=json");
       expect(invoked).toContain("--outputFile=");
     });

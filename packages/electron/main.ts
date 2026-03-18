@@ -885,9 +885,15 @@ function runRefreshTrayMenu(): Promise<void> {
   if (!tray || tray.isDestroyed()) return Promise.resolve();
   const { normalPath, withDotPath, isTemplate } = getTrayIconPaths();
   return Promise.all([
-    fetchJson(`${getApiBase()}/agents/active-count`, TRAY_FETCH_TIMEOUT_MS).then((r) => r).catch(() => null),
-    fetchJson(`${getApiBase()}/notifications/pending-count`, TRAY_FETCH_TIMEOUT_MS).then((r) => r).catch(() => null),
-    fetchJson(`${getApiBase()}/global-settings`, TRAY_FETCH_TIMEOUT_MS).then((r) => r).catch(() => null),
+    fetchJson(`${getApiBase()}/agents/active-count`, TRAY_FETCH_TIMEOUT_MS)
+      .then((r) => r)
+      .catch(() => null),
+    fetchJson(`${getApiBase()}/notifications/pending-count`, TRAY_FETCH_TIMEOUT_MS)
+      .then((r) => r)
+      .catch(() => null),
+    fetchJson(`${getApiBase()}/global-settings`, TRAY_FETCH_TIMEOUT_MS)
+      .then((r) => r)
+      .catch(() => null),
   ]).then(([agentsRes, notifRes, settingsRes]) => {
     if (!tray || tray.isDestroyed()) return;
     const fetchOk = agentsRes != null && agentsRes.data != null;

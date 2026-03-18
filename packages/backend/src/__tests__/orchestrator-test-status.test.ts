@@ -46,7 +46,9 @@ describe("orchestrator-test-status", () => {
     });
 
     expect(content).toContain("Status: `FAILED`");
-    expect(content).toContain("Merge quality gates: `npm run build`, `npm run lint`, `npm run test`");
+    expect(content).toContain(
+      "Merge quality gates: `npm run build`, `npm run lint`, `npm run test`"
+    );
     expect(content).toContain("Passed: 12");
     expect(content).toContain("Failed: 2");
     expect(content).toContain("## Primary Diagnostic");

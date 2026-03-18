@@ -485,7 +485,7 @@ describe("AgentService", () => {
             onOutput('{"type":"text","text":"Resolving conflicts"}\n');
             onOutput('{"type":"tool_call","subtype":"started","call_id":"c1"}\n');
             onOutput('{"lineNumber":1,"content":"code","isContextLine":true}\n');
-            onOutput('ingestOutputChunk(runState, chunk);\n');
+            onOutput("ingestOutputChunk(runState, chunk);\n");
             onOutput('{"type":"text","text":"Done"}\n');
             onExit(0);
           });

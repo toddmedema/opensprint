@@ -39,12 +39,19 @@ const BASELINE_PATH = path.join(ROOT, "perf-baseline.json");
 
 function getDeltas(): PerfDeltas {
   return {
-    loadCompletePct: parseInt(process.env.PERF_MAX_LOAD_COMPLETE_PCT ?? "", 10) || DEFAULT_PERF_DELTAS.loadCompletePct,
+    loadCompletePct:
+      parseInt(process.env.PERF_MAX_LOAD_COMPLETE_PCT ?? "", 10) ||
+      DEFAULT_PERF_DELTAS.loadCompletePct,
     ttiPct: parseInt(process.env.PERF_MAX_TTI_PCT ?? "", 10) || DEFAULT_PERF_DELTAS.ttiPct,
     fcpPct: parseInt(process.env.PERF_MAX_FCP_PCT ?? "", 10) || DEFAULT_PERF_DELTAS.fcpPct,
-    heapUsedPct: parseInt(process.env.PERF_MAX_HEAP_PCT ?? "", 10) || DEFAULT_PERF_DELTAS.heapUsedPct,
-    sidebarClosePct: parseInt(process.env.PERF_MAX_SIDEBAR_CLOSE_PCT ?? "", 10) || DEFAULT_PERF_DELTAS.sidebarClosePct,
-    peakSidebarHeapPct: parseInt(process.env.PERF_MAX_PEAK_SIDEBAR_HEAP_PCT ?? "", 10) || DEFAULT_PERF_DELTAS.peakSidebarHeapPct,
+    heapUsedPct:
+      parseInt(process.env.PERF_MAX_HEAP_PCT ?? "", 10) || DEFAULT_PERF_DELTAS.heapUsedPct,
+    sidebarClosePct:
+      parseInt(process.env.PERF_MAX_SIDEBAR_CLOSE_PCT ?? "", 10) ||
+      DEFAULT_PERF_DELTAS.sidebarClosePct,
+    peakSidebarHeapPct:
+      parseInt(process.env.PERF_MAX_PEAK_SIDEBAR_HEAP_PCT ?? "", 10) ||
+      DEFAULT_PERF_DELTAS.peakSidebarHeapPct,
   };
 }
 
@@ -278,7 +285,9 @@ async function main(): Promise<void> {
   const ci = args.includes("--ci");
 
   if (ci && !fs.existsSync(BASELINE_PATH)) {
-    console.error("CI mode requires a committed perf-baseline.json. Run npm run perf:baseline (with app running) and commit it.");
+    console.error(
+      "CI mode requires a committed perf-baseline.json. Run npm run perf:baseline (with app running) and commit it."
+    );
     process.exit(1);
   }
 
@@ -329,7 +338,9 @@ async function main(): Promise<void> {
           const isBytes = r.metric.includes("Heap") || r.metric.includes("peak");
           const curStr = isBytes ? formatBytes(r.current) : `${r.current.toFixed(0)} ms`;
           const baseStr = isBytes ? formatBytes(r.baseline) : `${r.baseline.toFixed(0)} ms`;
-          console.error(`  ${r.metric}: ${curStr} (baseline ${baseStr}) — regression ${r.deltaPct.toFixed(1)}% (max ${r.maxAllowedPct}%)`);
+          console.error(
+            `  ${r.metric}: ${curStr} (baseline ${baseStr}) — regression ${r.deltaPct.toFixed(1)}% (max ${r.maxAllowedPct}%)`
+          );
         }
         console.error("");
         process.exit(1);

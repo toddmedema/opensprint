@@ -7,19 +7,19 @@ export const SPEC_MD = "SPEC.md";
 export const SPEC_METADATA_PATH = `${OPENSPRINT_DIR}/spec-metadata.json`;
 /** Paths within the .opensprint directory (repo and runtime). Settings live in global store (~/.opensprint/settings.json). Feedback, inbox, agent stats, event log, orchestrator counters, and deployments are now DB-only; no file paths. */
 export const OPENSPRINT_PATHS = {
-    /** @deprecated Use SPEC_MD. Legacy path for migration from prd.json. */
-    prd: `${OPENSPRINT_DIR}/prd.json`,
-    plans: `${OPENSPRINT_DIR}/plans`,
-    planningRuns: `${OPENSPRINT_DIR}/planning-runs`,
-    conversations: `${OPENSPRINT_DIR}/conversations`,
-    /** Session log/diff files under runtime dir; session metadata is in DB (agent_sessions). */
-    sessions: `${OPENSPRINT_DIR}/sessions`,
-    active: `${OPENSPRINT_DIR}/active`,
-    agents: `${OPENSPRINT_DIR}/agents`,
-    pendingCommits: `${OPENSPRINT_DIR}/pending-commits.json`,
-    heartbeat: "heartbeat.json",
-    agentOutputLog: "agent-output.log",
-    assignment: "assignment.json",
+  /** @deprecated Use SPEC_MD. Legacy path for migration from prd.json. */
+  prd: `${OPENSPRINT_DIR}/prd.json`,
+  plans: `${OPENSPRINT_DIR}/plans`,
+  planningRuns: `${OPENSPRINT_DIR}/planning-runs`,
+  conversations: `${OPENSPRINT_DIR}/conversations`,
+  /** Session log/diff files under runtime dir; session metadata is in DB (agent_sessions). */
+  sessions: `${OPENSPRINT_DIR}/sessions`,
+  active: `${OPENSPRINT_DIR}/active`,
+  agents: `${OPENSPRINT_DIR}/agents`,
+  pendingCommits: `${OPENSPRINT_DIR}/pending-commits.json`,
+  heartbeat: "heartbeat.json",
+  agentOutputLog: "agent-output.log",
+  assignment: "assignment.json",
 };
 /** Heartbeat interval in milliseconds (10 seconds) */
 export const HEARTBEAT_INTERVAL_MS = 10_000;
@@ -34,20 +34,15 @@ export const BACKOFF_FAILURE_THRESHOLD = 3;
 /** Maximum task priority value; tasks at this level get blocked on next demotion (PRDv2 §9.1) */
 export const MAX_PRIORITY_BEFORE_BLOCK = 4;
 /** Block reasons that indicate technical errors. Tasks with these can be auto-retried. */
-export const TECHNICAL_BLOCK_REASONS = [
-    "Merge Failure",
-    "Quality Gate Failure",
-    "Coding Failure",
-];
+export const TECHNICAL_BLOCK_REASONS = ["Merge Failure", "Quality Gate Failure", "Coding Failure"];
 /** Block reason when Coder emits open_questions (human clarification needed) */
 export const OPEN_QUESTION_BLOCK_REASON = "Open Question";
 /** Interval for auto-retrying tasks blocked by technical errors (8 hours) */
 export const AUTO_RETRY_BLOCKED_INTERVAL_MS = 8 * 60 * 60 * 1000;
 /** True if block_reason indicates a technical error (auto-retriable); false for human-feedback blocks. */
 export function isBlockedByTechnicalError(blockReason) {
-    if (!blockReason || typeof blockReason !== "string")
-        return false;
-    return TECHNICAL_BLOCK_REASONS.includes(blockReason);
+  if (!blockReason || typeof blockReason !== "string") return false;
+  return TECHNICAL_BLOCK_REASONS.includes(blockReason);
 }
 /**
  * Summarizer: invoke when task has more than this many dependencies (PRD §7.3.2, §12.3.5).
@@ -63,100 +58,97 @@ export const DEFAULT_API_PORT = 3100;
 export const API_PREFIX = "/api/v1";
 /** Plan status display order (planning → building → in_review → complete) */
 export const PLAN_STATUS_ORDER = {
-    planning: 0,
-    building: 1,
-    in_review: 2,
-    complete: 3,
+  planning: 0,
+  building: 1,
+  in_review: 2,
+  complete: 3,
 };
 /** Task priority labels */
 export const PRIORITY_LABELS = {
-    0: "Critical",
-    1: "High",
-    2: "Medium",
-    3: "Low",
-    4: "Lowest",
+  0: "Critical",
+  1: "High",
+  2: "Medium",
+  3: "Low",
+  4: "Lowest",
 };
 /** Test framework options for setup (PRD §8.3, §10.2) */
 export const TEST_FRAMEWORKS = [
-    { id: "jest", label: "Jest", command: "npm test" },
-    { id: "vitest", label: "Vitest", command: "npx vitest run" },
-    { id: "playwright", label: "Playwright", command: "npx playwright test" },
-    { id: "cypress", label: "Cypress", command: "npx cypress run" },
-    { id: "pytest", label: "pytest", command: "pytest" },
-    { id: "mocha", label: "Mocha", command: "npm test" },
-    { id: "none", label: "None / Configure later", command: "" },
+  { id: "jest", label: "Jest", command: "npm test" },
+  { id: "vitest", label: "Vitest", command: "npx vitest run" },
+  { id: "playwright", label: "Playwright", command: "npx playwright test" },
+  { id: "cypress", label: "Cypress", command: "npx cypress run" },
+  { id: "pytest", label: "pytest", command: "pytest" },
+  { id: "mocha", label: "Mocha", command: "npm test" },
+  { id: "none", label: "None / Configure later", command: "" },
 ];
 /** Get test command for a framework id, or empty string for none */
 export function getTestCommandForFramework(framework) {
-    if (!framework || framework === "none")
-        return "";
-    const found = TEST_FRAMEWORKS.find((f) => f.id === framework);
-    return found?.command ?? "";
+  if (!framework || framework === "none") return "";
+  const found = TEST_FRAMEWORKS.find((f) => f.id === framework);
+  return found?.command ?? "";
 }
 /** Resolve test command from settings: testCommand override, else framework-based, else default */
 export function resolveTestCommand(settings) {
-    if (settings.testCommand?.trim())
-        return settings.testCommand.trim();
-    const fromFramework = getTestCommandForFramework(settings.testFramework ?? null);
-    if (fromFramework)
-        return fromFramework;
-    return "npm test";
+  if (settings.testCommand?.trim()) return settings.testCommand.trim();
+  const fromFramework = getTestCommandForFramework(settings.testFramework ?? null);
+  if (fromFramework) return fromFramework;
+  return "npm test";
 }
 // ─── Agent display names (orchestrator / task store / UI) ───
 /** Coder agent names (Execute phase). Index must be fixed when the agent starts and stored (e.g. assignee); do not recompute from current position. */
 export const AGENT_NAMES = [
-    "Frodo",
-    "Samwise",
-    "Meriadoc",
-    "Peregrin",
-    "Bilbo",
-    "Rosie",
-    "Lobelia",
-    "Lotho",
-    "Drogo",
-    "Otho",
-    "Ted",
-    "Robin",
-    "Will",
+  "Frodo",
+  "Samwise",
+  "Meriadoc",
+  "Peregrin",
+  "Bilbo",
+  "Rosie",
+  "Lobelia",
+  "Lotho",
+  "Drogo",
+  "Otho",
+  "Ted",
+  "Robin",
+  "Will",
 ];
 /** Returns the coder name for the given 0-based slot index; wraps with modulo (e.g. 13 → Frodo). */
 export function getAgentName(slotIndex) {
-    const idx = slotIndex % AGENT_NAMES.length;
-    return AGENT_NAMES[idx < 0 ? idx + AGENT_NAMES.length : idx];
+  const idx = slotIndex % AGENT_NAMES.length;
+  return AGENT_NAMES[idx < 0 ? idx + AGENT_NAMES.length : idx];
 }
 /** Per-role display names. Use getAgentNameForRole(role, index); index must be fixed at agent start and stored, not derived from current position. */
 export const AGENT_NAMES_BY_ROLE = {
-    coder: AGENT_NAMES,
-    dreamer: ["Gandalf", "Saruman", "Radagast", "Pallando", "Alatar"],
-    planner: ["Aragorn", "Théoden", "Thranduil", "Dáin", "Brand"],
-    harmonizer: ["Elrond", "Galadriel", "Celeborn", "Arwen", "Círdan"],
-    analyst: ["Faramir", "Halbarad", "Éomer", "Elladan", "Elrohir"],
-    summarizer: ["Treebeard", "Quickbeam", "Leaflock", "Skinbark", "Beechbone"],
-    auditor: ["Gimli", "Glóin", "Balin", "Dwalin", "Thorin"],
-    reviewer: [
-        "Boromir",
-        "Imrahil",
-        "Éowyn",
-        "Beregond",
-        "Húrin",
-        "Glorfindel",
-        "Erkenbrand",
-        "Grimbold",
-        "Forlong",
-        "Angbor",
-    ],
-    merger: ["Gwaihir", "Landroval", "Meneldor", "Thorondor", "Sorontar"],
+  coder: AGENT_NAMES,
+  dreamer: ["Gandalf", "Saruman", "Radagast", "Pallando", "Alatar"],
+  planner: ["Aragorn", "Théoden", "Thranduil", "Dáin", "Brand"],
+  harmonizer: ["Elrond", "Galadriel", "Celeborn", "Arwen", "Círdan"],
+  analyst: ["Faramir", "Halbarad", "Éomer", "Elladan", "Elrohir"],
+  summarizer: ["Treebeard", "Quickbeam", "Leaflock", "Skinbark", "Beechbone"],
+  auditor: ["Gimli", "Glóin", "Balin", "Dwalin", "Thorin"],
+  reviewer: [
+    "Boromir",
+    "Imrahil",
+    "Éowyn",
+    "Beregond",
+    "Húrin",
+    "Glorfindel",
+    "Erkenbrand",
+    "Grimbold",
+    "Forlong",
+    "Angbor",
+  ],
+  merger: ["Gwaihir", "Landroval", "Meneldor", "Thorondor", "Sorontar"],
 };
 /** Returns the agent name for the given role and 0-based index; wraps with modulo. Unknown role falls back to coder list. */
 export function getAgentNameForRole(role, slotIndex) {
-    const list = AGENT_NAMES_BY_ROLE[role] ?? AGENT_NAMES;
-    const idx = slotIndex % list.length;
-    return list[idx < 0 ? idx + list.length : idx];
+  const list = AGENT_NAMES_BY_ROLE[role] ?? AGENT_NAMES;
+  const idx = slotIndex % list.length;
+  return list[idx < 0 ? idx + list.length : idx];
 }
 /** All known agent display names (for task store: treat assignee as agent when in this set). */
 const ALL_AGENT_NAMES = new Set(Object.values(AGENT_NAMES_BY_ROLE).flatMap((arr) => [...arr]));
 /** True if assignee is a known agent display name (coder, reviewer, etc.). */
 export function isAgentAssignee(assignee) {
-    return typeof assignee === "string" && ALL_AGENT_NAMES.has(assignee);
+  return typeof assignee === "string" && ALL_AGENT_NAMES.has(assignee);
 }
 //# sourceMappingURL=index.js.map

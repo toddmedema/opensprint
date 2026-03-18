@@ -17,14 +17,12 @@ export const ERROR_CODE_MESSAGES: Record<string, string> = {
   ALREADY_OPENSPRINT_PROJECT: "This folder is already an Open Sprint project.",
   UNSUPPORTED_REPO_PATH:
     "Use a Linux path for the repo (e.g. /home/...). Windows-mounted WSL paths are not supported.",
-  GIT_IDENTITY_REQUIRED:
-    "Configure Git user.name and user.email in the repo, then try again.",
+  GIT_IDENTITY_REQUIRED: "Configure Git user.name and user.email in the repo, then try again.",
   GIT_BASE_BRANCH_INVALID: "Set a valid base branch in Project Settings.",
   GIT_REMOTE_UNREACHABLE: "Check remote URL and network; ensure the remote is reachable.",
   DEPENDENCY_SETUP_FAILED:
     "Run npm ci in the repository root, fix invalid dependencies, then retry.",
-  REPO_DEPENDENCIES_INVALID:
-    "Fix repository dependencies (e.g. run npm ci), then retry.",
+  REPO_DEPENDENCIES_INVALID: "Fix repository dependencies (e.g. run npm ci), then retry.",
   NO_GATE_TASK: "Generate tasks first or add a gating task in Plan.",
   TASKS_IN_PROGRESS: "Wait for in-progress tasks to finish, or cancel them.",
   TASKS_NOT_COMPLETE: "Complete or cancel open tasks before this action.",
@@ -153,9 +151,7 @@ export function getQualityGateTitle(blocked: boolean): string {
 /**
  * Title for failure type. Accepts execution failure types and "quality_gate" (alias for merge_quality_gate).
  */
-export function getFailureTypeTitle(
-  type: FailureType | "quality_gate"
-): string {
+export function getFailureTypeTitle(type: FailureType | "quality_gate"): string {
   const key = type === "quality_gate" ? "merge_quality_gate" : type;
   return FAILURE_TYPE_LABELS[key as FailureType] ?? type;
 }

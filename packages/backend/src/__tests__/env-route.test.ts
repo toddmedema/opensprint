@@ -114,7 +114,9 @@ describe("Env API", () => {
         .send({ provider: "unknown", value: "sk-test" });
       expect(res.status).toBe(400);
       expect(res.body.error?.code).toBe("VALIDATION_ERROR");
-      expect(res.body.error?.message).toMatch(/provider|option|invalid|claude|cursor|openai|google/i);
+      expect(res.body.error?.message).toMatch(
+        /provider|option|invalid|claude|cursor|openai|google/i
+      );
       expect(mockValidateApiKey).not.toHaveBeenCalled();
     });
 

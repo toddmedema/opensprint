@@ -53,7 +53,7 @@ globalSettingsRouter.get(
   validateParams(apiKeyProviderParamSchema),
   wrapAsync(async (req, res) => {
     const provider = req.params.provider as ApiKeyProvider;
-    const id = Array.isArray(req.params.id) ? req.params.id[0] ?? "" : req.params.id;
+    const id = Array.isArray(req.params.id) ? (req.params.id[0] ?? "") : req.params.id;
     const settings = await getGlobalSettings();
     const entries = settings.apiKeys?.[provider];
     const entry = entries?.find((e) => e.id === id);
@@ -72,7 +72,7 @@ globalSettingsRouter.post(
   validateParams(apiKeyProviderParamSchema),
   wrapAsync(async (req, res) => {
     const provider = req.params.provider as ApiKeyProvider;
-    const id = Array.isArray(req.params.id) ? req.params.id[0] ?? "" : req.params.id;
+    const id = Array.isArray(req.params.id) ? (req.params.id[0] ?? "") : req.params.id;
     await clearLimitHit("", provider, id, "global");
     clearExhaustedForProviderAcrossAllProjects(provider);
     const projects = await getProjects();

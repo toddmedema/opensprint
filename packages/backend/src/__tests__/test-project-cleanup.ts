@@ -11,9 +11,7 @@ interface CleanupTestProjectOptions {
  * Best-effort cleanup for tests that create real projects.
  * Ensures background orchestrator state is cleared before the temp HOME is removed.
  */
-export async function cleanupTestProject(
-  options: CleanupTestProjectOptions
-): Promise<void> {
+export async function cleanupTestProject(options: CleanupTestProjectOptions): Promise<void> {
   const projectId = options.projectId?.trim();
   if (!projectId) return;
 

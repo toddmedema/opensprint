@@ -44,7 +44,7 @@ chatRouter.get(
   validateParams(projectIdParamSchema),
   validateQuery(chatHistoryQuerySchema),
   wrapAsync(async (req: Request<ProjectParams>, res) => {
-    const context = ((req.query as { context?: string }).context) ?? "sketch";
+    const context = (req.query as { context?: string }).context ?? "sketch";
     const conversation = await chatService.getHistory(req.params.projectId, context);
     const result: ApiResponse<Conversation> = { data: conversation };
     res.json(result);

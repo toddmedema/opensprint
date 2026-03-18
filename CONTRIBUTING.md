@@ -49,11 +49,11 @@ Maintainers will review and merge when ready. By contributing, you agree that yo
 
 When you change **agent lifecycle** or **prompt contract** (how agents are spawned, what they receive, or how they report), keep these three sources in sync:
 
-| File | Role |
-|------|------|
-| `AGENTS.md` | Canonical agent instructions (rules, runtime contract, maintenance notes). |
+| File                                               | Role                                                                            |
+| -------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `AGENTS.md`                                        | Canonical agent instructions (rules, runtime contract, maintenance notes).      |
 | `packages/backend/src/services/project.service.ts` | Bootstrap contract (what the backend injects into agent context when spawning). |
-| `packages/backend/docs/opensprint-help-context.md` | Help/context doc used by the app or agents. |
+| `packages/backend/docs/opensprint-help-context.md` | Help/context doc used by the app or agents.                                     |
 
 **Checklist:** After editing any of the above for lifecycle or prompt changes, review and update the other two so behavior and wording stay consistent.
 

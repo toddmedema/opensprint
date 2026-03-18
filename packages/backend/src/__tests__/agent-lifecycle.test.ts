@@ -209,9 +209,7 @@ describe("AgentLifecycleManager", () => {
       capturedOnOutput?.(
         '{"type":"tool_call","subtype":"started","call_id":"c1","tool_call":{}}\n'
       );
-      capturedOnOutput?.(
-        '{"lineNumber":1,"content":"snippet","isContextLine":true}\n'
-      );
+      capturedOnOutput?.('{"lineNumber":1,"content":"snippet","isContextLine":true}\n');
       capturedOnOutput?.('{"type":"text","text":"Done"}\n');
 
       const joined = runState.outputLog.join("");

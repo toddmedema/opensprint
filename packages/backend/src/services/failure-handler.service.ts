@@ -388,8 +388,7 @@ export class FailureHandlerService {
   }): FailureDiagnosticDetail | null {
     const structuredQualityGateDetail = params.slot.phaseResult.qualityGateDetail;
     if (
-      (params.failureType === "merge_quality_gate" ||
-        params.failureType === "environment_setup") &&
+      (params.failureType === "merge_quality_gate" || params.failureType === "environment_setup") &&
       structuredQualityGateDetail
     ) {
       return {
@@ -689,7 +688,10 @@ export class FailureHandlerService {
 
     const includePreviousTestContext = failureType === "test_failure";
     const previousTestFailures = includePreviousTestContext
-      ? buildTestFailureRetrySummary(slot.phaseResult.testResults, slot.phaseResult.testOutput || undefined)
+      ? buildTestFailureRetrySummary(
+          slot.phaseResult.testResults,
+          slot.phaseResult.testOutput || undefined
+        )
       : undefined;
     const previousTestOutput = includePreviousTestContext
       ? this.buildRetryTestOutput({
@@ -900,7 +902,8 @@ export class FailureHandlerService {
         previousDiff,
         previousTestOutput,
         previousTestFailures,
-        qualityGateDetail: failureDiagnosticDetail ?? slot.phaseResult.qualityGateDetail ?? undefined,
+        qualityGateDetail:
+          failureDiagnosticDetail ?? slot.phaseResult.qualityGateDetail ?? undefined,
         failureType,
       });
       return;
@@ -964,7 +967,8 @@ export class FailureHandlerService {
         previousDiff,
         previousTestOutput,
         previousTestFailures,
-        qualityGateDetail: failureDiagnosticDetail ?? slot.phaseResult.qualityGateDetail ?? undefined,
+        qualityGateDetail:
+          failureDiagnosticDetail ?? slot.phaseResult.qualityGateDetail ?? undefined,
         failureType,
       });
     } else {

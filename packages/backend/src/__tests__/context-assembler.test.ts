@@ -185,7 +185,9 @@ User authentication.
     );
     expect(prompt).toContain("add scoped build/typecheck and lint commands");
     expect(prompt).toContain("Before writing `result.json`, leave the branch in a state");
-    expect(prompt).toContain("merge quality gates: `npm run build`, `npm run lint`, `npm run test`");
+    expect(prompt).toContain(
+      "merge quality gates: `npm run build`, `npm run lint`, `npm run test`"
+    );
     expect(prompt).toContain("Never use watch mode");
     expect(prompt).toContain("Never run destructive cleanup commands");
     // Terminology: use "done" and "finish" instead of "complete" (feedback consistency)

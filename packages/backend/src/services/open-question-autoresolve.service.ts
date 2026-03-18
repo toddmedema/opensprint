@@ -171,12 +171,15 @@ ${questionTexts.map((t) => `- ${t}`).join("\n")}`;
             context: `plan-draft:${draftId}`,
           });
         } catch (sendErr) {
-          log.warn("Plan-draft sendMessage failed during open-question auto-respond; leaving notification unresolved", {
-            projectId,
-            notificationId,
-            sourceId,
-            err: sendErr,
-          });
+          log.warn(
+            "Plan-draft sendMessage failed during open-question auto-respond; leaving notification unresolved",
+            {
+              projectId,
+              notificationId,
+              sourceId,
+              err: sendErr,
+            }
+          );
           return;
         }
         await notificationService.resolve(projectId, notificationId);

@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  createAgentOutputFilter,
-  filterAgentOutput,
-} from "../agent-output-filter.js";
+import { createAgentOutputFilter, filterAgentOutput } from "../agent-output-filter.js";
 
 describe("agent-output-filter", () => {
   describe("createAgentOutputFilter", () => {
@@ -46,29 +43,24 @@ describe("agent-output-filter", () => {
 
     it("filters out lines containing ingestOutputChunk", () => {
       const f = createAgentOutputFilter();
-      const chunk = 'ingestOutputChunk(runState, chunk);\n';
+      const chunk = "ingestOutputChunk(runState, chunk);\n";
       expect(f.filter(chunk)).toBe("");
     });
 
     it("extracts text from type text NDJSON", () => {
       const f = createAgentOutputFilter();
-      expect(f.filter('{"type":"text","text":"Hello from agent"}\n')).toBe(
-        "Hello from agent"
-      );
+      expect(f.filter('{"type":"text","text":"Hello from agent"}\n')).toBe("Hello from agent");
     });
 
     it("filters out metadata-only events (tool_use)", () => {
       const f = createAgentOutputFilter();
-      expect(f.filter('{"type":"tool_use","name":"edit","input":{}}\n')).toBe(
-        ""
-      );
+      expect(f.filter('{"type":"tool_use","name":"edit","input":{}}\n')).toBe("");
     });
   });
 
   describe("filterAgentOutput", () => {
     it("filters full NDJSON in one pass", () => {
-      const raw =
-        '{"type":"text","text":"Hello"}\n{"type":"text","text":" world"}\n';
+      const raw = '{"type":"text","text":"Hello"}\n{"type":"text","text":" world"}\n';
       expect(filterAgentOutput(raw)).toBe("Hello world");
     });
 

@@ -4,16 +4,16 @@
  */
 /** Required section headings per PRD §7.2.3 (in order) */
 export const PLAN_MARKDOWN_SECTIONS = [
-    "Overview",
-    "Acceptance Criteria",
-    "Technical Approach",
-    "Dependencies",
-    "Data Model Changes",
-    "API Specification",
-    "UI/UX Requirements",
-    "Edge Cases and Error Handling",
-    "Testing Strategy",
-    "Estimated Complexity",
+  "Overview",
+  "Acceptance Criteria",
+  "Technical Approach",
+  "Dependencies",
+  "Data Model Changes",
+  "API Specification",
+  "UI/UX Requirements",
+  "Edge Cases and Error Handling",
+  "Testing Strategy",
+  "Estimated Complexity",
 ];
 /**
  * Returns the Plan markdown template with the given feature title.
@@ -22,8 +22,8 @@ export const PLAN_MARKDOWN_SECTIONS = [
  * Edge Cases and Error Handling, Testing Strategy, Estimated Complexity.
  */
 export function getPlanTemplate(featureTitle) {
-    const title = featureTitle.trim() || "Feature";
-    return `# ${title}
+  const title = featureTitle.trim() || "Feature";
+  return `# ${title}
 
 ## Overview
 
@@ -81,28 +81,28 @@ Description for the second task.
  * Returns missing sections and warnings. Does NOT block — warn only.
  */
 export function validatePlanContent(content) {
-    const missing = [];
-    const warnings = [];
-    if (!content?.trim()) {
-        return {
-            missing: [...PLAN_MARKDOWN_SECTIONS],
-            warnings: ["Plan content is empty"],
-        };
+  const missing = [];
+  const warnings = [];
+  if (!content?.trim()) {
+    return {
+      missing: [...PLAN_MARKDOWN_SECTIONS],
+      warnings: ["Plan content is empty"],
+    };
+  }
+  const normalized = content.replace(/\r\n/g, "\n");
+  for (const section of PLAN_MARKDOWN_SECTIONS) {
+    // Match ## Section at start of line (section may have parenthetical, e.g. "Acceptance Criteria (with testable conditions)")
+    const pattern = new RegExp(`^##\\s+${escapeRegex(section)}(?:\\s|\\(|$)`, "im");
+    if (!pattern.test(normalized)) {
+      missing.push(section);
     }
-    const normalized = content.replace(/\r\n/g, "\n");
-    for (const section of PLAN_MARKDOWN_SECTIONS) {
-        // Match ## Section at start of line (section may have parenthetical, e.g. "Acceptance Criteria (with testable conditions)")
-        const pattern = new RegExp(`^##\\s+${escapeRegex(section)}(?:\\s|\\(|$)`, "im");
-        if (!pattern.test(normalized)) {
-            missing.push(section);
-        }
-    }
-    if (missing.length > 0) {
-        warnings.push(`Plan is missing required sections (PRD §7.2.3): ${missing.join(", ")}`);
-    }
-    return { missing, warnings };
+  }
+  if (missing.length > 0) {
+    warnings.push(`Plan is missing required sections (PRD §7.2.3): ${missing.join(", ")}`);
+  }
+  return { missing, warnings };
 }
 function escapeRegex(s) {
-    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 //# sourceMappingURL=plan-template.js.map

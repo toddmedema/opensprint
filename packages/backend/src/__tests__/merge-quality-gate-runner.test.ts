@@ -27,7 +27,9 @@ describe("runMergeQualityGates", () => {
 
   afterEach(async () => {
     process.env.NODE_ENV = previousNodeEnv;
-    await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
+    await Promise.all(
+      tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true }))
+    );
   });
 
   it("extracts actionable assertion failures from noisy vitest output", async () => {
@@ -158,7 +160,7 @@ src/server.ts(19,3): error TS2552: Cannot find name 'handler'. Did you mean 'Hea
         shellExec: async () => {
           throw {
             message: "Command failed with exit code 1",
-            stderr: "Missing script: \"build\"",
+            stderr: 'Missing script: "build"',
           };
         },
       }

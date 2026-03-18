@@ -107,7 +107,7 @@ describe("agentOutputFilter", () => {
 
     it("filters out lines containing ingestOutputChunk", () => {
       const f = createAgentOutputFilter();
-      const chunk = 'ingestOutputChunk(runState, chunk);\n';
+      const chunk = "ingestOutputChunk(runState, chunk);\n";
       expect(f.filter(chunk)).toBe("");
     });
 

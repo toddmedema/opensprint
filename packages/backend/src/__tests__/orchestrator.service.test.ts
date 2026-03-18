@@ -1310,7 +1310,8 @@ describe("OrchestratorService (slot-based model)", () => {
         passed: 3,
         failed: 0,
         rawOutput: "ok",
-        executedCommand: "node ./node_modules/vitest/vitest.mjs related --run --testTimeout=30000 src/foo.ts",
+        executedCommand:
+          "node ./node_modules/vitest/vitest.mjs related --run --testTimeout=30000 src/foo.ts",
         scope: "scoped",
       });
       mockGetActiveDir.mockImplementation((base: string, tid: string) =>
@@ -1416,7 +1417,8 @@ describe("OrchestratorService (slot-based model)", () => {
         passed: 3,
         failed: 0,
         rawOutput: "ok",
-        executedCommand: "node ./node_modules/vitest/vitest.mjs related --run --testTimeout=30000 src/foo.ts",
+        executedCommand:
+          "node ./node_modules/vitest/vitest.mjs related --run --testTimeout=30000 src/foo.ts",
         scope: "scoped",
       });
       vi.mocked(heartbeatService.readHeartbeat).mockResolvedValue({
@@ -1655,7 +1657,8 @@ describe("OrchestratorService (slot-based model)", () => {
         total: 3,
         details: [],
         rawOutput: "ok",
-        executedCommand: "node ./node_modules/vitest/vitest.mjs related --run --testTimeout=30000 src/foo.ts",
+        executedCommand:
+          "node ./node_modules/vitest/vitest.mjs related --run --testTimeout=30000 src/foo.ts",
         scope: "scoped",
       });
       const runMergeQualityGatesSpy = vi
@@ -1677,19 +1680,23 @@ describe("OrchestratorService (slot-based model)", () => {
 
       const mergeSpy = vi
         .spyOn(
-          (orchestrator as unknown as {
-            mergeCoordinator: { performMergeAndDone: (...args: unknown[]) => Promise<void> };
-          }).mergeCoordinator,
+          (
+            orchestrator as unknown as {
+              mergeCoordinator: { performMergeAndDone: (...args: unknown[]) => Promise<void> };
+            }
+          ).mergeCoordinator,
           "performMergeAndDone"
         )
         .mockResolvedValue(undefined);
       const failureSpy = vi
         .spyOn(
-          (orchestrator as unknown as {
-            failureHandler: {
-              handleTaskFailure: (...args: unknown[]) => Promise<void>;
-            };
-          }).failureHandler,
+          (
+            orchestrator as unknown as {
+              failureHandler: {
+                handleTaskFailure: (...args: unknown[]) => Promise<void>;
+              };
+            }
+          ).failureHandler,
           "handleTaskFailure"
         )
         .mockResolvedValue(undefined);
@@ -2030,19 +2037,23 @@ describe("OrchestratorService (slot-based model)", () => {
 
       const mergeSpy = vi
         .spyOn(
-          (orchestrator as unknown as {
-            mergeCoordinator: { performMergeAndDone: (...args: unknown[]) => Promise<void> };
-          }).mergeCoordinator,
+          (
+            orchestrator as unknown as {
+              mergeCoordinator: { performMergeAndDone: (...args: unknown[]) => Promise<void> };
+            }
+          ).mergeCoordinator,
           "performMergeAndDone"
         )
         .mockResolvedValue(undefined);
       const failureSpy = vi
         .spyOn(
-          (orchestrator as unknown as {
-            failureHandler: {
-              handleTaskFailure: (...args: unknown[]) => Promise<void>;
-            };
-          }).failureHandler,
+          (
+            orchestrator as unknown as {
+              failureHandler: {
+                handleTaskFailure: (...args: unknown[]) => Promise<void>;
+              };
+            }
+          ).failureHandler,
           "handleTaskFailure"
         )
         .mockResolvedValue(undefined);

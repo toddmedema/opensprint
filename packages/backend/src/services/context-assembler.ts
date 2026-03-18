@@ -269,7 +269,10 @@ export class ContextAssembler {
         taskId
       );
       if (storedResponses?.length) {
-        userClarification = storedResponses.map((r) => r.answer).join("\n\n").trim();
+        userClarification = storedResponses
+          .map((r) => r.answer)
+          .join("\n\n")
+          .trim();
       }
     }
 

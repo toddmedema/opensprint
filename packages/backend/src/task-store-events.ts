@@ -51,7 +51,9 @@ function storedTaskToPayload(task: StoredTask): TaskEventPayload {
     ...(source ? { source } : {}),
     kanbanColumn: storedTaskToKanbanColumn(task),
     ...(mergePaused.mergePausedUntil ? { mergePausedUntil: mergePaused.mergePausedUntil } : {}),
-    ...(mergePaused.mergeWaitingOnMain ? { mergeWaitingOnMain: mergePaused.mergeWaitingOnMain } : {}),
+    ...(mergePaused.mergeWaitingOnMain
+      ? { mergeWaitingOnMain: mergePaused.mergeWaitingOnMain }
+      : {}),
   } as TaskEventPayload;
 }
 
@@ -78,7 +80,9 @@ export function wireTaskStoreEvents(broadcast: BroadcastFn): void {
         description: task.description ?? undefined,
         kanbanColumn: storedTaskToKanbanColumn(task),
         ...(mergePaused.mergePausedUntil ? { mergePausedUntil: mergePaused.mergePausedUntil } : {}),
-        ...(mergePaused.mergeWaitingOnMain ? { mergeWaitingOnMain: mergePaused.mergeWaitingOnMain } : {}),
+        ...(mergePaused.mergeWaitingOnMain
+          ? { mergeWaitingOnMain: mergePaused.mergeWaitingOnMain }
+          : {}),
       } as ServerEvent);
     } else {
       broadcast(projectId, {

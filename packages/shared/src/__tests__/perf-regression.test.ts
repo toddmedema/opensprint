@@ -9,7 +9,12 @@ import {
 function minimalMetrics(overrides: Partial<PerfMetrics> = {}): PerfMetrics {
   return {
     timestamp: "",
-    load: { domContentLoaded: 0, loadComplete: 1000, firstContentfulPaint: 500, timeToInteractive: 2000 },
+    load: {
+      domContentLoaded: 0,
+      loadComplete: 1000,
+      firstContentfulPaint: 500,
+      timeToInteractive: 2000,
+    },
     memory: { jsHeapUsed: 100_000_000, jsHeapTotal: 120_000_000 },
     sidebar: {},
     sidebarOpened: false,
@@ -24,16 +29,36 @@ describe("checkPerfRegressions", () => {
   });
 
   it("returns empty when current is better than baseline", () => {
-    const baseline = minimalMetrics({ load: { domContentLoaded: 100, loadComplete: 2000, firstContentfulPaint: 800, timeToInteractive: 5000 } });
-    const current = minimalMetrics({ load: { domContentLoaded: 50, loadComplete: 1500, firstContentfulPaint: 400, timeToInteractive: 3000 } });
+    const baseline = minimalMetrics({
+      load: {
+        domContentLoaded: 100,
+        loadComplete: 2000,
+        firstContentfulPaint: 800,
+        timeToInteractive: 5000,
+      },
+    });
+    const current = minimalMetrics({
+      load: {
+        domContentLoaded: 50,
+        loadComplete: 1500,
+        firstContentfulPaint: 400,
+        timeToInteractive: 3000,
+      },
+    });
     expect(checkPerfRegressions(baseline, current)).toEqual([]);
   });
 
   it("returns empty when regression is within allowed delta", () => {
     const base = minimalMetrics();
-    const baseline = minimalMetrics({ load: { ...base.load, loadComplete: 1000 }, memory: { ...base.memory, jsHeapUsed: 100_000_000 } });
+    const baseline = minimalMetrics({
+      load: { ...base.load, loadComplete: 1000 },
+      memory: { ...base.memory, jsHeapUsed: 100_000_000 },
+    });
     const cur = minimalMetrics();
-    const current = minimalMetrics({ load: { ...cur.load, loadComplete: 1150 }, memory: { ...cur.memory, jsHeapUsed: 115_000_000 } }); // +15%
+    const current = minimalMetrics({
+      load: { ...cur.load, loadComplete: 1150 },
+      memory: { ...cur.memory, jsHeapUsed: 115_000_000 },
+    }); // +15%
     expect(checkPerfRegressions(baseline, current)).toEqual([]);
   });
 
@@ -48,7 +73,9 @@ describe("checkPerfRegressions", () => {
   });
 
   it("returns regression when TTI exceeds delta", () => {
-    const baseline = minimalMetrics({ load: { ...minimalMetrics().load, timeToInteractive: 5000 } });
+    const baseline = minimalMetrics({
+      load: { ...minimalMetrics().load, timeToInteractive: 5000 },
+    });
     const current = minimalMetrics({ load: { ...minimalMetrics().load, timeToInteractive: 7000 } }); // +40%, max 20%
     const regressions = checkPerfRegressions(baseline, current);
     expect(regressions).toHaveLength(1);
@@ -57,16 +84,24 @@ describe("checkPerfRegressions", () => {
   });
 
   it("returns regression when FCP exceeds delta", () => {
-    const baseline = minimalMetrics({ load: { ...minimalMetrics().load, firstContentfulPaint: 1000 } });
-    const current = minimalMetrics({ load: { ...minimalMetrics().load, firstContentfulPaint: 1300 } }); // +30%, max 20%
+    const baseline = minimalMetrics({
+      load: { ...minimalMetrics().load, firstContentfulPaint: 1000 },
+    });
+    const current = minimalMetrics({
+      load: { ...minimalMetrics().load, firstContentfulPaint: 1300 },
+    }); // +30%, max 20%
     const regressions = checkPerfRegressions(baseline, current);
     expect(regressions).toHaveLength(1);
     expect(regressions[0].metric).toBe("firstContentfulPaint");
   });
 
   it("returns regression when jsHeapUsed exceeds delta", () => {
-    const baseline = minimalMetrics({ memory: { ...minimalMetrics().memory, jsHeapUsed: 200_000_000 } });
-    const current = minimalMetrics({ memory: { ...minimalMetrics().memory, jsHeapUsed: 250_000_000 } }); // +25%, max 20%
+    const baseline = minimalMetrics({
+      memory: { ...minimalMetrics().memory, jsHeapUsed: 200_000_000 },
+    });
+    const current = minimalMetrics({
+      memory: { ...minimalMetrics().memory, jsHeapUsed: 250_000_000 },
+    }); // +25%, max 20%
     const regressions = checkPerfRegressions(baseline, current);
     expect(regressions).toHaveLength(1);
     expect(regressions[0].metric).toBe("jsHeapUsed");

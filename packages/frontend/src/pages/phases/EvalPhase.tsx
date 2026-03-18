@@ -2101,12 +2101,7 @@ export function EvalPhase({
   const answeringOpenQuestion = answerNotificationId != null;
 
   const handleAnswerOpenQuestion = useCallback(
-    async (
-      feedbackId: string,
-      notificationId: string,
-      answer: string,
-      questionIds?: string[]
-    ) => {
+    async (feedbackId: string, notificationId: string, answer: string, questionIds?: string[]) => {
       if (!answer.trim()) return;
       setAnswerNotificationId(notificationId);
       try {

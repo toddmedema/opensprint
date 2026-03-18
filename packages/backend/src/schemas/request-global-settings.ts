@@ -1,12 +1,7 @@
 import { z } from "zod";
 
 export const apiKeyProviderParamSchema = z.object({
-  provider: z.enum([
-    "ANTHROPIC_API_KEY",
-    "CURSOR_API_KEY",
-    "OPENAI_API_KEY",
-    "GOOGLE_API_KEY",
-  ]),
+  provider: z.enum(["ANTHROPIC_API_KEY", "CURSOR_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY"]),
   id: z.string().min(1),
 });
 

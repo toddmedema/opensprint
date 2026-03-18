@@ -10,12 +10,12 @@ This document describes how to measure and document performance baselines before
 
 ## Commands
 
-| Command                 | Description                                                           |
-| ----------------------- | --------------------------------------------------------------------- |
-| `npm run perf`          | Run performance measurement and print report                          |
-| `npm run perf:baseline` | Run measurement and save to `perf-baseline.json`                      |
-| `npm run perf:compare`  | Run measurement and compare against saved baseline                    |
-| `npm run perf:ci`       | Compare to baseline, exit 1 if regression exceeds allowed delta (CI)  |
+| Command                 | Description                                                          |
+| ----------------------- | -------------------------------------------------------------------- |
+| `npm run perf`          | Run performance measurement and print report                         |
+| `npm run perf:baseline` | Run measurement and save to `perf-baseline.json`                     |
+| `npm run perf:compare`  | Run measurement and compare against saved baseline                   |
+| `npm run perf:ci`       | Compare to baseline, exit 1 if regression exceeds allowed delta (CI) |
 
 ## Metrics Collected
 

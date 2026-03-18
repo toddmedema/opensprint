@@ -435,9 +435,8 @@ class GitCommitQueueImpl implements GitCommitQueueService {
                 if (continueErr instanceof RebaseConflictError) {
                   rebaseConflict = continueErr;
                 } else {
-                  const conflictedFiles = await this.branchManager.getConflictedFiles(
-                    rebaseWorktreePath
-                  );
+                  const conflictedFiles =
+                    await this.branchManager.getConflictedFiles(rebaseWorktreePath);
                   if (conflictedFiles.length > 0) {
                     rebaseConflict = new RebaseConflictError(conflictedFiles);
                   } else {

@@ -253,7 +253,11 @@ function scoreActionableParagraph(paragraph: string, index: number, total: numbe
   if (/\b(error|failed|failure|timed out|timeout|exception|result\.json|enoent)\b/i.test(compact)) {
     score += 3;
   }
-  if (/\b(npm run|npx |vitest|jest|build|lint|test|review|mock|fix|patch|result\.json)\b/i.test(compact)) {
+  if (
+    /\b(npm run|npx |vitest|jest|build|lint|test|review|mock|fix|patch|result\.json)\b/i.test(
+      compact
+    )
+  ) {
     score += 2;
   }
   score += index / Math.max(total, 1);

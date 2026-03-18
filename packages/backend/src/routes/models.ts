@@ -364,7 +364,7 @@ modelsRouter.get(
   "/",
   validateQuery(modelsListQuerySchema),
   wrapAsync(async (req: Request, res) => {
-    const provider = ((req.query as { provider?: string }).provider) || "claude";
+    const provider = (req.query as { provider?: string }).provider || "claude";
     const projectId = (req.query as { projectId?: string }).projectId;
 
     if (provider === "claude") {

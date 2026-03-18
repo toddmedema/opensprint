@@ -479,9 +479,7 @@ export class NotificationService {
 
     const resolvedAt = new Date().toISOString();
     const responsesJson =
-      options?.responses && options.responses.length > 0
-        ? JSON.stringify(options.responses)
-        : null;
+      options?.responses && options.responses.length > 0 ? JSON.stringify(options.responses) : null;
 
     await taskStore.runWrite(async (tx) => {
       if (responsesJson != null) {
