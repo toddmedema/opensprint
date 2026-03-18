@@ -26,7 +26,9 @@ const HEALTH_TIMEOUT_MS = 30000;
 const EXISTING_BACKEND_WAIT_MS = 5000;
 const BACKEND_PORT_SEARCH_LIMIT = 20;
 const BACKEND_FORCE_KILL_MS = 5000;
-const TRAY_REFRESH_MS = 10000;
+const TRAY_REFRESH_MS = 8000;
+const TRAY_FETCH_TIMEOUT_MS = 2500;
+const TRAY_INIT_RETRY_MS = 600;
 const DB_STARTUP_POLL_MS = 500;
 const DB_STARTUP_TIMEOUT_MS = 10000;
 const SQLITE_RUNTIME_DIR_NAME = "sqlite-runtime";
@@ -40,6 +42,9 @@ let backendLogStream: fs.WriteStream | null = null;
 let backendLogPath: string | null = null;
 let tray: Tray | null = null;
 let trayRefreshInterval: ReturnType<typeof setInterval> | null = null;
+/** Last successful tray state so we don't show 0 or flicker on fetch errors. */
+let lastTrayState: { agentCount: number; title: string } | null = null;
+let trayRefreshInFlight: Promise<void> | null = null;
 let isQuitting = false;
 let quitAfterBackendStop = false;
 let backendStartupInProgress = false;
@@ -877,18 +882,22 @@ function createWindow(): void {
   }
 }
 
-function refreshTrayMenu(): Promise<void> {
+function runRefreshTrayMenu(): Promise<void> {
   if (!tray || tray.isDestroyed()) return Promise.resolve();
   const { normalPath, withDotPath, isTemplate } = getTrayIconPaths();
   return Promise.all([
-    fetchJson(`${getApiBase()}/agents/active-count`).catch(() => ({ data: { count: 0 } })),
-    fetchJson(`${getApiBase()}/notifications/pending-count`).catch(() => ({ data: { count: 0 } })),
-    fetchJson(`${getApiBase()}/global-settings`).catch(() => ({
-      data: { showNotificationDotInMenuBar: true },
-    })),
+    fetchJson(`${getApiBase()}/agents/active-count`, TRAY_FETCH_TIMEOUT_MS).then((r) => r).catch(() => null),
+    fetchJson(`${getApiBase()}/notifications/pending-count`, TRAY_FETCH_TIMEOUT_MS).then((r) => r).catch(() => null),
+    fetchJson(`${getApiBase()}/global-settings`, TRAY_FETCH_TIMEOUT_MS).then((r) => r).catch(() => null),
   ]).then(([agentsRes, notifRes, settingsRes]) => {
     if (!tray || tray.isDestroyed()) return;
-    const agentCount = (agentsRes?.data as { count?: number } | undefined)?.count ?? 0;
+    const fetchOk = agentsRes != null && agentsRes.data != null;
+    const fetchedCount = (agentsRes?.data as { count?: number } | undefined)?.count ?? 0;
+    const agentCount = fetchOk ? fetchedCount : (lastTrayState?.agentCount ?? 0);
+    if (fetchOk) {
+      lastTrayState = lastTrayState ?? { agentCount: 0, title: "" };
+      lastTrayState.agentCount = fetchedCount;
+    }
     const pendingCount = (notifRes?.data as { count?: number } | undefined)?.count ?? 0;
     const showDot =
       (settingsRes?.data as { showNotificationDotInMenuBar?: boolean } | undefined)
@@ -926,7 +935,11 @@ function refreshTrayMenu(): Promise<void> {
             ? "9+"
             : String(agentCount)
         : "";
-      tray.setTitle(title, { fontType: "monospacedDigit" });
+      if (title !== (lastTrayState?.title ?? null)) {
+        tray.setTitle(title, { fontType: "monospacedDigit" });
+        if (lastTrayState) lastTrayState.title = title;
+        else lastTrayState = { agentCount, title };
+      }
     }
     const menu = Menu.buildFromTemplate([
       { label: `${agentCount} agents running`, enabled: false },
@@ -947,6 +960,19 @@ function refreshTrayMenu(): Promise<void> {
   });
 }
 
+function refreshTrayMenu(): Promise<void> {
+  if (!tray || tray.isDestroyed()) return Promise.resolve();
+  if (trayRefreshInFlight) {
+    return trayRefreshInFlight.then(() => {
+      if (tray && !tray.isDestroyed()) return runRefreshTrayMenu();
+    });
+  }
+  trayRefreshInFlight = runRefreshTrayMenu().finally(() => {
+    trayRefreshInFlight = null;
+  });
+  return trayRefreshInFlight;
+}
+
 function createTray(): void {
   const { normalPath, isTemplate } = getTrayIconPaths();
   let img = nativeImage.createFromPath(normalPath);
@@ -957,6 +983,7 @@ function createTray(): void {
   tray.setToolTip(APP_NAME);
   if (process.platform === "darwin") tray.setTitle("", { fontType: "monospacedDigit" });
   refreshTrayMenu();
+  setTimeout(() => refreshTrayMenu(), TRAY_INIT_RETRY_MS);
   tray.on("click", () => {
     if (process.platform === "darwin") {
       refreshTrayMenu().then(() => {

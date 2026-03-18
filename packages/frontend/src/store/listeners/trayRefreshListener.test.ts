@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { configureStore } from "@reduxjs/toolkit";
+import executeReducer, { setActiveAgentsPayload } from "../slices/executeSlice";
 import openQuestionsReducer, {
   addNotification,
   clearAllByProject,
@@ -37,7 +38,7 @@ function unmockElectron() {
 
 function createStore() {
   return configureStore({
-    reducer: { openQuestions: openQuestionsReducer },
+    reducer: { openQuestions: openQuestionsReducer, execute: executeReducer },
     middleware: (getDefaultMiddleware) =>
       getDefaultMiddleware().prepend(trayRefreshListener.middleware),
   });
@@ -91,6 +92,13 @@ describe("trayRefreshListener", () => {
     store.dispatch(addNotification(second));
     store.dispatch(removeNotification({ projectId: "proj-1", notificationId: "oq-1" }));
     expect(mockRefreshTray).not.toHaveBeenCalled();
+    unmockElectron();
+  });
+
+  it("calls refreshTray when active agents payload is set", () => {
+    const store = createStore();
+    store.dispatch(setActiveAgentsPayload({ agents: [], taskIdToStartedAt: {} }));
+    expect(mockRefreshTray).toHaveBeenCalledTimes(1);
     unmockElectron();
   });
 });

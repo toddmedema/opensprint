@@ -1,11 +1,12 @@
 import { createListenerMiddleware, isAnyOf } from "@reduxjs/toolkit";
+import { setActiveAgentsPayload } from "../slices/executeSlice";
 import {
   clearAllByProject,
   clearAllGlobal,
   removeNotification,
 } from "../slices/openQuestionsSlice";
 
-/** Call Electron tray refresh when running in desktop so the menu bar icon dot updates immediately. */
+/** Call Electron tray refresh when running in desktop so the menu bar icon/count updates immediately. */
 function requestTrayRefresh(): void {
   if (typeof window !== "undefined" && window.electron?.refreshTray) {
     void window.electron.refreshTray();
@@ -31,5 +32,13 @@ trayRefreshListener.startListening({
     if (global.length === 0) {
       requestTrayRefresh();
     }
+  },
+});
+
+/** When active agents list changes, refresh the menu bar agent count (Electron debounces in main process). */
+trayRefreshListener.startListening({
+  actionCreator: setActiveAgentsPayload,
+  effect: () => {
+    requestTrayRefresh();
   },
 });
