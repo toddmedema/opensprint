@@ -12,6 +12,9 @@ const mockIsMergeInProgress = vi.fn();
 const mockMergeAbort = vi.fn();
 const mockStripRuntimePathsFromMergeResult = vi.fn();
 const mockSymlinkNodeModules = vi.fn();
+const mockCreateTaskWorktree = vi.fn();
+const mockRemoveTaskWorktree = vi.fn();
+const mockGetConflictedFiles = vi.fn();
 
 const mockTaskStoreInit = vi.fn();
 const mockTaskStoreShow = vi.fn();
@@ -53,6 +56,9 @@ vi.mock("../services/branch-manager.js", () => {
       stripRuntimePathsFromMergeResult: (...args: unknown[]) =>
         mockStripRuntimePathsFromMergeResult(...args),
       symlinkNodeModules: (...args: unknown[]) => mockSymlinkNodeModules(...args),
+      createTaskWorktree: (...args: unknown[]) => mockCreateTaskWorktree(...args),
+      removeTaskWorktree: (...args: unknown[]) => mockRemoveTaskWorktree(...args),
+      getConflictedFiles: (...args: unknown[]) => mockGetConflictedFiles(...args),
     })),
     RebaseConflictError,
     MergeConflictError,
@@ -122,6 +128,9 @@ describe("GitCommitQueue rebase rounds", () => {
     mockMergeAbort.mockResolvedValue(undefined);
     mockStripRuntimePathsFromMergeResult.mockResolvedValue(undefined);
     mockSymlinkNodeModules.mockResolvedValue(undefined);
+    mockCreateTaskWorktree.mockResolvedValue("/tmp/worktree-created");
+    mockRemoveTaskWorktree.mockResolvedValue(undefined);
+    mockGetConflictedFiles.mockResolvedValue([]);
     mockRunMergeQualityGates.mockResolvedValue(null);
     mockRebaseAbort.mockResolvedValue(undefined);
     mockEventLogAppend.mockResolvedValue(undefined);
@@ -156,6 +165,34 @@ describe("GitCommitQueue rebase rounds", () => {
     expect(mockRunMergerAgentAndWait).toHaveBeenCalledTimes(2);
     expect(mockRebaseContinue).toHaveBeenCalledTimes(2);
     expect(mockRebaseAbort).not.toHaveBeenCalled();
+  });
+
+  it("uses a dedicated worktree when worktree_merge is pointed at repo root", async () => {
+    const { gitCommitQueue } = await import("../services/git-commit-queue.service.js");
+
+    mockRebaseOntoMain.mockResolvedValue(undefined);
+
+    await expect(
+      gitCommitQueue.enqueueAndWait({
+        type: "worktree_merge",
+        repoPath: "/tmp/repo",
+        worktreePath: "/tmp/repo",
+        branchName: "opensprint/os-1234",
+        taskId: "os-1234",
+        taskTitle: "Task title",
+      })
+    ).resolves.toBeUndefined();
+
+    expect(mockCreateTaskWorktree).toHaveBeenCalledWith("/tmp/repo", "os-1234", "main", {
+      branchName: "opensprint/os-1234",
+    });
+    expect(mockRebaseOntoMain).toHaveBeenCalledWith("/tmp/worktree-created", "main");
+    expect(mockRemoveTaskWorktree).toHaveBeenCalledWith(
+      "/tmp/repo",
+      "os-1234",
+      "/tmp/worktree-created"
+    );
+    expect(mockCheckout).not.toHaveBeenCalled();
   });
 
   it("aborts and fails after max rebase rounds", async () => {
