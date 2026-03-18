@@ -203,6 +203,85 @@ function summarizeTextSnippet(text: string, limit: number = DEFAULT_REASON_LIMIT
   return sentence.slice(0, limit);
 }
 
+function extractParagraphs(text: string): string[] {
+  const paragraphs = text
+    .replace(/\r/g, "")
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+
+  if (paragraphs.length > 1) {
+    return paragraphs;
+  }
+
+  const lines = text
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return lines.length > 1 ? lines : paragraphs;
+}
+
+function isGenericKickoffParagraph(paragraph: string): boolean {
+  const compact = paragraph.replace(/\s+/g, " ").trim();
+  if (!compact) return true;
+  return [
+    /^the user wants me to\b/i,
+    /^the task indicates\b/i,
+    /^i need to\b/i,
+    /^let me\b/i,
+    /^i['’]ll start by\b/i,
+    /^i['’]ll\b/i,
+    /^restoring .*?:\b/i,
+    /^reviewing .*?:\b/i,
+    /^running .*?:\b/i,
+    /^checking .*?:\b/i,
+    /^implementing .*?:\b/i,
+    /^writing the review result\b/i,
+    /^writing result\.json\b/i,
+  ].some((pattern) => pattern.test(compact));
+}
+
+function scoreActionableParagraph(paragraph: string, index: number, total: number): number {
+  const compact = paragraph.replace(/\s+/g, " ").trim();
+  if (!compact) return Number.NEGATIVE_INFINITY;
+
+  let score = 0;
+  if (!isGenericKickoffParagraph(compact)) score += 4;
+  if (compact.length >= 40) score += 1;
+  if (/[`]/.test(compact)) score += 1;
+  if (/\b(error|failed|failure|timed out|timeout|exception|result\.json|enoent)\b/i.test(compact)) {
+    score += 3;
+  }
+  if (/\b(npm run|npx |vitest|jest|build|lint|test|review|mock|fix|patch|result\.json)\b/i.test(compact)) {
+    score += 2;
+  }
+  score += index / Math.max(total, 1);
+  return score;
+}
+
+function selectActionableSummaryFocus(text: string): string {
+  const normalized = text.replace(/\r/g, "").trim();
+  if (!normalized) return "";
+
+  const paragraphs = extractParagraphs(normalized);
+  if (paragraphs.length === 0) return normalized;
+
+  const scored = paragraphs
+    .map((paragraph, index) => ({
+      paragraph,
+      score: scoreActionableParagraph(paragraph, index, paragraphs.length),
+      index,
+    }))
+    .sort((a, b) => b.score - a.score || b.index - a.index);
+
+  const best = scored[0];
+  if (!best || best.score <= 0) {
+    return normalized;
+  }
+  return best.paragraph;
+}
+
 function extractOpenQuestionBlock(text: string): string | undefined {
   const normalized = text.replace(/\r/g, "").trim();
   if (!normalized) return undefined;
@@ -224,7 +303,7 @@ function extractOpenQuestionBlock(text: string): string | undefined {
 }
 
 function summarizeTerminalResultText(text: string, limit: number = DEFAULT_REASON_LIMIT): string {
-  const focus = extractOpenQuestionBlock(text) ?? text.trim();
+  const focus = extractOpenQuestionBlock(text) ?? selectActionableSummaryFocus(text);
   return summarizeTextSnippet(focus, limit);
 }
 

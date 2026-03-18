@@ -95,6 +95,16 @@ describe("no-result-reason.service", () => {
 
       expect(reason).toContain("Unexpected workspace change detected");
     });
+
+    it("prefers actionable progress over generic kickoff narration", () => {
+      const reason = extractNoResultReasonFromOutput([
+        "The user wants me to restore the baseline quality gates on main.\n\n",
+        "I'll start by reading the relevant test files.\n\n",
+        "Both test files pass. Now run full quality gates from the repo root.\n",
+      ]);
+
+      expect(reason).toBe("Both test files pass.");
+    });
   });
 
   describe("synthesizeCodingResultFromOutput", () => {
@@ -164,6 +174,22 @@ describe("no-result-reason.service", () => {
         })
       );
       expect(result?.open_questions).toBeUndefined();
+    });
+
+    it("skips generic kickoff narration when synthesizing no-result summaries", () => {
+      const result = synthesizeCodingResultFromOutput([
+        "The user wants me to restore the baseline quality gates on main.\n\n",
+        "Let me inspect the failing tests.\n\n",
+        "Both test files pass. Now run full quality gates from the repo root.\n",
+      ]);
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          status: "failed",
+          summary: "Agent exited without writing result.json: Both test files pass.",
+        })
+      );
+      expect(result?.notes).toContain("The user wants me to restore");
     });
   });
 
