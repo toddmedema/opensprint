@@ -1,5 +1,14 @@
 import { Router, Request } from "express";
 import { wrapAsync } from "../middleware/wrap-async.js";
+import { validateParams, validateBody, validateQuery } from "../middleware/validate.js";
+import { projectIdParamSchema } from "../schemas/request-common.js";
+import {
+  deployIdParamsSchema,
+  deliverTriggerBodySchema,
+  deliverHistoryQuerySchema,
+  deliverSettingsBodySchema,
+  expoDeployBodySchema,
+} from "../schemas/request-deliver.js";
 import { spawn, execSync } from "child_process";
 import path from "path";
 import os from "os";
@@ -101,6 +110,8 @@ export function createDeliverRouter(projectService: ProjectService): Router {
   // Body: { target?: string } — target name from targets array; defaults to getDefaultDeploymentTarget()
   router.post(
     "/",
+    validateParams(projectIdParamSchema),
+    validateBody(deliverTriggerBodySchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       try {
         const { projectId } = req.params;
@@ -118,7 +129,7 @@ export function createDeliverRouter(projectService: ProjectService): Router {
         // Reserve the slot synchronously before any awaits to prevent concurrent deploys
         activeDeployments.set(projectId, "pending");
 
-        const bodyTarget = (req.body as { target?: string } | undefined)?.target;
+        const bodyTarget = (req.body as { target?: string }).target;
         const project = await projectService.getProject(projectId);
         const settings = await projectService.getSettings(projectId);
 
@@ -179,6 +190,7 @@ export function createDeliverRouter(projectService: ProjectService): Router {
   // GET /projects/:projectId/deliver/status — Current deployment status (Deliver phase)
   router.get(
     "/status",
+    validateParams(projectIdParamSchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const { projectId } = req.params;
       await projectService.getProject(projectId);
@@ -200,11 +212,13 @@ export function createDeliverRouter(projectService: ProjectService): Router {
   // GET /projects/:projectId/deliver/history — Deployment history (Deliver phase)
   router.get(
     "/history",
+    validateParams(projectIdParamSchema),
+    validateQuery(deliverHistoryQuerySchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const { projectId } = req.params;
       await projectService.getProject(projectId);
-      const limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 100);
-      const history = await deployStorageService.listHistory(projectId, limit);
+      const limit = (req.query as { limit?: number }).limit ?? 50;
+      const history = await deployStorageService.listHistory(projectId, Math.min(limit, 100));
 
       const body: ApiResponse<DeploymentRecord[]> = { data: history };
       res.json(body);
@@ -214,6 +228,8 @@ export function createDeliverRouter(projectService: ProjectService): Router {
   // PUT /projects/:projectId/deliver/settings — Update deployment settings (must be before /:deployId)
   router.put(
     "/settings",
+    validateParams(projectIdParamSchema),
+    validateBody(deliverSettingsBodySchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const { projectId } = req.params;
       const deployment = req.body as Partial<DeploymentConfig>;
@@ -239,6 +255,7 @@ export function createDeliverRouter(projectService: ProjectService): Router {
   // Must be before /:deployId so "cancel" is not captured as deployId
   router.post(
     "/cancel",
+    validateParams(projectIdParamSchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const { projectId } = req.params;
       await projectService.getProject(projectId);
@@ -263,10 +280,12 @@ export function createDeliverRouter(projectService: ProjectService): Router {
   // Must be before /:deployId/rollback so "expo-deploy" is not captured as deployId
   router.post(
     "/expo-deploy",
+    validateParams(projectIdParamSchema),
+    validateBody(expoDeployBodySchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       try {
         const { projectId } = req.params;
-        const variant = (req.body as { variant?: string } | undefined)?.variant;
+        const variant = (req.body as { variant: "beta" | "prod" }).variant;
 
         if (variant !== "beta" && variant !== "prod") {
           res.status(400).json({
@@ -384,6 +403,7 @@ export function createDeliverRouter(projectService: ProjectService): Router {
   // GET /projects/:projectId/deliver/expo-readiness — Expo readiness checks (must be before /:deployId)
   router.get(
     "/expo-readiness",
+    validateParams(projectIdParamSchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const { projectId } = req.params;
       const project = await projectService.getProject(projectId);
@@ -452,6 +472,7 @@ export function createDeliverRouter(projectService: ProjectService): Router {
   // POST /projects/:projectId/deliver/:deployId/rollback — Rollback to a deployment
   router.post(
     "/:deployId/rollback",
+    validateParams(deployIdParamsSchema),
     wrapAsync(async (req: Request<DeployIdParams>, res) => {
       const { projectId, deployId } = req.params;
       const record = await deployStorageService.getRecord(projectId, deployId);

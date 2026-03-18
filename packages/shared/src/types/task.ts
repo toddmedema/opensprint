@@ -6,7 +6,7 @@ export type TaskType = "bug" | "feature" | "task" | "epic" | "chore";
 /** Task status values. Epics: blocked = plan not approved; open = approved; closed = complete. */
 export type TaskStatus = "open" | "in_progress" | "closed" | "blocked";
 
-/** Display status on the kanban board */
+/** Display status on the kanban board. List/detail kanbanColumn is server-computed for waiting_to_merge; mapStatusToKanban does not need to handle it. */
 export type KanbanColumn =
   | "planning"
   | "backlog"
@@ -14,7 +14,8 @@ export type KanbanColumn =
   | "in_progress"
   | "in_review"
   | "done"
-  | "blocked";
+  | "blocked"
+  | "waiting_to_merge";
 
 /** Task priority (0 = highest, 4 = lowest) */
 export type TaskPriority = 0 | 1 | 2 | 3 | 4;
@@ -104,6 +105,10 @@ export interface Task {
   lastExecution?: TaskLastExecutionSummary | null;
   /** Task source (e.g. 'self-improvement' for tasks created by self-improvement runs). */
   source?: string;
+  /** When merge is paused due to baseline quality gates on main (API only; ISO timestamp). Used for tooltip/secondary hint. */
+  mergePausedUntil?: string | null;
+  /** True when merge is waiting on main (API only). Used for tooltip/secondary hint. */
+  mergeWaitingOnMain?: boolean;
 }
 
 /** Dependency relationship between tasks */

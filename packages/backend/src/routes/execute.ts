@@ -1,5 +1,12 @@
 import { Router, Request } from "express";
 import { wrapAsync } from "../middleware/wrap-async.js";
+import { validateParams, validateBody, validateQuery } from "../middleware/validate.js";
+import {
+  projectIdParamSchema,
+  taskIdParamSchema,
+  executePrepareBodySchema,
+  executeEventsQuerySchema,
+} from "../schemas/request-common.js";
 import { orchestratorService } from "../services/orchestrator.service.js";
 import type { TaskService } from "../services/task.service.js";
 import { eventLogService, type OrchestratorEvent } from "../services/event-log.service.js";
@@ -27,12 +34,15 @@ export function createExecuteRouter(
   // POST /projects/:projectId/execute/tasks/:taskId/prepare — Create task directory and prompt (PRD §12.2)
   router.post(
     "/tasks/:taskId/prepare",
+    validateParams(taskIdParamSchema),
+    validateBody(executePrepareBodySchema),
     wrapAsync(async (req: Request<PrepareParams>, res) => {
       const { projectId, taskId } = req.params;
+      const b = req.body as { phase?: "coding" | "review"; createBranch?: boolean; attempt?: number };
       const taskDir = await taskService.prepareTaskDirectory(projectId, taskId, {
-        phase: (req.body?.phase as "coding" | "review") || "coding",
-        createBranch: req.body?.createBranch !== false,
-        attempt: req.body?.attempt ?? 1,
+        phase: b.phase ?? "coding",
+        createBranch: b.createBranch !== false,
+        attempt: b.attempt ?? 1,
       });
       const body: ApiResponse<{ taskDir: string }> = { data: { taskDir } };
       res.status(201).json(body);
@@ -42,6 +52,7 @@ export function createExecuteRouter(
   // POST /projects/:projectId/execute/nudge — Event-driven dispatch trigger (PRDv2 §5.7)
   router.post(
     "/nudge",
+    validateParams(projectIdParamSchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const { projectId } = req.params;
       orchestratorService.nudge(projectId);
@@ -54,6 +65,7 @@ export function createExecuteRouter(
   // GET /projects/:projectId/execute/status — Get orchestrator status
   router.get(
     "/status",
+    validateParams(projectIdParamSchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const status = await orchestratorService.getStatus(req.params.projectId);
       const body: ApiResponse<OrchestratorStatus> = { data: status };
@@ -64,6 +76,7 @@ export function createExecuteRouter(
   // GET /projects/:projectId/execute/tasks/:taskId/output — Get live output for in-progress task (backfill)
   router.get(
     "/tasks/:taskId/output",
+    validateParams(taskIdParamSchema),
     wrapAsync(async (req: Request<PrepareParams>, res) => {
       const { projectId, taskId } = req.params;
       const output = await orchestratorService.getLiveOutput(projectId, taskId);
@@ -74,6 +87,7 @@ export function createExecuteRouter(
 
   router.get(
     "/tasks/:taskId/diagnostics",
+    validateParams(taskIdParamSchema),
     wrapAsync(async (req: Request<PrepareParams>, res) => {
       const { projectId, taskId } = req.params;
       const diagnostics = await diagnosticsService.getDiagnostics(projectId, taskId);
@@ -85,12 +99,12 @@ export function createExecuteRouter(
   // GET /projects/:projectId/execute/events — Query event log for debugging/audit
   router.get(
     "/events",
+    validateParams(projectIdParamSchema),
+    validateQuery(executeEventsQuerySchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const { projectId } = req.params;
       const repoPath = await projectService.getRepoPath(projectId);
-      const since = req.query.since as string | undefined;
-      const taskId = req.query.taskId as string | undefined;
-      const count = req.query.count ? parseInt(req.query.count as string, 10) : undefined;
+      const { since, taskId, count } = req.query as { since?: string; taskId?: string; count?: number };
 
       let events: OrchestratorEvent[];
       if (taskId) {
@@ -109,6 +123,7 @@ export function createExecuteRouter(
   // POST /projects/:projectId/execute/pause — Pause orchestrator (placeholder; PRD §5.7 always-on)
   router.post(
     "/pause",
+    validateParams(projectIdParamSchema),
     wrapAsync(async (_req: Request<ProjectParams>, res) => {
       res.status(501).json({
         error: {

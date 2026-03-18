@@ -1,5 +1,11 @@
 import { Router, Request } from "express";
 import { wrapAsync } from "../middleware/wrap-async.js";
+import { validateBody, validateQuery } from "../middleware/validate.js";
+import {
+  fsBrowseQuerySchema,
+  fsCreateFolderBodySchema,
+  fsDetectTestFrameworkQuerySchema,
+} from "../schemas/request-fs.js";
 import { readdir, stat, mkdir } from "fs/promises";
 import path from "path";
 import { join, resolve, dirname } from "path";
@@ -60,8 +66,9 @@ interface BrowseResult {
 // GET /fs/browse?path=/some/path — List directory contents
 fsRouter.get(
   "/browse",
+  validateQuery(fsBrowseQuerySchema),
   wrapAsync(async (req: Request<object, object, object, { path?: string }>, res) => {
-    const rawPath = req.query.path;
+    const rawPath = (req.query as { path?: string }).path;
     const targetPath = rawPath?.trim() ? resolve(rawPath) : getDefaultBrowseRoot();
 
     if (shouldEnforcePathRestriction() && !isPathUnderRoot(targetPath)) {
@@ -106,11 +113,9 @@ interface CreateFolderBody {
 // POST /fs/create-folder — Create a new folder and return its path
 fsRouter.post(
   "/create-folder",
+  validateBody(fsCreateFolderBodySchema),
   wrapAsync(async (req: Request<object, object, CreateFolderBody>, res) => {
-    const { parentPath, name } = req.body ?? {};
-    if (!parentPath || typeof parentPath !== "string" || !name || typeof name !== "string") {
-      throw new AppError(400, ErrorCodes.INVALID_INPUT, "parentPath and name are required");
-    }
+    const { parentPath, name } = req.body;
     const trimmedName = name.trim();
     if (!trimmedName || trimmedName === "." || trimmedName === "..") {
       throw new AppError(400, ErrorCodes.INVALID_INPUT, "Invalid folder name");
@@ -160,11 +165,9 @@ fsRouter.post(
 // GET /fs/detect-test-framework?path=/some/path — Detect test framework from project files
 fsRouter.get(
   "/detect-test-framework",
+  validateQuery(fsDetectTestFrameworkQuerySchema),
   wrapAsync(async (req: Request<object, object, object, { path?: string }>, res) => {
-    const rawPath = req.query.path?.trim();
-    if (!rawPath) {
-      throw new AppError(400, ErrorCodes.INVALID_INPUT, "Path query parameter is required");
-    }
+    const rawPath = (req.query as { path: string }).path.trim();
 
     const targetPath = resolve(rawPath);
     if (shouldEnforcePathRestriction() && !isPathUnderRoot(targetPath)) {

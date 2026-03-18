@@ -1,5 +1,11 @@
 import { Router, Request } from "express";
 import { wrapAsync } from "../middleware/wrap-async.js";
+import { validateBody } from "../middleware/validate.js";
+import {
+  envGlobalSettingsBodySchema,
+  envKeysValidateBodySchema,
+  envKeysPostBodySchema,
+} from "../schemas/request-env.js";
 import path from "path";
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile, access } from "node:fs/promises";
@@ -203,6 +209,7 @@ envRouter.get(
 // PUT /env/global-settings — Update global settings (e.g. useCustomCli).
 envRouter.put(
   "/global-settings",
+  validateBody(envGlobalSettingsBodySchema),
   wrapAsync(async (req: Request, res) => {
     const body = req.body as { useCustomCli?: boolean };
     const updates: { useCustomCli?: boolean } = {};
@@ -334,23 +341,9 @@ envRouter.post(
 // POST /env/keys/validate — Validate an API key via minimal API call (Claude: list models limit 1; Cursor: GET /v0/models).
 envRouter.post(
   "/keys/validate",
+  validateBody(envKeysValidateBodySchema),
   wrapAsync(async (req: Request, res) => {
-    const { provider, value } = req.body as { provider?: string; value?: string };
-    if (!provider || typeof value !== "string") {
-      throw new AppError(400, ErrorCodes.INVALID_INPUT, "provider and value are required");
-    }
-    if (
-      provider !== "claude" &&
-      provider !== "cursor" &&
-      provider !== "openai" &&
-      provider !== "google"
-    ) {
-      throw new AppError(
-        400,
-        ErrorCodes.INVALID_INPUT,
-        "provider must be 'claude', 'cursor', 'openai', or 'google'"
-      );
-    }
+    const { provider, value } = req.body as { provider: string; value: string };
 
     const result = await validateApiKey(
       provider as "claude" | "cursor" | "openai" | "google",
@@ -366,11 +359,9 @@ envRouter.post(
 // Writes to ~/.opensprint/global-settings.json (merge with existing apiKeys) and .env.
 envRouter.post(
   "/keys",
+  validateBody(envKeysPostBodySchema),
   wrapAsync(async (req: Request, res) => {
-    const { key, value } = req.body as { key?: string; value?: string };
-    if (!key || typeof value !== "string") {
-      throw new AppError(400, ErrorCodes.INVALID_INPUT, "key and value are required");
-    }
+    const { key, value } = req.body as { key: string; value: string };
     if (!ALLOWED_KEYS.includes(key as (typeof ALLOWED_KEYS)[number])) {
       throw new AppError(
         400,

@@ -15,7 +15,10 @@
     "sourceMap": true,
     "noEmit": true,
     "baseUrl": ".",
-    "paths": { "@/*": ["src/*"] }
+    "paths": {
+      "@/*": ["src/*"],
+      "@opensprint/shared": ["../shared/src/index.ts"]
+    }
   },
   "exclude": ["src/**/*.test.tsx", "src/**/*.test.ts", "src/test"],
   "include": ["src/**/*"],

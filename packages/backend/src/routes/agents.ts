@@ -1,8 +1,13 @@
 import { Router, Request } from "express";
 import { wrapAsync } from "../middleware/wrap-async.js";
-import type { ApiResponse, ActiveAgent } from "@opensprint/shared";
-import { AGENT_ROLE_CANONICAL_ORDER } from "@opensprint/shared";
-import type { AgentRole } from "@opensprint/shared";
+import { validateParams, validateBody } from "../middleware/validate.js";
+import {
+  projectIdParamSchema,
+  agentRoleParamsSchema,
+  agentKillParamsSchema,
+  agentInstructionsBodySchema,
+} from "../schemas/request-common.js";
+import type { ApiResponse, ActiveAgent, AgentRole } from "@opensprint/shared";
 import { orchestratorService } from "../services/orchestrator.service.js";
 import { ProjectService } from "../services/project.service.js";
 import { agentInstructionsService } from "../services/agent-instructions.service.js";
@@ -15,13 +20,10 @@ type ProjectParams = { projectId: string };
 type RoleParams = ProjectParams & { role: string };
 type KillParams = ProjectParams & { agentId: string };
 
-function isValidRole(role: string): role is AgentRole {
-  return (AGENT_ROLE_CANONICAL_ORDER as readonly string[]).includes(role);
-}
-
 // GET /projects/:projectId/agents/instructions — Read AGENTS.md
 agentsRouter.get(
   "/instructions",
+  validateParams(projectIdParamSchema),
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     await projectService.getProject(req.params.projectId);
     const content = await agentInstructionsService.getGeneralInstructions(req.params.projectId);
@@ -33,17 +35,13 @@ agentsRouter.get(
 // PUT /projects/:projectId/agents/instructions — Write AGENTS.md
 agentsRouter.put(
   "/instructions",
+  validateParams(projectIdParamSchema),
+  validateBody(agentInstructionsBodySchema),
   wrapAsync(async (req: Request<ProjectParams>, res) => {
-    if (req.body?.content === undefined) {
-      res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: "content is required", details: undefined },
-      });
-      return;
-    }
     await projectService.getProject(req.params.projectId);
     await agentInstructionsService.setGeneralInstructions(
       req.params.projectId,
-      String(req.body.content)
+      req.body.content
     );
     res.status(200).json({ data: { saved: true } });
   })
@@ -52,21 +50,12 @@ agentsRouter.put(
 // GET /projects/:projectId/agents/instructions/:role — Read DB-backed role instructions
 agentsRouter.get(
   "/instructions/:role",
+  validateParams(agentRoleParamsSchema),
   wrapAsync(async (req: Request<RoleParams>, res) => {
-    if (!isValidRole(req.params.role)) {
-      res.status(400).json({
-        error: {
-          code: "VALIDATION_ERROR",
-          message: `Invalid role. Must be one of: ${AGENT_ROLE_CANONICAL_ORDER.join(", ")}`,
-          details: undefined,
-        },
-      });
-      return;
-    }
     await projectService.getProject(req.params.projectId);
     const content = await agentInstructionsService.getRoleInstructions(
       req.params.projectId,
-      req.params.role
+      req.params.role as AgentRole
     );
     const body: ApiResponse<{ content: string }> = { data: { content } };
     res.json(body);
@@ -76,28 +65,14 @@ agentsRouter.get(
 // PUT /projects/:projectId/agents/instructions/:role — Write DB-backed role instructions
 agentsRouter.put(
   "/instructions/:role",
+  validateParams(agentRoleParamsSchema),
+  validateBody(agentInstructionsBodySchema),
   wrapAsync(async (req: Request<RoleParams>, res) => {
-    if (!isValidRole(req.params.role)) {
-      res.status(400).json({
-        error: {
-          code: "VALIDATION_ERROR",
-          message: `Invalid role. Must be one of: ${AGENT_ROLE_CANONICAL_ORDER.join(", ")}`,
-          details: undefined,
-        },
-      });
-      return;
-    }
-    if (req.body?.content === undefined) {
-      res.status(400).json({
-        error: { code: "VALIDATION_ERROR", message: "content is required", details: undefined },
-      });
-      return;
-    }
     await projectService.getProject(req.params.projectId);
     await agentInstructionsService.setRoleInstructions(
       req.params.projectId,
-      req.params.role,
-      String(req.body.content)
+      req.params.role as AgentRole,
+      req.body.content
     );
     res.status(200).json({ data: { saved: true } });
   })
@@ -106,6 +81,7 @@ agentsRouter.put(
 // GET /projects/:projectId/agents/active — List active agents (Build phase from orchestrator)
 agentsRouter.get(
   "/active",
+  validateParams(projectIdParamSchema),
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const agents: ActiveAgent[] = await orchestratorService.getActiveAgents(req.params.projectId);
     const body: ApiResponse<ActiveAgent[]> = { data: agents };
@@ -116,6 +92,7 @@ agentsRouter.get(
 // POST /projects/:projectId/agents/:agentId/kill — Terminate agent process (Execute phase only)
 agentsRouter.post(
   "/:agentId/kill",
+  validateParams(agentKillParamsSchema),
   wrapAsync(async (req: Request<KillParams>, res) => {
     const { projectId, agentId } = req.params;
     const killed = await orchestratorService.killAgent(projectId, agentId);

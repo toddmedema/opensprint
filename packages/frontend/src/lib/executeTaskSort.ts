@@ -25,6 +25,7 @@ const TIMELINE_TIER: Record<KanbanColumn, number> = {
   backlog: 1,
   planning: 1,
   blocked: 1,
+  waiting_to_merge: 1,
   done: 2,
 };
 
@@ -66,7 +67,8 @@ const STATUS_ORDER: Record<KanbanColumn, number> = {
   backlog: 3,
   planning: 4,
   blocked: 5,
-  done: 6,
+  waiting_to_merge: 6,
+  done: 7,
 };
 
 /**

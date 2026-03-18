@@ -1,6 +1,14 @@
 import { Router, Request } from "express";
 import multer from "multer";
 import { wrapAsync } from "../middleware/wrap-async.js";
+import { validateParams, validateBody, validateQuery } from "../middleware/validate.js";
+import { projectIdParamSchema } from "../schemas/request-common.js";
+import {
+  prdDiffQuerySchema,
+  prdProposedDiffQuerySchema,
+  prdSectionParamsSchema,
+  prdSectionPutBodySchema,
+} from "../schemas/request-prd.js";
 import { PrdService } from "../services/prd.service.js";
 import { ChatService } from "../services/chat.service.js";
 import { prdFromCodebaseService } from "../services/prd-from-codebase.service.js";
@@ -36,6 +44,7 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
 // GET /projects/:projectId/prd — Get full PRD
 prdRouter.get(
   "/",
+  validateParams(projectIdParamSchema),
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const prd = await prdService.getPrd(req.params.projectId);
     const body: ApiResponse<Prd> = { data: prd };
@@ -46,6 +55,7 @@ prdRouter.get(
 // GET /projects/:projectId/prd/history — Get PRD change log
 prdRouter.get(
   "/history",
+  validateParams(projectIdParamSchema),
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const changeLog = await prdService.getHistory(req.params.projectId);
     const body: ApiResponse<PrdChangeLogEntry[]> = { data: changeLog };
@@ -57,6 +67,7 @@ prdRouter.get(
 // projectId from params ensures PRD is written to the project's repo, not the Open Sprint server repo.
 prdRouter.post(
   "/generate-from-codebase",
+  validateParams(projectIdParamSchema),
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     await prdFromCodebaseService.generatePrdFromCodebase(req.params.projectId);
     res.status(204).send();
@@ -67,28 +78,12 @@ prdRouter.post(
 // Returns diff between two SPEC.md versions. toVersion defaults to 'current' (current SPEC.md from disk).
 prdRouter.get(
   "/diff",
+  validateParams(projectIdParamSchema),
+  validateQuery(prdDiffQuerySchema),
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const { projectId } = req.params;
-    const fromVersionParam = req.query.fromVersion;
-    const toVersionParam = req.query.toVersion as string | undefined;
-
-    if (fromVersionParam === undefined || fromVersionParam === "") {
-      res.status(400).json({
-        error: { code: "INVALID_INPUT", message: "Query parameter 'fromVersion' is required" },
-      });
-      return;
-    }
-
-    const fromVersion = Number(fromVersionParam);
-    if (!Number.isInteger(fromVersion) || fromVersion < 0) {
-      res.status(400).json({
-        error: {
-          code: "INVALID_INPUT",
-          message: "Query parameter 'fromVersion' must be a non-negative integer",
-        },
-      });
-      return;
-    }
+    const fromVersion = (req.query as unknown as { fromVersion: number }).fromVersion;
+    const toVersionParam = (req.query as { toVersion?: string }).toVersion;
 
     const fromContent = await prdService.getSnapshot(projectId, fromVersion);
     if (fromContent === null) {
@@ -149,16 +144,11 @@ prdRouter.get(
 // Returns diff between current SPEC and proposed SPEC for a hil_approval request. Register before /:section.
 prdRouter.get(
   "/proposed-diff",
+  validateParams(projectIdParamSchema),
+  validateQuery(prdProposedDiffQuerySchema),
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const { projectId } = req.params;
-    const requestId = req.query.requestId as string | undefined;
-
-    if (requestId === undefined || requestId === "") {
-      res.status(400).json({
-        error: { code: "INVALID_INPUT", message: "Query parameter 'requestId' is required" },
-      });
-      return;
-    }
+    const requestId = (req.query as { requestId: string }).requestId;
 
     const notification = await notificationService.getById(projectId, requestId);
     if (
@@ -205,6 +195,7 @@ prdRouter.get(
 // GET /projects/:projectId/prd/:section — Get a specific PRD section
 prdRouter.get(
   "/:section",
+  validateParams(prdSectionParamsSchema),
   wrapAsync(async (req: Request<SectionParams>, res) => {
     const section = await prdService.getSection(req.params.projectId, req.params.section);
     const body: ApiResponse<PrdSection> = { data: section };
@@ -215,14 +206,10 @@ prdRouter.get(
 // PUT /projects/:projectId/prd/:section — Update a specific PRD section (direct edit)
 prdRouter.put(
   "/:section",
+  validateParams(prdSectionParamsSchema),
+  validateBody(prdSectionPutBodySchema),
   wrapAsync(async (req: Request<SectionParams>, res) => {
-    const { content, source } = req.body as { content?: string; source?: string };
-    if (content === undefined || content === null) {
-      res.status(400).json({
-        error: { code: "INVALID_INPUT", message: 'Request body must include "content" field' },
-      });
-      return;
-    }
+    const { content, source } = req.body as { content: string; source?: string };
     const result = await prdService.updateSection(
       req.params.projectId,
       req.params.section,
@@ -253,6 +240,7 @@ prdRouter.put(
 // POST /projects/:projectId/prd/upload — Upload a PRD document (.md, .docx, .pdf)
 prdRouter.post(
   "/upload",
+  validateParams(projectIdParamSchema),
   upload.single("file"),
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const file = (req as unknown as { file?: Express.Multer.File }).file;

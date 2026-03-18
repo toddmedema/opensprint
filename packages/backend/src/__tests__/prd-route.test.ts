@@ -192,8 +192,8 @@ describe.skipIf(!prdPostgresOk)("PRD REST API", () => {
       const res = await request(app).get(`${API_PREFIX}/projects/${projectId}/prd/diff`);
 
       expect(res.status).toBe(400);
-      expect(res.body.error?.code).toBe("INVALID_INPUT");
-      expect(res.body.error?.message).toContain("fromVersion");
+      expect(res.body.error?.code).toBe("VALIDATION_ERROR");
+      expect(res.body.error?.message).toMatch(/fromVersion|number|NaN/i);
     });
 
     it("returns 400 when fromVersion is not a valid integer", async () => {
@@ -202,7 +202,7 @@ describe.skipIf(!prdPostgresOk)("PRD REST API", () => {
       );
 
       expect(res.status).toBe(400);
-      expect(res.body.error?.code).toBe("INVALID_INPUT");
+      expect(res.body.error?.code).toBe("VALIDATION_ERROR");
     });
   });
 
@@ -281,8 +281,8 @@ describe.skipIf(!prdPostgresOk)("PRD REST API", () => {
       const res = await request(app).get(`${API_PREFIX}/projects/${projectId}/prd/proposed-diff`);
 
       expect(res.status).toBe(400);
-      expect(res.body.error?.code).toBe("INVALID_INPUT");
-      expect(res.body.error?.message).toContain("requestId");
+      expect(res.body.error?.code).toBe("VALIDATION_ERROR");
+      expect(res.body.error?.message).toMatch(/requestId|string|undefined/i);
     });
   });
 
@@ -393,7 +393,7 @@ describe.skipIf(!prdPostgresOk)("PRD REST API", () => {
       .send({});
 
     expect(res.status).toBe(400);
-    expect(res.body.error?.code).toBe("INVALID_INPUT");
+    expect(res.body.error?.code).toBe("VALIDATION_ERROR");
   });
 
   it("PUT /projects/:id/prd/:section should allow empty string content", async () => {

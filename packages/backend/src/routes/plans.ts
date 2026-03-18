@@ -1,5 +1,15 @@
 import { Router, Request } from "express";
 import { wrapAsync } from "../middleware/wrap-async.js";
+import { validateParams, validateBody } from "../middleware/validate.js";
+import { projectIdParamSchema } from "../schemas/request-common.js";
+import {
+  planIdParamSchema,
+  planVersionParamsSchema,
+  plansGenerateBodySchema,
+  createPlanBodySchema,
+  planExecuteBodySchema,
+  planReexecuteBodySchema,
+} from "../schemas/request-plans.js";
 import type { PlanService } from "../services/plan.service.js";
 import { orchestratorService } from "../services/orchestrator.service.js";
 import { taskStore } from "../services/task-store.service.js";
@@ -21,6 +31,7 @@ export function createPlansRouter(planService: PlanService): Router {
   // POST /projects/:projectId/plans/decompose — AI decompose PRD into plans + tasks (must be before :planId)
   router.post(
     "/decompose",
+    validateParams(projectIdParamSchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const result = await planService.decomposeFromPrd(req.params.projectId);
       const body: ApiResponse<{ created: number; plans: Plan[] }> = { data: result };
@@ -31,12 +42,10 @@ export function createPlansRouter(planService: PlanService): Router {
   // POST /projects/:projectId/plans/generate — AI generate a plan from freeform feature description
   router.post(
     "/generate",
+    validateParams(projectIdParamSchema),
+    validateBody(plansGenerateBodySchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
-      const { description } = req.body as { description?: string };
-      if (!description?.trim()) {
-        res.status(400).json({ error: { code: "VALIDATION", message: "description is required" } });
-        return;
-      }
+      const { description } = req.body as { description: string };
       const result = await planService.generatePlanFromDescription(
         req.params.projectId,
         description.trim()
@@ -49,6 +58,7 @@ export function createPlansRouter(planService: PlanService): Router {
   // POST /projects/:projectId/plans/suggest — AI suggest plans from PRD (no creation; for user to accept/modify)
   router.post(
     "/suggest",
+    validateParams(projectIdParamSchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const result = await planService.suggestPlans(req.params.projectId);
       const body: ApiResponse<SuggestPlansResponse> = { data: result };
@@ -59,6 +69,7 @@ export function createPlansRouter(planService: PlanService): Router {
   // GET /projects/:projectId/plans — List all Plans with dependency graph (single call)
   router.get(
     "/",
+    validateParams(projectIdParamSchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const graph = await planService.listPlansWithDependencyGraph(req.params.projectId);
       const body: ApiResponse<PlanDependencyGraph> = { data: graph };
@@ -69,6 +80,8 @@ export function createPlansRouter(planService: PlanService): Router {
   // POST /projects/:projectId/plans — Create a new Plan
   router.post(
     "/",
+    validateParams(projectIdParamSchema),
+    validateBody(createPlanBodySchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const plan = await planService.createPlan(req.params.projectId, req.body);
       const body: ApiResponse<Plan> = { data: plan };
@@ -79,6 +92,7 @@ export function createPlansRouter(planService: PlanService): Router {
   // GET /projects/:projectId/plans/dependencies — Get dependency graph
   router.get(
     "/dependencies",
+    validateParams(projectIdParamSchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const graph = await planService.getDependencyGraph(req.params.projectId);
       const body: ApiResponse<PlanDependencyGraph> = { data: graph };
@@ -89,6 +103,7 @@ export function createPlansRouter(planService: PlanService): Router {
   // GET /projects/:projectId/plans/:planId/cross-epic-dependencies — Prerequisites still in Planning
   router.get(
     "/:planId/cross-epic-dependencies",
+    validateParams(planIdParamSchema),
     wrapAsync(async (req: Request<PlanParams>, res) => {
       const result = await planService.getCrossEpicDependencies(
         req.params.projectId,
@@ -102,6 +117,7 @@ export function createPlansRouter(planService: PlanService): Router {
   // GET /projects/:projectId/plans/:planId/auditor-runs — List Auditor runs for a plan (plan-centric lookup)
   router.get(
     "/:planId/auditor-runs",
+    validateParams(planIdParamSchema),
     wrapAsync(async (req: Request<PlanParams>, res) => {
       const runs = await taskStore.listAuditorRunsByPlanId(req.params.projectId, req.params.planId);
       const body: ApiResponse<typeof runs> = { data: runs };
@@ -113,6 +129,7 @@ export function createPlansRouter(planService: PlanService): Router {
   // Registered before generic :planId so /mark-complete is not captured as a planId
   router.post(
     "/:planId/mark-complete",
+    validateParams(planIdParamSchema),
     wrapAsync(async (req: Request<PlanParams>, res) => {
       const plan = await planService.markPlanComplete(req.params.projectId, req.params.planId);
       const body: ApiResponse<Plan> = { data: plan };
@@ -126,6 +143,7 @@ export function createPlansRouter(planService: PlanService): Router {
   // When the plan has no versions (first load), create version 1 from current content so UI and execute flow are consistent.
   router.get(
     "/:planId/versions",
+    validateParams(planIdParamSchema),
     wrapAsync(async (req: Request<PlanParams>, res) => {
       await planService.getPlan(req.params.projectId, req.params.planId);
       await planService.ensurePlanHasAtLeastOneVersion(req.params.projectId, req.params.planId);
@@ -144,6 +162,7 @@ export function createPlansRouter(planService: PlanService): Router {
   // GET /projects/:projectId/plans/:planId/versions/:versionNumber — Get plan version by number
   router.get(
     "/:planId/versions/:versionNumber",
+    validateParams(planVersionParamsSchema),
     wrapAsync(async (req: Request<VersionParams>, res) => {
       await planService.getPlan(req.params.projectId, req.params.planId);
       const versionNum = parseInt(req.params.versionNumber, 10);
@@ -185,6 +204,7 @@ export function createPlansRouter(planService: PlanService): Router {
   // GET /projects/:projectId/plans/:planId — Get Plan details
   router.get(
     "/:planId",
+    validateParams(planIdParamSchema),
     wrapAsync(async (req: Request<PlanParams>, res) => {
       const plan = await planService.getPlan(req.params.projectId, req.params.planId);
       const body: ApiResponse<Plan> = { data: plan };
@@ -195,6 +215,8 @@ export function createPlansRouter(planService: PlanService): Router {
   // PUT /projects/:projectId/plans/:planId — Update Plan markdown
   router.put(
     "/:planId",
+    validateParams(planIdParamSchema),
+    validateBody(createPlanBodySchema),
     wrapAsync(async (req: Request<PlanParams>, res) => {
       const plan = await planService.updatePlan(req.params.projectId, req.params.planId, req.body);
       const body: ApiResponse<Plan> = { data: plan };
@@ -205,6 +227,7 @@ export function createPlansRouter(planService: PlanService): Router {
   // POST /projects/:projectId/plans/:planId/plan-tasks — Plan Tasks (create epic if missing, then AI-generate tasks)
   router.post(
     "/:planId/plan-tasks",
+    validateParams(planIdParamSchema),
     wrapAsync(async (req: Request<PlanParams>, res) => {
       const plan = await planService.planTasks(req.params.projectId, req.params.planId);
       const body: ApiResponse<Plan> = { data: plan };
@@ -217,6 +240,8 @@ export function createPlansRouter(planService: PlanService): Router {
   // If version_number provided, run ship with that version's content and set as last_executed.
   router.post(
     "/:planId/execute",
+    validateParams(planIdParamSchema),
+    validateBody(planExecuteBodySchema),
     wrapAsync(
       async (
         req: Request<
@@ -226,8 +251,8 @@ export function createPlansRouter(planService: PlanService): Router {
         >,
         res
       ) => {
-        const prerequisitePlanIds = req.body?.prerequisitePlanIds ?? [];
-        const version_number = req.body?.version_number;
+        const prerequisitePlanIds = req.body.prerequisitePlanIds ?? [];
+        const version_number = req.body.version_number;
         const options = version_number != null ? { version_number } : undefined;
         const plan =
           prerequisitePlanIds.length > 0
@@ -250,8 +275,10 @@ export function createPlansRouter(planService: PlanService): Router {
   // Optional body: { version_number?: number }. Else uses last_executed_version_number for version content.
   router.post(
     "/:planId/re-execute",
+    validateParams(planIdParamSchema),
+    validateBody(planReexecuteBodySchema),
     wrapAsync(async (req: Request<PlanParams, unknown, { version_number?: number }>, res) => {
-      const version_number = req.body?.version_number;
+      const version_number = req.body.version_number;
       const options = version_number != null ? { version_number } : undefined;
       const plan = await planService.reshipPlan(req.params.projectId, req.params.planId, options);
       // Nudge orchestrator to pick up newly-available tasks (PRDv2 §5.7 event-driven dispatch)
@@ -264,6 +291,7 @@ export function createPlansRouter(planService: PlanService): Router {
   // POST /projects/:projectId/plans/:planId/archive — Archive plan (close all ready/open tasks)
   router.post(
     "/:planId/archive",
+    validateParams(planIdParamSchema),
     wrapAsync(async (req: Request<PlanParams>, res) => {
       const plan = await planService.archivePlan(req.params.projectId, req.params.planId);
       const body: ApiResponse<Plan> = { data: plan };
@@ -274,6 +302,7 @@ export function createPlansRouter(planService: PlanService): Router {
   // DELETE /projects/:projectId/plans/:planId — Delete plan from database
   router.delete(
     "/:planId",
+    validateParams(planIdParamSchema),
     wrapAsync(async (req: Request<PlanParams>, res) => {
       await planService.deletePlan(req.params.projectId, req.params.planId);
       res.status(204).send();

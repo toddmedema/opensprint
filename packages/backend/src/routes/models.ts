@@ -1,5 +1,7 @@
 import { Router, Request } from "express";
 import { wrapAsync } from "../middleware/wrap-async.js";
+import { validateQuery } from "../middleware/validate.js";
+import { modelsListQuerySchema } from "../schemas/request-models.js";
 import Anthropic from "@anthropic-ai/sdk";
 import type { ApiErrorResponse, ApiResponse } from "@opensprint/shared";
 import { AppError } from "../middleware/error-handler.js";
@@ -360,9 +362,10 @@ async function resolveApiKey(
 // GET /models?provider=claude|claude-cli|cursor&projectId=... — List available models for the given provider
 modelsRouter.get(
   "/",
+  validateQuery(modelsListQuerySchema),
   wrapAsync(async (req: Request, res) => {
-    const provider = (req.query.provider as string) || "claude";
-    const projectId = req.query.projectId as string | undefined;
+    const provider = ((req.query as { provider?: string }).provider) || "claude";
+    const projectId = (req.query as { projectId?: string }).projectId;
 
     if (provider === "claude") {
       const apiKey = await resolveApiKey(projectId, "ANTHROPIC_API_KEY");
@@ -424,7 +427,7 @@ modelsRouter.get(
     }
 
     if (provider === "lmstudio") {
-      const baseUrlRaw = req.query.baseUrl as string | undefined;
+      const baseUrlRaw = (req.query as { baseUrl?: string }).baseUrl;
       const parsed = normalizeLmStudioBaseUrl(baseUrlRaw);
       if (!parsed.ok) {
         res.status(400).json({

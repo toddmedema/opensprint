@@ -156,14 +156,14 @@ describe.skipIf(!feedbackRoutePostgresOk)("Feedback REST API", () => {
       .send({ text: "" });
 
     expect(res.status).toBe(400);
-    expect(res.body.error?.code).toBe("INVALID_INPUT");
+    expect(res.body.error?.code).toBe("VALIDATION_ERROR");
   });
 
   it("POST /projects/:id/feedback should return 400 when text is missing", async () => {
     const res = await request(app).post(`${API_PREFIX}/projects/${projectId}/feedback`).send({});
 
     expect(res.status).toBe(400);
-    expect(res.body.error?.code).toBe("INVALID_INPUT");
+    expect(res.body.error?.code).toBe("VALIDATION_ERROR");
   });
 
   it("POST /projects/:id/feedback should accept and store image attachments", async () => {

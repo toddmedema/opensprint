@@ -357,7 +357,7 @@ describe("Global Settings API", () => {
       );
 
       expect(res.status).toBe(400);
-      expect(res.body.error?.code).toBe("INVALID_INPUT");
+      expect(res.body.error?.code).toBe("VALIDATION_ERROR");
     });
   });
 
@@ -388,7 +388,7 @@ describe("Global Settings API", () => {
       );
 
       expect(res.status).toBe(400);
-      expect(res.body.error?.code).toBe("INVALID_INPUT");
+      expect(res.body.error?.code).toBe("VALIDATION_ERROR");
     });
 
     it("no-ops when key has no limitHitAt (idempotent)", async () => {
@@ -434,7 +434,7 @@ describe("Global Settings API", () => {
       const res = await request(app).post(`${API_PREFIX}/global-settings/setup-tables`).send({});
 
       expect(res.status).toBe(400);
-      expect(res.body.error?.code).toBe("INVALID_INPUT");
+      expect(res.body.error?.code).toBe("VALIDATION_ERROR");
       expect(res.body.error?.message).toContain("string");
     });
 
@@ -445,7 +445,7 @@ describe("Global Settings API", () => {
 
       expect(res.status).toBe(400);
       expect(res.body.error?.code).toBe("INVALID_INPUT");
-      expect(res.body.error?.message).toContain("empty");
+      expect(res.body.error?.message).toMatch(/empty|string|required|min/i);
     });
 
     it("returns 400 when databaseUrl has invalid scheme", async () => {

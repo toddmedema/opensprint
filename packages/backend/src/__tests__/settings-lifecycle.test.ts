@@ -11,6 +11,7 @@ import path from "path";
 import os from "os";
 import { createApp } from "../app.js";
 import { ProjectService } from "../services/project.service.js";
+import { projectGitRuntimeCache } from "../services/project-git-runtime-cache.js";
 import { setGlobalSettings } from "../services/global-settings.service.js";
 import { API_PREFIX, DEFAULT_HIL_CONFIG, DEFAULT_REVIEW_MODE } from "@opensprint/shared";
 import type { DbClient } from "../db/client.js";
@@ -228,6 +229,7 @@ describe("Settings API lifecycle", () => {
     refreshMaxSlotsSpy = vi
       .spyOn(orchestratorService, "refreshMaxSlotsAndNudge")
       .mockResolvedValue(undefined);
+    projectGitRuntimeCache.clear();
     app = createApp();
     projectService = new ProjectService();
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-settings-api-"));

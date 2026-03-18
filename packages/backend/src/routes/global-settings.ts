@@ -1,5 +1,12 @@
 import { Router, Request } from "express";
 import { wrapAsync } from "../middleware/wrap-async.js";
+import { validateParams, validateBody } from "../middleware/validate.js";
+import {
+  apiKeyProviderParamSchema,
+  migrateToPostgresBodySchema,
+  setupTablesBodySchema,
+  globalSettingsPutBodySchema,
+} from "../schemas/request-global-settings.js";
 import type { ApiResponse } from "@opensprint/shared";
 import {
   maskDatabaseUrl,
@@ -7,7 +14,6 @@ import {
   validateDatabaseUrl,
   getDefaultDatabaseUrl,
   getDatabaseDialect,
-  API_KEY_PROVIDERS,
   type GlobalSettingsResponse,
   type ApiKeyProvider,
 } from "@opensprint/shared";
@@ -44,12 +50,10 @@ function buildResponse(settings: GlobalSettings) {
 // GET /global-settings/reveal-key/:provider/:id — Returns the raw value for a single API key (for reveal-on-click after refresh).
 globalSettingsRouter.get(
   "/reveal-key/:provider/:id",
+  validateParams(apiKeyProviderParamSchema),
   wrapAsync(async (req, res) => {
     const provider = req.params.provider as ApiKeyProvider;
-    const id = req.params.id;
-    if (!API_KEY_PROVIDERS.includes(provider) || !id || typeof id !== "string") {
-      throw new AppError(400, ErrorCodes.INVALID_INPUT, "Invalid provider or id");
-    }
+    const id = Array.isArray(req.params.id) ? req.params.id[0] ?? "" : req.params.id;
     const settings = await getGlobalSettings();
     const entries = settings.apiKeys?.[provider];
     const entry = entries?.find((e) => e.id === id);
@@ -65,12 +69,10 @@ globalSettingsRouter.get(
 // so work can resume promptly after API access is restored.
 globalSettingsRouter.post(
   "/clear-limit-hit/:provider/:id",
+  validateParams(apiKeyProviderParamSchema),
   wrapAsync(async (req, res) => {
     const provider = req.params.provider as ApiKeyProvider;
-    const id = req.params.id;
-    if (!API_KEY_PROVIDERS.includes(provider) || !id || typeof id !== "string") {
-      throw new AppError(400, ErrorCodes.INVALID_INPUT, "Invalid provider or id");
-    }
+    const id = Array.isArray(req.params.id) ? req.params.id[0] ?? "" : req.params.id;
     await clearLimitHit("", provider, id, "global");
     clearExhaustedForProviderAcrossAllProjects(provider);
     const projects = await getProjects();
@@ -87,11 +89,9 @@ globalSettingsRouter.post(
 // POST /global-settings/migrate-to-postgres — Copy data from current DB (SQLite) to target Postgres, then switch.
 globalSettingsRouter.post(
   "/migrate-to-postgres",
+  validateBody(migrateToPostgresBodySchema),
   wrapAsync(async (req: Request, res) => {
-    const body = req.body as { databaseUrl?: string };
-    if (body.databaseUrl === undefined || typeof body.databaseUrl !== "string") {
-      throw new AppError(400, ErrorCodes.INVALID_INPUT, "databaseUrl must be a string");
-    }
+    const body = req.body as { databaseUrl: string };
     const trimmed = body.databaseUrl.trim();
     if (!trimmed) {
       throw new AppError(400, ErrorCodes.INVALID_INPUT, "databaseUrl cannot be empty");
@@ -129,11 +129,9 @@ globalSettingsRouter.post(
 // POST /global-settings/setup-tables — Runs schema setup against provided databaseUrl. Session-only; does not persist URL.
 globalSettingsRouter.post(
   "/setup-tables",
+  validateBody(setupTablesBodySchema),
   wrapAsync(async (req: Request, res) => {
-    const body = req.body as { databaseUrl?: string };
-    if (body.databaseUrl === undefined || typeof body.databaseUrl !== "string") {
-      throw new AppError(400, ErrorCodes.INVALID_INPUT, "databaseUrl must be a string");
-    }
+    const body = req.body as { databaseUrl: string };
     const trimmed = body.databaseUrl.trim();
     if (!trimmed) {
       throw new AppError(400, ErrorCodes.INVALID_INPUT, "databaseUrl cannot be empty");
@@ -170,6 +168,7 @@ globalSettingsRouter.get(
 // PUT /global-settings — Accepts databaseUrl, apiKeys, expoToken, showNotificationDotInMenuBar. Validates and sanitizes. Merge apiKeys with existing (preserve value when id exists and value omitted).
 globalSettingsRouter.put(
   "/",
+  validateBody(globalSettingsPutBodySchema),
   wrapAsync(async (req: Request, res) => {
     const body = req.body as {
       databaseUrl?: string;

@@ -248,7 +248,7 @@ describe("Agents API", () => {
 
       expect(res.status).toBe(400);
       expect(res.body.error?.code).toBe("VALIDATION_ERROR");
-      expect(res.body.error?.message).toContain("Invalid role");
+      expect(res.body.error?.message).toMatch(/invalid|option|role/i);
     });
 
     it("should return 404 for non-existent project", async () => {

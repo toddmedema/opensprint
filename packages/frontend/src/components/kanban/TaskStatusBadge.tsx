@@ -8,6 +8,7 @@ export const COLUMN_LABELS: Record<KanbanColumn, string> = {
   in_review: "In Review",
   done: "Done",
   blocked: "Failures",
+  waiting_to_merge: "Waiting to Merge",
 };
 
 const columnColors: Record<KanbanColumn, string> = {
@@ -18,6 +19,7 @@ const columnColors: Record<KanbanColumn, string> = {
   in_review: "bg-theme-status-in-review",
   done: "bg-theme-status-done",
   blocked: "bg-theme-status-blocked",
+  waiting_to_merge: "bg-theme-status-ready",
 };
 
 export interface TaskStatusBadgeProps {

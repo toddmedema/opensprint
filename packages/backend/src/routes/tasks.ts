@@ -6,9 +6,11 @@ import {
   projectIdParamSchema,
   taskIdParamSchema,
   taskDependencyParamsSchema,
+  sessionParamsSchema,
   paginationQuerySchema,
   taskPatchBodySchema,
   dependencyBodySchema,
+  unblockBodySchema,
 } from "../schemas/request-common.js";
 import { validateParams, validateQuery, validateBody } from "../middleware/validate.js";
 import { wrapAsync } from "../middleware/wrap-async.js";
@@ -72,8 +74,9 @@ export function createTasksRouter(taskService: TaskService): Router {
   router.post(
     "/:taskId/unblock",
     validateParams(taskIdParamSchema),
+    validateBody(unblockBodySchema),
     wrapAsync(async (req: Request<TaskParams>, res) => {
-      const resetAttempts = req.body?.resetAttempts === true;
+      const resetAttempts = req.body.resetAttempts === true;
       const result = await taskService.unblock(req.params.projectId, req.params.taskId, {
         resetAttempts,
       });
@@ -190,6 +193,7 @@ export function createTasksRouter(taskService: TaskService): Router {
   // GET /projects/:projectId/tasks/:taskId/sessions/:attempt — Get specific session
   router.get(
     "/:taskId/sessions/:attempt",
+    validateParams(sessionParamsSchema),
     wrapAsync(async (req: Request<SessionParams>, res) => {
       const session = await taskService.getTaskSession(
         req.params.projectId,

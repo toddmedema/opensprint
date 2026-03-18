@@ -5,6 +5,8 @@
 export const ErrorCodes = {
   // 4xx — Client errors
   INVALID_INPUT: "INVALID_INPUT",
+  /** Request params/body/query failed schema (e.g. zod) validation. */
+  VALIDATION_ERROR: "VALIDATION_ERROR",
   NOT_FOUND: "NOT_FOUND",
   NOT_DIRECTORY: "NOT_DIRECTORY",
   ALREADY_EXISTS: "ALREADY_EXISTS",

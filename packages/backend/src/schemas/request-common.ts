@@ -15,9 +15,107 @@ export const taskDependencyParamsSchema = z.object({
   parentTaskId: z.string().min(1),
 });
 
+export const sessionParamsSchema = z.object({
+  projectId: z.string().min(1),
+  taskId: z.string().min(1),
+  attempt: z.string().min(1),
+});
+
+export const unblockBodySchema = z
+  .object({
+    resetAttempts: z.boolean().optional(),
+  })
+  .optional()
+  .default({});
+
 export const paginationQuerySchema = z.object({
   limit: z.coerce.number().int().positive().optional(),
   offset: z.coerce.number().int().nonnegative().optional(),
+});
+
+export const executePrepareBodySchema = z
+  .object({
+    phase: z.enum(["coding", "review"]).optional(),
+    createBranch: z.boolean().optional(),
+    attempt: z.number().int().positive().optional(),
+  })
+  .optional()
+  .default({});
+
+export const executeEventsQuerySchema = z.object({
+  since: z.string().optional(),
+  taskId: z.string().optional(),
+  count: z.coerce.number().int().positive().optional(),
+});
+
+export const notificationParamsSchema = z.object({
+  projectId: z.string().min(1),
+  notificationId: z.string().min(1),
+});
+
+export const notificationResolveBodySchema = z
+  .object({
+    approved: z.boolean().optional(),
+    responses: z
+      .array(z.object({ questionId: z.string(), answer: z.string() }))
+      .optional(),
+  })
+  .optional()
+  .default({});
+
+export const feedbackParamsSchema = z.object({
+  projectId: z.string().min(1),
+  feedbackId: z.string().min(1),
+});
+
+export const feedbackSubmitBodySchema = z.object({
+  text: z.string().min(1, { message: "text is required" }),
+  images: z.array(z.string()).optional(),
+  parent_id: z.union([z.string(), z.null()]).optional(),
+  priority: z.number().min(0).max(4).optional(),
+  planId: z.string().optional(),
+  planVersionNumber: z.number().int().min(1).optional(),
+});
+
+export const feedbackRecategorizeBodySchema = z
+  .object({ answer: z.string().optional() })
+  .optional()
+  .default({});
+
+export const chatRequestBodySchema = z
+  .object({
+    message: z.string().min(1, { message: "message is required" }),
+    context: z.string().optional(),
+    prdSectionFocus: z.string().optional(),
+  })
+  .passthrough();
+
+export const chatHistoryQuerySchema = z.object({
+  context: z.string().optional(),
+});
+
+export const agentRoleParamsSchema = z.object({
+  projectId: z.string().min(1),
+  role: z.enum([
+    "dreamer",
+    "planner",
+    "harmonizer",
+    "analyst",
+    "summarizer",
+    "auditor",
+    "coder",
+    "reviewer",
+    "merger",
+  ]),
+});
+
+export const agentKillParamsSchema = z.object({
+  projectId: z.string().min(1),
+  agentId: z.string().min(1),
+});
+
+export const agentInstructionsBodySchema = z.object({
+  content: z.string(),
 });
 
 export const taskPatchBodySchema = z

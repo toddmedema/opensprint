@@ -1,5 +1,11 @@
 import { Router, Request } from "express";
 import { wrapAsync } from "../middleware/wrap-async.js";
+import { validateParams, validateBody } from "../middleware/validate.js";
+import {
+  projectIdParamSchema,
+  notificationParamsSchema,
+  notificationResolveBodySchema,
+} from "../schemas/request-common.js";
 import { notificationService } from "../services/notification.service.js";
 import { hilService } from "../services/hil-service.js";
 import { taskStore } from "../services/task-store.service.js";
@@ -28,6 +34,7 @@ type ResolveBody = {
 // POST /projects/:projectId/notifications/:notificationId/retry-rate-limit — Check keys available, resolve rate-limit notifications, nudge orchestrator
 projectNotificationsRouter.post(
   "/:notificationId/retry-rate-limit",
+  validateParams(notificationParamsSchema),
   wrapAsync(async (req: Request<NotificationParams>, res) => {
     const { projectId, notificationId } = req.params;
     const notifications = await notificationService.listByProject(projectId);
@@ -87,6 +94,7 @@ projectNotificationsRouter.post(
 // DELETE /projects/:projectId/notifications — Clear all notifications for project
 projectNotificationsRouter.delete(
   "/",
+  validateParams(projectIdParamSchema),
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const deletedCount = await notificationService.deleteByProject(req.params.projectId);
     res.json({
@@ -98,6 +106,7 @@ projectNotificationsRouter.delete(
 // GET /projects/:projectId/notifications — List unresolved notifications for project
 projectNotificationsRouter.get(
   "/",
+  validateParams(projectIdParamSchema),
   wrapAsync(async (req: Request<ProjectParams>, res) => {
     const notifications = await notificationService.listByProject(req.params.projectId);
     const body: ApiResponse<Notification[]> = { data: notifications };
@@ -109,10 +118,12 @@ projectNotificationsRouter.get(
 // Body: { approved?: boolean } for hil_approval; { responses?: [{ questionId, answer }] } for open_question
 projectNotificationsRouter.patch(
   "/:notificationId",
+  validateParams(notificationParamsSchema),
+  validateBody(notificationResolveBodySchema),
   wrapAsync(async (req: Request<NotificationParams, unknown, ResolveBody>, res) => {
     const { projectId, notificationId } = req.params;
-    const approved = req.body?.approved;
-    const responses = req.body?.responses;
+    const approved = req.body.approved;
+    const responses = req.body.responses;
     const notification = await notificationService.resolve(projectId, notificationId, {
       approved,
       responses,

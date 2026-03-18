@@ -103,8 +103,8 @@ describe("Env API", () => {
     it("returns 400 when provider and value are missing", async () => {
       const res = await request(app).post(`${API_PREFIX}/env/keys/validate`).send({});
       expect(res.status).toBe(400);
-      expect(res.body.error?.code).toBe("INVALID_INPUT");
-      expect(res.body.error?.message).toContain("provider and value are required");
+      expect(res.body.error?.code).toBe("VALIDATION_ERROR");
+      expect(res.body.error?.message).toMatch(/provider|value|required|option|invalid/i);
       expect(mockValidateApiKey).not.toHaveBeenCalled();
     });
 
@@ -113,8 +113,8 @@ describe("Env API", () => {
         .post(`${API_PREFIX}/env/keys/validate`)
         .send({ provider: "unknown", value: "sk-test" });
       expect(res.status).toBe(400);
-      expect(res.body.error?.code).toBe("INVALID_INPUT");
-      expect(res.body.error?.message).toContain("provider must be");
+      expect(res.body.error?.code).toBe("VALIDATION_ERROR");
+      expect(res.body.error?.message).toMatch(/provider|option|invalid|claude|cursor|openai|google/i);
       expect(mockValidateApiKey).not.toHaveBeenCalled();
     });
 
@@ -366,7 +366,7 @@ describe("Env API", () => {
     it("returns 400 when key and value are missing", async () => {
       const res = await request(app).post(`${API_PREFIX}/env/keys`).send({});
       expect(res.status).toBe(400);
-      expect(res.body.error?.code).toBe("INVALID_INPUT");
+      expect(res.body.error?.code).toBe("VALIDATION_ERROR");
     });
 
     it("returns 400 when key is not allowed", async () => {
@@ -374,7 +374,7 @@ describe("Env API", () => {
         .post(`${API_PREFIX}/env/keys`)
         .send({ key: "OTHER_KEY", value: "secret" });
       expect(res.status).toBe(400);
-      expect(res.body.error?.code).toBe("INVALID_KEY");
+      expect(res.body.error?.code).toBe("VALIDATION_ERROR");
     });
 
     it("returns 400 when value is empty", async () => {

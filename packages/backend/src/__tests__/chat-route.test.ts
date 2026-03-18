@@ -731,14 +731,14 @@ A simple marketing site for Open Sprint.
       .send({ message: "" });
 
     expect(res.status).toBe(400);
-    expect(res.body.error?.code).toBe("INVALID_INPUT");
+    expect(res.body.error?.code).toBe("VALIDATION_ERROR");
   });
 
   it("POST /projects/:id/chat should return 400 when message is missing", async () => {
     const res = await request(app).post(`${API_PREFIX}/projects/${projectId}/chat`).send({});
 
     expect(res.status).toBe(400);
-    expect(res.body.error?.code).toBe("INVALID_INPUT");
+    expect(res.body.error?.code).toBe("VALIDATION_ERROR");
   });
 
   it("returns MIGRATION_REQUIRED when legacy conversation files exist and DB row is missing", async () => {

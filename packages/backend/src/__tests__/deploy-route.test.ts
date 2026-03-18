@@ -482,7 +482,7 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
         .send({ variant: "invalid" });
 
       expect(res.status).toBe(400);
-      expect(res.body.error?.code).toBe("INVALID_VARIANT");
+      expect(res.body.error?.code).toBe("VALIDATION_ERROR");
     });
 
     it("should return 400 with explicit prompt when Expo auth is missing", async () => {

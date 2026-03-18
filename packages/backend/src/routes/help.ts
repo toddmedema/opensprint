@@ -1,8 +1,13 @@
 import { Router, Request } from "express";
 import { wrapAsync } from "../middleware/wrap-async.js";
+import { validateParams, validateBody, validateQuery } from "../middleware/validate.js";
+import {
+  helpProjectIdQuerySchema,
+  helpSessionIdParamsSchema,
+  helpChatBodySchema,
+} from "../schemas/request-help.js";
 import type {
   ApiResponse,
-  HelpChatRequest,
   HelpChatResponse,
   HelpChatHistory,
   TaskAnalytics,
@@ -29,8 +34,9 @@ function paramString(value: unknown): string {
 // GET /help/agent-log — Past agent runs from agent_stats (projectId query = per-project; omit = all projects)
 helpRouter.get(
   "/agent-log",
+  validateQuery(helpProjectIdQuerySchema),
   wrapAsync(async (req: Request, res) => {
-    const projectId = queryProjectId(req.query.projectId);
+    const projectId = queryProjectId((req.query as { projectId?: string }).projectId);
     log.info("GET /help/agent-log", { projectId: projectId ?? "all" });
     const entries = await getAgentLog(projectId);
     const result: ApiResponse<AgentLogEntry[]> = { data: entries };
@@ -41,6 +47,7 @@ helpRouter.get(
 // GET /help/session-log/:sessionId — Raw session output log for log viewer modal
 helpRouter.get(
   "/session-log/:sessionId",
+  validateParams(helpSessionIdParamsSchema),
   wrapAsync(async (req: Request, res) => {
     const sessionId = parseInt(paramString(req.params.sessionId), 10);
     if (!Number.isFinite(sessionId) || sessionId < 1) {
@@ -61,8 +68,9 @@ helpRouter.get(
 // GET /help/analytics — Task analytics by complexity (projectId query = per-project; omit = all projects)
 helpRouter.get(
   "/analytics",
+  validateQuery(helpProjectIdQuerySchema),
   wrapAsync(async (req: Request, res) => {
-    const projectId = queryProjectId(req.query.projectId);
+    const projectId = queryProjectId((req.query as { projectId?: string }).projectId);
     log.info("GET /help/analytics", { projectId: projectId ?? "all" });
     const analytics = await getTaskAnalytics(projectId);
     const result: ApiResponse<TaskAnalytics> = { data: analytics };
@@ -73,8 +81,9 @@ helpRouter.get(
 // GET /help/chat/history — Load persisted Help chat messages (projectId query = per-project; omit = homepage)
 helpRouter.get(
   "/chat/history",
+  validateQuery(helpProjectIdQuerySchema),
   wrapAsync(async (req: Request, res) => {
-    const projectId = queryProjectId(req.query.projectId);
+    const projectId = queryProjectId((req.query as { projectId?: string }).projectId);
     log.info("GET /help/chat/history", { projectId: projectId ?? "homepage" });
     const history = await helpChatService.getHistory(projectId);
     const result: ApiResponse<HelpChatHistory> = { data: history };
@@ -85,8 +94,9 @@ helpRouter.get(
 // POST /help/chat — Ask a Question (ask-only agent, no state changes)
 helpRouter.post(
   "/chat",
+  validateBody(helpChatBodySchema),
   wrapAsync(async (req: Request, res) => {
-    const body = req.body as HelpChatRequest;
+    const body = req.body;
     log.info("POST /help/chat", {
       projectId: body.projectId ?? "homepage",
       messageLen: body.message?.length ?? 0,

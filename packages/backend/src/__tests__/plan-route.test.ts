@@ -1470,7 +1470,8 @@ Updated description for task two.`;
         .send({});
 
       expect(res.status).toBe(400);
-      expect(res.body.error?.message).toContain("description is required");
+      expect(res.body.error?.code).toBe("VALIDATION_ERROR");
+      expect(res.body.error?.message).toMatch(/description|string|required/i);
       expect(mockPlanningAgentInvoke).not.toHaveBeenCalled();
     });
 
