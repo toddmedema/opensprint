@@ -265,7 +265,7 @@ describe("TimelineList", () => {
     const badges = screen.getAllByTestId("task-badge-self-improvement");
     expect(badges).toHaveLength(1);
     expect(badges[0]).toHaveTextContent("Self-improvement");
-    expect(badges[0]).toHaveClass("pr-0");
+    expect(badges[0].className).not.toMatch(/\bbg-/);
     expect(screen.getByText("Improve tests")).toBeInTheDocument();
   });
 

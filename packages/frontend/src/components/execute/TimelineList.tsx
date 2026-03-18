@@ -100,7 +100,7 @@ function TimelineRow({
           </span>
           {isSelfImprovementTask(task) && (
             <span
-              className="hidden md:inline shrink-0 rounded pl-1.5 pr-0 py-0.5 text-xs font-medium bg-theme-surface-muted text-theme-muted"
+              className="hidden md:inline shrink-0 text-xs font-medium text-theme-muted"
               title="Created by self-improvement"
               data-testid="task-badge-self-improvement"
             >
