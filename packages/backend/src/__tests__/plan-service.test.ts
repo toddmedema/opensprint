@@ -349,6 +349,10 @@ const mockPlanGetByEpicId = vi
     return null;
   });
 
+function getStoredPlanVersions(projectId: string, planId: string) {
+  return mockPlanVersionsStore.get(projectId)?.get(planId) ?? [];
+}
+
 vi.mock("../services/task-store.service.js", () => {
   const mockInstance = {
     create: (...args: unknown[]) => mockTaskStoreCreate(...args),
@@ -2285,6 +2289,112 @@ describe("PlanService createWithRetry usage", () => {
     await expect(
       planService.updatePlan(projectId, "nonexistent-plan-id", { content: "# X\n\nBody." })
     ).rejects.toMatchObject({ statusCode: 404, code: "PLAN_NOT_FOUND" });
+  });
+
+  it.each([
+    {
+      name: "strips outer PLAN_UPDATE wrapper and promotes the plain title line",
+      input: `[PLAN_UPDATE]
+PRD and Plan Creation: Scale, Speed, and Cost Discovery Prompts
+
+## Overview
+
+Prompt-only plan update.
+[/PLAN_UPDATE]`,
+      expected:
+        "# PRD and Plan Creation: Scale, Speed, and Cost Discovery Prompts\n\n## Overview\n\nPrompt-only plan update.",
+      title: "PRD and Plan Creation: Scale, Speed, and Cost Discovery Prompts",
+    },
+    {
+      name: "strips outer proposed_plan wrapper",
+      input: `<proposed_plan>
+# Proposed Wrapper Title
+
+## Overview
+
+Wrapped in proposed_plan.
+</proposed_plan>`,
+      expected: "# Proposed Wrapper Title\n\n## Overview\n\nWrapped in proposed_plan.",
+      title: "Proposed Wrapper Title",
+    },
+    {
+      name: "unwraps a fenced block when the inner content looks like plan markdown",
+      input: "```block:\nFenced Block Title\n\n## Overview\n\nWrapped in a fenced block.\n```",
+      expected: "# Fenced Block Title\n\n## Overview\n\nWrapped in a fenced block.",
+      title: "Fenced Block Title",
+    },
+    {
+      name: "promotes a plain first-line title when followed by plan sections",
+      input: `Plain Title Promotion
+
+## Overview
+
+Promoted into canonical markdown.`,
+      expected: "# Plain Title Promotion\n\n## Overview\n\nPromoted into canonical markdown.",
+      title: "Plain Title Promotion",
+    },
+    {
+      name: "leaves already valid plan markdown unchanged",
+      input: `# Already Canonical
+
+## Overview
+
+No wrapper changes needed.`,
+      expected: "# Already Canonical\n\n## Overview\n\nNo wrapper changes needed.",
+      title: "Already Canonical",
+    },
+  ])("updatePlan with no tasks $name", async ({ input, expected, title }) => {
+    mockTaskStoreListAll.mockResolvedValue([]);
+    const plan = await planService.createPlan(projectId, {
+      title: "Seed Plan",
+      content: "# Seed Plan\n\nInitial.",
+      complexity: "low",
+    });
+    const planId = plan.metadata.planId as string;
+
+    await planService.updatePlan(projectId, planId, { content: input });
+
+    const after = await planService.getPlan(projectId, planId);
+    const versions = getStoredPlanVersions(projectId, planId);
+
+    expect(after.content).toBe(expected);
+    expect(versions).toHaveLength(1);
+    expect(versions[0]).toMatchObject({
+      version_number: 1,
+      content: expected,
+      title,
+    });
+  });
+
+  it("updatePlan normalizes wrapped content before creating a new version when the current version has tasks", async () => {
+    const plan = await planService.createPlan(projectId, {
+      title: "Versioned Normalization",
+      content: "# Versioned Normalization\n\nInitial.",
+      complexity: "low",
+    });
+    const planId = plan.metadata.planId as string;
+    const epicId = plan.metadata.epicId as string;
+    mockTaskStoreListAll.mockResolvedValue([
+      { id: `${epicId}.1`, issue_type: "task", status: "open", title: "Existing task" },
+    ]);
+
+    await planService.updatePlan(projectId, planId, {
+      content: "```block:\nWrapped Version Title\n\n## Overview\n\nCreated as a new version.\n```",
+    });
+
+    const after = await planService.getPlan(projectId, planId);
+    const versions = getStoredPlanVersions(projectId, planId);
+    const versionTwo = versions.find((version) => version.version_number === 2);
+
+    expect(after.currentVersionNumber).toBe(2);
+    expect(after.content).toBe(
+      "# Wrapped Version Title\n\n## Overview\n\nCreated as a new version."
+    );
+    expect(versionTwo).toMatchObject({
+      version_number: 2,
+      content: "# Wrapped Version Title\n\n## Overview\n\nCreated as a new version.",
+      title: "Wrapped Version Title",
+    });
   });
 
   it("createPlan writes metadata with reviewedAt null", async () => {

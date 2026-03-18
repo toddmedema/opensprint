@@ -17,6 +17,7 @@ import {
   normalizePlannerTask,
   normalizeDependsOnPlans,
   ensureDependenciesSection,
+  normalizePlanMarkdownContent,
 } from "./plan/planner-normalize.js";
 import {
   buildDependencyEdgesCore,
@@ -503,6 +504,7 @@ export class PlanCrudService {
       metadata: row.metadata,
       current_version_number: row.current_version_number,
     };
+    const normalizedContent = normalizePlanMarkdownContent(body.content);
 
     const nextVersion =
       taskCount > 0
@@ -510,20 +512,20 @@ export class PlanCrudService {
             projectId,
             planId,
             versioningRow,
-            body.content,
+            normalizedContent,
             this.taskStore
           )
         : await updateCurrentVersionInPlace(
             projectId,
             planId,
             versioningRow,
-            body.content,
+            normalizedContent,
             this.taskStore
           );
 
-    await this.taskStore.planUpdateContent(projectId, planId, body.content, nextVersion);
+    await this.taskStore.planUpdateContent(projectId, planId, normalizedContent, nextVersion);
 
-    const validation = validatePlanContent(body.content);
+    const validation = validatePlanContent(normalizedContent);
     if (validation.warnings.length > 0) {
       if (process.env.VITEST) {
         log.debug("Plan validation on update", { planId, warnings: validation.warnings });
@@ -532,7 +534,7 @@ export class PlanCrudService {
       }
     }
 
-    await syncPlanTasksFromContent(projectId, planId, body.content);
+    await syncPlanTasksFromContent(projectId, planId, normalizedContent);
 
     return this.getPlan(projectId, planId);
   }

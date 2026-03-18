@@ -2,7 +2,98 @@
  * Planner output normalization: accept camelCase and snake_case from Planner/API.
  * Pure helpers for parsing and normalizing plan/task JSON.
  */
-import { clampTaskComplexity } from "@opensprint/shared";
+import { clampTaskComplexity, PLAN_MARKDOWN_SECTIONS } from "@opensprint/shared";
+
+const PLAN_UPDATE_WRAPPER_RE = /^\s*\[PLAN_UPDATE\]\s*([\s\S]*?)\s*\[\/PLAN_UPDATE\]\s*$/;
+const PROPOSED_PLAN_WRAPPER_RE = /^\s*<proposed_plan>\s*([\s\S]*?)\s*<\/proposed_plan>\s*$/i;
+const FENCED_BLOCK_RE = /^```[^\n]*\n([\s\S]*?)\n```$/;
+const PLAN_SECTION_HEADING_PATTERNS = PLAN_MARKDOWN_SECTIONS.map(
+  (section) => new RegExp(`^##\\s+${escapeRegex(section)}(?:\\s|\\(|$)`, "i")
+);
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isPlanSectionHeading(line: string): boolean {
+  const trimmed = line.trim();
+  return PLAN_SECTION_HEADING_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
+function looksLikePlanMarkdown(content: string): boolean {
+  const trimmed = content.trim();
+  if (!trimmed) return false;
+  if (/^#\s+\S/.test(trimmed)) return true;
+  return trimmed.split("\n").some((line) => isPlanSectionHeading(line));
+}
+
+function unwrapOuterPlanContainer(content: string): string {
+  const planUpdateMatch = content.match(PLAN_UPDATE_WRAPPER_RE);
+  if (planUpdateMatch?.[1]) return planUpdateMatch[1].trim();
+
+  const proposedPlanMatch = content.match(PROPOSED_PLAN_WRAPPER_RE);
+  if (proposedPlanMatch?.[1]) return proposedPlanMatch[1].trim();
+
+  const fencedMatch = content.match(FENCED_BLOCK_RE);
+  if (fencedMatch?.[1]) {
+    const inner = fencedMatch[1].trim();
+    if (looksLikePlanMarkdown(inner)) return inner;
+  }
+
+  return content;
+}
+
+function promotePlainTitleToH1(content: string): string {
+  const trimmed = content.trim();
+  if (!trimmed) return "";
+
+  const lines = trimmed.split("\n");
+  const firstNonEmptyIndex = lines.findIndex((line) => line.trim() !== "");
+  if (firstNonEmptyIndex < 0) return "";
+
+  const firstLine = lines[firstNonEmptyIndex]!.trim();
+  if (
+    !firstLine ||
+    /^#+\s/.test(firstLine) ||
+    /^```/.test(firstLine) ||
+    /^<\/?proposed_plan>$/i.test(firstLine) ||
+    /^\[\/?PLAN_UPDATE\]$/.test(firstLine)
+  ) {
+    return trimmed;
+  }
+
+  const nextNonEmptyIndex = lines.findIndex(
+    (line, index) => index > firstNonEmptyIndex && line.trim() !== ""
+  );
+  if (nextNonEmptyIndex < 0) return trimmed;
+
+  const nextLine = lines[nextNonEmptyIndex]!.trim();
+  if (!isPlanSectionHeading(nextLine)) return trimmed;
+
+  lines[firstNonEmptyIndex] = `# ${firstLine}`;
+  if (nextNonEmptyIndex === firstNonEmptyIndex + 1) {
+    lines.splice(firstNonEmptyIndex + 1, 0, "");
+  }
+  return lines.join("\n").trim();
+}
+
+/**
+ * Canonicalize plan markdown before persistence.
+ * Safely strips known wrappers and promotes a plain-text title line to H1 when it is
+ * immediately followed by plan sections.
+ */
+export function normalizePlanMarkdownContent(content: string): string {
+  let normalized = (content ?? "").replace(/\r\n/g, "\n").trim();
+  if (!normalized) return "";
+
+  for (let i = 0; i < 3; i++) {
+    const unwrapped = unwrapOuterPlanContainer(normalized);
+    if (unwrapped === normalized) break;
+    normalized = unwrapped;
+  }
+
+  return promotePlainTitleToH1(normalized);
+}
 
 /** Derive epic title from plan content (first # heading) or format planId as title. */
 export function getEpicTitleFromPlanContent(content: string, planId: string): string {
