@@ -171,6 +171,10 @@ describe("PhaseExecutorService", () => {
 
     mockHost = {
       getState: mockGetState,
+      hasActiveTask: vi.fn().mockImplementation((_projectId: string, taskId: string) => {
+        const state = mockGetState();
+        return state.slots.has(taskId);
+      }),
       taskStore: {} as PhaseExecutorHost["taskStore"],
       projectService: { getSettings: mockGetSettings } as PhaseExecutorHost["projectService"],
       branchManager: {
@@ -383,6 +387,23 @@ describe("PhaseExecutorService", () => {
       expect(failureReason).toContain("Suggested commands: npm ci ; npm ls --depth=0 --workspaces");
       expect(testError).toBeNull();
       expect(failureType).toBe("repo_preflight");
+    });
+
+    it("stops quietly when the task is canceled during git setup", async () => {
+      const task = makeTask();
+      const slot = makeSlot();
+      const slots = new Map([[task.id, slot]]);
+      mockGetState.mockReturnValue({ slots, status: { queueDepth: 0 } });
+      mockSyncMainWithOrigin.mockImplementation(async () => {
+        slots.delete(task.id);
+        return "up_to_date";
+      });
+
+      await phaseExecutor.executeCodingPhase(projectId, repoPath, task, slot);
+
+      expect(mockCreateTaskWorktree).not.toHaveBeenCalled();
+      expect(mockLifecycleRun).not.toHaveBeenCalled();
+      expect(mockHandleTaskFailure).not.toHaveBeenCalled();
     });
   });
 

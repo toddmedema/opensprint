@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StoredTask } from "../services/task-store.service.js";
 import { TimerRegistry } from "../services/timer-registry.js";
+import { AppError } from "../middleware/error-handler.js";
+import { ErrorCodes } from "../middleware/error-codes.js";
 import {
   OrchestratorLoopService,
   type LoopState,
@@ -114,6 +116,7 @@ describe("OrchestratorLoopService", () => {
       ensureApiBlockedNotificationsForExhaustedProviders: vi.fn().mockResolvedValue(undefined),
       nudge: vi.fn(),
       runLoop: vi.fn(),
+      stopProject: vi.fn(),
       getProjectService: vi.fn().mockReturnValue({
         getRepoPath: vi.fn().mockResolvedValue(repoPath),
         getSettings: vi.fn().mockResolvedValue({
@@ -219,5 +222,34 @@ describe("OrchestratorLoopService", () => {
 
     expect(dispatchTask).not.toHaveBeenCalled();
     expect(host.ensureApiBlockedNotificationsForExhaustedProviders).not.toHaveBeenCalled();
+  });
+
+  it("stops the project without retrying when the project disappears mid-loop", async () => {
+    host.getProjectService = vi.fn().mockReturnValue({
+      getRepoPath: vi
+        .fn()
+        .mockRejectedValue(
+          new AppError(404, ErrorCodes.PROJECT_NOT_FOUND, "Project not found", { projectId })
+        ),
+      getSettings: vi.fn(),
+    });
+
+    await service.runLoop(projectId);
+
+    expect(host.stopProject).toHaveBeenCalledWith(projectId);
+    expect(state.loopActive).toBe(false);
+    expect(state.globalTimers.has("loop")).toBe(false);
+  });
+
+  it("treats ISSUE_NOT_FOUND as a benign task race without scheduling a retry", async () => {
+    dispatchTask.mockRejectedValue(
+      new AppError(404, ErrorCodes.ISSUE_NOT_FOUND, "Task not found", { issueId: "os-1" })
+    );
+
+    await service.runLoop(projectId);
+
+    expect(host.stopProject).not.toHaveBeenCalled();
+    expect(state.loopActive).toBe(false);
+    expect(state.globalTimers.has("loop")).toBe(false);
   });
 });

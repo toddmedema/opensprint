@@ -8,6 +8,7 @@ import { ProjectService } from "../services/project.service.js";
 import { TaskStoreService } from "../services/task-store.service.js";
 import { API_PREFIX } from "@opensprint/shared";
 import { DEFAULT_HIL_CONFIG } from "@opensprint/shared";
+import { cleanupTestProject } from "./test-project-cleanup.js";
 
 vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => args,
@@ -76,6 +77,7 @@ vi.mock("../services/orchestrator.service.js", () => ({
   orchestratorService: {
     nudge: vi.fn(),
     ensureRunning: vi.fn(),
+    stopProject: vi.fn(),
     getStatus: vi.fn().mockResolvedValue({
       activeTasks: [],
       queueDepth: 0,
@@ -133,6 +135,7 @@ describe.skipIf(!planRoutePostgresOk)("Plan REST endpoints - task decomposition"
   });
 
   afterEach(async () => {
+    await cleanupTestProject({ projectService, projectId });
     // maxRetries/retryDelay help when git-commit-queue or task store hold files during cleanup
     await fs.rm(currentRepoPath, {
       recursive: true,

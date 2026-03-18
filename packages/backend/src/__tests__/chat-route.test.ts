@@ -13,6 +13,7 @@ import {
   SPEC_METADATA_PATH,
   specMarkdownToPrd,
 } from "@opensprint/shared";
+import { cleanupTestProject } from "./test-project-cleanup.js";
 
 // Stub for legacy beads.service path (module removed; task store used instead). No importOriginal — file is gone.
 vi.mock("../services/beads.service.js", () => ({
@@ -89,6 +90,7 @@ vi.mock("../services/active-agents.service.js", () => ({
     register: (...args: unknown[]) => mockRegister(...args),
     unregister: (...args: unknown[]) => mockUnregister(...args),
     list: vi.fn().mockReturnValue([]),
+    listEntries: vi.fn().mockReturnValue([]),
   },
 }));
 
@@ -145,6 +147,7 @@ describe.skipIf(!chatRoutePostgresOk)("Chat REST API", () => {
   });
 
   afterEach(async () => {
+    await cleanupTestProject({ projectService, projectId });
     try {
       await fs.rm(currentRepoPath, { recursive: true, force: true });
     } catch {

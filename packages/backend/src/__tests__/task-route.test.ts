@@ -8,6 +8,7 @@ import { ProjectService } from "../services/project.service.js";
 import { TaskStoreService } from "../services/task-store.service.js";
 import { API_PREFIX } from "@opensprint/shared";
 import { DEFAULT_HIL_CONFIG } from "@opensprint/shared";
+import { cleanupTestProject } from "./test-project-cleanup.js";
 
 vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => args,
@@ -104,6 +105,7 @@ describe.skipIf(!postgresAvailable)("Tasks REST - task-to-kanban-column mapping"
   });
 
   afterEach(async () => {
+    await cleanupTestProject({ projectService, projectId });
     try {
       await fs.rm(currentRepoPath, { recursive: true, force: true });
     } catch {

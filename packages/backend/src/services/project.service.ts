@@ -286,6 +286,18 @@ export class ProjectService {
   /** In-memory cache for listProjects() so GET /projects returns instantly when the event loop is busy (e.g. orchestrator). Invalidated on create/update/delete. */
   private listCache: Project[] | null = null;
 
+  private async stopOrchestratorForProject(projectId: string): Promise<void> {
+    try {
+      const { orchestratorService } = await import("./orchestrator.service.js");
+      orchestratorService.stopProject(projectId);
+    } catch (error) {
+      log.warn("Failed to stop orchestrator during project cleanup", {
+        projectId,
+        error,
+      });
+    }
+  }
+
   private invalidateListCache(): void {
     this.listCache = null;
   }
@@ -1200,6 +1212,7 @@ export class ProjectService {
   /** Archive a project: remove from index only. Data in project folder remains. */
   async archiveProject(id: string): Promise<void> {
     await this.getProject(id); // validate exists, throws 404 if not
+    await this.stopOrchestratorForProject(id);
     await this.taskStore.deleteOpenQuestionsByProjectId(id);
     await projectIndex.removeProject(id);
     this.invalidateListCache();
@@ -1210,6 +1223,7 @@ export class ProjectService {
   async deleteProject(id: string): Promise<void> {
     const project = await this.getProject(id);
     const repoPath = project.repoPath;
+    await this.stopOrchestratorForProject(id);
 
     // Remove worktrees for this project so watchdog/orphan recovery never see them again.
     // Use listTaskWorktrees (from git) to find all worktrees regardless of tmpdir.

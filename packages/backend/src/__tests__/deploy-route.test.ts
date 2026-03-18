@@ -14,6 +14,7 @@ import { isExpoInstalled } from "../utils/expo-install.js";
 import { getExpoConfigStatus } from "../utils/expo-config.js";
 import { checkExpoAuth } from "../utils/expo-auth-check.js";
 import { isEasProjectLinked } from "../utils/eas-project-link.js";
+import { cleanupTestProject } from "./test-project-cleanup.js";
 
 vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => args,
@@ -138,6 +139,7 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
   });
 
   afterEach(async () => {
+    await cleanupTestProject({ projectService, projectId });
     refreshMaxSlotsSpy?.mockRestore();
     process.env.HOME = originalHome;
     try {

@@ -572,9 +572,15 @@ describe("Env API", () => {
     });
 
     it("persists useCustomCli across requests", async () => {
-      await request(app).put(`${API_PREFIX}/env/global-settings`).send({ useCustomCli: true });
+      const putRes = await request(app)
+        .put(`${API_PREFIX}/env/global-settings`)
+        .send({ useCustomCli: true })
+        .timeout(10_000);
+      expect(putRes.status).toBe(200);
+      expect(putRes.body.data?.useCustomCli).toBe(true);
 
-      const res = await request(app).get(`${API_PREFIX}/env/global-status`);
+      const res = await request(app).get(`${API_PREFIX}/env/global-status`).timeout(10_000);
+      expect(res.status).toBe(200);
       expect(res.body.data.useCustomCli).toBe(true);
     });
 

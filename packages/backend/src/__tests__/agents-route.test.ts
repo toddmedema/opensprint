@@ -8,6 +8,7 @@ import { ProjectService } from "../services/project.service.js";
 import { activeAgentsService } from "../services/active-agents.service.js";
 import { API_PREFIX, DEFAULT_HIL_CONFIG, OPENSPRINT_PATHS } from "@opensprint/shared";
 import type { DbClient } from "../db/client.js";
+import { cleanupTestProject } from "./test-project-cleanup.js";
 
 const { testClientRef } = vi.hoisted(() => ({
   testClientRef: { current: null as DbClient | null },
@@ -78,6 +79,7 @@ describe("Agents API", () => {
   });
 
   afterEach(async () => {
+    await cleanupTestProject({ projectService, projectId });
     process.env.HOME = originalHome;
     await fs.rm(tempDir, { recursive: true, force: true });
   });

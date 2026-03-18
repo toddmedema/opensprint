@@ -20,6 +20,7 @@ import { getProviderOutageBackoff } from "./provider-outage-backoff.service.js";
 import { getComplexityForAgent } from "./plan-complexity.js";
 import { isSelfImprovementRunInProgress } from "./self-improvement-runner.service.js";
 import { WorktreeBranchInUseError } from "./branch-manager.js";
+import { ErrorCodes } from "../middleware/error-codes.js";
 
 const log = createLogger("orchestrator-loop");
 
@@ -63,6 +64,7 @@ export interface OrchestratorLoopHost {
   ensureApiBlockedNotificationsForExhaustedProviders(projectId: string): Promise<void>;
   nudge(projectId: string): void;
   runLoop(projectId: string): Promise<void>;
+  stopProject(projectId: string): void;
   getProjectService(): {
     getRepoPath: (id: string) => Promise<string>;
     getSettings: (id: string) => Promise<{
@@ -343,6 +345,18 @@ export class OrchestratorLoopService {
 
       if (state.loopRunId === myRunId) state.loopActive = false;
     } catch (error) {
+      const errorCode = (error as { code?: string } | null)?.code;
+      if (errorCode === ErrorCodes.PROJECT_NOT_FOUND) {
+        log.info("Stopping orchestrator loop for deleted project", { projectId });
+        if (state.loopRunId === myRunId) state.loopActive = false;
+        this.host.stopProject(projectId);
+        return;
+      }
+      if (errorCode === ErrorCodes.ISSUE_NOT_FOUND) {
+        log.info("Ignoring orchestrator loop race after task disappeared", { projectId });
+        if (state.loopRunId === myRunId) state.loopActive = false;
+        return;
+      }
       log.error(`Orchestrator loop error for project ${projectId}`, { error });
       if (state.loopRunId === myRunId) {
         state.loopActive = false;

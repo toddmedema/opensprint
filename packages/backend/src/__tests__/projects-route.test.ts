@@ -8,6 +8,7 @@ import { ProjectService } from "../services/project.service.js";
 import { setGlobalSettings } from "../services/global-settings.service.js";
 import { API_PREFIX, DEFAULT_HIL_CONFIG, OPENSPRINT_DIR } from "@opensprint/shared";
 import { setBackendRuntimeInfoForTesting } from "../utils/runtime-info.js";
+import { cleanupTestProject } from "./test-project-cleanup.js";
 
 vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => args,
@@ -93,6 +94,7 @@ describe.skipIf(!projectsPostgresOk)("Projects REST API — spec/sketch phase ro
   });
 
   afterEach(async () => {
+    await cleanupTestProject({ projectService, projectId });
     setBackendRuntimeInfoForTesting(null);
     process.env.HOME = originalHome;
     await fs.rm(tempDir, { recursive: true, force: true });

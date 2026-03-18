@@ -322,6 +322,10 @@ export class OrchestratorService {
     return this.state.get(projectId)!;
   }
 
+  hasActiveTask(projectId: string, taskId: string): boolean {
+    return this.state.get(projectId)?.slots.has(taskId) ?? false;
+  }
+
   private defaultStatus(): OrchestratorStatus {
     return {
       activeTasks: [],
@@ -741,6 +745,9 @@ export class OrchestratorService {
 
     log.info(`Stopping orchestrator for project ${projectId}`);
 
+    // Invalidate any in-flight loop so it cannot reschedule itself on stale timers.
+    state.loopRunId = (state.loopRunId ?? 0) + 1;
+    state.loopActive = false;
     state.globalTimers.clearAll();
 
     for (const slot of state.slots.values()) {
@@ -757,7 +764,6 @@ export class OrchestratorService {
       }
     }
 
-    state.loopActive = false;
     this.state.delete(projectId);
 
     log.info(`Orchestrator stopped for project ${projectId}`);

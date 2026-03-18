@@ -2141,6 +2141,22 @@ describe("OrchestratorService (slot-based model)", () => {
       const status = await orchestrator.getStatus(projectId);
       expect(status.activeTasks).toEqual([]);
     });
+
+    it("invalidates any in-flight loop before removing project state", () => {
+      const state = (
+        orchestrator as unknown as {
+          getState: (id: string) => { loopRunId: number };
+        }
+      ).getState(projectId);
+      state.loopRunId = 7;
+
+      orchestrator.stopProject(projectId);
+
+      expect(state.loopRunId).toBe(8);
+      expect(
+        (orchestrator as unknown as { state: Map<string, unknown> }).state.has(projectId)
+      ).toBe(false);
+    });
   });
 
   describe("getActiveAgents", () => {

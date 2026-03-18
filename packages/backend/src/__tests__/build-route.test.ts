@@ -7,6 +7,7 @@ import { createApp } from "../app.js";
 import { ProjectService } from "../services/project.service.js";
 import { setSelfImprovementRunInProgressForTest } from "../services/self-improvement-runner.service.js";
 import { API_PREFIX, DEFAULT_HIL_CONFIG } from "@opensprint/shared";
+import { cleanupTestProject } from "./test-project-cleanup.js";
 
 vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => args,
@@ -75,6 +76,7 @@ describe.skipIf(!buildRoutePostgresOk)("Execute API", () => {
   });
 
   afterEach(async () => {
+    await cleanupTestProject({ projectService, projectId });
     process.env.HOME = originalHome;
     await fs.rm(tempDir, { recursive: true, force: true });
   });

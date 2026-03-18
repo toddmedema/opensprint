@@ -9,6 +9,7 @@ import { notificationService } from "../services/notification.service.js";
 import { taskStore } from "../services/task-store.service.js";
 import { setGlobalSettings } from "../services/global-settings.service.js";
 import { API_PREFIX, DEFAULT_HIL_CONFIG } from "@opensprint/shared";
+import { cleanupTestProject } from "./test-project-cleanup.js";
 
 vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => args,
@@ -52,6 +53,7 @@ const notificationsPostgresOk =
 
 describe.skipIf(!notificationsPostgresOk)("Notifications REST API", () => {
   let app: ReturnType<typeof createApp>;
+  let projectService: ProjectService;
   let tempDir: string;
   let projectId: string;
   let originalHome: string | undefined;
@@ -62,7 +64,7 @@ describe.skipIf(!notificationsPostgresOk)("Notifications REST API", () => {
     originalHome = process.env.HOME;
     process.env.HOME = tempDir;
 
-    const projectService = new ProjectService();
+    projectService = new ProjectService();
     const project = await projectService.createProject({
       name: "Test Project",
       repoPath: path.join(tempDir, "my-project"),
@@ -76,6 +78,7 @@ describe.skipIf(!notificationsPostgresOk)("Notifications REST API", () => {
   });
 
   afterEach(async () => {
+    await cleanupTestProject({ projectService, projectId });
     process.env.HOME = originalHome;
     await fs.rm(tempDir, { recursive: true, force: true });
   });

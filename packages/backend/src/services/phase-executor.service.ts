@@ -46,6 +46,7 @@ export interface PhaseExecutorHost {
     slots: Map<string, { agent: AgentRunState; timers: TimerRegistry } & AgentSlotLike>;
     status: { queueDepth: number };
   };
+  hasActiveTask(projectId: string, taskId: string): boolean;
   taskStore: import("./task-store.service.js").TaskStoreService;
   projectService: import("./project.service.js").ProjectService;
   branchManager: BranchManager;
@@ -109,6 +110,10 @@ export class PhaseExecutorService {
     return `[${error.code}] ${error.message}${commands}`;
   }
 
+  private isTaskStillActive(projectId: string, taskId: string): boolean {
+    return this.host.hasActiveTask(projectId, taskId);
+  }
+
   async executeCodingPhase(
     projectId: string,
     repoPath: string,
@@ -116,6 +121,10 @@ export class PhaseExecutorService {
     slot: AgentSlotLike & { agent: AgentRunState; timers: TimerRegistry },
     retryContext?: RetryContext
   ): Promise<void> {
+    if (!this.isTaskStillActive(projectId, task.id)) {
+      return;
+    }
+
     const settings = await this.host.projectService.getSettings(projectId);
     const branchName = slot.branchName;
     const gitWorkingMode = settings.gitWorkingMode ?? "worktree";
@@ -148,10 +157,17 @@ export class PhaseExecutorService {
     }
 
     try {
+      if (!this.isTaskStillActive(projectId, task.id)) {
+        return;
+      }
+
       let wtPath: string;
       if (gitWorkingMode === "branches") {
         if (!retryContext?.useExistingBranch) {
           await this.host.branchManager.syncMainWithOrigin(repoPath, baseBranch);
+        }
+        if (!this.isTaskStillActive(projectId, task.id)) {
+          return;
         }
         await this.host.branchManager.createOrCheckoutBranch(repoPath, branchName, baseBranch);
         wtPath = repoPath;
@@ -159,6 +175,9 @@ export class PhaseExecutorService {
       } else {
         if (!retryContext?.useExistingBranch) {
           await this.host.branchManager.syncMainWithOrigin(repoPath, baseBranch);
+        }
+        if (!this.isTaskStillActive(projectId, task.id)) {
+          return;
         }
         const worktreeOptions =
           slot.worktreeKey != null
@@ -173,6 +192,10 @@ export class PhaseExecutorService {
         assertSafeTaskWorktreePath(repoPath, task.id, wtPath);
       }
       (slot as { worktreePath: string | null }).worktreePath = wtPath;
+
+      if (!this.isTaskStillActive(projectId, task.id)) {
+        return;
+      }
 
       if (retryContext?.useExistingBranch) {
         await this.host.branchManager.waitForGitReady(wtPath);
@@ -197,6 +220,9 @@ export class PhaseExecutorService {
       }
 
       await this.host.preflightCheck(repoPath, wtPath, task.id, baseBranch, undefined);
+      if (!this.isTaskStillActive(projectId, task.id)) {
+        return;
+      }
 
       let context: TaskContext = await this.host.contextAssembler.buildContext(
         projectId,
@@ -206,6 +232,9 @@ export class PhaseExecutorService {
         this.host.branchManager,
         { task, baseBranch }
       );
+      if (!this.isTaskStillActive(projectId, task.id)) {
+        return;
+      }
 
       if (shouldInvokeSummarizer(context)) {
         const cached = retryContext && this.host.getCachedSummarizerContext(projectId, task.id);
@@ -230,6 +259,9 @@ export class PhaseExecutorService {
           this.host.setCachedSummarizerContext(projectId, task.id, context);
         }
       }
+      if (!this.isTaskStillActive(projectId, task.id)) {
+        return;
+      }
 
       const config: ActiveTaskConfig = {
         invocation_id: task.id,
@@ -252,6 +284,9 @@ export class PhaseExecutorService {
       };
 
       await this.host.contextAssembler.assembleTaskDirectory(wtPath, task.id, config, context);
+      if (!this.isTaskStillActive(projectId, task.id)) {
+        return;
+      }
 
       const taskDir = this.host.sessionManager.getActiveDir(wtPath, task.id);
       const promptPath = path.join(taskDir, "prompt.md");
@@ -297,6 +332,10 @@ export class PhaseExecutorService {
       await fs.mkdir(mainRepoActiveDir, { recursive: true });
       await writeJsonAtomic(path.join(mainRepoActiveDir, OPENSPRINT_PATHS.assignment), assignment);
 
+      if (!this.isTaskStillActive(projectId, task.id)) {
+        return;
+      }
+
       this.host.lifecycleManager.run(
         {
           projectId,
@@ -330,6 +369,13 @@ export class PhaseExecutorService {
 
       await this.host.persistCounters(projectId, repoPath);
     } catch (error) {
+      if (!this.isTaskStillActive(projectId, task.id)) {
+        log.info("Skipping coding-phase failure after task was canceled", {
+          projectId,
+          taskId: task.id,
+        });
+        return;
+      }
       log.error(`Coding phase failed for task ${task.id}`, { error });
       const failureReason =
         error instanceof RepoPreflightError

@@ -12,6 +12,8 @@ import {
   MAX_VALIDATION_TIMEOUT_MS,
 } from "@opensprint/shared";
 
+const mockStopProject = vi.fn();
+
 // Full mock so we never load task-store.service (which pulls in drizzle). ProjectService only needs
 // listAll, deleteOpenQuestionsByProjectId, deleteByProjectId for these tests.
 vi.mock("../services/task-store.service.js", () => ({
@@ -22,6 +24,12 @@ vi.mock("../services/task-store.service.js", () => ({
     deleteByProjectId: vi.fn().mockResolvedValue(undefined),
   },
   TaskStoreService: vi.fn(),
+}));
+
+vi.mock("../services/orchestrator.service.js", () => ({
+  orchestratorService: {
+    stopProject: (...args: unknown[]) => mockStopProject(...args),
+  },
 }));
 
 /** Read project settings from global store (when HOME=tempDir in tests). */
@@ -53,6 +61,7 @@ describe("ProjectService", () => {
     await fs.mkdir(suiteTempDir, { recursive: true });
     tempDir = suiteTempDir;
     projectService = new ProjectService();
+    mockStopProject.mockReset();
     await setGlobalSettings({
       apiKeys: {
         ANTHROPIC_API_KEY: [{ id: "test-ant", value: "sk-ant-test" }],
@@ -1089,6 +1098,7 @@ describe("ProjectService", () => {
 
     await projectService.archiveProject(project.id);
 
+    expect(mockStopProject).toHaveBeenCalledWith(project.id);
     const projects = await projectService.listProjects();
     expect(projects).toHaveLength(0);
 
@@ -1127,6 +1137,7 @@ describe("ProjectService", () => {
     await expect(projectService.archiveProject("non-existent")).rejects.toMatchObject({
       statusCode: 404,
     });
+    expect(mockStopProject).not.toHaveBeenCalled();
   });
 
   it("deleteProject removes from index and deletes .opensprint directory", async () => {
@@ -1142,6 +1153,7 @@ describe("ProjectService", () => {
 
     await projectService.deleteProject(project.id);
 
+    expect(mockStopProject).toHaveBeenCalledWith(project.id);
     const projects = await projectService.listProjects();
     expect(projects).toHaveLength(0);
 
