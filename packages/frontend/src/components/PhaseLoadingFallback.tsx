@@ -20,22 +20,23 @@ export function PhaseLoadingFallback({ phase }: { phase: ProjectPhase }) {
   }
 }
 
-/** Shared Sketch logo loading animation. Same logo as app idea prompt for seamless transition.
- * Used by PhaseLoadingFallback (Suspense) and SketchPhase (until PRD status known). */
+/** Centered pulsing logo and status for initial/sketch loading. No bordered container or product name. */
 export function SketchLogoLoading({
   containerTestId = "phase-sketch-loading",
   spinnerTestId = "phase-sketch-loading-spinner",
+  status = "Loading…",
 }: {
   containerTestId?: string;
   spinnerTestId?: string;
+  status?: string;
 } = {}) {
   return (
     <div
-      className="flex flex-1 min-h-0 items-center justify-center bg-theme-bg"
+      className="flex flex-1 min-h-0 items-center justify-center"
       data-testid={containerTestId}
     >
       <div
-        className="flex flex-col items-center justify-center gap-3 py-10"
+        className="flex flex-col items-center justify-center gap-3"
         data-testid={spinnerTestId}
         role="status"
         aria-label="Loading"
@@ -62,6 +63,11 @@ export function SketchLogoLoading({
             className="animate-logo-pulse [animation-delay:400ms]"
           />
         </svg>
+        {status ? (
+          <p className="text-sm text-theme-muted" data-testid={`${spinnerTestId}-status`}>
+            {status}
+          </p>
+        ) : null}
       </div>
     </div>
   );
@@ -93,10 +99,14 @@ function PlanPhaseSkeleton() {
 function ExecutePhaseAnimatedLogo() {
   return (
     <div
-      className="flex flex-1 min-h-0 items-center justify-center bg-theme-bg"
+      className="flex flex-1 min-h-0 items-center justify-center"
       data-testid="phase-execute-loading"
     >
-      <PhaseLoadingSpinner data-testid="phase-execute-loading-spinner" aria-label="Loading tasks" />
+      <PhaseLoadingSpinner
+        data-testid="phase-execute-loading-spinner"
+        aria-label="Loading tasks"
+        status="Loading tasks…"
+      />
     </div>
   );
 }
@@ -104,10 +114,14 @@ function ExecutePhaseAnimatedLogo() {
 function EvalPhaseAnimatedLogo() {
   return (
     <div
-      className="flex flex-1 min-h-0 items-center justify-center bg-theme-bg"
+      className="flex flex-1 min-h-0 items-center justify-center"
       data-testid="phase-eval-loading"
     >
-      <PhaseLoadingSpinner data-testid="phase-eval-loading-spinner" aria-label="Loading feedback" />
+      <PhaseLoadingSpinner
+        data-testid="phase-eval-loading-spinner"
+        aria-label="Loading feedback"
+        status="Loading feedback…"
+      />
     </div>
   );
 }

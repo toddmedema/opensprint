@@ -330,16 +330,17 @@ export function ExecutePhase({
       )) ??
     null;
 
-  /* ── RENDER: Loading spinner during fetch (no fake page content) ── */
+  /* ── RENDER: Centered pulsing logo + status during fetch (no bordered container) ── */
   if (showTasksSpinner) {
     return (
       <div
-        className="flex flex-1 min-h-0 items-center justify-center bg-theme-bg"
+        className="flex flex-1 min-h-0 items-center justify-center"
         data-testid="execute-phase-loading"
       >
         <PhaseLoadingSpinner
           data-testid="execute-phase-loading-spinner"
           aria-label="Loading tasks"
+          status="Loading tasks…"
         />
       </div>
     );

@@ -40,6 +40,7 @@ import {
 } from "../api/hooks";
 import { queryKeys } from "../api/queryKeys";
 import { Layout } from "../components/layout/Layout";
+import { PhaseLoadingSpinner } from "../components/PhaseLoadingSpinner";
 import { DatabaseUnavailableState } from "../components/DatabaseUnavailableState";
 import { ProjectNotFoundState } from "../components/ProjectNotFoundState";
 import { getProjectPhasePath } from "../lib/phaseRouting";
@@ -364,8 +365,8 @@ export function ProjectShell() {
 
   if (projectLoading && !project) {
     return renderShellContent(
-      <div className="flex items-center justify-center h-full text-theme-muted">
-        Loading project...
+      <div className="flex flex-1 min-h-0 items-center justify-center">
+        <PhaseLoadingSpinner status="Loading project…" aria-label="Loading project" />
       </div>
     );
   }
@@ -382,8 +383,8 @@ export function ProjectShell() {
 
   if (phaseRoute && dbStatus.isPending) {
     return renderShellContent(
-      <div className="flex items-center justify-center h-full text-theme-muted">
-        Checking database...
+      <div className="flex flex-1 min-h-0 items-center justify-center">
+        <PhaseLoadingSpinner status="Checking database…" aria-label="Checking database" />
       </div>
     );
   }

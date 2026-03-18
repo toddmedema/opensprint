@@ -857,14 +857,18 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
     setChatSending(false);
   };
 
-  /* ── RENDER: Loading spinner during fetch (no fake page content) ── */
+  /* ── RENDER: Centered pulsing logo + status during fetch (no bordered container) ── */
   if (showPlansSpinner) {
     return (
       <div
-        className="flex flex-1 min-h-0 items-center justify-center bg-theme-bg"
+        className="flex flex-1 min-h-0 items-center justify-center"
         data-testid="plan-phase-loading"
       >
-        <PhaseLoadingSpinner data-testid="plan-phase-loading-spinner" aria-label="Loading plans" />
+        <PhaseLoadingSpinner
+          data-testid="plan-phase-loading-spinner"
+          aria-label="Loading plans"
+          status="Loading plans…"
+        />
       </div>
     );
   }

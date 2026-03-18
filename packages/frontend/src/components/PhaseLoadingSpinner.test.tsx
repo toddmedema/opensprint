@@ -19,4 +19,19 @@ describe("PhaseLoadingSpinner", () => {
     render(<PhaseLoadingSpinner data-testid="custom-spinner" />);
     expect(screen.getByTestId("custom-spinner")).toBeInTheDocument();
   });
+
+  it("shows status text below logo by default", () => {
+    render(<PhaseLoadingSpinner data-testid="spinner" />);
+    expect(screen.getByTestId("spinner-status")).toHaveTextContent("Loading…");
+  });
+
+  it("shows custom status when provided", () => {
+    render(<PhaseLoadingSpinner data-testid="spinner" status="Loading plans…" />);
+    expect(screen.getByTestId("spinner-status")).toHaveTextContent("Loading plans…");
+  });
+
+  it("hides status when status is empty string", () => {
+    render(<PhaseLoadingSpinner data-testid="spinner" status="" />);
+    expect(screen.queryByTestId("spinner-status")).not.toBeInTheDocument();
+  });
 });

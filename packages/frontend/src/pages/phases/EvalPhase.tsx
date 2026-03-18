@@ -2140,14 +2140,18 @@ export function EvalPhase({
     [projectId, refetchNotifications]
   );
 
-  /* ── RENDER: Loading spinner during fetch (no fake page content) ── */
+  /* ── RENDER: Centered pulsing logo + status during fetch (no bordered container) ── */
   if (showFeedbackSpinner) {
     return (
       <div
-        className="flex flex-1 min-h-0 items-center justify-center bg-theme-bg"
+        className="flex flex-1 min-h-0 items-center justify-center"
         data-testid="feedback-loading"
       >
-        <PhaseLoadingSpinner data-testid="feedback-loading-spinner" aria-label="Loading feedback" />
+        <PhaseLoadingSpinner
+          data-testid="feedback-loading-spinner"
+          aria-label="Loading feedback"
+          status="Loading feedback…"
+        />
       </div>
     );
   }

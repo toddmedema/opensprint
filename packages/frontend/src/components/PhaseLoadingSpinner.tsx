@@ -1,15 +1,16 @@
-/** Centered animated Open Sprint logo for phase pages during initial fetch.
- * Three arrows pulse to indicate loading. No fake/placeholder content. */
+/** Centered pulsing logo and status text for initial/phase loading. No bordered container or product name. */
 export function PhaseLoadingSpinner({
   "data-testid": dataTestId = "phase-loading-spinner",
   "aria-label": ariaLabel = "Loading",
+  status = "Loading…",
 }: {
   "data-testid"?: string;
   "aria-label"?: string;
+  status?: string;
 }) {
   return (
     <div
-      className="flex flex-col items-center justify-center gap-3 py-10"
+      className="flex flex-col items-center justify-center gap-3"
       data-testid={dataTestId}
       role="status"
       aria-label={ariaLabel}
@@ -31,6 +32,11 @@ export function PhaseLoadingSpinner({
           className="animate-logo-pulse [animation-delay:400ms]"
         />
       </svg>
+      {status ? (
+        <p className="text-sm text-theme-muted" data-testid={`${dataTestId}-status`}>
+          {status}
+        </p>
+      ) : null}
     </div>
   );
 }
