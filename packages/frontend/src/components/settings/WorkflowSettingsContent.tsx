@@ -1,4 +1,5 @@
 import { useEffect, useState, type MutableRefObject } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   ProjectSettings,
   ReviewAngle,
@@ -15,6 +16,8 @@ import {
   SELF_IMPROVEMENT_FREQUENCY_OPTIONS,
   normalizeWorktreeBaseBranch,
 } from "@opensprint/shared";
+import { api } from "../../api/client";
+import { queryKeys } from "../../api/queryKeys";
 
 type WorkflowPersistOverrides = Partial<{
   testCommand: string | null;
@@ -50,6 +53,29 @@ export function WorkflowSettingsContent({
   onSettingsChange,
 }: WorkflowSettingsContentProps) {
   const [draftSettings, setDraftSettings] = useState<ProjectSettings>(settings);
+  const queryClient = useQueryClient();
+  const [runNowMessage, setRunNowMessage] = useState<string | null>(null);
+
+  const runNowMutation = useMutation({
+    mutationFn: () => api.projects.runSelfImprovement(projectId),
+    onSuccess: (data) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.settings(projectId) });
+      if (data.tasksCreated > 0) {
+        setRunNowMessage(`${data.tasksCreated} task${data.tasksCreated === 1 ? "" : "s"} created`);
+      } else if (data.skipped === "no_changes") {
+        setRunNowMessage("No changes since last run");
+      } else if (data.skipped === "run_in_progress") {
+        setRunNowMessage("Run already in progress");
+      } else {
+        setRunNowMessage("Run completed");
+      }
+      setTimeout(() => setRunNowMessage(null), 5000);
+    },
+    onError: (err: Error) => {
+      setRunNowMessage(err.message || "Run failed");
+      setTimeout(() => setRunNowMessage(null), 5000);
+    },
+  });
 
   useEffect(() => {
     setDraftSettings(settings);
@@ -429,7 +455,25 @@ export function WorkflowSettingsContent({
                   </option>
                 ))}
               </select>
+              <button
+                type="button"
+                data-testid="self-improvement-run-now"
+                className="btn btn-secondary"
+                disabled={runNowMutation.isPending}
+                onClick={() => runNowMutation.mutate()}
+              >
+                {runNowMutation.isPending ? "Running…" : "Run now"}
+              </button>
             </div>
+            {runNowMessage && (
+              <p
+                className="text-xs text-theme-muted"
+                data-testid="self-improvement-run-now-message"
+                role="status"
+              >
+                {runNowMessage}
+              </p>
+            )}
             {(draftSettings.selfImprovementLastRunAt || draftSettings.nextRunAt) && (
               <p
                 className="text-xs text-theme-muted flex flex-nowrap items-center gap-x-3"

@@ -1,8 +1,17 @@
-import { describe, it, expect, vi } from "vitest";
-import { fireEvent, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import type { ProjectSettings } from "@opensprint/shared";
 import { WorkflowSettingsContent } from "./WorkflowSettingsContent";
 import { renderApp } from "../../test/test-utils";
+import { api } from "../../api/client";
+
+vi.mock("../../api/client", () => ({
+  api: {
+    projects: {
+      runSelfImprovement: vi.fn(),
+    },
+  },
+}));
 
 const baseSettings: ProjectSettings = {
   simpleComplexityAgent: { type: "cursor", model: null, cliCommand: null },
@@ -49,6 +58,10 @@ function renderWorkflowContent(overrides?: Partial<ProjectSettings>) {
 }
 
 describe("WorkflowSettingsContent", () => {
+  beforeEach(() => {
+    vi.mocked(api.projects.runSelfImprovement).mockReset();
+  });
+
   it("renders all three workflow cards and core controls", () => {
     renderWorkflowContent({
       selfImprovementLastRunAt: "2026-01-01T08:00:00.000Z",
@@ -118,5 +131,50 @@ describe("WorkflowSettingsContent", () => {
     fireEvent.blur(slider);
 
     expect(scheduleSaveOnBlur).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows Run now button in Continuous Improvement section", () => {
+    renderWorkflowContent();
+    expect(screen.getByTestId("self-improvement-run-now")).toBeInTheDocument();
+    expect(screen.getByTestId("self-improvement-run-now")).toHaveTextContent("Run now");
+  });
+
+  it("Run now click triggers run and shows loading then result", async () => {
+    let resolveRun: (v: { tasksCreated: number; skipped: string }) => void;
+    const runPromise = new Promise<{ tasksCreated: number; skipped: string }>((r) => {
+      resolveRun = r;
+    });
+    vi.mocked(api.projects.runSelfImprovement).mockReturnValue(runPromise);
+    renderWorkflowContent();
+
+    const runNowBtn = screen.getByTestId("self-improvement-run-now");
+    fireEvent.click(runNowBtn);
+
+    await waitFor(() => expect(runNowBtn).toHaveTextContent("Running…"));
+    expect(api.projects.runSelfImprovement).toHaveBeenCalledWith("proj-1");
+
+    resolveRun!({ tasksCreated: 0, skipped: "no_changes" });
+    await waitFor(() => {
+      expect(screen.getByTestId("self-improvement-run-now-message")).toHaveTextContent(
+        "No changes since last run"
+      );
+    });
+    expect(runNowBtn).toHaveTextContent("Run now");
+  });
+
+  it("Run now shows tasks-created message when run creates tasks", async () => {
+    vi.mocked(api.projects.runSelfImprovement).mockResolvedValue({
+      tasksCreated: 2,
+      runId: "si-123",
+    });
+    renderWorkflowContent();
+
+    fireEvent.click(screen.getByTestId("self-improvement-run-now"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("self-improvement-run-now-message")).toHaveTextContent(
+        "2 tasks created"
+      );
+    });
   });
 });

@@ -163,6 +163,21 @@ describe.skipIf(!projectsPostgresOk)("Projects REST API — spec/sketch phase ro
     expect(res.body.data[0].runId).toBe("si-test-1");
   });
 
+  it("POST /projects/:id/self-improvement/run returns run result (tasksCreated or skipped)", async () => {
+    const res = await request(app)
+      .post(`${API_PREFIX}/projects/${projectId}/self-improvement/run`)
+      .send();
+
+    expect(res.status).toBe(200);
+    expect(res.body.data).toBeDefined();
+    expect(typeof res.body.data.tasksCreated).toBe("number");
+    if (res.body.data.tasksCreated > 0) {
+      expect(res.body.data.runId).toBeDefined();
+    } else if (res.body.data.skipped) {
+      expect(["no_changes", "run_in_progress"]).toContain(res.body.data.skipped);
+    }
+  });
+
   it("POST /projects/:id/archive removes project from list, keeps .opensprint", async () => {
     const repoPath = path.join(tempDir, "my-project");
     const opensprintPath = path.join(repoPath, OPENSPRINT_DIR);

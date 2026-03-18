@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { ThemeProvider } from "../contexts/ThemeContext";
 import { DisplayPreferencesProvider } from "../contexts/DisplayPreferencesContext";
@@ -25,6 +26,7 @@ vi.mock("../api/client", () => ({
       updateSettings: (...args: unknown[]) => mockUpdateSettings(...args),
       getAgentsInstructions: (...args: unknown[]) => mockGetAgentsInstructions(...args),
       updateAgentsInstructions: (...args: unknown[]) => mockUpdateAgentsInstructions(...args),
+      runSelfImprovement: vi.fn().mockResolvedValue({ tasksCreated: 0, skipped: "no_changes" }),
     },
     env: {
       getKeys: (...args: unknown[]) => mockGetKeys(...args),
@@ -61,12 +63,15 @@ const mockSettings = {
 };
 
 function renderModal(ui: ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter>
-      <ThemeProvider>
-        <DisplayPreferencesProvider>{ui}</DisplayPreferencesProvider>
-      </ThemeProvider>
-    </MemoryRouter>
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <ThemeProvider>
+          <DisplayPreferencesProvider>{ui}</DisplayPreferencesProvider>
+        </ThemeProvider>
+      </MemoryRouter>
+    </QueryClientProvider>
   );
 }
 

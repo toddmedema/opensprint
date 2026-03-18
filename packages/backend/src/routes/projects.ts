@@ -12,6 +12,7 @@ import {
 import type { ProjectService } from "../services/project.service.js";
 import type { PlanService } from "../services/plan.service.js";
 import { orchestratorService } from "../services/orchestrator.service.js";
+import { selfImprovementService } from "../services/self-improvement.service.js";
 import { taskStore } from "../services/task-store.service.js";
 import type {
   ApiResponse,
@@ -116,6 +117,18 @@ export function createProjectsRouter(
         ...(r.runId && { runId: r.runId }),
       }));
       res.json({ data });
+    })
+  );
+
+  // POST /projects/:id/self-improvement/run — Manually trigger one self-improvement check (same flow as scheduled run)
+  router.post(
+    "/:id/self-improvement/run",
+    validateParams(projectIdParamSchema),
+    wrapAsync(async (req: Request<ProjectParams>, res) => {
+      const projectId = getProjectId(req);
+      await projectService.getProject(projectId);
+      const result = await selfImprovementService.run(projectId);
+      res.json({ data: result });
     })
   );
 
