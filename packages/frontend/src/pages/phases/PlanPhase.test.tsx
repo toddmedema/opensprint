@@ -325,7 +325,7 @@ describe("PlanPhase Redux integration", () => {
     );
 
     // Plan cards do not show task list container or task list UI
-    expect(screen.queryByTestId("plan-card-task-list")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("plan-list-view")).toBeInTheDocument();
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   });
 
@@ -1003,8 +1003,8 @@ describe("PlanPhase dynamic plan button label", () => {
       </MemoryRouter>,
       { wrapper: PlanPhaseWrapper }
     );
-    expect(await screen.findByTestId("plan-tasks-button")).toBeInTheDocument();
-    expect(screen.queryByTestId("execute-button")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("plan-list-generate-tasks")).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-list-execute")).not.toBeInTheDocument();
   });
 
   it("displays empty-state copy when plan sidebar has no tasks", async () => {
@@ -1053,8 +1053,8 @@ describe("PlanPhase dynamic plan button label", () => {
       </MemoryRouter>,
       { wrapper: PlanPhaseWrapper }
     );
-    expect(await screen.findByTestId("execute-button")).toBeInTheDocument();
-    expect(screen.queryByTestId("plan-tasks-button")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("plan-list-execute")).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-list-generate-tasks")).not.toBeInTheDocument();
   });
 
   it("hides Generate Tasks and Execute when plan status is building", async () => {
@@ -1076,8 +1076,8 @@ describe("PlanPhase dynamic plan button label", () => {
       { wrapper: PlanPhaseWrapper }
     );
     expect(await screen.findByText(/Archive Test Feature/i)).toBeInTheDocument();
-    expect(screen.queryByTestId("plan-tasks-button")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("execute-button")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("plan-list-generate-tasks")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("plan-list-execute")).not.toBeInTheDocument();
   });
 
   it("hides Generate Tasks button and shows only loading spinner during plan generation", async () => {
@@ -1102,7 +1102,7 @@ describe("PlanPhase dynamic plan button label", () => {
       { wrapper: PlanPhaseWrapper }
     );
     expect(await screen.findByText(/Archive Test Feature/i)).toBeInTheDocument();
-    expect(screen.queryByTestId("plan-tasks-button")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("plan-list-generate-tasks")).not.toBeInTheDocument();
     expect(screen.queryByTestId("plan-tasks-button-sidebar")).not.toBeInTheDocument();
     expect(screen.getByTestId("plan-tasks-loading")).toBeInTheDocument();
     expect(screen.getByTestId("plan-tasks-loading-sidebar")).toBeInTheDocument();
@@ -1131,8 +1131,8 @@ describe("PlanPhase dynamic plan button label", () => {
       </MemoryRouter>,
       { wrapper: PlanPhaseWrapper }
     );
-    expect(await screen.findByTestId("plan-tasks-button")).toBeInTheDocument();
-    expect(screen.queryByTestId("execute-button")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("plan-list-generate-tasks")).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-list-execute")).not.toBeInTheDocument();
 
     initialRender.unmount();
 
@@ -1148,8 +1148,8 @@ describe("PlanPhase dynamic plan button label", () => {
       </MemoryRouter>,
       { wrapper: PlanPhaseWrapper }
     );
-    expect(await screen.findByTestId("execute-button")).toBeInTheDocument();
-    expect(screen.queryByTestId("plan-tasks-button")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("plan-list-execute")).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-list-generate-tasks")).not.toBeInTheDocument();
   });
 
   it("button updates reactively: hides Generate Tasks and Execute when plan status → building", async () => {
@@ -1172,7 +1172,7 @@ describe("PlanPhase dynamic plan button label", () => {
       </MemoryRouter>,
       { wrapper: PlanPhaseWrapper }
     );
-    expect(await screen.findByTestId("execute-button")).toBeInTheDocument();
+    expect(await screen.findByTestId("plan-list-execute")).toBeInTheDocument();
 
     initialRender.unmount();
 
@@ -1189,8 +1189,8 @@ describe("PlanPhase dynamic plan button label", () => {
       </MemoryRouter>,
       { wrapper: PlanPhaseWrapper }
     );
-    expect(screen.queryByTestId("plan-tasks-button")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("execute-button")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("plan-list-generate-tasks")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("plan-list-execute")).not.toBeInTheDocument();
   });
 
   it("shows Execute when plan has delta tasks (taskCount > 0)", async () => {
@@ -1225,8 +1225,8 @@ describe("PlanPhase dynamic plan button label", () => {
       </MemoryRouter>,
       { wrapper: PlanPhaseWrapper }
     );
-    expect(await screen.findByTestId("execute-button")).toBeInTheDocument();
-    expect(screen.queryByTestId("plan-tasks-button")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("plan-list-execute")).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-list-generate-tasks")).not.toBeInTheDocument();
   });
 });
 
@@ -1635,7 +1635,7 @@ describe("PlanPhase planTasks thunk", () => {
       { wrapper: PlanPhaseWrapper }
     );
 
-    const planTasksBtn = await screen.findByTestId("plan-tasks-button");
+    const planTasksBtn = await screen.findByTestId("plan-list-generate-tasks");
     await user.click(planTasksBtn);
 
     await waitFor(() => {
@@ -1873,7 +1873,7 @@ describe("PlanPhase Execute loading and double-click prevention", () => {
     await user.click(executeBtn);
 
     expect(store.getState().plan.executingPlanId).toBe("archive-test-feature");
-    const btn = screen.getByTestId("execute-button");
+    const btn = screen.getByTestId("plan-list-execute");
     expect(btn).toBeDisabled();
 
     resolveDeps!({ prerequisitePlanIds: [] });
@@ -1939,7 +1939,7 @@ describe("PlanPhase Execute loading and double-click prevention", () => {
     const executeBtn = await screen.findByRole("button", { name: "Execute" });
     await user.click(executeBtn);
 
-    const btn = screen.getByTestId("execute-button");
+    const btn = screen.getByTestId("plan-list-execute");
     expect(btn).toBeDisabled();
   });
 
@@ -1974,11 +1974,11 @@ describe("PlanPhase Execute loading and double-click prevention", () => {
       });
     });
 
-    const inlineError = screen.getByTestId("execute-error-inline");
+    const inlineError = screen.getByTestId("plan-list-execute-error");
     expect(inlineError).toBeInTheDocument();
     expect(within(inlineError).getByText("Agent spawn failed")).toBeInTheDocument();
 
-    const btn = screen.getByTestId("execute-button");
+    const btn = screen.getByTestId("plan-list-execute");
     expect(btn).not.toBeDisabled();
   });
 
@@ -2005,7 +2005,7 @@ describe("PlanPhase Execute loading and double-click prevention", () => {
       expect(store.getState().plan.executingPlanId).toBeNull();
     });
 
-    const btn = screen.getByTestId("execute-button");
+    const btn = screen.getByTestId("plan-list-execute");
     expect(btn).not.toBeDisabled();
   });
 
@@ -2028,11 +2028,11 @@ describe("PlanPhase Execute loading and double-click prevention", () => {
 
     await user.click(await screen.findByRole("button", { name: "Execute" }));
     await waitFor(() => {
-      expect(screen.getByTestId("execute-error-inline")).toBeInTheDocument();
+      expect(screen.getByTestId("plan-list-execute-error")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /dismiss execute error/i }));
-    expect(screen.queryByTestId("execute-error-inline")).not.toBeInTheDocument();
+    await user.click(screen.getByTestId("plan-list-dismiss-error"));
+    expect(screen.queryByTestId("plan-list-execute-error")).not.toBeInTheDocument();
     expect(store.getState().plan.executeError).toBeNull();
   });
 
@@ -2113,7 +2113,7 @@ describe("PlanPhase plan sorting and status filter", () => {
     Element.prototype.scrollIntoView = vi.fn();
   });
 
-  it("sorts plans by status order: planning, building, in_review, complete", () => {
+  it("sorts plans by status order: planning, building, in_review, complete", async () => {
     const plans = [
       {
         ...basePlan,
@@ -2136,6 +2136,7 @@ describe("PlanPhase plan sorting and status filter", () => {
         status: "building" as const,
       },
     ];
+    mockPlansList.mockResolvedValue({ plans, edges: [] });
     const store = createStore(plans);
     render(
       <MemoryRouter>
@@ -2146,10 +2147,11 @@ describe("PlanPhase plan sorting and status filter", () => {
       { wrapper: PlanPhaseWrapper }
     );
 
-    const planningCard = screen.getByText("Planning Feature").closest('[role="button"]');
-    const buildingCard = screen.getByText("Building Feature").closest('[role="button"]');
-    const inReviewCard = screen.getByText("In Review Feature").closest('[role="button"]');
-    const doneCard = screen.getByText("Done Feature").closest('[role="button"]');
+    const listView = await screen.findByTestId("plan-list-view");
+    const planningCard = within(listView).getByText("Planning Feature").closest("button");
+    const buildingCard = within(listView).getByText("Building Feature").closest("button");
+    const inReviewCard = within(listView).getByText("In Review Feature").closest("button");
+    const doneCard = within(listView).getByText("Done Feature").closest("button");
     expect(planningCard).toBeInTheDocument();
     expect(buildingCard).toBeInTheDocument();
     expect(inReviewCard).toBeInTheDocument();
@@ -2192,9 +2194,9 @@ describe("PlanPhase plan sorting and status filter", () => {
     await waitFor(() => {
       expect(screen.getByText("In Review Feature")).toBeInTheDocument();
     });
-    const markCompleteBtn = screen.getByTestId("plan-mark-complete-button");
+    const markCompleteBtn = screen.getByTestId("plan-list-mark-complete");
     expect(markCompleteBtn).toBeInTheDocument();
-    expect(markCompleteBtn).toHaveTextContent(/^Mark complete$/);
+    expect(markCompleteBtn).toHaveTextContent(/^Approve$/);
     await user.click(markCompleteBtn);
     await waitFor(() => {
       expect(mockMarkPlanComplete).toHaveBeenCalledWith("proj-1", "in-review-feature");
@@ -2308,7 +2310,7 @@ describe("PlanPhase sendPlanMessage thunk", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders secondary top bar with filter chips and view toggle (Card/Graph)", async () => {
+  it("renders secondary top bar with filter chips and view toggle (List/Graph)", async () => {
     const store = createStore();
     render(
       <MemoryRouter>
@@ -2325,19 +2327,19 @@ describe("PlanPhase sendPlanMessage thunk", () => {
     expect(screen.getByRole("radio", { name: /building 1/i })).toBeInTheDocument();
     expect(screen.queryByRole("radio", { name: /complete 0/i })).not.toBeInTheDocument();
 
-    // View toggle: Card (default) and Graph
-    const cardView = screen.getByRole("radio", { name: /card view/i });
+    // View toggle: List (default) and Graph
+    const listView = screen.getByRole("radio", { name: /list view/i });
     const graphView = screen.getByRole("radio", { name: /graph view/i });
-    expect(cardView).toBeInTheDocument();
+    expect(listView).toBeInTheDocument();
     expect(graphView).toBeInTheDocument();
-    expect(cardView).toHaveAttribute("aria-checked", "true");
+    expect(listView).toHaveAttribute("aria-checked", "true");
     expect(graphView).toHaveAttribute("aria-checked", "false");
 
-    // Card mode shows Feature Plans
+    // List mode shows Feature Plans
     expect(screen.getByText("Feature Plans")).toBeInTheDocument();
   });
 
-  it("switches between Card and Graph view modes", async () => {
+  it("switches between List and Graph view modes", async () => {
     const store = createStore();
     const user = userEvent.setup();
     render(
@@ -2349,7 +2351,7 @@ describe("PlanPhase sendPlanMessage thunk", () => {
       { wrapper: PlanPhaseWrapper }
     );
 
-    // Default: Card mode
+    // Default: List mode
     expect(screen.getByText("Feature Plans")).toBeInTheDocument();
     expect(screen.queryByTestId("plan-graph-view")).not.toBeInTheDocument();
 
@@ -2360,9 +2362,9 @@ describe("PlanPhase sendPlanMessage thunk", () => {
     expect(screen.getByTestId("plan-graph-view")).toBeInTheDocument();
     expect(screen.queryByText("Feature Plans")).not.toBeInTheDocument();
 
-    // Switch back to Card mode
-    const cardView = screen.getByRole("radio", { name: /card view/i });
-    await user.click(cardView);
+    // Switch back to List mode
+    const listView = screen.getByRole("radio", { name: /list view/i });
+    await user.click(listView);
 
     expect(screen.getByText("Feature Plans")).toBeInTheDocument();
     expect(screen.queryByTestId("plan-graph-view")).not.toBeInTheDocument();
@@ -2386,9 +2388,9 @@ describe("PlanPhase sendPlanMessage thunk", () => {
     await user.click(graphView);
     expect(storage["opensprint.planView"]).toBe("graph");
 
-    // Switch to Card mode
-    const cardView = screen.getByRole("radio", { name: /card view/i });
-    await user.click(cardView);
+    // Switch to List mode (card view mode shows list)
+    const listView = screen.getByRole("radio", { name: /list view/i });
+    await user.click(listView);
     expect(storage["opensprint.planView"]).toBe("card");
   });
 
@@ -3116,7 +3118,9 @@ describe("PlanPhase Generate Plan", () => {
     await user.type(screen.getByTestId("feature-description-input"), "Second feature idea");
     await user.click(screen.getByTestId("generate-plan-button"));
 
-    expect(store.getState().plan.optimisticPlans).toHaveLength(2);
+    await waitFor(() => {
+      expect(store.getState().plan.optimisticPlans).toHaveLength(2);
+    });
     expect(mockGenerate).toHaveBeenCalledTimes(1);
 
     resolveFirst!({

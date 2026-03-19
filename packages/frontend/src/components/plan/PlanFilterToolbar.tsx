@@ -300,7 +300,7 @@ export function PlanFilterToolbar({
       <ViewToggle
         compact
         options={[
-          { value: "card", icon: <CardIcon className="w-3 h-3" />, label: "Card view" },
+          { value: "card", icon: <CardIcon className="w-3 h-3" />, label: "List view" },
           { value: "graph", icon: <GraphIcon className="w-3 h-3" />, label: "Graph view" },
         ]}
         value={viewMode}

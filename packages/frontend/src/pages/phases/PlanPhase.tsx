@@ -44,8 +44,8 @@ import { DependencyGraph } from "../../components/DependencyGraph";
 import { PlanDetailContent } from "../../components/plan/PlanDetailContent";
 import { AddPlanModal } from "../../components/plan/AddPlanModal";
 import { PlanFilterToolbar, type PlanViewMode } from "../../components/plan/PlanFilterToolbar";
+import { PlanListView } from "../../components/plan/PlanListView";
 import { AuditorRunsSection } from "../../components/plan/AuditorRunsSection";
-import { EpicCard } from "../../components/EpicCard";
 import { PhaseEmptyState, PhaseEmptyStateLogo } from "../../components/PhaseEmptyState";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
 import { ChatInput } from "../../components/ChatInput";
@@ -365,6 +365,26 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
     }
     return sortPlansByStatus(filtered);
   }, [plans, statusFilter, searchQuery]);
+
+  /** Plans to show in list view: optimistic (planning) first when filter includes planning, then filtered. */
+  const plansForListView = useMemo(() => {
+    const showOptimistic = statusFilter === "all" || statusFilter === "planning";
+    if (!showOptimistic || optimisticPlans.length === 0) return filteredAndSortedPlans;
+    const optimisticAsPlans: Plan[] = optimisticPlans.map((opt) => ({
+      metadata: {
+        planId: opt.title,
+        epicId: opt.tempId,
+        shippedAt: null,
+        complexity: "medium",
+      },
+      content: "",
+      status: "planning" as const,
+      taskCount: 0,
+      doneTaskCount: 0,
+      dependencyCount: 0,
+    }));
+    return [...optimisticAsPlans, ...filteredAndSortedPlans];
+  }, [filteredAndSortedPlans, optimisticPlans, statusFilter]);
 
   const plansEmpty = plans.length === 0 && optimisticPlans.length === 0;
   const { showSpinner: showPlansSpinner, showEmptyState: showPlansEmptyState } =
@@ -1018,65 +1038,29 @@ export function PlanPhase({ projectId, onNavigateToBuildTask }: PlanPhaseProps) 
                   </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {/* Optimistic cards first (top-left), visible when filter is all or planning */}
-                  {(statusFilter === "all" || statusFilter === "planning") &&
-                    optimisticPlans.map((opt) => {
-                      const optimisticPlan: Plan = {
-                        metadata: {
-                          planId: opt.title,
-                          epicId: opt.tempId,
-                          shippedAt: null,
-                          complexity: "medium",
-                        },
-                        content: "",
-                        status: "planning",
-                        taskCount: 0,
-                        doneTaskCount: 0,
-                        dependencyCount: 0,
-                      };
-                      return (
-                        <EpicCard
-                          key={opt.tempId}
-                          plan={optimisticPlan}
-                          isOptimistic
-                          executingPlanId={null}
-                          reExecutingPlanId={null}
-                          planTasksPlanIds={[]}
-                          onSelect={() => {}}
-                          onShip={() => {}}
-                          onPlanTasks={() => {}}
-                          onReship={() => {}}
-                        />
-                      );
-                    })}
-                  {filteredAndSortedPlans.map((plan) => (
-                    <EpicCard
-                      key={plan.metadata.planId}
-                      plan={plan}
-                      executingPlanId={executingPlanId}
-                      reExecutingPlanId={reExecutingPlanId}
-                      planTasksPlanIds={planTasksPlanIds}
-                      executeError={executeError}
-                      onSelect={() => handleSelectPlan(plan)}
-                      onShip={
-                        autoExecutePlans
-                          ? () => handleShipOrGenerateAndShip(plan)
-                          : () => handleShip(plan.metadata.planId, plan.lastExecutedVersionNumber)
-                      }
-                      onPlanTasks={() => handlePlanTasks(plan.metadata.planId)}
-                      onReship={() => handleReship(plan.metadata.planId)}
-                      onClearError={() => dispatch(clearExecuteError())}
-                      onGoToEvaluate={() => navigate(getProjectPhasePath(projectId, "eval"))}
-                      onMarkComplete={(planId) => markPlanCompleteMutation.mutate(planId)}
-                      isMarkCompletePending={
-                        markPlanCompleteMutation.isPending &&
-                        markPlanCompleteMutation.variables === plan.metadata.planId
-                      }
-                      autoExecutePlans={autoExecutePlans}
-                    />
-                  ))}
-                </div>
+                <PlanListView
+                  plans={plansForListView}
+                  selectedPlanId={selectedPlanId}
+                  executingPlanId={executingPlanId}
+                  reExecutingPlanId={reExecutingPlanId}
+                  planTasksPlanIds={planTasksPlanIds ?? []}
+                  executeError={executeError}
+                  onSelectPlan={handleSelectPlan}
+                  onShip={(planId, lastExecutedVersionNumber) => {
+                    const plan = plansForListView.find((p) => p.metadata.planId === planId);
+                    if (autoExecutePlans && plan) handleShipOrGenerateAndShip(plan);
+                    else handleShip(planId, lastExecutedVersionNumber);
+                  }}
+                  onPlanTasks={handlePlanTasks}
+                  onReship={handleReship}
+                  onClearError={() => dispatch(clearExecuteError())}
+                  onMarkComplete={(planId) => markPlanCompleteMutation.mutate(planId)}
+                  markCompletePendingPlanId={
+                    markPlanCompleteMutation.isPending ? markPlanCompleteMutation.variables ?? null : null
+                  }
+                  onGoToEvaluate={() => navigate(getProjectPhasePath(projectId, "eval"))}
+                  autoExecutePlans={autoExecutePlans}
+                />
               )}
             </>
           )}
