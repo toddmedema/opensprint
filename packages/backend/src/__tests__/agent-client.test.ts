@@ -463,6 +463,60 @@ describe("AgentClient", () => {
       expect(result.content).toContain("Cursor response");
     });
 
+    it("isolates Cursor invoke config dir when API key is resolved", async () => {
+      const fs = await import("fs/promises");
+      const path = await import("path");
+      const os = await import("os");
+      const baseConfigDir = path.join(os.tmpdir(), `cursor-invoke-config-${Date.now()}`);
+      await fs.mkdir(baseConfigDir, { recursive: true });
+
+      const originalCursorConfigDir = process.env.CURSOR_CONFIG_DIR;
+      process.env.CURSOR_CONFIG_DIR = baseConfigDir;
+
+      mockGetNextKey.mockResolvedValue({
+        key: "cursor-key-from-resolver",
+        keyId: "k1",
+        source: "global",
+      });
+
+      const mockChild = {
+        killed: false,
+        kill: vi.fn(),
+        stdout: {
+          on: vi.fn((_ev: string, fn: (d: Buffer) => void) => fn(Buffer.from("Cursor response"))),
+        },
+        stderr: { on: vi.fn() },
+        on: vi.fn((ev: string, fn: (code: number) => void) => {
+          if (ev === "close") setTimeout(() => fn(0), 0);
+          return { on: vi.fn() };
+        }),
+      };
+      mockSpawn.mockReturnValue(mockChild);
+
+      try {
+        const result = await client.invoke({
+          config: { type: "cursor", model: "gpt-4", cliCommand: null },
+          prompt: "Hello",
+          cwd: "/tmp",
+          projectId: "proj-123",
+        });
+
+        const spawnOptions = mockSpawn.mock.calls[0][2] as { env: NodeJS.ProcessEnv };
+        expect(spawnOptions.env.CURSOR_API_KEY).toBe("cursor-key-from-resolver");
+        expect(spawnOptions.env.CURSOR_CONFIG_DIR).toBeTruthy();
+        expect(spawnOptions.env.CURSOR_CONFIG_DIR).not.toBe(baseConfigDir);
+        expect(spawnOptions.env.CURSOR_CONFIG_DIR?.startsWith(baseConfigDir)).toBe(true);
+        expect(result.content).toContain("Cursor response");
+      } finally {
+        if (originalCursorConfigDir === undefined) {
+          delete process.env.CURSOR_CONFIG_DIR;
+        } else {
+          process.env.CURSOR_CONFIG_DIR = originalCursorConfigDir;
+        }
+        await fs.rm(baseConfigDir, { recursive: true, force: true });
+      }
+    });
+
     it("should recordLimitHit and retry on limit error when projectId provided", async () => {
       mockGetNextKey
         .mockResolvedValueOnce({ key: "key1", keyId: "k1", source: "project" })
@@ -1034,7 +1088,7 @@ describe("AgentClient", () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
     });
 
-    it("does not inject a temporary CURSOR_CONFIG_DIR when spawning Cursor with a resolved API key", async () => {
+    it("isolates Cursor config dir when spawning Cursor with a resolved API key", async () => {
       const fs = await import("fs/promises");
       const path = await import("path");
       const os = await import("os");
@@ -1043,9 +1097,11 @@ describe("AgentClient", () => {
       await fs.mkdir(taskDir, { recursive: true });
       const taskFilePath = path.join(taskDir, "prompt.md");
       await fs.writeFile(taskFilePath, "# Task\n\nCheck Cursor env", "utf-8");
+      const baseConfigDir = path.join(os.tmpdir(), `opensprint-cursor-config-test-${Date.now()}`);
+      await fs.mkdir(baseConfigDir, { recursive: true });
 
       const originalCursorConfigDir = process.env.CURSOR_CONFIG_DIR;
-      delete process.env.CURSOR_CONFIG_DIR;
+      process.env.CURSOR_CONFIG_DIR = baseConfigDir;
 
       mockGetNextKey.mockResolvedValue({ key: "cursor-key", keyId: "k1", source: "global" });
 
@@ -1081,13 +1137,16 @@ describe("AgentClient", () => {
 
         const spawnOptions = mockSpawn.mock.calls[0][2] as { env: NodeJS.ProcessEnv };
         expect(spawnOptions.env.CURSOR_API_KEY).toBe("cursor-key");
-        expect(spawnOptions.env.CURSOR_CONFIG_DIR).toBeUndefined();
+        expect(spawnOptions.env.CURSOR_CONFIG_DIR).toBeTruthy();
+        expect(spawnOptions.env.CURSOR_CONFIG_DIR).not.toBe(baseConfigDir);
+        expect(spawnOptions.env.CURSOR_CONFIG_DIR?.startsWith(baseConfigDir)).toBe(true);
       } finally {
         if (originalCursorConfigDir === undefined) {
           delete process.env.CURSOR_CONFIG_DIR;
         } else {
           process.env.CURSOR_CONFIG_DIR = originalCursorConfigDir;
         }
+        await fs.rm(baseConfigDir, { recursive: true, force: true });
         await fs.rm(tmpDir, { recursive: true, force: true });
       }
     });

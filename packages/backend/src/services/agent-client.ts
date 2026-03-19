@@ -1,6 +1,7 @@
 import { spawn, exec } from "child_process";
 import { readFileSync, openSync, closeSync, mkdirSync, appendFileSync } from "fs";
-import { open as fsOpen, stat as fsStat, readFile } from "fs/promises";
+import { open as fsOpen, stat as fsStat, readFile, rm as fsRm } from "fs/promises";
+import os from "os";
 import path from "path";
 import { promisify } from "util";
 import Anthropic from "@anthropic-ai/sdk";
@@ -96,6 +97,29 @@ function getCursorCommandInvocation(args: string[]): { command: string; args: st
   return {
     command: process.env.ComSpec?.trim() || "cmd.exe",
     args: ["/d", "/s", "/c", "agent", ...args],
+  };
+}
+
+function buildCursorSpawnEnv(
+  cursorApiKey?: string
+): { env: NodeJS.ProcessEnv; isolatedConfigDir: string | null } {
+  if (!cursorApiKey?.trim()) {
+    return { env: normalizeSpawnEnvPath({ ...process.env }), isolatedConfigDir: null };
+  }
+
+  const baseConfigDir =
+    process.env.CURSOR_CONFIG_DIR?.trim() || path.join(os.tmpdir(), "opensprint-cursor-config");
+  const runConfigToken = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const isolatedConfigDir = path.join(baseConfigDir, runConfigToken);
+  mkdirSync(isolatedConfigDir, { recursive: true });
+
+  return {
+    env: normalizeSpawnEnvPath({
+      ...process.env,
+      CURSOR_API_KEY: cursorApiKey,
+      CURSOR_CONFIG_DIR: isolatedConfigDir,
+    }),
+    isolatedConfigDir,
   };
 }
 
@@ -1627,14 +1651,13 @@ export class AgentClient {
       outputLogPath: outputLogPath ?? "(pipe)",
     });
 
-    const spawnEnvBase =
-      config.type === "cursor" && cursorEnvOverrides
-        ? {
-            ...process.env,
-            ...cursorEnvOverrides,
-          }
-        : { ...process.env };
-    const spawnEnv = normalizeSpawnEnvPath(spawnEnvBase);
+    const isolatedCursorEnv =
+      config.type === "cursor" && cursorEnvOverrides?.CURSOR_API_KEY
+        ? buildCursorSpawnEnv(cursorEnvOverrides.CURSOR_API_KEY)
+        : null;
+    const spawnEnv = isolatedCursorEnv
+      ? isolatedCursorEnv.env
+      : normalizeSpawnEnvPath({ ...process.env });
 
     const child = spawn(command, args, {
       cwd,
@@ -1688,6 +1711,11 @@ export class AgentClient {
       if (sigkillAfterTermTimer) {
         clearTimeout(sigkillAfterTermTimer);
         sigkillAfterTermTimer = null;
+      }
+      if (isolatedCursorEnv?.isolatedConfigDir) {
+        void fsRm(isolatedCursorEnv.isolatedConfigDir, { recursive: true, force: true }).catch(
+          () => {}
+        );
       }
     };
 
@@ -2244,15 +2272,25 @@ export class AgentClient {
 
       const cursorInvocation = getCursorCommandInvocation(args);
       assertCursorWindowsCommandLength(cursorInvocation.command, cursorInvocation.args);
+      const isolatedCursorEnv = buildCursorSpawnEnv(cursorApiKey);
       const child = spawn(cursorInvocation.command, cursorInvocation.args, {
         cwd,
-        env: normalizeSpawnEnvPath({ ...process.env, CURSOR_API_KEY: cursorApiKey || "" }),
+        env: isolatedCursorEnv.env,
         stdio: ["ignore", "pipe", "pipe"],
       });
 
       if (child.pid) {
         registerAgentProcess(child.pid);
       }
+
+      let cursorEnvCleaned = false;
+      const cleanupCursorEnv = () => {
+        if (cursorEnvCleaned || !isolatedCursorEnv.isolatedConfigDir) return;
+        cursorEnvCleaned = true;
+        void fsRm(isolatedCursorEnv.isolatedConfigDir, { recursive: true, force: true }).catch(
+          () => {}
+        );
+      };
 
       const timeout = setTimeout(() => {
         if (child.killed) return;
@@ -2307,6 +2345,7 @@ export class AgentClient {
 
       child.on("close", (code) => {
         clearTimeout(timeout);
+        cleanupCursorEnv();
         if (child.pid) unregisterAgentProcess(child.pid);
         const output = stdout.trim();
         const errOutput = stderr.trim();
@@ -2359,6 +2398,7 @@ export class AgentClient {
 
       child.on("error", (err) => {
         clearTimeout(timeout);
+        cleanupCursorEnv();
         if (child.pid) unregisterAgentProcess(child.pid);
         reject(err);
       });
