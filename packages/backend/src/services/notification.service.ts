@@ -13,7 +13,7 @@ import type { ApiBlockedErrorCode } from "@opensprint/shared";
 
 const log = createLogger("notification");
 
-export type NotificationSource = "plan" | "prd" | "execute" | "eval";
+export type NotificationSource = "plan" | "prd" | "execute" | "eval" | "self-improvement";
 
 export interface OpenQuestionItem {
   id: string;
@@ -30,10 +30,10 @@ export interface Notification {
   status: "open" | "resolved";
   createdAt: string;
   resolvedAt: string | null;
-  kind?: "open_question" | "api_blocked" | "hil_approval" | "agent_failed";
+  kind?: "open_question" | "api_blocked" | "hil_approval" | "agent_failed" | "self_improvement_approval";
   errorCode?: ApiBlockedErrorCode;
-  /** For hil_approval + scopeChanges: proposed PRD updates for diff display */
-  scopeChangeMetadata?: ScopeChangeMetadata;
+  /** For hil_approval + scopeChanges: proposed PRD updates for diff display. For self_improvement_approval: deep-link and extra payload. */
+  scopeChangeMetadata?: ScopeChangeMetadata | SelfImprovementApprovalPayload;
 }
 
 export interface CreateNotificationInput {
@@ -69,6 +69,12 @@ export interface ScopeChangeMetadata {
   scopeChangeProposedUpdates: ScopeChangeProposedUpdate[];
 }
 
+/** Payload for self_improvement_approval notifications (deep-link path and extra JSON). */
+export interface SelfImprovementApprovalPayload {
+  deepLinkPath?: string;
+  [key: string]: unknown;
+}
+
 export interface CreateHilApprovalInput {
   projectId: string;
   source: NotificationSource;
@@ -76,6 +82,14 @@ export interface CreateHilApprovalInput {
   description: string;
   category: string;
   scopeChangeMetadata?: ScopeChangeMetadata;
+}
+
+export interface CreateSelfImprovementApprovalInput {
+  projectId: string;
+  candidateId: string;
+  deepLinkPath?: string;
+  /** Extra JSON for project settings / self-improvement card (e.g. scope_change_metadata or metrics). */
+  payload?: Record<string, unknown>;
 }
 
 function generateId(): string {
@@ -90,12 +104,18 @@ export interface NotificationResponseItem {
 function rowToNotification(row: Record<string, unknown>): Notification {
   const questions: OpenQuestionItem[] = JSON.parse((row.questions as string) || "[]");
   const kind =
-    (row.kind as "open_question" | "api_blocked" | "hil_approval" | "agent_failed") ||
-    "open_question";
+    (row.kind as
+      | "open_question"
+      | "api_blocked"
+      | "hil_approval"
+      | "agent_failed"
+      | "self_improvement_approval") || "open_question";
   const errorCode = row.error_code as ApiBlockedErrorCode | undefined;
   const scopeChangeMetadataRaw = row.scope_change_metadata as string | undefined;
   const scopeChangeMetadata = scopeChangeMetadataRaw
-    ? (JSON.parse(scopeChangeMetadataRaw) as ScopeChangeMetadata)
+    ? (JSON.parse(scopeChangeMetadataRaw) as
+        | ScopeChangeMetadata
+        | SelfImprovementApprovalPayload)
     : undefined;
   const responsesRaw = row.responses as string | undefined;
   const responses: NotificationResponseItem[] | undefined = responsesRaw
@@ -330,6 +350,75 @@ export class NotificationService {
       resolvedAt: null,
       kind: "hil_approval",
       scopeChangeMetadata: input.scopeChangeMetadata,
+    };
+  }
+
+  /**
+   * Create a self-improvement approval notification (candidate awaiting promote/reject).
+   * Inserts into open_questions with kind self_improvement_approval, source 'self-improvement',
+   * source_id candidateId, and optional payload (deepLinkPath and extra JSON) for deep-link to
+   * project settings and self-improvement card.
+   * Can be called with (projectId, candidateId, deepLinkPath?) or with an input object.
+   */
+  async createSelfImprovementApproval(
+    projectIdOrInput: string | CreateSelfImprovementApprovalInput,
+    candidateId?: string,
+    deepLinkPath?: string
+  ): Promise<Notification> {
+    const input: CreateSelfImprovementApprovalInput =
+      typeof projectIdOrInput === "string"
+        ? { projectId: projectIdOrInput, candidateId: candidateId!, deepLinkPath }
+        : projectIdOrInput;
+    const id = "sia-" + crypto.randomBytes(4).toString("hex");
+    const createdAt = new Date().toISOString();
+    const questions: OpenQuestionItem[] = [
+      {
+        id: `q-${id}`,
+        text: "Approve or reject agent improvement candidate.",
+        createdAt,
+      },
+    ];
+    const payload: SelfImprovementApprovalPayload = {
+      ...(input.deepLinkPath ? { deepLinkPath: input.deepLinkPath } : {}),
+      ...(input.payload ?? {}),
+    };
+    const scopeChangeMetadataJson =
+      Object.keys(payload).length > 0 ? JSON.stringify(payload) : null;
+
+    await taskStore.runWrite(async (client) => {
+      await client.execute(
+        `INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind, scope_change_metadata)
+         VALUES ($1, $2, 'self-improvement', $3, $4, 'open', $5, 'self_improvement_approval', $6)`,
+        [
+          id,
+          input.projectId,
+          input.candidateId,
+          JSON.stringify(questions),
+          createdAt,
+          scopeChangeMetadataJson,
+        ]
+      );
+    });
+
+    log.info("Created self-improvement approval notification", {
+      id,
+      projectId: input.projectId,
+      candidateId: input.candidateId,
+    });
+
+    const scopeChangeMetadataOut =
+      Object.keys(payload).length > 0 ? (payload as SelfImprovementApprovalPayload) : undefined;
+    return {
+      id,
+      projectId: input.projectId,
+      source: "self-improvement",
+      sourceId: input.candidateId,
+      questions,
+      status: "open",
+      createdAt,
+      resolvedAt: null,
+      kind: "self_improvement_approval",
+      scopeChangeMetadata: scopeChangeMetadataOut,
     };
   }
 

@@ -1,6 +1,6 @@
 import type { AgentPhase, AgentRuntimeState, AgentSuspendReason, TestResults } from "./agent.js";
 import type { FeedbackItem } from "./feedback.js";
-import type { ScopeChangeMetadata, ScopeChangeProposedUpdate } from "./notification.js";
+import type { ScopeChangeMetadata, ScopeChangeProposedUpdate, SelfImprovementApprovalPayload } from "./notification.js";
 import type { KanbanColumn } from "./task.js";
 export interface TaskUpdatedEvent {
   type: "task.updated";
@@ -171,7 +171,7 @@ export interface NotificationAddedEvent {
   notification: {
     id: string;
     projectId: string;
-    source: "plan" | "prd" | "execute" | "eval";
+    source: "plan" | "prd" | "execute" | "eval" | "self-improvement";
     sourceId: string;
     questions: Array<{
       id: string;
@@ -181,9 +181,9 @@ export interface NotificationAddedEvent {
     status: "open" | "resolved";
     createdAt: string;
     resolvedAt: string | null;
-    kind?: "open_question" | "api_blocked" | "hil_approval" | "agent_failed";
+    kind?: "open_question" | "api_blocked" | "hil_approval" | "agent_failed" | "self_improvement_approval";
     errorCode?: "rate_limit" | "auth" | "out_of_credit" | "scope_compliance";
-    scopeChangeMetadata?: ScopeChangeMetadata;
+    scopeChangeMetadata?: ScopeChangeMetadata | SelfImprovementApprovalPayload;
   };
 }
 /** Emitted when a notification is resolved (user answered or dismissed) */
@@ -191,7 +191,7 @@ export interface NotificationResolvedEvent {
   type: "notification.resolved";
   notificationId: string;
   projectId: string;
-  source: "plan" | "prd" | "execute" | "eval";
+  source: "plan" | "prd" | "execute" | "eval" | "self-improvement";
   sourceId: string;
 }
 export interface PlanUpdatedEvent {

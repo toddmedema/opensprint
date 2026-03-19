@@ -825,7 +825,13 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
             onSectionChange={handleSectionChange}
             containerRef={prdContainerRef}
             questionIdBySection={questionIdBySection}
-            scopeChangeMetadata={architectureHilNotification?.scopeChangeMetadata}
+            scopeChangeMetadata={
+              architectureHilNotification?.kind === "hil_approval" &&
+              architectureHilNotification.scopeChangeMetadata &&
+              "scopeChangeProposedUpdates" in architectureHilNotification.scopeChangeMetadata
+                ? (architectureHilNotification.scopeChangeMetadata as import("@opensprint/shared").ScopeChangeMetadata)
+                : undefined
+            }
           />
 
           <PrdChangeLog

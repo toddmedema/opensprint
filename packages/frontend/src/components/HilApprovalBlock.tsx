@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import type { Notification } from "@opensprint/shared";
+import type { Notification, ScopeChangeMetadata } from "@opensprint/shared";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { queryKeys } from "../api/queryKeys";
@@ -30,9 +30,13 @@ export function HilApprovalBlock({
   const [loading, setLoading] = useState(false);
   const [diffErrorDismissed, setDiffErrorDismissed] = useState(false);
 
-  const hasPrdApprovalScope =
+  const scopeMeta =
     notification.kind === "hil_approval" &&
-    !!notification.scopeChangeMetadata?.scopeChangeProposedUpdates?.length;
+    notification.scopeChangeMetadata &&
+    "scopeChangeProposedUpdates" in notification.scopeChangeMetadata
+      ? (notification.scopeChangeMetadata as ScopeChangeMetadata)
+      : undefined;
+  const hasPrdApprovalScope = !!(scopeMeta?.scopeChangeProposedUpdates?.length);
 
   const { data: currentPrd } = useQuery({
     queryKey: queryKeys.prd.detail(projectId),
@@ -77,7 +81,7 @@ export function HilApprovalBlock({
   }, [projectId, notification.id, onResolved]);
 
   const description = notification.questions?.[0]?.text ?? "Approval required";
-  const proposedUpdates = notification.scopeChangeMetadata?.scopeChangeProposedUpdates ?? [];
+  const proposedUpdates = scopeMeta?.scopeChangeProposedUpdates ?? [];
   const hasPrdDiff = !hideDiffInBlock && proposedUpdates.length > 0;
   const useServerDiff = hasPrdDiff && proposedDiffSuccess && proposedDiffData?.diff;
   const showDiffError = hasPrdDiff && proposedDiffError && !diffErrorDismissed;
@@ -94,7 +98,7 @@ export function HilApprovalBlock({
         Approval required
       </h4>
       <p className="text-sm text-theme-text mb-3">{description}</p>
-      {hasPrdDiff && notification.scopeChangeMetadata && (
+      {hasPrdDiff && scopeMeta && (
         <div className="mb-4 rounded-lg border border-theme-border bg-theme-surface p-3 min-h-0 flex flex-col">
           <h5 className="text-xs font-medium text-theme-muted uppercase tracking-wide mb-2 shrink-0">
             Proposed PRD changes
@@ -124,7 +128,7 @@ export function HilApprovalBlock({
             ) : (
               <PrdDiffView
                 currentPrd={currentPrd ?? null}
-                scopeChangeMetadata={notification.scopeChangeMetadata}
+                scopeChangeMetadata={scopeMeta}
               />
             )}
           </div>

@@ -8,6 +8,7 @@ export const NOTIFICATION_SOURCE_LABELS: Record<NotificationSource, string> = {
   prd: "PRD/Sketch",
   execute: "Execute",
   eval: "Evaluate",
+  "self-improvement": "Self-improvement",
 };
 
 /** Human-readable labels for API-blocked error types. */

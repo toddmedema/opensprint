@@ -97,13 +97,13 @@ export interface PlanDecomposeGenerateOptionalDeps {
   notificationService?: {
     create: (opts: {
       projectId: string;
-      source: "plan" | "prd" | "execute" | "eval";
+      source: "plan" | "prd" | "execute" | "eval" | "self-improvement";
       sourceId: string;
       questions: Array<{ id: string; text: string; createdAt?: string }>;
     }) => Promise<{
       id: string;
       projectId: string;
-      source: "plan" | "prd" | "execute" | "eval";
+      source: "plan" | "prd" | "execute" | "eval" | "self-improvement";
       sourceId: string;
       questions: Array<{ id: string; text: string; createdAt?: string }>;
       status: "open" | "resolved";

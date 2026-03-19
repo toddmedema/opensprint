@@ -88,6 +88,98 @@ describe.skipIf(!notifPostgresOk)("NotificationService", () => {
     });
   });
 
+  describe("createSelfImprovementApproval", () => {
+    it("creates notification with kind self_improvement_approval and persists", async () => {
+      const result = await service.createSelfImprovementApproval({
+        projectId: "proj-sia",
+        candidateId: "cand-123",
+      });
+
+      expect(result.id).toMatch(/^sia-[0-9a-f]{8}$/);
+      expect(result.projectId).toBe("proj-sia");
+      expect(result.source).toBe("self-improvement");
+      expect(result.sourceId).toBe("cand-123");
+      expect(result.kind).toBe("self_improvement_approval");
+      expect(result.status).toBe("open");
+      expect(result.questions).toHaveLength(1);
+      expect(result.questions[0]!.text).toContain("Approve or reject");
+
+      const list = await service.listByProject("proj-sia");
+      expect(list).toHaveLength(1);
+      expect(list[0]!.id).toBe(result.id);
+      expect(list[0]!.kind).toBe("self_improvement_approval");
+      expect(list[0]!.source).toBe("self-improvement");
+      expect(list[0]!.sourceId).toBe("cand-123");
+    });
+
+    it("persists deepLinkPath and payload in scope_change_metadata", async () => {
+      const result = await service.createSelfImprovementApproval({
+        projectId: "proj-sia2",
+        candidateId: "cand-456",
+        deepLinkPath: "/projects/proj-sia2/settings?focus=self-improvement",
+        payload: { replaySampleSize: 10, baselineScore: 0.85 },
+      });
+
+      expect(result.scopeChangeMetadata).toEqual({
+        deepLinkPath: "/projects/proj-sia2/settings?focus=self-improvement",
+        replaySampleSize: 10,
+        baselineScore: 0.85,
+      });
+
+      const found = await service.getById("proj-sia2", result.id);
+      expect(found).not.toBeNull();
+      expect(found!.kind).toBe("self_improvement_approval");
+      expect(found!.scopeChangeMetadata).toEqual(result.scopeChangeMetadata);
+    });
+
+    it("getById returns self_improvement_approval notification", async () => {
+      const created = await service.createSelfImprovementApproval({
+        projectId: "proj-get-sia",
+        candidateId: "cand-789",
+      });
+
+      const found = await service.getById("proj-get-sia", created.id);
+      expect(found).not.toBeNull();
+      expect(found!.id).toBe(created.id);
+      expect(found!.kind).toBe("self_improvement_approval");
+      expect(found!.sourceId).toBe("cand-789");
+    });
+
+    it("resolve works for self_improvement_approval", async () => {
+      const created = await service.createSelfImprovementApproval({
+        projectId: "proj-resolve-sia",
+        candidateId: "cand-999",
+      });
+
+      const resolved = await service.resolve("proj-resolve-sia", created.id);
+      expect(resolved.status).toBe("resolved");
+      expect(resolved.resolvedAt).toBeTruthy();
+
+      const list = await service.listByProject("proj-resolve-sia");
+      expect(list).toHaveLength(0);
+    });
+
+    it("helper signature (projectId, candidateId, deepLinkPath?) creates and persists", async () => {
+      const result = await service.createSelfImprovementApproval(
+        "proj-helper",
+        "cand-helper",
+        "/projects/proj-helper/settings?focus=self-improvement"
+      );
+
+      expect(result.id).toMatch(/^sia-[0-9a-f]{8}$/);
+      expect(result.projectId).toBe("proj-helper");
+      expect(result.sourceId).toBe("cand-helper");
+      expect(result.kind).toBe("self_improvement_approval");
+      expect(result.scopeChangeMetadata).toEqual({
+        deepLinkPath: "/projects/proj-helper/settings?focus=self-improvement",
+      });
+
+      const list = await service.listByProject("proj-helper");
+      expect(list).toHaveLength(1);
+      expect(list[0]!.kind).toBe("self_improvement_approval");
+    });
+  });
+
   describe("createHilApproval", () => {
     it("creates HIL approval with scopeChangeMetadata and persists for diff display", async () => {
       const scopeChangeMetadata = {
