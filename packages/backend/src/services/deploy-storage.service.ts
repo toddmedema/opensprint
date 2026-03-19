@@ -135,7 +135,7 @@ export class DeployStorageService {
   async listHistory(projectId: string, limit: number = 50): Promise<DeploymentRecord[]> {
     const client = await taskStore.getDb();
     const rows = await client.query(
-      "SELECT * FROM deployments WHERE project_id = $1 ORDER BY started_at DESC LIMIT $2",
+      "SELECT * FROM deployments WHERE project_id = $1 ORDER BY started_at DESC, id DESC LIMIT $2",
       [projectId, limit]
     );
     return rows.map((r) => rowToRecord(r as Record<string, unknown>));

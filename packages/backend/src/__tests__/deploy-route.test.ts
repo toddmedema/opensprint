@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 import request from "supertest";
 import { orchestratorService } from "../services/orchestrator.service.js";
 import fs from "fs/promises";
@@ -77,6 +77,48 @@ vi.mock("../utils/eas-project-link.js", () => ({
 }));
 
 const execAsync = promisify(exec);
+const HISTORY_POLL_INTERVAL_MS = 100;
+/** Enough budget for slow CI when deploy completion is async (temp-dir detection edge cases). */
+const HISTORY_POLL_ATTEMPTS = 200;
+
+async function waitForHistory(
+  app: ReturnType<typeof createApp>,
+  projectId: string,
+  {
+    limit,
+    minRecords,
+  }: {
+    limit: number;
+    minRecords: number;
+  }
+) {
+  let historyRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/deliver/history?limit=${limit}`);
+  for (let i = 0; i < HISTORY_POLL_ATTEMPTS && (historyRes.body.data?.length ?? 0) < minRecords; i++) {
+    await new Promise((r) => setTimeout(r, HISTORY_POLL_INTERVAL_MS));
+    historyRes = await request(app).get(`${API_PREFIX}/projects/${projectId}/deliver/history?limit=${limit}`);
+  }
+  return historyRes;
+}
+
+async function getWithTransientParseRetry(
+  app: ReturnType<typeof createApp>,
+  route: string,
+  retries = 2
+) {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await request(app).get(route);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const isTransientParseError = message.includes("Parse Error: Expected HTTP/, RTSP/ or ICE/");
+      if (!isTransientParseError || attempt >= retries) {
+        throw err;
+      }
+      attempt += 1;
+    }
+  }
+}
 
 const deployRouteTaskStoreMod = await import("../services/task-store.service.js");
 const deployRoutePostgresOk =
@@ -402,16 +444,8 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
     it("should create deploy record with commitHash, target, mode from settings", async () => {
       const res = await request(app).post(`${API_PREFIX}/projects/${projectId}/deliver`);
       expect(res.status).toBe(202);
-      // Poll for history (deploy may run async when path check differs on macOS)
-      let historyRes = await request(app).get(
-        `${API_PREFIX}/projects/${projectId}/deliver/history?limit=1`
-      );
-      for (let i = 0; i < 20 && (historyRes.body.data?.length ?? 0) === 0; i++) {
-        await new Promise((r) => setTimeout(r, 100));
-        historyRes = await request(app).get(
-          `${API_PREFIX}/projects/${projectId}/deliver/history?limit=1`
-        );
-      }
+      // Poll for history because deploy completion can be async under load/CI.
+      const historyRes = await waitForHistory(app, projectId, { limit: 1, minRecords: 1 });
       expect(historyRes.status).toBe(200);
       expect(historyRes.body.data.length).toBeGreaterThan(0);
 
@@ -440,10 +474,7 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
       expect(res.status).toBe(202);
       expect(res.body.data.deployId).toBeDefined();
 
-      // Repo in temp dir: deploy is awaited before 202, so record exists immediately
-      const historyRes = await request(app).get(
-        `${API_PREFIX}/projects/${projectId}/deliver/history?limit=1`
-      );
+      const historyRes = await waitForHistory(app, projectId, { limit: 1, minRecords: 1 });
       expect(historyRes.body.data).toBeDefined();
       expect(historyRes.body.data.length).toBeGreaterThan(0);
       const record = historyRes.body.data[0];
@@ -548,15 +579,7 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
         .post(`${API_PREFIX}/projects/${projectId}/deliver/expo-deploy`)
         .send({ variant: "beta" });
 
-      let historyRes = await request(app).get(
-        `${API_PREFIX}/projects/${projectId}/deliver/history?limit=1`
-      );
-      for (let i = 0; i < 20 && (historyRes.body.data?.length ?? 0) === 0; i++) {
-        await new Promise((r) => setTimeout(r, 100));
-        historyRes = await request(app).get(
-          `${API_PREFIX}/projects/${projectId}/deliver/history?limit=1`
-        );
-      }
+      const historyRes = await waitForHistory(app, projectId, { limit: 1, minRecords: 1 });
       expect(historyRes.body.data?.length).toBeGreaterThan(0);
       expect(historyRes.body.data[0].target).toBe("staging");
       expect(historyRes.body.data[0].mode).toBe("expo");
@@ -571,15 +594,7 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
         .post(`${API_PREFIX}/projects/${projectId}/deliver/expo-deploy`)
         .send({ variant: "prod" });
 
-      let historyRes = await request(app).get(
-        `${API_PREFIX}/projects/${projectId}/deliver/history?limit=1`
-      );
-      for (let i = 0; i < 20 && (historyRes.body.data?.length ?? 0) === 0; i++) {
-        await new Promise((r) => setTimeout(r, 100));
-        historyRes = await request(app).get(
-          `${API_PREFIX}/projects/${projectId}/deliver/history?limit=1`
-        );
-      }
+      const historyRes = await waitForHistory(app, projectId, { limit: 1, minRecords: 1 });
       expect(historyRes.body.data?.length).toBeGreaterThan(0);
       expect(historyRes.body.data[0].target).toBe("production");
     });
@@ -603,7 +618,8 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
         .put(`${API_PREFIX}/projects/${projectId}/deliver/settings`)
         .send({ mode: "expo" });
 
-      const res = await request(app).get(
+      const res = await getWithTransientParseRetry(
+        app,
         `${API_PREFIX}/projects/${projectId}/deliver/expo-readiness`
       );
 
@@ -636,7 +652,8 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
         .put(`${API_PREFIX}/projects/${projectId}/deliver/settings`)
         .send({ mode: "expo" });
 
-      const res = await request(app).get(
+      const res = await getWithTransientParseRetry(
+        app,
         `${API_PREFIX}/projects/${projectId}/deliver/expo-readiness`
       );
 
@@ -648,7 +665,8 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
     });
 
     it("returns 400 when mode is not expo", async () => {
-      const res = await request(app).get(
+      const res = await getWithTransientParseRetry(
+        app,
         `${API_PREFIX}/projects/${projectId}/deliver/expo-readiness`
       );
 
@@ -659,7 +677,8 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
     });
 
     it("returns 404 when project not found", async () => {
-      const res = await request(app).get(
+      const res = await getWithTransientParseRetry(
+        app,
         `${API_PREFIX}/projects/nonexistent-id/deliver/expo-readiness`
       );
 
@@ -678,7 +697,8 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
         .put(`${API_PREFIX}/projects/${projectId}/deliver/settings`)
         .send({ mode: "expo" });
 
-      const res = await request(app).get(
+      const res = await getWithTransientParseRetry(
+        app,
         `${API_PREFIX}/projects/${projectId}/deliver/expo-readiness`
       );
 
@@ -698,38 +718,37 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
     it("should mark original deploy as rolled_back on success", { timeout: 30000 }, async () => {
       const res1 = await request(app).post(`${API_PREFIX}/projects/${projectId}/deliver`);
       expect(res1.status).toBe(202);
+      const firstDeployId = res1.body.data.deployId as string;
 
       const res2 = await request(app).post(`${API_PREFIX}/projects/${projectId}/deliver`);
       expect(res2.status).toBe(202);
+      const secondDeployId = res2.body.data.deployId as string;
 
-      // Poll for history until we have at least 2 records (handles timing under load)
-      let historyRes = await request(app).get(
-        `${API_PREFIX}/projects/${projectId}/deliver/history?limit=5`
-      );
-      for (let i = 0; i < 20 && (historyRes.body.data?.length ?? 0) < 2; i++) {
-        await new Promise((r) => setTimeout(r, 100));
-        historyRes = await request(app).get(
-          `${API_PREFIX}/projects/${projectId}/deliver/history?limit=5`
-        );
-      }
+      // Poll for history until both deploy records are visible.
+      let historyRes = await waitForHistory(app, projectId, { limit: 5, minRecords: 2 });
       expect(historyRes.body.data).toBeDefined();
       expect(historyRes.body.data.length).toBeGreaterThanOrEqual(
         2,
         "Need at least 2 deploy records for rollback test"
       );
-      const deployToRestore = historyRes.body.data[1];
-      const currentDeploy = historyRes.body.data[0];
+      const recordsNow = historyRes.body.data as { id: string }[];
+      const deployToRestore = recordsNow.find((r) => r.id === firstDeployId);
+      const currentDeploy = recordsNow.find((r) => r.id === secondDeployId);
+      expect(deployToRestore).toBeDefined();
+      expect(currentDeploy).toBeDefined();
+      const restoreId = deployToRestore!.id;
+      const currentId = currentDeploy!.id;
 
       const rollbackRes = await request(app).post(
-        `${API_PREFIX}/projects/${projectId}/deliver/${deployToRestore.id}/rollback`
+        `${API_PREFIX}/projects/${projectId}/deliver/${restoreId}/rollback`
       );
       expect(rollbackRes.status).toBe(202);
       const rollbackDeployId = rollbackRes.body.data.deployId;
 
       // Poll until rollback record reaches a terminal state (server may or may not await in-process)
       let records: { id: string; status?: string; rolledBackBy?: string }[] = [];
-      for (let i = 0; i < 20; i++) {
-        await new Promise((r) => setTimeout(r, 100));
+      for (let i = 0; i < HISTORY_POLL_ATTEMPTS; i++) {
+        await new Promise((r) => setTimeout(r, HISTORY_POLL_INTERVAL_MS));
         historyRes = await request(app).get(
           `${API_PREFIX}/projects/${projectId}/deliver/history?limit=5`
         );
@@ -743,7 +762,7 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
       expect(rollbackRecord).toBeDefined();
       expect(rollbackRecord!.status).toBe("success");
 
-      const rolledBackRecord = records.find((r) => r.id === currentDeploy.id);
+      const rolledBackRecord = records.find((r) => r.id === currentId);
       expect(rolledBackRecord).toBeDefined();
       expect(rolledBackRecord!.status).toBe("rolled_back");
       expect(rolledBackRecord!.rolledBackBy).toBe(rollbackDeployId);

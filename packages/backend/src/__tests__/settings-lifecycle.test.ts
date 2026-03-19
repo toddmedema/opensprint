@@ -299,31 +299,35 @@ describe("Settings API lifecycle", () => {
   });
 
   it("GET /api/v1/projects/:id/settings returns nextRunAt when selfImprovementFrequency is daily or weekly", async () => {
-    await request(app)
-      .put(`${API_PREFIX}/projects/${projectId}/settings`)
-      .send({ selfImprovementFrequency: "daily" });
+    // Fixed UTC instant avoids flaky expectations if the test crosses a UTC day boundary.
+    vi.useFakeTimers({ now: new Date("2025-06-11T14:30:00.000Z") });
+    try {
+      await request(app)
+        .put(`${API_PREFIX}/projects/${projectId}/settings`)
+        .send({ selfImprovementFrequency: "daily" });
 
-    const resDaily = await request(app).get(`${API_PREFIX}/projects/${projectId}/settings`);
-    expect(resDaily.status).toBe(200);
-    expect(resDaily.body.data.nextRunAt).toBeDefined();
-    expect(resDaily.body.data.nextRunAt).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/);
+      const resDaily = await request(app).get(`${API_PREFIX}/projects/${projectId}/settings`);
+      expect(resDaily.status).toBe(200);
+      expect(resDaily.body.data.nextRunAt).toBe("2025-06-12T00:00:00.000Z");
 
-    await request(app)
-      .put(`${API_PREFIX}/projects/${projectId}/settings`)
-      .send({ selfImprovementFrequency: "weekly" });
+      await request(app)
+        .put(`${API_PREFIX}/projects/${projectId}/settings`)
+        .send({ selfImprovementFrequency: "weekly" });
 
-    const resWeekly = await request(app).get(`${API_PREFIX}/projects/${projectId}/settings`);
-    expect(resWeekly.status).toBe(200);
-    expect(resWeekly.body.data.nextRunAt).toBeDefined();
-    expect(resWeekly.body.data.nextRunAt).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/);
+      const resWeekly = await request(app).get(`${API_PREFIX}/projects/${projectId}/settings`);
+      expect(resWeekly.status).toBe(200);
+      expect(resWeekly.body.data.nextRunAt).toBe("2025-06-15T00:00:00.000Z");
 
-    await request(app)
-      .put(`${API_PREFIX}/projects/${projectId}/settings`)
-      .send({ selfImprovementFrequency: "never" });
+      await request(app)
+        .put(`${API_PREFIX}/projects/${projectId}/settings`)
+        .send({ selfImprovementFrequency: "never" });
 
-    const resNever = await request(app).get(`${API_PREFIX}/projects/${projectId}/settings`);
-    expect(resNever.status).toBe(200);
-    expect(resNever.body.data.nextRunAt).toBeUndefined();
+      const resNever = await request(app).get(`${API_PREFIX}/projects/${projectId}/settings`);
+      expect(resNever.status).toBe(200);
+      expect(resNever.body.data.nextRunAt).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("PUT /api/v1/projects/:id/settings with new field names succeeds", async () => {

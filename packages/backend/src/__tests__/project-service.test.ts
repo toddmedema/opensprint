@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
@@ -858,35 +858,38 @@ describe("ProjectService", () => {
   });
 
   it("getSettingsWithRuntimeState returns nextRunAt when frequency is daily or weekly", async () => {
-    const repoPath = path.join(tempDir, "next-run-at");
-    const project = await projectService.createProject({
-      name: "Next Run At",
-      repoPath,
-      simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
-      deployment: { mode: "custom" },
-      hilConfig: DEFAULT_HIL_CONFIG,
-    });
+    vi.useFakeTimers({ now: new Date("2025-06-11T14:30:00.000Z") });
+    try {
+      const repoPath = path.join(tempDir, "next-run-at");
+      const project = await projectService.createProject({
+        name: "Next Run At",
+        repoPath,
+        simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+        complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
+        deployment: { mode: "custom" },
+        hilConfig: DEFAULT_HIL_CONFIG,
+      });
 
-    await projectService.updateSettings(project.id, { selfImprovementFrequency: "daily" });
-    const withDaily = await projectService.getSettingsWithRuntimeState(project.id);
-    expect(withDaily.nextRunAt).toBeDefined();
-    expect(withDaily.nextRunAt).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/);
+      await projectService.updateSettings(project.id, { selfImprovementFrequency: "daily" });
+      const withDaily = await projectService.getSettingsWithRuntimeState(project.id);
+      expect(withDaily.nextRunAt).toBe("2025-06-12T00:00:00.000Z");
 
-    await projectService.updateSettings(project.id, { selfImprovementFrequency: "weekly" });
-    const withWeekly = await projectService.getSettingsWithRuntimeState(project.id);
-    expect(withWeekly.nextRunAt).toBeDefined();
-    expect(withWeekly.nextRunAt).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/);
+      await projectService.updateSettings(project.id, { selfImprovementFrequency: "weekly" });
+      const withWeekly = await projectService.getSettingsWithRuntimeState(project.id);
+      expect(withWeekly.nextRunAt).toBe("2025-06-15T00:00:00.000Z");
 
-    await projectService.updateSettings(project.id, { selfImprovementFrequency: "never" });
-    const withNever = await projectService.getSettingsWithRuntimeState(project.id);
-    expect(withNever.nextRunAt).toBeUndefined();
+      await projectService.updateSettings(project.id, { selfImprovementFrequency: "never" });
+      const withNever = await projectService.getSettingsWithRuntimeState(project.id);
+      expect(withNever.nextRunAt).toBeUndefined();
 
-    await projectService.updateSettings(project.id, {
-      selfImprovementFrequency: "after_each_plan",
-    });
-    const withPlan = await projectService.getSettingsWithRuntimeState(project.id);
-    expect(withPlan.nextRunAt).toBeUndefined();
+      await projectService.updateSettings(project.id, {
+        selfImprovementFrequency: "after_each_plan",
+      });
+      const withPlan = await projectService.getSettingsWithRuntimeState(project.id);
+      expect(withPlan.nextRunAt).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("uses validationTimeoutMsOverride when set and validates bounds", async () => {

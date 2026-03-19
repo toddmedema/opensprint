@@ -563,7 +563,7 @@ export class NotificationService {
     const row = await client.queryOne(
       `SELECT responses FROM open_questions
        WHERE project_id = $1 AND source = $2 AND source_id = $3 AND status = 'resolved' AND kind = 'open_question' AND responses IS NOT NULL AND responses != ''
-       ORDER BY resolved_at DESC LIMIT 1`,
+       ORDER BY resolved_at DESC, created_at DESC, id DESC LIMIT 1`,
       [projectId, source, sourceId]
     );
     if (!row?.responses) return null;

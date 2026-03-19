@@ -612,6 +612,8 @@ describe.skipIf(!notifPostgresOk)("NotificationService", () => {
       await service.resolve("proj-g", first.id, {
         responses: [{ questionId: "q1", answer: "First answer" }],
       });
+      // Ensure resolution timestamps are distinct across fast CI workers.
+      await new Promise((resolve) => setTimeout(resolve, 2));
 
       const second = await service.create({
         projectId: "proj-g",
