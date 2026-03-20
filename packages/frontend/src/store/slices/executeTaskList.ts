@@ -37,7 +37,7 @@ export const taskListReducers = {
       kanbanColumn?: KanbanColumn;
       mergePausedUntil?: string | null;
       mergeWaitingOnMain?: boolean;
-      mergeGateState?: MergeGateState;
+      mergeGateState?: MergeGateState | null;
     }>
   ) {
     ensureTasksState(state);
@@ -75,7 +75,13 @@ export const taskListReducers = {
       if (description !== undefined) task.description = description;
       if (mergePausedUntil !== undefined) task.mergePausedUntil = mergePausedUntil;
       if (mergeWaitingOnMain !== undefined) task.mergeWaitingOnMain = mergeWaitingOnMain;
-      if (mergeGateState !== undefined) task.mergeGateState = mergeGateState;
+      if (mergeGateState !== undefined) {
+        if (mergeGateState === null) {
+          delete task.mergeGateState;
+        } else {
+          task.mergeGateState = mergeGateState;
+        }
+      }
     }
   },
   /** Live-update: add task from WebSocket task.created event. */

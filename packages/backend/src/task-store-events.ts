@@ -2,7 +2,7 @@
  * Wires TaskStoreService to emit task create/update/close events via a broadcast callback.
  * Called from index.ts at startup; tests can call with mock broadcast to verify events.
  */
-import type { TaskEventPayload, ServerEvent } from "@opensprint/shared";
+import type { TaskEventPayload, ServerEvent, MergeGateState } from "@opensprint/shared";
 import { mapStatusToKanban, type KanbanColumn } from "@opensprint/shared";
 import { getMergeStageFromIssue } from "./services/task-store-helpers.js";
 import {
@@ -23,25 +23,67 @@ function storedTaskToKanbanColumn(task: StoredTask): KanbanColumn {
   return mapStatusToKanban(task.status as string);
 }
 
-function getMergePausedFromTask(task: StoredTask): {
-  mergePausedUntil?: string;
-  mergeWaitingOnMain?: boolean;
-  mergeGateState?: TaskEventPayload["mergeGateState"];
+/**
+ * Authoritative merge-related fields for WebSocket payloads. Always include on task.updated /
+ * full task snapshots so live clients can clear stale merge-gate UI when baseline pause lifts
+ * or merge stage changes (omitting keys left old `mergeGateState` stuck on the client).
+ */
+export function getAuthoritativeMergeWsFields(task: StoredTask): {
+  mergePausedUntil: string | null;
+  mergeWaitingOnMain: boolean;
+  mergeGateState: MergeGateState | null;
 } {
   const record = task as Record<string, unknown>;
-  const mergePausedUntil = getMergePausedUntilFromIssue(record) ?? undefined;
-  const mergeGateState = deriveMergeGateStateFromIssue(record) ?? undefined;
+  const mergePausedUntil = getMergePausedUntilFromIssue(record);
+  const mergeGateState = deriveMergeGateStateFromIssue(record);
   return {
-    ...(mergePausedUntil ? { mergePausedUntil, mergeWaitingOnMain: true } : {}),
-    ...(mergeGateState ? { mergeGateState } : {}),
+    mergePausedUntil,
+    mergeWaitingOnMain: mergePausedUntil != null,
+    mergeGateState,
   };
+}
+
+/** Full `task.updated` payload from DB state — use for WS so clients always get merge fields (null clears stale UI). */
+export function buildTaskUpdatedServerEvent(task: StoredTask): ServerEvent {
+  const merge = getAuthoritativeMergeWsFields(task);
+  return {
+    type: "task.updated",
+    taskId: task.id,
+    status: task.status as string,
+    assignee: task.assignee ?? null,
+    priority: task.priority,
+    blockReason: (task as StoredTask & { block_reason?: string }).block_reason ?? null,
+    title: task.title,
+    description: task.description ?? undefined,
+    kanbanColumn: storedTaskToKanbanColumn(task),
+    mergePausedUntil: merge.mergePausedUntil,
+    mergeWaitingOnMain: merge.mergeWaitingOnMain,
+    mergeGateState: merge.mergeGateState,
+  } as ServerEvent;
+}
+
+/**
+ * Re-fetch task and broadcast authoritative `task.updated` (merge gate / pause fields included).
+ * Use after ad-hoc WS events or when callers need the same shape as TaskStoreService emits.
+ */
+export async function broadcastAuthoritativeTaskUpdated(
+  broadcast: BroadcastFn,
+  projectId: string,
+  taskId: string
+): Promise<void> {
+  try {
+    const task = await taskStore.show(projectId, taskId);
+    broadcast(projectId, buildTaskUpdatedServerEvent(task));
+  } catch {
+    // Missing task or DB error — skip broadcast
+  }
 }
 
 function storedTaskToPayload(task: StoredTask): TaskEventPayload {
   const parentDep = (task.dependencies ?? []).find((d) => d.type === "parent-child");
   const parentId = parentDep?.depends_on_id ?? null;
   const source = (task as { source?: string }).source;
-  const mergePaused = getMergePausedFromTask(task);
+  const merge = getAuthoritativeMergeWsFields(task);
   return {
     id: task.id,
     title: task.title,
@@ -57,11 +99,9 @@ function storedTaskToPayload(task: StoredTask): TaskEventPayload {
     parentId: parentId ?? null,
     ...(source ? { source } : {}),
     kanbanColumn: storedTaskToKanbanColumn(task),
-    ...(mergePaused.mergePausedUntil ? { mergePausedUntil: mergePaused.mergePausedUntil } : {}),
-    ...(mergePaused.mergeWaitingOnMain
-      ? { mergeWaitingOnMain: mergePaused.mergeWaitingOnMain }
-      : {}),
-    ...(mergePaused.mergeGateState ? { mergeGateState: mergePaused.mergeGateState } : {}),
+    mergePausedUntil: merge.mergePausedUntil,
+    mergeWaitingOnMain: merge.mergeWaitingOnMain,
+    mergeGateState: merge.mergeGateState,
   } as TaskEventPayload;
 }
 
@@ -76,23 +116,7 @@ export function wireTaskStoreEvents(broadcast: BroadcastFn): void {
         task: storedTaskToPayload(task),
       });
     } else if (changeType === "update") {
-      const mergePaused = getMergePausedFromTask(task);
-      broadcast(projectId, {
-        type: "task.updated",
-        taskId: task.id,
-        status: task.status as string,
-        assignee: task.assignee ?? null,
-        priority: task.priority,
-        blockReason: (task as StoredTask & { block_reason?: string }).block_reason ?? null,
-        title: task.title,
-        description: task.description ?? undefined,
-        kanbanColumn: storedTaskToKanbanColumn(task),
-        ...(mergePaused.mergePausedUntil ? { mergePausedUntil: mergePaused.mergePausedUntil } : {}),
-        ...(mergePaused.mergeWaitingOnMain
-          ? { mergeWaitingOnMain: mergePaused.mergeWaitingOnMain }
-          : {}),
-        ...(mergePaused.mergeGateState ? { mergeGateState: mergePaused.mergeGateState } : {}),
-      } as ServerEvent);
+      broadcast(projectId, buildTaskUpdatedServerEvent(task));
     } else {
       broadcast(projectId, {
         type: "task.closed",

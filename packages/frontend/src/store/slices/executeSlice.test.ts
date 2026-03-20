@@ -471,6 +471,102 @@ describe("executeSlice", () => {
       expect(task.mergeWaitingOnMain).toBe(false);
     });
 
+    it("taskUpdated clears merge gate fields when server sends null/false (baseline unblocked)", () => {
+      const store = createStore();
+      store.dispatch(
+        setTasks([
+          {
+            ...mockTask,
+            kanbanColumn: "waiting_to_merge",
+            mergeGateState: "blocked_on_baseline",
+            mergePausedUntil: "2099-01-01T00:00:00Z",
+            mergeWaitingOnMain: true,
+          },
+        ])
+      );
+      store.dispatch(
+        taskUpdated({
+          taskId: "task-1",
+          status: "open",
+          kanbanColumn: "waiting_to_merge",
+          mergePausedUntil: null,
+          mergeWaitingOnMain: false,
+          mergeGateState: null,
+        })
+      );
+      const task = selectTasks(store.getState())[0];
+      expect(task.mergeGateState).toBeUndefined();
+      expect(task.mergePausedUntil).toBeNull();
+      expect(task.mergeWaitingOnMain).toBe(false);
+    });
+
+    it("setExecuteStatusPayload sweeps expired baseline merge pause (live execute.status ticks)", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2025-06-15T12:00:00.000Z"));
+      const store = createStore();
+      store.dispatch(
+        setTasks([
+          {
+            ...mockTask,
+            kanbanColumn: "waiting_to_merge",
+            mergeGateState: "blocked_on_baseline",
+            mergePausedUntil: "2025-06-15T11:59:00.000Z",
+            mergeWaitingOnMain: true,
+          },
+        ])
+      );
+      store.dispatch(setExecuteStatusPayload({ queueDepth: 0, baselineStatus: "healthy" }));
+      const task = selectTasks(store.getState())[0];
+      expect(task.mergeGateState).toBeUndefined();
+      expect(task.mergePausedUntil).toBeNull();
+      expect(task.mergeWaitingOnMain).toBe(false);
+      vi.useRealTimers();
+    });
+
+    it("setExecuteStatusPayload keeps active baseline pause", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2025-06-15T12:00:00.000Z"));
+      const store = createStore();
+      store.dispatch(
+        setTasks([
+          {
+            ...mockTask,
+            kanbanColumn: "waiting_to_merge",
+            mergeGateState: "blocked_on_baseline",
+            mergePausedUntil: "2025-06-15T13:00:00.000Z",
+            mergeWaitingOnMain: true,
+          },
+        ])
+      );
+      store.dispatch(setExecuteStatusPayload({ queueDepth: 0 }));
+      const task = selectTasks(store.getState())[0];
+      expect(task.mergeGateState).toBe("blocked_on_baseline");
+      expect(task.mergePausedUntil).toBe("2025-06-15T13:00:00.000Z");
+      vi.useRealTimers();
+    });
+
+    it("setExecuteStatusPayload does not clear non-baseline mergeGateState when pause expired", () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2025-06-15T12:00:00.000Z"));
+      const store = createStore();
+      store.dispatch(
+        setTasks([
+          {
+            ...mockTask,
+            kanbanColumn: "waiting_to_merge",
+            mergeGateState: "candidate_fix_needed",
+            mergePausedUntil: "2025-06-15T11:00:00.000Z",
+            mergeWaitingOnMain: false,
+          },
+        ])
+      );
+      store.dispatch(setExecuteStatusPayload({ queueDepth: 0 }));
+      const task = selectTasks(store.getState())[0];
+      expect(task.mergeGateState).toBe("candidate_fix_needed");
+      expect(task.mergePausedUntil).toBeNull();
+      vi.useRealTimers();
+    });
+
     it("taskCreated adds task from WebSocket payload (live-update)", () => {
       const store = createStore();
       store.dispatch(

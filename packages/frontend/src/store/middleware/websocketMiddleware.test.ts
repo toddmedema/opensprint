@@ -1044,6 +1044,47 @@ describe("websocketMiddleware", () => {
       });
     });
 
+    it("task.updated with authoritative null merge fields clears stuck merge-gate state", async () => {
+      const store = createStore();
+      const { setTasks } = await import("../slices/executeSlice");
+      store.dispatch(
+        setTasks([
+          {
+            id: "task-1",
+            title: "Task 1",
+            kanbanColumn: "waiting_to_merge",
+            mergeGateState: "blocked_on_baseline" as const,
+            mergePausedUntil: "2099-01-01T00:00:00Z",
+            mergeWaitingOnMain: true,
+            priority: 1,
+            assignee: null,
+            epicId: "epic-1",
+          },
+        ])
+      );
+      store.dispatch(wsConnect({ projectId: "proj-1" }));
+      wsInstance!.simulateOpen();
+      await vi.waitFor(() => store.getState().websocket.connected);
+
+      wsInstance!.simulateMessage({
+        type: "task.updated",
+        taskId: "task-1",
+        status: "open",
+        assignee: null,
+        kanbanColumn: "waiting_to_merge",
+        mergePausedUntil: null,
+        mergeWaitingOnMain: false,
+        mergeGateState: null,
+      });
+
+      await vi.waitFor(() => {
+        const task = selectTasks(store.getState()).find((t) => t.id === "task-1");
+        expect(task?.mergeGateState).toBeUndefined();
+        expect(task?.mergePausedUntil).toBeNull();
+        expect(task?.mergeWaitingOnMain).toBe(false);
+      });
+    });
+
     it("dispatches updateFeedbackItem on feedback.updated when event includes item (no refetch)", async () => {
       const store = createStore();
       store.dispatch(wsConnect({ projectId: "proj-1" }));

@@ -7,6 +7,27 @@ import { fetchExecuteStatus } from "./executeThunks";
 import { ensureAsync } from "./executeThunks";
 import { createAsyncHandlers } from "../asyncHelpers";
 
+/**
+ * When `merge_quality_gate_paused_until` has passed, the server derives null pause / no
+ * `blocked_on_baseline` without a DB write — so no `task.updated` is emitted. Orchestrator
+ * `execute.status` ticks still arrive; sweep in-memory tasks so merge-gate UI clears live.
+ */
+export function sweepExpiredBaselineMergePause(state: ExecuteState): void {
+  const { tasksById } = state;
+  if (!tasksById || Object.keys(tasksById).length === 0) return;
+  const now = Date.now();
+  for (const task of Object.values(tasksById)) {
+    if (!task?.mergePausedUntil) continue;
+    const ms = Date.parse(task.mergePausedUntil);
+    if (!Number.isFinite(ms) || ms > now) continue;
+    task.mergePausedUntil = null;
+    task.mergeWaitingOnMain = false;
+    if (task.mergeGateState === "blocked_on_baseline") {
+      delete task.mergeGateState;
+    }
+  }
+}
+
 export const statusReducers = {
   setOrchestratorRunning(state: ExecuteState, action: PayloadAction<boolean>) {
     state.orchestratorRunning = action.payload;
@@ -64,6 +85,7 @@ export const statusReducers = {
     if (p.selfImprovementRunInProgress !== undefined) {
       state.selfImprovementRunInProgress = p.selfImprovementRunInProgress;
     }
+    sweepExpiredBaselineMergePause(state);
   },
   setSelfImprovementRunInProgress(state: ExecuteState, action: PayloadAction<boolean>) {
     state.selfImprovementRunInProgress = action.payload;
@@ -119,6 +141,7 @@ export function addStatusExtraReducers(builder: ActionReducerMapBuilder<ExecuteS
       if (payload.selfImprovementRunInProgress !== undefined) {
         state.selfImprovementRunInProgress = payload.selfImprovementRunInProgress;
       }
+      sweepExpiredBaselineMergePause(state);
     },
     onRejected: (state, action) => {
       state.error = action.error?.message ?? "Failed to load execute status";

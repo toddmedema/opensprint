@@ -254,9 +254,15 @@ export function taskEventPayloadToTask(p: TaskEventPayload): Task {
     completedAt: p.status === "closed" ? p.updated_at : null,
     ...("source" in p && p.source ? { source: p.source } : {}),
   };
-  if (p.mergePausedUntil !== undefined) task.mergePausedUntil = p.mergePausedUntil;
-  if (p.mergeWaitingOnMain !== undefined) task.mergeWaitingOnMain = p.mergeWaitingOnMain;
-  if (p.mergeGateState !== undefined) task.mergeGateState = p.mergeGateState as MergeGateState;
+  if ("mergePausedUntil" in p) task.mergePausedUntil = p.mergePausedUntil ?? null;
+  if ("mergeWaitingOnMain" in p) task.mergeWaitingOnMain = p.mergeWaitingOnMain;
+  if ("mergeGateState" in p) {
+    if (p.mergeGateState == null) {
+      delete task.mergeGateState;
+    } else {
+      task.mergeGateState = p.mergeGateState as MergeGateState;
+    }
+  }
   return task;
 }
 

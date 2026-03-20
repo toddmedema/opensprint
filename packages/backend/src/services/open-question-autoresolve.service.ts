@@ -149,13 +149,7 @@ ${questionTexts.map((t) => `- ${t}`).join("\n")}`;
           source,
           sourceId,
         });
-        broadcastToProject(projectId, {
-          type: "task.updated",
-          taskId: sourceId,
-          projectId,
-          status: "open",
-          assignee: null,
-        });
+        // taskStore.update above already emits authoritative task.updated (merge gate fields included)
         log.info("Auto-resolved execute open question with Dreamer answer", {
           projectId,
           notificationId,

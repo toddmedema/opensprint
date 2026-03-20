@@ -34,12 +34,21 @@ export interface TaskUpdatedEvent {
   description?: string;
   /** Optional; server-computed kanban column (e.g. waiting_to_merge). */
   kanbanColumn?: KanbanColumn;
-  /** Optional; when merge is paused due to baseline quality gates on main (ISO string). */
-  mergePausedUntil?: string;
-  /** Optional; true when merge is waiting on main. */
+  /**
+   * Baseline merge pause (ISO string). `null` clears a prior pause on live clients.
+   * Omitted for legacy/hand-built events that are not merge-authoritative.
+   */
+  mergePausedUntil?: string | null;
+  /**
+   * True while merge is waiting on main. `false` clears a prior wait.
+   * Omitted for legacy/hand-built events that are not merge-authoritative.
+   */
   mergeWaitingOnMain?: boolean;
-  /** Optional; server-derived merge gate state for waiting_to_merge tasks. */
-  mergeGateState?: MergeGateState;
+  /**
+   * Server-derived merge gate state. `null` clears a prior state (e.g. baseline unblocked).
+   * Omitted for legacy/hand-built events that are not merge-authoritative.
+   */
+  mergeGateState?: MergeGateState | null;
 }
 
 /** Minimal task payload for create/close events (relevant task data) */
@@ -60,12 +69,12 @@ export interface TaskEventPayload {
   source?: string;
   /** Optional; server-computed kanban column (e.g. waiting_to_merge). */
   kanbanColumn?: KanbanColumn;
-  /** Optional; when merge is paused due to baseline quality gates on main (ISO string). */
-  mergePausedUntil?: string;
-  /** Optional; true when merge is waiting on main. */
+  /** Baseline merge pause; `null` when not paused. */
+  mergePausedUntil?: string | null;
+  /** True while waiting on main; `false` when not. */
   mergeWaitingOnMain?: boolean;
-  /** Optional; server-derived merge gate state for waiting_to_merge tasks. */
-  mergeGateState?: MergeGateState;
+  /** Derived merge gate state; `null` when none applies. */
+  mergeGateState?: MergeGateState | null;
 }
 
 export interface TaskCreatedEvent {

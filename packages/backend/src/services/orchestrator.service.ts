@@ -42,6 +42,7 @@ import { FeedbackService } from "./feedback.service.js";
 import { notificationService } from "./notification.service.js";
 import { maybeAutoRespond } from "./open-question-autoresolve.service.js";
 import { broadcastToProject } from "../websocket/index.js";
+import { broadcastAuthoritativeTaskUpdated } from "../task-store-events.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { extractJsonFromAgentResponse } from "../utils/json-extract.js";
 import { assertSafeTaskWorktreePath } from "../utils/path-safety.js";
@@ -459,12 +460,7 @@ export class OrchestratorService {
           slot.phase = "review";
           slot.assignee = t.assignee;
         }
-        broadcastToProject(projectId, {
-          type: "task.updated",
-          taskId: t.taskId,
-          status: "in_progress",
-          assignee: t.assignee,
-        });
+        void broadcastAuthoritativeTaskUpdated(broadcastToProject, projectId, t.taskId);
         broadcastToProject(
           projectId,
           this.buildExecuteStatusPayload(projectId, state, { queueDepth: t.queueDepth })
