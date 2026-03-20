@@ -17,6 +17,7 @@ describe("desktop release workflow", () => {
     expect(workflow).toContain("APPLE_API_KEY_ID");
     expect(workflow).toContain("APPLE_API_ISSUER");
     expect(workflow).toContain("APPLE_API_KEY_P8");
+    expect(workflow).toContain("OPENSPRINT_NOTARY_TIMEOUT");
     expect(workflow).toContain("Missing required GitHub secret");
   });
 

@@ -43,6 +43,7 @@
     "appId": "com.opensprint.app",
     "productName": "Open Sprint",
     "electronVersion": "41.0.2",
+    "afterSign": "./scripts/after-sign-notarize.js",
     "compression": "maximum",
     "directories": {
       "output": "dist"
@@ -67,6 +68,7 @@
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.inherit.plist",
       "hardenedRuntime": true,
+      "notarize": false,
       "target": [
         "dmg"
       ],

@@ -2,7 +2,7 @@
 
 Open Sprint macOS releases are distributed outside the Mac App Store, so Gatekeeper expects the app bundle to be signed with a `Developer ID Application` certificate and notarized by Apple before a new Mac will open it normally.
 
-The GitHub Actions workflow at `.github/workflows/release-desktop.yml` is the supported release path for public macOS builds. It signs the `.app`, notarizes and staples it, validates the result, and then uploads the DMG to the GitHub Release.
+The GitHub Actions workflow at `.github/workflows/release-desktop.yml` is the supported release path for public macOS builds. It signs the `.app`, runs the repository `afterSign` notarization hook, staples the app before DMG packaging, validates the result, and then uploads the DMG to the GitHub Release.
 
 ## Required Apple Assets
 
@@ -61,6 +61,8 @@ During the macOS job, the workflow writes `APPLE_API_KEY_P8` to a temporary `.p8
 5. The job validates the built `.app` before uploading `packages/electron/dist/*.dmg` to the GitHub Release.
 
 If any required secret is missing, the macOS release job fails before dependency install or packaging work begins.
+
+The notarization hook uses `xcrun notarytool submit --wait --progress` so the GitHub Actions logs show Apple notarization progress instead of appearing frozen. By default it waits up to `30m`; override that by setting `OPENSPRINT_NOTARY_TIMEOUT` in the macOS job environment if Apple processing is unusually slow.
 
 ## Verification Commands
 
