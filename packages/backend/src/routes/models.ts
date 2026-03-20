@@ -190,11 +190,28 @@ async function fetchOpenAIModels(apiKey: string): Promise<ModelOption[]> {
 }
 
 async function fetchCursorModels(apiKey: string): Promise<ModelOption[]> {
-  const response = await fetch(CURSOR_MODELS_URL, {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(CURSOR_MODELS_URL, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const isTimeout =
+      err instanceof Error &&
+      (err.name === "TimeoutError" || /aborted|timeout/i.test(msg));
+    throw new AppError(
+      502,
+      ErrorCodes.CURSOR_API_ERROR,
+      isTimeout
+        ? "Cursor API request timed out. Check your network connection."
+        : `Cursor API request failed: ${msg}`,
+      { cause: msg }
+    );
+  }
 
   if (!response.ok) {
     const text = await response.text();

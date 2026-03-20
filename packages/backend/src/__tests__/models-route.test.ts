@@ -66,6 +66,7 @@ describe("Models API", () => {
   describe("GET /models", () => {
     it("returns empty array when provider is claude and no API key", async () => {
       delete process.env.ANTHROPIC_API_KEY;
+      mockGetNextKey.mockResolvedValue(null);
       const res = await request(app).get(`${API_PREFIX}/models?provider=claude`);
       expect(res.status).toBe(200);
       expect(res.body.data).toEqual([]);
@@ -74,6 +75,7 @@ describe("Models API", () => {
 
     it("returns empty array when provider is cursor and no API key", async () => {
       delete process.env.CURSOR_API_KEY;
+      mockGetNextKey.mockResolvedValue(null);
       const res = await request(app).get(`${API_PREFIX}/models?provider=cursor`);
       expect(res.status).toBe(200);
       expect(res.body.data).toEqual([]);
