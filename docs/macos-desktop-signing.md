@@ -80,6 +80,22 @@ Expected results:
 - `spctl` reports the app as accepted
 - `xcrun stapler validate` succeeds
 
+## macOS Development: "Electron quit unexpectedly"
+
+When running `npm run start:desktop` on a Mac, the first time (or after a fresh `npm install`) the Electron binary from `node_modules` can trigger a system crash dialog: **"Electron quit unexpectedly."** This is usually due to macOS Gatekeeper or quarantine/provenance on the downloaded binary.
+
+The root `start:desktop` script runs `scripts/fix-macos-electron-dev.sh` automatically. That script, on Darwin only:
+
+1. Removes extended attributes (e.g. `com.apple.quarantine`, `com.apple.provenance`) from `node_modules/electron/dist/Electron.app`.
+2. Re-applies ad-hoc code signing so the system allows the app to run.
+
+If you still see the crash after that:
+
+- Run the fix manually once: `bash scripts/fix-macos-electron-dev.sh`, then run `npm run start:desktop` again.
+- Ensure you are not overriding `PATH` or running from a environment that changes how `codesign` or `xattr` behave.
+
+This fix is for **development only**. Release builds are signed and notarized in CI as described above.
+
 ## Temporary Workaround for Older Unsigned DMGs
 
 Older DMGs that were published before CI signing and notarization are still expected to trigger Gatekeeper warnings on a new Mac.

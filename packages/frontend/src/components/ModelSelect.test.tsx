@@ -62,19 +62,18 @@ describe("ModelSelect", () => {
     expect(onChange).toHaveBeenCalledWith("claude-3-opus");
   });
 
-  it("shows Auto for cursor when no model is selected", async () => {
+  it("shows Select model for cursor when no model is selected", async () => {
     mockModelsList.mockResolvedValue([{ id: "gpt-4", displayName: "gpt-4" }]);
     const onChange = vi.fn();
 
     render(<ModelSelect provider="cursor" value={null} onChange={onChange} />);
 
-    const select = await screen.findByRole("combobox", { name: /model selection/i });
-    expect(screen.getByRole("option", { name: "Auto" })).toBeInTheDocument();
-    expect(select).toHaveValue("");
-    expect(onChange).not.toHaveBeenCalled();
+    await screen.findByRole("combobox", { name: /model selection/i });
+    expect(screen.getByRole("option", { name: "Select model" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Auto" })).not.toBeInTheDocument();
   });
 
-  it("maps the cursor Auto option back to null", async () => {
+  it("maps the cursor empty option back to null", async () => {
     mockModelsList.mockResolvedValue([{ id: "gpt-4", displayName: "gpt-4" }]);
     const onChange = vi.fn();
 
@@ -86,10 +85,10 @@ describe("ModelSelect", () => {
     expect(onChange).toHaveBeenCalledWith(null);
   });
 
-  it("shows Auto for cursor when list is empty", async () => {
+  it("shows No models available for cursor when list is empty", async () => {
     mockModelsList.mockResolvedValue([]);
     render(<ModelSelect provider="cursor" value={null} onChange={() => {}} />);
-    await screen.findByRole("option", { name: "Auto" });
+    await screen.findByRole("option", { name: "No models available" });
   });
 
   it("fetches models for lmstudio with baseUrl and shows loading state", () => {

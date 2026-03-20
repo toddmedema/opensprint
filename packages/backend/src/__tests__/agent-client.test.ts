@@ -353,7 +353,7 @@ describe("AgentClient", () => {
         }
       });
 
-      it("should map cursor null model to explicit auto", async () => {
+      it("should omit --model for Cursor when model is null", async () => {
         const mockChild = {
           killed: false,
           kill: vi.fn(),
@@ -375,9 +375,7 @@ describe("AgentClient", () => {
         });
 
         const args = mockSpawn.mock.calls[0][1] as string[];
-        const modelIndex = args.indexOf("--model");
-        expect(modelIndex).toBeGreaterThanOrEqual(0);
-        expect(args[modelIndex + 1]).toBe("auto");
+        expect(args).not.toContain("--model");
         expect(result.content).toContain("Cursor response");
       });
 
@@ -1069,7 +1067,7 @@ describe("AgentClient", () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
     });
 
-    it("should pass --model auto for Cursor task-file spawn when model is null", async () => {
+    it("should omit --model for Cursor task-file spawn when model is null", async () => {
       const fs = await import("fs/promises");
       const path = await import("path");
       const os = await import("os");
@@ -1093,9 +1091,7 @@ describe("AgentClient", () => {
       client.spawnWithTaskFile(config, taskFilePath, tmpDir, vi.fn(), vi.fn());
 
       const args = mockSpawn.mock.calls[0][1] as string[];
-      const modelIndex = args.indexOf("--model");
-      expect(modelIndex).toBeGreaterThanOrEqual(0);
-      expect(args[modelIndex + 1]).toBe("auto");
+      expect(args).not.toContain("--model");
 
       await fs.rm(tmpDir, { recursive: true, force: true });
     });
@@ -2094,11 +2090,11 @@ describe("AgentClient", () => {
       await fs.rm(tmpDir, { recursive: true, force: true });
     });
 
-    it("falls back to model auto when Cursor slow-pool capacity error is returned", async () => {
+    it("does not retry when Cursor slow-pool capacity error is returned (auto no longer supported)", async () => {
       const fs = await import("fs/promises");
       const path = await import("path");
       const os = await import("os");
-      const tmpDir = path.join(os.tmpdir(), `agent-client-cursor-auto-fallback-${Date.now()}`);
+      const tmpDir = path.join(os.tmpdir(), `agent-client-cursor-slow-pool-${Date.now()}`);
       const taskDir = path.join(tmpDir, ".opensprint/active/bd-a3f8.1");
       await fs.mkdir(taskDir, { recursive: true });
       const taskFilePath = path.join(taskDir, "prompt.md");
@@ -2107,10 +2103,10 @@ describe("AgentClient", () => {
 
       mockGetNextKey.mockResolvedValue({ key: "cursor-key-1", keyId: "k1", source: "global" });
 
-      const makeChild = (exitCode: number, pid: number) => ({
+      const makeChild = (exitCode: number) => ({
         killed: false,
         kill: vi.fn(),
-        pid,
+        pid: 10201,
         stdout: { on: vi.fn(), removeAllListeners: vi.fn() },
         stderr: { on: vi.fn(), removeAllListeners: vi.fn() },
         on: vi.fn((ev: string, fn: (code?: number) => void) => {
@@ -2120,7 +2116,7 @@ describe("AgentClient", () => {
         removeAllListeners: vi.fn(),
       });
 
-      mockSpawn.mockReturnValueOnce(makeChild(1, 10201)).mockReturnValueOnce(makeChild(0, 10202));
+      mockSpawn.mockReturnValue(makeChild(1));
 
       const onOutput = vi.fn();
       const onExit = vi.fn();
@@ -2143,19 +2139,15 @@ describe("AgentClient", () => {
 
       await vi.waitFor(
         () => {
-          expect(onExit).toHaveBeenCalledWith(0);
+          expect(onExit).toHaveBeenCalledWith(1);
         },
         { timeout: 4000 }
       );
 
-      const firstArgs = mockSpawn.mock.calls[0]?.[1] as string[];
-      const secondArgs = mockSpawn.mock.calls[1]?.[1] as string[];
-      const firstModelIndex = firstArgs.indexOf("--model");
-      const secondModelIndex = secondArgs.indexOf("--model");
-      expect(firstArgs[firstModelIndex + 1]).toBe("composer-1.5");
-      expect(secondArgs[secondModelIndex + 1]).toBe("auto");
-      expect(mockRecordLimitHit).not.toHaveBeenCalled();
-      expect(onOutput).toHaveBeenCalledWith(expect.stringContaining("Retrying with model auto"));
+      expect(mockSpawn).toHaveBeenCalledTimes(1);
+      const args = mockSpawn.mock.calls[0]?.[1] as string[];
+      const modelIndex = args.indexOf("--model");
+      expect(args[modelIndex + 1]).toBe("composer-1.5");
 
       await fs.rm(tmpDir, { recursive: true, force: true });
     });

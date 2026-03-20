@@ -18,8 +18,6 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          body: |
-            Desktop release. Download the DMG (macOS), Windows installer (exe), or AppImage (Linux) below.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -37,7 +37,7 @@ Implement the steps below in order. Each step is self-contained so another agent
   1. Checkout the repo (default checkout).
   2. Run `softprops/action-gh-release` with:
      - `tag_name: ${{ github.ref_name }}`
-     - `body`: short static body, e.g. "Desktop release. Download the DMG (macOS), Windows installer (exe), or AppImage (Linux) below."
+     - Do not pass `body` (so release notes can be edited on GitHub after the release is created).
      - Do not pass `files` (release is created with no assets).
 - **Purpose**: Create the release once so the three build jobs can upload to it without races.
 

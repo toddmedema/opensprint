@@ -32,7 +32,7 @@ export function getMessageBasedHint(message: string): string | null {
     (message.includes("not available") && message.includes("slow pool")) ||
     (message.includes("Composer") && message.includes("switch to Auto"))
   ) {
-    return "Switch the model to Auto in Project Settings → Agent (or in Cursor), then retry the task.";
+    return "Choose a different model in Project Settings → Agent (or in Cursor), then retry the task.";
   }
   return null;
 }

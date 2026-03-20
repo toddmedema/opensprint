@@ -68,9 +68,6 @@ const RESULT_POLL_MS = (() => {
 })();
 const CURSOR_TRANSIENT_RETRY_LIMIT = 5;
 const CURSOR_TRANSIENT_RETRY_BACKOFF_MS = 600;
-const CURSOR_SLOW_POOL_MESSAGE =
-  "Increase limits for faster responses Composer 1.5 is not available in the slow pool. Please switch to Auto.";
-
 /** ANSI codes for colorizing agent role in logs (only when stdout is a TTY) */
 const ANSI_BOLD_CYAN = "\x1b[1;96m";
 const ANSI_RESET = "\x1b[0m";
@@ -450,16 +447,12 @@ function safeGeminiText(obj: { text?: string | (() => string) }): string {
 }
 
 /**
- * Cursor CLI supports an explicit "auto" model id.
- * When Open Sprint stores model=null (UI "Auto"), pass --model auto to avoid
- * inheriting a user-level default model from Cursor CLI config.
+ * Returns the Cursor model to pass to the CLI, or null to omit --model (Cursor uses its default).
+ * The Cursor API no longer supports "auto"; when no model is set we omit --model.
  */
-function resolveCursorModel(model: string | null | undefined): string {
-  return typeof model === "string" && model.trim().length > 0 ? model : "auto";
-}
-
-function isCursorSlowPoolError(output: string): boolean {
-  return /not available in the slow pool|increase limits for faster responses/i.test(output);
+function resolveCursorModel(model: string | null | undefined): string | null {
+  const v = typeof model === "string" ? model.trim() : "";
+  return v.length > 0 ? v : null;
 }
 
 function isCursorTransientSpawnError(output: string): boolean {
@@ -861,7 +854,6 @@ export class AgentClient {
     let innerHandle: { kill: () => void; pid: number | null } | null = null;
     let lastApiErrorKind: RotatableApiErrorKind | null = null;
     let transientRetryCount = 0;
-    let autoModelFallbackUsed = false;
     let lastSpawnStartedAt = 0;
     const handle: { kill: () => void; pid: number | null } = {
       get pid() {
@@ -871,9 +863,6 @@ export class AgentClient {
         innerHandle?.kill();
       },
     };
-
-    const currentCursorConfig = (): AgentConfig =>
-      autoModelFallbackUsed ? { ...config, model: "auto" } : config;
 
     const delay = (ms: number): Promise<void> =>
       new Promise((resolve) => {
@@ -892,7 +881,7 @@ export class AgentClient {
         return;
       }
       const { key, keyId, source } = resolved;
-      const spawnConfig = currentCursorConfig();
+      const spawnConfig = config;
 
       const stderrCollector = { stderr: "" };
 
@@ -927,17 +916,6 @@ export class AgentClient {
               .map((message) => `[Agent error: ${message}]\n`)
               .join("")
           );
-        }
-
-        if (
-          !autoModelFallbackUsed &&
-          resolveCursorModel(config.model) !== "auto" &&
-          isCursorSlowPoolError(combinedOutput)
-        ) {
-          autoModelFallbackUsed = true;
-          transientRetryCount = 0;
-          onOutput(`[Agent error: ${CURSOR_SLOW_POOL_MESSAGE} Retrying with model auto.]\n`);
-          return trySpawn();
         }
 
         const elapsedMs = Date.now() - lastSpawnStartedAt;
@@ -1705,7 +1683,8 @@ export class AgentClient {
           cwd,
           "--trust",
         ];
-        cursorArgs.push("--model", resolveCursorModel(config.model));
+        const cursorModel = resolveCursorModel(config.model);
+        if (cursorModel !== null) cursorArgs.push("--model", cursorModel);
         cursorArgs.push(taskContent);
         const cursorInvocation = getCursorCommandInvocation(cursorArgs);
         assertCursorWindowsCommandLength(cursorInvocation.command, cursorInvocation.args);
@@ -2272,7 +2251,7 @@ export class AgentClient {
     const cwd = options.cwd || process.cwd();
     const cursorModel = resolveCursorModel(config.model);
     const args = ["-p", "--force", "--trust", "--mode", "ask", fullPrompt];
-    args.splice(1, 0, "--model", cursorModel);
+    if (cursorModel !== null) args.splice(1, 0, "--model", cursorModel);
 
     const triedKeyIds = new Set<string>();
     let lastError: unknown;

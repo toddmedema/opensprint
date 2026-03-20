@@ -139,7 +139,7 @@ You can run Open Sprint as a desktop app (Electron) or build installable artifac
 **Linux runtime prerequisites (Electron):** Install common desktop libs before running `npm run start:desktop` or launching the Linux AppImage (for example on Ubuntu/Debian: `sudo apt-get install -y libgtk-3-0 libnss3 libasound2 libxss1 libxtst6 libatspi2.0-0 libsecret-1-0 libnotify4 libcups2 libgbm1`).  
 For AppImage specifically, install FUSE2 (`libfuse2`) or AppImage may fail to launch.
 
-- **Run desktop in development:** From the repo root, run `npm run start:desktop`. This builds the app once, then launches Electron. The window loads the backend-served UI at `http://127.0.0.1:3100`. Only one instance runs; relaunching focuses the existing window.
+- **Run desktop in development:** From the repo root, run `npm run start:desktop`. This builds the app once, then launches Electron. The window loads the backend-served UI at `http://127.0.0.1:3100`. Only one instance runs; relaunching focuses the existing window. On macOS, if you see "Electron quit unexpectedly" during startup, the script runs a fix automatically; see [docs/macos-desktop-signing.md](docs/macos-desktop-signing.md#macos-development-electron-quit-unexpectedly) for details.
 - **Build installers:** Run `npm run build:desktop`. This builds shared, backend, and frontend, prepares a self-contained backend and frontend in `packages/electron/desktop-resources/`, then runs electron-builder. Output goes to `packages/electron/dist/` (for example, `.dmg` on macOS, `.exe` installer on Windows, `AppImage` on Linux). The packaged app runs the backend with Electron's embedded Node runtime.
 
 ## Publishing Desktop Releases

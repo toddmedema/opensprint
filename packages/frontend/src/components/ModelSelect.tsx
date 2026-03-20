@@ -37,7 +37,6 @@ export function ModelSelect({
   const [models, setModels] = useState<ModelOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const supportsAuto = provider === "cursor";
 
   useEffect(() => {
     if (!FETCH_PROVIDERS.includes(provider as (typeof FETCH_PROVIDERS)[number])) {
@@ -65,12 +64,11 @@ export function ModelSelect({
   useEffect(() => {
     if (models.length === 0) return;
     const hasValue = value != null && value.length > 0;
-    if (supportsAuto && !hasValue) return;
     const valueInList = hasValue && models.some((m) => m.id === value);
     if (!hasValue || !valueInList) {
       onChange(models[0].id);
     }
-  }, [models, value, onChange, supportsAuto]);
+  }, [models, value, onChange]);
 
   if (provider === "custom") {
     return (
@@ -145,11 +143,7 @@ export function ModelSelect({
         disabled={disabled}
         aria-label="Model selection"
       >
-        {supportsAuto ? (
-          <option value="">Auto</option>
-        ) : (
-          <option value="">No models available</option>
-        )}
+        <option value="">No models available</option>
       </select>
     );
   }
@@ -167,7 +161,7 @@ export function ModelSelect({
       disabled={disabled}
       aria-label="Model selection"
     >
-      <option value="">{supportsAuto ? "Auto" : "Select model"}</option>
+      <option value="">Select model</option>
       {hasValue && !valueInList && <option value={value!}>{value}</option>}
       {models.map((m) => (
         <option key={m.id} value={m.id}>

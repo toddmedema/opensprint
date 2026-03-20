@@ -42,7 +42,7 @@
     "build:desktop": "npm run build && node packages/electron/scripts/prepare-desktop-resources.js && npm run build -w packages/electron",
     "build:desktop:win": "npm run build && npm run build:win -w packages/electron",
     "build:desktop:win:arm64": "npm run build && npm run build:win:arm64 -w packages/electron",
-    "start:desktop": "bash scripts/check-linux-desktop-prereqs.sh && npm run build && node packages/electron/scripts/prepare-desktop-resources.js && npm run start -w packages/electron"
+    "start:desktop": "bash scripts/check-linux-desktop-prereqs.sh && bash scripts/fix-macos-electron-dev.sh && npm run build && node packages/electron/scripts/prepare-desktop-resources.js && npm run start -w packages/electron"
   },
   "engines": {
     "node": "24.x"
