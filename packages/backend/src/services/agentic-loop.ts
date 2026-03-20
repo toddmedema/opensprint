@@ -14,6 +14,16 @@ import {
   toGeminiTools,
   type AgentToolsContext,
 } from "./agent-tools.js";
+import {
+  buildOpenAIPromptCacheKey,
+  extractAnthropicCacheUsage,
+  extractOpenAICacheUsage,
+  fingerprintJson,
+  fingerprintPrompt,
+  toAnthropicTextBlock,
+  type AgentCacheUsageMetrics,
+  type PromptCacheContext,
+} from "../utils/prompt-cache.js";
 
 const DEFAULT_MAX_TURNS = 100;
 const SYSTEM_PROMPT =
@@ -29,6 +39,7 @@ export interface AgenticLoopOptions {
 export interface AgenticLoopResult {
   content: string;
   turnCount: number;
+  cacheMetrics: AgentCacheUsageMetrics[];
 }
 
 /** Tool call from the model (provider-agnostic). */
@@ -44,6 +55,7 @@ interface AdapterResponse {
   toolCalls: ToolCall[];
   /** Opaque state to pass back when sending tool results (e.g. last message id / content). */
   state?: unknown;
+  cacheMetrics?: AgentCacheUsageMetrics;
 }
 
 /** Adapter interface: stateful so it can send tool results after an assistant turn with tool_use. */
@@ -58,11 +70,16 @@ export interface AgenticLoopAdapter {
 
 /** Anthropic adapter. */
 export class AnthropicAgenticAdapter implements AgenticLoopAdapter {
+  private readonly promptCacheContext: Partial<PromptCacheContext>;
+
   constructor(
     private client: Anthropic,
     private model: string,
-    private systemPrompt: string = SYSTEM_PROMPT
-  ) {}
+    private systemPrompt: string = SYSTEM_PROMPT,
+    promptCacheContext?: Partial<PromptCacheContext>
+  ) {
+    this.promptCacheContext = promptCacheContext ?? {};
+  }
 
   async send(
     userMessage: string,
@@ -70,9 +87,10 @@ export class AnthropicAgenticAdapter implements AgenticLoopAdapter {
     state?: unknown
   ): Promise<AdapterResponse> {
     type AnthropicState = { messages: Anthropic.MessageParam[] };
+    const promptFingerprint = fingerprintPrompt(this.systemPrompt);
     const prev = state as AnthropicState | undefined;
     const messages: Anthropic.MessageParam[] = prev?.messages ?? [
-      { role: "user", content: userMessage },
+      { role: "user", content: [toAnthropicTextBlock(userMessage, true)] },
     ];
 
     if (toolResults?.length) {
@@ -92,7 +110,7 @@ export class AnthropicAgenticAdapter implements AgenticLoopAdapter {
     const response = await this.client.messages.create({
       model: this.model,
       max_tokens: 16384,
-      system: this.systemPrompt,
+      system: [toAnthropicTextBlock(this.systemPrompt, true)],
       tools: toAnthropicTools() as Anthropic.Tool[],
       messages,
     });
@@ -120,25 +138,35 @@ export class AnthropicAgenticAdapter implements AgenticLoopAdapter {
         content: Array.isArray(content) ? content : [{ type: "text" as const, text }],
       },
     ];
-    return { text, toolCalls, state: { messages: nextMessages } };
+    const cacheMetrics = extractAnthropicCacheUsage({
+      response,
+      flow: this.promptCacheContext.flow ?? "loop",
+      promptFingerprint,
+    });
+    return { text, toolCalls, state: { messages: nextMessages }, cacheMetrics };
   }
 }
 
 /** OpenAI adapter. */
 export class OpenAIAgenticAdapter implements AgenticLoopAdapter {
   private messageHistory: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
+  private readonly promptCacheContext: Partial<PromptCacheContext>;
 
   constructor(
     private client: OpenAI,
     private model: string,
-    private systemPrompt: string = SYSTEM_PROMPT
-  ) {}
+    private systemPrompt: string = SYSTEM_PROMPT,
+    promptCacheContext?: Partial<PromptCacheContext>
+  ) {
+    this.promptCacheContext = promptCacheContext ?? {};
+  }
 
   async send(
     userMessage: string,
     toolResults?: Array<{ id: string; content: string }>,
     _state?: unknown
   ): Promise<AdapterResponse> {
+    const promptFingerprint = fingerprintPrompt(this.systemPrompt);
     if (this.messageHistory.length === 0) {
       this.messageHistory = [
         { role: "system", content: this.systemPrompt },
@@ -154,11 +182,23 @@ export class OpenAIAgenticAdapter implements AgenticLoopAdapter {
       }
     }
 
+    const promptCacheKey = buildOpenAIPromptCacheKey({
+      provider: "openai",
+      model: this.model,
+      flow: this.promptCacheContext.flow ?? "loop",
+      projectId: this.promptCacheContext.projectId,
+      taskId: this.promptCacheContext.taskId,
+      toolSchemaVersion:
+        this.promptCacheContext.toolSchemaVersion ?? fingerprintJson(toOpenAITools()),
+      instructionsFingerprint: this.promptCacheContext.instructionsFingerprint ?? promptFingerprint,
+    });
     const response = await this.client.chat.completions.create({
       model: this.model,
       messages: this.messageHistory,
       max_tokens: 16384,
       tools: toOpenAITools() as OpenAI.Chat.Completions.ChatCompletionTool[],
+      prompt_cache_key: promptCacheKey,
+      prompt_cache_retention: "in-memory",
     });
 
     const choice = response.choices?.[0];
@@ -187,7 +227,13 @@ export class OpenAIAgenticAdapter implements AgenticLoopAdapter {
       }
       toolCalls.push({ id, name, args });
     }
-    return { text, toolCalls };
+    const cacheMetrics = extractOpenAICacheUsage({
+      response,
+      flow: this.promptCacheContext.flow ?? "loop",
+      promptFingerprint,
+      promptCacheKey,
+    });
+    return { text, toolCalls, cacheMetrics };
   }
 }
 
@@ -279,6 +325,7 @@ export async function runAgenticLoop(
   const context: AgentToolsContext = { cwd };
   let fullText = "";
   let turnCount = 0;
+  const cacheMetrics: AgentCacheUsageMetrics[] = [];
   let state: unknown;
   let userMessage = taskContent;
   let toolResults: Array<{ id: string; content: string }> | undefined;
@@ -289,6 +336,9 @@ export async function runAgenticLoop(
     const response = await adapter.send(userMessage, toolResults, state);
     state = response.state;
     fullText += response.text;
+    if (response.cacheMetrics) {
+      cacheMetrics.push(response.cacheMetrics);
+    }
     if (response.text) onChunk?.(response.text);
     if (abortSignal?.aborted) break;
     if (response.toolCalls.length === 0) break;
@@ -300,5 +350,5 @@ export async function runAgenticLoop(
     userMessage = "Continue.";
   }
 
-  return { content: fullText, turnCount };
+  return { content: fullText, turnCount, cacheMetrics };
 }

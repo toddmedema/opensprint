@@ -5,6 +5,10 @@
 import type { TaskEventPayload, ServerEvent } from "@opensprint/shared";
 import { mapStatusToKanban, type KanbanColumn } from "@opensprint/shared";
 import { getMergeStageFromIssue } from "./services/task-store-helpers.js";
+import {
+  deriveMergeGateStateFromIssue,
+  getMergePausedUntilFromIssue,
+} from "./services/merge-gate-state.js";
 import { taskStore, type StoredTask } from "./services/task-store.service.js";
 
 const WAITING_TO_MERGE_STAGES = ["quality_gate", "merge_to_main", "rebase_before_merge"] as const;
@@ -22,12 +26,15 @@ function storedTaskToKanbanColumn(task: StoredTask): KanbanColumn {
 function getMergePausedFromTask(task: StoredTask): {
   mergePausedUntil?: string;
   mergeWaitingOnMain?: boolean;
+  mergeGateState?: TaskEventPayload["mergeGateState"];
 } {
-  const raw = (task as Record<string, unknown>).merge_quality_gate_paused_until;
-  if (typeof raw !== "string") return {};
-  const ts = Date.parse(raw);
-  if (Number.isNaN(ts) || ts <= Date.now()) return {};
-  return { mergePausedUntil: raw, mergeWaitingOnMain: true };
+  const record = task as Record<string, unknown>;
+  const mergePausedUntil = getMergePausedUntilFromIssue(record) ?? undefined;
+  const mergeGateState = deriveMergeGateStateFromIssue(record) ?? undefined;
+  return {
+    ...(mergePausedUntil ? { mergePausedUntil, mergeWaitingOnMain: true } : {}),
+    ...(mergeGateState ? { mergeGateState } : {}),
+  };
 }
 
 function storedTaskToPayload(task: StoredTask): TaskEventPayload {
@@ -54,6 +61,7 @@ function storedTaskToPayload(task: StoredTask): TaskEventPayload {
     ...(mergePaused.mergeWaitingOnMain
       ? { mergeWaitingOnMain: mergePaused.mergeWaitingOnMain }
       : {}),
+    ...(mergePaused.mergeGateState ? { mergeGateState: mergePaused.mergeGateState } : {}),
   } as TaskEventPayload;
 }
 
@@ -83,6 +91,7 @@ export function wireTaskStoreEvents(broadcast: BroadcastFn): void {
         ...(mergePaused.mergeWaitingOnMain
           ? { mergeWaitingOnMain: mergePaused.mergeWaitingOnMain }
           : {}),
+        ...(mergePaused.mergeGateState ? { mergeGateState: mergePaused.mergeGateState } : {}),
       } as ServerEvent);
     } else {
       broadcast(projectId, {

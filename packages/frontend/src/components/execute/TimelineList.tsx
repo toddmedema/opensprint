@@ -52,6 +52,56 @@ const SECTION_LABELS: Record<string, string> = {
   planning: "Planning",
 };
 
+function waitingToMergeLabel(task: Task): string {
+  switch (task.mergeGateState) {
+    case "blocked_on_baseline":
+      return "Blocked on Main";
+    case "candidate_fix_needed":
+      return "Fix Merge Gate";
+    case "environment_repair_needed":
+      return "Repair Merge Env";
+    case "merging":
+      return "Merging";
+    case "validating":
+      return "Validating";
+    default:
+      return task.mergeWaitingOnMain ? "Blocked on Main" : "Waiting to Merge";
+  }
+}
+
+function waitingToMergeTitle(task: Task): string {
+  switch (task.mergeGateState) {
+    case "blocked_on_baseline":
+      return "Blocked on main";
+    case "candidate_fix_needed":
+      return "Merge validation found a candidate code issue";
+    case "environment_repair_needed":
+      return "Merge validation found an environment setup issue";
+    case "merging":
+      return "Merge is currently rebasing or merging into the default branch";
+    case "validating":
+      return "Merge validation is currently running";
+    default:
+      return task.mergeWaitingOnMain
+        ? "Blocked on main"
+        : "Waiting to merge into the default branch";
+  }
+}
+
+function waitingToMergeAriaLabel(task: Task): string {
+  if (task.mergeGateState === "blocked_on_baseline" || task.mergeWaitingOnMain) {
+    return "Waiting to merge. Blocked on main.";
+  }
+  if (
+    task.mergeGateState &&
+    task.mergeGateState !== "validating" &&
+    task.mergeGateState !== "merging"
+  ) {
+    return `Waiting to merge. ${waitingToMergeLabel(task)}.`;
+  }
+  return "Waiting to merge.";
+}
+
 function TimelineRow({
   task,
   epicName,
@@ -111,18 +161,21 @@ function TimelineRow({
           {task.kanbanColumn === "waiting_to_merge" && (
             <span
               className="hidden md:inline shrink-0 inline-flex items-center gap-1 text-xs font-medium text-theme-muted"
-              title={
-                task.mergeWaitingOnMain
-                  ? "Blocked on main"
-                  : "Waiting to merge into the default branch"
-              }
-              aria-label={
-                task.mergeWaitingOnMain ? "Waiting to merge. Blocked on main." : "Waiting to merge."
-              }
+              title={waitingToMergeTitle(task)}
+              aria-label={waitingToMergeAriaLabel(task)}
               data-testid="task-badge-waiting-to-merge"
             >
               <TaskStatusBadge column="waiting_to_merge" size="xs" title="Waiting to Merge" />
-              <span aria-hidden="true">Waiting to Merge</span>
+              <span aria-hidden="true">{waitingToMergeLabel(task)}</span>
+              {task.lastExecutionSummary && (
+                <span
+                  className="max-w-[340px] truncate text-theme-muted"
+                  title={task.lastExecutionSummary}
+                  data-testid="task-badge-waiting-to-merge-summary"
+                >
+                  · {task.lastExecutionSummary}
+                </span>
+              )}
             </span>
           )}
           <span className="hidden md:inline text-xs text-theme-muted shrink-0 truncate max-w-[120px]">

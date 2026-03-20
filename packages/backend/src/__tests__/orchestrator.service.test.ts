@@ -93,6 +93,7 @@ const {
   mockEnsureBaseBranchExists,
   mockEnsureGitIdentityConfigured,
   mockResolveBaseBranch,
+  mockRunCommand,
   mockShellExec,
   mockGetMergeQualityGateCommands,
   mockIsSelfImprovementRunInProgress,
@@ -171,6 +172,7 @@ const {
   mockEnsureBaseBranchExists: vi.fn(),
   mockEnsureGitIdentityConfigured: vi.fn(),
   mockResolveBaseBranch: vi.fn(),
+  mockRunCommand: vi.fn(),
   mockShellExec: vi.fn(),
   mockGetMergeQualityGateCommands: vi.fn(),
   mockIsSelfImprovementRunInProgress: vi.fn().mockReturnValue(false),
@@ -428,6 +430,15 @@ vi.mock("../utils/git-repo-state.js", async (importOriginal) => {
   };
 });
 
+vi.mock("../utils/command-runner.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/command-runner.js")>();
+  return {
+    ...actual,
+    resolveCommandExecutable: vi.fn((command: string) => `/mock/bin/${command}`),
+    runCommand: (...args: unknown[]) => mockRunCommand(...args),
+  };
+});
+
 vi.mock("../utils/shell-exec.js", () => ({
   shellExec: (...args: unknown[]) => mockShellExec(...args),
 }));
@@ -493,6 +504,63 @@ describe("OrchestratorService (slot-based model)", () => {
   let orchestrator: OrchestratorService;
   let repoPath: string;
   const projectId = "test-project-1";
+  const qualityGateWorktreePath = path.join(os.tmpdir(), "opensprint-quality-gate-worktree");
+
+  const commandLabel = (spec: { command: string; args?: string[] }): string =>
+    [spec.command, ...(spec.args ?? [])].join(" ");
+
+  const makeCommandResult = (spec: { command: string }, cwd: string) => ({
+    stdout: "",
+    stderr: "",
+    executable: `/mock/bin/${spec.command}`,
+    cwd,
+    exitCode: 0,
+    signal: null,
+  });
+
+  const makeCommandFailure = (
+    spec: { command: string; args?: string[] },
+    cwd: string,
+    params: {
+      message?: string;
+      stdout?: string;
+      stderr?: string;
+      exitCode?: number;
+    }
+  ) => ({
+    message: params.message ?? `Command failed: ${commandLabel(spec)}`,
+    stdout: params.stdout ?? "",
+    stderr: params.stderr ?? "",
+    executable: `/mock/bin/${spec.command}`,
+    cwd,
+    exitCode: params.exitCode ?? 1,
+    signal: null,
+  });
+
+  const getExecutedCommands = (): string[] =>
+    mockRunCommand.mock.calls
+      .map((call) => commandLabel(call[0] as { command: string; args?: string[] }))
+      .filter((label) => label !== "git rev-parse --verify HEAD");
+
+  async function prepareQualityGateWorktree(): Promise<void> {
+    await fs.rm(qualityGateWorktreePath, { recursive: true, force: true });
+    await fs.mkdir(path.join(qualityGateWorktreePath, "node_modules"), { recursive: true });
+    await fs.writeFile(
+      path.join(qualityGateWorktreePath, "package.json"),
+      JSON.stringify(
+        {
+          name: "quality-gate-worktree",
+          version: "1.0.0",
+          scripts: {
+            lint: "eslint .",
+            test: "vitest run",
+          },
+        },
+        null,
+        2
+      )
+    );
+  }
 
   const defaultSettings = {
     testFramework: "vitest",
@@ -577,6 +645,10 @@ describe("OrchestratorService (slot-based model)", () => {
       email: "test@test.com",
       valid: true,
     });
+    mockRunCommand.mockImplementation(
+      async (spec: { command: string; args?: string[] }, options: { cwd: string }) =>
+        makeCommandResult(spec, options.cwd)
+    );
     mockShellExec.mockResolvedValue({ stdout: "", stderr: "" });
     mockGetMergeQualityGateCommands.mockReturnValue(["npm run lint", "npm run test"]);
     mockCreateBaselineWorkspace.mockResolvedValue({
@@ -656,6 +728,11 @@ describe("OrchestratorService (slot-based model)", () => {
     orchestrator.stopProject(projectId);
     try {
       await fs.rm(repoPath, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+    try {
+      await fs.rm(qualityGateWorktreePath, { recursive: true, force: true });
     } catch {
       // ignore
     }
@@ -1272,7 +1349,7 @@ describe("OrchestratorService (slot-based model)", () => {
     const taskId = "task-quality-gate";
     const branchName = "opensprint/task-quality-gate";
     const baseBranch = "main";
-    const worktreePath = path.join(os.tmpdir(), "opensprint-quality-gate-worktree");
+    const worktreePath = qualityGateWorktreePath;
 
     const runMergeQualityGates = () =>
       orchestrator.runMergeQualityGates({
@@ -1288,10 +1365,18 @@ describe("OrchestratorService (slot-based model)", () => {
       const previousNodeEnv = process.env.NODE_ENV;
       process.env.NODE_ENV = "development";
       try {
-        mockShellExec.mockRejectedValueOnce({
-          message: "Command failed: npm run lint",
-          stderr: "src/foo.ts: error TS2304: Cannot find name 'x'",
-        });
+        await prepareQualityGateWorktree();
+        mockRunCommand.mockImplementation(
+          async (spec: { command: string; args?: string[] }, options: { cwd: string }) => {
+            const label = commandLabel(spec);
+            if (label === "npm run lint") {
+              throw makeCommandFailure(spec, options.cwd, {
+                stderr: "src/foo.ts: error TS2304: Cannot find name 'x'",
+              });
+            }
+            return makeCommandResult(spec, options.cwd);
+          }
+        );
 
         const failure = await runMergeQualityGates();
 
@@ -1301,11 +1386,7 @@ describe("OrchestratorService (slot-based model)", () => {
           autoRepairAttempted: false,
           autoRepairSucceeded: false,
         });
-        expect(mockShellExec).toHaveBeenCalledTimes(1);
-        expect(mockShellExec).toHaveBeenCalledWith(
-          "npm run lint",
-          expect.objectContaining({ cwd: worktreePath })
-        );
+        expect(getExecutedCommands()).toEqual(["npm run lint"]);
         expect(mockSymlinkNodeModules).not.toHaveBeenCalled();
       } finally {
         process.env.NODE_ENV = previousNodeEnv;
@@ -1316,15 +1397,23 @@ describe("OrchestratorService (slot-based model)", () => {
       const previousNodeEnv = process.env.NODE_ENV;
       process.env.NODE_ENV = "development";
       try {
-        mockShellExec.mockRejectedValueOnce({
-          message: "Command failed: npm run lint",
-          stderr: [
-            "> eslint .",
-            "npm ERR! code 1",
-            "npm ERR! path /tmp/repo",
-            "src/foo.ts: error TS2304: Cannot find name 'x'",
-          ].join("\n"),
-        });
+        await prepareQualityGateWorktree();
+        mockRunCommand.mockImplementation(
+          async (spec: { command: string; args?: string[] }, options: { cwd: string }) => {
+            const label = commandLabel(spec);
+            if (label === "npm run lint") {
+              throw makeCommandFailure(spec, options.cwd, {
+                stderr: [
+                  "> eslint .",
+                  "npm ERR! code 1",
+                  "npm ERR! path /tmp/repo",
+                  "src/foo.ts: error TS2304: Cannot find name 'x'",
+                ].join("\n"),
+              });
+            }
+            return makeCommandResult(spec, options.cwd);
+          }
+        );
 
         const failure = await runMergeQualityGates();
 
@@ -1342,17 +1431,28 @@ describe("OrchestratorService (slot-based model)", () => {
       const previousNodeEnv = process.env.NODE_ENV;
       process.env.NODE_ENV = "development";
       try {
+        await prepareQualityGateWorktree();
         const longPassingOutput = `${"✓ passing test\n".repeat(400)}AssertionError: expected 401 to be 403`;
-        mockShellExec.mockRejectedValueOnce({
-          message: "Command failed: npm run test",
-          stdout: longPassingOutput,
-          stderr: "",
-        });
+        mockRunCommand.mockImplementation(
+          async (spec: { command: string; args?: string[] }, options: { cwd: string }) => {
+            const label = commandLabel(spec);
+            if (label === "npm run lint") {
+              return makeCommandResult(spec, options.cwd);
+            }
+            if (label === "npm run test") {
+              throw makeCommandFailure(spec, options.cwd, {
+                stdout: longPassingOutput,
+                stderr: "",
+              });
+            }
+            return makeCommandResult(spec, options.cwd);
+          }
+        );
 
         const failure = await runMergeQualityGates();
 
         expect(failure).toMatchObject({
-          command: "npm run lint",
+          command: "npm run test",
           category: "quality_gate",
           firstErrorLine: "AssertionError: expected 401 to be 403",
         });
@@ -1365,19 +1465,34 @@ describe("OrchestratorService (slot-based model)", () => {
       const previousNodeEnv = process.env.NODE_ENV;
       process.env.NODE_ENV = "development";
       try {
-        mockShellExec
-          .mockRejectedValueOnce({
-            message: "Command failed: npm run lint",
-            stderr: "Error: MODULE_NOT_FOUND: Cannot find module 'typescript'",
-          })
-          .mockResolvedValueOnce({ stdout: "added 1 package", stderr: "" })
-          .mockResolvedValueOnce({ stdout: "", stderr: "" })
-          .mockResolvedValueOnce({ stdout: "", stderr: "" });
+        await prepareQualityGateWorktree();
+        let lintAttempts = 0;
+        mockRunCommand.mockImplementation(
+          async (spec: { command: string; args?: string[] }, options: { cwd: string }) => {
+            const label = commandLabel(spec);
+            if (label === "npm run lint") {
+              lintAttempts += 1;
+              if (lintAttempts === 1) {
+                throw makeCommandFailure(spec, options.cwd, {
+                  stderr: "Error: MODULE_NOT_FOUND: Cannot find module 'typescript'",
+                });
+              }
+              return makeCommandResult(spec, options.cwd);
+            }
+            if (label === "npm ci") {
+              return {
+                ...makeCommandResult(spec, options.cwd),
+                stdout: "added 1 package",
+              };
+            }
+            return makeCommandResult(spec, options.cwd);
+          }
+        );
 
         const failure = await runMergeQualityGates();
 
         expect(failure).toBeNull();
-        expect(mockShellExec.mock.calls.map((call) => call[0])).toEqual([
+        expect(getExecutedCommands()).toEqual([
           "npm run lint",
           "npm ci",
           "npm run lint",
@@ -1394,16 +1509,23 @@ describe("OrchestratorService (slot-based model)", () => {
       const previousNodeEnv = process.env.NODE_ENV;
       process.env.NODE_ENV = "development";
       try {
-        mockShellExec
-          .mockRejectedValueOnce({
-            message: "Command failed: npm run lint",
-            stderr: "Cannot find module 'eslint'",
-          })
-          .mockResolvedValueOnce({ stdout: "", stderr: "" })
-          .mockRejectedValueOnce({
-            message: "Command failed: npm run lint",
-            stderr: "MODULE_NOT_FOUND: Cannot find module 'eslint'",
-          });
+        await prepareQualityGateWorktree();
+        let lintAttempts = 0;
+        mockRunCommand.mockImplementation(
+          async (spec: { command: string; args?: string[] }, options: { cwd: string }) => {
+            const label = commandLabel(spec);
+            if (label === "npm run lint") {
+              lintAttempts += 1;
+              throw makeCommandFailure(spec, options.cwd, {
+                stderr:
+                  lintAttempts === 1
+                    ? "Cannot find module 'eslint'"
+                    : "MODULE_NOT_FOUND: Cannot find module 'eslint'",
+              });
+            }
+            return makeCommandResult(spec, options.cwd);
+          }
+        );
 
         const failure = await runMergeQualityGates();
 
@@ -1413,12 +1535,7 @@ describe("OrchestratorService (slot-based model)", () => {
           autoRepairAttempted: true,
           autoRepairSucceeded: true,
         });
-        expect(mockShellExec).toHaveBeenCalledTimes(3);
-        expect(mockShellExec.mock.calls.map((call) => call[0])).toEqual([
-          "npm run lint",
-          "npm ci",
-          "npm run lint",
-        ]);
+        expect(getExecutedCommands()).toEqual(["npm run lint", "npm ci", "npm run lint"]);
       } finally {
         process.env.NODE_ENV = previousNodeEnv;
       }
@@ -1428,16 +1545,23 @@ describe("OrchestratorService (slot-based model)", () => {
       const previousNodeEnv = process.env.NODE_ENV;
       process.env.NODE_ENV = "development";
       try {
-        mockShellExec
-          .mockRejectedValueOnce({
-            message: "Command failed: npm run lint",
-            stderr: "Cannot find module 'eslint'",
-          })
-          .mockResolvedValueOnce({ stdout: "", stderr: "" })
-          .mockRejectedValueOnce({
-            message: "Command failed: npm run lint",
-            stderr: "src/foo.ts: error TS2304: Cannot find name 'x'",
-          });
+        await prepareQualityGateWorktree();
+        let lintAttempts = 0;
+        mockRunCommand.mockImplementation(
+          async (spec: { command: string; args?: string[] }, options: { cwd: string }) => {
+            const label = commandLabel(spec);
+            if (label === "npm run lint") {
+              lintAttempts += 1;
+              throw makeCommandFailure(spec, options.cwd, {
+                stderr:
+                  lintAttempts === 1
+                    ? "Cannot find module 'eslint'"
+                    : "src/foo.ts: error TS2304: Cannot find name 'x'",
+              });
+            }
+            return makeCommandResult(spec, options.cwd);
+          }
+        );
 
         const failure = await runMergeQualityGates();
 
@@ -1447,7 +1571,7 @@ describe("OrchestratorService (slot-based model)", () => {
           autoRepairAttempted: true,
           autoRepairSucceeded: true,
         });
-        expect(mockShellExec).toHaveBeenCalledTimes(3);
+        expect(getExecutedCommands()).toEqual(["npm run lint", "npm ci", "npm run lint"]);
       } finally {
         process.env.NODE_ENV = previousNodeEnv;
       }
@@ -1457,19 +1581,28 @@ describe("OrchestratorService (slot-based model)", () => {
       const previousNodeEnv = process.env.NODE_ENV;
       process.env.NODE_ENV = "development";
       try {
-        mockShellExec
-          .mockRejectedValueOnce({
-            message: "Command failed: npm run lint",
-            stderr: "Cannot find module 'eslint'",
-          })
-          .mockRejectedValueOnce({
-            message: "Command failed: npm ci",
-            stderr: "npm ERR! network timeout",
-          })
-          .mockRejectedValueOnce({
-            message: "Command failed: npm run lint",
-            stderr: "src/foo.ts: error TS2304: Cannot find name 'x'",
-          });
+        await prepareQualityGateWorktree();
+        let lintAttempts = 0;
+        mockRunCommand.mockImplementation(
+          async (spec: { command: string; args?: string[] }, options: { cwd: string }) => {
+            const label = commandLabel(spec);
+            if (label === "npm run lint") {
+              lintAttempts += 1;
+              throw makeCommandFailure(spec, options.cwd, {
+                stderr:
+                  lintAttempts === 1
+                    ? "Cannot find module 'eslint'"
+                    : "src/foo.ts: error TS2304: Cannot find name 'x'",
+              });
+            }
+            if (label === "npm ci") {
+              throw makeCommandFailure(spec, options.cwd, {
+                stderr: "npm ERR! network timeout",
+              });
+            }
+            return makeCommandResult(spec, options.cwd);
+          }
+        );
 
         const failure = await runMergeQualityGates();
 
@@ -1479,11 +1612,7 @@ describe("OrchestratorService (slot-based model)", () => {
           autoRepairAttempted: true,
           autoRepairSucceeded: false,
         });
-        expect(mockShellExec.mock.calls.map((call) => call[0])).toEqual([
-          "npm run lint",
-          "npm ci",
-          "npm run lint",
-        ]);
+        expect(getExecutedCommands()).toEqual(["npm run lint", "npm ci", "npm run lint"]);
         expect(mockSymlinkNodeModules).toHaveBeenCalledTimes(1);
       } finally {
         process.env.NODE_ENV = previousNodeEnv;
@@ -1494,19 +1623,29 @@ describe("OrchestratorService (slot-based model)", () => {
       const previousNodeEnv = process.env.NODE_ENV;
       process.env.NODE_ENV = "development";
       try {
-        mockShellExec
-          .mockRejectedValueOnce({
-            message: "Command failed: npm run lint",
-            stderr: "Cannot find module 'eslint'",
-          })
-          .mockResolvedValueOnce({
-            stdout: "added 1 package",
-            stderr: "",
-          })
-          .mockRejectedValueOnce({
-            message: "Command failed: npm run lint",
-            stderr: "MODULE_NOT_FOUND: Cannot find module 'eslint'",
-          });
+        await prepareQualityGateWorktree();
+        let lintAttempts = 0;
+        mockRunCommand.mockImplementation(
+          async (spec: { command: string; args?: string[] }, options: { cwd: string }) => {
+            const label = commandLabel(spec);
+            if (label === "npm run lint") {
+              lintAttempts += 1;
+              throw makeCommandFailure(spec, options.cwd, {
+                stderr:
+                  lintAttempts === 1
+                    ? "Cannot find module 'eslint'"
+                    : "MODULE_NOT_FOUND: Cannot find module 'eslint'",
+              });
+            }
+            if (label === "npm ci") {
+              return {
+                ...makeCommandResult(spec, options.cwd),
+                stdout: "added 1 package",
+              };
+            }
+            return makeCommandResult(spec, options.cwd);
+          }
+        );
         mockSymlinkNodeModules.mockRejectedValueOnce(new Error("EPERM: symlink failed"));
 
         const failure = await runMergeQualityGates();
@@ -1520,11 +1659,7 @@ describe("OrchestratorService (slot-based model)", () => {
         });
         expect(failure?.autoRepairOutput).toContain("[npm ci] added 1 package");
         expect(failure?.autoRepairOutput).toContain("[symlinkNodeModules] EPERM: symlink failed");
-        expect(mockShellExec.mock.calls.map((call) => call[0])).toEqual([
-          "npm run lint",
-          "npm ci",
-          "npm run lint",
-        ]);
+        expect(getExecutedCommands()).toEqual(["npm run lint", "npm ci", "npm run lint"]);
         expect(mockSymlinkNodeModules).toHaveBeenCalledTimes(1);
       } finally {
         process.env.NODE_ENV = previousNodeEnv;

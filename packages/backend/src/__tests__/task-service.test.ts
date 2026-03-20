@@ -657,6 +657,34 @@ describe("TaskService", () => {
     expect(task.kanbanColumn).toBe("waiting_to_merge");
     expect(task.mergePausedUntil).toBe(futureIso);
     expect(task.mergeWaitingOnMain).toBe(true);
+    expect(task.mergeGateState).toBe("blocked_on_baseline");
+  });
+
+  it("getTask returns mergeGateState for environment setup merge failures", async () => {
+    mockTaskStoreState.listAll = [
+      {
+        id: "task-env-qg",
+        title: "Merge validation environment issue",
+        status: "open",
+        issue_type: "task",
+        labels: ["merge_stage:quality_gate"],
+        dependencies: [],
+        created_at: "2024-01-01T00:00:00Z",
+        updated_at: "2024-01-01T00:00:00Z",
+        last_execution_summary: {
+          at: "2024-01-01T00:00:00Z",
+          attempt: 3,
+          outcome: "requeued",
+          phase: "merge",
+          summary: "Merge validation environment issue",
+          failureType: "environment_setup",
+        },
+      },
+    ] as StoredTask[];
+
+    const task = await taskService.getTask("proj-1", "task-env-qg");
+    expect(task.kanbanColumn).toBe("waiting_to_merge");
+    expect(task.mergeGateState).toBe("environment_repair_needed");
   });
 
   it("getTask returns qualityGateDetail and flat failedGate* fields from task extra when only flat fields are set", async () => {

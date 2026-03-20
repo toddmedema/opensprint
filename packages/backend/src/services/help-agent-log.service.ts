@@ -9,12 +9,23 @@
 import type { AgentLogEntry } from "@opensprint/shared";
 import { AGENT_ROLE_LABELS } from "@opensprint/shared";
 import type { AgentRole } from "@opensprint/shared";
+import type { TaskExecutionOutcome, TaskExecutionPhase } from "@opensprint/shared";
 import { taskStore } from "./task-store.service.js";
 import { ProjectService } from "./project.service.js";
+import { compactExecutionText } from "./task-execution-summary.js";
 
 const DEFAULT_LIMIT = 500;
 
 const projectService = new ProjectService();
+
+type JsonRecord = Record<string, unknown>;
+
+type AttemptVerdict = {
+  phase?: TaskExecutionPhase;
+  outcome?: TaskExecutionOutcome | null;
+  summary?: string | null;
+  failureType?: string | null;
+};
 
 /** Human-readable provider labels for agent_type */
 const PROVIDER_LABELS: Record<string, string> = {
@@ -38,6 +49,220 @@ const DEFAULT_MODEL_DISPLAY: Record<string, string> = {
 
 function isUnknownModel(value: string): boolean {
   return !value || value.toLowerCase() === "unknown";
+}
+
+function asRecord(value: unknown): JsonRecord | null {
+  return value && typeof value === "object" ? (value as JsonRecord) : null;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function firstNonEmptyLine(value: string | null | undefined): string | null {
+  if (!value) return null;
+  for (const line of value.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.length > 0) return trimmed;
+  }
+  return null;
+}
+
+function extractQualityGateSummary(data: JsonRecord): string | null {
+  const nested = asRecord(data.qualityGateDetail);
+  const command =
+    asString(data.failedGateCommand) ??
+    asString(data.qualityGateCommand) ??
+    asString(nested?.command);
+  const reason = asString(data.failedGateReason) ?? asString(nested?.reason);
+  const firstErrorLine =
+    asString(data.qualityGateFirstErrorLine) ??
+    asString(data.firstErrorLine) ??
+    asString(nested?.firstErrorLine) ??
+    firstNonEmptyLine(asString(data.failedGateOutputSnippet) ?? asString(nested?.outputSnippet)) ??
+    firstNonEmptyLine(reason);
+  if (!command && !firstErrorLine && !reason) return null;
+  if (command && firstErrorLine) {
+    return compactExecutionText(`${command}: ${firstErrorLine}`, 500);
+  }
+  return compactExecutionText(command ?? firstErrorLine ?? reason ?? "", 500) || null;
+}
+
+function phaseFromUnknown(value: unknown, fallback: TaskExecutionPhase): TaskExecutionPhase {
+  if (value === "coding" || value === "review" || value === "merge" || value === "orchestrator") {
+    return value;
+  }
+  return fallback;
+}
+
+function summarizeAttemptEvent(event: string, data: JsonRecord): AttemptVerdict | null {
+  if (event === "task.completed") {
+    const attempt = asNumber(data.attempt);
+    return {
+      phase: "merge",
+      outcome: "completed",
+      summary: attempt != null ? `Attempt ${attempt} completed` : "Attempt completed",
+      failureType: null,
+    };
+  }
+
+  if (event === "review.rejected") {
+    return {
+      phase: "review",
+      outcome: "rejected",
+      summary:
+        asString(data.summary) ??
+        asString(data.reason) ??
+        "Review rejected with no details provided",
+      failureType: asString(data.failureType),
+    };
+  }
+
+  if (event === "task.failed") {
+    return {
+      phase: phaseFromUnknown(data.phase, "coding"),
+      outcome: "failed",
+      summary:
+        extractQualityGateSummary(data) ??
+        asString(data.summary) ??
+        asString(data.reason) ??
+        "Attempt failed",
+      failureType: asString(data.failureType),
+    };
+  }
+
+  if (event === "merge.failed") {
+    return {
+      phase: "merge",
+      outcome: asString(data.resolvedBy) === "blocked" ? "blocked" : "requeued",
+      summary:
+        asString(data.summary) ??
+        extractQualityGateSummary(data) ??
+        asString(data.reason) ??
+        "Merge failed",
+      failureType: asString(data.failureType),
+    };
+  }
+
+  if (event === "task.requeued") {
+    return {
+      phase: phaseFromUnknown(data.phase, "orchestrator"),
+      outcome: "requeued",
+      summary:
+        extractQualityGateSummary(data) ??
+        asString(data.summary) ??
+        "Task requeued for another attempt",
+      failureType: asString(data.failureType),
+    };
+  }
+
+  if (event === "task.demoted") {
+    return {
+      phase: phaseFromUnknown(data.phase, "orchestrator"),
+      outcome: "demoted",
+      summary: asString(data.summary) ?? "Task demoted after repeated failures",
+      failureType: asString(data.failureType),
+    };
+  }
+
+  if (event === "task.blocked") {
+    return {
+      phase: phaseFromUnknown(data.phase, "orchestrator"),
+      outcome: "blocked",
+      summary:
+        extractQualityGateSummary(data) ??
+        asString(data.summary) ??
+        asString(data.reason) ??
+        "Task blocked",
+      failureType: asString(data.failureType),
+    };
+  }
+
+  return null;
+}
+
+function roleToPhase(role: string | null | undefined): TaskExecutionPhase | undefined {
+  switch (role) {
+    case "coder":
+      return "coding";
+    case "reviewer":
+      return "review";
+    case "merger":
+      return "merge";
+    default:
+      return undefined;
+  }
+}
+
+function componentOutcomeFromAgentStats(outcome: string | null | undefined): "success" | "failed" {
+  return outcome === "success" ? "success" : "failed";
+}
+
+function fallbackOutcomeFromSessionStatus(
+  status: string | null | undefined
+): TaskExecutionOutcome | null {
+  switch (status) {
+    case "approved":
+    case "success":
+      return "completed";
+    case "rejected":
+      return "rejected";
+    case "failed":
+    case "timeout":
+    case "cancelled":
+      return "failed";
+    default:
+      return null;
+  }
+}
+
+async function loadAttemptVerdicts(
+  client: Awaited<ReturnType<typeof taskStore.getDb>>,
+  rows: Array<Record<string, unknown>>
+): Promise<Map<string, AttemptVerdict>> {
+  const rowsByProject = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const projectId = asString(row.project_id);
+    const taskId = asString(row.task_id);
+    if (!projectId || !taskId) continue;
+    let taskIds = rowsByProject.get(projectId);
+    if (!taskIds) {
+      taskIds = new Set<string>();
+      rowsByProject.set(projectId, taskIds);
+    }
+    taskIds.add(taskId);
+  }
+
+  const verdicts = new Map<string, AttemptVerdict>();
+  for (const [projectId, taskIds] of rowsByProject.entries()) {
+    if (taskIds.size === 0) continue;
+    const taskIdList = [...taskIds];
+    const taskIdPlaceholders = taskIdList.map((_, index) => `$${index + 2}`).join(", ");
+    const eventRows = await client.query(
+      `SELECT task_id, timestamp, event, data
+         FROM orchestrator_events
+        WHERE project_id = $1
+          AND task_id IN (${taskIdPlaceholders})
+        ORDER BY id ASC`,
+      [projectId, ...taskIdList]
+    );
+
+    for (const eventRow of eventRows) {
+      const taskId = asString(eventRow.task_id);
+      const data = eventRow.data ? (JSON.parse(eventRow.data as string) as JsonRecord) : {};
+      const attempt = asNumber(data.attempt);
+      if (!taskId || attempt == null) continue;
+      const summary = summarizeAttemptEvent(eventRow.event as string, data);
+      if (!summary) continue;
+      verdicts.set(`${projectId}:${taskId}:${attempt}`, summary);
+    }
+  }
+
+  return verdicts;
 }
 
 /**
@@ -84,32 +309,51 @@ export async function getAgentLog(projectId: string | null): Promise<AgentLogEnt
 
   const sql =
     projectId != null
-      ? `SELECT s.agent_id, s.role, s.model, s.duration_ms, s.completed_at,
+      ? `SELECT s.project_id, s.task_id, s.attempt, s.outcome, s.agent_id, s.role, s.model, s.duration_ms, s.completed_at,
                 sess.id AS session_id,
                 sess.agent_type AS session_agent_type,
                 sess.agent_model AS session_agent_model,
+                sess.status AS session_status,
+                sess.failure_reason AS session_failure_reason,
+                sess.summary AS session_summary,
                 (sess.output_log IS NOT NULL AND sess.output_log != '') AS session_has_log
          FROM agent_stats s
-         LEFT JOIN agent_sessions sess ON s.project_id = sess.project_id
-           AND s.task_id = sess.task_id
-           AND s.attempt = sess.attempt
+         LEFT JOIN agent_sessions sess ON sess.id = (
+           SELECT picked.id
+             FROM agent_sessions picked
+            WHERE picked.project_id = s.project_id
+              AND picked.task_id = s.task_id
+              AND picked.attempt = s.attempt
+            ORDER BY picked.completed_at DESC, picked.id DESC
+            LIMIT 1
+         )
          WHERE s.project_id = $1
          ORDER BY s.completed_at DESC
          LIMIT $2`
-      : `SELECT s.agent_id, s.role, s.model, s.duration_ms, s.completed_at, s.project_id,
+      : `SELECT s.project_id, s.task_id, s.attempt, s.outcome, s.agent_id, s.role, s.model, s.duration_ms, s.completed_at,
                 sess.id AS session_id,
                 sess.agent_type AS session_agent_type,
                 sess.agent_model AS session_agent_model,
+                sess.status AS session_status,
+                sess.failure_reason AS session_failure_reason,
+                sess.summary AS session_summary,
                 (sess.output_log IS NOT NULL AND sess.output_log != '') AS session_has_log
          FROM agent_stats s
-         LEFT JOIN agent_sessions sess ON s.project_id = sess.project_id
-           AND s.task_id = sess.task_id
-           AND s.attempt = sess.attempt
+         LEFT JOIN agent_sessions sess ON sess.id = (
+           SELECT picked.id
+             FROM agent_sessions picked
+            WHERE picked.project_id = s.project_id
+              AND picked.task_id = s.task_id
+              AND picked.attempt = s.attempt
+            ORDER BY picked.completed_at DESC, picked.id DESC
+            LIMIT 1
+         )
          ORDER BY s.completed_at DESC
          LIMIT $1`;
 
   const params = projectId != null ? [projectId, DEFAULT_LIMIT] : [DEFAULT_LIMIT];
   const rows = await client.query(sql, params);
+  const verdicts = await loadAttemptVerdicts(client, rows as Array<Record<string, unknown>>);
 
   const projectNameMap = new Map<string, string>();
   if (projectId == null) {
@@ -123,16 +367,36 @@ export async function getAgentLog(projectId: string | null): Promise<AgentLogEnt
     const storedRole = r.role as string | null | undefined;
     const agentId = r.agent_id as string;
     const role = storedRole ? formatRoleName(storedRole) : formatRoleName(agentId);
+    const taskId = asString(r.task_id) ?? undefined;
+    const attempt = asNumber(r.attempt) ?? undefined;
+    const verdictKey =
+      taskId != null && attempt != null && asString(r.project_id)
+        ? `${asString(r.project_id)}:${taskId}:${attempt}`
+        : null;
+    const verdict = verdictKey ? verdicts.get(verdictKey) : undefined;
     const modelLabel = formatModelLabel(
       r.session_agent_type as string | null | undefined,
       r.session_agent_model as string | null | undefined,
       r.model as string | null | undefined
     );
+    const componentPhase = roleToPhase(storedRole ?? agentId);
+    const fallbackSummary =
+      asString(r.session_failure_reason) ??
+      asString(r.session_summary) ??
+      (attempt != null ? `Attempt ${attempt} ${r.outcome as string}` : null);
     const entry: AgentLogEntry = {
       model: modelLabel,
       role,
       durationMs: r.duration_ms as number,
       endTime: r.completed_at as string,
+      ...(taskId ? { taskId } : {}),
+      ...(attempt != null ? { attempt } : {}),
+      ...(componentPhase ? { phase: componentPhase } : {}),
+      componentOutcome: componentOutcomeFromAgentStats(asString(r.outcome)),
+      attemptOutcome:
+        verdict?.outcome ?? fallbackOutcomeFromSessionStatus(asString(r.session_status)),
+      summary: verdict?.summary ?? fallbackSummary,
+      failureType: verdict?.failureType ?? null,
     };
     if (projectId == null && r.project_id) {
       const pid = r.project_id as string;

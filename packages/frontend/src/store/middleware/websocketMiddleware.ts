@@ -404,6 +404,7 @@ export const websocketMiddleware: Middleware = (storeApi) => {
             kanbanColumn: event.kanbanColumn,
             mergePausedUntil: event.mergePausedUntil,
             mergeWaitingOnMain: event.mergeWaitingOnMain,
+            mergeGateState: event.mergeGateState,
           })
         );
         const synced = syncTaskFromExecuteStateToQueryCache(qc, getState, projectId, event.taskId);
@@ -512,6 +513,8 @@ export const websocketMiddleware: Middleware = (storeApi) => {
             baselineStatus: statusEv.baselineStatus,
             baselineCheckedAt: statusEv.baselineCheckedAt,
             baselineFailureSummary: statusEv.baselineFailureSummary,
+            mergeValidationStatus: statusEv.mergeValidationStatus,
+            mergeValidationFailureSummary: statusEv.mergeValidationFailureSummary,
             dispatchPausedReason: statusEv.dispatchPausedReason,
             selfImprovementRunInProgress: statusEv.selfImprovementRunInProgress,
           })

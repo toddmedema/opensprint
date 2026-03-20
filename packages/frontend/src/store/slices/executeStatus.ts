@@ -1,6 +1,6 @@
 import type { PayloadAction } from "@reduxjs/toolkit";
 import type { ActionReducerMapBuilder } from "@reduxjs/toolkit";
-import type { BaselineRuntimeStatus } from "@opensprint/shared";
+import type { BaselineRuntimeStatus, MergeValidationRuntimeStatus } from "@opensprint/shared";
 import type { ExecuteState } from "./executeTypes";
 import type { ActiveTaskInfo } from "./executeTypes";
 import { fetchExecuteStatus } from "./executeThunks";
@@ -29,6 +29,8 @@ export const statusReducers = {
       baselineStatus?: BaselineRuntimeStatus;
       baselineCheckedAt?: string | null;
       baselineFailureSummary?: string | null;
+      mergeValidationStatus?: MergeValidationRuntimeStatus;
+      mergeValidationFailureSummary?: string | null;
       dispatchPausedReason?: string | null;
       selfImprovementRunInProgress?: boolean;
     }>
@@ -49,6 +51,12 @@ export const statusReducers = {
     }
     if (p.baselineFailureSummary !== undefined) {
       state.baselineFailureSummary = p.baselineFailureSummary;
+    }
+    if (p.mergeValidationStatus !== undefined) {
+      state.mergeValidationStatus = p.mergeValidationStatus;
+    }
+    if (p.mergeValidationFailureSummary !== undefined) {
+      state.mergeValidationFailureSummary = p.mergeValidationFailureSummary;
     }
     if (p.dispatchPausedReason !== undefined) {
       state.dispatchPausedReason = p.dispatchPausedReason;
@@ -78,6 +86,8 @@ export function addStatusExtraReducers(builder: ActionReducerMapBuilder<ExecuteS
         baselineStatus?: BaselineRuntimeStatus;
         baselineCheckedAt?: string | null;
         baselineFailureSummary?: string | null;
+        mergeValidationStatus?: MergeValidationRuntimeStatus;
+        mergeValidationFailureSummary?: string | null;
         dispatchPausedReason?: string | null;
         selfImprovementRunInProgress?: boolean;
       };
@@ -96,6 +106,12 @@ export function addStatusExtraReducers(builder: ActionReducerMapBuilder<ExecuteS
       }
       if (payload.baselineFailureSummary !== undefined) {
         state.baselineFailureSummary = payload.baselineFailureSummary;
+      }
+      if (payload.mergeValidationStatus !== undefined) {
+        state.mergeValidationStatus = payload.mergeValidationStatus;
+      }
+      if (payload.mergeValidationFailureSummary !== undefined) {
+        state.mergeValidationFailureSummary = payload.mergeValidationFailureSummary;
       }
       if (payload.dispatchPausedReason !== undefined) {
         state.dispatchPausedReason = payload.dispatchPausedReason;

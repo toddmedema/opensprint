@@ -1,5 +1,11 @@
 import { createAsyncThunk } from "@reduxjs/toolkit";
-import type { Task, TaskPriority, TaskType, KanbanColumn } from "@opensprint/shared";
+import type {
+  Task,
+  TaskPriority,
+  TaskType,
+  KanbanColumn,
+  MergeGateState,
+} from "@opensprint/shared";
 import { mapStatusToKanban } from "@opensprint/shared";
 
 const VALID_KANBAN_COLUMNS: readonly KanbanColumn[] = [
@@ -250,6 +256,7 @@ export function taskEventPayloadToTask(p: TaskEventPayload): Task {
   };
   if (p.mergePausedUntil !== undefined) task.mergePausedUntil = p.mergePausedUntil;
   if (p.mergeWaitingOnMain !== undefined) task.mergeWaitingOnMain = p.mergeWaitingOnMain;
+  if (p.mergeGateState !== undefined) task.mergeGateState = p.mergeGateState as MergeGateState;
   return task;
 }
 

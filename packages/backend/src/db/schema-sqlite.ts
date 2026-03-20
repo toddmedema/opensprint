@@ -101,7 +101,11 @@ CREATE TABLE IF NOT EXISTS agent_stats (
     started_at   TEXT NOT NULL,
     completed_at TEXT NOT NULL,
     outcome      TEXT NOT NULL,
-    duration_ms  INTEGER NOT NULL
+    duration_ms  INTEGER NOT NULL,
+    flow         TEXT,
+    prompt_fingerprint TEXT,
+    cache_read_tokens INTEGER,
+    cache_write_tokens INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_agent_stats_project ON agent_stats(project_id);
 CREATE INDEX IF NOT EXISTS idx_agent_stats_task ON agent_stats(task_id);
@@ -126,6 +130,8 @@ CREATE TABLE IF NOT EXISTS orchestrator_counters (
     baseline_status TEXT NOT NULL DEFAULT 'unknown',
     baseline_checked_at TEXT,
     baseline_failure_summary TEXT,
+    merge_validation_status TEXT NOT NULL DEFAULT 'healthy',
+    merge_validation_failure_summary TEXT,
     dispatch_paused_reason TEXT,
     updated_at    TEXT NOT NULL
 );
@@ -286,6 +292,10 @@ export function getSqliteSchemaStatements(): string[] {
 export function getSqliteAlterStatements(): Array<{ table: string; column: string; def: string }> {
   return [
     { table: "agent_stats", column: "role", def: "TEXT" },
+    { table: "agent_stats", column: "flow", def: "TEXT" },
+    { table: "agent_stats", column: "prompt_fingerprint", def: "TEXT" },
+    { table: "agent_stats", column: "cache_read_tokens", def: "INTEGER" },
+    { table: "agent_stats", column: "cache_write_tokens", def: "INTEGER" },
     { table: "open_questions", column: "scope_change_metadata", def: "TEXT" },
     { table: "open_questions", column: "responses", def: "TEXT" },
     {
@@ -295,6 +305,16 @@ export function getSqliteAlterStatements(): Array<{ table: string; column: strin
     },
     { table: "orchestrator_counters", column: "baseline_checked_at", def: "TEXT" },
     { table: "orchestrator_counters", column: "baseline_failure_summary", def: "TEXT" },
+    {
+      table: "orchestrator_counters",
+      column: "merge_validation_status",
+      def: "TEXT NOT NULL DEFAULT 'healthy'",
+    },
+    {
+      table: "orchestrator_counters",
+      column: "merge_validation_failure_summary",
+      def: "TEXT",
+    },
     { table: "orchestrator_counters", column: "dispatch_paused_reason", def: "TEXT" },
   ];
 }

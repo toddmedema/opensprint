@@ -194,6 +194,14 @@ export interface ActiveTaskConfig {
     outputSnippet?: string | null;
     worktreePath?: string | null;
     firstErrorLine?: string | null;
+    category?: "quality_gate" | "environment_setup" | null;
+    validationWorkspace?: "baseline" | "merged_candidate" | "task_worktree" | "repo_root" | null;
+    repairAttempted?: boolean;
+    repairSucceeded?: boolean;
+    executable?: string | null;
+    cwd?: string | null;
+    exitCode?: number | null;
+    signal?: string | null;
   } | null;
   /** Whether this retry reuses an existing branch with prior commits */
   useExistingBranch?: boolean;
@@ -329,6 +337,7 @@ export interface ActiveTaskEntry {
 }
 
 export type BaselineRuntimeStatus = "unknown" | "checking" | "healthy" | "failing";
+export type MergeValidationRuntimeStatus = "healthy" | "degraded";
 
 /** Build orchestrator status (always-on per PRDv2 §5.7, v2 multi-slot model) */
 export interface OrchestratorStatus {
@@ -342,6 +351,10 @@ export interface OrchestratorStatus {
   baselineCheckedAt?: string | null;
   /** Short summary for the current baseline failure, if any. */
   baselineFailureSummary?: string | null;
+  /** Project-wide merge-validation health (separate from baseline health). */
+  mergeValidationStatus?: MergeValidationRuntimeStatus;
+  /** Short summary for the current merge-validation health issue, if any. */
+  mergeValidationFailureSummary?: string | null;
   /** Short reason for why dispatch is paused, if any. */
   dispatchPausedReason?: string | null;
   /** True when paused waiting for HIL approval (PRD §6.5) */

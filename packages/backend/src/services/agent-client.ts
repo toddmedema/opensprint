@@ -47,6 +47,15 @@ import {
   OpenAIAgenticAdapter,
   GeminiAgenticAdapter,
 } from "./agentic-loop.js";
+import {
+  buildOpenAIPromptCacheKey,
+  extractAnthropicCacheUsage,
+  extractOpenAICacheUsage,
+  fingerprintPrompt,
+  toAnthropicTextBlock,
+  type AgentCacheUsageMetrics,
+  type PromptCacheContext,
+} from "../utils/prompt-cache.js";
 
 const execAsync = promisify(exec);
 const log = createLogger("agent-client");
@@ -194,18 +203,46 @@ function buildOpenAIResponsesInput(options: {
   return input;
 }
 
+type OpenAIResponsesStreamEvent = {
+  type?: string;
+  delta?: string;
+  response?: {
+    id?: string | null;
+    usage?: {
+      input_tokens_details?: { cached_tokens?: number | null } | null;
+    } | null;
+  } | null;
+};
+
 async function collectOpenAIResponsesStream(
-  stream: AsyncIterable<{ type?: string; delta?: string }>,
+  stream: AsyncIterable<OpenAIResponsesStreamEvent>,
   onChunk: (chunk: string) => void
-): Promise<string> {
+): Promise<{
+  content: string;
+  responseId?: string;
+  usage?: {
+    input_tokens_details?: { cached_tokens?: number | null } | null;
+  } | null;
+}> {
   let fullContent = "";
+  let responseId: string | undefined;
+  let usage:
+    | {
+        input_tokens_details?: { cached_tokens?: number | null } | null;
+      }
+    | null
+    | undefined;
   for await (const event of stream) {
     if (event.type === "response.output_text.delta" && event.delta) {
       fullContent += event.delta;
       onChunk(event.delta);
     }
+    if (event.type === "response.completed" && event.response) {
+      responseId = event.response.id ?? undefined;
+      usage = event.response.usage;
+    }
   }
-  return fullContent;
+  return { content: fullContent, responseId, usage };
 }
 
 const LM_STUDIO_NOT_RUNNING_MESSAGE =
@@ -668,11 +705,15 @@ export interface AgentInvokeOptions {
   onChunk?: (chunk: string) => void;
   /** Project ID for API key resolution (Cursor: ApiKeyResolver.getNextKey for CURSOR_API_KEY) */
   projectId?: string;
+  /** Provider-specific prompt caching context */
+  promptCacheContext?: PromptCacheContext;
 }
 
 export interface AgentResponse {
   content: string;
   raw?: unknown;
+  responseId?: string;
+  cacheMetrics?: AgentCacheUsageMetrics;
 }
 
 /**
@@ -1010,6 +1051,16 @@ export class AgentClient {
       const model = config.model ?? "gpt-4o-mini";
       const systemPrompt = `You are a coding agent. Execute the task described in the user message. Use the provided tools to read and edit files, run commands, and list or search files. When done, write a result.json file (or report success/failure in your final message).`;
       const useResponsesApi = isOpenAIResponsesModel(model);
+      const promptFingerprint = fingerprintPrompt(systemPrompt);
+      const promptCacheKey = buildOpenAIPromptCacheKey({
+        provider: "openai",
+        model,
+        flow: "task",
+        projectId,
+        role: agentRole ?? "coder",
+        promptVersion: "v1",
+        instructionsFingerprint: promptFingerprint,
+      });
 
       const triedKeyIds = new Set<string>();
       let lastError: unknown;
@@ -1052,20 +1103,45 @@ export class AgentClient {
         try {
           let fullContent: string;
           if (useResponsesApi) {
-            fullContent = await collectOpenAIResponsesStream(
+            const streamResult = await collectOpenAIResponsesStream(
               (await client.responses.create({
                 model,
                 instructions: systemPrompt,
                 input: [{ role: "user", content: taskContent }],
                 max_output_tokens: 16384,
+                prompt_cache_key: promptCacheKey,
+                prompt_cache_retention: "in-memory",
                 stream: true,
-              })) as AsyncIterable<{ type?: string; delta?: string }>,
+              })) as AsyncIterable<OpenAIResponsesStreamEvent>,
               (delta) => {
                 if (!aborted) emit(delta);
               }
             );
+            fullContent = streamResult.content;
+            const cacheMetrics = extractOpenAICacheUsage({
+              response: {
+                id: streamResult.responseId ?? null,
+                usage: streamResult.usage ?? null,
+              },
+              flow: "task",
+              promptFingerprint,
+              promptCacheKey,
+            });
+            log.info("OpenAI coding agent cache usage", {
+              cacheReadTokens: cacheMetrics.cacheReadTokens,
+              promptFingerprint: cacheMetrics.promptFingerprint,
+            });
           } else {
-            const adapter = new OpenAIAgenticAdapter(client, model, systemPrompt);
+            const adapter = new OpenAIAgenticAdapter(client, model, systemPrompt, {
+              provider: "openai",
+              model,
+              flow: "loop",
+              projectId,
+              taskId: taskFilePath,
+              role: agentRole ?? "coder",
+              toolSchemaVersion: "agent-tools-v1",
+              instructionsFingerprint: promptFingerprint,
+            });
             const result = await runAgenticLoop(adapter, taskContent, {
               cwd,
               onChunk: (text) => {
@@ -1078,6 +1154,13 @@ export class AgentClient {
               },
             });
             fullContent = result.content;
+            const lastCacheMetric = result.cacheMetrics.at(-1);
+            if (lastCacheMetric) {
+              log.info("OpenAI coding loop cache usage", {
+                cacheReadTokens: lastCacheMetric.cacheReadTokens,
+                promptFingerprint: lastCacheMetric.promptFingerprint,
+              });
+            }
           }
 
           if (aborted) return;
@@ -1210,7 +1293,15 @@ export class AgentClient {
         triedKeyIds.add(keyId);
 
         const client = new Anthropic({ apiKey: key });
-        const adapter = new AnthropicAgenticAdapter(client, model, systemPrompt);
+        const adapter = new AnthropicAgenticAdapter(client, model, systemPrompt, {
+          provider: "anthropic",
+          model,
+          flow: "loop",
+          projectId,
+          taskId: taskFilePath,
+          role: agentRole ?? "coder",
+          toolSchemaVersion: "agent-tools-v1",
+        });
         try {
           const result = await runAgenticLoop(adapter, taskContent, {
             cwd,
@@ -1233,6 +1324,8 @@ export class AgentClient {
           log.info("Claude coding agent completed", {
             outputLen: result.content.length,
             turnCount: result.turnCount,
+            cacheReadTokens: result.cacheMetrics.at(-1)?.cacheReadTokens ?? null,
+            cacheWriteTokens: result.cacheMetrics.at(-1)?.cacheWriteTokens ?? null,
           });
           return Promise.resolve(onExit(0)).catch((e) => log.error("onExit failed", { err: e }));
         } catch (error: unknown) {
@@ -1937,14 +2030,24 @@ export class AgentClient {
   private async invokeClaudeApi(options: AgentInvokeOptions): Promise<AgentResponse> {
     const { config, prompt, systemPrompt, conversationHistory, projectId } = options;
     const model = config.model ?? "claude-sonnet-4-20250514";
+    const promptFingerprint = fingerprintPrompt(systemPrompt?.trim() || prompt);
+    const anthropicSystem = systemPrompt?.trim()
+      ? [toAnthropicTextBlock(systemPrompt.trim(), true)]
+      : undefined;
 
-    const messages: Array<{ role: "user" | "assistant"; content: string }> = [];
+    const messages: Array<{
+      role: "user" | "assistant";
+      content: ReturnType<typeof toAnthropicTextBlock>[];
+    }> = [];
     if (conversationHistory) {
-      for (const m of conversationHistory) {
-        messages.push({ role: m.role, content: m.content });
+      for (const [index, m] of conversationHistory.entries()) {
+        messages.push({
+          role: m.role,
+          content: [toAnthropicTextBlock(m.content, index < conversationHistory.length)],
+        });
       }
     }
-    messages.push({ role: "user", content: prompt });
+    messages.push({ role: "user", content: [toAnthropicTextBlock(prompt, false)] });
 
     const triedKeyIds = new Set<string>();
     let lastError: unknown;
@@ -1999,7 +2102,7 @@ export class AgentClient {
           const stream = client.messages.stream({
             model,
             max_tokens: 8192,
-            system: systemPrompt?.trim() || undefined,
+            system: anthropicSystem,
             messages,
           });
           let fullContent = "";
@@ -2016,17 +2119,22 @@ export class AgentClient {
             textBlock && typeof textBlock === "object" && "text" in textBlock
               ? String(textBlock.text)
               : fullContent;
+          const cacheMetrics = extractAnthropicCacheUsage({
+            response: finalMessage,
+            flow: options.promptCacheContext?.flow ?? "task",
+            promptFingerprint,
+          });
 
           if (projectId && keyId !== ENV_FALLBACK_KEY_ID) {
             await clearLimitHit(projectId, "ANTHROPIC_API_KEY", keyId, source);
           }
-          return { content };
+          return { content, cacheMetrics };
         }
 
         const response = await client.messages.create({
           model,
           max_tokens: 8192,
-          system: systemPrompt?.trim() || undefined,
+          system: anthropicSystem,
           messages,
         });
         const contentBlocks = response?.content ?? [];
@@ -2037,11 +2145,16 @@ export class AgentClient {
           textBlock && typeof textBlock === "object" && "text" in textBlock
             ? String(textBlock.text)
             : "";
+        const cacheMetrics = extractAnthropicCacheUsage({
+          response,
+          flow: options.promptCacheContext?.flow ?? "task",
+          promptFingerprint,
+        });
 
         if (projectId && keyId !== ENV_FALLBACK_KEY_ID) {
           await clearLimitHit(projectId, "ANTHROPIC_API_KEY", keyId, source);
         }
-        return { content };
+        return { content, cacheMetrics };
       } catch (error: unknown) {
         lastError = error;
         const offlineMessage = await getOfflineFailureMessage(error);
@@ -2423,6 +2536,16 @@ export class AgentClient {
     const { config, prompt, systemPrompt, conversationHistory, projectId } = options;
     const model = config.model ?? "gpt-4o-mini";
     const useResponsesApi = isOpenAIResponsesModel(model);
+    const promptFingerprint = fingerprintPrompt(systemPrompt?.trim() || prompt);
+    const promptCacheContext: PromptCacheContext = {
+      provider: "openai",
+      model,
+      flow: "task",
+      projectId,
+      instructionsFingerprint: promptFingerprint,
+      ...(options.promptCacheContext ?? {}),
+    };
+    const promptCacheKey = buildOpenAIPromptCacheKey(promptCacheContext);
 
     const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
     if (!useResponsesApi && systemPrompt?.trim()) {
@@ -2487,58 +2610,109 @@ export class AgentClient {
 
       try {
         let content: string;
+        let responseId: string | undefined;
+        let cacheMetrics: AgentCacheUsageMetrics | undefined;
         if (useResponsesApi) {
           const responseInput = buildOpenAIResponsesInput({ conversationHistory, prompt });
           if (options.onChunk) {
-            content = await collectOpenAIResponsesStream(
+            const streamResult = await collectOpenAIResponsesStream(
               (await client.responses.create({
                 model,
                 instructions: systemPrompt?.trim() || undefined,
                 input: responseInput,
                 max_output_tokens: 8192,
+                prompt_cache_key: promptCacheKey,
+                prompt_cache_retention: "in-memory",
                 stream: true,
-              })) as AsyncIterable<{ type?: string; delta?: string }>,
+              })) as AsyncIterable<OpenAIResponsesStreamEvent>,
               options.onChunk
             );
+            content = streamResult.content;
+            responseId = streamResult.responseId;
+            cacheMetrics = extractOpenAICacheUsage({
+              response: {
+                id: streamResult.responseId ?? null,
+                usage: streamResult.usage ?? null,
+              },
+              flow: promptCacheContext.flow,
+              promptFingerprint,
+              promptCacheKey,
+            });
           } else {
             const response = await client.responses.create({
               model,
               instructions: systemPrompt?.trim() || undefined,
               input: responseInput,
               max_output_tokens: 8192,
+              prompt_cache_key: promptCacheKey,
+              prompt_cache_retention: "in-memory",
             });
             content = response.output_text;
+            responseId = response.id;
+            cacheMetrics = extractOpenAICacheUsage({
+              response,
+              flow: promptCacheContext.flow,
+              promptFingerprint,
+              promptCacheKey,
+            });
           }
         } else if (options.onChunk) {
           const stream = await client.chat.completions.create({
             model,
             messages: openaiMessages,
             max_tokens: 8192,
+            prompt_cache_key: promptCacheKey,
+            prompt_cache_retention: "in-memory",
             stream: true,
+            stream_options: { include_usage: true },
           });
           let fullContent = "";
+          let usage:
+            | {
+                prompt_tokens_details?: { cached_tokens?: number | null } | null;
+              }
+            | null
+            | undefined;
           for await (const chunk of stream) {
             const delta = chunk.choices[0]?.delta?.content;
             if (delta) {
               fullContent += delta;
               options.onChunk(delta);
             }
+            if (chunk.usage) {
+              usage = chunk.usage;
+            }
           }
           content = fullContent;
+          cacheMetrics = extractOpenAICacheUsage({
+            response: { id: null, usage },
+            flow: promptCacheContext.flow,
+            promptFingerprint,
+            promptCacheKey,
+          });
         } else {
           const response = await client.chat.completions.create({
             model,
             messages: openaiMessages,
             max_tokens: 8192,
+            prompt_cache_key: promptCacheKey,
+            prompt_cache_retention: "in-memory",
           });
           content = response.choices[0]?.message?.content ?? "";
+          responseId = response.id;
+          cacheMetrics = extractOpenAICacheUsage({
+            response,
+            flow: promptCacheContext.flow,
+            promptFingerprint,
+            promptCacheKey,
+          });
         }
 
         if (projectId && keyId !== ENV_FALLBACK_KEY_ID) {
           await clearLimitHit(projectId, "OPENAI_API_KEY", keyId, source);
         }
 
-        return { content };
+        return { content, responseId, cacheMetrics };
       } catch (error: unknown) {
         lastError = error;
         const offlineMessage = await getOfflineFailureMessage(error);

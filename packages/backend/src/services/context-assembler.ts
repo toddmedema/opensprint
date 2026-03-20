@@ -19,6 +19,7 @@ import { notificationService } from "./notification.service.js";
 import { getRuntimePath } from "../utils/runtime-dir.js";
 import { getSafeTaskActiveDir } from "../utils/path-safety.js";
 import { getOrchestratorTestStatusPromptPath } from "./orchestrator-test-status.js";
+import { buildPromptEnvelope } from "../utils/prompt-cache.js";
 
 /** Short checklist items per review angle for angle-specific prompts. Exported for epic final review. */
 export const REVIEW_ANGLE_CHECKLISTS: Record<ReviewAngle, string[]> = {
@@ -329,18 +330,14 @@ export class ContextAssembler {
     return outputs;
   }
 
-  /** Insert agent instructions after title/objective section when present. */
+  /** Prepend reusable instructions so cacheable prompt prefixes stay stable across tasks. */
   private buildPromptWithInstructions(agentInstructions: string, basePrompt: string): string {
-    if (!agentInstructions.trim()) return basePrompt;
-    const match = basePrompt.match(/(## Objective\n\n[\s\S]*?)(\n## )/);
-    if (!match) return `${agentInstructions}\n\n${basePrompt}`;
-    const endOfObjective = match.index! + match[1].length;
-    return (
-      basePrompt.slice(0, endOfObjective) +
-      "\n\n" +
-      agentInstructions +
-      basePrompt.slice(endOfObjective)
-    );
+    return agentInstructions.trim()
+      ? buildPromptEnvelope({
+          stablePrefix: agentInstructions,
+          dynamicContext: basePrompt,
+        })
+      : basePrompt;
   }
 
   /**

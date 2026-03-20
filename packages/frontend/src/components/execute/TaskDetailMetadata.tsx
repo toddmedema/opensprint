@@ -42,6 +42,20 @@ export function TaskDetailMetadata({
   teamMembers = [],
 }: TaskDetailMetadataProps) {
   const displayLabel = task ? complexityToDisplay(task.complexity) : null;
+  const mergeStateLabel =
+    task?.mergeGateState === "blocked_on_baseline"
+      ? "Blocked on main"
+      : task?.mergeGateState === "candidate_fix_needed"
+        ? "Candidate fix needed"
+        : task?.mergeGateState === "environment_repair_needed"
+          ? "Environment repair needed"
+          : task?.mergeGateState === "merging"
+            ? "Merging"
+            : task?.mergeGateState === "validating"
+              ? "Validating"
+              : task?.mergeWaitingOnMain
+                ? "Blocked on main"
+                : null;
 
   return (
     <div className="px-4 pt-2 pb-0">
@@ -58,13 +72,17 @@ export function TaskDetailMetadata({
                 title={COLUMN_LABELS[task.kanbanColumn]}
               />
               <span>{COLUMN_LABELS[task.kanbanColumn]}</span>
-              {task.kanbanColumn === "waiting_to_merge" && task.mergeWaitingOnMain && (
+              {task.kanbanColumn === "waiting_to_merge" && mergeStateLabel && (
                 <span
                   className="text-theme-muted"
-                  title="Blocked on main"
-                  data-testid="task-detail-merge-waiting-on-main-hint"
+                  title={mergeStateLabel}
+                  data-testid={
+                    mergeStateLabel === "Blocked on main"
+                      ? "task-detail-merge-waiting-on-main-hint"
+                      : "task-detail-merge-state-hint"
+                  }
                 >
-                  · Blocked on main
+                  · {mergeStateLabel}
                 </span>
               )}
             </span>
@@ -122,6 +140,15 @@ export function TaskDetailMetadata({
           {isBlockedTask && task.blockReason && (
             <div className="mb-3 text-xs text-theme-error-text" data-testid="task-block-reason">
               {task.blockReason}
+            </div>
+          )}
+          {task.kanbanColumn === "waiting_to_merge" && task.lastExecutionSummary && (
+            <div
+              className="mb-3 text-xs text-theme-muted"
+              data-testid="task-detail-merge-summary"
+              title={task.lastExecutionSummary}
+            >
+              {task.lastExecutionSummary}
             </div>
           )}
           {roleLabel && (

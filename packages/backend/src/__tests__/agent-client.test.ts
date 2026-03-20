@@ -196,7 +196,7 @@ describe("AgentClient", () => {
         expect.objectContaining({
           model: "claude-sonnet-4",
           max_tokens: 8192,
-          messages: [{ role: "user", content: "Hello" }],
+          messages: [{ role: "user", content: [{ type: "text", text: "Hello" }] }],
         })
       );
       expect(result.content).toContain("Claude response");
@@ -218,7 +218,7 @@ describe("AgentClient", () => {
       expect(mockAnthropicCreate).toHaveBeenCalledWith(
         expect.objectContaining({
           model: "claude-sonnet-4-20250514",
-          messages: [{ role: "user", content: "Test" }],
+          messages: [{ role: "user", content: [{ type: "text", text: "Test" }] }],
         })
       );
       expect(result.content).toContain("Claude no-model");

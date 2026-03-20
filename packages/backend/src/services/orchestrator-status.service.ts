@@ -7,6 +7,7 @@ import type {
   AgentRuntimeState,
   AgentSuspendReason,
   BaselineRuntimeStatus,
+  MergeValidationRuntimeStatus,
   OrchestratorStatus,
 } from "@opensprint/shared";
 import { REVIEW_ANGLE_OPTIONS } from "@opensprint/shared";
@@ -68,6 +69,8 @@ export interface StateForStatus {
     baselineStatus?: BaselineRuntimeStatus;
     baselineCheckedAt?: string | null;
     baselineFailureSummary?: string | null;
+    mergeValidationStatus?: MergeValidationRuntimeStatus;
+    mergeValidationFailureSummary?: string | null;
     dispatchPausedReason?: string | null;
   };
 }
@@ -79,6 +82,8 @@ export interface OrchestratorCounters {
   baselineStatus: BaselineRuntimeStatus;
   baselineCheckedAt: string | null;
   baselineFailureSummary: string | null;
+  mergeValidationStatus?: MergeValidationRuntimeStatus;
+  mergeValidationFailureSummary?: string | null;
   dispatchPausedReason: string | null;
 }
 
@@ -90,6 +95,16 @@ function normalizeBaselineStatus(value: unknown): BaselineRuntimeStatus {
       return value;
     default:
       return "unknown";
+  }
+}
+
+function normalizeMergeValidationStatus(value: unknown): MergeValidationRuntimeStatus {
+  switch (value) {
+    case "degraded":
+      return "degraded";
+    case "healthy":
+    default:
+      return "healthy";
   }
 }
 
@@ -162,10 +177,12 @@ export class OrchestratorStatusService {
              baseline_status,
              baseline_checked_at,
              baseline_failure_summary,
+             merge_validation_status,
+             merge_validation_failure_summary,
              dispatch_paused_reason,
              updated_at
            )
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
            ON CONFLICT(project_id) DO UPDATE SET
              total_done = excluded.total_done,
              total_failed = excluded.total_failed,
@@ -173,6 +190,8 @@ export class OrchestratorStatusService {
              baseline_status = excluded.baseline_status,
              baseline_checked_at = excluded.baseline_checked_at,
              baseline_failure_summary = excluded.baseline_failure_summary,
+             merge_validation_status = excluded.merge_validation_status,
+             merge_validation_failure_summary = excluded.merge_validation_failure_summary,
              dispatch_paused_reason = excluded.dispatch_paused_reason,
              updated_at = excluded.updated_at`,
           [
@@ -183,6 +202,8 @@ export class OrchestratorStatusService {
             normalizeBaselineStatus(state.status.baselineStatus),
             state.status.baselineCheckedAt ?? null,
             state.status.baselineFailureSummary ?? null,
+            normalizeMergeValidationStatus(state.status.mergeValidationStatus),
+            state.status.mergeValidationFailureSummary ?? null,
             state.status.dispatchPausedReason ?? null,
             now,
           ]
@@ -200,7 +221,8 @@ export class OrchestratorStatusService {
     const client = await this.taskStore.getDb();
     const row = await client.queryOne(
       `SELECT total_done, total_failed, queue_depth, baseline_status, baseline_checked_at,
-              baseline_failure_summary, dispatch_paused_reason
+              baseline_failure_summary, merge_validation_status,
+              merge_validation_failure_summary, dispatch_paused_reason
          FROM orchestrator_counters
         WHERE project_id = $1`,
       [project.id]
@@ -213,6 +235,9 @@ export class OrchestratorStatusService {
       baselineStatus: normalizeBaselineStatus(row.baseline_status),
       baselineCheckedAt: (row.baseline_checked_at as string | null | undefined) ?? null,
       baselineFailureSummary: (row.baseline_failure_summary as string | null | undefined) ?? null,
+      mergeValidationStatus: normalizeMergeValidationStatus(row.merge_validation_status),
+      mergeValidationFailureSummary:
+        (row.merge_validation_failure_summary as string | null | undefined) ?? null,
       dispatchPausedReason: (row.dispatch_paused_reason as string | null | undefined) ?? null,
     };
   }

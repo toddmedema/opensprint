@@ -2,7 +2,14 @@ import fs from "fs/promises";
 import path from "path";
 import { createLogger } from "../utils/logger.js";
 import { getErrorMessage } from "../utils/error-utils.js";
-import { shellExec as shellExecDefault } from "../utils/shell-exec.js";
+import {
+  CommandRunError,
+  resolveCommandExecutable,
+  runCommand as runCommandDefault,
+  type CommandRunResult,
+  type CommandSpec,
+} from "../utils/command-runner.js";
+import { getGitNoHooksPath } from "../utils/git-no-hooks.js";
 import { BranchManager } from "./branch-manager.js";
 import { getMergeQualityGateCommands } from "./merge-quality-gates.js";
 
@@ -10,16 +17,23 @@ const log = createLogger("merge-quality-gate-runner");
 const QUALITY_GATE_FAILURE_OUTPUT_LIMIT = 4000;
 const QUALITY_GATE_FAILURE_REASON_LIMIT = 500;
 const QUALITY_GATE_AUTO_REPAIR_TIMEOUT_MS = 20 * 60 * 1000;
+const QUALITY_GATE_PRECHECK_TIMEOUT_MS = 30_000;
 const QUALITY_GATE_ENV_FINGERPRINTS: RegExp[] = [
   /\bmodule_not_found\b/i,
-  /cannot find module/i,
-  /cannot find package/i,
-  /enoent[\s\S]*node_modules/i,
-  /missing node_modules/i,
-  /no such file or directory[\s\S]*node_modules/i,
-  /native addon/i,
-  /could not locate the bindings file/i,
-  /was compiled against a different node\.js version/i,
+  /\bcannot find module\b/i,
+  /\bcannot find package\b/i,
+  /\bspawn\s+\S+\s+enoent\b/i,
+  /\benoent\b/i,
+  /\beacces\b/i,
+  /\bmissing script:\b/i,
+  /\bnode_modules\b/i,
+  /\bnative addon\b/i,
+  /\bcould not locate the bindings file\b/i,
+  /\bwas compiled against a different node\.js version\b/i,
+  /\bnot a git repository\b/i,
+  /\bneeded a single revision\b/i,
+  /\bpackage\.json\b/i,
+  /\bworktree\b/i,
 ];
 
 export interface MergeQualityGateRunOptions {
@@ -45,42 +59,62 @@ export interface MergeQualityGateFailure {
   autoRepairSucceeded?: boolean;
   autoRepairCommands?: string[];
   autoRepairOutput?: string;
+  executable?: string;
+  cwd?: string;
+  exitCode?: number | null;
+  signal?: string | null;
 }
 
 interface MergeQualityGateRunnerDeps {
-  shellExec?: typeof shellExecDefault;
+  runCommand?: (
+    spec: CommandSpec,
+    options: { cwd: string; timeout?: number }
+  ) => Promise<CommandRunResult>;
   symlinkNodeModules?: (repoPath: string, wtPath: string) => Promise<void>;
   commands?: string[];
+}
+
+interface PreparedGateCommand {
+  label: string;
+  spec: CommandSpec;
+  executable: string;
+}
+
+type PreparedGateCommandResult =
+  | {
+      prepared: PreparedGateCommand;
+      packageScripts: Set<string>;
+    }
+  | {
+      failure: MergeQualityGateFailure;
+    }
+  | {
+      skipped: true;
+      packageScripts: Set<string>;
+    };
+
+interface AutoRepairResult {
+  succeeded: boolean;
+  commands: string[];
+  output: string;
+  worktreePath: string;
+}
+
+function parseCommandSpec(command: string): CommandSpec {
+  const parts = command
+    .trim()
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return {
+    command: parts[0] ?? "",
+    args: parts.slice(1),
+  };
 }
 
 function extractNpmRunScriptName(command: string): string | null {
   const match = command.trim().match(/^npm\s+run\s+([^\s]+)/i);
   return match?.[1] ?? null;
-}
-
-async function readPackageScriptNames(cwd: string): Promise<Set<string> | null> {
-  const packageJsonPath = path.join(cwd, "package.json");
-  try {
-    const raw = await fs.readFile(packageJsonPath, "utf-8");
-    const parsed = JSON.parse(raw) as { scripts?: Record<string, unknown> } | null;
-    if (!parsed || typeof parsed !== "object") return new Set();
-    const scripts = parsed.scripts;
-    if (!scripts || typeof scripts !== "object") return new Set();
-    return new Set(Object.keys(scripts));
-  } catch (err) {
-    log.debug("Unable to resolve package scripts for merge quality gates", {
-      cwd,
-      err: getErrorMessage(err),
-    });
-    return null;
-  }
-}
-
-function shouldSkipMissingNpmScript(command: string, scripts: Set<string> | null): boolean {
-  if (!scripts) return false;
-  const scriptName = extractNpmRunScriptName(command);
-  if (!scriptName) return false;
-  return !scripts.has(scriptName);
 }
 
 function getFirstNonEmptyLine(value: string | null | undefined): string | null {
@@ -199,57 +233,368 @@ function getFirstMeaningfulErrorLine(value: string | null | undefined): string |
   return meaningfulIndex >= 0 ? lines[meaningfulIndex]! : getFirstNonEmptyLine(value);
 }
 
-function extractShellFailure(
+function buildFailure(params: {
+  command: string;
+  reason: string;
+  output?: string;
+  outputSnippet?: string;
+  worktreePath: string;
+  validationWorkspace: MergeQualityGateFailure["validationWorkspace"];
+  firstErrorLine?: string | null;
+  category: "environment_setup" | "quality_gate";
+  executable?: string | null;
+  cwd?: string | null;
+  exitCode?: number | null;
+  signal?: string | null;
+  autoRepairAttempted?: boolean;
+  autoRepairSucceeded?: boolean;
+  autoRepairCommands?: string[];
+  autoRepairOutput?: string;
+}): MergeQualityGateFailure {
+  const output = (params.output ?? "").slice(0, QUALITY_GATE_FAILURE_OUTPUT_LIMIT);
+  const outputSnippet =
+    (params.outputSnippet ?? getRelevantOutputSnippet(output) ?? "").slice(0, 1800) || undefined;
+  const firstErrorLine =
+    params.firstErrorLine?.trim() ||
+    getFirstMeaningfulErrorLine(outputSnippet) ||
+    getFirstMeaningfulErrorLine(output) ||
+    getFirstNonEmptyLine(params.reason) ||
+    "Unknown quality gate failure";
+  return {
+    command: params.command,
+    reason: params.reason.slice(0, QUALITY_GATE_FAILURE_REASON_LIMIT),
+    output,
+    outputSnippet,
+    worktreePath: params.worktreePath,
+    firstErrorLine,
+    validationWorkspace: params.validationWorkspace,
+    category: params.category,
+    autoRepairAttempted: params.autoRepairAttempted ?? false,
+    autoRepairSucceeded: params.autoRepairSucceeded ?? false,
+    autoRepairCommands: params.autoRepairCommands ?? [],
+    autoRepairOutput: params.autoRepairOutput ?? "",
+    executable: params.executable?.trim() || undefined,
+    cwd: params.cwd?.trim() || undefined,
+    exitCode: params.exitCode ?? undefined,
+    signal: params.signal ?? undefined,
+  };
+}
+
+function extractCommandFailure(
   command: string,
-  err: unknown
-): { reason: string; output: string; outputSnippet: string; firstErrorLine: string } {
-  const e = err as { stdout?: string; stderr?: string; message?: string };
-  const rawOutput = [e.stdout ?? "", e.stderr ?? ""]
+  err: unknown,
+  params: {
+    worktreePath: string;
+    validationWorkspace: MergeQualityGateFailure["validationWorkspace"];
+    category?: "environment_setup" | "quality_gate";
+  }
+): MergeQualityGateFailure {
+  const commandErr = err as Partial<CommandRunError>;
+  const stdout = typeof commandErr.stdout === "string" ? commandErr.stdout : "";
+  const stderr = typeof commandErr.stderr === "string" ? commandErr.stderr : "";
+  const rawOutput = [stdout, stderr]
     .filter((part) => part.trim().length > 0)
     .join("\n")
     .trim();
   const output = rawOutput.slice(0, QUALITY_GATE_FAILURE_OUTPUT_LIMIT);
   const outputSnippet = getRelevantOutputSnippet(rawOutput) || output;
-  const reason = (e.message ?? `Command failed: ${command}`).slice(
-    0,
-    QUALITY_GATE_FAILURE_REASON_LIMIT
-  );
+  const reason = (
+    commandErr.message ?? (err instanceof Error ? err.message : `Command failed: ${command}`)
+  ).slice(0, QUALITY_GATE_FAILURE_REASON_LIMIT);
   const firstErrorLine =
     getFirstMeaningfulErrorLine(rawOutput) ??
     getFirstNonEmptyLine(outputSnippet) ??
     getFirstNonEmptyLine(rawOutput) ??
     getFirstNonEmptyLine(reason) ??
     "Unknown quality gate failure";
-  return { reason, output, outputSnippet, firstErrorLine };
+  const category =
+    params.category ??
+    (isQualityGateEnvironmentFailure({
+      reason,
+      output,
+      firstErrorLine,
+      code: typeof commandErr.code === "string" ? commandErr.code : undefined,
+      exitCode: typeof commandErr.exitCode === "number" ? commandErr.exitCode : null,
+    })
+      ? "environment_setup"
+      : "quality_gate");
+
+  return buildFailure({
+    command,
+    reason,
+    output,
+    outputSnippet,
+    worktreePath: params.worktreePath,
+    validationWorkspace: params.validationWorkspace,
+    firstErrorLine,
+    category,
+    executable: typeof commandErr.executable === "string" ? commandErr.executable : undefined,
+    cwd: typeof commandErr.cwd === "string" ? commandErr.cwd : params.worktreePath,
+    exitCode: typeof commandErr.exitCode === "number" ? commandErr.exitCode : null,
+    signal:
+      typeof commandErr.signal === "string" || commandErr.signal == null
+        ? (commandErr.signal ?? null)
+        : String(commandErr.signal),
+  });
 }
 
 function isQualityGateEnvironmentFailure(failure: {
   reason: string;
   output: string;
   firstErrorLine: string;
+  code?: string;
+  exitCode?: number | null;
 }): boolean {
+  if (failure.code === "ENOENT" || failure.code === "EACCES") return true;
+  if (failure.exitCode === 127 || failure.exitCode === 126) return true;
   const text = `${failure.reason}\n${failure.output}\n${failure.firstErrorLine}`;
   return QUALITY_GATE_ENV_FINGERPRINTS.some((fingerprint) => fingerprint.test(text));
 }
 
-async function repairQualityGateEnvironment(
-  repoPath: string,
-  wtPath: string,
-  deps: Required<Pick<MergeQualityGateRunnerDeps, "shellExec" | "symlinkNodeModules">>
-): Promise<{ succeeded: boolean; commands: string[]; output: string }> {
-  const outputParts: string[] = [];
-  const repairRoot = wtPath === repoPath ? wtPath : repoPath;
-  let npmCiSucceeded = false;
+async function ensurePathExists(
+  targetPath: string,
+  reason: string,
+  params: {
+    command: string;
+    validationWorkspace: MergeQualityGateFailure["validationWorkspace"];
+    worktreePath: string;
+  }
+): Promise<MergeQualityGateFailure | null> {
   try {
-    const { stdout, stderr } = await deps.shellExec("npm ci", {
-      cwd: repairRoot,
-      timeout: QUALITY_GATE_AUTO_REPAIR_TIMEOUT_MS,
+    await fs.access(targetPath);
+    return null;
+  } catch {
+    return buildFailure({
+      command: params.command,
+      reason,
+      worktreePath: params.worktreePath,
+      validationWorkspace: params.validationWorkspace,
+      category: "environment_setup",
+      cwd: params.worktreePath,
     });
+  }
+}
+
+async function prepareGateCommand(
+  options: MergeQualityGateRunOptions,
+  command: string,
+  validationWorkspace: MergeQualityGateFailure["validationWorkspace"],
+  runCommand: NonNullable<MergeQualityGateRunnerDeps["runCommand"]>
+): Promise<PreparedGateCommandResult> {
+  const cwd = options.worktreePath;
+  const workspaceFailure = await ensurePathExists(cwd, `Validation workspace is missing: ${cwd}`, {
+    command,
+    validationWorkspace,
+    worktreePath: cwd,
+  });
+  if (workspaceFailure) return { failure: workspaceFailure };
+
+  const packageJsonPath = path.join(cwd, "package.json");
+  const packageJsonFailure = await ensurePathExists(
+    packageJsonPath,
+    `Validation workspace package.json is missing: ${packageJsonPath}`,
+    {
+      command,
+      validationWorkspace,
+      worktreePath: cwd,
+    }
+  );
+  if (packageJsonFailure) return { failure: packageJsonFailure };
+
+  let packageScripts = new Set<string>();
+  try {
+    const raw = await fs.readFile(packageJsonPath, "utf-8");
+    const parsed = JSON.parse(raw) as { scripts?: Record<string, unknown> } | null;
+    if (parsed?.scripts && typeof parsed.scripts === "object") {
+      packageScripts = new Set(Object.keys(parsed.scripts));
+    }
+  } catch (err) {
+    return {
+      failure: buildFailure({
+        command,
+        reason: `Failed to read validation workspace package.json: ${getErrorMessage(err)}`,
+        worktreePath: cwd,
+        validationWorkspace,
+        category: "environment_setup",
+        cwd,
+      }),
+    };
+  }
+
+  const scriptName = extractNpmRunScriptName(command);
+  if (scriptName && !packageScripts.has(scriptName)) {
+    return {
+      skipped: true,
+      packageScripts,
+    };
+  }
+
+  const nodeModulesFailure = await ensurePathExists(
+    path.join(cwd, "node_modules"),
+    `Validation workspace node_modules is missing for ${cwd}`,
+    {
+      command,
+      validationWorkspace,
+      worktreePath: cwd,
+    }
+  );
+  if (nodeModulesFailure) return { failure: nodeModulesFailure };
+
+  const gitExecutable = resolveCommandExecutable("git");
+  if (!gitExecutable) {
+    return {
+      failure: buildFailure({
+        command,
+        reason: "git is not available in PATH for merge validation",
+        worktreePath: cwd,
+        validationWorkspace,
+        category: "environment_setup",
+        executable: "git",
+        cwd,
+      }),
+    };
+  }
+
+  try {
+    await runCommand(
+      {
+        command: "git",
+        args: ["rev-parse", "--verify", "HEAD"],
+      },
+      {
+        cwd,
+        timeout: QUALITY_GATE_PRECHECK_TIMEOUT_MS,
+      }
+    );
+  } catch (err) {
+    return {
+      failure: extractCommandFailure("git rev-parse --verify HEAD", err, {
+        worktreePath: cwd,
+        validationWorkspace,
+        category: "environment_setup",
+      }),
+    };
+  }
+
+  const spec = parseCommandSpec(command);
+  const executable = resolveCommandExecutable(spec.command);
+  if (!executable) {
+    return {
+      failure: buildFailure({
+        command,
+        reason: `Executable is not available in PATH: ${spec.command}`,
+        worktreePath: cwd,
+        validationWorkspace,
+        category: "environment_setup",
+        executable: spec.command,
+        cwd,
+      }),
+    };
+  }
+
+  return {
+    prepared: {
+      label: command,
+      spec,
+      executable,
+    },
+    packageScripts,
+  };
+}
+
+async function repairQualityGateEnvironment(
+  options: MergeQualityGateRunOptions,
+  validationWorkspace: MergeQualityGateFailure["validationWorkspace"],
+  deps: Required<Pick<MergeQualityGateRunnerDeps, "runCommand" | "symlinkNodeModules">>
+): Promise<AutoRepairResult> {
+  const outputParts: string[] = [];
+  const commands: string[] = [];
+  const worktreePath = options.worktreePath;
+  let recreateSucceeded = true;
+
+  if (validationWorkspace === "baseline") {
+    const noHooks = getGitNoHooksPath();
+    commands.push("git worktree remove", "git worktree add --detach");
+    await deps
+      .runCommand(
+        {
+          command: "git",
+          args: ["worktree", "remove", worktreePath, "--force"],
+        },
+        {
+          cwd: options.repoPath,
+          timeout: QUALITY_GATE_PRECHECK_TIMEOUT_MS,
+        }
+      )
+      .catch((err) => {
+        outputParts.push(
+          `[git worktree remove] ${
+            extractCommandFailure("git worktree remove", err, {
+              worktreePath,
+              validationWorkspace,
+              category: "environment_setup",
+            }).reason
+          }`
+        );
+      });
+
+    try {
+      await fs.rm(worktreePath, { recursive: true, force: true });
+      await fs.mkdir(path.dirname(worktreePath), { recursive: true });
+      await deps.runCommand(
+        {
+          command: "git",
+          args: [
+            "-c",
+            `core.hooksPath=${noHooks}`,
+            "worktree",
+            "add",
+            "--detach",
+            worktreePath,
+            options.baseBranch,
+          ],
+        },
+        {
+          cwd: options.repoPath,
+          timeout: QUALITY_GATE_PRECHECK_TIMEOUT_MS,
+        }
+      );
+    } catch (err) {
+      recreateSucceeded = false;
+      outputParts.push(
+        `[git worktree add] ${
+          extractCommandFailure("git worktree add --detach", err, {
+            worktreePath,
+            validationWorkspace,
+            category: "environment_setup",
+          }).reason
+        }`
+      );
+    }
+  }
+
+  let npmCiSucceeded = false;
+  commands.push("npm ci");
+  try {
+    const result = await deps.runCommand(
+      {
+        command: "npm",
+        args: ["ci"],
+      },
+      {
+        cwd: options.repoPath,
+        timeout: QUALITY_GATE_AUTO_REPAIR_TIMEOUT_MS,
+      }
+    );
     npmCiSucceeded = true;
-    const npmCiOutput = [stdout, stderr].filter(Boolean).join("\n").trim();
+    const npmCiOutput = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
     if (npmCiOutput) outputParts.push(`[npm ci] ${npmCiOutput}`);
   } catch (err) {
-    const npmCiFailure = extractShellFailure("npm ci", err);
+    const npmCiFailure = extractCommandFailure("npm ci", err, {
+      worktreePath,
+      validationWorkspace,
+      category: "environment_setup",
+    });
     const npmCiOutput = [npmCiFailure.reason, npmCiFailure.output]
       .filter(Boolean)
       .join("\n")
@@ -257,29 +602,50 @@ async function repairQualityGateEnvironment(
     if (npmCiOutput) outputParts.push(`[npm ci] ${npmCiOutput}`);
   }
 
+  commands.push("symlinkNodeModules");
   let symlinkSucceeded = true;
   try {
-    await deps.symlinkNodeModules(repoPath, wtPath);
+    await deps.symlinkNodeModules(options.repoPath, worktreePath);
   } catch (err) {
     symlinkSucceeded = false;
     outputParts.push(`[symlinkNodeModules] ${getErrorMessage(err)}`);
   }
 
   return {
-    succeeded: npmCiSucceeded && symlinkSucceeded,
-    commands: ["npm ci", "symlinkNodeModules"],
+    succeeded: recreateSucceeded && npmCiSucceeded && symlinkSucceeded,
+    commands,
     output: outputParts.join("\n").slice(0, QUALITY_GATE_FAILURE_OUTPUT_LIMIT),
+    worktreePath,
   };
+}
+
+async function executePreparedGate(
+  prepared: PreparedGateCommand,
+  options: MergeQualityGateRunOptions,
+  validationWorkspace: MergeQualityGateFailure["validationWorkspace"],
+  runCommand: NonNullable<MergeQualityGateRunnerDeps["runCommand"]>
+): Promise<MergeQualityGateFailure | null> {
+  try {
+    await runCommand(prepared.spec, {
+      cwd: options.worktreePath,
+      timeout: QUALITY_GATE_AUTO_REPAIR_TIMEOUT_MS,
+    });
+    return null;
+  } catch (err) {
+    return extractCommandFailure(prepared.label, err, {
+      worktreePath: options.worktreePath,
+      validationWorkspace,
+    });
+  }
 }
 
 export async function runMergeQualityGates(
   options: MergeQualityGateRunOptions,
   deps: MergeQualityGateRunnerDeps = {}
 ): Promise<MergeQualityGateFailure | null> {
-  // Test suites mock merge coordination heavily; skip expensive quality-gate execution in test runtime.
   if (process.env.NODE_ENV === "test") return null;
 
-  const execute = deps.shellExec ?? shellExecDefault;
+  const runCommand = deps.runCommand ?? runCommandDefault;
   const commands = deps.commands ?? getMergeQualityGateCommands();
   const validationWorkspace =
     options.validationWorkspace ??
@@ -290,104 +656,145 @@ export async function runMergeQualityGates(
       const branchManager = new BranchManager();
       await branchManager.symlinkNodeModules(repoPath, wtPath);
     });
-  const cwd = options.worktreePath;
-  const packageScriptNames = await readPackageScriptNames(cwd);
 
   for (const command of commands) {
-    if (shouldSkipMissingNpmScript(command, packageScriptNames)) {
+    const preparedOrFailure = await prepareGateCommand(
+      options,
+      command,
+      validationWorkspace,
+      runCommand
+    );
+    if ("skipped" in preparedOrFailure) {
       log.info("Skipping merge quality gate because npm script is not defined", {
         projectId: options.projectId,
         taskId: options.taskId,
         command,
-        cwd,
+        cwd: options.worktreePath,
       });
       continue;
     }
-
-    try {
-      log.info("Running merge quality gate", {
-        projectId: options.projectId,
-        taskId: options.taskId,
-        command,
-        cwd,
-      });
-      await execute(command, {
-        cwd,
-        timeout: QUALITY_GATE_AUTO_REPAIR_TIMEOUT_MS,
-      });
-    } catch (err) {
-      const initialFailure = extractShellFailure(command, err);
-      const isEnvironmentFailure = isQualityGateEnvironmentFailure(initialFailure);
-      if (!isEnvironmentFailure) {
-        log.warn("Merge quality gate failed", {
-          projectId: options.projectId,
-          taskId: options.taskId,
-          command,
-          reason: initialFailure.reason,
-        });
-        return {
-          command,
-          reason: initialFailure.reason,
-          output: initialFailure.output,
-          outputSnippet: initialFailure.outputSnippet.slice(0, 1800),
-          worktreePath: options.worktreePath,
-          firstErrorLine: initialFailure.firstErrorLine,
-          validationWorkspace,
-          category: "quality_gate",
-          autoRepairAttempted: false,
-          autoRepairSucceeded: false,
-          autoRepairCommands: [],
-          autoRepairOutput: "",
-        };
+    if ("failure" in preparedOrFailure) {
+      const initialFailure = preparedOrFailure.failure;
+      if (initialFailure.category !== "environment_setup") {
+        return initialFailure;
       }
 
-      const autoRepair = await repairQualityGateEnvironment(
-        options.repoPath,
-        options.worktreePath,
-        {
-          shellExec: execute,
-          symlinkNodeModules,
-        }
+      const autoRepair = await repairQualityGateEnvironment(options, validationWorkspace, {
+        runCommand,
+        symlinkNodeModules,
+      });
+      const retryPreparedOrFailure = await prepareGateCommand(
+        { ...options, worktreePath: autoRepair.worktreePath },
+        command,
+        validationWorkspace,
+        runCommand
       );
-      try {
-        log.info("Retrying merge quality gate after environment auto-repair", {
-          projectId: options.projectId,
-          taskId: options.taskId,
-          command,
-          repairCommands: autoRepair.commands,
-        });
-        await execute(command, {
-          cwd,
-          timeout: QUALITY_GATE_AUTO_REPAIR_TIMEOUT_MS,
-        });
+      if ("skipped" in retryPreparedOrFailure) {
         continue;
-      } catch (retryErr) {
-        const retryFailure = extractShellFailure(command, retryErr);
-        const retryStillEnvironmentFailure = isQualityGateEnvironmentFailure(retryFailure);
-        const category = retryStillEnvironmentFailure ? "environment_setup" : "quality_gate";
-        log.warn("Merge quality gate failed after environment auto-repair retry", {
-          projectId: options.projectId,
-          taskId: options.taskId,
-          command,
-          reason: retryFailure.reason,
-          category,
-        });
+      }
+      if ("failure" in retryPreparedOrFailure) {
         return {
-          command,
-          reason: retryFailure.reason,
-          output: retryFailure.output,
-          outputSnippet: retryFailure.outputSnippet.slice(0, 1800),
-          worktreePath: options.worktreePath,
-          firstErrorLine: retryFailure.firstErrorLine,
-          validationWorkspace,
-          category,
+          ...retryPreparedOrFailure.failure,
           autoRepairAttempted: true,
           autoRepairSucceeded: autoRepair.succeeded,
           autoRepairCommands: autoRepair.commands,
           autoRepairOutput: autoRepair.output,
         };
       }
+      const retryFailure = await executePreparedGate(
+        retryPreparedOrFailure.prepared,
+        { ...options, worktreePath: autoRepair.worktreePath },
+        validationWorkspace,
+        runCommand
+      );
+      if (retryFailure) {
+        return {
+          ...retryFailure,
+          autoRepairAttempted: true,
+          autoRepairSucceeded: autoRepair.succeeded,
+          autoRepairCommands: autoRepair.commands,
+          autoRepairOutput: autoRepair.output,
+        };
+      }
+      continue;
     }
+
+    log.info("Running merge quality gate", {
+      projectId: options.projectId,
+      taskId: options.taskId,
+      command,
+      cwd: options.worktreePath,
+      executable: preparedOrFailure.prepared.executable,
+    });
+    const initialFailure = await executePreparedGate(
+      preparedOrFailure.prepared,
+      options,
+      validationWorkspace,
+      runCommand
+    );
+    if (!initialFailure) continue;
+    if (initialFailure.category !== "environment_setup") {
+      log.warn("Merge quality gate failed", {
+        projectId: options.projectId,
+        taskId: options.taskId,
+        command,
+        reason: initialFailure.reason,
+      });
+      return initialFailure;
+    }
+
+    const autoRepair = await repairQualityGateEnvironment(options, validationWorkspace, {
+      runCommand,
+      symlinkNodeModules,
+    });
+    const retryPreparedOrFailure = await prepareGateCommand(
+      { ...options, worktreePath: autoRepair.worktreePath },
+      command,
+      validationWorkspace,
+      runCommand
+    );
+    if ("skipped" in retryPreparedOrFailure) {
+      continue;
+    }
+    if ("failure" in retryPreparedOrFailure) {
+      return {
+        ...retryPreparedOrFailure.failure,
+        autoRepairAttempted: true,
+        autoRepairSucceeded: autoRepair.succeeded,
+        autoRepairCommands: autoRepair.commands,
+        autoRepairOutput: autoRepair.output,
+      };
+    }
+
+    log.info("Retrying merge quality gate after environment auto-repair", {
+      projectId: options.projectId,
+      taskId: options.taskId,
+      command,
+      repairCommands: autoRepair.commands,
+      cwd: autoRepair.worktreePath,
+    });
+    const retryFailure = await executePreparedGate(
+      retryPreparedOrFailure.prepared,
+      { ...options, worktreePath: autoRepair.worktreePath },
+      validationWorkspace,
+      runCommand
+    );
+    if (!retryFailure) continue;
+
+    log.warn("Merge quality gate failed after environment auto-repair retry", {
+      projectId: options.projectId,
+      taskId: options.taskId,
+      command,
+      reason: retryFailure.reason,
+      category: retryFailure.category,
+    });
+    return {
+      ...retryFailure,
+      autoRepairAttempted: true,
+      autoRepairSucceeded: autoRepair.succeeded,
+      autoRepairCommands: autoRepair.commands,
+      autoRepairOutput: autoRepair.output,
+    };
   }
 
   return null;

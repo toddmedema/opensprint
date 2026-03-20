@@ -543,6 +543,58 @@ describe.skipIf(!helpPostgresOk)("Help chat API", () => {
     });
   });
 
+  it("GET /help/agent-log returns authoritative attempt outcome and summary from orchestrator events", async () => {
+    await taskStore.runWrite(async (client) => {
+      await client.execute(
+        `INSERT INTO agent_stats (project_id, task_id, agent_id, role, model, attempt, started_at, completed_at, outcome, duration_ms)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          projectId,
+          "os-authoritative.1",
+          "reviewer",
+          "reviewer",
+          "claude-sonnet-4",
+          2,
+          "2025-03-01T16:00:00Z",
+          "2025-03-01T16:01:00Z",
+          "success",
+          60000,
+        ]
+      );
+      await client.execute(
+        `INSERT INTO orchestrator_events (project_id, task_id, timestamp, event, data)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [
+          projectId,
+          "os-authoritative.1",
+          "2025-03-01T16:02:00Z",
+          "task.requeued",
+          JSON.stringify({
+            attempt: 2,
+            phase: "merge",
+            failureType: "merge_quality_gate",
+            summary: "npm run test: expected 1 to be 2",
+          }),
+        ]
+      );
+    });
+
+    const res = await request(app).get(`${API_PREFIX}/help/agent-log?projectId=${projectId}`);
+    expect(res.status).toBe(200);
+    const entry = res.body.data.find(
+      (item: { taskId?: string }) => item.taskId === "os-authoritative.1"
+    );
+    expect(entry).toMatchObject({
+      role: "Reviewer",
+      componentOutcome: "success",
+      attemptOutcome: "requeued",
+      summary: "npm run test: expected 1 to be 2",
+      failureType: "merge_quality_gate",
+      attempt: 2,
+      taskId: "os-authoritative.1",
+    });
+  });
+
   it("GET /help/session-log/:sessionId returns 400 for invalid session ID", async () => {
     const res = await request(app).get(`${API_PREFIX}/help/session-log/0`);
     expect(res.status).toBe(400);

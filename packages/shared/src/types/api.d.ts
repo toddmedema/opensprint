@@ -115,6 +115,20 @@ export interface AgentLogEntry {
   projectName?: string;
   /** Session ID when full session log is available (agent_sessions.id); enables log viewer modal */
   sessionId?: number;
+  /** Task ID for the attempt associated with this agent row. */
+  taskId?: string;
+  /** Attempt number for the agent row. */
+  attempt?: number;
+  /** Phase that produced this component row. */
+  phase?: import("./execute-diagnostics.js").TaskExecutionPhase;
+  /** Raw component-level outcome for this agent row. */
+  componentOutcome?: "success" | "failed";
+  /** Authoritative attempt-level outcome after coordination/merge resolution. */
+  attemptOutcome?: import("./execute-diagnostics.js").TaskExecutionOutcome | null;
+  /** Authoritative attempt-level summary. */
+  summary?: string | null;
+  /** Failure type associated with the authoritative attempt verdict. */
+  failureType?: string | null;
 }
 /** Feedback submission */
 export interface FeedbackSubmitRequest {

@@ -310,14 +310,13 @@ User authentication.
     expect(prompt).toContain("## Role-specific Instructions");
     expect(prompt).toContain("Prefer TypeScript. Use strict mode.");
     expect(prompt).toContain("# Task: Implement login");
-    // Agent instructions appear after title/objective
+    // Reusable instructions are prefixed ahead of task-specific sections for better cache reuse.
     const defaultsIdx = prompt.indexOf("## Open Sprint Defaults");
     const agentIdx = prompt.indexOf("## Agent Instructions");
     const objectiveIdx = prompt.indexOf("## Objective");
-    expect(defaultsIdx).toBeGreaterThan(objectiveIdx);
     expect(defaultsIdx).toBeLessThan(agentIdx);
-    expect(agentIdx).toBeGreaterThan(objectiveIdx);
-    expect(agentIdx).toBeLessThan(prompt.indexOf("## Context"));
+    expect(agentIdx).toBeLessThan(objectiveIdx);
+    expect(prompt.indexOf("# Task: Implement login")).toBeGreaterThan(agentIdx);
   });
 
   it("includes structured quality-gate diagnostics in the retry prompt when available", async () => {

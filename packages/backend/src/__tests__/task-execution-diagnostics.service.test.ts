@@ -220,27 +220,42 @@ describe("TaskExecutionDiagnosticsService", () => {
     expect(diagnostics.latestSummary).toContain("npm run build: Cannot find module");
     expect(diagnostics.latestSummary).toContain("repair: npm ci -> npm install (failed)");
     expect(diagnostics.latestSummary).toContain("category: environment_setup");
-    expect(diagnosticsQualityGate.latestQualityGateDetail).toEqual({
-      command: "npm run build",
-      reason: "Command failed with exit code 1",
-      outputSnippet: "Cannot find module 'better-sqlite3'",
-      worktreePath: "/tmp/worktree/os-eeac.39",
-      firstErrorLine: "Cannot find module 'better-sqlite3'",
-    });
-    expect(diagnosticsQualityGate.timeline[0]?.qualityGateDetail).toEqual({
-      command: "npm run build",
-      reason: "Command failed with exit code 1",
-      outputSnippet: "Cannot find module 'better-sqlite3'",
-      worktreePath: "/tmp/worktree/os-eeac.39",
-      firstErrorLine: "Cannot find module 'better-sqlite3'",
-    });
-    expect(diagnosticsQualityGate.attempts[0]?.qualityGateDetail).toEqual({
-      command: "npm run build",
-      reason: "Command failed with exit code 1",
-      outputSnippet: "Cannot find module 'better-sqlite3'",
-      worktreePath: "/tmp/worktree/os-eeac.39",
-      firstErrorLine: "Cannot find module 'better-sqlite3'",
-    });
+    expect(diagnosticsQualityGate.latestQualityGateDetail).toEqual(
+      expect.objectContaining({
+        command: "npm run build",
+        reason: "Command failed with exit code 1",
+        outputSnippet: "Cannot find module 'better-sqlite3'",
+        worktreePath: "/tmp/worktree/os-eeac.39",
+        firstErrorLine: "Cannot find module 'better-sqlite3'",
+        category: "environment_setup",
+        repairAttempted: true,
+        repairSucceeded: false,
+      })
+    );
+    expect(diagnosticsQualityGate.timeline[0]?.qualityGateDetail).toEqual(
+      expect.objectContaining({
+        command: "npm run build",
+        reason: "Command failed with exit code 1",
+        outputSnippet: "Cannot find module 'better-sqlite3'",
+        worktreePath: "/tmp/worktree/os-eeac.39",
+        firstErrorLine: "Cannot find module 'better-sqlite3'",
+        category: "environment_setup",
+        repairAttempted: true,
+        repairSucceeded: false,
+      })
+    );
+    expect(diagnosticsQualityGate.attempts[0]?.qualityGateDetail).toEqual(
+      expect.objectContaining({
+        command: "npm run build",
+        reason: "Command failed with exit code 1",
+        outputSnippet: "Cannot find module 'better-sqlite3'",
+        worktreePath: "/tmp/worktree/os-eeac.39",
+        firstErrorLine: "Cannot find module 'better-sqlite3'",
+        category: "environment_setup",
+        repairAttempted: true,
+        repairSucceeded: false,
+      })
+    );
   });
 
   it("falls back to command + reason when quality-gate output snippet and firstErrorLine are missing", async () => {
@@ -283,13 +298,16 @@ describe("TaskExecutionDiagnosticsService", () => {
     };
 
     expect(diagnostics.latestSummary).toContain("npm run build: Command failed with exit code 1");
-    expect(diagnosticsQualityGate.latestQualityGateDetail).toEqual({
-      command: "npm run build",
-      reason: "Command failed with exit code 1",
-      outputSnippet: null,
-      worktreePath: null,
-      firstErrorLine: "Command failed with exit code 1",
-    });
+    expect(diagnosticsQualityGate.latestQualityGateDetail).toEqual(
+      expect.objectContaining({
+        command: "npm run build",
+        reason: "Command failed with exit code 1",
+        outputSnippet: null,
+        worktreePath: null,
+        firstErrorLine: "Command failed with exit code 1",
+        category: "quality_gate",
+      })
+    );
   });
 
   it("classifies blocked quality-gate merges separately from merge conflicts", async () => {
@@ -403,27 +421,33 @@ describe("TaskExecutionDiagnosticsService", () => {
 
     expect(diagnostics.blockReason).toBe("Coding Failure");
     expect(diagnostics.latestOutcome).toBe("blocked");
-    expect(diagnosticsQualityGate.latestQualityGateDetail).toEqual({
-      command: "npm run test",
-      reason: "Tests failed: 1 failed, 0 passed",
-      outputSnippet: "AssertionError: expected 1 to be 2",
-      worktreePath: "/tmp/opensprint/os-xyz.1",
-      firstErrorLine: "AssertionError: expected 1 to be 2",
-    });
-    expect(diagnosticsQualityGate.timeline[0]?.qualityGateDetail).toEqual({
-      command: "npm run test",
-      reason: "Tests failed: 1 failed, 0 passed",
-      outputSnippet: "AssertionError: expected 1 to be 2",
-      worktreePath: "/tmp/opensprint/os-xyz.1",
-      firstErrorLine: "AssertionError: expected 1 to be 2",
-    });
-    expect(diagnosticsQualityGate.attempts[0]?.qualityGateDetail).toEqual({
-      command: "npm run test",
-      reason: "Tests failed: 1 failed, 0 passed",
-      outputSnippet: "AssertionError: expected 1 to be 2",
-      worktreePath: "/tmp/opensprint/os-xyz.1",
-      firstErrorLine: "AssertionError: expected 1 to be 2",
-    });
+    expect(diagnosticsQualityGate.latestQualityGateDetail).toEqual(
+      expect.objectContaining({
+        command: "npm run test",
+        reason: "Tests failed: 1 failed, 0 passed",
+        outputSnippet: "AssertionError: expected 1 to be 2",
+        worktreePath: "/tmp/opensprint/os-xyz.1",
+        firstErrorLine: "AssertionError: expected 1 to be 2",
+      })
+    );
+    expect(diagnosticsQualityGate.timeline[0]?.qualityGateDetail).toEqual(
+      expect.objectContaining({
+        command: "npm run test",
+        reason: "Tests failed: 1 failed, 0 passed",
+        outputSnippet: "AssertionError: expected 1 to be 2",
+        worktreePath: "/tmp/opensprint/os-xyz.1",
+        firstErrorLine: "AssertionError: expected 1 to be 2",
+      })
+    );
+    expect(diagnosticsQualityGate.attempts[0]?.qualityGateDetail).toEqual(
+      expect.objectContaining({
+        command: "npm run test",
+        reason: "Tests failed: 1 failed, 0 passed",
+        outputSnippet: "AssertionError: expected 1 to be 2",
+        worktreePath: "/tmp/opensprint/os-xyz.1",
+        firstErrorLine: "AssertionError: expected 1 to be 2",
+      })
+    );
   });
 
   it("prefers the latest execution failure detail over stale task-level gate metadata after requeue", async () => {
@@ -514,23 +538,27 @@ describe("TaskExecutionDiagnosticsService", () => {
       "node ./node_modules/vitest/vitest.mjs run src/foo.test.ts: AssertionError: expected 401 to be 403"
     );
     expect(diagnostics.latestSummary).not.toContain("stale build error");
-    expect(diagnosticsQualityGate.latestQualityGateDetail).toEqual({
-      command: "node ./node_modules/vitest/vitest.mjs run src/foo.test.ts",
-      reason: "Tests failed: 1 failed, 0 passed",
-      outputSnippet:
-        "FAIL src/foo.test.ts > auth > rejects invalid token\nAssertionError: expected 401 to be 403 // Object.is equality",
-      worktreePath: "/tmp/worktree/os-eeac.39",
-      firstErrorLine: "AssertionError: expected 401 to be 403 // Object.is equality",
-    });
+    expect(diagnosticsQualityGate.latestQualityGateDetail).toEqual(
+      expect.objectContaining({
+        command: "node ./node_modules/vitest/vitest.mjs run src/foo.test.ts",
+        reason: "Tests failed: 1 failed, 0 passed",
+        outputSnippet:
+          "FAIL src/foo.test.ts > auth > rejects invalid token\nAssertionError: expected 401 to be 403 // Object.is equality",
+        worktreePath: "/tmp/worktree/os-eeac.39",
+        firstErrorLine: "AssertionError: expected 401 to be 403 // Object.is equality",
+      })
+    );
     expect(diagnosticsQualityGate.timeline.at(-1)?.qualityGateDetail).toBeUndefined();
-    expect(diagnosticsQualityGate.attempts[0]?.qualityGateDetail).toEqual({
-      command: "node ./node_modules/vitest/vitest.mjs run src/foo.test.ts",
-      reason: "Tests failed: 1 failed, 0 passed",
-      outputSnippet:
-        "FAIL src/foo.test.ts > auth > rejects invalid token\nAssertionError: expected 401 to be 403 // Object.is equality",
-      worktreePath: "/tmp/worktree/os-eeac.39",
-      firstErrorLine: "AssertionError: expected 401 to be 403 // Object.is equality",
-    });
+    expect(diagnosticsQualityGate.attempts[0]?.qualityGateDetail).toEqual(
+      expect.objectContaining({
+        command: "node ./node_modules/vitest/vitest.mjs run src/foo.test.ts",
+        reason: "Tests failed: 1 failed, 0 passed",
+        outputSnippet:
+          "FAIL src/foo.test.ts > auth > rejects invalid token\nAssertionError: expected 401 to be 403 // Object.is equality",
+        worktreePath: "/tmp/worktree/os-eeac.39",
+        firstErrorLine: "AssertionError: expected 401 to be 403 // Object.is equality",
+      })
+    );
     expect(diagnosticsQualityGate.attempts[0]?.finalSummary).toContain(
       "node ./node_modules/vitest/vitest.mjs run src/foo.test.ts: AssertionError: expected 401 to be 403"
     );

@@ -1,6 +1,6 @@
 import type { PayloadAction } from "@reduxjs/toolkit";
 import type { ActionReducerMapBuilder } from "@reduxjs/toolkit";
-import type { Task, TaskPriority, KanbanColumn } from "@opensprint/shared";
+import type { Task, TaskPriority, KanbanColumn, MergeGateState } from "@opensprint/shared";
 import { mapStatusToKanban } from "@opensprint/shared";
 import type { TaskEventPayload } from "@opensprint/shared";
 import type { ExecuteState } from "./executeTypes";
@@ -37,6 +37,7 @@ export const taskListReducers = {
       kanbanColumn?: KanbanColumn;
       mergePausedUntil?: string | null;
       mergeWaitingOnMain?: boolean;
+      mergeGateState?: MergeGateState;
     }>
   ) {
     ensureTasksState(state);
@@ -51,6 +52,7 @@ export const taskListReducers = {
       kanbanColumn,
       mergePausedUntil,
       mergeWaitingOnMain,
+      mergeGateState,
     } = action.payload;
     const task = state.tasksById[taskId];
     if (task) {
@@ -73,6 +75,7 @@ export const taskListReducers = {
       if (description !== undefined) task.description = description;
       if (mergePausedUntil !== undefined) task.mergePausedUntil = mergePausedUntil;
       if (mergeWaitingOnMain !== undefined) task.mergeWaitingOnMain = mergeWaitingOnMain;
+      if (mergeGateState !== undefined) task.mergeGateState = mergeGateState;
     }
   },
   /** Live-update: add task from WebSocket task.created event. */

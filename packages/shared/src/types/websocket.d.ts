@@ -6,7 +6,7 @@ import type {
   ScopeChangeProposedUpdate,
   SelfImprovementApprovalPayload,
 } from "./notification.js";
-import type { KanbanColumn } from "./task.js";
+import type { KanbanColumn, MergeGateState } from "./task.js";
 export interface TaskUpdatedEvent {
   type: "task.updated";
   taskId: string;
@@ -28,6 +28,8 @@ export interface TaskUpdatedEvent {
   mergePausedUntil?: string;
   /** Optional; true when merge is waiting on main. */
   mergeWaitingOnMain?: boolean;
+  /** Optional; server-derived merge gate state for waiting_to_merge tasks. */
+  mergeGateState?: MergeGateState;
 }
 /** Minimal task payload for create/close events (relevant task data) */
 export interface TaskEventPayload {
@@ -51,6 +53,8 @@ export interface TaskEventPayload {
   mergePausedUntil?: string;
   /** Optional; true when merge is waiting on main. */
   mergeWaitingOnMain?: boolean;
+  /** Optional; server-derived merge gate state for waiting_to_merge tasks. */
+  mergeGateState?: MergeGateState;
 }
 export interface TaskCreatedEvent {
   type: "task.created";

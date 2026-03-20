@@ -12,6 +12,7 @@
 import {
   BACKOFF_FAILURE_THRESHOLD,
   type BaselineRuntimeStatus,
+  type MergeValidationRuntimeStatus,
   QUALITY_GATE_FAILURE_MESSAGE,
   resolveTestCommand,
   type AgentConfig,
@@ -47,8 +48,13 @@ const QUALITY_GATE_OUTPUT_SNIPPET_LIMIT = 1800;
 const BASELINE_QUALITY_GATE_SUCCESS_CACHE_MS = 15_000;
 const BASELINE_QUALITY_GATE_PAUSE_MS = 5 * 60_000;
 const BASELINE_QUALITY_GATE_PAUSED_UNTIL_KEY = "merge_quality_gate_paused_until";
+const MERGE_VALIDATION_PAUSED_UNTIL_KEY = "merge_validation_paused_until";
 const BASELINE_QUALITY_GATE_NOTIFICATION_SOURCE_ID = "merge-quality-gate-baseline";
 const BASELINE_QUALITY_GATE_TASK_SOURCE = "merge-quality-gate-baseline";
+const MERGE_VALIDATION_HEALTH_NOTIFICATION_SOURCE_ID = "merge-validation-health";
+const MERGE_VALIDATION_DEGRADED_THRESHOLD = 3;
+const MERGE_VALIDATION_FAILURE_WINDOW_MS = 10 * 60_000;
+const MERGE_VALIDATION_CANARY_INTERVAL_MS = 5 * 60_000;
 
 /** One-sentence explanation for merge failures shown to users (conflicts with main in same files). */
 const HUMAN_MERGE_FAILURE_MESSAGE =
@@ -81,6 +87,10 @@ export interface MergeQualityGateFailure {
   autoRepairSucceeded?: boolean;
   autoRepairCommands?: string[];
   autoRepairOutput?: string;
+  executable?: string;
+  cwd?: string;
+  exitCode?: number | null;
+  signal?: string | null;
 }
 
 export interface MergeSlot {
@@ -190,6 +200,14 @@ export interface MergeCoordinatorHost {
       dispatchPausedReason?: string | null;
     }
   ): Promise<void>;
+  setMergeValidationRuntimeState(
+    projectId: string,
+    repoPath: string,
+    updates: {
+      mergeValidationStatus?: MergeValidationRuntimeStatus;
+      mergeValidationFailureSummary?: string | null;
+    }
+  ): Promise<void>;
   sessionManager: {
     createSession(repoPath: string, data: Record<string, unknown>): Promise<{ id: string }>;
     archiveSession(
@@ -246,6 +264,19 @@ export class MergeCoordinatorService {
   >();
   /** Dedupes baseline gate notifications while baseline remains unhealthy. */
   private baselineQualityGateNotified = new Set<string>();
+  /** Rolling timestamps of merge-validation environment failures per project. */
+  private mergeValidationEnvironmentFailures = new Map<string, number[]>();
+  /** Project-level merge-validation health state. */
+  private mergeValidationHealth = new Map<
+    string,
+    {
+      status: MergeValidationRuntimeStatus;
+      summary: string | null;
+      nextCanaryAtMs: number | null;
+    }
+  >();
+  /** Dedupes project-level merge-validation notifications while degraded. */
+  private mergeValidationHealthNotified = new Set<string>();
 
   constructor(private host: MergeCoordinatorHost) {}
 
@@ -407,13 +438,33 @@ export class MergeCoordinatorService {
     failedGateReason: string | null;
     failedGateOutputSnippet: string | null;
     worktreePath: string | null;
+    qualityGateCategory: "quality_gate" | "environment_setup" | null;
+    qualityGateValidationWorkspace:
+      | "baseline"
+      | "merged_candidate"
+      | "task_worktree"
+      | "repo_root"
+      | null;
+    qualityGateRepairAttempted: boolean;
+    qualityGateRepairSucceeded: boolean;
+    qualityGateExecutable: string | null;
+    qualityGateCwd: string | null;
+    qualityGateExitCode: number | null;
+    qualityGateSignal: string | null;
     qualityGateDetail: {
       command: string | null;
       reason: string | null;
       outputSnippet: string | null;
       worktreePath: string | null;
       firstErrorLine: string | null;
-      validationWorkspace: string | null;
+      category: "quality_gate" | "environment_setup" | null;
+      validationWorkspace: "baseline" | "merged_candidate" | "task_worktree" | "repo_root" | null;
+      repairAttempted: boolean;
+      repairSucceeded: boolean;
+      executable: string | null;
+      cwd: string | null;
+      exitCode: number | null;
+      signal: string | null;
     } | null;
   } {
     const failedGateCommand = qualityGateFailure?.command?.trim() || null;
@@ -424,19 +475,41 @@ export class MergeCoordinatorService {
     const worktreePath =
       qualityGateFailure?.worktreePath?.trim() || fallbackWorktreePath?.trim() || null;
     const firstErrorLine = qualityGateFailure?.firstErrorLine?.trim() || null;
-    const validationWorkspace = qualityGateFailure?.validationWorkspace?.trim() || null;
+    const qualityGateCategory = qualityGateFailure?.category ?? null;
+    const qualityGateValidationWorkspace = qualityGateFailure?.validationWorkspace ?? null;
+    const qualityGateRepairAttempted = qualityGateFailure?.autoRepairAttempted ?? false;
+    const qualityGateRepairSucceeded = qualityGateFailure?.autoRepairSucceeded ?? false;
+    const qualityGateExecutable = qualityGateFailure?.executable?.trim() || null;
+    const qualityGateCwd = qualityGateFailure?.cwd?.trim() || null;
+    const qualityGateExitCode = qualityGateFailure?.exitCode ?? null;
+    const qualityGateSignal = qualityGateFailure?.signal?.trim() || null;
     const hasDetail =
       failedGateCommand != null ||
       failedGateReason != null ||
       failedGateOutputSnippet != null ||
       worktreePath != null ||
       firstErrorLine != null ||
-      validationWorkspace != null;
+      qualityGateCategory != null ||
+      qualityGateValidationWorkspace != null ||
+      qualityGateRepairAttempted ||
+      qualityGateRepairSucceeded ||
+      qualityGateExecutable != null ||
+      qualityGateCwd != null ||
+      qualityGateExitCode != null ||
+      qualityGateSignal != null;
     return {
       failedGateCommand,
       failedGateReason,
       failedGateOutputSnippet,
       worktreePath,
+      qualityGateCategory,
+      qualityGateValidationWorkspace,
+      qualityGateRepairAttempted,
+      qualityGateRepairSucceeded,
+      qualityGateExecutable,
+      qualityGateCwd,
+      qualityGateExitCode,
+      qualityGateSignal,
       qualityGateDetail: hasDetail
         ? {
             command: failedGateCommand,
@@ -444,7 +517,14 @@ export class MergeCoordinatorService {
             outputSnippet: failedGateOutputSnippet,
             worktreePath,
             firstErrorLine,
-            validationWorkspace,
+            category: qualityGateCategory,
+            validationWorkspace: qualityGateValidationWorkspace,
+            repairAttempted: qualityGateRepairAttempted,
+            repairSucceeded: qualityGateRepairSucceeded,
+            executable: qualityGateExecutable,
+            cwd: qualityGateCwd,
+            exitCode: qualityGateExitCode,
+            signal: qualityGateSignal,
           }
         : null,
     };
@@ -523,6 +603,10 @@ export class MergeCoordinatorService {
         autoRepairSucceeded: failure.autoRepairSucceeded ?? false,
         autoRepairCommands: failure.autoRepairCommands,
         autoRepairOutput: failure.autoRepairOutput,
+        executable: failure.executable,
+        cwd: failure.cwd,
+        exitCode: failure.exitCode ?? null,
+        signal: failure.signal ?? null,
       }
     );
   }
@@ -641,6 +725,7 @@ export class MergeCoordinatorService {
           this.baselineQualityGateSuccessCache.set(cacheKey, { checkedAtMs: now });
           this.baselineQualityGateNotified.delete(cacheKey);
           await this.resolveBaselineQualityGateNotifications(projectId, baseBranch);
+          await this.markMergeValidationHealthy(projectId, repoPath);
           await this.host.setBaselineRuntimeState(projectId, repoPath, {
             baselineStatus: "healthy",
             baselineCheckedAt: checkedAt,
@@ -654,6 +739,9 @@ export class MergeCoordinatorService {
           ...failure,
           validationWorkspace: failure.validationWorkspace ?? "baseline",
         };
+        if (normalizedFailure.category !== "environment_setup") {
+          await this.markMergeValidationHealthy(projectId, repoPath);
+        }
         this.baselineQualityGateSuccessCache.delete(cacheKey);
         await this.host.setBaselineRuntimeState(projectId, repoPath, {
           baselineStatus: "failing",
@@ -667,6 +755,9 @@ export class MergeCoordinatorService {
           err && typeof err === "object" && "command" in err
             ? (err as MergeQualityGateFailure)
             : this.buildUnexpectedBaselineFailure(err);
+        if (failure.category !== "environment_setup") {
+          await this.markMergeValidationHealthy(projectId, repoPath);
+        }
         this.baselineQualityGateSuccessCache.delete(cacheKey);
         await this.host.setBaselineRuntimeState(projectId, repoPath, {
           baselineStatus: "failing",
@@ -764,6 +855,202 @@ export class MergeCoordinatorService {
     }
   }
 
+  private getMergeValidationHealth(projectId: string): {
+    status: MergeValidationRuntimeStatus;
+    summary: string | null;
+    nextCanaryAtMs: number | null;
+  } {
+    return (
+      this.mergeValidationHealth.get(projectId) ?? {
+        status: "healthy",
+        summary: null,
+        nextCanaryAtMs: null,
+      }
+    );
+  }
+
+  private buildMergeValidationHealthSummary(params: {
+    command?: string | null;
+    firstErrorLine?: string | null;
+    reason?: string | null;
+    remediation?: string | null;
+  }): string {
+    const firstErrorLine =
+      params.firstErrorLine?.trim() ||
+      params.reason?.trim() ||
+      "Merge validation environment setup failed";
+    const command = params.command?.trim();
+    return compactExecutionText(
+      `Merge validation environment issues detected${command ? `: ${command}` : ""} | ${compactExecutionText(firstErrorLine, 220)}${params.remediation ? ` | remediation: ${compactExecutionText(params.remediation, 220)}` : ""}`,
+      500
+    );
+  }
+
+  private async createMergeValidationHealthNotification(
+    projectId: string,
+    summary: string
+  ): Promise<void> {
+    if (this.mergeValidationHealthNotified.has(projectId)) return;
+    try {
+      const notification = await notificationService.createAgentFailed({
+        projectId,
+        source: "execute",
+        sourceId: MERGE_VALIDATION_HEALTH_NOTIFICATION_SOURCE_ID,
+        message: compactExecutionText(`Merge validation is temporarily degraded. ${summary}`, 1800),
+      });
+      this.mergeValidationHealthNotified.add(projectId);
+      broadcastToProject(projectId, {
+        type: "notification.added",
+        notification,
+      });
+    } catch (err) {
+      log.warn("Failed to create merge-validation health notification", {
+        projectId,
+        err,
+      });
+    }
+  }
+
+  private async resolveMergeValidationHealthNotifications(projectId: string): Promise<void> {
+    try {
+      const notifications = await notificationService.listByProject(projectId);
+      const healthNotifications = notifications.filter(
+        (n) =>
+          n.kind === "agent_failed" &&
+          n.source === "execute" &&
+          n.sourceId === MERGE_VALIDATION_HEALTH_NOTIFICATION_SOURCE_ID &&
+          n.status === "open"
+      );
+      for (const notification of healthNotifications) {
+        await notificationService.resolve(projectId, notification.id);
+        broadcastToProject(projectId, {
+          type: "notification.resolved",
+          notificationId: notification.id,
+          projectId,
+          source: notification.source,
+          sourceId: notification.sourceId,
+        });
+      }
+    } catch (err) {
+      log.warn("Failed to resolve merge-validation health notifications", {
+        projectId,
+        err,
+      });
+    }
+  }
+
+  private async markMergeValidationHealthy(projectId: string, repoPath: string): Promise<void> {
+    const current = this.getMergeValidationHealth(projectId);
+    if (current.status === "healthy" && current.summary == null) return;
+    this.mergeValidationHealth.set(projectId, {
+      status: "healthy",
+      summary: null,
+      nextCanaryAtMs: null,
+    });
+    this.mergeValidationEnvironmentFailures.delete(projectId);
+    this.mergeValidationHealthNotified.delete(projectId);
+    await this.host.setMergeValidationRuntimeState(projectId, repoPath, {
+      mergeValidationStatus: "healthy",
+      mergeValidationFailureSummary: null,
+    });
+    await this.resolveMergeValidationHealthNotifications(projectId);
+  }
+
+  private async recordMergeValidationEnvironmentFailure(
+    projectId: string,
+    repoPath: string,
+    summary: string
+  ): Promise<void> {
+    const now = Date.now();
+    const recent = (this.mergeValidationEnvironmentFailures.get(projectId) ?? []).filter(
+      (timestamp) => now - timestamp <= MERGE_VALIDATION_FAILURE_WINDOW_MS
+    );
+    recent.push(now);
+    this.mergeValidationEnvironmentFailures.set(projectId, recent);
+
+    const degraded = recent.length >= MERGE_VALIDATION_DEGRADED_THRESHOLD;
+    const current = this.getMergeValidationHealth(projectId);
+    const nextStatus: MergeValidationRuntimeStatus =
+      degraded || current.status === "degraded" ? "degraded" : "healthy";
+    const nextCanaryAtMs =
+      nextStatus === "degraded" ? now + MERGE_VALIDATION_CANARY_INTERVAL_MS : null;
+    const nextState = {
+      status: nextStatus,
+      summary,
+      nextCanaryAtMs,
+    } as const;
+    this.mergeValidationHealth.set(projectId, nextState);
+
+    if (nextStatus !== "degraded") return;
+
+    await this.host.setMergeValidationRuntimeState(projectId, repoPath, {
+      mergeValidationStatus: nextStatus,
+      mergeValidationFailureSummary: summary,
+    });
+    if (degraded) {
+      await this.createMergeValidationHealthNotification(projectId, summary);
+    }
+  }
+
+  private async deferMergeValidationWhileDegraded(
+    projectId: string,
+    repoPath: string,
+    task: StoredTask,
+    slot: MergeSlot,
+    worktreePath: string
+  ): Promise<boolean> {
+    const health = this.getMergeValidationHealth(projectId);
+    if (health.status !== "degraded") return false;
+    const now = Date.now();
+    if (health.nextCanaryAtMs == null || health.nextCanaryAtMs <= now) {
+      return false;
+    }
+
+    const nextCanaryAt = new Date(health.nextCanaryAtMs).toISOString();
+    const attempt =
+      (typeof slot.attempt === "number" && Number.isFinite(slot.attempt)
+        ? slot.attempt
+        : Math.max(1, this.host.taskStore.getCumulativeAttemptsFromIssue(task) + 1)) || 1;
+    const summary = buildTaskLastExecutionSummary({
+      attempt,
+      outcome: "requeued",
+      phase: "merge",
+      failureType: "environment_setup",
+      summary: compactExecutionText(
+        `Merge validation deferred while project validation health recovers. Canary retry scheduled after ${nextCanaryAt}.${health.summary ? ` ${health.summary}` : ""}`,
+        500
+      ),
+    });
+    const qualityGateDetail: RetryQualityGateDetail = {
+      command: "merge validation",
+      reason: health.summary ?? "Merge validation health is degraded",
+      firstErrorLine: health.summary ?? "Merge validation health is degraded",
+      worktreePath,
+      category: "environment_setup",
+      validationWorkspace: "merged_candidate",
+      repairAttempted: false,
+      repairSucceeded: false,
+    };
+
+    await this.host.taskStore.setMergeStage(projectId, task.id, "quality_gate");
+    await this.host.taskStore.update(projectId, task.id, {
+      status: "open",
+      assignee: "",
+      extra: {
+        last_execution_summary: summary,
+        [MERGE_RETRY_MODE_KEY]: BASELINE_MERGE_RETRY_MODE,
+        [MERGE_VALIDATION_PAUSED_UNTIL_KEY]: nextCanaryAt,
+        worktreePath,
+        qualityGateCategory: "environment_setup",
+        qualityGateValidationWorkspace: "merged_candidate",
+        qualityGateDetail,
+      },
+    });
+    await this.releaseMergeSlot(projectId, repoPath, "fail", task.id);
+    this.host.nudge(projectId);
+    return true;
+  }
+
   private async pauseMergeForBaselineQualityGateFailure(
     projectId: string,
     repoPath: string,
@@ -787,7 +1074,14 @@ export class MergeCoordinatorService {
       outputSnippet: failedGateOutputSnippet,
       worktreePath,
       firstErrorLine,
+      category: failure.category ?? "quality_gate",
       validationWorkspace: failure.validationWorkspace ?? null,
+      repairAttempted: failure.autoRepairAttempted ?? false,
+      repairSucceeded: failure.autoRepairSucceeded ?? false,
+      executable: failure.executable ?? null,
+      cwd: failure.cwd ?? null,
+      exitCode: failure.exitCode ?? null,
+      signal: failure.signal ?? null,
     };
     const attempt = Math.max(1, this.host.taskStore.getCumulativeAttemptsFromIssue(task) + 1) || 1;
     const pausedUntil = new Date(Date.now() + BASELINE_QUALITY_GATE_PAUSE_MS).toISOString();
@@ -799,6 +1093,21 @@ export class MergeCoordinatorService {
         })
       : null;
     const nextAction = remediationAction ?? "Paused until baseline quality gates pass";
+    const mergeValidationSummary = this.buildMergeValidationHealthSummary({
+      command: failure.command,
+      firstErrorLine,
+      reason: failedGateReason,
+      remediation: remediationAction,
+    });
+    if (isEnvironmentSetupFailure) {
+      await this.recordMergeValidationEnvironmentFailure(
+        projectId,
+        repoPath,
+        mergeValidationSummary
+      );
+    } else {
+      await this.markMergeValidationHealthy(projectId, repoPath);
+    }
     const requeuedSummary = buildTaskLastExecutionSummary({
       attempt,
       outcome: "requeued",
@@ -831,6 +1140,14 @@ export class MergeCoordinatorService {
         failedGateReason,
         failedGateOutputSnippet,
         worktreePath,
+        qualityGateCategory: failure.category ?? "quality_gate",
+        qualityGateValidationWorkspace: failure.validationWorkspace ?? null,
+        qualityGateAutoRepairAttempted: failure.autoRepairAttempted ?? false,
+        qualityGateAutoRepairSucceeded: failure.autoRepairSucceeded ?? false,
+        qualityGateExecutable: failure.executable ?? null,
+        qualityGateCwd: failure.cwd ?? null,
+        qualityGateExitCode: failure.exitCode ?? null,
+        qualityGateSignal: failure.signal ?? null,
         qualityGateDetail,
       },
     });
@@ -858,12 +1175,19 @@ export class MergeCoordinatorService {
           summary: requeuedSummary.summary,
           nextAction,
           qualityGateCategory: failure.category ?? "quality_gate",
+          qualityGateValidationWorkspace: failure.validationWorkspace ?? null,
           qualityGateCommand: failure.command,
           qualityGateFirstErrorLine: firstErrorLine,
+          qualityGateAutoRepairAttempted: failure.autoRepairAttempted ?? false,
+          qualityGateAutoRepairSucceeded: failure.autoRepairSucceeded ?? false,
           failedGateCommand: failure.command,
           failedGateReason,
           failedGateOutputSnippet,
           worktreePath,
+          qualityGateExecutable: failure.executable ?? null,
+          qualityGateCwd: failure.cwd ?? null,
+          qualityGateExitCode: failure.exitCode ?? null,
+          qualityGateSignal: failure.signal ?? null,
           qualityGateDetail,
         },
       })
@@ -886,6 +1210,14 @@ export class MergeCoordinatorService {
           failedGateReason,
           failedGateOutputSnippet,
           worktreePath,
+          qualityGateCategory: failure.category ?? "quality_gate",
+          qualityGateValidationWorkspace: failure.validationWorkspace ?? null,
+          qualityGateAutoRepairAttempted: failure.autoRepairAttempted ?? false,
+          qualityGateAutoRepairSucceeded: failure.autoRepairSucceeded ?? false,
+          qualityGateExecutable: failure.executable ?? null,
+          qualityGateCwd: failure.cwd ?? null,
+          qualityGateExitCode: failure.exitCode ?? null,
+          qualityGateSignal: failure.signal ?? null,
           qualityGateDetail,
         },
       })
@@ -1170,6 +1502,9 @@ export class MergeCoordinatorService {
 
       // Last task in epic: merge epic branch to main, then push and cleanup via postCompletionAsync
       try {
+        if (await this.deferMergeValidationWhileDegraded(projectId, repoPath, task, slot, wtPath)) {
+          return;
+        }
         if (!this.isBaselineQualityGateRemediationTask(task, baseBranch)) {
           const baselineFailure = await this.getBaselineQualityGateFailure(
             projectId,
@@ -1217,6 +1552,7 @@ export class MergeCoordinatorService {
           taskTitle: task.title || task.id,
           baseBranch,
         });
+        await this.markMergeValidationHealthy(projectId, repoPath);
       } catch (mergeErr) {
         log.warn("Merge epic to main failed", { taskId: task.id, branchName, mergeErr });
         await this.requeueTaskAfterMergeFailure(projectId, repoPath, task, mergeErr as Error);
@@ -1241,6 +1577,9 @@ export class MergeCoordinatorService {
 
     // 2. Attempt merge inside the serialized queue. Rebase now happens there.
     try {
+      if (await this.deferMergeValidationWhileDegraded(projectId, repoPath, task, slot, wtPath)) {
+        return;
+      }
       if (!this.isBaselineQualityGateRemediationTask(task, baseBranch)) {
         const baselineFailure = await this.getBaselineQualityGateFailure(
           projectId,
@@ -1288,6 +1627,7 @@ export class MergeCoordinatorService {
         taskTitle: task.title || task.id,
         baseBranch,
       });
+      await this.markMergeValidationHealthy(projectId, repoPath);
     } catch (mergeErr) {
       log.warn("Merge to main failed", { taskId: task.id, branchName, mergeErr });
       await this.requeueTaskAfterMergeFailure(projectId, repoPath, task, mergeErr as Error);
@@ -1429,6 +1769,31 @@ export class MergeCoordinatorService {
         normalizedStage,
         isEnvironmentSetupQualityGateFailure ? "environment_setup" : undefined
       );
+      if (isQualityGateFailure) {
+        if (isEnvironmentSetupQualityGateFailure) {
+          await this.recordMergeValidationEnvironmentFailure(
+            projectId,
+            repoPath,
+            this.buildMergeValidationHealthSummary({
+              command:
+                qualityGateStructuredDetails.failedGateCommand ??
+                qualityGateFailureDetails?.command ??
+                null,
+              firstErrorLine:
+                qualityGateStructuredDetails.qualityGateDetail?.firstErrorLine ??
+                qualityGateFailureDetails?.firstErrorLine ??
+                null,
+              reason:
+                qualityGateStructuredDetails.failedGateReason ??
+                qualityGateFailureDetails?.reason ??
+                mergeFailureReason,
+              remediation: environmentSetupRemediation,
+            })
+          );
+        } else {
+          await this.markMergeValidationHealthy(projectId, repoPath);
+        }
+      }
 
       const maxMergeFailures = BACKOFF_FAILURE_THRESHOLD * 2;
       if (isEnvironmentSetupQualityGateFailure || cumulativeAttempts >= maxMergeFailures) {
@@ -1456,6 +1821,15 @@ export class MergeCoordinatorService {
             failedGateReason: qualityGateStructuredDetails.failedGateReason,
             failedGateOutputSnippet: qualityGateStructuredDetails.failedGateOutputSnippet,
             worktreePath: qualityGateStructuredDetails.worktreePath,
+            qualityGateCategory: qualityGateStructuredDetails.qualityGateCategory,
+            qualityGateValidationWorkspace:
+              qualityGateStructuredDetails.qualityGateValidationWorkspace,
+            qualityGateAutoRepairAttempted: qualityGateStructuredDetails.qualityGateRepairAttempted,
+            qualityGateAutoRepairSucceeded: qualityGateStructuredDetails.qualityGateRepairSucceeded,
+            qualityGateExecutable: qualityGateStructuredDetails.qualityGateExecutable,
+            qualityGateCwd: qualityGateStructuredDetails.qualityGateCwd,
+            qualityGateExitCode: qualityGateStructuredDetails.qualityGateExitCode,
+            qualityGateSignal: qualityGateStructuredDetails.qualityGateSignal,
             qualityGateDetail: qualityGateStructuredDetails.qualityGateDetail,
           },
         });
@@ -1501,6 +1875,8 @@ export class MergeCoordinatorService {
               scopeConfidence,
               summary: blockedSummary.summary,
               qualityGateCategory: qualityGateFailureDetails?.category ?? null,
+              qualityGateValidationWorkspace:
+                qualityGateFailureDetails?.validationWorkspace ?? null,
               qualityGateCommand: qualityGateFailureDetails?.command ?? null,
               qualityGateFirstErrorLine: qualityGateFailureDetails?.firstErrorLine ?? null,
               qualityGateAutoRepairAttempted:
@@ -1508,6 +1884,10 @@ export class MergeCoordinatorService {
               qualityGateAutoRepairSucceeded:
                 qualityGateFailureDetails?.autoRepairSucceeded ?? false,
               qualityGateAutoRepairCommands: qualityGateFailureDetails?.autoRepairCommands ?? [],
+              qualityGateExecutable: qualityGateFailureDetails?.executable ?? null,
+              qualityGateCwd: qualityGateFailureDetails?.cwd ?? null,
+              qualityGateExitCode: qualityGateFailureDetails?.exitCode ?? null,
+              qualityGateSignal: qualityGateFailureDetails?.signal ?? null,
               failedGateCommand: qualityGateStructuredDetails.failedGateCommand,
               failedGateReason: qualityGateStructuredDetails.failedGateReason,
               failedGateOutputSnippet: qualityGateStructuredDetails.failedGateOutputSnippet,
@@ -1547,6 +1927,17 @@ export class MergeCoordinatorService {
               failedGateReason: qualityGateStructuredDetails.failedGateReason,
               failedGateOutputSnippet: qualityGateStructuredDetails.failedGateOutputSnippet,
               worktreePath: qualityGateStructuredDetails.worktreePath,
+              qualityGateCategory: qualityGateStructuredDetails.qualityGateCategory,
+              qualityGateValidationWorkspace:
+                qualityGateStructuredDetails.qualityGateValidationWorkspace,
+              qualityGateAutoRepairAttempted:
+                qualityGateStructuredDetails.qualityGateRepairAttempted,
+              qualityGateAutoRepairSucceeded:
+                qualityGateStructuredDetails.qualityGateRepairSucceeded,
+              qualityGateExecutable: qualityGateStructuredDetails.qualityGateExecutable,
+              qualityGateCwd: qualityGateStructuredDetails.qualityGateCwd,
+              qualityGateExitCode: qualityGateStructuredDetails.qualityGateExitCode,
+              qualityGateSignal: qualityGateStructuredDetails.qualityGateSignal,
               qualityGateDetail: qualityGateStructuredDetails.qualityGateDetail,
             },
           })
@@ -1575,6 +1966,15 @@ export class MergeCoordinatorService {
           failedGateReason: qualityGateStructuredDetails.failedGateReason,
           failedGateOutputSnippet: qualityGateStructuredDetails.failedGateOutputSnippet,
           worktreePath: qualityGateStructuredDetails.worktreePath,
+          qualityGateCategory: qualityGateStructuredDetails.qualityGateCategory,
+          qualityGateValidationWorkspace:
+            qualityGateStructuredDetails.qualityGateValidationWorkspace,
+          qualityGateAutoRepairAttempted: qualityGateStructuredDetails.qualityGateRepairAttempted,
+          qualityGateAutoRepairSucceeded: qualityGateStructuredDetails.qualityGateRepairSucceeded,
+          qualityGateExecutable: qualityGateStructuredDetails.qualityGateExecutable,
+          qualityGateCwd: qualityGateStructuredDetails.qualityGateCwd,
+          qualityGateExitCode: qualityGateStructuredDetails.qualityGateExitCode,
+          qualityGateSignal: qualityGateStructuredDetails.qualityGateSignal,
           qualityGateDetail: qualityGateStructuredDetails.qualityGateDetail,
         },
       });
@@ -1602,11 +2002,16 @@ export class MergeCoordinatorService {
             scopeConfidence,
             summary: requeuedSummary.summary,
             qualityGateCategory: qualityGateFailureDetails?.category ?? null,
+            qualityGateValidationWorkspace: qualityGateFailureDetails?.validationWorkspace ?? null,
             qualityGateCommand: qualityGateFailureDetails?.command ?? null,
             qualityGateFirstErrorLine: qualityGateFailureDetails?.firstErrorLine ?? null,
             qualityGateAutoRepairAttempted: qualityGateFailureDetails?.autoRepairAttempted ?? false,
             qualityGateAutoRepairSucceeded: qualityGateFailureDetails?.autoRepairSucceeded ?? false,
             qualityGateAutoRepairCommands: qualityGateFailureDetails?.autoRepairCommands ?? [],
+            qualityGateExecutable: qualityGateFailureDetails?.executable ?? null,
+            qualityGateCwd: qualityGateFailureDetails?.cwd ?? null,
+            qualityGateExitCode: qualityGateFailureDetails?.exitCode ?? null,
+            qualityGateSignal: qualityGateFailureDetails?.signal ?? null,
             failedGateCommand: qualityGateStructuredDetails.failedGateCommand,
             failedGateReason: qualityGateStructuredDetails.failedGateReason,
             failedGateOutputSnippet: qualityGateStructuredDetails.failedGateOutputSnippet,
@@ -1645,6 +2050,15 @@ export class MergeCoordinatorService {
             failedGateReason: qualityGateStructuredDetails.failedGateReason,
             failedGateOutputSnippet: qualityGateStructuredDetails.failedGateOutputSnippet,
             worktreePath: qualityGateStructuredDetails.worktreePath,
+            qualityGateCategory: qualityGateStructuredDetails.qualityGateCategory,
+            qualityGateValidationWorkspace:
+              qualityGateStructuredDetails.qualityGateValidationWorkspace,
+            qualityGateAutoRepairAttempted: qualityGateStructuredDetails.qualityGateRepairAttempted,
+            qualityGateAutoRepairSucceeded: qualityGateStructuredDetails.qualityGateRepairSucceeded,
+            qualityGateExecutable: qualityGateStructuredDetails.qualityGateExecutable,
+            qualityGateCwd: qualityGateStructuredDetails.qualityGateCwd,
+            qualityGateExitCode: qualityGateStructuredDetails.qualityGateExitCode,
+            qualityGateSignal: qualityGateStructuredDetails.qualityGateSignal,
             qualityGateDetail: qualityGateStructuredDetails.qualityGateDetail,
           },
         })

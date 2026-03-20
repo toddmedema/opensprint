@@ -108,6 +108,10 @@ export function ExecutePhase({
   const awaitingApproval = useAppSelector((s) => s.execute.awaitingApproval);
   const baselineStatus = useAppSelector((s) => s.execute.baselineStatus);
   const baselineFailureSummary = useAppSelector((s) => s.execute.baselineFailureSummary);
+  const mergeValidationStatus = useAppSelector((s) => s.execute.mergeValidationStatus);
+  const mergeValidationFailureSummary = useAppSelector(
+    (s) => s.execute.mergeValidationFailureSummary
+  );
   const selfImprovementRunInProgress = useAppSelector(
     (s) => s.execute.selfImprovementRunInProgress ?? false
   );
@@ -391,6 +395,21 @@ export function ExecutePhase({
               </p>
               {baselineFailureSummary && (
                 <p className="mt-1 text-xs opacity-90">{baselineFailureSummary}</p>
+              )}
+            </div>
+          )}
+          {mergeValidationStatus === "degraded" && (
+            <div
+              className="mb-4 rounded-lg border border-theme-error-border bg-theme-error-bg px-4 py-3 text-theme-error-text"
+              data-testid="execute-merge-validation-degraded-banner"
+              role="status"
+            >
+              <p className="text-sm">
+                Merge validation is temporarily degraded. Coding continues, but merge retries are
+                being held for periodic canary checks.
+              </p>
+              {mergeValidationFailureSummary && (
+                <p className="mt-1 text-xs opacity-90">{mergeValidationFailureSummary}</p>
               )}
             </div>
           )}

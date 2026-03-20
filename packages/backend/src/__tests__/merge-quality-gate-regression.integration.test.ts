@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
 import type { MergeCoordinatorHost, MergeSlot } from "../services/merge-coordinator.service.js";
 import { MergeCoordinatorService } from "../services/merge-coordinator.service.js";
 import { OrchestratorService } from "../services/orchestrator.service.js";
 import { BranchManager } from "../services/branch-manager.js";
 import { TaskExecutionDiagnosticsService } from "../services/task-execution-diagnostics.service.js";
 
-const mockShellExec = vi.fn();
+const mockRunCommand = vi.fn();
 const mockGetMergeQualityGateCommands = vi.fn();
 const mockEventAppend = vi.fn();
 const mockEventReadForTask = vi.fn();
@@ -19,8 +22,43 @@ vi.mock("../services/task-store.service.js", () => ({
   resolveEpicId: () => null,
 }));
 
-vi.mock("../utils/shell-exec.js", () => ({
-  shellExec: (...args: unknown[]) => mockShellExec(...args),
+vi.mock("../utils/command-runner.js", () => ({
+  runCommand: (...args: unknown[]) => mockRunCommand(...args),
+  resolveCommandExecutable: (command: string) => command,
+  CommandRunError: class CommandRunError extends Error {
+    code?: string;
+    stdout: string;
+    stderr: string;
+    executable: string;
+    cwd: string;
+    exitCode: number | null;
+    signal: NodeJS.Signals | null;
+    timedOut: boolean;
+
+    constructor(
+      message: string,
+      params: {
+        code?: string;
+        stdout?: string;
+        stderr?: string;
+        executable: string;
+        cwd: string;
+        exitCode?: number | null;
+        signal?: NodeJS.Signals | null;
+        timedOut?: boolean;
+      }
+    ) {
+      super(message);
+      this.code = params.code;
+      this.stdout = params.stdout ?? "";
+      this.stderr = params.stderr ?? "";
+      this.executable = params.executable;
+      this.cwd = params.cwd;
+      this.exitCode = params.exitCode ?? null;
+      this.signal = params.signal ?? null;
+      this.timedOut = params.timedOut ?? false;
+    }
+  },
 }));
 
 vi.mock("../services/merge-quality-gates.js", () => ({
@@ -84,8 +122,9 @@ vi.mock("../services/self-improvement.service.js", () => ({
 
 describe("Cross-service quality-gate regression integration", () => {
   const projectId = "proj-1";
-  const repoPath = "/tmp/repo-main";
-  const worktreePath = "/tmp/repo-worktree";
+  let repoPath: string;
+  let worktreePath: string;
+  let baselineWorktreePath: string;
   const taskId = "os-regression-1";
   const branchName = `opensprint/${taskId}`;
   const task = {
@@ -104,22 +143,46 @@ describe("Cross-service quality-gate regression integration", () => {
 
   let previousNodeEnv: string | undefined;
 
-  beforeEach(() => {
+  async function prepareWorkspace(dirPath: string): Promise<void> {
+    await fs.mkdir(dirPath, { recursive: true });
+    await fs.writeFile(
+      path.join(dirPath, "package.json"),
+      JSON.stringify({ name: "test-workspace", private: true, scripts: { lint: "eslint ." } })
+    );
+    await fs.mkdir(path.join(dirPath, "node_modules"), { recursive: true });
+  }
+
+  beforeEach(async () => {
     vi.clearAllMocks();
     previousNodeEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = "development";
+    repoPath = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-qg-repo-"));
+    worktreePath = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-qg-worktree-"));
+    baselineWorktreePath = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-qg-baseline-"));
+    await Promise.all([
+      prepareWorkspace(repoPath),
+      prepareWorkspace(worktreePath),
+      prepareWorkspace(baselineWorktreePath),
+    ]);
     mockGetMergeQualityGateCommands.mockReturnValue(["npm run lint"]);
     mockEventAppend.mockResolvedValue(undefined);
     createBaselineWorkspaceMock.mockResolvedValue({
       kind: "baseline",
-      worktreePath: "/tmp/repo-baseline",
+      worktreePath: baselineWorktreePath,
       branchName: null,
       cleanup: vi.fn().mockResolvedValue(undefined),
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     process.env.NODE_ENV = previousNodeEnv;
+    await Promise.all([
+      repoPath ? fs.rm(repoPath, { recursive: true, force: true }) : Promise.resolve(),
+      worktreePath ? fs.rm(worktreePath, { recursive: true, force: true }) : Promise.resolve(),
+      baselineWorktreePath
+        ? fs.rm(baselineWorktreePath, { recursive: true, force: true })
+        : Promise.resolve(),
+    ]);
     vi.restoreAllMocks();
   });
 
@@ -130,22 +193,56 @@ describe("Cross-service quality-gate regression integration", () => {
       .mockResolvedValue(undefined);
 
     let worktreeLintCalls = 0;
-    mockShellExec.mockImplementation(async (command: string, options?: { cwd?: string }) => {
-      if (command === "npm run lint" && options?.cwd !== worktreePath) {
-        return { stdout: "baseline ok", stderr: "" };
+    mockRunCommand.mockImplementation(
+      async (
+        spec: { command: string; args?: string[] },
+        options?: { cwd?: string; timeout?: number }
+      ) => {
+        const command = [spec.command, ...(spec.args ?? [])].join(" ");
+        if (command === "git rev-parse --verify HEAD") {
+          return {
+            stdout: "deadbeef",
+            stderr: "",
+            executable: spec.command,
+            cwd: options?.cwd ?? repoPath,
+            exitCode: 0,
+            signal: null,
+          };
+        }
+        if (command === "npm run lint" && options?.cwd !== worktreePath) {
+          return {
+            stdout: "baseline ok",
+            stderr: "",
+            executable: spec.command,
+            cwd: options?.cwd ?? repoPath,
+            exitCode: 0,
+            signal: null,
+          };
+        }
+        if (command === "npm run lint" && options?.cwd === worktreePath) {
+          worktreeLintCalls += 1;
+          throw {
+            message: "Command failed: npm run lint",
+            stderr: "Cannot find module 'eslint'",
+            executable: spec.command,
+            cwd: options?.cwd ?? worktreePath,
+            exitCode: 1,
+            signal: null,
+          };
+        }
+        if (command === "npm ci" && options?.cwd === repoPath) {
+          return {
+            stdout: "added 1 package",
+            stderr: "",
+            executable: spec.command,
+            cwd: options?.cwd ?? repoPath,
+            exitCode: 0,
+            signal: null,
+          };
+        }
+        throw new Error(`Unexpected command: ${command} (${options?.cwd ?? "no-cwd"})`);
       }
-      if (command === "npm run lint" && options?.cwd === worktreePath) {
-        worktreeLintCalls += 1;
-        throw {
-          message: "Command failed: npm run lint",
-          stderr: "Cannot find module 'eslint'",
-        };
-      }
-      if (command === "npm ci" && options?.cwd === repoPath) {
-        return { stdout: "added 1 package", stderr: "" };
-      }
-      throw new Error(`Unexpected command: ${command} (${options?.cwd ?? "no-cwd"})`);
-    });
+    );
 
     const slot: MergeSlot = {
       taskId,
@@ -234,7 +331,11 @@ describe("Cross-service quality-gate regression integration", () => {
     await coordinator.performMergeAndDone(projectId, repoPath, task as never, branchName);
 
     expect(worktreeLintCalls).toBe(2);
-    expect(mockShellExec.mock.calls.filter((call) => call[0] === "npm ci")).toHaveLength(1);
+    expect(
+      mockRunCommand.mock.calls.filter(
+        (call) => call[0]?.command === "npm" && call[0]?.args?.join(" ") === "ci"
+      )
+    ).toHaveLength(1);
     expect(symlinkSpy).toHaveBeenCalledTimes(1);
     expect(symlinkSpy).toHaveBeenCalledWith(repoPath, worktreePath);
     expect(mockTaskStoreUpdate).toHaveBeenCalledWith(
@@ -323,13 +424,19 @@ describe("Cross-service quality-gate regression integration", () => {
       "repair: npm ci -> symlinkNodeModules (succeeded)"
     );
     expect(mergeFailedTimelineEntry?.summary).toContain("category: environment_setup");
-    expect(diagnostics.latestQualityGateDetail).toEqual({
-      command: "npm run lint",
-      reason: "Command failed: npm run lint",
-      outputSnippet: "Cannot find module 'eslint'",
-      worktreePath,
-      firstErrorLine: "Cannot find module 'eslint'",
-    });
+    expect(diagnostics.latestQualityGateDetail).toEqual(
+      expect.objectContaining({
+        command: "npm run lint",
+        reason: "Command failed: npm run lint",
+        outputSnippet: "Cannot find module 'eslint'",
+        worktreePath,
+        firstErrorLine: "Cannot find module 'eslint'",
+        category: "environment_setup",
+        validationWorkspace: "task_worktree",
+        repairAttempted: true,
+        repairSucceeded: true,
+      })
+    );
   });
 
   it("requeues non-environment quality-gate failures without repair and persists structured details", async () => {
@@ -339,19 +446,46 @@ describe("Cross-service quality-gate regression integration", () => {
       .mockResolvedValue(undefined);
 
     let worktreeLintCalls = 0;
-    mockShellExec.mockImplementation(async (command: string, options?: { cwd?: string }) => {
-      if (command === "npm run lint" && options?.cwd !== worktreePath) {
-        return { stdout: "baseline ok", stderr: "" };
+    mockRunCommand.mockImplementation(
+      async (
+        spec: { command: string; args?: string[] },
+        options?: { cwd?: string; timeout?: number }
+      ) => {
+        const command = [spec.command, ...(spec.args ?? [])].join(" ");
+        if (command === "git rev-parse --verify HEAD") {
+          return {
+            stdout: "deadbeef",
+            stderr: "",
+            executable: spec.command,
+            cwd: options?.cwd ?? repoPath,
+            exitCode: 0,
+            signal: null,
+          };
+        }
+        if (command === "npm run lint" && options?.cwd !== worktreePath) {
+          return {
+            stdout: "baseline ok",
+            stderr: "",
+            executable: spec.command,
+            cwd: options?.cwd ?? repoPath,
+            exitCode: 0,
+            signal: null,
+          };
+        }
+        if (command === "npm run lint" && options?.cwd === worktreePath) {
+          worktreeLintCalls += 1;
+          throw {
+            message: "Command failed: npm run lint",
+            stderr: "src/foo.ts: error TS2304: Cannot find name 'x'",
+            executable: spec.command,
+            cwd: options?.cwd ?? worktreePath,
+            exitCode: 1,
+            signal: null,
+          };
+        }
+        throw new Error(`Unexpected command: ${command} (${options?.cwd ?? "no-cwd"})`);
       }
-      if (command === "npm run lint" && options?.cwd === worktreePath) {
-        worktreeLintCalls += 1;
-        throw {
-          message: "Command failed: npm run lint",
-          stderr: "src/foo.ts: error TS2304: Cannot find name 'x'",
-        };
-      }
-      throw new Error(`Unexpected command: ${command} (${options?.cwd ?? "no-cwd"})`);
-    });
+    );
 
     const slot: MergeSlot = {
       taskId,
@@ -440,7 +574,11 @@ describe("Cross-service quality-gate regression integration", () => {
     await coordinator.performMergeAndDone(projectId, repoPath, task as never, branchName);
 
     expect(worktreeLintCalls).toBe(1);
-    expect(mockShellExec.mock.calls.filter((call) => call[0] === "npm ci")).toHaveLength(0);
+    expect(
+      mockRunCommand.mock.calls.filter(
+        (call) => call[0]?.command === "npm" && call[0]?.args?.join(" ") === "ci"
+      )
+    ).toHaveLength(0);
     expect(symlinkSpy).not.toHaveBeenCalled();
     expect(mockTaskStoreUpdate).toHaveBeenCalledWith(
       projectId,
@@ -528,12 +666,18 @@ describe("Cross-service quality-gate regression integration", () => {
       "npm run lint: src/foo.ts: error TS2304: Cannot find name 'x'"
     );
     expect(diagnostics.latestSummary).not.toContain("repair:");
-    expect(diagnostics.latestQualityGateDetail).toEqual({
-      command: "npm run lint",
-      reason: "Command failed: npm run lint",
-      outputSnippet: "src/foo.ts: error TS2304: Cannot find name 'x'",
-      worktreePath,
-      firstErrorLine: "src/foo.ts: error TS2304: Cannot find name 'x'",
-    });
+    expect(diagnostics.latestQualityGateDetail).toEqual(
+      expect.objectContaining({
+        command: "npm run lint",
+        reason: "Command failed: npm run lint",
+        outputSnippet: "src/foo.ts: error TS2304: Cannot find name 'x'",
+        worktreePath,
+        firstErrorLine: "src/foo.ts: error TS2304: Cannot find name 'x'",
+        category: "quality_gate",
+        validationWorkspace: "task_worktree",
+        repairAttempted: false,
+        repairSucceeded: false,
+      })
+    );
   });
 });

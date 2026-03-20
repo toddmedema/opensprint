@@ -8,7 +8,46 @@ describe("runMergeQualityGates", () => {
   let previousNodeEnv: string | undefined;
   const tempDirs: string[] = [];
 
-  const makeTempWorktree = async (scripts?: Record<string, string>): Promise<string> => {
+  const commandLabel = (spec: { command: string; args?: string[] }): string =>
+    [spec.command, ...(spec.args ?? [])].join(" ");
+
+  const makeCommandResult = (spec: { command: string }, cwd: string) => ({
+    stdout: "",
+    stderr: "",
+    executable: `/mock/bin/${spec.command}`,
+    cwd,
+    exitCode: 0,
+    signal: null,
+  });
+
+  const makeCommandFailure = (
+    spec: { command: string; args?: string[] },
+    cwd: string,
+    params: {
+      message?: string;
+      stdout?: string;
+      stderr?: string;
+      exitCode?: number;
+    }
+  ) => ({
+    message: params.message ?? `Command failed: ${commandLabel(spec)}`,
+    stdout: params.stdout ?? "",
+    stderr: params.stderr ?? "",
+    executable: `/mock/bin/${spec.command}`,
+    cwd,
+    exitCode: params.exitCode ?? 1,
+    signal: null,
+  });
+
+  const getExecutedCommands = (runCommand: ReturnType<typeof vi.fn>): string[] =>
+    runCommand.mock.calls
+      .map((call) => commandLabel(call[0] as { command: string; args?: string[] }))
+      .filter((label) => label !== "git rev-parse --verify HEAD");
+
+  const makeTempWorktree = async (
+    scripts?: Record<string, string>,
+    includeNodeModules = true
+  ): Promise<string> => {
     const worktreePath = await fs.mkdtemp(path.join(os.tmpdir(), "merge-quality-gate-runner-"));
     tempDirs.push(worktreePath);
     if (scripts) {
@@ -16,6 +55,9 @@ describe("runMergeQualityGates", () => {
         path.join(worktreePath, "package.json"),
         JSON.stringify({ name: "tmp-app", version: "1.0.0", scripts }, null, 2)
       );
+    }
+    if (includeNodeModules) {
+      await fs.mkdir(path.join(worktreePath, "node_modules"), { recursive: true });
     }
     return worktreePath;
   };
@@ -33,25 +75,21 @@ describe("runMergeQualityGates", () => {
   });
 
   it("extracts actionable assertion failures from noisy vitest output", async () => {
-    const failure = await runMergeQualityGates(
-      {
-        projectId: "proj-1",
-        repoPath: "/tmp/repo",
-        worktreePath: "/tmp/worktree",
-        taskId: "os-1",
-        branchName: "opensprint/os-1",
-        baseBranch: "main",
-      },
-      {
-        commands: ["npm run test"],
-        shellExec: async () => {
-          throw {
+    const worktreePath = await makeTempWorktree({ test: "vitest run" });
+    const runCommand = vi.fn(
+      async (spec: { command: string; args?: string[] }, options: { cwd: string }) => {
+        const label = commandLabel(spec);
+        if (label === "git rev-parse --verify HEAD") {
+          return makeCommandResult(spec, options.cwd);
+        }
+        if (label === "npm run test") {
+          throw makeCommandFailure(spec, options.cwd, {
             message: "Command failed with exit code 1",
             stderr: `
 > app@1.0.0 test
 > vitest run
 
-RUN  v3.0.0 /tmp/worktree
+RUN  v3.0.0 /tmp/project
 stderr | src/example.test.ts > Example > still renders
 ✓ src/other.test.ts > passes
 FAIL  src/example.test.ts > Example > still renders
@@ -60,8 +98,24 @@ Expected: 201
 Received: 200
     at src/example.test.ts:42:10
 `,
-          };
-        },
+          });
+        }
+        return makeCommandResult(spec, options.cwd);
+      }
+    );
+
+    const failure = await runMergeQualityGates(
+      {
+        projectId: "proj-1",
+        repoPath: worktreePath,
+        worktreePath,
+        taskId: "os-1",
+        branchName: "opensprint/os-1",
+        baseBranch: "main",
+      },
+      {
+        commands: ["npm run test"],
+        runCommand,
       }
     );
 
@@ -76,22 +130,19 @@ Received: 200
     );
     expect(failure?.outputSnippet).toContain("Expected: 201");
     expect(failure?.outputSnippet).not.toContain("✓ src/other.test.ts > passes");
+    expect(getExecutedCommands(runCommand)).toEqual(["npm run test"]);
   });
 
   it("prefers compiler and lint diagnostics over generic command wrappers", async () => {
-    const failure = await runMergeQualityGates(
-      {
-        projectId: "proj-1",
-        repoPath: "/tmp/repo",
-        worktreePath: "/tmp/worktree",
-        taskId: "os-2",
-        branchName: "opensprint/os-2",
-        baseBranch: "main",
-      },
-      {
-        commands: ["npm run build"],
-        shellExec: async () => {
-          throw {
+    const worktreePath = await makeTempWorktree({ build: "tsc -b" });
+    const runCommand = vi.fn(
+      async (spec: { command: string; args?: string[] }, options: { cwd: string }) => {
+        const label = commandLabel(spec);
+        if (label === "git rev-parse --verify HEAD") {
+          return makeCommandResult(spec, options.cwd);
+        }
+        if (label === "npm run build") {
+          throw makeCommandFailure(spec, options.cwd, {
             message: "Command failed with exit code 1",
             stderr: `
 > app@1.0.0 build
@@ -100,8 +151,24 @@ Received: 200
 src/server.ts(18,7): error TS2304: Cannot find name 'missingValue'.
 src/server.ts(19,3): error TS2552: Cannot find name 'handler'. Did you mean 'Headers'?
 `,
-          };
-        },
+          });
+        }
+        return makeCommandResult(spec, options.cwd);
+      }
+    );
+
+    const failure = await runMergeQualityGates(
+      {
+        projectId: "proj-1",
+        repoPath: worktreePath,
+        worktreePath,
+        taskId: "os-2",
+        branchName: "opensprint/os-2",
+        baseBranch: "main",
+      },
+      {
+        commands: ["npm run build"],
+        runCommand,
       }
     );
 
@@ -112,13 +179,22 @@ src/server.ts(19,3): error TS2552: Cannot find name 'handler'. Did you mean 'Hea
     );
     expect(failure?.outputSnippet).toContain("error TS2552");
     expect(failure?.outputSnippet).not.toContain("> app@1.0.0 build");
+    expect(getExecutedCommands(runCommand)).toEqual(["npm run build"]);
   });
 
   it("skips npm run gates when the script is not defined in package.json", async () => {
     const worktreePath = await makeTempWorktree({
       test: "vitest run",
     });
-    const shellExec = vi.fn(async () => ({ stdout: "", stderr: "" }));
+    const runCommand = vi.fn(
+      async (spec: { command: string; args?: string[] }, options: { cwd: string }) => {
+        const label = commandLabel(spec);
+        if (label === "git rev-parse --verify HEAD") {
+          return makeCommandResult(spec, options.cwd);
+        }
+        return makeCommandResult(spec, options.cwd);
+      }
+    );
 
     const failure = await runMergeQualityGates(
       {
@@ -131,20 +207,21 @@ src/server.ts(19,3): error TS2552: Cannot find name 'handler'. Did you mean 'Hea
       },
       {
         commands: ["npm run build", "npm run lint", "npm run test"],
-        shellExec,
+        runCommand,
       }
     );
 
     expect(failure).toBeNull();
-    expect(shellExec).toHaveBeenCalledTimes(1);
-    expect(shellExec).toHaveBeenCalledWith(
-      "npm run test",
-      expect.objectContaining({ cwd: worktreePath })
-    );
+    expect(getExecutedCommands(runCommand)).toEqual(["npm run test"]);
   });
 
   it("falls back to executing gates when package.json is missing", async () => {
-    const worktreePath = await makeTempWorktree();
+    const worktreePath = await makeTempWorktree(undefined, false);
+    const runCommand = vi.fn(
+      async (spec: { command: string; args?: string[] }, options: { cwd: string }) =>
+        makeCommandResult(spec, options.cwd)
+    );
+    const symlinkNodeModules = vi.fn(async () => undefined);
 
     const failure = await runMergeQualityGates(
       {
@@ -157,12 +234,8 @@ src/server.ts(19,3): error TS2552: Cannot find name 'handler'. Did you mean 'Hea
       },
       {
         commands: ["npm run build"],
-        shellExec: async () => {
-          throw {
-            message: "Command failed with exit code 1",
-            stderr: 'Missing script: "build"',
-          };
-        },
+        runCommand,
+        symlinkNodeModules,
       }
     );
 
@@ -171,5 +244,6 @@ src/server.ts(19,3): error TS2552: Cannot find name 'handler'. Did you mean 'Hea
         command: "npm run build",
       })
     );
+    expect(getExecutedCommands(runCommand)).toEqual(["npm ci"]);
   });
 });

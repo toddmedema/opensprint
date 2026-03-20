@@ -34,6 +34,12 @@ import { getCombinedInstructions } from "./agent-instructions.service.js";
 import { maybeAutoRespond } from "./open-question-autoresolve.service.js";
 import { activeAgentsService } from "./active-agents.service.js";
 import { invokeStructuredPlanningAgent } from "./structured-agent-output.service.js";
+import {
+  buildPromptEnvelope,
+  fingerprintPrompt,
+  joinPromptSections,
+  type OpenAIResponseChainState,
+} from "../utils/prompt-cache.js";
 
 const log = createLogger("chat");
 const ARCHITECTURE_SECTIONS = ["technical_architecture", "data_model", "api_contracts"] as const;
@@ -226,6 +232,7 @@ The user is replying to an open question the Coder asked about a specific task. 
 export class ChatService {
   private projectService = new ProjectService();
   private prdService = new PrdService();
+  private readonly openAIResponseChains = new Map<string, OpenAIResponseChainState>();
 
   private parseMessages(raw: unknown): ConversationMessage[] {
     if (!Array.isArray(raw)) return [];
@@ -414,6 +421,27 @@ export class ChatService {
     return row?.content ?? "";
   }
 
+  private buildPlanningSystemPrompt(params: {
+    basePrompt: string;
+    agentInstructions: string;
+    autonomyDesc?: string;
+    projectContext?: string;
+  }): string {
+    const stablePrefix = joinPromptSections(
+      params.basePrompt,
+      params.agentInstructions,
+      params.autonomyDesc ? `## AI Autonomy Level\n\n${params.autonomyDesc}` : ""
+    );
+    return buildPromptEnvelope({
+      stablePrefix,
+      dynamicContext: params.projectContext,
+    });
+  }
+
+  private getOpenAIResponseChainKey(projectId: string, context: string): string {
+    return `${projectId}:${context}`;
+  }
+
   /** Write plan content to task store (avoids PlanService circular dep) */
   private async writePlanContent(
     projectId: string,
@@ -531,7 +559,8 @@ export class ChatService {
     const agentConfig = getAgentForPlanningRole(settings, planningRole);
 
     // Build system prompt and context based on design vs plan vs execute
-    let systemPrompt: string;
+    let baseSystemPrompt: string;
+    let projectContext = "";
     if (isExecuteContext && taskId) {
       let taskContext = `## Task ${taskId}\n\n(Task details not found.)`;
       try {
@@ -540,29 +569,44 @@ export class ChatService {
       } catch {
         // Use fallback taskContext
       }
-      systemPrompt = `${EXECUTE_TASK_CHAT_SYSTEM_PROMPT}\n\n${taskContext}`;
+      baseSystemPrompt = EXECUTE_TASK_CHAT_SYSTEM_PROMPT;
+      projectContext = taskContext;
     } else if (isPlanContext && planId) {
       const planContent = await this.getPlanContent(projectId, planId);
       const planContext = planContent
         ? `## Current Plan (${planId})\n\n${planContent}`
         : `## Plan ${planId}\n\n(Plan file is empty or not found.)`;
       const prdContext = await this.buildPrdContext(projectId);
-      systemPrompt = `${PLAN_REFINEMENT_SYSTEM_PROMPT}\n\n${planContext}\n\n---\n\n## PRD Reference\n\n${prdContext}`;
+      baseSystemPrompt = PLAN_REFINEMENT_SYSTEM_PROMPT;
+      projectContext = joinPromptSections(planContext, "## PRD Reference\n\n" + prdContext);
     } else if (isPlanDraftContext && draftId) {
       const prdContext = await this.buildPrdContext(projectId);
-      systemPrompt = `${PLAN_DRAFT_GENERATION_SYSTEM_PROMPT}\n\n## PRD Reference\n\n${prdContext}`;
+      baseSystemPrompt = PLAN_DRAFT_GENERATION_SYSTEM_PROMPT;
+      projectContext = `## PRD Reference\n\n${prdContext}`;
     } else {
       const prdContext = await this.buildPrdContext(projectId);
-      systemPrompt = DREAM_SYSTEM_PROMPT + "\n\n" + prdContext;
+      baseSystemPrompt = DREAM_SYSTEM_PROMPT;
+      projectContext = prdContext;
     }
 
     const autonomyDesc = buildAutonomyDescription(settings.aiAutonomyLevel, settings.hilConfig);
-    if (autonomyDesc) {
-      systemPrompt += `\n\n## AI Autonomy Level\n\n${autonomyDesc}\n\n`;
-    }
-
     const agentInstructions = await getCombinedInstructions(repoPath, planningRole);
-    systemPrompt += `\n\n${agentInstructions}`;
+    const systemPrompt = this.buildPlanningSystemPrompt({
+      basePrompt: baseSystemPrompt,
+      agentInstructions,
+      autonomyDesc,
+      projectContext,
+    });
+    const systemPromptFingerprint = fingerprintPrompt(systemPrompt);
+    const openAIResponseChainKey = this.getOpenAIResponseChainKey(projectId, context);
+    const openAIResponseChain = this.openAIResponseChains.get(openAIResponseChainKey);
+    const previousResponseId =
+      openAIResponseChain?.systemPromptFingerprint === systemPromptFingerprint
+        ? openAIResponseChain.responseId
+        : undefined;
+    if (openAIResponseChain && !previousResponseId) {
+      this.openAIResponseChains.delete(openAIResponseChainKey);
+    }
 
     // Assemble messages for AgentService.invokePlanningAgent
     const messages = conversation.messages.slice(0, -1).map((m) => ({
@@ -635,6 +679,16 @@ export class ChatService {
             config: agentConfig,
             messages,
             systemPrompt,
+            previousResponseId,
+            promptCacheContext: {
+              provider: "openai",
+              model: agentConfig.model,
+              flow: "plan",
+              projectId,
+              contextType: context,
+              conversationId: conversation.id,
+              instructionsFingerprint: systemPromptFingerprint,
+            },
             cwd: repoPath,
             ...(body.images?.length ? { images: body.images } : {}),
             tracking: {
@@ -648,6 +702,20 @@ export class ChatService {
           });
 
       const rawContent = "rawContent" in response ? response.rawContent : (response.content ?? "");
+      if (
+        !isPlanDraftContext &&
+        agentConfig.type === "openai" &&
+        "responseId" in response &&
+        typeof response.responseId === "string" &&
+        response.responseId.trim()
+      ) {
+        this.openAIResponseChains.set(openAIResponseChainKey, {
+          responseId: response.responseId,
+          systemPromptFingerprint,
+        });
+      } else if (!isPlanDraftContext && agentConfig.type === "openai") {
+        this.openAIResponseChains.delete(openAIResponseChainKey);
+      }
       if ("parsed" in response) {
         draftParsed = response.parsed;
       }

@@ -20,6 +20,14 @@ type QualityGateDetail = {
   outputSnippet?: string | null;
   worktreePath?: string | null;
   firstErrorLine?: string | null;
+  category?: "quality_gate" | "environment_setup" | null;
+  validationWorkspace?: "baseline" | "merged_candidate" | "task_worktree" | "repo_root" | null;
+  repairAttempted?: boolean;
+  repairSucceeded?: boolean;
+  executable?: string | null;
+  cwd?: string | null;
+  exitCode?: number | null;
+  signal?: string | null;
 };
 type TaskExecutionEventItemWithQualityGate = TaskExecutionEventItem & {
   qualityGateDetail?: QualityGateDetail | null;
@@ -97,13 +105,63 @@ function extractQualityGateDetail(data: JsonRecord): QualityGateDetail | null {
     asString(nested?.firstErrorLine) ??
     firstNonEmptyLine(outputSnippet) ??
     firstNonEmptyLine(reason);
-  if (!command && !reason && !outputSnippet && !worktreePath && !firstErrorLine) return null;
+  const category =
+    data.qualityGateCategory === "environment_setup" || data.qualityGateCategory === "quality_gate"
+      ? data.qualityGateCategory
+      : nested?.category === "environment_setup" || nested?.category === "quality_gate"
+        ? nested.category
+        : null;
+  const validationWorkspace =
+    data.qualityGateValidationWorkspace === "baseline" ||
+    data.qualityGateValidationWorkspace === "merged_candidate" ||
+    data.qualityGateValidationWorkspace === "task_worktree" ||
+    data.qualityGateValidationWorkspace === "repo_root"
+      ? data.qualityGateValidationWorkspace
+      : nested?.validationWorkspace === "baseline" ||
+          nested?.validationWorkspace === "merged_candidate" ||
+          nested?.validationWorkspace === "task_worktree" ||
+          nested?.validationWorkspace === "repo_root"
+        ? nested.validationWorkspace
+        : null;
+  const repairAttempted =
+    asBoolean(data.qualityGateAutoRepairAttempted) ?? asBoolean(nested?.repairAttempted) ?? null;
+  const repairSucceeded =
+    asBoolean(data.qualityGateAutoRepairSucceeded) ?? asBoolean(nested?.repairSucceeded) ?? null;
+  const executable = asString(data.qualityGateExecutable) ?? asString(nested?.executable);
+  const cwd = asString(data.qualityGateCwd) ?? asString(nested?.cwd);
+  const exitCode = asNumber(data.qualityGateExitCode) ?? asNumber(nested?.exitCode);
+  const signal = asString(data.qualityGateSignal) ?? asString(nested?.signal);
+  if (
+    !command &&
+    !reason &&
+    !outputSnippet &&
+    !worktreePath &&
+    !firstErrorLine &&
+    !category &&
+    !validationWorkspace &&
+    repairAttempted == null &&
+    repairSucceeded == null &&
+    !executable &&
+    !cwd &&
+    exitCode == null &&
+    !signal
+  ) {
+    return null;
+  }
   return {
     command: command ?? null,
     reason: reason ?? null,
     outputSnippet: outputSnippet ?? null,
     worktreePath: worktreePath ?? null,
     firstErrorLine: firstErrorLine ?? null,
+    category,
+    validationWorkspace,
+    repairAttempted: repairAttempted ?? undefined,
+    repairSucceeded: repairSucceeded ?? undefined,
+    executable: executable ?? null,
+    cwd: cwd ?? null,
+    exitCode: exitCode ?? null,
+    signal: signal ?? null,
   };
 }
 
@@ -159,16 +217,20 @@ function buildActionableFailureSummary(
     summaryParts.push(compactExecutionText(errorMessage, 220));
   }
 
-  if (options?.autoRepairAttempted) {
+  if (options?.autoRepairAttempted ?? detail?.repairAttempted) {
     const commands =
-      (options.autoRepairCommands ?? []).length > 0
-        ? (options.autoRepairCommands ?? []).join(" -> ")
+      (options?.autoRepairCommands ?? []).length > 0
+        ? (options?.autoRepairCommands ?? []).join(" -> ")
         : "auto-repair";
-    const status = options.autoRepairSucceeded ? "succeeded" : "failed";
+    const repairSucceeded = (options?.autoRepairSucceeded ?? detail?.repairSucceeded) === true;
+    const status = repairSucceeded ? "succeeded" : "failed";
     summaryParts.push(`repair: ${commands} (${status})`);
   }
-  if (options?.category === "environment_setup") {
+  if ((options?.category ?? detail?.category) === "environment_setup") {
     summaryParts.push("category: environment_setup");
+  }
+  if (detail?.validationWorkspace) {
+    summaryParts.push(`workspace: ${detail.validationWorkspace}`);
   }
 
   return compactExecutionText(summaryParts.join(" | "), 500);

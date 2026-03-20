@@ -24,7 +24,14 @@ export interface RetryQualityGateDetail {
   outputSnippet?: string | null;
   worktreePath?: string | null;
   firstErrorLine?: string | null;
-  validationWorkspace?: string | null;
+  category?: "quality_gate" | "environment_setup" | null;
+  validationWorkspace?: "baseline" | "merged_candidate" | "task_worktree" | "repo_root" | null;
+  repairAttempted?: boolean;
+  repairSucceeded?: boolean;
+  executable?: string | null;
+  cwd?: string | null;
+  exitCode?: number | null;
+  signal?: string | null;
 }
 
 export interface RetryContext {

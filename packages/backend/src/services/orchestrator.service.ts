@@ -350,6 +350,8 @@ export class OrchestratorService {
       baselineStatus: "unknown",
       baselineCheckedAt: null,
       baselineFailureSummary: null,
+      mergeValidationStatus: "healthy",
+      mergeValidationFailureSummary: null,
       dispatchPausedReason: null,
     };
   }
@@ -422,6 +424,8 @@ export class OrchestratorService {
       baselineStatus: state.status.baselineStatus,
       baselineCheckedAt: state.status.baselineCheckedAt ?? null,
       baselineFailureSummary: state.status.baselineFailureSummary ?? null,
+      mergeValidationStatus: state.status.mergeValidationStatus ?? "healthy",
+      mergeValidationFailureSummary: state.status.mergeValidationFailureSummary ?? null,
       dispatchPausedReason: state.status.dispatchPausedReason ?? null,
       ...(overrides?.pendingFeedbackCategorizations && {
         pendingFeedbackCategorizations: overrides.pendingFeedbackCategorizations,
@@ -619,6 +623,37 @@ export class OrchestratorService {
     if (!changed) return;
 
     await this.persistCounters(projectId, repoPath);
+    this.emitExecuteStatus(projectId);
+  }
+
+  async setMergeValidationRuntimeState(
+    projectId: string,
+    repoPath: string,
+    updates: {
+      mergeValidationStatus?: OrchestratorStatus["mergeValidationStatus"];
+      mergeValidationFailureSummary?: string | null;
+    }
+  ): Promise<void> {
+    const state = this.getState(projectId);
+    let changed = false;
+
+    if (
+      updates.mergeValidationStatus !== undefined &&
+      state.status.mergeValidationStatus !== updates.mergeValidationStatus
+    ) {
+      state.status.mergeValidationStatus = updates.mergeValidationStatus;
+      changed = true;
+    }
+    if (
+      updates.mergeValidationFailureSummary !== undefined &&
+      state.status.mergeValidationFailureSummary !== updates.mergeValidationFailureSummary
+    ) {
+      state.status.mergeValidationFailureSummary = updates.mergeValidationFailureSummary;
+      changed = true;
+    }
+
+    if (!changed) return;
+
     this.emitExecuteStatus(projectId);
   }
 
@@ -2239,6 +2274,14 @@ export class OrchestratorService {
         failure.firstErrorLine?.trim().slice(0, 300) ||
         compactExecutionText((failure.outputSnippet ?? failure.output ?? "").trim(), 300) ||
         null,
+      category: failure.category ?? "quality_gate",
+      validationWorkspace: failure.validationWorkspace ?? null,
+      repairAttempted: failure.autoRepairAttempted ?? false,
+      repairSucceeded: failure.autoRepairSucceeded ?? false,
+      executable: failure.executable ?? null,
+      cwd: failure.cwd ?? null,
+      exitCode: failure.exitCode ?? null,
+      signal: failure.signal ?? null,
     };
   }
 

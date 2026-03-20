@@ -31,6 +31,7 @@ import { getMergeStageFromIssue } from "./task-store-helpers.js";
 import { createLogger } from "../utils/logger.js";
 import { parseTaskLastExecutionSummary } from "./task-execution-summary.js";
 import { resolveBaseBranch } from "../utils/git-repo-state.js";
+import { deriveMergeGateStateFromIssue, getMergePausedUntilFromIssue } from "./merge-gate-state.js";
 
 const log = createLogger("task");
 
@@ -313,16 +314,11 @@ export class TaskService {
     );
     const source = (issue as { source?: string }).source;
 
-    const mergePausedUntilRaw = (issue as Record<string, unknown>).merge_quality_gate_paused_until;
-    let mergePausedUntil: string | undefined;
-    let mergeWaitingOnMain = false;
-    if (typeof mergePausedUntilRaw === "string" && mergePausedUntilRaw.trim() !== "") {
-      const parsed = new Date(mergePausedUntilRaw).getTime();
-      if (!Number.isNaN(parsed) && parsed > Date.now()) {
-        mergePausedUntil = mergePausedUntilRaw;
-        mergeWaitingOnMain = true;
-      }
-    }
+    const mergePausedUntil =
+      getMergePausedUntilFromIssue(issue as Record<string, unknown>) ?? undefined;
+    const mergeWaitingOnMain = mergePausedUntil != null;
+    const mergeGateState =
+      deriveMergeGateStateFromIssue(issue as Record<string, unknown>) ?? undefined;
 
     const qualityGateDetail = this.qualityGateDetailFromIssue(issue);
     const qualityGateApiFields = qualityGateDetail
@@ -365,6 +361,7 @@ export class TaskService {
         : {}),
       ...(source ? { source } : {}),
       ...(mergePausedUntil ? { mergePausedUntil, mergeWaitingOnMain } : {}),
+      ...(mergeGateState ? { mergeGateState } : {}),
       ...qualityGateApiFields,
     };
   }
@@ -403,10 +400,45 @@ export class TaskService {
       nonEmpty(rec.qualityGateFirstErrorLine) ??
       nonEmpty(rec.firstErrorLine) ??
       (nested ? nonEmpty(nested.firstErrorLine) : null);
+    const category = (nonEmpty(rec.qualityGateCategory) ??
+      (nested ? nonEmpty(nested.category) : null)) as "quality_gate" | "environment_setup" | null;
+    const validationWorkspace = (nonEmpty(rec.validationWorkspace) ??
+      nonEmpty(rec.qualityGateValidationWorkspace) ??
+      (nested ? nonEmpty(nested.validationWorkspace) : null)) as
+      | "baseline"
+      | "merged_candidate"
+      | "task_worktree"
+      | "repo_root"
+      | null;
+    const repairAttemptedRaw = rec.qualityGateAutoRepairAttempted ?? nested?.repairAttempted;
+    const repairSucceededRaw = rec.qualityGateAutoRepairSucceeded ?? nested?.repairSucceeded;
+    const executable =
+      nonEmpty(rec.qualityGateExecutable) ?? (nested ? nonEmpty(nested.executable) : null);
+    const cwd = nonEmpty(rec.qualityGateCwd) ?? (nested ? nonEmpty(nested.cwd) : null);
+    const exitCodeRaw = rec.qualityGateExitCode ?? nested?.exitCode;
+    const signal = nonEmpty(rec.qualityGateSignal) ?? (nested ? nonEmpty(nested.signal) : null);
     const firstErrorLine =
       firstErrorLineRaw ?? firstNonEmptyLine(outputSnippet) ?? firstNonEmptyLine(reason);
+    const exitCode =
+      typeof exitCodeRaw === "number" && Number.isFinite(exitCodeRaw) ? exitCodeRaw : null;
+    const repairAttempted = typeof repairAttemptedRaw === "boolean" ? repairAttemptedRaw : null;
+    const repairSucceeded = typeof repairSucceededRaw === "boolean" ? repairSucceededRaw : null;
 
-    if (!command && !reason && !outputSnippet && !worktreePath && !firstErrorLine) {
+    if (
+      !command &&
+      !reason &&
+      !outputSnippet &&
+      !worktreePath &&
+      !firstErrorLine &&
+      !category &&
+      !validationWorkspace &&
+      repairAttempted == null &&
+      repairSucceeded == null &&
+      !executable &&
+      !cwd &&
+      exitCode == null &&
+      !signal
+    ) {
       return null;
     }
     return {
@@ -415,6 +447,14 @@ export class TaskService {
       outputSnippet: outputSnippet ?? undefined,
       worktreePath: worktreePath ?? undefined,
       firstErrorLine: firstErrorLine ?? undefined,
+      category: category ?? undefined,
+      validationWorkspace: validationWorkspace ?? undefined,
+      repairAttempted: repairAttempted ?? undefined,
+      repairSucceeded: repairSucceeded ?? undefined,
+      executable: executable ?? undefined,
+      cwd: cwd ?? undefined,
+      exitCode: exitCode ?? undefined,
+      signal: signal ?? undefined,
     };
   }
 

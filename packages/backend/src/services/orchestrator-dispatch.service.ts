@@ -20,6 +20,7 @@ const NEXT_RETRY_CONTEXT_KEY = "next_retry_context";
 const MERGE_RETRY_MODE_KEY = "merge_retry_mode";
 const BASELINE_MERGE_RETRY_MODE = "baseline_wait";
 const BASELINE_QUALITY_GATE_PAUSED_UNTIL_KEY = "merge_quality_gate_paused_until";
+const MERGE_VALIDATION_PAUSED_UNTIL_KEY = "merge_validation_paused_until";
 
 const FAILURE_TYPES: FailureType[] = [
   "test_failure",
@@ -50,7 +51,43 @@ function extractQualityGateDetail(value: unknown): RetryQualityGateDetail | unde
   const outputSnippet = nonEmptyString(record.outputSnippet);
   const worktreePath = nonEmptyString(record.worktreePath);
   const firstErrorLine = nonEmptyString(record.firstErrorLine);
-  if (!command && !reason && !outputSnippet && !worktreePath && !firstErrorLine) {
+  const category =
+    record.category === "environment_setup" || record.category === "quality_gate"
+      ? record.category
+      : undefined;
+  const validationWorkspace =
+    record.validationWorkspace === "baseline" ||
+    record.validationWorkspace === "merged_candidate" ||
+    record.validationWorkspace === "task_worktree" ||
+    record.validationWorkspace === "repo_root"
+      ? record.validationWorkspace
+      : undefined;
+  const repairAttempted =
+    typeof record.repairAttempted === "boolean" ? record.repairAttempted : undefined;
+  const repairSucceeded =
+    typeof record.repairSucceeded === "boolean" ? record.repairSucceeded : undefined;
+  const executable = nonEmptyString(record.executable);
+  const cwd = nonEmptyString(record.cwd);
+  const exitCode =
+    typeof record.exitCode === "number" && Number.isFinite(record.exitCode)
+      ? record.exitCode
+      : undefined;
+  const signal = nonEmptyString(record.signal);
+  if (
+    !command &&
+    !reason &&
+    !outputSnippet &&
+    !worktreePath &&
+    !firstErrorLine &&
+    !category &&
+    !validationWorkspace &&
+    repairAttempted === undefined &&
+    repairSucceeded === undefined &&
+    !executable &&
+    !cwd &&
+    exitCode === undefined &&
+    !signal
+  ) {
     return undefined;
   }
   return {
@@ -59,6 +96,14 @@ function extractQualityGateDetail(value: unknown): RetryQualityGateDetail | unde
     outputSnippet: outputSnippet ?? null,
     worktreePath: worktreePath ?? null,
     firstErrorLine: firstErrorLine ?? null,
+    category: category ?? null,
+    validationWorkspace: validationWorkspace ?? null,
+    repairAttempted,
+    repairSucceeded,
+    executable: executable ?? null,
+    cwd: cwd ?? null,
+    exitCode: exitCode ?? null,
+    signal: signal ?? null,
   };
 }
 
@@ -75,8 +120,49 @@ function extractQualityGateDetailFromTask(task: StoredTask): RetryQualityGateDet
     nonEmptyString(record.firstErrorLine) ??
     nested?.firstErrorLine ??
     undefined;
+  const category =
+    (nonEmptyString(record.qualityGateCategory) as RetryQualityGateDetail["category"]) ??
+    nested?.category ??
+    undefined;
+  const validationWorkspace =
+    (nonEmptyString(
+      record.qualityGateValidationWorkspace
+    ) as RetryQualityGateDetail["validationWorkspace"]) ??
+    (nonEmptyString(record.validationWorkspace) as RetryQualityGateDetail["validationWorkspace"]) ??
+    nested?.validationWorkspace ??
+    undefined;
+  const repairAttempted =
+    typeof record.qualityGateAutoRepairAttempted === "boolean"
+      ? record.qualityGateAutoRepairAttempted
+      : nested?.repairAttempted;
+  const repairSucceeded =
+    typeof record.qualityGateAutoRepairSucceeded === "boolean"
+      ? record.qualityGateAutoRepairSucceeded
+      : nested?.repairSucceeded;
+  const executable =
+    nonEmptyString(record.qualityGateExecutable) ?? nested?.executable ?? undefined;
+  const cwd = nonEmptyString(record.qualityGateCwd) ?? nested?.cwd ?? undefined;
+  const exitCode =
+    typeof record.qualityGateExitCode === "number" && Number.isFinite(record.qualityGateExitCode)
+      ? record.qualityGateExitCode
+      : (nested?.exitCode ?? undefined);
+  const signal = nonEmptyString(record.qualityGateSignal) ?? nested?.signal ?? undefined;
 
-  if (!command && !reason && !outputSnippet && !worktreePath && !firstErrorLine) {
+  if (
+    !command &&
+    !reason &&
+    !outputSnippet &&
+    !worktreePath &&
+    !firstErrorLine &&
+    !category &&
+    !validationWorkspace &&
+    repairAttempted === undefined &&
+    repairSucceeded === undefined &&
+    !executable &&
+    !cwd &&
+    exitCode === undefined &&
+    !signal
+  ) {
     return undefined;
   }
 
@@ -86,6 +172,14 @@ function extractQualityGateDetailFromTask(task: StoredTask): RetryQualityGateDet
     outputSnippet: outputSnippet ?? null,
     worktreePath: worktreePath ?? null,
     firstErrorLine: firstErrorLine ?? null,
+    category: category ?? null,
+    validationWorkspace: validationWorkspace ?? null,
+    repairAttempted,
+    repairSucceeded,
+    executable: executable ?? null,
+    cwd: cwd ?? null,
+    exitCode: exitCode ?? null,
+    signal: signal ?? null,
   };
 }
 
@@ -229,6 +323,8 @@ export class OrchestratorDispatchService {
     log.info("Picking task", { projectId, taskId: task.id, title: task.title });
     const retryContext = extractRetryContext(task);
     const mergeResumeState = extractMergeResumeState(task);
+    const hasMergeValidationPause =
+      typeof (task as Record<string, unknown>)[MERGE_VALIDATION_PAUSED_UNTIL_KEY] === "string";
 
     let assignee: string | undefined;
     if (!mergeResumeState) {
@@ -246,6 +342,9 @@ export class OrchestratorDispatchService {
           ...(mergeResumeState && {
             [MERGE_RETRY_MODE_KEY]: null,
             [BASELINE_QUALITY_GATE_PAUSED_UNTIL_KEY]: null,
+            ...(hasMergeValidationPause && {
+              [MERGE_VALIDATION_PAUSED_UNTIL_KEY]: null,
+            }),
           }),
         },
       }),

@@ -16,6 +16,12 @@ export type KanbanColumn =
   | "done"
   | "blocked"
   | "waiting_to_merge";
+export type MergeGateState =
+  | "validating"
+  | "blocked_on_baseline"
+  | "candidate_fix_needed"
+  | "environment_repair_needed"
+  | "merging";
 /** Task priority (0 = highest, 4 = lowest) */
 export type TaskPriority = 0 | 1 | 2 | 3 | 4;
 /** Task-level complexity (integer 1-10). 1=simplest, 10=most complex. Used for agent selection. */
@@ -87,6 +93,8 @@ export interface Task {
   mergePausedUntil?: string | null;
   /** True when merge is waiting on main (API only). Used for tooltip/secondary hint. */
   mergeWaitingOnMain?: boolean;
+  /** Server-derived merge gate state for waiting_to_merge tasks. */
+  mergeGateState?: MergeGateState;
   /** Latest quality-gate failure detail from task extra (SPEC §API Contracts). Present when task failed/blocked with quality-gate diagnostics. */
   qualityGateDetail?: QualityGateDiagnosticDetail | null;
   /** Flat quality-gate fields from task extra (same values as qualityGateDetail when present). */

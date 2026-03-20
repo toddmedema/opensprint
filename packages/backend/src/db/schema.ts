@@ -105,12 +105,20 @@ CREATE TABLE IF NOT EXISTS agent_stats (
     started_at   TEXT NOT NULL,
     completed_at TEXT NOT NULL,
     outcome      TEXT NOT NULL,
-    duration_ms  INTEGER NOT NULL
+    duration_ms  INTEGER NOT NULL,
+    flow         TEXT,
+    prompt_fingerprint TEXT,
+    cache_read_tokens INTEGER,
+    cache_write_tokens INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_agent_stats_project ON agent_stats(project_id);
 CREATE INDEX IF NOT EXISTS idx_agent_stats_task ON agent_stats(task_id);
 -- Add role column for existing tables (no-op if column exists)
 ALTER TABLE agent_stats ADD COLUMN IF NOT EXISTS role TEXT;
+ALTER TABLE agent_stats ADD COLUMN IF NOT EXISTS flow TEXT;
+ALTER TABLE agent_stats ADD COLUMN IF NOT EXISTS prompt_fingerprint TEXT;
+ALTER TABLE agent_stats ADD COLUMN IF NOT EXISTS cache_read_tokens INTEGER;
+ALTER TABLE agent_stats ADD COLUMN IF NOT EXISTS cache_write_tokens INTEGER;
 
 -- Orchestrator events (SQL-only)
 CREATE TABLE IF NOT EXISTS orchestrator_events (
@@ -134,12 +142,16 @@ CREATE TABLE IF NOT EXISTS orchestrator_counters (
     baseline_status TEXT NOT NULL DEFAULT 'unknown',
     baseline_checked_at TEXT,
     baseline_failure_summary TEXT,
+    merge_validation_status TEXT NOT NULL DEFAULT 'healthy',
+    merge_validation_failure_summary TEXT,
     dispatch_paused_reason TEXT,
     updated_at    TEXT NOT NULL
 );
 ALTER TABLE orchestrator_counters ADD COLUMN IF NOT EXISTS baseline_status TEXT NOT NULL DEFAULT 'unknown';
 ALTER TABLE orchestrator_counters ADD COLUMN IF NOT EXISTS baseline_checked_at TEXT;
 ALTER TABLE orchestrator_counters ADD COLUMN IF NOT EXISTS baseline_failure_summary TEXT;
+ALTER TABLE orchestrator_counters ADD COLUMN IF NOT EXISTS merge_validation_status TEXT NOT NULL DEFAULT 'healthy';
+ALTER TABLE orchestrator_counters ADD COLUMN IF NOT EXISTS merge_validation_failure_summary TEXT;
 ALTER TABLE orchestrator_counters ADD COLUMN IF NOT EXISTS dispatch_paused_reason TEXT;
 
 -- Deployments (SQL-only)
@@ -417,7 +429,11 @@ CREATE TABLE IF NOT EXISTS agent_stats (
     started_at   TEXT NOT NULL,
     completed_at TEXT NOT NULL,
     outcome      TEXT NOT NULL,
-    duration_ms  INTEGER NOT NULL
+    duration_ms  INTEGER NOT NULL,
+    flow         TEXT,
+    prompt_fingerprint TEXT,
+    cache_read_tokens INTEGER,
+    cache_write_tokens INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_agent_stats_project ON agent_stats(project_id);
 CREATE INDEX IF NOT EXISTS idx_agent_stats_task ON agent_stats(task_id);
@@ -442,12 +458,16 @@ CREATE TABLE IF NOT EXISTS orchestrator_counters (
     baseline_status TEXT NOT NULL DEFAULT 'unknown',
     baseline_checked_at TEXT,
     baseline_failure_summary TEXT,
+    merge_validation_status TEXT NOT NULL DEFAULT 'healthy',
+    merge_validation_failure_summary TEXT,
     dispatch_paused_reason TEXT,
     updated_at    TEXT NOT NULL
 );
 ALTER TABLE orchestrator_counters ADD COLUMN IF NOT EXISTS baseline_status TEXT NOT NULL DEFAULT 'unknown';
 ALTER TABLE orchestrator_counters ADD COLUMN IF NOT EXISTS baseline_checked_at TEXT;
 ALTER TABLE orchestrator_counters ADD COLUMN IF NOT EXISTS baseline_failure_summary TEXT;
+ALTER TABLE orchestrator_counters ADD COLUMN IF NOT EXISTS merge_validation_status TEXT NOT NULL DEFAULT 'healthy';
+ALTER TABLE orchestrator_counters ADD COLUMN IF NOT EXISTS merge_validation_failure_summary TEXT;
 ALTER TABLE orchestrator_counters ADD COLUMN IF NOT EXISTS dispatch_paused_reason TEXT;
 
 CREATE TABLE IF NOT EXISTS deployments (
@@ -605,6 +625,10 @@ CREATE TABLE IF NOT EXISTS repo_file_migrations (
 );
 
 ALTER TABLE agent_stats ADD COLUMN IF NOT EXISTS role TEXT;
+ALTER TABLE agent_stats ADD COLUMN IF NOT EXISTS flow TEXT;
+ALTER TABLE agent_stats ADD COLUMN IF NOT EXISTS prompt_fingerprint TEXT;
+ALTER TABLE agent_stats ADD COLUMN IF NOT EXISTS cache_read_tokens INTEGER;
+ALTER TABLE agent_stats ADD COLUMN IF NOT EXISTS cache_write_tokens INTEGER;
 ALTER TABLE open_questions ADD COLUMN IF NOT EXISTS scope_change_metadata TEXT;
 ALTER TABLE open_questions ADD COLUMN IF NOT EXISTS responses TEXT;
 ALTER TABLE plans ADD COLUMN IF NOT EXISTS current_version_number INTEGER NOT NULL DEFAULT 1;

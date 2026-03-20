@@ -565,6 +565,17 @@ export class TaskStoreService {
           continue;
         }
       }
+      const mergeValidationPausedUntilRaw = (issue as Record<string, unknown>)
+        .merge_validation_paused_until;
+      if (typeof mergeValidationPausedUntilRaw === "string") {
+        const mergeValidationPausedUntilMs = Date.parse(mergeValidationPausedUntilRaw);
+        if (
+          Number.isFinite(mergeValidationPausedUntilMs) &&
+          mergeValidationPausedUntilMs > Date.now()
+        ) {
+          continue;
+        }
+      }
 
       // Exclude tasks in blocked epic (walk up to find epic parent)
       const epicId = this.getPlanEpicId(issue, allIssues);

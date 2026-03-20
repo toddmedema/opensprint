@@ -435,7 +435,14 @@ function AnalyticsContent({ projectId }: { projectId: string | null }) {
   );
 }
 
-type AgentLogSortKey = "model" | "role" | "durationMs" | "endTime" | "projectName";
+type AgentLogSortKey =
+  | "attemptOutcome"
+  | "summary"
+  | "model"
+  | "role"
+  | "durationMs"
+  | "endTime"
+  | "projectName";
 
 function SessionLogModal({ sessionId, onClose }: { sessionId: number; onClose: () => void }) {
   const [content, setContent] = useState<string | null>(null);
@@ -556,7 +563,11 @@ function AgentLogContent({
     const arr = [...entries];
     return arr.sort((a, b) => {
       let cmp = 0;
-      if (sortKey === "model") {
+      if (sortKey === "attemptOutcome") {
+        cmp = (a.attemptOutcome ?? "").localeCompare(b.attemptOutcome ?? "");
+      } else if (sortKey === "summary") {
+        cmp = (a.summary ?? "").localeCompare(b.summary ?? "");
+      } else if (sortKey === "model") {
         cmp = (a.model ?? "").localeCompare(b.model ?? "");
       } else if (sortKey === "role") {
         cmp = (a.role ?? "").localeCompare(b.role ?? "");
@@ -612,6 +623,45 @@ function AgentLogContent({
     }
   };
 
+  const formatAttemptOutcome = (entry: AgentLogEntry) => {
+    switch (entry.attemptOutcome) {
+      case "completed":
+        return "Completed";
+      case "requeued":
+        return "Requeued";
+      case "blocked":
+        return "Blocked";
+      case "demoted":
+        return "Demoted";
+      case "rejected":
+        return "Rejected";
+      case "failed":
+        return "Failed";
+      case "running":
+        return "Running";
+      case "suspended":
+        return "Suspended";
+      default:
+        return entry.componentOutcome === "success" ? "Component passed" : "Component failed";
+    }
+  };
+
+  const outcomeTone = (entry: AgentLogEntry) => {
+    switch (entry.attemptOutcome) {
+      case "completed":
+        return "text-theme-success-text bg-theme-success-bg border-theme-success-border";
+      case "blocked":
+      case "failed":
+      case "rejected":
+        return "text-theme-error-text bg-theme-error-bg border-theme-error-border";
+      case "requeued":
+      case "demoted":
+        return "text-theme-warning-text bg-theme-warning-bg border-theme-warning-border";
+      default:
+        return "text-theme-muted bg-theme-surface-muted border-theme-border";
+    }
+  };
+
   if (loading && entries.length === 0) {
     return (
       <div className="flex items-center justify-center py-12 text-theme-muted text-sm">
@@ -661,6 +711,12 @@ function AgentLogContent({
           <thead>
             <tr className="border-b border-theme-border bg-theme-surface-muted">
               <th className="px-4 py-2 text-left">
+                <SortHeader label="Outcome" columnKey="attemptOutcome" />
+              </th>
+              <th className="px-4 py-2 text-left">
+                <SortHeader label="Summary" columnKey="summary" />
+              </th>
+              <th className="px-4 py-2 text-left">
                 <SortHeader label="Model" columnKey="model" />
               </th>
               <th className="px-4 py-2 text-left">
@@ -684,7 +740,7 @@ function AgentLogContent({
             {sortedEntries.length === 0 ? (
               <tr>
                 <td
-                  colSpan={showProjectColumn ? 6 : 5}
+                  colSpan={showProjectColumn ? 8 : 7}
                   className="px-4 py-8 text-center text-theme-muted"
                 >
                   No agent runs yet.
@@ -696,6 +752,31 @@ function AgentLogContent({
                   key={i}
                   className="border-b border-theme-border last:border-b-0 hover:bg-theme-border-subtle/50"
                 >
+                  <td className="px-4 py-2 align-top">
+                    <span
+                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${outcomeTone(e)}`}
+                    >
+                      {formatAttemptOutcome(e)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 text-theme-text align-top">
+                    <div className="min-w-[280px] max-w-[520px]">
+                      <div className="truncate" title={e.summary ?? undefined}>
+                        {e.summary ?? "—"}
+                      </div>
+                      {(e.taskId || e.attempt != null || e.failureType) && (
+                        <div className="mt-1 text-xs text-theme-muted">
+                          {[
+                            e.taskId,
+                            e.attempt != null ? `attempt ${e.attempt}` : null,
+                            e.failureType,
+                          ]
+                            .filter((part): part is string => part != null && part.length > 0)
+                            .join(" · ")}
+                        </div>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-2 text-theme-text">{e.model || "Unknown"}</td>
                   <td className="px-4 py-2 text-theme-text">{e.role}</td>
                   <td className="px-4 py-2 text-theme-text">{formatDuration(e.durationMs)}</td>

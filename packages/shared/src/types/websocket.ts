@@ -3,6 +3,7 @@ import type {
   AgentRuntimeState,
   AgentSuspendReason,
   BaselineRuntimeStatus,
+  MergeValidationRuntimeStatus,
   TestResults,
 } from "./agent.js";
 import type { FeedbackItem } from "./feedback.js";
@@ -11,7 +12,7 @@ import type {
   ScopeChangeProposedUpdate,
   SelfImprovementApprovalPayload,
 } from "./notification.js";
-import type { KanbanColumn } from "./task.js";
+import type { KanbanColumn, MergeGateState } from "./task.js";
 import type { QualityGateDiagnosticDetail } from "./execute-diagnostics.js";
 
 // ─── Server → Client Events ───
@@ -37,6 +38,8 @@ export interface TaskUpdatedEvent {
   mergePausedUntil?: string;
   /** Optional; true when merge is waiting on main. */
   mergeWaitingOnMain?: boolean;
+  /** Optional; server-derived merge gate state for waiting_to_merge tasks. */
+  mergeGateState?: MergeGateState;
 }
 
 /** Minimal task payload for create/close events (relevant task data) */
@@ -61,6 +64,8 @@ export interface TaskEventPayload {
   mergePausedUntil?: string;
   /** Optional; true when merge is waiting on main. */
   mergeWaitingOnMain?: boolean;
+  /** Optional; server-derived merge gate state for waiting_to_merge tasks. */
+  mergeGateState?: MergeGateState;
 }
 
 export interface TaskCreatedEvent {
@@ -139,6 +144,8 @@ export interface ExecuteStatusEvent {
   baselineStatus?: BaselineRuntimeStatus;
   baselineCheckedAt?: string | null;
   baselineFailureSummary?: string | null;
+  mergeValidationStatus?: MergeValidationRuntimeStatus;
+  mergeValidationFailureSummary?: string | null;
   dispatchPausedReason?: string | null;
   /** True when orchestrator is paused waiting for HIL approval (PRD §6.5) */
   awaitingApproval?: boolean;

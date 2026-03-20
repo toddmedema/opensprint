@@ -307,39 +307,39 @@ export function PlanDetailContent({
         sectionsToRender.map(({ section, originalIndex }) => {
           const isAssumptions = section.title.trim().toLowerCase() === "assumptions";
           return (
-          <CollapsibleSection
-            key={`${section.title}-${originalIndex}`}
-            title={section.title}
-            expanded={sectionExpanded[originalIndex] ?? true}
-            onToggle={() =>
-              setSectionExpandedAt(originalIndex, !(sectionExpanded[originalIndex] ?? true))
-            }
-            expandAriaLabel={`Expand ${section.title}`}
-            collapseAriaLabel={`Collapse ${section.title}`}
-            contentId={`plan-section-${originalIndex}-content`}
-            headerId={`plan-section-${originalIndex}-header`}
-            contentClassName="p-4 pt-0"
-            containerClassName={
-              isAssumptions
-                ? "mx-4 mb-1 rounded-xl border border-theme-info-border/50 bg-theme-info-bg/25 dark:bg-theme-info-bg/15"
-                : undefined
-            }
-          >
-            <div
-              data-testid="plan-markdown-editor"
-              className="prose prose-sm max-w-none text-theme-text text-xs [&>div>:first-child]:!mt-0"
+            <CollapsibleSection
+              key={`${section.title}-${originalIndex}`}
+              title={section.title}
+              expanded={sectionExpanded[originalIndex] ?? true}
+              onToggle={() =>
+                setSectionExpandedAt(originalIndex, !(sectionExpanded[originalIndex] ?? true))
+              }
+              expandAriaLabel={`Expand ${section.title}`}
+              collapseAriaLabel={`Collapse ${section.title}`}
+              contentId={`plan-section-${originalIndex}-content`}
+              headerId={`plan-section-${originalIndex}-header`}
+              contentClassName="p-4 pt-0"
+              containerClassName={
+                isAssumptions
+                  ? "mx-4 mb-1 rounded-xl border border-theme-info-border/50 bg-theme-info-bg/25 dark:bg-theme-info-bg/15"
+                  : undefined
+              }
             >
-              <PrdSectionEditor
-                sectionKey={`plan-section-${originalIndex}`}
-                markdown={section.content || "_No content yet_"}
-                onSave={(_key, md) =>
-                  handleSectionSave(originalIndex, !md || md === "_No content yet_" ? "" : md)
-                }
-                disabled={isReadOnly}
-                lightMode
-              />
-            </div>
-          </CollapsibleSection>
+              <div
+                data-testid="plan-markdown-editor"
+                className="prose prose-sm max-w-none text-theme-text text-xs [&>div>:first-child]:!mt-0"
+              >
+                <PrdSectionEditor
+                  sectionKey={`plan-section-${originalIndex}`}
+                  markdown={section.content || "_No content yet_"}
+                  onSave={(_key, md) =>
+                    handleSectionSave(originalIndex, !md || md === "_No content yet_" ? "" : md)
+                  }
+                  disabled={isReadOnly}
+                  lightMode
+                />
+              </div>
+            </CollapsibleSection>
           );
         })
       )}

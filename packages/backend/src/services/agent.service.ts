@@ -37,6 +37,15 @@ import {
   parseMergerAgentResult,
 } from "./agent-result-validation.js";
 import { getMergeResultPath } from "./session-manager.js";
+import {
+  buildOpenAIPromptCacheKey,
+  extractAnthropicCacheUsage,
+  extractOpenAICacheUsage,
+  fingerprintPrompt,
+  toAnthropicTextBlock,
+  type AgentCacheUsageMetrics,
+  type PromptCacheContext,
+} from "../utils/prompt-cache.js";
 
 const log = createLogger("agent-service");
 
@@ -83,11 +92,17 @@ export interface InvokePlanningAgentOptions {
   onChunk?: (chunk: string) => void;
   /** When provided, auto-registers/unregisters with activeAgentsService */
   tracking?: AgentTrackingInfo;
+  /** OpenAI Responses conversation chaining for repeated planning chats */
+  previousResponseId?: string;
+  /** Provider-specific prompt caching context */
+  promptCacheContext?: PromptCacheContext;
 }
 
 /** Response from planning agent */
 export interface PlanningAgentResponse {
   content: string;
+  responseId?: string;
+  cacheMetrics?: AgentCacheUsageMetrics;
 }
 
 function buildOpenAIPlanningResponsesInput(
@@ -113,18 +128,46 @@ function buildOpenAIPlanningResponsesInput(
   });
 }
 
+type OpenAIResponsesStreamEvent = {
+  type?: string;
+  delta?: string;
+  response?: {
+    id?: string | null;
+    usage?: {
+      input_tokens_details?: { cached_tokens?: number | null } | null;
+    } | null;
+  } | null;
+};
+
 async function collectOpenAIResponsesStream(
-  stream: AsyncIterable<{ type?: string; delta?: string }>,
+  stream: AsyncIterable<OpenAIResponsesStreamEvent>,
   onChunk: (chunk: string) => void
-): Promise<string> {
+): Promise<{
+  content: string;
+  responseId?: string;
+  usage?: {
+    input_tokens_details?: { cached_tokens?: number | null } | null;
+  } | null;
+}> {
   let fullContent = "";
+  let responseId: string | undefined;
+  let usage:
+    | {
+        input_tokens_details?: { cached_tokens?: number | null } | null;
+      }
+    | null
+    | undefined;
   for await (const event of stream) {
     if (event.type === "response.output_text.delta" && event.delta) {
       fullContent += event.delta;
       onChunk(event.delta);
     }
+    if (event.type === "response.completed" && event.response) {
+      responseId = event.response.id ?? undefined;
+      usage = event.response.usage;
+    }
   }
-  return fullContent;
+  return { content: fullContent, responseId, usage };
 }
 
 function buildAgentApiFailureMessages(
@@ -213,6 +256,10 @@ type AgentRunStatParams = {
   startedAt: string;
   completedAt: string;
   outcome: "success" | "failed";
+  flow?: string;
+  promptFingerprint?: string | null;
+  cacheReadTokens?: number | null;
+  cacheWriteTokens?: number | null;
 };
 
 type MergerSessionRecordParams = {
@@ -276,6 +323,7 @@ export class AgentService {
     const { tracking } = options;
     const startedAt = new Date().toISOString();
     let outcome: "success" | "failed" = "failed";
+    let cacheMetrics: AgentCacheUsageMetrics | undefined;
     if (tracking) {
       activeAgentsService.register(
         tracking.id,
@@ -292,6 +340,7 @@ export class AgentService {
     }
     try {
       const result = await this._invokePlanningAgentInner(options);
+      cacheMetrics = result.cacheMetrics;
       outcome = "success";
       return result;
     } finally {
@@ -305,6 +354,10 @@ export class AgentService {
         startedAt,
         completedAt,
         outcome,
+        flow: cacheMetrics?.flow,
+        promptFingerprint: cacheMetrics?.promptFingerprint ?? null,
+        cacheReadTokens: cacheMetrics?.cacheReadTokens ?? null,
+        cacheWriteTokens: cacheMetrics?.cacheWriteTokens ?? null,
       } satisfies AgentRunStatParams);
       if (tracking) activeAgentsService.unregister(tracking.id);
     }
@@ -477,6 +530,10 @@ export class AgentService {
       startedAt,
       completedAt,
       outcome,
+      flow,
+      promptFingerprint,
+      cacheReadTokens,
+      cacheWriteTokens,
     } = params;
     const targetProjectId = tracking?.projectId ?? projectId;
     const role = tracking?.role ?? paramRole;
@@ -490,8 +547,23 @@ export class AgentService {
     try {
       await taskStore.runWrite(async (client) => {
         await client.execute(
-          `INSERT INTO agent_stats (project_id, task_id, agent_id, role, model, attempt, started_at, completed_at, outcome, duration_ms)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+          `INSERT INTO agent_stats (
+             project_id,
+             task_id,
+             agent_id,
+             role,
+             model,
+             attempt,
+             started_at,
+             completed_at,
+             outcome,
+             duration_ms,
+             flow,
+             prompt_fingerprint,
+             cache_read_tokens,
+             cache_write_tokens
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
           [
             targetProjectId,
             taskId,
@@ -503,6 +575,10 @@ export class AgentService {
             completedAt,
             outcome,
             durationMs,
+            flow ?? null,
+            promptFingerprint ?? null,
+            cacheReadTokens ?? null,
+            cacheWriteTokens ?? null,
           ]
         );
         const countRow = await client.queryOne(
@@ -891,11 +967,16 @@ ${repairSection}## Your Task
     const { projectId, config, messages, systemPrompt, images, onChunk } = options;
 
     const model = config.model ?? "claude-sonnet-4-20250514";
+    const promptFingerprint = fingerprintPrompt(systemPrompt?.trim() || model);
+    const anthropicSystem = systemPrompt?.trim()
+      ? [toAnthropicTextBlock(systemPrompt.trim(), true)]
+      : undefined;
 
     // Convert to Anthropic message format. When images exist, last user message gets content as array.
     const anthropicMessages = messages.map((m, i) => {
       const isLastUser = m.role === "user" && i === messages.length - 1;
       const hasImages = isLastUser && images && images.length > 0;
+      const shouldCacheBlock = i < messages.length - 1;
       if (hasImages) {
         const imageBlocks = images!.map((img) => {
           const { media_type, data } = this.parseImageForClaude(img);
@@ -903,10 +984,13 @@ ${repairSection}## Your Task
         });
         return {
           role: m.role as "user",
-          content: [{ type: "text" as const, text: m.content }, ...imageBlocks],
+          content: [toAnthropicTextBlock(m.content, false), ...imageBlocks],
         };
       }
-      return { role: m.role as "user" | "assistant", content: m.content };
+      return {
+        role: m.role as "user" | "assistant",
+        content: [toAnthropicTextBlock(m.content, shouldCacheBlock)],
+      };
     });
 
     const triedKeyIds = new Set<string>();
@@ -951,11 +1035,12 @@ ${repairSection}## Your Task
 
       try {
         let content: string;
+        let cacheMetrics: AgentCacheUsageMetrics | undefined;
         if (onChunk) {
           const stream = client.messages.stream({
             model,
             max_tokens: 8192,
-            system: systemPrompt ?? undefined,
+            system: anthropicSystem,
             messages: anthropicMessages,
           });
 
@@ -974,11 +1059,16 @@ ${repairSection}## Your Task
             textBlock && typeof textBlock === "object" && "text" in textBlock
               ? String(textBlock.text)
               : fullContent;
+          cacheMetrics = extractAnthropicCacheUsage({
+            response: finalMessage,
+            flow: "plan",
+            promptFingerprint,
+          });
         } else {
           const response = await client.messages.create({
             model,
             max_tokens: 8192,
-            system: systemPrompt ?? undefined,
+            system: anthropicSystem,
             messages: anthropicMessages,
           });
 
@@ -990,10 +1080,15 @@ ${repairSection}## Your Task
             textBlock && typeof textBlock === "object" && "text" in textBlock
               ? String(textBlock.text)
               : "";
+          cacheMetrics = extractAnthropicCacheUsage({
+            response,
+            flow: "plan",
+            promptFingerprint,
+          });
         }
 
         await clearLimitHit(projectId, "ANTHROPIC_API_KEY", keyId, source);
-        return { content };
+        return { content, cacheMetrics };
       } catch (error: unknown) {
         lastError = error;
         if (isLimitError(error)) {
@@ -1034,10 +1129,22 @@ ${repairSection}## Your Task
   private async invokeOpenAIPlanningAgent(
     options: InvokePlanningAgentOptions
   ): Promise<PlanningAgentResponse> {
-    const { projectId, config, messages, systemPrompt, images, onChunk } = options;
+    const { projectId, config, messages, systemPrompt, images, onChunk, previousResponseId } =
+      options;
 
     const model = config.model ?? "gpt-4o-mini";
     const useResponsesApi = isOpenAIResponsesModel(model);
+    const promptFingerprint = fingerprintPrompt(systemPrompt?.trim() || model);
+    const promptCacheContext: PromptCacheContext = {
+      provider: "openai",
+      model,
+      flow: "plan",
+      projectId,
+      role: options.role,
+      instructionsFingerprint: promptFingerprint,
+      ...(options.promptCacheContext ?? {}),
+    };
+    const promptCacheKey = buildOpenAIPromptCacheKey(promptCacheContext);
 
     // Map PlanningMessage (user/assistant) to OpenAI messages. OpenAI uses system, user, assistant.
     const openaiMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
@@ -1105,55 +1212,108 @@ ${repairSection}## Your Task
 
       try {
         let content: string;
+        let responseId: string | undefined;
+        let cacheMetrics: AgentCacheUsageMetrics | undefined;
         if (useResponsesApi) {
           const responseInput = buildOpenAIPlanningResponsesInput(messages, images);
           if (onChunk) {
-            content = await collectOpenAIResponsesStream(
+            const streamResult = await collectOpenAIResponsesStream(
               (await client.responses.create({
                 model,
                 instructions: systemPrompt?.trim() || undefined,
                 input: responseInput,
                 max_output_tokens: 8192,
+                previous_response_id: previousResponseId,
+                prompt_cache_key: promptCacheKey,
+                prompt_cache_retention: "in-memory",
                 stream: true,
-              })) as AsyncIterable<{ type?: string; delta?: string }>,
+              })) as AsyncIterable<OpenAIResponsesStreamEvent>,
               onChunk
             );
+            content = streamResult.content;
+            responseId = streamResult.responseId;
+            cacheMetrics = extractOpenAICacheUsage({
+              response: {
+                id: streamResult.responseId ?? null,
+                usage: streamResult.usage ?? null,
+              },
+              flow: "plan",
+              promptFingerprint,
+              promptCacheKey,
+            });
           } else {
             const response = await client.responses.create({
               model,
               instructions: systemPrompt?.trim() || undefined,
               input: responseInput,
               max_output_tokens: 8192,
+              previous_response_id: previousResponseId,
+              prompt_cache_key: promptCacheKey,
+              prompt_cache_retention: "in-memory",
             });
             content = response.output_text;
+            responseId = response.id;
+            cacheMetrics = extractOpenAICacheUsage({
+              response,
+              flow: "plan",
+              promptFingerprint,
+              promptCacheKey,
+            });
           }
         } else if (onChunk) {
           const stream = await client.chat.completions.create({
             model,
             messages: openaiMessages,
             max_tokens: 8192,
+            prompt_cache_key: promptCacheKey,
+            prompt_cache_retention: "in-memory",
             stream: true,
+            stream_options: { include_usage: true },
           });
           let fullContent = "";
+          let usage:
+            | {
+                prompt_tokens_details?: { cached_tokens?: number | null } | null;
+              }
+            | null
+            | undefined;
           for await (const chunk of stream) {
             const delta = chunk.choices[0]?.delta?.content;
             if (delta) {
               fullContent += delta;
               onChunk(delta);
             }
+            if (chunk.usage) {
+              usage = chunk.usage;
+            }
           }
           content = fullContent;
+          cacheMetrics = extractOpenAICacheUsage({
+            response: { id: null, usage },
+            flow: "plan",
+            promptFingerprint,
+            promptCacheKey,
+          });
         } else {
           const response = await client.chat.completions.create({
             model,
             messages: openaiMessages,
             max_tokens: 8192,
+            prompt_cache_key: promptCacheKey,
+            prompt_cache_retention: "in-memory",
           });
           content = response.choices[0]?.message?.content ?? "";
+          responseId = response.id;
+          cacheMetrics = extractOpenAICacheUsage({
+            response,
+            flow: "plan",
+            promptFingerprint,
+            promptCacheKey,
+          });
         }
 
         await clearLimitHit(projectId, "OPENAI_API_KEY", keyId, source);
-        return { content };
+        return { content, responseId, cacheMetrics };
       } catch (error: unknown) {
         lastError = error;
         if (isLimitError(error)) {

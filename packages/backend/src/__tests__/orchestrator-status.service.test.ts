@@ -99,4 +99,62 @@ describe("OrchestratorStatusService", () => {
       expect(buildReviewAgentId("os-123", "code_quality")).toBe("os-123--review--code_quality");
     });
   });
+
+  describe("counter persistence", () => {
+    it("persists merge validation health fields", async () => {
+      const execute = vi.fn().mockResolvedValue(undefined);
+      mockTaskStore.runWrite.mockImplementationOnce(
+        async (fn: (client: { execute: typeof execute }) => Promise<void>) => {
+          await fn({ execute });
+        }
+      );
+
+      const state: StateForStatus = {
+        slots: new Map(),
+        status: {
+          queueDepth: 3,
+          totalDone: 4,
+          totalFailed: 2,
+          baselineStatus: "healthy",
+          baselineCheckedAt: "2026-03-19T22:00:00.000Z",
+          baselineFailureSummary: null,
+          mergeValidationStatus: "degraded",
+          mergeValidationFailureSummary: "Merge validation environment issues detected",
+          dispatchPausedReason: null,
+        },
+      };
+
+      await statusService.persistCounters("proj-1", "/tmp/repo", state);
+
+      expect(execute).toHaveBeenCalledWith(
+        expect.stringContaining("merge_validation_status"),
+        expect.arrayContaining(["degraded", "Merge validation environment issues detected"])
+      );
+    });
+
+    it("loads merge validation health fields from persisted counters", async () => {
+      mockTaskStore.getDb.mockResolvedValueOnce({
+        queryOne: vi.fn().mockResolvedValue({
+          total_done: 4,
+          total_failed: 2,
+          queue_depth: 3,
+          baseline_status: "healthy",
+          baseline_checked_at: "2026-03-19T22:00:00.000Z",
+          baseline_failure_summary: null,
+          merge_validation_status: "degraded",
+          merge_validation_failure_summary: "Merge validation environment issues detected",
+          dispatch_paused_reason: null,
+        }),
+      });
+
+      await expect(statusService.loadCounters("/tmp/repo")).resolves.toMatchObject({
+        totalDone: 4,
+        totalFailed: 2,
+        queueDepth: 3,
+        baselineStatus: "healthy",
+        mergeValidationStatus: "degraded",
+        mergeValidationFailureSummary: "Merge validation environment issues detected",
+      });
+    });
+  });
 });

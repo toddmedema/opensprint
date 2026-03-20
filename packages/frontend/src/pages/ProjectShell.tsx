@@ -227,6 +227,8 @@ export function ProjectShell() {
         baselineStatus: executeStatusData.baselineStatus,
         baselineCheckedAt: executeStatusData.baselineCheckedAt,
         baselineFailureSummary: executeStatusData.baselineFailureSummary,
+        mergeValidationStatus: executeStatusData.mergeValidationStatus,
+        mergeValidationFailureSummary: executeStatusData.mergeValidationFailureSummary,
         dispatchPausedReason: executeStatusData.dispatchPausedReason,
         selfImprovementRunInProgress: executeStatusData.selfImprovementRunInProgress,
       })

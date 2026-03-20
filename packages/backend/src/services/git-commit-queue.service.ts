@@ -49,6 +49,10 @@ export class MergeJobError extends Error {
       autoRepairSucceeded?: boolean;
       autoRepairCommands?: string[];
       autoRepairOutput?: string;
+      executable?: string;
+      cwd?: string;
+      exitCode?: number | null;
+      signal?: string | null;
     }
   ) {
     super(message);
@@ -213,6 +217,10 @@ class GitCommitQueueImpl implements GitCommitQueueService {
       autoRepairSucceeded?: boolean;
       autoRepairCommands?: string[];
       autoRepairOutput?: string;
+      executable?: string;
+      cwd?: string;
+      exitCode?: number | null;
+      signal?: string | null;
     },
     worktreePath: string
   ): MergeJobError {
@@ -244,6 +252,10 @@ class GitCommitQueueImpl implements GitCommitQueueService {
         autoRepairSucceeded: failure.autoRepairSucceeded ?? false,
         autoRepairCommands: failure.autoRepairCommands,
         autoRepairOutput: failure.autoRepairOutput,
+        executable: failure.executable,
+        cwd: failure.cwd,
+        exitCode: failure.exitCode ?? null,
+        signal: failure.signal ?? null,
       }
     );
   }

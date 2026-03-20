@@ -4,7 +4,7 @@ import path from "path";
 import { ensureRepoHasInitialCommit } from "../utils/git-repo-state.js";
 import { getGitNoHooksPath } from "../utils/git-no-hooks.js";
 import { createLogger } from "../utils/logger.js";
-import { shellExec as shellExecDefault } from "../utils/shell-exec.js";
+import { runCommand as runCommandDefault, type CommandRunResult } from "../utils/command-runner.js";
 import { BranchManager } from "./branch-manager.js";
 
 const log = createLogger("validation-workspace");
@@ -19,7 +19,10 @@ export interface ValidationWorkspaceHandle {
 }
 
 interface ValidationWorkspaceServiceDeps {
-  shellExec?: typeof shellExecDefault;
+  runCommand?: (
+    spec: { command: string; args?: string[] },
+    options: { cwd: string; timeout?: number }
+  ) => Promise<CommandRunResult>;
   branchManager?: BranchManager;
 }
 
@@ -35,11 +38,11 @@ function slugifyForGitRef(value: string): string {
 }
 
 export class ValidationWorkspaceService {
-  private shellExec: typeof shellExecDefault;
+  private runCommand: NonNullable<ValidationWorkspaceServiceDeps["runCommand"]>;
   private branchManager: BranchManager;
 
   constructor(deps: ValidationWorkspaceServiceDeps = {}) {
-    this.shellExec = deps.shellExec ?? shellExecDefault;
+    this.runCommand = deps.runCommand ?? runCommandDefault;
     this.branchManager = deps.branchManager ?? new BranchManager();
   }
 
@@ -55,10 +58,16 @@ export class ValidationWorkspaceService {
     branchName: string | null
   ): Promise<void> {
     try {
-      await this.shellExec(`git worktree remove '${worktreePath.replace(/'/g, `'\\''`)}' --force`, {
-        cwd: repoPath,
-        timeout: 30_000,
-      });
+      await this.runCommand(
+        {
+          command: "git",
+          args: ["worktree", "remove", worktreePath, "--force"],
+        },
+        {
+          cwd: repoPath,
+          timeout: 30_000,
+        }
+      );
     } catch (err) {
       log.warn("Failed to remove validation worktree via git; falling back to fs cleanup", {
         worktreePath,
@@ -67,10 +76,16 @@ export class ValidationWorkspaceService {
     }
     await fs.rm(path.dirname(worktreePath), { recursive: true, force: true }).catch(() => {});
     if (branchName) {
-      await this.shellExec(`git branch -D ${branchName}`, {
-        cwd: repoPath,
-        timeout: 30_000,
-      }).catch(() => {});
+      await this.runCommand(
+        {
+          command: "git",
+          args: ["branch", "-D", branchName],
+        },
+        {
+          cwd: repoPath,
+          timeout: 30_000,
+        }
+      ).catch(() => {});
     }
   }
 
@@ -82,8 +97,19 @@ export class ValidationWorkspaceService {
     const baseDir = await this.createWorkspaceBaseDir("baseline");
     const worktreePath = path.join(baseDir, "workspace");
     const noHooks = getGitNoHooksPath();
-    await this.shellExec(
-      `git -c core.hooksPath="${noHooks}" worktree add --detach '${worktreePath.replace(/'/g, `'\\''`)}' ${baseBranch}`,
+    await this.runCommand(
+      {
+        command: "git",
+        args: [
+          "-c",
+          `core.hooksPath=${noHooks}`,
+          "worktree",
+          "add",
+          "--detach",
+          worktreePath,
+          baseBranch,
+        ],
+      },
       {
         cwd: repoPath,
         timeout: 30_000,
@@ -111,8 +137,20 @@ export class ValidationWorkspaceService {
     const worktreePath = path.join(baseDir, "workspace");
     const branchName = `opensprint/validation/${slugifyForGitRef(taskId)}-${Date.now().toString(36)}`;
     const noHooks = getGitNoHooksPath();
-    await this.shellExec(
-      `git -c core.hooksPath="${noHooks}" worktree add -b ${branchName} '${worktreePath.replace(/'/g, `'\\''`)}' ${baseBranch}`,
+    await this.runCommand(
+      {
+        command: "git",
+        args: [
+          "-c",
+          `core.hooksPath=${noHooks}`,
+          "worktree",
+          "add",
+          "-b",
+          branchName,
+          worktreePath,
+          baseBranch,
+        ],
+      },
       {
         cwd: repoPath,
         timeout: 30_000,
