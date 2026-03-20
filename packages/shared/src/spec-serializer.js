@@ -8,6 +8,7 @@ const SECTION_HEADERS = {
   problem_statement: "Problem Statement",
   user_personas: "User Personas",
   goals_and_metrics: "Goals and Success Metrics",
+  assumptions_and_constraints: "Assumptions and Constraints",
   feature_list: "Feature List",
   technical_architecture: "Technical Architecture",
   data_model: "Data Model",

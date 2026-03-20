@@ -304,7 +304,9 @@ export function PlanDetailContent({
           Loading version…
         </div>
       ) : (
-        sectionsToRender.map(({ section, originalIndex }) => (
+        sectionsToRender.map(({ section, originalIndex }) => {
+          const isAssumptions = section.title.trim().toLowerCase() === "assumptions";
+          return (
           <CollapsibleSection
             key={`${section.title}-${originalIndex}`}
             title={section.title}
@@ -317,6 +319,11 @@ export function PlanDetailContent({
             contentId={`plan-section-${originalIndex}-content`}
             headerId={`plan-section-${originalIndex}-header`}
             contentClassName="p-4 pt-0"
+            containerClassName={
+              isAssumptions
+                ? "mx-4 mb-1 rounded-xl border border-theme-info-border/50 bg-theme-info-bg/25 dark:bg-theme-info-bg/15"
+                : undefined
+            }
           >
             <div
               data-testid="plan-markdown-editor"
@@ -333,7 +340,8 @@ export function PlanDetailContent({
               />
             </div>
           </CollapsibleSection>
-        ))
+          );
+        })
       )}
     </div>
   );

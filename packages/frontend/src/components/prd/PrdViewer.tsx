@@ -54,19 +54,28 @@ export function PrdViewer({
           const questionId = questionIdBySection?.[sectionKey];
           const proposedUpdate = proposedBySection.get(sectionKey);
           const showInlineDiff = !!proposedUpdate;
+          const isAssumptionsSection = sectionKey === "assumptions_and_constraints";
 
           return (
             <div
               key={sectionKey}
               data-prd-section={sectionKey}
-              className="group relative"
+              className={`group relative ${isAssumptionsSection ? "rounded-xl border border-theme-info-border/50 bg-theme-info-bg/25 dark:bg-theme-info-bg/15 px-4 py-5 sm:px-5" : ""}`}
               {...(questionId && { "data-question-id": questionId })}
             >
               {/* Section header */}
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-semibold text-theme-text">
-                  {formatSectionKey(sectionKey)}
-                </h2>
+                <div className="space-y-1">
+                  <h2 className="text-lg font-semibold text-theme-text">
+                    {formatSectionKey(sectionKey)}
+                  </h2>
+                  {isAssumptionsSection && (
+                    <p className="text-sm text-theme-muted max-w-prose">
+                      Beliefs we are proceeding with until disproven. Open Questions (below) are for
+                      decisions that still need your input.
+                    </p>
+                  )}
+                </div>
                 {showInlineDiff && (
                   <span className="text-xs text-theme-muted font-medium">Proposed changes</span>
                 )}

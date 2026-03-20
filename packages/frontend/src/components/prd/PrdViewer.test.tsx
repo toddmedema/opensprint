@@ -49,7 +49,7 @@ describe("PrdViewer", () => {
     render(<PrdViewer prdContent={prdContent} savingSections={[]} onSectionChange={vi.fn()} />);
 
     expect(screen.getByText("Executive Summary")).toBeInTheDocument();
-    expect(screen.getByText("Goals And Metrics")).toBeInTheDocument();
+    expect(screen.getByText("Goals and Success Metrics")).toBeInTheDocument();
     expect(screen.getByTestId("input-executive_summary")).toHaveValue("Summary text");
   });
 

@@ -52,6 +52,7 @@ export const PRD_SECTION_ORDER = [
   "problem_statement",
   "goals_and_metrics",
   "user_personas",
+  "assumptions_and_constraints",
   "technical_architecture",
   "feature_list",
   "non_functional_requirements",

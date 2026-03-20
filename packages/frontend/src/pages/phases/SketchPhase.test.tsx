@@ -596,7 +596,7 @@ describe("SketchPhase with sketchSlice", () => {
 
       expect(screen.getByText("Product Requirements Document")).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Executive Summary" })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Goals And Metrics" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Goals and Success Metrics" })).toBeInTheDocument();
       expect(screen.getByTestId("prd-content-executive_summary")).toHaveTextContent("Summary text");
       expect(screen.getByTestId("prd-content-goals_and_metrics")).toHaveTextContent("Goals text");
     });

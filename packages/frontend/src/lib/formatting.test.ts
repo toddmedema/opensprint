@@ -29,7 +29,8 @@ describe("formatting", () => {
     it("converts snake_case to Title Case", () => {
       expect(formatSectionKey("executive_summary")).toBe("Executive Summary");
       expect(formatSectionKey("problem_statement")).toBe("Problem Statement");
-      expect(formatSectionKey("goals_and_metrics")).toBe("Goals And Metrics");
+      expect(formatSectionKey("goals_and_metrics")).toBe("Goals and Success Metrics");
+      expect(formatSectionKey("assumptions_and_constraints")).toBe("Assumptions and Constraints");
     });
 
     it("handles single word", () => {

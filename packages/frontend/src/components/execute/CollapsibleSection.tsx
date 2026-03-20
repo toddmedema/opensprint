@@ -14,6 +14,7 @@ function CollapsibleSectionInner({
   contentId,
   headerId,
   contentClassName,
+  containerClassName,
   children,
 }: {
   title: string;
@@ -25,10 +26,12 @@ function CollapsibleSectionInner({
   headerId: string;
   /** Optional. Defaults to "p-4 pt-0". Use for compact sections (e.g. Description). */
   contentClassName?: string;
+  /** Optional wrapper around the whole section (e.g. callout styling for Assumptions). */
+  containerClassName?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div>
+    <div className={containerClassName}>
       <button
         type="button"
         onClick={onToggle}

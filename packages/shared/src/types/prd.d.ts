@@ -4,6 +4,7 @@ export type PrdSectionKey =
   | "problem_statement"
   | "user_personas"
   | "goals_and_metrics"
+  | "assumptions_and_constraints"
   | "feature_list"
   | "technical_architecture"
   | "data_model"

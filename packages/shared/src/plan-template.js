@@ -5,6 +5,7 @@
 /** Required section headings per PRD §7.2.3 (in order) */
 export const PLAN_MARKDOWN_SECTIONS = [
   "Overview",
+  "Assumptions",
   "Acceptance Criteria",
   "Technical Approach",
   "Dependencies",
@@ -17,7 +18,7 @@ export const PLAN_MARKDOWN_SECTIONS = [
 ];
 /**
  * Returns the Plan markdown template with the given feature title.
- * Per PRD §7.2.3: Feature Title, Overview, Acceptance Criteria, Technical Approach,
+ * Per PRD §7.2.3: Feature Title, Overview, Assumptions, Acceptance Criteria, Technical Approach,
  * Dependencies, Data Model Changes, API Specification, UI/UX Requirements,
  * Edge Cases and Error Handling, Testing Strategy, Estimated Complexity.
  */
@@ -28,6 +29,10 @@ export function getPlanTemplate(featureTitle) {
 ## Overview
 
 Brief description of the feature and its purpose.
+
+## Assumptions
+
+Explicit beliefs for this plan (what we are treating as true), each with brief rationale and what changes if wrong. Use markdown list bullets (-). If everything is inherited from the PRD, state that and add only plan-specific assumptions.
 
 ## Acceptance Criteria
 

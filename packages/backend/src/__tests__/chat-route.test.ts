@@ -365,7 +365,7 @@ Let me know if you want to refine further.`,
       content: JSON.stringify({
         title: "Volunteer Signup Form",
         content:
-          "# Volunteer Signup Form\n\n## Overview\n\nCollect volunteer details.\n\n## Acceptance Criteria\n\n- Volunteers can submit interest.\n\n## Technical Approach\n\nBuild a form.\n\n## Dependencies\n\nNone.\n\n## Data Model Changes\n\nAdd volunteer submissions table.\n\n## API Specification\n\nPOST /volunteers\n\n## UI/UX Requirements\n\nForm with key fields.\n\n## Edge Cases and Error Handling\n\nValidate required fields.\n\n## Testing Strategy\n\nAdd API and form tests.\n\n## Estimated Complexity\n\nmedium",
+          "# Volunteer Signup Form\n\n## Overview\n\nCollect volunteer details.\n\n## Assumptions\n\nNo plan-specific assumptions beyond the PRD.\n\n## Acceptance Criteria\n\n- Volunteers can submit interest.\n\n## Technical Approach\n\nBuild a form.\n\n## Dependencies\n\nNone.\n\n## Data Model Changes\n\nAdd volunteer submissions table.\n\n## API Specification\n\nPOST /volunteers\n\n## UI/UX Requirements\n\nForm with key fields.\n\n## Edge Cases and Error Handling\n\nValidate required fields.\n\n## Testing Strategy\n\nAdd API and form tests.\n\n## Estimated Complexity\n\nmedium",
         complexity: "medium",
         mockups: [{ title: "Volunteer Form", content: "[name][email][submit]" }],
       }),

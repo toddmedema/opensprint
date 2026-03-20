@@ -1219,6 +1219,8 @@ User authentication.
     expect(perfPrompt).toContain("focusing only on this angle: Performance impact");
     expect(perfPrompt).toContain("Review Checklist — Performance impact");
     expect(perfPrompt).toContain("No N+1 queries");
+    expect(perfPrompt).toContain("Performance angle guidance");
+    expect(perfPrompt).toContain("Big-O in function comments");
     expect(perfPrompt).toContain(
       ".opensprint/active/bd-a3f8.2/review-angles/performance/result.json"
     );

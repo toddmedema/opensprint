@@ -33,6 +33,8 @@ export const REVIEW_ANGLE_CHECKLISTS: Record<ReviewAngle, string[]> = {
     "Heavy operations are not on the hot path",
     "Caching considered where appropriate",
     "No obvious memory leaks or unbounded growth",
+    "Each new or materially changed function documents worst-case time and auxiliary space Big-O in that function's comment block (match the repo's style: JSDoc/TSDoc, docstrings, etc.)",
+    "For non-trivial functions, consider whether the same problem scope admits a significantly more efficient algorithm or data structure; call out meaningful gaps",
   ],
   test_coverage: [
     "Target 80–90% coverage for new/changed code — do not demand near-100%.",
@@ -887,6 +889,13 @@ export class ContextAssembler {
       prompt += `- **Reasonable coverage:** 80–90% for new/changed code is sufficient. Do not reject for missing coverage on every branch or line.\n`;
       prompt += `- **Behavior over implementation:** Prefer tests that assert outcomes and behavior aligned with the spec; avoid tests that assert internal structure, exact call counts, or implementation details that change with refactors.\n`;
       prompt += `- **Stability:** Flag tests that are likely to be fragile (e.g., tightly coupled to private APIs or formatting). Do not require such tests.\n\n`;
+    }
+    if (angle === "performance") {
+      prompt += `## Performance angle guidance\n\n`;
+      prompt += `- **Big-O in function comments:** For every function or method **added or materially changed** in the diff, require an explicit worst-case **time** and **auxiliary space** complexity in that function's own comment (e.g. a JSDoc/TSDoc line such as \`Time: O(n log n)\`, \`Space: O(n)\`, or the project's equivalent). State what \`n\` (and other parameters) refer to. If the repo already uses a tag like \`@complexity\` or \`@order\`, follow that convention consistently.\n`;
+      prompt += `- **Reject** when that documentation is missing, vague, or inconsistent with the implementation.\n`;
+      prompt += `- **Question better approaches:** For each non-trivial function, ask whether the **same functional problem and scope** (same inputs, outputs, and constraints) could be solved with **significantly** better asymptotic complexity or materially lower hot-path cost. If yes, explain briefly. **Reject** when the gap is important for expected data sizes or load and the fix is straightforward; otherwise you may note it in \`notes\` without rejecting.\n`;
+      prompt += `- **Pragmatism:** Do not reject for micro-optimizations or theoretical improvements that won't matter for realistic workloads. Trivial accessors or obvious O(1) one-liners may document complexity with a minimal inline note (e.g. \`// Time/space: O(1)\`) instead of lengthy prose.\n\n`;
     }
 
     prompt += `## Working directory\n\n`;

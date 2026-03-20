@@ -123,6 +123,7 @@ describe("PrdService", () => {
       problem_statement: { content: "", version: 0, updatedAt: "2026-01-01T00:00:00.000Z" },
       user_personas: { content: "", version: 0, updatedAt: "2026-01-01T00:00:00.000Z" },
       goals_and_metrics: { content: "", version: 0, updatedAt: "2026-01-01T00:00:00.000Z" },
+      assumptions_and_constraints: { content: "", version: 0, updatedAt: "2026-01-01T00:00:00.000Z" },
       feature_list: { content: "", version: 0, updatedAt: "2026-01-01T00:00:00.000Z" },
       technical_architecture: { content: "", version: 0, updatedAt: "2026-01-01T00:00:00.000Z" },
       data_model: { content: "", version: 0, updatedAt: "2026-01-01T00:00:00.000Z" },

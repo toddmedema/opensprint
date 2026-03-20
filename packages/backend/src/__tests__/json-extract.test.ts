@@ -169,7 +169,7 @@ Raise review quality with stricter defaults.",
 \`\`\`json
 {
   "title": "Large Plan",
-  "content": "# Large Plan\\n\\n## Overview\\nDetailed text.\\n\\n## Acceptance Criteria\\n1. Keep punctuation: commas, braces {like this}, and colons: yes.\\n\\n## Technical Approach\\nUse parser improvements.\\n\\n## Dependencies\\nNone.\\n\\n## Data Model Changes\\nNone.\\n\\n## API Specification\\nPOST /foo\\n\\n## UI/UX Requirements\\nShow a form.\\n\\n## Edge Cases and Error Handling\\nGracefully handle malformed JSON.\\n\\n## Testing Strategy\\nAdd regression coverage.\\n\\n## Estimated Complexity\\nmedium",
+  "content": "# Large Plan\\n\\n## Overview\\nDetailed text.\\n\\n## Assumptions\\nNone beyond PRD.\\n\\n## Acceptance Criteria\\n1. Keep punctuation: commas, braces {like this}, and colons: yes.\\n\\n## Technical Approach\\nUse parser improvements.\\n\\n## Dependencies\\nNone.\\n\\n## Data Model Changes\\nNone.\\n\\n## API Specification\\nPOST /foo\\n\\n## UI/UX Requirements\\nShow a form.\\n\\n## Edge Cases and Error Handling\\nGracefully handle malformed JSON.\\n\\n## Testing Strategy\\nAdd regression coverage.\\n\\n## Estimated Complexity\\nmedium",
   "complexity": "medium",
   "mockups": [{"title":"Main","content":"+----------------+"}]
 }

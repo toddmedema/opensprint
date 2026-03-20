@@ -5,6 +5,7 @@
 /** Required section headings per PRD §7.2.3 (in order) */
 export declare const PLAN_MARKDOWN_SECTIONS: readonly [
   "Overview",
+  "Assumptions",
   "Acceptance Criteria",
   "Technical Approach",
   "Dependencies",
@@ -25,7 +26,7 @@ export interface PlanValidationResult {
 }
 /**
  * Returns the Plan markdown template with the given feature title.
- * Per PRD §7.2.3: Feature Title, Overview, Acceptance Criteria, Technical Approach,
+ * Per PRD §7.2.3: Feature Title, Overview, Assumptions, Acceptance Criteria, Technical Approach,
  * Dependencies, Data Model Changes, API Specification, UI/UX Requirements,
  * Edge Cases and Error Handling, Testing Strategy, Estimated Complexity.
  */

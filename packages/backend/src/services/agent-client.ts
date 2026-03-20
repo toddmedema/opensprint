@@ -1890,7 +1890,7 @@ export class AgentClient {
     const { config, prompt, systemPrompt, conversationHistory } = options;
     const fullPrompt = buildFullPrompt({ systemPrompt, conversationHistory, prompt });
 
-    const args = ["--print", fullPrompt];
+    const args = ["--tools", "", "--max-turns", "1", "--print", fullPrompt];
     if (config.model) {
       args.unshift("--model", config.model);
     }

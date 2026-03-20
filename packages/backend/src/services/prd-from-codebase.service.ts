@@ -25,11 +25,12 @@ Analyze the codebase and output a comprehensive PRD using PRD_UPDATE blocks. Use
 <markdown content for the section>
 [/PRD_UPDATE]
 
-Valid section keys: executive_summary, problem_statement, user_personas, goals_and_metrics, feature_list, technical_architecture, data_model, api_contracts, non_functional_requirements, open_questions
+Valid section keys: executive_summary, problem_statement, user_personas, goals_and_metrics, assumptions_and_constraints, feature_list, technical_architecture, data_model, api_contracts, non_functional_requirements, open_questions
 
 Guidelines:
 - Infer what the product does from the code: entry points, routes, components, APIs, data models.
 - executive_summary: One or two paragraphs summarizing the application and its purpose.
+- assumptions_and_constraints: Separate what is directly evidenced in the repo from what you inferred (e.g. intended audience, deployment model, compliance). Use bullets: assumption — evidence vs inference — impact if wrong.
 - feature_list: Bullet list of main features/capabilities you can identify.
 - technical_architecture: Stack (frameworks, languages), high-level structure, key directories.
 - data_model: Entities, storage, or schema if evident from the code.

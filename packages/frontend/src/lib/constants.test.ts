@@ -83,7 +83,11 @@ describe("constants", () => {
       expect(PRD_SECTION_ORDER[0]).toBe("executive_summary");
       expect(PRD_SECTION_ORDER).toContain("problem_statement");
       expect(PRD_SECTION_ORDER).toContain("open_questions");
-      expect(PRD_SECTION_ORDER.length).toBe(10);
+      expect(PRD_SECTION_ORDER).toContain("assumptions_and_constraints");
+      expect(PRD_SECTION_ORDER.indexOf("assumptions_and_constraints")).toBeLessThan(
+        PRD_SECTION_ORDER.indexOf("technical_architecture")
+      );
+      expect(PRD_SECTION_ORDER.length).toBe(11);
     });
   });
 

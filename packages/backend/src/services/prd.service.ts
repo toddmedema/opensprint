@@ -23,6 +23,7 @@ const PRD_SECTION_KEYS: PrdSectionKey[] = [
   "problem_statement",
   "user_personas",
   "goals_and_metrics",
+  "assumptions_and_constraints",
   "feature_list",
   "technical_architecture",
   "data_model",
@@ -46,6 +47,7 @@ function createEmptyPrd(): Prd {
       problem_statement: emptySection(),
       user_personas: emptySection(),
       goals_and_metrics: emptySection(),
+      assumptions_and_constraints: emptySection(),
       feature_list: emptySection(),
       technical_architecture: emptySection(),
       data_model: emptySection(),
@@ -55,6 +57,15 @@ function createEmptyPrd(): Prd {
     },
     changeLog: [],
   };
+}
+
+/** Ensure every canonical section exists (in-memory) for older SPEC.md files. */
+function mergeCanonicalSections(prd: Prd): void {
+  for (const key of PRD_SECTION_KEYS) {
+    if (!prd.sections[key]) {
+      prd.sections[key] = emptySection();
+    }
+  }
 }
 
 export class PrdService {
@@ -177,6 +188,7 @@ export class PrdService {
         const data = await fs.readFile(prdJsonPath, "utf-8");
         const parsed = JSON.parse(data) as Prd;
         if (!Array.isArray(parsed.changeLog)) parsed.changeLog = [];
+        mergeCanonicalSections(parsed);
         const markdown = prdToSpecMarkdown(parsed);
         await fs.writeFile(specPath, markdown, "utf-8");
         if (projectId) {
@@ -195,6 +207,7 @@ export class PrdService {
       if (prdMdStat?.isFile()) {
         const raw = await fs.readFile(prdMdPath, "utf-8");
         const prd = specMarkdownToPrd(raw);
+        mergeCanonicalSections(prd);
         const markdown = prdToSpecMarkdown(prd);
         await fs.writeFile(specPath, markdown, "utf-8");
         if (projectId) {
@@ -220,6 +233,7 @@ export class PrdService {
       const markdown = await fs.readFile(specPath, "utf-8");
       const metadata = await this.loadMetadataFromDb(projectId, project.repoPath);
       const prd = specMarkdownToPrd(markdown, metadata ?? undefined);
+      mergeCanonicalSections(prd);
       if (metadata?.sectionVersions) {
         for (const [key, ver] of Object.entries(metadata.sectionVersions)) {
           if (prd.sections[key]) prd.sections[key]!.version = ver;
@@ -228,7 +242,10 @@ export class PrdService {
       return prd;
     } catch {
       const migrated = await this.migrateFromLegacy(project.repoPath);
-      if (migrated) return migrated;
+      if (migrated) {
+        mergeCanonicalSections(migrated);
+        return migrated;
+      }
       throw new AppError(404, ErrorCodes.PRD_NOT_FOUND, "PRD not found for this project");
     }
   }

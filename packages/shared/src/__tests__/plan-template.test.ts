@@ -6,6 +6,7 @@ describe("plan-template", () => {
     it("includes all PRD §7.2.3 required sections", () => {
       expect(PLAN_MARKDOWN_SECTIONS).toEqual([
         "Overview",
+        "Assumptions",
         "Acceptance Criteria",
         "Technical Approach",
         "Dependencies",
@@ -59,12 +60,32 @@ describe("plan-template", () => {
 
 Some text.
 
+## Assumptions
+
+None stated.
+
 ## Acceptance Criteria
 
 - Criterion 1
 `;
       const result = validatePlanContent(content);
+      expect(result.missing).not.toContain("Assumptions");
       expect(result.missing).toContain("Technical Approach");
+    });
+
+    it("flags missing Assumptions when section is absent", () => {
+      const content = `# My Plan
+
+## Overview
+
+Some text.
+
+## Acceptance Criteria
+
+- Criterion 1
+`;
+      const result = validatePlanContent(content);
+      expect(result.missing).toContain("Assumptions");
       expect(result.missing).toContain("Dependencies");
       expect(result.missing).toContain("Data Model Changes");
       expect(result.missing).toContain("API Specification");
@@ -95,6 +116,10 @@ Some text.
 ## Overview
 
 Text.
+
+## Assumptions
+
+Inherited from PRD.
 
 ## Acceptance Criteria (with testable conditions)
 
@@ -142,6 +167,10 @@ medium
 ## overview
 
 Text.
+
+## assumptions
+
+None beyond PRD.
 
 ## ACCEPTANCE CRITERIA
 

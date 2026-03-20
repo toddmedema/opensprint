@@ -556,6 +556,7 @@ export class ProjectService {
         problem_statement: emptySection(),
         user_personas: emptySection(),
         goals_and_metrics: emptySection(),
+        assumptions_and_constraints: emptySection(),
         feature_list: emptySection(),
         technical_architecture: emptySection(),
         data_model: emptySection(),

@@ -301,6 +301,7 @@ describe.skipIf(!prdPostgresOk)("PRD REST API", () => {
         problem_statement: { content: "", version: 0, updatedAt: new Date().toISOString() },
         user_personas: { content: "", version: 0, updatedAt: new Date().toISOString() },
         goals_and_metrics: { content: "", version: 0, updatedAt: new Date().toISOString() },
+        assumptions_and_constraints: { content: "", version: 0, updatedAt: new Date().toISOString() },
         feature_list: { content: "", version: 0, updatedAt: new Date().toISOString() },
         technical_architecture: { content: "", version: 0, updatedAt: new Date().toISOString() },
         data_model: { content: "", version: 0, updatedAt: new Date().toISOString() },

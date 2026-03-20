@@ -56,7 +56,7 @@ describe("PrdTocPanel", () => {
     expect(screen.getByText("Contents")).toBeInTheDocument();
     expect(screen.getByText("Executive Summary")).toBeInTheDocument();
     expect(screen.getByText("Problem Statement")).toBeInTheDocument();
-    expect(screen.getByText("Goals And Metrics")).toBeInTheDocument();
+    expect(screen.getByText("Goals and Success Metrics")).toBeInTheDocument();
 
     document.body.removeChild(container);
   });

@@ -10,11 +10,18 @@ export function formatPlanIdAsTitle(planId: string): string {
   return planId.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+/** PRD section keys with non-obvious display labels (match SPEC.md headers). */
+const PRD_SECTION_LABELS: Record<string, string> = {
+  assumptions_and_constraints: "Assumptions and Constraints",
+  goals_and_metrics: "Goals and Success Metrics",
+};
+
 /**
- * Converts snake_case to Title Case.
+ * Converts snake_case to Title Case, with known PRD section overrides.
  * @example formatSectionKey("executive_summary") => "Executive Summary"
  */
 export function formatSectionKey(key: string): string {
+  if (PRD_SECTION_LABELS[key]) return PRD_SECTION_LABELS[key]!;
   return key
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))

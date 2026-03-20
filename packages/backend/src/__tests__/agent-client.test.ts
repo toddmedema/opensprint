@@ -254,6 +254,10 @@ describe("AgentClient", () => {
         expect.arrayContaining([
           "--model",
           "claude-sonnet-4",
+          "--tools",
+          "",
+          "--max-turns",
+          "1",
           "--print",
           expect.stringContaining("Human: Hello"),
         ]),
