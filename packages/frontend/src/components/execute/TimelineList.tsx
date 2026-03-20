@@ -219,10 +219,7 @@ export function TimelineList({
     );
     const ready = sorted.filter((t) => t.kanbanColumn === "ready" && notInPlanning(t));
     const inLine = sorted.filter(
-      (t) =>
-        (t.kanbanColumn === "backlog" ||
-          t.kanbanColumn === "planning") &&
-        notInPlanning(t)
+      (t) => (t.kanbanColumn === "backlog" || t.kanbanColumn === "planning") && notInPlanning(t)
     );
     const blockedExcludingPlanning = blockedTasks.filter(notInPlanning);
 
