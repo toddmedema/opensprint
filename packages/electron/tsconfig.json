@@ -10,5 +10,5 @@
     "outDir": "./dist",
     "rootDir": "."
   },
-  "include": ["main.ts", "preload.ts", "boot-screen.ts"]
+  "include": ["main.ts", "preload.ts", "boot-screen.ts", "window-options.ts"]
 }

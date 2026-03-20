@@ -51,7 +51,8 @@
     "files": [
       "dist/main.js",
       "dist/preload.js",
-      "dist/boot-screen.js"
+      "dist/boot-screen.js",
+      "dist/window-options.js"
     ],
     "extraResources": [
       {
