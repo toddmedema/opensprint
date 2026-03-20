@@ -58,7 +58,10 @@ export interface TaskSummary {
   priority: TaskPriority;
 }
 
-/** Map task status string to kanban column. Shared so execute and taskRegistry stay in sync. */
+/**
+ * Map task status string to kanban column. Shared so execute and taskRegistry stay in sync.
+ * Never returns `waiting_to_merge`; list/detail surfaces use server-computed `kanbanColumn`.
+ */
 export function mapStatusToKanban(status: string): KanbanColumn {
   switch (status) {
     case "open":
@@ -86,7 +89,7 @@ export interface Task {
   labels: string[];
   dependencies: TaskDependency[];
   epicId: string | null;
-  /** Computed kanban column based on task state + orchestrator phase */
+  /** Server-computed kanban column (task state + orchestrator phase; includes waiting_to_merge when applicable). */
   kanbanColumn: KanbanColumn;
   createdAt: string;
   updatedAt: string;
