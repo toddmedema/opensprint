@@ -10,7 +10,7 @@ import {
 } from "../../lib/executeTaskSort";
 import { isTaskInPlanningPlan, isSelfImprovementTask } from "../../lib/executeTaskFilter";
 import { getEpicTitleFromPlan } from "../../lib/planContentUtils";
-import { formatUptime, formatTimestamp, formatUntilTimestamp } from "../../lib/formatting";
+import { formatUptime, formatTimestamp } from "../../lib/formatting";
 import { PriorityIcon } from "../PriorityIcon";
 import { ComplexityIcon } from "../ComplexityIcon";
 import { TaskStatusBadge } from "../kanban";
@@ -43,6 +43,7 @@ export interface TimelineListProps {
 }
 
 const SECTION_LABELS: Record<string, string> = {
+  waiting_to_merge: "Waiting to Merge",
   [TIMELINE_SECTION.active]: "In Progress",
   [TIMELINE_SECTION.queue]: "Up Next",
   [TIMELINE_SECTION.completed]: "Completed",
@@ -51,73 +52,6 @@ const SECTION_LABELS: Record<string, string> = {
   in_line: "Up Next",
   planning: "Planning",
 };
-
-function waitingToMergeLabel(task: Task): string {
-  switch (task.mergeGateState) {
-    case "blocked_on_baseline":
-      return "Blocked on Main";
-    case "candidate_fix_needed":
-      return "Fix Merge Gate";
-    case "environment_repair_needed":
-      return "Repair Merge Env";
-    case "merging":
-      return "Merging";
-    case "validating":
-      return "Validating";
-    default:
-      return task.mergeWaitingOnMain ? "Blocked on Main" : "Waiting to Merge";
-  }
-}
-
-function waitingToMergeRetrySuffix(task: Task): string {
-  if (!task.mergePausedUntil) return "";
-  const until = formatUntilTimestamp(task.mergePausedUntil);
-  return until === "soon" ? "" : ` · Retry eligible ${until}`;
-}
-
-function waitingToMergeTitle(task: Task): string {
-  let base: string;
-  switch (task.mergeGateState) {
-    case "blocked_on_baseline":
-      base = "Blocked on main";
-      break;
-    case "candidate_fix_needed":
-      base = "Merge validation found a candidate code issue";
-      break;
-    case "environment_repair_needed":
-      base = "Merge validation found an environment setup issue";
-      break;
-    case "merging":
-      base = "Merge is currently rebasing or merging into the default branch";
-      break;
-    case "validating":
-      base = "Merge validation is currently running";
-      break;
-    default:
-      base = task.mergeWaitingOnMain
-        ? "Blocked on main"
-        : "Waiting to merge into the default branch";
-  }
-  const suffix = waitingToMergeRetrySuffix(task);
-  return suffix ? `${base}${suffix}` : base;
-}
-
-function waitingToMergeAriaLabel(task: Task): string {
-  let base: string;
-  if (task.mergeGateState === "blocked_on_baseline" || task.mergeWaitingOnMain) {
-    base = "Waiting to merge. Blocked on main.";
-  } else if (
-    task.mergeGateState &&
-    task.mergeGateState !== "validating" &&
-    task.mergeGateState !== "merging"
-  ) {
-    base = `Waiting to merge. ${waitingToMergeLabel(task)}.`;
-  } else {
-    base = "Waiting to merge.";
-  }
-  const suffix = waitingToMergeRetrySuffix(task);
-  return suffix ? `${base} ${suffix.trim()}` : base;
-}
 
 function TimelineRow({
   task,
@@ -176,33 +110,7 @@ function TimelineRow({
             </span>
           )}
           {task.kanbanColumn === "waiting_to_merge" && (
-            <span
-              className="hidden md:inline shrink-0 inline-flex items-center gap-1 text-xs font-medium text-theme-muted"
-              title={waitingToMergeTitle(task)}
-              aria-label={waitingToMergeAriaLabel(task)}
-              data-testid="task-badge-waiting-to-merge"
-            >
-              <TaskStatusBadge column="waiting_to_merge" size="xs" title="Waiting to Merge" />
-              <span aria-hidden="true">{waitingToMergeLabel(task)}</span>
-              {waitingToMergeRetrySuffix(task) && (
-                <span
-                  className="shrink-0 text-theme-muted"
-                  aria-hidden="true"
-                  data-testid="task-badge-waiting-to-merge-retry"
-                >
-                  {waitingToMergeRetrySuffix(task)}
-                </span>
-              )}
-              {task.lastExecutionSummary && (
-                <span
-                  className="max-w-[340px] truncate text-theme-muted"
-                  title={task.lastExecutionSummary}
-                  data-testid="task-badge-waiting-to-merge-summary"
-                >
-                  · {task.lastExecutionSummary}
-                </span>
-              )}
-            </span>
+            <TaskStatusBadge column="waiting_to_merge" size="xs" title="Waiting to Merge" />
           )}
           <span className="hidden md:inline text-xs text-theme-muted shrink-0 truncate max-w-[120px]">
             {epicName}
@@ -303,6 +211,9 @@ export function TimelineList({
     const active = sorted.filter(
       (t) => getTimelineSection(t.kanbanColumn) === TIMELINE_SECTION.active
     );
+    const waitingToMerge = sorted.filter(
+      (t) => t.kanbanColumn === "waiting_to_merge" && notInPlanning(t)
+    );
     const completed = sorted.filter(
       (t) => getTimelineSection(t.kanbanColumn) === TIMELINE_SECTION.completed
     );
@@ -310,14 +221,14 @@ export function TimelineList({
     const inLine = sorted.filter(
       (t) =>
         (t.kanbanColumn === "backlog" ||
-          t.kanbanColumn === "planning" ||
-          t.kanbanColumn === "waiting_to_merge") &&
+          t.kanbanColumn === "planning") &&
         notInPlanning(t)
     );
     const blockedExcludingPlanning = blockedTasks.filter(notInPlanning);
 
     return {
       [TIMELINE_SECTION.active]: active,
+      waiting_to_merge: waitingToMerge,
       [TIMELINE_SECTION.completed]: completed,
       blocked: blockedExcludingPlanning,
       ready,
@@ -328,6 +239,7 @@ export function TimelineList({
 
   const sections = useMemo(
     () => [
+      { key: "waiting_to_merge" as const, tasks: bySection.waiting_to_merge },
       ...(showBlockedSection ? [{ key: "blocked" as const, tasks: bySection.blocked }] : []),
       { key: TIMELINE_SECTION.active, tasks: bySection[TIMELINE_SECTION.active] },
       { key: "ready" as const, tasks: bySection.ready },

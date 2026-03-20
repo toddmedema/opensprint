@@ -9,7 +9,6 @@ import type { Plan } from "@opensprint/shared";
 vi.mock("../../lib/formatting", () => ({
   formatUptime: vi.fn((startedAt: string) => `uptime:${startedAt}`),
   formatTimestamp: vi.fn((ts: string) => `relative:${ts}`),
-  formatUntilTimestamp: vi.fn((_iso: string) => "in 5m"),
 }));
 
 const mockUpdateTask = vi.fn();
@@ -124,7 +123,7 @@ describe("TimelineList", () => {
     expect(screen.getByText("Queued Task")).toBeInTheDocument();
   });
 
-  it("displays Up Next section when waiting_to_merge tasks exist (no separate column)", () => {
+  it("displays Waiting to Merge section above In Progress when waiting_to_merge tasks exist", () => {
     const tasks = [
       createMockTask({ id: "a", kanbanColumn: "in_progress", title: "Active Task" }),
       createMockTask({
@@ -139,14 +138,21 @@ describe("TimelineList", () => {
       <TimelineList tasks={tasks} plans={plans} onTaskSelect={vi.fn()} {...defaultListProps} />
     );
 
-    expect(screen.getByRole("heading", { name: "Up Next" })).toBeInTheDocument();
+    expect(screen.getByTestId("timeline-section-waiting_to_merge")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Waiting to Merge" })).toBeInTheDocument();
     expect(screen.getByText("Merge me")).toBeInTheDocument();
-    const badge = screen.getByTestId("task-badge-waiting-to-merge");
-    expect(badge).toHaveTextContent("Waiting to Merge");
-    expect(badge).toHaveAttribute("aria-label", "Waiting to merge.");
+    expect(screen.getByRole("heading", { name: "In Progress" })).toBeInTheDocument();
+    const headings = screen.getAllByRole("heading", { level: 3 });
+    const waitingToMergeIdx = headings.findIndex((h) => h.textContent === "Waiting to Merge");
+    const inProgressIdx = headings.findIndex((h) => h.textContent === "In Progress");
+    expect(waitingToMergeIdx).toBeLessThan(inProgressIdx);
+
+    const row = screen.getByTestId("timeline-row-w");
+    const waitingBadge = row.querySelector('[title="Waiting to Merge"]');
+    expect(waitingBadge).toBeTruthy();
   });
 
-  it("waiting_to_merge with mergeWaitingOnMain uses Blocked on main tooltip and aria-label", () => {
+  it("waiting_to_merge row uses compact status badge treatment", () => {
     const tasks = [
       createMockTask({
         id: "w",
@@ -161,36 +167,10 @@ describe("TimelineList", () => {
       <TimelineList tasks={tasks} plans={plans} onTaskSelect={vi.fn()} {...defaultListProps} />
     );
 
-    const badge = screen.getByTestId("task-badge-waiting-to-merge");
-    expect(badge).toHaveAttribute("title", "Blocked on main");
-    expect(badge).toHaveAttribute("aria-label", "Waiting to merge. Blocked on main.");
-  });
-
-  it("waiting_to_merge with mergePausedUntil shows retry-eligible suffix in title, aria-label, and badge", () => {
-    const tasks = [
-      createMockTask({
-        id: "w",
-        kanbanColumn: "waiting_to_merge",
-        title: "Merge me",
-        mergeGateState: "blocked_on_baseline",
-        mergeWaitingOnMain: true,
-        mergePausedUntil: "2024-06-01T12:05:00Z",
-      }),
-    ];
-    const plans = [createMockPlan("epic-1", "Auth Epic")];
-
-    renderWithProviders(
-      <TimelineList tasks={tasks} plans={plans} onTaskSelect={vi.fn()} {...defaultListProps} />
-    );
-
-    const badge = screen.getByTestId("task-badge-waiting-to-merge");
-    expect(badge).toHaveAttribute("title", "Blocked on main · Retry eligible in 5m");
-    expect(badge).toHaveAttribute(
-      "aria-label",
-      "Waiting to merge. Blocked on main. · Retry eligible in 5m"
-    );
-    const retrySuffix = screen.getByTestId("task-badge-waiting-to-merge-retry");
-    expect(retrySuffix).toHaveTextContent(/Retry eligible in 5m/);
+    const row = screen.getByTestId("timeline-row-w");
+    expect(row.querySelector('[title="Waiting to Merge"]')).toBeTruthy();
+    expect(screen.queryByText("Blocked on Main")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Retry eligible/i)).not.toBeInTheDocument();
   });
 
   it("displays Up Next section when backlog/planning tasks exist", () => {
