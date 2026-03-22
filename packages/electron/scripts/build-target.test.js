@@ -10,6 +10,7 @@ const {
   resolveTargetPlatform,
   resolveTargetArch,
   resolveBuilderPlatformFlag,
+  buildElectronBuilderArgs,
 } = require("./build-target.js");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -34,6 +35,25 @@ describe("build-target", () => {
   it("resolves valid target platform and builder flag", () => {
     expect(resolveTargetPlatform({ platform: "linux" })).toBe("linux");
     expect(resolveBuilderPlatformFlag("linux")).toBe("--linux");
+  });
+
+  it("builds electron-builder args with publish disabled", () => {
+    expect(
+      buildElectronBuilderArgs({
+        targetPlatform: "linux",
+        targetArch: "x64",
+      })
+    ).toEqual(["--linux", "--x64", "--publish", "never"]);
+  });
+
+  it("includes --dir when building unpacked output", () => {
+    expect(
+      buildElectronBuilderArgs({
+        targetPlatform: "darwin",
+        targetArch: "arm64",
+        dir: true,
+      })
+    ).toEqual(["--dir", "--mac", "--arm64", "--publish", "never"]);
   });
 
   it("throws for unsupported platform", () => {

@@ -57,13 +57,29 @@ function resolveBuilderPlatformFlag(platform) {
   return "--linux";
 }
 
+function buildElectronBuilderArgs({ targetPlatform, targetArch, dir = false }) {
+  const args = [];
+  if (dir) {
+    args.push("--dir");
+  }
+  args.push(
+    resolveBuilderPlatformFlag(targetPlatform),
+    `--${targetArch}`,
+    "--publish",
+    "never"
+  );
+  return args;
+}
+
 function run({ argv = process.argv.slice(2) } = {}) {
   const cliOptions = parseCliOptions(argv);
   const targetPlatform = resolveTargetPlatform(cliOptions);
   const targetArch = resolveTargetArch(cliOptions);
-  const platformFlag = resolveBuilderPlatformFlag(targetPlatform);
-  const archFlag = `--${targetArch}`;
-  const dirFlag = cliOptions.dir ? " --dir" : "";
+  const builderArgs = buildElectronBuilderArgs({
+    targetPlatform,
+    targetArch,
+    dir: cliOptions.dir,
+  });
 
   console.log(`Building Electron desktop package (platform=${targetPlatform}, arch=${targetArch})`);
 
@@ -85,7 +101,7 @@ function run({ argv = process.argv.slice(2) } = {}) {
 
   cleanStaleDesktopArtifacts(targetPlatform, targetArch, outputDir);
 
-  execSync(`electron-builder${dirFlag} ${platformFlag} ${archFlag}`, {
+  execSync(`electron-builder ${builderArgs.join(" ")}`, {
     cwd: packageDir,
     env: process.env,
     stdio: "inherit",
@@ -101,5 +117,6 @@ module.exports = {
   resolveTargetPlatform,
   resolveTargetArch,
   resolveBuilderPlatformFlag,
+  buildElectronBuilderArgs,
   run,
 };
