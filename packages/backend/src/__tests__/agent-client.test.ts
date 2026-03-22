@@ -875,6 +875,62 @@ describe("AgentClient", () => {
       expect(onChunk).toHaveBeenCalledWith("response");
       expect(result.content).toBe("Streamed response");
     });
+
+    it("should route ollama config to the local Ollama API", async () => {
+      mockOpenAICreate.mockResolvedValue({
+        choices: [{ message: { content: "Ollama response" } }],
+      });
+
+      const result = await client.invoke({
+        config: { type: "ollama", model: "llama3.2", cliCommand: null },
+        prompt: "Hello",
+        cwd: "/tmp",
+      });
+
+      expect(mockGetNextKey).not.toHaveBeenCalled();
+      expect(OpenAI).toHaveBeenCalledWith(
+        expect.objectContaining({
+          baseURL: "http://localhost:11434/v1",
+          apiKey: "ollama",
+        })
+      );
+      expect(mockOpenAICreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: "llama3.2",
+          messages: expect.arrayContaining([
+            expect.objectContaining({ role: "user", content: "Hello" }),
+          ]),
+          max_tokens: 8192,
+        })
+      );
+      expect(result.content).toBe("Ollama response");
+    });
+
+    it("should require an explicit Ollama model before invoking", async () => {
+      await expect(
+        client.invoke({
+          config: { type: "ollama", model: null, cliCommand: null },
+          prompt: "Hello",
+        })
+      ).rejects.toThrow("Select an Ollama model in Settings before running agents.");
+
+      expect(mockOpenAICreate).not.toHaveBeenCalled();
+    });
+
+    it("should throw user-facing message when Ollama is unreachable", async () => {
+      mockOpenAICreate.mockRejectedValue(
+        Object.assign(new Error("fetch failed"), { code: "ECONNREFUSED" })
+      );
+
+      await expect(
+        client.invoke({
+          config: { type: "ollama", model: "llama3.2", cliCommand: null },
+          prompt: "Hello",
+        })
+      ).rejects.toThrow("Ollama is not running");
+
+      expect(mockGetNextKey).not.toHaveBeenCalled();
+    });
   });
 
   describe("spawnWithTaskFile", () => {
@@ -1545,6 +1601,113 @@ describe("AgentClient", () => {
         })
       );
       expect(onOutput).toHaveBeenCalledWith("LM Studio stream.");
+
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it("should run Ollama in-process for spawnWithTaskFile (no subprocess, no API key)", async () => {
+      const fs = await import("fs/promises");
+      const path = await import("path");
+      const os = await import("os");
+      const tmpDir = path.join(os.tmpdir(), `agent-client-ollama-${Date.now()}`);
+      const taskDir = path.join(tmpDir, ".opensprint/active/os-ollama.1");
+      await fs.mkdir(taskDir, { recursive: true });
+      const taskFilePath = path.join(taskDir, "prompt.md");
+      await fs.writeFile(taskFilePath, "# Task\n\nUse Ollama", "utf-8");
+
+      mockOpenAICreate.mockImplementation(async () => ({
+        choices: [{ message: { content: "Ollama stream.", tool_calls: [] } }],
+      }));
+
+      const onOutput = vi.fn();
+      const onExit = vi.fn();
+      const config: AgentConfig = {
+        type: "ollama",
+        model: "llama3.2",
+        cliCommand: null,
+        baseUrl: "http://localhost:11434",
+      };
+
+      const { kill, pid } = client.spawnWithTaskFile(
+        config,
+        taskFilePath,
+        tmpDir,
+        onOutput,
+        onExit,
+        "coder",
+        undefined,
+        undefined
+      );
+
+      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(mockGetNextKey).not.toHaveBeenCalled();
+      expect(pid).toBeNull();
+      expect(kill).toBeDefined();
+
+      await vi.waitFor(
+        () => {
+          expect(onExit).toHaveBeenCalledWith(0);
+        },
+        { timeout: 2000 }
+      );
+      expect(OpenAI).toHaveBeenCalledWith(
+        expect.objectContaining({
+          baseURL: "http://localhost:11434/v1",
+          apiKey: "ollama",
+        })
+      );
+      expect(mockOpenAICreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: "llama3.2",
+          max_tokens: 16384,
+        })
+      );
+      expect(onOutput).toHaveBeenCalledWith("Ollama stream.");
+
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it("should fail spawnWithTaskFile fast when Ollama model is missing", async () => {
+      const fs = await import("fs/promises");
+      const path = await import("path");
+      const os = await import("os");
+      const tmpDir = path.join(os.tmpdir(), `agent-client-ollama-no-model-${Date.now()}`);
+      const taskDir = path.join(tmpDir, ".opensprint/active/os-ollama.2");
+      await fs.mkdir(taskDir, { recursive: true });
+      const taskFilePath = path.join(taskDir, "prompt.md");
+      await fs.writeFile(taskFilePath, "# Task\n\nUse Ollama", "utf-8");
+
+      const onOutput = vi.fn();
+      const onExit = vi.fn();
+      const config: AgentConfig = {
+        type: "ollama",
+        model: null,
+        cliCommand: null,
+      };
+
+      const { pid } = client.spawnWithTaskFile(
+        config,
+        taskFilePath,
+        tmpDir,
+        onOutput,
+        onExit,
+        "coder"
+      );
+
+      expect(pid).toBeNull();
+
+      await vi.waitFor(
+        () => {
+          expect(onExit).toHaveBeenCalledWith(1);
+        },
+        { timeout: 2000 }
+      );
+      expect(onOutput).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "[Agent error: Select an Ollama model in Settings before running agents.]"
+        )
+      );
+      expect(mockOpenAICreate).not.toHaveBeenCalled();
 
       await fs.rm(tmpDir, { recursive: true, force: true });
     });

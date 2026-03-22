@@ -96,7 +96,12 @@ export function OnboardingPage() {
   const isConnectionErr = error !== null && error === CONNECTION_ERROR_MESSAGE;
   const onboardingCli = getOnboardingAgentCliRequirement(provider);
   const hasKeyContent = keyValue.trim().length > 0;
-  const shouldFetchCliKeys = needsKeyInput && onboardingCli !== null && hasKeyContent;
+  const shouldFetchCliKeys =
+    onboardingCli !== null && (needsKeyInput ? hasKeyContent : provider === "ollama");
+  const noKeyMessage =
+    provider === "ollama"
+      ? "No API key needed — install/start Ollama and you’re good to go."
+      : NO_KEY_MESSAGE;
 
   useEffect(() => {
     api.env
@@ -159,7 +164,7 @@ export function OnboardingPage() {
     }
     setSaving(true);
     try {
-      if (provider === "lmstudio") {
+      if (provider === "lmstudio" || provider === "ollama") {
         navigate(intended);
         setSaving(false);
         return;
@@ -215,6 +220,7 @@ export function OnboardingPage() {
   const canContinue =
     provider === "custom" ||
     provider === "lmstudio" ||
+    provider === "ollama" ||
     (needsKeyInput &&
       keyValue.trim().length > 0 &&
       !cliMissingForContinue &&
@@ -332,7 +338,7 @@ export function OnboardingPage() {
                     className="text-sm text-theme-muted pt-7"
                     data-testid="onboarding-no-key-message"
                   >
-                    {NO_KEY_MESSAGE}
+                    {noKeyMessage}
                   </p>
                 ) : (
                   <>
@@ -401,24 +407,24 @@ export function OnboardingPage() {
                         Try again
                       </button>
                     )}
-                    {onboardingCli !== null && hasKeyContent && cliCheckLoading && (
-                      <p className="mt-2 text-sm text-theme-muted" data-testid="onboarding-cli-checking">
-                        Checking CLI…
-                      </p>
-                    )}
-                    {onboardingCli !== null &&
-                      hasKeyContent &&
-                      cliCheckKeys &&
-                      !isCliInstalledForKind(cliCheckKeys, onboardingCli.kind) && (
-                        <div className="mt-3">
-                          <AgentProviderCliBanner
-                            kind={onboardingCli.kind}
-                            onInstallAttemptComplete={refetchCliKeys}
-                          />
-                        </div>
-                      )}
                   </>
                 )}
+                {onboardingCli !== null && shouldFetchCliKeys && cliCheckLoading && (
+                  <p className="mt-2 text-sm text-theme-muted" data-testid="onboarding-cli-checking">
+                    Checking CLI…
+                  </p>
+                )}
+                {onboardingCli !== null &&
+                  shouldFetchCliKeys &&
+                  cliCheckKeys &&
+                  !isCliInstalledForKind(cliCheckKeys, onboardingCli.kind) && (
+                    <div className="mt-3">
+                      <AgentProviderCliBanner
+                        kind={onboardingCli.kind}
+                        onInstallAttemptComplete={refetchCliKeys}
+                      />
+                    </div>
+                  )}
                 {error && !needsKeyInput && (
                   <p
                     id="onboarding-key-error"

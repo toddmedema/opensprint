@@ -244,16 +244,31 @@ async function collectOpenAIResponsesStream(
 
 const LM_STUDIO_NOT_RUNNING_MESSAGE =
   "LM Studio is not running. Start LM Studio, load a model, and ensure the local server is started (e.g. port 1234).";
+const OLLAMA_NOT_RUNNING_MESSAGE =
+  "Ollama is not running. Start Ollama and ensure the local API is available (e.g. port 11434).";
 
-/** Normalize LM Studio base URL to include /v1 for OpenAI-compatible client. */
-function getLMStudioBaseUrl(configBaseUrl?: string | null): string {
-  const base = (configBaseUrl && configBaseUrl.trim()) || "http://localhost:1234";
+/** Normalize a local OpenAI-compatible provider base URL to include /v1. */
+function getLocalOpenAIProviderBaseUrl(
+  configBaseUrl: string | null | undefined,
+  defaultBaseUrl: string
+): string {
+  const base = (configBaseUrl && configBaseUrl.trim()) || defaultBaseUrl;
   const trimmed = base.replace(/\/+$/, "");
   return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
 }
 
-/** True when the error indicates LM Studio server is unreachable (refused, network, etc.). */
-function isLMStudioConnectionError(error: unknown, msg: string): boolean {
+/** Normalize LM Studio base URL to include /v1 for OpenAI-compatible client. */
+function getLMStudioBaseUrl(configBaseUrl?: string | null): string {
+  return getLocalOpenAIProviderBaseUrl(configBaseUrl, "http://localhost:1234");
+}
+
+/** Normalize Ollama base URL to include /v1 for OpenAI-compatible client. */
+function getOllamaBaseUrl(configBaseUrl?: string | null): string {
+  return getLocalOpenAIProviderBaseUrl(configBaseUrl, "http://localhost:11434");
+}
+
+/** True when the error indicates a local OpenAI-compatible server is unreachable. */
+function isLocalOpenAIProviderConnectionError(error: unknown, msg: string): boolean {
   if (error instanceof Error && (error as NodeJS.ErrnoException).code === "ECONNREFUSED") {
     return true;
   }
@@ -266,6 +281,16 @@ function isLMStudioConnectionError(error: unknown, msg: string): boolean {
     lower.includes("socket hang up") ||
     lower.includes("network")
   );
+}
+
+/** True when the error indicates LM Studio server is unreachable (refused, network, etc.). */
+function isLMStudioConnectionError(error: unknown, msg: string): boolean {
+  return isLocalOpenAIProviderConnectionError(error, msg);
+}
+
+/** True when the error indicates Ollama server is unreachable (refused, network, etc.). */
+function isOllamaConnectionError(error: unknown, msg: string): boolean {
+  return isLocalOpenAIProviderConnectionError(error, msg);
 }
 
 function getStructuredAgentErrorMessage(obj: unknown): string | null {
@@ -709,6 +734,15 @@ export interface AgentResponse {
   cacheMetrics?: AgentCacheUsageMetrics;
 }
 
+type LocalOpenAIProviderRuntime = {
+  providerKey: "lmstudio" | "ollama";
+  providerLabel: "LM Studio" | "Ollama";
+  notRunningMessage: string;
+  baseURL: string;
+  model: string;
+  apiKey: string;
+};
+
 /**
  * Unified agent invocation interface.
  * Supports Claude API, Cursor CLI, and Custom CLI agents.
@@ -731,6 +765,8 @@ export class AgentClient {
         return this.invokeGoogleApi(options);
       case "lmstudio":
         return this.invokeLMStudio(options);
+      case "ollama":
+        return this.invokeOllama(options);
       case "custom":
         return this.invokeCustomCli(options);
       default:
@@ -803,6 +839,18 @@ export class AgentClient {
     }
     if (config.type === "lmstudio") {
       return this.spawnLMStudioWithTaskFile(
+        config,
+        taskFilePath,
+        cwd,
+        onOutput,
+        onExit,
+        agentRole,
+        outputLogPath,
+        projectId
+      );
+    }
+    if (config.type === "ollama") {
+      return this.spawnOllamaWithTaskFile(
         config,
         taskFilePath,
         cwd,
@@ -1487,18 +1535,16 @@ export class AgentClient {
   }
 
   /**
-   * LM Studio with task file: run API call in-process, stream to onOutput, simulate exit code.
-   * No subprocess spawn; no API key or key rotation.
+   * Local OpenAI-compatible provider with task file: run API call in-process, stream to onOutput,
+   * simulate exit code, and fall back to plain text completions when tool calling is unsupported.
    */
-  private spawnLMStudioWithTaskFile(
-    config: AgentConfig,
+  private spawnLocalOpenAIProviderWithTaskFile(
+    provider: LocalOpenAIProviderRuntime,
     taskFilePath: string,
     cwd: string,
     onOutput: (chunk: string) => void,
     onExit: (code: number | null) => void | Promise<void>,
-    agentRole?: string,
-    outputLogPath?: string,
-    _projectId?: string
+    outputLogPath?: string
   ): { kill: () => void; pid: number | null } {
     let aborted = false;
     const handle: { kill: () => void; pid: number | null } = {
@@ -1529,21 +1575,23 @@ export class AgentClient {
         taskContent = await readFile(taskFilePath, "utf-8");
       } catch (readErr) {
         const msg = getErrorMessage(readErr);
-        log.error("LM Studio task file read failed", { taskFilePath, err: msg });
+        log.error(`${provider.providerLabel} task file read failed`, {
+          provider: provider.providerKey,
+          taskFilePath,
+          err: msg,
+        });
         emit(`[Agent error: Could not read task file: ${msg}]\n`);
         return Promise.resolve(onExit(1)).catch((e) => log.error("onExit failed", { err: e }));
       }
 
-      const baseURL = getLMStudioBaseUrl(config.baseUrl);
-      const model = config.model ?? "local";
       const systemPrompt = `You are a coding agent. Execute the task described in the user message. Use the provided tools to read and edit files, run commands, and list or search files. When done, write a result.json file (or report success/failure in your final message).`;
       const client = new OpenAI({
-        baseURL,
-        apiKey: "lm-studio",
+        baseURL: provider.baseURL,
+        apiKey: provider.apiKey,
       });
 
       try {
-        const adapter = new OpenAIAgenticAdapter(client, model, systemPrompt);
+        const adapter = new OpenAIAgenticAdapter(client, provider.model, systemPrompt);
         const result = await runAgenticLoop(adapter, taskContent, {
           cwd,
           onChunk: (text) => {
@@ -1556,21 +1604,22 @@ export class AgentClient {
           },
         });
         if (aborted) return;
-        log.info("LM Studio coding agent completed", {
+        log.info(`${provider.providerLabel} coding agent completed`, {
+          provider: provider.providerKey,
           outputLen: result.content.length,
           turnCount: result.turnCount,
         });
         return Promise.resolve(onExit(0)).catch((e) => log.error("onExit failed", { err: e }));
       } catch (error: unknown) {
         const msg = getErrorMessage(error);
-        const isConnectionError = isLMStudioConnectionError(error, msg);
+        const isConnectionError = isLocalOpenAIProviderConnectionError(error, msg);
         if (
           !isConnectionError &&
           (msg.includes("tool") || msg.includes("function") || msg.includes("400"))
         ) {
           try {
             const stream = await client.chat.completions.create({
-              model,
+              model: provider.model,
               messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: taskContent },
@@ -1588,30 +1637,112 @@ export class AgentClient {
               }
             }
             if (aborted) return;
-            log.info("LM Studio coding agent completed (text-only fallback)", {
+            log.info(`${provider.providerLabel} coding agent completed (text-only fallback)`, {
+              provider: provider.providerKey,
               outputLen: fullContent.length,
             });
             return Promise.resolve(onExit(0)).catch((e) => log.error("onExit failed", { err: e }));
           } catch (fallbackErr: unknown) {
             const fallbackMsg = getErrorMessage(fallbackErr);
-            const fallbackConnection = isLMStudioConnectionError(fallbackErr, fallbackMsg);
-            const userMsg = fallbackConnection ? LM_STUDIO_NOT_RUNNING_MESSAGE : fallbackMsg;
+            const fallbackConnection = isLocalOpenAIProviderConnectionError(
+              fallbackErr,
+              fallbackMsg
+            );
+            const userMsg = fallbackConnection ? provider.notRunningMessage : fallbackMsg;
             emit(`[Agent error: ${userMsg}]\n`);
             return Promise.resolve(onExit(1)).catch((e) => log.error("onExit failed", { err: e }));
           }
         }
-        const userMsg = isConnectionError ? LM_STUDIO_NOT_RUNNING_MESSAGE : msg;
+        const userMsg = isConnectionError ? provider.notRunningMessage : msg;
         emit(`[Agent error: ${userMsg}]\n`);
         return Promise.resolve(onExit(1)).catch((e) => log.error("onExit failed", { err: e }));
       }
     };
 
     run().catch((err) => {
-      log.error("spawnLMStudioWithTaskFile failed", { err });
+      log.error("spawnLocalOpenAIProviderWithTaskFile failed", {
+        provider: provider.providerKey,
+        err,
+      });
       Promise.resolve(onExit(1)).catch(() => {});
     });
 
     return handle;
+  }
+
+  /**
+   * LM Studio with task file: run API call in-process, stream to onOutput, simulate exit code.
+   * No subprocess spawn; no API key or key rotation.
+   */
+  private spawnLMStudioWithTaskFile(
+    config: AgentConfig,
+    taskFilePath: string,
+    cwd: string,
+    onOutput: (chunk: string) => void,
+    onExit: (code: number | null) => void | Promise<void>,
+    agentRole?: string,
+    outputLogPath?: string,
+    _projectId?: string
+  ): { kill: () => void; pid: number | null } {
+    return this.spawnLocalOpenAIProviderWithTaskFile(
+      {
+        providerKey: "lmstudio",
+        providerLabel: "LM Studio",
+        notRunningMessage: LM_STUDIO_NOT_RUNNING_MESSAGE,
+        baseURL: getLMStudioBaseUrl(config.baseUrl),
+        model: config.model ?? "local",
+        apiKey: "lm-studio",
+      },
+      taskFilePath,
+      cwd,
+      onOutput,
+      onExit,
+      outputLogPath
+    );
+  }
+
+  /**
+   * Ollama with task file: run API call in-process, stream to onOutput, simulate exit code.
+   * No subprocess spawn; model discovery happens via the Ollama CLI, but execution uses the local API.
+   */
+  private spawnOllamaWithTaskFile(
+    config: AgentConfig,
+    taskFilePath: string,
+    cwd: string,
+    onOutput: (chunk: string) => void,
+    onExit: (code: number | null) => void | Promise<void>,
+    agentRole?: string,
+    outputLogPath?: string,
+    _projectId?: string
+  ): { kill: () => void; pid: number | null } {
+    void agentRole;
+    const model = config.model?.trim();
+    if (!model) {
+      const emitMissingModel = () => {
+        onOutput("[Agent error: Select an Ollama model in Settings before running agents.]\n");
+        Promise.resolve(onExit(1)).catch(() => {});
+      };
+      queueMicrotask(emitMissingModel);
+      return {
+        pid: null,
+        kill() {},
+      };
+    }
+    return this.spawnLocalOpenAIProviderWithTaskFile(
+      {
+        providerKey: "ollama",
+        providerLabel: "Ollama",
+        notRunningMessage: OLLAMA_NOT_RUNNING_MESSAGE,
+        baseURL: getOllamaBaseUrl(config.baseUrl),
+        model,
+        apiKey: "ollama",
+      },
+      taskFilePath,
+      cwd,
+      onOutput,
+      onExit,
+      outputLogPath
+    );
   }
 
   /**
@@ -2760,6 +2891,72 @@ export class AgentClient {
         ErrorCodes.AGENT_INVOKE_FAILED,
         isConnectionError ? LM_STUDIO_NOT_RUNNING_MESSAGE : msg,
         { agentType: "lmstudio", raw: msg }
+      );
+    }
+  }
+
+  private async invokeOllama(options: AgentInvokeOptions): Promise<AgentResponse> {
+    const { config, prompt, systemPrompt, conversationHistory } = options;
+    const model = config.model?.trim();
+    if (!model) {
+      throw new AppError(
+        400,
+        ErrorCodes.AGENT_INVOKE_FAILED,
+        "Select an Ollama model in Settings before running agents.",
+        { agentType: "ollama", raw: "No Ollama model selected" }
+      );
+    }
+
+    const baseURL = getOllamaBaseUrl(config.baseUrl);
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [];
+    if (systemPrompt?.trim()) {
+      messages.push({ role: "system", content: systemPrompt.trim() });
+    }
+    if (conversationHistory) {
+      for (const m of conversationHistory) {
+        messages.push({ role: m.role, content: m.content });
+      }
+    }
+    messages.push({ role: "user", content: prompt });
+
+    const client = new OpenAI({
+      baseURL,
+      apiKey: "ollama",
+    });
+
+    try {
+      if (options.onChunk) {
+        const stream = await client.chat.completions.create({
+          model,
+          messages,
+          max_tokens: 8192,
+          stream: true,
+        });
+        let fullContent = "";
+        for await (const chunk of stream) {
+          const delta = chunk.choices[0]?.delta?.content;
+          if (delta) {
+            fullContent += delta;
+            options.onChunk(delta);
+          }
+        }
+        return { content: fullContent };
+      }
+      const response = await client.chat.completions.create({
+        model,
+        messages,
+        max_tokens: 8192,
+      });
+      const content = response.choices[0]?.message?.content ?? "";
+      return { content };
+    } catch (error: unknown) {
+      const msg = getErrorMessage(error);
+      const isConnectionError = isOllamaConnectionError(error, msg);
+      throw new AppError(
+        502,
+        ErrorCodes.AGENT_INVOKE_FAILED,
+        isConnectionError ? OLLAMA_NOT_RUNNING_MESSAGE : msg,
+        { agentType: "ollama", raw: msg }
       );
     }
   }

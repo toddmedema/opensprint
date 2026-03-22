@@ -19,6 +19,7 @@ const defaultEnvKeys = {
   google: false,
   claudeCli: true,
   cursorCli: true,
+  ollamaCli: true,
   useCustomCli: false,
 };
 
@@ -150,7 +151,7 @@ describe("OnboardingPage", () => {
     );
   });
 
-  it("renders Agent setup section with provider dropdown and LM Studio option", async () => {
+  it("renders Agent setup section with provider dropdown and local provider options", async () => {
     renderOnboarding();
 
     await waitFor(() => {
@@ -161,6 +162,7 @@ describe("OnboardingPage", () => {
     expect(screen.getByRole("heading", { name: "Agent setup" })).toBeInTheDocument();
     expect(screen.getByTestId("onboarding-provider-select")).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "LM Studio (local)" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Ollama (local)" })).toBeInTheDocument();
     expect(screen.getByTestId("onboarding-continue-button")).toBeInTheDocument();
   });
 
@@ -263,6 +265,22 @@ describe("OnboardingPage", () => {
     await user.selectOptions(screen.getByTestId("onboarding-provider-select"), "Claude");
     expect(screen.getByTestId("onboarding-api-key-input")).toBeInTheDocument();
     expect(screen.getByTestId("onboarding-eye-toggle")).toBeInTheDocument();
+  });
+
+  it("selecting Ollama hides key input and shows local runtime guidance", async () => {
+    const user = userEvent.setup();
+    renderOnboarding();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("prereq-row-git")).toBeInTheDocument();
+    });
+
+    await user.selectOptions(screen.getByTestId("onboarding-provider-select"), "Ollama (local)");
+
+    expect(screen.queryByTestId("onboarding-api-key-input")).not.toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-no-key-message")).toHaveTextContent(
+      "No API key needed — install/start Ollama and you’re good to go."
+    );
   });
 
   it("Continue with Custom/CLI persists useCustomCli and navigates to intended", async () => {

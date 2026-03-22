@@ -173,7 +173,15 @@ export type AgentApiErrorKind = "rate_limit" | "auth" | "out_of_credit" | "scope
 
 export interface AgentApiFailureDetails {
   kind: AgentApiErrorKind;
-  agentType: "claude" | "claude-cli" | "cursor" | "custom" | "openai" | "google";
+  agentType:
+    | "claude"
+    | "claude-cli"
+    | "cursor"
+    | "custom"
+    | "openai"
+    | "google"
+    | "lmstudio"
+    | "ollama";
   raw: string;
   userMessage: string;
   notificationMessage: string;
@@ -205,7 +213,9 @@ function asAgentApiFailureDetails(value: unknown): AgentApiFailureDetails | null
       agentType === "cursor" ||
       agentType === "custom" ||
       agentType === "openai" ||
-      agentType === "google") &&
+      agentType === "google" ||
+      agentType === "lmstudio" ||
+      agentType === "ollama") &&
     typeof raw === "string" &&
     typeof userMessage === "string" &&
     typeof notificationMessage === "string" &&

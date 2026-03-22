@@ -225,7 +225,9 @@ export const api = {
     list: (provider: string, projectId?: string, baseUrl?: string) => {
       const params = new URLSearchParams({ provider });
       if (projectId) params.set("projectId", projectId);
-      if (provider === "lmstudio" && baseUrl) params.set("baseUrl", baseUrl);
+      if ((provider === "lmstudio" || provider === "ollama") && baseUrl) {
+        params.set("baseUrl", baseUrl);
+      }
       return request<ModelOption[]>(`/models?${params.toString()}`);
     },
   },
@@ -269,6 +271,7 @@ export const api = {
         google: boolean;
         claudeCli: boolean;
         cursorCli: boolean;
+        ollamaCli: boolean;
         useCustomCli: boolean;
       }>("/env/keys"),
     installCursorCli: () =>

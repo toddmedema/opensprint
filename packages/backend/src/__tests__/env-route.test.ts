@@ -14,6 +14,8 @@ import {
 } from "../services/global-settings.service.js";
 import { setBackendRuntimeInfoForTesting } from "../utils/runtime-info.js";
 
+const mockExecFile = vi.fn();
+
 vi.mock("node:child_process", async (importOriginal) => {
   const mod = await importOriginal<typeof import("node:child_process")>();
   return {
@@ -31,6 +33,7 @@ vi.mock("node:child_process", async (importOriginal) => {
         };
       }
     ),
+    execFile: (...args: unknown[]) => mockExecFile(...args),
   };
 });
 
@@ -78,6 +81,21 @@ describe("Env API", () => {
   beforeEach(() => {
     app = createMinimalEnvApp();
     vi.clearAllMocks();
+    mockExecFile.mockReset();
+    mockExecFile.mockImplementation(
+      (
+        _file: string,
+        _args: string[],
+        _opts: unknown,
+        cb: (err: Error | null, stdout?: string, stderr?: string) => void
+      ) => {
+        setImmediate(() => cb(null, "", ""));
+        return {
+          stdout: { on: vi.fn() },
+          stderr: { on: vi.fn() },
+        };
+      }
+    );
     tmpDir = path.join(
       os.tmpdir(),
       `env-route-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -186,7 +204,7 @@ describe("Env API", () => {
   });
 
   describe("GET /env/keys", () => {
-    it("returns shape with anthropic, cursor, openai, google, claudeCli, cursorCli, useCustomCli booleans", async () => {
+    it("returns shape with anthropic, cursor, openai, google, claudeCli, cursorCli, ollamaCli, useCustomCli booleans", async () => {
       const res = await request(app).get(`${API_PREFIX}/env/keys`);
       expect(res.status).toBe(200);
       expect(res.body.data).toBeDefined();
@@ -196,7 +214,38 @@ describe("Env API", () => {
       expect(typeof res.body.data.google).toBe("boolean");
       expect(typeof res.body.data.claudeCli).toBe("boolean");
       expect(typeof res.body.data.cursorCli).toBe("boolean");
+      expect(typeof res.body.data.ollamaCli).toBe("boolean");
       expect(typeof res.body.data.useCustomCli).toBe("boolean");
+    });
+
+    it("reports ollamaCli when the Ollama binary is available on PATH", async () => {
+      mockExecFile.mockImplementation(
+        (
+          _file: string,
+          args: string[],
+          _opts: unknown,
+          cb: (err: Error | null, stdout?: string, stderr?: string) => void
+        ) => {
+          const binary = args[0];
+          if (binary === "ollama") {
+            setImmediate(() => cb(null, "/usr/local/bin/ollama\n", ""));
+          } else {
+            const err = Object.assign(new Error(`${binary} not found`), { code: "ENOENT" });
+            setImmediate(() => cb(err));
+          }
+          return {
+            stdout: { on: vi.fn() },
+            stderr: { on: vi.fn() },
+          };
+        }
+      );
+
+      const res = await request(app).get(`${API_PREFIX}/env/keys`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.ollamaCli).toBe(true);
+      expect(res.body.data.claudeCli).toBe(false);
+      expect(res.body.data.cursorCli).toBe(false);
     });
 
     it("anthropic true when global store has ANTHROPIC_API_KEY", async () => {

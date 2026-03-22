@@ -149,6 +149,17 @@ async function isCursorCliAvailable(): Promise<boolean> {
   }
 }
 
+/** Check whether the Ollama CLI binary is on $PATH */
+async function isOllamaCliAvailable(): Promise<boolean> {
+  try {
+    const cmd = process.platform === "win32" ? "where" : "which";
+    await execFileAsync(cmd, ["ollama"], { timeout: 3000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Check if global store has any API keys configured */
 function globalStoreHasKeys(apiKeys: { [key: string]: unknown[] } | undefined): boolean {
   if (!apiKeys || typeof apiKeys !== "object") return false;
@@ -247,13 +258,14 @@ envRouter.get(
     const google =
       Boolean(process.env.GOOGLE_API_KEY?.trim()) ||
       globalStoreHasProvider(settings.apiKeys, "GOOGLE_API_KEY");
-    const [claudeCli, cursorCli] = await Promise.all([
+    const [claudeCli, cursorCli, ollamaCli] = await Promise.all([
       isClaudeCliAvailable(),
       isCursorCliAvailable(),
+      isOllamaCliAvailable(),
     ]);
     const useCustomCli = settings.useCustomCli ?? false;
     res.json({
-      data: { anthropic, cursor, openai, google, claudeCli, cursorCli, useCustomCli },
+      data: { anthropic, cursor, openai, google, claudeCli, cursorCli, ollamaCli, useCustomCli },
     } as ApiResponse<{
       anthropic: boolean;
       cursor: boolean;
@@ -261,6 +273,7 @@ envRouter.get(
       google: boolean;
       claudeCli: boolean;
       cursorCli: boolean;
+      ollamaCli: boolean;
       useCustomCli: boolean;
     }>);
   })

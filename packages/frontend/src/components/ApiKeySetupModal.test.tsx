@@ -39,7 +39,7 @@ describe("ApiKeySetupModal", () => {
     expect(screen.getByText(/Custom\/CLI.*own agent/)).toBeInTheDocument();
   });
 
-  it("shows provider dropdown with Claude, Cursor, OpenAI, Google, LM Studio, Custom/CLI", () => {
+  it("shows provider dropdown with Claude, Cursor, OpenAI, Google, LM Studio, Ollama, Custom/CLI", () => {
     render(
       <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
     );
@@ -52,6 +52,7 @@ describe("ApiKeySetupModal", () => {
     expect(screen.getByRole("option", { name: "OpenAI" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Google" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "LM Studio (local)" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Ollama (local)" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Custom/CLI" })).toBeInTheDocument();
   });
 
@@ -100,6 +101,35 @@ describe("ApiKeySetupModal", () => {
     );
 
     await user.selectOptions(screen.getByTestId("api-key-provider-select"), "LM Studio (local)");
+    await user.click(screen.getByTestId("api-key-save-button"));
+
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(api.env.setGlobalSettings).not.toHaveBeenCalled();
+    expect(api.env.validateKey).not.toHaveBeenCalled();
+    expect(api.env.saveKey).not.toHaveBeenCalled();
+  });
+
+  it("hides key input when Ollama selected and shows local runtime message", async () => {
+    const user = userEvent.setup();
+    render(
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
+    );
+
+    await user.selectOptions(screen.getByTestId("api-key-provider-select"), "Ollama (local)");
+
+    expect(screen.queryByTestId("api-key-input")).not.toBeInTheDocument();
+    expect(screen.getByTestId("api-key-no-key-message")).toHaveTextContent(
+      "No API key needed — install/start Ollama and then you’re good to go."
+    );
+  });
+
+  it("Ollama Save calls onComplete without any API calls", async () => {
+    const user = userEvent.setup();
+    render(
+      <ApiKeySetupModal onComplete={onComplete} onCancel={onCancel} intendedRoute={intendedRoute} />
+    );
+
+    await user.selectOptions(screen.getByTestId("api-key-provider-select"), "Ollama (local)");
     await user.click(screen.getByTestId("api-key-save-button"));
 
     expect(onComplete).toHaveBeenCalledTimes(1);

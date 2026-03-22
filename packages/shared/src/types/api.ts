@@ -19,7 +19,15 @@ export interface ApiErrorResponse {
 /** Structured agent/provider failure details carried in ApiErrorResponse.error.details. */
 export interface AgentApiFailureDetails {
   kind: "rate_limit" | "auth" | "out_of_credit" | "scope_compliance";
-  agentType: "claude" | "claude-cli" | "cursor" | "custom" | "openai" | "google";
+  agentType:
+    | "claude"
+    | "claude-cli"
+    | "cursor"
+    | "custom"
+    | "openai"
+    | "google"
+    | "lmstudio"
+    | "ollama";
   raw: string;
   userMessage: string;
   notificationMessage: string;

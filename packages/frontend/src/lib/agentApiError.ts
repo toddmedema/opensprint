@@ -1,6 +1,14 @@
 export interface AgentApiFailureDetails {
   kind: "rate_limit" | "auth" | "out_of_credit" | "scope_compliance";
-  agentType: "claude" | "claude-cli" | "cursor" | "custom" | "openai" | "google";
+  agentType:
+    | "claude"
+    | "claude-cli"
+    | "cursor"
+    | "custom"
+    | "openai"
+    | "google"
+    | "lmstudio"
+    | "ollama";
   raw: string;
   userMessage: string;
   notificationMessage: string;
@@ -45,7 +53,9 @@ function asFailureDetails(value: unknown): AgentApiFailureDetails | null {
       agentType === "cursor" ||
       agentType === "custom" ||
       agentType === "openai" ||
-      agentType === "google") &&
+      agentType === "google" ||
+      agentType === "lmstudio" ||
+      agentType === "ollama") &&
     typeof raw === "string" &&
     typeof userMessage === "string" &&
     typeof notificationMessage === "string" &&

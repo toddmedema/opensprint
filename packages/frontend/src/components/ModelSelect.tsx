@@ -12,7 +12,7 @@ interface ModelSelectProps {
   id?: string;
   /** Project ID for API key resolution when listing models (project-level keys) */
   projectId?: string;
-  /** LM Studio base URL (e.g. http://localhost:1234); used when provider is lmstudio */
+  /** Local provider base URL (e.g. LM Studio/Ollama); used when provider is lmstudio or ollama */
   baseUrl?: string;
   /** Increment to trigger a refetch of models (e.g. after saving an API key) */
   refreshTrigger?: number;
@@ -20,7 +20,15 @@ interface ModelSelectProps {
   onBlur?: () => void;
 }
 
-const FETCH_PROVIDERS = ["claude", "claude-cli", "cursor", "openai", "google", "lmstudio"] as const;
+const FETCH_PROVIDERS = [
+  "claude",
+  "claude-cli",
+  "cursor",
+  "openai",
+  "google",
+  "lmstudio",
+  "ollama",
+] as const;
 
 export function ModelSelect({
   provider,
@@ -48,7 +56,11 @@ export function ModelSelect({
     setLoading(true);
     setError(null);
     api.models
-      .list(provider, projectId, provider === "lmstudio" ? baseUrl : undefined)
+      .list(
+        provider,
+        projectId,
+        provider === "lmstudio" || provider === "ollama" ? baseUrl : undefined
+      )
       .then((list) => {
         setModels(list);
         // Initial selection is applied by the sync effect when models update (single source of truth).
@@ -100,6 +112,12 @@ export function ModelSelect({
         ? isConnectionError(error)
           ? "LM Studio is not reachable. Check the server URL in Settings."
           : "No models — start LM Studio and load a model"
+        : provider === "ollama"
+          ? /not found/i.test(error)
+            ? "Ollama CLI not found — install Ollama and restart Open Sprint"
+            : /not reachable|running/i.test(error)
+              ? "Ollama is not reachable. Start Ollama and check the server URL in Settings."
+              : "No models — run `ollama pull <model>` in your terminal"
         : provider === "claude"
           ? "Anthropic API key required — configure in Global Settings → API keys"
           : provider === "claude-cli"
@@ -111,9 +129,11 @@ export function ModelSelect({
                 : provider === "google"
                   ? "Google API key required — configure in Global Settings → API keys"
                   : "";
-    const displayMessage = provider === "lmstudio" ? hint : error;
+    const displayMessage = provider === "lmstudio" || provider === "ollama" ? hint : error;
     const optionLabel =
-      provider === "lmstudio" ? "No models" : `No models${hint ? ` (${hint})` : ""}`;
+      provider === "lmstudio" || provider === "ollama"
+        ? "No models"
+        : `No models${hint ? ` (${hint})` : ""}`;
     return (
       <div className="space-y-1" role="group" aria-label="Model selection">
         <select
@@ -143,7 +163,9 @@ export function ModelSelect({
         disabled={disabled}
         aria-label="Model selection"
       >
-        <option value="">No models available</option>
+        <option value="">
+          {provider === "ollama" ? "No local models — run `ollama pull <model>`" : "No models available"}
+        </option>
       </select>
     );
   }

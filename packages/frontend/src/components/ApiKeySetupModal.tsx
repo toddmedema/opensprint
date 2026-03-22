@@ -73,7 +73,7 @@ export function ApiKeySetupModal({
     setError(null);
     setSaving(true);
     try {
-      if (provider === "lmstudio") {
+      if (provider === "lmstudio" || provider === "ollama") {
         onComplete();
         setSaving(false);
         return;
@@ -127,6 +127,7 @@ export function ApiKeySetupModal({
   const canSave =
     provider === "custom" ||
     provider === "lmstudio" ||
+    provider === "ollama" ||
     (needsKeyInput && keyValue.trim().length > 0);
 
   useEffect(() => {
@@ -196,7 +197,9 @@ export function ApiKeySetupModal({
 
           {!needsKeyInput && (
             <p className="text-sm text-theme-muted" data-testid="api-key-no-key-message">
-              {NO_KEY_MESSAGE}
+              {provider === "ollama"
+                ? "No API key needed — install/start Ollama and then you’re good to go."
+                : NO_KEY_MESSAGE}
             </p>
           )}
 

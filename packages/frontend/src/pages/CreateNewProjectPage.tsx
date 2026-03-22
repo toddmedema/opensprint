@@ -38,6 +38,8 @@ const STEPS: { key: Step; label: string }[] = [
 ];
 
 const TEMPLATE_OPTIONS = [{ value: "web-app-expo-react", label: "Web App (Expo/React)" }] as const;
+const DEFAULT_LMSTUDIO_BASE_URL = "http://localhost:1234";
+const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
 
 export function CreateNewProjectPage() {
   const navigate = useNavigate();
@@ -52,13 +54,13 @@ export function CreateNewProjectPage() {
     type: "cursor" as AgentType,
     model: "",
     cliCommand: "",
-    baseUrl: "http://localhost:1234",
+    baseUrl: DEFAULT_LMSTUDIO_BASE_URL,
   });
   const [complexComplexityAgent, setComplexComplexityAgent] = useState({
     type: "cursor" as AgentType,
     model: "",
     cliCommand: "",
-    baseUrl: "http://localhost:1234",
+    baseUrl: DEFAULT_LMSTUDIO_BASE_URL,
   });
   const [envKeys, setEnvKeys] = useState<{
     anthropic: boolean;
@@ -66,6 +68,7 @@ export function CreateNewProjectPage() {
     openai: boolean;
     claudeCli: boolean;
     cursorCli: boolean;
+    ollamaCli: boolean;
   } | null>(null);
   const [keyInput, setKeyInput] = useState<{ anthropic: string; cursor: string; openai: string }>({
     anthropic: "",
@@ -115,6 +118,7 @@ export function CreateNewProjectPage() {
           openai,
           claudeCli: env.claudeCli,
           cursorCli: env.cursorCli,
+          ollamaCli: env.ollamaCli,
         };
         setEnvKeys(keys);
         if (!hasSetAgentDefaultRef.current) {
@@ -125,14 +129,14 @@ export function CreateNewProjectPage() {
             type: defaultType,
             model: "",
             cliCommand: "",
-            baseUrl: "http://localhost:1234",
+            baseUrl: DEFAULT_LMSTUDIO_BASE_URL,
           }));
           setComplexComplexityAgent((prev) => ({
             ...prev,
             type: defaultType,
             model: "",
             cliCommand: "",
-            baseUrl: "http://localhost:1234",
+            baseUrl: DEFAULT_LMSTUDIO_BASE_URL,
           }));
         }
       })
@@ -211,8 +215,13 @@ export function CreateNewProjectPage() {
               simpleComplexityAgent.type === "custom" && simpleComplexityAgent.cliCommand.trim()
                 ? simpleComplexityAgent.cliCommand.trim()
                 : null,
-            ...(simpleComplexityAgent.type === "lmstudio" && {
-              baseUrl: simpleComplexityAgent.baseUrl || "http://localhost:1234",
+            ...((simpleComplexityAgent.type === "lmstudio" ||
+              simpleComplexityAgent.type === "ollama") && {
+              baseUrl:
+                simpleComplexityAgent.baseUrl ||
+                (simpleComplexityAgent.type === "ollama"
+                  ? DEFAULT_OLLAMA_BASE_URL
+                  : DEFAULT_LMSTUDIO_BASE_URL),
             }),
           },
           complexComplexityAgent: {
@@ -225,8 +234,13 @@ export function CreateNewProjectPage() {
               complexComplexityAgent.type === "custom" && complexComplexityAgent.cliCommand.trim()
                 ? complexComplexityAgent.cliCommand.trim()
                 : null,
-            ...(complexComplexityAgent.type === "lmstudio" && {
-              baseUrl: complexComplexityAgent.baseUrl || "http://localhost:1234",
+            ...((complexComplexityAgent.type === "lmstudio" ||
+              complexComplexityAgent.type === "ollama") && {
+              baseUrl:
+                complexComplexityAgent.baseUrl ||
+                (complexComplexityAgent.type === "ollama"
+                  ? DEFAULT_OLLAMA_BASE_URL
+                  : DEFAULT_LMSTUDIO_BASE_URL),
             }),
           },
         });
@@ -301,8 +315,13 @@ export function CreateNewProjectPage() {
             simpleComplexityAgent.type === "custom" && simpleComplexityAgent.cliCommand.trim()
               ? simpleComplexityAgent.cliCommand.trim()
               : null,
-          ...(simpleComplexityAgent.type === "lmstudio" && {
-            baseUrl: simpleComplexityAgent.baseUrl || "http://localhost:1234",
+          ...((simpleComplexityAgent.type === "lmstudio" ||
+            simpleComplexityAgent.type === "ollama") && {
+            baseUrl:
+              simpleComplexityAgent.baseUrl ||
+              (simpleComplexityAgent.type === "ollama"
+                ? DEFAULT_OLLAMA_BASE_URL
+                : DEFAULT_LMSTUDIO_BASE_URL),
           }),
         },
         complexComplexityAgent: {
@@ -313,8 +332,13 @@ export function CreateNewProjectPage() {
             complexComplexityAgent.type === "custom" && complexComplexityAgent.cliCommand.trim()
               ? complexComplexityAgent.cliCommand.trim()
               : null,
-          ...(complexComplexityAgent.type === "lmstudio" && {
-            baseUrl: complexComplexityAgent.baseUrl || "http://localhost:1234",
+          ...((complexComplexityAgent.type === "lmstudio" ||
+            complexComplexityAgent.type === "ollama") && {
+            baseUrl:
+              complexComplexityAgent.baseUrl ||
+              (complexComplexityAgent.type === "ollama"
+                ? DEFAULT_OLLAMA_BASE_URL
+                : DEFAULT_LMSTUDIO_BASE_URL),
           }),
         },
       })
@@ -389,6 +413,9 @@ export function CreateNewProjectPage() {
   const usesClaudeCli =
     simpleComplexityAgent.type === "claude-cli" || complexComplexityAgent.type === "claude-cli";
   const claudeCliMissing = envKeys && !envKeys.claudeCli && usesClaudeCli;
+  const usesOllama =
+    simpleComplexityAgent.type === "ollama" || complexComplexityAgent.type === "ollama";
+  const ollamaCliMissing = envKeys && !envKeys.ollamaCli && usesOllama;
 
   const canProceedFromAgents =
     envKeys !== null &&
@@ -397,6 +424,7 @@ export function CreateNewProjectPage() {
     !needsCursor &&
     !needsOpenai &&
     !claudeCliMissing &&
+    !ollamaCliMissing &&
     (simpleComplexityAgent.type !== "custom" || simpleComplexityAgent.cliCommand.trim()) &&
     (complexComplexityAgent.type !== "custom" || complexComplexityAgent.cliCommand.trim());
 

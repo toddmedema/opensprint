@@ -718,7 +718,15 @@ export class ProjectService {
     assertSupportedRepoPath(repoPath);
     const agentConfig = (input.simpleComplexityAgent ??
       DEFAULT_AGENT_CONFIG) as AgentConfigInput & {
-      type: "cursor" | "claude" | "claude-cli" | "custom";
+      type:
+        | "cursor"
+        | "claude"
+        | "claude-cli"
+        | "custom"
+        | "openai"
+        | "google"
+        | "lmstudio"
+        | "ollama";
     };
     let recovery: ScaffoldRecoveryInfo | undefined;
 
@@ -851,7 +859,7 @@ export class ProjectService {
       const recoveryResult = await attemptRecovery(
         classification,
         cwd,
-        agentConfig as AgentConfigInput & { type: "cursor" | "claude" | "claude-cli" | "custom" }
+        agentConfig as AgentConfigInput
       );
 
       if (!recoveryResult.success) {

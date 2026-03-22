@@ -6,7 +6,11 @@ export interface AgentConfig {
   type: AgentType;
   model: string | null;
   cliCommand: string | null;
-  /** LM Studio server URL when type === "lmstudio". Default (applied in backend/frontend): http://localhost:1234 */
+  /**
+   * Local provider server URL.
+   * - LM Studio default (applied in backend/frontend): http://localhost:1234
+   * - Ollama default (applied in backend/frontend): http://localhost:11434
+   */
   baseUrl?: string;
 }
 
@@ -1167,7 +1171,8 @@ export function getProvidersInUse(settings: ProjectSettings): ApiKeyProvider[] {
 }
 
 /**
- * Map agent type to API key provider. Returns null for claude-cli/custom/lmstudio (CLI uses local auth; LM Studio runs locally without API key).
+ * Map agent type to API key provider. Returns null for claude-cli/custom/lmstudio/ollama
+ * (CLI uses local auth; local model providers run without API keys).
  */
 export function getProviderForAgentType(agentType: AgentConfig["type"]): ApiKeyProvider | null {
   switch (agentType) {
@@ -1180,6 +1185,7 @@ export function getProviderForAgentType(agentType: AgentConfig["type"]): ApiKeyP
     case "google":
       return "GOOGLE_API_KEY";
     case "lmstudio":
+    case "ollama":
       return null;
     default:
       return null;

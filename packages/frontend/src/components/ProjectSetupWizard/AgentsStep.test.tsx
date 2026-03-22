@@ -149,6 +149,13 @@ describe("AgentsStep", () => {
     expect(lmstudioOptions).toHaveLength(2);
   });
 
+  it("Ollama (local) appears as provider option in Simple and Complex dropdowns", () => {
+    renderAgentsStep();
+
+    const ollamaOptions = screen.getAllByRole("option", { name: "Ollama (local)" });
+    expect(ollamaOptions).toHaveLength(2);
+  });
+
   it("when LM Studio selected for Simple, shows Base URL input and ModelSelect with baseUrl", async () => {
     mockModelsList.mockImplementation(
       (provider: string, _projectId?: string, _baseUrl?: string) => {

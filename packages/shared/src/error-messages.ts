@@ -72,6 +72,7 @@ export const ERROR_CODE_MESSAGES: Record<string, string> = {
   OPENAI_API_ERROR: "Check OpenAI API key in Global Settings → API keys.",
   GOOGLE_API_ERROR: "Check Google API key in Global Settings → API keys.",
   LM_STUDIO_UNREACHABLE: "Ensure LM Studio is running and the endpoint is correct.",
+  OLLAMA_UNREACHABLE: "Ensure Ollama is installed, running, and the endpoint is correct.",
 };
 
 /**

@@ -8,7 +8,8 @@ export type AgentType =
   | "custom"
   | "openai"
   | "google"
-  | "lmstudio";
+  | "lmstudio"
+  | "ollama";
 
 /** Named agent roles (PRD §6.3, §12). Planning slot: dreamer–auditor. Coding slot: coder, reviewer. */
 export type AgentRole =

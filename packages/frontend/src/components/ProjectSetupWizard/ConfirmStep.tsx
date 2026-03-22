@@ -47,6 +47,8 @@ export function ConfirmStep({
         return "Google (Gemini)";
       case "lmstudio":
         return "LM Studio (local)";
+      case "ollama":
+        return "Ollama (local)";
       default:
         return type;
     }

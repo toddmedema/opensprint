@@ -1,4 +1,6 @@
 import { Router, Request } from "express";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { wrapAsync } from "../middleware/wrap-async.js";
 import { validateQuery } from "../middleware/validate.js";
 import { modelsListQuerySchema } from "../schemas/request-models.js";
@@ -9,6 +11,8 @@ import { ErrorCodes } from "../middleware/error-codes.js";
 import * as modelListCache from "../services/model-list-cache.js";
 import { getNextKey } from "../services/api-key-resolver.service.js";
 import { isOpenAITextModel } from "../utils/openai-models.js";
+
+const execFileAsync = promisify(execFile);
 
 export interface ModelOption {
   id: string;
@@ -21,14 +25,16 @@ const CURSOR_MODELS_URL = "https://api.cursor.com/v0/models";
 const OPENAI_MODELS_URL = "https://api.openai.com/v1/models";
 const GOOGLE_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const LM_STUDIO_DEFAULT_BASE_URL = "http://localhost:1234";
+const OLLAMA_DEFAULT_BASE_URL = "http://localhost:11434";
 
-/** Validate and normalize LM Studio baseUrl: http/https only, trim, no trailing slash. */
-function normalizeLmStudioBaseUrl(
-  raw: string | undefined
+/** Validate and normalize a local provider baseUrl: http/https only, trim, no trailing slash. */
+function normalizeLocalProviderBaseUrl(
+  raw: string | undefined,
+  defaultBaseUrl: string
 ): { ok: true; normalized: string } | { ok: false; error: string } {
   const trimmed = (raw ?? "").trim();
   if (!trimmed) {
-    return { ok: true, normalized: LM_STUDIO_DEFAULT_BASE_URL };
+    return { ok: true, normalized: defaultBaseUrl };
   }
   const lower = trimmed.toLowerCase();
   if (!lower.startsWith("http://") && !lower.startsWith("https://")) {
@@ -44,6 +50,20 @@ function normalizeLmStudioBaseUrl(
   } catch {
     return { ok: false, error: "baseUrl is not a valid URL" };
   }
+}
+
+/** Validate and normalize LM Studio baseUrl: http/https only, trim, no trailing slash. */
+function normalizeLmStudioBaseUrl(
+  raw: string | undefined
+): { ok: true; normalized: string } | { ok: false; error: string } {
+  return normalizeLocalProviderBaseUrl(raw, LM_STUDIO_DEFAULT_BASE_URL);
+}
+
+/** Validate and normalize Ollama baseUrl: http/https only, trim, no trailing slash. */
+function normalizeOllamaBaseUrl(
+  raw: string | undefined
+): { ok: true; normalized: string } | { ok: false; error: string } {
+  return normalizeLocalProviderBaseUrl(raw, OLLAMA_DEFAULT_BASE_URL);
 }
 
 /** Validate an API key via minimal API call. Reused by POST /env/keys/validate. */
@@ -315,6 +335,53 @@ async function fetchLmStudioModels(baseUrl: string): Promise<ModelOption[]> {
   return (body.data ?? []).filter((m) => m.id).map((m) => ({ id: m.id, displayName: m.id }));
 }
 
+function parseOllamaListOutput(stdout: string): ModelOption[] {
+  const models: ModelOption[] = [];
+  for (const rawLine of stdout.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || /^name(?:\s|$)/i.test(line)) continue;
+    const id = line.split(/\s+/)[0]?.trim();
+    if (!id || /^name$/i.test(id)) continue;
+    models.push({ id, displayName: id });
+  }
+  return models;
+}
+
+async function fetchOllamaModels(baseUrl: string): Promise<ModelOption[]> {
+  try {
+    const { stdout } = await execFileAsync("ollama", ["ls"], {
+      timeout: 15_000,
+      env: { ...process.env, OLLAMA_HOST: baseUrl },
+    });
+    return parseOllamaListOutput(stdout);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const code =
+      err && typeof err === "object" && "code" in err ? (err as { code?: string }).code : undefined;
+    const stderr =
+      err && typeof err === "object" && "stderr" in err
+        ? String((err as { stderr?: unknown }).stderr ?? "")
+        : "";
+    if (code === "ENOENT") {
+      throw new AppError(
+        502,
+        ErrorCodes.OLLAMA_UNREACHABLE,
+        "Ollama CLI was not found. Install Ollama and ensure the `ollama` command is available on PATH.",
+        { cause: msg }
+      );
+    }
+    throw new AppError(
+      502,
+      ErrorCodes.OLLAMA_UNREACHABLE,
+      "Ollama is not reachable. Ensure Ollama is running and the endpoint is correct.",
+      {
+        baseUrl,
+        cause: [msg, stderr].filter(Boolean).join("\n"),
+      }
+    );
+  }
+}
+
 /**
  * Fetch models for a provider with request coalescing.
  * Concurrent requests for the same provider share a single API call to avoid rate limits.
@@ -375,7 +442,7 @@ async function resolveApiKey(
   return resolved?.key?.trim() ?? null;
 }
 
-// GET /models?provider=claude|claude-cli|cursor&projectId=... — List available models for the given provider
+// GET /models?provider=...&projectId=... — List available models for the given provider
 modelsRouter.get(
   "/",
   validateQuery(modelsListQuerySchema),
@@ -454,6 +521,23 @@ modelsRouter.get(
       const cacheKey = `lmstudio:${parsed.normalized}`;
       const models = await getModelsWithCoalescingByKey(cacheKey, () =>
         fetchLmStudioModels(parsed.normalized)
+      );
+      res.json({ data: models } as ApiResponse<ModelOption[]>);
+      return;
+    }
+
+    if (provider === "ollama") {
+      const baseUrlRaw = (req.query as { baseUrl?: string }).baseUrl;
+      const parsed = normalizeOllamaBaseUrl(baseUrlRaw);
+      if (!parsed.ok) {
+        res.status(400).json({
+          error: { code: ErrorCodes.INVALID_INPUT, message: parsed.error },
+        } as ApiErrorResponse);
+        return;
+      }
+      const cacheKey = `ollama:${parsed.normalized}`;
+      const models = await getModelsWithCoalescingByKey(cacheKey, () =>
+        fetchOllamaModels(parsed.normalized)
       );
       res.json({ data: models } as ApiResponse<ModelOption[]>);
       return;

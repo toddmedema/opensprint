@@ -5,6 +5,7 @@ import type { AgentConfig, EnvKeys } from "./AgentsStep";
 import { AgentProviderCliBanner } from "../AgentProviderCliBanner";
 
 const DEFAULT_LMSTUDIO_BASE_URL = "http://localhost:1234";
+const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
 import { hasNoApiKeys } from "../../utils/agentConfigDefaults";
 
 export interface SimplifiedAgentsStepProps {
@@ -50,6 +51,9 @@ export function SimplifiedAgentsStep({
   const usesCursor =
     simpleComplexityAgent.type === "cursor" || complexComplexityAgent.type === "cursor";
   const cursorCliMissing = envKeys && !envKeys.cursorCli && usesCursor;
+  const usesOllama =
+    simpleComplexityAgent.type === "ollama" || complexComplexityAgent.type === "ollama";
+  const ollamaCliMissing = envKeys && !envKeys.ollamaCli && usesOllama;
 
   return (
     <div className="space-y-6" data-testid="simplified-agents-step">
@@ -255,6 +259,7 @@ export function SimplifiedAgentsStep({
       )}
       {cursorCliMissing && <AgentProviderCliBanner kind="cursor" />}
       {claudeCliMissing && <AgentProviderCliBanner kind="claude" />}
+      {ollamaCliMissing && <AgentProviderCliBanner kind="ollama" />}
       {usesClaudeCli && !claudeCliMissing && (
         <div className="p-3 rounded-lg bg-theme-info-bg border border-theme-info-border">
           <p className="text-sm text-theme-info-text">
@@ -283,12 +288,19 @@ export function SimplifiedAgentsStep({
                 id="simplified-simple-provider-select"
                 className="input w-full"
                 value={simpleComplexityAgent.type}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const type = e.target.value as AgentType;
                   onSimpleComplexityAgentChange({
                     ...simpleComplexityAgent,
-                    type: e.target.value as AgentType,
-                  })
-                }
+                    type,
+                    baseUrl:
+                      type === "lmstudio"
+                        ? DEFAULT_LMSTUDIO_BASE_URL
+                        : type === "ollama"
+                          ? DEFAULT_OLLAMA_BASE_URL
+                          : simpleComplexityAgent.baseUrl,
+                  });
+                }}
               >
                 <option value="claude">Claude (API)</option>
                 <option value="claude-cli">Claude (CLI)</option>
@@ -296,10 +308,12 @@ export function SimplifiedAgentsStep({
                 <option value="openai">OpenAI</option>
                 <option value="google">Google (Gemini)</option>
                 <option value="lmstudio">LM Studio (local)</option>
+                <option value="ollama">Ollama (local)</option>
                 <option value="custom">Custom CLI</option>
               </select>
             </div>
-            {simpleComplexityAgent.type === "lmstudio" && (
+            {(simpleComplexityAgent.type === "lmstudio" ||
+              simpleComplexityAgent.type === "ollama") && (
               <div className="flex-1 min-w-[180px]">
                 <label
                   htmlFor="simplified-simple-base-url"
@@ -311,7 +325,11 @@ export function SimplifiedAgentsStep({
                   id="simplified-simple-base-url"
                   type="text"
                   className="input w-full font-mono text-sm"
-                  placeholder={DEFAULT_LMSTUDIO_BASE_URL}
+                  placeholder={
+                    simpleComplexityAgent.type === "ollama"
+                      ? DEFAULT_OLLAMA_BASE_URL
+                      : DEFAULT_LMSTUDIO_BASE_URL
+                  }
                   value={simpleComplexityAgent.baseUrl ?? ""}
                   onChange={(e) =>
                     onSimpleComplexityAgentChange({
@@ -339,8 +357,12 @@ export function SimplifiedAgentsStep({
                   }
                   refreshTrigger={modelRefreshTrigger}
                   baseUrl={
-                    simpleComplexityAgent.type === "lmstudio"
-                      ? simpleComplexityAgent.baseUrl || DEFAULT_LMSTUDIO_BASE_URL
+                    simpleComplexityAgent.type === "lmstudio" ||
+                    simpleComplexityAgent.type === "ollama"
+                      ? simpleComplexityAgent.baseUrl ||
+                        (simpleComplexityAgent.type === "ollama"
+                          ? DEFAULT_OLLAMA_BASE_URL
+                          : DEFAULT_LMSTUDIO_BASE_URL)
                       : undefined
                   }
                 />
@@ -383,12 +405,19 @@ export function SimplifiedAgentsStep({
                 id="simplified-complex-provider-select"
                 className="input w-full"
                 value={complexComplexityAgent.type}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const type = e.target.value as AgentType;
                   onComplexComplexityAgentChange({
                     ...complexComplexityAgent,
-                    type: e.target.value as AgentType,
-                  })
-                }
+                    type,
+                    baseUrl:
+                      type === "lmstudio"
+                        ? DEFAULT_LMSTUDIO_BASE_URL
+                        : type === "ollama"
+                          ? DEFAULT_OLLAMA_BASE_URL
+                          : complexComplexityAgent.baseUrl,
+                  });
+                }}
               >
                 <option value="claude">Claude (API)</option>
                 <option value="claude-cli">Claude (CLI)</option>
@@ -396,10 +425,12 @@ export function SimplifiedAgentsStep({
                 <option value="openai">OpenAI</option>
                 <option value="google">Google (Gemini)</option>
                 <option value="lmstudio">LM Studio (local)</option>
+                <option value="ollama">Ollama (local)</option>
                 <option value="custom">Custom CLI</option>
               </select>
             </div>
-            {complexComplexityAgent.type === "lmstudio" && (
+            {(complexComplexityAgent.type === "lmstudio" ||
+              complexComplexityAgent.type === "ollama") && (
               <div className="flex-1 min-w-[180px]">
                 <label
                   htmlFor="simplified-complex-base-url"
@@ -411,7 +442,11 @@ export function SimplifiedAgentsStep({
                   id="simplified-complex-base-url"
                   type="text"
                   className="input w-full font-mono text-sm"
-                  placeholder={DEFAULT_LMSTUDIO_BASE_URL}
+                  placeholder={
+                    complexComplexityAgent.type === "ollama"
+                      ? DEFAULT_OLLAMA_BASE_URL
+                      : DEFAULT_LMSTUDIO_BASE_URL
+                  }
                   value={complexComplexityAgent.baseUrl ?? ""}
                   onChange={(e) =>
                     onComplexComplexityAgentChange({
@@ -439,8 +474,12 @@ export function SimplifiedAgentsStep({
                   }
                   refreshTrigger={modelRefreshTrigger}
                   baseUrl={
-                    complexComplexityAgent.type === "lmstudio"
-                      ? complexComplexityAgent.baseUrl || DEFAULT_LMSTUDIO_BASE_URL
+                    complexComplexityAgent.type === "lmstudio" ||
+                    complexComplexityAgent.type === "ollama"
+                      ? complexComplexityAgent.baseUrl ||
+                        (complexComplexityAgent.type === "ollama"
+                          ? DEFAULT_OLLAMA_BASE_URL
+                          : DEFAULT_LMSTUDIO_BASE_URL)
                       : undefined
                   }
                 />

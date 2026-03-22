@@ -2,7 +2,7 @@ import { z } from "zod";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 
-/** Agent type: claude, cursor, openai, lmstudio, or custom CLI (PRD §6.3) */
+/** Agent type: claude, cursor, openai, google, lmstudio, ollama, or custom CLI (PRD §6.3) */
 const agentTypeSchema = z.enum([
   "claude",
   "claude-cli",
@@ -11,6 +11,7 @@ const agentTypeSchema = z.enum([
   "openai",
   "google",
   "lmstudio",
+  "ollama",
 ]);
 
 const httpOrHttps = /^https?:\/\/.+$/i;
@@ -28,8 +29,8 @@ const baseUrlSchema = z
 /**
  * Agent configuration schema (PRD §6.3, §10.2).
  * simpleComplexityAgent and complexComplexityAgent: { type, model, cliCommand, baseUrl? }
- * - claude/cursor/openai/google/lmstudio: model used when invoking; cliCommand null
- * - lmstudio: optional baseUrl (default elsewhere); must be http/https, no trailing slash
+ * - claude/cursor/openai/google/lmstudio/ollama: model used when invoking; cliCommand null
+ * - lmstudio/ollama: optional baseUrl (default elsewhere); must be http/https, no trailing slash
  * - custom: cliCommand required; model null
  */
 export const agentConfigSchema = z
@@ -40,10 +41,10 @@ export const agentConfigSchema = z
     baseUrl: baseUrlSchema,
   })
   .superRefine((data, ctx) => {
-    if (data.type === "lmstudio" && data.baseUrl === "") {
+    if ((data.type === "lmstudio" || data.type === "ollama") && data.baseUrl === "") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "baseUrl cannot be empty when type is lmstudio",
+        message: `baseUrl cannot be empty when type is ${data.type}`,
         path: ["baseUrl"],
       });
     }

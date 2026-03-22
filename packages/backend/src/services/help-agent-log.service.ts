@@ -34,6 +34,8 @@ const PROVIDER_LABELS: Record<string, string> = {
   "claude-cli": "Claude CLI",
   openai: "OpenAI",
   google: "Google",
+  lmstudio: "LM Studio",
+  ollama: "Ollama",
   custom: "Custom",
 };
 
@@ -44,6 +46,8 @@ const DEFAULT_MODEL_DISPLAY: Record<string, string> = {
   "claude-cli": "Claude CLI",
   openai: "OpenAI",
   google: "Google",
+  lmstudio: "LM Studio",
+  ollama: "Ollama",
   custom: "Custom",
 };
 

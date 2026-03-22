@@ -1,6 +1,6 @@
 import path from "path";
 import { fileURLToPath } from "url";
-import { defineConfig } from "vite";
+import { defineConfig, type PluginOption } from "vite";
 import react from "@vitejs/plugin-react";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -9,8 +9,14 @@ function isNodeModule(id: string, packageName: string) {
   return id.includes(`/node_modules/${packageName}/`);
 }
 
+// The frontend workspace currently resolves Vite types from two locations during `tsc -b`
+// (workspace-local Vite for the CLI and hoisted Vite via Vitest). The runtime build uses the
+// local Vite binary successfully; this cast prevents the config typecheck from comparing the
+// two incompatible plugin type trees.
+const reactPlugin = react() as unknown as PluginOption;
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [reactPlugin],
   build: {
     manifest: true,
     rollupOptions: {

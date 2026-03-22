@@ -9,9 +9,12 @@ export interface AgentProviderCliBannerProps {
 }
 
 /**
- * Warning + optional install for agent CLIs (Cursor). Claude kind is docs-only (no install API).
+ * Warning + optional install for agent CLIs (Cursor). Claude/Ollama are docs-only.
  */
-export function AgentProviderCliBanner({ kind, onInstallAttemptComplete }: AgentProviderCliBannerProps) {
+export function AgentProviderCliBanner({
+  kind,
+  onInstallAttemptComplete,
+}: AgentProviderCliBannerProps) {
   const [installing, setInstalling] = useState(false);
   const [installResult, setInstallResult] = useState<{ success: boolean; message: string } | null>(
     null
@@ -62,6 +65,29 @@ export function AgentProviderCliBanner({ kind, onInstallAttemptComplete }: Agent
             {installResult.message}
           </p>
         )}
+      </div>
+    );
+  }
+
+  if (kind === "ollama") {
+    return (
+      <div
+        className="p-3 rounded-lg bg-theme-warning-bg border border-theme-warning-border"
+        data-testid="agent-provider-cli-banner-ollama"
+      >
+        <p className="text-sm text-theme-warning-text">
+          <strong>Ollama CLI not found.</strong> Install Ollama from{" "}
+          <a
+            href="https://ollama.com/download"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline hover:opacity-80"
+          >
+            ollama.com/download
+          </a>{" "}
+          and ensure the <code className="font-mono text-xs">ollama</code> command is available in
+          your terminal.
+        </p>
       </div>
     );
   }
