@@ -1307,10 +1307,49 @@ app.whenReady().then(async () => {
   setupAutoUpdater();
 });
 
+const DAILY_UPDATE_CHECK_MS = 24 * 60 * 60 * 1000;
+let lastUpdateCheckTimestamp: string | null = null;
+let dailyUpdateTimer: ReturnType<typeof setInterval> | null = null;
+
+function persistLastUpdateCheck(): void {
+  lastUpdateCheckTimestamp = new Date().toISOString();
+  try {
+    const configDir = path.join(os.homedir(), ".opensprint");
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(configDir, "last-update-check.json"),
+      JSON.stringify({ timestamp: lastUpdateCheckTimestamp })
+    );
+  } catch {
+    // Non-critical — the timestamp is still held in memory.
+  }
+}
+
+function loadLastUpdateCheck(): void {
+  try {
+    const raw = fs.readFileSync(
+      path.join(os.homedir(), ".opensprint", "last-update-check.json"),
+      "utf-8"
+    );
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.timestamp === "string") {
+      lastUpdateCheckTimestamp = parsed.timestamp;
+    }
+  } catch {
+    // No file yet — will be created on first check.
+  }
+}
+
+function performUpdateCheck(): void {
+  void autoUpdater.checkForUpdatesAndNotify();
+  persistLastUpdateCheck();
+}
+
 function setupAutoUpdater(): void {
   if (!app.isPackaged) return;
 
   autoUpdater.allowPrerelease = false;
+  loadLastUpdateCheck();
 
   autoUpdater.on("update-available", () => {
     console.log("Update available; downloading in background.");
@@ -1343,10 +1382,29 @@ function setupAutoUpdater(): void {
     console.error("Auto-updater error:", err.message);
   });
 
-  // Defer check so startup is not blocked.
+  // Deferred initial check so startup is not blocked.
   setTimeout(() => {
-    void autoUpdater.checkForUpdatesAndNotify();
+    performUpdateCheck();
   }, 3000);
+
+  // Recurring daily background check.
+  dailyUpdateTimer = setInterval(() => {
+    performUpdateCheck();
+  }, DAILY_UPDATE_CHECK_MS);
+
+  // IPC: manual check triggered from the renderer.
+  ipcMain.handle("updater:checkForUpdates", async () => {
+    performUpdateCheck();
+    return { lastCheckTimestamp: lastUpdateCheckTimestamp };
+  });
+
+  // IPC: get version + last check timestamp without triggering a new check.
+  ipcMain.handle("updater:getStatus", () => {
+    return {
+      version: app.getVersion(),
+      lastCheckTimestamp: lastUpdateCheckTimestamp,
+    };
+  });
 }
 
 app.on("activate", () => {
@@ -1364,6 +1422,10 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", (event) => {
   isQuitting = true;
+  if (dailyUpdateTimer) {
+    clearInterval(dailyUpdateTimer);
+    dailyUpdateTimer = null;
+  }
   if (trayRefreshInterval) {
     clearInterval(trayRefreshInterval);
     trayRefreshInterval = null;

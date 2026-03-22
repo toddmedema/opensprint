@@ -48,6 +48,15 @@ contextBridge.exposeInMainWorld("electron", {
     }>,
   restartBackendWithPath: (pathOverride?: string) =>
     ipcRenderer.invoke("backend:restartWithPath", pathOverride) as Promise<void>,
+  checkForUpdates: () =>
+    ipcRenderer.invoke("updater:checkForUpdates") as Promise<{
+      lastCheckTimestamp: string | null;
+    }>,
+  getUpdateStatus: () =>
+    ipcRenderer.invoke("updater:getStatus") as Promise<{
+      version: string;
+      lastCheckTimestamp: string | null;
+    }>,
   minimizeWindow: () => ipcRenderer.invoke("window-minimize"),
   maximizeWindow: () => ipcRenderer.invoke("window-maximize"),
   closeWindow: () => ipcRenderer.invoke("window-close"),

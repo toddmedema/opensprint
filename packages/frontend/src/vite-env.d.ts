@@ -30,6 +30,11 @@ declare global {
         platform: string;
       }>;
       restartBackendWithPath?: (pathOverride?: string) => Promise<void>;
+      checkForUpdates?: () => Promise<{ lastCheckTimestamp: string | null }>;
+      getUpdateStatus?: () => Promise<{
+        version: string;
+        lastCheckTimestamp: string | null;
+      }>;
       minimizeWindow?: () => Promise<void>;
       maximizeWindow?: () => Promise<void>;
       closeWindow?: () => Promise<void>;

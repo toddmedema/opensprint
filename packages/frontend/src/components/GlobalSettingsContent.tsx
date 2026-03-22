@@ -78,6 +78,8 @@ export interface GlobalSettingsContentProps {
  * Used by both the homepage Settings page and the project-view Global settings tab.
  * All settings and inputs are defined here; adding a new setting requires changes in only one location.
  */
+const isElectron = typeof window !== "undefined" && !!window.electron?.isElectron;
+
 export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsContentProps = {}) {
   const queryClient = useQueryClient();
   const { preference: themePreference, setTheme } = useTheme();
@@ -108,6 +110,9 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
   const [upgradePostgresUrl, setUpgradePostgresUrl] = useState("");
   const [upgradeLoading, setUpgradeLoading] = useState(false);
   const [upgradeError, setUpgradeError] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [lastUpdateCheck, setLastUpdateCheck] = useState<string | null>(null);
+  const [updateChecking, setUpdateChecking] = useState(false);
   const initialLoadRef = useRef(true);
   const lastSyncedDatabaseUrlRef = useRef("");
 
@@ -172,6 +177,14 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
         setDatabaseUrlLoading(false);
         initialLoadRef.current = false;
       });
+  }, []);
+
+  useEffect(() => {
+    if (!isElectron || !window.electron?.getUpdateStatus) return;
+    window.electron.getUpdateStatus().then((status) => {
+      setAppVersion(status.version);
+      setLastUpdateCheck(status.lastCheckTimestamp);
+    }).catch(() => {});
   }, []);
 
   // Debounced save for database URL when value changes (immediate save on change)
@@ -686,7 +699,7 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
           ))}
         </select>
       </div>
-      {typeof window !== "undefined" && window.electron?.isElectron && (
+      {isElectron && (
         <div data-testid="desktop-notification-dot-section">
           <label
             htmlFor="show-notification-dot-in-menu-bar"
@@ -747,6 +760,43 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
             When unchecked, the number of running agents will not appear next to the menu bar icon
             (macOS).
           </p>
+        </div>
+      )}
+      {isElectron && appVersion && (
+        <div data-testid="update-check-section">
+          <h3 className="text-sm font-semibold text-theme-text">Software updates</h3>
+          <p className="text-xs text-theme-muted mb-3">
+            Version {appVersion}
+            {lastUpdateCheck && (
+              <span className="ml-1">
+                &middot; Last checked{" "}
+                {new Date(lastUpdateCheck).toLocaleString(undefined, {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}
+              </span>
+            )}
+          </p>
+          <button
+            type="button"
+            disabled={updateChecking}
+            onClick={async () => {
+              if (!window.electron?.checkForUpdates) return;
+              setUpdateChecking(true);
+              try {
+                const result = await window.electron.checkForUpdates();
+                setLastUpdateCheck(result.lastCheckTimestamp);
+              } catch {
+                // Updater errors are surfaced via the native dialog.
+              } finally {
+                setUpdateChecking(false);
+              }
+            }}
+            className="btn-secondary"
+            data-testid="check-for-updates-button"
+          >
+            {updateChecking ? "Checking…" : "Check for updates"}
+          </button>
         </div>
       )}
     </div>
