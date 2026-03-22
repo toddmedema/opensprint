@@ -1075,7 +1075,8 @@ export class MergeCoordinatorService {
     repoPath: string,
     task: StoredTask,
     baseBranch: string,
-    failure: MergeQualityGateFailure
+    failure: MergeQualityGateFailure,
+    taskWorktreePath: string
   ): Promise<void> {
     const detail = this.buildBaselineQualityGateDetail(failure);
     const firstErrorLine = this.getQualityGateFirstErrorLine(failure);
@@ -1086,12 +1087,12 @@ export class MergeCoordinatorService {
         this.getQualityGateFirstErrorLine(failure),
         QUALITY_GATE_OUTPUT_SNIPPET_LIMIT
       );
-    const worktreePath = failure.worktreePath ?? repoPath;
+    const failureWorktreePath = failure.worktreePath ?? repoPath;
     const qualityGateDetail = {
       command: failure.command,
       reason: failedGateReason,
       outputSnippet: failedGateOutputSnippet,
-      worktreePath,
+      worktreePath: failureWorktreePath,
       firstErrorLine,
       category: failure.category ?? "quality_gate",
       validationWorkspace: failure.validationWorkspace ?? null,
@@ -1108,7 +1109,7 @@ export class MergeCoordinatorService {
     const remediationAction = isEnvironmentSetupFailure
       ? this.buildEnvironmentSetupRemediation({
           command: failure.command,
-          worktreePath,
+          worktreePath: failureWorktreePath,
         })
       : null;
     const nextAction = remediationAction ?? "Paused until baseline quality gates pass";
@@ -1158,7 +1159,7 @@ export class MergeCoordinatorService {
         failedGateCommand: failure.command,
         failedGateReason,
         failedGateOutputSnippet,
-        worktreePath,
+        worktreePath: taskWorktreePath,
         qualityGateCategory: failure.category ?? "quality_gate",
         qualityGateValidationWorkspace: failure.validationWorkspace ?? null,
         qualityGateAutoRepairAttempted: failure.autoRepairAttempted ?? false,
@@ -1203,7 +1204,7 @@ export class MergeCoordinatorService {
           failedGateCommand: failure.command,
           failedGateReason,
           failedGateOutputSnippet,
-          worktreePath,
+          worktreePath: failureWorktreePath,
           qualityGateExecutable: failure.executable ?? null,
           qualityGateCwd: failure.cwd ?? null,
           qualityGateExitCode: failure.exitCode ?? null,
@@ -1229,7 +1230,7 @@ export class MergeCoordinatorService {
           failedGateCommand: failure.command,
           failedGateReason,
           failedGateOutputSnippet,
-          worktreePath,
+          worktreePath: failureWorktreePath,
           qualityGateCategory: failure.category ?? "quality_gate",
           qualityGateValidationWorkspace: failure.validationWorkspace ?? null,
           qualityGateAutoRepairAttempted: failure.autoRepairAttempted ?? false,
@@ -1251,7 +1252,7 @@ export class MergeCoordinatorService {
       failedGateCommand: failure.command,
       failedGateReason,
       failedGateOutputSnippet,
-      worktreePath,
+      worktreePath: failureWorktreePath,
     });
     this.broadcastTaskRequeuedWs(projectId, task.id, {
       cumulativeAttempts: attempt,
@@ -1263,7 +1264,7 @@ export class MergeCoordinatorService {
       failedGateCommand: failure.command,
       failedGateReason,
       failedGateOutputSnippet,
-      worktreePath,
+      worktreePath: failureWorktreePath,
     });
   }
 
@@ -1555,7 +1556,8 @@ export class MergeCoordinatorService {
               repoPath,
               task,
               baseBranch,
-              baselineFailure
+              baselineFailure,
+              wtPath
             );
             await this.releaseMergeSlot(projectId, repoPath, "fail", task.id);
             this.host.nudge(projectId);
@@ -1574,6 +1576,7 @@ export class MergeCoordinatorService {
           taskId: task.id,
           branchName,
           baseBranch,
+          validationWorkspace: "task_worktree",
         });
         await gitCommitQueue.drain();
         await gitCommitQueue.enqueueAndWait({
@@ -1632,7 +1635,8 @@ export class MergeCoordinatorService {
             repoPath,
             task,
             baseBranch,
-            baselineFailure
+            baselineFailure,
+            wtPath
           );
           await this.releaseMergeSlot(projectId, repoPath, "fail", task.id);
           this.host.nudge(projectId);
@@ -1651,6 +1655,7 @@ export class MergeCoordinatorService {
         taskId: task.id,
         branchName,
         baseBranch,
+        validationWorkspace: "task_worktree",
       });
       await gitCommitQueue.drain();
       await gitCommitQueue.enqueueAndWait({

@@ -2106,6 +2106,7 @@ export class OrchestratorService {
           taskId: task.id,
           branchName,
           baseBranch,
+          validationWorkspace: "task_worktree",
         });
         if (qualityGateFailure) {
           const detail = this.applyQualityGateFailure(slot.phaseResult, qualityGateFailure, wtPath);
@@ -2474,6 +2475,7 @@ export class OrchestratorService {
             taskId: task.id,
             branchName,
             baseBranch,
+            validationWorkspace: "task_worktree",
           });
           if (qualityGateFailure) {
             const detail = this.applyQualityGateFailure(sl.phaseResult, qualityGateFailure, wtPath);

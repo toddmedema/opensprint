@@ -571,6 +571,37 @@ async function repairQualityGateEnvironment(
         }`
       );
     }
+  } else {
+    // Non-baseline worktrees: restore missing tracked files (e.g. package.json)
+    // from the git index. Unlike baseline repair which recreates the entire worktree,
+    // this targeted checkout fixes corrupted/cleaned worktrees without losing changes.
+    const packageJsonPath = path.join(worktreePath, "package.json");
+    let packageJsonMissing = false;
+    try {
+      await fs.access(packageJsonPath);
+    } catch {
+      packageJsonMissing = true;
+    }
+    if (packageJsonMissing) {
+      commands.push("git checkout HEAD -- package.json");
+      try {
+        await deps.runCommand(
+          {
+            command: "git",
+            args: ["checkout", "HEAD", "--", "package.json"],
+          },
+          {
+            cwd: worktreePath,
+            timeout: QUALITY_GATE_PRECHECK_TIMEOUT_MS,
+          }
+        );
+      } catch (err) {
+        recreateSucceeded = false;
+        outputParts.push(
+          `[git checkout package.json] ${getErrorMessage(err)}`
+        );
+      }
+    }
   }
 
   let npmCiSucceeded = false;

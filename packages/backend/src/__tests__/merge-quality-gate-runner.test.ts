@@ -244,6 +244,6 @@ src/server.ts(19,3): error TS2552: Cannot find name 'handler'. Did you mean 'Hea
         command: "npm run build",
       })
     );
-    expect(getExecutedCommands(runCommand)).toEqual(["npm ci"]);
+    expect(getExecutedCommands(runCommand)).toEqual(["git checkout HEAD -- package.json", "npm ci"]);
   });
 });
