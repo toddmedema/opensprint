@@ -76,7 +76,6 @@ export function ExecutePhase({
 }: ExecutePhaseProps) {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const gitMergeQueue = useAppSelector((s) => s.execute?.gitMergeQueue ?? null);
   useEffect(() => {
     dispatch(clearPhaseUnread({ projectId, phase: "execute" }));
   }, [dispatch, projectId]);
@@ -636,7 +635,6 @@ export function ExecutePhase({
                 projectId={projectId}
                 teamMembers={projectSettingsQuery.data?.teamMembers ?? []}
                 enableHumanTeammates={projectSettingsQuery.data?.enableHumanTeammates ?? false}
-                gitMergeQueue={gitMergeQueue}
               />
             </>
           )}

@@ -156,12 +156,10 @@ describe("TimelineList", () => {
     expect(waitingToMergeIdx).toBeLessThan(inProgressIdx);
 
     const row = screen.getByTestId("timeline-row-w");
-    expect(within(row).getByTestId("timeline-waiting-to-merge-badge")).toBeInTheDocument();
-    const waitingBadge = row.querySelector('[title="Waiting to Merge"]');
-    expect(waitingBadge).toBeTruthy();
+    expect(within(row).queryByTestId("timeline-waiting-to-merge-badge")).not.toBeInTheDocument();
   });
 
-  it("waiting_to_merge row shows badge and tooltip includes Blocked on main when mergeWaitingOnMain", () => {
+  it("waiting_to_merge row does not show inline merge-state badge or text", () => {
     const tasks = [
       createMockTask({
         id: "w",
@@ -177,17 +175,14 @@ describe("TimelineList", () => {
     );
 
     const row = screen.getByTestId("timeline-row-w");
-    const wrap = within(row).getByTestId("timeline-waiting-to-merge-badge");
-    expect(wrap).toBeInTheDocument();
-    const titled = wrap.querySelector("[title]");
-    expect(titled).toHaveAttribute("title", "Waiting to Merge · Blocked on main");
-    expect(within(row).getByTestId("timeline-waiting-to-merge-inline-hint")).toHaveTextContent(
-      "Blocked on main"
-    );
-    expect(screen.queryByText(/Retry eligible/i)).not.toBeInTheDocument();
+    expect(within(row).queryByTestId("timeline-waiting-to-merge-badge")).not.toBeInTheDocument();
+    expect(
+      within(row).queryByTestId("timeline-waiting-to-merge-inline-hint")
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Blocked on main/i)).not.toBeInTheDocument();
   });
 
-  it("waiting_to_merge row tooltip includes Retry eligible when mergePausedUntil is set", () => {
+  it("waiting_to_merge row does not show merge retry hint inline", () => {
     vi.useFakeTimers({ now: new Date("2024-06-01T12:00:00Z").getTime() });
 
     const tasks = [
@@ -204,9 +199,8 @@ describe("TimelineList", () => {
       <TimelineList tasks={tasks} plans={plans} onTaskSelect={vi.fn()} {...defaultListProps} />
     );
 
-    const wrap = screen.getByTestId("timeline-waiting-to-merge-badge");
-    const titled = wrap.querySelector("[title]");
-    expect(titled).toHaveAttribute("title", "Waiting to Merge · Retry eligible soon");
+    expect(screen.queryByTestId("timeline-waiting-to-merge-badge")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Retry eligible/i)).not.toBeInTheDocument();
   });
 
   it("displays Up Next section when backlog/planning tasks exist", () => {
