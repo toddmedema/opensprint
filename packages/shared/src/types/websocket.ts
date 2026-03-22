@@ -317,6 +317,18 @@ export interface TaskRequeuedEvent {
   worktreePath?: string | null;
 }
 
+/**
+ * Scheduling deferral: branch/worktree is held by another active agent.
+ * Task stays open/unassigned; not a coding or merge failure.
+ */
+export interface TaskDispatchDeferredEvent {
+  type: "task.dispatch_deferred";
+  taskId: string;
+  reason: string;
+  otherTaskId?: string | null;
+  otherWorktreePath?: string | null;
+}
+
 /** Deliver phase events (PRDv2 Deliver phase) */
 export interface DeliverStartedEvent {
   type: "deliver.started";
@@ -352,6 +364,7 @@ export type ServerEvent =
   | TaskBlockedEvent
   | MergeFailedEvent
   | TaskRequeuedEvent
+  | TaskDispatchDeferredEvent
   | DeliverStartedEvent
   | DeliverCompletedEvent
   | DeliverOutputEvent

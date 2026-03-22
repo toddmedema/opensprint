@@ -464,6 +464,7 @@ export const websocketMiddleware: Middleware = (storeApi) => {
 
       case "merge.failed":
       case "task.requeued":
+      case "task.dispatch_deferred":
         void qc.invalidateQueries({
           queryKey: queryKeys.tasks.detail(projectId, event.taskId),
         });

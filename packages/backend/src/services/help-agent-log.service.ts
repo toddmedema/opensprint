@@ -160,6 +160,17 @@ function summarizeAttemptEvent(event: string, data: JsonRecord): AttemptVerdict 
     };
   }
 
+  if (event === "task.dispatch_deferred") {
+    return {
+      phase: phaseFromUnknown(data.phase, "orchestrator"),
+      outcome: "requeued",
+      summary:
+        asString(data.reason) ??
+        "Dispatch deferred: branch or worktree in use by another agent",
+      failureType: asString(data.failureType),
+    };
+  }
+
   if (event === "task.demoted") {
     return {
       phase: phaseFromUnknown(data.phase, "orchestrator"),

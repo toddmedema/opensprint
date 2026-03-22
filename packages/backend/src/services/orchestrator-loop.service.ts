@@ -9,7 +9,8 @@ import {
   getProviderForAgentType,
   isAgentAssignee,
 } from "@opensprint/shared";
-import type { StoredTask, TaskStoreService } from "./task-store.service.js";
+import { resolveEpicId, type StoredTask, type TaskStoreService } from "./task-store.service.js";
+import { eventLogService } from "./event-log.service.js";
 import type { TimerRegistry } from "./timer-registry.js";
 import { notificationService } from "./notification.service.js";
 import { broadcastToProject } from "../websocket/index.js";
@@ -22,6 +23,9 @@ import { WorktreeBranchInUseError } from "./branch-manager.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 
 const log = createLogger("orchestrator-loop");
+
+/** Debounced nudge after worktree branch contention so the task retries without a false "failed" signal. */
+const WORKTREE_DEFER_NUDGE_MS = 8_000;
 
 /** If runLoop is blocked in an await longer than this, force recovery so nudge can start a fresh loop. */
 const LOOP_STUCK_GUARD_MS = 5 * 60 * 1000;
@@ -74,6 +78,7 @@ export interface OrchestratorLoopHost {
       gitWorkingMode?: "worktree" | "branches";
       maxConcurrentCoders?: number;
       unknownScopeStrategy?: string;
+      mergeStrategy?: string;
     }>;
   };
   getTaskStore(): {
@@ -102,6 +107,26 @@ export interface OrchestratorLoopHost {
 
 export class OrchestratorLoopService {
   constructor(private host: OrchestratorLoopHost) {}
+
+  private collectActiveWorktreeKeys(state: LoopState): Set<string> {
+    const keys = new Set<string>();
+    for (const slot of state.slots.values()) {
+      const s = slot as { worktreeKey?: string; taskId: string };
+      keys.add(s.worktreeKey ?? s.taskId);
+    }
+    return keys;
+  }
+
+  /** Matches dispatch worktree key logic in OrchestratorDispatchService (per-epic shared branch). */
+  private dispatchWorktreeKey(
+    task: StoredTask,
+    mergeStrategy: string,
+    allIssues: StoredTask[]
+  ): string {
+    const epicId = resolveEpicId(task.id, allIssues);
+    const useEpicBranch = mergeStrategy === "per_epic" && epicId != null;
+    return useEpicBranch ? `epic_${epicId}` : task.id;
+  }
 
   private isBaselineQualityGateRemediationTask(task: StoredTask): boolean {
     const source = (task as { source?: unknown }).source;
@@ -248,7 +273,7 @@ export class OrchestratorLoopService {
         }
       }
 
-      const dispatchableTasks: SchedulerResult[] = [];
+      let dispatchableTasks: SchedulerResult[] = [];
       let skippedForProviderExhaustion = 0;
       let skippedForProviderBackoff = 0;
       for (const st of selected) {
@@ -281,6 +306,24 @@ export class OrchestratorLoopService {
         }
         dispatchableTasks.push(st);
       }
+
+      const mergeStrategy = settings.mergeStrategy ?? "per_task";
+      const worktreeKeysPlanned = this.collectActiveWorktreeKeys(state);
+      const epicAwareDispatch: SchedulerResult[] = [];
+      for (const st of dispatchableTasks) {
+        const key = this.dispatchWorktreeKey(st.task, mergeStrategy, allIssues);
+        if (worktreeKeysPlanned.has(key)) {
+          log.info("Skipping task: shared epic/worktree branch already active", {
+            projectId,
+            taskId: st.task.id,
+            worktreeKey: key,
+          });
+          continue;
+        }
+        worktreeKeysPlanned.add(key);
+        epicAwareDispatch.push(st);
+      }
+      dispatchableTasks = epicAwareDispatch;
 
       const maxNewTasksThisPass = Math.min(
         slotsAvailable,
@@ -323,32 +366,52 @@ export class OrchestratorLoopService {
           );
         } catch (error) {
           if (error instanceof WorktreeBranchInUseError) {
-            const failedTask = selectedTask.task;
-            log.warn("Worktree branch in use by active agent, failing task and freeing slot", {
+            const deferredTask = selectedTask.task;
+            log.warn("Worktree branch in use by active agent; deferring dispatch (not a task failure)", {
               projectId,
-              taskId: failedTask.id,
+              taskId: deferredTask.id,
               otherPath: error.otherPath,
               otherTaskId: error.otherTaskId,
             });
-            this.host.removeSlot(state, failedTask.id);
+            this.host.removeSlot(state, deferredTask.id);
             try {
-              await taskStore.update(projectId, failedTask.id, {
+              await taskStore.update(projectId, deferredTask.id, {
                 status: "open",
                 assignee: "",
               });
             } catch (revertErr) {
               log.warn("Failed to revert task status", {
-                taskId: failedTask.id,
+                taskId: deferredTask.id,
                 err: revertErr,
               });
             }
+            const reason = error.message.slice(0, 500);
+            eventLogService
+              .append(repoPath, {
+                timestamp: new Date().toISOString(),
+                projectId,
+                taskId: deferredTask.id,
+                event: "task.dispatch_deferred",
+                data: {
+                  phase: "dispatch",
+                  failureType: "worktree_branch_in_use",
+                  otherTaskId: error.otherTaskId ?? null,
+                  otherWorktreePath: error.otherPath ?? null,
+                  reason,
+                },
+              })
+              .catch(() => {});
             broadcastToProject(projectId, {
-              type: "agent.completed",
-              taskId: failedTask.id,
-              status: "failed",
-              testResults: null,
-              reason: error.message.slice(0, 500),
+              type: "task.dispatch_deferred",
+              taskId: deferredTask.id,
+              reason,
+              otherTaskId: error.otherTaskId ?? null,
+              otherWorktreePath: error.otherPath ?? null,
             });
+            state.globalTimers.clear("worktreeBranchDeferNudge");
+            state.globalTimers.setTimeout("worktreeBranchDeferNudge", () => {
+              this.host.nudge(projectId);
+            }, WORKTREE_DEFER_NUDGE_MS);
             await this.broadcastExecuteStatus(projectId);
             continue;
           }

@@ -15,6 +15,7 @@ export * from "./types/deploy.js";
 export * from "./types/api.js";
 export * from "./runtime-policy.js";
 export * from "./types/websocket.js";
+export * from "./types/failure-metrics.js";
 export * from "./types/workflow.js";
 
 // Constants

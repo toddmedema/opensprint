@@ -96,6 +96,22 @@ export class EventLogService {
       data: r.data ? (JSON.parse(r.data as string) as Record<string, unknown>) : undefined,
     }));
   }
+
+  /** Read events for a project since an ISO timestamp (inclusive), oldest first. */
+  async readSinceByProjectId(projectId: string, sinceIso: string): Promise<OrchestratorEvent[]> {
+    const client = await taskStore.getDb();
+    const rows = await client.query(
+      "SELECT task_id, timestamp, event, data FROM orchestrator_events WHERE project_id = $1 AND timestamp >= $2 ORDER BY id ASC",
+      [projectId, sinceIso]
+    );
+    return rows.map((r) => ({
+      timestamp: r.timestamp as string,
+      projectId,
+      taskId: r.task_id as string,
+      event: r.event as string,
+      data: r.data ? (JSON.parse(r.data as string) as Record<string, unknown>) : undefined,
+    }));
+  }
 }
 
 export const eventLogService = new EventLogService();

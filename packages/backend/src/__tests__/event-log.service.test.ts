@@ -118,4 +118,22 @@ describe.skipIf(!eventLogPostgresOk)("EventLogService", () => {
     const events = await service.readForTask(tmpDir, "task-1");
     expect(events[0].data).toEqual({ failureType: "timeout", attempt: 3 });
   });
+
+  it("readSinceByProjectId returns events for a project id and time window", async () => {
+    if (!testClientRef.current) throw new Error("Postgres required");
+    const pid = `elog-proj-${Date.now()}`;
+    const ts = "2026-03-15T12:00:00.000Z";
+    await testClientRef.current.execute(
+      `INSERT INTO orchestrator_events (project_id, task_id, timestamp, event, data) VALUES ($1, $2, $3, $4, $5)`,
+      [pid, "t1", ts, "task.dispatch_deferred", '{"failureType":"worktree_branch_in_use"}']
+    );
+    const rows = await service.readSinceByProjectId(pid, "2026-03-01T00:00:00.000Z");
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    const last = rows[rows.length - 1]!;
+    expect(last.event).toBe("task.dispatch_deferred");
+    expect(last.data?.failureType).toBe("worktree_branch_in_use");
+    await testClientRef.current.execute(`DELETE FROM orchestrator_events WHERE project_id = $1`, [
+      pid,
+    ]);
+  });
 });

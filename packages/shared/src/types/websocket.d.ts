@@ -280,6 +280,14 @@ export interface TaskRequeuedEvent {
   failedGateOutputSnippet?: string | null;
   worktreePath?: string | null;
 }
+/** Scheduling deferral: branch/worktree held by another active agent. */
+export interface TaskDispatchDeferredEvent {
+  type: "task.dispatch_deferred";
+  taskId: string;
+  reason: string;
+  otherTaskId?: string | null;
+  otherWorktreePath?: string | null;
+}
 /** Deliver phase events (PRDv2 Deliver phase) */
 export interface DeliverStartedEvent {
   type: "deliver.started";
@@ -312,6 +320,7 @@ export type ServerEvent =
   | TaskBlockedEvent
   | MergeFailedEvent
   | TaskRequeuedEvent
+  | TaskDispatchDeferredEvent
   | DeliverStartedEvent
   | DeliverCompletedEvent
   | DeliverOutputEvent

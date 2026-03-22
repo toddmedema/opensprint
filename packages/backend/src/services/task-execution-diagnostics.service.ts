@@ -578,6 +578,24 @@ function summarizeEvent(event: OrchestratorEvent): TaskExecutionEventItem | null
     );
   }
 
+  if (event.event === "task.dispatch_deferred") {
+    const reason = asString(data.reason) ?? "Branch or worktree in use by another agent";
+    const holder = asString(data.otherTaskId);
+    const summary = holder
+      ? compactExecutionText(`${reason} (active task ${holder})`, 400)
+      : compactExecutionText(reason, 400);
+    return {
+      at: event.timestamp,
+      attempt,
+      phase: "orchestrator",
+      outcome: "requeued",
+      title: "Dispatch deferred",
+      summary,
+      failureType: asString(data.failureType) ?? "worktree_branch_in_use",
+      nextAction: "Will retry when the shared branch/worktree is free",
+    };
+  }
+
   if (event.event === "task.demoted") {
     const phase = phaseFromUnknown(data.phase, "orchestrator");
     const qualityGateDetail = extractQualityGateDetail(data);

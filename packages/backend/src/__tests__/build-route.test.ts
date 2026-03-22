@@ -153,6 +153,31 @@ describe.skipIf(!buildRoutePostgresOk)("Execute API", () => {
     });
   });
 
+  describe("GET /projects/:projectId/execute/failure-metrics", () => {
+    it("returns rollup structure for the project", async () => {
+      const res = await request(app).get(
+        `${API_PREFIX}/projects/${projectId}/execute/failure-metrics`
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject({
+        projectId,
+        totalEventsMatched: expect.any(Number),
+        buckets: expect.any(Array),
+      });
+      expect(res.body.data.since).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(res.body.data.until).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    });
+
+    it("accepts optional days query (capped)", async () => {
+      const res = await request(app).get(
+        `${API_PREFIX}/projects/${projectId}/execute/failure-metrics?days=7`
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.data.buckets).toEqual([]);
+    });
+  });
+
   describe("POST /projects/:projectId/execute/nudge", () => {
     it("should accept nudge and return status", async () => {
       const res = await request(app).post(`${API_PREFIX}/projects/${projectId}/execute/nudge`);

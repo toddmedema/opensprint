@@ -6,15 +6,25 @@ import {
   taskIdParamSchema,
   executePrepareBodySchema,
   executeEventsQuerySchema,
+  executeFailureMetricsQuerySchema,
 } from "../schemas/request-common.js";
 import { orchestratorService } from "../services/orchestrator.service.js";
 import type { TaskService } from "../services/task.service.js";
 import { eventLogService, type OrchestratorEvent } from "../services/event-log.service.js";
 import type { ProjectService } from "../services/project.service.js";
 import type { SessionManager } from "../services/session-manager.js";
-import type { ApiResponse, OrchestratorStatus, TaskExecutionDiagnostics } from "@opensprint/shared";
+import type {
+  ApiResponse,
+  FailureMetricsSummary,
+  OrchestratorStatus,
+  TaskExecutionDiagnostics,
+} from "@opensprint/shared";
 import { taskStore } from "../services/task-store.service.js";
 import { TaskExecutionDiagnosticsService } from "../services/task-execution-diagnostics.service.js";
+import {
+  rollupOrchestratorEvents,
+  resolveFailureMetricsWindow,
+} from "../services/orchestrator-failure-metrics.service.js";
 
 export function createExecuteRouter(
   taskService: TaskService,
@@ -124,6 +134,27 @@ export function createExecuteRouter(
       }
 
       const body: ApiResponse<OrchestratorEvent[]> = { data: events };
+      res.json(body);
+    })
+  );
+
+  // GET /projects/:projectId/execute/failure-metrics — Ranked orchestrator failure signatures (audit log)
+  router.get(
+    "/failure-metrics",
+    validateParams(projectIdParamSchema),
+    validateQuery(executeFailureMetricsQuerySchema),
+    wrapAsync(async (req: Request<ProjectParams>, res) => {
+      const { projectId } = req.params;
+      const q = req.query as { days?: number };
+      const { sinceIso, untilIso } = resolveFailureMetricsWindow(q.days);
+      const events = await eventLogService.readSinceByProjectId(projectId, sinceIso);
+      const summary: FailureMetricsSummary = rollupOrchestratorEvents(
+        projectId,
+        sinceIso,
+        untilIso,
+        events
+      );
+      const body: ApiResponse<FailureMetricsSummary> = { data: summary };
       res.json(body);
     })
   );

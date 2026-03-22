@@ -48,6 +48,10 @@ export const executeEventsQuerySchema = z.object({
   count: z.coerce.number().int().positive().optional(),
 });
 
+export const executeFailureMetricsQuerySchema = z.object({
+  days: z.coerce.number().int().positive().max(90).optional(),
+});
+
 export const notificationParamsSchema = z.object({
   projectId: z.string().min(1),
   notificationId: z.string().min(1),

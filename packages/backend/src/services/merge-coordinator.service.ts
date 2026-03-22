@@ -1152,6 +1152,7 @@ export class MergeCoordinatorService {
         qualityGateDetail,
       },
     });
+    await broadcastAuthoritativeTaskUpdated(broadcastToProject, projectId, task.id);
     await this.host.taskStore.comment(
       projectId,
       task.id,
