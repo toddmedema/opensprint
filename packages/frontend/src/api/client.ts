@@ -68,6 +68,28 @@ export interface SelfImprovementStatusSnapshot {
   summary?: string;
 }
 
+export type SelfImprovementRunMode = "audit_only" | "audit_and_experiments";
+
+export type SelfImprovementRunOutcome =
+  | "no_changes"
+  | "tasks_created"
+  | "candidate_rejected"
+  | "promotion_pending"
+  | "promoted"
+  | "failed";
+
+export interface SelfImprovementHistoryEntry {
+  timestamp: string;
+  status: string;
+  tasksCreatedCount: number;
+  mode: SelfImprovementRunMode;
+  outcome: SelfImprovementRunOutcome;
+  summary: string;
+  runId?: string;
+  promotedVersionId?: string;
+  pendingCandidateId?: string;
+}
+
 /** API base; set VITE_API_BASE for production/staging (e.g. empty for same-origin, or full origin). */
 const BASE_URL = `${(import.meta.env.VITE_API_BASE as string | undefined) ?? ""}/api/v1`;
 
@@ -278,6 +300,10 @@ export const api = {
       ),
     getSelfImprovementStatus: (id: string) =>
       request<SelfImprovementStatusSnapshot>(`/projects/${id}/self-improvement/status`),
+    getSelfImprovementHistory: (id: string, limit?: number) =>
+      request<SelfImprovementHistoryEntry[]>(
+        `/projects/${id}/self-improvement/history${limit != null ? `?limit=${limit}` : ""}`
+      ),
     archive: (id: string) => request<void>(`/projects/${id}/archive`, { method: "POST" }),
     delete: (id: string) =>
       request<void>(`/projects/${id}`, {

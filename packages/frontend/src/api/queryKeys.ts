@@ -7,6 +7,8 @@ export const queryKeys = {
     settings: (projectId: string) => ["projects", projectId, "settings"] as const,
     selfImprovementStatus: (projectId: string) =>
       ["projects", projectId, "self-improvement-status"] as const,
+    selfImprovementHistory: (projectId: string) =>
+      ["projects", projectId, "self-improvement-history"] as const,
   },
   prd: {
     detail: (projectId: string) => ["prd", projectId] as const,

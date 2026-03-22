@@ -17,7 +17,13 @@ import {
   normalizeWorktreeBaseBranch,
 } from "@opensprint/shared";
 import { api } from "../../api/client";
-import type { SelfImprovementStatusSnapshot, SelfImprovementStage } from "../../api/client";
+import type {
+  SelfImprovementStatusSnapshot,
+  SelfImprovementStage,
+  SelfImprovementHistoryEntry,
+  SelfImprovementRunOutcome,
+  SelfImprovementRunMode,
+} from "../../api/client";
 import { queryKeys } from "../../api/queryKeys";
 
 type WorkflowPersistOverrides = Partial<{
@@ -55,6 +61,36 @@ function statusLabel(snapshot: SelfImprovementStatusSnapshot): string {
   }
 }
 
+const MODE_LABELS: Record<SelfImprovementRunMode, string> = {
+  audit_only: "Audit only",
+  audit_and_experiments: "Audit + experiments",
+};
+
+const OUTCOME_LABELS: Record<SelfImprovementRunOutcome, string> = {
+  no_changes: "No changes",
+  tasks_created: "Tasks created",
+  candidate_rejected: "Candidate rejected",
+  promotion_pending: "Promotion pending",
+  promoted: "Promoted",
+  failed: "Failed",
+};
+
+const OUTCOME_COLORS: Record<SelfImprovementRunOutcome, string> = {
+  no_changes: "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200",
+  tasks_created: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  candidate_rejected: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300",
+  promotion_pending: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  promoted: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  failed: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+};
+
+function formatTimestamp(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+}
+
 interface WorkflowSettingsContentProps {
   settings: ProjectSettings;
   projectId: string;
@@ -88,10 +124,20 @@ export function WorkflowSettingsContent({
     status: "idle",
   };
 
+  const historyQuery = useQuery({
+    queryKey: queryKeys.projects.selfImprovementHistory(projectId),
+    queryFn: () => api.projects.getSelfImprovementHistory(projectId, 20),
+  });
+  const historyRuns: SelfImprovementHistoryEntry[] = historyQuery.data ?? [];
+  const lastRun: SelfImprovementHistoryEntry | undefined = historyRuns[0];
+
   const runNowMutation = useMutation({
     mutationFn: () => api.projects.runSelfImprovement(projectId),
     onSuccess: (data) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects.settings(projectId) });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.projects.selfImprovementHistory(projectId),
+      });
       if (data.tasksCreated > 0) {
         setRunNowMessage(`${data.tasksCreated} task${data.tasksCreated === 1 ? "" : "s"} created`);
       } else if (data.skipped === "no_changes") {
@@ -597,6 +643,87 @@ export function WorkflowSettingsContent({
                   </span>
                 )}
               </p>
+            )}
+
+            {lastRun && (
+              <div
+                className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs border-t border-theme-border pt-2"
+                data-testid="self-improvement-summary-row"
+              >
+                <span className="text-theme-muted">Last run</span>
+                <span className="text-theme-text" data-testid="summary-last-run">
+                  {formatTimestamp(lastRun.timestamp)}
+                </span>
+
+                <span className="text-theme-muted">Last outcome</span>
+                <span className="text-theme-text" data-testid="summary-last-outcome">
+                  {OUTCOME_LABELS[lastRun.outcome]}
+                </span>
+
+                {draftSettings.selfImprovementActiveBehaviorVersionId && (
+                  <>
+                    <span className="text-theme-muted">Active agent behavior version</span>
+                    <span
+                      className="text-theme-text font-mono truncate"
+                      data-testid="summary-active-version"
+                    >
+                      {draftSettings.selfImprovementActiveBehaviorVersionId}
+                    </span>
+                  </>
+                )}
+
+                {draftSettings.selfImprovementPendingCandidateId && (
+                  <>
+                    <span className="text-theme-muted">Pending promotion</span>
+                    <span
+                      className="text-theme-text font-mono truncate"
+                      data-testid="summary-pending-promotion"
+                    >
+                      {draftSettings.selfImprovementPendingCandidateId}
+                    </span>
+                  </>
+                )}
+              </div>
+            )}
+
+            {historyRuns.length > 0 && (
+              <div className="mt-3" data-testid="self-improvement-recent-runs">
+                <h4 className="text-xs font-semibold text-theme-text mb-2">Recent runs</h4>
+                <ul className="space-y-1.5 max-h-64 overflow-y-auto">
+                  {historyRuns.map((run, i) => (
+                    <li
+                      key={run.runId ?? i}
+                      className="flex items-center gap-2 text-xs"
+                      data-testid="self-improvement-history-row"
+                    >
+                      <span className="text-theme-muted shrink-0 w-28">
+                        {formatTimestamp(run.timestamp)}
+                      </span>
+                      <span
+                        className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-theme-bg-elevated border border-theme-border shrink-0"
+                        data-testid="history-mode-badge"
+                      >
+                        {MODE_LABELS[run.mode]}
+                      </span>
+                      <span
+                        className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium shrink-0 ${OUTCOME_COLORS[run.outcome]}`}
+                        data-testid="history-outcome-badge"
+                      >
+                        {OUTCOME_LABELS[run.outcome]}
+                      </span>
+                      {run.summary && (
+                        <span
+                          className="text-theme-muted truncate"
+                          title={run.summary}
+                          data-testid="history-summary"
+                        >
+                          {run.summary}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </div>
         </div>

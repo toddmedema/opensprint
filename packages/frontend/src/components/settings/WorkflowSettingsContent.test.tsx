@@ -4,13 +4,14 @@ import type { ProjectSettings } from "@opensprint/shared";
 import { WorkflowSettingsContent } from "./WorkflowSettingsContent";
 import { renderApp } from "../../test/test-utils";
 import { api } from "../../api/client";
-import type { SelfImprovementStatusSnapshot } from "../../api/client";
+import type { SelfImprovementStatusSnapshot, SelfImprovementHistoryEntry } from "../../api/client";
 
 vi.mock("../../api/client", () => ({
   api: {
     projects: {
       runSelfImprovement: vi.fn(),
       getSelfImprovementStatus: vi.fn(),
+      getSelfImprovementHistory: vi.fn(),
     },
   },
 }));
@@ -63,9 +64,11 @@ describe("WorkflowSettingsContent", () => {
   beforeEach(() => {
     vi.mocked(api.projects.runSelfImprovement).mockReset();
     vi.mocked(api.projects.getSelfImprovementStatus).mockReset();
+    vi.mocked(api.projects.getSelfImprovementHistory).mockReset();
     vi.mocked(api.projects.getSelfImprovementStatus).mockResolvedValue({
       status: "idle",
     } satisfies SelfImprovementStatusSnapshot);
+    vi.mocked(api.projects.getSelfImprovementHistory).mockResolvedValue([]);
   });
 
   it("renders all three workflow cards and core controls", () => {
@@ -281,5 +284,163 @@ describe("WorkflowSettingsContent", () => {
       expect(screen.getByTestId("self-improvement-status-label")).toHaveTextContent("Idle");
     });
     expect(screen.queryByTestId("self-improvement-stage-label")).not.toBeInTheDocument();
+  });
+
+  describe("self-improvement history", () => {
+    const sampleHistory: SelfImprovementHistoryEntry[] = [
+      {
+        timestamp: "2026-03-20T14:00:00.000Z",
+        status: "success",
+        tasksCreatedCount: 3,
+        mode: "audit_and_experiments",
+        outcome: "tasks_created",
+        summary: "Fixed lint issues and added tests",
+        runId: "run-1",
+      },
+      {
+        timestamp: "2026-03-19T10:00:00.000Z",
+        status: "success",
+        tasksCreatedCount: 0,
+        mode: "audit_only",
+        outcome: "no_changes",
+        summary: "No actionable findings",
+        runId: "run-2",
+      },
+    ];
+
+    it("renders Recent runs list from API history", async () => {
+      vi.mocked(api.projects.getSelfImprovementHistory).mockResolvedValue(sampleHistory);
+      renderWorkflowContent();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("self-improvement-recent-runs")).toBeInTheDocument();
+      });
+
+      const rows = screen.getAllByTestId("self-improvement-history-row");
+      expect(rows).toHaveLength(2);
+      expect(api.projects.getSelfImprovementHistory).toHaveBeenCalledWith("proj-1", 20);
+    });
+
+    it("renders mode badges correctly", async () => {
+      vi.mocked(api.projects.getSelfImprovementHistory).mockResolvedValue(sampleHistory);
+      renderWorkflowContent();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("self-improvement-recent-runs")).toBeInTheDocument();
+      });
+
+      const modeBadges = screen.getAllByTestId("history-mode-badge");
+      expect(modeBadges[0]).toHaveTextContent("Audit + experiments");
+      expect(modeBadges[1]).toHaveTextContent("Audit only");
+    });
+
+    it("renders outcome badges correctly", async () => {
+      vi.mocked(api.projects.getSelfImprovementHistory).mockResolvedValue(sampleHistory);
+      renderWorkflowContent();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("self-improvement-recent-runs")).toBeInTheDocument();
+      });
+
+      const outcomeBadges = screen.getAllByTestId("history-outcome-badge");
+      expect(outcomeBadges[0]).toHaveTextContent("Tasks created");
+      expect(outcomeBadges[1]).toHaveTextContent("No changes");
+    });
+
+    it("renders run summaries", async () => {
+      vi.mocked(api.projects.getSelfImprovementHistory).mockResolvedValue(sampleHistory);
+      renderWorkflowContent();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("self-improvement-recent-runs")).toBeInTheDocument();
+      });
+
+      const summaries = screen.getAllByTestId("history-summary");
+      expect(summaries[0]).toHaveTextContent("Fixed lint issues and added tests");
+      expect(summaries[1]).toHaveTextContent("No actionable findings");
+    });
+
+    it("renders summary row with last run and last outcome", async () => {
+      vi.mocked(api.projects.getSelfImprovementHistory).mockResolvedValue(sampleHistory);
+      renderWorkflowContent();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("self-improvement-summary-row")).toBeInTheDocument();
+      });
+
+      expect(screen.getByTestId("summary-last-run")).toBeInTheDocument();
+      expect(screen.getByTestId("summary-last-outcome")).toHaveTextContent("Tasks created");
+    });
+
+    it("renders active behavior version in summary when present", async () => {
+      vi.mocked(api.projects.getSelfImprovementHistory).mockResolvedValue(sampleHistory);
+      renderWorkflowContent({
+        selfImprovementActiveBehaviorVersionId: "bv-42",
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("summary-active-version")).toBeInTheDocument();
+      });
+
+      expect(screen.getByTestId("summary-active-version")).toHaveTextContent("bv-42");
+    });
+
+    it("renders pending promotion in summary when present", async () => {
+      vi.mocked(api.projects.getSelfImprovementHistory).mockResolvedValue(sampleHistory);
+      renderWorkflowContent({
+        selfImprovementPendingCandidateId: "cand-7",
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("summary-pending-promotion")).toBeInTheDocument();
+      });
+
+      expect(screen.getByTestId("summary-pending-promotion")).toHaveTextContent("cand-7");
+    });
+
+    it("does not render summary row or Recent runs when history is empty", async () => {
+      vi.mocked(api.projects.getSelfImprovementHistory).mockResolvedValue([]);
+      renderWorkflowContent();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("self-improvement-status-label")).toHaveTextContent("Idle");
+      });
+
+      expect(screen.queryByTestId("self-improvement-summary-row")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("self-improvement-recent-runs")).not.toBeInTheDocument();
+    });
+
+    it("does not render active version or pending promotion when not set", async () => {
+      vi.mocked(api.projects.getSelfImprovementHistory).mockResolvedValue(sampleHistory);
+      renderWorkflowContent();
+
+      await waitFor(() => {
+        expect(screen.getByTestId("self-improvement-summary-row")).toBeInTheDocument();
+      });
+
+      expect(screen.queryByTestId("summary-active-version")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("summary-pending-promotion")).not.toBeInTheDocument();
+    });
+
+    it("renders all outcome badge types", async () => {
+      const allOutcomes: SelfImprovementHistoryEntry[] = [
+        { timestamp: "2026-03-20T14:00:00Z", status: "success", tasksCreatedCount: 0, mode: "audit_only", outcome: "promoted", summary: "Promoted", runId: "r1" },
+        { timestamp: "2026-03-19T14:00:00Z", status: "success", tasksCreatedCount: 0, mode: "audit_and_experiments", outcome: "promotion_pending", summary: "Pending", runId: "r2" },
+        { timestamp: "2026-03-18T14:00:00Z", status: "success", tasksCreatedCount: 0, mode: "audit_only", outcome: "candidate_rejected", summary: "Rejected", runId: "r3" },
+        { timestamp: "2026-03-17T14:00:00Z", status: "failed", tasksCreatedCount: 0, mode: "audit_only", outcome: "failed", summary: "Failed", runId: "r4" },
+      ];
+      vi.mocked(api.projects.getSelfImprovementHistory).mockResolvedValue(allOutcomes);
+      renderWorkflowContent();
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId("history-outcome-badge")).toHaveLength(4);
+      });
+
+      const badges = screen.getAllByTestId("history-outcome-badge");
+      expect(badges[0]).toHaveTextContent("Promoted");
+      expect(badges[1]).toHaveTextContent("Promotion pending");
+      expect(badges[2]).toHaveTextContent("Candidate rejected");
+      expect(badges[3]).toHaveTextContent("Failed");
+    });
   });
 });
