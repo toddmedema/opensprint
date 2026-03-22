@@ -1346,10 +1346,25 @@ function performUpdateCheck(): void {
 }
 
 function setupAutoUpdater(): void {
+  loadLastUpdateCheck();
+
+  ipcMain.handle("updater:getStatus", () => {
+    return {
+      version: app.getVersion(),
+      lastCheckTimestamp: lastUpdateCheckTimestamp,
+    };
+  });
+
+  ipcMain.handle("updater:checkForUpdates", async () => {
+    if (app.isPackaged) {
+      performUpdateCheck();
+    }
+    return { lastCheckTimestamp: lastUpdateCheckTimestamp };
+  });
+
   if (!app.isPackaged) return;
 
   autoUpdater.allowPrerelease = false;
-  loadLastUpdateCheck();
 
   autoUpdater.on("update-available", () => {
     console.log("Update available; downloading in background.");
@@ -1391,20 +1406,6 @@ function setupAutoUpdater(): void {
   dailyUpdateTimer = setInterval(() => {
     performUpdateCheck();
   }, DAILY_UPDATE_CHECK_MS);
-
-  // IPC: manual check triggered from the renderer.
-  ipcMain.handle("updater:checkForUpdates", async () => {
-    performUpdateCheck();
-    return { lastCheckTimestamp: lastUpdateCheckTimestamp };
-  });
-
-  // IPC: get version + last check timestamp without triggering a new check.
-  ipcMain.handle("updater:getStatus", () => {
-    return {
-      version: app.getVersion(),
-      lastCheckTimestamp: lastUpdateCheckTimestamp,
-    };
-  });
 }
 
 app.on("activate", () => {
