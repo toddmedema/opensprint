@@ -890,6 +890,16 @@ export function parseSettings(raw: unknown): ProjectSettings {
     )
       ? (r.selfImprovementFrequency as SelfImprovementFrequency)
       : "never";
+  const maxConcurrentCoders =
+    typeof r?.maxConcurrentCoders === "number" &&
+    Number.isFinite(r.maxConcurrentCoders) &&
+    r.maxConcurrentCoders >= 1
+      ? Math.round(r.maxConcurrentCoders as number)
+      : 1;
+  const unknownScopeStrategy: UnknownScopeStrategy =
+    r?.unknownScopeStrategy === "conservative" || r?.unknownScopeStrategy === "optimistic"
+      ? (r.unknownScopeStrategy as UnknownScopeStrategy)
+      : "optimistic";
   const base = {
     deployment: migrateDeploymentConfig(r?.deployment),
     aiAutonomyLevel,
@@ -902,6 +912,8 @@ export function parseSettings(raw: unknown): ProjectSettings {
     includeGeneralReview: r?.includeGeneralReview === true ? true : undefined,
     validationTimeoutMsOverride: parseValidationTimeoutMsOverride(r?.validationTimeoutMsOverride),
     validationTimingProfile: parseValidationTimingProfile(r?.validationTimingProfile),
+    maxConcurrentCoders,
+    unknownScopeStrategy,
     enableHumanTeammates,
     teamMembers: parseTeamMembers(r?.teamMembers),
     selfImprovementFrequency,
