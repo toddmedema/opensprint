@@ -1550,7 +1550,7 @@ export class OrchestratorService {
           const s = this.getState(projectId);
           if (nextId && !s.loopActive && !s.globalTimers.has("loop")) {
             log.info("Nudge (pending feedback), starting loop for project", { projectId });
-            this.runLoop(projectId);
+            this.startRunLoop(projectId, "nudge-pending-feedback");
           }
         })
         .catch(() => {});
@@ -1558,7 +1558,7 @@ export class OrchestratorService {
     }
 
     log.info("Nudge received, starting loop for project", { projectId });
-    this.runLoop(projectId);
+    this.startRunLoop(projectId, "nudge");
   }
 
   async getStatus(
@@ -1772,6 +1772,20 @@ export class OrchestratorService {
     slotQueueDepth: number
   ): Promise<void> {
     await this.dispatchService.dispatchTask(projectId, repoPath, task, slotQueueDepth);
+  }
+
+  /**
+   * Start the orchestrator loop without awaiting. Rejections are logged so they never become
+   * unhandled (which can terminate the process under strict unhandled-rejection handling).
+   */
+  private startRunLoop(projectId: string, reason: string): void {
+    void this.runLoop(projectId).catch((err) => {
+      log.error("Orchestrator runLoop promise rejected", {
+        projectId,
+        reason,
+        err: getErrorMessage(err),
+      });
+    });
   }
 
   private async runLoop(projectId: string): Promise<void> {

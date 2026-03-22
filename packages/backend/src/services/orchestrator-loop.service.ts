@@ -436,7 +436,14 @@ export class OrchestratorLoopService {
       log.error(`Orchestrator loop error for project ${projectId}`, { error });
       if (state.loopRunId === myRunId) {
         state.loopActive = false;
-        state.globalTimers.setTimeout("loop", () => this.host.runLoop(projectId), 10000);
+        state.globalTimers.setTimeout("loop", () => {
+          void this.host.runLoop(projectId).catch((err) => {
+            log.error("Deferred orchestrator loop run failed after error recovery", {
+              projectId,
+              err,
+            });
+          });
+        }, 10000);
       }
     } finally {
       state.globalTimers.clear("loopStuckGuard");
