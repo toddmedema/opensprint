@@ -692,15 +692,6 @@ const FeedbackCard = memo(
             <div className="mb-2 overflow-hidden">
               {isCategorizing(item) ? (
                 <>
-                  {item.userPriority != null && (
-                    <span
-                      className="float-right ml-2 mb-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-theme-border-subtle text-theme-muted flex-shrink-0"
-                      aria-label={`Priority: ${PRIORITY_LABELS[item.userPriority]}`}
-                    >
-                      <PriorityIcon priority={item.userPriority} size="sm" />
-                      {PRIORITY_LABELS[item.userPriority]}
-                    </span>
-                  )}
                   {canShowCancelButton(item, taskSummaryById) && (
                     <button
                       type="button"
@@ -749,15 +740,6 @@ const FeedbackCard = memo(
                   >
                     {getFeedbackTypeLabel(item)}
                   </span>
-                  {item.userPriority != null && (
-                    <span
-                      className="float-right ml-2 mb-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-theme-border-subtle text-theme-muted flex-shrink-0"
-                      aria-label={`Priority: ${PRIORITY_LABELS[item.userPriority]}`}
-                    >
-                      <PriorityIcon priority={item.userPriority} size="sm" />
-                      {PRIORITY_LABELS[item.userPriority]}
-                    </span>
-                  )}
                 </>
               )}
               {(() => {

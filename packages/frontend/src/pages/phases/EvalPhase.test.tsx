@@ -4122,7 +4122,7 @@ describe("EvalPhase feedback form", () => {
       });
     });
 
-    it("displays priority on reply card when userPriority is set", async () => {
+    it("does not show priority badge in feedback card header when userPriority is set", async () => {
       const feedbackWithReply: FeedbackItem[] = [
         {
           id: "fb-parent",
@@ -4156,8 +4156,7 @@ describe("EvalPhase feedback form", () => {
       );
 
       await waitFor(() => expect(screen.getByText("Reply with priority")).toBeInTheDocument());
-      expect(screen.getByText("Critical")).toBeInTheDocument();
-      expect(screen.getByLabelText("Priority: Critical")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Priority: Critical")).not.toBeInTheDocument();
     });
   });
 
