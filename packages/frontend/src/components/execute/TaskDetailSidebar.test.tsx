@@ -554,7 +554,7 @@ describe("TaskDetailSidebar", () => {
     expect(liveOutput).toHaveTextContent("Line 2");
   });
 
-  it("uses plain text rendering while live output is still streaming", () => {
+  it("renders markdown while live output is still streaming", () => {
     const props = createMinimalProps({
       wsConnected: true,
       isDoneTask: false,
@@ -568,8 +568,9 @@ describe("TaskDetailSidebar", () => {
     const container = screen.getByTestId("live-agent-output");
     expect(container.tagName).toBe("DIV");
     expect(container).toHaveClass("overflow-y-auto");
-    expect(container).toHaveClass("text-theme-success-muted");
-    expect(container).toHaveTextContent("Hello **world**");
+    expect(container).toHaveClass("text-theme-text");
+    expect(container).toHaveTextContent("Hello world");
+    expect(container).toHaveClass("prose-execute-task");
   });
 
   it("upgrades to markdown rendering once the agent has finished", () => {

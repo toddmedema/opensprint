@@ -211,7 +211,7 @@ describe("AgentDashboard", () => {
     const outputDiv = container.querySelector('[data-testid="agent-output"]');
     expect(outputDiv).toBeInTheDocument();
     expect(outputDiv).toHaveClass("prose-execute-task");
-    expect(outputDiv).toHaveClass("text-theme-success-muted");
+    expect(outputDiv).toHaveClass("text-theme-text");
   });
 
   it("fetches and polls live output when agent is selected", async () => {

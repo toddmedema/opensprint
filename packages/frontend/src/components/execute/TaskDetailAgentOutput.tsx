@@ -82,7 +82,7 @@ export function TaskDetailAgentOutput({
             <>
               <VirtualizedAgentOutput
                 content={liveOutputContent}
-                mode={completionState ? "markdown" : "stream"}
+                mode="markdown"
                 containerRef={containerRef}
                 onScroll={onScroll}
                 data-testid="live-agent-output"

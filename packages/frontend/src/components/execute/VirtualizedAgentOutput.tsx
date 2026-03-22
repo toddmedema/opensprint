@@ -13,7 +13,7 @@ const ESTIMATED_BLOCK_HEIGHT = 120;
 export interface VirtualizedAgentOutputProps {
   /** Full content to display (joined agent output) */
   content: string;
-  /** Streaming stays plain text; completed output upgrades to markdown rendering. */
+  /** "markdown" renders via ReactMarkdown; "stream" renders plain <pre> text. */
   mode: "stream" | "markdown";
   /** Ref for the scroll container (shared with useAutoScroll) */
   containerRef: React.RefObject<HTMLDivElement | null>;
@@ -68,8 +68,8 @@ export const VirtualizedAgentOutput = React.memo(function VirtualizedAgentOutput
   const useFallback = virtualItems.length === 0;
 
   const proseClasses =
-    "prose prose-sm prose-neutral dark:prose-invert prose-execute-task max-w-none text-theme-success-muted prose-pre:bg-theme-code-bg prose-pre:text-theme-code-text prose-pre:border prose-pre:border-theme-border prose-pre:rounded-lg prose-p:my-1 prose-headings:my-1.5 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-pre:my-1.5 prose-blockquote:my-1.5";
-  const streamClasses = "text-theme-success-muted";
+    "prose prose-sm prose-neutral dark:prose-invert prose-execute-task max-w-none text-theme-text prose-pre:bg-theme-code-bg prose-pre:text-theme-code-text prose-pre:border prose-pre:border-theme-border prose-pre:rounded-lg prose-p:my-1 prose-headings:my-1.5 prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-pre:my-1.5 prose-blockquote:my-1.5";
+  const streamClasses = "text-theme-text";
   const useMarkdown = mode === "markdown";
   const containerClasses = useMarkdown ? proseClasses : streamClasses;
   const preClasses = "whitespace-pre-wrap break-normal font-sans m-0 w-full";

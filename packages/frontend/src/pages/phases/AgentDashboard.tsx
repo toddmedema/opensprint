@@ -196,7 +196,7 @@ export function AgentDashboard({ projectId }: AgentDashboardProps) {
                 />
               </div>
               <div
-                className="flex-1 overflow-y-auto p-4 prose prose-sm prose-neutral dark:prose-invert prose-execute-task max-w-none text-theme-success-muted prose-pre:bg-theme-code-bg prose-pre:text-theme-code-text prose-pre:border prose-pre:border-theme-border prose-pre:rounded-lg"
+                className="flex-1 overflow-y-auto p-4 prose prose-sm prose-neutral dark:prose-invert prose-execute-task max-w-none text-theme-text prose-pre:bg-theme-code-bg prose-pre:text-theme-code-text prose-pre:border prose-pre:border-theme-border prose-pre:rounded-lg"
                 data-testid="agent-output"
               >
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
