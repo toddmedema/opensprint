@@ -375,6 +375,8 @@ export interface OrchestratorStatus {
   pendingFeedbackCategorizations?: PendingFeedbackCategorization[];
   /** True when a self-improvement run is in progress for this project */
   selfImprovementRunInProgress?: boolean;
+  /** Current self-improvement run mode when active: audit-only or experiments (audit+experiments). */
+  selfImprovementRunMode?: "audit" | "experiments";
   /** Serialized git merge queue (worktree_merge jobs) for this project's repo. */
   gitMergeQueue?: GitMergeQueueSnapshot;
 }

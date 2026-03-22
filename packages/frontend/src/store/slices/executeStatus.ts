@@ -62,6 +62,7 @@ export const statusReducers = {
       mergeValidationFailureSummary?: string | null;
       dispatchPausedReason?: string | null;
       selfImprovementRunInProgress?: boolean;
+      selfImprovementRunMode?: "audit" | "experiments";
       gitMergeQueue?: GitMergeQueueSnapshot | null;
     }>
   ) {
@@ -94,6 +95,7 @@ export const statusReducers = {
     if (p.selfImprovementRunInProgress !== undefined) {
       state.selfImprovementRunInProgress = p.selfImprovementRunInProgress;
     }
+    state.selfImprovementRunMode = p.selfImprovementRunMode;
     if (p.gitMergeQueue !== undefined) {
       state.gitMergeQueue = p.gitMergeQueue;
     }
@@ -124,6 +126,7 @@ export function addStatusExtraReducers(builder: ActionReducerMapBuilder<ExecuteS
         mergeValidationFailureSummary?: string | null;
         dispatchPausedReason?: string | null;
         selfImprovementRunInProgress?: boolean;
+        selfImprovementRunMode?: "audit" | "experiments";
         gitMergeQueue?: GitMergeQueueSnapshot | null;
       };
       const activeTasks = payload.activeTasks ?? [];
@@ -154,6 +157,7 @@ export function addStatusExtraReducers(builder: ActionReducerMapBuilder<ExecuteS
       if (payload.selfImprovementRunInProgress !== undefined) {
         state.selfImprovementRunInProgress = payload.selfImprovementRunInProgress;
       }
+      state.selfImprovementRunMode = payload.selfImprovementRunMode;
       if (payload.gitMergeQueue !== undefined) {
         state.gitMergeQueue = payload.gitMergeQueue;
       }

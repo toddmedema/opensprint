@@ -95,7 +95,10 @@ import {
   parseOrchestratorTestStatusContent,
   type PersistedOrchestratorTestStatus,
 } from "./orchestrator-test-status.js";
-import { isSelfImprovementRunInProgress } from "./self-improvement-runner.service.js";
+import {
+  isSelfImprovementRunInProgress,
+  getSelfImprovementRunMode,
+} from "./self-improvement-runner.service.js";
 import { gitCommitQueue } from "./git-commit-queue.service.js";
 import {
   OrchestratorStatusService,
@@ -448,6 +451,7 @@ export class OrchestratorService {
         pendingFeedbackCategorizations: overrides.pendingFeedbackCategorizations,
       }),
       selfImprovementRunInProgress: isSelfImprovementRunInProgress(projectId),
+      selfImprovementRunMode: getSelfImprovementRunMode(projectId),
       gitMergeQueue: this.getGitMergeQueueSnapshot(projectId),
     };
   }
@@ -1584,6 +1588,7 @@ export class OrchestratorService {
         state.slots.size === 1 ? ([...state.slots.values()][0]?.worktreePath ?? null) : null,
       pendingFeedbackCategorizations,
       selfImprovementRunInProgress: isSelfImprovementRunInProgress(projectId),
+      selfImprovementRunMode: getSelfImprovementRunMode(projectId),
       gitMergeQueue: this.getGitMergeQueueSnapshot(projectId),
     };
   }

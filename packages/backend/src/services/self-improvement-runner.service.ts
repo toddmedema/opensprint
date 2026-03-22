@@ -515,6 +515,17 @@ export function isSelfImprovementRunInProgress(projectId: string): boolean {
   return inProgressProjects.has(projectId);
 }
 
+/** Returns the current run mode for a project's self-improvement run, or undefined when idle. */
+export function getSelfImprovementRunMode(
+  projectId: string
+): "audit" | "experiments" | undefined {
+  const state = inProgressProjects.get(projectId);
+  if (!state) return undefined;
+  if (state.status === "running_experiments") return "experiments";
+  if (state.status === "running_audit") return "audit";
+  return undefined;
+}
+
 /** Get the current in-memory run state for a project (undefined when idle). */
 export function getSelfImprovementRunState(
   projectId: string

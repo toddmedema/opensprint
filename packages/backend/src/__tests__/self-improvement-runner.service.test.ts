@@ -7,6 +7,7 @@ import {
   runSelfImprovement,
   isSelfImprovementRunInProgress,
   getSelfImprovementStatus,
+  getSelfImprovementRunMode,
   setSelfImprovementRunInProgressForTest,
 } from "../services/self-improvement-runner.service.js";
 
@@ -162,6 +163,37 @@ describe("getSelfImprovementStatus", () => {
     expect(isSelfImprovementRunInProgress("test-proj")).toBe(false);
     const snapshot = getSelfImprovementStatus("test-proj");
     expect(snapshot.status).toBe("idle");
+  });
+});
+
+describe("getSelfImprovementRunMode", () => {
+  afterEach(() => {
+    setSelfImprovementRunInProgressForTest("test-proj", false);
+  });
+
+  it("returns undefined when no run is in progress", () => {
+    expect(getSelfImprovementRunMode("test-proj")).toBeUndefined();
+  });
+
+  it("returns 'audit' when status is running_audit", () => {
+    setSelfImprovementRunInProgressForTest("test-proj", { status: "running_audit" });
+    expect(getSelfImprovementRunMode("test-proj")).toBe("audit");
+  });
+
+  it("returns 'experiments' when status is running_experiments", () => {
+    setSelfImprovementRunInProgressForTest("test-proj", {
+      status: "running_experiments",
+      stage: "collecting_replay_cases",
+    });
+    expect(getSelfImprovementRunMode("test-proj")).toBe("experiments");
+  });
+
+  it("returns undefined when status is awaiting_approval (not actively running)", () => {
+    setSelfImprovementRunInProgressForTest("test-proj", {
+      status: "awaiting_approval",
+      pendingCandidateId: "bv-1",
+    });
+    expect(getSelfImprovementRunMode("test-proj")).toBeUndefined();
   });
 });
 

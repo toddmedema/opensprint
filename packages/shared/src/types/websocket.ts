@@ -165,6 +165,8 @@ export interface ExecuteStatusEvent {
   pendingFeedbackCategorizations?: Array<{ feedbackId: string; category?: string }>;
   /** True when a self-improvement run is in progress for this project */
   selfImprovementRunInProgress?: boolean;
+  /** Current self-improvement run mode when active: audit-only or experiments (audit+experiments). */
+  selfImprovementRunMode?: "audit" | "experiments";
   /** Serialized git worktree_merge queue for this project's repo (FIFO). */
   gitMergeQueue?: GitMergeQueueSnapshot;
 }

@@ -130,6 +130,43 @@ describe.skipIf(!buildRoutePostgresOk)("Execute API", () => {
       expect(resAfter.status).toBe(200);
       expect(resAfter.body.data.selfImprovementRunInProgress).toBe(false);
     });
+
+    it("returns selfImprovementRunMode 'audit' when audit-only run is active", async () => {
+      setSelfImprovementRunInProgressForTest(projectId, { status: "running_audit" });
+      try {
+        const res = await request(app).get(
+          `${API_PREFIX}/projects/${projectId}/execute/status`
+        );
+        expect(res.status).toBe(200);
+        expect(res.body.data.selfImprovementRunMode).toBe("audit");
+      } finally {
+        setSelfImprovementRunInProgressForTest(projectId, false);
+      }
+    });
+
+    it("returns selfImprovementRunMode 'experiments' when experiments run is active", async () => {
+      setSelfImprovementRunInProgressForTest(projectId, {
+        status: "running_experiments",
+        stage: "scoring",
+      });
+      try {
+        const res = await request(app).get(
+          `${API_PREFIX}/projects/${projectId}/execute/status`
+        );
+        expect(res.status).toBe(200);
+        expect(res.body.data.selfImprovementRunMode).toBe("experiments");
+      } finally {
+        setSelfImprovementRunInProgressForTest(projectId, false);
+      }
+    });
+
+    it("returns no selfImprovementRunMode when no run is active", async () => {
+      const res = await request(app).get(
+        `${API_PREFIX}/projects/${projectId}/execute/status`
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.data.selfImprovementRunMode).toBeUndefined();
+    });
   });
 
   describe("GET /projects/:projectId/execute/tasks/:taskId/output", () => {

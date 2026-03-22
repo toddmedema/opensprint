@@ -98,6 +98,7 @@ const {
   mockShellExec,
   mockGetMergeQualityGateCommands,
   mockIsSelfImprovementRunInProgress,
+  mockGetSelfImprovementRunMode,
   mockHasOpenPrdSpecHilApproval,
   mockNotificationCreate,
   mockMaybeAutoRespond,
@@ -177,6 +178,7 @@ const {
   mockShellExec: vi.fn(),
   mockGetMergeQualityGateCommands: vi.fn(),
   mockIsSelfImprovementRunInProgress: vi.fn().mockReturnValue(false),
+  mockGetSelfImprovementRunMode: vi.fn().mockReturnValue(undefined),
   mockHasOpenPrdSpecHilApproval: vi.fn().mockResolvedValue(false),
   mockNotificationCreate: vi.fn().mockResolvedValue({
     id: "oq-1",
@@ -502,6 +504,8 @@ vi.mock("../services/feedback.service.js", () => ({
 vi.mock("../services/self-improvement-runner.service.js", () => ({
   isSelfImprovementRunInProgress: (...args: unknown[]) =>
     mockIsSelfImprovementRunInProgress(...args),
+  getSelfImprovementRunMode: (...args: unknown[]) =>
+    mockGetSelfImprovementRunMode(...args),
 }));
 
 // ─── Tests ───
@@ -2514,6 +2518,23 @@ describe("OrchestratorService (slot-based model)", () => {
       mockIsSelfImprovementRunInProgress.mockReturnValue(true);
       const statusActive = await orchestrator.getStatus(projectId);
       expect(statusActive.selfImprovementRunInProgress).toBe(true);
+    });
+
+    it("includes selfImprovementRunMode from self-improvement runner", async () => {
+      mockTaskStoreReady.mockResolvedValue([]);
+      await orchestrator.ensureRunning(projectId);
+
+      mockGetSelfImprovementRunMode.mockReturnValue(undefined);
+      const statusIdle = await orchestrator.getStatus(projectId);
+      expect(statusIdle.selfImprovementRunMode).toBeUndefined();
+
+      mockGetSelfImprovementRunMode.mockReturnValue("audit");
+      const statusAudit = await orchestrator.getStatus(projectId);
+      expect(statusAudit.selfImprovementRunMode).toBe("audit");
+
+      mockGetSelfImprovementRunMode.mockReturnValue("experiments");
+      const statusExperiments = await orchestrator.getStatus(projectId);
+      expect(statusExperiments.selfImprovementRunMode).toBe("experiments");
     });
   });
 

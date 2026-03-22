@@ -72,6 +72,8 @@ export interface ExecuteState {
   dispatchPausedReason: string | null;
   /** True when a self-improvement run is in progress (from execute status / WebSocket) */
   selfImprovementRunInProgress: boolean;
+  /** Current self-improvement run mode when active (from execute status / WebSocket). */
+  selfImprovementRunMode: "audit" | "experiments" | undefined;
   /** Serialized git worktree_merge queue for this project (from execute.status). */
   gitMergeQueue: GitMergeQueueSnapshot | null;
   selectedTaskId: string | null;
@@ -112,6 +114,7 @@ export const initialExecuteState: ExecuteState = {
   mergeValidationFailureSummary: null,
   dispatchPausedReason: null,
   selfImprovementRunInProgress: false,
+  selfImprovementRunMode: undefined,
   gitMergeQueue: null,
   selectedTaskId: null,
   agentOutput: {},

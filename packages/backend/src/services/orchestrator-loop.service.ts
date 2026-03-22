@@ -151,6 +151,7 @@ export class OrchestratorLoopService {
       mergeValidationFailureSummary: status.mergeValidationFailureSummary ?? null,
       dispatchPausedReason: status.dispatchPausedReason ?? null,
       selfImprovementRunInProgress: status.selfImprovementRunInProgress,
+      selfImprovementRunMode: status.selfImprovementRunMode,
       gitMergeQueue: status.gitMergeQueue,
       ...(status.pendingFeedbackCategorizations && {
         pendingFeedbackCategorizations: status.pendingFeedbackCategorizations,

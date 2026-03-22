@@ -520,6 +520,7 @@ export const websocketMiddleware: Middleware = (storeApi) => {
             mergeValidationFailureSummary: statusEv.mergeValidationFailureSummary,
             dispatchPausedReason: statusEv.dispatchPausedReason,
             selfImprovementRunInProgress: statusEv.selfImprovementRunInProgress,
+            selfImprovementRunMode: statusEv.selfImprovementRunMode,
             gitMergeQueue: statusEv.gitMergeQueue ?? null,
           })
         );
