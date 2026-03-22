@@ -354,9 +354,22 @@ export class BranchManager {
       });
       return false;
     }
-    await fs.rm(safePath, { recursive: true, force: true }).catch(() => {});
+    try {
+      await fs.rm(safePath, { recursive: true, force: true });
+    } catch (rmErr) {
+      log.warn("fs.rm failed during worktree directory cleanup", {
+        taskId,
+        safePath,
+        err: rmErr instanceof Error ? rmErr.message : String(rmErr),
+      });
+    }
     await this.git(repoPath, "worktree prune").catch(() => {});
-    return true;
+    try {
+      await fs.access(safePath);
+      return false;
+    } catch {
+      return true;
+    }
   }
 
   /**
@@ -1264,6 +1277,29 @@ export class BranchManager {
       worktreeKey,
       wtPath,
       "Pre-worktree-add cleanup"
+    );
+    // Final verification: if the path still exists after all cleanup attempts,
+    // try a direct fs.rm (we already validated the path above) and throw if
+    // the directory persists — otherwise git worktree add will fail with
+    // "fatal: '...' already exists".
+    try {
+      await fs.access(wtPath);
+    } catch {
+      return;
+    }
+    log.warn("Worktree path survived removeWorktreeDirectorySafely, attempting direct removal", {
+      worktreeKey,
+      wtPath,
+    });
+    await fs.rm(wtPath, { recursive: true, force: true }).catch(() => {});
+    await this.git(repoPath, "worktree prune").catch(() => {});
+    try {
+      await fs.access(wtPath);
+    } catch {
+      return;
+    }
+    throw new Error(
+      `Cannot clear worktree path for ${worktreeKey}: ${wtPath} still exists after all cleanup attempts`
     );
   }
 
