@@ -2,9 +2,7 @@ import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { getAffectedWorkspaces } from "./affected-workspaces.mjs";
 
-function npmCommand() {
-  return process.platform === "win32" ? "npm.cmd" : "npm";
-}
+import { npmInvocation, isMainModule } from "./node-cli.mjs";
 
 function parseArgs(argv) {
   const separatorIndex = argv.indexOf("--");
@@ -34,15 +32,17 @@ function run() {
       args.push("--", ...passthroughArgs);
     }
 
-    const child = spawnSync(npmCommand(), args, {
+    const [executable, ...cliArgs] = npmInvocation(args);
+    const child = spawnSync(executable, cliArgs, {
       cwd: process.cwd(),
       stdio: "inherit",
       env: process.env,
     });
+    if (child.error) console.error(`[affected-tests] ${child.error.message}`);
     if (child.status !== 0) {
       process.exit(child.status ?? 1);
     }
   }
 }
 
-run();
+if (isMainModule(import.meta.url)) run();

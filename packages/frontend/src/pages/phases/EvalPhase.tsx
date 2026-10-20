@@ -430,7 +430,7 @@ interface FeedbackCardProps {
     text: string,
     images?: string[],
     priority?: number | null
-  ) => void;
+  ) => Promise<boolean>;
   onResolve: (feedbackId: string) => void;
   onCancel: (feedbackId: string) => void;
   onRemoveAfterAnimation: (feedbackId: string) => void;
@@ -610,10 +610,18 @@ const FeedbackCard = memo(
       }
     }, [replyPriorityDropdownOpen]);
 
-    const handleSubmitReply = () => {
-      if (!replyText.trim() || submitting) return;
+    const replyPendingRef = useRef(false);
+    const handleSubmitReply = async () => {
+      if (!replyText.trim() || submitting || replyPendingRef.current) return;
       const imagePayload = replyImages.images.length > 0 ? replyImages.images : undefined;
-      onSubmitReply(item.id, replyText.trim(), imagePayload, replyPriority);
+      replyPendingRef.current = true;
+      let success: boolean;
+      try {
+        success = await onSubmitReply(item.id, replyText.trim(), imagePayload, replyPriority);
+      } finally {
+        replyPendingRef.current = false;
+      }
+      if (!success) return;
       setReplyText("");
       setReplyPriority(null);
       replyImages.reset();
@@ -1884,8 +1892,13 @@ export function EvalPhase({
   });
 
   const handleSubmitReply = useCallback(
-    async (parentId: string, text: string, images?: string[], priority?: number | null) => {
-      if (!text.trim() || submitting) return;
+    async (
+      parentId: string,
+      text: string,
+      images?: string[],
+      priority?: number | null
+    ): Promise<boolean> => {
+      if (!text.trim() || submitting) return false;
       const priorityPayload = priority != null ? priority : undefined;
       const result = await dispatch(
         submitFeedback({
@@ -1898,7 +1911,9 @@ export function EvalPhase({
       );
       if (submitFeedback.fulfilled.match(result)) {
         setReconcilingFeedbackIds((prev) => new Set(prev).add(result.payload.id));
+        return true;
       }
+      return false;
     },
     [dispatch, projectId, submitting]
   );

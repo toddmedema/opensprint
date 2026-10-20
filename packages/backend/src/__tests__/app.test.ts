@@ -90,7 +90,9 @@ describe("App", () => {
       const app = createApp();
       const res = await request(app).get("/");
       expect(res.status).toBe(200);
-      const nonceMatch = res.text.match(/<script nonce="([^"]+)">window\.__OPENSPRINT_LOCAL_SESSION__/);
+      const nonceMatch = res.text.match(
+        /<script nonce="([^"]+)">window\.__OPENSPRINT_LOCAL_SESSION__/
+      );
       expect(nonceMatch).toBeTruthy();
       const nonce = nonceMatch![1];
       expect(res.headers["content-security-policy"]).toBe(
@@ -105,6 +107,34 @@ describe("App", () => {
       expect(tokenScriptRes.headers["content-type"]).toContain("application/javascript");
       expect(tokenScriptRes.headers["cache-control"]).toContain("no-store");
       expect(tokenScriptRes.text).toContain("window.__OPENSPRINT_LOCAL_SESSION__=");
+
+      await fs.writeFile(path.join(tmpDir, "asset.js"), "console.log('static')");
+      for (const route of [
+        "/",
+        "/index.html",
+        "/projects/p1/execute",
+        "/__opensprint_local_session.js",
+      ]) {
+        for (const site of ["same-site", "cross-site"]) {
+          const forbidden = await request(app)
+            .get(route)
+            .set("Origin", "http://localhost:4555")
+            .set("Sec-Fetch-Site", site);
+          expect(forbidden.status, route).toBe(403);
+          expect(forbidden.text).not.toContain(VITEST_DEFAULT_LOCAL_SESSION_TOKEN);
+        }
+        for (const site of ["none", "same-origin"]) {
+          const allowed = await request(app).get(route).set("Sec-Fetch-Site", site);
+          expect(allowed.status, route).toBe(200);
+          expect(allowed.text).toContain(VITEST_DEFAULT_LOCAL_SESSION_TOKEN);
+        }
+      }
+      expect((await request(app).get("/asset.js").set("Sec-Fetch-Site", "cross-site")).text).toBe(
+        "console.log('static')"
+      );
+      expect((await request(app).get("/api/v1/missing")).text).not.toContain(
+        VITEST_DEFAULT_LOCAL_SESSION_TOKEN
+      );
 
       const crossSite = await request(app)
         .get("/__opensprint_local_session.js")
@@ -133,9 +163,7 @@ describe("App", () => {
   it("rejects API requests without Bearer token", async () => {
     vi.useRealTimers();
     const app = createApp();
-    const res = await request(app)
-      .get(`${API_PREFIX}/projects`)
-      .unset("Authorization");
+    const res = await request(app).get(`${API_PREFIX}/projects`).unset("Authorization");
     expect(res.status).toBe(403);
   });
 

@@ -1,6 +1,68 @@
 import path from "path";
 import { describe, expect, it, vi } from "vitest";
-import { resolveSqlitePath } from "../db/sqlite-client.js";
+import {
+  createSqliteDbClient,
+  openSqliteDatabase,
+  resolveSqlitePath,
+} from "../db/sqlite-client.js";
+
+describe("SQLite query execution", () => {
+  it.each(["query", "queryOne", "execute"] as const)(
+    "rejects synchronous %s errors",
+    async (method) => {
+      const error = new Error("invalid SQL");
+      const db = {
+        prepare: () => {
+          throw error;
+        },
+      };
+      const client = createSqliteDbClient(db as unknown as import("better-sqlite3").Database);
+      await expect(client[method]("invalid")).rejects.toBe(error);
+    }
+  );
+
+  it("binds repeated/reordered placeholders, leaves SQL literals/comments intact and supports native bindings", async () => {
+    const { db, close } = await openSqliteDatabase(":memory:");
+    const client = createSqliteDbClient(db);
+    try {
+      expect(
+        await client.queryOne("SELECT $2 AS a, $1 AS b, $2 AS c, '$1' AS literal -- $3\n", [
+          "first",
+          "second",
+        ])
+      ).toEqual({ a: "second", b: "first", c: "second", literal: "$1" });
+      expect(await client.queryOne("SELECT ? AS a, ? AS b", [1, 2])).toEqual({ a: 1, b: 2 });
+      await client.execute("CREATE TABLE agent_stats (id INTEGER PRIMARY KEY, project_id TEXT)");
+      db.transaction(() => {
+        const insert = db.prepare("INSERT INTO agent_stats (project_id) VALUES (?)");
+        for (let i = 0; i < 501; i++) insert.run("p1");
+        insert.run("p2");
+      })();
+      // The production attempt-retention SQL uses $1 twice and $2 once.
+      expect(
+        await client.execute(
+          `DELETE FROM agent_stats WHERE project_id = $1 AND id IN (
+        SELECT id FROM agent_stats WHERE project_id = $1 ORDER BY id ASC LIMIT $2
+      )`,
+          ["p1", 1]
+        )
+      ).toBe(1);
+      expect(
+        await client.queryOne(
+          "SELECT COUNT(*)::int AS count FROM agent_stats WHERE project_id = $1",
+          ["p1"]
+        )
+      ).toEqual({ count: 500 });
+      expect(
+        await client.queryOne("SELECT COUNT(*) AS count FROM agent_stats WHERE project_id = $1", [
+          "p2",
+        ])
+      ).toEqual({ count: 1 });
+    } finally {
+      close();
+    }
+  });
+});
 
 describe("resolveSqlitePath", () => {
   it("resolves file URL local paths on non-Windows platforms", () => {

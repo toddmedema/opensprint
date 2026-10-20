@@ -18,18 +18,11 @@ const log = createLogger("command-executor");
 
 export class CommandExecutorService {
   async execute(
+    projectId: string,
     commandRunId: string,
     idempotencyKey?: string
   ): Promise<CommandExecutionResult> {
-    if (idempotencyKey) {
-      const existing = await commandStore.findByIdempotencyKey(idempotencyKey);
-      if (existing?.result) {
-        log.info("Returning cached result for idempotency key", { idempotencyKey });
-        return existing.result;
-      }
-    }
-
-    const run = await commandStore.getRun(commandRunId);
+    const run = await commandStore.getRun(commandRunId, projectId);
     if (!run) {
       return {
         success: false,
@@ -37,6 +30,18 @@ export class CommandExecutorService {
         summary: "Command run not found",
         error: `No command run with id ${commandRunId}`,
       };
+    }
+
+    if (idempotencyKey) {
+      const existing = await commandStore.findByIdempotencyKey(
+        idempotencyKey,
+        projectId,
+        commandRunId
+      );
+      if (existing?.result) {
+        log.info("Returning cached result for idempotency key", { idempotencyKey });
+        return existing.result;
+      }
     }
 
     if (!run.interpreted_command) {
@@ -61,7 +66,12 @@ export class CommandExecutorService {
         case "list_intake": {
           const result = await intakeStore.listItems(run.project_id, {
             provider: intent.args.provider as IntegrationProvider | undefined,
-            triageStatus: intent.args.triageStatus as "new" | "triaged" | "converted" | "ignored" | undefined,
+            triageStatus: intent.args.triageStatus as
+              | "new"
+              | "triaged"
+              | "converted"
+              | "ignored"
+              | undefined,
             search: intent.args.search,
             limit: intent.args.limit ?? 25,
           });
@@ -78,7 +88,12 @@ export class CommandExecutorService {
           let converted = 0;
           for (const [idx, itemId] of intent.args.itemIds.entries()) {
             try {
-              await intakeStore.updateTriageStatus(itemId, "converted");
+              const item = await intakeStore.updateTriageStatusForProject(
+                run.project_id,
+                itemId,
+                "converted"
+              );
+              if (!item) throw new Error(`Intake item ${itemId} not found`);
               steps.push({
                 step: idx + 1,
                 description: `Converted intake item ${itemId}`,
@@ -103,7 +118,8 @@ export class CommandExecutorService {
         case "start_execute": {
           steps.push({
             step: 1,
-            description: "Execute command triggers orchestrator — task execution will start on next loop",
+            description:
+              "Execute command triggers orchestrator — task execution will start on next loop",
             success: true,
           });
           summary = "Execution triggered for unblocked tasks";
@@ -114,12 +130,22 @@ export class CommandExecutorService {
           const provider = intent.args.provider as IntegrationProvider;
           const conn = await integrationStore.getConnection(run.project_id, provider);
           if (!conn) {
-            steps.push({ step: 1, description: `No ${provider} connection found`, success: false, error: "Not connected" });
+            steps.push({
+              step: 1,
+              description: `No ${provider} connection found`,
+              success: false,
+              error: "Not connected",
+            });
             success = false;
             summary = `Cannot pause ${provider}: not connected`;
           } else {
             await integrationStore.updateConnectionStatus(conn.id, "disabled");
-            steps.push({ step: 1, description: `Paused ${provider} integration`, success: true, entityId: conn.id });
+            steps.push({
+              step: 1,
+              description: `Paused ${provider} integration`,
+              success: true,
+              entityId: conn.id,
+            });
             summary = `Paused ${provider} integration`;
           }
           break;
@@ -129,34 +155,47 @@ export class CommandExecutorService {
           const provider = intent.args.provider as IntegrationProvider;
           const conn = await integrationStore.getConnection(run.project_id, provider);
           if (!conn) {
-            steps.push({ step: 1, description: `No ${provider} connection found`, success: false, error: "Not connected" });
+            steps.push({
+              step: 1,
+              description: `No ${provider} connection found`,
+              success: false,
+              error: "Not connected",
+            });
             success = false;
             summary = `Cannot resume ${provider}: not connected`;
           } else {
             await integrationStore.updateConnectionStatus(conn.id, "active");
-            steps.push({ step: 1, description: `Resumed ${provider} integration`, success: true, entityId: conn.id });
+            steps.push({
+              step: 1,
+              description: `Resumed ${provider} integration`,
+              success: true,
+              entityId: conn.id,
+            });
             summary = `Resumed ${provider} integration`;
           }
           break;
         }
 
-      case "list_tasks": {
-        const allTasks = await taskStore.listAll(run.project_id);
-        const filtered = intent.args.status
-          ? allTasks.filter((t) => t.status === intent.args.status)
-          : allTasks;
-        steps.push({ step: 1, description: `Found ${filtered.length} tasks`, success: true });
-        summary = `Listed ${filtered.length} tasks`;
-        break;
-      }
+        case "list_tasks": {
+          const allTasks = await taskStore.listAll(run.project_id);
+          const filtered = intent.args.status
+            ? allTasks.filter((t) => t.status === intent.args.status)
+            : allTasks;
+          steps.push({ step: 1, description: `Found ${filtered.length} tasks`, success: true });
+          summary = `Listed ${filtered.length} tasks`;
+          break;
+        }
 
-      case "create_task": {
-        const task = await taskStore.create(
-          run.project_id,
-          intent.args.title,
-          { description: intent.args.description },
-        );
-          steps.push({ step: 1, description: `Created task: ${task.id}`, success: true, entityId: task.id });
+        case "create_task": {
+          const task = await taskStore.create(run.project_id, intent.args.title, {
+            description: intent.args.description,
+          });
+          steps.push({
+            step: 1,
+            description: `Created task: ${task.id}`,
+            success: true,
+            entityId: task.id,
+          });
           summary = `Created task "${intent.args.title}"`;
           break;
         }
@@ -165,7 +204,12 @@ export class CommandExecutorService {
           const provider = intent.args.provider as IntegrationProvider;
           const conn = await integrationStore.getConnection(run.project_id, provider);
           if (!conn) {
-            steps.push({ step: 1, description: `No ${provider} connection found`, success: false, error: "Not connected" });
+            steps.push({
+              step: 1,
+              description: `No ${provider} connection found`,
+              success: false,
+              error: "Not connected",
+            });
             success = false;
             summary = `Cannot sync ${provider}: not connected`;
           } else {

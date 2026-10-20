@@ -142,28 +142,36 @@ export async function runCommand(
     let settled = false;
     let timedOut = false;
     let outputLimitExceeded = false;
+    let terminationRequested = false;
     let killTimer: NodeJS.Timeout | null = null;
 
     const maxStdoutBytes = options.maxStdoutBytes;
     const maxStderrBytes = options.maxStderrBytes;
 
-    const checkOutputLimit = () => {
-      if (outputLimitExceeded || settled) return;
-      if (maxStdoutBytes != null && Buffer.byteLength(stdout, "utf8") > maxStdoutBytes) {
-        outputLimitExceeded = true;
-        child.kill("SIGTERM");
-        killTimer = setTimeout(() => {
-          child.kill("SIGKILL");
-        }, KILL_GRACE_MS);
-        return;
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    const requestTermination = () => {
+      if (terminationRequested || settled) return;
+      terminationRequested = true;
+      child.kill("SIGTERM");
+      killTimer = setTimeout(() => {
+        child.kill("SIGKILL");
+      }, KILL_GRACE_MS);
+    };
+    const retainChunk = (chunk: string, used: number, limit: number | undefined) => {
+      const bytes = Buffer.byteLength(chunk, "utf8");
+      if (limit == null || used + bytes <= limit) return { text: chunk, bytes, exceeded: false };
+      const available = Math.max(0, limit - used);
+      // for...of iterates Unicode code points, so a prefix never splits a surrogate pair.
+      let prefix = "";
+      let retained = 0;
+      for (const character of chunk) {
+        const size = Buffer.byteLength(character, "utf8");
+        if (retained + size > available) break;
+        prefix += character;
+        retained += size;
       }
-      if (maxStderrBytes != null && Buffer.byteLength(stderr, "utf8") > maxStderrBytes) {
-        outputLimitExceeded = true;
-        child.kill("SIGTERM");
-        killTimer = setTimeout(() => {
-          child.kill("SIGKILL");
-        }, KILL_GRACE_MS);
-      }
+      return { text: prefix, bytes: retained, exceeded: true };
     };
 
     const child = spawn(executable, spec.args ?? [], {
@@ -175,11 +183,9 @@ export async function runCommand(
 
     const timeoutMs = options.timeout ?? DEFAULT_TIMEOUT_MS;
     const timeout = setTimeout(() => {
+      if (outputLimitExceeded || settled) return;
       timedOut = true;
-      child.kill("SIGTERM");
-      killTimer = setTimeout(() => {
-        child.kill("SIGKILL");
-      }, KILL_GRACE_MS);
+      requestTermination();
     }, timeoutMs);
 
     const finalize = (handler: () => void) => {
@@ -193,12 +199,24 @@ export async function runCommand(
     child.stdout?.setEncoding("utf8");
     child.stderr?.setEncoding("utf8");
     child.stdout?.on("data", (chunk: string) => {
-      stdout += chunk;
-      checkOutputLimit();
+      if (outputLimitExceeded || settled) return;
+      const retained = retainChunk(chunk, stdoutBytes, maxStdoutBytes);
+      stdout += retained.text;
+      stdoutBytes += retained.bytes;
+      if (retained.exceeded) {
+        outputLimitExceeded = true;
+        requestTermination();
+      }
     });
     child.stderr?.on("data", (chunk: string) => {
-      stderr += chunk;
-      checkOutputLimit();
+      if (outputLimitExceeded || settled) return;
+      const retained = retainChunk(chunk, stderrBytes, maxStderrBytes);
+      stderr += retained.text;
+      stderrBytes += retained.bytes;
+      if (retained.exceeded) {
+        outputLimitExceeded = true;
+        requestTermination();
+      }
     });
 
     child.on("error", (err) => {

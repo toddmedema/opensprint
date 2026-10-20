@@ -9,6 +9,12 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
   );
 }
 
+interface ModalSession {
+  container: HTMLElement;
+}
+const modalSessions: ModalSession[] = [];
+let focusRevision = 0;
+
 export interface UseModalA11yOptions {
   /** Ref to the modal container (the element with role="dialog") */
   containerRef: RefObject<HTMLElement | null>;
@@ -35,7 +41,9 @@ export function useModalA11y({
   initialFocusRef,
   isOpen = true,
 }: UseModalA11yOptions): void {
-  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  const openingFocusRef = useRef<HTMLElement | null>(null);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (!isOpen || !containerRef.current) return;
@@ -43,12 +51,25 @@ export function useModalA11y({
     const container = containerRef.current;
 
     // Store the element that had focus when the modal opened (for fallback restore)
-    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
+    const focused = document.activeElement as HTMLElement | null;
+    // StrictMode repeats setup while focus is already inside this dialog.
+    // Keep the external opening focus from the first setup in that case.
+    if (!focused || !container.contains(focused)) openingFocusRef.current = focused;
+    const previouslyFocused = openingFocusRef.current;
     const triggerElement = triggerRef?.current;
+    const session = { container };
+    // Children can register before parents on a shared mount. Keep the nested
+    // dialog above its ancestor even in that effect order.
+    const descendantIndex = modalSessions.findIndex((entry) => container.contains(entry.container));
+    if (descendantIndex < 0) modalSessions.push(session);
+    else modalSessions.splice(descendantIndex, 0, session);
+    focusRevision++;
 
     const focusable = getFocusableElements(container);
     const initial = initialFocusRef?.current;
-    if (initial && container.contains(initial) && !initial.hasAttribute("disabled")) {
+    if (modalSessions.at(-1) !== session) {
+      // An already registered child owns focus.
+    } else if (initial && container.contains(initial) && !initial.hasAttribute("disabled")) {
       initial.focus();
     } else if (focusable.length > 0) {
       focusable[0].focus();
@@ -57,19 +78,29 @@ export function useModalA11y({
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (modalSessions.at(-1) !== session || e.defaultPrevented) return;
       if (e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        e.stopImmediatePropagation();
+        onCloseRef.current();
         return;
       }
 
       if (e.key !== "Tab") return;
 
       const focusable = getFocusableElements(container);
-      if (focusable.length === 0) return;
+      if (focusable.length === 0) {
+        e.preventDefault();
+        container.focus();
+        return;
+      }
 
       const focusedIndex = focusable.indexOf(document.activeElement as HTMLElement);
-      if (focusedIndex === -1) return;
+      if (focusedIndex === -1) {
+        e.preventDefault();
+        focusable[e.shiftKey ? focusable.length - 1 : 0].focus();
+        return;
+      }
 
       if (e.shiftKey) {
         // Tab backward
@@ -86,18 +117,36 @@ export function useModalA11y({
       }
     };
 
-    document.addEventListener("keydown", handleKeyDown, true);
+    // Trap Tab before focus can leave, but let inner dismissible surfaces (such
+    // as a focused tooltip) consume Escape before it reaches the dialog.
+    const handleCaptureKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Tab") handleKeyDown(event);
+    };
+    const handleBubbleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") handleKeyDown(event);
+    };
+    document.addEventListener("keydown", handleCaptureKeyDown, true);
+    document.addEventListener("keydown", handleBubbleKeyDown);
 
     return () => {
-      document.removeEventListener("keydown", handleKeyDown, true);
-
-      // Restore focus to trigger or previously focused element
+      document.removeEventListener("keydown", handleCaptureKeyDown, true);
+      document.removeEventListener("keydown", handleBubbleKeyDown);
+      const wasTopmost = modalSessions.at(-1) === session;
+      const index = modalSessions.indexOf(session);
+      if (index >= 0) modalSessions.splice(index, 1);
+      const revision = ++focusRevision;
+      if (!wasTopmost) return;
+      // A newly opened dialog (or StrictMode remount) supersedes this restore.
       requestAnimationFrame(() => {
-        const target = triggerElement ?? previouslyFocusedRef.current;
-        if (target && typeof target.focus === "function") {
+        if (revision !== focusRevision) return;
+        const parent = modalSessions.at(-1)?.container;
+        const target = triggerElement ?? previouslyFocused;
+        if (target?.isConnected && (!parent || parent.contains(target))) {
           target.focus();
+        } else if (parent?.isConnected) {
+          (getFocusableElements(parent)[0] ?? parent).focus();
         }
       });
     };
-  }, [isOpen, onClose, containerRef, triggerRef, initialFocusRef]);
+  }, [isOpen, containerRef, triggerRef, initialFocusRef]);
 }

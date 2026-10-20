@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs/promises";
 import { randomBytes } from "node:crypto";
-import express, { type Response } from "express";
+import express, { type Request, type Response } from "express";
 import { localhostCors } from "./middleware/cors.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { apiErrorNotificationMiddleware } from "./middleware/api-error-notification.js";
@@ -165,7 +165,15 @@ export function createApp(services?: AppServices) {
   if (process.env.OPENSPRINT_DESKTOP === "1") {
     const frontendDist = process.env.OPENSPRINT_FRONTEND_DIST;
     if (frontendDist) {
-      const sendDesktopSpaIndexHtml = async (res: Response) => {
+      const sendDesktopSpaIndexHtml = async (req: Request, res: Response) => {
+        if (!allowDesktopLocalSessionScriptRequest(req)) {
+          res
+            .status(403)
+            .setHeader("Cache-Control", "no-store")
+            .type("text/plain")
+            .send("Forbidden");
+          return;
+        }
         const indexPath = path.join(frontendDist, "index.html");
         const html = await fs.readFile(indexPath, "utf8");
         const token = getLocalSessionToken();
@@ -184,7 +192,11 @@ export function createApp(services?: AppServices) {
 
       app.get("/__opensprint_local_session.js", (req, res) => {
         if (!allowDesktopLocalSessionScriptRequest(req)) {
-          res.status(403).setHeader("Cache-Control", "no-store").type("text/plain").send("Forbidden");
+          res
+            .status(403)
+            .setHeader("Cache-Control", "no-store")
+            .type("text/plain")
+            .send("Forbidden");
           return;
         }
         const token = getLocalSessionToken();
@@ -193,8 +205,14 @@ export function createApp(services?: AppServices) {
         res.send(`window.__OPENSPRINT_LOCAL_SESSION__=${JSON.stringify(token)};`);
       });
 
-      app.get("/", wrapAsync(async (_req, res) => sendDesktopSpaIndexHtml(res)));
-      app.get("/index.html", wrapAsync(async (_req, res) => sendDesktopSpaIndexHtml(res)));
+      app.get(
+        "/",
+        wrapAsync(async (req, res) => sendDesktopSpaIndexHtml(req, res))
+      );
+      app.get(
+        "/index.html",
+        wrapAsync(async (req, res) => sendDesktopSpaIndexHtml(req, res))
+      );
 
       app.use(
         express.static(frontendDist, {
@@ -210,7 +228,7 @@ export function createApp(services?: AppServices) {
             return;
           }
           try {
-            await sendDesktopSpaIndexHtml(res);
+            await sendDesktopSpaIndexHtml(req, res);
           } catch (err) {
             next(err);
           }

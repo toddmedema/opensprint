@@ -127,20 +127,26 @@ function createQueryClient() {
 function renderWithRouter(
   store: ReturnType<typeof createStore>,
   projectId = "proj-1",
-  onOpenSettings?: () => void
+  onOpenSettings?: () => void,
+  statusOverride?: { activeDeployId: string | null; currentDeploy: null }
 ) {
   const queryClient = createQueryClient();
   const deliverState = store.getState().deliver;
   queryClient.setQueryData(queryKeys.deliver.history(projectId), deliverState.history ?? []);
-  queryClient.setQueryData(queryKeys.deliver.status(projectId), {
-    activeDeployId: deliverState.activeDeployId ?? null,
-    currentDeploy: deliverState.currentDeploy ?? null,
-  });
+  queryClient.setQueryData(
+    queryKeys.deliver.status(projectId),
+    statusOverride ?? {
+      activeDeployId: deliverState.activeDeployId ?? null,
+      currentDeploy: deliverState.currentDeploy ?? null,
+    }
+  );
   mockDeliverHistory.mockResolvedValue(deliverState.history ?? []);
-  mockDeliverStatus.mockResolvedValue({
-    activeDeployId: deliverState.activeDeployId ?? null,
-    currentDeploy: deliverState.currentDeploy ?? null,
-  });
+  mockDeliverStatus.mockResolvedValue(
+    statusOverride ?? {
+      activeDeployId: deliverState.activeDeployId ?? null,
+      currentDeploy: deliverState.currentDeploy ?? null,
+    }
+  );
 
   return render(
     <QueryClientProvider client={queryClient}>
@@ -1120,4 +1126,110 @@ describe("DeliverPhase", () => {
       }
     });
   });
+});
+
+describe("delivery operation recovery", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.innerWidth = 1200;
+    mockGetSettings.mockResolvedValue({
+      deployment: {
+        mode: "custom",
+        targets: [
+          { name: "production", command: "deploy", rollbackCommand: "rollback", isDefault: true },
+        ],
+      },
+    });
+  });
+
+  it("shows a custom deployment error and clears it on retry", async () => {
+    mockDeliverDeploy.mockRejectedValueOnce(new Error("Deploy server detail"));
+    renderWithRouter(createStore());
+    const button = await screen.findByTestId("deploy-to-production-button");
+    fireEvent.click(button);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Deploy server detail");
+    expect(button).toBeEnabled();
+    mockDeliverDeploy.mockResolvedValueOnce({ deployId: "retry" });
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
+  it("shows rollback and cancellation server errors and preserves retry controls", async () => {
+    const { api } = await import("../../api/client");
+    const record = {
+      id: "d1",
+      status: "success",
+      target: "production",
+      startedAt: new Date().toISOString(),
+      completedAt: null,
+      log: [],
+    };
+    vi.mocked(api.deliver.rollback).mockRejectedValueOnce(new Error("Rollback detail"));
+    const view = renderWithRouter(createStore({ history: [record] }));
+    const rollback = await screen.findByRole("button", { name: "Rollback" });
+    fireEvent.click(rollback);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Rollback detail");
+    expect(rollback).toBeEnabled();
+    view.unmount();
+    vi.mocked(api.deliver.cancel).mockRejectedValueOnce(new Error("Cancellation detail"));
+    renderWithRouter(
+      createStore({
+        activeDeployId: "d1",
+        currentDeploy: { ...record, status: "running" },
+        history: [{ ...record, status: "running" }],
+      })
+    );
+    const cancel = await screen.findByTestId("cancel-deployment-button");
+    fireEvent.click(cancel);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Cancellation detail");
+    expect(cancel).toBeEnabled();
+  });
+
+  it("shows first mobile Expo deployment failure with empty history and settings shortcut", async () => {
+    window.innerWidth = MOBILE_BREAKPOINT - 1;
+    mockGetSettings.mockResolvedValue({ deployment: { mode: "expo" } });
+    mockExpoDeploy.mockRejectedValueOnce(new Error("Expo access needs attention"));
+    const settings = vi.fn();
+    renderWithRouter(createStore(), "proj-1", settings);
+    const button = await screen.findByTestId("deploy-beta-button");
+    fireEvent.click(button);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Expo access needs attention");
+    expect(button).toBeEnabled();
+    fireEvent.click(screen.getByTestId("expo-auth-settings-link"));
+    expect(settings).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses authoritative server idle nulls instead of a stale Redux deployment", async () => {
+    renderWithRouter(
+      createStore({
+        activeDeployId: "stale",
+        currentDeploy: { id: "stale", status: "running", log: [] },
+      }),
+      "proj-1",
+      undefined,
+      { activeDeployId: null, currentDeploy: null }
+    );
+    expect(await screen.findByTestId("deploy-to-production-button")).toBeEnabled();
+    expect(screen.queryByTestId("cancel-deployment-button")).not.toBeInTheDocument();
+  });
+});
+
+it("retains Redux active deployment fallback while status query data is absent", async () => {
+  mockDeliverStatus.mockReturnValue(new Promise(() => {}));
+  const store = createStore({
+    activeDeployId: "cached-active",
+    currentDeploy: { id: "cached-active", status: "running", target: "production", log: [] },
+  });
+  const client = createQueryClient();
+  render(
+    <QueryClientProvider client={client}>
+      <Provider store={store}>
+        <MemoryRouter>
+          <DeliverPhase projectId="proj-1" />
+        </MemoryRouter>
+      </Provider>
+    </QueryClientProvider>
+  );
+  expect(await screen.findByTestId("cancel-deployment-button")).toBeInTheDocument();
+  client.clear();
 });

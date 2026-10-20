@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { spawn } from "node:child_process";
+import { npmInvocation, isMainModule } from "./node-cli.mjs";
 
 const DEFAULT_COMMANDS = [
   {
@@ -60,13 +61,12 @@ function parseTimeOutput(stderr) {
   return metrics;
 }
 
-async function runTimedCommand(timeCommand, spec) {
+export async function runTimedCommand(timeCommand, spec) {
   const startedAt = Date.now();
   const [cmd, ...args] = spec.command;
-  const executable = process.platform === "win32" && cmd === "npm" ? "npm.cmd" : cmd;
-  const wrappedArgs = timeCommand ? getTimeArgs([executable, ...args]) : [executable, ...args];
+  const [executable, ...cliArgs] = cmd === "npm" ? npmInvocation(args) : [cmd, ...args];
   const executableToRun = timeCommand ?? executable;
-  const spawnArgs = timeCommand ? wrappedArgs : args;
+  const spawnArgs = timeCommand ? getTimeArgs([executable, ...cliArgs]) : cliArgs;
 
   return await new Promise((resolve) => {
     const child = spawn(executableToRun, spawnArgs, {
@@ -76,17 +76,23 @@ async function runTimedCommand(timeCommand, spec) {
     });
 
     let stderr = "";
-    child.stderr.on("data", (chunk) => {
+    child.stderr?.on("data", (chunk) => {
       const text = String(chunk);
       stderr += text;
       process.stderr.write(text);
     });
 
+    let spawnError = null;
+    child.on("error", (error) => {
+      spawnError = error.message;
+      console.error(`[test-timings] ${error.message}`);
+    });
     child.on("close", (code) => {
       resolve({
         id: spec.id,
         command: spec.command.join(" "),
-        exitCode: code ?? 1,
+        exitCode: spawnError ? 1 : (code ?? 1),
+        ...(spawnError ? { error: spawnError } : {}),
         wallMs: Date.now() - startedAt,
         metrics: timeCommand ? parseTimeOutput(stderr) : {},
       });
@@ -114,7 +120,9 @@ async function main() {
   console.log(`\n[test-timings] Wrote ${absoluteOutPath}`);
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (isMainModule(import.meta.url)) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}

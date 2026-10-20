@@ -139,3 +139,24 @@ describe("FeedbackTaskChip", () => {
     });
   });
 });
+
+it("describes the real keyboard-focused chip button with its full cached title", async () => {
+  const title = "Full keyboard accessible task title";
+  const store = configureStore({
+    reducer: { execute: executeReducer },
+    preloadedState: {
+      execute: { ...initialExecuteState, ...toTasksByIdAndOrder([createMockTask({ title })]) },
+    },
+  });
+  render(
+    <Provider store={store}>
+      <FeedbackTaskChip projectId="A" taskId="task-1" onNavigateToBuildTask={() => {}} />
+    </Provider>
+  );
+  const button = screen.getByRole("button");
+  await act(async () => {
+    button.focus();
+  });
+  expect(button).toHaveAccessibleDescription(title);
+  expect(screen.getByRole("tooltip")).toHaveTextContent(title);
+});

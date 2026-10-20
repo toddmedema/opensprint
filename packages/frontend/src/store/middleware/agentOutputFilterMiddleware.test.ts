@@ -5,9 +5,12 @@ import executeReducer, {
   appendAgentOutput,
   setAgentOutputBackfill,
   setSelectedTaskId,
+  resetExecute,
+  fetchLiveOutputBackfill,
 } from "../slices/executeSlice";
 import planReducer from "../slices/planSlice";
 import websocketReducer from "../slices/websocketSlice";
+import { api } from "../../api/client";
 
 describe("agentOutputFilterMiddleware", () => {
   beforeEach(() => {
@@ -74,7 +77,7 @@ describe("agentOutputFilterMiddleware", () => {
 
     store.dispatch(setSelectedTaskId("task-2"));
 
-    expect(store.getState().execute.agentOutput["task-1"]).toEqual(["xy"]);
+    expect(store.getState().execute.agentOutput["task-1"]).toBeUndefined();
   });
 
   it("does not lose content when flushing on setSelectedTaskId (switch tasks)", () => {
@@ -83,7 +86,7 @@ describe("agentOutputFilterMiddleware", () => {
 
     store.dispatch(appendAgentOutput({ taskId: "task-1", chunk: "first\n" }));
     store.dispatch(setSelectedTaskId("task-2"));
-    expect(store.getState().execute.agentOutput["task-1"]).toEqual(["first\n"]);
+    expect(store.getState().execute.agentOutput["task-1"]).toBeUndefined();
 
     store.dispatch(setSelectedTaskId("task-1"));
     store.dispatch(appendAgentOutput({ taskId: "task-1", chunk: "second\n" }));
@@ -143,7 +146,7 @@ describe("agentOutputFilterMiddleware", () => {
   it("keeps buffer for other tasks when backfill clears one task", () => {
     vi.useFakeTimers();
     const store = createStore();
-    store.dispatch(setSelectedTaskId("task-1"));
+    // Before subscription selection is established, generic output actions remain supported.
 
     store.dispatch(appendAgentOutput({ taskId: "task-1", chunk: '{"type":"text","text":"a1"}\n' }));
     store.dispatch(appendAgentOutput({ taskId: "task-2", chunk: '{"type":"text","text":"b1"}\n' }));
@@ -263,4 +266,123 @@ describe("agentOutputFilterMiddleware", () => {
     expect(store.getState().execute.agentOutput["task-1"]).toEqual(["ABCD"]);
     vi.useRealTimers();
   });
+});
+
+it("evicts direct task switches and ignores late/buffered output without losing current output", () => {
+  vi.useFakeTimers();
+  const store = configureStore({
+    reducer: { execute: executeReducer },
+    middleware: (defaults) => defaults().concat(agentOutputFilterMiddleware),
+  });
+  store.dispatch(setSelectedTaskId("A"));
+  store.dispatch(setAgentOutputBackfill({ taskId: "A", output: "A output" }));
+  store.dispatch(appendAgentOutput({ taskId: "A", chunk: "pending" }));
+  store.dispatch(setSelectedTaskId("B"));
+  expect(store.getState().execute.agentOutput.A).toBeUndefined();
+  expect(store.getState().execute.agentOutputLastReceivedAt.A).toBeUndefined();
+  store.dispatch(appendAgentOutput({ taskId: "A", chunk: "late" }));
+  store.dispatch(setAgentOutputBackfill({ taskId: "A", output: "late backfill" }));
+  store.dispatch(setAgentOutputBackfill({ taskId: "B", output: "B output" }));
+  store.dispatch(setSelectedTaskId("B"));
+  expect(store.getState().execute.agentOutput.B).toEqual(["B output"]);
+  vi.advanceTimersByTime(200);
+  expect(store.getState().execute.agentOutput.A).toBeUndefined();
+  store.dispatch(setSelectedTaskId(null));
+  expect(store.getState().execute.agentOutput.B).toBeUndefined();
+  expect(store.getState().execute.agentOutputLastReceivedAt.B).toBeUndefined();
+  store.dispatch(setAgentOutputBackfill({ taskId: "B", output: "late after close" }));
+  expect(store.getState().execute.agentOutput.B).toBeUndefined();
+  vi.useRealTimers();
+});
+
+it("discards buffered prior-project output on reset and preserves the next project's selected output", () => {
+  vi.useFakeTimers();
+  const store = configureStore({
+    reducer: { execute: executeReducer },
+    middleware: (defaults) => defaults().concat(agentOutputFilterMiddleware),
+  });
+  store.dispatch(setSelectedTaskId("old-A"));
+  store.dispatch(appendAgentOutput({ taskId: "old-A", chunk: "buffered old project output\n" }));
+  store.dispatch(resetExecute());
+  vi.advanceTimersByTime(200);
+  expect(store.getState().execute.agentOutput).toEqual({});
+  expect(store.getState().execute.agentOutputLastReceivedAt).toEqual({});
+  store.dispatch(appendAgentOutput({ taskId: "old-A", chunk: "late live output\n" }));
+  store.dispatch(setAgentOutputBackfill({ taskId: "old-A", output: "late WebSocket backfill" }));
+  store.dispatch(
+    fetchLiveOutputBackfill.fulfilled(
+      { taskId: "old-A", output: "late REST backfill" },
+      "old-request",
+      { projectId: "old", taskId: "old-A" }
+    )
+  );
+  vi.advanceTimersByTime(200);
+  expect(store.getState().execute.agentOutput).toEqual({});
+  store.dispatch(setSelectedTaskId("new-B"));
+  store.dispatch(setAgentOutputBackfill({ taskId: "new-B", output: "new backfill " }));
+  store.dispatch(appendAgentOutput({ taskId: "new-B", chunk: "new live output\n" }));
+  vi.advanceTimersByTime(200);
+  expect(store.getState().execute.agentOutput["new-B"]).toEqual([
+    "new backfill ",
+    "new live output\n",
+  ]);
+  expect(store.getState().execute.agentOutput["old-A"]).toBeUndefined();
+  vi.useRealTimers();
+});
+
+it.each(["reset", "switch"] as const)(
+  "rejects obsolete REST output after %s and reselection of the same task ID",
+  async (boundary) => {
+    let resolveOld!: (value: { output: string }) => void;
+    const request = vi
+      .spyOn(api.execute, "liveOutput")
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        })
+      )
+      .mockResolvedValueOnce({ output: "current project output" });
+    try {
+      const store = configureStore({
+        reducer: { execute: executeReducer },
+        middleware: (defaults) => defaults().concat(agentOutputFilterMiddleware),
+      });
+      store.dispatch(setSelectedTaskId("X"));
+      const old = store.dispatch(fetchLiveOutputBackfill({ projectId: "A", taskId: "X" }));
+      if (boundary === "reset") store.dispatch(resetExecute());
+      else store.dispatch(setSelectedTaskId("Y"));
+      store.dispatch(setSelectedTaskId("X"));
+      await store.dispatch(fetchLiveOutputBackfill({ projectId: "B", taskId: "X" }));
+      resolveOld({
+        output: "obsolete prior-session output that is longer than the current output",
+      });
+      await old;
+      expect(store.getState().execute.agentOutput.X).toEqual(["current project output"]);
+    } finally {
+      request.mockRestore();
+    }
+  }
+);
+
+it("preserves a pending current REST request through same-ID reselection", async () => {
+  let resolveCurrent!: (value: { output: string }) => void;
+  const request = vi.spyOn(api.execute, "liveOutput").mockReturnValueOnce(
+    new Promise((resolve) => {
+      resolveCurrent = resolve;
+    })
+  );
+  try {
+    const store = configureStore({
+      reducer: { execute: executeReducer },
+      middleware: (defaults) => defaults().concat(agentOutputFilterMiddleware),
+    });
+    store.dispatch(setSelectedTaskId("X"));
+    const pending = store.dispatch(fetchLiveOutputBackfill({ projectId: "A", taskId: "X" }));
+    store.dispatch(setSelectedTaskId("X"));
+    resolveCurrent({ output: "valid current output" });
+    await pending;
+    expect(store.getState().execute.agentOutput.X).toEqual(["valid current output"]);
+  } finally {
+    request.mockRestore();
+  }
 });

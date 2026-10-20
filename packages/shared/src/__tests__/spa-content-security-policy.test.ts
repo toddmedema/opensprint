@@ -22,15 +22,19 @@ function readFrontendIndexHtml(): string {
 }
 
 describe("spa-content-security-policy", () => {
-  it("keeps the boot inline style hash aligned with packages/frontend/index.html", () => {
-    const html = readFrontendIndexHtml();
-    const start = html.indexOf("<style>");
-    const end = html.indexOf("</style>");
-    expect(start).toBeGreaterThan(-1);
-    expect(end).toBeGreaterThan(start);
-    const inner = html.slice(start + "<style>".length, end);
-    expect(cspSha256SourceToken(inner)).toBe(SPA_INDEX_BOOT_INLINE_STYLE_SHA256);
-  });
+  it.each(["\n", "\r\n", "\r"])(
+    "keeps the boot style hash aligned for HTML line endings %j",
+    (eol) => {
+      const html = readFrontendIndexHtml().replace(/\r\n?/g, "\n").replace(/\n/g, eol);
+      const start = html.indexOf("<style>");
+      const end = html.indexOf("</style>");
+      expect(start).toBeGreaterThan(-1);
+      expect(end).toBeGreaterThan(start);
+      // HTML parsing normalizes CRLF and lone CR before CSP hashes the style text.
+      const inner = html.slice(start + "<style>".length, end).replace(/\r\n?/g, "\n");
+      expect(cspSha256SourceToken(inner)).toBe(SPA_INDEX_BOOT_INLINE_STYLE_SHA256);
+    }
+  );
 
   it("buildSpaContentSecurityPolicyProduction includes hashed style, tight script-src, and markdown-friendly img-src", () => {
     const csp = buildSpaContentSecurityPolicyProduction();

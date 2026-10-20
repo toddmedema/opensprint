@@ -25,16 +25,21 @@ For a faster setup that skips Electron/Puppeteer workspace installs: `OPENSPRINT
 
 From the repo root, run:
 
-| Command                | Purpose                             |
-| ---------------------- | ----------------------------------- |
-| `npm run test`         | Run the test suite (all workspaces) |
-| `npm run lint`         | Lint all packages                   |
-| `npm run format:check` | Check Prettier formatting           |
-| `npm run build`        | Build shared, backend, and frontend |
+| Command                          | Purpose                                                |
+| -------------------------------- | ------------------------------------------------------ |
+| `npm run test`                   | Run the test suite (all workspaces)                    |
+| `npm run lint`                   | Lint all packages                                      |
+| `npm run format:check`           | Check Prettier formatting                              |
+| `npm run build`                  | Build shared, backend, and frontend                    |
+| `npm run test:coverage:affected` | Run CI workspace selection and affected coverage gates |
 
-CI also runs `npm run lint:ci` (lint + format check). Fix any failures before submitting.
+CI runs `npm run lint`; use `npm run format:check` to check Prettier locally as well. Keep changed files formatted before submitting.
 
-**Merge gate and E2E:** The merge gate (`.github/workflows/merge-gate.yml`) runs `npm run test:coverage` for shared, backend, and frontend. The frontend suite includes E2E tests (`*.e2e.test.tsx`); the test step is bounded by a 20-minute timeout. The SPEC target of >80% coverage with passing E2E tests is enforced in CI; see `SPEC.md` for thresholds and details.
+**Coverage and E2E:** The test job in `.github/workflows/merge-gate.yml` selects affected workspaces and runs `npm run test:coverage` for shared, backend, frontend, and Electron as applicable. The frontend suite includes E2E tests (`*.e2e.test.tsx`); each workspace coverage step is bounded by a 20-minute timeout. The SPEC coverage targets and passing E2E tests are enforced in CI; see `SPEC.md` for thresholds and details.
+
+Before opening or updating a PR, run both `npm run verify:merge-gates` and `npm run test:coverage:affected` from the repository root. The first runs build, lint, and ordinary tests; the second exercises CI's Git-based workspace selection and coverage thresholds. Inspect the selection with `node scripts/affected-workspaces.mjs --coverage-only --json`. Do not substitute `--all` for this check: it bypasses Git comparison and cannot detect checkout/history problems.
+
+The shared test suite includes real complete-history and shallow Git checkout regressions. CI fetches full history for workspace selection; if a comparison base is unavailable, the selector conservatively runs every workspace. Missing PostgreSQL or other prerequisites make local validation incomplete. After pushing, verify every required CI job before reporting the PR ready; passing scoped tests or the ordinary merge gate alone does not establish that the coverage job passed.
 
 To fix formatting: `npm run format`.
 

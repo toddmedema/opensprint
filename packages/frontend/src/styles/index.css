@@ -585,3 +585,10 @@ html[data-theme="dark"] [data-testid="task-description-markdown"] code:not(pre c
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Override important inline-code typography utilities inside fenced blocks. */
+.prose pre > code,
+.prose-task-description pre > code,
+html[data-theme] .prose-task-description pre > code {
+  color: var(--ui-text-code) !important;
+}
