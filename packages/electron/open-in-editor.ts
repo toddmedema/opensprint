@@ -73,7 +73,14 @@ export async function openInEditor(
   }
 
   for (const editor of editorsToTry) {
-    const uri = `${URI_SCHEMES[editor]}/${encodeURI(folderPath)}`;
+    const normalized = folderPath.replace(/\\/g, "/");
+    const encoded = normalized
+      .split("/")
+      .map((part, index) =>
+        index === 0 && /^[a-zA-Z]:$/.test(part) ? part : encodeURIComponent(part)
+      )
+      .join("/");
+    const uri = `${URI_SCHEMES[editor]}/${encoded}`;
     try {
       await deps.openExternal(uri);
       return { success: true, editor, method: "uri" };

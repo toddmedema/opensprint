@@ -464,9 +464,10 @@ export class TaskStoreService {
         ),
         [projectId]
       ),
-      client.query(toPgParams("SELECT id, status, issue_type, description FROM tasks WHERE project_id = ?"), [
-        projectId,
-      ]),
+      client.query(
+        toPgParams("SELECT id, status, issue_type, description FROM tasks WHERE project_id = ?"),
+        [projectId]
+      ),
       client.query(toPgParams(nonChoreSql), [projectId, limit, offset]),
     ]);
 
@@ -993,7 +994,12 @@ export class TaskStoreService {
           const { sets, vals, nextIdx } = buildUpdateManySetsHelper(u, now, rowShape);
           vals.push(u.id, projectId);
           const sql = `UPDATE tasks SET ${sets.join(", ")} WHERE id = $${nextIdx} AND project_id = $${nextIdx + 1}`;
-          await tx.execute(sql, vals);
+          const modified = await tx.execute(sql, vals);
+          if (modified === 0) {
+            throw new AppError(404, ErrorCodes.ISSUE_NOT_FOUND, `Task ${u.id} not found`, {
+              issueId: u.id,
+            });
+          }
         }
       });
       const tasks: StoredTask[] = [];
@@ -1042,12 +1048,17 @@ export class TaskStoreService {
       const now = new Date().toISOString();
       await client.runInTransaction(async (tx) => {
         for (const item of items) {
-          await tx.execute(
+          const modified = await tx.execute(
             toPgParams(
               "UPDATE tasks SET status = 'closed', close_reason = ?, completed_at = ?, updated_at = ? WHERE id = ? AND project_id = ?"
             ),
             [item.reason, now, now, item.id, projectId]
           );
+          if (modified === 0) {
+            throw new AppError(404, ErrorCodes.ISSUE_NOT_FOUND, `Task ${item.id} not found`, {
+              issueId: item.id,
+            });
+          }
         }
       });
       const tasks: StoredTask[] = [];

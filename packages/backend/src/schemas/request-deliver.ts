@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { partialDeploymentSchema } from "./deployment.js";
 
 export const deployIdParamsSchema = z.object({
   projectId: z.string().min(1),
@@ -15,7 +16,7 @@ export const deliverHistoryQuerySchema = z.object({
 });
 
 /** PUT /deliver/settings — partial deployment config */
-export const deliverSettingsBodySchema = z.record(z.string(), z.unknown()).optional().default({});
+export const deliverSettingsBodySchema = partialDeploymentSchema.optional().default({});
 
 export const expoDeployBodySchema = z.object({
   variant: z.enum(["beta", "prod"]),

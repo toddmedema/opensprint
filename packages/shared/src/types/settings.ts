@@ -111,9 +111,38 @@ export interface DeploymentConfig {
 
 export type DeploymentConfigInput = DeploymentConfig;
 
+/** Recover malformed legacy targets before any array consumer reads them. */
+export function normalizeDeploymentTargets(value: unknown): DeploymentTargetConfig[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((entry): entry is DeploymentTargetConfig => {
+    if (!entry || typeof entry !== "object" || typeof entry.name !== "string" || !entry.name.trim())
+      return false;
+    for (const key of ["command", "webhookUrl", "rollbackCommand"] as const) {
+      if (entry[key] !== undefined && typeof entry[key] !== "string") return false;
+    }
+    if (entry.isDefault !== undefined && typeof entry.isDefault !== "boolean") return false;
+    if (
+      entry.autoDeployTrigger !== undefined &&
+      !["each_task", "each_epic", "eval_resolution", "nightly", "none"].includes(
+        entry.autoDeployTrigger
+      )
+    )
+      return false;
+    if (
+      entry.envVars !== undefined &&
+      (!entry.envVars ||
+        typeof entry.envVars !== "object" ||
+        Array.isArray(entry.envVars) ||
+        Object.values(entry.envVars).some((v) => typeof v !== "string"))
+    )
+      return false;
+    return true;
+  });
+}
+
 /** Resolve the default target name from targets array (first isDefault, or first entry, or config.target). */
 export function getDefaultDeploymentTarget(config: DeploymentConfig): string {
-  const targets = config.targets;
+  const targets = normalizeDeploymentTargets(config.targets);
   if (targets && targets.length > 0) {
     const def = targets.find((t) => t.isDefault) ?? targets[0];
     return def.name;
@@ -126,7 +155,7 @@ export function getDeploymentTargetConfig(
   config: DeploymentConfig,
   targetName: string
 ): DeploymentTargetConfig | undefined {
-  return config.targets?.find((t) => t.name === targetName);
+  return normalizeDeploymentTargets(config.targets)?.find((t) => t.name === targetName);
 }
 
 /** Deploy event types that can trigger auto-deploy (excludes "nightly" which is schedule-based) */
@@ -137,7 +166,7 @@ export type DeployEvent = "each_task" | "each_epic" | "eval_resolution";
  * Returns targets whose autoDeployTrigger matches the event.
  */
 export function getTargetsForDeployEvent(config: DeploymentConfig, event: DeployEvent): string[] {
-  const targets = config.targets;
+  const targets = normalizeDeploymentTargets(config.targets);
   if (!targets || targets.length === 0) return [];
   return targets.filter((t) => (t.autoDeployTrigger ?? "none") === event).map((t) => t.name);
 }
@@ -147,7 +176,7 @@ export function getTargetsForDeployEvent(config: DeploymentConfig, event: Deploy
  * Returns targets whose autoDeployTrigger is "nightly".
  */
 export function getTargetsForNightlyDeploy(config: DeploymentConfig): string[] {
-  const targets = config.targets;
+  const targets = normalizeDeploymentTargets(config.targets);
   if (!targets || targets.length === 0) return [];
   return targets.filter((t) => (t.autoDeployTrigger ?? "none") === "nightly").map((t) => t.name);
 }
@@ -201,7 +230,7 @@ export const AUTO_DEPLOY_TRIGGER_OPTIONS: { value: AutoDeployTrigger; label: str
  * Custom mode: returns targets array (may be empty).
  */
 export function getDeploymentTargetsForUi(config: DeploymentConfig): DeploymentTargetConfig[] {
-  const targets = config.targets;
+  const targets = normalizeDeploymentTargets(config.targets);
   if (config.mode === "expo" && (!targets || targets.length === 0)) {
     return [
       { name: "staging", autoDeployTrigger: "none" },
@@ -241,7 +270,7 @@ function migrateDeploymentConfig(raw: unknown): DeploymentConfig {
     mode,
     easProjectId,
     target: input.target,
-    targets: input.targets,
+    targets: normalizeDeploymentTargets(input.targets),
     envVars: input.envVars,
     autoResolveFeedbackOnTaskCompletion: input.autoResolveFeedbackOnTaskCompletion,
     expoConfig: input.expoConfig,
@@ -843,9 +872,7 @@ export function maskTodoistOAuthForResponse(
  * Parse and sanitize Todoist OAuth credentials from raw settings JSON.
  * Returns undefined if no valid fields are present.
  */
-export function parseTodoistOAuthCredentials(
-  raw: unknown
-): TodoistOAuthCredentials | undefined {
+export function parseTodoistOAuthCredentials(raw: unknown): TodoistOAuthCredentials | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const obj = raw as Record<string, unknown>;
   const clientId = typeof obj.clientId === "string" ? obj.clientId.trim() : "";

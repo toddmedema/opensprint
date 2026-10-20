@@ -131,24 +131,32 @@ export class CommandStoreService {
   async updateStatus(id: string, status: CommandStatus): Promise<void> {
     const now = new Date().toISOString();
     await taskStore.runWrite(async (client) => {
-      await client.execute(
-        "UPDATE command_runs SET status = $1, updated_at = $2 WHERE id = $3",
-        [status, now, id]
-      );
+      await client.execute("UPDATE command_runs SET status = $1, updated_at = $2 WHERE id = $3", [
+        status,
+        now,
+        id,
+      ]);
     });
   }
 
-  async getRun(id: string): Promise<CommandRun | null> {
+  async getRun(id: string, projectId: string): Promise<CommandRun | null> {
     const client = await taskStore.getDb();
-    const row = await client.queryOne("SELECT * FROM command_runs WHERE id = $1", [id]);
+    const row = await client.queryOne(
+      "SELECT * FROM command_runs WHERE id = $1 AND project_id = $2",
+      [id, projectId]
+    );
     return row ? rowToRun(row as unknown as CommandRunRow) : null;
   }
 
-  async findByIdempotencyKey(key: string): Promise<CommandRun | null> {
+  async findByIdempotencyKey(
+    key: string,
+    projectId: string,
+    runId: string
+  ): Promise<CommandRun | null> {
     const client = await taskStore.getDb();
     const row = await client.queryOne(
-      "SELECT * FROM command_runs WHERE idempotency_key = $1",
-      [key]
+      "SELECT * FROM command_runs WHERE idempotency_key = $1 AND project_id = $2 AND id = $3",
+      [key, projectId, runId]
     );
     return row ? rowToRun(row as unknown as CommandRunRow) : null;
   }

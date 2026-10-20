@@ -3,11 +3,7 @@
  * showing what mutations a command would perform.
  */
 
-import type {
-  CommandPreview,
-  CommandMutation,
-  CommandInterpretation,
-} from "@opensprint/shared";
+import type { CommandPreview, CommandMutation, CommandInterpretation } from "@opensprint/shared";
 import { intakeStore } from "./intake-store.service.js";
 import { taskStore } from "./task-store.service.js";
 import { integrationStore } from "./integration-store.service.js";
@@ -25,7 +21,8 @@ export class CommandPreviewService {
 
     switch (intent.commandType) {
       case "list_intake": {
-        description = "List intake items" +
+        description =
+          "List intake items" +
           (intent.args.provider ? ` from ${intent.args.provider}` : "") +
           (intent.args.triageStatus ? ` with status ${intent.args.triageStatus}` : "");
         break;
@@ -34,7 +31,7 @@ export class CommandPreviewService {
       case "convert_intake": {
         const items = intent.args.itemIds;
         for (const itemId of items) {
-          const item = await intakeStore.getItem(itemId);
+          const item = await intakeStore.getItemForProject(projectId, itemId);
           if (!item) {
             warnings.push(`Intake item ${itemId} not found`);
             continue;
@@ -106,7 +103,8 @@ export class CommandPreviewService {
       }
 
       case "list_tasks": {
-        description = "List tasks" +
+        description =
+          "List tasks" +
           (intent.args.status ? ` with status ${intent.args.status}` : "") +
           (intent.args.epicId ? ` in epic ${intent.args.epicId}` : "");
         break;

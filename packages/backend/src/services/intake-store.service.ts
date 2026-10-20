@@ -36,13 +36,17 @@ function rowToItem(row: IntakeItemRow): IntakeItem {
   let labels: string[] = [];
   try {
     labels = JSON.parse(row.labels);
-  } catch { /* default empty */ }
+  } catch {
+    /* default empty */
+  }
 
   let suggestion: IntakeTriageSuggestion | null = null;
   if (row.triage_suggestion) {
     try {
       suggestion = JSON.parse(row.triage_suggestion) as IntakeTriageSuggestion;
-    } catch { /* null */ }
+    } catch {
+      /* null */
+    }
   }
 
   return {
@@ -122,16 +126,22 @@ export class IntakeStoreService {
         ]
       );
 
-      const inserted = await client.queryOne(
-        "SELECT * FROM intake_items WHERE id = $1",
-        [id]
-      );
+      const inserted = await client.queryOne("SELECT * FROM intake_items WHERE id = $1", [id]);
       result = inserted ? rowToItem(inserted as unknown as IntakeItemRow) : null;
       created = true;
     });
 
     if (!result) throw new Error("Failed to upsert intake item");
     return { item: result, created };
+  }
+
+  async getItemForProject(projectId: string, id: string): Promise<IntakeItem | null> {
+    const client = await taskStore.getDb();
+    const row = await client.queryOne(
+      "SELECT * FROM intake_items WHERE id = $1 AND project_id = $2",
+      [id, projectId]
+    );
+    return row ? rowToItem(row as unknown as IntakeItemRow) : null;
   }
 
   async getItem(id: string): Promise<IntakeItem | null> {
@@ -190,13 +200,22 @@ export class IntakeStoreService {
     };
   }
 
+  async updateTriageStatusForProject(
+    projectId: string,
+    id: string,
+    status: IntakeTriageStatus
+  ): Promise<IntakeItem | null> {
+    return this.updateTriageStatus(id, status, undefined, projectId);
+  }
+
   async updateTriageStatus(
     id: string,
     status: IntakeTriageStatus,
     extra?: {
       converted_feedback_id?: string;
       converted_task_id?: string;
-    }
+    },
+    projectId?: string
   ): Promise<IntakeItem | null> {
     const now = new Date().toISOString();
     await taskStore.runWrite(async (client) => {
@@ -206,17 +225,18 @@ export class IntakeStoreService {
           converted_feedback_id = COALESCE($2, converted_feedback_id),
           converted_task_id = COALESCE($3, converted_task_id),
           updated_at = $4
-        WHERE id = $5`,
+        WHERE id = $5${projectId === undefined ? "" : " AND project_id = $6"}`,
         [
           status,
           extra?.converted_feedback_id ?? null,
           extra?.converted_task_id ?? null,
           now,
           id,
+          ...(projectId === undefined ? [] : [projectId]),
         ]
       );
     });
-    return this.getItem(id);
+    return projectId === undefined ? this.getItem(id) : this.getItemForProject(projectId, id);
   }
 
   async updateTriageSuggestion(

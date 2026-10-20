@@ -164,8 +164,7 @@ const API_V1_BASE = `${(import.meta.env.VITE_API_BASE as string | undefined) ?? 
  * in the WebSocket URL, which is often logged). Node `ws` clients can use the header instead.
  */
 async function fetchWebSocketUpgradeTicket(): Promise<string | null> {
-  const token =
-    typeof window !== "undefined" ? window.__OPENSPRINT_LOCAL_SESSION__ : undefined;
+  const token = typeof window !== "undefined" ? window.__OPENSPRINT_LOCAL_SESSION__ : undefined;
   if (!token) return null;
   try {
     const res = await fetch(`${API_V1_BASE}/ws-upgrade-ticket`, {
@@ -205,6 +204,7 @@ function buildWebSocketUrl(pathFromHost: string, ticket: string | null): string 
 export const websocketMiddleware: Middleware = (storeApi) => {
   const dispatch = storeApi.dispatch as StoreDispatch;
   let ws: WebSocket | null = null;
+  let connectionGeneration = 0;
   let currentProjectId: string | null = null;
   let reconnectAttempt = 0;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -260,7 +260,9 @@ export const websocketMiddleware: Middleware = (storeApi) => {
   const pendingPlanSubscribes: Array<{ type: "plan.agent.subscribe"; planId: string }> = [];
 
   function cleanup() {
+    connectionGeneration++;
     intentionalClose = true;
+    dispatch(setConnected(false));
     resetAgentActivityQueryCoalescing();
     pendingSubscribes.length = 0;
     pendingPlanSubscribes.length = 0;
@@ -269,15 +271,17 @@ export const websocketMiddleware: Middleware = (storeApi) => {
       reconnectTimer = null;
     }
     if (ws) {
-      ws.close();
+      const previous = ws;
       ws = null;
+      previous.close();
     }
     currentProjectId = null;
     reconnectAttempt = 0;
   }
 
-  function attachProjectSocketHandlers(socket: WebSocket, projectId: string) {
+  function attachProjectSocketHandlers(socket: WebSocket, projectId: string, generation: number) {
     socket.onopen = () => {
+      if (socket !== ws || generation !== connectionGeneration) return;
       reconnectAttempt = 0;
       dispatch(setConnected(true));
       dispatch(setConnectionError(false));
@@ -311,6 +315,7 @@ export const websocketMiddleware: Middleware = (storeApi) => {
     };
 
     socket.onmessage = (event) => {
+      if (socket !== ws || generation !== connectionGeneration) return;
       try {
         const data = JSON.parse(event.data) as ServerEvent;
         handleServerEvent(dispatch, storeApi.getState, projectId, data);
@@ -321,7 +326,7 @@ export const websocketMiddleware: Middleware = (storeApi) => {
 
     socket.onclose = () => {
       // Ignore if this is a stale socket (replaced by a newer connection)
-      if (socket !== ws) return;
+      if (socket !== ws || generation !== connectionGeneration) return;
       dispatch(setConnected(false));
       if (!intentionalClose && currentProjectId) {
         scheduleReconnect(projectId);
@@ -342,15 +347,17 @@ export const websocketMiddleware: Middleware = (storeApi) => {
     cleanup();
     intentionalClose = false;
     currentProjectId = projectId;
+    const generation = connectionGeneration;
 
     void (async () => {
       const ticket = await fetchWebSocketUpgradeTicket();
-      if (intentionalClose || currentProjectId !== projectId) return;
+      if (generation !== connectionGeneration || intentionalClose || currentProjectId !== projectId)
+        return;
 
       const url = buildWebSocketUrl(`/ws/projects/${projectId}`, ticket);
       const socket = new WebSocket(url);
       ws = socket;
-      attachProjectSocketHandlers(socket, projectId);
+      attachProjectSocketHandlers(socket, projectId, generation);
     })();
   }
 
@@ -369,15 +376,22 @@ export const websocketMiddleware: Middleware = (storeApi) => {
     cleanup();
     intentionalClose = false;
     currentProjectId = HOME_SENTINEL;
+    const generation = connectionGeneration;
 
     void (async () => {
       const ticket = await fetchWebSocketUpgradeTicket();
-      if (intentionalClose || currentProjectId !== HOME_SENTINEL) return;
+      if (
+        generation !== connectionGeneration ||
+        intentionalClose ||
+        currentProjectId !== HOME_SENTINEL
+      )
+        return;
 
       const url = buildWebSocketUrl("/ws", ticket);
       const socket = new WebSocket(url);
       ws = socket;
       socket.onopen = () => {
+        if (socket !== ws || generation !== connectionGeneration) return;
         reconnectAttempt = 0;
         dispatch(setConnected(true));
         dispatch(setConnectionError(false));
@@ -386,10 +400,13 @@ export const websocketMiddleware: Middleware = (storeApi) => {
         // No project scope — backend does not send project events to /ws-only clients
       };
       socket.onclose = () => {
-        if (socket !== ws) return;
+        if (socket !== ws || generation !== connectionGeneration) return;
         dispatch(setConnected(false));
         if (!intentionalClose && currentProjectId === HOME_SENTINEL) {
-          const delay = Math.min(RECONNECT_BASE_MS * Math.pow(2, reconnectAttempt), RECONNECT_MAX_MS);
+          const delay = Math.min(
+            RECONNECT_BASE_MS * Math.pow(2, reconnectAttempt),
+            RECONNECT_MAX_MS
+          );
           reconnectAttempt++;
           reconnectTimer = setTimeout(() => {
             if (currentProjectId === HOME_SENTINEL) connectHome();
@@ -852,7 +869,9 @@ export const websocketMiddleware: Middleware = (storeApi) => {
           void qc.invalidateQueries({ queryKey: queryKeys.feedback.list(projectId) });
           if (syncEv.provider === "todoist") {
             const label =
-              syncEv.imported === 1 ? "1 item imported from Todoist" : `${syncEv.imported} items imported from Todoist`;
+              syncEv.imported === 1
+                ? "1 item imported from Todoist"
+                : `${syncEv.imported} items imported from Todoist`;
             d(
               addToast({
                 message: label,

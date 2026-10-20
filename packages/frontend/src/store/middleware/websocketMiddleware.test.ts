@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { configureStore } from "@reduxjs/toolkit";
 import { QueryClient } from "@tanstack/react-query";
-import { websocketMiddleware, wsConnect, wsDisconnect, wsSend } from "./websocketMiddleware";
+import {
+  websocketMiddleware,
+  wsConnect,
+  wsConnectHome,
+  wsDisconnect,
+  wsSend,
+} from "./websocketMiddleware";
 import { queryKeys } from "../../api/queryKeys";
 import { resetMergeGateExecuteStatusSnapshots } from "../../lib/executeStatusMergeGateTasksBump";
 import projectReducer from "../slices/projectSlice";
@@ -251,6 +257,72 @@ describe("websocketMiddleware", () => {
     });
   }
 
+  describe("connection attempt ownership", () => {
+    it.each([false, true])(
+      "ignores old same-project ticket resolved newest-first=%s",
+      async (newestFirst) => {
+        const pending: Array<(value: unknown) => void> = [];
+        vi.mocked(fetch).mockImplementation(
+          () => new Promise((resolve) => pending.push(resolve)) as Promise<Response>
+        );
+        const store = createStore();
+        store.dispatch(wsConnect({ projectId: "A" }));
+        store.dispatch(wsDisconnect());
+        store.dispatch(wsConnect({ projectId: "A" }));
+        const reply = (ticket: string) => ({ ok: true, json: async () => ({ data: { ticket } }) });
+        const order = newestFirst ? [1, 0] : [0, 1];
+        pending[order[0]](reply(order[0] === 1 ? "current" : "obsolete"));
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        pending[order[1]](reply(order[1] === 1 ? "current" : "obsolete"));
+        await flushPendingWsInstance("ticket=current");
+        const current = wsInstance;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(wsInstance).toBe(current);
+        expect(current!.url).toContain("ticket=current");
+      }
+    );
+
+    it("ignores A-to-B-to-A pending tickets and stale socket callbacks", async () => {
+      const store = createStore();
+      store.dispatch(wsConnect({ projectId: "A" }));
+      await flushPendingWsInstance("/A");
+      const stale = wsInstance!;
+      store.dispatch(wsConnect({ projectId: "B" }));
+      await flushPendingWsInstance("/B");
+      const current = wsInstance!;
+      current.simulateOpen();
+      mockInvalidateQueries.mockClear();
+      stale.simulateOpen();
+      stale.simulateMessage({ type: "prd.updated", section: "overview", version: 2 });
+      stale.simulateClose();
+      expect(store.getState().websocket.connected).toBe(true);
+      expect(mockInvalidateQueries).not.toHaveBeenCalled();
+      store.dispatch(wsConnect({ projectId: "A" }));
+      await vi.waitFor(() => {
+        expect(wsInstance).not.toBe(stale);
+        expect(wsInstance!.url).toContain("/A");
+      });
+    });
+
+    it("invalidates obsolete home ticket continuations", async () => {
+      const pending: Array<(value: unknown) => void> = [];
+      vi.mocked(fetch).mockImplementation(
+        () => new Promise((resolve) => pending.push(resolve)) as Promise<Response>
+      );
+      const store = createStore();
+      store.dispatch(wsConnectHome());
+      store.dispatch(wsDisconnect());
+      store.dispatch(wsConnectHome());
+      pending[1]({ ok: true, json: async () => ({ data: { ticket: "home-current" } }) });
+      await flushPendingWsInstance("home-current");
+      const current = wsInstance;
+      pending[0]({ ok: true, json: async () => ({ data: { ticket: "home-old" } }) });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(wsInstance).toBe(current);
+    });
+  });
 
   describe("wsConnect", () => {
     it("creates WebSocket connection to project URL", async () => {
@@ -2359,7 +2431,9 @@ describe("websocketMiddleware", () => {
       await vi.waitFor(() => !store.getState().websocket.connected);
 
       vi.advanceTimersByTime(1000);
-      await vi.waitFor(() => wsInstance !== firstWs);
+      await vi.waitFor(() => {
+        expect(wsInstance).not.toBe(firstWs);
+      });
       wsInstance!.simulateOpen();
       await vi.waitFor(() => store.getState().websocket.connected);
 
@@ -2391,7 +2465,9 @@ describe("websocketMiddleware", () => {
       await vi.waitFor(() => !store.getState().websocket.connected);
 
       vi.advanceTimersByTime(1000);
-      await vi.waitFor(() => wsInstance !== firstWs);
+      await vi.waitFor(() => {
+        expect(wsInstance).not.toBe(firstWs);
+      });
       wsInstance!.simulateOpen();
       await vi.waitFor(() => store.getState().websocket.connected);
 

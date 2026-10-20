@@ -15,7 +15,11 @@ import { wrapAsync } from "../middleware/wrap-async.js";
 import { validateBody, validateParams, validateQuery } from "../middleware/validate.js";
 import { projectIdParamSchema } from "../schemas/request-common.js";
 import { intakeStore } from "../services/intake-store.service.js";
-import type { IntakeConvertAction, IntakeTriageStatus, IntegrationProvider } from "@opensprint/shared";
+import type {
+  IntakeConvertAction,
+  IntakeTriageStatus,
+  IntegrationProvider,
+} from "@opensprint/shared";
 
 const itemIdParamSchema = z.object({
   projectId: z.string().min(1),
@@ -51,8 +55,10 @@ export function createIntakeRouter(): Router {
     wrapAsync(async (req, res) => {
       const projectId = req.params.projectId as string;
       const filters = {
-        provider: (req.query.provider as string | undefined) as IntegrationProvider | undefined,
-        triageStatus: (req.query.triageStatus as string | undefined) as IntakeTriageStatus | undefined,
+        provider: req.query.provider as string | undefined as IntegrationProvider | undefined,
+        triageStatus: req.query.triageStatus as string | undefined as
+          | IntakeTriageStatus
+          | undefined,
         search: req.query.search as string | undefined,
         limit: req.query.limit ? Number(req.query.limit) : undefined,
         offset: req.query.offset ? Number(req.query.offset) : undefined,
@@ -67,7 +73,7 @@ export function createIntakeRouter(): Router {
     validateParams(itemIdParamSchema),
     wrapAsync(async (req, res) => {
       const itemId = req.params.itemId as string;
-      const item = await intakeStore.getItem(itemId);
+      const item = await intakeStore.getItemForProject(req.params.projectId as string, itemId);
       if (!item) {
         res.status(404).json({ error: { code: "NOT_FOUND", message: "Intake item not found" } });
         return;
@@ -84,14 +90,18 @@ export function createIntakeRouter(): Router {
       const itemId = req.params.itemId as string;
       const { action } = req.body as { action: IntakeConvertAction; linkTaskId?: string };
 
-      const item = await intakeStore.getItem(itemId);
+      const item = await intakeStore.getItemForProject(req.params.projectId as string, itemId);
       if (!item) {
         res.status(404).json({ error: { code: "NOT_FOUND", message: "Intake item not found" } });
         return;
       }
 
       const newStatus: IntakeTriageStatus = action === "ignore" ? "ignored" : "converted";
-      const updated = await intakeStore.updateTriageStatus(itemId, newStatus);
+      const updated = await intakeStore.updateTriageStatusForProject(
+        req.params.projectId as string,
+        itemId,
+        newStatus
+      );
 
       res.json({
         data: {
@@ -108,13 +118,17 @@ export function createIntakeRouter(): Router {
     validateParams(itemIdParamSchema),
     wrapAsync(async (req, res) => {
       const itemId = req.params.itemId as string;
-      const item = await intakeStore.getItem(itemId);
+      const item = await intakeStore.getItemForProject(req.params.projectId as string, itemId);
       if (!item) {
         res.status(404).json({ error: { code: "NOT_FOUND", message: "Intake item not found" } });
         return;
       }
 
-      const updated = await intakeStore.updateTriageStatus(itemId, "ignored");
+      const updated = await intakeStore.updateTriageStatusForProject(
+        req.params.projectId as string,
+        itemId,
+        "ignored"
+      );
       res.json({ data: updated });
     })
   );
@@ -133,7 +147,7 @@ export function createIntakeRouter(): Router {
       if (dryRun) {
         const items = [];
         for (const id of itemIds) {
-          const item = await intakeStore.getItem(id);
+          const item = await intakeStore.getItemForProject(req.params.projectId as string, id);
           if (item) items.push({ intakeItemId: id, action, title: item.title });
         }
         res.json({ data: { dryRun: true, processed: items.length, errors: 0, results: items } });
@@ -145,7 +159,15 @@ export function createIntakeRouter(): Router {
       for (const id of itemIds) {
         try {
           const newStatus: IntakeTriageStatus = action === "ignore" ? "ignored" : "converted";
-          await intakeStore.updateTriageStatus(id, newStatus);
+          const updated = await intakeStore.updateTriageStatusForProject(
+            req.params.projectId as string,
+            id,
+            newStatus
+          );
+          if (!updated) {
+            errors++;
+            continue;
+          }
           results.push({ intakeItemId: id, action });
         } catch {
           errors++;

@@ -225,7 +225,7 @@ describe("executeSlice", () => {
       expect(store.getState().execute.agentOutput["task-1"]).toEqual(["Hello \nworld\n"]);
       store.dispatch(appendAgentOutput({ taskId: "task-2", chunk: "other\n" }));
       vi.advanceTimersByTime(200);
-      expect(store.getState().execute.agentOutput["task-2"]).toEqual(["other\n"]);
+      expect(store.getState().execute.agentOutput["task-2"]).toBeUndefined();
       vi.useRealTimers();
     });
 
@@ -274,7 +274,7 @@ describe("executeSlice", () => {
       store.dispatch(appendAgentOutput({ taskId: "task-1", chunk: "content\n" }));
       expect(store.getState().execute.agentOutput["task-1"]).toBeUndefined();
       store.dispatch(setSelectedTaskId("task-2"));
-      expect(store.getState().execute.agentOutput["task-1"]).toEqual(["buffered content\n"]);
+      expect(store.getState().execute.agentOutput["task-1"]).toBeUndefined();
     });
 
     it("setAgentOutputBackfill filters NDJSON backfill output before storing", () => {
@@ -297,14 +297,14 @@ describe("executeSlice", () => {
       ]);
     });
 
-    it("fetchLiveOutputBackfill.fulfilled stores output for non-selected task too", async () => {
+    it("fetchLiveOutputBackfill.fulfilled ignores an obsolete non-selected task", async () => {
       vi.mocked(api.execute.liveOutput).mockResolvedValue({
         output: "Output for task-2\n",
       });
       const store = createStore();
       store.dispatch(setSelectedTaskId("task-1"));
       await store.dispatch(fetchLiveOutputBackfill({ projectId: "proj-1", taskId: "task-2" }));
-      expect(store.getState().execute.agentOutput["task-2"]).toEqual(["Output for task-2\n"]);
+      expect(store.getState().execute.agentOutput["task-2"]).toBeUndefined();
       expect(store.getState().execute.agentOutput["task-1"]).toBeUndefined();
     });
 
