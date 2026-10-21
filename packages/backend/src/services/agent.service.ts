@@ -64,6 +64,7 @@ import {
   type PromptCacheContext,
 } from "../utils/prompt-cache.js";
 import { summarizeDebugArtifact } from "./agentic-repair.service.js";
+import { getDeploymentMode, isolatedRunner } from "./agent/isolated-runner.js";
 
 const log = createLogger("agent-service");
 
@@ -181,6 +182,14 @@ export class AgentService {
     options: InvokePlanningAgentOptions
   ): Promise<PlanningAgentResponse> {
     const { config, messages, systemPrompt, cwd, onChunk, images } = options;
+    if (
+      getDeploymentMode() === "isolated-hosted" &&
+      ["cursor", "custom", "claude-cli"].includes(config.type)
+    ) {
+      throw new Error(
+        "Hosted planning requires an API provider; host CLI planning is disabled by the isolation policy"
+      );
+    }
 
     if (config.type === "claude") {
       return this.invokeClaudePlanningAgent(options);
@@ -283,16 +292,19 @@ export class AgentService {
 
     let handle: CodingAgentHandle;
     try {
-      handle = this.agentClient.spawnWithTaskFile(
-        config,
-        promptPath,
-        options.cwd,
-        options.onOutput,
-        wrappedOnExit,
-        options.agentRole,
-        options.outputLogPath,
-        options.projectId
-      );
+      handle =
+        getDeploymentMode() === "isolated-hosted"
+          ? isolatedRunner.spawn(promptPath, config, { ...options, onExit: wrappedOnExit })
+          : this.agentClient.spawnWithTaskFile(
+              config,
+              promptPath,
+              options.cwd,
+              options.onOutput,
+              wrappedOnExit,
+              options.agentRole,
+              options.outputLogPath,
+              options.projectId
+            );
     } catch (err) {
       if (tracking) activeAgentsService.unregister(tracking.id, invocationId);
       throw err;

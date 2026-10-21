@@ -25,6 +25,7 @@ import {
   type PromptCacheContext,
 } from "../utils/prompt-cache.js";
 import { isReasoningOnlyCompletion } from "../utils/local-openai-provider.js";
+import { getDeploymentMode } from "./deployment-mode.js";
 
 const DEFAULT_MAX_TURNS = 100;
 const SYSTEM_PROMPT =
@@ -445,6 +446,8 @@ export async function runAgenticLoop(
   taskContent: string,
   options: AgenticLoopOptions
 ): Promise<AgenticLoopResult> {
+  if (getDeploymentMode() === "isolated-hosted")
+    throw new Error("Host agentic tools are disabled; use the isolated runner");
   const { cwd, maxTurns = DEFAULT_MAX_TURNS, onChunk, abortSignal } = options;
   const context: AgentToolsContext = { cwd };
   let fullText = "";

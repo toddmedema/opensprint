@@ -5,6 +5,15 @@
  */
 
 import crypto from "crypto";
+import type { DbClient } from "../db/client.js";
+import {
+  lockProject,
+  resourceChanged,
+  getResourceRevision,
+  assertResourceRevision,
+  stableFingerprint,
+} from "./project-event.service.js";
+import { getRequestContext } from "./request-context.js";
 import { taskStore } from "./task-store.service.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
@@ -48,6 +57,7 @@ export interface CreateAgentFailedInput {
 }
 
 export interface CreateHilApprovalInput {
+  id?: string;
   projectId: string;
   source: NotificationSource;
   sourceId: string;
@@ -82,6 +92,7 @@ function rowToNotification(row: Record<string, unknown>): Notification {
     : undefined;
   return {
     id: row.id as string,
+    revision: Number(row.revision ?? 0),
     projectId: row.project_id as string,
     source: row.source as NotificationSource,
     sourceId: row.source_id as string,
@@ -97,6 +108,30 @@ function rowToNotification(row: Record<string, unknown>): Notification {
 }
 
 export class NotificationService {
+  private async changed(tx: DbClient, projectId: string, id: string): Promise<number> {
+    const row = await tx.queryOne(
+      "SELECT * FROM open_questions WHERE project_id = $1 AND id = $2",
+      [projectId, id]
+    );
+    return resourceChanged(tx, projectId, "approval", id, row ? rowToNotification(row) : null);
+  }
+
+  private async withRevisions(notifications: Notification[]): Promise<Notification[]> {
+    return taskStore.runRead(async (tx) =>
+      Promise.all(
+        notifications.map(async (notification) => ({
+          ...notification,
+          revision: await getResourceRevision(
+            tx,
+            notification.projectId,
+            "approval",
+            notification.id
+          ),
+        }))
+      )
+    );
+  }
+
   /**
    * Create a new notification (open question) for an agent clarification request.
    */
@@ -110,11 +145,13 @@ export class NotificationService {
     }));
 
     await taskStore.runWrite(async (client) => {
+      await lockProject(client, input.projectId);
       await client.execute(
         `INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind)
          VALUES ($1, $2, $3, $4, $5, 'open', $6, 'open_question')`,
         [id, input.projectId, input.source, input.sourceId, JSON.stringify(questions), createdAt]
       );
+      await this.changed(client, input.projectId, id);
     });
 
     log.info("Created notification", {
@@ -126,6 +163,7 @@ export class NotificationService {
     });
 
     return {
+      revision: 1,
       id,
       projectId: input.projectId,
       source: input.source,
@@ -155,6 +193,7 @@ export class NotificationService {
     ];
 
     const existing = await taskStore.runWrite(async (writeClient) => {
+      await lockProject(writeClient, input.projectId);
       const existingRows = await writeClient.query(
         `SELECT *
            FROM open_questions
@@ -186,6 +225,7 @@ export class NotificationService {
           input.errorCode,
         ]
       );
+      await this.changed(writeClient, input.projectId, id);
       return null;
     });
 
@@ -230,11 +270,13 @@ export class NotificationService {
     ];
 
     await taskStore.runWrite(async (client) => {
+      await lockProject(client, input.projectId);
       await client.execute(
         `INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind)
          VALUES ($1, $2, $3, $4, $5, 'open', $6, 'agent_failed')`,
         [id, input.projectId, input.source, input.sourceId, JSON.stringify(questions), createdAt]
       );
+      await this.changed(client, input.projectId, id);
     });
 
     log.info("Created agent-failed notification", {
@@ -245,6 +287,7 @@ export class NotificationService {
     });
 
     return {
+      revision: 1,
       id,
       projectId: input.projectId,
       source: input.source,
@@ -263,7 +306,7 @@ export class NotificationService {
    * When scopeChangeMetadata is provided, it is persisted for diff display in the frontend.
    */
   async createHilApproval(input: CreateHilApprovalInput): Promise<Notification> {
-    const id = "hil-" + crypto.randomBytes(4).toString("hex");
+    const id = input.id ?? "hil-" + crypto.randomBytes(4).toString("hex");
     const createdAt = new Date().toISOString();
     const questions: OpenQuestionItem[] = [
       {
@@ -277,6 +320,7 @@ export class NotificationService {
       : null;
 
     await taskStore.runWrite(async (client) => {
+      await lockProject(client, input.projectId);
       await client.execute(
         `INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind, scope_change_metadata)
          VALUES ($1, $2, $3, $4, $5, 'open', $6, 'hil_approval', $7)`,
@@ -290,6 +334,7 @@ export class NotificationService {
           scopeChangeMetadataJson,
         ]
       );
+      await this.changed(client, input.projectId, id);
     });
 
     log.info("Created HIL approval notification", {
@@ -301,6 +346,7 @@ export class NotificationService {
     });
 
     return {
+      revision: 1,
       id,
       projectId: input.projectId,
       source: input.source,
@@ -347,6 +393,7 @@ export class NotificationService {
       Object.keys(payload).length > 0 ? JSON.stringify(payload) : null;
 
     await taskStore.runWrite(async (client) => {
+      await lockProject(client, input.projectId);
       await client.execute(
         `INSERT INTO open_questions (id, project_id, source, source_id, questions, status, created_at, kind, scope_change_metadata)
          VALUES ($1, $2, 'self-improvement', $3, $4, 'open', $5, 'self_improvement_approval', $6)`,
@@ -359,6 +406,7 @@ export class NotificationService {
           scopeChangeMetadataJson,
         ]
       );
+      await this.changed(client, input.projectId, id);
     });
 
     log.info("Created self-improvement approval notification", {
@@ -370,6 +418,7 @@ export class NotificationService {
     const scopeChangeMetadataOut =
       Object.keys(payload).length > 0 ? (payload as SelfImprovementApprovalPayload) : undefined;
     return {
+      revision: 1,
       id,
       projectId: input.projectId,
       source: "self-improvement",
@@ -409,7 +458,7 @@ export class NotificationService {
       "SELECT * FROM open_questions WHERE project_id = $1 AND status = 'open' ORDER BY created_at DESC",
       [projectId]
     );
-    return rows.map((r) => rowToNotification(r as Record<string, unknown>));
+    return this.withRevisions(rows.map((r) => rowToNotification(r as Record<string, unknown>)));
   }
 
   /**
@@ -444,11 +493,13 @@ export class NotificationService {
 
     const resolvedAt = new Date().toISOString();
     await taskStore.runWrite(async (tx) => {
+      await lockProject(tx, projectId);
       await tx.execute(
         `UPDATE open_questions SET status = 'resolved', resolved_at = $1
          WHERE project_id = $2 AND status = 'open' AND kind = 'api_blocked' AND error_code = 'rate_limit'`,
         [resolvedAt, projectId]
       );
+      for (const row of rows) await this.changed(tx, projectId, String(row.id));
     });
 
     const resolved = rows.map((r) => ({
@@ -489,6 +540,7 @@ export class NotificationService {
 
     const resolvedAt = new Date().toISOString();
     await taskStore.runWrite(async (tx) => {
+      await lockProject(tx, projectId);
       await tx.execute(
         `UPDATE open_questions
          SET status = 'resolved', resolved_at = $1
@@ -499,6 +551,7 @@ export class NotificationService {
            AND kind = 'self_improvement_approval'`,
         [resolvedAt, projectId, candidateId]
       );
+      for (const row of rows) await this.changed(tx, projectId, String(row.id));
     });
 
     return rows.map((r) => ({
@@ -544,7 +597,7 @@ export class NotificationService {
       [notificationId, projectId]
     );
     if (!row) return null;
-    return rowToNotification(row as Record<string, unknown>);
+    return (await this.withRevisions([rowToNotification(row as Record<string, unknown>)]))[0];
   }
 
   /**
@@ -558,9 +611,40 @@ export class NotificationService {
   ): Promise<Notification> {
     const resolvedAt = new Date().toISOString();
     const responsesJson =
-      options?.responses && options.responses.length > 0 ? JSON.stringify(options.responses) : null;
+      options?.responses && options.responses.length > 0
+        ? JSON.stringify(options.responses)
+        : options?.approved !== undefined
+          ? JSON.stringify([
+              { questionId: "approval", answer: options.approved ? "approved" : "rejected" },
+            ])
+          : null;
 
+    const request = getRequestContext();
     const row = await taskStore.runWrite(async (tx) => {
+      await lockProject(tx, projectId);
+      const fingerprint = stableFingerprint({
+        notificationId,
+        options,
+        expectedRevision: request?.expectedRevision,
+      });
+      if (request?.requestId && request.expectedRevision !== undefined) {
+        const previous = await tx.queryOne(
+          "SELECT * FROM collaboration_commands WHERE project_id = $1 AND command_id = $2",
+          [projectId, request.requestId]
+        );
+        if (previous) {
+          if (
+            previous.actor_id !== request.principal.actorId ||
+            previous.fingerprint !== fingerprint
+          )
+            throw new AppError(
+              409,
+              "REQUEST_ID_REUSED",
+              "This decision request ID was already used for another mutation."
+            );
+          return JSON.parse(String(previous.result)) as Record<string, unknown>;
+        }
+      }
       const current = await tx.queryOne(
         "SELECT * FROM open_questions WHERE id = $1 AND project_id = $2",
         [notificationId, projectId]
@@ -571,6 +655,15 @@ export class NotificationService {
           ErrorCodes.NOTIFICATION_NOT_FOUND,
           `Notification '${notificationId}' not found`,
           { notificationId, projectId }
+        );
+      if (request?.expectedRevision !== undefined)
+        await assertResourceRevision(
+          tx,
+          projectId,
+          "approval",
+          notificationId,
+          request.expectedRevision,
+          rowToNotification(current)
         );
       let changed: number;
       if (responsesJson != null) {
@@ -590,7 +683,37 @@ export class NotificationService {
           "DECISION_ALREADY_RESOLVED",
           "Another participant already resolved this decision."
         );
-      return current;
+      if (current.kind === "hil_approval") {
+        await tx.execute(
+          "UPDATE spec_hil_proposals SET decision = $3, decision_actor_id = $4, status = CASE WHEN $3 = 'rejected' THEN 'rejected' ELSE status END WHERE request_id = $1 AND project_id = $2 AND decision = 'pending'",
+          [
+            notificationId,
+            projectId,
+            options?.approved === true ? "approved" : "rejected",
+            getRequestContext()?.principal.actorId ?? "local:owner",
+          ]
+        );
+      }
+      const revision = await this.changed(tx, projectId, notificationId);
+      const resolved = {
+        ...current,
+        status: "resolved",
+        resolved_at: resolvedAt,
+        ...(responsesJson ? { responses: responsesJson } : {}),
+        revision,
+      };
+      if (request?.requestId && request.expectedRevision !== undefined)
+        await tx.execute(
+          "INSERT INTO collaboration_commands (project_id, command_id, actor_id, fingerprint, result) VALUES ($1,$2,$3,$4,$5)",
+          [
+            projectId,
+            request.requestId,
+            request.principal.actorId,
+            fingerprint,
+            JSON.stringify(resolved),
+          ]
+        );
+      return resolved;
     });
 
     log.info("Resolved notification", {
@@ -600,13 +723,7 @@ export class NotificationService {
     });
 
     const notification = rowToNotification(row);
-    const persistedResponses = options?.responses ?? undefined;
-    return {
-      ...notification,
-      status: "resolved",
-      resolvedAt,
-      ...(persistedResponses?.length ? { responses: persistedResponses } : {}),
-    };
+    return notification;
   }
 
   /**

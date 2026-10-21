@@ -203,8 +203,18 @@ export function useMarkPlanComplete(projectId: string) {
 export function useUpdatePlan(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ planId, content }: { planId: string; content: string }) =>
-      api.plans.update(projectId, planId, { content }),
+    mutationFn: ({
+      planId,
+      content,
+      expectedRevision,
+    }: {
+      planId: string;
+      content: string;
+      expectedRevision?: number;
+    }) =>
+      expectedRevision === undefined
+        ? api.plans.update(projectId, planId, { content })
+        : api.plans.update(projectId, planId, { content }, { expectedRevision }),
     onSuccess: (_, { planId }) => {
       void qc.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
       void qc.invalidateQueries({ queryKey: queryKeys.plans.detail(projectId, planId) });

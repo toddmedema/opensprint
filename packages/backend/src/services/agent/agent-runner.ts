@@ -1,11 +1,18 @@
 import type { CodingAgentHandle } from "./agent-types.js";
 
-export type AgentRunnerState = "queued" | "running" | "stop_requested" | "stopped" | "completed";
+export type AgentRunnerState =
+  | "queued"
+  | "running"
+  | "stop_requested"
+  | "stopped"
+  | "completed"
+  | "uncertain";
 
 /** One invocation's control surface. Cancellation is not confirmation of process exit. */
 export class AgentRunner {
   private handle: CodingAgentHandle | null = null;
   private state: AgentRunnerState = "queued";
+  private readonly completedObservers: Array<() => void> = [];
   readonly controller = new AbortController();
   notifyCompletionOnCancel = false;
 
@@ -40,20 +47,36 @@ export class AgentRunner {
   }
 
   cancel(notifyCompletion = false): void {
+    if (this.handle?.ownership === "recovered_unverified") {
+      this.state = "uncertain";
+      return;
+    }
     if (this.controller.signal.aborted || this.state === "completed" || this.state === "stopped")
       return;
     this.notifyCompletionOnCancel = notifyCompletion;
     const queued = this.state === "queued";
     this.controller.abort();
     this.state = queued ? "stopped" : "stop_requested";
+    if (queued) this.notifyCompleted();
     try {
       this.handle?.pendingMessages?.close();
     } finally {
       this.handle?.kill();
     }
   }
+  markUncertain(): void {
+    this.state = "uncertain";
+  }
+  waitForCompletion(): Promise<void> {
+    if (this.state === "stopped" || this.state === "completed") return Promise.resolve();
+    return new Promise((resolve) => this.completedObservers.push(resolve));
+  }
+  private notifyCompleted(): void {
+    for (const resolve of this.completedObservers.splice(0)) resolve();
+  }
 
   complete(): void {
     this.state = this.controller.signal.aborted ? "stopped" : "completed";
+    this.notifyCompleted();
   }
 }

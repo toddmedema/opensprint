@@ -884,6 +884,8 @@ export function parseTodoistOAuthCredentials(raw: unknown): TodoistOAuthCredenti
 
 /** Full project settings stored in global database (~/.opensprint/settings.json) keyed by project_id */
 export interface ProjectSettings {
+  /** Version of the persisted project settings used for collaborative edits. */
+  revision?: number;
   simpleComplexityAgent: AgentConfig;
   complexComplexityAgent: AgentConfig;
   /**

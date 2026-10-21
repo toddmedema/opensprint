@@ -12,6 +12,11 @@ vi.mock("../services/structured-agent-output.service.js", () => ({
   invokeStructuredPlanningAgent: (...args: unknown[]) => mockInvokeStructuredPlanningAgent(...args),
 }));
 
+// These temporary repository fixtures are intentionally outside the registered SQL catalog.
+vi.mock("../services/project-index.js", () => ({
+  getProjects: vi.fn().mockResolvedValue([]),
+}));
+
 describe("PlanComplexityEvaluationService", () => {
   let repoPath: string;
 

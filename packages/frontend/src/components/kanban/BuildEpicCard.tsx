@@ -1,9 +1,7 @@
+import { useServerTask, useServerEpicTasks } from "../../hooks/useServerTasks";
 import { useState, useMemo, memo, useRef, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { Task } from "@opensprint/shared";
-import { shallowEqual } from "react-redux";
-import { useAppSelector } from "../../store";
-import { selectTaskById } from "../../store/slices/executeSlice";
 import { PriorityIcon } from "../PriorityIcon";
 import { TaskStatusBadge, COLUMN_LABELS } from "./TaskStatusBadge";
 import { UptimeDisplay } from "../UptimeDisplay";
@@ -16,7 +14,7 @@ const TASK_ROW_HEIGHT = 44;
 const EPIC_TASK_LIST_MAX_HEIGHT = 320;
 const ACTIVE_TASK_TICK_MS = 10_000;
 
-/** Task row: subscribes to single task for granular re-renders when task.updated fires. When task prop is provided (e.g. tests), use it instead of Redux. */
+/** Task row: subscribes to single task for granular re-renders when task.updated fires. When task prop is provided (e.g. tests), use it as the fallback to the task query. */
 const EpicTaskRow = memo(function EpicTaskRow({
   taskId,
   task: taskProp,
@@ -38,7 +36,7 @@ const EpicTaskRow = memo(function EpicTaskRow({
   worktreePath?: string | null;
   isBranchesMode?: boolean;
 }) {
-  const taskFromRedux = useAppSelector((s) => selectTaskById(s, taskId), shallowEqual);
+  const { data: taskFromRedux } = useServerTask(projectId, taskId);
   const task = taskProp ?? taskFromRedux;
   if (!task) return null;
 
@@ -132,7 +130,6 @@ import type { StatusFilter } from "../../lib/executeTaskFilter";
 import { filterTasksByStatusAndSearch, isSelfImprovementTask } from "../../lib/executeTaskFilter";
 import type { Plan } from "@opensprint/shared";
 import { sortEpicTasksByStatus } from "../../lib/executeTaskSort";
-import { selectTasksForEpic } from "../../store/slices/executeSlice";
 
 export interface BuildEpicCardProps {
   epicId: string;
@@ -184,7 +181,7 @@ export function BuildEpicCard({
 }: BuildEpicCardProps) {
   const [expanded, setExpanded] = useState(false);
   const taskListRef = useRef<HTMLDivElement>(null);
-  const tasksFromRedux = useAppSelector((s) => selectTasksForEpic(s, epicId), shallowEqual);
+  const tasksFromRedux = useServerEpicTasks(projectId, epicId);
   const tasks = tasksProp ?? tasksFromRedux;
   const filteredTasks = useMemo(
     () => filterTasksByStatusAndSearch(tasks, statusFilter, searchQuery, plans),

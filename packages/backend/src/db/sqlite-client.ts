@@ -400,6 +400,7 @@ export function createSqliteDbClient(db: import("better-sqlite3").Database): DbC
   };
 
   return {
+    dialect: "sqlite",
     async query(sql: string, params?: unknown[]): Promise<DbRow[]> {
       return withErrorHandling(async () => runAsync(() => runQuery(sql, params ?? [])));
     },
@@ -420,6 +421,7 @@ export function createSqliteDbClient(db: import("better-sqlite3").Database): DbC
           db.exec("BEGIN");
           try {
             const txClient: DbClient = {
+              dialect: "sqlite",
               query: (s, p) => Promise.resolve(runQuery(s, p ?? [])),
               queryOne: (s, p) =>
                 Promise.resolve(

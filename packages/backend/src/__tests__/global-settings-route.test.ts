@@ -53,6 +53,7 @@ vi.mock("../services/orchestrator.service.js", () => ({
 
 const mockGetProjects = vi.fn().mockResolvedValue([]);
 vi.mock("../services/project-index.js", () => ({
+  getProjectIndexRevision: vi.fn().mockResolvedValue(null),
   getProjects: () => mockGetProjects(),
 }));
 
@@ -74,12 +75,16 @@ function createGlobalSettingsApp() {
 function isTransientSupertestTransportError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   const code =
-    err && typeof err === "object" && "code" in err && typeof (err as { code: unknown }).code === "string"
+    err &&
+    typeof err === "object" &&
+    "code" in err &&
+    typeof (err as { code: unknown }).code === "string"
       ? (err as { code: string }).code
       : "";
   return (
-    /socket hang up|ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|timeout|ECONNREFUSED|Parse Error/i.test(msg) ||
-    /socket hang up|ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|timeout|ECONNREFUSED/i.test(code)
+    /socket hang up|ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|timeout|ECONNREFUSED|Parse Error/i.test(
+      msg
+    ) || /socket hang up|ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|timeout|ECONNREFUSED/i.test(code)
   );
 }
 
@@ -104,10 +109,12 @@ function gsAuthed(app: ReturnType<typeof createGlobalSettingsApp>) {
   return {
     get: (url: string) => retry(() => base.get(url).timeout(GS_SUPERTEST_TIMEOUT_MS)),
     put: (url: string) => ({
-      send: (body: object) => retry(() => base.put(url).send(body).timeout(GS_SUPERTEST_TIMEOUT_MS)),
+      send: (body: object) =>
+        retry(() => base.put(url).send(body).timeout(GS_SUPERTEST_TIMEOUT_MS)),
     }),
     post: (url: string) => ({
-      send: (body: object) => retry(() => base.post(url).send(body).timeout(GS_SUPERTEST_TIMEOUT_MS)),
+      send: (body: object) =>
+        retry(() => base.post(url).send(body).timeout(GS_SUPERTEST_TIMEOUT_MS)),
     }),
   };
 }
@@ -586,9 +593,7 @@ describe("Global Settings API", () => {
 
   describe("POST /global-settings/setup-tables", () => {
     it("returns 400 when databaseUrl is missing", async () => {
-      const res = await gsAuthed(app)
-        .post(`${API_PREFIX}/global-settings/setup-tables`)
-        .send({});
+      const res = await gsAuthed(app).post(`${API_PREFIX}/global-settings/setup-tables`).send({});
 
       expect(res.status).toBe(400);
       expect(res.body.error?.code).toBe("VALIDATION_ERROR");
@@ -678,9 +683,7 @@ describe("Global Settings API", () => {
     });
 
     it("GET /reveal-todoist-secret returns 404 when not configured", async () => {
-      const res = await gsAuthed(app).get(
-        `${API_PREFIX}/global-settings/reveal-todoist-secret`
-      );
+      const res = await gsAuthed(app).get(`${API_PREFIX}/global-settings/reveal-todoist-secret`);
       expect(res.status).toBe(404);
     });
 

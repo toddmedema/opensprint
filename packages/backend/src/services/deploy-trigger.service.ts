@@ -1,15 +1,14 @@
 import { execSync } from "child_process";
 import type { DeployEvent } from "@opensprint/shared";
-import { getDefaultDeploymentTarget, getTargetsForDeployEvent } from "@opensprint/shared";
+import { getTargetsForDeployEvent } from "@opensprint/shared";
 import { ProjectService } from "./project.service.js";
-import { deployStorageService } from "./deploy-storage.service.js";
-import { broadcastToProject } from "../websocket/index.js";
+import { acceptDeployment } from "./durable-deployment.service.js";
+import { operationService } from "./operation.service.js";
+import { operationWorker } from "./operation-worker.service.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("deploy");
 const projectService = new ProjectService();
-
-const activeAutoDeployments = new Set<string>();
 
 /** Get git commit hash at HEAD in repo (git rev-parse HEAD) */
 function getCommitHash(repoPath: string): string | null {
@@ -29,59 +28,22 @@ function getCommitHash(repoPath: string): string | null {
 async function doDeploy(
   projectId: string,
   targetName: string | undefined,
-  options?: { waitForCompletion?: boolean }
+  options?: { waitForCompletion?: boolean; requestId?: string }
 ): Promise<string | null> {
-  if (activeAutoDeployments.has(projectId)) {
-    log.warn("Skipping auto-deploy: deployment already in progress", { projectId });
-    return null;
-  }
-
   try {
-    activeAutoDeployments.add(projectId);
-
-    const project = await projectService.getProject(projectId);
-    const settings = await projectService.getSettings(projectId);
-
-    const latest = await deployStorageService.getLatestDeploy(projectId);
-    const previousDeployId = latest?.id ?? null;
-
-    const commitHash = getCommitHash(project.repoPath);
-    const target = targetName ?? getDefaultDeploymentTarget(settings.deployment);
-    const mode = settings.deployment.mode ?? "custom";
-
-    const record = await deployStorageService.createRecord(projectId, previousDeployId, {
-      commitHash,
-      target,
-      mode,
-    });
-
-    broadcastToProject(projectId, { type: "deliver.started", deployId: record.id });
-
-    await deployStorageService.updateRecord(projectId, record.id, { status: "running" });
-
-    const { runDeployAsync } = await import("../routes/deliver.js");
-    const deployPromise = runDeployAsync(
+    const accepted = await acceptDeployment(
       projectId,
-      record.id,
-      project.repoPath,
-      settings,
-      target,
-      project.name
-    )
-      .catch((err) => {
-        log.error("Deploy failed", { deployId: record.id, err });
-      })
-      .finally(() => {
-        activeAutoDeployments.delete(projectId);
-      });
-
+      { action: "deploy", target: targetName },
+      options?.requestId
+        ? { actorId: "server:auto-deploy", requestId: options.requestId }
+        : undefined
+    );
     if (options?.waitForCompletion) {
-      await deployPromise;
+      const operation = await operationService.get(projectId, accepted.operationId);
+      if (operation) await operationWorker.execute(operation);
     }
-
-    return record.id;
+    return accepted.deployId;
   } catch (err) {
-    activeAutoDeployments.delete(projectId);
     log.error("Trigger deploy failed for project", { projectId, err });
     return null;
   }
@@ -113,9 +75,14 @@ export async function triggerDeployForEvent(
   const settings = await projectService.getSettings(projectId);
   const targetNames = getTargetsForDeployEvent(settings.deployment, event);
   const deployIds: string[] = [];
+  const project = await projectService.getProject(projectId);
+  const commit = getCommitHash(project.repoPath);
 
   for (const targetName of targetNames) {
-    const id = await doDeploy(projectId, targetName, { waitForCompletion: true });
+    const id = await doDeploy(projectId, targetName, {
+      waitForCompletion: true,
+      requestId: `auto:${event}:${commit}:${targetName}`,
+    });
     if (id) deployIds.push(id);
   }
 

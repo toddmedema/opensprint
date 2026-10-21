@@ -101,7 +101,7 @@ describe("SessionManager getResultPath", () => {
 
   it("returns review-angles/<angle>/result.json when angle provided", () => {
     const result = manager.getResultPath("/repo", "task-1", "security");
-    expect(result).toContain("review-angles/security/result.json");
+    expect(result).toContain(path.join("review-angles", "security", "result.json"));
     expect(result).toContain("task-1");
   });
 
@@ -373,7 +373,9 @@ describe.skipIf(!sessionPostgresOk)("SessionManager", () => {
         testResults: { passed: 3, failed: 0, skipped: 0, total: 3, details: [] },
       });
 
-      const result = await manager.loadSessionsTestResultsOnlyGroupedByTaskId(repoPath, ["scoped-a"]);
+      const result = await manager.loadSessionsTestResultsOnlyGroupedByTaskId(repoPath, [
+        "scoped-a",
+      ]);
       expect(result.size).toBe(1);
       expect(result.get("scoped-a")?.[0].testResults?.passed).toBe(2);
       expect(result.has("scoped-b")).toBe(false);

@@ -22,6 +22,11 @@ class EventRelayService {
   private projectClients: ProjectClientsMap | null = null;
   private agentSubscriptions: AgentSubscriptionsMap | null = null;
   private planAgentSubscriptions: PlanAgentSubscriptionsMap | null = null;
+  private authorize?: (client: WebSocket) => Promise<boolean> | boolean;
+  private pending = new WeakMap<WebSocket, { tail: Promise<void>; bytes: number; count: number }>();
+  setAuthorizationCheck(check: (client: WebSocket) => Promise<boolean> | boolean): void {
+    this.authorize = check;
+  }
 
   /**
    * Initialize the relay with connection state. Called by the WebSocket module
@@ -38,6 +43,33 @@ class EventRelayService {
   }
 
   private safeSend(client: WebSocket, data: string): boolean {
+    if (this.authorize) {
+      const queue = this.pending.get(client) ?? { tail: Promise.resolve(), bytes: 0, count: 0 };
+      const bytes = Buffer.byteLength(data);
+      if (queue.bytes + bytes > 8 * 1024 * 1024 || queue.count >= 64) {
+        client.close(1013, "Reconnect to resume project state");
+        return false;
+      }
+      queue.bytes += bytes;
+      queue.count++;
+      queue.tail = queue.tail
+        .then(async () => {
+          if (!(await this.authorize!(client))) {
+            client.close(1008, "Project access revoked");
+            return;
+          }
+          if (client.readyState === 1) sendSocketData(client, data);
+        })
+        .catch(() => {
+          client.close(1008, "Project access revoked");
+        })
+        .finally(() => {
+          queue.bytes -= bytes;
+          queue.count--;
+        });
+      this.pending.set(client, queue);
+      return true;
+    }
     try {
       if (client.readyState === 1 /* WebSocket.OPEN */) {
         return sendSocketData(client, data);

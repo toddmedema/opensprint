@@ -17,3 +17,4 @@ export * from "./integrations.js";
 export * from "./commands.js";
 export * from "./agentic-repair.js";
 export * from "./collaboration.js";
+export * from "./access.js";

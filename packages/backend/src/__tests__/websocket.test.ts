@@ -1,4 +1,8 @@
 import { PendingMessageQueue } from "../services/agentic-loop.js";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { initAppDb, type AppDb } from "../db/app-db.js";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createServer } from "http";
 import { WebSocket } from "ws";
@@ -322,20 +326,30 @@ describe("WebSocket agent.chat event handling", () => {
   let port: number;
   let activeAgents: ActiveAgentsService;
   let chatSvc: AgentChatService;
+  let db: AppDb;
+  let directory: string;
 
   function makePendingQueue(maxSize = 10) {
     return new PendingMessageQueue(maxSize);
   }
 
-  beforeEach(() => {
+  beforeEach(async () => {
     activeAgents = new ActiveAgentsService();
-    chatSvc = new AgentChatService(activeAgents, "/tmp/test-chat-" + Date.now());
+    directory = await fs.mkdtemp(path.join(os.tmpdir(), "ws-guidance-"));
+    db = await initAppDb(`sqlite://${path.join(directory, "test.sqlite").replace(/\\/g, "/")}`);
+    chatSvc = new AgentChatService(activeAgents, directory, {
+      runWrite: (fn) => db.runWrite(fn),
+      runRead: (fn) => db.runRead!(fn),
+    });
 
     server = createServer((_req, res) => {
       res.writeHead(404);
       res.end();
     });
-    setupWebSocket(server, { agentChatService: chatSvc });
+    setupWebSocket(server, {
+      agentChatService: chatSvc,
+      executeAgentGuidance: (_projectId, _taskId, _attemptId, send) => send(),
+    });
     return new Promise<void>((resolve) => {
       server.listen(0, () => {
         const addr = server.address();
@@ -347,6 +361,9 @@ describe("WebSocket agent.chat event handling", () => {
 
   afterEach(async () => {
     closeWebSocket();
+    await chatSvc.flush();
+    await db.close();
+    await fs.rm(directory, { recursive: true, force: true });
     await new Promise<void>((resolve) => {
       server.close(() => resolve());
     });
@@ -382,6 +399,110 @@ describe("WebSocket agent.chat event handling", () => {
     expect(received.timestamp).toBeTruthy();
     expect(queue.drain().map((m) => m.message)).toContain("hello agent");
 
+    ws.close();
+    await waitForClose(ws);
+  });
+
+  it("serializes guidance before asynchronous acceptance in WebSocket receive order", async () => {
+    const queue = makePendingQueue();
+    activeAgents.registerChannel("task-fifo", queue, "openai", { projectId: "proj-fifo" });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const originalSend = chatSvc.sendMessage.bind(chatSvc);
+    const admission = vi.spyOn(chatSvc, "sendMessage").mockImplementationOnce(async (...args) => {
+      await gate;
+      return originalSend(...args);
+    });
+    const ws = new WebSocket("ws://localhost:" + port + "/ws/projects/proj-fifo", WS_AUTH);
+    await new Promise<void>((resolve) => ws.once("open", resolve));
+    const receipts: Record<string, unknown>[] = [];
+    const received = new Promise<void>((resolve) =>
+      ws.on("message", (data) => {
+        const event = JSON.parse(data.toString());
+        if (event.type === "agent.chat.received") {
+          receipts.push(event);
+          if (receipts.length === 3) resolve();
+        }
+      })
+    );
+    for (const message of ["First", "Second", "Third"])
+      ws.send(
+        JSON.stringify({
+          type: "agent.chat.send",
+          clientMessageId: message,
+          taskId: "task-fifo",
+          message,
+        })
+      );
+    // A pong proves all preceding frames reached the server while acceptance is blocked.
+    await new Promise<void>((resolve) => {
+      ws.once("pong", resolve);
+      ws.ping();
+    });
+    expect(admission).toHaveBeenCalledOnce();
+    release();
+    await received;
+    expect(receipts.map((event) => event.clientMessageId)).toEqual(["First", "Second", "Third"]);
+    expect(queue.drain().map((message) => message.message)).toEqual(["First", "Second", "Third"]);
+    expect(
+      (await chatSvc.getHistory("proj-fifo", "task-fifo")).map((message) => message.content)
+    ).toEqual(["First", "Second", "Third"]);
+    ws.close();
+    await waitForClose(ws);
+  });
+
+  it("bounds queued guidance admission while the first request is blocked", async () => {
+    const queue = makePendingQueue(40);
+    activeAgents.registerChannel("task-bound", queue, "openai", { projectId: "proj-bound" });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const originalSend = chatSvc.sendMessage.bind(chatSvc);
+    const admission = vi.spyOn(chatSvc, "sendMessage").mockImplementationOnce(async (...args) => {
+      await gate;
+      return originalSend(...args);
+    });
+    const ws = new WebSocket("ws://localhost:" + port + "/ws/projects/proj-bound", WS_AUTH);
+    await new Promise<void>((resolve) => ws.once("open", resolve));
+    const receipts: Record<string, unknown>[] = [];
+    const received = new Promise<void>((resolve) =>
+      ws.on("message", (data) => {
+        const event = JSON.parse(data.toString());
+        if (event.type === "agent.chat.received") {
+          receipts.push(event);
+          if (receipts.length === 32) resolve();
+        }
+      })
+    );
+    const rejected = new Promise<Record<string, unknown>>((resolve) =>
+      ws.on("message", (data) => {
+        const event = JSON.parse(data.toString());
+        if (event.type === "agent.chat.unsupported") resolve(event);
+      })
+    );
+    for (let i = 0; i < 33; i++)
+      ws.send(
+        JSON.stringify({
+          type: "agent.chat.send",
+          clientMessageId: "request-" + i,
+          taskId: "task-bound",
+          message: "Message " + i,
+        })
+      );
+    const overflow = await rejected;
+    expect(overflow).toMatchObject({
+      clientMessageId: "request-32",
+      reason: expect.stringContaining("Too many pending guidance requests"),
+    });
+    expect(admission).toHaveBeenCalledOnce();
+    release();
+    await received;
+    expect(receipts).toHaveLength(32);
+    expect(queue.size).toBe(32);
+    expect(await chatSvc.getHistory("proj-bound", "task-bound")).toHaveLength(32);
     ws.close();
     await waitForClose(ws);
   });

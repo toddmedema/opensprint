@@ -29,6 +29,10 @@ Work state is persisted before agent spawn via `assignment.json` in `.opensprint
 
 Agent admission is cancellable and FIFO. Recheck attempt generation and owning slot after admission and immediately before launch; cancelled or replaced queued attempts must never launch. Concurrency limit changes preserve active accounting. A recovered PID is observation-only until ownership is independently verified: report uncertain execution and retain its assignment instead of killing or requeueing it. A stop request becomes stopped only after observed completion. A terminal result file alone cannot complete an unverified recovered process. Guidance receipts distinguish durable queue acceptance from inclusion in a model turn.
 
+Project leadership and queued/running attempts use database-clock leases (45 seconds, renewed every 10 seconds), immutable owner IDs and increasing generations. Recheck the database fence before task transitions, output, results and publication. Expired owners cannot renew or mutate a successor. Durable operation handlers recheck their ownership fence before each write transaction, including delayed planning and chat callbacks. In `isolated-hosted` mode all coding/review/merger work and repository scripts run in disposable Docker workspaces with a digest-pinned image, restricted environment/network and resource budgets; there is no host fallback. Workers submit an immutable bundle to the trusted fenced publisher and never mount the canonical repository. Multiple backends require this mode with PostgreSQL. SQL draft revisions are authoritative for editing; agents execute against the published SPEC revision.
+
+The SQL project catalog is authoritative across replicas; legacy local indexes import once per source. Replicas must share the canonical repository volume. Deployment stop requests persist in SQL and become stopped only after observed process/container termination; uncertain external outcomes require explicit inspection and reconciliation.
+
 ## Loop Kicker vs Watchdog
 
 - **Loop kicker** (60s): Restarts the orchestrator loop when idle. Runs inside the orchestrator.

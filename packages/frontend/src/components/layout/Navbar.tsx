@@ -1,3 +1,4 @@
+import { useTasks } from "../../api/hooks";
 import { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import type { CSSProperties } from "react";
 import { createPortal } from "react-dom";
@@ -7,7 +8,6 @@ import type { Project, ProjectPhase } from "@opensprint/shared";
 import { NAVBAR_HEIGHT } from "../../lib/constants";
 import { getDropdownPositionViewportAware } from "../../lib/dropdownViewport";
 import { useAppSelector, useAppDispatch } from "../../store";
-import { selectTasks } from "../../store/slices/executeSlice";
 import {
   selectPhaseUnread,
   EMPTY_PHASE_UNREAD,
@@ -69,10 +69,10 @@ export function Navbar({
 
   const dispatch = useAppDispatch();
   const { data: dbStatus } = useDbStatus();
-  const executeBlockedCount = useAppSelector((s) => {
-    const implTasks = selectTasks(s).filter((t) => t.type !== "epic");
-    return implTasks.filter((t) => t.kanbanColumn === "blocked").length;
-  });
+  const { data: projectTasks } = useTasks(project?.id);
+  const executeBlockedCount = (projectTasks ?? []).filter(
+    (task) => task.type !== "epic" && task.kanbanColumn === "blocked"
+  ).length;
 
   const phaseUnread = useAppSelector((s) =>
     project?.id ? selectPhaseUnread(s, project.id) : EMPTY_PHASE_UNREAD

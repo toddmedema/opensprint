@@ -1,8 +1,9 @@
 import { useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { prdToSpecMarkdown } from "@opensprint/shared";
-import { api, request } from "../api/client";
+import { request } from "../api/client";
+import { getAccessSession, type AccessSession } from "../api/session";
+import type { ProjectPermission } from "@opensprint/shared";
 
 interface Draft {
   revision: number;
@@ -28,10 +29,25 @@ function SpecPublicationEditor({ projectId }: { projectId: string }) {
   const qc = useQueryClient();
   const base = `/projects/${encodeURIComponent(projectId)}/publication`;
   const key = ["spec-publication", projectId];
+  const sharedHost = Boolean(document.querySelector('meta[name="opensprint-shared-host"]'));
+  const access = useQuery({
+    queryKey: ["access", projectId],
+    queryFn: () =>
+      request<AccessSession>(`/auth/session?projectId=${encodeURIComponent(projectId)}`),
+    enabled: sharedHost || Boolean(getAccessSession()),
+    retry: false,
+  });
+  const principal = access.isError
+    ? undefined
+    : (access.data?.principal ?? getAccessSession()?.principal);
+  const can = (permission: ProjectPermission) =>
+    principal
+      ? principal.local || principal.permissions.includes(permission)
+      : !sharedHost && !getAccessSession();
   const draft = useQuery({ queryKey: key, queryFn: () => request<Draft | null>(`${base}/draft`) });
   const published = useQuery({
     queryKey: [...key, "published"],
-    queryFn: async () => prdToSpecMarkdown(await api.prd.get(projectId)),
+    queryFn: async () => (await request<{ content: string }>(`${base}/published`)).content,
   });
   const [edit, setEdit] = useState<{ content: string; baseRevision: number } | null>(null);
   const [approved, setApproved] = useState<{ revision: number; contentHash: string } | null>(null);
@@ -64,6 +80,18 @@ function SpecPublicationEditor({ projectId }: { projectId: string }) {
       request(`${base}/approve`, { method: "POST", body: JSON.stringify(input) }),
     onSuccess: (_result, input) => setApproved(input),
   });
+  const importEdits = useMutation({
+    mutationFn: () =>
+      request<Draft>(`${base}/import`, {
+        method: "POST",
+        body: JSON.stringify({ expectedRevision: revision }),
+      }),
+    onSuccess: (result) => {
+      qc.setQueryData(key, result);
+      setEdit(null);
+      setApproved(null);
+    },
+  });
   const publish = useMutation({
     mutationFn: () => {
       const accepted = operations.data?.find(
@@ -92,7 +120,12 @@ function SpecPublicationEditor({ projectId }: { projectId: string }) {
     mutationFn: () => request<Operation | null>(`${base}/operations/${reconcileId!}`),
     onSuccess: setOperation,
   });
-  const busy = save.isPending || approve.isPending || publish.isPending || reconcile.isPending;
+  const busy =
+    save.isPending ||
+    approve.isPending ||
+    publish.isPending ||
+    reconcile.isPending ||
+    importEdits.isPending;
   const error =
     draft.error ??
     published.error ??
@@ -100,7 +133,8 @@ function SpecPublicationEditor({ projectId }: { projectId: string }) {
     save.error ??
     approve.error ??
     publish.error ??
-    reconcile.error;
+    reconcile.error ??
+    importEdits.error;
   return (
     <main className="mx-auto w-full max-w-4xl space-y-4 overflow-y-auto p-6">
       <h1 className="text-xl font-semibold">Reviewed SPEC publication</h1>
@@ -122,7 +156,7 @@ function SpecPublicationEditor({ projectId }: { projectId: string }) {
             id="spec-draft"
             className="min-h-96 w-full rounded border border-theme-border bg-theme-bg p-3 font-mono text-sm"
             value={content}
-            disabled={busy}
+            disabled={busy || !can("edit")}
             onChange={(event) => {
               setEdit((previous) => ({
                 content: event.target.value,
@@ -139,14 +173,21 @@ function SpecPublicationEditor({ projectId }: { projectId: string }) {
           <div className="flex flex-wrap gap-2">
             <button
               className="btn-secondary"
-              disabled={busy || !changed}
+              disabled={busy || !!edit || !can("edit")}
+              onClick={() => importEdits.mutate()}
+            >
+              Import editor changes
+            </button>
+            <button
+              className="btn-secondary"
+              disabled={busy || !changed || !can("edit")}
               onClick={() => save.mutate()}
             >
               Save draft
             </button>
             <button
               className="btn-secondary"
-              disabled={busy || changed || !draft.data}
+              disabled={busy || changed || !draft.data || !can("approve")}
               onClick={() => approve.mutate({ revision, contentHash: draft.data!.content_hash })}
             >
               Approve this revision
@@ -155,6 +196,7 @@ function SpecPublicationEditor({ projectId }: { projectId: string }) {
               className="btn-primary"
               disabled={
                 busy ||
+                !can("publish") ||
                 !operations.isSuccess ||
                 changed ||
                 !draft.data ||

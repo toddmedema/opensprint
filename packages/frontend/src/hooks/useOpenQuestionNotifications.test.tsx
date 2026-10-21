@@ -1,10 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
-import { Provider } from "react-redux";
-import { configureStore } from "@reduxjs/toolkit";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { queryKeys } from "../api/queryKeys";
 import type { ReactNode } from "react";
 import { useOpenQuestionNotifications } from "./useOpenQuestionNotifications";
-import openQuestionsReducer from "../store/slices/openQuestionsSlice";
 import { api } from "../api/client";
 
 vi.mock("../api/client", () => ({
@@ -16,24 +15,13 @@ vi.mock("../api/client", () => ({
 }));
 
 function createWrapper(preloadedNotifications: unknown[] = []) {
-  const store = configureStore({
-    reducer: {
-      openQuestions: openQuestionsReducer,
-    },
-    preloadedState: {
-      openQuestions: {
-        byProject: { p1: preloadedNotifications },
-        global: [],
-        async: {
-          project: {},
-          global: { loading: false },
-        },
-      },
-    },
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
+  queryClient.setQueryData(queryKeys.notifications.project("p1"), preloadedNotifications);
 
   return function Wrapper({ children }: { children: ReactNode }) {
-    return <Provider store={store}>{children}</Provider>;
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
   };
 }
 
@@ -52,7 +40,7 @@ describe("useOpenQuestionNotifications", () => {
     expect(api.notifications.listByProject).not.toHaveBeenCalled();
   });
 
-  it("reads notifications from Redux state", () => {
+  it("reads notifications from the project query", () => {
     const mockNotifications = [
       {
         id: "notif-1",
@@ -73,7 +61,7 @@ describe("useOpenQuestionNotifications", () => {
     expect(result.current.notifications).toEqual(mockNotifications);
   });
 
-  it("refetches notifications through the Redux thunk", async () => {
+  it("refetches notifications through the project query", async () => {
     const mockNotifications = [
       {
         id: "notif-2",

@@ -160,6 +160,11 @@ vi.mock("../services/task-store.service.js", async () => {
   const mockInstance = {
     init: vi.fn().mockImplementation(async () => {}),
     getDb: vi.fn().mockImplementation(async () => testClientRef.current),
+    runRead: vi
+      .fn()
+      .mockImplementation(async (fn: (client: DbClient) => Promise<unknown>) =>
+        fn(testClientRef.current!)
+      ),
     runWrite: vi
       .fn()
       .mockImplementation(async (fn: (client: DbClient) => Promise<unknown>) =>

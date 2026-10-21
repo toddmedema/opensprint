@@ -1,10 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { symlinkSync } from "fs";
+import osNative from "os";
+import path from "path";
 import OpenAI from "openai";
 import { AgentClient } from "../services/agent-client.js";
 import { PendingMessageQueue } from "../services/agentic-loop.js";
 import type { AgentConfig } from "@opensprint/shared";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import "../services/agent-process-registry.js";
+
+vi.mock("fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("fs")>();
+  return { ...actual, symlinkSync: vi.fn(actual.symlinkSync) };
+});
 
 // Mock child_process
 const mockExec = vi.fn();
@@ -188,14 +196,20 @@ describe("AgentClient", () => {
   const originalPlatform = process.platform;
 
   beforeEach(() => {
-    Object.defineProperty(process, "platform", { value: originalPlatform });
+    // Generic CLI assertions target POSIX; Windows-specific cases select win32 explicitly.
+    Object.defineProperty(process, "platform", { value: "linux" });
     client = new AgentClient();
     vi.clearAllMocks();
+    mockSpawn.mockReset();
     mockCheckInternetConnectivity.mockResolvedValue({ reachable: true, target: "8.8.8.8:53" });
     mockBuildLostInternetMessage.mockImplementation(
       (target: string) =>
         `Lost internet connection. Open Sprint could not reach ${target}. Check your network and retry.`
     );
+  });
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: originalPlatform });
   });
 
   describe("invoke", () => {
@@ -1473,7 +1487,7 @@ describe("AgentClient", () => {
       expect(mockSpawn).toHaveBeenCalledWith(
         "my-cli",
         ["--verbose", taskFilePath],
-        expect.objectContaining({ cwd })
+        expect.objectContaining({ cwd: path.resolve(cwd) })
       );
     });
 
@@ -1500,7 +1514,7 @@ describe("AgentClient", () => {
       expect(mockSpawn).toHaveBeenCalledWith(
         "/path/with spaces/my-cli",
         ["--verbose", taskFilePath],
-        expect.objectContaining({ cwd })
+        expect.objectContaining({ cwd: path.resolve(cwd) })
       );
     });
 
@@ -2673,6 +2687,9 @@ describe("AgentClient", () => {
       const outputLogPath = path.join(taskDir, "output.log");
       const taskFilePath = path.join(taskDir, "prompt.md");
       const fallbackLauncherPath = path.join(fallbackVersionDir, "cursor-agent");
+      const homeSpy = vi.spyOn(osNative, "homedir").mockReturnValue(tmpHome);
+      // Verify the symlink operation without requiring Windows Developer Mode.
+      const symlinkSpy = vi.mocked(symlinkSync).mockImplementation(() => {});
       try {
         process.env.HOME = tmpHome;
         await fs.mkdir(path.join(brokenVersionDir), { recursive: true });
@@ -2686,11 +2703,8 @@ describe("AgentClient", () => {
         await fs.writeFile(path.join(fallbackVersionDir, "node"), machOHeader);
         await fs.writeFile(path.join(brokenVersionDir, "cursor-agent"), "#!/bin/sh\necho broken\n");
         await fs.writeFile(fallbackLauncherPath, "#!/bin/sh\necho fallback\n");
-        await fs.symlink(path.join(brokenVersionDir, "cursor-agent"), path.join(binDir, "agent"));
-        await fs.symlink(
-          path.join(brokenVersionDir, "cursor-agent"),
-          path.join(binDir, "cursor-agent")
-        );
+        await fs.writeFile(path.join(binDir, "agent"), "old launcher");
+        await fs.writeFile(path.join(binDir, "cursor-agent"), "old launcher");
 
         mockGetNextKey.mockResolvedValue({ key: "cursor-key-1", keyId: "k1", source: "global" });
 
@@ -2729,7 +2743,7 @@ describe("AgentClient", () => {
 
         await fs.writeFile(
           outputLogPath,
-          `${path.join(brokenVersionDir, "node")}: Undefined error: 0\n`,
+          `${path.join(brokenVersionDir, "node").replace(/\\/g, "/")}: Undefined error: 0\n`,
           "utf-8"
         );
 
@@ -2744,8 +2758,14 @@ describe("AgentClient", () => {
         expect(onOutput).toHaveBeenCalledWith(
           expect.stringContaining("Cursor runtime node failed; switched to fallback runtime")
         );
-        expect(await fs.readlink(path.join(binDir, "agent"))).toBe(fallbackLauncherPath);
+        expect(symlinkSpy).toHaveBeenCalledWith(fallbackLauncherPath, path.join(binDir, "agent"));
+        expect(symlinkSpy).toHaveBeenCalledWith(
+          fallbackLauncherPath,
+          path.join(binDir, "cursor-agent")
+        );
       } finally {
+        homeSpy.mockRestore();
+        symlinkSpy.mockRestore();
         if (originalVitest === undefined) {
           delete process.env.VITEST;
         } else {
@@ -2919,7 +2939,7 @@ describe("AgentClient", () => {
         );
         await vi.waitFor(
           () => {
-            expect(onExit).toHaveBeenCalledWith(1);
+            expect(onExit).toHaveBeenCalledWith(0);
           },
           { timeout: 3000 }
         );

@@ -48,26 +48,17 @@ function normalizeRepoPathForLookup(p: string): string {
 
 export class ProjectService {
   private taskStore = taskStoreSingleton;
-  /** In-memory cache for listProjects() so GET /projects returns instantly when the event loop is busy (e.g. orchestrator). Invalidated on create/update/delete. */
-  private listCache: Project[] | null = null;
-
   private invalidateListCache(): void {
-    this.listCache = null;
+    // Catalog and settings are read from SQL on every request, including on other replicas.
   }
 
-  /** Clear list cache (for tests that overwrite projects.json directly). */
+  /** Retained for existing fixture callers; authoritative reads need no invalidation. */
   clearListCacheForTesting(): void {
-    this.listCache = null;
+    this.invalidateListCache();
   }
 
-  /** List all projects (cached; invalidated on create/update/delete). Settings are in global DB. */
   async listProjects(): Promise<Project[]> {
-    if (this.listCache !== null) {
-      return this.listCache;
-    }
-    const projects = await buildProjectListFromIndex();
-    this.listCache = projects;
-    return projects;
+    return buildProjectListFromIndex();
   }
 
   /** Create a new project */

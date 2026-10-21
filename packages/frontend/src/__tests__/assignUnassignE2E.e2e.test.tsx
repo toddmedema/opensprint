@@ -10,6 +10,8 @@ import { Provider } from "react-redux";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { configureStore } from "@reduxjs/toolkit";
+import type { Task } from "@opensprint/shared";
+import { queryKeys } from "../api/queryKeys";
 import { isAgentAssignee } from "@opensprint/shared";
 import { ExecutePhase } from "../pages/phases/ExecutePhase";
 import projectReducer from "../store/slices/projectSlice";
@@ -152,13 +154,14 @@ async function renderExecutePhase(store: ReturnType<typeof createStore>) {
   await act(async () => {
     await Promise.resolve();
   });
-  return view;
+  return { ...view, queryClient };
 }
 
 describe("E2E: Assign task to teammate, verify no agent pickup; unassign and verify eligible", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockTasksList.mockResolvedValue([]);
+    let currentTask = { ...readyTask };
+    mockTasksList.mockImplementation(() => Promise.resolve([currentTask]));
     mockGetSettings.mockResolvedValue({ teamMembers, enableHumanTeammates: true });
     mockExecuteStatus.mockResolvedValue({ activeTasks: [], queueDepth: 0 });
     mockTaskGet.mockResolvedValue(readyTask);
@@ -167,14 +170,16 @@ describe("E2E: Assign task to teammate, verify no agent pickup; unassign and ver
     mockAgentsActive.mockResolvedValue([]);
     mockTaskDiagnostics.mockResolvedValue(null);
     mockUpdateTask.mockImplementation(
-      (_projectId: string, _taskId: string, updates: { assignee?: string | null }) =>
-        Promise.resolve({ ...readyTask, assignee: updates.assignee ?? null } as never)
+      (_projectId: string, _taskId: string, updates: { assignee?: string | null }) => {
+        currentTask = { ...currentTask, assignee: updates.assignee ?? null };
+        return Promise.resolve(currentTask);
+      }
     );
   });
 
   it("assigns ready task to teammate, verifies human assignee excluded from agent dispatch; unassigns and verifies eligible", async () => {
     const store = createStore();
-    await renderExecutePhase(store);
+    const { queryClient } = await renderExecutePhase(store);
 
     // Find the task row assignee control (Ready section)
     await waitFor(() => {
@@ -200,11 +205,11 @@ describe("E2E: Assign task to teammate, verify no agent pickup; unassign and ver
     // Verify human assignee: orchestrator would not dispatch (isAgentAssignee false)
     expect(isAgentAssignee("Alice")).toBe(false);
 
-    // After fulfilled, Redux should have the task with assignee "Alice"
+    // After acceptance, the canonical task query shows assignee "Alice"
     await waitFor(() => {
-      const state = store.getState();
-      const task = (state.execute as { tasksById: Record<string, { assignee: string | null }> })
-        .tasksById["epic-1.1"];
+      const task = queryClient
+        .getQueryData<Task[]>(queryKeys.tasks.list("proj-1"))
+        ?.find((task) => task.id === "epic-1.1");
       expect(task?.assignee).toBe("Alice");
     });
 
@@ -223,9 +228,9 @@ describe("E2E: Assign task to teammate, verify no agent pickup; unassign and ver
 
     // Verify task is eligible for agent (no assignee)
     await waitFor(() => {
-      const state = store.getState();
-      const task = (state.execute as { tasksById: Record<string, { assignee: string | null }> })
-        .tasksById["epic-1.1"];
+      const task = queryClient
+        .getQueryData<Task[]>(queryKeys.tasks.list("proj-1"))
+        ?.find((task) => task.id === "epic-1.1");
       expect(task?.assignee).toBeNull();
     });
     expect(isAgentAssignee(null)).toBe(false);

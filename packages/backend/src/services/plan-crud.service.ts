@@ -44,10 +44,20 @@ import { triggerDeployForEvent } from "./deploy-trigger.service.js";
 import { broadcastToProject } from "../websocket/index.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { createLogger } from "../utils/logger.js";
+import { getRequestContext } from "./request-context.js";
+import type { CollaborativeMutation } from "./task-store.service.js";
 
 const log = createLogger("plan-crud");
 
 export interface PlanCrudStore extends PlanVersioningStore {
+  mutateCollaboratively?<T>(
+    projectId: string,
+    type: "task" | "plan",
+    id: string,
+    command: CollaborativeMutation,
+    payload: unknown,
+    action: () => Promise<T>
+  ): Promise<T>;
   planGet(projectId: string, planId: string): Promise<PlanGetResult | null>;
   planListIds(projectId: string): Promise<string[]>;
   planListAllForProject(projectId: string): Promise<PlanListAllRow[]>;
@@ -330,6 +340,7 @@ export class PlanCrudService {
     const childPlanIds = opts?.childPlanIdsMap?.get(planId);
 
     return {
+      revision: row.revision ?? 0,
       metadata,
       content,
       status,
@@ -602,9 +613,14 @@ export class PlanCrudService {
     if (parentPlanId) {
       const parentRow = await this.taskStore.planGet(projectId, parentPlanId);
       if (!parentRow) {
-        throw new AppError(404, ErrorCodes.PLAN_NOT_FOUND, `Parent plan '${parentPlanId}' not found`, {
-          parentPlanId,
-        });
+        throw new AppError(
+          404,
+          ErrorCodes.PLAN_NOT_FOUND,
+          `Parent plan '${parentPlanId}' not found`,
+          {
+            parentPlanId,
+          }
+        );
       }
       const { plansMap } = await this.buildHierarchyMaps(projectId);
       let parentDepth: number;
@@ -670,6 +686,33 @@ export class PlanCrudService {
    * Otherwise updates the current version in place.
    */
   async updatePlan(projectId: string, planId: string, body: { content: string }): Promise<Plan> {
+    const request = getRequestContext();
+    if (
+      request?.requestId &&
+      request.expectedRevision !== undefined &&
+      this.taskStore.mutateCollaboratively
+    ) {
+      return this.taskStore.mutateCollaboratively(
+        projectId,
+        "plan",
+        planId,
+        {
+          actorId: request.principal.actorId,
+          requestId: request.requestId,
+          expectedRevision: request.expectedRevision,
+        },
+        body,
+        () => this.updatePlanOnce(projectId, planId, body)
+      );
+    }
+    return this.updatePlanOnce(projectId, planId, body);
+  }
+
+  private async updatePlanOnce(
+    projectId: string,
+    planId: string,
+    body: { content: string }
+  ): Promise<Plan> {
     const row = await this.taskStore.planGet(projectId, planId);
     if (!row) {
       throw new AppError(404, ErrorCodes.PLAN_NOT_FOUND, `Plan '${planId}' not found`, {
@@ -857,7 +900,9 @@ export class PlanCrudService {
     const buildNode = async (planId: string): Promise<PlanHierarchyNode> => {
       const row = rowMap.get(planId);
       if (!row) {
-        throw new AppError(404, ErrorCodes.PLAN_NOT_FOUND, `Plan '${planId}' not found`, { planId });
+        throw new AppError(404, ErrorCodes.PLAN_NOT_FOUND, `Plan '${planId}' not found`, {
+          planId,
+        });
       }
       const plan = await this.materializePlanFromStoreRow(projectId, planId, row, {
         allIssues,

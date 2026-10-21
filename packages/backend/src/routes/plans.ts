@@ -1,3 +1,5 @@
+import { runDurableRequest } from "../services/durable-request.service.js";
+import { operationWorker } from "../services/operation-worker.service.js";
 import { Router, Request } from "express";
 import { wrapAsync } from "../middleware/wrap-async.js";
 import { validateParams, validateBody } from "../middleware/validate.js";
@@ -35,6 +37,41 @@ import type {
 
 export function createPlansRouter(planService: PlanService): Router {
   const router = Router({ mergeParams: true });
+  operationWorker.register("plan.decompose", (op) => planService.decomposeFromPrd(op.projectId));
+  operationWorker.register("plan.suggest", (op) => planService.suggestPlans(op.projectId));
+  operationWorker.register("plan.generate", (op) => {
+    const payload = op.payload as {
+      description: string;
+      attachments?: import("@opensprint/shared").PlanAttachment[];
+    };
+    return planService.generatePlanFromDescription(
+      op.projectId,
+      payload.description,
+      payload.attachments
+    );
+  });
+  operationWorker.register("plan.tasks", (op) => planService.planTasks(op.projectId, op.target));
+  operationWorker.register("plan.execute", (op) => {
+    const payload = op.payload as { prerequisitePlanIds?: string[]; version_number?: number };
+    const options =
+      payload.version_number == null ? undefined : { version_number: payload.version_number };
+    return payload.prerequisitePlanIds?.length
+      ? planService.shipPlanWithPrerequisites(
+          op.projectId,
+          op.target,
+          payload.prerequisitePlanIds,
+          options
+        )
+      : planService.shipPlan(op.projectId, op.target, options);
+  });
+  operationWorker.register("plan.reexecute", (op) => {
+    const payload = op.payload as { version_number?: number };
+    return planService.reshipPlan(
+      op.projectId,
+      op.target,
+      payload.version_number == null ? undefined : { version_number: payload.version_number }
+    );
+  });
 
   type ProjectParams = { projectId: string };
   type PlanParams = { projectId: string; planId: string };
@@ -44,7 +81,13 @@ export function createPlansRouter(planService: PlanService): Router {
     "/decompose",
     validateParams(projectIdParamSchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
-      const result = await planService.decomposeFromPrd(req.params.projectId);
+      const result = await runDurableRequest(
+        req.params.projectId,
+        "plan.decompose",
+        "plans",
+        req.body ?? {},
+        () => planService.decomposeFromPrd(req.params.projectId)
+      );
       const body: ApiResponse<{ created: number; plans: Plan[] }> = { data: result };
       res.status(201).json(body);
     })
@@ -60,10 +103,17 @@ export function createPlansRouter(planService: PlanService): Router {
         description: string;
         attachments?: import("@opensprint/shared").PlanAttachment[];
       };
-      const result = await planService.generatePlanFromDescription(
+      const result = await runDurableRequest(
         req.params.projectId,
-        description.trim(),
-        attachments
+        "plan.generate",
+        "plans",
+        { description: description.trim(), attachments },
+        () =>
+          planService.generatePlanFromDescription(
+            req.params.projectId,
+            description.trim(),
+            attachments
+          )
       );
       const body: ApiResponse<GeneratePlanResult> = { data: result };
       res.status(result.status === "created" ? 201 : 202).json(body);
@@ -75,7 +125,13 @@ export function createPlansRouter(planService: PlanService): Router {
     "/suggest",
     validateParams(projectIdParamSchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
-      const result = await planService.suggestPlans(req.params.projectId);
+      const result = await runDurableRequest(
+        req.params.projectId,
+        "plan.suggest",
+        "plans",
+        {},
+        () => planService.suggestPlans(req.params.projectId)
+      );
       const body: ApiResponse<SuggestPlansResponse> = { data: result };
       res.json(body);
     })
@@ -294,7 +350,13 @@ export function createPlansRouter(planService: PlanService): Router {
     "/:planId/plan-tasks",
     validateParams(planIdParamSchema),
     wrapAsync(async (req: Request<PlanParams>, res) => {
-      const plan = await planService.planTasks(req.params.projectId, req.params.planId);
+      const plan = await runDurableRequest(
+        req.params.projectId,
+        "plan.tasks",
+        req.params.planId,
+        {},
+        () => planService.planTasks(req.params.projectId, req.params.planId)
+      );
       const body: ApiResponse<Plan> = { data: plan };
       res.json(body);
     })
@@ -319,15 +381,21 @@ export function createPlansRouter(planService: PlanService): Router {
         const prerequisitePlanIds = req.body.prerequisitePlanIds ?? [];
         const version_number = req.body.version_number;
         const options = version_number != null ? { version_number } : undefined;
-        const plan =
-          prerequisitePlanIds.length > 0
-            ? await planService.shipPlanWithPrerequisites(
-                req.params.projectId,
-                req.params.planId,
-                prerequisitePlanIds,
-                options
-              )
-            : await planService.shipPlan(req.params.projectId, req.params.planId, options);
+        const plan = await runDurableRequest(
+          req.params.projectId,
+          "plan.execute",
+          req.params.planId,
+          req.body,
+          async () =>
+            prerequisitePlanIds.length > 0
+              ? await planService.shipPlanWithPrerequisites(
+                  req.params.projectId,
+                  req.params.planId,
+                  prerequisitePlanIds,
+                  options
+                )
+              : await planService.shipPlan(req.params.projectId, req.params.planId, options)
+        );
         for (const updatedPlanId of new Set([req.params.planId, ...prerequisitePlanIds])) {
           broadcastToProject(req.params.projectId, {
             type: "plan.updated",
@@ -351,7 +419,13 @@ export function createPlansRouter(planService: PlanService): Router {
     wrapAsync(async (req: Request<PlanParams, unknown, { version_number?: number }>, res) => {
       const version_number = req.body.version_number;
       const options = version_number != null ? { version_number } : undefined;
-      const plan = await planService.reshipPlan(req.params.projectId, req.params.planId, options);
+      const plan = await runDurableRequest(
+        req.params.projectId,
+        "plan.reexecute",
+        req.params.planId,
+        req.body,
+        () => planService.reshipPlan(req.params.projectId, req.params.planId, options)
+      );
       broadcastToProject(req.params.projectId, {
         type: "plan.updated",
         planId: req.params.planId,

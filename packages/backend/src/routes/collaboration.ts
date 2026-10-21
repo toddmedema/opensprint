@@ -3,6 +3,12 @@ import { z } from "zod";
 import { AppError } from "../middleware/error-handler.js";
 import { wrapAsync } from "../middleware/wrap-async.js";
 import {
+  requestAuthorization,
+  assertCookieCsrf,
+  redactNamedResponse,
+} from "../middleware/project-access.js";
+import type { ProjectIdentity } from "@opensprint/shared";
+import {
   CollaborationService,
   collaborationCommandSchema,
 } from "../services/collaboration.service.js";
@@ -67,7 +73,8 @@ export function createCollaborationRouter(options: {
     const parsed = projectIdSchema.safeParse(req.params.projectId);
     if (!parsed.success) throw new AppError(400, "INVALID_PROJECT_ID", "Invalid project ID.");
     const projectId = parsed.data;
-    const principal = access.resolve(req.headers.authorization, projectId);
+    const principal = await access.resolve(requestAuthorization(req), projectId);
+    if ("permissions" in principal) assertCookieCsrf(req, principal as ProjectIdentity);
     await options.assertProjectExists(projectId);
     return { projectId, principal };
   };
@@ -82,11 +89,14 @@ export function createCollaborationRouter(options: {
   router.get(
     "/events",
     wrapAsync(async (req, res) => {
-      const { projectId } = await context(req);
+      const { projectId, principal } = await context(req);
       const query = pageSchema.safeParse(req.query);
       if (!query.success)
         throw new AppError(400, "INVALID_COLLABORATION_CURSOR", "Invalid event pagination.");
-      res.json({ data: await service.replay(projectId, query.data.after, query.data.limit) });
+      const replay = await service.replay(projectId, query.data.after, query.data.limit);
+      // This router precedes projectAccess. Historical settings/operation events
+      // require the same secret filtering as current resource responses.
+      res.json({ data: principal.actorId === "local-user" ? replay : redactNamedResponse(replay) });
     })
   );
   router.get(

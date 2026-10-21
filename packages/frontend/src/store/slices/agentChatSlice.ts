@@ -100,18 +100,27 @@ const agentChatSlice = createSlice({
       state,
       action: PayloadAction<{ taskId: string; messageId: string; content: string }>
     ) {
-      const { taskId, messageId, content } = action.payload;
-      if (!state.messagesByTaskId[taskId]) state.messagesByTaskId[taskId] = [];
-      const responseId = `resp-${messageId}`;
-      if (state.messagesByTaskId[taskId].some((m) => m.id === responseId)) return;
-      state.messagesByTaskId[taskId].push({
-        id: responseId,
-        role: "assistant",
-        content,
-        timestamp: new Date().toISOString(),
-        delivered: true,
-      });
+      const { taskId } = action.payload;
       state.sendingByTaskId[taskId] = false;
+    },
+
+    reconcileChatHistory(
+      state,
+      action: PayloadAction<{
+        taskId: string;
+        messages: Array<{ id: string; clientMessageId?: string }>;
+      }>
+    ) {
+      const { taskId, messages } = action.payload;
+      const ids = new Set(messages.map((message) => message.id));
+      const clientIds = new Set(messages.map((message) => message.clientMessageId).filter(Boolean));
+      state.messagesByTaskId[taskId] = (state.messagesByTaskId[taskId] ?? []).filter(
+        (message) =>
+          message.role === "user" && !ids.has(message.id) && !clientIds.has(message.clientMessageId)
+      );
+      state.sendingByTaskId[taskId] = state.messagesByTaskId[taskId].some(
+        (message) => message.status === "sending"
+      );
     },
 
     chatUnsupported(
@@ -178,41 +187,17 @@ const agentChatSlice = createSlice({
   extraReducers: (builder) => {
     builder
       .addCase(fetchAgentChatHistory.fulfilled, (state, action) => {
-        const { taskId, messages, chatSupported } = action.payload;
+        const { taskId, messages } = action.payload;
         const existing = state.messagesByTaskId[taskId] ?? [];
         const serverIds = new Set(messages.map((m) => m.id));
         const clientIds = new Set(messages.map((m) => m.clientMessageId).filter(Boolean));
         const localOnly = existing.filter(
           (m) => m.role === "user" && !serverIds.has(m.id) && !clientIds.has(m.clientMessageId)
         );
-        state.messagesByTaskId[taskId] = [
-          ...messages.map((m) => ({
-            id: m.id,
-            role: m.role as "user" | "assistant",
-            content: m.content,
-            timestamp: m.timestamp,
-            clientMessageId: m.clientMessageId,
-            attemptId: m.attemptId,
-            status: m.status,
-            error: m.error,
-          })),
-          ...localOnly,
-        ];
+        state.messagesByTaskId[taskId] = localOnly;
         state.sendingByTaskId[taskId] = localOnly.some((m) => m.status === "sending");
-        if (chatSupported !== undefined) {
-          const prev = state.supportByTaskId[taskId];
-          if (!prev || prev.supported !== chatSupported) {
-            state.supportByTaskId[taskId] = { supported: chatSupported };
-          }
-        }
       })
-      .addCase(fetchAgentChatSupport.fulfilled, (state, action) => {
-        const { taskId, supported, reason } = action.payload;
-        state.supportByTaskId[taskId] = {
-          supported,
-          reason: reason ?? undefined,
-        };
-      });
+      .addCase(fetchAgentChatSupport.fulfilled, () => {});
   },
 });
 
@@ -226,6 +211,7 @@ export const {
   chatConnectionLost,
   chatReceiptTimedOut,
   clearChatForTask,
+  reconcileChatHistory,
 } = agentChatSlice.actions;
 
 export type AgentChatRootState = { agentChat?: AgentChatState };

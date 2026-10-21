@@ -10,6 +10,7 @@ import { GlobalKeyboardShortcuts } from "./components/GlobalKeyboardShortcuts";
 import { FindBar } from "./components/FindBar";
 import { CommandBar } from "./components/commands/CommandBar";
 import { RouteFallback } from "./components/RouteFallback";
+import { AccessGate } from "./components/AccessGate";
 const CollaborationPage = lazy(() =>
   import("./pages/CollaborationPage").then((module) => ({ default: module.CollaborationPage }))
 );
@@ -49,7 +50,7 @@ function HelpShortcutsRedirect() {
 
 export function App() {
   return (
-    <>
+    <AccessGate>
       <FindBar />
       <CommandBar />
       <GlobalKeyboardShortcuts />
@@ -113,6 +114,6 @@ export function App() {
           <Route path=":phase" element={<ProjectView />} />
         </Route>
       </Routes>
-    </>
+    </AccessGate>
   );
 }

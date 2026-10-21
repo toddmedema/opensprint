@@ -1,3 +1,5 @@
+import { serverStateMiddleware } from "../../store/serverState";
+import { setQueryClient } from "../../queryClient";
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
@@ -91,6 +93,7 @@ function createStore(initialDeployState = {}) {
         : {};
 
   return configureStore({
+    middleware: (getDefault) => getDefault().concat(serverStateMiddleware),
     reducer: {
       deliver: deliverReducer,
       project: projectReducer,
@@ -121,7 +124,9 @@ function createStore(initialDeployState = {}) {
 }
 
 function createQueryClient() {
-  return new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  setQueryClient(client);
+  return client;
 }
 
 function renderWithRouter(
@@ -1214,7 +1219,7 @@ describe("delivery operation recovery", () => {
   });
 });
 
-it("retains Redux active deployment fallback while status query data is absent", async () => {
+it("does not infer active deployment from legacy Redux while status query is absent", async () => {
   mockDeliverStatus.mockReturnValue(new Promise(() => {}));
   const store = createStore({
     activeDeployId: "cached-active",
@@ -1230,6 +1235,7 @@ it("retains Redux active deployment fallback while status query data is absent",
       </Provider>
     </QueryClientProvider>
   );
-  expect(await screen.findByTestId("cancel-deployment-button")).toBeInTheDocument();
+  expect(await screen.findByTestId("deploy-to-production-button")).toBeInTheDocument();
+  expect(screen.queryByTestId("cancel-deployment-button")).not.toBeInTheDocument();
   client.clear();
 });

@@ -1,4 +1,39 @@
 import { randomBytes } from "node:crypto";
+import { taskStore } from "./task-store.service.js";
+import { credentialHash } from "./identity.service.js";
+export interface UpgradeClaims {
+  projectId: string;
+  credentialHash: string;
+}
+export async function issueScopedWebSocketTicket(claims: UpgradeClaims): Promise<string> {
+  const token = randomBytes(32).toString("base64url");
+  await taskStore.runWrite(async (tx) => {
+    await tx.execute("DELETE FROM websocket_upgrade_tickets WHERE expires_at <= $1", [
+      new Date().toISOString(),
+    ]);
+    await tx.execute(
+      "INSERT INTO websocket_upgrade_tickets (token_hash,project_id,credential_hash,expires_at) VALUES ($1,$2,$3,$4)",
+      [
+        credentialHash(token),
+        claims.projectId,
+        claims.credentialHash,
+        new Date(Date.now() + TTL_MS).toISOString(),
+      ]
+    );
+  });
+  return token;
+}
+export async function consumeScopedWebSocketTicket(token: string): Promise<UpgradeClaims | null> {
+  return taskStore.runWrite(async (tx) => {
+    const row = await tx.queryOne(
+      "DELETE FROM websocket_upgrade_tickets WHERE token_hash=$1 AND expires_at>$2 RETURNING project_id,credential_hash",
+      [credentialHash(token), new Date().toISOString()]
+    );
+    return row
+      ? { projectId: String(row.project_id), credentialHash: String(row.credential_hash) }
+      : null;
+  });
+}
 
 const TTL_MS = 120_000;
 

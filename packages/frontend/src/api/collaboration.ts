@@ -3,6 +3,8 @@ import type {
   CollaborationReplay,
   CollaborationCommand,
   CollaborationCommandResult,
+  CollaborationMessage,
+  CollaborationRun,
 } from "@opensprint/shared";
 import { request } from "./client";
 
@@ -65,15 +67,17 @@ export function applyCollaborationReplay(
     if (event.projectId !== snapshot.projectId || event.cursor !== next.cursor + 1)
       throw new Error("Session history needs a fresh snapshot.");
     if (event.type === "message_appended") {
-      if (!("content" in event.payload)) throw new Error("Invalid session message.");
-      next.messages.push(event.payload);
+      if (!event.payload || typeof event.payload !== "object" || !("content" in event.payload))
+        throw new Error("Invalid session message.");
+      next.messages.push(event.payload as CollaborationMessage);
       if (next.messages.length > 200) {
         next.messages.shift();
         next.messagesHasMore = true;
       }
-    } else {
-      if (!("runId" in event.payload)) throw new Error("Invalid session control event.");
-      const updated = event.payload;
+    } else if (event.type === "control_claimed" || event.type === "control_handed_off") {
+      if (!event.payload || typeof event.payload !== "object" || !("runId" in event.payload))
+        throw new Error("Invalid session control event.");
+      const updated = event.payload as CollaborationRun;
       next.runs = [...next.runs.filter((run) => run.runId !== updated.runId), updated];
     }
     next = { ...next, cursor: event.cursor };

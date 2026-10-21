@@ -100,7 +100,11 @@ export class CollaborationService {
     principal: CollaborationPrincipal,
     runId: string
   ): Promise<number> {
-    if (principal.role !== "controller")
+    if (
+      principal.permissions
+        ? !principal.permissions.includes("control")
+        : principal.role !== "controller"
+    )
       forbidden("Controller permission is required to guide a run.");
     const row = await tx.queryOne(
       "SELECT * FROM collaboration_runs WHERE project_id = $1 AND run_id = $2",
@@ -190,6 +194,16 @@ export class CollaborationService {
         "SELECT cursor FROM collaboration_projects WHERE project_id = $1",
         [projectId]
       );
+      const first = await tx.queryOne(
+        "SELECT MIN(cursor) AS cursor FROM collaboration_events WHERE project_id = $1",
+        [projectId]
+      );
+      if (first?.cursor != null && after < Number(first.cursor) - 1) {
+        conflict("Replay retention expired. Reload project state.", {
+          resetRequired: true,
+          cursor: Number(state?.cursor ?? 0),
+        });
+      }
       if (after > Number(state?.cursor ?? 0)) {
         conflict(
           "The replay cursor is ahead of this project. Reload its snapshot before replaying.",
@@ -211,7 +225,8 @@ export class CollaborationService {
     projectId: string,
     principal: CollaborationPrincipal,
     input: CollaborationCommand,
-    canControlActor: (actorId: string) => boolean = (actorId) => actorId === principal.actorId
+    canControlActor: (actorId: string) => boolean | Promise<boolean> = (actorId) =>
+      actorId === principal.actorId
   ): Promise<CollaborationCommandResult> {
     const parsed = collaborationCommandSchema.safeParse(input);
     if (!parsed.success)
@@ -222,9 +237,19 @@ export class CollaborationService {
         parsed.error.issues
       );
     const command = parsed.data;
-    if (principal.role !== "participant" && principal.role !== "controller")
+    if (
+      command.type === "append_message" &&
+      (principal.permissions
+        ? !principal.permissions.includes("discuss")
+        : principal.role !== "participant" && principal.role !== "controller")
+    )
       forbidden("This project role cannot submit commands.");
-    if (command.type !== "append_message" && principal.role !== "controller")
+    if (
+      command.type !== "append_message" &&
+      (principal.permissions
+        ? !principal.permissions.includes("control")
+        : principal.role !== "controller")
+    )
       forbidden("Controller permission is required.");
     const fingerprint = createHash("sha256").update(JSON.stringify(command)).digest("hex");
     return this.store.runWrite(async (tx) => {
@@ -300,7 +325,7 @@ export class CollaborationService {
         } else {
           if (run.controllerId !== principal.actorId)
             forbidden("Only this run's current controller can hand off control.");
-          if (command.targetActorId !== null && !canControlActor(command.targetActorId))
+          if (command.targetActorId !== null && !(await canControlActor(command.targetActorId)))
             forbidden("The handoff target must have controller permission in this project.");
           run.controllerId = command.targetActorId;
         }
@@ -329,6 +354,10 @@ export class CollaborationService {
         "INSERT INTO collaboration_events (project_id, cursor, event) VALUES ($1, $2, $3)",
         [projectId, cursor, JSON.stringify(result.event)]
       );
+      await tx.execute("DELETE FROM collaboration_events WHERE project_id=$1 AND cursor <= $2", [
+        projectId,
+        cursor - 10_000,
+      ]);
       await tx.execute(
         "INSERT INTO collaboration_commands (project_id, command_id, actor_id, fingerprint, result) VALUES ($1, $2, $3, $4, $5)",
         [projectId, command.commandId, principal.actorId, fingerprint, JSON.stringify(result)]

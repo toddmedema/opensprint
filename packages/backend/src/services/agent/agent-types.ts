@@ -63,10 +63,13 @@ export interface PlanningAgentResponse {
 
 /** Options for invokeCodingAgent (file-based prompt) */
 export interface InvokeCodingAgentOptions {
+  executionFence?: import("../execution-ownership.service.js").ExecutionFence;
   /** Working directory for the agent (typically repo path) */
   cwd: string;
   /** Callback for streaming output chunks */
   onOutput: (chunk: string) => void;
+  /** Observation failed; the assignment and workspace must remain quarantined. */
+  onUncertain?: (reason: string) => void;
   /** Callback when agent process exits */
   onExit: (code: number | null) => void;
   /** Human-readable agent role for logging (e.g. 'coder', 'code reviewer') */

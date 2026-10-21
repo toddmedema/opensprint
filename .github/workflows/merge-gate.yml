@@ -2,7 +2,6 @@ name: Merge gate
 
 on:
   pull_request:
-    branches: [main]
   push:
     branches: [main]
 
@@ -42,6 +41,12 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Require Linux Docker and preload isolated execution acceptance image
+        run: |
+          test "$(docker info --format '{{.OSType}}')" = "linux"
+          docker pull busybox:1.37
+          echo "OPENSPRINT_DOCKER_SMOKE_IMAGE=$(docker image inspect busybox:1.37 --format '{{index .RepoDigests 0}}')" >> "$GITHUB_ENV"
+          echo "OPENSPRINT_REQUIRE_DOCKER_TESTS=1" >> "$GITHUB_ENV"
       - name: Wait for Postgres TCP
         run: node scripts/ci/wait-for-tcp.mjs 127.0.0.1 5432 60
       - name: Run verify:merge-gates (orchestrator parity)
@@ -85,6 +90,13 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
+      - name: Require Linux Docker and preload isolated execution acceptance image
+        if: matrix.gate == 'test'
+        run: |
+          test "$(docker info --format '{{.OSType}}')" = "linux"
+          docker pull busybox:1.37
+          echo "OPENSPRINT_DOCKER_SMOKE_IMAGE=$(docker image inspect busybox:1.37 --format '{{index .RepoDigests 0}}')" >> "$GITHUB_ENV"
+          echo "OPENSPRINT_REQUIRE_DOCKER_TESTS=1" >> "$GITHUB_ENV"
       - name: Determine affected test workspaces
         if: matrix.gate == 'test'
         id: affected_tests

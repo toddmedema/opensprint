@@ -1,3 +1,5 @@
+import { api } from "../../api/client";
+import { sessionHeaders } from "../../api/session";
 import type { Middleware, ThunkDispatch, UnknownAction } from "@reduxjs/toolkit";
 import { createAction } from "@reduxjs/toolkit";
 import type {
@@ -14,8 +16,6 @@ import type {
   IntegrationSyncCompletedEvent,
   IntegrationConnectionUpdatedEvent,
   Task,
-  TaskEventPayload,
-  TaskPriority,
   Notification,
 } from "@opensprint/shared";
 import { setConnected } from "../slices/websocketSlice";
@@ -30,19 +30,11 @@ import { setConnectionError } from "../slices/connectionSlice";
 import {
   appendAgentOutput,
   setAgentOutputBackfill,
-  setOrchestratorRunning,
-  setAwaitingApproval,
-  setExecuteStatusPayload,
   sweepExpiredBaselineMergePauseTick,
   setCompletionState,
   setSelectedTaskId,
-  taskUpdated,
-  taskCreated,
-  taskClosed,
-  fetchTasksByIds,
 } from "../slices/executeSlice";
-import { updateFeedbackItem, updateFeedbackItemResolved } from "../slices/evalSlice";
-import { appendDeliverOutput, deliverStarted, deliverCompleted } from "../slices/deliverSlice";
+import { appendDeliverOutput, deliverCompleted } from "../slices/deliverSlice";
 import {
   appendAuditorOutput,
   setAuditorOutputBackfill,
@@ -100,25 +92,6 @@ function syncTasksToQueryCache(qc: QueryClient, projectId: string, tasks: Task[]
   }
 }
 
-/**
- * Sync a single task from Redux execute state into React Query caches.
- * Returns true when task exists in state and cache sync was applied.
- */
-function syncTaskFromExecuteStateToQueryCache(
-  qc: QueryClient,
-  getState: () => unknown,
-  projectId: string,
-  taskId: string
-): boolean {
-  const root = getState() as {
-    execute?: { tasksById?: Record<string, Task | undefined> };
-  };
-  const task = root.execute?.tasksById?.[taskId];
-  if (!task) return false;
-  syncTasksToQueryCache(qc, projectId, [task]);
-  return true;
-}
-
 export const wsConnect = createAction<{ projectId: string }>("ws/connect");
 export const wsConnectHome = createAction("ws/connectHome");
 export const wsDisconnect = createAction("ws/disconnect");
@@ -164,17 +137,17 @@ const API_V1_BASE = `${(import.meta.env.VITE_API_BASE as string | undefined) ?? 
  * Exchange Bearer session for a one-time WS upgrade ticket over HTTPS (avoids putting the session
  * in the WebSocket URL, which is often logged). Node `ws` clients can use the header instead.
  */
-async function fetchWebSocketUpgradeTicket(): Promise<string | null> {
-  const token = typeof window !== "undefined" ? window.__OPENSPRINT_LOCAL_SESSION__ : undefined;
-  if (!token) return null;
+async function fetchWebSocketUpgradeTicket(projectId?: string): Promise<string | null> {
   try {
     const res = await fetch(`${API_V1_BASE}/ws-upgrade-ticket`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        ...sessionHeaders(),
+        "Idempotency-Key": crypto.randomUUID(),
       },
-      body: "{}",
+      credentials: "same-origin",
+      body: JSON.stringify(projectId ? { projectId } : {}),
     });
     if (!res.ok) return null;
     const body: unknown = await res.json();
@@ -358,7 +331,7 @@ export const websocketMiddleware: Middleware = (storeApi) => {
     const generation = connectionGeneration;
 
     void (async () => {
-      const ticket = await fetchWebSocketUpgradeTicket();
+      const ticket = await fetchWebSocketUpgradeTicket(currentProjectId ?? undefined);
       if (generation !== connectionGeneration || intentionalClose || currentProjectId !== projectId)
         return;
 
@@ -387,7 +360,7 @@ export const websocketMiddleware: Middleware = (storeApi) => {
     const generation = connectionGeneration;
 
     void (async () => {
-      const ticket = await fetchWebSocketUpgradeTicket();
+      const ticket = await fetchWebSocketUpgradeTicket(currentProjectId ?? undefined);
       if (
         generation !== connectionGeneration ||
         intentionalClose ||
@@ -524,72 +497,19 @@ export const websocketMiddleware: Middleware = (storeApi) => {
         break;
       }
 
-      case "task.created": {
-        const created = event as { type: "task.created"; task: TaskEventPayload };
-        if (created.task) {
-          d(taskCreated(created.task));
-          const synced = syncTaskFromExecuteStateToQueryCache(
-            qc,
-            getState,
-            projectId,
-            created.task.id
-          );
-          if (!synced) {
-            void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
-          }
-        } else {
-          void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
-        }
+      case "task.created":
+      case "task.closed":
+        void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
+        if ("task" in event && event.task?.id)
+          void qc.invalidateQueries({ queryKey: queryKeys.tasks.detail(projectId, event.task.id) });
         break;
-      }
-      case "task.closed": {
-        const closed = event as { type: "task.closed"; task: TaskEventPayload };
-        if (closed.task) {
-          d(taskClosed(closed.task));
-          const synced = syncTaskFromExecuteStateToQueryCache(
-            qc,
-            getState,
-            projectId,
-            closed.task.id
-          );
-          if (!synced) {
-            void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
-          }
-        } else {
-          void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
-        }
-        break;
-      }
-
-      case "task.updated": {
+      case "task.updated":
+        void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
+        void qc.invalidateQueries({ queryKey: queryKeys.tasks.detail(projectId, event.taskId) });
         void qc.invalidateQueries({
           queryKey: queryKeys.execute.diagnostics(projectId, event.taskId),
         });
-        d(
-          taskUpdated({
-            taskId: event.taskId,
-            status: event.status,
-            assignee: event.assignee,
-            priority: event.priority as TaskPriority | undefined,
-            blockReason: event.blockReason,
-            title: event.title,
-            description: event.description,
-            kanbanColumn: event.kanbanColumn,
-            mergePausedUntil: event.mergePausedUntil,
-            mergeWaitingOnMain: event.mergeWaitingOnMain,
-            mergeGateState: event.mergeGateState,
-            lastExecutionSummary: event.lastExecutionSummary,
-          })
-        );
-        const synced = syncTaskFromExecuteStateToQueryCache(qc, getState, projectId, event.taskId);
-        if (!synced) {
-          void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
-          void qc.invalidateQueries({
-            queryKey: queryKeys.tasks.detail(projectId, event.taskId),
-          });
-        }
         break;
-      }
 
       case "agent.started":
         void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
@@ -693,29 +613,11 @@ export const websocketMiddleware: Middleware = (storeApi) => {
 
       case "execute.status": {
         const statusEv = event as ExecuteStatusEvent;
-        const activeTasks = statusEv.activeTasks ?? [];
-        const running = activeTasks.length > 0 || statusEv.queueDepth > 0;
-        d(setOrchestratorRunning(running));
-        if (statusEv.awaitingApproval !== undefined) {
-          d(setAwaitingApproval(Boolean(statusEv.awaitingApproval)));
-        }
-        d(
-          setExecuteStatusPayload({
-            activeTasks,
-            queueDepth: statusEv.queueDepth,
-            awaitingApproval: statusEv.awaitingApproval,
-            baselineStatus: statusEv.baselineStatus,
-            baselineCheckedAt: statusEv.baselineCheckedAt,
-            baselineFailureSummary: statusEv.baselineFailureSummary,
-            baselineRemediationStatus: statusEv.baselineRemediationStatus,
-            mergeValidationStatus: statusEv.mergeValidationStatus,
-            mergeValidationFailureSummary: statusEv.mergeValidationFailureSummary,
-            dispatchPausedReason: statusEv.dispatchPausedReason,
-            selfImprovementRunInProgress: statusEv.selfImprovementRunInProgress,
-            selfImprovementRunMode: statusEv.selfImprovementRunMode,
-            gitMergeQueue: statusEv.gitMergeQueue ?? null,
-          })
-        );
+        qc.setQueryData(queryKeys.execute.status(projectId), (previous: unknown) => ({
+          ...(previous && typeof previous === "object" ? previous : {}),
+          ...statusEv,
+          activeTasks: statusEv.activeTasks ?? [],
+        }));
         {
           const snap = snapshotExecuteStatusMergeGateFields(statusEv);
           if (shouldBumpTasksListForMergeGateStatus(projectId, snap)) {
@@ -729,20 +631,20 @@ export const websocketMiddleware: Middleware = (storeApi) => {
       case "feedback.updated": {
         const ev = event as FeedbackMappedEvent | FeedbackUpdatedEvent;
         if (ev.item) {
-          d(updateFeedbackItem(ev.item));
+          qc.setQueryData(queryKeys.feedback.list(projectId), (previous: unknown) =>
+            Array.isArray(previous)
+              ? previous.map((item) => (item.id === ev.item!.id ? ev.item : item))
+              : [ev.item]
+          );
           const taskIds = [
             ...new Set([...(ev.item.createdTaskIds ?? []), ...(ev.taskIds ?? [])]),
           ].filter((id): id is string => typeof id === "string" && id.length > 0);
           if (taskIds.length > 0) {
-            d(fetchTasksByIds({ projectId, taskIds })).then((result) => {
-              if (fetchTasksByIds.fulfilled.match(result) && result.payload.length > 0) {
-                try {
-                  syncTasksToQueryCache(qc, projectId, result.payload);
-                } catch {
-                  // QueryClient may not be set in tests
-                }
-              }
-            });
+            void Promise.all(taskIds.map((id) => api.tasks.get(projectId, id)))
+              .then((tasks) => syncTasksToQueryCache(qc, projectId, tasks))
+              .catch(() => {
+                void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
+              });
             // Do not invalidate tasks list — we sync fetched tasks to the cache above to avoid duplicate refetches
           }
         } else {
@@ -753,16 +655,16 @@ export const websocketMiddleware: Middleware = (storeApi) => {
       case "feedback.resolved": {
         const ev = event as FeedbackResolvedEvent;
         if (ev.item) {
-          d(updateFeedbackItem(ev.item));
+          void qc.invalidateQueries({ queryKey: queryKeys.feedback.list(projectId) });
         } else {
-          d(updateFeedbackItemResolved(ev.feedbackId));
+          void qc.invalidateQueries({ queryKey: queryKeys.feedback.list(projectId) });
         }
         void qc.invalidateQueries({ queryKey: queryKeys.feedback.list(projectId) });
         break;
       }
 
       case "deliver.started":
-        d(deliverStarted({ deployId: event.deployId }));
+        void qc.invalidateQueries({ queryKey: queryKeys.deliver.status(projectId) });
         d(addToast({ message: "Delivery started", severity: "info" }));
         break;
 

@@ -32,7 +32,7 @@ describe("AgentRunner", () => {
       runner.start(() => createProcessGroupHandle(123456));
       runner.cancel();
       expect(runner.observe()).toMatchObject({
-        state: "stop_requested",
+        state: "uncertain",
         ownership: "recovered_unverified",
       });
       expect(kill).not.toHaveBeenCalled();

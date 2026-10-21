@@ -1,3 +1,4 @@
+import { setSettingsStorePathForTesting } from "../services/settings-store.service.js";
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "fs/promises";
 import os from "os";
@@ -36,10 +37,12 @@ describe("settings-store.service", () => {
     tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-settings-store-"));
     originalHome = process.env.HOME;
     process.env.HOME = tempHome;
+    setSettingsStorePathForTesting(path.join(tempHome, ".opensprint", "settings.json"));
   });
 
   afterEach(async () => {
     resetGlobalAgentConcurrencyForTests();
+    setSettingsStorePathForTesting(null);
     process.env.HOME = originalHome;
     await fs.rm(tempHome, { recursive: true, force: true });
   });
@@ -135,6 +138,7 @@ describe("settings-store.service", () => {
     ).resolves.toEqual({
       settings: makeSettings({ testFramework: null }),
       updatedAt: null,
+      revision: 0,
     });
   });
 

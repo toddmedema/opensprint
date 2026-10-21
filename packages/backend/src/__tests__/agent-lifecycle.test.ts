@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import { AgentLifecycleManager } from "../services/agent-lifecycle.js";
 import type { AgentRunState, AgentRunParams } from "../services/agent-lifecycle.js";
+import { executionOwnershipService } from "../services/execution-ownership.service.js";
 import { TimerRegistry } from "../services/timer-registry.js";
 import { AGENT_INACTIVITY_TIMEOUT_MS, AGENT_SUSPEND_GRACE_MS } from "@opensprint/shared";
 import {
@@ -21,6 +22,26 @@ const mockBroadcastToProject = vi.fn();
 const mockSendAgentOutputToProject = vi.fn();
 const mockCommitWip = vi.fn().mockResolvedValue(undefined);
 const mockAppendEvent = vi.fn().mockResolvedValue(undefined);
+vi.mock("../services/execution-ownership.service.js", () => ({
+  executionOwnershipService: {
+    acquire: vi.fn(async (input: Record<string, unknown>) => ({
+      ...input,
+      ownerId: "test",
+      generation: 1,
+    })),
+    assertCurrent: vi.fn().mockResolvedValue(undefined),
+    transition: vi.fn().mockResolvedValue(undefined),
+    heartbeat: vi.fn().mockResolvedValue(true),
+    launch: vi.fn(async (_f: unknown, fn: () => unknown) => fn()),
+    observe: vi.fn().mockResolvedValue([]),
+  },
+  projectLeadershipService: { getFence: vi.fn() },
+  withExecutionFence: (_f: unknown, fn: () => unknown) => fn(),
+  withoutExecutionFence: (fn: () => unknown) => fn(),
+}));
+vi.mock("../services/execution-output.service.js", () => ({
+  executionOutputService: { append: vi.fn().mockResolvedValue({ startOffset: 0, endOffset: 1 }) },
+}));
 
 vi.mock("../services/agent.service.js", () => ({
   agentService: {
@@ -81,7 +102,9 @@ describe("AgentLifecycleManager", () => {
   beforeEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
-    vi.mocked(acquireGlobalAgentSlot).mockResolvedValue(() => {});
+    vi.mocked(acquireGlobalAgentSlot)
+      .mockReset()
+      .mockResolvedValue(() => {});
     manager = new AgentLifecycleManager();
     timers = new TimerRegistry();
     runState = {
@@ -128,6 +151,24 @@ describe("AgentLifecycleManager", () => {
   });
 
   describe("run", () => {
+    it("quarantines an uncertain container without accepting completion or replacing the invocation", async () => {
+      await manager.run(baseParams, runState, timers);
+      const handle = runState.activeProcess;
+      const options = mockInvokeCodingAgent.mock.calls[0]![2] as {
+        onUncertain: (reason: string) => void;
+      };
+      options.onUncertain("Docker daemon disconnected");
+      expect(runState.runner?.observe().state).toBe("uncertain");
+      expect(runState.activeProcess).toBe(handle);
+      expect(runState.exitHandled).toBe(false);
+      expect(baseParams.onDone).not.toHaveBeenCalled();
+      expect(executionOwnershipService.transition).toHaveBeenCalledWith(
+        expect.objectContaining({ attemptId: runState.attemptId }),
+        "uncertain"
+      );
+      await expect(manager.run(baseParams, runState, timers)).rejects.toThrow("quarantined");
+      expect(mockInvokeCodingAgent).toHaveBeenCalledOnce();
+    });
     it("never starts work for a slot removed before run was entered", async () => {
       runState.cancelled = true;
       await manager.run(baseParams, runState, timers);
@@ -150,6 +191,7 @@ describe("AgentLifecycleManager", () => {
         runState,
         timers
       );
+      await vi.waitFor(() => expect(admit).toBeTypeOf("function"));
       ownsSlot = false;
       admit(release);
       await running;
@@ -182,6 +224,7 @@ describe("AgentLifecycleManager", () => {
           })
       );
       const running = manager.run(baseParams, runState, timers);
+      await vi.waitFor(() => expect(admit).toBeTypeOf("function"));
       runState.activeProcess!.kill();
       expect(runState.runner?.observe().state).toBe("stopped");
       admit(release);
@@ -349,6 +392,7 @@ describe("AgentLifecycleManager", () => {
       capturedOnOutput?.("chunk2\n");
 
       expect(runState.outputLog).toEqual(["chunk1\n", "chunk2\n"]);
+      await vi.waitFor(() => expect(mockSendAgentOutputToProject).toHaveBeenCalledTimes(2));
       expect(mockSendAgentOutputToProject).toHaveBeenCalledWith("proj-1", "task-1", "chunk1\n");
       expect(mockSendAgentOutputToProject).toHaveBeenCalledWith("proj-1", "task-1", "chunk2\n");
     });
@@ -376,6 +420,7 @@ describe("AgentLifecycleManager", () => {
       expect(joined).toContain("Done");
       expect(joined).not.toContain("tool_call");
       expect(joined).not.toContain("lineNumber");
+      await vi.waitFor(() => expect(mockSendAgentOutputToProject).toHaveBeenCalledTimes(2));
       expect(mockSendAgentOutputToProject).toHaveBeenCalledWith(
         "proj-1",
         "task-1",
@@ -405,16 +450,20 @@ describe("AgentLifecycleManager", () => {
       expect(baseParams.onDone).toHaveBeenCalledTimes(1);
     });
 
-    it("finalizes the run when terminal result.json appears even if the agent never exits", async () => {
+    it("waits for observed exit after terminal result requests termination", async () => {
       vi.useFakeTimers();
       const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-lifecycle-run-"));
       const promptPath = path.join(tmpDir, ".opensprint", "active", "task-1", "prompt.md");
       const onDone = vi.fn().mockResolvedValue(undefined);
-      const handle = { kill: vi.fn(), pid: 9999 };
+      const handle = { kill: vi.fn(), pid: process.pid };
+      let observedExit: ((code: number | null) => Promise<void>) | undefined;
       await fs.mkdir(path.dirname(promptPath), { recursive: true });
       await fs.writeFile(promptPath, "prompt", "utf-8");
 
-      mockInvokeCodingAgent.mockImplementation(() => handle);
+      mockInvokeCodingAgent.mockImplementation((_path, _config, options) => {
+        observedExit = options.onExit;
+        return handle;
+      });
 
       await manager.run(
         {
@@ -440,6 +489,9 @@ describe("AgentLifecycleManager", () => {
       await new Promise((r) => setTimeout(r, 50));
 
       expect(handle.kill).toHaveBeenCalledTimes(1);
+      expect(onDone).not.toHaveBeenCalled();
+      expect(runState.exitHandled).toBe(false);
+      await observedExit!(0);
       expect(onDone).toHaveBeenCalledWith(0);
       expect(runState.activeProcess).toBeNull();
       expect(runState.exitHandled).toBe(true);
@@ -694,6 +746,7 @@ describe("AgentLifecycleManager", () => {
         await fs.rm(root, { recursive: true, force: true });
       }
     });
+
     it.each(["cancelled", "replaced"])(
       "releases admission if recovery is %s while output is primed",
       async (mode) => {
@@ -801,11 +854,11 @@ describe("AgentLifecycleManager", () => {
       }
     });
 
-    it("finalizes recovered runs from terminal result.json even if the process stays alive", async () => {
+    it("retains an unverified recovered run and its assignment even when terminal result exists", async () => {
       vi.useFakeTimers();
       const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "agent-lifecycle-recover-"));
       const promptPath = path.join(tmpDir, ".opensprint", "active", "task-1", "prompt.md");
-      const handle = { kill: vi.fn(), pid: 9999 };
+      const handle = { kill: vi.fn(), pid: 9999, ownership: "recovered_unverified" as const };
       const onDone = vi.fn().mockResolvedValue(undefined);
       await fs.mkdir(path.dirname(promptPath), { recursive: true });
       await fs.writeFile(promptPath, "prompt", "utf-8");
@@ -829,14 +882,12 @@ describe("AgentLifecycleManager", () => {
       );
 
       await vi.advanceTimersByTimeAsync(1_200);
-      // Flush interval callback + fs.readFile microtasks (same pattern as wrapped onDone test below).
-      await vi.runAllTimersAsync();
-
-      expect(handle.kill).toHaveBeenCalledTimes(1);
-      expect(onDone).toHaveBeenCalledWith(0);
-      expect(runState.activeProcess).toBeNull();
-      expect(runState.exitHandled).toBe(true);
-      expect(timers.has("outputTail")).toBe(false);
+      expect(handle.kill).not.toHaveBeenCalled();
+      expect(onDone).not.toHaveBeenCalled();
+      expect(runState.activeProcess).toBe(handle);
+      expect(runState.runner?.observe().state).toBe("uncertain");
+      expect(runState.exitHandled).toBe(false);
+      expect(timers.has("outputTail")).toBe(true);
       vi.useRealTimers();
     });
   });

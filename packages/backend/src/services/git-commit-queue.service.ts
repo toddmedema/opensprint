@@ -403,9 +403,7 @@ class GitCommitQueueImpl implements GitCommitQueueService {
         break;
       }
       case "prd_update": {
-        const msg = formatPrdCommitMessage(job.source, job.planId);
-        await this.addAndCommit(repoPath, ["SPEC.md"], msg);
-        break;
+        throw new Error("Legacy SPEC commits are disabled. Save an immutable draft and use the trusted publication service.");
       }
       case "worktree_merge": {
         let taskTitle = job.taskTitle ?? job.taskId;

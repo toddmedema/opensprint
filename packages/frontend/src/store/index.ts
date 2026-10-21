@@ -1,4 +1,4 @@
-import { configureStore } from "@reduxjs/toolkit";
+import { configureStore, combineReducers } from "@reduxjs/toolkit";
 import { useDispatch, useSelector } from "react-redux";
 import projectReducer from "./slices/projectSlice";
 import globalReducer from "./slices/globalSlice";
@@ -19,30 +19,59 @@ import { notificationListener } from "./listeners/notificationListener";
 import { planTasksListener } from "./listeners/planTasksListener";
 import { executeListeners } from "./listeners/executeListeners";
 import { trayRefreshListener } from "./listeners/trayRefreshListener";
+import { transientReducer, serverStateMiddleware } from "./serverState";
 
+export const rootReducer = combineReducers({
+  project: projectReducer,
+  global: transientReducer(globalReducer, ["globalActiveAgents", "hasProjects"]),
+  websocket: websocketReducer,
+  connection: connectionReducer,
+  sketch: transientReducer(sketchReducer, ["messages", "prdContent", "prdHistory"]),
+  plan: transientReducer(planReducer, [
+    "plans",
+    "planHierarchyCache",
+    "dependencyGraph",
+    "chatMessages",
+    "planStatus",
+  ]),
+  execute: transientReducer(executeReducer, [
+    "tasksById",
+    "taskIdsOrder",
+    "orchestratorRunning",
+    "awaitingApproval",
+    "activeTasks",
+    "activeAgents",
+    "taskIdToStartedAt",
+    "totalDone",
+    "totalFailed",
+    "queueDepth",
+    "baselineStatus",
+    "baselineCheckedAt",
+    "baselineFailureSummary",
+    "mergeValidationStatus",
+    "mergeValidationFailureSummary",
+    "dispatchPausedReason",
+    "selfImprovementRunInProgress",
+    "selfImprovementRunMode",
+    "gitMergeQueue",
+    "archivedSessions",
+  ]),
+  eval: transientReducer(evalReducer, ["feedback", "feedbackItemCache"]),
+  deliver: transientReducer(deliverReducer, ["history", "currentDeploy", "activeDeployId"]),
+  notification: notificationReducer,
+  openQuestions: transientReducer(openQuestionsReducer, ["byProject", "global"]),
+  unreadPhase: unreadPhaseReducer,
+  agentChat: agentChatReducer,
+});
 export const store = configureStore({
-  reducer: {
-    project: projectReducer,
-    global: globalReducer,
-    websocket: websocketReducer,
-    connection: connectionReducer,
-    sketch: sketchReducer,
-    plan: planReducer,
-    execute: executeReducer,
-    eval: evalReducer,
-    deliver: deliverReducer,
-    notification: notificationReducer,
-    openQuestions: openQuestionsReducer,
-    unreadPhase: unreadPhaseReducer,
-    agentChat: agentChatReducer,
-  },
+  reducer: rootReducer,
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {
         ignoredActions: ["ws/connect", "ws/disconnect", "ws/send"],
       },
     })
-      .concat(websocketMiddleware, agentOutputFilterMiddleware)
+      .concat(serverStateMiddleware, websocketMiddleware, agentOutputFilterMiddleware)
       .prepend(
         notificationListener.middleware,
         planTasksListener.middleware,

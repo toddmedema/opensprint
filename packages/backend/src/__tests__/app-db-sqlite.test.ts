@@ -5,8 +5,39 @@
 import { describe, it, expect } from "vitest";
 import { initAppDb } from "../db/app-db.js";
 import { randomUUID } from "crypto";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 describe.sequential("initAppDb (SQLite)", () => {
+  it("initializes two connections to one fresh database file concurrently", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "sqlite-init-"));
+    const url = `sqlite://${path.join(root, "fresh.sqlite").replaceAll("\\", "/")}`;
+    const results = await Promise.allSettled([initAppDb(url), initAppDb(url)]);
+    try {
+      expect(
+        results.map((result) => result.status),
+        results
+          .filter((result) => result.status === "rejected")
+          .map((result) => String(result.reason))
+          .join("\n")
+      ).toEqual(["fulfilled", "fulfilled"]);
+      for (const result of results)
+        if (result.status === "fulfilled")
+          expect(
+            await (
+              await result.value.getClient()
+            ).queryOne("SELECT COUNT(*) AS count FROM schema_versions")
+          ).toMatchObject({ count: expect.any(Number) });
+    } finally {
+      await Promise.all(
+        results
+          .filter((result) => result.status === "fulfilled")
+          .map((result) => result.value.close())
+      );
+      await fs.rm(root, { recursive: true, force: true }).catch(() => {});
+    }
+  });
   it("initializes with in-memory SQLite and runs schema", async () => {
     const appDb = await initAppDb("sqlite://:memory:");
     try {

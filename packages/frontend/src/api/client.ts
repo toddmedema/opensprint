@@ -67,6 +67,7 @@ import type {
 } from "@opensprint/shared";
 import type { TaskListResponse } from "./taskList";
 import type { PrdProposedDiffResponse, PrdVersionDiffResponse } from "./prdDiffTypes";
+import { sessionHeaders } from "./session";
 
 export type SelfImprovementStatusValue =
   | "idle"
@@ -149,6 +150,7 @@ const NO_REQUEST_TIMEOUT = { timeoutMs: null } as const;
 
 interface RequestOptions extends RequestInit {
   timeoutMs?: number | null;
+  expectedRevision?: number;
 }
 
 /** Abort when either the timeout elapses or the caller's signal aborts (whichever comes first). */
@@ -202,26 +204,41 @@ export function isConnectionError(err: unknown): boolean {
 
 /** Bearer for local API (desktop-injected script or dev); omit when unset. */
 function getLocalSessionAuthHeaders(): Record<string, string> {
-  const sessionToken =
-    typeof window !== "undefined" ? window.__OPENSPRINT_LOCAL_SESSION__ : undefined;
-  return sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {};
+  return sessionHeaders();
 }
+const pendingRequests = new Map<string, string>();
+const revisions = new Map<string, number>();
 
 /** Generic fetch wrapper with typed responses */
 export async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const url = `${BASE_URL}${endpoint}`;
-  const { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, ...fetchOptions } = options;
+  const { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, expectedRevision, ...fetchOptions } = options;
   const signal = mergeRequestSignal(timeoutMs, fetchOptions.signal);
+  const method = fetchOptions.method ?? "GET";
+  const mutating = !["GET", "HEAD", "OPTIONS"].includes(method);
+  const requestKey = `${method}:${endpoint}:${String(fetchOptions.body ?? "")}`;
+  if (mutating && !pendingRequests.has(requestKey))
+    pendingRequests.set(requestKey, crypto.randomUUID());
+  const resourcePath =
+    endpoint
+      .split("?")[0]
+      .match(/^(\/projects\/[^/]+\/(?:tasks|plans|notifications)\/[^/]+)/)?.[1] ??
+    endpoint.split("?")[0].replace(/\/deliver\/settings$/, "/settings");
+  const revision = expectedRevision ?? revisions.get(resourcePath);
 
   const response = await fetch(url, {
     ...fetchOptions,
+    credentials: "same-origin",
     headers: {
       "Content-Type": "application/json",
       ...getLocalSessionAuthHeaders(),
+      ...(mutating ? { "Idempotency-Key": pendingRequests.get(requestKey)! } : {}),
+      ...(mutating && revision !== undefined ? { "If-Match": String(revision) } : {}),
       ...fetchOptions.headers,
     },
     ...(signal ? { signal } : {}),
   });
+  if (mutating) pendingRequests.delete(requestKey);
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);
@@ -236,6 +253,19 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
   }
 
   const result = await response.json();
+  const data = result.data;
+  const remember = (key: string, item: unknown) => {
+    if (item && typeof item === "object" && "revision" in item && typeof item.revision === "number")
+      revisions.set(key, item.revision);
+  };
+  remember(endpoint.split("?")[0], data);
+  const list = Array.isArray(data)
+    ? data
+    : (data?.items ?? data?.tasks ?? data?.plans ?? data?.notifications);
+  if (Array.isArray(list))
+    for (const item of list)
+      if (typeof (item?.id ?? item?.metadata?.planId) === "string")
+        remember(`${endpoint.split("?")[0]}/${item.id ?? item.metadata.planId}`, item);
   return result.data;
 }
 
@@ -367,8 +397,13 @@ export const api = {
         body: JSON.stringify(data),
       }),
     getSettings: (id: string) => request<ProjectSettings>(`/projects/${id}/settings`),
-    updateSettings: (id: string, data: ProjectSettingsApiUpdate) =>
+    updateSettings: (
+      id: string,
+      data: ProjectSettingsApiUpdate,
+      options?: { expectedRevision?: number }
+    ) =>
       request<ProjectSettings>(`/projects/${id}/settings`, {
+        ...options,
         method: "PUT",
         body: JSON.stringify(data),
       }),
@@ -471,9 +506,11 @@ export const api = {
       const url = `${BASE_URL}/projects/${projectId}/prd/upload`;
       const response = await fetch(url, {
         method: "POST",
+        credentials: "same-origin",
         body: formData,
         headers: {
           ...getLocalSessionAuthHeaders(),
+          "Idempotency-Key": crypto.randomUUID(),
         },
       });
       if (!response.ok) {
@@ -525,8 +562,14 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       }),
-    update: (projectId: string, planId: string, data: UpdatePlanRequest) =>
+    update: (
+      projectId: string,
+      planId: string,
+      data: UpdatePlanRequest,
+      options?: { expectedRevision?: number }
+    ) =>
       request<Plan>(`/projects/${projectId}/plans/${planId}`, {
+        ...options,
         method: "PUT",
         body: JSON.stringify(data),
       }),
@@ -590,17 +633,25 @@ export const api = {
     ready: (projectId: string) => request<Task[]>(`/projects/${projectId}/tasks/ready`),
     get: (projectId: string, taskId: string) =>
       request<Task>(`/projects/${projectId}/tasks/${taskId}`),
-    updatePriority: (projectId: string, taskId: string, priority: number) =>
+    updatePriority: (
+      projectId: string,
+      taskId: string,
+      priority: number,
+      options?: { expectedRevision?: number }
+    ) =>
       request<Task>(`/projects/${projectId}/tasks/${taskId}`, {
+        ...options,
         method: "PATCH",
         body: JSON.stringify({ priority }),
       }),
     updateTask: (
       projectId: string,
       taskId: string,
-      updates: { priority?: number; complexity?: number; assignee?: string | null }
+      updates: { priority?: number; complexity?: number; assignee?: string | null },
+      options?: { expectedRevision?: number }
     ) =>
       request<Task>(`/projects/${projectId}/tasks/${taskId}`, {
+        ...options,
         method: "PATCH",
         body: JSON.stringify(updates),
       }),
@@ -626,14 +677,22 @@ export const api = {
       projectId: string,
       taskId: string,
       parentTaskId: string,
-      type?: "blocks" | "parent-child" | "related"
+      type?: "blocks" | "parent-child" | "related",
+      options?: { expectedRevision?: number }
     ) =>
       request<void>(`/projects/${projectId}/tasks/${taskId}/dependencies`, {
+        ...options,
         method: "POST",
         body: JSON.stringify({ parentTaskId, type: type ?? "blocks" }),
       }),
-    removeDependency: (projectId: string, taskId: string, parentTaskId: string) =>
+    removeDependency: (
+      projectId: string,
+      taskId: string,
+      parentTaskId: string,
+      options?: { expectedRevision?: number }
+    ) =>
       request<void>(`/projects/${projectId}/tasks/${taskId}/dependencies/${parentTaskId}`, {
+        ...options,
         method: "DELETE",
       }),
     forceRetry: (projectId: string, taskId: string) =>
@@ -773,9 +832,11 @@ export const api = {
     resolve: (
       projectId: string,
       notificationId: string,
-      body?: { approved?: boolean; responses?: Array<{ questionId: string; answer: string }> }
+      body?: { approved?: boolean; responses?: Array<{ questionId: string; answer: string }> },
+      options?: { expectedRevision?: number }
     ) =>
       request<Notification>(`/projects/${projectId}/notifications/${notificationId}`, {
+        ...options,
         method: "PATCH",
         body: body ? JSON.stringify(body) : undefined,
       }),

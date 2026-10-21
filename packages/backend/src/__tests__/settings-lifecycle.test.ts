@@ -1,3 +1,4 @@
+import { setSettingsStorePathForTesting } from "../services/settings-store.service.js";
 /**
  * Full integration test: settings lifecycle.
  * Verifies settings read/write round-trip with two-tier format (simpleComplexityAgent/complexComplexityAgent).
@@ -14,7 +15,7 @@ import {
   ProjectService,
   getNextScheduledSelfImprovementRunAt,
 } from "../services/project.service.js";
-import { projectGitRuntimeCache } from "../services/project-git-runtime-cache.js";
+import { trackProjectRuntimeRefreshes } from "./project-runtime-test-helpers.js";
 import { setGlobalSettings } from "../services/global-settings.service.js";
 import { API_PREFIX, DEFAULT_HIL_CONFIG, DEFAULT_REVIEW_MODE } from "@opensprint/shared";
 import type { DbClient } from "../db/client.js";
@@ -32,6 +33,11 @@ vi.mock("../services/task-store.service.js", async () => {
     taskStore: {
       init: vi.fn().mockImplementation(async () => {}),
       getDb: vi.fn().mockImplementation(async () => testClientRef.current),
+      runRead: vi
+        .fn()
+        .mockImplementation(async (fn: (c: DbClient) => Promise<unknown>) =>
+          fn(testClientRef.current!)
+        ),
       runWrite: vi
         .fn()
         .mockImplementation(async (fn: (c: DbClient) => Promise<unknown>) =>
@@ -101,12 +107,15 @@ describe("Settings lifecycle — service-level", { retry: 2 }, () => {
   let projectService: ProjectService;
   let tempDir: string;
   let originalHome: string | undefined;
+  let drainRuntimeRefreshes: () => Promise<void>;
 
   beforeEach(async () => {
+    drainRuntimeRefreshes = trackProjectRuntimeRefreshes();
     projectService = new ProjectService();
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-settings-lifecycle-"));
     originalHome = process.env.HOME;
     process.env.HOME = tempDir;
+    setSettingsStorePathForTesting(path.join(tempDir, ".opensprint", "settings.json"));
     await setGlobalSettings({
       apiKeys: {
         ANTHROPIC_API_KEY: [{ id: "test-ant", value: "sk-ant-test" }],
@@ -116,6 +125,8 @@ describe("Settings lifecycle — service-level", { retry: 2 }, () => {
   });
 
   afterEach(async () => {
+    await drainRuntimeRefreshes();
+    setSettingsStorePathForTesting(null);
     process.env.HOME = originalHome;
     await fs.rm(tempDir, { recursive: true, force: true });
   });
@@ -299,20 +310,22 @@ describe("Settings API lifecycle", { retry: 2 }, () => {
   let tempDir: string;
   let projectId: string;
   let originalHome: string | undefined;
+  let drainRuntimeRefreshes: () => Promise<void>;
   let refreshMaxSlotsSpy:
     | ReturnType<typeof vi.spyOn<typeof orchestratorService, "refreshMaxSlotsAndNudge">>
     | undefined;
 
   beforeEach(async () => {
+    drainRuntimeRefreshes = trackProjectRuntimeRefreshes();
     refreshMaxSlotsSpy = vi
       .spyOn(orchestratorService, "refreshMaxSlotsAndNudge")
       .mockResolvedValue(undefined);
-    projectGitRuntimeCache.clear();
     app = createApp();
     projectService = new ProjectService();
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-settings-api-"));
     originalHome = process.env.HOME;
     process.env.HOME = tempDir;
+    setSettingsStorePathForTesting(path.join(tempDir, ".opensprint", "settings.json"));
 
     await setGlobalSettings({
       apiKeys: {
@@ -335,7 +348,9 @@ describe("Settings API lifecycle", { retry: 2 }, () => {
   });
 
   afterEach(async () => {
+    await drainRuntimeRefreshes();
     refreshMaxSlotsSpy?.mockRestore();
+    setSettingsStorePathForTesting(null);
     process.env.HOME = originalHome;
     await fs.rm(tempDir, { recursive: true, force: true });
   });

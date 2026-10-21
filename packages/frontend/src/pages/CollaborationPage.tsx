@@ -67,7 +67,9 @@ function Session({ projectId, token }: { projectId: string; token?: string }) {
   const data = session.data;
   const run = active.data?.control ?? data?.runs.find((r) => r.runId === active.data?.attemptId);
   const controller = run?.controllerId ?? null;
-  const mayControl = data?.principal.role === "controller";
+  const mayControl = data?.principal.permissions
+    ? data.principal.permissions.includes("control")
+    : data?.principal.role === "controller";
   const ownsControl = mayControl && controller === data?.principal.actorId;
   const error = session.error ?? active.error ?? history.error ?? command.error ?? steering.error;
   return (
@@ -103,7 +105,9 @@ function Session({ projectId, token }: { projectId: string; token?: string }) {
               Showing the latest 200 messages. Earlier messages remain in session history.
             </p>
           )}
-          {data.principal.role !== "viewer" && (
+          {(data.principal.permissions
+            ? data.principal.permissions.includes("discuss")
+            : data.principal.role !== "viewer") && (
             <form
               onSubmit={async (event) => {
                 event.preventDefault();

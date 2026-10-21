@@ -82,6 +82,7 @@ import {
   parseCustomCliCommandLine,
 } from "../utils/custom-cli-command.js";
 import { fireAndForget } from "../utils/fire-and-forget.js";
+import { getDeploymentMode } from "./deployment-mode.js";
 const log = createLogger("agent-client");
 
 const OUTPUT_POLL_MS = 150;
@@ -1089,6 +1090,11 @@ export class AgentClient {
    * Invoke an agent and get a response.
    */
   async invoke(options: AgentInvokeOptions): Promise<AgentResponse> {
+    if (
+      getDeploymentMode() === "isolated-hosted" &&
+      ["cursor", "custom", "claude-cli"].includes(options.config.type)
+    )
+      throw new Error("Host CLI planning is disabled by the isolation policy");
     switch (options.config.type) {
       case "claude":
         return this.invokeClaudeApi(options);
@@ -1138,6 +1144,8 @@ export class AgentClient {
     outputLogPath?: string,
     projectId?: string
   ): { kill: () => void; pid: number | null; pendingMessages: PendingMessageQueue | null } {
+    if (getDeploymentMode() === "isolated-hosted")
+      throw new Error("Host agent spawning is disabled; use the isolated runner");
     const workspaceCwd = this.resolveWorkspaceCwd(cwd, taskFilePath);
     if (config.type === "claude") {
       return this.spawnClaudeWithTaskFile(
@@ -2328,8 +2336,8 @@ export class AgentClient {
     let pollTimer: ReturnType<typeof setInterval> | null = null;
     let resultPollTimer: ReturnType<typeof setInterval> | null = null;
     let readOffset = 0;
-    /** Set when we invoke onExit from result.json terminal-status path so we don't double-invoke on process exit */
-    let exitNotified = false;
+    /** Result acceptance requests shutdown; onExit waits for the observed child close. */
+    let terminalResultExitCode: number | undefined;
 
     const stopPoll = () => {
       if (pollTimer) {
@@ -2377,6 +2385,7 @@ export class AgentClient {
         const parsed = JSON.parse(raw) as { status?: string };
         const status = typeof parsed?.status === "string" ? parsed.status.toLowerCase() : "";
         if (RESULT_TERMINAL_STATUSES.includes(status)) {
+          if (child.exitCode != null || child.signalCode != null) return;
           if (resultPollTimer) {
             clearInterval(resultPollTimer);
             resultPollTimer = null;
@@ -2385,12 +2394,7 @@ export class AgentClient {
             resultPath,
             status: parsed.status,
           });
-          exitNotified = true;
-          const code = status === "success" ? 0 : 1;
-          stopPoll();
-          Promise.resolve(onExit(code)).catch((err) => {
-            log.error("onExit callback failed (result.json path)", { err });
-          });
+          terminalResultExitCode = status === "success" || status === "approved" ? 0 : 1;
           try {
             signalProcessGroup(child.pid!, "SIGTERM");
           } catch {
@@ -2472,8 +2476,7 @@ export class AgentClient {
         })
         .finally(() => {
           cleanup();
-          if (exitNotified) return;
-          Promise.resolve(onExit(code)).catch((err) => {
+          Promise.resolve(onExit(terminalResultExitCode ?? code)).catch((err) => {
             log.error("onExit callback failed", { err });
           });
         });
@@ -2496,6 +2499,7 @@ export class AgentClient {
     return {
       pid: child.pid ?? null,
       kill: () => {
+        if (child.exitCode != null || child.signalCode != null) return;
         try {
           signalProcessGroup(child.pid!, "SIGTERM");
         } catch {
@@ -2504,11 +2508,11 @@ export class AgentClient {
         killTimer = setTimeout(() => {
           killTimer = null;
           try {
-            if (!child.killed) {
+            if (child.exitCode == null && child.signalCode == null) {
               signalProcessGroup(child.pid!, "SIGKILL");
             }
           } catch {
-            if (!child.killed) {
+            if (child.exitCode == null && child.signalCode == null) {
               child.kill("SIGKILL");
             }
           }
@@ -3542,23 +3546,25 @@ export class AgentClient {
 
     try {
       const timeoutMs = resolveInvokeTimeoutMs(options);
-      const { stdout } = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-        execFile(
-          command,
-          [...baseArgs, prompt],
-          {
-            cwd: options.cwd || process.cwd(),
-            encoding: "utf8",
-            maxBuffer: 10 * 1024 * 1024,
-            windowsHide: true,
-            ...(timeoutMs !== null && { timeout: timeoutMs }),
-          },
-          (error, out, errOut) => {
-            if (error) reject(error);
-            else resolve({ stdout: String(out ?? ""), stderr: String(errOut ?? "") });
-          }
-        );
-      });
+      const { stdout } = await new Promise<{ stdout: string; stderr: string }>(
+        (resolve, reject) => {
+          execFile(
+            command,
+            [...baseArgs, prompt],
+            {
+              cwd: options.cwd || process.cwd(),
+              encoding: "utf8",
+              maxBuffer: 10 * 1024 * 1024,
+              windowsHide: true,
+              ...(timeoutMs !== null && { timeout: timeoutMs }),
+            },
+            (error, out, errOut) => {
+              if (error) reject(error);
+              else resolve({ stdout: String(out ?? ""), stderr: String(errOut ?? "") });
+            }
+          );
+        }
+      );
 
       const content = stdout.trim();
       if (options.onChunk) {

@@ -128,6 +128,31 @@ export function createTestProjectId(prefix = "test-project"): string {
   return `${prefix}-${randomUUID()}`;
 }
 
+/** Seed canonical PRD metadata using the same required columns on both SQL dialects. */
+export async function seedPrdMetadataFixture(
+  client: DbClient,
+  projectId: string,
+  metadata: { version: number; changeLog: unknown[]; sections: Record<string, { version: number }> }
+): Promise<void> {
+  await client.execute(
+    `INSERT INTO prd_metadata (project_id,version,change_log,section_versions,updated_at)
+     VALUES ($1,$2,$3,$4,$5) ON CONFLICT(project_id) DO UPDATE SET
+     version=excluded.version,change_log=excluded.change_log,
+     section_versions=excluded.section_versions,updated_at=excluded.updated_at`,
+    [
+      projectId,
+      metadata.version,
+      JSON.stringify(metadata.changeLog),
+      JSON.stringify(
+        Object.fromEntries(
+          Object.entries(metadata.sections).map(([key, section]) => [key, section.version])
+        )
+      ),
+      new Date().toISOString(),
+    ]
+  );
+}
+
 function quoteIdent(ident: string): string {
   return `"${ident.replace(/"/g, '""')}"`;
 }
@@ -236,7 +261,32 @@ export async function createTestPostgresClient(): Promise<{
   }
 }
 
+const COLLABORATION_PROJECT_STATE_TABLES = [
+  "spec_draft_heads",
+  "spec_drafts",
+  "spec_draft_approvals",
+  "spec_approval_receipts",
+  "spec_publications",
+  "spec_local_publication_requests",
+  "spec_hil_proposals",
+  "worker_artifact_publications",
+  "durable_operations",
+  "resource_revisions",
+  "guidance_messages",
+  "execution_output_chunks",
+  "execution_output_streams",
+  "execution_leases",
+  "collaboration_commands",
+  "collaboration_messages",
+  "collaboration_runs",
+  "collaboration_events",
+  "collaboration_projects",
+  "collaboration_presence",
+  "collaboration_presenters",
+];
+
 const FULL_TRUNCATE_TABLES = [
+  ...COLLABORATION_PROJECT_STATE_TABLES,
   "task_dependencies",
   "tasks",
   "feedback_inbox",
@@ -256,6 +306,7 @@ const FULL_TRUNCATE_TABLES = [
   "open_questions",
   "prd_snapshots",
   "prd_metadata",
+  "conversation_messages",
   "project_conversations",
   "planning_runs",
   "agent_instructions",
@@ -281,6 +332,8 @@ export async function resetProjectScopedTestData(
   client: DbClient,
   projectId: string
 ): Promise<void> {
+  for (const table of COLLABORATION_PROJECT_STATE_TABLES)
+    await client.execute(`DELETE FROM ${table} WHERE project_id = $1`, [projectId]);
   const taskRows = await client.query("SELECT id FROM tasks WHERE project_id = $1", [projectId]);
   const taskIds = taskRows.map((r) => String((r as { id?: unknown }).id ?? "")).filter(Boolean);
   for (const taskId of taskIds) {
@@ -308,6 +361,7 @@ export async function resetProjectScopedTestData(
   await client.execute("DELETE FROM open_questions WHERE project_id = $1", [projectId]);
   await client.execute("DELETE FROM prd_snapshots WHERE project_id = $1", [projectId]);
   await client.execute("DELETE FROM prd_metadata WHERE project_id = $1", [projectId]);
+  await client.execute("DELETE FROM conversation_messages WHERE project_id = $1", [projectId]);
   await client.execute("DELETE FROM project_conversations WHERE project_id = $1", [projectId]);
   await client.execute("DELETE FROM planning_runs WHERE project_id = $1", [projectId]);
   await client.execute("DELETE FROM agent_instructions WHERE project_id = $1", [projectId]);

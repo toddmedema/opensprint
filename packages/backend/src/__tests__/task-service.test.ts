@@ -6,22 +6,33 @@ import { FeedbackService } from "../services/feedback.service.js";
 import { SessionManager } from "../services/session-manager.js";
 import { BranchManager } from "../services/branch-manager.js";
 import type { StoredTask } from "../services/task-store.service.js";
+import { runWithRequestContext } from "../services/request-context.js";
 
-const { mockTaskStoreState, mockBranchManagerInstance, mockOrchestrator } =
-  vi.hoisted(() => ({
-    mockTaskStoreState: { listAll: [] as StoredTask[], readyCalls: 0 },
-    mockBranchManagerInstance: {
-      listTaskWorktrees: vi.fn().mockResolvedValue([]),
-      prepareWorktreeForRemoval: vi.fn().mockResolvedValue(undefined),
-      removeTaskWorktree: vi.fn().mockResolvedValue(undefined),
-      revertAndReturnToMain: vi.fn().mockResolvedValue(undefined),
-      createOrCheckoutBranch: vi.fn().mockResolvedValue(undefined),
-    },
-    mockOrchestrator: {
-      stopTaskAndFreeSlot: vi.fn().mockResolvedValue(undefined),
-      nudge: vi.fn(),
-    },
-  }));
+// Durable admission has independent real SQL tests; these exercise the control handler boundary.
+vi.mock("../services/durable-task-control.service.js", () => ({
+  runDurableTaskControl: (
+    _project: string,
+    _task: string,
+    _action: string,
+    _payload: unknown,
+    work: () => Promise<unknown>
+  ) => work(),
+}));
+
+const { mockTaskStoreState, mockBranchManagerInstance, mockOrchestrator } = vi.hoisted(() => ({
+  mockTaskStoreState: { listAll: [] as StoredTask[], readyCalls: 0 },
+  mockBranchManagerInstance: {
+    listTaskWorktrees: vi.fn().mockResolvedValue([]),
+    prepareWorktreeForRemoval: vi.fn().mockResolvedValue(undefined),
+    removeTaskWorktree: vi.fn().mockResolvedValue(undefined),
+    revertAndReturnToMain: vi.fn().mockResolvedValue(undefined),
+    createOrCheckoutBranch: vi.fn().mockResolvedValue(undefined),
+  },
+  mockOrchestrator: {
+    stopTaskAndFreeSlot: vi.fn().mockResolvedValue(undefined),
+    nudge: vi.fn(),
+  },
+}));
 
 vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => args,
@@ -52,6 +63,9 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
       }),
       update: vi.fn(),
       close: vi.fn(),
+      closeCollaboratively: vi.fn(),
+      updateCollaboratively: vi.fn(),
+      mutateCollaboratively: vi.fn(),
       delete: vi.fn(),
       create: vi.fn(),
       createMany: vi.fn(),
@@ -63,21 +77,23 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
       planUpdateMetadata: vi.fn(),
       syncForPush: vi.fn(),
       listRecentlyCompletedTasks: vi.fn().mockResolvedValue([]),
-      listTasksPaginated: vi.fn().mockImplementation(async (_pid: string, limit: number, offset: number) => {
-        const all = mockTaskStoreState.listAll;
-        const nonChore = all.filter((i) => (i.issue_type ?? "task") !== "chore");
-        nonChore.sort((a, b) => {
-          const pa = a.priority ?? 0;
-          const pb = b.priority ?? 0;
-          if (pa !== pb) return pa - pb;
-          return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
-        });
-        return {
-          page: nonChore.slice(offset, offset + limit) as StoredTask[],
-          total: nonChore.length,
-          allForGraph: [...all],
-        };
-      }),
+      listTasksPaginated: vi
+        .fn()
+        .mockImplementation(async (_pid: string, limit: number, offset: number) => {
+          const all = mockTaskStoreState.listAll;
+          const nonChore = all.filter((i) => (i.issue_type ?? "task") !== "chore");
+          nonChore.sort((a, b) => {
+            const pa = a.priority ?? 0;
+            const pb = b.priority ?? 0;
+            if (pa !== pb) return pa - pb;
+            return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
+          });
+          return {
+            page: nonChore.slice(offset, offset + limit) as StoredTask[],
+            total: nonChore.length,
+            allForGraph: [...all],
+          };
+        }),
     },
     TaskStoreService: vi.fn(),
     SCHEMA_SQL: "",
@@ -927,6 +943,75 @@ describe("TaskService", () => {
     loadSpy.mockRestore();
   });
 
+  it.each(["markDone", "forceRetry", "unblock", "deleteTask"] as const)(
+    "%s preserves task and worktree when process stop is unconfirmed",
+    async (action) => {
+      vi.mocked(taskStore.show).mockResolvedValue({
+        ...defaultIssues[0],
+        status: "blocked",
+        revision: 4,
+      } as StoredTask);
+      vi.mocked(taskStore.close).mockClear();
+      vi.mocked(taskStore.update).mockClear();
+      vi.mocked(taskStore.delete).mockClear();
+      mockOrchestrator.stopTaskAndFreeSlot.mockRejectedValueOnce(
+        new Error("Unverified process retained")
+      );
+      await expect(taskService[action]("proj-1", "task-1")).rejects.toMatchObject({
+        statusCode: 409,
+        code: "EXECUTION_STOP_UNCONFIRMED",
+      });
+      expect(taskStore.close).not.toHaveBeenCalled();
+      expect(taskStore.update).not.toHaveBeenCalled();
+      expect(taskStore.delete).not.toHaveBeenCalled();
+      expect(mockBranchManagerInstance.removeTaskWorktree).not.toHaveBeenCalled();
+      expect(mockBranchManagerInstance.revertAndReturnToMain).not.toHaveBeenCalled();
+      expect(mockOrchestrator.nudge).not.toHaveBeenCalled();
+    }
+  );
+  const controlContext = {
+    principal: {
+      actorId: "controller",
+      displayName: "Controller",
+      role: "controller" as const,
+      permissions: ["control" as const],
+      local: false,
+    },
+    projectId: "proj-1",
+    requestId: "done-command",
+    expectedRevision: 4,
+  };
+  it("rejects stale mark-done before requesting any process or worktree effect", async () => {
+    vi.mocked(taskStore.show).mockResolvedValue({
+      ...defaultIssues[0],
+      status: "open",
+      revision: 5,
+    } as StoredTask);
+    await expect(
+      runWithRequestContext(controlContext, () => taskService.markDone("proj-1", "task-1"))
+    ).rejects.toMatchObject({ code: "REVISION_CONFLICT", details: { revision: 5 } });
+    expect(mockOrchestrator.stopTaskAndFreeSlot).not.toHaveBeenCalled();
+  });
+  it("uses the displayed revision again for close after observed process completion", async () => {
+    vi.mocked(taskStore.show).mockResolvedValue({
+      ...defaultIssues[0],
+      status: "open",
+      revision: 4,
+    } as StoredTask);
+    vi.mocked(taskStore.closeCollaboratively).mockRejectedValueOnce(
+      Object.assign(new Error("changed during stop"), { code: "REVISION_CONFLICT" })
+    );
+    await expect(
+      runWithRequestContext(controlContext, () => taskService.markDone("proj-1", "task-1"))
+    ).rejects.toMatchObject({ code: "REVISION_CONFLICT" });
+    expect(mockOrchestrator.stopTaskAndFreeSlot).toHaveBeenCalledOnce();
+    expect(taskStore.closeCollaboratively).toHaveBeenCalledWith(
+      "proj-1",
+      "task-1",
+      "Manually marked done",
+      { actorId: "controller", requestId: "done-command", expectedRevision: 4 }
+    );
+  });
   it("markDone closes task via task store", async () => {
     const { taskStore } = await import("../services/task-store.service.js");
     vi.mocked(taskStore.close).mockResolvedValue(undefined as never);
@@ -1342,7 +1427,7 @@ describe("TaskService", () => {
         dependencies: [],
       } as StoredTask);
       vi.mocked(taskStore.update).mockResolvedValue(undefined as never);
-      mockOrchestrator.stopTaskAndFreeSlot.mockRejectedValueOnce(new Error("no agent"));
+      mockOrchestrator.stopTaskAndFreeSlot.mockResolvedValueOnce(undefined);
 
       const result = await taskService.forceRetry("proj-1", "task-1");
 

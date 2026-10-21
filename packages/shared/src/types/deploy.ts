@@ -14,7 +14,15 @@ export interface ExpoReadinessResponse {
 export interface DeploymentRecord {
   id: string;
   projectId: string;
-  status: "pending" | "running" | "success" | "failed" | "rolled_back";
+  status:
+    | "pending"
+    | "running"
+    | "stop_requested"
+    | "stopped"
+    | "uncertain"
+    | "success"
+    | "failed"
+    | "rolled_back";
   /** ISO timestamp when deployment started */
   startedAt: string;
   /** ISO timestamp when deployment completed (null if still running) */

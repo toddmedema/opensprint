@@ -5,8 +5,7 @@ import {
 } from "@opensprint/shared";
 import type { ProjectSettings } from "@opensprint/shared";
 import {
-  getSettingsFromStore,
-  getRawSettingsRecord,
+  getRawSettingsWithMetaFromStore,
   transformRawSettingsInStore,
   updateSettingsInStore,
 } from "../settings-store.service.js";
@@ -31,9 +30,9 @@ export async function loadProjectSettingsFromStore(
   repoPath: string
 ): Promise<ProjectSettings> {
   const defaults = buildDefaultSettings();
-  const stored = await getSettingsFromStore(projectId, defaults);
+  const stored = await getRawSettingsWithMetaFromStore(projectId);
   const gs = await getGlobalSettings();
-  if (stored === defaults) {
+  if (!stored.exists) {
     const detected = await detectTestFramework(repoPath);
     const canonicalDefaults = toCanonicalSettings(defaults) as unknown as Record<string, unknown>;
     delete canonicalDefaults.simpleComplexityAgent;
@@ -47,11 +46,16 @@ export async function loadProjectSettingsFromStore(
       exists ? undefined : canonicalDefaults
     );
     const initial = projectSettingsFromRaw(initialized.settings, gs);
-    return mergeRepoToolchainProfileOverride(repoPath, initial);
+    return {
+      ...(await mergeRepoToolchainProfileOverride(repoPath, initial)),
+      revision: initialized.revision,
+    };
   }
-  const raw = await getRawSettingsRecord(projectId);
-  const loaded = projectSettingsFromRaw(raw, gs);
-  return mergeRepoToolchainProfileOverride(repoPath, loaded);
+  const loaded = projectSettingsFromRaw(stored.settings, gs);
+  return {
+    ...(await mergeRepoToolchainProfileOverride(repoPath, loaded)),
+    revision: stored.revision,
+  };
 }
 
 export async function recordValidationDurationInStore(

@@ -42,6 +42,29 @@ export class PrdProposalStore {
     if (this.sweepTimer.unref) this.sweepTimer.unref();
   }
 
+  /** Durable production proposal; the cache API below remains for legacy callers. */
+  async registerDurable(
+    projectId: string,
+    requestId: string,
+    content: string,
+    baseContent: string
+  ): Promise<void> {
+    const { specPublicationService } = await import("./spec-publication.service.js");
+    await specPublicationService.recordProposal(projectId, requestId, content, baseContent);
+  }
+
+  async getDurable(requestId: string): Promise<PrdProposal | null> {
+    const { specPublicationService } = await import("./spec-publication.service.js");
+    const row = await specPublicationService.getProposal(requestId);
+    return row
+      ? {
+          proposedContent: String(row.content),
+          createdAt: String(row.created_at),
+          baseContentHash: String(row.base_content_hash),
+        }
+      : this.get(requestId);
+  }
+
   /**
    * Register a pending PRD proposal keyed by the HIL notification requestId.
    * If `baseContent` is provided its SHA-256 hex digest is stored as
@@ -129,7 +152,7 @@ export class PrdProposalStore {
 
 /** SHA-256 hex of UTF-8 SPEC body; shared with PRD proposed-diff staleness checks. */
 export function hashSpecContent(content: string): string {
-  return crypto.createHash("sha256").update(content, "utf8").digest("hex");
+  return crypto.createHash("sha256").update(content.replace(/\r\n?/g, "\n"), "utf8").digest("hex");
 }
 
 /** Singleton instance used by the rest of the backend. */

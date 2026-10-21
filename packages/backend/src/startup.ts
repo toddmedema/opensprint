@@ -1,4 +1,8 @@
 import fs from "fs";
+import { agentChatService } from "./services/agent-chat.service.js";
+import { specPublicationService } from "./services/spec-publication.service.js";
+import { operationWorker } from "./services/operation-worker.service.js";
+import { validateDeploymentMode, getDeploymentMode } from "./services/deployment-mode.js";
 import path from "path";
 import { createLogger } from "./utils/logger.js";
 import { getErrorMessage } from "./utils/error-utils.js";
@@ -158,6 +162,8 @@ export async function stopDatabaseFeatures(): Promise<void> {
   if (!databaseFeaturesStarted && !appDb) {
     return;
   }
+  operationWorker.stop();
+  specPublicationService.stop();
   stopNightlyDeployScheduler();
   stopSelfImprovementScheduler();
   stopTodoistSyncScheduler();
@@ -165,6 +171,7 @@ export async function stopDatabaseFeatures(): Promise<void> {
   watchdogService.stop();
   sessionRetentionService.stop();
   orchestratorService.stopAll();
+  await agentChatService.flush();
   await taskStore.closePool().catch((err) => {
     logShutdown.warn("Could not close task store pool", {
       err: getErrorMessage(err),
@@ -201,10 +208,18 @@ export async function startDatabaseFeatures(
   databaseFeaturesStartPromise = (async () => {
     let nextAppDb: AppDb | null = null;
     try {
+      validateDeploymentMode();
+      if (
+        Number(process.env.OPENSPRINT_BACKEND_REPLICAS ?? 1) > 1 &&
+        (!/^postgres(?:ql)?:/.test(databaseUrl) || getDeploymentMode() !== "isolated-hosted")
+      )
+        throw new Error("Multiple backends require isolated-hosted mode with PostgreSQL.");
       nextAppDb = await initAppDb(databaseUrl);
       await taskStore.init(databaseUrl, nextAppDb);
       appDb = nextAppDb;
       databaseFeaturesStarted = true;
+      operationWorker.start();
+      specPublicationService.start();
       startNightlyDeployScheduler();
       startSelfImprovementScheduler();
       startTodoistSyncScheduler();
@@ -214,10 +229,22 @@ export async function startDatabaseFeatures(
       );
     } catch (err) {
       if (nextAppDb) {
-        await nextAppDb.close().catch((e: unknown) => logOrchestrator.warn("appDb close failed during startup rollback", { err: e instanceof Error ? e.message : String(e) }));
+        await nextAppDb
+          .close()
+          .catch((e: unknown) =>
+            logOrchestrator.warn("appDb close failed during startup rollback", {
+              err: e instanceof Error ? e.message : String(e),
+            })
+          );
       }
       appDb = null;
-      await taskStore.closePool().catch((e: unknown) => logOrchestrator.warn("taskStore pool close failed during startup rollback", { err: e instanceof Error ? e.message : String(e) }));
+      await taskStore
+        .closePool()
+        .catch((e: unknown) =>
+          logOrchestrator.warn("taskStore pool close failed during startup rollback", {
+            err: e instanceof Error ? e.message : String(e),
+          })
+        );
       databaseFeaturesStarted = false;
       databaseRuntime.handleOperationalFailure(err);
       throw err;

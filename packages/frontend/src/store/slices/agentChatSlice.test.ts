@@ -91,8 +91,8 @@ describe("guidance receipt correlation", () => {
         { projectId: "project", taskId: "task" }
       )
     );
-    expect(state.messagesByTaskId.task).toHaveLength(1);
-    expect(state.messagesByTaskId.task[0]).toMatchObject({ id: "server-alice", status: "queued" });
+    expect(state.messagesByTaskId.task).toEqual([]);
+    expect(state.sendingByTaskId.task).toBe(false);
   });
   it("correlates rejection without disabling chat for a capacity error", () => {
     const state = reducer(

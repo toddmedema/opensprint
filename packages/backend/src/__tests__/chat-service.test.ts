@@ -4,14 +4,15 @@ import path from "path";
 import os from "os";
 import { ChatService } from "../services/chat.service.js";
 import { ProjectService } from "../services/project.service.js";
+import { specPublicationService } from "../services/spec-publication.service.js";
 import {
   DEFAULT_HIL_CONFIG,
   SPEC_MD,
-  SPEC_METADATA_PATH,
   specMarkdownToPrd,
   prdToSpecMarkdown,
 } from "@opensprint/shared";
 import type { DbClient } from "../db/client.js";
+import { seedPrdMetadataFixture } from "./test-db-helper.js";
 
 const { testClientRef } = vi.hoisted(() => ({
   testClientRef: { current: null as DbClient | null },
@@ -27,6 +28,11 @@ vi.mock("../services/task-store.service.js", async () => {
       init: vi.fn().mockImplementation(async () => {}),
       getDb: vi.fn().mockImplementation(async () => testClientRef.current),
       runWrite: vi
+        .fn()
+        .mockImplementation(async (fn: (c: DbClient) => Promise<unknown>) =>
+          fn(testClientRef.current!)
+        ),
+      runRead: vi
         .fn()
         .mockImplementation(async (fn: (c: DbClient) => Promise<unknown>) =>
           fn(testClientRef.current!)
@@ -215,12 +221,13 @@ describeIfDb("ChatService - Plan phase agent registry", () => {
       changeLog: [],
     };
     await fs.writeFile(path.join(repoPath, SPEC_MD), prdToSpecMarkdown(prd as never), "utf-8");
-    await fs.mkdir(path.join(repoPath, path.dirname(SPEC_METADATA_PATH)), { recursive: true });
-    await fs.writeFile(
-      path.join(repoPath, SPEC_METADATA_PATH),
-      JSON.stringify({ version: 1, changeLog: [] }, null, 2),
-      "utf-8"
-    );
+    // Metadata is SQL-owned. A legacy metadata file without this row correctly
+    // requires migration and must never become an implicit runtime fallback.
+    await seedPrdMetadataFixture(testClientRef.current!, projectId, prd);
+    // This fixture deliberately edits Git's working copy; import it through the
+    // same explicit boundary as an editor before exercising further draft edits.
+    const previous = await specPublicationService.getDraft(projectId);
+    await specPublicationService.importWorkingCopy(projectId, Number(previous?.revision ?? 0));
   });
 
   afterEach(async () => {
@@ -378,9 +385,8 @@ describeIfDb("ChatService - Plan phase agent registry", () => {
 
       await chatService.syncPrdFromScopeChangeFeedback(projectId, "Add mobile app");
 
-      const specPath = path.join(repoPath, SPEC_MD);
-      const specRaw = await fs.readFile(specPath, "utf-8");
-      const prd = specMarkdownToPrd(specRaw);
+      const draft = await specPublicationService.getDraft(projectId);
+      const prd = specMarkdownToPrd(String(draft!.content));
       expect(prd.sections.feature_list?.content).toContain(
         "Updated feature list with mobile support"
       );
@@ -412,7 +418,14 @@ describeIfDb("ChatService - Plan phase agent registry", () => {
         expect.stringContaining("affect architectural sections"),
         expect.any(Array),
         true,
-        undefined,
+        {
+          scopeChangeProposedUpdates: [
+            { section: "technical_architecture", content: "New mobile architecture." },
+          ],
+          scopeChangeSummary: expect.stringContaining(
+            'Scope change feedback: "Add mobile architecture"'
+          ),
+        },
         "prd",
         "architecture"
       );
@@ -445,9 +458,8 @@ NeighborTools is a self-hosted web application for neighborhood tool sharing.
       expect(response.prdChanges).toHaveLength(1);
       expect(response.prdChanges?.[0]?.section).toBe("executive_summary");
 
-      const specPath = path.join(repoPath, SPEC_MD);
-      const specRaw = await fs.readFile(specPath, "utf-8");
-      const prd = specMarkdownToPrd(specRaw);
+      const draft = await specPublicationService.getDraft(projectId);
+      const prd = specMarkdownToPrd(String(draft!.content));
       expect(prd.sections.executive_summary?.content).toContain(
         "NeighborTools is a self-hosted web application for neighborhood tool sharing"
       );

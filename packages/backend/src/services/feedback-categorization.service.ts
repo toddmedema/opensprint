@@ -507,7 +507,7 @@ Use the same fields and types described in the original instructions. Do not inc
         description: "Skip updates and do not modify the PRD",
       },
     ];
-    const { approved } = await this.hilService.evaluateDecision(
+    const { approved, notes } = await this.hilService.evaluateDecision(
       projectId,
       "scopeChanges",
       scopeChangeDescription,
@@ -532,6 +532,9 @@ Use the same fields and types described in the original instructions. Do not inc
     }
 
     try {
+      if (notes === "durable_spec_applied") {
+        return null;
+      }
       if (proposal?.prdUpdates?.length) {
         await this.chatService.applyScopeChangeUpdates(
           projectId,

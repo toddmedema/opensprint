@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import { ensureRepoHasInitialCommit } from "../utils/git-repo-state.js";
 import { getGitNoHooksPath } from "../utils/git-no-hooks.js";
+import { unlinkWorktreeLinks } from "../utils/worktree-links.js";
 import { createLogger } from "../utils/logger.js";
 import { runCommand as runCommandDefault, type CommandRunResult } from "../utils/command-runner.js";
 import { assertWorktreeIntegrity, type WorktreeIntegrityResult } from "../utils/worktree-health.js";
@@ -77,6 +78,7 @@ export class ValidationWorkspaceService {
     worktreePath: string,
     branchName: string | null
   ): Promise<void> {
+    await unlinkWorktreeLinks(worktreePath);
     try {
       await this.runCommand(
         {

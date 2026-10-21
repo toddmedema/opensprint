@@ -178,15 +178,19 @@ export const addTaskDependency = createAsyncThunk(
       taskId,
       parentTaskId,
       type,
+      expectedRevision,
     }: {
       projectId: string;
       taskId: string;
       parentTaskId: string;
       type?: "blocks" | "parent-child" | "related";
+      expectedRevision?: number;
     },
     { dispatch: _dispatch }
   ) => {
-    await api.tasks.addDependency(projectId, taskId, parentTaskId, type);
+    if (expectedRevision === undefined)
+      await api.tasks.addDependency(projectId, taskId, parentTaskId, type);
+    else await api.tasks.addDependency(projectId, taskId, parentTaskId, type, { expectedRevision });
     const task = await api.tasks.get(projectId, taskId);
     return { task, taskId };
   }
@@ -199,10 +203,13 @@ export const removeTaskDependency = createAsyncThunk(
       projectId,
       taskId,
       parentTaskId,
-    }: { projectId: string; taskId: string; parentTaskId: string },
+      expectedRevision,
+    }: { projectId: string; taskId: string; parentTaskId: string; expectedRevision?: number },
     { dispatch: _dispatch }
   ) => {
-    await api.tasks.removeDependency(projectId, taskId, parentTaskId);
+    if (expectedRevision === undefined)
+      await api.tasks.removeDependency(projectId, taskId, parentTaskId);
+    else await api.tasks.removeDependency(projectId, taskId, parentTaskId, { expectedRevision });
     const task = await api.tasks.get(projectId, taskId);
     return { task, taskId };
   }

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { api, ApiError, isApiError, isConnectionError } from "./client";
+import { api, ApiError, isApiError, isConnectionError, request } from "./client";
+import { setAccessSession } from "./session";
 
 describe("api client", () => {
   beforeEach(() => {
@@ -11,6 +12,32 @@ describe("api client", () => {
   });
 
   describe("request handling", () => {
+    it("retains a request identity after a lost response and attaches the cookie CSRF token", async () => {
+      setAccessSession({
+        principal: {
+          actorId: "alice",
+          displayName: "Alice",
+          local: false,
+          role: "participant",
+          permissions: ["read", "edit"],
+        },
+        csrfToken: "csrf",
+      });
+      vi.mocked(fetch)
+        .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+        .mockResolvedValueOnce({ ok: true, status: 204 } as Response);
+      const input = { method: "POST", body: JSON.stringify({ text: "One instruction" }) };
+      await expect(request("/projects/p/chat", input)).rejects.toThrow("Failed to fetch");
+      await request("/projects/p/chat", input);
+      const first = vi.mocked(fetch).mock.calls[0]![1]!;
+      const second = vi.mocked(fetch).mock.calls[1]![1]!;
+      expect(first.credentials).toBe("same-origin");
+      expect(new Headers(first.headers).get("X-OpenSprint-CSRF")).toBe("csrf");
+      expect(new Headers(second.headers).get("Idempotency-Key")).toBe(
+        new Headers(first.headers).get("Idempotency-Key")
+      );
+      setAccessSession(undefined);
+    });
     it("returns data from successful JSON response", async () => {
       const mockData = [{ id: "proj-1", name: "Test" }];
       vi.mocked(fetch).mockResolvedValue({

@@ -5,6 +5,7 @@ import { ErrorCodes } from "../middleware/error-codes.js";
 import type { DrizzlePg } from "../db/app-db.js";
 import { plansTable } from "../db/drizzle-schema-pg.js";
 import { and, asc, eq } from "drizzle-orm";
+import { lockProject, resourceChanged, getResourceRevision } from "./project-event.service.js";
 
 /** Plan row returned from plans table (metadata is JSON string; parse as PlanMetadata). */
 export interface StoredPlan {
@@ -31,6 +32,7 @@ export interface PlanInsertData {
 }
 
 export type PlanGetResult = {
+  revision?: number;
   content: string;
   metadata: Record<string, unknown>;
   shipped_content: string | null;
@@ -58,6 +60,23 @@ export class PlanStore {
     private getClient: () => DbClient,
     private getDrizzle?: () => Promise<DrizzlePg | null>
   ) {}
+
+  async lock(projectId: string): Promise<void> {
+    await lockProject(this.getClient(), projectId);
+  }
+
+  async recordChange(projectId: string, planId: string): Promise<void> {
+    const tx = this.getClient();
+    const state = await tx.queryOne("SELECT * FROM plans WHERE project_id = $1 AND plan_id = $2", [
+      projectId,
+      planId,
+    ]);
+    await resourceChanged(tx, projectId, "plan", planId, state ?? null);
+  }
+
+  async revision(projectId: string, planId: string): Promise<number> {
+    return getResourceRevision(this.getClient(), projectId, "plan", planId);
+  }
 
   private serializeMetadata(metadata: PlanInsertData["metadata"]): string {
     if (metadata == null) return "{}";

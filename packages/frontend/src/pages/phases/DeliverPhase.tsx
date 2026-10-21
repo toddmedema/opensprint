@@ -66,6 +66,9 @@ function StatusBadge({ status }: { status: DeploymentRecord["status"] }) {
   const dotStyles: Record<DeploymentRecord["status"], string> = {
     pending: "bg-theme-ring",
     running: "bg-theme-status-ready",
+    stop_requested: "bg-theme-status-ready",
+    stopped: "bg-theme-status-backlog",
+    uncertain: "bg-theme-status-blocked",
     success: "bg-theme-status-done",
     failed: "bg-theme-status-blocked",
     rolled_back: "bg-theme-status-backlog",
@@ -136,9 +139,6 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
   const [envFilter, setEnvFilter] = useState<string>("all");
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const [filterDropdownAlignRight, setFilterDropdownAlignRight] = useState(false);
-  const storeHistory = useAppSelector((s) => s.deliver.history ?? EMPTY_DELIVER_HISTORY);
-  const storeCurrentDeploy = useAppSelector((s) => s.deliver.currentDeploy ?? null);
-  const storeActiveDeployId = useAppSelector((s) => s.deliver.activeDeployId ?? null);
   const storeSelectedDeployId = useAppSelector((s) => s.deliver.selectedDeployId ?? null);
   const storeLiveLog = useAppSelector((s) => s.deliver.liveLog ?? EMPTY_DELIVER_LOG);
   const [selectedDeployId, setSelectedDeployId] = useState<string | null>(
@@ -165,15 +165,9 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
   const triggerDeliverMutation = useTriggerDeliver(projectId);
   const expoDeployMutation = useExpoDeploy(projectId);
   const rollbackDeliverMutation = useRollbackDeliver(projectId);
-  const history = deliverHistoryQuery.data ?? storeHistory;
-  const activeDeployId =
-    deliverStatusQuery.data === undefined
-      ? storeActiveDeployId
-      : deliverStatusQuery.data.activeDeployId;
-  const currentDeploy =
-    deliverStatusQuery.data === undefined
-      ? storeCurrentDeploy
-      : deliverStatusQuery.data.currentDeploy;
+  const history = deliverHistoryQuery.data ?? EMPTY_DELIVER_HISTORY;
+  const activeDeployId = deliverStatusQuery.data?.activeDeployId ?? null;
+  const currentDeploy = deliverStatusQuery.data?.currentDeploy ?? null;
 
   const envCounts = useMemo(() => {
     const counts: Record<string, number> = { all: history.length };

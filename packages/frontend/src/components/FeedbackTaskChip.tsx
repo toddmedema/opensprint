@@ -1,8 +1,6 @@
 import { memo } from "react";
-import { shallowEqual } from "react-redux";
 import type { KanbanColumn } from "@opensprint/shared";
-import { useAppSelector } from "../store";
-import { selectTaskSummary } from "../store/slices/executeSlice";
+import { useServerTask } from "../hooks/useServerTasks";
 import { TaskStatusBadge, COLUMN_LABELS } from "./kanban";
 import { TaskLinkDisplay } from "./TaskLinkDisplay";
 import { TaskLinkTooltip } from "./TaskLinkTooltip";
@@ -27,7 +25,7 @@ export const FeedbackTaskChip = memo(function FeedbackTaskChip({
   projectId,
   onNavigateToBuildTask,
 }: FeedbackTaskChipProps) {
-  const summary = useAppSelector((state) => selectTaskSummary(state, taskId), shallowEqual);
+  const { data: summary } = useServerTask(projectId, taskId);
   const column = summary?.kanbanColumn ?? DEFAULT_COLUMN;
   const statusLabel = COLUMN_LABELS[column];
   const priority = summary?.priority ?? DEFAULT_PRIORITY;

@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { useParams, useLocation, useNavigate, Outlet } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
+import { CollaborationBar } from "../components/CollaborationBar";
+import { useProjectReplay } from "../hooks/useProjectReplay";
 import { useAppDispatch, useAppSelector } from "../store";
 import { resetProject } from "../store/slices/projectSlice";
 import { resetWebsocket } from "../store/slices/websocketSlice";
@@ -9,18 +11,6 @@ import { resetPlan } from "../store/slices/planSlice";
 import { resetExecute } from "../store/slices/executeSlice";
 import { resetEval } from "../store/slices/evalSlice";
 import { resetDeliver } from "../store/slices/deliverSlice";
-import {
-  setTasks,
-  setExecuteStatusPayload,
-  setActiveAgentsPayload,
-} from "../store/slices/executeSlice";
-import { setPlansAndGraph, setPlanStatusPayload } from "../store/slices/planSlice";
-import { setFeedback } from "../store/slices/evalSlice";
-import {
-  setPrdContent,
-  setPrdHistory,
-  setMessages as setSketchMessages,
-} from "../store/slices/sketchSlice";
 import { wsConnect, wsDisconnect } from "../store/middleware/websocketMiddleware";
 import {
   useProject,
@@ -33,6 +23,7 @@ import {
   useSketchChat,
   usePlanStatus,
   useActiveAgents,
+  useProjectNotifications,
   useDbStatus,
 } from "../api/hooks";
 import { queryKeys } from "../api/queryKeys";
@@ -45,7 +36,6 @@ import { VALID_PHASE_SLUGS } from "../lib/phaseRouting";
 import { schedulePhasePreload } from "../lib/phasePreload";
 import type { ProjectPhase } from "@opensprint/shared";
 import { ACTIVE_AGENTS_POLL_INTERVAL_MS } from "../lib/constants";
-import { fetchProjectNotifications } from "../store/slices/openQuestionsSlice";
 
 /** Derives current view from pathname: "help" | "settings" | phase slug. */
 function getViewFromPathname(pathname: string): "help" | "settings" | string {
@@ -61,13 +51,8 @@ function isPhaseRoute(view: string): view is ProjectPhase {
   return VALID_PHASE_SLUGS.includes(view as ProjectPhase);
 }
 
-interface SyncedProjectData {
-  projectId: string;
-  data: unknown;
-}
-
 /**
- * ProjectShell keeps project state (Redux, WebSocket, TanStack Query sync) alive
+ * ProjectShell keeps query observers and WebSocket transport alive
  * when navigating between phases, Help, and Settings. Only unmounts when leaving
  * the project entirely, so state is preserved during Help/Settings visits.
  */
@@ -78,7 +63,6 @@ export function ProjectShell() {
   const dispatch = useAppDispatch();
   const queryClient = useQueryClient();
   const prevProjectIdRef = useRef<string | null>(null);
-  const lastSyncedRef = useRef<Record<string, SyncedProjectData | undefined>>({});
 
   const view = getViewFromPathname(location.pathname);
   const phaseRoute = isPhaseRoute(view);
@@ -90,30 +74,34 @@ export function ProjectShell() {
   const dbPhaseAvailable = dbStatus.data?.ok === true;
   const shouldEnableDbBackedQueries = dbPhaseAvailable;
   const shouldConnectProjectWs = dbPhaseAvailable;
+  useProjectReplay(projectId, dbPhaseAvailable);
   const settingsHref = projectId ? `/projects/${projectId}/settings` : "/settings";
 
   const { data: project, isLoading: projectLoading, error: projectError } = useProject(projectId);
-  const { data: tasksData } = useTasks(projectId, { enabled: shouldEnableDbBackedQueries });
-  const { data: plansData } = usePlans(projectId, { enabled: shouldEnableDbBackedQueries });
-  const { data: feedbackData } = useFeedback(projectId, { enabled: shouldEnableDbBackedQueries });
-  const { data: executeStatusData } = useExecuteStatus(projectId, {
+  useTasks(projectId, { enabled: shouldEnableDbBackedQueries });
+  usePlans(projectId, { enabled: shouldEnableDbBackedQueries });
+  useFeedback(projectId, { enabled: shouldEnableDbBackedQueries });
+  useExecuteStatus(projectId, {
     enabled: isExecute && shouldEnableDbBackedQueries,
   });
-  const { data: prdData } = usePrd(projectId, {
+  usePrd(projectId, {
     enabled: isSketch && shouldEnableDbBackedQueries,
   });
-  const { data: prdHistoryData } = usePrdHistory(projectId, {
+  usePrdHistory(projectId, {
     enabled: isSketch && shouldEnableDbBackedQueries,
   });
-  const { data: sketchChatData } = useSketchChat(projectId, {
+  useSketchChat(projectId, {
     enabled: isSketch && shouldEnableDbBackedQueries,
   });
-  const { data: planStatusData } = usePlanStatus(projectId, {
+  usePlanStatus(projectId, {
     enabled: (isSketch || isPlan) && shouldEnableDbBackedQueries,
   });
   const activeAgentsQuery = useActiveAgents(projectId, {
     enabled: shouldEnableDbBackedQueries,
     refetchInterval: ACTIVE_AGENTS_POLL_INTERVAL_MS,
+  });
+  const notificationsQuery = useProjectNotifications(projectId, {
+    enabled: shouldEnableDbBackedQueries,
   });
   const wsConnected = useAppSelector((s) => s.websocket.connected);
   const prevWsConnectedRef = useRef<boolean | null>(null);
@@ -131,7 +119,6 @@ export function ProjectShell() {
       prevProjectIdRef.current != null && prevProjectIdRef.current !== projectId;
 
     if (projectIdChanged) {
-      lastSyncedRef.current = {};
       // Invalidate and refetch tasks/plans/feedback when project changes so Plan/Execute/Evaluate
       // show correct data without requiring a manual refresh. refetchQueries ensures we actively
       // trigger fetches rather than relying on stale-while-revalidate timing.
@@ -155,7 +142,6 @@ export function ProjectShell() {
     prevProjectIdRef.current = projectId;
 
     return () => {
-      lastSyncedRef.current = {};
       dispatch(resetProject());
       dispatch(resetWebsocket());
       dispatch(resetSketch(undefined as never));
@@ -175,123 +161,20 @@ export function ProjectShell() {
     };
   }, [projectId, shouldConnectProjectWs, dispatch]);
 
-  // Sync TanStack Query → Redux (keeps state populated even when on Help/Settings)
-  useEffect(() => {
-    if (!projectId || !tasksData) return;
-    const previous = lastSyncedRef.current["tasks"];
-    if (previous?.projectId === projectId && previous.data === tasksData) return;
-    lastSyncedRef.current["tasks"] = { projectId, data: tasksData };
-    dispatch(setTasks(tasksData));
-  }, [projectId, tasksData, dispatch]);
-  useEffect(() => {
-    if (!projectId || !plansData) return;
-    const previous = lastSyncedRef.current["plans"];
-    if (previous?.projectId === projectId && previous.data === plansData) return;
-    lastSyncedRef.current["plans"] = { projectId, data: plansData };
-    dispatch(setPlansAndGraph({ plans: plansData.plans, dependencyGraph: plansData }));
-  }, [projectId, plansData, dispatch]);
-  useEffect(() => {
-    if (!projectId || feedbackData == null) return;
-    const previous = lastSyncedRef.current["feedback"];
-    if (previous?.projectId === projectId && previous.data === feedbackData) return;
-    lastSyncedRef.current["feedback"] = { projectId, data: feedbackData };
-    dispatch(setFeedback(feedbackData));
-  }, [projectId, feedbackData, dispatch]);
-  useEffect(() => {
-    if (!projectId || !executeStatusData) return;
-    const previous = lastSyncedRef.current["executeStatus"];
-    if (previous?.projectId === projectId && previous.data === executeStatusData) return;
-    lastSyncedRef.current["executeStatus"] = { projectId, data: executeStatusData };
-    dispatch(
-      setExecuteStatusPayload({
-        activeTasks: executeStatusData.activeTasks ?? [],
-        queueDepth: executeStatusData.queueDepth ?? 0,
-        awaitingApproval: executeStatusData.awaitingApproval,
-        totalDone: executeStatusData.totalDone ?? 0,
-        totalFailed: executeStatusData.totalFailed ?? 0,
-        baselineStatus: executeStatusData.baselineStatus,
-        baselineCheckedAt: executeStatusData.baselineCheckedAt,
-        baselineFailureSummary: executeStatusData.baselineFailureSummary,
-        mergeValidationStatus: executeStatusData.mergeValidationStatus,
-        mergeValidationFailureSummary: executeStatusData.mergeValidationFailureSummary,
-        dispatchPausedReason: executeStatusData.dispatchPausedReason,
-        selfImprovementRunInProgress: executeStatusData.selfImprovementRunInProgress,
-        selfImprovementRunMode: executeStatusData.selfImprovementRunMode,
-        gitMergeQueue: executeStatusData.gitMergeQueue ?? null,
-      })
-    );
-  }, [projectId, executeStatusData, dispatch]);
-  useEffect(() => {
-    if (!projectId || prdData == null) return;
-    const previous = lastSyncedRef.current["prd"];
-    if (previous?.projectId === projectId && previous.data === prdData) return;
-    lastSyncedRef.current["prd"] = { projectId, data: prdData };
-    dispatch(setPrdContent(prdData));
-  }, [projectId, prdData, dispatch]);
-  useEffect(() => {
-    if (!projectId || prdHistoryData == null) return;
-    const previous = lastSyncedRef.current["prdHistory"];
-    if (previous?.projectId === projectId && previous.data === prdHistoryData) return;
-    lastSyncedRef.current["prdHistory"] = { projectId, data: prdHistoryData };
-    dispatch(setPrdHistory(prdHistoryData));
-  }, [projectId, prdHistoryData, dispatch]);
-  useEffect(() => {
-    if (!projectId || sketchChatData == null) return;
-    const previous = lastSyncedRef.current["sketchChat"];
-    if (previous?.projectId === projectId && previous.data === sketchChatData) return;
-    lastSyncedRef.current["sketchChat"] = { projectId, data: sketchChatData };
-    dispatch(setSketchMessages(sketchChatData));
-  }, [projectId, sketchChatData, dispatch]);
-  useEffect(() => {
-    if (!projectId || planStatusData == null) return;
-    const previous = lastSyncedRef.current["planStatus"];
-    if (previous?.projectId === projectId && previous.data === planStatusData) return;
-    lastSyncedRef.current["planStatus"] = { projectId, data: planStatusData };
-    dispatch(setPlanStatusPayload(planStatusData));
-  }, [projectId, planStatusData, dispatch]);
-  useEffect(() => {
-    if (!projectId || !shouldEnableDbBackedQueries) return;
-    dispatch(fetchProjectNotifications(projectId));
-  }, [projectId, shouldEnableDbBackedQueries, dispatch]);
-
   // Preload phase data and lazy chunks in background so first navigation to each tab is instant.
   useEffect(() => {
     if (!projectId || !shouldEnableDbBackedQueries) return;
     schedulePhasePreload(projectId, queryClient);
   }, [projectId, shouldEnableDbBackedQueries, queryClient]);
   useEffect(() => {
-    if (!projectId || !activeAgentsQuery.data) return;
-    const previous = lastSyncedRef.current["activeAgents"];
-    if (previous?.projectId === projectId && previous.data === activeAgentsQuery.data) return;
-    lastSyncedRef.current["activeAgents"] = { projectId, data: activeAgentsQuery.data };
-    dispatch(setActiveAgentsPayload(activeAgentsQuery.data));
-  }, [projectId, activeAgentsQuery.data, dispatch]);
-  useEffect(() => {
-    if (
-      !projectId ||
-      activeAgentsQuery.data ||
-      activeAgentsQuery.isFetching ||
-      !activeAgentsQuery.isError
-    ) {
-      return;
-    }
-    dispatch(setActiveAgentsPayload({ agents: [], taskIdToStartedAt: {} }));
-  }, [
-    projectId,
-    activeAgentsQuery.data,
-    activeAgentsQuery.isError,
-    activeAgentsQuery.isFetching,
-    dispatch,
-  ]);
-  useEffect(() => {
     const prev = prevWsConnectedRef.current;
     prevWsConnectedRef.current = wsConnected;
     if (prev == null || !projectId || !shouldEnableDbBackedQueries) return;
     if (!prev && wsConnected) {
       void activeAgentsQuery.refetch();
-      dispatch(fetchProjectNotifications(projectId));
+      void notificationsQuery.refetch();
     }
-  }, [projectId, wsConnected, shouldEnableDbBackedQueries, activeAgentsQuery, dispatch]);
+  }, [projectId, wsConnected, shouldEnableDbBackedQueries, activeAgentsQuery, notificationsQuery]);
 
   const handlePhaseChange = (phase: ProjectPhase) => {
     if (projectId) navigate(getProjectPhasePath(projectId, phase));
@@ -316,6 +199,7 @@ export function ProjectShell() {
           onPhaseChange={project ? handlePhaseChange : undefined}
           onProjectSaved={project ? handleProjectSaved : undefined}
         >
+          {projectId && dbPhaseAvailable && <CollaborationBar projectId={projectId} />}
           {content}
         </Layout>
       </>

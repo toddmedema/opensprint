@@ -1,8 +1,15 @@
 /** Durable Execute guidance journal. Queue acceptance and model-turn inclusion are distinct. */
-import * as fs from "node:fs";
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import os from "node:os";
+import { taskStore } from "./task-store.service.js";
+import type { DbClient } from "../db/client.js";
+import { AppError } from "../middleware/error-handler.js";
+import { appendProjectEvent, lockProject } from "./project-event.service.js";
+import { createLogger } from "../utils/logger.js";
+import { databaseNow } from "../db/database-clock.js";
+const log = createLogger("agent-chat");
 import type { AgentType, AgentChatStatus } from "@opensprint/shared";
 import {
   ActiveAgentsService,
@@ -12,6 +19,8 @@ import {
 export interface ChatMessage {
   id: string;
   timestamp: string;
+  /** Server-owned project event position: acceptance order is independent of wall clocks and UUIDs. */
+  sequence?: number;
   role: "user" | "assistant";
   content: string;
   attempt: number;
@@ -50,14 +59,35 @@ const UNSUPPORTED_REASON =
   "Chat is not available for CLI-based agent backends. Switch to API mode (Project Settings → Agent Config) to chat with running agents.";
 
 export class AgentChatService {
+  private transitions = new Set<Promise<unknown>>();
   private statusListener?: (message: ChatMessage) => void;
   constructor(
     private activeAgents: ActiveAgentsService = defaultActiveAgentsService,
-    private basePath?: string
+    private basePath?: string,
+    private store: {
+      runWrite<T>(fn: (tx: DbClient) => Promise<T>): Promise<T>;
+      runRead<T>(fn: (tx: DbClient) => Promise<T>): Promise<T>;
+      afterCommit?(action: () => void): void;
+    } = taskStore
   ) {}
 
   setStatusListener(listener: ((message: ChatMessage) => void) | undefined): void {
     this.statusListener = listener;
+  }
+
+  async flush(): Promise<void> {
+    await Promise.allSettled([...this.transitions]);
+  }
+  private backgroundTransition(
+    message: ChatMessage,
+    status: AgentChatStatus,
+    error?: string
+  ): void {
+    const pending = this.transition(message, status, error).catch((error) =>
+      log.error("Guidance status persistence failed", { messageId: message.id, error })
+    );
+    this.transitions.add(pending);
+    void pending.finally(() => this.transitions.delete(pending));
   }
 
   private chatLogPath(taskId: string, projectId?: string): string {
@@ -70,72 +100,169 @@ export class AgentChatService {
     return path.join(base, key, "chat-log.jsonl");
   }
 
-  appendMessage(taskId: string, message: ChatMessage, projectId = message.projectId): void {
-    const logPath = this.chatLogPath(taskId, projectId);
-    fs.mkdirSync(path.dirname(logPath), { recursive: true });
-    const fd = fs.openSync(logPath, "a+");
+  async appendMessage(
+    taskId: string,
+    message: ChatMessage,
+    projectId = message.projectId
+  ): Promise<ChatMessage> {
+    if (!projectId) throw new Error("Guidance history requires a project identity.");
+    return this.store.runWrite((tx) => this.appendInTransaction(tx, projectId, taskId, message));
+  }
+
+  private async appendInTransaction(
+    tx: DbClient,
+    projectId: string,
+    taskId: string,
+    message: ChatMessage
+  ): Promise<ChatMessage> {
+    const cursor = await lockProject(tx, projectId);
+    const previous = await tx.queryOne(
+      "SELECT * FROM guidance_messages WHERE project_id = $1 AND actor_id = $2 AND client_message_id = $3",
+      [projectId, message.actorId ?? "system", message.clientMessageId ?? message.id]
+    );
+    if (previous) {
+      if (previous.content !== message.content || previous.task_id !== taskId)
+        throw new AppError(
+          409,
+          "GUIDANCE_ID_REUSED",
+          "clientMessageId already used for different guidance."
+        );
+      return JSON.parse(String(previous.message)) as ChatMessage;
+    }
+    // The project row is locked through commit. This is the cursor of the event below,
+    // so concurrent actors and messages sharing a timestamp still have one durable order.
+    const accepted = { ...message, sequence: cursor + 1 };
+    await tx.execute(
+      "INSERT INTO guidance_messages (project_id, task_id, id, actor_id, client_message_id, attempt_id, content, status, message, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (project_id, id) DO NOTHING",
+      [
+        projectId,
+        taskId,
+        accepted.id,
+        accepted.actorId ?? "system",
+        accepted.clientMessageId ?? accepted.id,
+        accepted.attemptId ?? "legacy",
+        accepted.content,
+        accepted.status ?? "included",
+        JSON.stringify(accepted),
+        accepted.timestamp,
+      ]
+    );
+    await appendProjectEvent(tx, {
+      projectId,
+      actorId: accepted.actorId,
+      type: "guidance_changed",
+      payload: accepted,
+    });
+    return accepted;
+  }
+
+  private async readHistory(projectId: string, taskId: string): Promise<ChatMessage[]> {
+    // Import the old fsynced journal idempotently, retaining receipts across upgrades.
     try {
-      const size = fs.fstatSync(fd).size;
-      if (size > 0) {
-        const last = Buffer.alloc(1);
-        fs.readSync(fd, last, 0, 1, size - 1);
-        if (last[0] !== 10) fs.writeSync(fd, "\n");
-      }
-      fs.writeFileSync(fd, JSON.stringify(message) + "\n", "utf-8");
-      fs.fsyncSync(fd);
-    } finally {
-      fs.closeSync(fd);
-    }
-  }
-
-  private readHistory(projectId: string, taskId: string): ChatMessage[] {
-    const logPath = this.chatLogPath(taskId, projectId);
-    if (!fs.existsSync(logPath)) return [];
-    const byId = new Map<string, ChatMessage>();
-    for (const line of fs.readFileSync(logPath, "utf-8").split("\n")) {
-      if (!line.trim()) continue;
-      try {
-        const message = JSON.parse(line) as ChatMessage;
-        if (
-          typeof message.id === "string" &&
-          message.projectId === projectId &&
-          message.taskId === taskId
-        ) {
-          byId.set(message.id, message);
+      const content = await fs.readFile(this.chatLogPath(taskId, projectId), "utf8");
+      const latest = new Map<string, ChatMessage>();
+      for (const line of content.split("\n")) {
+        try {
+          const m = JSON.parse(line) as ChatMessage;
+          if (m.id && m.projectId === projectId && m.taskId === taskId) latest.set(m.id, m);
+        } catch {
+          /* interrupted last append */
         }
-      } catch {
-        // An interrupted final append does not hide earlier durable entries.
       }
+      await this.store.runWrite(async (tx) => {
+        await lockProject(tx, projectId);
+        for (const message of latest.values())
+          await this.appendInTransaction(tx, projectId, taskId, message);
+      });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
-    return [...byId.values()];
+    return this.store.runRead(async (tx) =>
+      (
+        await tx.query(
+          "SELECT message FROM guidance_messages WHERE project_id = $1 AND task_id = $2 ORDER BY created_at, id",
+          [projectId, taskId]
+        )
+      )
+        .map((row) => JSON.parse(String(row.message)) as ChatMessage)
+        .sort(
+          (a, b) =>
+            (a.sequence ?? 0) - (b.sequence ?? 0) ||
+            a.timestamp.localeCompare(b.timestamp) ||
+            a.id.localeCompare(b.id)
+        )
+    );
   }
 
-  private transition(message: ChatMessage, status: AgentChatStatus, error?: string): ChatMessage {
+  private async transition(
+    message: ChatMessage,
+    status: AgentChatStatus,
+    error?: string
+  ): Promise<ChatMessage> {
     const next = { ...message, status, ...(error ? { error } : {}) };
-    this.appendMessage(message.taskId!, next, message.projectId);
-    this.statusListener?.(next);
+    const changed = await this.store.runWrite(async (tx) => {
+      await lockProject(tx, message.projectId!);
+      const count = await tx.execute(
+        "UPDATE guidance_messages SET status = $3, message = $4 WHERE project_id = $1 AND id = $2 AND status IN ('accepted','queued')",
+        [message.projectId!, message.id, status, JSON.stringify(next)]
+      );
+      if (count)
+        await appendProjectEvent(tx, {
+          projectId: message.projectId!,
+          actorId: message.actorId,
+          type: "guidance_changed",
+          payload: next,
+        });
+      return count;
+    });
+    if (changed) this.statusListener?.(next);
     return next;
   }
 
-  getHistory(projectId: string, taskId: string, attempt?: number): ChatMessage[] {
+  async getHistory(projectId: string, taskId: string, attempt?: number): Promise<ChatMessage[]> {
     const channel = this.activeAgents.getChannel(taskId);
-    return this.readHistory(projectId, taskId)
-      .map((message) => {
-        // A restarted service cannot prove that a previous process submitted its queue.
-        // Keep the record and make the uncertain disposition explicit; never replay into a new run.
-        if (
-          (message.status === "accepted" || message.status === "queued") &&
-          (channel?.attemptId !== message.attemptId || channel?.pendingMessages.isClosed)
-        ) {
-          return this.transition(
-            message,
-            "run-ended",
-            "Run ended before inclusion could be confirmed; resend guidance if needed."
-          );
-        }
-        return message;
-      })
-      .filter((message) => attempt === undefined || message.attempt === attempt);
+    const messages = await this.readHistory(projectId, taskId);
+    return Promise.all(
+      messages
+        .filter((message) => attempt === undefined || message.attempt === attempt)
+        .map(async (message) => {
+          if (
+            (message.status === "accepted" || message.status === "queued") &&
+            (channel?.projectId !== projectId ||
+              channel?.attemptId !== message.attemptId ||
+              channel?.pendingMessages.isClosed)
+          ) {
+            const lease = await this.store.runRead((tx) =>
+              tx.queryOne(
+                "SELECT state, expires_ms FROM execution_leases WHERE project_id = $1 AND task_id = $2 AND attempt_id = $3",
+                [projectId, taskId, message.attemptId]
+              )
+            );
+            const localEnded =
+              channel?.projectId === projectId &&
+              channel.attemptId === message.attemptId &&
+              channel.pendingMessages.isClosed;
+            if (localEnded || lease?.state === "stopped" || lease?.state === "completed")
+              return this.transition(
+                message,
+                "run-ended",
+                "Run ended before this guidance was included."
+              );
+            if (
+              lease &&
+              Number(lease.expires_ms) > (await this.store.runRead(databaseNow)) &&
+              ["queued", "running", "stop_requested"].includes(String(lease.state))
+            )
+              return message;
+            // A read on another replica cannot prove execution ended. Keep acceptance durable.
+            return {
+              ...message,
+              error: "Execution ownership is uncertain; inclusion has not been confirmed.",
+            };
+          }
+          return message;
+        })
+    );
   }
 
   supportsChat(taskId: string, projectId?: string): SupportsChatResult {
@@ -179,21 +306,25 @@ export class AgentChatService {
     };
   }
 
-  sendMessage(
+  async sendMessage(
     projectId: string,
     taskId: string,
     content: string,
     attempt?: number,
     options?: { clientMessageId?: string; actorId?: string }
-  ): SendMessageResult {
+  ): Promise<SendMessageResult> {
     const clientMessageId = options?.clientMessageId ?? crypto.randomUUID();
     const actorId = options?.actorId ?? "local-user";
-    const previous = this.getHistory(projectId, taskId).find(
+    const previous = (await this.getHistory(projectId, taskId)).find(
       (message) => message.clientMessageId === clientMessageId && message.actorId === actorId
     );
     if (previous) {
       if (previous.content !== content)
-        throw new Error("clientMessageId already used for different guidance");
+        throw new AppError(
+          409,
+          "GUIDANCE_ID_REUSED",
+          "clientMessageId already used for different guidance"
+        );
       return {
         messageId: previous.id,
         timestamp: previous.timestamp,
@@ -216,7 +347,7 @@ export class AgentChatService {
         error: support.reason ?? "Chat not supported",
       };
     }
-    const message: ChatMessage = {
+    let message: ChatMessage = {
       id: `msg-${crypto.randomUUID()}`,
       timestamp: new Date().toISOString(),
       role: "user",
@@ -230,7 +361,18 @@ export class AgentChatService {
       status: "accepted",
     };
     // No receipt can be emitted until the acceptance record has reached stable storage.
-    this.appendMessage(taskId, message, projectId);
+    const accepted = await this.appendMessage(taskId, message, projectId);
+    if (accepted.id !== message.id)
+      return {
+        messageId: accepted.id,
+        timestamp: accepted.timestamp,
+        clientMessageId,
+        attemptId: accepted.attemptId,
+        status: accepted.status,
+        delivered: accepted.status === "queued" || accepted.status === "included",
+        error: accepted.error,
+      };
+    message = accepted;
     const available =
       !channel.pendingMessages.isClosed &&
       channel.pendingMessages.size < channel.pendingMessages.capacity;
@@ -238,7 +380,7 @@ export class AgentChatService {
       ? undefined
       : "Too many pending messages — wait for a model turn before sending more.";
     // Persist queue intent before making it available to the model loop.
-    this.transition(message, available ? "queued" : "failed", error);
+    await this.transition(message, available ? "queued" : "failed", error);
     if (!available)
       return {
         messageId: message.id,
@@ -249,31 +391,43 @@ export class AgentChatService {
         status: "failed",
         error,
       };
-    const queued = channel.pendingMessages.push(content, new Date(message.timestamp), {
-      messageId: message.id,
-      onIncluded: () => this.transition(message, "included"),
-      onRunEnded: () =>
-        this.transition(message, "run-ended", "Run ended before this guidance was included."),
-    });
-    const status: AgentChatStatus = queued ? "queued" : "failed";
-    if (!queued) this.transition(message, "failed", "Run ended before queue acceptance.");
+    const publish = () => {
+      const queued = channel.pendingMessages.push(content, new Date(message.timestamp), {
+        messageId: message.id,
+        onIncluded: () => {
+          this.backgroundTransition(message, "included");
+        },
+        onRunEnded: () => {
+          this.backgroundTransition(
+            message,
+            "run-ended",
+            "Run ended before this guidance was included."
+          );
+        },
+      });
+      if (!queued)
+        this.backgroundTransition(message, "failed", "Run ended before queue acceptance.");
+    };
+    // withControl may own an outer transaction. The model queue must not see uncommitted guidance.
+    if (this.store.afterCommit) this.store.afterCommit(publish);
+    else publish();
     return {
       messageId: message.id,
       timestamp: message.timestamp,
-      delivered: queued,
+      delivered: true,
       clientMessageId,
       attemptId: message.attemptId,
-      status,
+      status: "queued",
       error,
     };
   }
 
-  appendAssistantMessage(
+  async appendAssistantMessage(
     taskId: string,
     content: string,
     attempt = 1,
     projectId?: string
-  ): ChatMessage {
+  ): Promise<ChatMessage> {
     const channel = this.activeAgents.getChannel(taskId);
     const message: ChatMessage = {
       id: `msg-${crypto.randomUUID()}`,
@@ -285,8 +439,7 @@ export class AgentChatService {
       taskId,
       attemptId: channel?.attemptId,
     };
-    this.appendMessage(taskId, message, message.projectId);
-    return message;
+    return this.appendMessage(taskId, message, message.projectId);
   }
 }
 export const agentChatService = new AgentChatService();

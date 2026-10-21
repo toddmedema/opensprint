@@ -91,7 +91,12 @@ function createInMemoryLeaseStore() {
     }
 
     // UPDATE worktree_leases SET expires_at = ... WHERE worktree_key = ... AND released_at IS NULL  (renew)
-    if (norm.includes("update") && norm.includes("expires_at") && norm.includes("released_at is null") && !norm.includes("set released_at")) {
+    if (
+      norm.includes("update") &&
+      norm.includes("expires_at") &&
+      norm.includes("released_at is null") &&
+      !norm.includes("set released_at")
+    ) {
       const expiresAt = params[0] as string;
       const key = params[1] as string;
       const row = rows.get(key);
@@ -180,6 +185,7 @@ describe("WorktreeLeaseService", () => {
 
     it("bumps generation when re-acquiring an existing key", async () => {
       await service.acquire(BASE_PARAMS);
+      await service.release(BASE_PARAMS.worktreeKey, BASE_PARAMS.leaseOwner);
       const lease2 = await service.acquire({
         ...BASE_PARAMS,
         leaseOwner: "orchestrator-xyz",
@@ -189,6 +195,13 @@ describe("WorktreeLeaseService", () => {
       expect(lease2.leaseOwner).toBe("orchestrator-xyz");
       expect(lease2.taskId).toBe("task-1-retry");
       expect(lease2.releasedAt).toBeNull();
+    });
+    it("refuses an unexpired worktree owned by another execution", async () => {
+      await service.acquire(BASE_PARAMS);
+      await expect(
+        service.acquire({ ...BASE_PARAMS, leaseOwner: "other-backend" })
+      ).rejects.toThrow("already leased");
+      expect((await service.get(BASE_PARAMS.worktreeKey))?.leaseOwner).toBe(BASE_PARAMS.leaseOwner);
     });
 
     it("respects custom TTL", async () => {

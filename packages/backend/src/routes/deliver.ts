@@ -36,9 +36,32 @@ import { getErrorMessage } from "../utils/error-utils.js";
 import { getExpoDeployCommand } from "../utils/expo-deploy-command.js";
 import { ensureExpoInstalled, isExpoInstalled } from "../utils/expo-install.js";
 import { ensureExpoConfig, getExpoConfigStatus } from "../utils/expo-config.js";
-import { checkExpoAuth } from "../utils/expo-auth-check.js";
+import {
+  checkDeploymentExpoAuth,
+  hostedExpoReadiness,
+  hostedExpoCommand,
+} from "../services/deployment-expo-isolation.service.js";
 import { ensureEasProjectIdInAppJson, isEasProjectLinked } from "../utils/eas-project-link.js";
 import { createLogger } from "../utils/logger.js";
+import { acceptDeployment } from "../services/durable-deployment.service.js";
+import { getRequestContext } from "../services/request-context.js";
+import {
+  deploymentSignal,
+  requestDeploymentStop,
+  confirmDeploymentStop,
+  deploymentStopConfirmed,
+  markDeploymentUncertain,
+  deploymentUncertain,
+} from "../services/deployment-control.service.js";
+import { runDurableRequest } from "../services/durable-request.service.js";
+import { getDeploymentMode, runIsolatedCommand } from "../services/agent/isolated-runner.js";
+import { AppError } from "../middleware/error-handler.js";
+import {
+  assertDeploymentOperation,
+  deploymentOperationProjectId,
+} from "../services/operation-effect-context.js";
+import { taskStore } from "../services/task-store.service.js";
+import { lockProject } from "../services/project-event.service.js";
 
 const log = createLogger("deliver");
 
@@ -63,7 +86,15 @@ async function completeDeploy(
   deployId: string,
   result: CompleteDeployResult
 ): Promise<void> {
-  const status = result.success ? "success" : "failed";
+  const status = deploymentUncertain()
+    ? "uncertain"
+    : result.success
+      ? "success"
+      : deploymentStopConfirmed()
+        ? "stopped"
+        : deploymentSignal()?.aborted
+          ? "uncertain"
+          : "failed";
   await deployStorageService.updateRecord(projectId, deployId, {
     status,
     completedAt: new Date().toISOString(),
@@ -114,6 +145,15 @@ export function createDeliverRouter(projectService: ProjectService): Router {
     validateParams(projectIdParamSchema),
     validateBody(deliverTriggerBodySchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
+      if (getRequestContext()) {
+        res.status(202).json({
+          data: await acceptDeployment(req.params.projectId, {
+            action: "deploy",
+            target: req.body.target,
+          }),
+        });
+        return;
+      }
       try {
         const { projectId } = req.params;
 
@@ -195,6 +235,7 @@ export function createDeliverRouter(projectService: ProjectService): Router {
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const { projectId } = req.params;
       await projectService.getProject(projectId);
+
       const history = await deployStorageService.listHistory(projectId, 1);
       const current = history[0] ?? null;
       const activeDeployId =
@@ -258,6 +299,17 @@ export function createDeliverRouter(projectService: ProjectService): Router {
       const { projectId } = req.params;
       await projectService.getProject(projectId);
 
+      if (getRequestContext()) {
+        const latest = await deployStorageService.getLatestDeploy(projectId);
+        const result = latest
+          ? await runDurableRequest(projectId, "deployment.stop", latest.id, {}, () =>
+              requestDeploymentStop(projectId, latest.id)
+            )
+          : { stopRequested: false, uncertain: false };
+        res.json({ data: { cleared: false, ...result } });
+        return;
+      }
+
       activeDeployments.delete(projectId);
 
       const latest = await deployStorageService.getLatestDeploy(projectId);
@@ -281,6 +333,28 @@ export function createDeliverRouter(projectService: ProjectService): Router {
     validateParams(projectIdParamSchema),
     validateBody(expoDeployBodySchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
+      if (getRequestContext()) {
+        const variant = req.body.variant as "beta" | "prod";
+        try {
+          const accepted = await acceptDeployment(req.params.projectId, {
+            action: "expo",
+            variant,
+            target: variant === "prod" ? "production" : "staging",
+          });
+          res.status(202).json({ data: accepted });
+        } catch (error) {
+          if (error instanceof AppError && error.code === "EXPO_TOKEN_REQUIRED") {
+            res.status(error.statusCode).json({
+              error: {
+                code: error.code,
+                message: error.message,
+                prompt: (error.details as { prompt?: string } | undefined)?.prompt,
+              },
+            });
+          } else throw error;
+        }
+        return;
+      }
       try {
         const { projectId } = req.params;
         const variant = (req.body as { variant: "beta" | "prod" }).variant;
@@ -319,9 +393,7 @@ export function createDeliverRouter(projectService: ProjectService): Router {
         }
 
         // Pre-deploy: identify required but missing Expo auth before starting
-        const authCheck = await checkExpoAuth(project.repoPath, {
-          projectExpoToken: settings.deployment.expoToken,
-        });
+        const authCheck = await checkDeploymentExpoAuth(project.repoPath, settings.deployment);
         if (!authCheck.ok) {
           res.status(400).json({
             error: {
@@ -366,8 +438,13 @@ export function createDeliverRouter(projectService: ProjectService): Router {
             : baseEnvVars;
 
         const emit = (chunk: string) => {
-          deployStorageService.appendLog(projectId, record.id, chunk);
-          broadcastToProject(projectId, { type: "deliver.output", deployId: record.id, chunk });
+          const pending = deployStorageService.appendLog(projectId, record.id, chunk).then(() => {
+            broadcastToProject(projectId, { type: "deliver.output", deployId: record.id, chunk });
+          });
+          void pending.catch((err) =>
+            log.warn("Deployment output not committed", { projectId, deployId: record.id, err })
+          );
+          return pending;
         };
 
         const deployPromise = runExpoDeployAsync(
@@ -421,11 +498,13 @@ export function createDeliverRouter(projectService: ProjectService): Router {
 
       const repoPath = project.repoPath;
       try {
+        const hosted =
+          getDeploymentMode() === "isolated-hosted" ? await hostedExpoReadiness(repoPath) : null;
         const [expoInstalled, configStatus, authCheck, easProjectLinked] = await Promise.all([
-          isExpoInstalled(repoPath),
+          hosted ? Promise.resolve(hosted.expoInstalled) : isExpoInstalled(repoPath),
           getExpoConfigStatus(repoPath),
-          checkExpoAuth(repoPath, { projectExpoToken: settings.deployment.expoToken }),
-          isEasProjectLinked(repoPath),
+          checkDeploymentExpoAuth(repoPath, settings.deployment, settings.deployment.envVars),
+          hosted ? Promise.resolve(hosted.easProjectLinked) : isEasProjectLinked(repoPath),
         ]);
 
         const expoConfigured = configStatus.configured;
@@ -474,6 +553,15 @@ export function createDeliverRouter(projectService: ProjectService): Router {
     "/:deployId/rollback",
     validateParams(deployIdParamsSchema),
     wrapAsync(async (req: Request<DeployIdParams>, res) => {
+      if (getRequestContext()) {
+        res.status(202).json({
+          data: await acceptDeployment(req.params.projectId, {
+            action: "rollback",
+            rollbackDeployId: req.params.deployId,
+          }),
+        });
+        return;
+      }
       const { projectId, deployId } = req.params;
       const record = await deployStorageService.getRecord(projectId, deployId);
       if (!record) {
@@ -564,9 +652,14 @@ export async function runDeployAsync(
   const targetConfig = getDeploymentTargetConfig(config, effectiveTarget);
   const envVars = targetConfig?.envVars ?? config.envVars ?? {};
   const emit = (chunk: string) => {
-    const p = deployStorageService.appendLog(projectId, deployId, chunk);
-    broadcastToProject(projectId, { type: "deliver.output", deployId, chunk });
-    return p;
+    const pending = deployStorageService.appendLog(projectId, deployId, chunk).then((record) => {
+      broadcastToProject(projectId, { type: "deliver.output", deployId, chunk });
+      return record;
+    });
+    void pending.catch((err) =>
+      log.warn("Deployment output not committed", { projectId, deployId, err })
+    );
+    return pending;
   };
 
   try {
@@ -653,9 +746,11 @@ type DeployHandlerContext = {
 
 const deployHandlers: Record<string, (ctx: DeployHandlerContext) => Promise<void>> = {
   expo: async (ctx) => {
-    const authCheck = await checkExpoAuth(ctx.repoPath, {
-      projectExpoToken: ctx.settings.deployment.expoToken,
-    });
+    const authCheck = await checkDeploymentExpoAuth(
+      ctx.repoPath,
+      ctx.settings.deployment,
+      ctx.envVars
+    );
     if (!authCheck.ok) {
       ctx.emit(`${authCheck.prompt}\n`);
       await completeDeployFn(ctx.projectId, ctx.deployId, {
@@ -720,6 +815,70 @@ const deployHandlers: Record<string, (ctx: DeployHandlerContext) => Promise<void
   },
 };
 
+export async function runExplicitExpoDeployment(
+  projectId: string,
+  deployId: string,
+  repoPath: string,
+  settings: ProjectSettings,
+  variant: "beta" | "prod",
+  projectName?: string
+): Promise<void> {
+  const target = variant === "prod" ? "production" : "staging";
+  const env =
+    getDeploymentTargetConfig(settings.deployment, target)?.envVars ??
+    settings.deployment.envVars ??
+    {};
+  const auth = await checkDeploymentExpoAuth(repoPath, settings.deployment, env);
+  if (!auth.ok) {
+    await completeDeployFn(projectId, deployId, { success: false, error: auth.message });
+    return;
+  }
+  await runExpoDeployAsync(
+    projectId,
+    deployId,
+    repoPath,
+    variant,
+    (chunk) => {
+      const pending = deployStorageService.appendLog(projectId, deployId, chunk).then(() => {
+        broadcastToProject(projectId, { type: "deliver.output", deployId, chunk });
+      });
+      void pending.catch((err) =>
+        log.warn("Deployment output not committed", { projectId, deployId, err })
+      );
+      return pending;
+    },
+    auth.expoToken ? { ...env, EXPO_TOKEN: auth.expoToken } : env,
+    projectName,
+    getConfiguredEasProjectId(settings.deployment)
+  );
+}
+
+export async function runExplicitRollback(
+  projectId: string,
+  deployId: string,
+  repoPath: string,
+  settings: ProjectSettings,
+  rollbackDeployId: string
+): Promise<void> {
+  const original = await deployStorageService.getRecord(projectId, rollbackDeployId);
+  const target = getDeploymentTargetConfig(settings.deployment, original?.target ?? "production");
+  const command = target?.rollbackCommand ?? settings.deployment.rollbackCommand;
+  if (settings.deployment.mode !== "custom" || !command)
+    throw new Error("Rollback requires a configured custom rollback command");
+  const latest = (await deployStorageService.listHistory(projectId, 2)).find(
+    (record) => record.id !== deployId
+  );
+  await runRollbackAsync(
+    projectId,
+    deployId,
+    repoPath,
+    command,
+    latest && latest.id !== rollbackDeployId && latest.id !== deployId ? latest.id : null,
+    completeDeployFn,
+    target?.envVars ?? settings.deployment.envVars
+  );
+}
+
 /** Run Expo deploy (beta or prod): npx expo export --platform web && eas deploy [--prod] */
 async function runExpoDeployAsync(
   projectId: string,
@@ -733,6 +892,17 @@ async function runExpoDeployAsync(
 ): Promise<void> {
   const cmd = getExpoDeployCommand(variant);
   try {
+    if (getDeploymentMode() === "isolated-hosted") {
+      await runCommandStreaming(
+        "sh",
+        ["-c", hostedExpoCommand(variant, projectName, easProjectId)],
+        repoPath,
+        emit,
+        envVars
+      );
+      await completeDeployFn(projectId, deployId, { success: true });
+      return;
+    }
     if (isRepoInTempDir(repoPath)) {
       emit(`Skipping Expo CLI in temp repo for test environment (${variant}).\n`);
       await completeDeployFn(projectId, deployId, { success: true });
@@ -824,16 +994,22 @@ async function runRollbackAsync(
   repoPath: string,
   rollbackCommand: string,
   rolledBackDeployId: string | null,
-  complete: typeof completeDeployFn
+  complete: typeof completeDeployFn,
+  environment?: Record<string, string>
 ): Promise<void> {
   const emit = (chunk: string) => {
-    const p = deployStorageService.appendLog(projectId, deployId, chunk);
-    broadcastToProject(projectId, { type: "deliver.output", deployId, chunk });
-    return p;
+    const pending = deployStorageService.appendLog(projectId, deployId, chunk).then((record) => {
+      broadcastToProject(projectId, { type: "deliver.output", deployId, chunk });
+      return record;
+    });
+    void pending.catch((err) =>
+      log.warn("Deployment output not committed", { projectId, deployId, err })
+    );
+    return pending;
   };
 
   try {
-    await runCommandStreaming("sh", ["-c", rollbackCommand], repoPath, emit);
+    await runCommandStreaming("sh", ["-c", rollbackCommand], repoPath, emit, environment);
     if (rolledBackDeployId) {
       await deployStorageService.updateRecord(projectId, rolledBackDeployId, {
         status: "rolled_back",
@@ -858,28 +1034,73 @@ async function runRollbackAsync(
   }
 }
 
-function runCommandStreaming(
+async function runCommandStreaming(
   command: string,
   args: string[],
   cwd: string,
   onOutput: (chunk: string) => void | Promise<unknown>,
   envVars?: Record<string, string>
 ): Promise<void> {
+  const projectId = deploymentOperationProjectId();
+  if (projectId)
+    await taskStore.runWrite(async (tx) => {
+      await lockProject(tx, projectId);
+      await assertDeploymentOperation(tx, projectId);
+    });
+  if (deploymentSignal()?.aborted) {
+    confirmDeploymentStop();
+    return Promise.reject(new Error("Deployment stopped before command launch."));
+  }
+  if (getDeploymentMode() === "isolated-hosted") {
+    if (command !== "sh" || args[0] !== "-c" || !args[1])
+      return Promise.reject(new Error("Unsupported isolated deployment command"));
+    return runIsolatedCommand(cwd, args[1], 30 * 60_000, deploymentSignal(), envVars)
+      .catch((err) => {
+        if (err?.code === "ISOLATED_EXECUTION_UNCERTAIN") markDeploymentUncertain();
+        throw err;
+      })
+      .then(async (result) => {
+        if (result.stopped) confirmDeploymentStop();
+        await onOutput(result.output);
+        if (result.exitCode !== 0)
+          throw new Error(`Deployment command exited with code ${result.exitCode}`);
+      });
+  }
   const env = { ...process.env, ...envVars };
   const pendingOutput: Promise<unknown>[] = [];
   const capture = (chunk: string) => {
     const result = onOutput(chunk);
     if (result instanceof Promise) {
       pendingOutput.push(result);
+      void result.catch(() => {});
     }
   };
 
   return new Promise((resolve, reject) => {
-    const proc = spawn(command, args, {
-      cwd,
-      env,
-      shell: false,
-    });
+    const windowsShell = process.platform === "win32" && command === "sh" && args[0] === "-c";
+    const proc = spawn(
+      windowsShell ? "cmd.exe" : command,
+      windowsShell ? ["/d", "/s", "/c", `"${args[1]}"`] : args,
+      {
+        cwd,
+        env,
+        shell: false,
+        windowsVerbatimArguments: windowsShell,
+        detached: process.platform !== "win32",
+      }
+    );
+    const signal = deploymentSignal();
+    const stop = () => {
+      if (proc.pid && process.platform !== "win32") {
+        try {
+          process.kill(-proc.pid, "SIGTERM");
+        } catch {
+          proc.kill("SIGTERM");
+        }
+      } else proc.kill("SIGTERM");
+    };
+    signal?.addEventListener("abort", stop, { once: true });
+    if (signal?.aborted) stop();
 
     proc.stdout?.on("data", (data: Buffer) => {
       capture(data.toString());
@@ -889,12 +1110,13 @@ function runCommandStreaming(
     });
 
     proc.on("close", (code) => {
-      // Do not await pendingOutput so we don't block on log writes (avoids hang when storage is slow or locked)
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`Command exited with code ${code}`));
-      }
+      if (signal?.aborted) confirmDeploymentStop();
+      signal?.removeEventListener("abort", stop);
+      // Persist the tail before the operation becomes completed and closes its fence.
+      void Promise.all(pendingOutput).then(() => {
+        if (code === 0) resolve();
+        else reject(new Error(`Command exited with code ${code}`));
+      }, reject);
     });
     proc.on("error", reject);
   });

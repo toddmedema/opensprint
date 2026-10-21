@@ -9,7 +9,7 @@ import {
   specMarkdownToPrd,
 } from "@opensprint/shared";
 import { ProjectService } from "./project.service.js";
-import { gitCommitQueue } from "./git-commit-queue.service.js";
+import { specPublicationService } from "./spec-publication.service.js";
 import { taskStore } from "./task-store.service.js";
 import { assertMigrationCompleteForResource } from "./migration-guard.service.js";
 import { AppError } from "../middleware/error-handler.js";
@@ -130,47 +130,6 @@ export class PrdService {
     };
   }
 
-  private async saveMetadataToDb(projectId: string, prd: Prd): Promise<void> {
-    const sectionVersions: Record<string, number> = {};
-    for (const [k, s] of Object.entries(prd.sections)) {
-      sectionVersions[k] = s.version;
-    }
-    const now = new Date().toISOString();
-    await taskStore.runWrite(async (client) => {
-      await client.execute(
-        `INSERT INTO prd_metadata (project_id, version, change_log, section_versions, updated_at)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT(project_id) DO UPDATE SET
-           version = excluded.version,
-           change_log = excluded.change_log,
-           section_versions = excluded.section_versions,
-           updated_at = excluded.updated_at`,
-        [
-          projectId,
-          prd.version,
-          JSON.stringify(prd.changeLog),
-          JSON.stringify(sectionVersions),
-          now,
-        ]
-      );
-    });
-  }
-
-  /** Persist SPEC.md content for this version (for diff/history). Works with Postgres and SQLite. */
-  private async saveSnapshot(projectId: string, version: number, content: string): Promise<void> {
-    const created_at = new Date().toISOString();
-    await taskStore.runWrite(async (client) => {
-      await client.execute(
-        `INSERT INTO prd_snapshots (project_id, version, content, created_at)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (project_id, version) DO UPDATE SET
-           content = excluded.content,
-           created_at = excluded.created_at`,
-        [projectId, version, content, created_at]
-      );
-    });
-  }
-
   /**
    * Migrate from legacy prd.json or PRD.md to SPEC.md.
    * Returns the migrated Prd or null if no legacy file exists.
@@ -179,7 +138,6 @@ export class PrdService {
   async migrateFromLegacy(repoPath: string): Promise<Prd | null> {
     const prdJsonPath = path.join(repoPath, OPENSPRINT_PATHS.prd);
     const prdMdPath = path.join(repoPath, "PRD.md");
-    const specPath = path.join(repoPath, SPEC_MD);
     const project = await this.projectService.getProjectByRepoPath(repoPath);
     const projectId = project?.id;
 
@@ -190,11 +148,8 @@ export class PrdService {
         const parsed = JSON.parse(data) as Prd;
         if (!Array.isArray(parsed.changeLog)) parsed.changeLog = [];
         mergeCanonicalSections(parsed);
-        const markdown = prdToSpecMarkdown(parsed);
-        await fs.writeFile(specPath, markdown, "utf-8");
-        if (projectId) {
-          await this.saveMetadataToDb(projectId, parsed);
-        }
+        if (!projectId) return parsed;
+        await this.savePrd(projectId, parsed);
         await fs.unlink(prdJsonPath).catch((err: unknown) => {
           log.warn("legacy prd.json cleanup failed", {
             err: err instanceof Error ? err.message : String(err),
@@ -213,11 +168,8 @@ export class PrdService {
         const raw = await fs.readFile(prdMdPath, "utf-8");
         const prd = specMarkdownToPrd(raw);
         mergeCanonicalSections(prd);
-        const markdown = prdToSpecMarkdown(prd);
-        await fs.writeFile(specPath, markdown, "utf-8");
-        if (projectId) {
-          await this.saveMetadataToDb(projectId, prd);
-        }
+        if (!projectId) return prd;
+        await this.savePrd(projectId, prd);
         await fs.unlink(prdMdPath).catch((err: unknown) => {
           log.warn("legacy PRD.md cleanup failed", {
             err: err instanceof Error ? err.message : String(err),
@@ -237,19 +189,14 @@ export class PrdService {
   private async loadPrd(projectId: string): Promise<Prd> {
     const project = await this.projectService.getProject(projectId);
     const specPath = path.join(project.repoPath, SPEC_MD);
-
+    // SQL failure is unavailable authority, never evidence that the document is
+    // absent. Only a missing legacy file may initialize an empty draft.
+    const draft = await specPublicationService.getDraft(projectId);
+    let markdown: string;
     try {
-      const markdown = await fs.readFile(specPath, "utf-8");
-      const metadata = await this.loadMetadataFromDb(projectId, project.repoPath);
-      const prd = specMarkdownToPrd(markdown, metadata ?? undefined);
-      mergeCanonicalSections(prd);
-      if (metadata?.sectionVersions) {
-        for (const [key, ver] of Object.entries(metadata.sectionVersions)) {
-          if (prd.sections[key]) prd.sections[key]!.version = ver;
-        }
-      }
-      return prd;
-    } catch {
+      markdown = draft ? String(draft.content) : await fs.readFile(specPath, "utf-8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       const migrated = await this.migrateFromLegacy(project.repoPath);
       if (migrated) {
         mergeCanonicalSections(migrated);
@@ -257,6 +204,15 @@ export class PrdService {
       }
       throw new AppError(404, ErrorCodes.PRD_NOT_FOUND, "PRD not found for this project");
     }
+    const metadata = await this.loadMetadataFromDb(projectId, project.repoPath);
+    const prd = specMarkdownToPrd(markdown, metadata ?? undefined);
+    mergeCanonicalSections(prd);
+    if (metadata?.sectionVersions) {
+      for (const [key, ver] of Object.entries(metadata.sectionVersions)) {
+        if (prd.sections[key]) prd.sections[key]!.version = ver;
+      }
+    }
+    return prd;
   }
 
   /**
@@ -277,40 +233,22 @@ export class PrdService {
     }
   }
 
-  /** Save the PRD to disk (SPEC.md) and persist metadata to DB, then enqueue git commit */
+  /** SQL drafts are authoritative; the durable local policy batches trusted publication. */
   private async savePrd(
     projectId: string,
     prd: Prd,
-    options?: { source?: PrdChangeLogEntry["source"]; planId?: string }
+    _options?: { source?: PrdChangeLogEntry["source"]; planId?: string }
   ): Promise<void> {
-    const project = await this.projectService.getProject(projectId);
-    const specPath = path.join(project.repoPath, SPEC_MD);
-
-    const cwd = process.cwd();
-    const normalizedRepo = path.resolve(project.repoPath);
-    const normalizedCwd = path.resolve(cwd);
-    const looksLikeServerRepo =
-      normalizedRepo === normalizedCwd &&
-      (await fs.stat(path.join(cwd, "packages", "backend")).catch(() => null))?.isDirectory();
-    if (looksLikeServerRepo) {
-      log.warn(
-        "SPEC is being written to the Open Sprint server repo (project repoPath equals server cwd). " +
-          "Ensure the dreamer/chat is running in the intended project, not the dev server repo.",
-        { projectId, repoPath: project.repoPath }
-      );
-    }
-
-    const markdown = prdToSpecMarkdown(prd);
-    await fs.writeFile(specPath, markdown, "utf-8");
-    await this.saveMetadataToDb(projectId, prd);
-    await this.saveSnapshot(projectId, prd.version, markdown);
-    const source = options?.source ?? "sketch";
-    gitCommitQueue.enqueue({
-      type: "prd_update",
-      repoPath: project.repoPath,
-      source,
-      planId: options?.planId,
-    });
+    const current = await specPublicationService.getDraft(projectId);
+    await specPublicationService.saveDraftOwned(
+      projectId,
+      prdToSpecMarkdown(prd),
+      Number(current?.revision ?? 0),
+      {
+        localPolicy: true,
+        metadata: prd,
+      }
+    );
   }
 
   /**

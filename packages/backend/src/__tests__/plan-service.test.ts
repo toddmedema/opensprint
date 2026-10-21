@@ -367,8 +367,11 @@ function getStoredPlanVersions(projectId: string, planId: string) {
   return mockPlanVersionsStore.get(projectId)?.get(planId) ?? [];
 }
 
-vi.mock("../services/task-store.service.js", () => {
+vi.mock("../services/task-store.service.js", async () => {
+  const { createSqliteRepositoryFixture } = await import("./sqlite-repository-fixture.js");
+  const persistence = await createSqliteRepositoryFixture();
   const mockInstance = {
+    ...persistence,
     create: (...args: unknown[]) => mockTaskStoreCreate(...args),
     createWithRetry: (...args: unknown[]) => mockTaskStoreCreateWithRetry(...args),
     createMany: (...args: unknown[]) => mockTaskStoreCreateMany(...args),

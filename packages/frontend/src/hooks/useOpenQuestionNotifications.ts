@@ -1,10 +1,7 @@
 import { useCallback } from "react";
 import type { Notification } from "@opensprint/shared";
-import { useAppDispatch, useAppSelector } from "../store";
-import {
-  fetchProjectNotifications,
-  selectProjectNotifications,
-} from "../store/slices/openQuestionsSlice";
+import { useProjectNotifications } from "../api/hooks";
+const EMPTY_NOTIFICATIONS: Notification[] = [];
 
 /**
  * Fetches open-question notifications for a project.
@@ -14,13 +11,13 @@ export function useOpenQuestionNotifications(projectId: string | null): {
   notifications: Notification[];
   refetch: () => void;
 } {
-  const dispatch = useAppDispatch();
-  const notifications = useAppSelector((state) => selectProjectNotifications(state, projectId));
+  const query = useProjectNotifications(projectId ?? undefined);
+  const refetch = query.refetch;
 
   const fetchNotifications = useCallback(() => {
     if (!projectId) return;
-    void dispatch(fetchProjectNotifications(projectId));
-  }, [dispatch, projectId]);
+    void refetch();
+  }, [refetch, projectId]);
 
-  return { notifications, refetch: fetchNotifications };
+  return { notifications: query.data ?? EMPTY_NOTIFICATIONS, refetch: fetchNotifications };
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { OpenQuestionsBlock } from "./OpenQuestionsBlock";
@@ -59,6 +59,35 @@ describe("OpenQuestionsBlock", () => {
       status: "resolved",
       resolvedAt: "2025-01-01T00:02:00Z",
     });
+  });
+
+  it("resolves an answer against its displayed revision after background refresh", async () => {
+    const view = (revision: number) => (
+      <MemoryRouter>
+        <OpenQuestionsBlock
+          notification={{ ...mockNotification, revision }}
+          projectId="proj-1"
+          source="plan"
+          sourceId="plan-1"
+          onResolved={onResolved}
+          onAnswerSent={onAnswerSent}
+        />
+      </MemoryRouter>
+    );
+    const { rerender } = render(view(1));
+    fireEvent.change(screen.getByTestId("open-questions-answer-input"), {
+      target: { value: "Web" },
+    });
+    rerender(view(2));
+    fireEvent.click(screen.getByTestId("open-questions-answer-btn"));
+    await waitFor(() =>
+      expect(api.notifications.resolve).toHaveBeenCalledWith(
+        "proj-1",
+        "oq-abc123",
+        expect.any(Object),
+        { expectedRevision: 1 }
+      )
+    );
   });
 
   it("renders open questions with Answer and Dismiss", () => {

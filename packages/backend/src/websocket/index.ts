@@ -9,7 +9,11 @@ import type {
   AgentChatReceivedEvent,
   AgentChatResponseEvent,
   AgentChatUnsupportedEvent,
+  ProjectIdentity,
 } from "@opensprint/shared";
+import { identityService, localIdentity } from "../services/identity.service.js";
+import { CollaborationService } from "../services/collaboration.service.js";
+import { runWithRequestContext } from "../services/request-context.js";
 import { eventRelay } from "../services/event-relay.service.js";
 import { getPlanAgentOutput } from "../services/plan-agent-output-buffer.service.js";
 import { createLogger } from "../utils/logger.js";
@@ -19,7 +23,12 @@ import {
   type SendMessageResult,
 } from "../services/agent-chat.service.js";
 import { requestHasValidBearerToken } from "../services/local-session-auth.service.js";
-import { consumeWebSocketUpgradeTicket } from "../services/websocket-upgrade-ticket.service.js";
+import {
+  consumeWebSocketUpgradeTicket,
+  consumeScopedWebSocketTicket,
+} from "../services/websocket-upgrade-ticket.service.js";
+const upgradePrincipals = new WeakMap<IncomingMessage, ProjectIdentity>();
+const socketPrincipals = new WeakMap<WebSocket, ProjectIdentity>();
 
 const log = createLogger("websocket");
 
@@ -37,7 +46,7 @@ function webSocketUpgradeAuthenticated(req: IncomingMessage, url: URL): boolean 
   return false;
 }
 
-function verifyWebSocketUpgrade(info: { req: IncomingMessage }): boolean {
+async function authenticateWebSocketUpgrade(info: { req: IncomingMessage }): Promise<boolean> {
   const req = info.req;
   let url: URL;
   try {
@@ -50,7 +59,25 @@ function verifyWebSocketUpgrade(info: { req: IncomingMessage }): boolean {
   if (pathname !== "/ws" && !match) {
     return false;
   }
-  return webSocketUpgradeAuthenticated(req, url);
+  if (webSocketUpgradeAuthenticated(req, url)) {
+    upgradePrincipals.set(req, localIdentity());
+    return true;
+  }
+  if (!match) return false;
+  try {
+    const projectId = decodeURIComponent(match[1]!);
+    const ticket = url.searchParams.get("ticket");
+    const claims = ticket ? await consumeScopedWebSocketTicket(ticket) : null;
+    if (ticket && (!claims || claims.projectId !== projectId)) return false;
+    const principal = claims
+      ? await identityService.resolveHash(claims.credentialHash, projectId)
+      : await identityService.resolve(req.headers.authorization, projectId);
+    identityService.require(principal, "read");
+    upgradePrincipals.set(req, principal);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Map of projectId → Set of connected clients */
@@ -73,6 +100,7 @@ let wss: WebSocketServer;
 let clientHasConnected = false;
 let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 const HEARTBEAT_INTERVAL_MS = 30_000;
+const MAX_PENDING_GUIDANCE_EVENTS = 32;
 const wsAlive = new WeakMap<WebSocket, boolean>();
 
 /** Whether any WebSocket client has connected since this server booted. */
@@ -87,7 +115,7 @@ export interface WebSocketOptions {
     projectId: string,
     taskId: string,
     attemptId: string,
-    send: () => SendMessageResult
+    send: () => Promise<SendMessageResult>
   ) => Promise<SendMessageResult>;
 }
 
@@ -115,10 +143,26 @@ export function setupWebSocket(server: Server, options?: WebSocketOptions): void
     });
   });
   eventRelay.init(projectClients, agentSubscriptions, planAgentSubscriptions);
+  eventRelay.setAuthorizationCheck((ws) =>
+    socketPrincipals.get(ws)?.local !== false
+      ? true
+      : reauthorizeSocket(ws)
+          .then(() => true)
+          .catch(() => false)
+  );
 
-  wss = new WebSocketServer({ server, verifyClient: verifyWebSocketUpgrade });
+  wss = new WebSocketServer({
+    server,
+    maxPayload: 64 * 1024,
+    verifyClient: (info, done) => {
+      void authenticateWebSocketUpgrade(info)
+        .then((ok) => done(ok, ok ? undefined : 401))
+        .catch(() => done(false, 401));
+    },
+  });
 
   wss.on("connection", (ws, req) => {
+    socketPrincipals.set(ws, upgradePrincipals.get(req) ?? localIdentity());
     // Extract projectId from URL: /ws/projects/:id (PRD §11.2)
     const url = new URL(req.url ?? "", `http://${req.headers.host ?? "localhost"}`);
     const path = url.pathname;
@@ -144,8 +188,13 @@ export function setupWebSocket(server: Server, options?: WebSocketOptions): void
 
     ws.on("pong", () => {
       wsAlive.set(ws, true);
+      void reauthorizeSocket(ws).catch(() => ws.close(1008, "Project access revoked"));
     });
 
+    // Keep receive order before asynchronous authorization and durable acceptance.
+    // The bound includes the active request, so a blocked store cannot grow an unbounded queue.
+    let guidanceTail = Promise.resolve();
+    let pendingGuidance = 0;
     ws.on("message", (data) => {
       try {
         const parsed: unknown = JSON.parse(data.toString());
@@ -154,9 +203,37 @@ export function setupWebSocket(server: Server, options?: WebSocketOptions): void
           parsed !== null &&
           typeof (parsed as Record<string, unknown>).type === "string"
         ) {
-          void handleClientEvent(ws, parsed as ClientEvent).catch((err) => {
-            log.error("WebSocket event failed", { err });
-          });
+          const event = parsed as ClientEvent;
+          if (event.type === "agent.chat.send") {
+            if (pendingGuidance >= MAX_PENDING_GUIDANCE_EVENTS) {
+              sendSocketData(
+                ws,
+                JSON.stringify({
+                  type: "agent.chat.unsupported",
+                  taskId: event.taskId,
+                  clientMessageId: event.clientMessageId,
+                  reason:
+                    "Too many pending guidance requests — wait for acceptance before sending more.",
+                })
+              );
+              return;
+            }
+            pendingGuidance++;
+            guidanceTail = guidanceTail
+              .then(async () => {
+                if (ws.readyState === WebSocket.OPEN) await handleClientEvent(ws, event);
+              })
+              .catch((err) => {
+                log.error("WebSocket event failed", { err });
+              })
+              .finally(() => {
+                pendingGuidance--;
+              });
+          } else {
+            void handleClientEvent(ws, event).catch((err) => {
+              log.error("WebSocket event failed", { err });
+            });
+          }
         } else {
           log.warn("Ignoring non-object or type-less WebSocket message");
         }
@@ -197,7 +274,19 @@ export function setupWebSocket(server: Server, options?: WebSocketOptions): void
   }, HEARTBEAT_INTERVAL_MS);
 }
 
+async function reauthorizeSocket(ws: WebSocket): Promise<ProjectIdentity> {
+  const principal = socketPrincipals.get(ws) ?? localIdentity();
+  if (principal.local) return principal;
+  const current = await identityService.resolveHash(
+    principal.credentialHash!,
+    wsToProjectId.get(ws)
+  );
+  identityService.require(current, "read");
+  socketPrincipals.set(ws, current);
+  return current;
+}
 async function handleClientEvent(ws: WebSocket, event: ClientEvent): Promise<void> {
+  const principal = await reauthorizeSocket(ws);
   if (!event || typeof event !== "object" || !event.type) {
     log.warn("Ignoring malformed client event");
     return;
@@ -215,7 +304,8 @@ async function handleClientEvent(ws: WebSocket, event: ClientEvent): Promise<voi
           // This eliminates the window where the same tail text appears in
           // both the backfill and a live chunk, preventing duplicate output.
           getLiveOutput(projectId, taskId)
-            .then((output) => {
+            .then(async (output) => {
+              await reauthorizeSocket(ws);
               if (ws.readyState === 1) {
                 if (output.length > 0) {
                   const backfill: AgentOutputBackfillEvent = {
@@ -235,8 +325,14 @@ async function handleClientEvent(ws: WebSocket, event: ClientEvent): Promise<voi
                 agentSubscriptions.get(ws)?.add(taskId);
               }
             })
-            .catch((err) => {
+            .catch(async (err) => {
               log.warn("getLiveOutput failed on subscribe", { taskId, err });
+              try {
+                await reauthorizeSocket(ws);
+              } catch {
+                ws.close(1008, "Project access revoked");
+                return;
+              }
               agentSubscriptions.get(ws)?.add(taskId);
             });
         } else {
@@ -339,11 +435,19 @@ async function handleClientEvent(ws: WebSocket, event: ClientEvent): Promise<voi
             throw new Error("Agent run changed; retry guidance");
           return chatService.sendMessage(projectId, taskId, message, undefined, {
             clientMessageId,
+            actorId: principal.actorId,
           });
         };
-        result = executeAgentGuidance
-          ? await executeAgentGuidance(projectId, taskId, attemptId, send)
-          : send();
+        identityService.require(principal, "control");
+        result = await runWithRequestContext(
+          { principal, projectId, requestId: clientMessageId },
+          () =>
+            principal.local && executeAgentGuidance
+              ? executeAgentGuidance(projectId, taskId, attemptId, send)
+              : new CollaborationService().withControl(projectId, principal, attemptId, async () =>
+                  send()
+                )
+        );
       } catch (error) {
         log.error("Could not persist agent guidance", { taskId, error });
         sendSocketData(

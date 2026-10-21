@@ -4,6 +4,10 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { COLLABORATION_SCHEMA_SQL } from "./collaboration-schema.js";
 import { PUBLICATION_SCHEMA_SQL } from "./publication-schema.js";
+import { IDENTITY_SCHEMA_SQL } from "./identity-schema.js";
+import { DURABLE_STATE_SCHEMA_SQL } from "./durable-state-schema.js";
+import { EXECUTION_SCHEMA_SQL } from "./execution-schema.js";
+import { PROJECT_CATALOG_SCHEMA_SQL } from "./project-catalog-schema.js";
 
 /**
  * Postgres-compatible schema for Open Sprint.
@@ -1119,4 +1123,8 @@ export async function runSchema(
   }
   await executeSqlStatements(client, COLLABORATION_SCHEMA_SQL, dialect);
   await executeSqlStatements(client, PUBLICATION_SCHEMA_SQL, dialect);
+  await executeSqlStatements(client, IDENTITY_SCHEMA_SQL, dialect);
+  await executeSqlStatements(client, DURABLE_STATE_SCHEMA_SQL, dialect);
+  await executeSqlStatements(client, EXECUTION_SCHEMA_SQL, dialect);
+  await executeSqlStatements(client, PROJECT_CATALOG_SCHEMA_SQL, dialect);
 }

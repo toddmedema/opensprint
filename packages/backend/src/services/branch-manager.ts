@@ -34,6 +34,7 @@ import { ProjectService } from "./project.service.js";
 import { heartbeatService } from "./heartbeat.service.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import { isNodeDependencyStrategy, resolveToolchainProfile } from "./toolchain-profile.service.js";
+import { unlinkWorktreeLinks } from "../utils/worktree-links.js";
 import { worktreeRegistry } from "./worktree-registry.js";
 import { worktreeLeaseService } from "./worktree-lease.service.js";
 
@@ -1374,6 +1375,7 @@ export class BranchManager {
           ourPath,
         });
         try {
+          await unlinkWorktreeLinks(safeOtherPath);
           await this.gitExec(repoPath, ["worktree", "remove", safeOtherPath, "--force"]);
         } catch {
           await this.removeWorktreeDirectorySafely(
@@ -2227,6 +2229,7 @@ export class BranchManager {
       });
     }
 
+    await unlinkWorktreeLinks(safeRegisteredPath);
     try {
       log.info("worktree.removal_after_lease_gate", {
         worktreeKey,
@@ -2297,6 +2300,7 @@ export class BranchManager {
     if (await pathGone()) return true;
 
     if (!opts?.skipGitWorktreeRemove) {
+      await unlinkWorktreeLinks(safePath);
       try {
         await this.gitExec(repoPath, ["worktree", "remove", safePath, "--force"]);
       } catch {

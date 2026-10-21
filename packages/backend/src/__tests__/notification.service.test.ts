@@ -17,6 +17,10 @@ vi.mock("../services/task-store.service.js", async () => {
         if (!sharedClientRef.current) throw new Error("sharedClient not initialized");
         return sharedClientRef.current;
       },
+      async runRead<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
+        if (!sharedClientRef.current) throw new Error("sharedClient not initialized");
+        return fn(sharedClientRef.current);
+      },
       async runWrite<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
         if (!sharedClientRef.current) throw new Error("sharedClient not initialized");
         return fn(sharedClientRef.current);

@@ -8,6 +8,7 @@ import { exec } from "child_process";
 import { readFile, writeFile, readdir, mkdir } from "fs/promises";
 import path from "path";
 import { promisify } from "util";
+import { getDeploymentMode } from "./deployment-mode.js";
 
 const execAsync = promisify(exec);
 
@@ -324,6 +325,8 @@ export async function executeTool(
   args: Record<string, unknown>,
   context: AgentToolsContext
 ): Promise<string> {
+  if (getDeploymentMode() === "isolated-hosted")
+    throw new Error("Host file and shell tools are disabled in isolated-hosted mode");
   const fn = EXECUTORS[name];
   if (!fn) return `Error: unknown tool "${name}"`;
   return fn(args, context);

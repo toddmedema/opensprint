@@ -3,6 +3,10 @@ export type ConversationContext = "sketch" | `plan:${string}` | `plan-draft:${st
 
 /** A message in a conversation */
 export interface ConversationMessage {
+  /** Stable persisted identity, including when the message was imported from a legacy conversation. */
+  id?: string;
+  actorId?: string;
+  requestId?: string;
   role: "user" | "assistant";
   content: string;
   timestamp: string;

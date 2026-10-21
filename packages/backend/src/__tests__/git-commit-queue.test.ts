@@ -147,63 +147,33 @@ describe.skipIf(!gitQueuePostgresOk)("GitCommitQueue", () => {
     await fs.rm(repoPath, { recursive: true, force: true }).catch(() => {});
   });
 
-  it("should enqueue and process prd_update job", async () => {
-    await fs.mkdir(path.join(repoPath, ".opensprint"), { recursive: true });
-    await fs.writeFile(path.join(repoPath, "SPEC.md"), "# Product Specification\n\n", "utf-8");
-    await fs.writeFile(
-      path.join(repoPath, ".opensprint", "spec-metadata.json"),
-      JSON.stringify({ version: 0, changeLog: [] }),
-      "utf-8"
-    );
-
-    await gitCommitQueue.enqueueAndWait({
-      type: "prd_update",
-      repoPath,
-      source: "sketch",
-    });
-
-    const { stdout } = await execAsync("git log -1 --oneline", { cwd: repoPath });
-    expect(stdout).toContain("prd:");
+  it("rejects legacy SPEC commits without advancing Git", async () => {
+    const before = (await execAsync("git rev-parse HEAD", { cwd: repoPath })).stdout;
+    await fs.writeFile(path.join(repoPath, "SPEC.md"), "Unreviewed editor content\n");
+    await expect(
+      gitCommitQueue.enqueueAndWait({ type: "prd_update", repoPath, source: "sketch" })
+    ).rejects.toThrow("Legacy SPEC commits are disabled");
+    expect((await execAsync("git rev-parse HEAD", { cwd: repoPath })).stdout).toBe(before);
   });
 
-  it("should process jobs in FIFO order", async () => {
-    await fs.mkdir(path.join(repoPath, ".opensprint"), { recursive: true });
-    await fs.writeFile(path.join(repoPath, "SPEC.md"), "# Product Specification\n\n", "utf-8");
-    await fs.writeFile(
-      path.join(repoPath, ".opensprint", "spec-metadata.json"),
-      JSON.stringify({ version: 0, changeLog: [] }),
-      "utf-8"
-    );
-
-    gitCommitQueue.enqueue({
-      type: "prd_update",
+  it("processes trusted repository operations in FIFO order and drains", async () => {
+    const order: number[] = [];
+    void gitCommitQueue.enqueue({
+      type: "repository_operation",
       repoPath,
-      source: "sketch",
+      run: async () => {
+        order.push(1);
+      },
+    });
+    void gitCommitQueue.enqueue({
+      type: "repository_operation",
+      repoPath,
+      run: async () => {
+        order.push(2);
+      },
     });
     await gitCommitQueue.drain();
-
-    const { stdout } = await execAsync("git log -1 --oneline", { cwd: repoPath });
-    expect(stdout).toContain("prd:");
-  });
-
-  it("should support drain for tests", async () => {
-    await fs.mkdir(path.join(repoPath, ".opensprint"), { recursive: true });
-    await fs.writeFile(path.join(repoPath, "SPEC.md"), "# Product Specification\n\n", "utf-8");
-    await fs.writeFile(
-      path.join(repoPath, ".opensprint", "spec-metadata.json"),
-      JSON.stringify({ version: 0, changeLog: [] }),
-      "utf-8"
-    );
-
-    gitCommitQueue.enqueue({
-      type: "prd_update",
-      repoPath,
-      source: "sketch",
-    });
-    await gitCommitQueue.drain();
-
-    const { stdout } = await execAsync("git log -1 --oneline", { cwd: repoPath });
-    expect(stdout).toContain("prd:");
+    expect(order).toEqual([1, 2]);
   });
 
   it("should merge a branch to main", async () => {
@@ -342,7 +312,7 @@ describe.skipIf(!gitQueuePostgresOk)("GitCommitQueue", () => {
     await execAsync('git add other.ts && git commit -m "add other"', { cwd: repoPath });
     await execAsync("git checkout main", { cwd: repoPath });
     await execAsync(
-      "git merge --no-ff opensprint/task-2 -m 'merge: opensprint/task-2 — Already done'",
+      'git merge --no-ff opensprint/task-2 -m "merge: opensprint/task-2 — Already done"',
       { cwd: repoPath }
     );
     const { stdout: afterFirst } = await execAsync("git log -1 --oneline", { cwd: repoPath });

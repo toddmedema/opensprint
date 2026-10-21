@@ -21,6 +21,7 @@ describe("project-scoped commands and intake with SQLite", () => {
     db = await initAppDb("sqlite://:memory:");
     vi.spyOn(taskStore, "getDb").mockResolvedValue(await db.getClient());
     vi.spyOn(taskStore, "runWrite").mockImplementation((fn) => db.runWrite(fn));
+    vi.spyOn(taskStore, "runRead").mockImplementation((fn) => db.runRead!(fn));
     a = (
       await intakeStore.upsertItem({
         project_id: "A",

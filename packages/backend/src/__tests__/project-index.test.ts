@@ -12,10 +12,12 @@ describe("project-index", () => {
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-project-index-"));
     originalHome = process.env.HOME;
     process.env.HOME = tempDir;
+    projectIndex.setProjectIndexPathForTesting(path.join(tempDir, ".opensprint", "projects.json"));
   });
 
   afterEach(async () => {
     process.env.HOME = originalHome;
+    projectIndex.setProjectIndexPathForTesting(null);
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 

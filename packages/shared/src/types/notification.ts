@@ -45,6 +45,7 @@ export interface SelfImprovementApprovalPayload {
 
 /** Open question / notification (agent clarification request or API-blocked human notification) */
 export interface Notification {
+  revision?: number;
   id: string;
   projectId: string;
   source: NotificationSource;

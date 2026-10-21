@@ -69,7 +69,10 @@ export function buildPlanHierarchyCache(plans: Plan[]): Record<string, PlanHiera
   return cache;
 }
 
-function syncPlanHierarchyCache(state: { plans: Plan[]; planHierarchyCache: Record<string, PlanHierarchyNode> }) {
+function syncPlanHierarchyCache(state: {
+  plans: Plan[];
+  planHierarchyCache: Record<string, PlanHierarchyNode>;
+}) {
   state.planHierarchyCache = buildPlanHierarchyCache(state.plans);
 }
 
@@ -356,12 +359,16 @@ export const updatePlan = createAsyncThunk(
     projectId,
     planId,
     content,
+    expectedRevision,
   }: {
     projectId: string;
     planId: string;
     content: string;
+    expectedRevision?: number;
   }) => {
-    return api.plans.update(projectId, planId, { content });
+    return expectedRevision === undefined
+      ? api.plans.update(projectId, planId, { content })
+      : api.plans.update(projectId, planId, { content }, { expectedRevision });
   }
 );
 

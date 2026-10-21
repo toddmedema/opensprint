@@ -1,5 +1,5 @@
 /**
- * Project index file operations for ~/.opensprint/projects.json.
+ * SQL project catalog with a one-time import from ~/.opensprint/projects.json.
  * Handles read/write with missing directory creation.
  * Schema: { projects: [{ id, name, repoPath, createdAt }] }
  */
@@ -10,6 +10,7 @@ import type { ProjectIndex, ProjectIndexEntry } from "@opensprint/shared";
 import { writeJsonAtomic } from "../utils/file-utils.js";
 import { createLogger } from "../utils/logger.js";
 import { fireAndForget } from "../utils/fire-and-forget.js";
+import { projectCatalogService } from "./project-catalog.service.js";
 
 const log = createLogger("project-index");
 
@@ -101,6 +102,10 @@ async function saveIndex(index: ProjectIndex): Promise<void> {
  * Get all projects from the index.
  */
 export async function getProjects(): Promise<ProjectIndexEntry[]> {
+  if (!projectIndexPathForTesting) {
+    await ensureCatalogImported();
+    return projectCatalogService.list();
+  }
   const index = await loadIndex();
   return index.projects;
 }
@@ -109,6 +114,11 @@ export async function getProjects(): Promise<ProjectIndexEntry[]> {
  * Add a project to the index.
  */
 export async function addProject(entry: ProjectIndexEntry): Promise<void> {
+  if (!projectIndexPathForTesting) {
+    await ensureCatalogImported();
+    await projectCatalogService.add(toCanonicalEntry(entry));
+    return;
+  }
   const index = await loadIndex();
   index.projects.push(entry);
   await saveIndex(index);
@@ -118,13 +128,18 @@ export async function addProject(entry: ProjectIndexEntry): Promise<void> {
  * Remove a project from the index by id.
  */
 export async function removeProject(id: string): Promise<void> {
+  if (!projectIndexPathForTesting) {
+    await ensureCatalogImported();
+    await projectCatalogService.remove(id);
+    return;
+  }
   const index = await loadIndex();
   index.projects = index.projects.filter((p) => p.id !== id);
   await saveIndex(index);
 }
 
 /** Strip to canonical ProjectIndexEntry (no description or other legacy fields). */
-function toCanonicalEntry(entry: ProjectIndexEntry & Record<string, unknown>): ProjectIndexEntry {
+function toCanonicalEntry(entry: ProjectIndexEntry): ProjectIndexEntry {
   return {
     id: entry.id,
     name: entry.name ?? "",
@@ -140,6 +155,10 @@ export async function updateProject(
   id: string,
   updates: Partial<Omit<ProjectIndexEntry, "id">>
 ): Promise<ProjectIndexEntry | null> {
+  if (!projectIndexPathForTesting) {
+    await ensureCatalogImported();
+    return projectCatalogService.update(id, updates);
+  }
   const index = await loadIndex();
   const idx = index.projects.findIndex((p) => p.id === id);
   if (idx === -1) return null;
@@ -153,4 +172,43 @@ export async function updateProject(
   index.projects[idx] = updated;
   await saveIndex(index);
   return updated;
+}
+
+async function ensureCatalogImported(): Promise<void> {
+  const { file } = getProjectIndexPaths();
+  const source = os.hostname() + ":" + file;
+  if (await projectCatalogService.hasImported(source)) return;
+  let content: string;
+  try {
+    content = await fs.readFile(file, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    await projectCatalogService.importLegacy(source, []);
+    return;
+  }
+  const parsed: unknown = JSON.parse(content);
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    !("projects" in parsed) ||
+    !Array.isArray(parsed.projects)
+  )
+    throw new Error(
+      "Legacy project index must contain a projects array; migration left the original file intact"
+    );
+  if (!parsed.projects.every(isValidEntry))
+    throw new Error(
+      "Legacy project index contains an invalid project; migration left the original file intact"
+    );
+  await projectCatalogService.importLegacy(
+    source,
+    parsed.projects.map((project) => toCanonicalEntry(project))
+  );
+}
+
+/** Shared SQL catalog revision for callers that need a discovery invalidation token. */
+export async function getProjectIndexRevision(): Promise<number | null> {
+  if (projectIndexPathForTesting) return null;
+  await ensureCatalogImported();
+  return projectCatalogService.revision();
 }

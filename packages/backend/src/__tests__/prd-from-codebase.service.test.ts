@@ -38,6 +38,11 @@ vi.mock("../websocket/index.js", () => ({
   broadcastToProject: (...args: unknown[]) => mockBroadcastToProject(...args),
 }));
 
+// These temporary repository fixtures are intentionally outside the registered SQL catalog.
+vi.mock("../services/project-index.js", () => ({
+  getProjects: vi.fn().mockResolvedValue([]),
+}));
+
 describe("PrdFromCodebaseService", () => {
   beforeEach(() => {
     vi.clearAllMocks();

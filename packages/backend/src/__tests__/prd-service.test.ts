@@ -3,7 +3,9 @@ import fs from "fs/promises";
 import os from "node:os";
 import path from "path";
 import { PrdService } from "../services/prd.service.js";
-import { SPEC_MD, prdToSpecMarkdown } from "@opensprint/shared";
+import { SPEC_MD, SPEC_METADATA_PATH, prdToSpecMarkdown } from "@opensprint/shared";
+import { specPublicationService } from "../services/spec-publication.service.js";
+import { taskStore } from "../services/task-store.service.js";
 
 /** Isolated repo path per test — avoids ENOENT flakes from a fixed /tmp directory. */
 const { prdTestRepo } = vi.hoisted(() => ({ prdTestRepo: { repoPath: "" } }));
@@ -31,6 +33,40 @@ const prdSnapshotsStore: Record<
   string,
   { project_id: string; version: number; content: string; created_at: string }
 > = {};
+const prdDrafts: Record<string, { revision: number; content: string }> = {};
+
+vi.mock("../services/spec-publication.service.js", () => ({
+  specPublicationService: {
+    getDraft: async (projectId: string) => prdDrafts[projectId] ?? null,
+    saveDraftOwned: async (
+      projectId: string,
+      content: string,
+      expectedRevision: number,
+      options: { metadata: import("@opensprint/shared").Prd; localPolicy: boolean }
+    ) => {
+      expect(options.localPolicy).toBe(true);
+      expect(expectedRevision).toBe(prdDrafts[projectId]?.revision ?? 0);
+      const prd = options.metadata;
+      prdDrafts[projectId] = { revision: expectedRevision + 1, content };
+      prdMetadataStore[projectId] = {
+        version: prd.version,
+        change_log: JSON.stringify(prd.changeLog),
+        section_versions: JSON.stringify(
+          Object.fromEntries(
+            Object.entries(prd.sections).map(([key, section]) => [key, section.version])
+          )
+        ),
+      };
+      prdSnapshotsStore[`${projectId}:${prd.version}`] = {
+        project_id: projectId,
+        version: prd.version,
+        content,
+        created_at: new Date().toISOString(),
+      };
+      return prdDrafts[projectId];
+    },
+  },
+}));
 
 vi.mock("../services/task-store.service.js", () => ({
   taskStore: {
@@ -164,6 +200,7 @@ describe.sequential("PrdService", () => {
   };
 
   beforeEach(async () => {
+    for (const key of Object.keys(prdDrafts)) delete prdDrafts[key];
     for (const k of Object.keys(prdMetadataStore)) delete prdMetadataStore[k];
     for (const k of Object.keys(prdSnapshotsStore)) delete prdSnapshotsStore[k];
     prdTestRepo.repoPath = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-test-prd-"));
@@ -190,6 +227,42 @@ describe.sequential("PrdService", () => {
     // Version is 0 when loading from SPEC.md only (no prd_metadata row yet)
     expect(prd.version).toBe(0);
     expect(prd.sections.executive_summary.content).toBe("Test summary");
+  });
+
+  it.each(["draft", "metadata"])(
+    "preserves the existing document when its SQL %s read is temporarily unavailable",
+    async (read) => {
+      await prdService.updateSection("test-project", "feature_list", "Existing features", "sketch");
+      const previous = { ...prdDrafts["test-project"] };
+      const failure = new Error("SQL connection unavailable");
+      const draftRead =
+        read === "draft"
+          ? vi.spyOn(specPublicationService, "getDraft").mockRejectedValueOnce(failure)
+          : undefined;
+      if (read === "metadata") vi.mocked(taskStore.getDb).mockRejectedValueOnce(failure);
+      try {
+        await expect(
+          prdService.updateSection("test-project", "executive_summary", "New summary", "sketch")
+        ).rejects.toBe(failure);
+        expect(prdDrafts["test-project"]).toEqual(previous);
+        expect((await prdService.getPrd("test-project")).sections.feature_list.content).toBe(
+          "Existing features"
+        );
+      } finally {
+        draftRead?.mockRestore();
+      }
+    }
+  );
+
+  it("requires explicit migration for legacy metadata when its SQL row is absent", async () => {
+    const metadataPath = path.join(prdTestRepo.repoPath, SPEC_METADATA_PATH);
+    await fs.mkdir(path.dirname(metadataPath), { recursive: true });
+    await fs.writeFile(metadataPath, JSON.stringify({ version: 7, changeLog: [] }));
+    await expect(
+      prdService.updateSection("test-project", "executive_summary", "New summary", "sketch")
+    ).rejects.toMatchObject({ code: "MIGRATION_REQUIRED", details: { resource: "PRD metadata" } });
+    expect(prdDrafts["test-project"]).toBeUndefined();
+    expect(prdMetadataStore["test-project"]).toBeUndefined();
   });
 
   it("should get a specific section", async () => {

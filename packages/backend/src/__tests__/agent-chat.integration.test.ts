@@ -1,3 +1,4 @@
+import { initAppDb, type AppDb } from "../db/app-db.js";
 /**
  * Integration tests for agent chat (WebSocket) and open-editor (HTTP) flows.
  *
@@ -57,6 +58,10 @@ vi.mock("../services/orchestrator.service.js", () => ({
 
 vi.mock("../services/global-settings.service.js", () => ({
   getGlobalSettings: vi.fn(),
+  getEffectiveDatabaseConfig: vi
+    .fn()
+    .mockResolvedValue({ source: "default", databaseUrl: "sqlite://:memory:" }),
+  getDatabaseUrl: vi.fn().mockResolvedValue("sqlite://:memory:"),
 }));
 
 vi.mock("../services/hil-service.js", () => ({
@@ -172,11 +177,16 @@ describe("agent-chat integration (WebSocket)", () => {
   let activeAgents: ActiveAgentsService;
   let chatSvc: AgentChatService;
   let chatBasePath: string;
+  let chatDb: AppDb;
 
   beforeEach(async () => {
     chatBasePath = await fs.mkdtemp(path.join(os.tmpdir(), "chat-integ-"));
     activeAgents = new ActiveAgentsService();
-    chatSvc = new AgentChatService(activeAgents, chatBasePath);
+    chatDb = await initAppDb("sqlite://:memory:");
+    chatSvc = new AgentChatService(activeAgents, chatBasePath, {
+      runWrite: (fn) => chatDb.runWrite(fn),
+      runRead: (fn) => chatDb.runRead!(fn),
+    });
 
     server = createServer((_req, res) => {
       res.writeHead(404);
@@ -196,6 +206,7 @@ describe("agent-chat integration (WebSocket)", () => {
     closeWebSocket();
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await new Promise((r) => setTimeout(r, 50));
+    await chatDb.close();
     await fs.rm(chatBasePath, { recursive: true, force: true }).catch(() => {});
   });
 
@@ -242,7 +253,7 @@ describe("agent-chat integration (WebSocket)", () => {
     expect(response.content).toBe("I found the issue in line 42.");
 
     // Chat log persisted on disk
-    const history = chatSvc.getHistory("proj-integ", "task-api");
+    const history = await chatSvc.getHistory("proj-integ", "task-api");
     expect(history).toHaveLength(1);
     expect(history[0].role).toBe("user");
     expect(history[0].content).toBe("Describe the bug");
@@ -369,7 +380,7 @@ describe("agent-chat integration (WebSocket)", () => {
     const drained = queue.drain();
     expect(drained.map((d) => d.message)).toEqual(["First", "Second", "Third"]);
 
-    const history = chatSvc.getHistory("proj-multi", "task-multi");
+    const history = await chatSvc.getHistory("proj-multi", "task-multi");
     expect(history).toHaveLength(3);
     expect(history.map((m) => m.content)).toEqual(["First", "Second", "Third"]);
 
@@ -397,7 +408,7 @@ describe("agent-chat integration (WebSocket)", () => {
     const _received = await receivedPromise;
 
     // Simulate assistant responding and persisting
-    const assistantMsg = chatSvc.appendAssistantMessage(
+    const assistantMsg = await chatSvc.appendAssistantMessage(
       "task-round",
       "Tests fixed.",
       1,
@@ -413,7 +424,7 @@ describe("agent-chat integration (WebSocket)", () => {
     expect(response.messageId).toBe(assistantMsg.id);
 
     // Full history on disk: user + assistant
-    const history = chatSvc.getHistory("proj-round", "task-round");
+    const history = await chatSvc.getHistory("proj-round", "task-round");
     expect(history).toHaveLength(2);
     expect(history[0].role).toBe("user");
     expect(history[0].content).toBe("Fix tests");

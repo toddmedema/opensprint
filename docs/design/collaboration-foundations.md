@@ -1,5 +1,7 @@
 # Collaboration and execution ownership
 
+This document records the foundation delivered in PR #12. Its rollout gaps are addressed by the stacked implementation described in [Collaboration completion](collaboration-completion.md); use that document for the current runtime and deployment contract.
+
 This implements the first collaboration foundation from the first-principles review in thread `01a15b66-fc06-7882-9cf2-f85c3ed9a119`. The product remains a modular monolith with one trusted backend. Projects, the default shared session, ordinary conversations and individual execution attempts have separate identities and lifetimes. Closing a browser does not own or cancel execution.
 
 ## Using the shared session

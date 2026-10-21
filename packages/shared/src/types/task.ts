@@ -79,6 +79,7 @@ export function mapStatusToKanban(status: string): KanbanColumn {
 
 /** Task entity */
 export interface Task {
+  revision?: number;
   id: string;
   title: string;
   description: string;

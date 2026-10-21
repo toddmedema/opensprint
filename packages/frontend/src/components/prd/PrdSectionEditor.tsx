@@ -9,7 +9,12 @@ const DEBOUNCE_MS = 800;
 export interface PrdSectionEditorProps {
   sectionKey: string;
   markdown: string;
-  onSave: (section: string, markdown: string) => void;
+  onSave: (
+    section: string,
+    markdown: string,
+    expectedRevision?: number
+  ) => void | Promise<number | void>;
+  revision?: number;
   disabled?: boolean;
   /** When true, skip prose dark: variants (plan embed). Selection still uses dark highlight so text stays readable. */
   lightMode?: boolean;
@@ -34,6 +39,7 @@ export function PrdSectionEditor({
   sectionKey,
   markdown,
   onSave,
+  revision,
   disabled = false,
   lightMode = false,
   diagrams = "none",
@@ -48,6 +54,19 @@ export function PrdSectionEditor({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pendingHtmlRef = useRef<string | null>(null);
+  const editRevision = useRef<number | undefined>(undefined);
+  const persist = useCallback(
+    (md: string) => {
+      const expected = editRevision.current ?? revision;
+      const result =
+        expected === undefined ? onSave(sectionKey, md) : onSave(sectionKey, md, expected);
+      if (result)
+        void result.then((nextRevision) => {
+          if (typeof nextRevision === "number") editRevision.current = nextRevision;
+        });
+    },
+    [onSave, sectionKey, revision]
+  );
 
   const mdOpts = useMemo(
     () => (diagrams === "mermaid" ? ({ diagrams: "mermaid" } as const) : undefined),
@@ -67,10 +86,10 @@ export function PrdSectionEditor({
       if (!md.trim() || md.trim() === "_No content yet_") md = "";
       if (md !== lastMarkdownRef.current) {
         lastMarkdownRef.current = md;
-        onSave(sectionKey, md);
+        persist(md);
       }
     }
-  }, [sectionKey, onSave, disabled, mdOpts]);
+  }, [disabled, mdOpts, persist]);
 
   const scheduleSave = useCallback(
     (html: string) => {
@@ -88,18 +107,19 @@ export function PrdSectionEditor({
         if (!md.trim() || md.trim() === "_No content yet_") md = "";
         if (md !== lastMarkdownRef.current) {
           lastMarkdownRef.current = md;
-          onSave(sectionKey, md);
+          persist(md);
         }
       }, DEBOUNCE_MS);
     },
-    [sectionKey, onSave, mdOpts]
+    [mdOpts, persist]
   );
 
   const handleInput = useCallback(() => {
     if (disabled || !elRef.current || isInternalUpdateRef.current) return;
+    if (editRevision.current === undefined) editRevision.current = revision;
     const html = elRef.current.innerHTML;
     scheduleSave(html);
-  }, [disabled, scheduleSave]);
+  }, [disabled, scheduleSave, revision]);
 
   // Register flush for beforeunload so pending edits persist on refresh/close
   useEffect(() => {
@@ -123,6 +143,7 @@ export function PrdSectionEditor({
     if (markdown === lastMarkdownRef.current) return;
     if (el.contains(document.activeElement)) return;
     if (pendingHtmlRef.current != null) return;
+    editRevision.current = undefined;
     lastMarkdownRef.current = markdown;
     const content = markdown.trim() ? markdown.trim() : "_No content yet_";
     markdownToHtml(content, mdOpts).then((html) => {

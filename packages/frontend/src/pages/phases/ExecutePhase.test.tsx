@@ -1,3 +1,4 @@
+import { queryKeys } from "../../api/queryKeys";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render as rtlRender, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -10,7 +11,6 @@ import { ExecutePhase } from "./ExecutePhase";
 import { api } from "../../api/client";
 import {
   setSelectedTaskId,
-  taskUpdated,
   initialExecuteState,
   toTasksByIdAndOrder,
 } from "../../store/slices/executeSlice";
@@ -24,13 +24,17 @@ import openQuestionsReducer, {
 import websocketReducer, { setConnected } from "../../store/slices/websocketSlice";
 import unreadPhaseReducer, { setPhaseUnread } from "../../store/slices/unreadPhaseSlice";
 import { MOBILE_BREAKPOINT } from "../../lib/constants";
+import { seedServerFixtureFromElement } from "../../test/seedServerFixtures";
 
 function createExecutePhaseQueryClient() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
 }
 
+let latestQueryClient: QueryClient;
 function render(ui: ReactElement) {
   const queryClient = createExecutePhaseQueryClient();
+  latestQueryClient = queryClient;
+  seedServerFixtureFromElement(queryClient, ui);
   return rtlRender(ui, {
     wrapper: ({ children }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -524,7 +528,13 @@ describe("ExecutePhase epic completed checkmark", () => {
     ).not.toBeInTheDocument();
 
     act(() => {
-      store.dispatch(taskUpdated({ taskId: "epic-1.2", status: "closed" }));
+      latestQueryClient.setQueryData(
+        queryKeys.tasks.list("proj-1"),
+        (tasks: Array<{ id: string }> | undefined) =>
+          (tasks ?? []).map((task) =>
+            task.id === "epic-1.2" ? { ...task, status: "closed", kanbanColumn: "done" } : task
+          )
+      );
     });
 
     // Switch to "done" filter so the epic stays visible (the "all" filter hides fully-completed epics)
@@ -922,7 +932,6 @@ describe("ExecutePhase top bar", () => {
 
     expect(screen.getByText("Awaiting approval")).toBeInTheDocument();
   });
-
 });
 
 describe("ExecutePhase epic merge mode indicator", () => {
@@ -1011,7 +1020,6 @@ describe("ExecutePhase epic merge mode indicator", () => {
     });
     expect(screen.getByText("Agent enhancement experiment in progress")).toBeInTheDocument();
   });
-
 });
 
 describe("ExecutePhase expandable search bar", () => {
@@ -1792,7 +1800,6 @@ describe("ExecutePhase view toggle", () => {
     expect(screen.getByRole("heading", { name: "In Progress" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Ready" })).toBeInTheDocument();
   });
-
 });
 
 describe("ExecutePhase Redux integration", () => {
@@ -3142,5 +3149,4 @@ describe("ExecutePhase task detail cached state", () => {
     expect(screen.getByTestId("task-detail-loading")).toBeInTheDocument();
     expect(screen.getByTestId("artifacts-loading")).toBeInTheDocument();
   });
-
 });

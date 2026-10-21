@@ -7,10 +7,8 @@ import { queryKeys } from "../../api/queryKeys";
  * When priority update succeeds:
  * - Update task detail cache in place (do NOT invalidate) so the sidebar does not
  *   refetch and show loading state. Only the priority component re-renders.
- * - Do NOT invalidate the tasks list: that triggers a refetch → setTasks → full Redux
- *   replace → ExecutePhase cascade re-renders and sidebar flicker. Redux is already
- *   updated in place by updateTaskPriority.fulfilled; list order will sync on next
- *   natural refetch (e.g. websocket, navigation).
+ * - The application server-state middleware invalidates the list after acceptance.
+ *   Query owns task data; Redux retains only the mutation's pending/error state.
  */
 export const executeListeners = createListenerMiddleware();
 

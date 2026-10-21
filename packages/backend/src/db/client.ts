@@ -54,6 +54,7 @@ export type DbRow = Record<string, unknown>;
  * SQL uses $1, $2, ... placeholders; params are passed as an array.
  */
 export interface DbClient {
+  readonly dialect?: "postgres" | "sqlite";
   /**
    * Execute a query and return all rows.
    * @param sql - SQL with $1, $2, ... placeholders
@@ -87,6 +88,7 @@ export interface DbClient {
  */
 export function createPostgresDbClient(pool: Pool): DbClient {
   const clientFromPool = (client: PoolClient): DbClient => ({
+    dialect: "postgres",
     async query(sql: string, params?: unknown[]): Promise<DbRow[]> {
       return withDatabaseErrorHandling(async () => {
         const result = await client.query(sql, sanitizeDbParams(params));
@@ -113,6 +115,7 @@ export function createPostgresDbClient(pool: Pool): DbClient {
   });
 
   return {
+    dialect: "postgres",
     async query(sql: string, params?: unknown[]): Promise<DbRow[]> {
       return withDatabaseErrorHandling(async () => {
         const result = await pool.query(sql, sanitizeDbParams(params));

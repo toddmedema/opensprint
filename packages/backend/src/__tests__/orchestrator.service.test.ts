@@ -16,12 +16,35 @@ import { ErrorCodes } from "../middleware/error-codes.js";
 import type { ReviewAgentResult } from "@opensprint/shared";
 import { OPEN_QUESTION_BLOCK_REASON } from "@opensprint/shared";
 import { buildOrchestratorTestStatusContent } from "../services/orchestrator-test-status.js";
+import { executionOwnershipService } from "../services/execution-ownership.service.js";
 
 vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => args,
   eq: (a: unknown, b: unknown) => [a, b],
 }));
 vi.mock("../db/drizzle-schema-pg.js", () => ({ plansTable: {} }));
+vi.mock("../services/execution-ownership.service.js", () => ({
+  backendOwnerId: "test-backend",
+  executionOwnershipService: {
+    acquire: vi.fn(async (input: Record<string, unknown>) => ({
+      ...input,
+      ownerId: "test-backend",
+      generation: 1,
+    })),
+    assertCurrent: vi.fn().mockResolvedValue(undefined),
+    transition: vi.fn().mockResolvedValue(undefined),
+    heartbeat: vi.fn().mockResolvedValue(true),
+    observe: vi.fn().mockResolvedValue([]),
+    requestStop: vi.fn().mockResolvedValue(undefined),
+    launch: vi.fn(async (_f: unknown, fn: () => unknown) => fn()),
+  },
+  projectLeadershipService: { getFence: vi.fn() },
+  withExecutionFence: (_f: unknown, fn: () => unknown) => fn(),
+  withoutExecutionFence: (fn: () => unknown) => fn(),
+}));
+vi.mock("../services/execution-output.service.js", () => ({
+  executionOutputService: { append: vi.fn().mockResolvedValue({ startOffset: 0, endOffset: 1 }) },
+}));
 
 // ─── Mocks ───
 
@@ -221,6 +244,9 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
     }),
     syncForPush: vi.fn().mockResolvedValue(undefined),
     getDb: vi.fn().mockResolvedValue(mockDb),
+    runRead: vi
+      .fn()
+      .mockImplementation(async (fn: (db: typeof mockDb) => Promise<unknown>) => fn(mockDb)),
     runWrite: vi.fn().mockImplementation(async (fn: (db: typeof mockDb) => void) => {
       await fn(mockDb);
     }),
@@ -674,7 +700,7 @@ describe("OrchestratorService (slot-based model)", () => {
    * taskStore.ready returns one task, agent lifecycle fires onDone callback with
    * a successful coding result.
    */
-  function setupSingleTaskFlow(taskId = "task-1") {
+  function setupSingleTaskFlow(taskId = "task-1", autoExitOnKill = true) {
     const task = makeTask(taskId);
     // Unique path per invocation so parallel vitest workers or other suites do not clobber disk state.
     const wtPath = path.join(os.tmpdir(), "opensprint-worktrees", `${taskId}-${randomUUID()}`);
@@ -688,14 +714,19 @@ describe("OrchestratorService (slot-based model)", () => {
     mockWriteJsonAtomic.mockResolvedValue(undefined);
 
     let capturedOnDone: ((code: number | null) => Promise<void>) | undefined;
+    const kill = vi.fn();
     mockInvokeCodingAgent.mockImplementation(
       (_prompt: string, _config: unknown, opts: { onExit: (code: number | null) => void }) => {
         capturedOnDone = opts.onExit as (code: number | null) => Promise<void>;
-        return { kill: vi.fn(), pid: 12345 };
+        kill.mockImplementation(() => {
+          // A stop request does not finish the fake process until its observed close callback.
+          if (autoExitOnKill) queueMicrotask(() => void opts.onExit(null));
+        });
+        return { kill, pid: 12345 };
       }
     );
 
-    return { task, wtPath, getOnDone: () => capturedOnDone! };
+    return { task, wtPath, kill, getOnDone: () => capturedOnDone! };
   }
 
   beforeEach(async () => {
@@ -3415,6 +3446,58 @@ describe("OrchestratorService (slot-based model)", () => {
     });
   });
 
+  describe("observed task control stops", () => {
+    const remote = {
+      projectId: "test-project-1",
+      taskId: "remote-task",
+      runKey: "remote-task:coding",
+      attemptId: "remote-attempt",
+      ownerId: "other-backend",
+      generation: 7,
+      state: "running" as const,
+      expiresAt: "2099-01-01T00:00:00Z",
+    };
+    it("requests a remote owner's stop and waits for its exact attempt's observed terminal state", async () => {
+      vi.mocked(executionOwnershipService.observe)
+        .mockResolvedValueOnce([remote])
+        .mockResolvedValueOnce([{ ...remote, state: "stopped" }]);
+      await orchestrator.stopTaskAndFreeSlot(projectId, "remote-task");
+      expect(executionOwnershipService.requestStop).toHaveBeenCalledWith(
+        projectId,
+        "remote-attempt"
+      );
+      expect(executionOwnershipService.observe).toHaveBeenCalledTimes(2);
+    });
+    it("rejects remote uncertainty instead of claiming that absence of a local slot proves exit", async () => {
+      vi.mocked(executionOwnershipService.observe).mockResolvedValueOnce([
+        { ...remote, state: "uncertain" },
+      ]);
+      await expect(
+        orchestrator.stopTaskAndFreeSlot(projectId, "remote-task")
+      ).rejects.toMatchObject({ statusCode: 409, code: "EXECUTION_STOP_UNCONFIRMED" });
+      expect(executionOwnershipService.requestStop).not.toHaveBeenCalled();
+      expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
+    });
+    it("retains a quarantined local slot and refuses destructive task control", async () => {
+      const { task } = setupSingleTaskFlow("quarantined-control");
+      await orchestrator.ensureRunning(projectId);
+      await vi.waitFor(() => expect(mockInvokeCodingAgent).toHaveBeenCalledOnce());
+      const state = (
+        orchestrator as unknown as {
+          getState: (id: string) => {
+            slots: Map<string, { agent: { runner: { markUncertain: () => void } } }>;
+          };
+        }
+      ).getState(projectId);
+      state.slots.get(task.id)!.agent.runner.markUncertain();
+      await expect(orchestrator.stopTaskAndFreeSlot(projectId, task.id)).rejects.toMatchObject({
+        code: "EXECUTION_STOP_UNCONFIRMED",
+      });
+      expect(state.slots.has(task.id)).toBe(true);
+      expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
+      expect(mockDeleteAssignmentAt).not.toHaveBeenCalled();
+    });
+  });
   describe("getActiveAgents", () => {
     it("returns empty array when no agents are running", async () => {
       mockTaskStoreReady.mockResolvedValue([]);
@@ -3424,7 +3507,7 @@ describe("OrchestratorService (slot-based model)", () => {
     });
 
     it("reconciles stale slots: removes slot when task no longer in task store", async () => {
-      const { task } = setupSingleTaskFlow("task-stale");
+      const { task, kill, getOnDone } = setupSingleTaskFlow("task-stale", false);
       mockTaskStoreReady.mockResolvedValueOnce([task]);
       // So far listAll returns [] (beforeEach). First getStatus would skip reconciliation when list is empty.
       // Override so listAll includes the task until we simulate archiving.
@@ -3442,8 +3525,15 @@ describe("OrchestratorService (slot-based model)", () => {
       // Simulate task archived: listAll returns other tasks but not this one (non-empty list)
       mockTaskStoreListAll.mockResolvedValue([{ ...task, id: "other-task" }]);
 
-      const agents = await orchestrator.getActiveAgents(projectId);
-      expect(agents).toEqual([]);
+      let settled = false;
+      const reconciliation = orchestrator.getActiveAgents(projectId).finally(() => {
+        settled = true;
+      });
+      await vi.waitFor(() => expect(kill).toHaveBeenCalledOnce());
+      expect(settled).toBe(false);
+      expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
+      await getOnDone()(null);
+      expect(await reconciliation).toEqual([]);
 
       const statusAfter = await orchestrator.getStatus(projectId);
       expect(statusAfter.activeTasks).toEqual([]);

@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties } from "react";
 import { isAgentAssignee } from "@opensprint/shared";
-import { useAppDispatch } from "../../store";
-import { updateTaskAssignee } from "../../store/slices/executeSlice";
+import { useUpdateTaskAssignee } from "../../api/hooks";
+import { useServerTask } from "../../hooks/useServerTasks";
 import { getDropdownPositionViewportAware } from "../../lib/dropdownViewport";
 
 export interface AssigneeSelectorProps {
@@ -47,7 +47,9 @@ export function AssigneeSelector({
   matchTaskNameTypography = false,
   onOpenChange,
 }: AssigneeSelectorProps) {
-  const dispatch = useAppDispatch();
+  const mutation = useUpdateTaskAssignee(projectId);
+  const { data: task } = useServerTask(projectId, taskId);
+  const editRevision = useRef<number | undefined>(undefined);
   const isAgent = isAgentProp ?? (!!currentAssignee && isAgentAssignee(currentAssignee));
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -108,7 +110,11 @@ export function AssigneeSelector({
     }
     setLoading(true);
     try {
-      await dispatch(updateTaskAssignee({ projectId, taskId, assignee })).unwrap();
+      await mutation.mutateAsync({
+        taskId,
+        assignee,
+        expectedRevision: editRevision.current ?? task?.revision,
+      });
       onSelect?.(assignee);
       setOpen(false);
       setShowOtherInput(false);
@@ -229,7 +235,10 @@ export function AssigneeSelector({
       <button
         ref={triggerRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          if (!open) editRevision.current = task?.revision;
+          setOpen((o) => !o);
+        }}
         disabled={loading}
         className={`dropdown-trigger inline-flex items-center ${triggerGap} rounded py-0.5 leading-tight cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed min-w-0 ${triggerTypography}`}
         aria-haspopup="listbox"

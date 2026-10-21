@@ -42,6 +42,20 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
 
 const mockGetSettings = vi.fn();
 const mockCreateHilApproval = vi.fn();
+const mockGetById = vi.fn();
+vi.mock("../services/prd.service.js", () => ({
+  PrdService: vi
+    .fn()
+    .mockImplementation(() => ({
+      getPrd: async () => ({ version: 0, changeLog: [], sections: {} }),
+    })),
+}));
+vi.mock("../services/prd-proposal-store.js", () => ({
+  prdProposalStore: { registerDurable: vi.fn().mockResolvedValue(undefined), remove: vi.fn() },
+}));
+vi.mock("../services/spec-publication.service.js", () => ({
+  specPublicationService: { applyApprovedProposal: vi.fn().mockResolvedValue(true) },
+}));
 
 vi.mock("../services/project.service.js", () => {
   return {
@@ -54,6 +68,7 @@ vi.mock("../services/project.service.js", () => {
 vi.mock("../services/notification.service.js", () => ({
   notificationService: {
     createHilApproval: (...args: unknown[]) => mockCreateHilApproval(...args),
+    getById: (...args: unknown[]) => mockGetById(...args),
   },
 }));
 
@@ -70,6 +85,7 @@ describe.skipIf(!hilPostgresOk)("HilService", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetById.mockResolvedValue({ status: "open" });
     mockGetSettings.mockResolvedValue({
       hilConfig: {
         scopeChanges: "requires_approval",
@@ -156,7 +172,11 @@ describe.skipIf(!hilPostgresOk)("HilService", () => {
     const broadcastCall = (broadcastToProject as ReturnType<typeof vi.fn>).mock.calls[0];
     const notificationId = broadcastCall[1].notification.id;
 
-    hilService.notifyResolved(notificationId, true);
+    mockGetById.mockResolvedValue({
+      status: "resolved",
+      responses: [{ questionId: "approval", answer: "approved" }],
+    });
+    await hilService.notifyResolved(notificationId, true);
 
     const result = await promise;
     expect(result.approved).toBe(true);
@@ -181,7 +201,11 @@ describe.skipIf(!hilPostgresOk)("HilService", () => {
     const broadcastCall = (broadcastToProject as ReturnType<typeof vi.fn>).mock.calls[0];
     const notificationId = broadcastCall[1].notification.id;
 
-    hilService.notifyResolved(notificationId, false);
+    mockGetById.mockResolvedValue({
+      status: "resolved",
+      responses: [{ questionId: "approval", answer: "rejected" }],
+    });
+    await hilService.notifyResolved(notificationId, false);
 
     const result = await promise;
     expect(result.approved).toBe(false);
@@ -198,8 +222,12 @@ describe.skipIf(!hilPostgresOk)("HilService", () => {
         scopeChangeSummary:
           "• feature_list: Add mobile app\n• technical_architecture: Mobile stack",
         scopeChangeProposedUpdates: [
-          { section: "feature_list", changeLogEntry: "Add mobile app" },
-          { section: "technical_architecture", changeLogEntry: "Mobile stack" },
+          { section: "feature_list", changeLogEntry: "Add mobile app", content: "Mobile app" },
+          {
+            section: "technical_architecture",
+            changeLogEntry: "Mobile stack",
+            content: "Mobile stack",
+          },
         ],
       }
     );
@@ -225,7 +253,11 @@ describe.skipIf(!hilPostgresOk)("HilService", () => {
 
     const broadcastCall = (broadcastToProject as ReturnType<typeof vi.fn>).mock.calls[0];
     const notificationId = broadcastCall[1].notification.id;
-    hilService.notifyResolved(notificationId, true);
+    mockGetById.mockResolvedValue({
+      status: "resolved",
+      responses: [{ questionId: "approval", answer: "approved" }],
+    });
+    await hilService.notifyResolved(notificationId, true);
     await promise;
   });
 });

@@ -1,3 +1,4 @@
+import { serverStateMiddleware } from "../../store/serverState";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { screen, waitFor, within, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -18,13 +19,7 @@ import {
 } from "./EvalPhase";
 import { FEEDBACK_FORM_DRAFT_KEY_PREFIX } from "../../lib/feedbackFormStorage";
 import { MOBILE_BREAKPOINT } from "../../lib/constants";
-import {
-  taskUpdated,
-  fetchTasksByIds,
-  toTasksByIdAndOrder,
-  setTasks,
-} from "../../store/slices/executeSlice";
-import { updateFeedbackItem } from "../../store/slices/evalSlice";
+import { toTasksByIdAndOrder } from "../../store/slices/executeSlice";
 import {
   COMMIT_MESSAGE_TITLE_MAX_LENGTH,
   type FeedbackItem,
@@ -245,34 +240,28 @@ function createStore(overrides?: {
       error: null,
     };
   }
-  return createTestStore(preloadedState);
+  return createTestStore(preloadedState, [serverStateMiddleware]);
 }
 
-function syncTasksListQueryToRedux(
-  store: ReturnType<typeof createStore>,
-  queryClient: QueryClient
-): () => void {
-  const tasksListKey = queryKeys.tasks.list("proj-1");
-  let lastSyncedData: unknown = null;
-  const applyTasks = () => {
-    const cached = queryClient.getQueryData(tasksListKey);
-    if (!Array.isArray(cached) || cached === lastSyncedData) return;
-    lastSyncedData = cached;
-    store.dispatch(setTasks(cached));
-  };
-  applyTasks();
-  return queryClient.getQueryCache().subscribe((event) => {
-    const key = event?.query?.queryKey;
-    if (
-      !Array.isArray(key) ||
-      key[0] !== tasksListKey[0] ||
-      key[1] !== tasksListKey[1] ||
-      key[2] !== tasksListKey[2]
-    ) {
-      return;
-    }
-    applyTasks();
-  });
+function applyFeedbackQuery(client: QueryClient, item: FeedbackItem) {
+  client.setQueryData(queryKeys.feedback.list("proj-1"), (items: FeedbackItem[] = []) =>
+    items.some((current) => current.id === item.id)
+      ? items.map((current) => (current.id === item.id ? item : current))
+      : [...items, item]
+  );
+}
+function applyTaskQuery(client: QueryClient, patch: { taskId: string; status?: string }) {
+  client.setQueryData(queryKeys.tasks.list("proj-1"), (tasks: Task[] = []) =>
+    tasks.map((task) =>
+      task.id === patch.taskId
+        ? {
+            ...task,
+            ...patch,
+            kanbanColumn: patch.status === "closed" ? "done" : task.kanbanColumn,
+          }
+        : task
+    )
+  );
 }
 
 const mockFeedbackItems: FeedbackItem[] = [
@@ -1559,6 +1548,8 @@ describe("EvalPhase feedback form", () => {
           depth: 0,
         };
         vi.mocked(api.feedback.submit).mockResolvedValueOnce(submittedFeedback);
+        vi.mocked(api.feedback.list).mockResolvedValue([submittedFeedback]);
+        vi.mocked(api.plans.list).mockResolvedValue({ plans: [planInReview], edges: [] });
 
         const queryClient = createQueryClientWithFeedbackAndPlans([], [planInReview]);
         const store = createStore({ evalFeedback: [] });
@@ -1913,7 +1904,7 @@ describe("EvalPhase feedback form", () => {
 
       // Simulate feedback changing: cancelled item gets resolved (e.g. via WebSocket update)
       act(() => {
-        store.dispatch(updateFeedbackItem({ ...mockFeedbackWithCancelled[6], status: "resolved" }));
+        applyFeedbackQuery(queryClient, { ...mockFeedbackWithCancelled[6], status: "resolved" });
       });
 
       await waitFor(() => {
@@ -2093,7 +2084,7 @@ describe("EvalPhase feedback form", () => {
         parent_id: "fb-reply-1",
       };
       act(() => {
-        store.dispatch(updateFeedbackItem(newReply));
+        applyFeedbackQuery(queryClient, newReply);
       });
 
       await waitFor(() => {
@@ -2402,13 +2393,11 @@ describe("EvalPhase feedback form", () => {
 
       // Simulate Analyst creating ticket for fb-a (via WebSocket feedback.updated → updateFeedbackItem)
       await act(async () => {
-        store.dispatch(
-          updateFeedbackItem({
-            ...feedbackWithTwoItems[0],
-            createdTaskIds: ["task-new"],
-            mappedPlanId: "plan-1",
-          })
-        );
+        applyFeedbackQuery(queryClient, {
+          ...feedbackWithTwoItems[0],
+          createdTaskIds: ["task-new"],
+          mappedPlanId: "plan-1",
+        });
       });
 
       // Only fb-a's card should show the ticket chip; fb-b unchanged
@@ -2471,13 +2460,11 @@ describe("EvalPhase feedback form", () => {
 
       // Simulate WebSocket feedback.updated (updateFeedbackItem + fetchTasksByIds)
       await act(async () => {
-        store.dispatch(
-          updateFeedbackItem({
-            ...feedbackItem,
-            createdTaskIds: ["os-abc1"],
-            mappedPlanId: "plan-1",
-          })
-        );
+        applyFeedbackQuery(queryClient, {
+          ...feedbackItem,
+          createdTaskIds: ["os-abc1"],
+          mappedPlanId: "plan-1",
+        });
       });
 
       // Chip appears immediately (shows taskId or title once fetch completes)
@@ -2487,7 +2474,11 @@ describe("EvalPhase feedback form", () => {
 
       // fetchTasksByIds fetches the task; chip shows title when it arrives
       await act(async () => {
-        await store.dispatch(fetchTasksByIds({ projectId: "proj-1", taskIds: ["os-abc1"] }));
+        await (async () => {
+          const task = await api.tasks.get("proj-1", "os-abc1");
+          queryClient.setQueryData(queryKeys.tasks.list("proj-1"), [task]);
+          queryClient.setQueryData(queryKeys.tasks.detail("proj-1", task.id), task);
+        })();
       });
 
       expect(screen.getByText("Fix login button")).toBeInTheDocument();
@@ -2509,7 +2500,6 @@ describe("EvalPhase feedback form", () => {
         executeTasks: [],
       });
       const queryClient = createQueryClientWithFeedbackPreloaded([feedbackItem]);
-      const unsubscribe = syncTasksListQueryToRedux(store, queryClient);
 
       const { api } = await import("../../api/client");
       vi.mocked(api.tasks.get).mockClear();
@@ -2556,8 +2546,6 @@ describe("EvalPhase feedback form", () => {
       await waitFor(() => {
         expect(screen.getByText("Fix high-volume sync issue")).toBeInTheDocument();
       });
-
-      unsubscribe();
     });
 
     it("backfills available tasks even when some feedback-linked task fetches fail", async () => {
@@ -2575,7 +2563,6 @@ describe("EvalPhase feedback form", () => {
         executeTasks: [],
       });
       const queryClient = createQueryClientWithFeedbackPreloaded([feedbackItem]);
-      const unsubscribe = syncTasksListQueryToRedux(store, queryClient);
 
       const { api } = await import("../../api/client");
       vi.mocked(api.tasks.get).mockClear();
@@ -2605,7 +2592,6 @@ describe("EvalPhase feedback form", () => {
         expect(screen.getByText("Task fetched successfully")).toBeInTheDocument();
       });
       expect(screen.getByText("task-missing")).toBeInTheDocument();
-      unsubscribe();
     });
 
     it("updates category badge when Analyst categorizes (bug→feature) without full refetch", async () => {
@@ -2640,13 +2626,11 @@ describe("EvalPhase feedback form", () => {
 
       // Simulate Analyst recategorizing as feature (via WebSocket feedback.updated → updateFeedbackItem)
       await act(async () => {
-        store.dispatch(
-          updateFeedbackItem({
-            ...feedbackWithOneItem[0],
-            category: "feature",
-            mappedPlanId: "plan-1",
-          })
-        );
+        applyFeedbackQuery(queryClient, {
+          ...feedbackWithOneItem[0],
+          category: "feature",
+          mappedPlanId: "plan-1",
+        });
       });
 
       // Card should show Feature badge, not Bug
@@ -2684,7 +2668,12 @@ describe("EvalPhase feedback form", () => {
 
         const { api } = await import("../../api/client");
         vi.mocked(api.feedback.submit).mockResolvedValue(pendingItem);
-        vi.mocked(api.feedback.list).mockResolvedValueOnce([updatedItem]);
+        vi.mocked(api.feedback.list)
+          .mockResolvedValueOnce([pendingItem])
+          .mockResolvedValue([updatedItem]);
+        vi.mocked(api.tasks.list).mockResolvedValue([
+          createMockTask({ id: "task-dark-mode", title: "Implement dark mode" }),
+        ]);
 
         renderWithProviders(
           <MemoryRouter>
@@ -2709,12 +2698,12 @@ describe("EvalPhase feedback form", () => {
         });
 
         await act(async () => {
-          await Promise.resolve();
+          await vi.advanceTimersByTimeAsync(1);
         });
         expect(screen.getByText("Feature")).toBeInTheDocument();
         expect(screen.getByText("Implement dark mode")).toBeInTheDocument();
         expect(screen.queryByLabelText("Categorizing feedback")).not.toBeInTheDocument();
-        expect(api.feedback.list).toHaveBeenCalledTimes(1);
+        expect(api.feedback.list).toHaveBeenCalledTimes(2);
       } finally {
         vi.useRealTimers();
       }
@@ -2746,6 +2735,12 @@ describe("EvalPhase feedback form", () => {
     });
 
     it("collapses height during resolve fade-out animation (no empty gap)", async () => {
+      const { api } = await import("../../api/client");
+      const resolvedItem: FeedbackItem = { ...mockFeedbackItems[2], status: "resolved" };
+      vi.mocked(api.feedback.resolve).mockResolvedValueOnce(resolvedItem);
+      vi.mocked(api.feedback.list).mockResolvedValue(
+        mockFeedbackItems.map((item) => (item.id === resolvedItem.id ? resolvedItem : item))
+      );
       const store = createStore({ evalFeedback: mockFeedbackItems });
       const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
       const user = userEvent.setup();
@@ -3030,7 +3025,7 @@ describe("EvalPhase feedback form", () => {
       });
 
       act(() => {
-        store.dispatch(taskUpdated({ taskId: "task-1", status: "closed" }));
+        applyTaskQuery(queryClient, { taskId: "task-1", status: "closed" });
       });
 
       await waitFor(() => {
@@ -3085,7 +3080,7 @@ describe("EvalPhase feedback form", () => {
       });
 
       act(() => {
-        store.dispatch(taskUpdated({ taskId: "task-1", status: "closed" }));
+        applyTaskQuery(queryClient, { taskId: "task-1", status: "closed" });
       });
 
       await waitFor(() => {
