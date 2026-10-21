@@ -6,6 +6,22 @@ Open Sprint is a web application that guides users through the full software dev
 
 **Tech stack:** Node.js + TypeScript (backend), React + TypeScript (frontend).
 
+## Repository development skills
+
+These skills guide contributions to this repository:
+
+- Use [verify-opensprint](.agents/skills/verify-opensprint/SKILL.md) for behavior changes,
+  regressions, and new guardrails. Prove the observable contract with the existing test tooling.
+- Use [create-pr](.agents/skills/create-pr/SKILL.md) when preparing or updating a pull request.
+  **Every PR with user-visible UI changes must embed screenshots of the finished interface in its
+  description**, including desktop and mobile views when responsive behavior is relevant. Review
+  images for sensitive data and upload them as GitHub attachments; do not commit review-only images.
+  If capture or upload is blocked, state the limitation in the PR and tell the user. Changes with no
+  visible effect do not require screenshots.
+
+These repository skills do not change the Execute agent runtime contract below. Execute agents must
+keep their prepared branch, use the requested result schema, and leave publication to the orchestrator.
+
 ## Open Sprint Runtime Contract
 
 Task tracking is handled internally by `TaskStoreService` backed by **SQLite (default)** or **PostgreSQL**. The connection is resolved in order: **`DATABASE_URL`**, then **`databaseUrl`** in `~/.opensprint/global-settings.json`, then the default SQLite path (`~/.opensprint/data/opensprint.sqlite`). There is no external task CLI.
@@ -71,13 +87,13 @@ Certain file paths are **sensitive surfaces** (integration, OAuth, token handlin
 
 **Protected patterns:**
 
-| Pattern | Label |
-|---------|-------|
-| `routes/integrations-*` | Integration routes |
-| `integration-store` | Integration store service |
-| `token-encryption` | Token encryption service |
-| `routes/oauth` | OAuth routes |
-| `todoist-sync` | Todoist sync service |
+| Pattern                 | Label                     |
+| ----------------------- | ------------------------- |
+| `routes/integrations-*` | Integration routes        |
+| `integration-store`     | Integration store service |
+| `token-encryption`      | Token encryption service  |
+| `routes/oauth`          | OAuth routes              |
+| `todoist-sync`          | Todoist sync service      |
 
 **Scope keywords that unlock protected paths:** integration, oauth, todoist, token-encrypt, api-key-stor, third-party-auth, external-service, connect(ion)-service.
 

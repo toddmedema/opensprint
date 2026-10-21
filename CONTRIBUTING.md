@@ -64,6 +64,12 @@ Prefer extending existing shared provider helpers over introducing a new hand-wr
 ## Submitting changes
 
 - **Pull requests:** Open a PR against `main`. Describe what changed and how you tested it.
+- **Screenshots:** Every PR with user-visible UI changes must embed screenshots of the finished
+  interface in its description. Include desktop and mobile views when responsive behavior changes.
+  Upload review-only images as GitHub attachments rather than committing them, and check that they
+  contain no sensitive data. If capture or upload is blocked, explain why in the PR and tell the user.
+  Changes with no visible effect do not require screenshots. See the
+  [create-pr skill](.agents/skills/create-pr/SKILL.md) for capture and upload guidance.
 - **Bug reports and ideas:** Use [GitHub Issues](https://github.com/toddmedema/opensprint/issues).
 
 Maintainers will review and merge when ready. By contributing, you agree that your contributions are licensed under the project’s [AGPL-3.0 license](LICENSE).
