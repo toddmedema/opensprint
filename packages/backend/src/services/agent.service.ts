@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
+import { randomUUID } from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import type { AgentConfig, AgentRole } from "@opensprint/shared";
@@ -234,6 +235,7 @@ export class AgentService {
     options: InvokeCodingAgentOptions
   ): CodingAgentHandle {
     const { tracking } = options;
+    const invocationId = tracking?.attemptId ?? randomUUID();
     const startedAt = new Date().toISOString();
     if (tracking) {
       activeAgentsService.register(
@@ -247,16 +249,20 @@ export class AgentService {
         tracking.planId,
         undefined,
         tracking.feedbackId,
-        tracking.taskId
+        tracking.taskId,
+        invocationId
       );
     }
 
     const originalOnExit = options.onExit;
+    let exited = false;
     const shouldRecordStats =
       tracking != null && tracking.role !== "coder" && tracking.role !== "reviewer";
     const wrappedOnExit =
       tracking || shouldRecordStats
         ? (code: number | null) => {
+            if (exited) return;
+            exited = true;
             if (shouldRecordStats) {
               const completedAt = new Date().toISOString();
               void this.recordAgentRunStat({
@@ -269,25 +275,35 @@ export class AgentService {
               } satisfies AgentRunStatParams);
             }
             if (tracking) {
-              activeAgentsService.unregister(tracking.id);
+              activeAgentsService.unregister(tracking.id, invocationId);
             }
             return originalOnExit(code);
           }
         : originalOnExit;
 
-    const handle = this.agentClient.spawnWithTaskFile(
-      config,
-      promptPath,
-      options.cwd,
-      options.onOutput,
-      wrappedOnExit,
-      options.agentRole,
-      options.outputLogPath,
-      options.projectId
-    );
+    let handle: CodingAgentHandle;
+    try {
+      handle = this.agentClient.spawnWithTaskFile(
+        config,
+        promptPath,
+        options.cwd,
+        options.onOutput,
+        wrappedOnExit,
+        options.agentRole,
+        options.outputLogPath,
+        options.projectId
+      );
+    } catch (err) {
+      if (tracking) activeAgentsService.unregister(tracking.id, invocationId);
+      throw err;
+    }
 
-    if (tracking && handle.pendingMessages) {
-      activeAgentsService.registerChannel(tracking.id, handle.pendingMessages, config.type);
+    if (tracking && handle.pendingMessages && !exited) {
+      activeAgentsService.registerChannel(tracking.id, handle.pendingMessages, config.type, {
+        projectId: tracking.projectId,
+        attempt: tracking.attempt,
+        attemptId: invocationId,
+      });
     }
 
     return handle;
@@ -543,7 +559,11 @@ export class AgentService {
           return { exitedCleanly, raw, parsed, verified };
         } finally {
           releaseMergerSlot();
-          await fs.unlink(promptPath).catch((err: unknown) => { log.warn("prompt unlink failed", { err: err instanceof Error ? err.message : String(err) }); });
+          await fs.unlink(promptPath).catch((err: unknown) => {
+            log.warn("prompt unlink failed", {
+              err: err instanceof Error ? err.message : String(err),
+            });
+          });
         }
       };
 
@@ -583,7 +603,11 @@ export class AgentService {
       });
       return verified;
     } finally {
-      await clearMergerResultFile(options.cwd).catch((err: unknown) => { log.warn("clear merger result failed", { err: err instanceof Error ? err.message : String(err) }); });
+      await clearMergerResultFile(options.cwd).catch((err: unknown) => {
+        log.warn("clear merger result failed", {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      });
     }
   }
 

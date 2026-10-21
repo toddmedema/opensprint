@@ -24,6 +24,8 @@ export interface AgentTrackingInfo {
   feedbackId?: string;
   /** Owning task for Execute deep links when `id` is a per-run token (e.g. merger). */
   taskId?: string;
+  attempt?: number;
+  attemptId?: string;
 }
 
 /** Options for invokePlanningAgent */
@@ -81,6 +83,8 @@ export interface InvokeCodingAgentOptions {
 export interface CodingAgentHandle {
   kill: () => void;
   pid: number | null;
+  /** A recovered PID proves liveness only, and must not authorize signalling it. */
+  ownership?: "local" | "recovered_unverified";
   /** Bounded queue for injecting live user messages into the agentic loop (API backends only). */
   pendingMessages?: import("../agentic-loop.js").PendingMessageQueue | null;
 }

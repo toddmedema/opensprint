@@ -1,6 +1,9 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import { useStore } from "react-redux";
+import type { RootState } from "../../store";
+import { awaitGuidanceReceipt } from "../../lib/awaitGuidanceReceipt";
 import { useAppDispatch, useAppSelector } from "../../store";
 import {
   setAgentOutputBackfill,
@@ -94,6 +97,7 @@ export function ExecutePhase({
   onClose: onCloseProp,
 }: ExecutePhaseProps) {
   const dispatch = useAppDispatch();
+  const guidanceStore = useStore<RootState>();
   const navigate = useNavigate();
   useEffect(() => {
     dispatch(clearPhaseUnread({ projectId, phase: "execute" }));
@@ -444,14 +448,23 @@ export function ExecutePhase({
 
   const handleChatSend = useCallback(
     (message: string) => {
-      if (!effectiveSelectedTask) return;
+      if (!effectiveSelectedTask) return false;
       const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       dispatch(
         addOptimisticUserMessage({ taskId: effectiveSelectedTask, tempId, content: message })
       );
-      dispatch(wsSend({ type: "agent.chat.send", taskId: effectiveSelectedTask, message }));
+      return awaitGuidanceReceipt(guidanceStore, effectiveSelectedTask, tempId, () =>
+        dispatch(
+          wsSend({
+            type: "agent.chat.send",
+            taskId: effectiveSelectedTask,
+            message,
+            clientMessageId: tempId,
+          })
+        )
+      );
     },
-    [dispatch, effectiveSelectedTask]
+    [dispatch, effectiveSelectedTask, guidanceStore]
   );
 
   const chatDraftStorageKey = effectiveSelectedTask
@@ -522,6 +535,14 @@ export function ExecutePhase({
           className={EXECUTE_MAIN_SCROLL_CLASSNAME}
           data-testid="execute-main-scroll"
         >
+          <a
+            href={`/collaborate/${encodeURIComponent(projectId)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mb-4 inline-block text-sm text-theme-link underline"
+          >
+            Open shared session
+          </a>
           {baselineStatus === "failing" && (
             <div
               className="mb-4 rounded-lg border border-theme-warning-border bg-theme-warning-bg px-4 py-3 text-theme-warning-text"

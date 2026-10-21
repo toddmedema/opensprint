@@ -37,4 +37,5 @@ export const prdSectionParamsSchema = z.object({
 export const prdSectionPutBodySchema = z.object({
   content: z.string(),
   source: z.string().optional(),
+  expectedVersion: z.number().int().nonnegative().optional(),
 });

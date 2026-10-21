@@ -2107,12 +2107,14 @@ describe("websocketMiddleware", () => {
         type: "agent.chat.received",
         taskId: "task-1",
         messageId: "msg-server-1",
+        clientMessageId: "temp-123",
+        status: "queued",
         timestamp: "2025-01-01T00:00:00Z",
       });
 
       await vi.waitFor(() => {
         const msgs = selectChatMessages(store.getState(), "task-1");
-        expect(msgs[0].delivered).toBe(true);
+        expect(msgs[0].status).toBe("queued");
         expect(msgs[0].id).toBe("msg-server-1");
       });
     });
@@ -2136,6 +2138,8 @@ describe("websocketMiddleware", () => {
         type: "agent.chat.received",
         taskId: "task-1",
         messageId: "msg-1",
+        clientMessageId: "temp-1",
+        status: "queued",
         timestamp: "2025-01-01T00:00:00Z",
       });
 
@@ -2147,6 +2151,8 @@ describe("websocketMiddleware", () => {
         type: "agent.chat.received",
         taskId: "task-1",
         messageId: "msg-1",
+        clientMessageId: "temp-1",
+        status: "queued",
         timestamp: "2025-01-01T00:00:00Z",
       });
 
@@ -2175,6 +2181,8 @@ describe("websocketMiddleware", () => {
         type: "agent.chat.response",
         taskId: "task-1",
         messageId: "msg-1",
+        clientMessageId: "temp-1",
+        status: "queued",
         content: "Hi, I'm working on it!",
       });
 
@@ -2198,6 +2206,8 @@ describe("websocketMiddleware", () => {
         type: "agent.chat.response",
         taskId: "task-1",
         messageId: "msg-1",
+        clientMessageId: "temp-1",
+        status: "queued",
         content: "First response",
       });
 
@@ -2209,6 +2219,8 @@ describe("websocketMiddleware", () => {
         type: "agent.chat.response",
         taskId: "task-1",
         messageId: "msg-1",
+        clientMessageId: "temp-1",
+        status: "queued",
         content: "First response",
       });
 
@@ -2294,6 +2306,8 @@ describe("websocketMiddleware", () => {
         type: "agent.chat.received",
         taskId: "task-1",
         messageId: "msg-1",
+        clientMessageId: "temp-1",
+        status: "queued",
         timestamp: "2025-01-01T00:00:00Z",
       });
 
@@ -2317,6 +2331,8 @@ describe("websocketMiddleware", () => {
         type: "agent.chat.response",
         taskId: "task-1",
         messageId: "msg-1",
+        clientMessageId: "temp-1",
+        status: "queued",
         content: "Agent response",
       });
 
@@ -2353,6 +2369,8 @@ describe("websocketMiddleware", () => {
         type: "agent.chat.received",
         taskId: "task-1",
         messageId: "msg-1",
+        clientMessageId: "temp-1",
+        status: "queued",
         timestamp: "2025-01-01T00:00:00Z",
       });
 

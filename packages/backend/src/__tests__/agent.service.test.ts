@@ -7,6 +7,8 @@ import { buildMergerAgentPrompt } from "../services/agent/agent-merger-support.j
 import { AgentService, createProcessGroupHandle } from "../services/agent.service.js";
 import type { AgentConfig } from "@opensprint/shared";
 import { OPENSPRINT_PATHS } from "@opensprint/shared";
+import { activeAgentsService } from "../services/active-agents.service.js";
+import { PendingMessageQueue } from "../services/agentic-loop.js";
 
 const { mockSpawnWithTaskFile } = vi.hoisted(() => ({
   mockSpawnWithTaskFile: vi.fn(),
@@ -120,6 +122,64 @@ describe("AgentService", () => {
     service = new AgentService();
     vi.clearAllMocks();
     mockShellExec.mockResolvedValue({ stdout: "", stderr: "" });
+  });
+
+  it("does not unregister a replacement invocation when an earlier process exits", () => {
+    const exits: Array<(code: number | null) => void> = [];
+    mockSpawnWithTaskFile.mockImplementation((_config, _prompt, _cwd, _output, onExit) => {
+      exits.push(onExit);
+      return { pid: null, kill: vi.fn(), pendingMessages: new PendingMessageQueue() };
+    });
+    const base = {
+      cwd: "/proj",
+      onOutput: vi.fn(),
+      onExit: vi.fn(),
+      tracking: {
+        id: "generation-task",
+        projectId: "project-generation",
+        phase: "coding",
+        role: "coder" as const,
+        label: "task",
+        attemptId: "first-attempt",
+      },
+    };
+    const config: AgentConfig = { type: "claude", model: "claude-sonnet-4" };
+    service.invokeCodingAgent("/prompt.md", config, base);
+    service.invokeCodingAgent("/prompt.md", config, {
+      ...base,
+      tracking: { ...base.tracking, attemptId: "second-attempt" },
+    });
+    exits[0](1);
+    expect(activeAgentsService.getChannel("generation-task")?.attemptId).toBe("second-attempt");
+    expect(activeAgentsService.listEntries("project-generation")).toHaveLength(1);
+    exits[1](0);
+    expect(activeAgentsService.getChannel("generation-task")).toBeUndefined();
+    expect(activeAgentsService.listEntries("project-generation")).toHaveLength(0);
+  });
+
+  it("unregisters an invocation when process creation throws", () => {
+    mockSpawnWithTaskFile.mockImplementationOnce(() => {
+      throw new Error("spawn failed");
+    });
+    expect(() =>
+      service.invokeCodingAgent(
+        "/prompt.md",
+        { type: "cursor" },
+        {
+          cwd: "/proj",
+          onOutput: vi.fn(),
+          onExit: vi.fn(),
+          tracking: {
+            id: "failed-spawn",
+            projectId: "failed-spawn-project",
+            phase: "coding",
+            role: "coder",
+            label: "task",
+          },
+        }
+      )
+    ).toThrow("spawn failed");
+    expect(activeAgentsService.listEntries("failed-spawn-project")).toHaveLength(0);
   });
 
   describe("invokeReviewAgent", () => {
@@ -355,9 +415,10 @@ describe("AgentService", () => {
   describe("createProcessGroupHandle", () => {
     it("sends SIGTERM to the detached process group and escalates to SIGKILL", () => {
       vi.useFakeTimers();
+      const platformSpy = vi.spyOn(process, "platform", "get").mockReturnValue("linux");
       const mockKill = vi.spyOn(process, "kill").mockImplementation(() => true);
 
-      const handle = createProcessGroupHandle(7777);
+      const handle = createProcessGroupHandle(7777, { ownershipVerified: true });
       handle.kill();
 
       expect(mockKill).toHaveBeenCalledWith(-7777, "SIGTERM");
@@ -368,6 +429,7 @@ describe("AgentService", () => {
       expect(sigkillCalls).toContainEqual([-7777, "SIGKILL"]);
 
       mockKill.mockRestore();
+      platformSpy.mockRestore();
       vi.useRealTimers();
     });
 
@@ -376,7 +438,7 @@ describe("AgentService", () => {
       const platformSpy = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
       const mockKill = vi.spyOn(process, "kill").mockImplementation(() => true);
 
-      const handle = createProcessGroupHandle(8888);
+      const handle = createProcessGroupHandle(8888, { ownershipVerified: true });
       handle.kill();
 
       expect(mockKill).toHaveBeenCalledWith(8888, "SIGTERM");

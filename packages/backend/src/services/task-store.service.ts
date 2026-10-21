@@ -265,6 +265,7 @@ export class TaskStoreService {
   }
 
   private async withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.appDb?.runExclusive) return this.appDb.runExclusive(fn);
     const prev = this.writeLock;
     let release: () => void;
     this.writeLock = new Promise<void>((r) => {
@@ -1683,6 +1684,13 @@ export class TaskStoreService {
       const client = this.ensureClient();
       return await client.runInTransaction(fn);
     });
+  }
+
+  /** Read multiple tables from one committed snapshot. */
+  async runRead<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
+    await this.ensureInitialized();
+    if (this.appDb?.runRead) return this.appDb.runRead(fn);
+    return this.withWriteLock(() => this.ensureClient().runInTransaction(fn));
   }
 
   /** No-op for Postgres; data is persisted immediately. Use on shutdown for compatibility. */

@@ -1,12 +1,54 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   OpenAIAgenticAdapter,
+  GeminiAgenticAdapter,
   PendingMessageQueue,
   runAgenticLoop,
   type AgenticLoopAdapter,
 } from "../services/agentic-loop.js";
 
 describe("agentic-loop", () => {
+  it("includes injected guidance with OpenAI tool results in the provider request", async () => {
+    const requests: unknown[] = [];
+    const create = vi.fn().mockImplementation(async (request) => {
+      requests.push(structuredClone(request));
+      return { choices: [{ message: { content: "done", tool_calls: [] }, finish_reason: "stop" }] };
+    });
+    const adapter = new OpenAIAgenticAdapter(
+      { chat: { completions: { create } } } as never,
+      "model"
+    );
+    await adapter.send("task");
+    await adapter.send("Please preserve the tests", [{ id: "tool-1", content: "tool output" }]);
+    expect(requests[1]).toMatchObject({
+      messages: expect.arrayContaining([
+        { role: "tool", tool_call_id: "tool-1", content: "tool output" },
+        { role: "user", content: "Please preserve the tests" },
+      ]),
+    });
+  });
+
+  it("includes injected guidance with Gemini function responses", async () => {
+    const requests: unknown[] = [];
+    const generateContent = vi.fn().mockImplementation(async (request) => {
+      requests.push(structuredClone(request));
+      return { candidates: [{ content: { parts: [{ text: "done" }] } }] };
+    });
+    const adapter = new GeminiAgenticAdapter({ models: { generateContent } } as never, "model");
+    await adapter.send("task");
+    await adapter.send("Please preserve the tests", [{ id: "tool-1", content: "tool output" }]);
+    expect(requests[1]).toMatchObject({
+      contents: expect.arrayContaining([
+        {
+          role: "user",
+          parts: [
+            { functionResponse: { name: "tool-1", response: { result: "tool output" } } },
+            { text: "Please preserve the tests" },
+          ],
+        },
+      ]),
+    });
+  });
   it("runAgenticLoop returns text and exits when adapter returns no tool calls", async () => {
     const adapter: AgenticLoopAdapter = {
       send: vi.fn().mockResolvedValue({
@@ -111,6 +153,20 @@ describe("agentic-loop", () => {
 });
 
 describe("PendingMessageQueue", () => {
+  it("clears all queued messages and attempts every terminal callback if persistence fails", () => {
+    const q = new PendingMessageQueue();
+    const second = vi.fn();
+    q.push("first", undefined, {
+      onRunEnded: () => {
+        throw new Error("disk full");
+      },
+    });
+    q.push("second", undefined, { onRunEnded: second });
+    expect(() => q.close()).toThrow(/Could not persist/);
+    expect(second).toHaveBeenCalledOnce();
+    expect(q.size).toBe(0);
+    expect(q.isClosed).toBe(true);
+  });
   it("push accepts messages up to capacity and rejects beyond it", () => {
     const q = new PendingMessageQueue(3);
     expect(q.push("a")).toBe(true);
@@ -269,7 +325,7 @@ describe("agentic-loop pendingMessages integration", () => {
     expect(calls[2][0]).toBe("Continue.");
   });
 
-  it("leaves undrained messages in the queue when the agent completes", async () => {
+  it("closes undrained messages when the agent completes", async () => {
     const adapter: AgenticLoopAdapter = {
       send: vi.fn().mockResolvedValue({
         text: "done",
@@ -285,7 +341,7 @@ describe("agentic-loop pendingMessages integration", () => {
       pendingMessages: q,
     });
 
-    expect(q.size).toBe(1);
-    expect(q.drain()[0].message).toBe("late message");
+    expect(q.size).toBe(0);
+    expect(q.isClosed).toBe(true);
   });
 });

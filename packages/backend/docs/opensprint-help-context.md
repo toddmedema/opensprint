@@ -34,6 +34,16 @@ Task tracking is handled internally by `TaskStoreService` backed by **SQLite (de
 
 Work state is persisted before agent spawn via `assignment.json` in `.opensprint/active/<task-id>/`. If the backend crashes, recovery reads the assignment and re-spawns or resumes the agent. **Always write assignment before spawn; never spawn then write.**
 
+Agent admission is cancellable and FIFO. Recheck attempt generation and owning slot after admission and immediately before launch; cancelled or replaced queued attempts must never launch. Concurrency limit changes preserve active accounting. A recovered PID is observation-only until ownership is independently verified: retain the assignment and report uncertain execution instead of killing or requeueing it. A stop request becomes stopped only after observed completion. A terminal result file alone cannot complete an unverified recovered process. Guidance receipts distinguish durable queue acceptance from inclusion in a model turn.
+
+### Shared Execute pilot
+
+Open `/collaborate/<projectId>` (also linked from Execute) for attributed discussion, per-attempt controller claims/handoff, durable event replay and guidance history. Named users authenticate with project-scoped bearer tokens configured by the host in `OPENSPRINT_COLLABORATION_TOKENS`; only SHA-256 token hashes are stored in configuration. Roles are viewer, participant and controller. These credentials authorize collaboration endpoints only. Existing settings, filesystem, deployment and reviewed SPEC publication routes require the installation's local-session credential. Releasing control requires a new explicit claim, including by the local user. Closing a session page does not stop an agent.
+
+Guidance is journaled before acknowledgment. `queued` is durable acceptance, `included` records inclusion in a provider request, and `run-ended` means inclusion could not be confirmed. API providers support between-turn guidance; CLI providers do not. Reconnecting users can inspect the same history even after the run ends. The shared pilot uses one backend and trusted local execution; it does not provide isolated hosting or multiple backend replicas.
+
+Reviewed SPEC drafts are available at `/projects/<projectId>/publication`. Drafts are immutable SQL revisions bound to a content hash, Git base and destination; approval must match that revision. The trusted publisher validates a candidate worktree before advancing Git with a base comparison. Interrupted publication is reconciled or remains explicitly uncertain. Sketch autosaves retain the existing trusted local editing policy and do not use this reviewed publication workflow. See `docs/design/collaboration-foundations.md` for rollout limits.
+
 ### Loop Kicker vs Watchdog
 
 - **Loop kicker** (60s): Restarts the orchestrator loop when idle. Runs inside the orchestrator.

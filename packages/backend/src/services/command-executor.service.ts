@@ -53,7 +53,13 @@ export class CommandExecutorService {
       };
     }
 
-    await commandStore.updateStatus(commandRunId, "executing");
+    const claimed = await commandStore.claimExecution(
+      projectId,
+      commandRunId,
+      run.interpreted_command,
+      idempotencyKey
+    );
+    if (claimed.result) return claimed.result;
 
     const steps: CommandStepResult[] = [];
     let success = true;

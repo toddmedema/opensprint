@@ -265,6 +265,18 @@ describe("PhaseExecutorService", () => {
   });
 
   describe("executeCodingPhase", () => {
+    it("ties delayed invocation ownership to the exact slot rather than just the task ID", async () => {
+      const task = makeTask();
+      const slot = makeSlot();
+      const slots = new Map([[task.id, slot]]);
+      mockGetState.mockReturnValue({ slots, status: { queueDepth: 0 } });
+      await phaseExecutor.executeCodingPhase(projectId, repoPath, task, slot);
+      const params = mockLifecycleRun.mock.calls[0][0] as { isStillActive: () => boolean };
+      expect(params.isStillActive()).toBe(true);
+      slots.set(task.id, makeSlot());
+      expect(params.isStillActive()).toBe(false);
+    });
+
     it("attaches replayMetadata to assignment when resolver returns metadata", async () => {
       mockResolveExecuteReplayMetadata.mockResolvedValue({
         baseCommitSha: "abc123deadbeef",

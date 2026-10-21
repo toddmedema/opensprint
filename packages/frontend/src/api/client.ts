@@ -208,7 +208,7 @@ function getLocalSessionAuthHeaders(): Record<string, string> {
 }
 
 /** Generic fetch wrapper with typed responses */
-async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+export async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const url = `${BASE_URL}${endpoint}`;
   const { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, ...fetchOptions } = options;
   const signal = mergeRequestSignal(timeoutMs, fetchOptions.signal);
@@ -288,8 +288,7 @@ export const api = {
           method: "POST",
         }
       ),
-    revealTodoistSecret: () =>
-      request<{ value: string }>("/global-settings/reveal-todoist-secret"),
+    revealTodoistSecret: () => request<{ value: string }>("/global-settings/reveal-todoist-secret"),
     setupTables: (databaseUrl: string) =>
       request<{ ok: boolean }>("/global-settings/setup-tables", {
         method: "POST",
@@ -423,10 +422,18 @@ export const api = {
   // ─── PRD ───
   prd: {
     get: (projectId: string) => request<Prd>(`/projects/${projectId}/prd`),
-    updateSection: (projectId: string, section: string, content: string) =>
+    updateSection: (
+      projectId: string,
+      section: string,
+      content: string,
+      expectedVersion?: number
+    ) =>
       request<PrdSectionUpdateResult>(`/projects/${projectId}/prd/${section}`, {
         method: "PUT",
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({
+          content,
+          ...(expectedVersion === undefined ? {} : { expectedVersion }),
+        }),
       }),
     getHistory: (projectId: string) =>
       request<PrdChangeLogEntry[]>(`/projects/${projectId}/prd/history`),
@@ -871,9 +878,7 @@ export const api = {
     },
     github: {
       getStatus: (projectId: string) =>
-        request<IntegrationStatusResponse>(
-          `/projects/${projectId}/integrations/github/status`
-        ),
+        request<IntegrationStatusResponse>(`/projects/${projectId}/integrations/github/status`),
       connect: (projectId: string, body: GitHubConnectRequest) =>
         request<{ success: boolean; user: string }>(
           `/projects/${projectId}/integrations/github/connect`,
@@ -889,15 +894,13 @@ export const api = {
           { method: "PUT", body: JSON.stringify(body) }
         ),
       syncNow: (projectId: string) =>
-        request<IntegrationSyncResponse>(
-          `/projects/${projectId}/integrations/github/sync`,
-          { method: "POST" }
-        ),
+        request<IntegrationSyncResponse>(`/projects/${projectId}/integrations/github/sync`, {
+          method: "POST",
+        }),
       disconnect: (projectId: string) =>
-        request<{ disconnected: boolean }>(
-          `/projects/${projectId}/integrations/github`,
-          { method: "DELETE" }
-        ),
+        request<{ disconnected: boolean }>(`/projects/${projectId}/integrations/github`, {
+          method: "DELETE",
+        }),
     },
   },
 
@@ -910,17 +913,23 @@ export const api = {
     get: (projectId: string, itemId: string) =>
       request<IntakeItem>(`/projects/${projectId}/intake/${itemId}`),
     convert: (projectId: string, itemId: string, body: { action: string; linkTaskId?: string }) =>
-      request<{ intakeItemId: string; action: string }>(`/projects/${projectId}/intake/${itemId}/convert`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      request<{ intakeItemId: string; action: string }>(
+        `/projects/${projectId}/intake/${itemId}/convert`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        }
+      ),
     ignore: (projectId: string, itemId: string) =>
       request<IntakeItem>(`/projects/${projectId}/intake/${itemId}/ignore`, { method: "POST" }),
     bulk: (projectId: string, body: { itemIds: string[]; action: string; dryRun?: boolean }) =>
-      request<{ processed: number; errors: number; results: unknown[] }>(`/projects/${projectId}/intake/bulk`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      request<{ processed: number; errors: number; results: unknown[] }>(
+        `/projects/${projectId}/intake/bulk`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        }
+      ),
   },
 
   // ─── Commands ───

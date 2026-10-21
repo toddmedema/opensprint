@@ -610,6 +610,16 @@ export class OrchestratorService {
   }
 
   private killProcessIfActive(agent: AgentRunState): void {
+    agent.cancelled = true;
+    if (agent.runner) {
+      try {
+        agent.runner.cancel();
+      } catch {
+        // The runner retains stop_requested until process exit is observed.
+      }
+      agent.activeProcess = null;
+      return;
+    }
     if (!agent.activeProcess) return;
     try {
       agent.activeProcess.kill();
@@ -666,7 +676,11 @@ export class OrchestratorService {
 
     const wtPath = slot.worktreePath ?? repoPath;
     await heartbeatService.deleteHeartbeat(wtPath, taskId).catch((err) => {
-      log.warn("heartbeat delete failed", { taskId, wtPath, err: err instanceof Error ? err.message : String(err) });
+      log.warn("heartbeat delete failed", {
+        taskId,
+        wtPath,
+        err: err instanceof Error ? err.message : String(err),
+      });
     });
 
     // Drop assignment before worktree teardown so assignment-based cleanup guards (and recovery scans)
@@ -890,12 +904,15 @@ export class OrchestratorService {
       if (validIds.has(taskId)) {
         const taskStatus = statusById.get(taskId);
         if (taskStatus != null && taskStatus !== "in_progress") {
-          log.warn("Task-agent status drift detected: slot active while task status is not in_progress", {
-            projectId,
-            taskId,
-            taskStatus,
-            slotPhase: slot.phase,
-          });
+          log.warn(
+            "Task-agent status drift detected: slot active while task status is not in_progress",
+            {
+              projectId,
+              taskId,
+              taskStatus,
+              slotPhase: slot.phase,
+            }
+          );
           try {
             await this.taskStore.update(projectId, taskId, {
               status: "in_progress",
@@ -909,7 +926,9 @@ export class OrchestratorService {
               taskId,
               slotPhase: slot.phase,
               repairedAssignee:
-                typeof slot.assignee === "string" && slot.assignee.length > 0 ? slot.assignee : null,
+                typeof slot.assignee === "string" && slot.assignee.length > 0
+                  ? slot.assignee
+                  : null,
             });
             void broadcastAuthoritativeTaskUpdated(broadcastToProject, projectId, taskId);
           } catch (err) {
@@ -950,13 +969,15 @@ export class OrchestratorService {
 
     for (const reviewSlot of state.slots.values()) {
       if (buildReviewAgentId(reviewSlot.taskId, "general") === agentId) {
-        this.killProcessIfActive(reviewSlot.agent);
+        if (reviewSlot.agent.runner) reviewSlot.agent.runner.cancel(true);
+        else this.killProcessIfActive(reviewSlot.agent);
         return true;
       }
       if (!reviewSlot.reviewAgents || reviewSlot.reviewAgents.size === 0) continue;
       for (const [angle, reviewAgent] of reviewSlot.reviewAgents.entries()) {
         if (buildReviewAgentId(reviewSlot.taskId, angle) !== agentId) continue;
-        this.killProcessIfActive(reviewAgent.agent);
+        if (reviewAgent.agent.runner) reviewAgent.agent.runner.cancel(true);
+        else this.killProcessIfActive(reviewAgent.agent);
         return true;
       }
     }
@@ -1005,12 +1026,21 @@ export class OrchestratorService {
       slot.timers.clearAll();
       const preserveAgents = process.env.OPENSPRINT_PRESERVE_AGENTS === "1";
       if (!preserveAgents) this.killProcessIfActive(slot.agent);
-      else slot.agent.activeProcess = null;
+      else {
+        slot.agent.cancelled = true;
+        if (slot.agent.runner?.observe().state === "queued") slot.agent.runner.cancel();
+        slot.agent.activeProcess = null;
+      }
       if (slot.reviewAgents) {
         for (const reviewAgent of slot.reviewAgents.values()) {
           reviewAgent.timers.clearAll();
           if (!preserveAgents) this.killProcessIfActive(reviewAgent.agent);
-          else reviewAgent.agent.activeProcess = null;
+          else {
+            reviewAgent.agent.cancelled = true;
+            if (reviewAgent.agent.runner?.observe().state === "queued")
+              reviewAgent.agent.runner.cancel();
+            reviewAgent.agent.activeProcess = null;
+          }
         }
       }
     }
@@ -1136,11 +1166,14 @@ export class OrchestratorService {
         assignment.attempt
       ))
     ) {
-      log.warn("Recovery: assignment worktree is missing checkout files; skipping terminal result", {
-        taskId: task.id,
-        branchName: assignment.branchName,
-        worktreePath: assignment.worktreePath,
-      });
+      log.warn(
+        "Recovery: assignment worktree is missing checkout files; skipping terminal result",
+        {
+          taskId: task.id,
+          branchName: assignment.branchName,
+          worktreePath: assignment.worktreePath,
+        }
+      );
       return false;
     }
 
@@ -1757,15 +1790,13 @@ export class OrchestratorService {
     if (slotsFull) {
       // Analyst doesn't use a slot; allow loop to run when there's pending feedback
       fireAndForget(
-        this.feedbackService
-          .getNextPendingFeedbackId(projectId)
-          .then((nextId) => {
-            const s = this.getState(projectId);
-            if (nextId && !s.loopActive && !s.globalTimers.has("loop")) {
-              log.info("Nudge (pending feedback), starting loop for project", { projectId });
-              this.startRunLoop(projectId, "nudge-pending-feedback");
-            }
-          }),
+        this.feedbackService.getNextPendingFeedbackId(projectId).then((nextId) => {
+          const s = this.getState(projectId);
+          if (nextId && !s.loopActive && !s.globalTimers.has("loop")) {
+            log.info("Nudge (pending feedback), starting loop for project", { projectId });
+            this.startRunLoop(projectId, "nudge-pending-feedback");
+          }
+        }),
         "orchestrator:phase-transition-event-log"
       );
       return;
@@ -2495,8 +2526,7 @@ export class OrchestratorService {
 
       const reviewMode = settings.reviewMode ?? DEFAULT_REVIEW_MODE;
       const skipReview =
-        reviewMode === "never" ||
-        (reviewMode === "on-failure-only" && slot.attempt <= 1);
+        reviewMode === "never" || (reviewMode === "on-failure-only" && slot.attempt <= 1);
 
       if (skipReview) {
         const scopedResult = await this.runAdaptiveValidation(
@@ -2717,7 +2747,10 @@ export class OrchestratorService {
       return scopedResult;
     } catch (err) {
       const durationMs = Date.now() - startedAt;
-      fireAndForget(this.projectService.recordValidationDuration(projectId, preferredScope, durationMs), "orchestrator:record-validation-duration");
+      fireAndForget(
+        this.projectService.recordValidationDuration(projectId, preferredScope, durationMs),
+        "orchestrator:record-validation-duration"
+      );
       throw err;
     }
   }
@@ -3189,10 +3222,7 @@ export class OrchestratorService {
         error instanceof AppError && gitPreflightCodes.includes(error.code)
           ? error.code
           : ErrorCodes.GIT_BASE_BRANCH_INVALID;
-      throw new RepoPreflightError(
-        error instanceof Error ? error.message : String(error),
-        code
-      );
+      throw new RepoPreflightError(error instanceof Error ? error.message : String(error), code);
     }
 
     if (wtPath === repoPath) {
@@ -3244,13 +3274,27 @@ export class OrchestratorService {
  * contract drift — adding / removing / renaming a host-expected method
  * will cause a build error here rather than a silent runtime failure.
  */
-type _AssertFailureHandlerHost = OrchestratorService extends FailureHandlerHost ? true : { __err: "OrchestratorService does not satisfy FailureHandlerHost" };
-type _AssertMergeCoordinatorHost = OrchestratorService extends MergeCoordinatorHost ? true : { __err: "OrchestratorService does not satisfy MergeCoordinatorHost" };
-type _AssertReviewHost = OrchestratorService extends OrchestratorReviewHost ? true : { __err: "OrchestratorService does not satisfy OrchestratorReviewHost" };
-type _AssertLoopHost = OrchestratorService extends OrchestratorLoopHost ? true : { __err: "OrchestratorService does not satisfy OrchestratorLoopHost" };
-type _AssertDispatchHost = OrchestratorService extends OrchestratorDispatchHost ? true : { __err: "OrchestratorService does not satisfy OrchestratorDispatchHost" };
-type _AssertPhaseHost = OrchestratorService extends PhaseExecutorHost ? true : { __err: "OrchestratorService does not satisfy PhaseExecutorHost" };
-type _AssertRecoveryHost = OrchestratorService extends OrchestratorRecoveryHost ? true : { __err: "OrchestratorService does not satisfy OrchestratorRecoveryHost" };
+type _AssertFailureHandlerHost = OrchestratorService extends FailureHandlerHost
+  ? true
+  : { __err: "OrchestratorService does not satisfy FailureHandlerHost" };
+type _AssertMergeCoordinatorHost = OrchestratorService extends MergeCoordinatorHost
+  ? true
+  : { __err: "OrchestratorService does not satisfy MergeCoordinatorHost" };
+type _AssertReviewHost = OrchestratorService extends OrchestratorReviewHost
+  ? true
+  : { __err: "OrchestratorService does not satisfy OrchestratorReviewHost" };
+type _AssertLoopHost = OrchestratorService extends OrchestratorLoopHost
+  ? true
+  : { __err: "OrchestratorService does not satisfy OrchestratorLoopHost" };
+type _AssertDispatchHost = OrchestratorService extends OrchestratorDispatchHost
+  ? true
+  : { __err: "OrchestratorService does not satisfy OrchestratorDispatchHost" };
+type _AssertPhaseHost = OrchestratorService extends PhaseExecutorHost
+  ? true
+  : { __err: "OrchestratorService does not satisfy PhaseExecutorHost" };
+type _AssertRecoveryHost = OrchestratorService extends OrchestratorRecoveryHost
+  ? true
+  : { __err: "OrchestratorService does not satisfy OrchestratorRecoveryHost" };
 
 /** Shared orchestrator instance for build routes and task list (kanban phase override) */
 export const orchestratorService = new OrchestratorService();

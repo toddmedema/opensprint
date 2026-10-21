@@ -1,4 +1,5 @@
 import pg from "pg";
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { DbClient } from "./client.js";
 import { createPostgresDbClient, getPoolConfig } from "./client.js";
 import { runSchema } from "./schema.js";
@@ -13,6 +14,10 @@ export type DrizzlePg = import("drizzle-orm/node-postgres").NodePgDatabase<Recor
 export interface AppDb {
   getClient(): Promise<DbClient>;
   runWrite<T>(fn: (client: DbClient) => Promise<T>): Promise<T>;
+  /** Coherent snapshot; SQLite shares the connection lock with every writer. */
+  runRead?<T>(fn: (client: DbClient) => Promise<T>): Promise<T>;
+  /** Serialize a group of operations without opening a transaction (e.g. VACUUM). */
+  runExclusive?<T>(fn: () => Promise<T>): Promise<T>;
   close(): Promise<void>;
   /** When using Postgres, returns a Drizzle instance for type-safe queries. Null for SQLite. */
   getDrizzle?(): Promise<DrizzlePg | null>;
@@ -49,6 +54,12 @@ async function initPostgresAppDb(databaseUrl: string): Promise<AppDb> {
     async runWrite<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
       return client.runInTransaction(fn);
     },
+    async runRead<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
+      return client.runInTransaction(async (tx) => {
+        await tx.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+        return fn(tx);
+      });
+    },
     async close(): Promise<void> {
       await pool.end();
     },
@@ -64,13 +75,74 @@ async function initSqliteAppDb(databaseUrl: string): Promise<AppDb> {
   await runSchema(client, "sqlite");
   await migratePlanVersions(client);
 
+  // All repositories use the same SQLite connection. A service-local mutex cannot
+  // prevent another repository from entering a transaction or seeing uncommitted
+  // writes on that connection. Keep the lock at its owner and make nested use safe.
+  const scope = new AsyncLocalStorage<{ active: boolean; transactionTail: Promise<void> }>();
+  const transactionScope = new AsyncLocalStorage<{ active: boolean; client: DbClient }>();
+  let tail = Promise.resolve();
+  const runExclusive = async <T>(fn: () => Promise<T>): Promise<T> => {
+    if (scope.getStore()?.active) return fn();
+    const previous = tail;
+    let release!: () => void;
+    tail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    const context = { active: true, transactionTail: Promise.resolve() };
+    try {
+      return await scope.run(context, fn);
+    } finally {
+      context.active = false;
+      release();
+    }
+  };
+  const runTransaction = <T>(fn: (tx: DbClient) => Promise<T>): Promise<T> =>
+    runExclusive(async () => {
+      const context = scope.getStore()!;
+      const inherited = transactionScope.getStore();
+      if (inherited?.active) return fn(inherited.client);
+      // Sibling transactions inside runExclusive must still queue. Only calls
+      // descended from the transaction callback may reuse that transaction.
+      const previous = context.transactionTail;
+      let release!: () => void;
+      context.transactionTail = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await previous;
+      try {
+        return await client.runInTransaction(async (tx) => {
+          const transaction = { active: true, client: tx };
+          try {
+            return await transactionScope.run(transaction, () => fn(tx));
+          } finally {
+            transaction.active = false;
+          }
+        });
+      } finally {
+        release();
+      }
+    });
+  const currentClient = () => {
+    const transaction = transactionScope.getStore();
+    return transaction?.active ? transaction.client : client;
+  };
+  const sharedClient: DbClient = {
+    query: (sql, params) => runExclusive(() => currentClient().query(sql, params)),
+    queryOne: (sql, params) => runExclusive(() => currentClient().queryOne(sql, params)),
+    execute: (sql, params) => runExclusive(() => currentClient().execute(sql, params)),
+    runInTransaction: runTransaction,
+  };
+
   return {
     async getClient(): Promise<DbClient> {
-      return client;
+      return sharedClient;
     },
     async runWrite<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
-      return client.runInTransaction(fn);
+      return runTransaction(fn);
     },
+    runRead: runTransaction,
+    runExclusive,
     async close(): Promise<void> {
       close();
     },

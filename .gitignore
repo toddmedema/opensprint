@@ -62,6 +62,7 @@ packages/frontend/.vite/
 .opensprint/settings.json
 .opensprint/active/
 .opensprint/conversations/
+.opensprint/guidance/
 .opensprint/agent-images/
 .opensprint/sessions/
 .opensprint/orchestrator-state.json

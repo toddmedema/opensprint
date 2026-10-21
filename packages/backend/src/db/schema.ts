@@ -2,6 +2,8 @@ import type { DatabaseDialect } from "@opensprint/shared";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
+import { COLLABORATION_SCHEMA_SQL } from "./collaboration-schema.js";
+import { PUBLICATION_SCHEMA_SQL } from "./publication-schema.js";
 
 /**
  * Postgres-compatible schema for Open Sprint.
@@ -1093,9 +1095,7 @@ export async function runSchema(
     `CREATE TABLE IF NOT EXISTS schema_versions (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)`
   );
 
-  const appliedRows = await client.query(
-    `SELECT version FROM schema_versions ORDER BY version`
-  );
+  const appliedRows = await client.query(`SELECT version FROM schema_versions ORDER BY version`);
   const appliedVersions = new Set(
     appliedRows.map((r) => Number((r as Record<string, unknown>).version))
   );
@@ -1117,4 +1117,6 @@ export async function runSchema(
         : `INSERT INTO schema_versions (version, applied_at) VALUES (?, ?)`;
     await client.query(insertVersionSql, [migration.version, new Date().toISOString()]);
   }
+  await executeSqlStatements(client, COLLABORATION_SCHEMA_SQL, dialect);
+  await executeSqlStatements(client, PUBLICATION_SCHEMA_SQL, dialect);
 }

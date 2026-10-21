@@ -9,6 +9,8 @@ const OPENSPRINT_RUNTIME_CONTRACT_SECTION = [
   "Open Sprint manages task state internally. Do not use external task CLIs.",
   "",
   "- Execute agents start in a prepared worktree with the task branch already checked out.",
+  "- Agent admission is cancellable and FIFO. Recheck attempt generation and owning slot after admission and immediately before launch; cancelled or replaced queued attempts must never launch. Concurrency limit changes preserve active accounting.",
+  "- Recovered PIDs are observation-only until ownership is independently verified. Retain uncertain assignments instead of killing or requeueing them. A stop request becomes stopped only after observed completion. A terminal result file alone cannot complete an unverified recovered process. Guidance receipts distinguish durable queue acceptance from inclusion in a model turn.",
   "- Run the smallest relevant non-watch verification for touched workspaces while iterating. Use scoped tests first, add scoped build/typecheck and lint commands when your changes could affect them, and leave the branch in a state where the project’s configured merge quality gates are expected to pass before reporting success.",
   "- If you add, remove, or upgrade dependencies: run the repository’s documented install workflow from the repository root, update manifests/lockfiles required by that ecosystem, and commit dependency metadata changes together with the code that uses them.",
   "- If the project’s build/typecheck includes tests, ensure test-runner globals and typing/runtime configuration are set up so build/typecheck still passes after your changes.",
@@ -26,6 +28,7 @@ export const PROJECT_GITIGNORE_ENTRIES = [
   ".opensprint/pending-commits.json",
   ".opensprint/sessions/",
   ".opensprint/active/",
+  ".opensprint/guidance/",
   ".opensprint/runtime/",
 ] as const;
 

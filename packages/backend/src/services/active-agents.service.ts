@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { ActiveAgent, AgentRole } from "@opensprint/shared";
 import { getAgentNameForRole } from "@opensprint/shared";
 import type { PendingMessageQueue } from "./agentic-loop.js";
@@ -6,6 +7,9 @@ import type { PendingMessageQueue } from "./agentic-loop.js";
 export interface AgentChannelEntry {
   pendingMessages: PendingMessageQueue;
   backendType: string;
+  projectId?: string;
+  attempt: number;
+  attemptId: string;
 }
 
 /** Internal entry stored in the registry (includes projectId for filtering) */
@@ -26,6 +30,7 @@ export interface ActiveAgentEntry {
   feedbackId?: string;
   /** Task ID for Execute deep links when `id` is a per-run token (e.g. merger). */
   taskId?: string;
+  attemptId?: string;
 }
 
 /**
@@ -64,7 +69,8 @@ export class ActiveAgentsService {
     planId?: string,
     name?: string,
     feedbackId?: string,
-    taskId?: string
+    taskId?: string,
+    attemptId?: string
   ): void {
     const index = this.nextIndexByRole.get(role) ?? 0;
     this.nextIndexByRole.set(role, index + 1);
@@ -81,6 +87,7 @@ export class ActiveAgentsService {
       name: assignedName,
       feedbackId,
       taskId,
+      attemptId,
     });
   }
 
@@ -89,17 +96,43 @@ export class ActiveAgentsService {
    * Also removes any associated pending-messages channel.
    * Safe to call if the agent was never registered.
    */
-  unregister(id: string): void {
+  unregister(id: string, expectedAttemptId?: string): void {
+    if (expectedAttemptId) {
+      const current = this.agents.get(id)?.attemptId ?? this.channels.get(id)?.attemptId;
+      if (current !== expectedAttemptId) return;
+    }
     this.agents.delete(id);
-    this.channels.delete(id);
+    this.unregisterChannel(id);
   }
 
   /**
    * Register a pending-messages channel for a task so other services
    * (e.g. AgentChatService) can push live user messages into the agentic loop.
    */
-  registerChannel(id: string, pendingMessages: PendingMessageQueue, backendType: string): void {
-    this.channels.set(id, { pendingMessages, backendType });
+  registerChannel(
+    id: string,
+    pendingMessages: PendingMessageQueue,
+    backendType: string,
+    context?: { projectId?: string; attempt?: number; attemptId?: string }
+  ): void {
+    this.unregisterChannel(id);
+    this.channels.set(id, {
+      pendingMessages,
+      backendType,
+      projectId: context?.projectId ?? this.agents.get(id)?.projectId,
+      attempt: context?.attempt ?? 1,
+      attemptId: context?.attemptId ?? randomUUID(),
+    });
+  }
+
+  unregisterChannel(id: string): void {
+    const channel = this.channels.get(id);
+    if (!channel) return;
+    try {
+      channel.pendingMessages.close();
+    } finally {
+      this.channels.delete(id);
+    }
   }
 
   /**
