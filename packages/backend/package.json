@@ -26,6 +26,7 @@
     "@opensprint/shared": "*",
     "better-sqlite3": "^12.8.0",
     "cors": "^2.8.5",
+    "cross-spawn": "^7.0.6",
     "diff": "^8.0.4",
     "dotenv": "^17.3.1",
     "drizzle-orm": "^0.38.0",
@@ -41,6 +42,7 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
     "@types/cors": "^2.8.17",
+    "@types/cross-spawn": "^6.0.6",
     "@types/express": "^5.0.0",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.0.0",

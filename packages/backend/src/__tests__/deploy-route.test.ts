@@ -134,6 +134,29 @@ async function getWithTransientParseRetry(
   }
 }
 
+async function waitForDeploymentCompletion(
+  app: ReturnType<typeof createApp>,
+  projectId: string,
+  operationId: string
+) {
+  for (let attempt = 0; attempt < HISTORY_POLL_ATTEMPTS; attempt++) {
+    const response = await authedSupertest(app).get(
+      `${API_PREFIX}/projects/${projectId}/runtime/operations/${operationId}`
+    );
+    expect(response.status).toBe(200);
+    if (!["queued", "running"].includes(response.body.data.status)) {
+      expect(response.body.data.status).toBe("completed");
+      expect(
+        response.body.data.result.record.status,
+        JSON.stringify(response.body.data.result.record)
+      ).toBe("success");
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, HISTORY_POLL_INTERVAL_MS));
+  }
+  throw new Error(`Deployment ${operationId} did not reach a confirmed terminal outcome`);
+}
+
 const deployRouteTaskStoreMod = await import("../services/task-store.service.js");
 const deployRoutePostgresOk =
   (deployRouteTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
@@ -197,8 +220,8 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
       complexComplexityAgent: { type: "claude", model: "claude-sonnet-4", cliCommand: null },
       deployment: {
         mode: "custom",
-        customCommand: "true",
-        rollbackCommand: "true",
+        customCommand: 'node -e "process.exit(0)"',
+        rollbackCommand: 'node -e "process.exit(0)"',
         target: "staging",
       },
       hilConfig: DEFAULT_HIL_CONFIG,
@@ -758,10 +781,12 @@ describe.skipIf(!deployRoutePostgresOk)("Deliver API (phase routes for deploymen
       const res1 = await authedSupertest(app).post(`${API_PREFIX}/projects/${projectId}/deliver`);
       expect(res1.status).toBe(202);
       const firstDeployId = res1.body.data.deployId as string;
+      await waitForDeploymentCompletion(app, projectId, firstDeployId);
 
       const res2 = await authedSupertest(app).post(`${API_PREFIX}/projects/${projectId}/deliver`);
       expect(res2.status).toBe(202);
       const secondDeployId = res2.body.data.deployId as string;
+      await waitForDeploymentCompletion(app, projectId, secondDeployId);
 
       // Poll for history until both deploy records are visible.
       let historyRes = await waitForHistory(app, projectId, { limit: 5, minRecords: 2 });

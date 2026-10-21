@@ -31,6 +31,11 @@ vi.mock("../services/task-store.service.js", async () => {
     taskStore: {
       init: vi.fn().mockImplementation(async () => {}),
       getDb: vi.fn().mockImplementation(async () => testClientRef.current),
+      runRead: vi
+        .fn()
+        .mockImplementation(async (fn: (client: DbClient) => Promise<unknown>) =>
+          fn(testClientRef.current!)
+        ),
       runWrite: vi
         .fn()
         .mockImplementation(async (fn: (c: DbClient) => Promise<unknown>) =>
@@ -314,16 +319,22 @@ describe("ProjectService.scaffoldProject", () => {
       repoPathPolicy: "linux_fs_only",
     });
 
-    await expect(
-      projectService.scaffoldProject({
-        name: "my-app",
-        parentPath: "/mnt/c/Users/Todd/my-app",
-        template: "web-app-expo-react",
-      })
-    ).rejects.toMatchObject({
-      code: "UNSUPPORTED_REPO_PATH",
-      message: expect.stringContaining("WSL filesystem"),
-    });
+    // WSL uses POSIX path resolution even when this fixture runs on Windows.
+    const resolvePath = vi.spyOn(path, "resolve").mockReturnValueOnce("/mnt/c/Users/Todd/my-app");
+    try {
+      await expect(
+        projectService.scaffoldProject({
+          name: "my-app",
+          parentPath: "/mnt/c/Users/Todd/my-app",
+          template: "web-app-expo-react",
+        })
+      ).rejects.toMatchObject({
+        code: "UNSUPPORTED_REPO_PATH",
+        message: expect.stringContaining("WSL filesystem"),
+      });
+    } finally {
+      resolvePath.mockRestore();
+    }
   });
 
   it("uses default agent config when not provided", { timeout: 60_000 }, async () => {

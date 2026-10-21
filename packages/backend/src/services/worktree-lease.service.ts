@@ -57,32 +57,60 @@ export class WorktreeLeaseService {
 
     await taskStore.runWrite(async (client) => {
       const existing = await client.query(
-        "SELECT generation, released_at, expires_at FROM worktree_leases WHERE worktree_key = $1",
+        "SELECT generation, lease_owner, released_at, expires_at FROM worktree_leases WHERE worktree_key = $1",
         [params.worktreeKey]
       );
       if (existing.length > 0) {
-        const row = existing[0] as { generation: number; released_at: string | null; expires_at: string };
+        const row = existing[0] as {
+          generation: number;
+          lease_owner: string;
+          released_at: string | null;
+          expires_at: string;
+        };
+        if (
+          !row.released_at &&
+          Date.parse(row.expires_at) > now.getTime() &&
+          row.lease_owner !== params.leaseOwner
+        ) {
+          throw new Error("Worktree is already leased by another execution owner");
+        }
         const prevGen = typeof row.generation === "number" ? row.generation : 0;
         lease.generation = prevGen + 1;
-        await client.execute(
+        const affected = await client.execute(
           `UPDATE worktree_leases
            SET task_id = $1, project_id = $2, worktree_path = $3, branch_name = $4,
                lease_owner = $5, generation = $6, acquired_at = $7, expires_at = $8, released_at = NULL
-           WHERE worktree_key = $9`,
+           WHERE worktree_key = $9 AND generation = $10 AND lease_owner = $11`,
           [
-            lease.taskId, lease.projectId, lease.worktreePath, lease.branchName,
-            lease.leaseOwner, lease.generation, lease.acquiredAt, lease.expiresAt,
+            lease.taskId,
+            lease.projectId,
+            lease.worktreePath,
+            lease.branchName,
+            lease.leaseOwner,
+            lease.generation,
+            lease.acquiredAt,
+            lease.expiresAt,
             lease.worktreeKey,
+            prevGen,
+            row.lease_owner,
           ]
         );
+        if (affected !== 1) throw new Error("Worktree lease changed during acquisition");
       } else {
         await client.execute(
           `INSERT INTO worktree_leases (worktree_key, task_id, project_id, worktree_path, branch_name,
              lease_owner, generation, acquired_at, expires_at, released_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL)`,
           [
-            lease.worktreeKey, lease.taskId, lease.projectId, lease.worktreePath, lease.branchName,
-            lease.leaseOwner, lease.generation, lease.acquiredAt, lease.expiresAt,
+            lease.worktreeKey,
+            lease.taskId,
+            lease.projectId,
+            lease.worktreePath,
+            lease.branchName,
+            lease.leaseOwner,
+            lease.generation,
+            lease.acquiredAt,
+            lease.expiresAt,
           ]
         );
       }
@@ -113,14 +141,16 @@ export class WorktreeLeaseService {
       }
       if (row.lease_owner !== owner) {
         log.warn("Lease release rejected: owner mismatch", {
-          worktreeKey, requestedOwner: owner, currentOwner: row.lease_owner,
+          worktreeKey,
+          requestedOwner: owner,
+          currentOwner: row.lease_owner,
         });
         return;
       }
-      await client.execute(
-        "UPDATE worktree_leases SET released_at = $1 WHERE worktree_key = $2",
-        [now, worktreeKey]
-      );
+      await client.execute("UPDATE worktree_leases SET released_at = $1 WHERE worktree_key = $2", [
+        now,
+        worktreeKey,
+      ]);
       released = true;
     });
     if (released) {
@@ -172,10 +202,9 @@ export class WorktreeLeaseService {
 
   async get(worktreeKey: string): Promise<WorktreeLease | null> {
     const client = await taskStore.getDb();
-    const rows = await client.query(
-      "SELECT * FROM worktree_leases WHERE worktree_key = $1",
-      [worktreeKey]
-    );
+    const rows = await client.query("SELECT * FROM worktree_leases WHERE worktree_key = $1", [
+      worktreeKey,
+    ]);
     if (rows.length === 0) return null;
     return this.rowToLease(rows[0]);
   }

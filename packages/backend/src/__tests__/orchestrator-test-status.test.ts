@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import path from "node:path";
 import {
   buildOrchestratorTestStatusContent,
   buildTestFailureRetrySummary,
@@ -16,7 +17,14 @@ describe("orchestrator-test-status", () => {
 
   it("builds a state path under the task context directory", () => {
     expect(getOrchestratorTestStatusStateFsPath("/repo", "os-1234")).toBe(
-      "/repo/.opensprint/active/os-1234/context/orchestrator-test-status.json"
+      path.join(
+        "/repo",
+        ".opensprint",
+        "active",
+        "os-1234",
+        "context",
+        "orchestrator-test-status.json"
+      )
     );
   });
 

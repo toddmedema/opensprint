@@ -30,6 +30,14 @@ import { createAgentOutputFilter } from "../utils/agent-output-filter.js";
 import type { AgentOutputFilter } from "../utils/agent-output-filter.js";
 import { fireAndForget } from "../utils/fire-and-forget.js";
 import { AgentRunner } from "./agent/agent-runner.js";
+import {
+  executionOwnershipService,
+  projectLeadershipService,
+  withExecutionFence,
+  withoutExecutionFence,
+  type ExecutionFence,
+} from "./execution-ownership.service.js";
+import { executionOutputService } from "./execution-output.service.js";
 
 const log = createLogger("agent-lifecycle");
 
@@ -66,6 +74,8 @@ const MAX_OUTPUT_LOG_BYTES = 5 * 1024 * 1024; // 5 MB
  * updates them during agent execution.
  */
 export interface AgentRunState {
+  /** Durable database fence; a PID is never a substitute for this ownership. */
+  executionFence?: ExecutionFence;
   /** Local invocation identity; callbacks from earlier generations must not mutate this run. */
   attemptId?: string;
   runner?: AgentRunner;
@@ -164,7 +174,19 @@ export class AgentLifecycleManager {
    * finishes (either normally via onExit, or via dead-process detection).
    */
   async run(params: AgentRunParams, runState: AgentRunState, timers: TimerRegistry): Promise<void> {
+    return withoutExecutionFence(() => this.runOwned(params, runState, timers));
+  }
+  private async runOwned(
+    params: AgentRunParams,
+    runState: AgentRunState,
+    timers: TimerRegistry
+  ): Promise<void> {
     if (runState.cancelled || params.isStillActive?.() === false) return;
+    if (
+      runState.activeProcess?.ownership === "recovered_unverified" ||
+      runState.runner?.observe().state === "uncertain"
+    )
+      throw new Error("Unverified recovered execution remains quarantined");
     const {
       projectId,
       taskId,
@@ -179,6 +201,15 @@ export class AgentLifecycleManager {
     } = params;
     this.assertPromptPathMatchesWorktree(wtPath, taskId, promptPath);
 
+    const previousState = runState.runner?.observe().state;
+    const previousFence =
+      previousState === "completed" || previousState === "stopped"
+        ? runState.executionFence
+        : undefined;
+    const runKey = `${taskId}:${phase}:${params.heartbeatSubpath ?? role}`;
+    const supersedes = previousFence?.runKey === runKey ? previousFence : undefined;
+    if (previousFence && previousFence.runKey !== runKey)
+      await executionOwnershipService.transition(previousFence, "completed");
     runState.runner?.cancel();
     const runner = new AgentRunner(`${taskId}:${phase}:${params.attempt}:${randomUUID()}`);
     runState.runner = runner;
@@ -215,23 +246,78 @@ export class AgentLifecycleManager {
         ? agentService.invokeCodingAgent.bind(agentService)
         : agentService.invokeReviewAgent.bind(agentService);
 
+    const executionFence = await executionOwnershipService.acquire({
+      projectId,
+      taskId,
+      runKey,
+      attemptId: runner.attemptId,
+      leaderGeneration: projectLeadershipService.getFence(projectId)?.generation,
+      supersedes,
+    });
+    if (!executionFence) throw new Error("Another backend owns this execution attempt");
+    runState.executionFence = executionFence;
+    const stopQueued = async () => {
+      if (runState.attemptId === runner.attemptId) timers.clear("executionFence");
+      if (ownsRun()) runState.activeProcess = null;
+      try {
+        if (ownsRun() && runner.notifyCompletionOnCancel)
+          await withExecutionFence(executionFence, () => onDone(null));
+      } finally {
+        await executionOwnershipService.transition(executionFence, "stopped").catch(() => {});
+      }
+    };
+    if (!ownsRun() || runner.controller.signal.aborted) {
+      await stopQueued();
+      return;
+    }
+    runner.controller.signal.addEventListener(
+      "abort",
+      () => {
+        fireAndForget(
+          executionOwnershipService.transition(executionFence, "stop_requested"),
+          "agent-lifecycle:stop-requested"
+        );
+      },
+      { once: true }
+    );
+    // Queued work is durable and controllable from another backend before FIFO admission.
+    timers.setInterval(
+      "executionFence",
+      () => {
+        fireAndForget(
+          (async () => {
+            if (!(await executionOwnershipService.heartbeat(executionFence))) {
+              runner.cancel();
+              return;
+            }
+            const current = (await executionOwnershipService.observe(projectId, taskId)).find(
+              (item) => item.attemptId === executionFence.attemptId
+            );
+            if (current?.state === "stop_requested") runner.cancel(true);
+          })().catch((err) => {
+            runner.cancel();
+            throw err;
+          }),
+          "agent-lifecycle:execution-fence"
+        );
+      },
+      10_000
+    );
     let releaseGlobalSlot: () => void;
     try {
       releaseGlobalSlot = await acquireGlobalAgentSlot(projectId, runner.controller.signal);
     } catch (err) {
       if (runner.controller.signal.aborted) {
-        if (ownsRun()) runState.activeProcess = null;
-        if (ownsRun() && runner.notifyCompletionOnCancel) await onDone(null);
+        await stopQueued();
         return;
       }
-      if (ownsRun()) runState.activeProcess = null;
+      await stopQueued();
       throw err;
     }
     if (!ownsRun() || runner.controller.signal.aborted || runState.exitHandled) {
       releaseGlobalSlot();
       runner.cancel();
-      if (ownsRun()) runState.activeProcess = null;
-      if (ownsRun() && runner.notifyCompletionOnCancel) await onDone(null);
+      await stopQueued();
       return;
     }
     const releaseSlotOnce = (() => {
@@ -247,9 +333,38 @@ export class AgentLifecycleManager {
       runner.complete();
       if (!ownsRun() || (runner.controller.signal.aborted && !runner.notifyCompletionOnCancel))
         return;
-      await onDone(code);
+      {
+        await executionOwnershipService.assertCurrent(executionFence);
+        try {
+          await withExecutionFence(executionFence, () => onDone(code));
+        } finally {
+          // onDone may synchronously launch the next attempt into this same slot/timer registry.
+          if (runState.attemptId === runner.attemptId) {
+            await executionOwnershipService.transition(
+              executionFence,
+              runner.controller.signal.aborted ? "stopped" : "completed"
+            );
+            timers.clear("executionFence");
+          }
+        }
+      }
     };
     try {
+      const fence = executionFence;
+      if (!ownsRun() || runner.controller.signal.aborted) {
+        await executionOwnershipService.transition(fence, "stopped");
+        releaseSlotOnce();
+        return;
+      }
+      await executionOwnershipService.transition(fence, "running");
+      // Admission and every awaited preparation may race with cancellation or a lease takeover.
+      await executionOwnershipService.assertCurrent(fence);
+      if (!ownsRun() || runner.controller.signal.aborted) {
+        await executionOwnershipService.transition(fence, "stopped");
+        releaseSlotOnce();
+        return;
+      }
+      let outputPersistence = Promise.resolve();
       broadcastToProject(projectId, {
         type: "agent.started",
         taskId,
@@ -257,76 +372,111 @@ export class AgentLifecycleManager {
         branchName,
         startedAt: runState.startedAt,
       });
-      const handle = runner.start(() =>
-        invoke(promptPath, agentConfig, {
-          cwd: wtPath,
-          agentRole: role === "coder" ? "coder" : "code reviewer",
-          outputLogPath,
-          projectId,
-          tracking: {
-            id: taskId,
+      const handle = await executionOwnershipService.launch(fence, () =>
+        runner.start(() =>
+          invoke(promptPath, agentConfig, {
+            cwd: wtPath,
+            agentRole: role === "coder" ? "coder" : "code reviewer",
+            outputLogPath,
             projectId,
-            phase,
-            role,
-            label: agentLabel,
-            branchName,
-            attempt: params.attempt,
-            attemptId: runner.attemptId,
-          },
-          onOutput: (chunk: string) => {
-            if (!ownsRun() || runner.controller.signal.aborted || runState.exitHandled) return;
-            const toolEvents = updateToolCallState(runState, chunk);
-            this.recordToolActivity(params, toolEvents);
-            const filtered = runState.outputFilter!.filter(chunk);
-            if (filtered) appendOutputLog(runState, filtered);
-            if (filtered) sendAgentOutputToProject(projectId, taskId, filtered);
-            void this.recordOutputActivity(params, runState, Date.now());
-          },
-          onExit: async (code: number | null) => {
-            releaseSlotOnce();
-            runner.complete();
-            if (!ownsRun() || runState.exitHandled) return;
-            runState.exitHandled = true;
-            runState.activeProcess = null;
-            this.cleanupTimers(timers);
-            if (runner.controller.signal.aborted && !runner.notifyCompletionOnCancel) return;
-            const startedAtMs = Date.parse(runState.startedAt ?? "");
-            const durationMs = Number.isFinite(startedAtMs)
-              ? Math.max(0, Date.now() - startedAtMs)
-              : null;
-            fireAndForget(
-              eventLogService.append(params.repoPath, {
-                timestamp: new Date().toISOString(),
-                projectId: params.projectId,
-                taskId: params.taskId,
-                event: "agent.process_exited",
-                data: {
-                  attempt: params.attempt,
-                  phase: params.phase,
-                  exitCode: code,
-                  durationMs,
-                },
-              }),
-              "agent-lifecycle:process-exited"
-            );
-            await heartbeatService.deleteHeartbeat(wtPath, taskId, params.heartbeatSubpath);
-            try {
-              await wrappedOnDone(code);
-            } catch (err) {
-              log.error("onDone failed", {
-                projectId: params.projectId,
+            executionFence: fence,
+            tracking: {
+              id: taskId,
+              projectId,
+              phase,
+              role,
+              label: agentLabel,
+              branchName,
+              attempt: params.attempt,
+              attemptId: runner.attemptId,
+            },
+            onOutput: (chunk: string) => {
+              if (!ownsRun() || runner.controller.signal.aborted || runState.exitHandled) return;
+              const toolEvents = updateToolCallState(runState, chunk);
+              this.recordToolActivity(params, toolEvents);
+              const filtered = runState.outputFilter!.filter(chunk);
+              if (filtered) appendOutputLog(runState, filtered);
+              if (filtered) {
+                outputPersistence = outputPersistence
+                  .then(async () => {
+                    await executionOutputService.append(fence, filtered);
+                    if (ownsRun()) sendAgentOutputToProject(projectId, taskId, filtered);
+                  })
+                  .catch((err) =>
+                    log.warn("Attempt output rejected", { taskId, attemptId: fence.attemptId, err })
+                  );
+              }
+              void this.recordOutputActivity(params, runState, Date.now());
+            },
+            onUncertain: (reason: string) => {
+              if (!ownsRun()) return;
+              runner.markUncertain();
+              log.warn("Execution quarantined after uncertain container observation", {
                 taskId,
-                phase: params.phase,
-                attempt: params.attempt,
-                exitCode: code,
-                err,
+                attemptId: fence.attemptId,
+                reason,
               });
-            }
-          },
-        })
+              void executionOwnershipService.transition(fence, "uncertain").catch(() => {});
+              void params.onStateChange?.();
+            },
+            onExit: async (code: number | null) => {
+              releaseSlotOnce();
+              runner.complete();
+              await outputPersistence;
+              if (
+                runner.controller.signal.aborted &&
+                (!ownsRun() || !runner.notifyCompletionOnCancel)
+              ) {
+                await executionOwnershipService.transition(fence, "stopped").catch(() => {});
+                if (runState.attemptId === runner.attemptId) timers.clear("executionFence");
+              }
+              if (!ownsRun() || runState.exitHandled) return;
+              runState.exitHandled = true;
+              runState.activeProcess = null;
+              this.cleanupTimers(timers);
+              if (runner.controller.signal.aborted && !runner.notifyCompletionOnCancel) return;
+              const startedAtMs = Date.parse(runState.startedAt ?? "");
+              const durationMs = Number.isFinite(startedAtMs)
+                ? Math.max(0, Date.now() - startedAtMs)
+                : null;
+              fireAndForget(
+                eventLogService.append(params.repoPath, {
+                  timestamp: new Date().toISOString(),
+                  projectId: params.projectId,
+                  taskId: params.taskId,
+                  event: "agent.process_exited",
+                  data: {
+                    attempt: params.attempt,
+                    phase: params.phase,
+                    exitCode: code,
+                    durationMs,
+                  },
+                }),
+                "agent-lifecycle:process-exited"
+              );
+              await heartbeatService.deleteHeartbeat(wtPath, taskId, params.heartbeatSubpath);
+              try {
+                await wrappedOnDone(code);
+              } catch (err) {
+                log.error("onDone failed", {
+                  projectId: params.projectId,
+                  taskId,
+                  phase: params.phase,
+                  attempt: params.attempt,
+                  exitCode: code,
+                  err,
+                });
+              }
+            },
+          })
+        )
       );
       if (!handle || !ownsRun() || runState.exitHandled) {
         releaseSlotOnce();
+        if (!handle && runner.observe().state === "stopped") {
+          await executionOwnershipService.transition(fence, "stopped").catch(() => {});
+          if (runState.attemptId === runner.attemptId) timers.clear("executionFence");
+        }
         return;
       }
       // Keep cancellation attached to admission ownership after the real handle exists.
@@ -363,6 +513,9 @@ export class AgentLifecycleManager {
       releaseSlotOnce();
       runner.complete();
       if (ownsRun()) runState.activeProcess = null;
+      if (executionFence)
+        await executionOwnershipService.transition(executionFence, "stopped").catch(() => {});
+      if (runState.attemptId === runner.attemptId) timers.clear("executionFence");
       throw err;
     }
   }
@@ -389,6 +542,7 @@ export class AgentLifecycleManager {
     runState.runner?.cancel();
     const runner = new AgentRunner(`${taskId}:${params.phase}:${params.attempt}:${randomUUID()}`);
     runner.start(() => handle);
+    if (handle.ownership === "recovered_unverified") runner.markUncertain();
     runState.runner = runner;
     runState.attemptId = runner.attemptId;
     runState.activeProcess = handle;
@@ -450,8 +604,6 @@ export class AgentLifecycleManager {
       };
 
       this.startHeartbeat(runState, wtPath, taskId, timers);
-      // A result file does not establish ownership or prove the recovered
-      // process stopped; retain its assignment until completion is observed.
       if (handle.ownership !== "recovered_unverified")
         this.startResultMonitor(
           params,
@@ -536,6 +688,7 @@ export class AgentLifecycleManager {
   ): void {
     const resultPath = path.join(path.dirname(promptPath), "result.json");
     let checkInFlight = false;
+    let terminationRequested = false;
     const attemptId = runState.attemptId;
 
     timers.setInterval(
@@ -561,8 +714,30 @@ export class AgentLifecycleManager {
             )
               return;
 
+            if (
+              runState.activeProcess?.ownership === "recovered_unverified" ||
+              runState.runner?.observe().state === "uncertain"
+            )
+              return;
+            if (runState.executionFence)
+              await executionOwnershipService.assertCurrent(runState.executionFence);
+            if (runState.attemptId !== attemptId || runState.runner?.controller.signal.aborted)
+              return;
+
             const exitCode = status === "success" || status === "approved" ? 0 : 1;
             const activeProcess = runState.activeProcess;
+            if (activeProcess && (activeProcess.pid == null || isPidAlive(activeProcess.pid))) {
+              if (!terminationRequested) {
+                terminationRequested = true;
+                if (runState.executionFence)
+                  await executionOwnershipService.transition(
+                    runState.executionFence,
+                    "stop_requested"
+                  );
+                activeProcess.kill();
+              }
+              return;
+            }
             runState.exitHandled = true;
             runState.activeProcess = null;
             this.cleanupTimers(timers);
@@ -591,11 +766,6 @@ export class AgentLifecycleManager {
               }),
               "agent-lifecycle:result-detected"
             );
-            try {
-              activeProcess?.kill();
-            } catch {
-              // Best effort; the result file already gives us the terminal outcome.
-            }
             await heartbeatService
               .deleteHeartbeat(wtPath, taskId, heartbeatSubpath)
               .catch((err: unknown) => {
@@ -749,6 +919,12 @@ export class AgentLifecycleManager {
           ? ACTIVE_TOOL_CALL_TIMEOUT_MS
           : AGENT_INACTIVITY_TIMEOUT_MS;
         const proc = runState.activeProcess;
+        // A disappeared PID is still not proof that this backend owned that process or its result.
+        if (
+          proc?.ownership === "recovered_unverified" ||
+          runState.runner?.observe().state === "uncertain"
+        )
+          return;
         const pidDead = proc && proc.pid !== null && !isPidAlive(proc.pid);
 
         if (pidDead) {
@@ -869,12 +1045,6 @@ export class AgentLifecycleManager {
             runState.suspendDeadlineMs != null &&
             Date.now() < runState.suspendDeadlineMs
           ) {
-            return;
-          }
-          if (proc?.ownership === "recovered_unverified") {
-            if (params && runState.lifecycleState !== "suspended") {
-              void this.markSuspended(params, runState, "backend_restart");
-            }
             return;
           }
           log.warn("Agent timeout", {

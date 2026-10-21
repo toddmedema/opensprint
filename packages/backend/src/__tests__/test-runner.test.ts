@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import path from "path";
 import os from "os";
 import fsSync from "fs";
@@ -110,10 +110,19 @@ function createHangingMockChild(stdout = "", stderr = "") {
   };
 }
 
-describe("TestRunner", () => {
+describe.each(["linux", "win32"] as const)("TestRunner (%s)", (platform) => {
   let runner: TestRunner;
+  const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
+  const shell = platform === "win32" ? "cmd.exe" : "sh";
+  const shellArgs = (command: string) =>
+    platform === "win32" ? ["/d", "/s", "/c", command] : ["-c", command];
+
+  afterEach(() => {
+    Object.defineProperty(process, "platform", originalPlatform);
+  });
 
   beforeEach(() => {
+    Object.defineProperty(process, "platform", { value: platform });
     runner = new TestRunner();
     mockSpawn.mockClear();
     mockRegisterAgentProcess.mockClear();
@@ -124,7 +133,7 @@ describe("TestRunner", () => {
   describe("runTestsWithOutput", () => {
     it("parses Vitest JSON reporter output when available", async () => {
       mockSpawn.mockImplementation((_cmd: string, args: string[]) => {
-        const command = args[1] ?? "";
+        const command = args.at(-1) ?? "";
         const outputFileMatch = command.match(/--outputFile=(\S+)/);
         const outputFile = outputFileMatch?.[1];
         expect(outputFile).toBeTruthy();
@@ -162,7 +171,7 @@ describe("TestRunner", () => {
         true
       );
 
-      const invoked = (mockSpawn.mock.calls[0]?.[1] as string[] | undefined)?.[1] ?? "";
+      const invoked = (mockSpawn.mock.calls[0]?.[1] as string[] | undefined)?.at(-1) ?? "";
       expect(invoked).toContain("--reporter=json");
       expect(invoked).toContain("--outputFile=");
     });
@@ -180,7 +189,7 @@ describe("TestRunner", () => {
       expect(result.total).toBe(7);
       expect(result.rawOutput).toContain(output);
       expect(result.executedCommand).toBe("npm test");
-      expect(mockSpawn).toHaveBeenCalledWith("sh", ["-c", "npm test"], expect.any(Object));
+      expect(mockSpawn).toHaveBeenCalledWith(shell, shellArgs("npm test"), expect.any(Object));
     });
 
     it("parses Vitest v2 summary format", async () => {
@@ -240,7 +249,7 @@ describe("TestRunner", () => {
 
     it("treats non-zero exit as failure even when Vitest JSON reports zero failed tests", async () => {
       mockSpawn.mockImplementation((_cmd: string, args: string[]) => {
-        const command = args[1] ?? "";
+        const command = args.at(-1) ?? "";
         const outputFileMatch = command.match(/--outputFile=(\S+)/);
         const outputFile = outputFileMatch?.[1];
         const report = {
@@ -315,7 +324,7 @@ describe("TestRunner", () => {
       expect(result.failed).toBe(0);
       expect(result.passed).toBe(1);
       expect(mockSpawn).toHaveBeenCalledTimes(3);
-      expect((mockSpawn.mock.calls[1]?.[1] as string[] | undefined)?.[1]).toBe("npm ci");
+      expect((mockSpawn.mock.calls[1]?.[1] as string[] | undefined)?.at(-1)).toBe("npm ci");
       expect(result.rawOutput).toContain("Running one-time dependency repair: npm ci");
     });
 
@@ -372,7 +381,7 @@ describe("TestRunner", () => {
         "node ./node_modules/vitest/vitest.mjs run"
       );
 
-      const invoked = (mockSpawn.mock.calls[0]?.[1] as string[] | undefined)?.[1] ?? "";
+      const invoked = (mockSpawn.mock.calls[0]?.[1] as string[] | undefined)?.at(-1) ?? "";
       expect(invoked).toContain("node ./node_modules/vitest/vitest.mjs run src/foo.test.ts");
       expect(invoked).toContain("--reporter=json");
       expect(invoked).toContain("--outputFile=");
@@ -392,7 +401,7 @@ describe("TestRunner", () => {
         "node ./node_modules/vitest/vitest.mjs run"
       );
 
-      const invoked = (mockSpawn.mock.calls[0]?.[1] as string[] | undefined)?.[1] ?? "";
+      const invoked = (mockSpawn.mock.calls[0]?.[1] as string[] | undefined)?.at(-1) ?? "";
       expect(invoked).toContain(
         "node ./node_modules/vitest/vitest.mjs related --run --testTimeout=30000 src/foo.ts src/bar.ts"
       );
@@ -407,8 +416,8 @@ describe("TestRunner", () => {
       await runner.runScopedTests("/tmp/repo", ["src/a.test.ts", "src/b.spec.js"], "npx jest");
 
       expect(mockSpawn).toHaveBeenCalledWith(
-        "sh",
-        ["-c", "npx jest src/a.test.ts src/b.spec.js"],
+        shell,
+        shellArgs("npx jest src/a.test.ts src/b.spec.js"),
         expect.any(Object)
       );
     });
@@ -420,8 +429,8 @@ describe("TestRunner", () => {
       await runner.runScopedTests("/tmp/repo", ["src/foo.ts", "src/bar.ts"], "npx jest");
 
       expect(mockSpawn).toHaveBeenCalledWith(
-        "sh",
-        ["-c", "npx jest --findRelatedTests src/foo.ts src/bar.ts"],
+        shell,
+        shellArgs("npx jest --findRelatedTests src/foo.ts src/bar.ts"),
         expect.any(Object)
       );
     });
@@ -439,7 +448,7 @@ describe("TestRunner", () => {
         await fs.rm(repoPath, { recursive: true, force: true }).catch(() => {});
       }
 
-      const invoked = (mockSpawn.mock.calls[0]?.[1] as string[] | undefined)?.[1] ?? "";
+      const invoked = (mockSpawn.mock.calls[0]?.[1] as string[] | undefined)?.at(-1) ?? "";
       expect(invoked).toContain(
         "node ./node_modules/vitest/vitest.mjs related --run --testTimeout=30000 src/foo.ts"
       );
@@ -453,7 +462,7 @@ describe("TestRunner", () => {
 
       await runner.runScopedTests("/tmp/repo", ["src/foo.ts", "src/bar.ts"], "npm test");
 
-      expect(mockSpawn).toHaveBeenCalledWith("sh", ["-c", "npm test"], expect.any(Object));
+      expect(mockSpawn).toHaveBeenCalledWith(shell, shellArgs("npm test"), expect.any(Object));
     });
   });
 

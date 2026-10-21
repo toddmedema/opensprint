@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { SpecPublicationPage } from "./SpecPublicationPage";
+import { getAccessSession, setAccessSession } from "../api/session";
 
 const key = ["spec-publication", "project"];
 const draft = {
@@ -45,11 +46,13 @@ function setup() {
 beforeEach(() => {
   handler = async (url, init) => {
     if (url.endsWith("/publication/draft")) return response(draft);
+    if (url.endsWith("/publication/published")) return response({ content: draft.content });
     if (url.endsWith("/publication/operations")) return response([]);
     if (url.endsWith("/publication/approve")) return response({ approved: true });
     if (url.endsWith("/publication/publish"))
       return response({ ...operation, status: "published" });
     if (url.endsWith("/prd")) return response({ version: 1, sections: {}, changeLog: [] });
+    if (url.includes("/auth/session?")) return response(getAccessSession());
     throw new Error(`Unexpected request: ${init?.method ?? "GET"} ${url}`);
   };
   fetchMock = vi.fn((url: string, init?: RequestInit) => handler(String(url), init));
@@ -59,10 +62,22 @@ afterEach(() => {
   cleanup();
   client?.clear();
   vi.unstubAllGlobals();
+  setAccessSession(undefined);
 });
 
 describe("reviewed SPEC publication", () => {
   it("can publish an exact approval persisted by another session", async () => {
+    setAccessSession({
+      csrfToken: "csrf",
+      projectId: "project",
+      principal: {
+        actorId: "publisher",
+        displayName: "Publisher",
+        role: "viewer",
+        local: false,
+        permissions: ["read", "publish"],
+      },
+    });
     const fallback = handler;
     handler = async (url, init) =>
       url.endsWith("/publication/draft")
@@ -72,6 +87,7 @@ describe("reviewed SPEC publication", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Validate and publish" })).toBeEnabled()
     );
+    expect(screen.getByRole("button", { name: "Approve this revision" })).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: "Validate and publish" }));
     await screen.findByText(/Publication published/);
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/approve"))).toBe(false);
@@ -112,6 +128,53 @@ describe("reviewed SPEC publication", () => {
     expect(attempts).toHaveLength(2);
     expect(attempts[1]).not.toBe(attempts[0]);
   });
+
+  it("shows read-only draft content to a member without edit, approval or publish permission", async () => {
+    setAccessSession({
+      csrfToken: "csrf",
+      projectId: "project",
+      principal: {
+        actorId: "reader",
+        displayName: "Reader",
+        role: "viewer",
+        local: false,
+        permissions: ["read"],
+      },
+    });
+    setup();
+    expect(await screen.findByLabelText("Draft content")).toBeDisabled();
+    for (const name of [
+      "Import editor changes",
+      "Save draft",
+      "Approve this revision",
+      "Validate and publish",
+    ])
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+  });
+
+  it("loads published Git content before a draft exists and imports editor changes explicitly", async () => {
+    const fallback = handler;
+    handler = async (url, init) => {
+      if (url.endsWith("/publication/draft")) return response(null);
+      if (url.endsWith("/publication/published"))
+        return response({ content: "# Published Git specification\n" });
+      if (url.endsWith("/publication/import")) return response(draft);
+      return fallback(url, init);
+    };
+    const user = userEvent.setup();
+    setup();
+    expect(await screen.findByLabelText("Draft content")).toHaveValue(
+      "# Published Git specification\n"
+    );
+    expect(screen.getByRole("button", { name: "Approve this revision" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Import editor changes" }));
+    await waitFor(() => expect(screen.getByLabelText("Draft content")).toHaveValue(draft.content));
+    const imported = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/import"))!;
+    expect(imported[1].method).toBe("POST");
+    expect(JSON.parse(imported[1].body)).toEqual({ expectedRevision: 0 });
+    expect(screen.getByRole("button", { name: "Validate and publish" })).toBeDisabled();
+  });
+
   it("rediscovers a persisted interrupted operation on mount and reconciles its exact identity", async () => {
     const fallback = handler;
     handler = async (url, init) => {

@@ -42,6 +42,11 @@ vi.mock("../services/task-store.service.js", () => ({
   SCHEMA_SQL: "",
 }));
 
+// These temporary repository fixtures are intentionally outside the registered SQL catalog.
+vi.mock("../services/project-index.js", () => ({
+  getProjects: vi.fn().mockResolvedValue([]),
+}));
+
 describe("getCombinedInstructions", () => {
   let tempDir: string;
 

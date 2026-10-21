@@ -92,6 +92,24 @@ describe("immutable SPEC proposals and publication", () => {
     expect(
       await client.query("SELECT * FROM prd_snapshots WHERE project_id = $1", ["project"])
     ).toHaveLength(1);
+    const events = await client.query(
+      "SELECT event FROM collaboration_events WHERE project_id = $1 ORDER BY cursor",
+      ["project"]
+    );
+    const published = events
+      .map((row) => JSON.parse(String(row.event)))
+      .filter(
+        (event) => event.type === "spec_publication_changed" && event.payload.status === "published"
+      )
+      .map((event) => event.payload);
+    expect(published).toEqual([
+      {
+        operationId: "publish-one",
+        status: "published",
+        commitSha: result.commit_sha,
+        error: null,
+      },
+    ]);
   });
 
   it("never advances Git when candidate validation fails", async () => {
@@ -189,6 +207,67 @@ describe("immutable SPEC proposals and publication", () => {
       status: "uncertain",
     });
     expect(await makeService().listOperations("another-project")).toEqual([]);
+    expect(validate).not.toHaveBeenCalled();
+  });
+
+  it("coalesces local SQL autosaves and publishes after a service restart", async () => {
+    await service.saveDraftOwned("project", "First\n", 0, { localPolicy: true });
+    await service.saveDraftOwned("project", "Latest\n", 1, { localPolicy: true });
+    expect(await fs.readFile(path.join(repo, "SPEC.md"), "utf8")).toContain("Original");
+    await db.runWrite((tx) =>
+      tx.execute("UPDATE spec_local_publication_requests SET not_before = $1", [
+        "2000-01-01T00:00:00.000Z",
+      ])
+    );
+    await makeService().processPending();
+    expect(await fs.readFile(path.join(repo, "SPEC.md"), "utf8")).toBe("Latest\n");
+    expect(validate).toHaveBeenCalledOnce();
+    expect((await service.listOperations("project"))[0]?.revision).toBe(2);
+  });
+
+  it("requires explicit import for manual editor changes and preserves those bytes", async () => {
+    await fs.writeFile(path.join(repo, "SPEC.md"), "Manual edits\n");
+    await expect(service.saveDraft("project", "Overwrite\n", 0)).rejects.toMatchObject({
+      statusCode: 409,
+    });
+    const draft = await service.importWorkingCopy("project", 0);
+    expect(draft.content).toBe("Manual edits\n");
+    await service.approve("project", 1, String(draft.content_hash));
+    await service.publish("project", "imported", 1);
+    expect(await git("show", "HEAD:SPEC.md")).toBe("Manual edits");
+  });
+
+  it("recovers the exact approved HIL content without a live callback", async () => {
+    const original = await fs.readFile(path.join(repo, "SPEC.md"), "utf8");
+    await service.recordProposal("project", "hil-restart", "Approved proposal\n", original);
+    await db.runWrite((tx) =>
+      tx.execute(
+        "UPDATE spec_hil_proposals SET decision = 'approved', decision_actor_id = 'approver' WHERE request_id = $1",
+        ["hil-restart"]
+      )
+    );
+    await makeService().processPending();
+    expect((await service.getProposal("hil-restart"))?.status).toBe("applied");
+    expect(await git("show", "HEAD:SPEC.md")).toBe("Approved proposal");
+    await makeService().processPending();
+    expect(validate).toHaveBeenCalledOnce();
+  });
+
+  it("invalidates pending HIL continuation after another draft changes", async () => {
+    const original = await fs.readFile(path.join(repo, "SPEC.md"), "utf8");
+    await service.recordProposal("project", "hil-stale", "Old proposal\n", original);
+    await service.saveDraft("project", "Newer edit\n", 0);
+    await db.runWrite((tx) =>
+      tx.execute(
+        "UPDATE spec_hil_proposals SET decision = 'approved', decision_actor_id = 'approver' WHERE request_id = $1",
+        ["hil-stale"]
+      )
+    );
+    await expect(makeService().applyApprovedProposal("hil-stale")).rejects.toMatchObject({
+      statusCode: 409,
+    });
+    expect((await service.getDraft("project"))?.content).toBe("Newer edit\n");
+    expect((await service.getProposal("hil-stale"))?.status).toBe("stale");
     expect(validate).not.toHaveBeenCalled();
   });
 });

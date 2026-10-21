@@ -206,6 +206,9 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
 
     // Settings
     const [settings, setSettings] = useState<ProjectSettings | null>(null);
+    const settingsRevision = useRef<number | undefined>(undefined);
+    const settingsEdited = useRef(false);
+    const settingsSaveTail = useRef<Promise<unknown>>(Promise.resolve());
 
     // API key status (for agents tab - to show "configure in Settings" when keys missing)
     // anthropic/cursor/openai/google derived from global store only; claudeCli from env (CLI binary availability)
@@ -249,7 +252,19 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
         try {
           const data = await api.projects.getSettings(project.id);
           if (loadRequestRef.current !== requestId) return;
-          setSettings(data);
+          if (!settingsEdited.current) {
+            setSettings(data);
+            settingsRevision.current = data.revision;
+          } else
+            setSettings((current) =>
+              current
+                ? {
+                    ...current,
+                    gitRuntimeStatus: data.gitRuntimeStatus,
+                    gitRemoteMode: data.gitRemoteMode,
+                  }
+                : data
+            );
           lastReviewAnglesRef.current = data.reviewAngles;
           clearPollTimeout();
           if (data.gitRuntimeStatus?.refreshing) {
@@ -270,6 +285,8 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
     );
 
     useEffect(() => {
+      settingsEdited.current = false;
+      settingsRevision.current = undefined;
       void loadSettings({ preserveSpinner: true });
       return () => {
         loadRequestRef.current += 1;
@@ -406,127 +423,142 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
           return;
         }
         setSaving(true);
+        settingsEdited.current = true;
         setError(null);
         saveGenerationRef.current += 1;
         const startTime = Date.now();
         const completedGeneration = saveGenerationRef.current;
         try {
-          await Promise.all([
-            api.projects.update(project.id, { name: effName, repoPath: effRepoPath }),
-            api.projects.updateSettings(project.id, {
-              simpleComplexityAgent: persistSimpleAsGlobal
-                ? null
-                : {
-                    type: effSimple.type,
-                    model: effSimple.model || null,
-                    cliCommand: effSimple.cliCommand || null,
-                    timeoutMs: normalizeAgentTimeoutMs(effSimple.timeoutMs),
-                    ...((effSimple.type === "lmstudio" || effSimple.type === "ollama") && {
-                      baseUrl:
-                        effSimple.baseUrl ||
-                        (effSimple.type === "ollama"
-                          ? DEFAULT_OLLAMA_BASE_URL
-                          : DEFAULT_LMSTUDIO_BASE_URL),
-                    }),
-                  },
-              complexComplexityAgent: persistComplexAsGlobal
-                ? null
-                : {
-                    type: effComplex.type,
-                    model: effComplex.model || null,
-                    cliCommand: effComplex.cliCommand || null,
-                    timeoutMs: normalizeAgentTimeoutMs(effComplex.timeoutMs),
-                    ...((effComplex.type === "lmstudio" || effComplex.type === "ollama") && {
-                      baseUrl:
-                        effComplex.baseUrl ||
-                        (effComplex.type === "ollama"
-                          ? DEFAULT_OLLAMA_BASE_URL
-                          : DEFAULT_LMSTUDIO_BASE_URL),
-                    }),
-                  },
-              deployment: {
-                mode: effDeployment.mode,
-                expoConfig:
-                  effDeployment.mode === "expo"
-                    ? {
-                        channel: effDeployment.expoConfig?.channel ?? "preview",
-                        projectId:
-                          effDeployment.expoConfig?.projectId ??
-                          effDeployment.easProjectId ??
-                          undefined,
-                      }
-                    : undefined,
-                customCommand: effDeployment.customCommand ?? undefined,
-                webhookUrl: effDeployment.webhookUrl ?? undefined,
-                rollbackCommand: effDeployment.rollbackCommand ?? undefined,
-                targets: effDeployment.targets,
-                autoResolveFeedbackOnTaskCompletion:
-                  effDeployment.autoResolveFeedbackOnTaskCompletion ?? false,
-              },
-              aiAutonomyLevel: effAiAutonomy,
-              testCommand: overrides?.testCommand ?? effSettings?.testCommand ?? undefined,
-              reviewMode: overrides?.reviewMode ?? effSettings?.reviewMode ?? DEFAULT_REVIEW_MODE,
-              // Send [] when empty so backend receives it (undefined is omitted from JSON and would keep old value)
-              reviewAngles:
-                overrides?.reviewAngles ??
-                lastReviewAnglesRef.current ??
-                effSettings?.reviewAngles ??
-                [],
-              includeGeneralReview:
-                overrides?.includeGeneralReview ?? effSettings?.includeGeneralReview ?? undefined,
-              maxConcurrentCoders:
-                effGitMode === "branches"
-                  ? 1
-                  : (overrides?.maxConcurrentCoders ?? effSettings?.maxConcurrentCoders ?? 1),
-              ...(overrides?.maxTotalConcurrentAgents !== undefined
-                ? { maxTotalConcurrentAgents: overrides.maxTotalConcurrentAgents }
-                : effSettings.maxTotalConcurrentAgents != null
-                  ? { maxTotalConcurrentAgents: effSettings.maxTotalConcurrentAgents }
-                  : {}),
-              unknownScopeStrategy:
-                overrides?.unknownScopeStrategy ??
-                effSettings?.unknownScopeStrategy ??
-                "optimistic",
-              gitWorkingMode: effGitMode,
-              mergeStrategy: effMergeStrategy,
-              worktreeBaseBranch:
-                overrides?.worktreeBaseBranch ?? effSettings?.worktreeBaseBranch ?? "main",
-              enableHumanTeammates: effEnableHumanTeammates,
-              teamMembers: effTeamMembers,
-              selfImprovementFrequency:
-                overrides?.selfImprovementFrequency ??
-                effSettings?.selfImprovementFrequency ??
-                "never",
-              ...(overrides?.runAgentEnhancementExperiments !== undefined
-                ? { runAgentEnhancementExperiments: overrides.runAgentEnhancementExperiments }
-                : effSettings?.runAgentEnhancementExperiments !== undefined
-                  ? { runAgentEnhancementExperiments: effSettings.runAgentEnhancementExperiments }
-                  : {}),
-              ...(patchDefines(overrides, "selfImprovementReviewerAgents")
-                ? {
-                    selfImprovementReviewerAgents:
-                      overrides!.selfImprovementReviewerAgents === undefined
-                        ? null
-                        : overrides!.selfImprovementReviewerAgents,
-                  }
-                : effSettings?.selfImprovementReviewerAgents !== undefined
-                  ? { selfImprovementReviewerAgents: effSettings.selfImprovementReviewerAgents }
-                  : {}),
-              ...(patchDefines(overrides, "selfImprovementIncludeGeneralReview")
-                ? {
-                    selfImprovementIncludeGeneralReview:
-                      overrides!.selfImprovementIncludeGeneralReview === undefined
-                        ? null
-                        : overrides!.selfImprovementIncludeGeneralReview,
-                  }
-                : effSettings?.selfImprovementIncludeGeneralReview !== undefined
+          const persistSettings = (data: Parameters<typeof api.projects.updateSettings>[1]) =>
+            settingsRevision.current === undefined
+              ? api.projects.updateSettings(project.id, data)
+              : api.projects.updateSettings(project.id, data, {
+                  expectedRevision: settingsRevision.current,
+                });
+          const save = settingsSaveTail.current.then(() =>
+            Promise.all([
+              api.projects.update(project.id, { name: effName, repoPath: effRepoPath }),
+              persistSettings({
+                simpleComplexityAgent: persistSimpleAsGlobal
+                  ? null
+                  : {
+                      type: effSimple.type,
+                      model: effSimple.model || null,
+                      cliCommand: effSimple.cliCommand || null,
+                      timeoutMs: normalizeAgentTimeoutMs(effSimple.timeoutMs),
+                      ...((effSimple.type === "lmstudio" || effSimple.type === "ollama") && {
+                        baseUrl:
+                          effSimple.baseUrl ||
+                          (effSimple.type === "ollama"
+                            ? DEFAULT_OLLAMA_BASE_URL
+                            : DEFAULT_LMSTUDIO_BASE_URL),
+                      }),
+                    },
+                complexComplexityAgent: persistComplexAsGlobal
+                  ? null
+                  : {
+                      type: effComplex.type,
+                      model: effComplex.model || null,
+                      cliCommand: effComplex.cliCommand || null,
+                      timeoutMs: normalizeAgentTimeoutMs(effComplex.timeoutMs),
+                      ...((effComplex.type === "lmstudio" || effComplex.type === "ollama") && {
+                        baseUrl:
+                          effComplex.baseUrl ||
+                          (effComplex.type === "ollama"
+                            ? DEFAULT_OLLAMA_BASE_URL
+                            : DEFAULT_LMSTUDIO_BASE_URL),
+                      }),
+                    },
+                deployment: {
+                  mode: effDeployment.mode,
+                  expoConfig:
+                    effDeployment.mode === "expo"
+                      ? {
+                          channel: effDeployment.expoConfig?.channel ?? "preview",
+                          projectId:
+                            effDeployment.expoConfig?.projectId ??
+                            effDeployment.easProjectId ??
+                            undefined,
+                        }
+                      : undefined,
+                  customCommand: effDeployment.customCommand ?? undefined,
+                  webhookUrl: effDeployment.webhookUrl ?? undefined,
+                  rollbackCommand: effDeployment.rollbackCommand ?? undefined,
+                  targets: effDeployment.targets,
+                  autoResolveFeedbackOnTaskCompletion:
+                    effDeployment.autoResolveFeedbackOnTaskCompletion ?? false,
+                },
+                aiAutonomyLevel: effAiAutonomy,
+                testCommand: overrides?.testCommand ?? effSettings?.testCommand ?? undefined,
+                reviewMode: overrides?.reviewMode ?? effSettings?.reviewMode ?? DEFAULT_REVIEW_MODE,
+                // Send [] when empty so backend receives it (undefined is omitted from JSON and would keep old value)
+                reviewAngles:
+                  overrides?.reviewAngles ??
+                  lastReviewAnglesRef.current ??
+                  effSettings?.reviewAngles ??
+                  [],
+                includeGeneralReview:
+                  overrides?.includeGeneralReview ?? effSettings?.includeGeneralReview ?? undefined,
+                maxConcurrentCoders:
+                  effGitMode === "branches"
+                    ? 1
+                    : (overrides?.maxConcurrentCoders ?? effSettings?.maxConcurrentCoders ?? 1),
+                ...(overrides?.maxTotalConcurrentAgents !== undefined
+                  ? { maxTotalConcurrentAgents: overrides.maxTotalConcurrentAgents }
+                  : effSettings.maxTotalConcurrentAgents != null
+                    ? { maxTotalConcurrentAgents: effSettings.maxTotalConcurrentAgents }
+                    : {}),
+                unknownScopeStrategy:
+                  overrides?.unknownScopeStrategy ??
+                  effSettings?.unknownScopeStrategy ??
+                  "optimistic",
+                gitWorkingMode: effGitMode,
+                mergeStrategy: effMergeStrategy,
+                worktreeBaseBranch:
+                  overrides?.worktreeBaseBranch ?? effSettings?.worktreeBaseBranch ?? "main",
+                enableHumanTeammates: effEnableHumanTeammates,
+                teamMembers: effTeamMembers,
+                selfImprovementFrequency:
+                  overrides?.selfImprovementFrequency ??
+                  effSettings?.selfImprovementFrequency ??
+                  "never",
+                ...(overrides?.runAgentEnhancementExperiments !== undefined
+                  ? { runAgentEnhancementExperiments: overrides.runAgentEnhancementExperiments }
+                  : effSettings?.runAgentEnhancementExperiments !== undefined
+                    ? { runAgentEnhancementExperiments: effSettings.runAgentEnhancementExperiments }
+                    : {}),
+                ...(patchDefines(overrides, "selfImprovementReviewerAgents")
+                  ? {
+                      selfImprovementReviewerAgents:
+                        overrides!.selfImprovementReviewerAgents === undefined
+                          ? null
+                          : overrides!.selfImprovementReviewerAgents,
+                    }
+                  : effSettings?.selfImprovementReviewerAgents !== undefined
+                    ? { selfImprovementReviewerAgents: effSettings.selfImprovementReviewerAgents }
+                    : {}),
+                ...(patchDefines(overrides, "selfImprovementIncludeGeneralReview")
                   ? {
                       selfImprovementIncludeGeneralReview:
-                        effSettings.selfImprovementIncludeGeneralReview,
+                        overrides!.selfImprovementIncludeGeneralReview === undefined
+                          ? null
+                          : overrides!.selfImprovementIncludeGeneralReview,
                     }
-                  : {}),
-            }),
-          ]);
+                  : effSettings?.selfImprovementIncludeGeneralReview !== undefined
+                    ? {
+                        selfImprovementIncludeGeneralReview:
+                          effSettings.selfImprovementIncludeGeneralReview,
+                      }
+                    : {}),
+              }),
+            ])
+          );
+          settingsSaveTail.current = save.catch(() => undefined);
+          const [, savedSettings] = await save;
+          settingsRevision.current = savedSettings.revision;
+          setSettings((current) =>
+            current ? { ...current, revision: savedSettings.revision } : current
+          );
           void queryClient.invalidateQueries({ queryKey: queryKeys.projects.settings(project.id) });
           if (notifyOnComplete) onSaved?.();
         } catch (err) {

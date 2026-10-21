@@ -11,10 +11,15 @@ const LOCALHOST_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?
  */
 export const localhostCors = cors({
   origin(origin, callback) {
-    if (!origin || LOCALHOST_ORIGIN_RE.test(origin)) {
+    if (
+      !origin ||
+      LOCALHOST_ORIGIN_RE.test(origin) ||
+      origin === process.env.OPENSPRINT_PUBLIC_ORIGIN
+    ) {
       callback(null, true);
     } else {
       callback(new Error("CORS request from disallowed origin"));
     }
   },
+  credentials: true,
 });

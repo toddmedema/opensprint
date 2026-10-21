@@ -36,10 +36,11 @@ export interface TaskDetailLinksProps {
       targetId: string;
       type: string;
       taskName: string;
+      expectedRevision?: number;
     } | null>
   >;
   removeLinkRemovingId: string | null;
-  onAddLink: (parentTaskId: string, type: string) => Promise<void>;
+  onAddLink: (parentTaskId: string, type: string, expectedRevision?: number) => Promise<void>;
 }
 
 export function TaskDetailLinks({
@@ -56,6 +57,7 @@ export function TaskDetailLinks({
   onAddLink,
 }: TaskDetailLinksProps) {
   const [addLinkOpen, setAddLinkOpen] = React.useState(false);
+  const addLinkRevision = React.useRef<number | undefined>(undefined);
 
   const plan = task.epicId && onNavigateToPlan ? planByEpicId[task.epicId] : null;
   const planTitle = plan ? getEpicTitleFromPlan(plan) : null;
@@ -124,6 +126,7 @@ export function TaskDetailLinks({
                           targetId: d.targetId!,
                           type: d.type ?? "related",
                           taskName: label,
+                          expectedRevision: task.revision,
                         });
                       }}
                       disabled={removing}
@@ -159,14 +162,17 @@ export function TaskDetailLinks({
             tasks={allTasks}
             excludeIds={excludeIds}
             onSave={async (parentTaskId, type) => {
-              await onAddLink(parentTaskId, type);
+              await onAddLink(parentTaskId, type, addLinkRevision.current);
             }}
             onCancel={() => setAddLinkOpen(false)}
           />
         ) : (
           <button
             type="button"
-            onClick={() => setAddLinkOpen(true)}
+            onClick={() => {
+              addLinkRevision.current = task.revision;
+              setAddLinkOpen(true);
+            }}
             className="text-xs text-brand-600 hover:text-brand-700 hover:underline text-left"
             data-testid="sidebar-add-link-btn"
           >

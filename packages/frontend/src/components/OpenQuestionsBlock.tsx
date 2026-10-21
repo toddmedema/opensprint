@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Notification, ApiBlockedErrorCode, NotificationSource } from "@opensprint/shared";
 import { api } from "../api/client";
@@ -37,6 +37,7 @@ export function OpenQuestionsBlock({
   onAnswerSent,
 }: OpenQuestionsBlockProps) {
   const [answerText, setAnswerText] = useState("");
+  const answerRevision = useRef(notification.revision);
   const [answerSubmitting, setAnswerSubmitting] = useState(false);
   const [dismissLoading, setDismissLoading] = useState(false);
   const [retryLoading, setRetryLoading] = useState(false);
@@ -50,26 +51,37 @@ export function OpenQuestionsBlock({
     }
     setDismissLoading(true);
     try {
-      await api.notifications.resolve(projectId, notification.id);
+      if (notification.revision === undefined)
+        await api.notifications.resolve(projectId, notification.id);
+      else
+        await api.notifications.resolve(projectId, notification.id, undefined, {
+          expectedRevision: notification.revision,
+        });
       onResolved();
     } catch {
       setDismissLoading(false);
     }
-  }, [projectId, notification.id, notification.status, onResolved]);
+  }, [projectId, notification.id, notification.status, notification.revision, onResolved]);
 
   const handleAnswer = useCallback(async () => {
     const trimmed = answerText.trim();
     if (!trimmed || !onAnswerSent) return;
 
+    const expectedRevision = answerRevision.current;
     setAnswerSubmitting(true);
     try {
       await onAnswerSent(trimmed);
       setAnswerText("");
       const responses =
         notification.questions?.map((q) => ({ questionId: q.id, answer: trimmed })) ?? [];
-      const resolved = await api.notifications.resolve(projectId, notification.id, {
-        ...(responses.length ? { responses } : {}),
-      });
+      const resolved = await api.notifications.resolve(
+        projectId,
+        notification.id,
+        {
+          ...(responses.length ? { responses } : {}),
+        },
+        ...(expectedRevision === undefined ? [] : ([{ expectedRevision }] as const))
+      );
       onResolved(resolved);
     } finally {
       setAnswerSubmitting(false);
@@ -177,7 +189,10 @@ export function OpenQuestionsBlock({
             <input
               type="text"
               value={answerText}
-              onChange={(e) => setAnswerText(e.target.value)}
+              onChange={(e) => {
+                if (!answerText) answerRevision.current = notification.revision;
+                setAnswerText(e.target.value);
+              }}
               onKeyDown={(e) => e.key === "Enter" && handleAnswer()}
               placeholder="Type your answer..."
               className="flex-1 text-sm px-3 py-2 rounded-lg border border-theme-border bg-theme-surface text-theme-text placeholder-theme-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-theme-info-border focus-visible:border-theme-info-border"

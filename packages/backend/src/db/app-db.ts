@@ -3,13 +3,16 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { DbClient } from "./client.js";
 import { createPostgresDbClient, getPoolConfig } from "./client.js";
 import { runSchema } from "./schema.js";
-import { createSqliteDbClient, openSqliteDatabase } from "./sqlite-client.js";
+import { createSqliteDbClient, openSqliteDatabase, resolveSqlitePath } from "./sqlite-client.js";
 import { getDatabaseDialect } from "@opensprint/shared";
 import { migratePlanVersions } from "../services/migrate-plan-versions.service.js";
 
 // Drizzle is loaded dynamically in initPostgresAppDb so Vitest can load this file without resolving drizzle-orm.
 // Type matches the return of drizzle({ client, schema }) from drizzle-orm/node-postgres.
 export type DrizzlePg = import("drizzle-orm/node-postgres").NodePgDatabase<Record<string, unknown>>;
+
+// Stable database-scoped key shared by every backend's PostgreSQL schema initializer.
+export const POSTGRES_SCHEMA_LOCK_KEY = [0x4f535052, 0x5343484d] as const;
 
 export interface AppDb {
   getClient(): Promise<DbClient>;
@@ -42,38 +45,75 @@ async function initPostgresAppDb(databaseUrl: string): Promise<AppDb> {
   const urlWithAppName = addApplicationName(databaseUrl, "opensprint-app");
   const pool = new pg.Pool(getPoolConfig(urlWithAppName));
   const client = createPostgresDbClient(pool);
-  await runSchema(client, "postgres");
-  await migratePlanVersions(client);
-
-  const drizzleInstance = drizzle({ client: pool, schema: schemaModule });
-
-  return {
-    async getClient(): Promise<DbClient> {
-      return client;
-    },
-    async runWrite<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
-      return client.runInTransaction(fn);
-    },
-    async runRead<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
-      return client.runInTransaction(async (tx) => {
-        await tx.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
-        return fn(tx);
-      });
-    },
-    async close(): Promise<void> {
-      await pool.end();
-    },
-    async getDrizzle(): Promise<DrizzlePg | null> {
-      return drizzleInstance;
-    },
-  };
+  try {
+    await client.runInTransaction(async (tx) => {
+      // IF NOT EXISTS alone does not serialize concurrent PostgreSQL catalog writes.
+      await tx.query("SELECT pg_advisory_xact_lock($1, $2)", [...POSTGRES_SCHEMA_LOCK_KEY]);
+      await runSchema(tx, "postgres");
+      await migratePlanVersions(tx);
+    });
+    const drizzleInstance = drizzle({ client: pool, schema: schemaModule });
+    return {
+      async getClient(): Promise<DbClient> {
+        return client;
+      },
+      async runWrite<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
+        return client.runInTransaction(fn);
+      },
+      async runRead<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
+        return client.runInTransaction(async (tx) => {
+          await tx.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+          return fn(tx);
+        });
+      },
+      async close(): Promise<void> {
+        await pool.end();
+      },
+      async getDrizzle(): Promise<DrizzlePg | null> {
+        return drizzleInstance;
+      },
+    };
+  } catch (error) {
+    await pool.end().catch(() => {});
+    throw error;
+  }
 }
 
+const sqliteInitializations = new Map<string, Promise<void>>();
 async function initSqliteAppDb(databaseUrl: string): Promise<AppDb> {
+  const resolved = resolveSqlitePath(databaseUrl);
+  const key = process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  const previous = sqliteInitializations.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const queued = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  sqliteInitializations.set(key, queued);
+  await previous;
+  try {
+    return await openInitializedSqliteAppDb(databaseUrl);
+  } finally {
+    release();
+    if (sqliteInitializations.get(key) === queued) sqliteInitializations.delete(key);
+  }
+}
+
+async function openInitializedSqliteAppDb(databaseUrl: string): Promise<AppDb> {
   const { db, close } = await openSqliteDatabase(databaseUrl);
   const client = createSqliteDbClient(db);
-  await runSchema(client, "sqlite");
-  await migratePlanVersions(client);
+  try {
+    await client.runInTransaction(async (tx) => {
+      await runSchema(tx, "sqlite");
+      await migratePlanVersions(tx);
+    });
+  } catch (error) {
+    try {
+      close();
+    } catch {
+      /* Preserve the migration failure. */
+    }
+    throw error;
+  }
 
   // All repositories use the same SQLite connection. A service-local mutex cannot
   // prevent another repository from entering a transaction or seeing uncommitted
@@ -128,6 +168,7 @@ async function initSqliteAppDb(databaseUrl: string): Promise<AppDb> {
     return transaction?.active ? transaction.client : client;
   };
   const sharedClient: DbClient = {
+    dialect: "sqlite",
     query: (sql, params) => runExclusive(() => currentClient().query(sql, params)),
     queryOne: (sql, params) => runExclusive(() => currentClient().queryOne(sql, params)),
     execute: (sql, params) => runExclusive(() => currentClient().execute(sql, params)),

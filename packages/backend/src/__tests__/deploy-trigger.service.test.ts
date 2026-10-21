@@ -1,288 +1,90 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import path from "path";
-import os from "os";
-import fs from "fs/promises";
-
-const mockGetProject = vi.fn();
-const mockGetSettings = vi.fn();
-const mockGetLatestDeploy = vi.fn();
-const mockCreateRecord = vi.fn();
-const mockUpdateRecord = vi.fn();
-const mockBroadcastToProject = vi.fn();
-const mockRunDeployAsync = vi.fn().mockResolvedValue(undefined);
-const mockExecSync = vi.fn();
-
+const state = vi.hoisted(() => ({
+  accept: vi.fn(),
+  settings: vi.fn(),
+  project: vi.fn(),
+  get: vi.fn(),
+  execute: vi.fn(),
+  git: vi.fn(),
+}));
 vi.mock("../services/project.service.js", () => ({
-  ProjectService: vi.fn().mockImplementation(() => ({
-    getProject: mockGetProject,
-    getSettings: mockGetSettings,
-  })),
+  ProjectService: vi
+    .fn()
+    .mockImplementation(() => ({ getSettings: state.settings, getProject: state.project })),
 }));
-
-vi.mock("../services/deploy-storage.service.js", () => ({
-  deployStorageService: {
-    getLatestDeploy: (...args: unknown[]) => mockGetLatestDeploy(...args),
-    createRecord: (...args: unknown[]) => mockCreateRecord(...args),
-    updateRecord: (...args: unknown[]) => mockUpdateRecord(...args),
-  },
+vi.mock("../services/durable-deployment.service.js", () => ({ acceptDeployment: state.accept }));
+vi.mock("../services/operation.service.js", () => ({ operationService: { get: state.get } }));
+vi.mock("../services/operation-worker.service.js", () => ({
+  operationWorker: { execute: state.execute },
 }));
+vi.mock("child_process", () => ({ execSync: state.git }));
+import { triggerDeploy, triggerDeployForEvent } from "../services/deploy-trigger.service.js";
 
-vi.mock("../websocket/index.js", () => ({
-  broadcastToProject: (...args: unknown[]) => mockBroadcastToProject(...args),
-}));
-
-vi.mock("../routes/deliver.js", () => ({
-  runDeployAsync: (...args: unknown[]) => mockRunDeployAsync(...args),
-}));
-
-vi.mock("child_process", () => ({
-  execSync: (...args: unknown[]) => mockExecSync(...args),
-}));
-
-const { triggerDeploy, triggerDeployForEvent } =
-  await import("../services/deploy-trigger.service.js");
-
-describe("deploy-trigger.service", () => {
-  let repoPath: string;
-
-  beforeEach(async () => {
+describe("durable auto deployment admission", () => {
+  beforeEach(() => {
     vi.clearAllMocks();
-    repoPath = path.join(os.tmpdir(), `opensprint-deploy-${Date.now()}`);
-    await fs.mkdir(repoPath, { recursive: true });
-
-    mockGetProject.mockResolvedValue({ repoPath, name: "Test Project" });
-    mockGetSettings.mockResolvedValue({
-      deployment: { mode: "custom", targets: [] },
-    });
-    mockGetLatestDeploy.mockResolvedValue(null);
-    mockCreateRecord.mockResolvedValue({
-      id: "deploy-123",
-      projectId: "proj-1",
-      status: "pending",
-      startedAt: new Date().toISOString(),
-      completedAt: null,
-      log: [],
-      previousDeployId: null,
-      commitHash: null,
-      target: "production",
-      mode: "custom",
-    });
-    mockUpdateRecord.mockResolvedValue({});
-    mockExecSync.mockReturnValue("abc123def");
+    state.accept.mockResolvedValue({ deployId: "deployment", operationId: "operation" });
+    state.project.mockResolvedValue({ repoPath: "/repo" });
+    state.settings.mockResolvedValue({ deployment: { mode: "custom", targets: [] } });
+    state.get.mockResolvedValue({ id: "operation" });
+    state.execute.mockResolvedValue({ status: "completed" });
+    state.git.mockReturnValue("commit\n");
   });
-
-  describe("triggerDeploy", () => {
-    it("creates deployment record and returns deploy ID on success", async () => {
-      const deployId = await triggerDeploy("proj-1");
-
-      expect(deployId).toBe("deploy-123");
-      expect(mockGetProject).toHaveBeenCalledWith("proj-1");
-      expect(mockGetSettings).toHaveBeenCalledWith("proj-1");
-      expect(mockGetLatestDeploy).toHaveBeenCalledWith("proj-1");
-      expect(mockCreateRecord).toHaveBeenCalledWith(
-        "proj-1",
-        null,
-        expect.objectContaining({
-          commitHash: "abc123def",
-          target: "production",
-          mode: "custom",
-        })
-      );
-      expect(mockBroadcastToProject).toHaveBeenCalledWith("proj-1", {
-        type: "deliver.started",
-        deployId: "deploy-123",
-      });
-      expect(mockUpdateRecord).toHaveBeenCalledWith("proj-1", "deploy-123", {
-        status: "running",
-      });
-      expect(mockRunDeployAsync).toHaveBeenCalled();
-    });
-
-    it("passes previousDeployId when latest deploy exists", async () => {
-      mockGetLatestDeploy.mockResolvedValue({
-        id: "deploy-prev",
-        projectId: "proj-1",
-        status: "completed",
-        startedAt: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
-        log: [],
-        previousDeployId: null,
-        commitHash: null,
-        target: "production",
+  it("delegates manual trigger admission to the durable service", async () => {
+    expect(await triggerDeploy("project", "staging")).toBe("deployment");
+    expect(state.accept).toHaveBeenCalledWith(
+      "project",
+      { action: "deploy", target: "staging" },
+      undefined
+    );
+  });
+  it("reports failed acceptance without claiming execution succeeded", async () => {
+    state.accept.mockRejectedValue(new Error("Unavailable"));
+    expect(await triggerDeploy("project")).toBeNull();
+    expect(state.execute).not.toHaveBeenCalled();
+  });
+  it("binds automatic event identities to event, commit and destination", async () => {
+    state.settings.mockResolvedValue({
+      deployment: {
         mode: "custom",
-      });
-
-      await triggerDeploy("proj-1");
-
-      expect(mockCreateRecord).toHaveBeenCalledWith("proj-1", "deploy-prev", expect.any(Object));
+        targets: [
+          { name: "staging", autoDeployTrigger: "each_task" },
+          { name: "production", autoDeployTrigger: "each_task" },
+        ],
+      },
     });
-
-    it("returns null when deployment already in progress for project", async () => {
-      let resolveDeploy!: () => void;
-      const deployPromise = new Promise<void>((r) => {
-        resolveDeploy = r;
-      });
-      mockRunDeployAsync.mockImplementation(() => deployPromise);
-      await triggerDeploy("proj-1");
-      const secondResult = await triggerDeploy("proj-1");
-
-      expect(secondResult).toBeNull();
-      expect(mockCreateRecord).toHaveBeenCalledTimes(1);
-      resolveDeploy();
-      await new Promise((r) => setImmediate(r));
-    });
-
-    it("returns null and does not throw when getProject fails", async () => {
-      mockGetProject.mockRejectedValue(new Error("Project not found"));
-
-      const deployId = await triggerDeploy("proj-1");
-
-      expect(deployId).toBeNull();
-      expect(mockCreateRecord).not.toHaveBeenCalled();
-    });
-
-    it("returns null when createRecord fails", async () => {
-      mockCreateRecord.mockRejectedValue(new Error("Storage error"));
-
-      const deployId = await triggerDeploy("proj-1");
-
-      expect(deployId).toBeNull();
-    });
-
-    it("uses null commitHash when git rev-parse fails", async () => {
-      mockExecSync.mockImplementation(() => {
-        throw new Error("Not a git repo");
-      });
-
-      await triggerDeploy("proj-1");
-
-      expect(mockCreateRecord).toHaveBeenCalledWith(
-        "proj-1",
-        null,
-        expect.objectContaining({
-          commitHash: null,
-        })
-      );
-    });
-
-    it("passes targetName to runDeployAsync when provided", async () => {
-      mockGetSettings.mockResolvedValue({
-        deployment: {
-          mode: "custom",
-          targets: [
-            { name: "staging", autoDeployTrigger: "none" },
-            { name: "production", autoDeployTrigger: "none" },
-          ],
-        },
-      });
-
-      await triggerDeploy("proj-1", "staging");
-
-      expect(mockCreateRecord).toHaveBeenCalledWith(
-        "proj-1",
-        null,
-        expect.objectContaining({
-          target: "staging",
-        })
-      );
-      expect(mockRunDeployAsync).toHaveBeenCalledWith(
-        "proj-1",
-        "deploy-123",
-        repoPath,
-        expect.any(Object),
-        "staging",
-        "Test Project"
-      );
-    });
+    expect(await triggerDeployForEvent("project", "each_task")).toEqual([
+      "deployment",
+      "deployment",
+    ]);
+    expect(state.accept.mock.calls.map((call) => call[2].requestId)).toEqual([
+      "auto:each_task:commit:staging",
+      "auto:each_task:commit:production",
+    ]);
+    expect(state.execute).toHaveBeenCalledTimes(2);
   });
-
-  describe("triggerDeployForEvent", () => {
-    it("deploys to each target with matching autoDeployTrigger sequentially", async () => {
-      mockGetSettings.mockResolvedValue({
-        deployment: {
-          mode: "custom",
-          targets: [
-            { name: "staging", autoDeployTrigger: "each_task" },
-            { name: "production", autoDeployTrigger: "each_task" },
-          ],
-        },
-      });
-      mockCreateRecord
-        .mockResolvedValueOnce({
-          id: "deploy-1",
-          projectId: "proj-1",
-          status: "pending",
-          startedAt: new Date().toISOString(),
-          completedAt: null,
-          log: [],
-          previousDeployId: null,
-          commitHash: null,
-          target: "staging",
-          mode: "custom",
+  it("waits for one destination's durable operation before admitting the next", async () => {
+    state.settings.mockResolvedValue({
+      deployment: {
+        mode: "custom",
+        targets: [
+          { name: "staging", autoDeployTrigger: "each_task" },
+          { name: "production", autoDeployTrigger: "each_task" },
+        ],
+      },
+    });
+    let release!: () => void;
+    state.execute.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
         })
-        .mockResolvedValueOnce({
-          id: "deploy-2",
-          projectId: "proj-1",
-          status: "pending",
-          startedAt: new Date().toISOString(),
-          completedAt: null,
-          log: [],
-          previousDeployId: null,
-          commitHash: null,
-          target: "production",
-          mode: "custom",
-        });
-
-      const ids = await triggerDeployForEvent("proj-1", "each_task");
-
-      expect(ids).toEqual(["deploy-1", "deploy-2"]);
-      expect(mockRunDeployAsync).toHaveBeenCalledTimes(2);
-      expect(mockRunDeployAsync).toHaveBeenNthCalledWith(
-        1,
-        "proj-1",
-        "deploy-1",
-        repoPath,
-        expect.any(Object),
-        "staging",
-        "Test Project"
-      );
-      expect(mockRunDeployAsync).toHaveBeenNthCalledWith(
-        2,
-        "proj-1",
-        "deploy-2",
-        repoPath,
-        expect.any(Object),
-        "production",
-        "Test Project"
-      );
-    });
-
-    it("returns empty array when no targets match event", async () => {
-      mockGetSettings.mockResolvedValue({
-        deployment: {
-          mode: "custom",
-          targets: [
-            { name: "staging", autoDeployTrigger: "each_epic" },
-            { name: "production", autoDeployTrigger: "none" },
-          ],
-        },
-      });
-
-      const ids = await triggerDeployForEvent("proj-1", "each_task");
-
-      expect(ids).toEqual([]);
-      expect(mockRunDeployAsync).not.toHaveBeenCalled();
-    });
-
-    it("returns empty array when targets array is empty", async () => {
-      mockGetSettings.mockResolvedValue({
-        deployment: { mode: "custom", targets: [] },
-      });
-
-      const ids = await triggerDeployForEvent("proj-1", "each_task");
-
-      expect(ids).toEqual([]);
-      expect(mockRunDeployAsync).not.toHaveBeenCalled();
-    });
+    );
+    const pending = triggerDeployForEvent("project", "each_task");
+    await vi.waitFor(() => expect(state.execute).toHaveBeenCalledOnce());
+    expect(state.accept).toHaveBeenCalledOnce();
+    release();
+    await pending;
+    expect(state.accept).toHaveBeenCalledTimes(2);
   });
 });

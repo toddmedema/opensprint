@@ -20,6 +20,7 @@ import {
 export interface TaskStorePlanAuditorSIDeps {
   ensureInitialized: () => Promise<void>;
   withWriteLock: <T>(fn: () => Promise<T>) => Promise<T>;
+  withRead: <T>(fn: () => Promise<T>) => Promise<T>;
   planStore: PlanStore;
   planVersionStore: PlanVersionStore;
   auditorRunStore: AuditorRunStore;
@@ -37,7 +38,9 @@ export class TaskStorePlanAuditorSIFacade {
   async planInsert(projectId: string, planId: string, data: PlanInsertData): Promise<void> {
     return this.deps.withWriteLock(async () => {
       await this.deps.ensureInitialized();
+      await this.deps.planStore.lock(projectId);
       await this.deps.planStore.planInsert(projectId, planId, data);
+      await this.deps.planStore.recordChange(projectId, planId);
     });
   }
 
@@ -45,6 +48,7 @@ export class TaskStorePlanAuditorSIFacade {
     projectId: string,
     planId: string
   ): Promise<{
+    revision?: number;
     content: string;
     metadata: Record<string, unknown>;
     shipped_content: string | null;
@@ -54,7 +58,12 @@ export class TaskStorePlanAuditorSIFacade {
     parent_plan_id: string | null;
   } | null> {
     await this.deps.ensureInitialized();
-    return this.deps.planStore.planGet(projectId, planId);
+    return this.deps.withRead(async () => {
+      const plan = await this.deps.planStore.planGet(projectId, planId);
+      return plan
+        ? { ...plan, revision: await this.deps.planStore.revision(projectId, planId) }
+        : null;
+    });
   }
 
   async planGetByEpicId(
@@ -80,7 +89,14 @@ export class TaskStorePlanAuditorSIFacade {
 
   async planListAllForProject(projectId: string): Promise<PlanListAllRow[]> {
     await this.deps.ensureInitialized();
-    return this.deps.planStore.planListAllForProject(projectId);
+    return this.deps.withRead(async () =>
+      Promise.all(
+        (await this.deps.planStore.planListAllForProject(projectId)).map(async (plan) => ({
+          ...plan,
+          revision: await this.deps.planStore.revision(projectId, plan.plan_id),
+        }))
+      )
+    );
   }
 
   async planUpdateContent(
@@ -91,7 +107,9 @@ export class TaskStorePlanAuditorSIFacade {
   ): Promise<void> {
     return this.deps.withWriteLock(async () => {
       await this.deps.ensureInitialized();
+      await this.deps.planStore.lock(projectId);
       await this.deps.planStore.planUpdateContent(projectId, planId, content, currentVersionNumber);
+      await this.deps.planStore.recordChange(projectId, planId);
     });
   }
 
@@ -102,7 +120,9 @@ export class TaskStorePlanAuditorSIFacade {
   ): Promise<void> {
     return this.deps.withWriteLock(async () => {
       await this.deps.ensureInitialized();
+      await this.deps.planStore.lock(projectId);
       await this.deps.planStore.planUpdateMetadata(projectId, planId, metadata);
+      await this.deps.planStore.recordChange(projectId, planId);
     });
   }
 
@@ -113,7 +133,9 @@ export class TaskStorePlanAuditorSIFacade {
   ): Promise<void> {
     return this.deps.withWriteLock(async () => {
       await this.deps.ensureInitialized();
+      await this.deps.planStore.lock(projectId);
       await this.deps.planStore.planSetShippedContent(projectId, planId, shippedContent);
+      await this.deps.planStore.recordChange(projectId, planId);
     });
   }
 
@@ -129,7 +151,9 @@ export class TaskStorePlanAuditorSIFacade {
   ): Promise<void> {
     return this.deps.withWriteLock(async () => {
       await this.deps.ensureInitialized();
+      await this.deps.planStore.lock(projectId);
       await this.deps.planStore.planUpdateVersionNumbers(projectId, planId, updates);
+      await this.deps.planStore.recordChange(projectId, planId);
     });
   }
 
@@ -192,7 +216,10 @@ export class TaskStorePlanAuditorSIFacade {
   async planDelete(projectId: string, planId: string): Promise<boolean> {
     return this.deps.withWriteLock(async () => {
       await this.deps.ensureInitialized();
-      return this.deps.planStore.planDelete(projectId, planId);
+      await this.deps.planStore.lock(projectId);
+      const deleted = await this.deps.planStore.planDelete(projectId, planId);
+      if (deleted) await this.deps.planStore.recordChange(projectId, planId);
+      return deleted;
     });
   }
 

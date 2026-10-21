@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
+import { setSettingsStorePathForTesting } from "../services/settings-store.service.js";
+import { setProjectIndexPathForTesting } from "../services/project-index.js";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
@@ -9,6 +11,7 @@ import {
 import { BranchManager } from "../services/branch-manager.js";
 import { notificationService } from "../services/notification.service.js";
 import { setGlobalSettings } from "../services/global-settings.service.js";
+import { trackProjectRuntimeRefreshes } from "./project-runtime-test-helpers.js";
 import {
   DEFAULT_HIL_CONFIG,
   DEFAULT_REVIEW_MODE,
@@ -53,14 +56,18 @@ describe("ProjectService", () => {
   let suiteTempDir: string;
   let tempDir: string;
   let originalHome: string | undefined;
+  let drainRuntimeRefreshes: () => Promise<void>;
 
   beforeAll(async () => {
     suiteTempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-project-suite-"));
     originalHome = process.env.HOME;
     process.env.HOME = suiteTempDir;
+    setSettingsStorePathForTesting(path.join(suiteTempDir, ".opensprint", "settings.json"));
+    setProjectIndexPathForTesting(path.join(suiteTempDir, ".opensprint", "projects.json"));
   });
 
   beforeEach(async () => {
+    drainRuntimeRefreshes = trackProjectRuntimeRefreshes();
     await fs.rm(suiteTempDir, { recursive: true, force: true });
     await fs.mkdir(suiteTempDir, { recursive: true });
     tempDir = suiteTempDir;
@@ -74,7 +81,13 @@ describe("ProjectService", () => {
     });
   });
 
+  afterEach(async () => {
+    await drainRuntimeRefreshes();
+  });
+
   afterAll(async () => {
+    setSettingsStorePathForTesting(null);
+    setProjectIndexPathForTesting(null);
     process.env.HOME = originalHome;
     await fs.rm(suiteTempDir, { recursive: true, force: true });
   });

@@ -107,11 +107,44 @@ export function useMarkTaskDone(projectId: string) {
 export function useUpdateTaskPriority(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ taskId, priority }: { taskId: string; priority: number }) =>
-      api.tasks.updatePriority(projectId, taskId, priority),
+    mutationFn: ({
+      taskId,
+      priority,
+      expectedRevision,
+    }: {
+      taskId: string;
+      priority: number;
+      expectedRevision?: number;
+    }) =>
+      expectedRevision === undefined
+        ? api.tasks.updatePriority(projectId, taskId, priority)
+        : api.tasks.updatePriority(projectId, taskId, priority, { expectedRevision }),
     onSuccess: (_, { taskId }) => {
       void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
       void qc.invalidateQueries({ queryKey: queryKeys.tasks.detail(projectId, taskId) });
+    },
+  });
+}
+
+export function useUpdateTaskAssignee(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      taskId,
+      assignee,
+      expectedRevision,
+    }: {
+      taskId: string;
+      assignee: string | null;
+      expectedRevision?: number;
+    }) =>
+      expectedRevision === undefined
+        ? api.tasks.updateTask(projectId, taskId, { assignee })
+        : api.tasks.updateTask(projectId, taskId, { assignee }, { expectedRevision }),
+    onSuccess: (task) => {
+      qc.setQueryData(queryKeys.tasks.detail(projectId, task.id), task);
+      void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.projects.settings(projectId) });
     },
   });
 }

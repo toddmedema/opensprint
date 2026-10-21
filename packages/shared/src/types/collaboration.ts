@@ -5,6 +5,7 @@ export interface CollaborationPrincipal {
   actorId: string;
   displayName: string;
   role: CollaborationRole;
+  permissions?: import("./access.js").ProjectPermission[];
 }
 
 export interface CollaborationMessage {
@@ -25,10 +26,10 @@ export interface CollaborationRun {
 export interface CollaborationEvent {
   projectId: string;
   cursor: number;
-  type: "message_appended" | "control_claimed" | "control_handed_off";
+  type: string;
   actorId: string;
   createdAt: string;
-  payload: CollaborationMessage | CollaborationRun;
+  payload: unknown;
 }
 
 export type CollaborationCommand = { commandId: string } & (

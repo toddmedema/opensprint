@@ -1,3 +1,6 @@
+import { serverStateMiddleware } from "../../store/serverState";
+import { setQueryClient } from "../../queryClient";
+import { seedServerFixtureFromElement } from "../../test/seedServerFixtures";
 // @vitest-environment jsdom
 import React from "react";
 import { describe, it, expect, vi, beforeEach, beforeAll, afterEach } from "vitest";
@@ -17,23 +20,30 @@ import planReducer, {
   setPlansAndGraph,
   setSelectedPlanId,
 } from "../../store/slices/planSlice";
-import executeReducer, { taskUpdated, toTasksByIdAndOrder } from "../../store/slices/executeSlice";
+import executeReducer, { toTasksByIdAndOrder } from "../../store/slices/executeSlice";
 import openQuestionsReducer, {
   addNotification as addOpenQuestionNotification,
 } from "../../store/slices/openQuestionsSlice";
 import notificationReducer from "../../store/slices/notificationSlice";
 import unreadPhaseReducer, { setPhaseUnread } from "../../store/slices/unreadPhaseSlice";
 
+let planPhaseClient: QueryClient;
 function createPlanPhaseQueryClient() {
-  return new QueryClient({
+  planPhaseClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Infinity },
     },
   });
+  setQueryClient(planPhaseClient);
+  return planPhaseClient;
 }
 
 const PlanPhaseWrapper = ({ children }: { children: React.ReactNode }) => {
-  const [client] = React.useState(() => createPlanPhaseQueryClient());
+  const [client] = React.useState(() => {
+    const c = createPlanPhaseQueryClient();
+    seedServerFixtureFromElement(c, children);
+    return c;
+  });
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 };
 
@@ -212,6 +222,7 @@ vi.mock("../../api/client", () => ({
 }));
 
 const basePlan = {
+  revision: 1,
   metadata: {
     planId: "archive-test-feature",
     epicId: "epic-1",
@@ -275,6 +286,7 @@ function createStore(
   syncSinglePlanMock(plans);
 
   return configureStore({
+    middleware: (getDefault) => getDefault().concat(serverStateMiddleware),
     reducer: {
       project: projectReducer,
       plan: planReducer,
@@ -641,7 +653,11 @@ describe("PlanPhase Redux integration", () => {
     expect(screen.getAllByText("ready").length).toBeGreaterThanOrEqual(1);
 
     act(() => {
-      store.dispatch(taskUpdated({ taskId: "epic-1.2", status: "closed" }));
+      planPhaseClient.setQueryData(queryKeys.tasks.list("proj-1"), (tasks: unknown) =>
+        (tasks as { id: string }[]).map((task) =>
+          task.id === "epic-1.2" ? { ...task, status: "closed", kanbanColumn: "done" } : task
+        )
+      );
     });
 
     // Task B should now show "done" (live update from Redux)
@@ -884,7 +900,6 @@ describe("PlanPhase archive", () => {
       expect(screen.queryByRole("textbox", { name: /title/i })).not.toBeInTheDocument();
     });
   });
-
 });
 
 describe("PlanPhase inline editing", () => {
@@ -932,7 +947,8 @@ describe("PlanPhase inline editing", () => {
           "archive-test-feature",
           expect.objectContaining({
             content: expect.stringContaining("New Title"),
-          })
+          }),
+          { expectedRevision: 1 }
         );
       },
       { timeout: 8000 }
@@ -1022,7 +1038,6 @@ describe("PlanPhase Re-execute button", () => {
 
     expect(screen.queryByRole("button", { name: /re-execute/i })).not.toBeInTheDocument();
   });
-
 });
 
 describe("PlanPhase dynamic plan button label", () => {
@@ -2315,7 +2330,6 @@ describe("PlanPhase plan sorting and status filter", () => {
     expect(screen.getByText(/planning feature/i)).toBeInTheDocument();
     expect(screen.queryByText(/building feature/i)).not.toBeInTheDocument();
   });
-
 });
 
 describe("PlanPhase sendPlanMessage thunk", () => {
@@ -2444,7 +2458,10 @@ describe("PlanPhase sendPlanMessage thunk", () => {
       taskCount: 0,
       doneTaskCount: 0,
     };
-    const graph = { plans: [rootPlan, childPlan], edges: [] as { from: string; to: string; type: "blocks" }[] };
+    const graph = {
+      plans: [rootPlan, childPlan],
+      edges: [] as { from: string; to: string; type: "blocks" }[],
+    };
     mockPlansList.mockResolvedValue(graph);
     const store = createStore([rootPlan, childPlan], undefined, undefined, {
       selectedPlanId: null,
@@ -2978,6 +2995,7 @@ describe("PlanPhase Generate Plan", () => {
   it("renders draft planner questions without a selected plan and answers through plan-draft context", async () => {
     const draftNotification = {
       id: "oq-draft-2",
+      revision: 1,
       projectId: "proj-1",
       source: "plan" as const,
       sourceId: "draft:draft-2",
@@ -3027,9 +3045,14 @@ describe("PlanPhase Generate Plan", () => {
         "General volunteers and mentors",
         "plan-draft:draft-2"
       );
-      expect(mockNotificationResolve).toHaveBeenCalledWith("proj-1", "oq-draft-2", {
-        responses: [{ questionId: "q1", answer: "General volunteers and mentors" }],
-      });
+      expect(mockNotificationResolve).toHaveBeenCalledWith(
+        "proj-1",
+        "oq-draft-2",
+        {
+          responses: [{ questionId: "q1", answer: "General volunteers and mentors" }],
+        },
+        { expectedRevision: 1 }
+      );
       expect(store.getState().plan.selectedPlanId).toBe("volunteer-signup-form");
     });
   });

@@ -16,6 +16,26 @@ export function createSpecPublicationRouter(
   const router = Router({ mergeParams: true });
   router.use(validateParams(params));
   router.get(
+    "/published",
+    wrapAsync(async (req, res) => {
+      res.json({
+        data: { content: await service.getPublishedContent(String(req.params.projectId)) },
+      });
+    })
+  );
+  router.post(
+    "/import",
+    validateBody(z.object({ expectedRevision: z.number().int().min(0) }).strict()),
+    wrapAsync(async (req, res) => {
+      res.json({
+        data: await service.importWorkingCopy(
+          String(req.params.projectId),
+          req.body.expectedRevision
+        ),
+      });
+    })
+  );
+  router.get(
     "/draft",
     wrapAsync(async (req, res) => {
       res.json({ data: await service.getDraft(String(req.params.projectId)) });

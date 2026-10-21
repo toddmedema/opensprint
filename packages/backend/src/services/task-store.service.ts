@@ -1,4 +1,14 @@
 import crypto from "crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
+import {
+  lockProject,
+  resourceChanged,
+  getResourceRevision,
+  assertResourceRevision,
+  stableFingerprint,
+} from "./project-event.service.js";
+import { assertExecutionFenceInTransaction } from "./execution-ownership.service.js";
+import { assertTaskControlOperation, assertCurrentOperation } from "./operation-effect-context.js";
 import { clampTaskComplexity, getDatabaseDialect } from "@opensprint/shared";
 import {
   isAgentAssignee,
@@ -70,6 +80,12 @@ export type { PlanInsertData, StoredPlan } from "./plan-store.service.js";
 const log = createLogger("task-store");
 const MERGE_ATTEMPT_LEASE_EXPIRES_AT_KEY = "merge_attempt_lease_expires_at";
 
+export interface CollaborativeMutation {
+  actorId: string;
+  requestId: string;
+  expectedRevision: number;
+}
+
 function hasActiveMergeAttemptLease(task: StoredTask, nowMs = Date.now()): boolean {
   const expiresAtRaw = (task as Record<string, unknown>)[MERGE_ATTEMPT_LEASE_EXPIRES_AT_KEY];
   if (typeof expiresAtRaw !== "string" || expiresAtRaw.trim() === "") return false;
@@ -78,6 +94,30 @@ function hasActiveMergeAttemptLease(task: StoredTask, nowMs = Date.now()): boole
 }
 
 export class TaskStoreService {
+  private readonly transaction = new AsyncLocalStorage<{
+    tx: DbClient;
+    committed: Array<() => void>;
+    active: boolean;
+  }>();
+  private currentTransaction() {
+    const context = this.transaction.getStore();
+    return context?.active ? context : undefined;
+  }
+
+  private async inTransaction<T>(
+    tx: DbClient,
+    committed: Array<() => void>,
+    fn: (tx: DbClient) => Promise<T>
+  ): Promise<T> {
+    const context = { tx, committed, active: true };
+    try {
+      return await this.transaction.run(context, () => fn(tx));
+    } finally {
+      // Async descendants can outlive this callback. They must acquire a new
+      // transaction instead of using a committed/released connection or outbox.
+      context.active = false;
+    }
+  }
   private client: DbClient | null = null;
   private appDb: AppDb | null = null;
   /** When true, this service created appDb in runInitInternal and should close it in closePool. */
@@ -105,7 +145,8 @@ export class TaskStoreService {
   );
   private planAuditorSIFacade = new TaskStorePlanAuditorSIFacade({
     ensureInitialized: () => this.ensureInitialized(),
-    withWriteLock: <T>(fn: () => Promise<T>) => this.withWriteLock(fn),
+    withWriteLock: <T>(fn: () => Promise<T>) => this.runWrite(() => fn()),
+    withRead: <T>(fn: () => Promise<T>) => this.runRead(() => fn()),
     planStore: this.planStore,
     planVersionStore: this.planVersionStore,
     auditorRunStore: this.auditorRunStore,
@@ -128,7 +169,10 @@ export class TaskStoreService {
     changeType: "create" | "update" | "close",
     task: StoredTask
   ): void {
-    this.onTaskChange?.(projectId, changeType, task);
+    const emit = () => this.onTaskChange?.(projectId, changeType, task);
+    const context = this.currentTransaction();
+    if (context) context.committed.push(emit);
+    else emit();
   }
 
   /**
@@ -232,6 +276,8 @@ export class TaskStoreService {
   }
 
   protected ensureClient(): DbClient {
+    const transaction = this.currentTransaction();
+    if (transaction) return transaction.tx;
     if (!this.client) {
       throw new AppError(
         500,
@@ -244,6 +290,7 @@ export class TaskStoreService {
 
   /** Returns Drizzle instance when using Postgres; null for SQLite or when not initialized. */
   private async getDrizzle(): Promise<DrizzlePg | null> {
+    if (this.currentTransaction()) return null;
     if (!this.appDb?.getDrizzle) return null;
     return this.appDb.getDrizzle();
   }
@@ -265,6 +312,7 @@ export class TaskStoreService {
   }
 
   private async withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.currentTransaction()) return fn();
     if (this.appDb?.runExclusive) return this.appDb.runExclusive(fn);
     const prev = this.writeLock;
     let release: () => void;
@@ -319,8 +367,10 @@ export class TaskStoreService {
     return { depsByTaskId, dependentCountByTaskId };
   }
 
-  private async hydrateTaskWithDeps(row: Record<string, unknown>): Promise<StoredTask> {
-    const client = this.ensureClient();
+  private async hydrateTaskWithDeps(
+    row: Record<string, unknown>,
+    client = this.ensureClient()
+  ): Promise<StoredTask> {
     const deps = await client.query(
       toPgParams("SELECT depends_on_id, dep_type FROM task_dependencies WHERE task_id = ?"),
       [row.id]
@@ -369,8 +419,11 @@ export class TaskStoreService {
     return results;
   }
 
-  private async generateId(projectId: string, parentId?: string): Promise<string> {
-    const client = this.ensureClient();
+  private async generateId(
+    projectId: string,
+    parentId?: string,
+    client = this.ensureClient()
+  ): Promise<string> {
     if (parentId) {
       const rows = await client.query(
         toPgParams("SELECT id FROM tasks WHERE id LIKE $1 AND project_id = $2 ORDER BY id"),
@@ -391,8 +444,7 @@ export class TaskStoreService {
 
   // ──── Read methods ────
 
-  async show(projectId: string, id: string): Promise<StoredTask> {
-    const client = this.ensureClient();
+  async show(projectId: string, id: string, client = this.ensureClient()): Promise<StoredTask> {
     const row = await client.queryOne(
       toPgParams("SELECT * FROM tasks WHERE id = ? AND project_id = ?"),
       [id, projectId]
@@ -428,17 +480,29 @@ export class TaskStoreService {
         zodError: parsed.error,
       });
     }
-    return this.hydrateTaskWithDeps(parsed.data as unknown as Record<string, unknown>);
+    const task = await this.hydrateTaskWithDeps(
+      parsed.data as unknown as Record<string, unknown>,
+      client
+    );
+    task.revision = await getResourceRevision(client, projectId, "task", id);
+    return task;
   }
 
   async listAll(projectId: string): Promise<StoredTask[]> {
-    await this.ensureInitialized();
-    const tasks = await this.execAndHydrateWithDeps(
-      projectId,
-      "SELECT * FROM tasks WHERE project_id = ? ORDER BY priority ASC, created_at ASC",
-      [projectId]
-    );
-    return tasks;
+    return this.runRead(async () => {
+      await this.ensureInitialized();
+      const tasks = await this.execAndHydrateWithDeps(
+        projectId,
+        "SELECT * FROM tasks WHERE project_id = ? ORDER BY priority ASC, created_at ASC",
+        [projectId]
+      );
+      const revisions = await this.ensureClient().query(
+        "SELECT resource_id, revision FROM resource_revisions WHERE project_id = $1 AND resource_type = 'task'",
+        [projectId]
+      );
+      const byId = new Map(revisions.map((row) => [String(row.resource_id), Number(row.revision)]));
+      return tasks.map((task) => ({ ...task, revision: byId.get(task.id) ?? 0 }));
+    });
   }
 
   /**
@@ -451,39 +515,50 @@ export class TaskStoreService {
     limit: number,
     offset: number
   ): Promise<{ page: StoredTask[]; total: number; allForGraph: StoredTask[] }> {
-    await this.ensureInitialized();
-    const client = this.ensureClient();
-    const { depsByTaskId, dependentCountByTaskId } = await this.loadDepsMapsForProject(projectId);
+    return this.runRead(async () => {
+      await this.ensureInitialized();
+      const client = this.ensureClient();
+      const { depsByTaskId, dependentCountByTaskId } = await this.loadDepsMapsForProject(projectId);
 
-    const nonChoreSql =
-      "SELECT * FROM tasks WHERE project_id = ? AND issue_type <> 'chore' ORDER BY priority ASC, created_at ASC LIMIT ? OFFSET ?";
+      const nonChoreSql =
+        "SELECT * FROM tasks WHERE project_id = ? AND issue_type <> 'chore' ORDER BY priority ASC, created_at ASC LIMIT ? OFFSET ?";
 
-    const [countRow, graphRows, pageRows] = await Promise.all([
-      client.queryOne(
-        toPgParams(
-          "SELECT COUNT(*)::int AS cnt FROM tasks WHERE project_id = ? AND issue_type <> 'chore'"
+      const [countRow, graphRows, pageRows] = await Promise.all([
+        client.queryOne(
+          toPgParams(
+            "SELECT COUNT(*)::int AS cnt FROM tasks WHERE project_id = ? AND issue_type <> 'chore'"
+          ),
+          [projectId]
         ),
-        [projectId]
-      ),
-      client.query(
-        toPgParams("SELECT id, status, issue_type, description FROM tasks WHERE project_id = ?"),
-        [projectId]
-      ),
-      client.query(toPgParams(nonChoreSql), [projectId, limit, offset]),
-    ]);
+        client.query(
+          toPgParams("SELECT id, status, issue_type, description FROM tasks WHERE project_id = ?"),
+          [projectId]
+        ),
+        client.query(toPgParams(nonChoreSql), [projectId, limit, offset]),
+      ]);
 
-    const total = (countRow?.cnt as number) ?? 0;
-    const allForGraph = graphRows.map((row) =>
-      this.hydrateTaskMinimalForListGraph(
-        row as Record<string, unknown>,
-        depsByTaskId,
-        dependentCountByTaskId
-      )
-    );
-    const page = pageRows.map((row) =>
-      hydrateTask(row as Record<string, unknown>, depsByTaskId, dependentCountByTaskId)
-    );
-    return { page, total, allForGraph };
+      const total = (countRow?.cnt as number) ?? 0;
+      const allForGraph = graphRows.map((row) =>
+        this.hydrateTaskMinimalForListGraph(
+          row as Record<string, unknown>,
+          depsByTaskId,
+          dependentCountByTaskId
+        )
+      );
+      const page = pageRows.map((row) =>
+        hydrateTask(row as Record<string, unknown>, depsByTaskId, dependentCountByTaskId)
+      );
+      const revisions = await client.query(
+        "SELECT resource_id, revision FROM resource_revisions WHERE project_id = $1 AND resource_type = 'task'",
+        [projectId]
+      );
+      const byId = new Map(revisions.map((row) => [String(row.resource_id), Number(row.revision)]));
+      return {
+        page: page.map((task) => ({ ...task, revision: byId.get(task.id) ?? 0 })),
+        total,
+        allForGraph,
+      };
+    });
   }
 
   /** Narrow row + shared dep maps for listTasks ready / dependency graph (not full SELECT *). */
@@ -698,10 +773,124 @@ export class TaskStoreService {
 
   // ──── Write methods (mutex + save) ────
 
+  /** Collaborative edits require a durable request ID and compare the version in the same transaction. */
+  async mutateCollaboratively<T>(
+    projectId: string,
+    resourceType: "task" | "plan",
+    resourceId: string,
+    command: CollaborativeMutation,
+    payload: unknown,
+    mutate: () => Promise<T>
+  ): Promise<T> {
+    if (
+      !command ||
+      typeof command.requestId !== "string" ||
+      !command.requestId.trim() ||
+      !command.actorId
+    )
+      throw new AppError(
+        400,
+        "REQUEST_ID_REQUIRED",
+        "A stable request ID and authenticated actor are required."
+      );
+    const fingerprint = stableFingerprint({
+      resourceType,
+      resourceId,
+      payload,
+      expectedRevision: command.expectedRevision,
+    });
+    return this.runWrite(async (tx) => {
+      await lockProject(tx, projectId);
+      await assertTaskControlOperation(tx, projectId);
+      const previous = await tx.queryOne(
+        "SELECT * FROM collaboration_commands WHERE project_id = $1 AND command_id = $2",
+        [projectId, command.requestId]
+      );
+      if (previous) {
+        if (previous.actor_id !== command.actorId || previous.fingerprint !== fingerprint)
+          throw new AppError(
+            409,
+            "REQUEST_ID_REUSED",
+            "This request ID was used for a different actor or mutation."
+          );
+        return JSON.parse(String(previous.result)) as T;
+      }
+      const state =
+        resourceType === "task"
+          ? await this.show(projectId, resourceId, tx)
+          : await this.planGet(projectId, resourceId);
+      await assertResourceRevision(
+        tx,
+        projectId,
+        resourceType,
+        resourceId,
+        command.expectedRevision,
+        state
+      );
+      const result = await mutate();
+      await tx.execute(
+        "INSERT INTO collaboration_commands (project_id, command_id, actor_id, fingerprint, result) VALUES ($1,$2,$3,$4,$5)",
+        [projectId, command.requestId, command.actorId, fingerprint, JSON.stringify(result ?? null)]
+      );
+      return result;
+    });
+  }
+
+  updateCollaboratively(
+    projectId: string,
+    id: string,
+    options: Parameters<TaskStoreService["update"]>[2],
+    command: CollaborativeMutation
+  ): Promise<StoredTask> {
+    return this.mutateCollaboratively(
+      projectId,
+      "task",
+      id,
+      command,
+      { kind: "update", options },
+      () => this.update(projectId, id, options)
+    );
+  }
+
+  closeCollaboratively(
+    projectId: string,
+    id: string,
+    reason: string,
+    command: CollaborativeMutation
+  ): Promise<StoredTask> {
+    return this.mutateCollaboratively(
+      projectId,
+      "task",
+      id,
+      command,
+      { kind: "close", reason },
+      () => this.close(projectId, id, reason)
+    );
+  }
+
+  dependencyCollaboratively(
+    projectId: string,
+    id: string,
+    parentId: string,
+    remove: boolean,
+    command: CollaborativeMutation
+  ): Promise<void> {
+    return this.mutateCollaboratively(
+      projectId,
+      "task",
+      id,
+      command,
+      { kind: "dependency", parentId, remove },
+      () =>
+        remove
+          ? this.removeDependency(projectId, id, parentId)
+          : this.addDependency(projectId, id, parentId)
+    );
+  }
+
   async create(projectId: string, title: string, options: CreateOpts = {}): Promise<StoredTask> {
-    return this.withWriteLock(async () => {
-      await this.ensureInitialized();
-      const client = this.ensureClient();
+    return this.runWrite(async (client) => {
+      await lockProject(client, projectId);
       const now = new Date().toISOString();
       const type = (options.type as string) ?? "task";
       const priority = options.priority ?? 2;
@@ -716,7 +905,7 @@ export class TaskStoreService {
 
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         try {
-          id = await this.generateId(projectId, options.parentId);
+          id = await this.generateId(projectId, options.parentId, client);
           await client.execute(
             toPgParams(
               `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, complexity, extra)
@@ -759,7 +948,8 @@ export class TaskStoreService {
         );
       }
 
-      const task = await this.show(projectId, id);
+      const task = await this.show(projectId, id, client);
+      task.revision = await resourceChanged(client, projectId, "task", task.id, task);
       this.emitTaskChange(projectId, "create", task);
       return task;
     });
@@ -801,15 +991,14 @@ export class TaskStoreService {
   }
 
   async createMany(projectId: string, inputs: CreateInput[]): Promise<StoredTask[]> {
-    return this.withWriteLock(async () => {
-      await this.ensureInitialized();
-      const client = this.ensureClient();
+    return this.runWrite(async (client) => {
+      await lockProject(client, projectId);
       const ids: string[] = [];
       const parentIdToNextSeq = new Map<string, number>();
       for (const input of inputs) {
         const parentId = input.parentId;
         if (!parentId) {
-          ids.push(await this.generateId(projectId, undefined));
+          ids.push(await this.generateId(projectId, undefined, client));
           continue;
         }
         let next = parentIdToNextSeq.get(parentId);
@@ -871,9 +1060,10 @@ export class TaskStoreService {
       });
       const tasks: StoredTask[] = [];
       for (const id of ids) {
-        tasks.push(await this.show(projectId, id));
+        tasks.push(await this.show(projectId, id, client));
       }
       for (const task of tasks) {
+        task.revision = await resourceChanged(client, projectId, "task", task.id, task);
         this.emitTaskChange(projectId, "create", task);
       }
       return tasks;
@@ -900,9 +1090,8 @@ export class TaskStoreService {
       last_auto_retry_at?: string | null;
     } = {}
   ): Promise<StoredTask> {
-    return this.withWriteLock(async () => {
-      await this.ensureInitialized();
-      const client = this.ensureClient();
+    return this.runWrite(async (client) => {
+      await lockProject(client, projectId);
       const now = new Date().toISOString();
 
       const needRow =
@@ -954,7 +1143,8 @@ export class TaskStoreService {
           issueId: id,
         });
       }
-      const task = await this.show(projectId, id);
+      const task = await this.show(projectId, id, client);
+      task.revision = await resourceChanged(client, projectId, "task", task.id, task);
       this.emitTaskChange(projectId, "update", task);
       return task;
     });
@@ -970,9 +1160,8 @@ export class TaskStoreService {
       priority?: number;
     }>
   ): Promise<StoredTask[]> {
-    return this.withWriteLock(async () => {
-      await this.ensureInitialized();
-      const client = this.ensureClient();
+    return this.runWrite(async (client) => {
+      await lockProject(client, projectId);
       await client.runInTransaction(async (tx) => {
         for (const u of updates) {
           const needRow = u.assignee !== undefined;
@@ -1005,9 +1194,10 @@ export class TaskStoreService {
       });
       const tasks: StoredTask[] = [];
       for (const u of updates) {
-        tasks.push(await this.show(projectId, u.id));
+        tasks.push(await this.show(projectId, u.id, client));
       }
       for (const task of tasks) {
+        task.revision = await resourceChanged(client, projectId, "task", task.id, task);
         this.emitTaskChange(projectId, "update", task);
       }
       return tasks;
@@ -1015,9 +1205,8 @@ export class TaskStoreService {
   }
 
   async close(projectId: string, id: string, reason: string, _force = false): Promise<StoredTask> {
-    return this.withWriteLock(async () => {
-      await this.ensureInitialized();
-      const client = this.ensureClient();
+    return this.runWrite(async (client) => {
+      await lockProject(client, projectId);
       const wall = Date.now();
       const ms = Math.max(wall, this.lastCompletedAtOrderingMs + 1);
       this.lastCompletedAtOrderingMs = ms;
@@ -1033,7 +1222,8 @@ export class TaskStoreService {
           issueId: id,
         });
       }
-      const task = await this.show(projectId, id);
+      const task = await this.show(projectId, id, client);
+      task.revision = await resourceChanged(client, projectId, "task", task.id, task);
       this.emitTaskChange(projectId, "close", task);
       return task;
     });
@@ -1043,9 +1233,8 @@ export class TaskStoreService {
     projectId: string,
     items: Array<{ id: string; reason: string }>
   ): Promise<StoredTask[]> {
-    return this.withWriteLock(async () => {
-      await this.ensureInitialized();
-      const client = this.ensureClient();
+    return this.runWrite(async (client) => {
+      await lockProject(client, projectId);
       const now = new Date().toISOString();
       await client.runInTransaction(async (tx) => {
         for (const item of items) {
@@ -1064,9 +1253,10 @@ export class TaskStoreService {
       });
       const tasks: StoredTask[] = [];
       for (const item of items) {
-        tasks.push(await this.show(projectId, item.id));
+        tasks.push(await this.show(projectId, item.id, client));
       }
       for (const task of tasks) {
+        task.revision = await resourceChanged(client, projectId, "task", task.id, task);
         this.emitTaskChange(projectId, "close", task);
       }
       return tasks;
@@ -1074,48 +1264,70 @@ export class TaskStoreService {
   }
 
   async addDependency(
-    _projectId: string,
+    projectId: string,
     childId: string,
     parentId: string,
     type?: string
   ): Promise<void> {
-    return this.withWriteLock(async () => {
-      await this.ensureInitialized();
-      const client = this.ensureClient();
+    return this.runWrite(async (client) => {
+      await lockProject(client, projectId);
+      await this.show(projectId, childId, client);
+      await this.show(projectId, parentId, client);
       await client.execute(
         toPgParams(
           "INSERT INTO task_dependencies (task_id, depends_on_id, dep_type) VALUES (?, ?, ?) ON CONFLICT (task_id, depends_on_id) DO NOTHING"
         ),
         [childId, parentId, type ?? "blocks"]
       );
+      await resourceChanged(
+        client,
+        projectId,
+        "task",
+        childId,
+        await this.show(projectId, childId, client)
+      );
     });
   }
 
-  async removeDependency(_projectId: string, childId: string, parentId: string): Promise<void> {
-    return this.withWriteLock(async () => {
-      await this.ensureInitialized();
-      const client = this.ensureClient();
+  async removeDependency(projectId: string, childId: string, parentId: string): Promise<void> {
+    return this.runWrite(async (client) => {
+      await lockProject(client, projectId);
       await client.execute(
         toPgParams("DELETE FROM task_dependencies WHERE task_id = ? AND depends_on_id = ?"),
         [childId, parentId]
+      );
+      await resourceChanged(
+        client,
+        projectId,
+        "task",
+        childId,
+        await this.show(projectId, childId, client)
       );
     });
   }
 
   async addDependencies(
-    _projectId: string,
+    projectId: string,
     deps: Array<{ childId: string; parentId: string; type?: string }>
   ): Promise<void> {
-    return this.withWriteLock(async () => {
-      await this.ensureInitialized();
-      const client = this.ensureClient();
+    return this.runWrite(async (client) => {
+      await lockProject(client, projectId);
       await client.runInTransaction(async (tx) => {
         for (const dep of deps) {
+          await this.show(projectId, dep.childId, tx);
+          await this.show(projectId, dep.parentId, tx);
           await tx.execute(
             toPgParams(
               "INSERT INTO task_dependencies (task_id, depends_on_id, dep_type) VALUES (?, ?, ?) ON CONFLICT (task_id, depends_on_id) DO NOTHING"
             ),
             [dep.childId, dep.parentId, dep.type ?? "blocks"]
+          );
+          await resourceChanged(
+            tx,
+            projectId,
+            "task",
+            dep.childId,
+            await this.show(projectId, dep.childId, tx)
           );
         }
       });
@@ -1123,9 +1335,8 @@ export class TaskStoreService {
   }
 
   async delete(projectId: string, id: string): Promise<void> {
-    return this.withWriteLock(async () => {
-      await this.ensureInitialized();
-      const client = this.ensureClient();
+    return this.runWrite(async (client) => {
+      await lockProject(client, projectId);
       const modified = await client.runInTransaction(async (tx) => {
         const existing = await tx.queryOne(
           toPgParams("SELECT 1 FROM tasks WHERE id = ? AND project_id = ?"),
@@ -1143,6 +1354,7 @@ export class TaskStoreService {
           projectId,
         ]);
       });
+      if (modified > 0) await resourceChanged(client, projectId, "task", id, null);
       if (modified === 0) {
         throw new AppError(404, ErrorCodes.ISSUE_NOT_FOUND, `Task ${id} not found`, {
           issueId: id,
@@ -1154,9 +1366,8 @@ export class TaskStoreService {
   /** Delete multiple tasks by ID. Skips tasks that don't exist (e.g. already deleted). */
   async deleteMany(projectId: string, ids: string[]): Promise<void> {
     if (ids.length === 0) return;
-    return this.withWriteLock(async () => {
-      await this.ensureInitialized();
-      const client = this.ensureClient();
+    return this.runWrite(async (client) => {
+      await lockProject(client, projectId);
       const uniqueIds = [...new Set(ids)];
       await client.runInTransaction(async (tx) => {
         for (const id of uniqueIds) {
@@ -1174,6 +1385,7 @@ export class TaskStoreService {
             id,
             projectId,
           ]);
+          await resourceChanged(tx, projectId, "task", id, null);
         }
       });
     });
@@ -1233,6 +1445,9 @@ export class TaskStoreService {
       await client.execute(toPgParams("DELETE FROM prd_snapshots WHERE project_id = ?"), [
         projectId,
       ]);
+      await client.execute(toPgParams("DELETE FROM conversation_messages WHERE project_id = ?"), [
+        projectId,
+      ]);
       await client.execute(toPgParams("DELETE FROM project_conversations WHERE project_id = ?"), [
         projectId,
       ]);
@@ -1267,9 +1482,8 @@ export class TaskStoreService {
   }
 
   async addLabel(projectId: string, id: string, label: string): Promise<void> {
-    return this.withWriteLock(async () => {
-      await this.ensureInitialized();
-      const client = this.ensureClient();
+    return this.runWrite(async (client) => {
+      await lockProject(client, projectId);
       const row = await client.queryOne(
         toPgParams("SELECT labels FROM tasks WHERE id = ? AND project_id = ?"),
         [id, projectId]
@@ -1286,14 +1500,20 @@ export class TaskStoreService {
           toPgParams("UPDATE tasks SET labels = ?, updated_at = ? WHERE id = ? AND project_id = ?"),
           [JSON.stringify(labels), now, id, projectId]
         );
+        await resourceChanged(
+          client,
+          projectId,
+          "task",
+          id,
+          await this.show(projectId, id, client)
+        );
       }
     });
   }
 
   async removeLabel(projectId: string, id: string, label: string): Promise<void> {
-    return this.withWriteLock(async () => {
-      await this.ensureInitialized();
-      const client = this.ensureClient();
+    return this.runWrite(async (client) => {
+      await lockProject(client, projectId);
       const row = await client.queryOne(
         toPgParams("SELECT labels FROM tasks WHERE id = ? AND project_id = ?"),
         [id, projectId]
@@ -1308,6 +1528,13 @@ export class TaskStoreService {
         await client.execute(
           toPgParams("UPDATE tasks SET labels = ?, updated_at = ? WHERE id = ? AND project_id = ?"),
           [JSON.stringify(labels), now, id, projectId]
+        );
+        await resourceChanged(
+          client,
+          projectId,
+          "task",
+          id,
+          await this.show(projectId, id, client)
         );
       }
     });
@@ -1407,6 +1634,7 @@ export class TaskStoreService {
     projectId: string,
     planId: string
   ): Promise<{
+    revision?: number;
     content: string;
     metadata: Record<string, unknown>;
     shipped_content: string | null;
@@ -1676,21 +1904,37 @@ export class TaskStoreService {
    * Uses runInTransaction for atomicity. Use from feedback-store, deploy-storage, event-log, agent-identity, orchestrator counters, sessions.
    */
   async runWrite<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
+    const existing = this.currentTransaction();
+    if (existing) return fn(existing.tx);
     await this.ensureInitialized();
-    return this.withWriteLock(async () => {
-      if (this.appDb) {
-        return await this.appDb.runWrite(fn);
-      }
-      const client = this.ensureClient();
-      return await client.runInTransaction(fn);
-    });
+    const committed: Array<() => void> = [];
+    const execute = async (tx: DbClient) => {
+      await assertExecutionFenceInTransaction(tx);
+      await assertCurrentOperation(tx);
+      return this.inTransaction(tx, committed, fn);
+    };
+    const result = await this.withWriteLock(() =>
+      this.appDb ? this.appDb.runWrite(execute) : this.ensureClient().runInTransaction(execute)
+    );
+    for (const emit of committed) emit();
+    return result;
+  }
+
+  /** Read multiple tables from one committed snapshot. */
+  afterCommit(action: () => void): void {
+    const context = this.currentTransaction();
+    if (context) context.committed.push(action);
+    else action();
   }
 
   /** Read multiple tables from one committed snapshot. */
   async runRead<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
+    const existing = this.currentTransaction();
+    if (existing) return fn(existing.tx);
     await this.ensureInitialized();
-    if (this.appDb?.runRead) return this.appDb.runRead(fn);
-    return this.withWriteLock(() => this.ensureClient().runInTransaction(fn));
+    const execute = (tx: DbClient) => this.inTransaction(tx, [], fn);
+    if (this.appDb?.runRead) return this.appDb.runRead(execute);
+    return this.withWriteLock(() => this.ensureClient().runInTransaction(execute));
   }
 
   /** No-op for Postgres; data is persisted immediately. Use on shutdown for compatibility. */

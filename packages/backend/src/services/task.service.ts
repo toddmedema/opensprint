@@ -34,6 +34,9 @@ import { parseTaskLastExecutionSummary } from "./task-execution-summary.js";
 import { resolveBaseBranch } from "../utils/git-repo-state.js";
 import { deriveMergeGateStateFromIssue, getMergePausedUntilFromIssue } from "./merge-gate-state.js";
 
+import { getRequestContext } from "./request-context.js";
+import { runDurableTaskControl } from "./durable-task-control.service.js";
+import { operationWorker } from "./operation-worker.service.js";
 const log = createLogger("task");
 
 /** Slug for team member id: lowercase, hyphens for spaces, alphanumeric + hyphens. Non-empty. */
@@ -59,7 +62,59 @@ export class TaskService {
     private sessionManager: SessionManager,
     private branchManager: BranchManager,
     private orchestrator: TaskOrchestratorControl
-  ) {}
+  ) {
+    operationWorker.register("task.control.done", (op) =>
+      this.markDoneOwned(op.projectId, op.target)
+    );
+    operationWorker.register("task.control.delete", (op) =>
+      this.deleteTaskOwned(op.projectId, op.target)
+    );
+    operationWorker.register("task.control.retry", (op) =>
+      this.forceRetryOwned(op.projectId, op.target)
+    );
+    operationWorker.register("task.control.unblock", (op) =>
+      this.unblockOwned(op.projectId, op.target, op.payload as { resetAttempts?: boolean })
+    );
+  }
+
+  private controlRevision(issue: StoredTask) {
+    const request = getRequestContext();
+    if (request?.expectedRevision !== undefined) {
+      if (!Number.isSafeInteger(request.expectedRevision) || request.expectedRevision < 0)
+        throw new AppError(
+          400,
+          "EXPECTED_REVISION_REQUIRED",
+          "A nonnegative expected revision is required."
+        );
+      if (Number(issue.revision ?? 0) !== request.expectedRevision)
+        throw new AppError(
+          409,
+          "REVISION_CONFLICT",
+          "The task changed. Refresh before controlling its execution.",
+          { revision: Number(issue.revision ?? 0), state: issue }
+        );
+    }
+    return request?.requestId
+      ? {
+          actorId: request.principal.actorId,
+          requestId: request.requestId,
+          expectedRevision: request.expectedRevision ?? Number(issue.revision ?? 0),
+        }
+      : undefined;
+  }
+
+  private async stopBeforeTaskControl(projectId: string, taskId: string): Promise<void> {
+    try {
+      await this.orchestrator.stopTaskAndFreeSlot(projectId, taskId);
+    } catch (error) {
+      throw new AppError(
+        409,
+        "EXECUTION_STOP_UNCONFIRMED",
+        "Execution has not been confirmed stopped. The task and workspace were retained.",
+        { reason: error instanceof Error ? error.message : String(error) }
+      );
+    }
+  }
 
   /**
    * Get task analytics for the 100 most recently completed tasks.
@@ -205,7 +260,21 @@ export class TaskService {
     type: "blocks" | "related" | "parent-child" = "blocks"
   ): Promise<void> {
     await this.projectService.getProject(projectId);
-    await this.taskStore.addDependency(projectId, childTaskId, parentTaskId, type);
+    const request = getRequestContext();
+    if (request?.requestId && request.expectedRevision !== undefined)
+      await this.taskStore.mutateCollaboratively(
+        projectId,
+        "task",
+        childTaskId,
+        {
+          actorId: request.principal.actorId,
+          requestId: request.requestId,
+          expectedRevision: request.expectedRevision,
+        },
+        { kind: "add_dependency", parentTaskId, type },
+        () => this.taskStore.addDependency(projectId, childTaskId, parentTaskId, type)
+      );
+    else await this.taskStore.addDependency(projectId, childTaskId, parentTaskId, type);
   }
 
   /** Remove a dependency from childTaskId to parentTaskId. */
@@ -215,7 +284,14 @@ export class TaskService {
     parentTaskId: string
   ): Promise<void> {
     await this.projectService.getProject(projectId);
-    await this.taskStore.removeDependency(projectId, childTaskId, parentTaskId);
+    const request = getRequestContext();
+    if (request?.requestId && request.expectedRevision !== undefined)
+      await this.taskStore.dependencyCollaboratively(projectId, childTaskId, parentTaskId, true, {
+        actorId: request.principal.actorId,
+        requestId: request.requestId,
+        expectedRevision: request.expectedRevision,
+      });
+    else await this.taskStore.removeDependency(projectId, childTaskId, parentTaskId);
   }
 
   /** Get a single task with full details. */
@@ -601,9 +677,24 @@ export class TaskService {
     taskId: string,
     options?: { resetAttempts?: boolean }
   ): Promise<{ taskUnblocked: boolean }> {
+    return runDurableTaskControl(
+      projectId,
+      taskId,
+      "unblock",
+      { resetAttempts: options?.resetAttempts === true },
+      () => this.unblockOwned(projectId, taskId, options)
+    );
+  }
+
+  private async unblockOwned(
+    projectId: string,
+    taskId: string,
+    options?: { resetAttempts?: boolean }
+  ): Promise<{ taskUnblocked: boolean }> {
     const project = await this.projectService.getProject(projectId);
     const repoPath = project.repoPath;
     const issue = await this.taskStore.show(projectId, taskId);
+    const command = this.controlRevision(issue);
     const status = (issue.status as string) ?? "open";
 
     if (status !== "blocked") {
@@ -611,15 +702,7 @@ export class TaskService {
     }
 
     // 1. Stop any running agent and free slot (removes worktree in worktree mode)
-    try {
-      await this.orchestrator.stopTaskAndFreeSlot(projectId, taskId);
-    } catch (err) {
-      log.warn("Stop-agent-on-unblock failed, continuing cleanup", {
-        projectId,
-        taskId,
-        err,
-      });
-    }
+    await this.stopBeforeTaskControl(projectId, taskId);
 
     // 2. Remove worktree if task was not in slot (e.g. blocked from prior run)
     const settings = await this.projectService.getSettings(projectId);
@@ -658,7 +741,14 @@ export class TaskService {
       log.warn("Delete-active-dir-on-unblock failed", { taskId, activeDir, err });
     }
 
-    await this.taskStore.update(projectId, taskId, { status: "open", block_reason: null });
+    if (command)
+      await this.taskStore.updateCollaboratively(
+        projectId,
+        taskId,
+        { status: "open", block_reason: null },
+        command
+      );
+    else await this.taskStore.update(projectId, taskId, { status: "open", block_reason: null });
 
     if (options?.resetAttempts) {
       const labels = (issue.labels ?? []) as string[];
@@ -678,9 +768,16 @@ export class TaskService {
    * Returns 409 if the task is already completed.
    */
   async forceRetry(projectId: string, taskId: string): Promise<Task> {
+    return runDurableTaskControl(projectId, taskId, "retry", {}, () =>
+      this.forceRetryOwned(projectId, taskId)
+    );
+  }
+
+  private async forceRetryOwned(projectId: string, taskId: string): Promise<Task> {
     const project = await this.projectService.getProject(projectId);
     const repoPath = project.repoPath;
     const issue = await this.taskStore.show(projectId, taskId);
+    const command = this.controlRevision(issue);
     const status = (issue.status as string) ?? "open";
 
     if (status === "closed") {
@@ -692,15 +789,7 @@ export class TaskService {
     }
 
     // 1. Stop any running agent and free slot
-    try {
-      await this.orchestrator.stopTaskAndFreeSlot(projectId, taskId);
-    } catch (err) {
-      log.warn("Stop-agent-on-force-retry failed, continuing cleanup", {
-        projectId,
-        taskId,
-        err,
-      });
-    }
+    await this.stopBeforeTaskControl(projectId, taskId);
 
     // 2. Remove worktree if it exists
     const settings = await this.projectService.getSettings(projectId);
@@ -740,7 +829,7 @@ export class TaskService {
     }
 
     // 5. Reset task: status=open, clear assignee, clear block_reason, clear failure metadata
-    await this.taskStore.update(projectId, taskId, {
+    const update = {
       status: "open",
       assignee: "",
       block_reason: null,
@@ -754,7 +843,9 @@ export class TaskService {
         worktreePath: null,
         merge_quality_gate_paused_until: null,
       },
-    });
+    };
+    if (command) await this.taskStore.updateCollaboratively(projectId, taskId, update, command);
+    else await this.taskStore.update(projectId, taskId, update);
 
     // 6. Clear merge-related labels so the task is treated as ready, not waiting_to_merge
     const labels = (issue.labels ?? []) as string[];
@@ -785,20 +876,29 @@ export class TaskService {
 
   /** Delete a task and cascade cleanup of references in store-backed entities. */
   async deleteTask(projectId: string, taskId: string): Promise<{ taskDeleted: boolean }> {
+    return runDurableTaskControl(projectId, taskId, "delete", {}, () =>
+      this.deleteTaskOwned(projectId, taskId)
+    );
+  }
+
+  private async deleteTaskOwned(
+    projectId: string,
+    taskId: string
+  ): Promise<{ taskDeleted: boolean }> {
     await this.projectService.getProject(projectId);
+    const command = this.controlRevision(await this.taskStore.show(projectId, taskId));
+    await this.stopBeforeTaskControl(projectId, taskId);
 
-    // Best-effort: stop active work before deleting task state.
-    try {
-      await this.orchestrator.stopTaskAndFreeSlot(projectId, taskId);
-    } catch (err) {
-      log.warn("Stop-agent-on-delete failed, continuing delete", {
+    if (command)
+      await this.taskStore.mutateCollaboratively(
         projectId,
+        "task",
         taskId,
-        err,
-      });
-    }
-
-    await this.taskStore.delete(projectId, taskId);
+        command,
+        { kind: "delete" },
+        () => this.taskStore.delete(projectId, taskId)
+      );
+    else await this.taskStore.delete(projectId, taskId);
     this.orchestrator.nudge(projectId);
     return { taskDeleted: true };
   }
@@ -867,7 +967,14 @@ export class TaskService {
         });
       }
     }
-    await this.taskStore.update(projectId, taskId, updatePayload);
+    const request = getRequestContext();
+    if (request?.requestId && request.expectedRevision !== undefined)
+      await this.taskStore.updateCollaboratively(projectId, taskId, updatePayload, {
+        actorId: request.principal.actorId,
+        requestId: request.requestId,
+        expectedRevision: request.expectedRevision,
+      });
+    else await this.taskStore.update(projectId, taskId, updatePayload);
     return this.getTask(projectId, taskId);
   }
 
@@ -876,27 +983,28 @@ export class TaskService {
     projectId: string,
     taskId: string
   ): Promise<{ taskClosed: boolean; epicClosed?: boolean }> {
+    return runDurableTaskControl(projectId, taskId, "done", {}, () =>
+      this.markDoneOwned(projectId, taskId)
+    );
+  }
+
+  private async markDoneOwned(
+    projectId: string,
+    taskId: string
+  ): Promise<{ taskClosed: boolean; epicClosed?: boolean }> {
     await this.projectService.getProject(projectId);
     const issue = await this.taskStore.show(projectId, taskId);
+    const command = this.controlRevision(issue);
     const status = (issue.status as string) ?? "open";
 
     if (status === "closed") {
       return { taskClosed: false };
     }
 
-    // If an agent is actively working on this task, kill it and nudge the orchestrator to pick new work.
-    // Best-effort: if this throws (e.g. cleanup), we still close the task below.
-    try {
-      await this.orchestrator.stopTaskAndFreeSlot(projectId, taskId);
-    } catch (err) {
-      log.warn("Stop-agent-on-mark-done failed, continuing to close task", {
-        projectId,
-        taskId,
-        err,
-      });
-    }
-
-    await this.taskStore.close(projectId, taskId, "Manually marked done", true);
+    await this.stopBeforeTaskControl(projectId, taskId);
+    if (command)
+      await this.taskStore.closeCollaboratively(projectId, taskId, "Manually marked done", command);
+    else await this.taskStore.close(projectId, taskId, "Manually marked done", true);
 
     // PRD §10.2: Auto-resolve feedback when all its created tasks are Done
     this.feedbackService.checkAutoResolveOnTaskDone(projectId, taskId).catch((err) => {
@@ -935,5 +1043,4 @@ export class TaskService {
 
     return { taskClosed: true, epicClosed };
   }
-
 }

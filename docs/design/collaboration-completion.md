@@ -1,0 +1,49 @@
+# Collaboration completion
+
+This is the continuation of PR #12 and the first-principles review in thread `01a15b66-fc06-7882-9cf2-f85c3ed9a119`. The implementation keeps the modular monolith, SQL transaction boundary and trusted publisher. It does not introduce a broker, microservices, CRDTs or universal event sourcing.
+
+## People and shared interaction
+
+The project collaboration bar creates single-use invitations and shows presence, expiring typing and an optional presenter. A person signs in using the invitation on the hosted application's sign-in screen. Credentials are hashed in SQL; browser sessions use HttpOnly, SameSite=Strict, Secure cookies with CSRF headers. Invitations expire after one hour by default; sessions expire after seven days. A project manager can revise or revoke membership through `/api/v1/projects/:projectId/members`. Caller-supplied actor IDs never establish identity. Navigation remains independent unless the viewer checks Follow presenter.
+
+Project grants are independent: read, discuss, edit, control, approve, publish, deploy and manage. Controlling a run grants neither approval nor publication. Named members cannot use host filesystem, integration credential, arbitrary command or repository configuration endpoints. Every HTTP request and WebSocket connection resolves current membership. Named socket sends recheck credentials and membership; slow authorization and outbound queues are bounded. Browser upgrades use SQL-backed, one-use project-scoped tickets so a proxy can route their exchange and upgrade to different replicas.
+
+## Commands, revisions and recovery
+
+Mutations carry an authenticated actor, stable Idempotency-Key and an expected revision for existing tasks, plans, settings and approvals. SQL changes, deduplication receipts and semantic events commit together. A conflicting edit returns the current revision/state. Messages have individually identified append-only rows; legacy transcripts and guidance journals are imported idempotently. Guidance receipts distinguish accepted, queued, included, failed and run-ended, and bind the exact attempt. CLI backends report unsupported live guidance.
+
+Planning, ordinary model conversations, manual task controls and deployment commands are server-owned durable operations. Closing a browser ends its request connection without cancelling work. Manual controls commit their actor-bound request and displayed task revision before any process or filesystem effect. Registered workers claim queued work using an owner/generation fence and a renewable lease. A lost owner leaves a running external effect uncertain; recovery never blindly repeats it. Queued work can be cancelled through the project runtime API. Execution and deployment expose stop requested separately from observed completion. A failed or unconfirmed stop preserves execution evidence and prevents destructive task cleanup.
+
+`/collaboration/snapshot` establishes a cursor before resource refresh; `/collaboration/events` replays subsequent committed project events. The project row serializes cursor allocation in commit order. The retained stream includes task, dependency, plan, settings, approval, conversation, operation and guidance changes. It retains 10,000 events per project; expired or future cursors require snapshot refresh. The frontend keeps server resources in React Query and local view/stream state in Redux. Presence is ephemeral and never part of the durable event stream.
+
+Execution output has durable UTF-8 byte offsets per attempt. `/runtime/attempts/:attemptId/output?offset=...` resumes retained output; expired offsets return 410 with the retained bounds. Retention is 5 MiB per attempt, with old completed streams pruned after one day when output is appended. Transport backpressure never changes command acceptance or canonical state.
+
+## Execution modes and ownership
+
+`OPENSPRINT_DEPLOYMENT_MODE` is `trusted-local` (default), `shared-host`, or `isolated-hosted`. Shared modes require a high-entropy OPENSPRINT_HOST_TOKEN and an exact HTTPS OPENSPRINT_PUBLIC_ORIGIN behind a TLS proxy. They never embed the host token in HTML or serve it from the local bootstrap script. OPENSPRINT_BIND_HOST controls the explicit listen address; it defaults to loopback. Set OPENSPRINT_FRONTEND_DIST to the built SPA directory. The proxy must support WebSocket upgrades and preserve the original public Origin.
+
+Trusted-local and shared-host permit trusted repository code on the host and run one backend. Multiple backends require isolated-hosted, PostgreSQL and a shared canonical repository volume. The SQL project catalog is authoritative across replicas; legacy local indexes import once per source, and deletion tombstones prevent reimport from resurrecting projects. Backend processes contend on database project leadership; attempts use database-clock leases, owner IDs and increasing generations. SQLite rejects a multi-replica configuration. PID files are only a local convenience and are disabled for replicas; a PID never proves ownership of recovered execution.
+
+Schema initialization and legacy plan migration commit atomically. PostgreSQL initializers acquire a transaction-scoped advisory lock before DDL, including when independent replicas start together. SQLite initialization is queued per resolved file within a process before starting the schema transaction. Failed initialization rolls back and closes its connection.
+
+Isolated-hosted requires OPENSPRINT_ISOLATED_IMAGE pinned by digest and OPENSPRINT_ISOLATED_COMMAND as a JSON argv array. Docker receives a disposable clone, minimal environment, a read-only root, no capabilities, no-new-privileges, one CPU, 1 GiB memory, 128 PIDs, a 30-minute timeout and a 10 MiB output limit by default. Network defaults to none; an explicitly configured `opensprint-isolated-*` network must be internal. Provider access requires an administrator-provisioned scoped service on that internal network. Backend provider credentials, database credentials, canonical worktrees and the Docker socket are never passed to workers. Host development servers, package installation, scaffold, filesystem browsing and arbitrary command endpoints are disabled in this mode. Missing Docker never falls back to the host.
+
+Workers return immutable Git bundles. The trusted publisher verifies allowed refs, ancestry and file policies, runs gates in a separate sandbox, rechecks ownership and advances only the recorded destination/base. Stale workers cannot publish results, append output or mutate task state. A short, bounded final Git ref/checkout compare-and-swap holds the SQL ownership lock; model calls, gates and network work stay outside transactions. This explicit exception closes the lease-takeover race at the two-store boundary. A durable publication intent and reconciliation handle a crash between Git and SQL; ambiguous evidence remains uncertain.
+
+## Drafts and publication
+
+Sketch reads and saves immutable SQL drafts. Published SPEC.md is a separate Git artifact used by execution. Every SPEC writer, including legacy autosaves, model proposals and approval continuations, uses the recorded publisher. Local host edits may use the explicit trusted local automatic-publication policy; named edits always await a separately granted approval and publication action. The publication page shows the current draft and published content separately. Editor-file changes require an explicit import at the expected draft revision and conflict if the base changed.
+
+Approval receipts bind actor, exact revision/content hash, action, destination and base SHA. Existing foundation approvals require fresh receipts. HIL decisions and exact proposal content persist before continuation; restart recovery applies an approved proposal once. Candidate validation cannot silently alter approved bytes. Reconciliation checks recorded commit ancestry and working/index evidence, preserves unrelated manual edits, and reports uncertainty when publication cannot be proved.
+
+## Acceptance evidence
+
+The verification suites cover concurrent stale edits, immutable request retry, transaction rollback without phantom events, commit-ordered mixed-resource replay, expired retention, credential isolation/revocation, presenter conflicts and expiry, one operation claimant, non-revivable owner leases, uncertain restart recovery, attempt takeover, stale result/output rejection, bounded resumable output, immutable artifact publication and real Git publication reconciliation. PostgreSQL tests use separate pools; Docker smoke tests exercise the disposable command workspace when Docker is available. Full build, lint and test gates run for stacked PRs as well as main-targeted PRs.
+
+Three independent QA rounds informed the implementation:
+
+1. Closed missing execution-route permission checks, restored queued operations' authenticated authority, prevented observers from ending remote guidance receipts, and reauthorized delayed WebSocket deliveries after revocation.
+2. Replaced per-process project discovery with the SQL catalog, removed server data mirrors from Redux, captured the revision actually displayed by editing forms, and made uncertain operations discoverable and explicitly reconcilable.
+3. Exercised cancellation during artifact validation and canonical publication admission, required observed container removal before reporting a stop, fenced stale deployment logs/results, and moved Expo preflight/install/deploy commands into the isolated execution boundary. Deployment permission now independently authorizes cancellation and reconciliation through the complete HTTP middleware stack.
+
+The Linux merge gate supplies PostgreSQL and Docker for acceptance beyond the local Windows environment. Its test and coverage results on the PR's current head are the final merge criterion.

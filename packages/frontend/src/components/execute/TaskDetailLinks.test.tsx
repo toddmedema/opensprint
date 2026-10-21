@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import type { Plan, Task } from "@opensprint/shared";
 import { TaskDetailLinks } from "./TaskDetailLinks";
 
@@ -34,6 +34,30 @@ const baseTask: Task = {
 };
 
 describe("TaskDetailLinks", () => {
+  it("keeps the revision captured when adding a link open across background task refresh", async () => {
+    const onAddLink = vi.fn().mockResolvedValue(undefined);
+    const view = (revision: number) => (
+      <TaskDetailLinks
+        projectId="p1"
+        selectedTask={baseTask.id}
+        task={{ ...baseTask, revision }}
+        planByEpicId={{}}
+        taskById={{}}
+        allTasks={[baseTask]}
+        onSelectTask={vi.fn()}
+        setDeleteLinkConfirm={vi.fn()}
+        removeLinkRemovingId={null}
+        onAddLink={onAddLink}
+      />
+    );
+    const { rerender } = render(view(1));
+    fireEvent.click(screen.getByTestId("sidebar-add-link-btn"));
+    fireEvent.change(screen.getByTestId("add-link-input"), { target: { value: "another-task" } });
+    rerender(view(2));
+    fireEvent.click(screen.getByTestId("add-link-save-btn"));
+    await waitFor(() => expect(onAddLink).toHaveBeenCalledWith("another-task", "blocks", 1));
+  });
+
   it("does not render a Links section heading", () => {
     const dep: Task = {
       ...baseTask,

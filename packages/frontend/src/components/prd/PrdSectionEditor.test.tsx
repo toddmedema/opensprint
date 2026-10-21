@@ -32,6 +32,31 @@ describe("PrdSectionEditor", () => {
     });
   });
 
+  it("retains the revision captured at the first edit when refreshed props arrive", async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const view = render(
+      <PrdSectionEditor sectionKey="overview" markdown="Original" revision={1} onSave={onSave} />
+    );
+    await waitFor(() => expect(screen.getByText("Original")).toBeInTheDocument());
+    vi.useFakeTimers();
+    const editor = screen.getByRole("textbox");
+    editor.focus();
+    editor.innerHTML = "<p>My pending edit</p>";
+    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    view.rerender(
+      <PrdSectionEditor
+        sectionKey="overview"
+        markdown="Other participant edit"
+        revision={2}
+        onSave={onSave}
+      />
+    );
+    vi.advanceTimersByTime(900);
+    expect(onSave).toHaveBeenCalledWith("overview", "My pending edit", 1);
+    expect(editor).toHaveTextContent("My pending edit");
+    view.unmount();
+  });
+
   it("calls onSave with markdown when content changes (debounced)", async () => {
     const onSave = vi.fn();
     const { container } = render(

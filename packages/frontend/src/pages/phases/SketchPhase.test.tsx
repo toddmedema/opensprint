@@ -1,3 +1,6 @@
+import { serverStateMiddleware } from "../../store/serverState";
+import { setQueryClient } from "../../queryClient";
+import { seedProjectQueryFixture } from "../../test/seedServerFixtures";
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import { act, render, screen, waitFor, fireEvent, within } from "@testing-library/react";
@@ -31,6 +34,8 @@ beforeAll(() => {
   }
 });
 
+let serverPrdFixture: Record<string, string> = {};
+let serverChatFixture: unknown[] = [];
 const mockChatSend = vi.fn();
 const mockChatHistory = vi.fn();
 const mockPrdGet = vi.fn();
@@ -120,6 +125,7 @@ function createStore(preloadedState?: {
   plan?: { planStatus?: { action: "plan" | "replan" | "none" } };
 }) {
   return configureStore({
+    middleware: (getDefault) => getDefault().concat(serverStateMiddleware),
     reducer: {
       sketch: sketchReducer,
       plan: planReducer,
@@ -170,6 +176,10 @@ function renderSketchPhase(store = createStore()) {
       mutations: { retry: false },
     },
   });
+  serverPrdFixture = state.sketch.prdContent;
+  serverChatFixture = state.sketch.messages;
+  setQueryClient(queryClient);
+  seedProjectQueryFixture(queryClient, "proj-1", state);
   queryClient.setQueryData(queryKeys.prd.detail("proj-1"), state.sketch.prdContent);
   queryClient.setQueryData(queryKeys.prd.history("proj-1"), state.sketch.prdHistory);
 
@@ -198,8 +208,14 @@ describe("SketchPhase with sketchSlice", () => {
     window.localStorage.clear();
     mockOpenQuestionNotifications = [];
     mockChatSend.mockResolvedValue({ message: "Response" });
-    mockChatHistory.mockResolvedValue({ messages: [] });
-    mockPrdGet.mockResolvedValue({ sections: {} });
+    serverPrdFixture = {};
+    serverChatFixture = [];
+    mockChatHistory.mockImplementation(async () => ({ messages: serverChatFixture }));
+    mockPrdGet.mockImplementation(async () => ({
+      sections: Object.fromEntries(
+        Object.entries(serverPrdFixture).map(([key, content]) => [key, { content }])
+      ),
+    }));
     mockPrdGetHistory.mockResolvedValue([]);
     mockPrdUpdateSection.mockResolvedValue(undefined);
     mockPrdGenerateFromCodebase.mockResolvedValue(undefined);

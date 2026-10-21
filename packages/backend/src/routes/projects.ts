@@ -17,6 +17,8 @@ import { orchestratorService } from "../services/orchestrator.service.js";
 import { selfImprovementService } from "../services/self-improvement.service.js";
 import { getSelfImprovementStatus } from "../services/self-improvement-runner.service.js";
 import { taskStore } from "../services/task-store.service.js";
+import { getRequestContext } from "../services/request-context.js";
+import { identityService } from "../services/identity.service.js";
 import type { ApiResponse, Project, ScaffoldProjectResponse } from "@opensprint/shared";
 import { createLogger } from "../utils/logger.js";
 
@@ -40,7 +42,14 @@ export function createProjectsRouter(
   router.get(
     "/",
     wrapAsync(async (_req, res) => {
-      const projects = await projectService.listProjects();
+      const principal = getRequestContext()?.principal;
+      const allowed =
+        principal && !principal.local
+          ? new Set(await identityService.accessibleProjects(principal.actorId))
+          : null;
+      const projects = (await projectService.listProjects()).filter(
+        (project) => !allowed || allowed.has(project.id)
+      );
       const body: ApiResponse<Project[]> = { data: projects };
       res.json(body);
     })

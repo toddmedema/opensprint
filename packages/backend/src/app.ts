@@ -41,7 +41,11 @@ import { requestIdMiddleware } from "./middleware/request-id.js";
 import { wrapAsync } from "./middleware/wrap-async.js";
 import { requireDatabase } from "./middleware/require-database.js";
 import { orchestratorService } from "./services/orchestrator.service.js";
-import { requireLocalSessionAuth } from "./middleware/require-local-session-auth.js";
+import { projectAccess } from "./middleware/project-access.js";
+import { createIdentityRouter, createMembershipRouter } from "./routes/identity.js";
+import { createRuntimeRouter } from "./routes/runtime-state.js";
+import { identityService } from "./services/identity.service.js";
+import { getDeploymentMode, validateDeploymentMode } from "./services/deployment-mode.js";
 import {
   getLocalSessionToken,
   ensureLocalSessionToken,
@@ -50,8 +54,10 @@ import { buildSpaContentSecurityPolicyProduction } from "@opensprint/shared";
 import { allowDesktopLocalSessionScriptRequest } from "./desktop-local-session-guard.js";
 import { agentChatService } from "./services/agent-chat.service.js";
 import { AppError } from "./middleware/error-handler.js";
+import { executionOwnershipService } from "./services/execution-ownership.service.js";
 
 export function createApp(services?: AppServices) {
+  validateDeploymentMode();
   ensureLocalSessionToken();
   const app = express();
   const svc = services ?? createAppServices();
@@ -75,16 +81,46 @@ export function createApp(services?: AppServices) {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // The scoped pilot resolves its own authenticated actor. Its credentials grant
-  // no access to the existing local execution, settings or publication APIs.
+  app.use(`${API_PREFIX}/auth`, createIdentityRouter());
+  // Collaboration resolves the same authenticated project identity as the other
+  // APIs, with read/discuss/control authorization inside its command routes.
   app.use(
     `${API_PREFIX}/projects/:projectId/collaboration`,
     requireDatabase,
     createCollaborationRouter({
+      access: {
+        resolve: (authorization, projectId) => identityService.resolve(authorization, projectId),
+        canControlActor: async (projectId, actorId) => {
+          try {
+            return (await identityService.member(actorId, projectId)).permissions.includes(
+              "control"
+            );
+          } catch {
+            return false;
+          }
+        },
+      },
       assertProjectExists: (projectId) => projectService.getProject(projectId),
-      getActiveRun: (projectId, taskId) => agentChatService.getActiveRun(projectId, taskId),
-      getGuidanceHistory: (projectId, taskId) =>
-        agentChatService.getHistory(projectId, taskId).slice(-200),
+      getActiveRun: async (projectId, taskId) => {
+        const local = agentChatService.getActiveRun(projectId, taskId);
+        if (local) return local;
+        const runs = await executionOwnershipService.observe(projectId, taskId);
+        const current = runs
+          .filter((run) => ["queued", "running", "stop_requested", "uncertain"].includes(run.state))
+          .sort((a, b) => b.generation - a.generation)[0];
+        return current
+          ? {
+              ...current,
+              attempt: current.generation,
+              supported: false,
+              backend: "isolated",
+              reason:
+                "This isolated worker supports durable stop requests; live between-turn guidance is unavailable.",
+            }
+          : null;
+      },
+      getGuidanceHistory: async (projectId, taskId) =>
+        (await agentChatService.getHistory(projectId, taskId)).slice(-200),
       handleGuidance: async (input) => {
         const active = agentChatService.getActiveRun(input.projectId, input.taskId);
         if (!active || active.attemptId !== input.attemptId)
@@ -105,7 +141,9 @@ export function createApp(services?: AppServices) {
   );
 
   // Other API routes require the local installation's Bearer token.
-  app.use(API_PREFIX, requireLocalSessionAuth);
+  app.use(API_PREFIX, projectAccess);
+  app.use(`${API_PREFIX}/projects/:projectId/members`, requireDatabase, createMembershipRouter());
+  app.use(`${API_PREFIX}/projects/:projectId/runtime`, requireDatabase, createRuntimeRouter());
 
   // API routes (global agents count for desktop tray; must be before /projects so :projectId does not capture "agents")
   // Uses same logic as UI: list projects, then getActiveAgents(projectId) per project and sum (orchestrator + planning agents).
@@ -200,11 +238,14 @@ export function createApp(services?: AppServices) {
   app.use(`${API_PREFIX}/fs`, fsRouter);
 
   // Desktop mode: serve built frontend and SPA fallback (after all API routes so /api and /ws are untouched)
-  if (process.env.OPENSPRINT_DESKTOP === "1") {
+  if (process.env.OPENSPRINT_DESKTOP === "1" || process.env.OPENSPRINT_FRONTEND_DIST) {
     const frontendDist = process.env.OPENSPRINT_FRONTEND_DIST;
     if (frontendDist) {
       const sendDesktopSpaIndexHtml = async (req: Request, res: Response) => {
-        if (!allowDesktopLocalSessionScriptRequest(req)) {
+        if (
+          getDeploymentMode() === "trusted-local" &&
+          !allowDesktopLocalSessionScriptRequest(req)
+        ) {
           res
             .status(403)
             .setHeader("Cache-Control", "no-store")
@@ -220,16 +261,22 @@ export function createApp(services?: AppServices) {
           desktopSessionScriptNonce: nonce,
         });
         const inject = `<script nonce="${nonce}">window.__OPENSPRINT_LOCAL_SESSION__=${JSON.stringify(token)};</script>`;
-        const body = html.includes("</head>")
-          ? html.replace("</head>", `${inject}</head>`)
-          : `${inject}${html}`;
+        const body =
+          getDeploymentMode() !== "trusted-local"
+            ? html.replace("</head>", '<meta name="opensprint-shared-host" content="true"></head>')
+            : html.includes("</head>")
+              ? html.replace("</head>", `${inject}</head>`)
+              : `${inject}${html}`;
         res.setHeader("Content-Security-Policy", spaCsp);
         res.setHeader("Cache-Control", "no-store");
         res.type("html").send(body);
       };
 
       app.get("/__opensprint_local_session.js", (req, res) => {
-        if (!allowDesktopLocalSessionScriptRequest(req)) {
+        if (
+          getDeploymentMode() !== "trusted-local" ||
+          !allowDesktopLocalSessionScriptRequest(req)
+        ) {
           res
             .status(403)
             .setHeader("Cache-Control", "no-store")

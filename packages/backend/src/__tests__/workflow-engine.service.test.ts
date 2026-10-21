@@ -15,6 +15,11 @@ vi.mock("drizzle-orm", () => ({
 }));
 vi.mock("../db/drizzle-schema-pg.js", () => ({ plansTable: {} }));
 
+// These temporary repository fixtures are intentionally outside the registered SQL catalog.
+vi.mock("../services/project-index.js", () => ({
+  getProjects: vi.fn().mockResolvedValue([]),
+}));
+
 describe("WorkflowEngineService", () => {
   let service: WorkflowEngineService;
   let tmpDir: string;

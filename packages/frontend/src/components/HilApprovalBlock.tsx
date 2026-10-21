@@ -95,26 +95,40 @@ export function HilApprovalBlock({
   const handleApprove = useCallback(async () => {
     setLoading(true);
     try {
-      await api.notifications.resolve(projectId, notification.id, {
-        approved: true,
-      });
+      await api.notifications.resolve(
+        projectId,
+        notification.id,
+        {
+          approved: true,
+        },
+        ...(notification.revision === undefined
+          ? []
+          : ([{ expectedRevision: notification.revision }] as const))
+      );
       onResolved();
     } finally {
       setLoading(false);
     }
-  }, [projectId, notification.id, onResolved]);
+  }, [projectId, notification.id, notification.revision, onResolved]);
 
   const handleReject = useCallback(async () => {
     setLoading(true);
     try {
-      await api.notifications.resolve(projectId, notification.id, {
-        approved: false,
-      });
+      await api.notifications.resolve(
+        projectId,
+        notification.id,
+        {
+          approved: false,
+        },
+        ...(notification.revision === undefined
+          ? []
+          : ([{ expectedRevision: notification.revision }] as const))
+      );
       onResolved();
     } finally {
       setLoading(false);
     }
-  }, [projectId, notification.id, onResolved]);
+  }, [projectId, notification.id, notification.revision, onResolved]);
 
   const description = notification.questions?.[0]?.text ?? "Approval required";
 
@@ -158,10 +172,7 @@ export function HilApprovalBlock({
           </h5>
           <div className="flex-1 min-h-0 flex flex-col px-3 pt-2">
             {proposedDiffPending ? (
-              <div
-                className="text-sm text-theme-muted py-4 px-1"
-                data-testid="hil-diff-loading"
-              >
+              <div className="text-sm text-theme-muted py-4 px-1" data-testid="hil-diff-loading">
                 Loading proposed changes…
               </div>
             ) : showDiffError ? (

@@ -15,9 +15,7 @@ import {
   cancelFeedback,
   removeFeedbackItem,
   recategorizeFeedback,
-  fetchFeedback,
 } from "../../store/slices/evalSlice";
-import { selectTaskSummariesForFeedback } from "../../store/slices/executeSlice";
 import { useTasks, useFeedback, usePlans, useMarkPlanComplete } from "../../api/hooks";
 import { usePhaseLoadingState } from "../../hooks/usePhaseLoadingState";
 import { PhaseLoadingSpinner } from "../../components/PhaseLoadingSpinner";
@@ -45,7 +43,10 @@ import { useViewportWidth } from "../../hooks/useViewportWidth";
 import { CloseButton } from "../../components/CloseButton";
 import { useModalA11y } from "../../hooks/useModalA11y";
 import { PhaseEmptyState, PhaseEmptyStateLogo } from "../../components/PhaseEmptyState";
-import { EvaluateFilterToolbar, type EvaluateViewMode } from "../../components/evaluate/EvaluateFilterToolbar";
+import {
+  EvaluateFilterToolbar,
+  type EvaluateViewMode,
+} from "../../components/evaluate/EvaluateFilterToolbar";
 import { IntakeInbox } from "../../components/intake/IntakeInbox";
 import { useIntakeItems } from "../../api/hooks/intake";
 
@@ -1573,9 +1574,9 @@ export function EvalPhase({
   );
 
   /* ── Redux state ── */
-  const feedback = useAppSelector((s) => s.eval.feedback);
   const feedbackQuery = useFeedback(projectId);
-  const taskSummaries = useAppSelector(selectTaskSummariesForFeedback);
+  const feedback = useMemo(() => feedbackQuery.data ?? [], [feedbackQuery.data]);
+  const taskSummaries = tasksList;
   const taskSummaryById = useMemo(() => {
     if (taskSummaries.length === 0) return EMPTY_TASK_SUMMARY_BY_ID;
     return taskSummaries.reduce<Record<string, { kanbanColumn: string }>>((acc, task) => {
@@ -1811,24 +1812,21 @@ export function EvalPhase({
   const [replyingToPlanId, setReplyingToPlanId] = useState<string | null>(null);
 
   const hasCancelled = feedback.some((f) => f.status === "cancelled");
-  const evalFilterChipConfig = useMemo(
-    () => {
-      const chips: { label: string; filter: FeedbackStatusFilter; count: number }[] = [
-        { label: "All", filter: "all", count: countAll(feedback, plansInReview, plansComplete) },
-        { label: "Pending", filter: "pending", count: countPending(feedback, plansInReview) },
-        { label: "Resolved", filter: "resolved", count: countResolved(feedback, plansComplete) },
-      ];
-      if (hasCancelled) {
-        chips.push({
-          label: "Cancelled",
-          filter: "cancelled",
-          count: countByStatus(feedback, "cancelled"),
-        });
-      }
-      return chips;
-    },
-    [feedback, plansInReview, plansComplete, hasCancelled]
-  );
+  const evalFilterChipConfig = useMemo(() => {
+    const chips: { label: string; filter: FeedbackStatusFilter; count: number }[] = [
+      { label: "All", filter: "all", count: countAll(feedback, plansInReview, plansComplete) },
+      { label: "Pending", filter: "pending", count: countPending(feedback, plansInReview) },
+      { label: "Resolved", filter: "resolved", count: countResolved(feedback, plansComplete) },
+    ];
+    if (hasCancelled) {
+      chips.push({
+        label: "Cancelled",
+        filter: "cancelled",
+        count: countByStatus(feedback, "cancelled"),
+      });
+    }
+    return chips;
+  }, [feedback, plansInReview, plansComplete, hasCancelled]);
 
   // Reset filter when "cancelled" is selected but no feedback has status cancelled (chip no longer shown)
   useEffect(() => {
@@ -2153,26 +2151,19 @@ export function EvalPhase({
     () => feedback.some((item) => reconcilingFeedbackIds.has(item.id) && isCategorizing(item)),
     [feedback, reconcilingFeedbackIds]
   );
+  const refetchFeedback = feedbackQuery.refetch;
 
   useEffect(() => {
     if (!projectId || !hasReconcilingFeedback) return;
 
-    let cancelled = false;
-    const syncFeedback = async () => {
-      const result = await dispatch(fetchFeedback(projectId));
-      if (cancelled || !fetchFeedback.fulfilled.match(result)) return;
-      queryClient.setQueryData(queryKeys.feedback.list(projectId), result.payload);
-    };
-
     const intervalId = window.setInterval(() => {
-      void syncFeedback();
+      void refetchFeedback();
     }, FEEDBACK_CATEGORIZATION_POLL_INTERVAL_MS);
 
     return () => {
-      cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [dispatch, hasReconcilingFeedback, projectId, queryClient]);
+  }, [hasReconcilingFeedback, projectId, refetchFeedback]);
 
   useScrollToQuestion();
   const { notifications: openQuestionNotifications, refetch: refetchNotifications } =
@@ -2286,247 +2277,323 @@ export function EvalPhase({
             isError={intakeListError}
           />
         </div>
-      ) : (<>
-      <div
-        ref={feedbackFeedRef}
-        className="flex-1 min-h-0 min-w-0 overflow-y-auto pt-3 sm:pt-4 pb-4 sm:pb-6 w-full"
-        data-testid="eval-feedback-feed-scroll"
-      >
-        <div className={`${CONTENT_CONTAINER_CLASS} w-full`} data-testid="eval-feedback-content">
-          {/* Feedback Input */}
-          <ImageDropZone
-            variant="main"
-            isDraggingImage={isDraggingImage}
-            onDragOver={imageAttachment.handleDragOver}
-            onDrop={async (e) => {
-              clearDragState();
-              await imageAttachment.handleDrop(e);
-            }}
-            className="card p-5 mb-8"
-            data-testid="main-feedback-drop-zone"
+      ) : (
+        <>
+          <div
+            ref={feedbackFeedRef}
+            className="flex-1 min-h-0 min-w-0 overflow-y-auto pt-3 sm:pt-4 pb-4 sm:pb-6 w-full"
+            data-testid="eval-feedback-feed-scroll"
           >
-            <label
-              htmlFor="eval-feedback-input"
-              className="block text-sm font-medium text-theme-text mb-2"
-            >
-              What did you find?
-            </label>
-            <textarea
-              id="eval-feedback-input"
-              ref={feedbackInputRef}
-              className="input min-h-[100px] mb-3"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onPaste={imageAttachment.handlePaste}
-              onKeyDown={onKeyDownFeedback}
-              placeholder="Describe a bug, suggest a feature, or report a UX issue..."
-              disabled={submitting}
-              data-testid="eval-feedback-input"
-            />
-            <ImageAttachmentThumbnails attachment={imageAttachment} className="mb-3" />
-            <div className="flex justify-end items-stretch gap-2 flex-wrap">
-              <div ref={feedbackPriorityDropdownRef} className="relative shrink-0 flex">
-                <button
-                  ref={feedbackPriorityTriggerRef}
-                  type="button"
-                  onClick={() => !submitting && setFeedbackPriorityDropdownOpen((o) => !o)}
-                  disabled={submitting}
-                  className="input text-sm h-10 min-h-10 py-2.5 px-3 w-auto min-w-[10rem] inline-flex items-center gap-2 bg-theme-input-bg text-theme-input-text ring-theme-ring"
-                  aria-label="Priority (optional)"
-                  aria-haspopup="listbox"
-                  aria-expanded={feedbackPriorityDropdownOpen}
-                  data-testid="feedback-priority-select"
-                >
-                  {priority != null ? (
-                    <>
-                      <PriorityIcon priority={priority} size="sm" />
-                      <span className="flex-1 text-left">{PRIORITY_LABELS[priority]}</span>
-                    </>
-                  ) : (
-                    <span className="flex-1 text-left text-theme-muted">Priority (optional)</span>
-                  )}
-                  <span className="text-[10px] opacity-70 shrink-0">
-                    {feedbackPriorityDropdownOpen ? "▲" : "▼"}
-                  </span>
-                </button>
-                {feedbackPriorityDropdownOpen && (
-                  <ul
-                    role="listbox"
-                    className={`dropdown-menu-elevated dropdown-menu-surface absolute top-full mt-1 min-w-[10rem] ${feedbackPriorityAlignRight ? "right-0 left-auto" : "left-0 right-auto"}`}
-                    data-testid="feedback-priority-dropdown"
-                  >
-                    <li role="option" aria-selected={priority == null}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPriority(null);
-                          setFeedbackPriorityDropdownOpen(false);
-                        }}
-                        className="w-full flex items-center gap-2 text-left px-3 py-2 text-xs hover:bg-theme-border-subtle/50 transition-colors text-theme-muted"
-                        data-testid="feedback-priority-option-clear"
-                      >
-                        No priority
-                      </button>
-                    </li>
-                    {([0, 1, 2, 3, 4] as const).map((p) => (
-                      <li key={p} role="option" aria-selected={priority === p}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPriority(p);
-                            setFeedbackPriorityDropdownOpen(false);
-                          }}
-                          className={`w-full flex items-center gap-2 text-left px-3 py-2 text-xs hover:bg-theme-border-subtle/50 transition-colors ${
-                            priority === p ? "text-brand-600 font-medium" : "text-theme-text"
-                          }`}
-                          data-testid={`feedback-priority-option-${p}`}
-                        >
-                          <PriorityIcon priority={p} size="sm" />
-                          {PRIORITY_LABELS[p]}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <ImageAttachmentButton
-                attachment={imageAttachment}
-                variant="icon"
-                disabled={submitting}
-                data-testid="feedback-attach-image"
-              />
-              <KeyboardShortcutTooltip>
-                <button
-                  onClick={handleSubmit}
-                  disabled={submitting || !input.trim()}
-                  className="btn-primary h-10 disabled:opacity-50"
-                >
-                  {submitting ? "Submitting..." : "Submit Feedback"}
-                </button>
-              </KeyboardShortcutTooltip>
-            </div>
-          </ImageDropZone>
-          {showFeedbackEmptyState && plans.length === 0 ? (
-            <PhaseEmptyState
-              title={EMPTY_STATE_COPY.eval.title}
-              description={EMPTY_STATE_COPY.eval.description}
-              illustration={<PhaseEmptyStateLogo />}
-              primaryAction={{
-                label: EMPTY_STATE_COPY.eval.primaryActionLabel,
-                onClick: () => {
-                  feedbackInputRef.current?.scrollIntoView({ behavior: "smooth" });
-                  feedbackInputRef.current?.focus();
-                },
-                "data-testid": "empty-state-report-finding",
-              }}
-            />
-          ) : filteredUnifiedList.length === 0 ? (
-            <div className="text-center py-10 text-theme-muted text-sm">
-              {evalSearchQuery.trim() !== ""
-                ? "No feedback or plan reviews match your search."
-                : statusFilter === "all"
-                  ? "No feedback or plans in review yet."
-                  : statusFilter === "pending"
-                    ? "No pending feedback or plans in review."
-                    : statusFilter === "resolved"
-                      ? "No resolved feedback or completed plans."
-                      : "No cancelled feedback yet."}
-            </div>
-          ) : (
             <div
-              className="space-y-3 flex flex-col"
-              role="list"
-              aria-label="Combined review queue: feedback and plans"
+              className={`${CONTENT_CONTAINER_CLASS} w-full`}
+              data-testid="eval-feedback-content"
             >
-              {filteredUnifiedList.map((entry) =>
-                entry.kind === "plan" ? (
-                  <div key={`plan-${entry.plan.metadata.planId}`} role="listitem">
-                    <PlanReviewCard
-                      plan={entry.plan}
-                      projectId={projectId}
-                      onMarkComplete={() =>
-                        markPlanCompleteMutation.mutate(entry.plan.metadata.planId)
-                      }
-                      isMarking={
-                        markPlanCompleteMutation.isPending &&
-                        markPlanCompleteMutation.variables === entry.plan.metadata.planId
-                      }
-                      onReplyToPlan={(planId) => {
-                        setReplyingToId(null);
-                        setReplyingToPlanId(planId);
-                      }}
-                    />
-                    {replyingToPlanId === entry.plan.metadata.planId && (
-                      <PlanReplyComposer
-                        plan={entry.plan}
-                        submitting={submitting}
-                        isDraggingImage={isDraggingImage}
-                        clearDragState={clearDragState}
-                        onCancel={() => setReplyingToPlanId(null)}
-                        onSubmit={(text, images, priority) =>
-                          handleSubmitPlanReply(
-                            entry.plan.metadata.planId,
-                            entry.plan.lastExecutedVersionNumber ??
-                              entry.plan.currentVersionNumber ??
-                              null,
-                            text,
-                            images,
-                            priority
-                          )
-                        }
-                      />
-                    )}
-                    {(planReplyNodesByPlanId[entry.plan.metadata.planId]?.length ?? 0) > 0 && (
-                      <div
-                        className="mt-2 space-y-2"
-                        data-testid={`plan-inline-replies-${entry.plan.metadata.planId}`}
+              {/* Feedback Input */}
+              <ImageDropZone
+                variant="main"
+                isDraggingImage={isDraggingImage}
+                onDragOver={imageAttachment.handleDragOver}
+                onDrop={async (e) => {
+                  clearDragState();
+                  await imageAttachment.handleDrop(e);
+                }}
+                className="card p-5 mb-8"
+                data-testid="main-feedback-drop-zone"
+              >
+                <label
+                  htmlFor="eval-feedback-input"
+                  className="block text-sm font-medium text-theme-text mb-2"
+                >
+                  What did you find?
+                </label>
+                <textarea
+                  id="eval-feedback-input"
+                  ref={feedbackInputRef}
+                  className="input min-h-[100px] mb-3"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onPaste={imageAttachment.handlePaste}
+                  onKeyDown={onKeyDownFeedback}
+                  placeholder="Describe a bug, suggest a feature, or report a UX issue..."
+                  disabled={submitting}
+                  data-testid="eval-feedback-input"
+                />
+                <ImageAttachmentThumbnails attachment={imageAttachment} className="mb-3" />
+                <div className="flex justify-end items-stretch gap-2 flex-wrap">
+                  <div ref={feedbackPriorityDropdownRef} className="relative shrink-0 flex">
+                    <button
+                      ref={feedbackPriorityTriggerRef}
+                      type="button"
+                      onClick={() => !submitting && setFeedbackPriorityDropdownOpen((o) => !o)}
+                      disabled={submitting}
+                      className="input text-sm h-10 min-h-10 py-2.5 px-3 w-auto min-w-[10rem] inline-flex items-center gap-2 bg-theme-input-bg text-theme-input-text ring-theme-ring"
+                      aria-label="Priority (optional)"
+                      aria-haspopup="listbox"
+                      aria-expanded={feedbackPriorityDropdownOpen}
+                      data-testid="feedback-priority-select"
+                    >
+                      {priority != null ? (
+                        <>
+                          <PriorityIcon priority={priority} size="sm" />
+                          <span className="flex-1 text-left">{PRIORITY_LABELS[priority]}</span>
+                        </>
+                      ) : (
+                        <span className="flex-1 text-left text-theme-muted">
+                          Priority (optional)
+                        </span>
+                      )}
+                      <span className="text-[10px] opacity-70 shrink-0">
+                        {feedbackPriorityDropdownOpen ? "▲" : "▼"}
+                      </span>
+                    </button>
+                    {feedbackPriorityDropdownOpen && (
+                      <ul
+                        role="listbox"
+                        className={`dropdown-menu-elevated dropdown-menu-surface absolute top-full mt-1 min-w-[10rem] ${feedbackPriorityAlignRight ? "right-0 left-auto" : "left-0 right-auto"}`}
+                        data-testid="feedback-priority-dropdown"
                       >
-                        {(planReplyNodesByPlanId[entry.plan.metadata.planId] ?? []).map((node) => (
-                          <FeedbackCard
-                            key={`feedback-${node.item.id}`}
-                            node={node}
-                            depth={0}
-                            projectId={projectId}
-                            onNavigateToBuildTask={onNavigateToBuildTask}
-                            replyingToId={replyingToId}
-                            onStartReply={(feedbackId) => {
-                              setReplyingToPlanId(null);
-                              setReplyingToId(feedbackId);
+                        <li role="option" aria-selected={priority == null}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPriority(null);
+                              setFeedbackPriorityDropdownOpen(false);
                             }}
-                            onCancelReply={() => setReplyingToId(null)}
-                            onSubmitReply={handleSubmitReply}
-                            onResolve={handleResolve}
-                            onCancel={handleCancel}
-                            onRemoveAfterAnimation={handleRemoveAfterAnimation}
-                            collapsedIds={collapsedIds}
-                            onToggleCollapse={handleToggleCollapse}
+                            className="w-full flex items-center gap-2 text-left px-3 py-2 text-xs hover:bg-theme-border-subtle/50 transition-colors text-theme-muted"
+                            data-testid="feedback-priority-option-clear"
+                          >
+                            No priority
+                          </button>
+                        </li>
+                        {([0, 1, 2, 3, 4] as const).map((p) => (
+                          <li key={p} role="option" aria-selected={priority === p}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPriority(p);
+                                setFeedbackPriorityDropdownOpen(false);
+                              }}
+                              className={`w-full flex items-center gap-2 text-left px-3 py-2 text-xs hover:bg-theme-border-subtle/50 transition-colors ${
+                                priority === p ? "text-brand-600 font-medium" : "text-theme-text"
+                              }`}
+                              data-testid={`feedback-priority-option-${p}`}
+                            >
+                              <PriorityIcon priority={p} size="sm" />
+                              {PRIORITY_LABELS[p]}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <ImageAttachmentButton
+                    attachment={imageAttachment}
+                    variant="icon"
+                    disabled={submitting}
+                    data-testid="feedback-attach-image"
+                  />
+                  <KeyboardShortcutTooltip>
+                    <button
+                      onClick={handleSubmit}
+                      disabled={submitting || !input.trim()}
+                      className="btn-primary h-10 disabled:opacity-50"
+                    >
+                      {submitting ? "Submitting..." : "Submit Feedback"}
+                    </button>
+                  </KeyboardShortcutTooltip>
+                </div>
+              </ImageDropZone>
+              {showFeedbackEmptyState && plans.length === 0 ? (
+                <PhaseEmptyState
+                  title={EMPTY_STATE_COPY.eval.title}
+                  description={EMPTY_STATE_COPY.eval.description}
+                  illustration={<PhaseEmptyStateLogo />}
+                  primaryAction={{
+                    label: EMPTY_STATE_COPY.eval.primaryActionLabel,
+                    onClick: () => {
+                      feedbackInputRef.current?.scrollIntoView({ behavior: "smooth" });
+                      feedbackInputRef.current?.focus();
+                    },
+                    "data-testid": "empty-state-report-finding",
+                  }}
+                />
+              ) : filteredUnifiedList.length === 0 ? (
+                <div className="text-center py-10 text-theme-muted text-sm">
+                  {evalSearchQuery.trim() !== ""
+                    ? "No feedback or plan reviews match your search."
+                    : statusFilter === "all"
+                      ? "No feedback or plans in review yet."
+                      : statusFilter === "pending"
+                        ? "No pending feedback or plans in review."
+                        : statusFilter === "resolved"
+                          ? "No resolved feedback or completed plans."
+                          : "No cancelled feedback yet."}
+                </div>
+              ) : (
+                <div
+                  className="space-y-3 flex flex-col"
+                  role="list"
+                  aria-label="Combined review queue: feedback and plans"
+                >
+                  {filteredUnifiedList.map((entry) =>
+                    entry.kind === "plan" ? (
+                      <div key={`plan-${entry.plan.metadata.planId}`} role="listitem">
+                        <PlanReviewCard
+                          plan={entry.plan}
+                          projectId={projectId}
+                          onMarkComplete={() =>
+                            markPlanCompleteMutation.mutate(entry.plan.metadata.planId)
+                          }
+                          isMarking={
+                            markPlanCompleteMutation.isPending &&
+                            markPlanCompleteMutation.variables === entry.plan.metadata.planId
+                          }
+                          onReplyToPlan={(planId) => {
+                            setReplyingToId(null);
+                            setReplyingToPlanId(planId);
+                          }}
+                        />
+                        {replyingToPlanId === entry.plan.metadata.planId && (
+                          <PlanReplyComposer
+                            plan={entry.plan}
                             submitting={submitting}
                             isDraggingImage={isDraggingImage}
                             clearDragState={clearDragState}
-                            taskSummaryById={taskSummaryById}
-                            questionId={questionIdByFeedbackId[node.item.id]}
-                            questionIdByFeedbackId={questionIdByFeedbackId}
-                            notification={notificationByFeedbackId[node.item.id]}
-                            notificationByFeedbackId={notificationByFeedbackId}
-                            onAnswerOpenQuestion={handleAnswerOpenQuestion}
-                            onDismissOpenQuestion={handleDismissOpenQuestion}
-                            answeringOpenQuestion={answeringOpenQuestion}
-                            onHilResolved={refetchNotifications}
-                            onCardTap={
-                              isMobile
-                                ? () => setSelectedFeedbackIdForOverlay(node.item.id)
-                                : undefined
+                            onCancel={() => setReplyingToPlanId(null)}
+                            onSubmit={(text, images, priority) =>
+                              handleSubmitPlanReply(
+                                entry.plan.metadata.planId,
+                                entry.plan.lastExecutedVersionNumber ??
+                                  entry.plan.currentVersionNumber ??
+                                  null,
+                                text,
+                                images,
+                                priority
+                              )
                             }
                           />
-                        ))}
+                        )}
+                        {(planReplyNodesByPlanId[entry.plan.metadata.planId]?.length ?? 0) > 0 && (
+                          <div
+                            className="mt-2 space-y-2"
+                            data-testid={`plan-inline-replies-${entry.plan.metadata.planId}`}
+                          >
+                            {(planReplyNodesByPlanId[entry.plan.metadata.planId] ?? []).map(
+                              (node) => (
+                                <FeedbackCard
+                                  key={`feedback-${node.item.id}`}
+                                  node={node}
+                                  depth={0}
+                                  projectId={projectId}
+                                  onNavigateToBuildTask={onNavigateToBuildTask}
+                                  replyingToId={replyingToId}
+                                  onStartReply={(feedbackId) => {
+                                    setReplyingToPlanId(null);
+                                    setReplyingToId(feedbackId);
+                                  }}
+                                  onCancelReply={() => setReplyingToId(null)}
+                                  onSubmitReply={handleSubmitReply}
+                                  onResolve={handleResolve}
+                                  onCancel={handleCancel}
+                                  onRemoveAfterAnimation={handleRemoveAfterAnimation}
+                                  collapsedIds={collapsedIds}
+                                  onToggleCollapse={handleToggleCollapse}
+                                  submitting={submitting}
+                                  isDraggingImage={isDraggingImage}
+                                  clearDragState={clearDragState}
+                                  taskSummaryById={taskSummaryById}
+                                  questionId={questionIdByFeedbackId[node.item.id]}
+                                  questionIdByFeedbackId={questionIdByFeedbackId}
+                                  notification={notificationByFeedbackId[node.item.id]}
+                                  notificationByFeedbackId={notificationByFeedbackId}
+                                  onAnswerOpenQuestion={handleAnswerOpenQuestion}
+                                  onDismissOpenQuestion={handleDismissOpenQuestion}
+                                  answeringOpenQuestion={answeringOpenQuestion}
+                                  onHilResolved={refetchNotifications}
+                                  onCardTap={
+                                    isMobile
+                                      ? () => setSelectedFeedbackIdForOverlay(node.item.id)
+                                      : undefined
+                                  }
+                                />
+                              )
+                            )}
+                          </div>
+                        )}
                       </div>
-                    )}
+                    ) : (
+                      <div key={`feedback-${entry.node.item.id}`} role="listitem">
+                        <FeedbackCard
+                          key={`feedback-${entry.node.item.id}`}
+                          node={entry.node}
+                          depth={0}
+                          projectId={projectId}
+                          onNavigateToBuildTask={onNavigateToBuildTask}
+                          replyingToId={replyingToId}
+                          onStartReply={(feedbackId) => {
+                            setReplyingToPlanId(null);
+                            setReplyingToId(feedbackId);
+                          }}
+                          onCancelReply={() => setReplyingToId(null)}
+                          onSubmitReply={handleSubmitReply}
+                          onResolve={handleResolve}
+                          onCancel={handleCancel}
+                          onRemoveAfterAnimation={handleRemoveAfterAnimation}
+                          collapsedIds={collapsedIds}
+                          onToggleCollapse={handleToggleCollapse}
+                          submitting={submitting}
+                          isDraggingImage={isDraggingImage}
+                          clearDragState={clearDragState}
+                          taskSummaryById={taskSummaryById}
+                          questionId={questionIdByFeedbackId[entry.node.item.id]}
+                          questionIdByFeedbackId={questionIdByFeedbackId}
+                          notification={notificationByFeedbackId[entry.node.item.id]}
+                          notificationByFeedbackId={notificationByFeedbackId}
+                          onAnswerOpenQuestion={handleAnswerOpenQuestion}
+                          onDismissOpenQuestion={handleDismissOpenQuestion}
+                          answeringOpenQuestion={answeringOpenQuestion}
+                          onHilResolved={refetchNotifications}
+                          onCardTap={
+                            isMobile
+                              ? () => setSelectedFeedbackIdForOverlay(entry.node.item.id)
+                              : undefined
+                          }
+                        />
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Mobile feedback detail overlay */}
+          {isMobile &&
+            selectedFeedbackIdForOverlay &&
+            (() => {
+              const node = findFeedbackNode(feedbackTree, selectedFeedbackIdForOverlay);
+              if (!node) return null;
+              return (
+                <div
+                  ref={feedbackDetailOverlayRef}
+                  className="fixed inset-0 z-50 flex flex-col bg-theme-bg"
+                  data-testid="feedback-detail-overlay"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Feedback detail"
+                >
+                  <div className="flex flex-none items-center justify-between px-4 py-3 border-b border-theme-border shrink-0">
+                    <h3 className="text-sm font-semibold text-theme-text">Feedback</h3>
+                    <CloseButton
+                      onClick={closeFeedbackDetailOverlay}
+                      ariaLabel="Close"
+                      className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded text-theme-muted hover:bg-theme-border-subtle hover:text-theme-text transition-colors"
+                      size="w-5 h-5"
+                    />
                   </div>
-                ) : (
-                  <div key={`feedback-${entry.node.item.id}`} role="listitem">
+                  <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
                     <FeedbackCard
-                      key={`feedback-${entry.node.item.id}`}
-                      node={entry.node}
+                      node={node}
                       depth={0}
                       projectId={projectId}
                       onNavigateToBuildTask={onNavigateToBuildTask}
@@ -2546,88 +2613,21 @@ export function EvalPhase({
                       isDraggingImage={isDraggingImage}
                       clearDragState={clearDragState}
                       taskSummaryById={taskSummaryById}
-                      questionId={questionIdByFeedbackId[entry.node.item.id]}
+                      questionId={questionIdByFeedbackId[node.item.id]}
                       questionIdByFeedbackId={questionIdByFeedbackId}
-                      notification={notificationByFeedbackId[entry.node.item.id]}
+                      notification={notificationByFeedbackId[node.item.id]}
                       notificationByFeedbackId={notificationByFeedbackId}
                       onAnswerOpenQuestion={handleAnswerOpenQuestion}
                       onDismissOpenQuestion={handleDismissOpenQuestion}
                       answeringOpenQuestion={answeringOpenQuestion}
                       onHilResolved={refetchNotifications}
-                      onCardTap={
-                        isMobile
-                          ? () => setSelectedFeedbackIdForOverlay(entry.node.item.id)
-                          : undefined
-                      }
                     />
                   </div>
-                )
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Mobile feedback detail overlay */}
-      {isMobile &&
-        selectedFeedbackIdForOverlay &&
-        (() => {
-          const node = findFeedbackNode(feedbackTree, selectedFeedbackIdForOverlay);
-          if (!node) return null;
-          return (
-            <div
-              ref={feedbackDetailOverlayRef}
-              className="fixed inset-0 z-50 flex flex-col bg-theme-bg"
-              data-testid="feedback-detail-overlay"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Feedback detail"
-            >
-              <div className="flex flex-none items-center justify-between px-4 py-3 border-b border-theme-border shrink-0">
-                <h3 className="text-sm font-semibold text-theme-text">Feedback</h3>
-                <CloseButton
-                  onClick={closeFeedbackDetailOverlay}
-                  ariaLabel="Close"
-                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded text-theme-muted hover:bg-theme-border-subtle hover:text-theme-text transition-colors"
-                  size="w-5 h-5"
-                />
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4">
-                <FeedbackCard
-                  node={node}
-                  depth={0}
-                  projectId={projectId}
-                  onNavigateToBuildTask={onNavigateToBuildTask}
-                  replyingToId={replyingToId}
-                  onStartReply={(feedbackId) => {
-                    setReplyingToPlanId(null);
-                    setReplyingToId(feedbackId);
-                  }}
-                  onCancelReply={() => setReplyingToId(null)}
-                  onSubmitReply={handleSubmitReply}
-                  onResolve={handleResolve}
-                  onCancel={handleCancel}
-                  onRemoveAfterAnimation={handleRemoveAfterAnimation}
-                  collapsedIds={collapsedIds}
-                  onToggleCollapse={handleToggleCollapse}
-                  submitting={submitting}
-                  isDraggingImage={isDraggingImage}
-                  clearDragState={clearDragState}
-                  taskSummaryById={taskSummaryById}
-                  questionId={questionIdByFeedbackId[node.item.id]}
-                  questionIdByFeedbackId={questionIdByFeedbackId}
-                  notification={notificationByFeedbackId[node.item.id]}
-                  notificationByFeedbackId={notificationByFeedbackId}
-                  onAnswerOpenQuestion={handleAnswerOpenQuestion}
-                  onDismissOpenQuestion={handleDismissOpenQuestion}
-                  answeringOpenQuestion={answeringOpenQuestion}
-                  onHilResolved={refetchNotifications}
-                />
-              </div>
-            </div>
-          );
-        })()}
-    </>)}
+                </div>
+              );
+            })()}
+        </>
+      )}
     </div>
   );
 }

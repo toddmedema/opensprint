@@ -14,6 +14,7 @@ import {
   VITEST_DEFAULT_LOCAL_SESSION_TOKEN,
 } from "../services/local-session-auth.service.js";
 import { authedSupertest } from "./local-auth-test-helpers.js";
+import { ProjectService } from "../services/project.service.js";
 
 vi.mock("../services/task-store.service.js", () => ({
   taskStore: {
@@ -68,9 +69,14 @@ describe("App", () => {
   });
 
   it("should serve API under /api/v1 prefix", async () => {
+    const projects = vi.spyOn(ProjectService.prototype, "listProjects").mockResolvedValue([]);
     const app = createApp();
-    const res = await authedSupertest(app).get(`${API_PREFIX}/projects`);
-    expect(res.status).toBe(200);
+    try {
+      const res = await authedSupertest(app).get(`${API_PREFIX}/projects`);
+      expect(res.status).toBe(200);
+    } finally {
+      projects.mockRestore();
+    }
   });
 
   it("injects nonce-guarded local session bootstrap into desktop SPA document responses", async () => {
@@ -165,6 +171,41 @@ describe("App", () => {
     const app = createApp();
     const res = await request(app).get(`${API_PREFIX}/projects`).unset("Authorization");
     expect(res.status).toBe(403);
+  });
+  it("serves hosted sign-in without exposing the host credential in any SPA bootstrap route", async () => {
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-hosted-spa-"));
+    const names = [
+      "OPENSPRINT_FRONTEND_DIST",
+      "OPENSPRINT_DEPLOYMENT_MODE",
+      "OPENSPRINT_HOST_TOKEN",
+      "OPENSPRINT_PUBLIC_ORIGIN",
+    ] as const;
+    const previous = names.map((name) => process.env[name]);
+    try {
+      await fs.writeFile(
+        path.join(directory, "index.html"),
+        "<!doctype html><html><head></head><body></body></html>"
+      );
+      process.env.OPENSPRINT_FRONTEND_DIST = directory;
+      process.env.OPENSPRINT_DEPLOYMENT_MODE = "shared-host";
+      process.env.OPENSPRINT_HOST_TOKEN = "host-secret-that-must-never-reach-browser-123456";
+      process.env.OPENSPRINT_PUBLIC_ORIGIN = "https://sprint.example.com";
+      const app = createApp();
+      for (const route of ["/", "/index.html", "/projects/project/execute"]) {
+        const response = await request(app).get(route).expect(200);
+        expect(response.text).toContain('name="opensprint-shared-host"');
+        expect(response.text).not.toContain("__OPENSPRINT_LOCAL_SESSION__");
+        expect(response.text).not.toContain(process.env.OPENSPRINT_HOST_TOKEN);
+        expect(response.text).not.toContain(VITEST_DEFAULT_LOCAL_SESSION_TOKEN);
+      }
+      await request(app).get("/__opensprint_local_session.js").expect(403);
+    } finally {
+      names.forEach((name, index) => {
+        if (previous[index] === undefined) delete process.env[name];
+        else process.env[name] = previous[index];
+      });
+      await fs.rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("issues ws-upgrade ticket with Bearer auth", async () => {

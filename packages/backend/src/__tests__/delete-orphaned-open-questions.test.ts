@@ -30,6 +30,7 @@ vi.mock("../services/task-store.service.js", async () => {
 const mockProjects: Array<{ id: string; name: string; repoPath: string; createdAt: string }> = [];
 
 vi.mock("../services/project-index.js", () => ({
+  getProjectIndexRevision: vi.fn().mockResolvedValue(null),
   getProjects: vi.fn(async () => mockProjects),
 }));
 

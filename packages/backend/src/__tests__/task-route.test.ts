@@ -6,6 +6,10 @@ import { API_PREFIX } from "@opensprint/shared";
 import { DEFAULT_HIL_CONFIG } from "@opensprint/shared";
 import { createReusedProjectFixture, type ReusedProjectFixture } from "./reused-project-fixture.js";
 import { authedSupertest } from "./local-auth-test-helpers.js";
+import {
+  ExecutionOwnershipService,
+  executionOwnershipService,
+} from "../services/execution-ownership.service.js";
 
 vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => args,
@@ -69,6 +73,16 @@ describe.skipIf(!postgresAvailable)("Tasks REST - task-to-kanban-column mapping"
       _testClient?: import("../db/client.js").DbClient;
       taskStore: TaskStoreService;
     };
+    // importOriginal(TaskStoreService) can bind the ownership singleton to the
+    // original app store under Vitest's alternate module-loading order. Keep all
+    // execution observations and stop writes on this fixture's real test pool.
+    const ownership = new ExecutionOwnershipService(mod.taskStore);
+    vi.spyOn(executionOwnershipService, "observe").mockImplementation(
+      ownership.observe.bind(ownership)
+    );
+    vi.spyOn(executionOwnershipService, "requestStop").mockImplementation(
+      ownership.requestStop.bind(ownership)
+    );
     projectFixture = await createReusedProjectFixture({
       suitePrefix: "opensprint-task-route-suite-",
       projectService,
@@ -87,6 +101,7 @@ describe.skipIf(!postgresAvailable)("Tasks REST - task-to-kanban-column mapping"
 
   afterAll(async () => {
     await projectFixture.cleanup();
+    vi.restoreAllMocks();
     const mod = (await import("../services/task-store.service.js")) as {
       _testPool?: { end: () => Promise<void> };
     };
@@ -297,7 +312,7 @@ describe.skipIf(!postgresAvailable)("Tasks REST - task-to-kanban-column mapping"
       .set("Content-Type", "application/json")
       .send({});
 
-    expect(unblockRes.status).toBe(200);
+    expect(unblockRes.status, JSON.stringify(unblockRes.body)).toBe(200);
     expect(unblockRes.body.data.taskUnblocked).toBe(true);
 
     const tasksAfterRes = await authedSupertest(app).get(
@@ -337,7 +352,7 @@ describe.skipIf(!postgresAvailable)("Tasks REST - task-to-kanban-column mapping"
       .set("Content-Type", "application/json")
       .send({ resetAttempts: true });
 
-    expect(unblockRes.status).toBe(200);
+    expect(unblockRes.status, JSON.stringify(unblockRes.body)).toBe(200);
     expect(unblockRes.body.data.taskUnblocked).toBe(true);
   });
 
@@ -885,5 +900,4 @@ describe.skipIf(!postgresAvailable)("Tasks REST - task-to-kanban-column mapping"
       (childAfter as { dependencies?: Array<{ depends_on_id: string }> }).dependencies ?? [];
     expect(deps.some((d) => d.depends_on_id === parentTask.id)).toBe(false);
   });
-
 });

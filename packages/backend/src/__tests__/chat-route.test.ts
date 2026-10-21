@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import fs from "fs/promises";
 import path from "path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { createApp } from "../app.js";
 import { ProjectService } from "../services/project.service.js";
 import { taskStore } from "../services/task-store.service.js";
@@ -13,6 +15,7 @@ import {
 } from "@opensprint/shared";
 import { createReusedProjectFixture, type ReusedProjectFixture } from "./reused-project-fixture.js";
 import { authedSupertest } from "./local-auth-test-helpers.js";
+const execFileAsync = promisify(execFile);
 
 // Stub for legacy beads.service path (module removed; task store used instead). No importOriginal — file is gone.
 vi.mock("../services/beads.service.js", () => ({
@@ -553,11 +556,13 @@ Let me know if you'd like to refine this further.`;
       expect.objectContaining({ type: "prd.updated", section: "executive_summary" })
     );
 
-    // Verify PRD persisted to storage (SPEC.md)
-    const specPath = path.join(repoPath, SPEC_MD);
-    const specRaw = await fs.readFile(specPath, "utf-8");
-    const prdOnDisk = specMarkdownToPrd(specRaw);
-    expect(prdOnDisk.sections.executive_summary?.content).toContain(
+    // SQL draft durability is immediate; trusted Git publication runs after batching.
+    const draft = await authedSupertest(app).get(
+      `${API_PREFIX}/projects/${projectId}/publication/draft`
+    );
+    expect(draft.status).toBe(200);
+    const persisted = specMarkdownToPrd(draft.body.data.content);
+    expect(persisted.sections.executive_summary?.content).toContain(
       "Open Sprint is a web application that guides users through the full software development lifecycle using AI agents"
     );
   });
@@ -687,23 +692,41 @@ Let me know if you'd like to expand this.`,
       "Our main competitors are X, Y, and Z"
     );
 
-    // Verify persisted to SPEC.md
-    const specPath = path.join(repoPath, SPEC_MD);
-    const specRaw = await fs.readFile(specPath, "utf-8");
-    const prdOnDisk = specMarkdownToPrd(specRaw);
-    expect(prdOnDisk.sections.competitive_landscape?.content).toContain(
+    const draft = await authedSupertest(app).get(
+      `${API_PREFIX}/projects/${projectId}/publication/draft`
+    );
+    expect(draft.status).toBe(200);
+    const persisted = specMarkdownToPrd(draft.body.data.content);
+    expect(persisted.sections.competitive_landscape?.content).toContain(
       "We differentiate by offering simpler onboarding"
     );
   });
 
-  it("POST /chat applies PRD_UPDATE and creates SPEC.md when file was missing (e.g. adopted repo)", async () => {
+  it("POST /chat applies PRD_UPDATE and creates a draft when SPEC is absent from Git (e.g. adopted repo)", async () => {
+    const originalHead = (
+      await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: repoPath })
+    ).stdout.trim();
     const specPath = path.join(repoPath, SPEC_MD);
     const metaPath = path.join(repoPath, SPEC_METADATA_PATH);
     await fs.unlink(specPath).catch(() => {});
     await fs.unlink(metaPath).catch(() => {});
-
-    mockInvokePlanningAgent.mockResolvedValue({
-      content: `Here are some sections for your marketing site.
+    await execFileAsync("git", ["add", "-u", "--", SPEC_MD], { cwd: repoPath });
+    await execFileAsync(
+      "git",
+      [
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.test",
+        "commit",
+        "-m",
+        "Adopt repository without a specification",
+      ],
+      { cwd: repoPath }
+    );
+    try {
+      mockInvokePlanningAgent.mockResolvedValue({
+        content: `Here are some sections for your marketing site.
 
 [PRD_UPDATE:api_contracts]
 No APIs. The marketing site does not call the Open Sprint backend.
@@ -712,19 +735,22 @@ No APIs. The marketing site does not call the Open Sprint backend.
 [PRD_UPDATE:executive_summary]
 A simple marketing site for Open Sprint.
 [/PRD_UPDATE]`,
-    });
+      });
 
-    const res = await authedSupertest(app)
-      .post(`${API_PREFIX}/projects/${projectId}/chat`)
-      .send({ message: "Sketch it", context: "sketch" });
+      const res = await authedSupertest(app)
+        .post(`${API_PREFIX}/projects/${projectId}/chat`)
+        .send({ message: "Sketch it", context: "sketch" });
 
-    expect(res.status).toBe(200);
-    expect(res.body.data.prdChanges).toHaveLength(2);
+      expect(res.status).toBe(200);
+      expect(res.body.data.prdChanges).toHaveLength(2);
 
-    const prdRes = await authedSupertest(app).get(`${API_PREFIX}/projects/${projectId}/prd`);
-    expect(prdRes.status).toBe(200);
-    expect(prdRes.body.data.sections.api_contracts.content).toContain("No APIs");
-    expect(prdRes.body.data.sections.executive_summary.content).toContain("marketing site");
+      const prdRes = await authedSupertest(app).get(`${API_PREFIX}/projects/${projectId}/prd`);
+      expect(prdRes.status).toBe(200);
+      expect(prdRes.body.data.sections.api_contracts.content).toContain("No APIs");
+      expect(prdRes.body.data.sections.executive_summary.content).toContain("marketing site");
+    } finally {
+      await execFileAsync("git", ["reset", "--hard", originalHead], { cwd: repoPath });
+    }
   });
 
   it("POST /projects/:id/chat should persist conversation; GET history returns it", async () => {
@@ -785,7 +811,7 @@ A simple marketing site for Open Sprint.
     }
   });
 
-  it("conversation should be stored in project_conversations table", async () => {
+  it("stores conversation metadata with individually identified normalized messages", async () => {
     const postRes = await authedSupertest(app)
       .post(`${API_PREFIX}/projects/${projectId}/chat`)
       .send({ message: "Test message" });
@@ -800,9 +826,17 @@ A simple marketing site for Open Sprint.
     expect(row).toBeDefined();
     expect(String(row?.conversation_id ?? "")).toBeTruthy();
     expect(row?.context).toBe("sketch");
-    const messages = JSON.parse(String(row?.messages ?? "[]"));
-    expect(Array.isArray(messages)).toBe(true);
-    expect(messages).toHaveLength(2);
+    expect(JSON.parse(String(row?.messages ?? "[]"))).toEqual([]);
+    const persisted = await db.query(
+      "SELECT id, message FROM conversation_messages WHERE project_id = $1 AND context = $2 ORDER BY position",
+      [projectId, "sketch"]
+    );
+    expect(persisted).toHaveLength(2);
+    expect(new Set(persisted.map((message) => message.id)).size).toBe(2);
+    expect(persisted.map((message) => JSON.parse(String(message.message)).role)).toEqual([
+      "user",
+      "assistant",
+    ]);
   });
 
   describe("Design phase agent registry", () => {

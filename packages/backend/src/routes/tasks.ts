@@ -202,10 +202,10 @@ export function createTasksRouter(taskService: TaskService): Router {
       let attempt: number;
 
       if (attemptParam !== undefined) {
-        messages = agentChatService.getHistory(projectId, taskId, attemptParam);
+        messages = await agentChatService.getHistory(projectId, taskId, attemptParam);
         attempt = attemptParam;
       } else {
-        const allMessages = agentChatService.getHistory(projectId, taskId);
+        const allMessages = await agentChatService.getHistory(projectId, taskId);
         attempt = allMessages.length > 0 ? Math.max(...allMessages.map((m) => m.attempt)) : 1;
         messages = allMessages.filter((m) => m.attempt === attempt);
       }

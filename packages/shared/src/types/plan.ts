@@ -60,6 +60,7 @@ export interface PlanMetadata {
 
 /** Plan with its content and metadata */
 export interface Plan {
+  revision?: number;
   metadata: PlanMetadata;
   content: string;
   status: PlanStatus;

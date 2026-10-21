@@ -4,7 +4,7 @@
  * are present when agent emits markdown.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render as testingRender, screen, act } from "@testing-library/react";
 import { Provider } from "react-redux";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -20,6 +20,17 @@ import executeReducer, {
 } from "../store/slices/executeSlice";
 import evalReducer from "../store/slices/evalSlice";
 import websocketReducer from "../store/slices/websocketSlice";
+
+import type { ReactElement } from "react";
+import { seedServerFixtureFromElement } from "../test/seedServerFixtures";
+
+function render(ui: ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
+  seedServerFixtureFromElement(queryClient, ui);
+  return testingRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 
 const mockGet = vi.fn();
 const mockSessions = vi.fn();

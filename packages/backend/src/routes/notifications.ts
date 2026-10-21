@@ -137,7 +137,7 @@ export function createProjectNotificationsRouter({
 
       // HIL approval: notify waiting workflow of user's choice
       if (notification.kind === "hil_approval") {
-        hilService.notifyResolved(notificationId, approved === true);
+        await hilService.notifyResolved(notificationId, approved === true);
       }
 
       broadcastToProject(projectId, {

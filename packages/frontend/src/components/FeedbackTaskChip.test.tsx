@@ -1,14 +1,37 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { seedServerFixtureFromElement } from "../test/seedServerFixtures";
+import { queryKeys } from "../api/queryKeys";
 import { describe, it, expect } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, act } from "@testing-library/react";
 import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
 import { FeedbackTaskChip } from "./FeedbackTaskChip";
 import executeReducer, {
-  taskUpdated,
   initialExecuteState,
   toTasksByIdAndOrder,
 } from "../store/slices/executeSlice";
 import type { Task } from "@opensprint/shared";
+
+let client: QueryClient;
+function render(ui: React.ReactElement) {
+  client = new QueryClient();
+  seedServerFixtureFromElement(client, ui);
+  return rtlRender(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
+function updateTask(taskId: string, status: string) {
+  client.setQueryData<Task[]>(queryKeys.tasks.list("proj-1"), (previous) =>
+    (previous ?? []).map((task) =>
+      task.id === taskId
+        ? {
+            ...task,
+            status: status as Task["status"],
+            kanbanColumn:
+              status === "closed" ? "done" : status === "in_progress" ? "in_progress" : "backlog",
+          }
+        : task
+    )
+  );
+}
 
 function createMockTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -30,7 +53,7 @@ function createMockTask(overrides: Partial<Task> = {}): Task {
 }
 
 describe("FeedbackTaskChip", () => {
-  it("shows live task status and updates when task state changes via Redux", async () => {
+  it("shows live task status and updates when its project query cache changes", async () => {
     const store = configureStore({
       reducer: { execute: executeReducer },
       preloadedState: {
@@ -54,7 +77,7 @@ describe("FeedbackTaskChip", () => {
     });
 
     act(() => {
-      store.dispatch(taskUpdated({ taskId: "task-1", status: "closed" }));
+      updateTask("task-1", "closed");
     });
 
     await waitFor(() => {
@@ -85,7 +108,7 @@ describe("FeedbackTaskChip", () => {
     await waitFor(() => expect(screen.getByText("Backlog")).toBeInTheDocument());
 
     act(() => {
-      store.dispatch(taskUpdated({ taskId: "task-1", status: "in_progress" }));
+      updateTask("task-1", "in_progress");
     });
     await waitFor(() => {
       expect(screen.getByText("In Progress")).toBeInTheDocument();
@@ -93,7 +116,7 @@ describe("FeedbackTaskChip", () => {
     });
 
     act(() => {
-      store.dispatch(taskUpdated({ taskId: "task-1", status: "closed" }));
+      updateTask("task-1", "closed");
     });
     await waitFor(() => {
       expect(screen.getByText("Done")).toBeInTheDocument();
@@ -130,7 +153,7 @@ describe("FeedbackTaskChip", () => {
     });
 
     act(() => {
-      store.dispatch(taskUpdated({ taskId: "task-1", status: "closed" }));
+      updateTask("task-1", "closed");
     });
 
     await waitFor(() => {

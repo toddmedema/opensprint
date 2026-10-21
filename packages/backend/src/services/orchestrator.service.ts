@@ -1,6 +1,5 @@
 import crypto from "crypto";
 import fs from "fs/promises";
-import os from "os";
 import path from "path";
 import type {
   GitMergeQueueSnapshot,
@@ -51,6 +50,12 @@ import { extractJsonFromAgentResponse } from "../utils/json-extract.js";
 import { assertSafeTaskWorktreePath } from "../utils/path-safety.js";
 import { TimerRegistry } from "./timer-registry.js";
 import { AgentLifecycleManager, type AgentRunState } from "./agent-lifecycle.js";
+import {
+  executionOwnershipService,
+  projectLeadershipService,
+  withoutExecutionFence,
+} from "./execution-ownership.service.js";
+import { getDeploymentMode } from "./deployment-mode.js";
 import { heartbeatService } from "./heartbeat.service.js";
 import { FileScopeAnalyzer, type FileScope } from "./file-scope-analyzer.js";
 import { TaskScheduler } from "./task-scheduler.js";
@@ -151,9 +156,10 @@ import type { PhaseResult } from "./orchestrator-phase-context.js";
 /** Loop kicker interval: 60s — restarts idle orchestrator loop (distinct from 5-min WatchdogService health patrol). */
 const LOOP_KICKER_INTERVAL_MS = 60 * 1000;
 const ORCHESTRATOR_LEASE_RENEW_MS = 15 * 1000;
-const ORCHESTRATOR_LEASE_STALE_MS = 45 * 1000;
 const ORCHESTRATOR_LEASE_DISABLED =
-  process.env.NODE_ENV === "test" || process.env.OPENSPRINT_DISABLE_ORCHESTRATOR_LEASE === "1";
+  process.env.NODE_ENV === "test" ||
+  (getDeploymentMode() === "trusted-local" &&
+    process.env.OPENSPRINT_DISABLE_ORCHESTRATOR_LEASE === "1");
 const CODING_RESULT_EXPECTED_SHAPE =
   'a JSON object like {"status":"success","summary":"..."} or {"status":"failed","summary":"...","open_questions":[{"id":"q1","text":"..."}]}';
 
@@ -300,7 +306,6 @@ export class OrchestratorService {
   }
   private loopService = new OrchestratorLoopService(this);
   private dispatchService = new OrchestratorDispatchService(this);
-  private readonly leaseInstanceId = `${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
   private leaderByProject = new Map<string, boolean>();
 
   /** @internal */ get projectService(): ProjectService {
@@ -379,74 +384,22 @@ export class OrchestratorService {
     };
   }
 
-  private isPidAlive(pid: number): boolean {
-    try {
-      process.kill(pid, 0);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  private getLeaseFilePath(): string {
-    return path.join(os.homedir(), ".opensprint", "runtime", "orchestrator-leases.json");
-  }
-
   private async tryAcquireOrRenewLease(projectId: string): Promise<boolean> {
     if (ORCHESTRATOR_LEASE_DISABLED) {
       this.leaderByProject.set(projectId, true);
       return true;
     }
-
-    const leasePath = this.getLeaseFilePath();
-    const nowIso = new Date().toISOString();
-    const nowMs = Date.parse(nowIso);
-    const nextLease = {
-      pid: process.pid,
-      instanceId: this.leaseInstanceId,
-      updatedAt: nowIso,
-    };
-
-    type LeaseFile = {
-      version: 1;
-      projects: Record<string, { pid: number; instanceId: string; updatedAt: string }>;
-    };
-
-    let leaseData: LeaseFile = { version: 1, projects: {} };
-    try {
-      const raw = await fs.readFile(leasePath, "utf-8");
-      const parsed = JSON.parse(raw) as Partial<LeaseFile>;
-      if (
-        parsed &&
-        parsed.version === 1 &&
-        parsed.projects &&
-        typeof parsed.projects === "object"
-      ) {
-        leaseData = { version: 1, projects: parsed.projects as LeaseFile["projects"] };
+    const acquired = await projectLeadershipService.acquireOrRenew(projectId);
+    this.leaderByProject.set(projectId, acquired);
+    if (!acquired) {
+      const state = this.state.get(projectId);
+      if (state) {
+        state.loopRunId++;
+        state.loopActive = false;
+        state.status.dispatchPausedReason = "another_orchestrator_instance";
       }
-    } catch {
-      // First writer wins.
     }
-
-    const current = leaseData.projects[projectId];
-    if (
-      current &&
-      current.pid !== process.pid &&
-      Number.isFinite(Date.parse(current.updatedAt)) &&
-      nowMs - Date.parse(current.updatedAt) < ORCHESTRATOR_LEASE_STALE_MS &&
-      this.isPidAlive(current.pid)
-    ) {
-      this.leaderByProject.set(projectId, false);
-      return false;
-    }
-
-    leaseData.projects[projectId] = nextLease;
-    await fs.mkdir(path.dirname(leasePath), { recursive: true });
-    const tmpPath = `${leasePath}.tmp-${process.pid}-${Date.now()}`;
-    await fs.writeFile(tmpPath, JSON.stringify(leaseData, null, 2), "utf-8");
-    await fs.rename(tmpPath, leasePath);
-    this.leaderByProject.set(projectId, true);
-    return true;
+    return acquired;
   }
 
   /** Create a new AgentSlot for a task (optionally with assignee for recovery). */
@@ -610,6 +563,13 @@ export class OrchestratorService {
   }
 
   private killProcessIfActive(agent: AgentRunState): void {
+    if (
+      agent.activeProcess?.ownership === "recovered_unverified" ||
+      agent.runner?.observe().state === "uncertain"
+    ) {
+      agent.runner?.markUncertain();
+      return;
+    }
     agent.cancelled = true;
     if (agent.runner) {
       try {
@@ -642,6 +602,19 @@ export class OrchestratorService {
   /** @internal */ removeSlot(state: OrchestratorState, taskId: string): void {
     const slot = state.slots.get(taskId);
     if (slot) {
+      if (
+        [
+          slot.agent,
+          ...(slot.reviewAgents
+            ? [...slot.reviewAgents.values()].map((review) => review.agent)
+            : []),
+        ].some(
+          (agent) =>
+            agent.activeProcess?.ownership === "recovered_unverified" ||
+            agent.runner?.observe().state === "uncertain"
+        )
+      )
+        return;
       slot.timers.clearAll();
       this.killProcessIfActive(slot.agent);
       this.cleanupReviewAgents(slot);
@@ -666,12 +639,38 @@ export class OrchestratorService {
     const slot = state.slots.get(taskId);
     if (!slot) return;
 
+    const agents = [
+      slot.agent,
+      ...(slot.reviewAgents ? [...slot.reviewAgents.values()].map((review) => review.agent) : []),
+    ];
+    if (
+      agents.some(
+        (agent) =>
+          agent.activeProcess?.ownership === "recovered_unverified" ||
+          agent.runner?.observe().state === "uncertain"
+      )
+    ) {
+      for (const agent of agents)
+        if (
+          agent.activeProcess?.ownership === "recovered_unverified" ||
+          agent.runner?.observe().state === "uncertain"
+        )
+          agent.runner?.markUncertain();
+      log.warn("Unverified recovered execution retained; destructive cleanup rejected", {
+        projectId,
+        taskId,
+        reason,
+      });
+      return;
+    }
+
     log.info("Finalizing slot", { projectId, taskId, reason, phase: slot.phase });
 
     // Tear down agent processes before any destructive worktree ops so validators
     // and merge gates never race a half-removed checkout.
+    for (const agent of agents) this.killProcessIfActive(agent);
+    await Promise.all(agents.map((agent) => agent.runner?.waitForCompletion()));
     slot.timers.clearAll();
-    this.killProcessIfActive(slot.agent);
     this.cleanupReviewAgents(slot);
 
     const wtPath = slot.worktreePath ?? repoPath;
@@ -991,21 +990,53 @@ export class OrchestratorService {
   async stopTaskAndFreeSlot(projectId: string, taskId: string): Promise<void> {
     const state = this.getState(projectId);
     const slot = state.slots.get(taskId);
-    if (!slot) return;
+    if (!slot) {
+      const active = (await executionOwnershipService.observe(projectId)).filter(
+        (attempt) => attempt.taskId === taskId && !["stopped", "completed"].includes(attempt.state)
+      );
+      if (!active.length) return;
+      if (active.some((attempt) => attempt.state === "uncertain"))
+        throw new AppError(
+          409,
+          "EXECUTION_STOP_UNCONFIRMED",
+          "Execution ownership is uncertain; inspect it before changing the task."
+        );
+      for (const attempt of active)
+        await executionOwnershipService.requestStop(projectId, attempt.attemptId);
+      const deadline = Date.now() + 15_000;
+      while (Date.now() < deadline) {
+        const observed = await executionOwnershipService.observe(projectId);
+        if (
+          active.every((attempt) =>
+            observed.some(
+              (current) =>
+                current.attemptId === attempt.attemptId &&
+                current.generation === attempt.generation &&
+                ["stopped", "completed"].includes(current.state)
+            )
+          )
+        )
+          return;
+        if (observed.some((attempt) => attempt.taskId === taskId && attempt.state === "uncertain"))
+          break;
+        await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      }
+      throw new AppError(
+        409,
+        "EXECUTION_STOP_UNCONFIRMED",
+        "Stop requested; waiting for the owning backend to observe completion."
+      );
+    }
 
     log.info("Stopping agent for user-marked-done task", { projectId, taskId });
-    try {
-      const repoPath = await this.projectService.getRepoPath(projectId);
-      await this.cleanupAndRemoveSlot(projectId, repoPath, state, taskId, "user_stopped");
-    } catch (err) {
-      log.warn("Cleanup on stopTaskAndFreeSlot failed, still freeing slot", {
-        projectId,
-        taskId,
-        err,
-      });
-      this.removeSlot(state, taskId);
-      broadcastToProject(projectId, this.buildExecuteStatusPayload(projectId, state));
-    }
+    const repoPath = await this.projectService.getRepoPath(projectId);
+    await this.cleanupAndRemoveSlot(projectId, repoPath, state, taskId, "user_stopped");
+    if (state.slots.has(taskId))
+      throw new AppError(
+        409,
+        "EXECUTION_STOP_UNCONFIRMED",
+        "Execution ownership is uncertain; the assignment and workspace were retained."
+      );
     this.nudge(projectId);
   }
 
@@ -2045,6 +2076,7 @@ export class OrchestratorService {
     task: StoredTask,
     slotQueueDepth: number
   ): Promise<void> {
+    if (!ORCHESTRATOR_LEASE_DISABLED) await projectLeadershipService.assertCurrent(projectId);
     await this.dispatchService.dispatchTask(projectId, repoPath, task, slotQueueDepth);
   }
 
@@ -2063,7 +2095,10 @@ export class OrchestratorService {
   }
 
   /** @internal */ async runLoop(projectId: string): Promise<void> {
-    await this.loopService.runLoop(projectId);
+    return withoutExecutionFence(async () => {
+      if (!ORCHESTRATOR_LEASE_DISABLED && !(await this.tryAcquireOrRenewLease(projectId))) return;
+      await this.loopService.runLoop(projectId);
+    });
   }
 
   /** @internal */ async executeCodingPhase(

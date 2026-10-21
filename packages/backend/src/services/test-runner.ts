@@ -7,6 +7,7 @@ import type { TestResults, TestResultDetail } from "@opensprint/shared";
 import { registerAgentProcess, unregisterAgentProcess } from "./agent-process-registry.js";
 import { signalProcessGroup } from "../utils/process-group.js";
 import { createLogger } from "../utils/logger.js";
+import { getDeploymentMode } from "./deployment-mode.js";
 
 const log = createLogger("test-runner");
 
@@ -299,6 +300,15 @@ export class TestRunner {
     exitCode: number | null;
     timedOut: boolean;
   }> {
+    if (getDeploymentMode() === "isolated-hosted")
+      return import("./agent/isolated-runner.js")
+        .then(({ runIsolatedCommand }) => runIsolatedCommand(cwd, command, timeoutMs))
+        .then((result) => ({
+          stdout: result.output,
+          stderr: "",
+          exitCode: result.exitCode,
+          timedOut: false,
+        }));
     return new Promise((resolve) => {
       let stdout = "";
       let stderr = "";
@@ -582,7 +592,9 @@ export class TestRunner {
       return null;
     } finally {
       await fs.rm(reportPath, { force: true }).catch((err: unknown) => {
-        log.warn("vitest report cleanup failed", { err: err instanceof Error ? err.message : String(err) });
+        log.warn("vitest report cleanup failed", {
+          err: err instanceof Error ? err.message : String(err),
+        });
       });
     }
   }

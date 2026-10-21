@@ -1,3 +1,4 @@
+import { seedProjectQueryFixture } from "../../test/seedServerFixtures";
 import type { ReactElement } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
@@ -154,6 +155,8 @@ beforeEach(() => {
 const queryClient = new QueryClient();
 
 function renderNavbar(ui: ReactElement, store = createStore()) {
+  queryClient.clear();
+  seedProjectQueryFixture(queryClient, "proj-1", store.getState());
   return render(
     <ThemeProvider>
       <DisplayPreferencesProvider>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useAutoScroll } from "../../hooks/useAutoScroll";
+import { useDurableAgentOutput } from "../../hooks/useDurableAgentOutput";
 import { useSidebarSectionRestore } from "../../hooks/useSidebarSectionRestore";
 import type {
   AgentSession,
@@ -277,6 +278,11 @@ function TaskDetailSidebarInner({
   const [chatTabScrollTrigger, setChatTabScrollTrigger] = useState(0);
 
   const agentOutputText = useMemo(() => agentOutput.join(""), [agentOutput]);
+  const durableOutput = useDurableAgentOutput(
+    projectId,
+    selectedTask,
+    !isDoneTask && artifactsSectionExpanded
+  );
   const activeTaskState = useMemo(
     () => activeTasks.find((task) => task.taskId === selectedTask) ?? null,
     [activeTasks, selectedTask]
@@ -288,6 +294,8 @@ function TaskDetailSidebarInner({
   );
 
   const liveOutputContent = useMemo(() => {
+    if (durableOutput.content !== null)
+      return durableOutput.content || "Waiting for agent output...";
     if (agentOutputText.length > 0) return agentOutputText;
     if (archivedSessions.length > 0) {
       return (
@@ -301,7 +309,13 @@ function TaskDetailSidebarInner({
       return "Agent suspended (no recent output); waiting for reconnect, new output, or active tool-call activity...";
     }
     return showLoadingPlaceholder ? "Loading output…" : "Waiting for agent output...";
-  }, [activeTaskState?.state, agentOutputText, archivedSessions, showLoadingPlaceholder]);
+  }, [
+    activeTaskState?.state,
+    agentOutputText,
+    archivedSessions,
+    showLoadingPlaceholder,
+    durableOutput.content,
+  ]);
 
   const {
     containerRef: liveOutputRef,
@@ -317,6 +331,7 @@ function TaskDetailSidebarInner({
     targetId: string;
     type: string;
     taskName: string;
+    expectedRevision?: number;
   } | null>(null);
   const [removeLinkRemovingId, setRemoveLinkRemovingId] = useState<string | null>(null);
   const task = selectedTaskData;
@@ -387,6 +402,7 @@ function TaskDetailSidebarInner({
             projectId,
             taskId: selectedTask,
             parentTaskId: targetId,
+            expectedRevision: deleteLinkConfirm?.expectedRevision,
           })
         ).unwrap();
         setDeleteLinkConfirm(null);
@@ -394,7 +410,7 @@ function TaskDetailSidebarInner({
         setRemoveLinkRemovingId(null);
       }
     },
-    [dispatch, projectId, selectedTask]
+    [dispatch, projectId, selectedTask, deleteLinkConfirm?.expectedRevision]
   );
 
   useEffect(() => {
@@ -475,13 +491,14 @@ function TaskDetailSidebarInner({
               onSelectTask={onSelectTask}
               setDeleteLinkConfirm={setDeleteLinkConfirm}
               removeLinkRemovingId={removeLinkRemovingId}
-              onAddLink={async (parentTaskId, type) => {
+              onAddLink={async (parentTaskId, type, expectedRevision) => {
                 await dispatch(
                   addTaskDependency({
                     projectId,
                     taskId: selectedTask,
                     parentTaskId,
                     type: type as "blocks" | "related" | "parent-child",
+                    expectedRevision,
                   })
                 ).unwrap();
               }}
@@ -539,7 +556,10 @@ function TaskDetailSidebarInner({
           <ExecuteOutputTabs
             key={selectedTask}
             outputContent={
-              <div className="h-full min-h-0 overflow-y-auto" data-testid="live-output-scroll-container">
+              <div
+                className="h-full min-h-0 overflow-y-auto"
+                data-testid="live-output-scroll-container"
+              >
                 <TaskDetailAgentOutput
                   projectId={projectId}
                   taskDetailLoading={taskDetailLoading}
@@ -548,13 +568,17 @@ function TaskDetailSidebarInner({
                   archivedSessions={archivedSessions}
                   liveOutputContent={liveOutputContent}
                   completionState={completionState}
-                  wsConnected={wsConnected}
+                  wsConnected={wsConnected || durableOutput.content !== null}
+                  retentionGap={durableOutput.retentionGap}
+                  executionState={durableOutput.state}
                   containerRef={liveOutputRef}
                   onScroll={handleLiveOutputScroll}
                   showJumpToBottom={showJumpToBottom}
                   jumpToBottom={jumpToBottom}
                   scrollResetKey={selectedTask}
-                  lastOutputReceivedAtIso={!isDoneTask && wsConnected ? lastOutputReceivedAtIso : null}
+                  lastOutputReceivedAtIso={
+                    !isDoneTask && wsConnected ? lastOutputReceivedAtIso : null
+                  }
                 />
               </div>
             }

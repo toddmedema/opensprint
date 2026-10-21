@@ -7,10 +7,7 @@ import { awaitGuidanceReceipt } from "../../lib/awaitGuidanceReceipt";
 import { useAppDispatch, useAppSelector } from "../../store";
 import {
   setAgentOutputBackfill,
-  setArchivedSessions,
   setSelectedTaskId,
-  selectTasks,
-  selectTaskById,
   selectSelectedTaskOutput,
   selectAgentOutputLastReceivedAt,
   selectCompletionState,
@@ -20,10 +17,9 @@ import { wsSend } from "../../store/middleware/websocketMiddleware";
 import {
   selectChatMessages,
   selectChatSending,
-  selectChatSupport,
   addOptimisticUserMessage,
-  fetchAgentChatHistory,
-  fetchAgentChatSupport,
+  reconcileChatHistory,
+  chatMessageReceived,
 } from "../../store/slices/agentChatSlice";
 import {
   useTaskDetail,
@@ -35,6 +31,11 @@ import {
   useDeleteTask,
   useForceRetryTask,
   useTasks,
+  useAgentChatHistory,
+  useAgentChatSupport,
+  usePlans,
+  useExecuteStatus,
+  useActiveAgents,
   useProjectSettings,
   getExecuteTasksRefetchInterval,
 } from "../../api/hooks";
@@ -75,11 +76,7 @@ interface ExecutePhaseProps {
   onClose?: () => void;
 }
 
-const EMPTY_ACTIVE_TASKS: {
-  taskId: string;
-  phase: string;
-  startedAt: string;
-}[] = [];
+const EMPTY_ACTIVE_TASKS: import("../../store/slices/executeSlice").ActiveTaskInfo[] = [];
 const EMPTY_TASK_STARTED_AT = Object.freeze({}) as Record<string, string>;
 
 /** Clears stale baseline-merge pause UI when server derives expiry without a DB write. */
@@ -138,32 +135,39 @@ export function ExecutePhase({
   } = useTaskFilter();
 
   const queryClient = useQueryClient();
-  const tasks = useAppSelector(selectTasks);
-  const plans = useAppSelector((s) => s.plan.plans);
+  const wsConnected = useAppSelector((s) => s.websocket?.connected ?? false);
+  const tasksQuery = useTasks(projectId, {
+    refetchInterval: getExecuteTasksRefetchInterval(wsConnected),
+  });
+  const plansQuery = usePlans(projectId);
+  const statusQuery = useExecuteStatus(projectId);
+  const agentsQuery = useActiveAgents(projectId);
+  const activeTasks = statusQuery.data?.activeTasks ?? EMPTY_ACTIVE_TASKS;
+  const tasks = useMemo(
+    () =>
+      (tasksQuery.data ?? []).map((task) =>
+        task.kanbanColumn === "in_progress" &&
+        activeTasks.some((active) => active.taskId === task.id && active.phase === "review")
+          ? { ...task, kanbanColumn: "in_review" as const }
+          : task
+      ),
+    [tasksQuery.data, activeTasks]
+  );
+  const plans = useMemo(() => plansQuery.data?.plans ?? [], [plansQuery.data]);
   const selectedTaskIdFromStore = useAppSelector((s) => s.execute.selectedTaskId);
-  const awaitingApproval = useAppSelector((s) => s.execute.awaitingApproval);
-  const baselineStatus = useAppSelector((s) => s.execute.baselineStatus);
-  const baselineFailureSummary = useAppSelector((s) => s.execute.baselineFailureSummary);
+  const awaitingApproval = statusQuery.data?.awaitingApproval ?? false;
+  const baselineStatus = statusQuery.data?.baselineStatus;
+  const baselineFailureSummary = statusQuery.data?.baselineFailureSummary;
   const baselineRemediationStatus = useAppSelector((s) => s.execute.baselineRemediationStatus);
-  const mergeValidationStatus = useAppSelector((s) => s.execute.mergeValidationStatus);
-  const mergeValidationFailureSummary = useAppSelector(
-    (s) => s.execute.mergeValidationFailureSummary
-  );
-  const selfImprovementRunInProgress = useAppSelector(
-    (s) => s.execute.selfImprovementRunInProgress ?? false
-  );
-  const selfImprovementRunMode = useAppSelector((s) => s.execute.selfImprovementRunMode);
+  const mergeValidationStatus = statusQuery.data?.mergeValidationStatus;
+  const mergeValidationFailureSummary = statusQuery.data?.mergeValidationFailureSummary;
+  const selfImprovementRunInProgress = statusQuery.data?.selfImprovementRunInProgress ?? false;
+  const selfImprovementRunMode = statusQuery.data?.selfImprovementRunMode;
   const effectiveSelectedTask =
     propSelectedTaskId ?? initialTaskIdFromUrl ?? selectedTaskIdFromStore ?? null;
-  const loading = useAppSelector((s) => s.execute?.async?.tasks?.loading ?? false);
-  const activeTasks = useAppSelector((s) => s.execute?.activeTasks ?? EMPTY_ACTIVE_TASKS);
-  const taskIdToStartedAt = useAppSelector(
-    (s) => s.execute?.taskIdToStartedAt ?? EMPTY_TASK_STARTED_AT
-  );
-  const wsConnected = useAppSelector((s) => s.websocket?.connected ?? false);
-  const selectedTaskFromStore = useAppSelector((s) =>
-    effectiveSelectedTask ? (selectTaskById(s, effectiveSelectedTask) ?? null) : null
-  );
+  const loading = tasksQuery.isLoading;
+  const taskIdToStartedAt = agentsQuery.data?.taskIdToStartedAt ?? EMPTY_TASK_STARTED_AT;
+  const selectedTaskFromStore = tasks.find((task) => task.id === effectiveSelectedTask) ?? null;
   const selectedAgentOutput = useAppSelector((s) =>
     selectSelectedTaskOutput(s, effectiveSelectedTask)
   );
@@ -275,10 +279,6 @@ export function ExecutePhase({
       return [...byId.values()];
     });
   }, [projectId, effectiveSelectedTask, taskDetailData, queryClient]);
-
-  useEffect(() => {
-    if (archivedSessionsData) dispatch(setArchivedSessions(archivedSessionsData));
-  }, [archivedSessionsData, dispatch]);
 
   useEffect(() => {
     if (effectiveSelectedTask && typeof liveOutputData === "string") {
@@ -395,10 +395,6 @@ export function ExecutePhase({
     chipConfig,
   } = useExecuteSwimlanes(tasks, plans, statusFilter, searchQuery);
 
-  // Poll task list continuously: fast fallback when offline + low-frequency safety while connected.
-  const tasksQuery = useTasks(projectId, {
-    refetchInterval: getExecuteTasksRefetchInterval(wsConnected),
-  });
   const tasksEmpty = implTasks.length === 0;
   const { showSpinner: showTasksSpinner, showEmptyState: showTasksEmptyState } =
     usePhaseLoadingState(tasksQuery.isLoading, tasksEmpty);
@@ -430,21 +426,54 @@ export function ExecutePhase({
   );
 
   // ── Agent chat state ──
-  const chatMessages = useAppSelector((s) =>
+  const optimisticChatMessages = useAppSelector((s) =>
     effectiveSelectedTask ? selectChatMessages(s, effectiveSelectedTask) : []
   );
   const chatSending = useAppSelector((s) =>
     effectiveSelectedTask ? selectChatSending(s, effectiveSelectedTask) : false
   );
-  const chatSupportInfo = useAppSelector((s) =>
-    effectiveSelectedTask ? selectChatSupport(s, effectiveSelectedTask) : { supported: true }
-  );
-
+  const guidanceHistory = useAgentChatHistory(projectId, effectiveSelectedTask ?? undefined, {
+    refetchInterval: 4000,
+  });
+  const guidanceSupport = useAgentChatSupport(projectId, effectiveSelectedTask ?? undefined);
+  const chatSupportInfo = {
+    supported: guidanceSupport.data?.supported ?? guidanceHistory.data?.chatSupported ?? true,
+    reason: guidanceSupport.data?.reason ?? undefined,
+  };
+  const chatMessages = useMemo(() => {
+    const persisted = guidanceHistory.data?.messages ?? [];
+    const ids = new Set(persisted.map((message) => message.id));
+    const clientIds = new Set(persisted.map((message) => message.clientMessageId).filter(Boolean));
+    return [
+      ...persisted,
+      ...optimisticChatMessages.filter(
+        (message) => !ids.has(message.id) && !clientIds.has(message.clientMessageId)
+      ),
+    ];
+  }, [guidanceHistory.data, optimisticChatMessages]);
   useEffect(() => {
-    if (!effectiveSelectedTask) return;
-    void dispatch(fetchAgentChatHistory({ projectId, taskId: effectiveSelectedTask }));
-    void dispatch(fetchAgentChatSupport({ projectId, taskId: effectiveSelectedTask }));
-  }, [dispatch, projectId, effectiveSelectedTask]);
+    if (!effectiveSelectedTask || !guidanceHistory.data) return;
+    for (const message of guidanceHistory.data.messages) {
+      if (message.clientMessageId)
+        dispatch(
+          chatMessageReceived({
+            taskId: effectiveSelectedTask,
+            messageId: message.id,
+            timestamp: message.timestamp,
+            clientMessageId: message.clientMessageId,
+            attemptId: message.attemptId,
+            status: message.status,
+            error: message.error,
+          })
+        );
+    }
+    dispatch(
+      reconcileChatHistory({
+        taskId: effectiveSelectedTask,
+        messages: guidanceHistory.data.messages,
+      })
+    );
+  }, [effectiveSelectedTask, guidanceHistory.data, dispatch]);
 
   const handleChatSend = useCallback(
     (message: string) => {

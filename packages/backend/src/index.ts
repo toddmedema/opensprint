@@ -2,6 +2,7 @@ import path from "path";
 import crypto from "crypto";
 import { config } from "dotenv";
 import { createServer } from "http";
+import { getDeploymentMode } from "./services/deployment-mode.js";
 import { createApp } from "./app.js";
 import { createAppServices } from "./composition.js";
 import { acquirePidFile, removePidFile } from "./pid-file.js";
@@ -51,7 +52,8 @@ eventLogService.setInstanceId(runtimeSessionId);
 
 const port = parseInt(process.env.PORT || String(DEFAULT_API_PORT), 10);
 
-acquirePidFile(port);
+const usePidFile = Number(process.env.OPENSPRINT_BACKEND_REPLICAS ?? 1) === 1;
+if (usePidFile) acquirePidFile(port);
 
 const services = createAppServices();
 const app = createApp(services);
@@ -151,7 +153,7 @@ const shutdown = async (trigger: string) => {
 
   await taskStore.closePool();
 
-  removePidFile(port);
+  if (usePidFile) removePidFile(port);
   closeWebSocket();
   server.close(() => {
     logShutdown.info("Server closed.");
@@ -169,7 +171,7 @@ const shutdown = async (trigger: string) => {
 
 // Handle server errors (especially EADDRINUSE) before calling listen
 server.on("error", (err: NodeJS.ErrnoException) => {
-  removePidFile(port);
+  if (usePidFile) removePidFile(port);
   appendCrashLog("server.error", {
     code: err.code ?? null,
     message: err.message,
@@ -188,51 +190,59 @@ server.on("error", (err: NodeJS.ErrnoException) => {
 
 const FRONTEND_PORT = parseInt(process.env.FRONTEND_PORT || "5173", 10);
 
-server.listen(port, "127.0.0.1", () => {
-  logStartup.info("Open Sprint backend listening", { url: `http://localhost:${port}` });
-  logStartup.info("WebSocket server ready", { url: `ws://localhost:${port}/ws` });
-  if (process.env.NODE_ENV !== "test" && !isIntegrationEncryptionKeyConfigured()) {
-    logStartup.warn(
-      "INTEGRATION_ENCRYPTION_KEY is not set. Integration OAuth tokens are encrypted with a key derived from this hostname and ~/.opensprint/encryption-salt. For shared servers or any host where other users can read ~/.opensprint, set INTEGRATION_ENCRYPTION_KEY to a base64-encoded 32-byte random key (see README).",
-      { readmeSection: "integration-token-encryption" }
-    );
-  }
-  appendRuntimeTrace("process.start", runtimeSessionId, {
-    port,
-    frontendPort: FRONTEND_PORT,
-    cwd: process.cwd(),
-    argv: process.argv,
-    nodeVersion: process.version,
-    platform: process.platform,
-    arch: process.arch,
-    desktop: process.env.OPENSPRINT_DESKTOP ?? null,
-  });
-  startBackendDeathSentinel({
-    sessionId: runtimeSessionId,
-    backendPid: process.pid,
-    parentPid: process.ppid,
-  });
-  startRuntimeHeartbeat();
-  startProcessReaper();
-  databaseRuntime.start();
+server.listen(
+  port,
+  getDeploymentMode() === "trusted-local"
+    ? "127.0.0.1"
+    : (process.env.OPENSPRINT_BIND_HOST ?? "127.0.0.1"),
+  () => {
+    logStartup.info("Open Sprint backend listening", { url: `http://localhost:${port}` });
+    logStartup.info("WebSocket server ready", { url: `ws://localhost:${port}/ws` });
+    if (process.env.NODE_ENV !== "test" && !isIntegrationEncryptionKeyConfigured()) {
+      logStartup.warn(
+        "INTEGRATION_ENCRYPTION_KEY is not set. Integration OAuth tokens are encrypted with a key derived from this hostname and ~/.opensprint/encryption-salt. For shared servers or any host where other users can read ~/.opensprint, set INTEGRATION_ENCRYPTION_KEY to a base64-encoded 32-byte random key (see README).",
+        { readmeSection: "integration-token-encryption" }
+      );
+    }
+    appendRuntimeTrace("process.start", runtimeSessionId, {
+      port,
+      frontendPort: FRONTEND_PORT,
+      cwd: process.cwd(),
+      argv: process.argv,
+      nodeVersion: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      desktop: process.env.OPENSPRINT_DESKTOP ?? null,
+    });
+    startBackendDeathSentinel({
+      sessionId: runtimeSessionId,
+      backendPid: process.pid,
+      parentPid: process.ppid,
+    });
+    startRuntimeHeartbeat();
+    startProcessReaper();
+    databaseRuntime.start();
 
-  // Auto-open frontend if no browser reconnects within 15s (skip when running under Electron desktop)
-  if (process.env.OPENSPRINT_DESKTOP !== "1") {
-    setTimeout(() => {
-      if (hasClientConnected()) return;
-      const url = `http://localhost:${FRONTEND_PORT}`;
-      logStartup.info("No WebSocket client connected — opening frontend", { url });
-      void openBrowser(url).then((result) => {
-        if (result.status === "failed") {
-          logStartup.warn("Could not open browser", { url, err: result.error });
-        }
-        if (result.status === "logged") {
-          logStartup.info("Open the frontend manually if it did not launch automatically", { url });
-        }
-      });
-    }, 15_000);
+    // Auto-open frontend if no browser reconnects within 15s (skip when running under Electron desktop)
+    if (process.env.OPENSPRINT_DESKTOP !== "1") {
+      setTimeout(() => {
+        if (hasClientConnected()) return;
+        const url = `http://localhost:${FRONTEND_PORT}`;
+        logStartup.info("No WebSocket client connected — opening frontend", { url });
+        void openBrowser(url).then((result) => {
+          if (result.status === "failed") {
+            logStartup.warn("Could not open browser", { url, err: result.error });
+          }
+          if (result.status === "logged") {
+            logStartup.info("Open the frontend manually if it did not launch automatically", {
+              url,
+            });
+          }
+        });
+      }, 15_000);
+    }
   }
-});
+);
 
 process.on("SIGINT", () => {
   appendRuntimeTrace("signal.SIGINT", runtimeSessionId);

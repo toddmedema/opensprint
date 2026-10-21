@@ -13,6 +13,7 @@ import { prdFromCodebaseService } from "../services/prd-from-codebase.service.js
 import { broadcastToProject } from "../websocket/index.js";
 import { notificationService } from "../services/notification.service.js";
 import { prdProposalStore, hashSpecContent } from "../services/prd-proposal-store.js";
+import { specPublicationService } from "../services/spec-publication.service.js";
 import {
   applyDiffPagination,
   computeLineDiff,
@@ -205,7 +206,7 @@ export function createPrdRouter({ prdService, chatService }: PrdRouterDeps): Rou
         return;
       }
 
-      const pendingProposal = prdProposalStore.get(requestId);
+      const pendingProposal = await prdProposalStore.getDurable(requestId);
       const scopeMeta = notification.scopeChangeMetadata as
         | import("@opensprint/shared").ScopeChangeMetadata
         | undefined;
@@ -225,7 +226,10 @@ export function createPrdRouter({ prdService, chatService }: PrdRouterDeps): Rou
       }
 
       const currentPrd = await prdService.getPrd(projectId);
-      const currentSpec = prdToSpecMarkdown(currentPrd);
+      const currentDraft = await specPublicationService.getDraft(projectId);
+      const currentSpec = currentDraft
+        ? String(currentDraft.content)
+        : await specPublicationService.getPublishedContent(projectId);
 
       let proposedSpec: string;
       let staleBase: boolean | undefined;

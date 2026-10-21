@@ -13,7 +13,14 @@ import { resetMergeGateExecuteStatusSnapshots } from "../../lib/executeStatusMer
 import projectReducer from "../slices/projectSlice";
 
 const mockInvalidateQueries = vi.fn().mockResolvedValue(undefined);
-const mockSetQueryData = vi.fn();
+const queryData = new Map<string, unknown>();
+const cached = (key: readonly unknown[]) => queryData.get(JSON.stringify(key));
+const mockSetQueryData = vi.fn((key: readonly unknown[], update: unknown) => {
+  const id = JSON.stringify(key);
+  const next = typeof update === "function" ? update(queryData.get(id)) : update;
+  queryData.set(id, next);
+  return next;
+});
 vi.mock("../../queryClient", () => ({
   getQueryClient: () =>
     ({
@@ -180,6 +187,7 @@ describe("websocketMiddleware", () => {
     // Do not clear focusListeners: visibility/focus hooks register once and must stay bound across tests.
     mockInvalidateQueries.mockClear();
     mockSetQueryData.mockClear();
+    queryData.clear();
     MockWS = class extends MockWebSocket {
       constructor(url: string) {
         super(url);
@@ -732,54 +740,38 @@ describe("websocketMiddleware", () => {
       });
     });
 
-    it("dispatches taskUpdated on task.updated for existing task (no fetch)", async () => {
-      const store = createStore();
-      const { setTasks } = await import("../slices/executeSlice");
-      store.dispatch(
-        setTasks([
-          {
-            id: "task-1",
-            title: "Task 1",
-            description: "",
-            type: "task",
-            status: "open",
-            priority: 1,
-            assignee: null,
-            labels: [],
-            dependencies: [],
-            epicId: null,
-            kanbanColumn: "backlog",
-            createdAt: "",
-            updatedAt: "",
-          },
-        ])
-      );
-      store.dispatch(wsConnect({ projectId: "proj-1" }));
-      await flushPendingWsInstance("/ws/projects/proj-1");
-      wsInstance!.simulateOpen();
-      await vi.waitFor(() => store.getState().websocket.connected);
-
-      const { api } = await import("../../api/client");
-      wsInstance!.simulateMessage({
-        type: "task.updated",
-        taskId: "task-1",
-        status: "in_progress",
-        assignee: "Frodo",
-      });
-
-      await vi.waitFor(() => {
-        expect(selectTasks(store.getState())[0]?.kanbanColumn).toBe("in_progress");
-      });
-      expect(api.tasks.get).not.toHaveBeenCalled();
-      expect(mockSetQueryData).toHaveBeenCalledWith(
-        queryKeys.tasks.list("proj-1"),
-        expect.any(Function)
-      );
-      expect(mockSetQueryData).toHaveBeenCalledWith(
-        queryKeys.tasks.detail("proj-1", "task-1"),
-        expect.objectContaining({ id: "task-1", kanbanColumn: "in_progress", assignee: "Frodo" })
-      );
-    });
+    it.each(["task.created", "task.updated", "task.closed"] as const)(
+      "%s refreshes Query state without creating a second Redux task owner",
+      async (type) => {
+        const store = createStore();
+        const { setTasks } = await import("../slices/executeSlice");
+        store.dispatch(
+          setTasks([
+            { id: "task-1", title: "Original", kanbanColumn: "backlog", priority: 1 },
+          ] as never)
+        );
+        store.dispatch(wsConnect({ projectId: "proj-1" }));
+        await flushPendingWsInstance("/ws/projects/proj-1");
+        wsInstance!.simulateOpen();
+        const before = store.getState().execute.tasksById;
+        const { api } = await import("../../api/client");
+        vi.mocked(api.tasks.get).mockClear();
+        wsInstance!.simulateMessage({
+          type,
+          taskId: "task-1",
+          status: "closed",
+          task: { id: "task-1", title: "Changed", status: "closed" },
+        });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: queryKeys.tasks.list("proj-1"),
+        });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: queryKeys.tasks.detail("proj-1", "task-1"),
+        });
+        expect(store.getState().execute.tasksById).toBe(before);
+        expect(api.tasks.get).not.toHaveBeenCalled();
+      }
+    );
 
     it("invalidates tasks list when task.updated for unknown task (Plan page will refetch)", async () => {
       const store = createStore();
@@ -864,110 +856,6 @@ describe("websocketMiddleware", () => {
           expect(list.some((n) => n.id === "oq-2")).toBe(false);
         });
       });
-    });
-
-    it("dispatches taskCreated on task.created for live-update (no refetch)", async () => {
-      const store = createStore();
-      store.dispatch(wsConnect({ projectId: "proj-1" }));
-      await flushPendingWsInstance("/ws/projects/proj-1");
-      wsInstance!.simulateOpen();
-      await vi.waitFor(() => store.getState().websocket.connected);
-
-      const taskPayload = {
-        id: "os-ab12.1",
-        title: "New Task",
-        issue_type: "task",
-        status: "open",
-        priority: 2,
-        assignee: null,
-        created_at: "2025-01-01T00:00:00Z",
-        updated_at: "2025-01-01T00:00:00Z",
-      };
-
-      wsInstance!.simulateMessage({
-        type: "task.created",
-        taskId: "os-ab12.1",
-        task: taskPayload,
-      });
-
-      await vi.waitFor(() => {
-        const tasks = store.getState().execute.tasksById;
-        expect(tasks["os-ab12.1"]).toBeDefined();
-        expect(tasks["os-ab12.1"].title).toBe("New Task");
-        expect(tasks["os-ab12.1"].kanbanColumn).toBe("backlog");
-      });
-      expect(mockSetQueryData).toHaveBeenCalledWith(
-        queryKeys.tasks.list("proj-1"),
-        expect.any(Function)
-      );
-      expect(mockSetQueryData).toHaveBeenCalledWith(
-        queryKeys.tasks.detail("proj-1", "os-ab12.1"),
-        expect.objectContaining({ id: "os-ab12.1", title: "New Task" })
-      );
-      expect(mockInvalidateQueries).not.toHaveBeenCalledWith(
-        expect.objectContaining({ queryKey: queryKeys.tasks.list("proj-1") })
-      );
-    });
-
-    it("dispatches taskClosed on task.closed for live-update (no refetch)", async () => {
-      const store = createStore();
-      const { setTasks } = await import("../slices/executeSlice");
-      store.dispatch(
-        setTasks([
-          {
-            id: "os-ab12.1",
-            title: "In Progress Task",
-            description: "",
-            type: "task",
-            status: "in_progress",
-            priority: 2,
-            assignee: "agent-1",
-            labels: [],
-            dependencies: [],
-            epicId: "os-ab12",
-            kanbanColumn: "in_progress",
-            createdAt: "2025-01-01T00:00:00Z",
-            updatedAt: "2025-01-01T00:00:00Z",
-          },
-        ])
-      );
-      store.dispatch(wsConnect({ projectId: "proj-1" }));
-      await flushPendingWsInstance("/ws/projects/proj-1");
-      wsInstance!.simulateOpen();
-      await vi.waitFor(() => store.getState().websocket.connected);
-
-      wsInstance!.simulateMessage({
-        type: "task.closed",
-        taskId: "os-ab12.1",
-        task: {
-          id: "os-ab12.1",
-          title: "Done Task",
-          issue_type: "task",
-          status: "closed",
-          priority: 2,
-          assignee: "agent-1",
-          close_reason: "Completed",
-          created_at: "2025-01-01T00:00:00Z",
-          updated_at: "2025-01-01T01:00:00Z",
-        },
-      });
-
-      await vi.waitFor(() => {
-        const task = store.getState().execute.tasksById["os-ab12.1"];
-        expect(task?.kanbanColumn).toBe("done");
-        expect(task?.status).toBe("closed");
-      });
-      expect(mockSetQueryData).toHaveBeenCalledWith(
-        queryKeys.tasks.list("proj-1"),
-        expect.any(Function)
-      );
-      expect(mockSetQueryData).toHaveBeenCalledWith(
-        queryKeys.tasks.detail("proj-1", "os-ab12.1"),
-        expect.objectContaining({ id: "os-ab12.1", kanbanColumn: "done", status: "closed" })
-      );
-      expect(mockInvalidateQueries).not.toHaveBeenCalledWith(
-        expect.objectContaining({ queryKey: queryKeys.tasks.list("proj-1") })
-      );
     });
 
     it("invalidates tasks list on task.created when task payload is missing", async () => {
@@ -1253,93 +1141,40 @@ describe("websocketMiddleware", () => {
       });
     });
 
-    it("dispatches setOrchestratorRunning and setAwaitingApproval on execute.status", async () => {
-      const store = createStore();
-      store.dispatch(wsConnect({ projectId: "proj-1" }));
-      await flushPendingWsInstance("/ws/projects/proj-1");
-      wsInstance!.simulateOpen();
-      await vi.waitFor(() => store.getState().websocket.connected);
-
-      wsInstance!.simulateMessage({
-        type: "execute.status",
+    it.each([
+      {
         currentTask: "task-1",
-        queueDepth: 0,
+        queueDepth: 2,
         awaitingApproval: true,
-        activeTasks: [{ taskId: "task-1", phase: "execute", startedAt: new Date().toISOString() }],
-      });
-
-      await vi.waitFor(() => {
-        expect(store.getState().execute.orchestratorRunning).toBe(true);
-        expect(store.getState().execute.awaitingApproval).toBe(true);
-      });
-    });
-
-    it("sets orchestratorRunning false when execute.status has no currentTask and zero queueDepth", async () => {
-      const store = createStore();
-      store.dispatch(wsConnect({ projectId: "proj-1" }));
-      await flushPendingWsInstance("/ws/projects/proj-1");
-      wsInstance!.simulateOpen();
-      await vi.waitFor(() => store.getState().websocket.connected);
-
-      wsInstance!.simulateMessage({
-        type: "execute.status",
-        currentTask: null,
-        queueDepth: 0,
-      });
-
-      await vi.waitFor(() => {
-        expect(store.getState().execute.orchestratorRunning).toBe(false);
-      });
-    });
-
-    it("sets selfImprovementRunInProgress when execute.status includes selfImprovementRunInProgress: true", async () => {
-      const store = createStore();
-      store.dispatch(wsConnect({ projectId: "proj-1" }));
-      await flushPendingWsInstance("/ws/projects/proj-1");
-      wsInstance!.simulateOpen();
-      await vi.waitFor(() => store.getState().websocket.connected);
-
-      wsInstance!.simulateMessage({
-        type: "execute.status",
-        activeTasks: [],
-        queueDepth: 0,
-        selfImprovementRunInProgress: true,
-      });
-
-      await vi.waitFor(() => {
-        expect(store.getState().execute.selfImprovementRunInProgress).toBe(true);
-      });
-    });
-
-    it("stores baseline pause details from execute.status", async () => {
-      const store = createStore();
-      store.dispatch(wsConnect({ projectId: "proj-1" }));
-      await flushPendingWsInstance("/ws/projects/proj-1");
-      wsInstance!.simulateOpen();
-      await vi.waitFor(() => store.getState().websocket.connected);
-
-      wsInstance!.simulateMessage({
-        type: "execute.status",
+        activeTasks: [{ taskId: "task-1" }],
+      },
+      { currentTask: null, queueDepth: 0, selfImprovementRunInProgress: true },
+      {
         activeTasks: [],
         queueDepth: 0,
         baselineStatus: "failing",
         baselineCheckedAt: "2026-03-18T22:30:00.000Z",
-        baselineFailureSummary: "npm run test: expected 1 to be 2",
-        dispatchPausedReason:
-          "Only the baseline-remediation task will be assigned until the baseline passes.",
-      });
-
-      await vi.waitFor(() => {
-        expect(store.getState().execute.baselineStatus).toBe("failing");
-        expect(store.getState().execute.baselineCheckedAt).toBe("2026-03-18T22:30:00.000Z");
-        expect(store.getState().execute.baselineFailureSummary).toBe(
-          "npm run test: expected 1 to be 2"
-        );
-        expect(store.getState().execute.dispatchPausedReason).toBe(
-          "Only the baseline-remediation task will be assigned until the baseline passes."
-        );
-      });
-    });
+        baselineFailureSummary: "Tests failed",
+        dispatchPausedReason: "Remediation required",
+      },
+    ])(
+      "execute.status updates the Query snapshot while Redux keeps transient state only ($queueDepth)",
+      async (payload) => {
+        const store = createStore();
+        store.dispatch(wsConnect({ projectId: "proj-1" }));
+        await flushPendingWsInstance("/ws/projects/proj-1");
+        wsInstance!.simulateOpen();
+        const previous = store.getState().execute;
+        queryData.set(JSON.stringify(queryKeys.execute.status("proj-1")), { retained: "value" });
+        wsInstance!.simulateMessage({ type: "execute.status", ...payload });
+        expect(cached(queryKeys.execute.status("proj-1"))).toMatchObject({
+          ...payload,
+          retained: "value",
+          activeTasks: payload.activeTasks ?? [],
+        });
+        expect(store.getState().execute).toBe(previous);
+      }
+    );
 
     it("invalidates tasks list when execute.status merge-related fields change (deduped)", async () => {
       const store = createStore();
@@ -1383,396 +1218,78 @@ describe("websocketMiddleware", () => {
       });
     });
 
-    it("dispatches taskUpdated on task.updated for incremental update", async () => {
-      const store = createStore();
-      const { setTasks } = await import("../slices/executeSlice");
-      store.dispatch(
-        setTasks([
-          {
-            id: "task-1",
-            title: "Task 1",
-            kanbanColumn: "backlog",
-            priority: 1,
-            assignee: null,
-            epicId: "epic-1",
-          },
-        ])
-      );
-      store.dispatch(wsConnect({ projectId: "proj-1" }));
-      await flushPendingWsInstance("/ws/projects/proj-1");
-      wsInstance!.simulateOpen();
-      await vi.waitFor(() => store.getState().websocket.connected);
-
-      const { api } = await import("../../api/client");
-      vi.mocked(api.tasks.list).mockResolvedValue([
-        {
-          id: "task-1",
-          title: "Task 1",
-          kanbanColumn: "in_progress",
-          priority: 1,
-          assignee: "Frodo",
-          epicId: "epic-1",
-        },
-      ] as never);
-
-      wsInstance!.simulateMessage({
-        type: "task.updated",
-        taskId: "task-1",
-        status: "in_progress",
-        assignee: "Frodo",
-      });
-
-      await vi.waitFor(() => {
-        const task = selectTasks(store.getState()).find((t) => t.id === "task-1");
-        expect(task?.kanbanColumn).toBe("in_progress");
-        expect(task?.assignee).toBe("Frodo");
-      });
-    });
-
-    it("passes kanbanColumn and merge hint fields through taskUpdated on task.updated", async () => {
-      const store = createStore();
-      const { setTasks } = await import("../slices/executeSlice");
-      store.dispatch(
-        setTasks([
-          {
-            id: "task-1",
-            title: "Task 1",
-            kanbanColumn: "backlog",
-            priority: 1,
-            assignee: null,
-            epicId: "epic-1",
-          },
-        ])
-      );
-      store.dispatch(wsConnect({ projectId: "proj-1" }));
-      await flushPendingWsInstance("/ws/projects/proj-1");
-      wsInstance!.simulateOpen();
-      await vi.waitFor(() => store.getState().websocket.connected);
-
-      wsInstance!.simulateMessage({
-        type: "task.updated",
-        taskId: "task-1",
-        status: "open",
-        assignee: null,
-        kanbanColumn: "waiting_to_merge",
-        mergePausedUntil: "2025-03-18T12:00:00Z",
-        mergeWaitingOnMain: true,
-      });
-
-      await vi.waitFor(() => {
-        const task = selectTasks(store.getState()).find((t) => t.id === "task-1");
-        expect(task?.kanbanColumn).toBe("waiting_to_merge");
-        expect(task?.mergePausedUntil).toBe("2025-03-18T12:00:00Z");
-        expect(task?.mergeWaitingOnMain).toBe(true);
-      });
-    });
-
-    it("task.updated with authoritative null merge fields clears stuck merge-gate state", async () => {
-      const store = createStore();
-      const { setTasks } = await import("../slices/executeSlice");
-      store.dispatch(
-        setTasks([
-          {
-            id: "task-1",
-            title: "Task 1",
-            kanbanColumn: "waiting_to_merge",
-            mergeGateState: "blocked_on_baseline" as const,
-            mergePausedUntil: "2099-01-01T00:00:00Z",
-            mergeWaitingOnMain: true,
-            priority: 1,
-            assignee: null,
-            epicId: "epic-1",
-          },
-        ])
-      );
-      store.dispatch(wsConnect({ projectId: "proj-1" }));
-      await flushPendingWsInstance("/ws/projects/proj-1");
-      wsInstance!.simulateOpen();
-      await vi.waitFor(() => store.getState().websocket.connected);
-
-      wsInstance!.simulateMessage({
-        type: "task.updated",
-        taskId: "task-1",
-        status: "open",
-        assignee: null,
+    it.each([
+      { status: "in_progress", assignee: "Frodo" },
+      {
         kanbanColumn: "waiting_to_merge",
         mergePausedUntil: null,
         mergeWaitingOnMain: false,
         mergeGateState: null,
-      });
+      },
+      { mergeGateState: "candidate_fix_needed", lastExecutionSummary: "Merge paused" },
+    ])(
+      "partial task.updated fields trigger authoritative refetch without patching legacy state",
+      async (fields) => {
+        const store = createStore();
+        store.dispatch(wsConnect({ projectId: "proj-1" }));
+        await flushPendingWsInstance("/ws/projects/proj-1");
+        wsInstance!.simulateOpen();
+        const before = store.getState().execute.tasksById;
+        wsInstance!.simulateMessage({ type: "task.updated", taskId: "task-1", ...fields });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: queryKeys.tasks.detail("proj-1", "task-1"),
+        });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: queryKeys.execute.diagnostics("proj-1", "task-1"),
+        });
+        expect(store.getState().execute.tasksById).toBe(before);
+      }
+    );
 
-      await vi.waitFor(() => {
-        const task = selectTasks(store.getState()).find((t) => t.id === "task-1");
-        expect(task?.mergeGateState).toBeUndefined();
-        expect(task?.mergePausedUntil).toBeNull();
-        expect(task?.mergeWaitingOnMain).toBe(false);
-      });
-    });
+    it.each(["feedback.updated", "feedback.mapped"] as const)(
+      "%s replaces only matching Query feedback without Redux writes",
+      async (type) => {
+        const store = createStore();
+        store.dispatch(wsConnect({ projectId: "proj-1" }));
+        await flushPendingWsInstance("/ws/projects/proj-1");
+        wsInstance!.simulateOpen();
+        const first = { id: "fb-1", text: "Original", status: "pending" };
+        const second = { id: "fb-2", text: "Other", status: "pending" };
+        queryData.set(JSON.stringify(queryKeys.feedback.list("proj-1")), [first, second]);
+        const before = store.getState().eval.feedback;
+        const item = { ...first, text: "Updated", createdTaskIds: [] };
+        wsInstance!.simulateMessage({
+          type,
+          feedbackId: "fb-1",
+          planId: "plan-1",
+          taskIds: [],
+          item,
+        });
+        expect(cached(queryKeys.feedback.list("proj-1"))).toEqual([item, second]);
+        expect(store.getState().eval.feedback).toBe(before);
+      }
+    );
 
-    it("task.updated passes lastExecutionSummary to Redux taskUpdated", async () => {
-      const store = createStore();
-      const { setTasks } = await import("../slices/executeSlice");
-      store.dispatch(
-        setTasks([
-          {
-            id: "task-1",
-            title: "Task 1",
-            kanbanColumn: "waiting_to_merge",
-            priority: 1,
-            assignee: null,
-            epicId: "epic-1",
-          },
-        ])
-      );
-      store.dispatch(wsConnect({ projectId: "proj-1" }));
-      await flushPendingWsInstance("/ws/projects/proj-1");
-      wsInstance!.simulateOpen();
-      await vi.waitFor(() => store.getState().websocket.connected);
-
-      wsInstance!.simulateMessage({
-        type: "task.updated",
-        taskId: "task-1",
-        status: "open",
-        assignee: null,
-        kanbanColumn: "waiting_to_merge",
-        mergeGateState: "candidate_fix_needed",
-        lastExecutionSummary: "Merge paused: quality gates failing on main",
-      });
-
-      await vi.waitFor(() => {
-        const task = selectTasks(store.getState()).find((t) => t.id === "task-1");
-        expect(task?.mergeGateState).toBe("candidate_fix_needed");
-        expect(task?.lastExecutionSummary).toBe("Merge paused: quality gates failing on main");
-      });
-    });
-
-    it("dispatches updateFeedbackItem on feedback.updated when event includes item (no refetch)", async () => {
-      const store = createStore();
-      store.dispatch(wsConnect({ projectId: "proj-1" }));
-      await flushPendingWsInstance("/ws/projects/proj-1");
-      wsInstance!.simulateOpen();
-      await vi.waitFor(() => store.getState().websocket.connected);
-
-      store.dispatch(
-        setFeedback([
-          {
-            id: "fb-1",
-            text: "Bug",
-            category: "bug",
-            mappedPlanId: null,
-            createdTaskIds: [],
-            status: "pending",
-            createdAt: "2024-01-01T00:00:00Z",
-          },
-        ])
-      );
-
-      const { api } = await import("../../api/client");
-      vi.mocked(api.feedback.list).mockClear();
-
-      const updatedItem = {
-        id: "fb-1",
-        text: "Bug report",
-        category: "feature",
-        mappedPlanId: "plan-1",
-        createdTaskIds: ["task-1"],
-        status: "pending",
-        createdAt: "2024-01-01T00:00:00Z",
-      };
-      wsInstance!.simulateMessage({
-        type: "feedback.updated",
-        feedbackId: "fb-1",
-        planId: "plan-1",
-        taskIds: ["task-1"],
-        item: updatedItem,
-      });
-
-      await vi.waitFor(() => {
-        expect(store.getState().eval.feedback[0]).toEqual(updatedItem);
-      });
-      expect(api.feedback.list).not.toHaveBeenCalled();
-    });
-
-    it("dispatches updateFeedbackItem on feedback.mapped when event includes item (no refetch)", async () => {
-      const store = createStore();
-      store.dispatch(wsConnect({ projectId: "proj-1" }));
-      await flushPendingWsInstance("/ws/projects/proj-1");
-      wsInstance!.simulateOpen();
-      await vi.waitFor(() => store.getState().websocket.connected);
-
-      store.dispatch(
-        setFeedback([
-          {
-            id: "fb-1",
-            text: "Bug",
-            category: "bug",
-            mappedPlanId: null,
-            createdTaskIds: [],
-            status: "pending",
-            createdAt: "2024-01-01T00:00:00Z",
-          },
-        ])
-      );
-
-      const { api } = await import("../../api/client");
-      vi.mocked(api.feedback.list).mockClear();
-
-      const updatedItem = {
-        id: "fb-1",
-        text: "Bug report",
-        category: "feature",
-        mappedPlanId: "plan-1",
-        createdTaskIds: ["task-1"],
-        status: "pending",
-        createdAt: "2024-01-01T00:00:00Z",
-      };
-      wsInstance!.simulateMessage({
-        type: "feedback.mapped",
-        feedbackId: "fb-1",
-        planId: "plan-1",
-        taskIds: ["task-1"],
-        item: updatedItem,
-      });
-
-      await vi.waitFor(() => {
-        expect(store.getState().eval.feedback[0]).toEqual(updatedItem);
-      });
-      expect(api.feedback.list).not.toHaveBeenCalled();
-    });
-
-    it("updates only the matching feedback card when feedback.updated received with multiple items", async () => {
-      const store = createStore();
-      store.dispatch(wsConnect({ projectId: "proj-1" }));
-      await flushPendingWsInstance("/ws/projects/proj-1");
-      wsInstance!.simulateOpen();
-      await vi.waitFor(() => store.getState().websocket.connected);
-
-      const fb1 = {
-        id: "fb-1",
-        text: "First bug",
-        category: "bug",
-        mappedPlanId: null,
-        createdTaskIds: [] as string[],
-        status: "pending" as const,
-        createdAt: "2024-01-01T00:00:00Z",
-      };
-      const fb2 = {
-        id: "fb-2",
-        text: "Second bug",
-        category: "bug",
-        mappedPlanId: null,
-        createdTaskIds: [] as string[],
-        status: "pending" as const,
-        createdAt: "2024-01-01T00:00:01Z",
-      };
-      store.dispatch(setFeedback([fb1, fb2]));
-
-      const { api } = await import("../../api/client");
-      vi.mocked(api.feedback.list).mockClear();
-
-      const updatedFb1 = {
-        ...fb1,
-        category: "feature" as const,
-        mappedPlanId: "plan-1",
-        createdTaskIds: ["task-1"],
-        status: "pending" as const,
-      };
-      wsInstance!.simulateMessage({
-        type: "feedback.updated",
-        feedbackId: "fb-1",
-        planId: "plan-1",
-        taskIds: ["task-1"],
-        item: updatedFb1,
-      });
-
-      await vi.waitFor(() => {
-        const feedback = store.getState().eval.feedback;
-        expect(feedback).toHaveLength(2);
-        expect(feedback[0]).toEqual(updatedFb1);
-        expect(feedback[1]).toEqual(fb2);
-      });
-      expect(api.feedback.list).not.toHaveBeenCalled();
-    });
-
-    it("dispatches updateFeedbackItem on feedback.resolved when event includes item (no refetch)", async () => {
-      const store = createStore();
-      store.dispatch(wsConnect({ projectId: "proj-1" }));
-      await flushPendingWsInstance("/ws/projects/proj-1");
-      wsInstance!.simulateOpen();
-      await vi.waitFor(() => store.getState().websocket.connected);
-
-      store.dispatch(
-        setFeedback([
-          {
-            id: "fb-2",
-            text: "Resolved bug",
-            category: "bug",
-            mappedPlanId: null,
-            createdTaskIds: [],
-            status: "pending",
-            createdAt: "2024-01-01T00:00:00Z",
-          },
-        ])
-      );
-
-      const { api } = await import("../../api/client");
-      vi.mocked(api.feedback.list).mockClear();
-
-      const resolvedItem = {
-        id: "fb-2",
-        text: "Resolved bug",
-        category: "bug",
-        mappedPlanId: null,
-        createdTaskIds: [],
-        status: "resolved",
-        createdAt: "2024-01-01T00:00:00Z",
-      };
-      wsInstance!.simulateMessage({
-        type: "feedback.resolved",
-        feedbackId: "fb-2",
-        item: resolvedItem,
-      });
-
-      await vi.waitFor(() => {
-        expect(store.getState().eval.feedback[0]).toEqual(resolvedItem);
-      });
-      expect(api.feedback.list).not.toHaveBeenCalled();
-    });
-
-    it("dispatches updateFeedbackItemResolved (not fetchFeedback) on feedback.resolved when event has no item", async () => {
-      const store = createStore();
-      store.dispatch(wsConnect({ projectId: "proj-1" }));
-      await flushPendingWsInstance("/ws/projects/proj-1");
-      wsInstance!.simulateOpen();
-      await vi.waitFor(() => store.getState().websocket.connected);
-
-      store.dispatch(
-        setFeedback([
-          {
-            id: "fb-3",
-            text: "Another bug",
-            category: "bug",
-            mappedPlanId: null,
-            createdTaskIds: [],
-            status: "pending",
-            createdAt: "2024-01-01T00:00:00Z",
-          },
-        ])
-      );
-
-      const { api } = await import("../../api/client");
-      vi.mocked(api.feedback.list).mockClear();
-
-      wsInstance!.simulateMessage({
-        type: "feedback.resolved",
-        feedbackId: "fb-3",
-      });
-
-      await vi.waitFor(() => {
-        expect(store.getState().eval.feedback[0].status).toBe("resolved");
-      });
-      expect(api.feedback.list).not.toHaveBeenCalled();
-    });
+    it.each([true, false])(
+      "feedback.resolved invalidates Query with item present=%s without Redux writes",
+      async (includeItem) => {
+        const store = createStore();
+        store.dispatch(wsConnect({ projectId: "proj-1" }));
+        await flushPendingWsInstance("/ws/projects/proj-1");
+        wsInstance!.simulateOpen();
+        store.dispatch(setFeedback([{ id: "fb-1", status: "pending" }] as never));
+        const before = store.getState().eval.feedback;
+        wsInstance!.simulateMessage({
+          type: "feedback.resolved",
+          feedbackId: "fb-1",
+          ...(includeItem ? { item: { id: "fb-1", status: "resolved" } } : {}),
+        });
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: queryKeys.feedback.list("proj-1"),
+        });
+        expect(store.getState().eval.feedback).toBe(before);
+      }
+    );
 
     it("invalidates feedback list when feedback.mapped has no item", async () => {
       const store = createStore();
@@ -1795,7 +1312,7 @@ describe("websocketMiddleware", () => {
       });
     });
 
-    it("dispatches fetchTasksByIds when feedback.updated includes createdTaskIds (Analyst ticket creation)", async () => {
+    it("fetches created task details into Query without Redux copies", async () => {
       const store = createStore();
       store.dispatch(wsConnect({ projectId: "proj-1" }));
       await flushPendingWsInstance("/ws/projects/proj-1");
@@ -1851,7 +1368,8 @@ describe("websocketMiddleware", () => {
       });
 
       await vi.waitFor(() => {
-        expect(store.getState().eval.feedback[0]).toEqual(updatedItem);
+        expect(cached(queryKeys.feedback.list("proj-1"))).toEqual([updatedItem]);
+        expect(store.getState().eval.feedback[0].text).toBe("Bug");
       });
       await vi.waitFor(() => {
         expect(api.tasks.get).toHaveBeenCalledTimes(2);
@@ -1859,9 +1377,10 @@ describe("websocketMiddleware", () => {
       expect(api.tasks.get).toHaveBeenCalledWith("proj-1", "task-1");
       expect(api.tasks.get).toHaveBeenCalledWith("proj-1", "task-2");
       await vi.waitFor(() => {
-        const tasks = selectTasks(store.getState());
+        const tasks = cached(queryKeys.tasks.list("proj-1")) as { id: string }[];
         expect(tasks.some((t) => t.id === "task-1")).toBe(true);
         expect(tasks.some((t) => t.id === "task-2")).toBe(true);
+        expect(selectTasks(store.getState())).toEqual([]);
       });
       // Middleware syncs fetched tasks to React Query cache instead of invalidating (avoids duplicate refetches)
       await vi.waitFor(() => {
@@ -1919,12 +1438,13 @@ describe("websocketMiddleware", () => {
         expect(api.tasks.get).toHaveBeenCalledWith("proj-1", "task-fallback");
       });
       await vi.waitFor(() => {
-        const tasks = selectTasks(store.getState());
+        const tasks = cached(queryKeys.tasks.list("proj-1")) as { id: string }[];
         expect(tasks.some((t) => t.id === "task-fallback")).toBe(true);
+        expect(selectTasks(store.getState())).toEqual([]);
       });
     });
 
-    it("invalidates tasks and dispatches taskUpdated when task.updated after feedback.updated", async () => {
+    it("invalidates cached task after feedback detail sync without patching Redux", async () => {
       const store = createStore();
       const { setTasks } = await import("../slices/executeSlice");
       store.dispatch(
@@ -2015,7 +1535,10 @@ describe("websocketMiddleware", () => {
 
       await vi.waitFor(() => {
         const task = selectTasks(store.getState()).find((t) => t.id === "task-auth");
-        expect(task?.kanbanColumn).toBe("done");
+        expect(task?.kanbanColumn).toBe("backlog");
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: queryKeys.tasks.detail("proj-1", "task-auth"),
+        });
       });
     });
 
@@ -2161,7 +1684,7 @@ describe("websocketMiddleware", () => {
       });
     });
 
-    it("adds assistant response and clears sending on agent.chat.response", async () => {
+    it("refreshes canonical history and clears sending on agent.chat.response", async () => {
       const store = createStore();
       store.dispatch(wsConnect({ projectId: "proj-1" }));
       await flushPendingWsInstance("/ws/projects/proj-1");
@@ -2188,14 +1711,16 @@ describe("websocketMiddleware", () => {
 
       await vi.waitFor(() => {
         const msgs = selectChatMessages(store.getState(), "task-1");
-        expect(msgs).toHaveLength(2);
-        expect(msgs[1].role).toBe("assistant");
-        expect(msgs[1].content).toBe("Hi, I'm working on it!");
+        expect(msgs).toHaveLength(1);
+        expect(msgs[0].role).toBe("user");
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: queryKeys.tasks.chatHistory("proj-1", "task-1"),
+        });
         expect(selectChatSending(store.getState(), "task-1")).toBe(false);
       });
     });
 
-    it("dedupes agent.chat.response by messageId (no duplicate assistant message)", async () => {
+    it("repeated response delivery refreshes history without copying assistant messages to Redux", async () => {
       const store = createStore();
       store.dispatch(wsConnect({ projectId: "proj-1" }));
       await flushPendingWsInstance("/ws/projects/proj-1");
@@ -2212,7 +1737,10 @@ describe("websocketMiddleware", () => {
       });
 
       await vi.waitFor(() => {
-        expect(selectChatMessages(store.getState(), "task-1")).toHaveLength(1);
+        expect(selectChatMessages(store.getState(), "task-1")).toHaveLength(0);
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: queryKeys.tasks.chatHistory("proj-1", "task-1"),
+        });
       });
 
       wsInstance!.simulateMessage({
@@ -2225,7 +1753,10 @@ describe("websocketMiddleware", () => {
       });
 
       await vi.waitFor(() => {
-        expect(selectChatMessages(store.getState(), "task-1")).toHaveLength(1);
+        expect(selectChatMessages(store.getState(), "task-1")).toHaveLength(0);
+        expect(mockInvalidateQueries).toHaveBeenCalledWith({
+          queryKey: queryKeys.tasks.chatHistory("proj-1", "task-1"),
+        });
       });
     });
 

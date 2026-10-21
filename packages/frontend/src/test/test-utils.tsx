@@ -3,7 +3,7 @@ import { render } from "@testing-library/react";
 import { Provider } from "react-redux";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { configureStore } from "@reduxjs/toolkit";
-import type { Store } from "@reduxjs/toolkit";
+import type { Store, Middleware } from "@reduxjs/toolkit";
 import { MemoryRouter } from "react-router-dom";
 import { type RootState } from "../store";
 import projectReducer from "../store/slices/projectSlice";
@@ -19,8 +19,13 @@ import notificationReducer from "../store/slices/notificationSlice";
 import openQuestionsReducer from "../store/slices/openQuestionsSlice";
 import { ThemeProvider } from "../contexts/ThemeContext";
 import { DisplayPreferencesProvider } from "../contexts/DisplayPreferencesContext";
+import { seedServerFixtureFromElement } from "./seedServerFixtures";
+import { setQueryClient } from "../queryClient";
 
-function createTestStore(preloadedState?: Partial<RootState>): Store {
+function createTestStore(
+  preloadedState?: Partial<RootState>,
+  extraMiddleware: Middleware[] = []
+): Store {
   return configureStore({
     reducer: {
       project: projectReducer,
@@ -36,6 +41,7 @@ function createTestStore(preloadedState?: Partial<RootState>): Store {
       openQuestions: openQuestionsReducer,
     },
     preloadedState: preloadedState as Record<string, unknown> | undefined,
+    middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(...extraMiddleware),
   }) as Store;
 }
 
@@ -89,6 +95,8 @@ export function renderWithProviders(
 ) {
   const store = options.store ?? createTestStore(options.preloadedState);
   const queryClient = options.queryClient ?? createTestQueryClient();
+  setQueryClient(queryClient);
+  seedServerFixtureFromElement(queryClient, <Provider store={store}>{ui}</Provider>);
 
   return render(
     <QueryClientProvider client={queryClient}>
@@ -101,7 +109,9 @@ export function renderWithProviders(
 export function renderApp(ui: React.ReactElement, options: RenderAppOptions = {}) {
   const store = options.store ?? createTestStore(options.preloadedState);
   const queryClient = options.queryClient ?? createTestQueryClient();
+  setQueryClient(queryClient);
   const routeEntries = options.routeEntries ?? ["/"];
+  seedServerFixtureFromElement(queryClient, <Provider store={store}>{ui}</Provider>);
 
   return render(
     <AppProviders store={store} queryClient={queryClient} routeEntries={routeEntries}>
@@ -116,6 +126,8 @@ export function wrapWithProviders(
   options: { store: Store; queryClient?: QueryClient }
 ) {
   const queryClient = options.queryClient ?? createTestQueryClient();
+  setQueryClient(queryClient);
+  seedServerFixtureFromElement(queryClient, <Provider store={options.store}>{ui}</Provider>);
   return (
     <QueryClientProvider client={queryClient}>
       <Provider store={options.store}>{ui}</Provider>

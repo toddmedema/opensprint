@@ -28,8 +28,12 @@ const tokenSchema = z
   .max(256);
 
 export interface CollaborationAccess {
-  resolve(authorization: string | undefined, projectId: string): CollaborationPrincipal;
-  canControlActor(projectId: string, actorId: string): boolean;
+  resolve(
+    authorization: string | undefined,
+    projectId: string
+  ): CollaborationPrincipal | Promise<CollaborationPrincipal>;
+  canControlActor(projectId: string, actorId: string): boolean | Promise<boolean>;
+  resolveHash?(hash: string, projectId: string): CollaborationPrincipal | null;
 }
 
 /**
@@ -56,6 +60,13 @@ export function createCollaborationAccess(
     );
   }
   return {
+    resolveHash(hash, projectId) {
+      const entry = tokens.find((token) => token.tokenHash.toLowerCase() === hash.toLowerCase());
+      const role = entry?.projects[projectId];
+      return entry && role
+        ? { actorId: entry.actorId, displayName: entry.displayName, role }
+        : null;
+    },
     resolve(authorization, projectId) {
       if (requestHasValidBearerToken(authorization))
         return { actorId: "local-user", displayName: "Local user", role: "controller" };

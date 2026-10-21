@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { assertDeploymentOperation } from "./operation-effect-context.js";
 import type { DeploymentRecord } from "@opensprint/shared";
 import { ProjectService } from "./project.service.js";
 import { taskStore } from "./task-store.service.js";
+import { lockProject, resourceChanged } from "./project-event.service.js";
+import type { DbClient } from "../db/client.js";
+import { AppError } from "../middleware/error-handler.js";
 
 const _projectService = new ProjectService();
 
@@ -25,13 +29,29 @@ function rowToRecord(row: Record<string, unknown>): DeploymentRecord {
 }
 
 export class DeployStorageService {
+  private async reconcileInterrupted(projectId: string): Promise<void> {
+    await taskStore.runWrite(async (tx) => {
+      await tx.execute(
+        `UPDATE deployments SET status = 'uncertain', error = 'Operation owner ended before deployment completion was confirmed'
+        WHERE project_id = $1 AND status IN ('pending','running','stop_requested')
+        AND EXISTS (SELECT 1 FROM durable_operations o WHERE o.id = deployments.id AND o.project_id = deployments.project_id AND o.status = 'uncertain')`,
+        [projectId]
+      );
+    });
+  }
   async createRecord(
     projectId: string,
     previousDeployId?: string | null,
-    options?: { commitHash?: string | null; target?: string; mode?: "expo" | "custom" }
+    options?: {
+      id?: string;
+      commitHash?: string | null;
+      target?: string;
+      mode?: "expo" | "custom";
+      exclusive?: boolean;
+    }
   ): Promise<DeploymentRecord> {
     const record: DeploymentRecord = {
-      id: randomUUID(),
+      id: options?.id ?? randomUUID(),
       projectId,
       status: "pending",
       startedAt: new Date().toISOString(),
@@ -44,6 +64,20 @@ export class DeployStorageService {
     };
 
     await taskStore.runWrite(async (client) => {
+      if (options?.exclusive) {
+        await lockProject(client, projectId);
+        const active = await client.queryOne(
+          "SELECT id FROM deployments WHERE project_id = $1 AND status IN ('pending','running','stop_requested','uncertain') LIMIT 1",
+          [projectId]
+        );
+        if (active)
+          throw new AppError(
+            409,
+            "DEPLOY_ALREADY_RUNNING",
+            "A deployment is active or uncertain; reconcile it before starting another.",
+            { deployId: active.id }
+          );
+      }
       await client.execute(
         `INSERT INTO deployments (
           id, project_id, status, started_at, completed_at, commit_hash, target, mode,
@@ -66,11 +100,13 @@ export class DeployStorageService {
           record.fixEpicId ?? null,
         ]
       );
+      await resourceChanged(client, projectId, "deployment", record.id, record);
     });
     return record;
   }
 
   async getRecord(projectId: string, deployId: string): Promise<DeploymentRecord | null> {
+    await this.reconcileInterrupted(projectId);
     const client = await taskStore.getDb();
     const row = await client.queryOne(
       "SELECT * FROM deployments WHERE id = $1 AND project_id = $2",
@@ -90,35 +126,36 @@ export class DeployStorageService {
       >
     >
   ): Promise<DeploymentRecord | null> {
-    const existing = await this.getRecord(projectId, deployId);
-    if (!existing) return null;
-
-    const updated: DeploymentRecord = {
-      ...existing,
-      ...updates,
-      log: updates.log !== undefined ? updates.log : existing.log,
-    };
-
-    await taskStore.runWrite(async (client) => {
-      await client.execute(
-        `UPDATE deployments SET
-          status = $1, completed_at = $2, url = $3, error = $4, log = $5,
-          rolled_back_by = $6, fix_epic_id = $7
-        WHERE id = $8 AND project_id = $9`,
-        [
-          updated.status,
-          updated.completedAt ?? null,
-          updated.url ?? null,
-          updated.error ?? null,
-          JSON.stringify(updated.log),
-          updated.rolledBackBy ?? null,
-          updated.fixEpicId ?? null,
-          deployId,
-          projectId,
-        ]
-      );
+    return taskStore.runWrite(async (tx) => {
+      await lockProject(tx, projectId);
+      const row = await tx.queryOne("SELECT * FROM deployments WHERE id = $1 AND project_id = $2", [
+        deployId,
+        projectId,
+      ]);
+      if (!row) return null;
+      return this.writeRecord(tx, { ...rowToRecord(row), ...updates });
     });
-    return updated;
+  }
+
+  private async writeRecord(tx: DbClient, record: DeploymentRecord): Promise<DeploymentRecord> {
+    await assertDeploymentOperation(tx, record.projectId);
+    await tx.execute(
+      `UPDATE deployments SET status=$1, completed_at=$2, url=$3, error=$4, log=$5,
+      rolled_back_by=$6, fix_epic_id=$7 WHERE id=$8 AND project_id=$9`,
+      [
+        record.status,
+        record.completedAt ?? null,
+        record.url ?? null,
+        record.error ?? null,
+        JSON.stringify(record.log),
+        record.rolledBackBy ?? null,
+        record.fixEpicId ?? null,
+        record.id,
+        record.projectId,
+      ]
+    );
+    await resourceChanged(tx, record.projectId, "deployment", record.id, record);
+    return record;
   }
 
   async appendLog(
@@ -126,13 +163,21 @@ export class DeployStorageService {
     deployId: string,
     chunk: string
   ): Promise<DeploymentRecord | null> {
-    const existing = await this.getRecord(projectId, deployId);
-    if (!existing) return null;
-    const newLog = [...existing.log, chunk];
-    return this.updateRecord(projectId, deployId, { log: newLog });
+    return taskStore.runWrite(async (tx) => {
+      await lockProject(tx, projectId);
+      const row = await tx.queryOne("SELECT * FROM deployments WHERE id = $1 AND project_id = $2", [
+        deployId,
+        projectId,
+      ]);
+      if (!row) return null;
+      const record = rowToRecord(row);
+      record.log.push(chunk);
+      return this.writeRecord(tx, record);
+    });
   }
 
   async listHistory(projectId: string, limit: number = 50): Promise<DeploymentRecord[]> {
+    await this.reconcileInterrupted(projectId);
     const client = await taskStore.getDb();
     const rows = await client.query(
       "SELECT * FROM deployments WHERE project_id = $1 ORDER BY started_at DESC, id DESC LIMIT $2",

@@ -69,8 +69,11 @@ vi.mock("../services/agent.service.js", () => ({
   },
 }));
 
-vi.mock("../services/task-store.service.js", () => {
+vi.mock("../services/task-store.service.js", async () => {
+  const { createSqliteRepositoryFixture } = await import("./sqlite-repository-fixture.js");
+  const persistence = await createSqliteRepositoryFixture();
   const mockInstance = {
+    ...persistence,
     init: mockTaskStoreInit,
     listAll: mockTaskStoreListAll,
     create: mockTaskStoreCreate,

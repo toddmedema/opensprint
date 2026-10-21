@@ -1,7 +1,9 @@
 import { spawn } from "child_process";
+import crossSpawn from "cross-spawn";
 import fs from "fs";
 import path from "path";
 import { normalizeSpawnEnvPath } from "./path-env.js";
+import { getDeploymentMode } from "../services/deployment-mode.js";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const KILL_GRACE_MS = 5_000;
@@ -124,6 +126,34 @@ export async function runCommand(
   spec: CommandSpec,
   options: CommandRunOptions
 ): Promise<CommandRunResult> {
+  if (
+    getDeploymentMode() === "isolated-hosted" &&
+    path.basename(spec.command).toLowerCase() !== "git" &&
+    path.basename(spec.command).toLowerCase() !== "git.exe"
+  ) {
+    const { runIsolatedCommand } = await import("../services/agent/isolated-runner.js");
+    const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
+    const result = await runIsolatedCommand(
+      options.cwd,
+      [spec.command, ...(spec.args ?? [])].map(quote).join(" "),
+      options.timeout
+    );
+    if (result.exitCode !== 0)
+      throw new CommandRunError("Isolated command failed", {
+        executable: spec.command,
+        cwd: options.cwd,
+        stdout: result.output,
+        exitCode: result.exitCode,
+      });
+    return {
+      stdout: result.output,
+      stderr: "",
+      executable: spec.command,
+      cwd: options.cwd,
+      exitCode: 0,
+      signal: null,
+    };
+  }
   const env = normalizeSpawnEnvPath({ ...process.env, ...(options.env ?? {}) });
   const executable = resolveCommandExecutable(spec.command, env);
   const cwd = options.cwd;
@@ -174,7 +204,11 @@ export async function runCommand(
       return { text: prefix, bytes: retained, exceeded: true };
     };
 
-    const child = spawn(executable, spec.args ?? [], {
+    // Windows batch launchers (including npm.cmd) require cmd.exe and escaped
+    // arguments; spawning them directly fails with EINVAL on supported Node versions.
+    const spawnCommand =
+      process.platform === "win32" && /\.(?:cmd|bat)$/i.test(executable) ? crossSpawn : spawn;
+    const child = spawnCommand(executable, spec.args ?? [], {
       cwd,
       env,
       shell: false,

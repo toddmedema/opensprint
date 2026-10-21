@@ -5,6 +5,7 @@ import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
 import { BuildEpicCard } from "./BuildEpicCard";
 import executeReducer from "../../store/slices/executeSlice";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const createMockTask = (
   overrides: Partial<{
@@ -44,7 +45,13 @@ function renderWithStore(ui: React.ReactElement) {
   const store = configureStore({
     reducer: { execute: executeReducer },
   });
-  return render(<Provider store={store}>{ui}</Provider>);
+  return render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <Provider store={store}>{ui}</Provider>
+    </QueryClientProvider>
+  );
 }
 
 describe("BuildEpicCard", () => {

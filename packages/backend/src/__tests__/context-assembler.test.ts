@@ -44,6 +44,11 @@ vi.mock("../services/prd.service.js", () => ({
   })),
 }));
 
+// These temporary repository fixtures are intentionally outside the registered SQL catalog.
+vi.mock("../services/project-index.js", () => ({
+  getProjects: vi.fn().mockResolvedValue([]),
+}));
+
 describe("buildAutonomyDescription", () => {
   it("returns confirm_all rule when aiAutonomyLevel is confirm_all", () => {
     const desc = buildAutonomyDescription("confirm_all", undefined);
@@ -146,7 +151,7 @@ User authentication.
       dependencyOutputs: [{ taskId: "bd-a3f8.0", diff: "diff content", summary: "Gate closed" }],
     });
 
-    expect(taskDir).toContain(".opensprint/active/bd-a3f8.1");
+    expect(taskDir).toContain(path.join(".opensprint", "active", "bd-a3f8.1"));
 
     const contextDir = path.join(taskDir, "context");
     const depsDir = path.join(contextDir, "deps");

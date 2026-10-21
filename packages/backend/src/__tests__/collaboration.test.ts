@@ -14,6 +14,7 @@ import { createCollaborationRouter } from "../routes/collaboration.js";
 import { TaskStoreService } from "../services/task-store.service.js";
 import { AppError, errorHandler } from "../middleware/error-handler.js";
 import { VITEST_DEFAULT_LOCAL_SESSION_TOKEN } from "../services/local-session-auth.service.js";
+import { appendProjectEvent } from "../services/project-event.service.js";
 
 const alice: CollaborationPrincipal = {
   actorId: "alice",
@@ -100,6 +101,80 @@ describe("durable project collaboration", () => {
       statusCode: 409,
       details: { resetRequired: true, cursor: 1 },
     });
+  });
+
+  it("lets an independently granted controller claim a run without discussion permission", async () => {
+    const controller = {
+      ...alice,
+      role: "viewer" as const,
+      permissions: ["read", "control"] as const,
+    };
+    const principal = { ...controller, permissions: [...controller.permissions] };
+    await service.command("A", principal, {
+      commandId: "control-only",
+      type: "claim_control",
+      runId: "run",
+      expectedRevision: 0,
+    });
+    await expect(service.assertControl("A", principal, "run")).resolves.toBe(1);
+    await expect(
+      service.command("A", principal, {
+        commandId: "discussion",
+        type: "append_message",
+        content: "Forbidden",
+      })
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it("redacts secrets in historical replay for named members while preserving cursors", async () => {
+    await db.runWrite((tx) =>
+      appendProjectEvent(tx, {
+        projectId: "A",
+        type: "settings_changed",
+        payload: {
+          revision: 1,
+          state: {
+            deployment: {
+              expoToken: "secret-token",
+              targets: [{ name: "prod", envVars: { SECRET: "secret-env" } }],
+            },
+          },
+        },
+      })
+    );
+    const app = express();
+    app.use(
+      "/projects/:projectId/collaboration",
+      createCollaborationRouter({
+        service,
+        access: createCollaborationAccess(
+          JSON.stringify([
+            {
+              actorId: "reader",
+              displayName: "Reader",
+              tokenHash: hash("reader-secret"),
+              projects: { A: "viewer" },
+            },
+          ])
+        ),
+        assertProjectExists: async () => undefined,
+      })
+    );
+    app.use(errorHandler);
+    const replay = await request(app)
+      .get("/projects/A/collaboration/events?after=0")
+      .auth("reader-secret", { type: "bearer" })
+      .expect(200);
+    expect(replay.body.data.nextCursor).toBe(1);
+    expect(replay.body.data.events[0].payload).toEqual({
+      revision: 1,
+      state: { deployment: { targets: [{ name: "prod" }] } },
+    });
+    const host = await request(app)
+      .get("/projects/A/collaboration/events?after=0")
+      .auth(VITEST_DEFAULT_LOCAL_SESSION_TOKEN, { type: "bearer" })
+      .expect(200);
+    expect(host.body.data.events[0].payload.state.deployment.expoToken).toBe("secret-token");
   });
 
   it("elects one run controller with CAS and authorizes handoff against current ownership and membership", async () => {
@@ -291,7 +366,10 @@ describe("durable project collaboration", () => {
     expect(observed).toBe(false);
     release();
     await failure;
-    expect((await read)?.cursor).toBe(10);
+    expect((await read)?.cursor).toBe(20);
+    const committed = await service.replay("A");
+    expect(committed.events.filter((event) => event.type === "task_changed")).toHaveLength(10);
+    expect(committed.events.filter((event) => event.type === "message_appended")).toHaveLength(10);
     await store.runWrite(async () =>
       db.runWrite(async (tx) => {
         expect((await tx.queryOne("SELECT 1 as n"))?.n).toBe(1);

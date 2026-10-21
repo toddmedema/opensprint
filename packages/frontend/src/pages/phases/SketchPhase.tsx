@@ -1,3 +1,4 @@
+import type { ConversationMessage } from "@opensprint/shared";
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAppDispatch, useAppSelector } from "../../store";
@@ -5,10 +6,6 @@ import {
   sendSketchMessage,
   savePrdSection,
   uploadPrdFile,
-  addUserMessage,
-  setPrdContent,
-  setPrdHistory,
-  setMessages,
   setSketchError,
 } from "../../store/slices/sketchSlice";
 import {
@@ -159,21 +156,28 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
   const { data: planStatus } = usePlanStatus(projectId, { enabled: hasPrdContentFromQuery });
   const decomposeMutation = useDecomposePlans(projectId ?? "");
 
-  /* ── Sync query data to Redux for components that read from store ── */
-  useEffect(() => {
-    if (prdData) dispatch(setPrdContent(prdData));
-  }, [prdData, dispatch]);
-  useEffect(() => {
-    if (prdHistoryData) dispatch(setPrdHistory(prdHistoryData));
-  }, [prdHistoryData, dispatch]);
-  useEffect(() => {
-    if (chatMessagesData) dispatch(setMessages(chatMessagesData));
-  }, [chatMessagesData, dispatch]);
-
-  /* ── Redux state (client + synced server state) ── */
-  const messages = useAppSelector((s) => s.sketch.messages);
-  const prdContent = useAppSelector((s) => s.sketch.prdContent);
-  const prdHistory = useAppSelector((s) => s.sketch.prdHistory);
+  const [pendingMessages, setPendingMessages] = useState<ConversationMessage[]>([]);
+  const appendPendingMessage = useCallback((message: ConversationMessage) => {
+    const id = crypto.randomUUID();
+    setPendingMessages((previous) => [...previous, { ...message, id }]);
+    return id;
+  }, []);
+  const settlePendingMessage = useCallback(
+    async (id: string) => {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.chat.history(projectId, "sketch"),
+      });
+      setPendingMessages((previous) => previous.filter((message) => message.id !== id));
+    },
+    [projectId, queryClient]
+  );
+  useEffect(() => setPendingMessages([]), [projectId]);
+  const messages = useMemo(
+    () => [...(chatMessagesData ?? []), ...pendingMessages],
+    [chatMessagesData, pendingMessages]
+  );
+  const prdContent = useMemo(() => prdData ?? {}, [prdData]);
+  const prdHistory = useMemo(() => prdHistoryData ?? [], [prdHistoryData]);
   const sending = useAppSelector((s) => s.sketch.sendingChat);
   const sketchError = useAppSelector((s) => s.sketch.error);
   const savingSections = useAppSelector((s) => s.sketch.savingSections);
@@ -472,13 +476,11 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
     setInitialInput("");
     imageAttachment.resetTo([]);
 
-    dispatch(
-      addUserMessage({
-        role: "user",
-        content: text,
-        timestamp: new Date().toISOString(),
-      })
-    );
+    const pendingId = appendPendingMessage({
+      role: "user",
+      content: text,
+      timestamp: new Date().toISOString(),
+    });
 
     const result = await dispatch(
       sendSketchMessage({
@@ -489,6 +491,7 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
         requestOptions: { timeoutMs: null },
       })
     );
+    await settlePendingMessage(pendingId);
     if (sendSketchMessage.fulfilled.match(result)) {
       optimisticInitialSubmitRef.current = false;
       clearSketchInitialPromptDraft(projectId);
@@ -499,7 +502,16 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
       imageAttachment.resetTo(d.images);
       optimisticInitialSubmitRef.current = false;
     }
-  }, [initialInput, sending, projectId, dispatch, imageAttachment, triggerRefreshCascade]);
+  }, [
+    initialInput,
+    sending,
+    projectId,
+    dispatch,
+    imageAttachment,
+    triggerRefreshCascade,
+    appendPendingMessage,
+    settlePendingMessage,
+  ]);
 
   const onKeyDownInitial = useSubmitShortcut(handleInitialSubmit, {
     multiline: true,
@@ -508,20 +520,19 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
 
   const handleFileUpload = useCallback(
     async (file: File) => {
-      dispatch(
-        addUserMessage({
-          role: "user",
-          content: `[Uploaded: ${file.name}]`,
-          timestamp: new Date().toISOString(),
-        })
-      );
+      const pendingId = appendPendingMessage({
+        role: "user",
+        content: `[Uploaded: ${file.name}]`,
+        timestamp: new Date().toISOString(),
+      });
 
       const result = await dispatch(uploadPrdFile({ projectId, file }));
+      await settlePendingMessage(pendingId);
       if (uploadPrdFile.fulfilled.match(result)) {
         triggerRefreshCascade();
       }
     },
-    [projectId, dispatch, triggerRefreshCascade]
+    [projectId, dispatch, triggerRefreshCascade, appendPendingMessage, settlePendingMessage]
   );
 
   const handleGenerateFromCodebase = useCallback(async () => {
@@ -558,24 +569,30 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
       const prdFocus = selectionContext?.section ?? undefined;
       setSelectionContext(null);
 
-      dispatch(
-        addUserMessage({
-          role: "user",
-          content: fullMessage,
-          timestamp: new Date().toISOString(),
-        })
-      );
+      const pendingId = appendPendingMessage({
+        role: "user",
+        content: fullMessage,
+        timestamp: new Date().toISOString(),
+      });
 
       const result = await dispatch(
         sendSketchMessage({ projectId, message: fullMessage, prdSectionFocus: prdFocus })
       );
+      await settlePendingMessage(pendingId);
       if (sendSketchMessage.fulfilled.match(result)) {
         triggerRefreshCascade();
         return true;
       }
       return false;
     },
-    [selectionContext, projectId, dispatch, triggerRefreshCascade]
+    [
+      selectionContext,
+      projectId,
+      dispatch,
+      triggerRefreshCascade,
+      appendPendingMessage,
+      settlePendingMessage,
+    ]
   );
 
   const handleDiscuss = () => {

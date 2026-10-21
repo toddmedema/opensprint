@@ -6,6 +6,8 @@ import { COMMIT_MESSAGE_TITLE_MAX_LENGTH } from "@opensprint/shared";
 import { TaskLinkDisplay } from "./TaskLinkDisplay";
 import executeReducer from "../store/slices/executeSlice";
 import type { Task } from "@opensprint/shared";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { seedServerFixtureFromElement } from "../test/seedServerFixtures";
 
 const mockTasksGet = vi.fn();
 
@@ -67,8 +69,14 @@ function createStore(preloadedExecute?: { tasks: Task[] }) {
 
 function renderWithStore(ui: React.ReactElement, options?: { execute?: { tasks: Task[] } }) {
   const store = createStore(options?.execute?.tasks ? { tasks: options.execute.tasks } : undefined);
+  const client = new QueryClient();
+  seedServerFixtureFromElement(client, <Provider store={store}>{ui}</Provider>);
   return {
-    ...render(<Provider store={store}>{ui}</Provider>),
+    ...render(
+      <QueryClientProvider client={client}>
+        <Provider store={store}>{ui}</Provider>
+      </QueryClientProvider>
+    ),
     store,
   };
 }

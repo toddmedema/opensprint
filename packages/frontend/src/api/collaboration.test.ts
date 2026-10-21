@@ -33,6 +33,20 @@ const replay: CollaborationReplay = {
   hasMore: false,
 };
 describe("shared session replay", () => {
+  it("advances across task, approval and operation events without interpreting them as run control", () => {
+    const events = ["task_changed", "approval_changed", "operation_changed"].map((type, index) => ({
+      projectId: "p",
+      cursor: index + 2,
+      type,
+      actorId: "system",
+      createdAt: "now",
+      payload: { id: "resource", revision: index + 1 },
+    }));
+    const next = applyCollaborationReplay(snapshot, { events, nextCursor: 4, hasMore: false });
+    expect(next.cursor).toBe(4);
+    expect(next.runs).toEqual([]);
+    expect(next.messages).toEqual([]);
+  });
   it("recovers a committed message once without changing the original snapshot", () => {
     const next = applyCollaborationReplay(snapshot, replay);
     expect(next.messages.map((m) => m.id)).toEqual(["m"]);

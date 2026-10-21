@@ -30,6 +30,7 @@ import type { ReviewAgentResult } from "@opensprint/shared";
 const mockProjectServiceForSession = {
   getProjectByRepoPath: vi.fn().mockResolvedValue(null),
 };
+const mockHandleTaskFailure = vi.fn();
 
 vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => args,
@@ -199,6 +200,8 @@ describe("Multi-angle review flow — integration", () => {
       dependencyOutputs: [],
     });
     mockWriteJsonAtomic.mockResolvedValue(undefined);
+    mockLifecycleRun.mockResolvedValue(undefined);
+    mockHandleTaskFailure.mockResolvedValue(undefined);
     mockPersistCounters.mockResolvedValue(undefined);
     mockGetNextKey.mockResolvedValue({ key: "test-key" });
 
@@ -247,12 +250,12 @@ describe("Multi-angle review flow — integration", () => {
     phaseExecutor = new PhaseExecutorService(mockHost, {
       handleCodingDone: vi.fn().mockResolvedValue(undefined),
       handleReviewDone: vi.fn().mockResolvedValue(undefined),
-      handleTaskFailure: vi.fn().mockResolvedValue(undefined),
+      handleTaskFailure: mockHandleTaskFailure,
     });
   });
 
   afterEach(async () => {
-    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     try {
       await fs.rm(repoPath, { recursive: true, force: true });
     } catch {
@@ -282,10 +285,11 @@ describe("Multi-angle review flow — integration", () => {
       phaseExecutor = new PhaseExecutorService(mockHost, {
         handleCodingDone: vi.fn().mockResolvedValue(undefined),
         handleReviewDone: mockHandleReviewDone,
-        handleTaskFailure: vi.fn().mockResolvedValue(undefined),
+        handleTaskFailure: mockHandleTaskFailure,
       });
 
       await phaseExecutor.executeReviewPhase(projectId, repoPath, task, slot.branchName);
+      expect(mockHandleTaskFailure).not.toHaveBeenCalled();
 
       expect(mockLifecycleRun).toHaveBeenCalledTimes(1);
       const runParams = mockLifecycleRun.mock.calls[0]?.[0] as {
@@ -329,6 +333,7 @@ describe("Multi-angle review flow — integration", () => {
 
   describe("(2) 2 angles → 2 parallel agents, correct prompts", () => {
     it("spawns two parallel review agents with angle-specific prompts", async () => {
+      vi.stubEnv("OPENSPRINT_SERIALIZE_CURSOR_REVIEW_ANGLES", "0");
       mockGetSettings.mockResolvedValue({
         testFramework: "vitest",
         simpleComplexityAgent: { type: "cursor", model: null, cliCommand: null },
@@ -350,11 +355,13 @@ describe("Multi-angle review flow — integration", () => {
       phaseExecutor = new PhaseExecutorService(mockHost, {
         handleCodingDone: vi.fn().mockResolvedValue(undefined),
         handleReviewDone: mockHandleReviewDone,
-        handleTaskFailure: vi.fn().mockResolvedValue(undefined),
+        handleTaskFailure: mockHandleTaskFailure,
       });
 
       await phaseExecutor.executeReviewPhase(projectId, repoPath, task, slot.branchName);
+      expect(mockHandleTaskFailure).not.toHaveBeenCalled();
 
+      expect(mockLifecycleRun).toHaveBeenCalledTimes(2);
       const runParams = mockLifecycleRun.mock.calls.map(
         (call) =>
           call[0] as {
@@ -365,10 +372,21 @@ describe("Multi-angle review flow — integration", () => {
           }
       );
       const promptPaths = runParams.map((r) => r.promptPath);
-      expect(
-        promptPaths.some((p) => p.includes("review-angles/security")) ||
-          promptPaths.some((p) => p.includes("review-angles/performance"))
-      ).toBe(true);
+      expect(promptPaths.map((p) => path.normalize(p))).toEqual(
+        expect.arrayContaining(
+          ["security", "performance"].map((angle) =>
+            path.join(
+              repoPath,
+              ".opensprint",
+              "active",
+              taskId,
+              "review-angles",
+              angle,
+              "prompt.md"
+            )
+          )
+        )
+      );
 
       const securityPrompt = await fs.readFile(
         path.join(
@@ -570,10 +588,11 @@ describe("Multi-angle review flow — integration", () => {
       phaseExecutor = new PhaseExecutorService(mockHost, {
         handleCodingDone: vi.fn().mockResolvedValue(undefined),
         handleReviewDone: mockHandleReviewDone,
-        handleTaskFailure: vi.fn().mockResolvedValue(undefined),
+        handleTaskFailure: mockHandleTaskFailure,
       });
 
       await phaseExecutor.executeReviewPhase(projectId, repoPath, task, slot.branchName);
+      expect(mockHandleTaskFailure).not.toHaveBeenCalled();
 
       const runParams = mockLifecycleRun.mock.calls[0]?.[0] as {
         onDone: (code: number | null) => Promise<void>;

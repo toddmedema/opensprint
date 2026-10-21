@@ -14,8 +14,7 @@ import { usePlanVersions, usePlanVersion } from "../../api/hooks";
 /** Matches PrdSectionEditor / Sketch phase debounce for consistency */
 const DEBOUNCE_MS = 800;
 
-const PARENT_SUBPLANS_SIDEBAR_COPY =
-  "Sub-plans created — generate tasks on each sub-plan";
+const PARENT_SUBPLANS_SIDEBAR_COPY = "Sub-plans created — generate tasks on each sub-plan";
 
 const PLAN_TOO_LARGE_SIDEBAR_COPY =
   "This plan may be too large for a single batch — consider narrowing scope in the SPEC";
@@ -31,7 +30,7 @@ export interface PlanDetailPlanTasksHint {
 
 export interface PlanDetailContentProps {
   plan: Plan;
-  onContentSave: (content: string) => void;
+  onContentSave: (content: string, expectedRevision?: number) => void | Promise<number | void>;
   saving?: boolean;
   /** Optional actions to render in the header row next to the title (e.g. archive, close buttons) */
   headerActions?: React.ReactNode;
@@ -148,6 +147,7 @@ export function PlanDetailContent({
     prevSavingRef.current = saving;
   }, [saving]);
   const titleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const titleRevision = useRef<number | undefined>(undefined);
   const lastBodyRef = useRef(body);
   const titleValueRef = useRef(titleValue);
   const saveTitleRef = useRef<(t: string) => void>(() => {});
@@ -157,6 +157,11 @@ export function PlanDetailContent({
   // Sync title from props when plan changes (e.g. after fetch)
   useEffect(() => {
     const { title: t } = parsePlanContent(plan.content ?? "");
+    if (
+      titleRevision.current !== undefined &&
+      titleValueRef.current !== (t || formatPlanIdAsTitle(plan.metadata.planId))
+    )
+      return;
     setTitleValue(t || formatPlanIdAsTitle(plan.metadata.planId));
   }, [plan.metadata.planId, plan.content]);
 
@@ -166,10 +171,16 @@ export function PlanDetailContent({
       const effectiveTitle = trimmed || formatPlanIdAsTitle(plan.metadata.planId);
       const newContent = serializePlanContent(effectiveTitle, body || lastBodyRef.current);
       if (newContent !== (plan.content ?? "")) {
-        onContentSave(newContent);
+        const expected = titleRevision.current ?? plan.revision;
+        const result =
+          expected === undefined ? onContentSave(newContent) : onContentSave(newContent, expected);
+        if (result)
+          void result.then((revision) => {
+            if (typeof revision === "number") titleRevision.current = revision;
+          });
       }
     },
-    [body, plan.content, plan.metadata.planId, onContentSave]
+    [body, plan.content, plan.metadata.planId, plan.revision, onContentSave]
   );
 
   saveTitleRef.current = saveTitle;
@@ -196,11 +207,12 @@ export function PlanDetailContent({
   const handleTitleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const v = e.target.value;
+      if (titleRevision.current === undefined) titleRevision.current = plan.revision;
       setTitleValue(v);
       if (titleDebounceRef.current) clearTimeout(titleDebounceRef.current);
       titleDebounceRef.current = setTimeout(() => saveTitle(v), DEBOUNCE_MS);
     },
-    [saveTitle]
+    [saveTitle, plan.revision]
   );
 
   const handleTitleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -233,7 +245,7 @@ export function PlanDetailContent({
   }, []);
 
   const handleSectionSave = useCallback(
-    (sectionIndex: number, newSectionContent: string) => {
+    (sectionIndex: number, newSectionContent: string, expectedRevision?: number) => {
       const updated = sections.map((s, i) =>
         i === sectionIndex ? { ...s, content: newSectionContent } : s
       );
@@ -241,10 +253,13 @@ export function PlanDetailContent({
       lastBodyRef.current = newBody;
       const fullContent = serializePlanContent(titleValue || displayTitle, newBody);
       if (fullContent !== (plan.content ?? "")) {
-        onContentSave(fullContent);
+        const expected = expectedRevision ?? plan.revision;
+        return expected === undefined
+          ? onContentSave(fullContent)
+          : onContentSave(fullContent, expected);
       }
     },
-    [sections, titleValue, displayTitle, plan.content, onContentSave]
+    [sections, titleValue, displayTitle, plan.content, plan.revision, onContentSave]
   );
 
   const lastSectionCommandTokenRef = useRef<number | null>(null);
@@ -479,8 +494,13 @@ export function PlanDetailContent({
               <PrdSectionEditor
                 sectionKey={`plan-section-${originalIndex}`}
                 markdown={section.content || "_No content yet_"}
-                onSave={(_key, md) =>
-                  handleSectionSave(originalIndex, !md || md === "_No content yet_" ? "" : md)
+                revision={plan.revision}
+                onSave={(_key, md, expectedRevision) =>
+                  handleSectionSave(
+                    originalIndex,
+                    !md || md === "_No content yet_" ? "" : md,
+                    expectedRevision
+                  )
                 }
                 disabled={isReadOnly}
                 lightMode

@@ -16,6 +16,7 @@ import { setSelfImprovementRunInProgressForTest } from "../services/self-improve
 import { setProjectIndexPathForTesting } from "../services/project-index.js";
 import { setSettingsStorePathForTesting } from "../services/settings-store.service.js";
 import { authedSupertest } from "./local-auth-test-helpers.js";
+import { trackProjectRuntimeRefreshes } from "./project-runtime-test-helpers.js";
 
 vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => args,
@@ -71,8 +72,10 @@ describe.skipIf(!projectsPostgresOk)("Projects REST API — spec/sketch phase ro
   let projectService: ProjectService;
   let tempDir: string;
   let projectId: string;
+  let drainRuntimeRefreshes: () => Promise<void>;
 
   beforeEach(async () => {
+    drainRuntimeRefreshes = trackProjectRuntimeRefreshes();
     app = createApp();
     projectService = new ProjectService();
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-projects-route-test-"));
@@ -101,6 +104,7 @@ describe.skipIf(!projectsPostgresOk)("Projects REST API — spec/sketch phase ro
   });
 
   afterEach(async () => {
+    await drainRuntimeRefreshes();
     await cleanupTestProject({ projectService, projectId });
     projectService.clearListCacheForTesting();
     setGlobalSettingsPathForTesting(null);
@@ -400,8 +404,10 @@ describe("Projects REST API — create and settings", () => {
   let projectService: ProjectService;
   let tempDir: string;
   let projectId: string;
+  let drainRuntimeRefreshes: () => Promise<void>;
 
   beforeEach(async () => {
+    drainRuntimeRefreshes = trackProjectRuntimeRefreshes();
     app = createApp();
     projectService = new ProjectService();
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-projects-create-test-"));
@@ -430,6 +436,7 @@ describe("Projects REST API — create and settings", () => {
   });
 
   afterEach(async () => {
+    await drainRuntimeRefreshes();
     setBackendRuntimeInfoForTesting(null);
     projectService.clearListCacheForTesting();
     setGlobalSettingsPathForTesting(null);

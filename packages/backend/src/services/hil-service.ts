@@ -1,9 +1,12 @@
-import type { HilConfig } from "@opensprint/shared";
+import { randomUUID } from "node:crypto";
+import { prdToSpecMarkdown, type HilConfig } from "@opensprint/shared";
 import { ProjectService } from "./project.service.js";
 import { notificationService } from "./notification.service.js";
 import { prdProposalStore } from "./prd-proposal-store.js";
 import { broadcastToProject } from "../websocket/index.js";
 import { createLogger } from "../utils/logger.js";
+import { PrdService } from "./prd.service.js";
+import { specPublicationService } from "./spec-publication.service.js";
 
 const log = createLogger("hil");
 type HilCategory = keyof HilConfig;
@@ -24,9 +27,6 @@ export interface ScopeChangeHilMetadata {
   scopeChangeProposedUpdates: ScopeChangeProposedUpdate[];
 }
 
-/** How often to sweep stale HIL notifications */
-const HIL_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
-
 /**
  * Human-in-the-loop service.
  * Routes all approval requests through the Human Notification System (notification bell).
@@ -34,21 +34,6 @@ const HIL_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
  */
 export class HilService {
   private projectService = new ProjectService();
-  /** Callbacks for blocking HIL approvals: notificationId -> (approved: boolean) => void */
-  private notificationResolveCallbacks = new Map<string, (approved: boolean) => void>();
-  private cleanupTimer: ReturnType<typeof setInterval>;
-
-  constructor() {
-    this.cleanupTimer = setInterval(() => this.sweepStaleCallbacks(), HIL_CLEANUP_INTERVAL_MS);
-    if (this.cleanupTimer.unref) this.cleanupTimer.unref();
-  }
-
-  /** Auto-resolve stale callbacks to prevent unbounded growth */
-  private sweepStaleCallbacks(): void {
-    // Callbacks are stored without timestamp; we rely on notification TTL or user action.
-    // For now, keep callbacks until resolved; no sweep by age (notification.resolve clears them).
-  }
-
   /**
    * Evaluate a decision against the HIL config.
    * Returns immediately for 'automated' and 'notify_and_proceed'.
@@ -66,6 +51,18 @@ export class HilService {
     proposedSpecContent?: string,
     baseSpecContent?: string
   ): Promise<{ approved: boolean; notes?: string }> {
+    if (!proposedSpecContent && scopeChangeMetadata?.scopeChangeProposedUpdates.length) {
+      const prd = await new PrdService().getPrd(projectId);
+      baseSpecContent = prdToSpecMarkdown(prd);
+      for (const update of scopeChangeMetadata.scopeChangeProposedUpdates) {
+        prd.sections[update.section] = {
+          content: update.content,
+          version: (prd.sections[update.section]?.version ?? 0) + 1,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+      proposedSpecContent = prdToSpecMarkdown(prd);
+    }
     // PRD §6.5.1: Test failures are always automated — never configurable
     if (category === "testFailuresAndRetries") {
       log.info("Automated decision for testFailuresAndRetries", { description });
@@ -82,7 +79,16 @@ export class HilService {
 
       case "notify_and_proceed": {
         // Create notification, broadcast, proceed immediately (no blocking)
+        const requestId = `hil-${randomUUID()}`;
+        if (proposedSpecContent)
+          await prdProposalStore.registerDurable(
+            projectId,
+            requestId,
+            proposedSpecContent,
+            baseSpecContent ?? ""
+          );
         const notification = await notificationService.createHilApproval({
+          id: requestId,
           projectId,
           source,
           sourceId: sourceId || (source === "eval" ? "scope" : "architecture"),
@@ -95,10 +101,6 @@ export class HilService {
               }
             : undefined,
         });
-
-        if (proposedSpecContent) {
-          prdProposalStore.register(notification.id, proposedSpecContent, baseSpecContent);
-        }
 
         broadcastToProject(projectId, {
           type: "notification.added",
@@ -121,7 +123,16 @@ export class HilService {
 
       case "requires_approval": {
         // Create notification, register callback, broadcast; block until user resolves via bell
+        const requestId = `hil-${randomUUID()}`;
+        if (proposedSpecContent)
+          await prdProposalStore.registerDurable(
+            projectId,
+            requestId,
+            proposedSpecContent,
+            baseSpecContent ?? ""
+          );
         const notification = await notificationService.createHilApproval({
+          id: requestId,
           projectId,
           source,
           sourceId: sourceId || (source === "eval" ? "scope" : "architecture"),
@@ -134,10 +145,6 @@ export class HilService {
               }
             : undefined,
         });
-
-        if (proposedSpecContent) {
-          prdProposalStore.register(notification.id, proposedSpecContent, baseSpecContent);
-        }
 
         broadcastToProject(projectId, {
           type: "notification.added",
@@ -160,12 +167,24 @@ export class HilService {
           notificationId: notification.id,
         });
 
-        return new Promise<{ approved: boolean; notes?: string }>((resolve) => {
-          this.notificationResolveCallbacks.set(notification.id, (approved) => {
-            this.notificationResolveCallbacks.delete(notification.id);
-            resolve({ approved });
-          });
-        });
+        // A live caller observes durable state. Application of an approved SPEC
+        // belongs to the server worker and survives loss of this promise.
+        while (true) {
+          const resolved = await notificationService.getById(projectId, notification.id);
+          if (!resolved) return { approved: false, notes: "Approval was removed" };
+          if (resolved.status === "resolved") {
+            const approved =
+              resolved.responses?.some(
+                (r) => r.questionId === "approval" && r.answer === "approved"
+              ) ?? false;
+            if (approved && proposedSpecContent) {
+              await specPublicationService.applyApprovedProposal(notification.id);
+              return { approved: true, notes: "durable_spec_applied" };
+            }
+            return { approved };
+          }
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        }
       }
 
       default:
@@ -177,15 +196,9 @@ export class HilService {
    * Called when a hil_approval notification is resolved via PATCH.
    * Resolves the waiting promise for requires_approval.
    */
-  notifyResolved(notificationId: string, approved: boolean): void {
+  async notifyResolved(notificationId: string, approved: boolean): Promise<void> {
+    if (approved) await specPublicationService.applyApprovedProposal(notificationId);
     prdProposalStore.remove(notificationId);
-
-    const callback = this.notificationResolveCallbacks.get(notificationId);
-    if (callback) {
-      callback(approved);
-      this.notificationResolveCallbacks.delete(notificationId);
-      log.info("HIL notification resolved", { notificationId, approved });
-    }
   }
 }
 

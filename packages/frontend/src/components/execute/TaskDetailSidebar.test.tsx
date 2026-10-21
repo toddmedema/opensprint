@@ -1861,24 +1861,27 @@ describe("TaskDetailSidebar", () => {
       expect(screen.queryByTestId("priority-dropdown")).not.toBeInTheDocument();
     });
 
-    it("shows Updating… and disables dropdown when priority update is pending", () => {
+    it("shows Updating… and disables dropdown while its query mutation is pending", async () => {
+      const user = userEvent.setup();
       const task = taskDetailWithPriority(1);
-      const props = createMinimalProps({
-        selectedTaskData: task,
+      let finish!: (value: Task) => void;
+      mockUpdatePriority.mockImplementation(
+        () =>
+          new Promise<Task>((resolve) => {
+            finish = resolve;
+          })
+      );
+      renderSidebar(createMinimalProps({ selectedTaskData: task }), {
+        preloadedState: getPreloadedState(task),
       });
-      renderSidebar(props, {
-        preloadedState: {
-          ...getPreloadedState(task),
-          execute: {
-            ...getPreloadedState(task).execute,
-            priorityUpdatePendingTaskId: "epic-1.1",
-          },
-        },
-      });
+      await user.click(screen.getByTestId("priority-dropdown-trigger"));
+      await user.click(screen.getByTestId("priority-option-0"));
       const trigger = screen.getByTestId("priority-dropdown-trigger");
-      expect(trigger).toHaveTextContent("Updating…");
+      await waitFor(() => expect(trigger).toHaveTextContent("Updating…"));
       expect(trigger).toBeDisabled();
       expect(trigger).toHaveAttribute("aria-busy", "true");
+      finish({ ...task, priority: 0 });
+      await waitFor(() => expect(trigger).not.toBeDisabled());
     });
 
     it("does not call API when selecting the same priority", async () => {
@@ -2643,7 +2646,9 @@ describe("TaskDetailSidebar", () => {
       })
     ).toBeInTheDocument();
 
-    expect(screen.queryByRole("button", { name: /collapse chat with agent/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /collapse chat with agent/i })
+    ).not.toBeInTheDocument();
 
     const tablist = screen.getByRole("tablist", { name: "Agent output tabs" });
     expect(tablist).toBeInTheDocument();

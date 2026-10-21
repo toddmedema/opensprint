@@ -6,6 +6,7 @@ import { useAppDispatch } from "../../store";
 import { wsConnect } from "../../store/middleware/websocketMiddleware";
 import { getMessageBasedHint } from "../../store/listeners/notificationListener";
 import { useRelativeReceivedLabel } from "../../hooks/useRelativeReceivedLabel";
+import type { ExecutionState } from "../../api/runtime";
 
 export interface TaskDetailAgentOutputProps {
   projectId: string;
@@ -28,6 +29,8 @@ export interface TaskDetailAgentOutputProps {
   scrollResetKey?: string;
   /** ISO time of last agent output (browser or server); shown subtly when live streaming. */
   lastOutputReceivedAtIso?: string | null;
+  retentionGap?: boolean;
+  executionState?: ExecutionState | null;
 }
 
 function LiveOutputLastReceivedHint({ iso }: { iso: string }) {
@@ -61,6 +64,8 @@ export function TaskDetailAgentOutput({
   jumpToBottom,
   scrollResetKey,
   lastOutputReceivedAtIso,
+  retentionGap = false,
+  executionState,
 }: TaskDetailAgentOutputProps) {
   const dispatch = useAppDispatch();
 
@@ -82,6 +87,21 @@ export function TaskDetailAgentOutput({
         )
       ) : (
         <div className="relative flex flex-col min-h-0 flex-1">
+          {retentionGap && (
+            <div className="px-4 py-2 text-xs text-theme-muted" role="status">
+              Earlier output expired. Showing the retained portion of this attempt.
+            </div>
+          )}
+          {executionState === "stop_requested" && (
+            <div className="px-4 py-2 text-xs text-theme-muted" role="status">
+              Stop requested. Waiting for execution to exit.
+            </div>
+          )}
+          {executionState === "uncertain" && (
+            <div className="px-4 py-2 text-xs text-theme-warning-solid" role="status">
+              Execution ownership is uncertain. Its assignment and workspace are retained.
+            </div>
+          )}
           {!wsConnected ? (
             <div className="p-4 flex flex-col gap-3" data-testid="live-output-connecting">
               <div className="text-sm text-theme-muted flex items-center gap-2">

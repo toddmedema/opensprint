@@ -34,6 +34,12 @@ function tokensEqual(a: string, b: string): boolean {
 /** Idempotent: generates a random token in production/dev, fixed token in Vitest. */
 export function ensureLocalSessionToken(): void {
   if (sessionToken !== null) return;
+  if (process.env.OPENSPRINT_HOST_TOKEN) {
+    if (process.env.OPENSPRINT_HOST_TOKEN.length < 32)
+      throw new Error("OPENSPRINT_HOST_TOKEN must have at least 32 characters.");
+    sessionToken = process.env.OPENSPRINT_HOST_TOKEN;
+    return;
+  }
   if (isTestProcess()) {
     sessionToken = VITEST_DEFAULT_LOCAL_SESSION_TOKEN;
     return;

@@ -11,6 +11,7 @@ import {
   type CommandSpec,
 } from "../utils/command-runner.js";
 import { getGitNoHooksPath } from "../utils/git-no-hooks.js";
+import { unlinkWorktreeLinks } from "../utils/worktree-links.js";
 import { assertWorktreeIntegrity, rebuildWorktreeIfInvalid } from "../utils/worktree-health.js";
 import { BranchManager } from "./branch-manager.js";
 import {
@@ -26,6 +27,7 @@ import {
 } from "./toolchain-profile.service.js";
 import { ValidationWorkspaceService } from "./validation-workspace.service.js";
 import { redactSecretsForUserDisplay } from "../utils/secret-redaction.js";
+import { getDeploymentMode } from "./deployment-mode.js";
 
 const log = createLogger("merge-quality-gate-runner");
 const QUALITY_GATE_FAILURE_OUTPUT_LIMIT = 4000;
@@ -133,7 +135,10 @@ function pathUnderWorktreeRoot(candidate: string, worktreeRoot: string): boolean
     realRoot = path.resolve(worktreeRoot);
   }
   const absCandidate = path.resolve(candidate);
-  if (relFromRoots(absCandidate, path.resolve(worktreeRoot)) || relFromRoots(absCandidate, realRoot)) {
+  if (
+    relFromRoots(absCandidate, path.resolve(worktreeRoot)) ||
+    relFromRoots(absCandidate, realRoot)
+  ) {
     return true;
   }
   // Missing path segments: walk up until realpathSync succeeds, then re-append suffixes.
@@ -142,8 +147,7 @@ function pathUnderWorktreeRoot(candidate: string, worktreeRoot: string): boolean
   for (;;) {
     try {
       const realPrefix = realpathSync(cur);
-      const combined =
-        tail.length > 0 ? path.join(realPrefix, ...tail) : realPrefix;
+      const combined = tail.length > 0 ? path.join(realPrefix, ...tail) : realPrefix;
       return relFromRoots(combined, realRoot);
     } catch {
       tail.unshift(path.basename(cur));
@@ -175,7 +179,10 @@ function isToolishOrDependencyPath(normalizedPosix: string): boolean {
  * True when failure text indicates ENOENT while opening a source file under the worktree
  * (typically inconsistent refactor: importer exists, module file missing).
  */
-export function looksLikeEnoentOpeningMissingWorktreeSource(text: string, worktreePath: string): boolean {
+export function looksLikeEnoentOpeningMissingWorktreeSource(
+  text: string,
+  worktreePath: string
+): boolean {
   if (!text.trim() || !worktreePath.trim()) return false;
   if (!/\bENOENT\b|no such file or directory/i.test(text)) return false;
 
@@ -191,7 +198,7 @@ export function looksLikeEnoentOpeningMissingWorktreeSource(text: string, worktr
     while ((m = pathLike.exec(text)) !== null) {
       const raw = (m[1] ?? "").trim();
       if (!raw) continue;
-      if (!raw.startsWith(path.sep) && !/^[A-Za-z]:[\\/]/.test(raw)) continue;
+      if (!path.isAbsolute(raw) && !/^[A-Za-z]:[\\/]/.test(raw)) continue;
       if (!/\.(?:ts|tsx|mts|cts)$/i.test(raw)) continue;
       const posix = raw.replace(/\\/g, "/");
       if (isToolishOrDependencyPath(posix)) continue;
@@ -215,9 +222,9 @@ async function stripWorktreeNodeModulePaths(worktreePath: string): Promise<void>
     const pkgDir = path.join(packagesDir, name);
     const st = await fs.stat(pkgDir).catch(() => null);
     if (!st?.isDirectory()) continue;
-    await fs.rm(path.join(pkgDir, "node_modules"), { recursive: true, force: true }).catch(
-      () => undefined
-    );
+    await fs
+      .rm(path.join(pkgDir, "node_modules"), { recursive: true, force: true })
+      .catch(() => undefined);
   }
 }
 
@@ -553,7 +560,9 @@ function buildFailure(params: {
 }
 
 /** Object literals that bypass buildFailure still need the same persisted diagnostic scrub. */
-function redactMergeQualityGateFailureSurface(failure: MergeQualityGateFailure): MergeQualityGateFailure {
+function redactMergeQualityGateFailureSurface(
+  failure: MergeQualityGateFailure
+): MergeQualityGateFailure {
   return {
     ...failure,
     reason: redactSecretsForUserDisplay(failure.reason).slice(0, QUALITY_GATE_FAILURE_REASON_LIMIT),
@@ -1149,6 +1158,7 @@ async function repairQualityGateEnvironment(
 
   if (validationWorkspace === "baseline") {
     const noHooks = getGitNoHooksPath();
+    await unlinkWorktreeLinks(worktreePath);
     commands.push("git worktree remove", "git worktree add --detach");
     await deps
       .runCommand(
@@ -1285,128 +1295,128 @@ async function repairQualityGateEnvironment(
         worktreeDependencyHealthy = false;
       }
     } else {
-    // merged_candidate repair: symlink from main repo is the primary fast path.
-    // 1) Check if repo already has healthy node_modules (skip npm ci if so).
-    // 2) If not, run npm ci in repo root.
-    // 3) Symlink from host to worktree.
-    // 4) If symlink doesn't produce usable (non-empty) node_modules, npm ci in worktree.
+      // merged_candidate repair: symlink from main repo is the primary fast path.
+      // 1) Check if repo already has healthy node_modules (skip npm ci if so).
+      // 2) If not, run npm ci in repo root.
+      // 3) Symlink from host to worktree.
+      // 4) If symlink doesn't produce usable (non-empty) node_modules, npm ci in worktree.
 
-    const repoNodeModulesHealthy = await isNodeModulesUsable(
-      path.join(options.repoPath, "node_modules")
-    );
-    let repoDependencyHealthy = false;
-    if (repoNodeModulesHealthy) {
-      const repoDependencyHealth = await runDependencyHealthCheck(
-        options.repoPath,
-        deps.runCommand,
-        options.toolchainProfile
+      const repoNodeModulesHealthy = await isNodeModulesUsable(
+        path.join(options.repoPath, "node_modules")
       );
-      repoDependencyHealthy = repoDependencyHealth.healthy;
-      if (!repoDependencyHealth.healthy) {
-        outputParts.push(
-          `[repo dependency health @ ${options.repoPath}] ${repoDependencyHealth.output}`
+      let repoDependencyHealthy = false;
+      if (repoNodeModulesHealthy) {
+        const repoDependencyHealth = await runDependencyHealthCheck(
+          options.repoPath,
+          deps.runCommand,
+          options.toolchainProfile
         );
-      }
-    }
-
-    if (repoNodeModulesHealthy && repoDependencyHealthy) {
-      commands.push("repo node_modules + dependency health already healthy (skip npm ci)");
-      npmCiSucceeded = true;
-      outputParts.push(
-        `[repo check] node_modules and dependency health already healthy at ${options.repoPath}`
-      );
-    } else {
-      commands.push("npm ci (repo root)");
-      try {
-        const result = await deps.runCommand(
-          { command: "npm", args: ["ci"] },
-          {
-            cwd: options.repoPath,
-            timeout: QUALITY_GATE_AUTO_REPAIR_TIMEOUT_MS,
-            env: NPM_INCLUDE_DEV_ENV,
-          }
-        );
-        npmCiSucceeded = true;
-        const npmCiOutput = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
-        if (npmCiOutput) outputParts.push(`[npm ci @ ${options.repoPath}] ${npmCiOutput}`);
-      } catch (err) {
-        const npmCiFailure = extractCommandFailure("npm ci", err, {
-          worktreePath: options.repoPath,
-          validationWorkspace,
-          category: "environment_setup",
-        });
-        const npmCiOutput = [npmCiFailure.reason, npmCiFailure.output]
-          .filter(Boolean)
-          .join("\n")
-          .trim();
-        if (npmCiOutput) outputParts.push(`[npm ci @ ${options.repoPath}] ${npmCiOutput}`);
-      }
-    }
-
-    commands.push("symlinkNodeModules (merged_candidate)");
-    try {
-      await deps.symlinkNodeModules(options.repoPath, worktreePath);
-    } catch (err) {
-      symlinkSucceeded = false;
-      outputParts.push(`[symlinkNodeModules] ${getErrorMessage(err)}`);
-    }
-
-    const nodeModulesUsable = await isNodeModulesUsable(path.join(worktreePath, "node_modules"));
-    if (nodeModulesUsable) {
-      const worktreeDependencyHealth = await runDependencyHealthCheck(
-        worktreePath,
-        deps.runCommand,
-        options.toolchainProfile
-      );
-      worktreeDependencyHealthy = worktreeDependencyHealth.healthy;
-      if (!worktreeDependencyHealthy) {
-        outputParts.push(
-          `[worktree dependency health @ ${worktreePath}] ${worktreeDependencyHealth.output}`
-        );
-      }
-    } else {
-      worktreeDependencyHealthy = false;
-    }
-
-    if (!nodeModulesUsable || !worktreeDependencyHealthy) {
-      commands.push("npm ci (worktree fallback)");
-      try {
-        const result = await deps.runCommand(
-          { command: "npm", args: ["ci"] },
-          {
-            cwd: worktreePath,
-            timeout: QUALITY_GATE_AUTO_REPAIR_TIMEOUT_MS,
-            env: NPM_INCLUDE_DEV_ENV,
-          }
-        );
-        npmCiSucceeded = true;
-        const out = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
-        if (out) outputParts.push(`[npm ci @ ${worktreePath}] ${out}`);
-        worktreeDependencyHealthy = true;
-
-        // After successful worktree install, re-symlink from host if its deps
-        // are now healthy so future validations can use the fast symlink path.
-        if (await isNodeModulesUsable(path.join(options.repoPath, "node_modules"))) {
-          try {
-            await deps.symlinkNodeModules(options.repoPath, worktreePath);
-            outputParts.push(
-              `[re-symlink] Re-linked node_modules from host after worktree install`
-            );
-          } catch {
-            // Worktree already has its own node_modules — non-critical
-          }
+        repoDependencyHealthy = repoDependencyHealth.healthy;
+        if (!repoDependencyHealth.healthy) {
+          outputParts.push(
+            `[repo dependency health @ ${options.repoPath}] ${repoDependencyHealth.output}`
+          );
         }
+      }
+
+      if (repoNodeModulesHealthy && repoDependencyHealthy) {
+        commands.push("repo node_modules + dependency health already healthy (skip npm ci)");
+        npmCiSucceeded = true;
+        outputParts.push(
+          `[repo check] node_modules and dependency health already healthy at ${options.repoPath}`
+        );
+      } else {
+        commands.push("npm ci (repo root)");
+        try {
+          const result = await deps.runCommand(
+            { command: "npm", args: ["ci"] },
+            {
+              cwd: options.repoPath,
+              timeout: QUALITY_GATE_AUTO_REPAIR_TIMEOUT_MS,
+              env: NPM_INCLUDE_DEV_ENV,
+            }
+          );
+          npmCiSucceeded = true;
+          const npmCiOutput = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+          if (npmCiOutput) outputParts.push(`[npm ci @ ${options.repoPath}] ${npmCiOutput}`);
+        } catch (err) {
+          const npmCiFailure = extractCommandFailure("npm ci", err, {
+            worktreePath: options.repoPath,
+            validationWorkspace,
+            category: "environment_setup",
+          });
+          const npmCiOutput = [npmCiFailure.reason, npmCiFailure.output]
+            .filter(Boolean)
+            .join("\n")
+            .trim();
+          if (npmCiOutput) outputParts.push(`[npm ci @ ${options.repoPath}] ${npmCiOutput}`);
+        }
+      }
+
+      commands.push("symlinkNodeModules (merged_candidate)");
+      try {
+        await deps.symlinkNodeModules(options.repoPath, worktreePath);
       } catch (err) {
-        const fail = extractCommandFailure("npm ci", err, {
+        symlinkSucceeded = false;
+        outputParts.push(`[symlinkNodeModules] ${getErrorMessage(err)}`);
+      }
+
+      const nodeModulesUsable = await isNodeModulesUsable(path.join(worktreePath, "node_modules"));
+      if (nodeModulesUsable) {
+        const worktreeDependencyHealth = await runDependencyHealthCheck(
           worktreePath,
-          validationWorkspace,
-          category: "environment_setup",
-        });
-        const out = [fail.reason, fail.output].filter(Boolean).join("\n").trim();
-        if (out) outputParts.push(`[npm ci @ ${worktreePath}] ${out}`);
+          deps.runCommand,
+          options.toolchainProfile
+        );
+        worktreeDependencyHealthy = worktreeDependencyHealth.healthy;
+        if (!worktreeDependencyHealthy) {
+          outputParts.push(
+            `[worktree dependency health @ ${worktreePath}] ${worktreeDependencyHealth.output}`
+          );
+        }
+      } else {
         worktreeDependencyHealthy = false;
       }
-    }
+
+      if (!nodeModulesUsable || !worktreeDependencyHealthy) {
+        commands.push("npm ci (worktree fallback)");
+        try {
+          const result = await deps.runCommand(
+            { command: "npm", args: ["ci"] },
+            {
+              cwd: worktreePath,
+              timeout: QUALITY_GATE_AUTO_REPAIR_TIMEOUT_MS,
+              env: NPM_INCLUDE_DEV_ENV,
+            }
+          );
+          npmCiSucceeded = true;
+          const out = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+          if (out) outputParts.push(`[npm ci @ ${worktreePath}] ${out}`);
+          worktreeDependencyHealthy = true;
+
+          // After successful worktree install, re-symlink from host if its deps
+          // are now healthy so future validations can use the fast symlink path.
+          if (await isNodeModulesUsable(path.join(options.repoPath, "node_modules"))) {
+            try {
+              await deps.symlinkNodeModules(options.repoPath, worktreePath);
+              outputParts.push(
+                `[re-symlink] Re-linked node_modules from host after worktree install`
+              );
+            } catch {
+              // Worktree already has its own node_modules — non-critical
+            }
+          }
+        } catch (err) {
+          const fail = extractCommandFailure("npm ci", err, {
+            worktreePath,
+            validationWorkspace,
+            category: "environment_setup",
+          });
+          const out = [fail.reason, fail.output].filter(Boolean).join("\n").trim();
+          if (out) outputParts.push(`[npm ci @ ${worktreePath}] ${out}`);
+          worktreeDependencyHealthy = false;
+        }
+      }
     }
   } else {
     // Non-merged_candidate, non-baseline: npm ci in worktree + re-symlink.
@@ -1549,6 +1559,37 @@ export async function runMergeQualityGates(
   deps: MergeQualityGateRunnerDeps = {}
 ): Promise<MergeQualityGateFailure | null> {
   if (process.env.NODE_ENV === "test") return null;
+  if (getDeploymentMode() === "isolated-hosted") {
+    const { runIsolatedCommand } = await import("./agent/isolated-runner.js");
+    const plan = getMergeQualityGateExecutionPlan({
+      profile: options.qualityGateProfile,
+      toolchainProfile: options.toolchainProfile,
+    });
+    const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
+    const commands = plan.map((step) => {
+      const env = Object.entries(step.env ?? {})
+        .map(([key, value]) => {
+          if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key))
+            throw new Error("Invalid isolated gate environment key");
+          return `${key}=${quote(String(value ?? ""))}`;
+        })
+        .join(" ");
+      return `( ${env} ${step.command} )`;
+    });
+    if (!commands.length) return null;
+    const result = await runIsolatedCommand(options.worktreePath, commands.join(" && "));
+    return result.exitCode === 0
+      ? null
+      : {
+          command: plan.map((item) => item.command).join(" && "),
+          reason: "Isolated quality gate failed",
+          output: result.output,
+          worktreePath: options.worktreePath,
+          validationWorkspace: options.validationWorkspace,
+          category: "quality_gate",
+          exitCode: result.exitCode,
+        };
+  }
 
   const normWt = await resolveMergeGateFilesystemRoot(options.worktreePath);
   const normRepo = await resolveMergeGateFilesystemRoot(options.repoPath);
@@ -1688,8 +1729,7 @@ export async function runMergeQualityGates(
         toolchainProfile: gateOptions.toolchainProfile,
       });
   const validationWorkspace =
-    gateOptions.validationWorkspace ??
-    (normWt === normRepo ? "repo_root" : "task_worktree");
+    gateOptions.validationWorkspace ?? (normWt === normRepo ? "repo_root" : "task_worktree");
   const resolvedProfile = resolvedProfileEarly;
   const symlinkNodeModules =
     deps.symlinkNodeModules ??
@@ -1719,13 +1759,23 @@ export async function runMergeQualityGates(
     if ("failure" in preparedOrFailure) {
       const initialFailure = preparedOrFailure.failure;
       if (initialFailure.category !== "environment_setup") {
-        return await withMergeGateFailureTelemetry(initialFailure, normWt, runCommand, gateRuntimeFields);
+        return await withMergeGateFailureTelemetry(
+          initialFailure,
+          normWt,
+          runCommand,
+          gateRuntimeFields
+        );
       }
       if (
         !isNodeDependencyStrategy(resolvedProfile.dependencyStrategy) ||
         parseCommandSpec(command).command !== "npm"
       ) {
-        return await withMergeGateFailureTelemetry(initialFailure, normWt, runCommand, gateRuntimeFields);
+        return await withMergeGateFailureTelemetry(
+          initialFailure,
+          normWt,
+          runCommand,
+          gateRuntimeFields
+        );
       }
 
       const autoRepair = await repairQualityGateEnvironment(
@@ -1806,13 +1856,23 @@ export async function runMergeQualityGates(
         command,
         reason: initialFailure.reason,
       });
-      return await withMergeGateFailureTelemetry(initialFailure, normWt, runCommand, gateRuntimeFields);
+      return await withMergeGateFailureTelemetry(
+        initialFailure,
+        normWt,
+        runCommand,
+        gateRuntimeFields
+      );
     }
     if (
       !isNodeDependencyStrategy(resolvedProfile.dependencyStrategy) ||
       parseCommandSpec(command).command !== "npm"
     ) {
-      return await withMergeGateFailureTelemetry(initialFailure, normWt, runCommand, gateRuntimeFields);
+      return await withMergeGateFailureTelemetry(
+        initialFailure,
+        normWt,
+        runCommand,
+        gateRuntimeFields
+      );
     }
 
     const autoRepair = await repairQualityGateEnvironment(

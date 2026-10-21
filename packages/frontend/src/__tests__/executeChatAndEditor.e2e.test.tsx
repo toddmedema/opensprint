@@ -6,7 +6,7 @@
  * Scenario C — Open in Editor: IPC path (Electron) or copy-path fallback (web).
  */
 import { describe, it, expect, vi, beforeEach, beforeAll, afterEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render as testingRender, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Provider } from "react-redux";
 import { MemoryRouter } from "react-router-dom";
@@ -28,6 +28,18 @@ import agentChatReducer, {
   chatResponseReceived,
   chatUnsupported,
 } from "../store/slices/agentChatSlice";
+
+import type { ReactElement } from "react";
+import { seedServerFixtureFromElement } from "../test/seedServerFixtures";
+import { queryKeys } from "../api/queryKeys";
+
+function render(ui: ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
+  seedServerFixtureFromElement(queryClient, ui);
+  return testingRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+}
 
 /* ─── API mocks ─── */
 
@@ -238,7 +250,7 @@ async function renderExecutePhase(store: ReturnType<typeof createFullPageStore>)
   await act(async () => {
     await Promise.resolve();
   });
-  return view;
+  return { ...view, queryClient };
 }
 
 async function openExecuteChatTab(user: ReturnType<typeof userEvent.setup>) {
@@ -401,7 +413,7 @@ describe("E2E: Execute chat — API backend (Scenario A)", () => {
 
   it("marks user message as delivered on agent.chat.received and shows agent response", async () => {
     const store = createFullPageStore();
-    await renderExecutePhase(store);
+    const { queryClient } = await renderExecutePhase(store);
 
     const user = userEvent.setup();
     await openExecuteChatTab(user);
@@ -443,12 +455,27 @@ describe("E2E: Execute chat — API backend (Scenario A)", () => {
       );
     });
 
-    await waitFor(() => {
-      const msgs = store.getState().agentChat.messagesByTaskId["epic-1.1"];
-      expect(msgs?.length).toBe(2);
-      const assistantMsg = msgs?.find((m) => m.role === "assistant");
-      expect(assistantMsg?.content).toBe("Got it — prioritizing error handling.");
-    });
+    act(() =>
+      queryClient.setQueryData(queryKeys.tasks.chatHistory("proj-1", "epic-1.1"), {
+        messages: [
+          { ...store.getState().agentChat.messagesByTaskId["epic-1.1"][0], status: "included" },
+          {
+            id: "assistant-1",
+            role: "assistant",
+            content: "Got it — prioritizing error handling.",
+            timestamp: "2026-03-28T12:00:01Z",
+          },
+        ],
+      })
+    );
+    await waitFor(() =>
+      expect(screen.getByText("Got it — prioritizing error handling.")).toBeInTheDocument()
+    );
+    expect(
+      store
+        .getState()
+        .agentChat.messagesByTaskId["epic-1.1"]?.every((message) => message.role === "user")
+    ).toBe(true);
 
     expect(store.getState().agentChat.sendingByTaskId["epic-1.1"]).toBe(false);
   });

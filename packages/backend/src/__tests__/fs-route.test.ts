@@ -171,11 +171,12 @@ describe("Filesystem API", () => {
     }
   });
 
-  it("uses HOME as allowed root when OPENSPRINT_ALLOW_HOME_BROWSE is set", async () => {
+  it("uses the platform home directory as allowed root when OPENSPRINT_ALLOW_HOME_BROWSE is set", async () => {
     const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-fs-home-opt-in-"));
     const underHome = path.join(homeDir, "allowed-project");
     await fs.mkdir(underHome, { recursive: true });
     process.env.HOME = homeDir;
+    process.env.USERPROFILE = homeDir;
     enableHomeBrowseForTest();
 
     try {

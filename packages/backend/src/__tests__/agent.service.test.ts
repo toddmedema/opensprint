@@ -64,6 +64,9 @@ vi.mock("../services/task-store.service.js", () => ({
     addDependency: vi.fn().mockResolvedValue(undefined),
     syncForPush: vi.fn().mockResolvedValue(undefined),
     getDb: vi.fn().mockResolvedValue(mockDbClient),
+    runRead: vi
+      .fn()
+      .mockImplementation(async (fn: (c: unknown) => Promise<unknown>) => fn(mockDbClient)),
     runWrite: vi
       .fn()
       .mockImplementation(async (fn: (c: unknown) => Promise<unknown>) => fn(mockDbClient)),

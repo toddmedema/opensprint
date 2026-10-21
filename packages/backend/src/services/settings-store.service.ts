@@ -12,6 +12,9 @@ import type { ProjectSettings } from "@opensprint/shared";
 import { omitInheritedAgentTiersForStore, parseSettings } from "@opensprint/shared";
 import { writeJsonAtomic } from "../utils/file-utils.js";
 import { createLogger } from "../utils/logger.js";
+import { AppError } from "../middleware/error-handler.js";
+import { lockProject, appendProjectEvent, stableFingerprint } from "./project-event.service.js";
+import { getRequestContext } from "./request-context.js";
 
 const log = createLogger("settings-store");
 
@@ -19,7 +22,7 @@ let settingsStorePathForTesting: string | null = null;
 
 /** Strip apiKeys from settings (project-level keys deprecated; use global store only). */
 function stripApiKeys<T extends Record<string, unknown>>(obj: T): Omit<T, "apiKeys"> {
-  const { apiKeys: _omit, ...rest } = obj;
+  const { apiKeys: _omit, revision: _revision, ...rest } = obj;
   return rest as Omit<T, "apiKeys">;
 }
 
@@ -48,7 +51,7 @@ interface RawSettingsEntry {
 }
 
 /** Mutation reads retain absent fields and never turn a corrupt store into an empty one. */
-async function loadRawStore(): Promise<Record<string, RawSettingsEntry>> {
+async function loadRawFileStore(): Promise<Record<string, RawSettingsEntry>> {
   let content: string;
   try {
     content = await fs.readFile(getSettingsStorePath(), "utf-8");
@@ -82,11 +85,59 @@ async function loadRawStore(): Promise<Record<string, RawSettingsEntry>> {
   return store;
 }
 
+async function settingsDb() {
+  const { taskStore } = await import("./task-store.service.js");
+  const source = getSettingsStorePath();
+  if (
+    await taskStore.runRead((tx) =>
+      tx.queryOne("SELECT source FROM settings_store_migrations WHERE source = $1", [source])
+    )
+  )
+    return taskStore;
+  // Parse before taking a SQL lock; a malformed legacy store must never be erased.
+  const legacy = await loadRawFileStore();
+  await taskStore.runWrite(async (tx) => {
+    const migrated = await tx.queryOne(
+      "SELECT source FROM settings_store_migrations WHERE source = $1",
+      [source]
+    );
+    if (migrated) return;
+    // Concurrent replica imports are serialized by the migration marker insert.
+    const inserted = await tx.execute(
+      "INSERT INTO settings_store_migrations (source) VALUES ($1) ON CONFLICT DO NOTHING",
+      [source]
+    );
+    if (!inserted) return;
+    for (const [projectId, entry] of Object.entries(legacy))
+      await tx.execute(
+        "INSERT INTO project_settings (project_id, settings, revision, updated_at) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING",
+        [projectId, JSON.stringify(entry.settings), entry.revision, entry.updatedAt]
+      );
+  });
+  return taskStore;
+}
+
+async function loadRawStore(): Promise<Record<string, RawSettingsEntry>> {
+  if (settingsStorePathForTesting) return loadRawFileStore();
+  const db = await settingsDb();
+  return db.runRead(async (tx) => {
+    const rows = await tx.query("SELECT * FROM project_settings");
+    return Object.fromEntries(
+      rows.map((row) => [
+        String(row.project_id),
+        {
+          settings: JSON.parse(String(row.settings)) as Record<string, unknown>,
+          revision: Number(row.revision),
+          updatedAt: String(row.updated_at),
+        },
+      ])
+    );
+  });
+}
+
 async function loadStore(): Promise<SettingsStore> {
-  const file = getSettingsStorePath();
   try {
-    const raw = await fs.readFile(file, "utf-8");
-    const parsed = JSON.parse(raw) as unknown;
+    const parsed: unknown = await loadRawStore();
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
       const store = parsed as Record<string, unknown>;
       // Normalize: entries may be { settings, updatedAt } or legacy raw ProjectSettings
@@ -110,6 +161,7 @@ async function loadStore(): Promise<SettingsStore> {
             normalized[id] = {
               settings,
               updatedAt: (v.updatedAt as string) ?? new Date().toISOString(),
+              revision: Number(v.revision ?? 0),
             };
           } else {
             let settings: ProjectSettings;
@@ -131,7 +183,8 @@ async function loadStore(): Promise<SettingsStore> {
       }
       return normalized;
     }
-  } catch {
+  } catch (error) {
+    if (!settingsStorePathForTesting) throw error;
     // File missing or corrupt
   }
   return {};
@@ -170,31 +223,8 @@ export async function getSettingsFromStore(
  * in {@link projectSettingsFromRaw}.
  */
 async function readRawSettingsRecordFromDisk(projectId: string): Promise<Record<string, unknown>> {
-  const file = getSettingsStorePath();
-  try {
-    const raw = await fs.readFile(file, "utf-8");
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-    const store = parsed as Record<string, unknown>;
-    const entry = store[projectId];
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
-      return {};
-    }
-    const v = entry as Record<string, unknown>;
-    if (
-      "settings" in v &&
-      v.settings &&
-      typeof v.settings === "object" &&
-      !Array.isArray(v.settings)
-    ) {
-      return stripApiKeys({ ...(v.settings as Record<string, unknown>) });
-    }
-    return stripApiKeys({ ...v });
-  } catch {
-    return {};
-  }
+  const store = await loadRawStore();
+  return structuredClone(store[projectId]?.settings ?? {});
 }
 
 /** Empty object when missing. */
@@ -209,7 +239,7 @@ export async function getRawSettingsRecord(projectId: string): Promise<Record<st
 export async function getSettingsWithMetaFromStore(
   projectId: string,
   defaults: ProjectSettings
-): Promise<{ settings: ProjectSettings; updatedAt: string | null }> {
+): Promise<{ settings: ProjectSettings; updatedAt: string | null; revision: number }> {
   const store = await loadStore();
   const entry = store[projectId];
   if (entry?.settings) {
@@ -218,9 +248,10 @@ export async function getSettingsWithMetaFromStore(
         entry.settings as unknown as Record<string, unknown>
       ) as unknown as ProjectSettings,
       updatedAt: entry.updatedAt ?? null,
+      revision: entry.revision ?? 0,
     };
   }
-  return { settings: defaults, updatedAt: null };
+  return { settings: defaults, updatedAt: null, revision: 0 };
 }
 
 /**
@@ -266,6 +297,19 @@ export interface SettingsTransformResult {
   exists: boolean;
 }
 
+/** Raw values and revision come from one committed snapshot. */
+export async function getRawSettingsWithMetaFromStore(
+  projectId: string
+): Promise<SettingsTransformResult> {
+  const entry = (await loadRawStore())[projectId];
+  return {
+    settings: structuredClone(entry?.settings ?? {}),
+    updatedAt: entry?.updatedAt ?? null,
+    revision: entry?.revision ?? 0,
+    exists: !!entry,
+  };
+}
+
 /**
  * Apply a synchronous transformation to the latest raw project record while
  * holding the file lock. Never call another settings writer from the callback.
@@ -276,8 +320,101 @@ export async function transformRawSettingsInStore(
   transform: (
     current: Record<string, unknown>,
     metadata: { exists: boolean; revision: number }
-  ) => Record<string, unknown> | undefined
+  ) => Record<string, unknown> | undefined,
+  requestPayload?: unknown
 ): Promise<SettingsTransformResult> {
+  if (!settingsStorePathForTesting) {
+    const db = await settingsDb();
+    const result = await db.runWrite(async (tx) => {
+      await lockProject(tx, projectId);
+      const row = await tx.queryOne("SELECT * FROM project_settings WHERE project_id = $1", [
+        projectId,
+      ]);
+      const settings = row ? (JSON.parse(String(row.settings)) as Record<string, unknown>) : {};
+      const revision = Number(row?.revision ?? 0);
+      const request = getRequestContext();
+      const fingerprint = stableFingerprint({
+        projectId,
+        revision: request?.expectedRevision,
+        payload: requestPayload,
+      });
+      if (request?.requestId && requestPayload !== undefined) {
+        const previous = await tx.queryOne(
+          "SELECT * FROM collaboration_commands WHERE project_id = $1 AND command_id = $2",
+          [projectId, request.requestId]
+        );
+        if (previous) {
+          if (
+            previous.actor_id !== request.principal.actorId ||
+            previous.fingerprint !== fingerprint
+          )
+            throw new AppError(
+              409,
+              "REQUEST_ID_REUSED",
+              "The settings request ID was already used for a different mutation."
+            );
+          return JSON.parse(String(previous.result)) as SettingsTransformResult;
+        }
+        if (!Number.isSafeInteger(request.expectedRevision))
+          throw new AppError(
+            400,
+            "EXPECTED_REVISION_REQUIRED",
+            "An expected settings revision is required."
+          );
+        if (request.expectedRevision !== revision)
+          throw new AppError(
+            409,
+            "REVISION_CONFLICT",
+            "Settings changed. Refresh before retrying.",
+            { revision, state: settings }
+          );
+      }
+      const updated = transform(structuredClone(settings), { exists: !!row, revision });
+      if (updated === undefined)
+        return {
+          settings,
+          revision,
+          updatedAt: row ? String(row.updated_at) : null,
+          exists: !!row,
+        };
+      if (!updated || typeof updated !== "object" || Array.isArray(updated) || "then" in updated)
+        throw new Error("Settings transformations must synchronously return a settings object.");
+      const next = stripApiKeys(updated);
+      const nextRevision = revision + 1;
+      const updatedAt = new Date().toISOString();
+      await tx.execute(
+        "INSERT INTO project_settings (project_id, settings, revision, updated_at) VALUES ($1,$2,$3,$4) ON CONFLICT (project_id) DO UPDATE SET settings = excluded.settings, revision = excluded.revision, updated_at = excluded.updated_at",
+        [projectId, JSON.stringify(next), nextRevision, updatedAt]
+      );
+      const result = { settings: next, revision: nextRevision, updatedAt, exists: true };
+      await appendProjectEvent(tx, {
+        projectId,
+        type: "settings_changed",
+        payload: { revision: nextRevision, state: next },
+      });
+      if (request?.requestId && requestPayload !== undefined)
+        await tx.execute(
+          "INSERT INTO collaboration_commands (project_id, command_id, actor_id, fingerprint, result) VALUES ($1,$2,$3,$4,$5)",
+          [
+            projectId,
+            request.requestId,
+            request.principal.actorId,
+            fingerprint,
+            JSON.stringify(result),
+          ]
+        );
+      return result;
+    });
+    const { updateGlobalAgentConcurrencyLimit } =
+      await import("./agent-global-concurrency.service.js");
+    updateGlobalAgentConcurrencyLimit(
+      projectId,
+      typeof result.settings.maxTotalConcurrentAgents === "number"
+        ? result.settings.maxTotalConcurrentAgents
+        : undefined
+    );
+    return result;
+  }
   return withStoreLock(async () => {
     const store = await loadRawStore();
     const entry = store[projectId];
@@ -351,6 +488,15 @@ export async function updateSettingsInStore(
  * Remove settings for a project (e.g. on project delete).
  */
 export async function deleteSettingsFromStore(projectId: string): Promise<void> {
+  if (!settingsStorePathForTesting) {
+    const db = await settingsDb();
+    await db.runWrite(async (tx) => {
+      await lockProject(tx, projectId);
+      await tx.execute("DELETE FROM project_settings WHERE project_id = $1", [projectId]);
+      await appendProjectEvent(tx, { projectId, type: "settings_changed", payload: null });
+    });
+    return;
+  }
   return withStoreLock(async () => {
     const store = await loadRawStore();
     if (projectId in store) {

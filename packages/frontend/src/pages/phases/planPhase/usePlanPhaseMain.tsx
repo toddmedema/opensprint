@@ -1,3 +1,4 @@
+import type { ConversationMessage } from "@opensprint/shared";
 import {
   useState,
   useEffect,
@@ -7,7 +8,6 @@ import {
   useLayoutEffect,
   type JSX,
 } from "react";
-import { shallowEqual } from "react-redux";
 import { useQueryClient, useIsMutating } from "@tanstack/react-query";
 import type { Plan, PlanAttachment, PlanExecuteBatchItem, PlanStatus } from "@opensprint/shared";
 import { DEFAULT_MAX_TOTAL_CONCURRENT_AGENTS, sortPlansByStatus } from "@opensprint/shared";
@@ -23,14 +23,12 @@ import {
   deletePlan,
   sendPlanMessage,
   updatePlan,
-  setPlanChatMessages,
   generatePlan,
   setPlanError,
   setExecutingPlanId,
   clearExecuteError,
   enqueuePlanTasksId,
   addOptimisticPlan,
-  setSinglePlan,
   setSelectedPlanId,
 } from "../../../store/slices/planSlice";
 import { addNotification } from "../../../store/slices/notificationSlice";
@@ -40,6 +38,8 @@ import {
   usePlanChat,
   useSinglePlan,
   usePlans,
+  useTasks,
+  useActiveAgents,
   useMarkPlanComplete,
   useProjectSettings,
 } from "../../../api/hooks";
@@ -65,7 +65,6 @@ import { ResizableSidebar } from "../../../components/layout/ResizableSidebar";
 import { SidebarSectionNav } from "../../../components/layout/SidebarSectionNav";
 import { ChatInput } from "../../../components/ChatInput";
 import { OpenQuestionsBlock } from "../../../components/OpenQuestionsBlock";
-import { selectTasksForEpic } from "../../../store/slices/executeSlice";
 import { wsSend, wsConnect } from "../../../store/middleware/websocketMiddleware";
 import { usePlanFilter } from "../../../hooks/usePlanFilter";
 import { chatDraftStorageKey, loadTextDraft } from "../../../lib/agentInputDraftStorage";
@@ -172,7 +171,7 @@ export function usePlanPhaseMain({
     dispatch(setSelectedPlanId(propSelectedPlanId ?? null));
   }, [dispatch, dismissedControlledPlanId, propSelectedPlanId, selectedPlanIdFromStore]);
 
-  /* ── TanStack Query for loading state (data synced to Redux by ProjectShell) ── */
+  /* ── TanStack Query owns server state and loading state ── */
   const plansQuery = usePlans(projectId);
   const decomposeMutationsInFlight = useIsMutating({
     mutationKey: queryKeys.plans.decompose(projectId),
@@ -197,25 +196,24 @@ export function usePlanPhaseMain({
     selectedPlanIdRef.current = selectedPlanId ?? null;
   }, [selectedPlanId]);
 
-  useEffect(() => {
-    if (planChatQuery.data) {
-      dispatch(
-        setPlanChatMessages({
-          context: planChatQuery.data.context,
-          messages: planChatQuery.data.messages,
-        })
-      );
-    }
-  }, [planChatQuery.data, dispatch]);
-
-  useEffect(() => {
-    if (singlePlanQuery.data) dispatch(setSinglePlan(singlePlanQuery.data));
-  }, [singlePlanQuery.data, dispatch]);
-
-  /* ── Redux state ── */
-  const plans = useAppSelector((s) => s.plan.plans);
-  const dependencyGraph = useAppSelector((s) => s.plan.dependencyGraph);
-  const chatMessages = useAppSelector((s) => s.plan.chatMessages);
+  const plans = useMemo(() => {
+    const list = plansQuery.data?.plans ?? [];
+    if (!singlePlanQuery.data) return list;
+    const selected = singlePlanQuery.data;
+    return list.map((plan) =>
+      plan.metadata.planId === selected.metadata.planId &&
+      (selected.revision ?? 0) >= (plan.revision ?? 0)
+        ? selected
+        : plan
+    );
+  }, [plansQuery.data, singlePlanQuery.data]);
+  const dependencyGraph = plansQuery.data ?? null;
+  const chatMessages = useMemo(
+    () => (planChatQuery.data ? { [planChatQuery.data.context]: planChatQuery.data.messages } : {}),
+    [planChatQuery.data]
+  );
+  const tasksQuery = useTasks(projectId);
+  const agentsQuery = useActiveAgents(projectId);
   const executingPlanId = useAppSelector((s) => s.plan.executingPlanId);
   const reExecutingPlanId = useAppSelector((s) => s.plan.reExecutingPlanId);
   const planTasksPlanIds = useAppSelector((s) => s.plan.planTasksPlanIds ?? EMPTY_PLAN_ID_LIST);
@@ -223,7 +221,7 @@ export function usePlanPhaseMain({
     (s) => s.plan.auditorOutputByPlanId ?? EMPTY_AUDITOR_OUTPUT_BY_PLAN_ID
   );
   const wsConnected = useAppSelector((s) => s.websocket?.connected ?? false);
-  const activeAgents = useAppSelector((s) => s.execute?.activeAgents ?? EMPTY_ACTIVE_AGENTS);
+  const activeAgents = agentsQuery.data?.agents ?? EMPTY_ACTIVE_AGENTS;
   const archivingPlanId = useAppSelector((s) => s.plan.archivingPlanId);
   const deletingPlanId = useAppSelector((s) => s.plan.deletingPlanId);
   const optimisticPlans = useAppSelector(
@@ -243,8 +241,7 @@ export function usePlanPhaseMain({
         children: [] as { planId: string; title: string }[],
       };
     }
-    const rawParent =
-      selectedPlan.metadata.parentPlanId ?? selectedPlan.parentPlanId ?? undefined;
+    const rawParent = selectedPlan.metadata.parentPlanId ?? selectedPlan.parentPlanId ?? undefined;
     const pid = typeof rawParent === "string" && rawParent.trim() !== "" ? rawParent.trim() : null;
     const parentPlan = pid ? plans.find((p) => p.metadata.planId === pid) : undefined;
     const parentTitle = parentPlan
@@ -280,9 +277,9 @@ export function usePlanPhaseMain({
     : ("ready" as PlanGenState);
 
   /* ── Memoized task selectors (only re-render when tasks for current plan change) ── */
-  const selectedPlanTasks = useAppSelector(
-    (s) => selectTasksForEpic(s, selectedPlan?.metadata.epicId),
-    shallowEqual
+  const selectedPlanTasks = useMemo(
+    () => (tasksQuery.data ?? []).filter((task) => task.epicId === selectedPlan?.metadata.epicId),
+    [tasksQuery.data, selectedPlan?.metadata.epicId]
   );
   const selectedPlanNeedsTaskGeneration =
     selectedPlan != null &&
@@ -305,6 +302,9 @@ export function usePlanPhaseMain({
   const [deleteConfirmPlanId, setDeleteConfirmPlanId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | PlanStatus>("all");
   const [chatInput, setChatInput] = useState("");
+  const [pendingPlanMessages, setPendingPlanMessages] = useState<
+    Array<ConversationMessage & { context: string }>
+  >([]);
   const [chatSending, setChatSending] = useState(false);
   const [tasksSectionExpanded, setTasksSectionExpanded] = useState(true);
   const [mockupsSectionExpanded, setMockupsSectionExpanded] = useState(true);
@@ -691,7 +691,7 @@ export function usePlanPhaseMain({
       : null;
   const effectiveDraftPlanId = planSidebarDismissed
     ? selectedDraftPlanId
-    : activeDraftPlanId ?? notificationDraftPlanId;
+    : (activeDraftPlanId ?? notificationDraftPlanId);
   const draftPlanContext = effectiveDraftPlanId ? `plan-draft:${effectiveDraftPlanId}` : null;
   const activePlanContext = planContext ?? draftPlanContext;
   const planChatDraftKey = useMemo(
@@ -704,11 +704,14 @@ export function usePlanPhaseMain({
     setChatInput
   );
   const currentChatMessages = useMemo(
-    () => (activePlanContext ? (chatMessages[activePlanContext] ?? []) : []),
-    [activePlanContext, chatMessages]
+    () => [
+      ...(activePlanContext ? (chatMessages[activePlanContext] ?? []) : []),
+      ...pendingPlanMessages.filter((message) => message.context === activePlanContext),
+    ],
+    [activePlanContext, chatMessages, pendingPlanMessages]
   );
 
-  // Plan chat and single plan are loaded via usePlanChat / useSinglePlan and synced to Redux above.
+  // Plan chat and plan detail are observed directly through their shared queries.
 
   // When sidebar opens: scroll to top of plan content, no animation
   useEffect(() => {
@@ -1133,13 +1136,16 @@ export function usePlanPhaseMain({
   }, [dispatch, onSelectPlanId, propSelectedPlanId]);
 
   const handlePlanContentSave = useCallback(
-    async (content: string) => {
+    async (content: string, expectedRevision?: number) => {
       if (!selectedPlanId) return;
       setSavingPlanContentId(selectedPlanId);
-      const result = await dispatch(updatePlan({ projectId, planId: selectedPlanId, content }));
+      const result = await dispatch(
+        updatePlan({ projectId, planId: selectedPlanId, content, expectedRevision })
+      );
       setSavingPlanContentId(null);
       if (updatePlan.fulfilled.match(result)) {
         void queryClient.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
+        return result.payload.revision;
       }
     },
     [dispatch, projectId, queryClient, selectedPlanId]
@@ -1165,6 +1171,17 @@ export function usePlanPhaseMain({
     const text = chatInput.trim();
     setChatSending(true);
     beginSend(text);
+    const pendingId = crypto.randomUUID();
+    setPendingPlanMessages((previous) => [
+      ...previous,
+      {
+        id: pendingId,
+        context: activePlanContext,
+        role: "user",
+        content: text,
+        timestamp: new Date().toISOString(),
+      },
+    ]);
 
     const result = await dispatch(
       sendPlanMessage({ projectId, message: text, context: activePlanContext })
@@ -1203,6 +1220,10 @@ export function usePlanPhaseMain({
       onFailure();
     }
 
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.plans.chat(projectId, activePlanContext),
+    });
+    setPendingPlanMessages((previous) => previous.filter((message) => message.id !== pendingId));
     setChatSending(false);
   };
 
@@ -1275,7 +1296,9 @@ export function usePlanPhaseMain({
 
         <div
           className={
-            viewMode === "graph" ? PHASE_MAIN_SCROLL_CLASSNAME : PHASE_MAIN_SCROLL_CLASSNAME_PLAN_LIST
+            viewMode === "graph"
+              ? PHASE_MAIN_SCROLL_CLASSNAME
+              : PHASE_MAIN_SCROLL_CLASSNAME_PLAN_LIST
           }
           data-testid="plan-main-scroll"
         >
@@ -1565,21 +1588,25 @@ export function usePlanPhaseMain({
                               </p>
                             ) : (
                               <>
-                                {!autoExecutePlans && !selectedPlanTasksHint?.showProminentGenerateTasks && (
-                                  <p className="text-sm text-theme-muted">
-                                    Use the chat to refine the plan, then click Generate Tasks when
-                                    you&apos;re ready to break it down into specific tickets
-                                  </p>
-                                )}
-                                {!autoExecutePlans && selectedPlanTasksHint?.showProminentGenerateTasks && (
-                                  <p
-                                    className="text-sm text-theme-muted"
-                                    data-testid="plan-tasks-child-prominent-hint"
-                                  >
-                                    A prominent <strong className="text-theme-text">Generate tasks</strong>{" "}
-                                    control is in the plan header above; you can also use the tree.
-                                  </p>
-                                )}
+                                {!autoExecutePlans &&
+                                  !selectedPlanTasksHint?.showProminentGenerateTasks && (
+                                    <p className="text-sm text-theme-muted">
+                                      Use the chat to refine the plan, then click Generate Tasks
+                                      when you&apos;re ready to break it down into specific tickets
+                                    </p>
+                                  )}
+                                {!autoExecutePlans &&
+                                  selectedPlanTasksHint?.showProminentGenerateTasks && (
+                                    <p
+                                      className="text-sm text-theme-muted"
+                                      data-testid="plan-tasks-child-prominent-hint"
+                                    >
+                                      A prominent{" "}
+                                      <strong className="text-theme-text">Generate tasks</strong>{" "}
+                                      control is in the plan header above; you can also use the
+                                      tree.
+                                    </p>
+                                  )}
                                 {autoExecutePlans ? (
                                   <button
                                     type="button"

@@ -18,6 +18,10 @@ import { PrdService } from "./prd.service.js";
 import { agentService } from "./agent.service.js";
 import { notificationService } from "./notification.service.js";
 import { taskStore } from "./task-store.service.js";
+import { conversationStore } from "./conversation-store.service.js";
+import { operationService } from "./operation.service.js";
+import { operationWorker } from "./operation-worker.service.js";
+import { getRequestContext } from "./request-context.js";
 import { assertMigrationCompleteForResource } from "./migration-guard.service.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
@@ -245,6 +249,11 @@ Your role is to:
 The user is replying to an open question the Coder asked about a specific task. Your response will be shown in the task chat. The task will be unblocked and the Coder will resume with the clarified context.`;
 
 export class ChatService {
+  constructor() {
+    operationWorker.register("conversation_turn", (operation) =>
+      this.sendMessageOnce(operation.projectId, operation.payload as ChatRequest, operation.actorId)
+    );
+  }
   private static readonly PRD_UPDATE_PLACEHOLDER_KEYS = new Set(["section_key"]);
 
   private projectService = new ProjectService();
@@ -255,18 +264,6 @@ export class ChatService {
     return this._feedbackService;
   }
   private readonly openAIResponseChains = new Map<string, OpenAIResponseChainState>();
-
-  private parseMessages(raw: unknown): ConversationMessage[] {
-    if (!Array.isArray(raw)) return [];
-    return raw.filter(
-      (entry): entry is ConversationMessage =>
-        typeof entry === "object" &&
-        entry != null &&
-        (entry as ConversationMessage).role != null &&
-        typeof (entry as ConversationMessage).content === "string" &&
-        typeof (entry as ConversationMessage).timestamp === "string"
-    );
-  }
 
   private async guardLegacyConversationFiles(projectId: string): Promise<void> {
     const project = await this.projectService.getProject(projectId);
@@ -279,25 +276,8 @@ export class ChatService {
   }
 
   private async getOrCreateConversation(projectId: string, context: string): Promise<Conversation> {
-    const client = await taskStore.getDb();
-    const existing = await client.queryOne(
-      "SELECT conversation_id, messages FROM project_conversations WHERE project_id = $1 AND context = $2",
-      [projectId, context]
-    );
-    if (existing) {
-      const parsed = (() => {
-        try {
-          return JSON.parse(String(existing.messages ?? "[]")) as unknown;
-        } catch {
-          return [];
-        }
-      })();
-      return {
-        id: String(existing.conversation_id),
-        context: context as Conversation["context"],
-        messages: this.parseMessages(parsed),
-      };
-    }
+    const existing = await conversationStore.read(projectId, context);
+    if (existing) return existing;
 
     await this.guardLegacyConversationFiles(projectId);
 
@@ -319,32 +299,7 @@ export class ChatService {
     conversation: Conversation,
     additions: ConversationMessage[] = []
   ): Promise<void> {
-    const now = new Date().toISOString();
-    await taskStore.runWrite(async (client) => {
-      await client.execute(
-        `INSERT INTO project_conversations (project_id, context, conversation_id, messages, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT(project_id, context) DO NOTHING`,
-        [projectId, conversation.context, conversation.id, "[]", now, now]
-      );
-      // Acquires a row lock on PostgreSQL and a write lock on SQLite.
-      await client.execute(
-        "UPDATE project_conversations SET updated_at = updated_at WHERE project_id = $1 AND context = $2",
-        [projectId, conversation.context]
-      );
-      const stored = await client.queryOne(
-        "SELECT conversation_id, messages FROM project_conversations WHERE project_id = $1 AND context = $2",
-        [projectId, conversation.context]
-      );
-      if (!stored) throw new Error("Conversation disappeared during append");
-      const messages = this.parseMessages(JSON.parse(String(stored.messages ?? "[]")));
-      messages.push(...additions);
-      await client.execute(
-        "UPDATE project_conversations SET messages = $3, updated_at = $4 WHERE project_id = $1 AND context = $2",
-        [projectId, conversation.context, JSON.stringify(messages), now]
-      );
-      conversation.id = String(stored.conversation_id);
-    });
+    conversation.id = await conversationStore.append(projectId, conversation, additions);
   }
 
   async startPlanDraftConversation(
@@ -491,6 +446,36 @@ export class ChatService {
 
   /** Send a message to the planning agent */
   async sendMessage(projectId: string, body: ChatRequest): Promise<ChatResponse> {
+    const request = getRequestContext();
+    if (!request?.requestId) return this.sendMessageOnce(projectId, body);
+    const operation = await operationService.accept({
+      projectId,
+      actorId: request.principal.actorId,
+      requestId: request.requestId,
+      kind: "conversation_turn",
+      target: body.context ?? "sketch",
+      expectedRevision: request.expectedRevision,
+      payload: body,
+    });
+    if (operation.status === "completed") return operation.result as ChatResponse;
+    const completed = await operationWorker.execute(operation, () =>
+      this.sendMessageOnce(projectId, body, request.principal.actorId)
+    );
+    if (completed.status !== "completed")
+      throw new AppError(
+        409,
+        "OPERATION_PENDING",
+        "This conversation request was already accepted.",
+        { operation: completed }
+      );
+    return completed.result as ChatResponse;
+  }
+
+  private async sendMessageOnce(
+    projectId: string,
+    body: ChatRequest,
+    actorId?: string
+  ): Promise<ChatResponse> {
     if (body.message == null || String(body.message).trim() === "") {
       throw new AppError(400, ErrorCodes.INVALID_INPUT, "Chat message is required");
     }
@@ -533,6 +518,7 @@ export class ChatService {
           ? `${taskContextBlock}## User's answer\n\n${body.message}`
           : body.message;
         const userMessage: ConversationMessage = {
+          actorId: actorId ?? getRequestContext()?.principal.actorId,
           role: "user",
           content: storedContent,
           timestamp: new Date().toISOString(),
@@ -1174,7 +1160,7 @@ export class ChatService {
       contextDescription,
       archUpdates.map((u) => u.section)
     );
-    const { approved } = await hilService.evaluateDecision(
+    const { approved, notes } = await hilService.evaluateDecision(
       projectId,
       "architectureDecisions",
       architectureDescription,
@@ -1183,11 +1169,11 @@ export class ChatService {
         { id: "reject", label: "Reject", description: "Skip architecture updates" },
       ],
       true, // default: apply when automated/notify_and_proceed
-      undefined,
+      { scopeChangeSummary: architectureDescription, scopeChangeProposedUpdates: archUpdates },
       "prd",
       "architecture"
     );
 
-    return approved ? prdUpdates : nonArchUpdates;
+    return approved && notes !== "durable_spec_applied" ? prdUpdates : nonArchUpdates;
   }
 }

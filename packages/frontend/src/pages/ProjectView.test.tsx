@@ -1,3 +1,9 @@
+import type {
+  Task,
+  PlanDependencyGraph,
+  FeedbackItem,
+  ConversationMessage,
+} from "@opensprint/shared";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, within, cleanup, act } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation, useNavigate, Navigate } from "react-router-dom";
@@ -37,6 +43,10 @@ vi.mock("../store/middleware/websocketMiddleware", () => ({
   wsSend: (payload: unknown) => ({ type: "ws/send", payload }),
   websocketMiddleware: () => (next: (a: unknown) => unknown) => (action: unknown) => next(action),
 }));
+
+// Runtime presence/identity have their own behavior suites; this suite exercises shell cache lifetime.
+vi.mock("../components/CollaborationBar", () => ({ CollaborationBar: () => null }));
+vi.mock("../hooks/useProjectReplay", () => ({ useProjectReplay: () => {} }));
 
 // Mock API
 vi.mock("../api/client", () => ({
@@ -127,12 +137,23 @@ function createStore() {
   });
 }
 
+let activeQueryClient: QueryClient;
+function cachedProject(projectId = "proj-1", client = activeQueryClient) {
+  const tasks = client.getQueryData<Task[]>(queryKeys.tasks.list(projectId)) ?? [];
+  return {
+    tasks,
+    tasksById: Object.fromEntries(tasks.map((task) => [task.id, task])),
+    plans: client.getQueryData<PlanDependencyGraph>(queryKeys.plans.list(projectId))?.plans ?? [],
+    feedback: client.getQueryData<FeedbackItem[]>(queryKeys.feedback.list(projectId)) ?? [],
+  };
+}
 function createQueryClient() {
-  return new QueryClient({
+  activeQueryClient = new QueryClient({
     defaultOptions: {
       queries: { staleTime: 60_000, retry: false },
     },
   });
+  return activeQueryClient;
 }
 
 function renderWithRouter(
@@ -140,6 +161,7 @@ function renderWithRouter(
   store = createStore(),
   queryClient = createQueryClient()
 ) {
+  activeQueryClient = queryClient;
   return render(
     <Provider store={store}>
       <QueryClientProvider client={queryClient}>
@@ -423,18 +445,18 @@ describe("ProjectView upfront loading and mount-all", () => {
     );
 
     await waitFor(() => expect(screen.getByText("Project 1")).toBeInTheDocument());
-    await waitFor(() => expect(store.getState().execute.tasksById["t1"]).toBeDefined());
+    await waitFor(() => expect(cachedProject().tasksById["t1"]).toBeDefined());
 
     screen.getByTestId("nav-to-proj2").click();
 
     await waitFor(() => expect(screen.getByText("Project 2")).toBeInTheDocument());
     await waitFor(() => {
-      const state = store.getState();
-      expect(state.execute.tasksById["t2"]).toBeDefined();
-      expect(state.plan.plans).toHaveLength(1);
-      expect(state.plan.plans[0].metadata.planId).toBe("p2");
-      expect(state.eval.feedback).toHaveLength(1);
-      expect(state.eval.feedback[0].id).toBe("f2");
+      const state = cachedProject("proj-2");
+      expect(state.tasksById["t2"]).toBeDefined();
+      expect(state.plans).toHaveLength(1);
+      expect(state.plans[0].metadata.planId).toBe("p2");
+      expect(state.feedback).toHaveLength(1);
+      expect(state.feedback[0].id).toBe("f2");
     });
   });
 
@@ -591,20 +613,20 @@ describe("ProjectView upfront loading and mount-all", () => {
     );
 
     await waitFor(() => expect(screen.getByText("Project 1")).toBeInTheDocument());
-    await waitFor(() => expect(store.getState().execute.tasksById["t1"]).toBeDefined());
+    await waitFor(() => expect(cachedProject().tasksById["t1"]).toBeDefined());
 
     screen.getByTestId("nav-to-proj2").click();
 
     await waitFor(() => expect(screen.getByText("Project 2")).toBeInTheDocument());
     await waitFor(() => {
-      const state = store.getState();
-      expect(state.execute.tasksById["t2"]).toBeDefined();
-      expect(state.plan.plans[0]?.metadata.planId).toBe("p2");
-      expect(state.eval.feedback[0]?.id).toBe("f2");
+      const state = cachedProject("proj-2");
+      expect(state.tasksById["t2"]).toBeDefined();
+      expect(state.plans[0]?.metadata.planId).toBe("p2");
+      expect(state.feedback[0]?.id).toBe("f2");
     });
   });
 
-  it("syncs tasks, plans, feedback to Redux when navigating to project (no refresh required)", async () => {
+  it("loads tasks, plans, feedback into their shared queries when navigating to project (no refresh required)", async () => {
     const mockTasks = [
       {
         id: "t1",
@@ -654,10 +676,10 @@ describe("ProjectView upfront loading and mount-all", () => {
     });
 
     await waitFor(() => {
-      const state = store.getState();
-      expect(state.execute.tasksById["t1"]).toBeDefined();
-      expect(state.plan.plans).toHaveLength(1);
-      expect(state.eval.feedback).toHaveLength(1);
+      const state = cachedProject();
+      expect(state.tasksById["t1"]).toBeDefined();
+      expect(state.plans).toHaveLength(1);
+      expect(state.feedback).toHaveLength(1);
     });
   });
 
@@ -681,9 +703,12 @@ describe("ProjectView upfront loading and mount-all", () => {
 
     renderWithRouter("/projects/proj-1/sketch");
 
-    await waitFor(() => {
-      expect(screen.getByText("Hello, help me design")).toBeInTheDocument();
-    });
+    await waitFor(
+      () => {
+        expect(screen.getByText("Hello, help me design")).toBeInTheDocument();
+      },
+      { timeout: 8000 }
+    );
     expect(screen.getByText("I'd be happy to help!")).toBeInTheDocument();
   });
 
@@ -723,7 +748,7 @@ describe("ProjectView upfront loading and mount-all", () => {
     expect(planPhaseWrapper.parentElement).toBeInTheDocument();
   });
 
-  it("keeps phase data in store when switching phases; no refetch when returning", async () => {
+  it("keeps phase data in the query cache when switching phases; no refetch when returning", async () => {
     vi.mocked(api.tasks.list).mockResolvedValue([TASK_FOR_DEEP_LINK]);
     const store = createStore();
     renderWithRouter("/projects/proj-1/execute", store);
@@ -732,7 +757,7 @@ describe("ProjectView upfront loading and mount-all", () => {
       expect(screen.getByText("Test Project")).toBeInTheDocument();
     });
     await waitFor(() => {
-      expect(store.getState().execute.tasksById["opensprint.dev-xyz.1"]).toBeDefined();
+      expect(cachedProject().tasksById["opensprint.dev-xyz.1"]).toBeDefined();
     });
 
     const { api: mockedApi } = await import("../api/client");
@@ -746,8 +771,8 @@ describe("ProjectView upfront loading and mount-all", () => {
       expect(screen.getByTestId("phase-sketch")).toBeInTheDocument();
     });
 
-    // Data should still be in Redux (persisted from cache)
-    expect(store.getState().execute.tasksById["opensprint.dev-xyz.1"]).toBeDefined();
+    // Data remains in the shared Query cache
+    expect(cachedProject().tasksById["opensprint.dev-xyz.1"]).toBeDefined();
 
     // Switch back to execute
     const executeButton = screen.getByRole("tab", { name: /switch to execute phase/i });
@@ -756,8 +781,8 @@ describe("ProjectView upfront loading and mount-all", () => {
       expect(screen.getByTestId("phase-execute")).toBeInTheDocument();
     });
 
-    // Tasks should still be in Redux; TanStack Query serves from cache, no extra fetch
-    expect(store.getState().execute.tasksById["opensprint.dev-xyz.1"]).toBeDefined();
+    // The task query remains cached when the phase is remounted
+    expect(cachedProject().tasksById["opensprint.dev-xyz.1"]).toBeDefined();
     const tasksCallCountAfter = mockedApi.tasks.list.mock.calls.length;
     // May refetch once when re-enabling (stale-while-revalidate); should not have doubled
     expect(tasksCallCountAfter).toBeLessThanOrEqual(tasksCallCountBefore + 1);
@@ -823,10 +848,12 @@ describe("ProjectView URL deep linking for Plan and Build detail panes", () => {
 
     await waitFor(
       () => {
-        const msgs = store.getState().plan.chatMessages["plan:opensprint.dev-abc"];
+        const msgs = activeQueryClient.getQueryData<{ messages: ConversationMessage[] }>(
+          queryKeys.plans.chat("proj-1", "plan:opensprint.dev-abc")
+        )?.messages;
         expect(msgs).toHaveLength(2);
-        expect(msgs[0].content).toBe("Add more detail");
-        expect(msgs[1].content).toBe("Sure, I can help.");
+        expect(msgs?.[0].content).toBe("Add more detail");
+        expect(msgs?.[1].content).toBe("Sure, I can help.");
       },
       { timeout: 3000 }
     );
@@ -1149,11 +1176,13 @@ describe("ProjectShell database transport lifetime", () => {
       client.setQueryData(queryKeys.feedback.list("proj-1"), feedback);
       const store = createStore();
       const view = renderWithRouter("/projects/proj-1/help", store, client);
-      await waitFor(() => expect(store.getState().execute.taskIdsOrder).toContain("cached-task"));
+      await waitFor(() =>
+        expect(cachedProject().tasks.map((task) => task.id)).toContain("cached-task")
+      );
       const before = {
-        tasks: store.getState().execute.tasksById,
-        plans: store.getState().plan.plans,
-        feedback: store.getState().eval.feedback,
+        tasks: client.getQueryData(queryKeys.tasks.list("proj-1")),
+        plans: client.getQueryData(queryKeys.plans.list("proj-1")),
+        feedback: client.getQueryData(queryKeys.feedback.list("proj-1")),
       };
       for (const ok of [true, false, true]) {
         await act(async () => {
@@ -1163,9 +1192,9 @@ describe("ProjectShell database transport lifetime", () => {
             lastCheckedAt: null,
           });
         });
-        expect(store.getState().execute.tasksById).toBe(before.tasks);
-        expect(store.getState().plan.plans).toBe(before.plans);
-        expect(store.getState().eval.feedback).toBe(before.feedback);
+        expect(client.getQueryData(queryKeys.tasks.list("proj-1"))).toBe(before.tasks);
+        expect(client.getQueryData(queryKeys.plans.list("proj-1"))).toBe(before.plans);
+        expect(client.getQueryData(queryKeys.feedback.list("proj-1"))).toBe(before.feedback);
       }
       view.unmount();
       expect(store.getState().execute.taskIdsOrder).toEqual([]);
@@ -1208,21 +1237,21 @@ it("hydrates cached project data before pending database readiness resolves with
   const store = createStore();
   const view = renderWithRouter("/projects/proj-1/help", store, client);
   await waitFor(() =>
-    expect(store.getState().execute.taskIdsOrder).toContain(TASK_FOR_DEEP_LINK.id)
+    expect(cachedProject().tasks.map((task) => task.id)).toContain(TASK_FOR_DEEP_LINK.id)
   );
   expect(mockWsConnect).not.toHaveBeenCalled();
   const before = {
-    tasks: store.getState().execute.tasksById,
-    plans: store.getState().plan.plans,
-    feedback: store.getState().eval.feedback,
+    tasks: client.getQueryData(queryKeys.tasks.list("proj-1")),
+    plans: client.getQueryData(queryKeys.plans.list("proj-1")),
+    feedback: client.getQueryData(queryKeys.feedback.list("proj-1")),
   };
   await act(async () => {
     resolveReady({ ok: true, state: "connected", lastCheckedAt: null });
   });
   await waitFor(() => expect(mockWsConnect).toHaveBeenCalledWith({ projectId: "proj-1" }));
-  expect(store.getState().execute.tasksById).toBe(before.tasks);
-  expect(store.getState().plan.plans).toBe(before.plans);
-  expect(store.getState().eval.feedback).toBe(before.feedback);
+  expect(client.getQueryData(queryKeys.tasks.list("proj-1"))).toBe(before.tasks);
+  expect(client.getQueryData(queryKeys.plans.list("proj-1"))).toBe(before.plans);
+  expect(client.getQueryData(queryKeys.feedback.list("proj-1"))).toBe(before.feedback);
   view.unmount();
   client.clear();
 });

@@ -910,6 +910,10 @@ describe("BranchManager", () => {
       await execAsync('git add README && git commit -m "initial"', { cwd: repoPath });
 
       const taskId = `wt-rm-${Date.now()}`;
+      const sharedDependencies = path.join(repoPath, "node_modules");
+      await fs.mkdir(sharedDependencies);
+      const dependencyMarker = path.join(sharedDependencies, "keep.txt");
+      await fs.writeFile(dependencyMarker, "shared dependency");
       const wtPath = await branchManager.createTaskWorktree(repoPath, taskId);
 
       // Verify it exists
@@ -917,6 +921,7 @@ describe("BranchManager", () => {
 
       // Remove it
       await branchManager.removeTaskWorktree(repoPath, taskId);
+      expect(await fs.readFile(dependencyMarker, "utf-8")).toBe("shared dependency");
 
       // Verify it's gone
       try {

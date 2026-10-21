@@ -168,7 +168,7 @@ describe("Git working mode Branches — full Execute flow integration", () => {
 
       // 2. Simulate agent work: make a commit on the task branch
       await fs.writeFile(path.join(repoPath, "feature.ts"), "export const x = 1;");
-      await execAsync("git add feature.ts && git commit -m 'add feature'", { cwd: repoPath });
+      await execAsync('git add feature.ts && git commit -m "add feature"', { cwd: repoPath });
 
       // 3. Slot state as it would be after agent completes (worktreePath = repoPath in branches mode)
       const slot: MergeSlot = {

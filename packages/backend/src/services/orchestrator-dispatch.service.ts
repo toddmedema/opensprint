@@ -16,6 +16,7 @@ import { resolveBaseBranch } from "../utils/git-repo-state.js";
 import { assertWorktreeIntegrity, rebuildWorktreeIfInvalid } from "../utils/worktree-health.js";
 import { createLogger } from "../utils/logger.js";
 import { worktreeLeaseService } from "./worktree-lease.service.js";
+import { backendOwnerId } from "./execution-ownership.service.js";
 import { worktreeRegistry } from "./worktree-registry.js";
 
 const log = createLogger("orchestrator-dispatch");
@@ -317,10 +318,7 @@ export interface OrchestratorDispatchHost {
     assignee?: string,
     worktreeKey?: string
   ): DispatchSlotLike;
-  transition(
-    projectId: string,
-    t: unknown
-  ): void;
+  transition(projectId: string, t: unknown): void;
   persistCounters(projectId: string, repoPath: string): Promise<void>;
   getTaskStore(): {
     update(projectId: string, taskId: string, fields: Record<string, unknown>): Promise<unknown>;
@@ -468,7 +466,12 @@ export class OrchestratorDispatchService {
     await this.host.getBranchManager().ensureOnMain(repoPath, baseBranch);
 
     if (slot.worktreePath && slot.worktreePath !== repoPath) {
-      const integrity = await assertWorktreeIntegrity(repoPath, slot.worktreePath, task.id, "dispatch");
+      const integrity = await assertWorktreeIntegrity(
+        repoPath,
+        slot.worktreePath,
+        task.id,
+        "dispatch"
+      );
       if (!integrity.valid) {
         log.warn("Worktree integrity check failed at dispatch, attempting rebuild", {
           taskId: task.id,
@@ -484,9 +487,17 @@ export class OrchestratorDispatchService {
             repoPath: string,
             worktreeKey: string,
             actualPath?: string,
-            opts?: { bypassReferenceProtection?: boolean; ignoreLiveTaskStatusForTaskIds?: Set<string> }
+            opts?: {
+              bypassReferenceProtection?: boolean;
+              ignoreLiveTaskStatusForTaskIds?: Set<string>;
+            }
           ): Promise<boolean>;
-          createTaskWorktree(repoPath: string, taskId: string, baseBranch: string, options?: { worktreeKey?: string; branchName?: string }): Promise<string>;
+          createTaskWorktree(
+            repoPath: string,
+            taskId: string,
+            baseBranch: string,
+            options?: { worktreeKey?: string; branchName?: string }
+          ): Promise<string>;
         };
         const rebuildResult = await rebuildWorktreeIfInvalid(
           repoPath,
@@ -520,7 +531,7 @@ export class OrchestratorDispatchService {
         projectId,
         worktreePath: slot.worktreePath,
         branchName,
-        leaseOwner: `dispatch:${task.id}:${cumulativeAttempts + 1}`,
+        leaseOwner: `dispatch:${backendOwnerId}:${task.id}:${cumulativeAttempts + 1}`,
       };
       try {
         await worktreeLeaseService.acquire(leaseParams);
@@ -543,6 +554,7 @@ export class OrchestratorDispatchService {
               err,
             }
           );
+          throw err;
         }
       }
       worktreeRegistry.transition(worktreeKey, "in_use");

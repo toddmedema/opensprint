@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { parseOrphanedProcesses } from "../services/process-reaper.js";
 
 const mockExecSync = vi.fn().mockReturnValue("");
@@ -11,10 +11,24 @@ vi.mock("child_process", () => ({
 }));
 
 const originalKill = process.kill;
+const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
+beforeEach(() => {
+  // Exercise Unix process-group behavior regardless of the test host OS.
+  Object.defineProperty(process, "platform", { value: "linux" });
+});
+afterEach(() => {
+  Object.defineProperty(process, "platform", originalPlatform);
+});
 
 const { startProcessReaper, stopProcessReaper } = await import("../services/process-reaper.js");
 
 describe("process-reaper", () => {
+  it("does not invoke Unix process commands on Windows", () => {
+    Object.defineProperty(process, "platform", { value: "win32" });
+    startProcessReaper();
+    stopProcessReaper();
+    expect(mockExecSync).not.toHaveBeenCalled();
+  });
   afterEach(() => {
     stopProcessReaper();
     mockExecSync.mockClear();
