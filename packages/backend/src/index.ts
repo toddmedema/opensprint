@@ -35,6 +35,7 @@ import { appendCrashLog } from "./utils/crash-log.js";
 import { appendRuntimeTrace } from "./utils/runtime-trace.js";
 import { startBackendDeathSentinel } from "./utils/backend-death-sentinel.js";
 import { isIntegrationEncryptionKeyConfigured } from "./services/token-encryption.service.js";
+import { CollaborationService } from "./services/collaboration.service.js";
 
 // Electron launches backend with ELECTRON_RUN_AS_NODE=1 so process.execPath can run JS.
 // Clear it immediately so backend child processes (agent CLIs) are not forced into Node mode.
@@ -61,6 +62,13 @@ wireDatabaseLifecycle(services);
 // Attach WebSocket server (inject getLiveOutput for push-backfill on agent.subscribe)
 setupWebSocket(server, {
   getLiveOutput: (projectId, taskId) => orchestratorService.getLiveOutput(projectId, taskId),
+  executeAgentGuidance: (projectId, _taskId, attemptId, send) =>
+    new CollaborationService().withControl(
+      projectId,
+      { actorId: "local-user", displayName: "Local user", role: "controller" },
+      attemptId,
+      async () => send()
+    ),
 });
 
 // Wire TaskStoreService to emit task create/update/close events via WebSocket

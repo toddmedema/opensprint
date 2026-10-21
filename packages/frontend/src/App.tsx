@@ -10,6 +10,12 @@ import { GlobalKeyboardShortcuts } from "./components/GlobalKeyboardShortcuts";
 import { FindBar } from "./components/FindBar";
 import { CommandBar } from "./components/commands/CommandBar";
 import { RouteFallback } from "./components/RouteFallback";
+const CollaborationPage = lazy(() =>
+  import("./pages/CollaborationPage").then((module) => ({ default: module.CollaborationPage }))
+);
+const SpecPublicationPage = lazy(() =>
+  import("./pages/SpecPublicationPage").then((module) => ({ default: module.SpecPublicationPage }))
+);
 
 const SettingsPage = lazy(() =>
   import("./pages/SettingsPage").then((module) => ({ default: module.SettingsPage }))
@@ -48,6 +54,14 @@ export function App() {
       <CommandBar />
       <GlobalKeyboardShortcuts />
       <Routes>
+        <Route
+          path="/collaborate/:projectId"
+          element={
+            <LazyRoute>
+              <CollaborationPage />
+            </LazyRoute>
+          }
+        />
         <Route path="/" element={<Home />} />
         <Route path="/onboarding" element={<OnboardingPage />} />
         <Route
@@ -70,6 +84,14 @@ export function App() {
         <Route path="/projects/add-existing" element={<ProjectSetup />} />
         <Route path="/projects/create-new" element={<CreateNewProjectPage />} />
         <Route path="/projects/:projectId" element={<ProjectShell />}>
+          <Route
+            path="publication"
+            element={
+              <LazyRoute>
+                <SpecPublicationPage />
+              </LazyRoute>
+            }
+          />
           <Route index element={<Navigate to="sketch" replace />} />
           <Route path="help/shortcuts" element={<HelpShortcutsRedirect />} />
           <Route

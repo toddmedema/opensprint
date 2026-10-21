@@ -53,6 +53,7 @@ import {
   chatMessageReceived,
   chatResponseReceived,
   chatUnsupported,
+  chatConnectionLost,
   resetChatSending,
   fetchAgentChatHistory,
   type AgentChatState,
@@ -260,6 +261,7 @@ export const websocketMiddleware: Middleware = (storeApi) => {
   const pendingPlanSubscribes: Array<{ type: "plan.agent.subscribe"; planId: string }> = [];
 
   function cleanup() {
+    dispatch(chatConnectionLost());
     connectionGeneration++;
     intentionalClose = true;
     dispatch(setConnected(false));
@@ -293,6 +295,11 @@ export const websocketMiddleware: Middleware = (storeApi) => {
           void qc.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
           void qc.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
           void qc.invalidateQueries({ queryKey: queryKeys.feedback.list(projectId) });
+          const selectedTaskId = (
+            storeApi.getState() as { execute?: { selectedTaskId?: string | null } }
+          ).execute?.selectedTaskId;
+          if (selectedTaskId)
+            void dispatch(fetchAgentChatHistory({ projectId, taskId: selectedTaskId }));
         } catch {
           // QueryClient may not be set in tests
         }
@@ -328,6 +335,7 @@ export const websocketMiddleware: Middleware = (storeApi) => {
       // Ignore if this is a stale socket (replaced by a newer connection)
       if (socket !== ws || generation !== connectionGeneration) return;
       dispatch(setConnected(false));
+      dispatch(chatConnectionLost());
       if (!intentionalClose && currentProjectId) {
         scheduleReconnect(projectId);
       }
@@ -811,12 +819,21 @@ export const websocketMiddleware: Middleware = (storeApi) => {
         const chatRecv = event as AgentChatReceivedEvent;
         const chatState = (getState() as { agentChat?: AgentChatState }).agentChat;
         const msgs = chatState?.messagesByTaskId?.[chatRecv.taskId] ?? [];
-        const hasUndelivered = msgs.some((m) => m.role === "user" && !m.delivered);
+        const hasUndelivered = msgs.some(
+          (m) =>
+            m.id === chatRecv.messageId ||
+            (chatRecv.clientMessageId !== undefined &&
+              m.clientMessageId === chatRecv.clientMessageId)
+        );
         d(
           chatMessageReceived({
             taskId: chatRecv.taskId,
             messageId: chatRecv.messageId,
             timestamp: chatRecv.timestamp,
+            clientMessageId: chatRecv.clientMessageId,
+            attemptId: chatRecv.attemptId,
+            status: chatRecv.status,
+            error: chatRecv.error,
           })
         );
         if (!hasUndelivered) {
@@ -845,7 +862,13 @@ export const websocketMiddleware: Middleware = (storeApi) => {
 
       case "agent.chat.unsupported": {
         const chatUnsup = event as AgentChatUnsupportedEvent;
-        d(chatUnsupported({ taskId: chatUnsup.taskId, reason: chatUnsup.reason }));
+        d(
+          chatUnsupported({
+            taskId: chatUnsup.taskId,
+            reason: chatUnsup.reason,
+            clientMessageId: chatUnsup.clientMessageId,
+          })
+        );
         break;
       }
 
@@ -935,6 +958,14 @@ export const websocketMiddleware: Middleware = (storeApi) => {
         currentProjectId !== HOME_SENTINEL
       ) {
         ws.send(JSON.stringify(event));
+      } else if (event.type === "agent.chat.send") {
+        storeApi.dispatch(
+          chatUnsupported({
+            taskId: event.taskId,
+            clientMessageId: event.clientMessageId,
+            reason: "No connection. Guidance was not sent; reconnect and try again.",
+          })
+        );
       } else if (
         event.type === "agent.subscribe" &&
         "taskId" in event &&

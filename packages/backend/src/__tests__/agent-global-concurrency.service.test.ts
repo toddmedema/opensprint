@@ -3,6 +3,8 @@ import type { ProjectSettings } from "@opensprint/shared";
 import {
   acquireGlobalAgentSlot,
   resetGlobalAgentConcurrencyForTests,
+  updateGlobalAgentConcurrencyLimit,
+  trackExistingGlobalAgentSlot,
 } from "../services/agent-global-concurrency.service.js";
 import * as settingsStore from "../services/settings-store.service.js";
 
@@ -92,5 +94,113 @@ describe("agent-global-concurrency.service", () => {
 
     expect(x.peak).toBe(1);
     expect(y.peak).toBe(1);
+  });
+
+  it("removes aborted waiters without stranding the next waiter", async () => {
+    mockGetSettings.mockResolvedValue(minimalSettings({ maxTotalConcurrentAgents: 1 }));
+    const first = await acquireGlobalAgentSlot("cancel");
+    const controller = new AbortController();
+    const cancelled = acquireGlobalAgentSlot("cancel", controller.signal);
+    const rejected = expect(cancelled).rejects.toThrow();
+    const next = acquireGlobalAgentSlot("cancel");
+    await Promise.resolve();
+    controller.abort();
+    await rejected;
+    first();
+    (await next)();
+  });
+
+  it("keeps live accounting when reducing a limit and reserves FIFO admission", async () => {
+    mockGetSettings.mockResolvedValue(minimalSettings({ maxTotalConcurrentAgents: 2 }));
+    const first = await acquireGlobalAgentSlot("resize");
+    const second = await acquireGlobalAgentSlot("resize");
+    mockGetSettings.mockResolvedValue(minimalSettings({ maxTotalConcurrentAgents: 1 }));
+    const order: number[] = [];
+    const third = acquireGlobalAgentSlot("resize").then((release) => {
+      order.push(3);
+      return release;
+    });
+    const fourth = acquireGlobalAgentSlot("resize").then((release) => {
+      order.push(4);
+      return release;
+    });
+    await Promise.resolve();
+    first();
+    await Promise.resolve();
+    expect(order).toEqual([]);
+    second();
+    const releaseThird = await third;
+    expect(order).toEqual([3]);
+    releaseThird();
+    releaseThird();
+    (await fourth)();
+    expect(order).toEqual([3, 4]);
+  });
+
+  it("accounts for unlimited holders when a finite cap is applied", async () => {
+    mockGetSettings.mockResolvedValue(minimalSettings());
+    const first = await acquireGlobalAgentSlot("unlimited");
+    const second = await acquireGlobalAgentSlot("unlimited");
+    mockGetSettings.mockResolvedValue(minimalSettings({ maxTotalConcurrentAgents: 1 }));
+    let admitted = false;
+    const third = acquireGlobalAgentSlot("unlimited").then((release) => {
+      admitted = true;
+      return release;
+    });
+    await Promise.resolve();
+    first();
+    await Promise.resolve();
+    expect(admitted).toBe(false);
+    second();
+    (await third)();
+  });
+
+  it("wakes existing waiters when settings increase or remove the limit", async () => {
+    mockGetSettings.mockResolvedValue(minimalSettings({ maxTotalConcurrentAgents: 1 }));
+    const first = await acquireGlobalAgentSlot("wake");
+    const second = acquireGlobalAgentSlot("wake");
+    const third = acquireGlobalAgentSlot("wake");
+    await Promise.resolve();
+    await Promise.resolve();
+    updateGlobalAgentConcurrencyLimit("wake", 2);
+    const releaseSecond = await second;
+    updateGlobalAgentConcurrencyLimit("wake");
+    const releaseThird = await third;
+    first();
+    releaseSecond();
+    releaseThird();
+  });
+
+  it("counts reattached processes before admitting new work", async () => {
+    mockGetSettings.mockResolvedValue(minimalSettings({ maxTotalConcurrentAgents: 1 }));
+    const recovered = trackExistingGlobalAgentSlot("recovered");
+    let admitted = false;
+    const next = acquireGlobalAgentSlot("recovered").then((release) => {
+      admitted = true;
+      return release;
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(admitted).toBe(false);
+    recovered();
+    (await next)();
+  });
+
+  it("does not overwrite a newer settings notification with an older disk read", async () => {
+    mockGetSettings.mockResolvedValue(minimalSettings({ maxTotalConcurrentAgents: 1 }));
+    const first = await acquireGlobalAgentSlot("stale-settings");
+    let finishRead!: (settings: ProjectSettings) => void;
+    mockGetSettings.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishRead = resolve;
+        })
+    );
+    const second = acquireGlobalAgentSlot("stale-settings");
+    updateGlobalAgentConcurrencyLimit("stale-settings", 2);
+    finishRead(minimalSettings({ maxTotalConcurrentAgents: 1 }));
+    const releaseSecond = await second;
+    first();
+    releaseSecond();
   });
 });

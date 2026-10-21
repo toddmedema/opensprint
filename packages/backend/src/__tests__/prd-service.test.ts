@@ -364,6 +364,31 @@ describe.sequential("PrdService", () => {
     expect(versions).toEqual([]);
   });
 
+  it("rejects an obsolete section revision and preserves the winning edit", async () => {
+    const current = await prdService.getSection("test-project", "executive_summary");
+    const results = await Promise.allSettled([
+      prdService.updateSection(
+        "test-project",
+        "executive_summary",
+        "Alice",
+        "sketch",
+        current.version
+      ),
+      new PrdService().updateSection(
+        "test-project",
+        "executive_summary",
+        "Bob",
+        "sketch",
+        current.version
+      ),
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect((await prdService.getSection("test-project", "executive_summary")).content).toBe(
+      "Alice"
+    );
+  });
+
   it("listSnapshotVersions returns versions in ascending order after multiple updates", async () => {
     await prdService.updateSection("test-project", "executive_summary", "v1 content", "sketch");
     await prdService.updateSection("test-project", "executive_summary", "v2 content", "sketch");

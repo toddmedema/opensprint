@@ -6,6 +6,10 @@ import { AgentLifecycleManager } from "../services/agent-lifecycle.js";
 import type { AgentRunState, AgentRunParams } from "../services/agent-lifecycle.js";
 import { TimerRegistry } from "../services/timer-registry.js";
 import { AGENT_INACTIVITY_TIMEOUT_MS, AGENT_SUSPEND_GRACE_MS } from "@opensprint/shared";
+import {
+  acquireGlobalAgentSlot,
+  trackExistingGlobalAgentSlot,
+} from "../services/agent-global-concurrency.service.js";
 
 const SUSPEND_TRANSITION_DELAY_MS = 60_000;
 
@@ -51,6 +55,7 @@ vi.mock("../services/branch-manager.js", () => ({
 
 vi.mock("../services/agent-global-concurrency.service.js", () => ({
   acquireGlobalAgentSlot: vi.fn().mockResolvedValue(() => {}),
+  trackExistingGlobalAgentSlot: vi.fn(() => () => {}),
 }));
 
 describe("AgentLifecycleManager", () => {
@@ -76,6 +81,7 @@ describe("AgentLifecycleManager", () => {
   beforeEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
+    vi.mocked(acquireGlobalAgentSlot).mockResolvedValue(() => {});
     manager = new AgentLifecycleManager();
     timers = new TimerRegistry();
     runState = {
@@ -117,10 +123,111 @@ describe("AgentLifecycleManager", () => {
   });
 
   afterEach(() => {
+    timers.clearAll();
     vi.useRealTimers();
   });
 
   describe("run", () => {
+    it("never starts work for a slot removed before run was entered", async () => {
+      runState.cancelled = true;
+      await manager.run(baseParams, runState, timers);
+      expect(acquireGlobalAgentSlot).not.toHaveBeenCalled();
+      expect(mockInvokeCodingAgent).not.toHaveBeenCalled();
+    });
+
+    it("revalidates owning slot identity after queued admission", async () => {
+      let admit!: (release: () => void) => void;
+      let ownsSlot = true;
+      const release = vi.fn();
+      vi.mocked(acquireGlobalAgentSlot).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            admit = resolve;
+          })
+      );
+      const running = manager.run(
+        { ...baseParams, isStillActive: () => ownsSlot },
+        runState,
+        timers
+      );
+      ownsSlot = false;
+      admit(release);
+      await running;
+      expect(mockInvokeCodingAgent).not.toHaveBeenCalled();
+      expect(release).toHaveBeenCalledOnce();
+    });
+
+    it("notifies review coordination when an individually killed queued reviewer is cancelled", async () => {
+      vi.mocked(acquireGlobalAgentSlot).mockImplementationOnce(
+        (_projectId, signal) =>
+          new Promise((_resolve, reject) =>
+            signal!.addEventListener("abort", () => reject(signal!.reason))
+          )
+      );
+      const running = manager.run({ ...baseParams, role: "reviewer" }, runState, timers);
+      runState.runner!.cancel(true);
+      await running;
+      expect(mockInvokeReviewAgent).not.toHaveBeenCalled();
+      expect(baseParams.onDone).toHaveBeenCalledOnce();
+      expect(baseParams.onDone).toHaveBeenCalledWith(null);
+    });
+
+    it("does not spawn a queued invocation after cancellation even if admission resolves", async () => {
+      let admit!: (release: () => void) => void;
+      const release = vi.fn();
+      vi.mocked(acquireGlobalAgentSlot).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            admit = resolve;
+          })
+      );
+      const running = manager.run(baseParams, runState, timers);
+      runState.activeProcess!.kill();
+      expect(runState.runner?.observe().state).toBe("stopped");
+      admit(release);
+      await running;
+      expect(mockInvokeCodingAgent).not.toHaveBeenCalled();
+      expect(release).toHaveBeenCalledOnce();
+      expect(baseParams.onDone).not.toHaveBeenCalled();
+      expect(timers.has("heartbeat")).toBe(false);
+    });
+
+    it("ignores output and exit callbacks from an earlier invocation generation", async () => {
+      const callbacks: Array<{
+        onOutput: (chunk: string) => void;
+        onExit: (code: number | null) => Promise<void>;
+      }> = [];
+      mockInvokeCodingAgent.mockImplementation((_path, _config, options) => {
+        callbacks.push(options);
+        return { kill: vi.fn(), pid: null };
+      });
+      await manager.run(baseParams, runState, timers);
+      const firstId = runState.attemptId;
+      await manager.run({ ...baseParams, attempt: 2 }, runState, timers);
+      expect(runState.attemptId).not.toBe(firstId);
+      callbacks[0].onOutput("stale output\n");
+      await callbacks[0].onExit(1);
+      expect(runState.exitHandled).toBe(false);
+      expect(runState.outputLog).toEqual([]);
+      expect(baseParams.onDone).not.toHaveBeenCalled();
+      expect(timers.has("heartbeat")).toBe(true);
+      await callbacks[1].onExit(0);
+      expect(baseParams.onDone).toHaveBeenCalledOnce();
+    });
+
+    it("does not install monitors or retain a handle after synchronous process exit", async () => {
+      mockInvokeCodingAgent.mockImplementation((_path, _config, options) => {
+        void options.onExit(0);
+        return { kill: vi.fn(), pid: null };
+      });
+      await manager.run(baseParams, runState, timers);
+      await Promise.resolve();
+      expect(runState.activeProcess).toBeNull();
+      expect(runState.exitHandled).toBe(true);
+      expect(timers.has("heartbeat")).toBe(false);
+      expect(baseParams.onDone).toHaveBeenCalledOnce();
+    });
+
     it("spawns coder agent and initializes run state", async () => {
       await manager.run(baseParams, runState, timers);
 
@@ -129,14 +236,14 @@ describe("AgentLifecycleManager", () => {
         baseParams.promptPath,
         baseParams.agentConfig,
         expect.objectContaining({
-          tracking: {
+          tracking: expect.objectContaining({
             id: "task-1",
             projectId: "proj-1",
             phase: "coding",
             role: "coder",
             label: "Coder",
             branchName: "main",
-          },
+          }),
         })
       );
       expect(mockInvokeReviewAgent).not.toHaveBeenCalled();
@@ -554,6 +661,93 @@ describe("AgentLifecycleManager", () => {
   });
 
   describe("resumeMonitoring", () => {
+    it("keeps a live unverified recovered process despite a terminal result file", async () => {
+      vi.useFakeTimers();
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), "unverified-result-"));
+      const promptPath = path.join(root, ".opensprint", "active", "task-1", "prompt.md");
+      const handle = {
+        kill: vi.fn(),
+        pid: process.pid,
+        ownership: "recovered_unverified" as const,
+      };
+      const onDone = vi.fn();
+      try {
+        await fs.mkdir(path.dirname(promptPath), { recursive: true });
+        await fs.writeFile(
+          path.join(path.dirname(promptPath), "result.json"),
+          JSON.stringify({ status: "success" })
+        );
+        await manager.resumeMonitoring(
+          handle,
+          { ...baseParams, repoPath: root, wtPath: root, promptPath, onDone },
+          runState,
+          timers
+        );
+        await vi.advanceTimersByTimeAsync(31_000);
+        expect(handle.kill).not.toHaveBeenCalled();
+        expect(onDone).not.toHaveBeenCalled();
+        expect(runState.activeProcess).toBe(handle);
+        expect(runState.exitHandled).toBe(false);
+      } finally {
+        timers.clearAll();
+        vi.useRealTimers();
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
+    it.each(["cancelled", "replaced"])(
+      "releases admission if recovery is %s while output is primed",
+      async (mode) => {
+        const release = vi.fn();
+        vi.mocked(trackExistingGlobalAgentSlot).mockReturnValueOnce(release);
+        let finishStat!: (value: Awaited<ReturnType<typeof fs.stat>>) => void;
+        const stat = vi.spyOn(fs, "stat").mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finishStat = resolve;
+            })
+        );
+        try {
+          const initializing = manager.resumeMonitoring(
+            { pid: null, kill: vi.fn() },
+            baseParams,
+            runState,
+            timers
+          );
+          if (mode === "cancelled") runState.runner!.cancel();
+          else runState.attemptId = "replacement-invocation";
+          finishStat({ size: 0, mtimeMs: 0 } as Awaited<ReturnType<typeof fs.stat>>);
+          await initializing;
+          expect(release).toHaveBeenCalledOnce();
+          expect(timers.has("heartbeat")).toBe(false);
+          expect(timers.has("result")).toBe(false);
+        } finally {
+          stat.mockRestore();
+        }
+      }
+    );
+
+    it("releases admission when recovery initialization throws before monitors are installed", async () => {
+      const release = vi.fn();
+      vi.mocked(trackExistingGlobalAgentSlot).mockReturnValueOnce(release);
+      const prime = vi
+        .spyOn(
+          manager as unknown as {
+            primeRecoveredRunState: () => Promise<void>;
+          },
+          "primeRecoveredRunState"
+        )
+        .mockRejectedValueOnce(new Error("recovery I/O failed"));
+      try {
+        await expect(
+          manager.resumeMonitoring({ pid: null, kill: vi.fn() }, baseParams, runState, timers)
+        ).rejects.toThrow("recovery I/O failed");
+        expect(release).toHaveBeenCalledOnce();
+        expect(timers.has("heartbeat")).toBe(false);
+      } finally {
+        prime.mockRestore();
+      }
+    });
+
     it("starts output tail and sets outputTailStop so live output streams after GUPP recovery", async () => {
       const handle = { kill: vi.fn(), pid: 9999 };
 

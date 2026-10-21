@@ -43,6 +43,8 @@ When Open Sprint spawns an Execute agent:
 
 Work state is persisted before agent spawn via `assignment.json` in `.opensprint/active/<task-id>/`. If the backend crashes, recovery reads the assignment and re-spawns or resumes the agent. **Always write assignment before spawn; never spawn then write.**
 
+Agent admission is cancellable and FIFO. Recheck attempt generation and owning slot after admission and immediately before launch; cancelled or replaced queued attempts must never launch. Concurrency limit changes preserve active accounting. A recovered PID is observation-only until ownership is independently verified: report uncertain execution and retain its assignment instead of killing or requeueing it. A stop request becomes stopped only after observed completion. A terminal result file alone cannot complete an unverified recovered process. Guidance receipts distinguish durable queue acceptance from inclusion in a model turn.
+
 ## Loop Kicker vs Watchdog
 
 - **Loop kicker** (60s): Restarts the orchestrator loop when idle. Runs inside the orchestrator.
@@ -119,5 +121,5 @@ Other tests that assign `process.env` are mostly unit-level (no in-process HTTP 
 
 ## Maintenance Notes
 
-- If you change the agent lifecycle or prompt contract, keep this file, the bootstrap contract in `packages/backend/src/services/project.service.ts`, and `packages/backend/docs/opensprint-help-context.md` in sync.
+- If you change the agent lifecycle or prompt contract, keep this file, the bootstrap contract in `packages/backend/src/services/project/project-runtime-contract.ts` (used by `project.service.ts`), and `packages/backend/docs/opensprint-help-context.md` in sync.
 - Prefer short, role-specific instructions over one long global ruleset when adding new agent guidance.

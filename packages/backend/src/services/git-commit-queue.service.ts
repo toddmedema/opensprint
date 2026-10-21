@@ -82,7 +82,7 @@ export class MergeJobError extends Error {
  * - prd: updated after Plan <plan-id> built | prd: Sketch session update
  * - Closed <task-id>: <task title truncated to ~45 chars>
  */
-export type GitCommitJobType = "prd_update" | "worktree_merge";
+export type GitCommitJobType = "prd_update" | "worktree_merge" | "repository_operation";
 
 export interface PrdUpdateJob {
   type: "prd_update";
@@ -131,7 +131,13 @@ export function formatMergeCommitMessage(taskId: string, taskTitle: string): str
   return formatClosedCommitMessageUtil(taskId, taskTitle);
 }
 
-export type GitCommitJob = PrdUpdateJob | WorktreeMergeJob;
+/** An already recorded trusted publication, serialized with canonical merges/commits. */
+export interface RepositoryOperationJob {
+  type: "repository_operation";
+  repoPath: string;
+  run: () => Promise<void>;
+}
+export type GitCommitJob = PrdUpdateJob | WorktreeMergeJob | RepositoryOperationJob;
 
 export interface GitMergeQueueSnapshotForRepo {
   activeTaskId: string | null;
@@ -337,7 +343,8 @@ class GitCommitQueueImpl implements GitCommitQueueService {
     const item = this.queue.shift()!;
     const job = item.job;
     this.currentJob = job;
-    const maxRetries = 2;
+    // A publication reconciles recorded effects; blind retries could repeat one.
+    const maxRetries = job.type === "repository_operation" ? 1 : 2;
 
     try {
       for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -391,6 +398,10 @@ class GitCommitQueueImpl implements GitCommitQueueService {
     await waitForGitReady(repoPath);
 
     switch (job.type) {
+      case "repository_operation": {
+        await job.run();
+        break;
+      }
       case "prd_update": {
         const msg = formatPrdCommitMessage(job.source, job.planId);
         await this.addAndCommit(repoPath, ["SPEC.md"], msg);
@@ -562,7 +573,9 @@ class GitCommitQueueImpl implements GitCommitQueueService {
         } finally {
           if (cleanupFallbackWorktree) {
             await this.branchManager.rebaseAbort(rebaseWorktreePath).catch((err) => {
-              log.warn("Failed to abort rebase during cleanup", { err: err instanceof Error ? err.message : String(err) });
+              log.warn("Failed to abort rebase during cleanup", {
+                err: err instanceof Error ? err.message : String(err),
+              });
             });
             await this.branchManager.prepareWorktreeForRemoval(job.taskId);
             await this.branchManager
@@ -641,20 +654,20 @@ class GitCommitQueueImpl implements GitCommitQueueService {
                     branchName: job.branchName,
                   });
                   fireAndForget(
-                  eventLogService.append(repoPath, {
-                    timestamp: new Date().toISOString(),
-                    projectId,
-                    taskId: job.taskId,
-                    event: "merge.resolved",
-                    data: {
-                      stage: "merge_to_main",
-                      branchName: job.branchName,
-                      conflictedFiles: mergeErr.conflictedFiles,
-                      resolvedBy: "merger",
-                    },
-                  }),
-                  "git-commit-queue:merge-completed-event-log"
-                );
+                    eventLogService.append(repoPath, {
+                      timestamp: new Date().toISOString(),
+                      projectId,
+                      taskId: job.taskId,
+                      event: "merge.resolved",
+                      data: {
+                        stage: "merge_to_main",
+                        branchName: job.branchName,
+                        conflictedFiles: mergeErr.conflictedFiles,
+                        resolvedBy: "merger",
+                      },
+                    }),
+                    "git-commit-queue:merge-completed-event-log"
+                  );
                 } catch (continueErr) {
                   log.warn("merge commit failed after merger", {
                     branchName: job.branchName,

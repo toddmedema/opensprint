@@ -7,8 +7,9 @@
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
+import { isDeepStrictEqual } from "node:util";
 import type { ProjectSettings } from "@opensprint/shared";
-import { parseSettings } from "@opensprint/shared";
+import { omitInheritedAgentTiersForStore, parseSettings } from "@opensprint/shared";
 import { writeJsonAtomic } from "../utils/file-utils.js";
 import { createLogger } from "../utils/logger.js";
 
@@ -35,9 +36,51 @@ export function setSettingsStorePathForTesting(testPath: string | null): void {
 export interface SettingsEntry {
   settings: ProjectSettings;
   updatedAt: string;
+  revision?: number;
 }
 
 export type SettingsStore = Record<string, SettingsEntry>;
+
+interface RawSettingsEntry {
+  settings: Record<string, unknown>;
+  updatedAt: string;
+  revision: number;
+}
+
+/** Mutation reads retain absent fields and never turn a corrupt store into an empty one. */
+async function loadRawStore(): Promise<Record<string, RawSettingsEntry>> {
+  let content: string;
+  try {
+    content = await fs.readFile(getSettingsStorePath(), "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw error;
+  }
+  const parsed: unknown = JSON.parse(content);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Settings store must contain a project settings object.");
+  }
+  const store: Record<string, RawSettingsEntry> = Object.create(null);
+  for (const [projectId, value] of Object.entries(parsed)) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error(`Invalid settings entry for project ${projectId}.`);
+    }
+    const entry = value as Record<string, unknown>;
+    const settings = "settings" in entry ? entry.settings : entry;
+    if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+      throw new Error(`Invalid settings entry for project ${projectId}.`);
+    }
+    store[projectId] = {
+      settings: stripApiKeys(settings as Record<string, unknown>),
+      updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : new Date().toISOString(),
+      revision:
+        Number.isSafeInteger(entry.revision) && Number(entry.revision) >= 0
+          ? Number(entry.revision)
+          : 0,
+    };
+  }
+  return store;
+}
 
 async function loadStore(): Promise<SettingsStore> {
   const file = getSettingsStorePath();
@@ -56,8 +99,13 @@ async function loadStore(): Promise<SettingsStore> {
             try {
               settings = parseSettings(stripApiKeys(v.settings as Record<string, unknown>));
             } catch (err) {
-              log.warn("parseSettings failed for project %s, using raw cast", { id, err: err instanceof Error ? err.message : String(err) });
-              settings = stripApiKeys(v.settings as Record<string, unknown>) as unknown as ProjectSettings;
+              log.warn("parseSettings failed for project %s, using raw cast", {
+                id,
+                err: err instanceof Error ? err.message : String(err),
+              });
+              settings = stripApiKeys(
+                v.settings as Record<string, unknown>
+              ) as unknown as ProjectSettings;
             }
             normalized[id] = {
               settings,
@@ -68,7 +116,10 @@ async function loadStore(): Promise<SettingsStore> {
             try {
               settings = parseSettings(stripApiKeys(val as Record<string, unknown>));
             } catch (err) {
-              log.warn("parseSettings failed for legacy project %s, using raw cast", { id, err: err instanceof Error ? err.message : String(err) });
+              log.warn("parseSettings failed for legacy project %s, using raw cast", {
+                id,
+                err: err instanceof Error ? err.message : String(err),
+              });
               settings = stripApiKeys(val as Record<string, unknown>) as unknown as ProjectSettings;
             }
             normalized[id] = {
@@ -86,7 +137,7 @@ async function loadStore(): Promise<SettingsStore> {
   return {};
 }
 
-async function saveStore(store: SettingsStore): Promise<void> {
+async function saveStore(store: Record<string, RawSettingsEntry>): Promise<void> {
   const file = getSettingsStorePath();
   const dir = path.dirname(file);
   await fs.mkdir(dir, { recursive: true });
@@ -202,14 +253,63 @@ export async function setSettingsInStore(
   projectId: string,
   settings: ProjectSettings
 ): Promise<void> {
+  await transformRawSettingsInStore(
+    projectId,
+    () => settings as unknown as Record<string, unknown>
+  );
+}
+
+export interface SettingsTransformResult {
+  settings: Record<string, unknown>;
+  updatedAt: string | null;
+  revision: number;
+  exists: boolean;
+}
+
+/**
+ * Apply a synchronous transformation to the latest raw project record while
+ * holding the file lock. Never call another settings writer from the callback.
+ * Return undefined to retain the existing record without creating or revising it.
+ */
+export async function transformRawSettingsInStore(
+  projectId: string,
+  transform: (
+    current: Record<string, unknown>,
+    metadata: { exists: boolean; revision: number }
+  ) => Record<string, unknown> | undefined
+): Promise<SettingsTransformResult> {
   return withStoreLock(async () => {
-    const store = await loadStore();
-    const now = new Date().toISOString();
-    const toStore = stripApiKeys(
-      settings as unknown as Record<string, unknown>
-    ) as unknown as ProjectSettings;
-    store[projectId] = { settings: toStore, updatedAt: now };
+    const store = await loadRawStore();
+    const entry = store[projectId];
+    const current = structuredClone(entry?.settings ?? {});
+    const revision = entry?.revision ?? 0;
+    const updated = transform(current, { exists: entry !== undefined, revision });
+    if (updated === undefined) {
+      return {
+        settings: entry?.settings ?? {},
+        updatedAt: entry?.updatedAt ?? null,
+        revision,
+        exists: entry !== undefined,
+      };
+    }
+    if (!updated || typeof updated !== "object" || Array.isArray(updated) || "then" in updated) {
+      throw new Error("Settings transformations must synchronously return a settings object.");
+    }
+    const nextRevision = revision + 1;
+    if (!Number.isSafeInteger(nextRevision)) throw new Error("Settings revision exhausted.");
+    const toStore = stripApiKeys(updated);
+    const updatedAt = new Date().toISOString();
+    store[projectId] = { settings: toStore, updatedAt, revision: nextRevision };
     await saveStore(store);
+    const { updateGlobalAgentConcurrencyLimit } =
+      await import("./agent-global-concurrency.service.js");
+    updateGlobalAgentConcurrencyLimit(
+      projectId,
+      typeof toStore.maxTotalConcurrentAgents === "number"
+        ? toStore.maxTotalConcurrentAgents
+        : undefined
+    );
+    return { settings: toStore, updatedAt, revision: nextRevision, exists: true };
   });
 }
 
@@ -223,17 +323,27 @@ export async function updateSettingsInStore(
   defaults: ProjectSettings,
   updater: (settings: ProjectSettings) => ProjectSettings
 ): Promise<void> {
-  return withStoreLock(async () => {
-    const store = await loadStore();
-    const entry = store[projectId];
-    const current = entry?.settings ?? defaults;
-    const updated = updater(current);
-    const now = new Date().toISOString();
-    const toStore = stripApiKeys(
-      updated as unknown as Record<string, unknown>
-    ) as unknown as ProjectSettings;
-    store[projectId] = { settings: toStore, updatedAt: now };
-    await saveStore(store);
+  await transformRawSettingsInStore(projectId, (raw, { exists }) => {
+    let current: ProjectSettings;
+    try {
+      current = exists ? parseSettings(raw) : structuredClone(defaults);
+    } catch {
+      current = raw as unknown as ProjectSettings;
+    }
+    const before = structuredClone(current) as unknown as Record<string, unknown>;
+    const updated = updater(current) as unknown as Record<string, unknown>;
+    // Apply only the updater's changes. parseSettings fills defaults (including
+    // agents), and persisting those unchanged defaults would sever inheritance.
+    const next = exists
+      ? { ...raw }
+      : omitInheritedAgentTiersForStore(defaults as unknown as Record<string, unknown>, raw);
+    for (const key of new Set([...Object.keys(before), ...Object.keys(updated)])) {
+      if (!isDeepStrictEqual(before[key], updated[key])) {
+        if (updated[key] === undefined) delete next[key];
+        else next[key] = updated[key];
+      }
+    }
+    return next;
   });
 }
 
@@ -242,10 +352,13 @@ export async function updateSettingsInStore(
  */
 export async function deleteSettingsFromStore(projectId: string): Promise<void> {
   return withStoreLock(async () => {
-    const store = await loadStore();
+    const store = await loadRawStore();
     if (projectId in store) {
       delete store[projectId];
       await saveStore(store);
+      const { updateGlobalAgentConcurrencyLimit } =
+        await import("./agent-global-concurrency.service.js");
+      updateGlobalAgentConcurrencyLimit(projectId);
     }
   });
 }

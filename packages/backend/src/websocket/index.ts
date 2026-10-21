@@ -1,3 +1,4 @@
+import { sendSocketData } from "./send.js";
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage, Server } from "http";
 import type {
@@ -15,6 +16,7 @@ import { createLogger } from "../utils/logger.js";
 import {
   AgentChatService,
   agentChatService as defaultAgentChatService,
+  type SendMessageResult,
 } from "../services/agent-chat.service.js";
 import { requestHasValidBearerToken } from "../services/local-session-auth.service.js";
 import { consumeWebSocketUpgradeTicket } from "../services/websocket-upgrade-ticket.service.js";
@@ -65,6 +67,7 @@ const wsToProjectId = new Map<WebSocket, string>();
 
 let getLiveOutput: ((projectId: string, taskId: string) => Promise<string>) | null = null;
 let chatService: AgentChatService = defaultAgentChatService;
+let executeAgentGuidance: WebSocketOptions["executeAgentGuidance"];
 
 let wss: WebSocketServer;
 let clientHasConnected = false;
@@ -80,11 +83,37 @@ export function hasClientConnected(): boolean {
 export interface WebSocketOptions {
   getLiveOutput?: (projectId: string, taskId: string) => Promise<string>;
   agentChatService?: AgentChatService;
+  executeAgentGuidance?: (
+    projectId: string,
+    taskId: string,
+    attemptId: string,
+    send: () => SendMessageResult
+  ) => Promise<SendMessageResult>;
 }
 
 export function setupWebSocket(server: Server, options?: WebSocketOptions): void {
   getLiveOutput = options?.getLiveOutput ?? null;
   chatService = options?.agentChatService ?? defaultAgentChatService;
+  executeAgentGuidance = options?.executeAgentGuidance;
+  chatService.setStatusListener((message) => {
+    if (
+      !message.projectId ||
+      !message.taskId ||
+      !message.clientMessageId ||
+      (message.status !== "included" && message.status !== "run-ended")
+    )
+      return;
+    broadcastToProject(message.projectId, {
+      type: "agent.chat.received",
+      taskId: message.taskId,
+      messageId: message.id,
+      timestamp: message.timestamp,
+      clientMessageId: message.clientMessageId,
+      attemptId: message.attemptId,
+      status: message.status,
+      error: message.error,
+    });
+  });
   eventRelay.init(projectClients, agentSubscriptions, planAgentSubscriptions);
 
   wss = new WebSocketServer({ server, verifyClient: verifyWebSocketUpgrade });
@@ -125,7 +154,9 @@ export function setupWebSocket(server: Server, options?: WebSocketOptions): void
           parsed !== null &&
           typeof (parsed as Record<string, unknown>).type === "string"
         ) {
-          handleClientEvent(ws, parsed as ClientEvent);
+          void handleClientEvent(ws, parsed as ClientEvent).catch((err) => {
+            log.error("WebSocket event failed", { err });
+          });
         } else {
           log.warn("Ignoring non-object or type-less WebSocket message");
         }
@@ -166,7 +197,7 @@ export function setupWebSocket(server: Server, options?: WebSocketOptions): void
   }, HEARTBEAT_INTERVAL_MS);
 }
 
-function handleClientEvent(ws: WebSocket, event: ClientEvent): void {
+async function handleClientEvent(ws: WebSocket, event: ClientEvent): Promise<void> {
   if (!event || typeof event !== "object" || !event.type) {
     log.warn("Ignoring malformed client event");
     return;
@@ -193,9 +224,12 @@ function handleClientEvent(ws: WebSocket, event: ClientEvent): void {
                     output,
                   };
                   try {
-                    ws.send(JSON.stringify(backfill));
+                    sendSocketData(ws, JSON.stringify(backfill));
                   } catch (sendErr) {
-                    log.debug("backfill send failed", { taskId, err: sendErr instanceof Error ? sendErr.message : String(sendErr) });
+                    log.debug("backfill send failed", {
+                      taskId,
+                      err: sendErr instanceof Error ? sendErr.message : String(sendErr),
+                    });
                   }
                 }
                 agentSubscriptions.get(ws)?.add(taskId);
@@ -233,9 +267,12 @@ function handleClientEvent(ws: WebSocket, event: ClientEvent): void {
               output,
             };
             try {
-              ws.send(JSON.stringify(backfill));
+              sendSocketData(ws, JSON.stringify(backfill));
             } catch (sendErr) {
-              log.debug("plan backfill send failed", { planId, err: sendErr instanceof Error ? sendErr.message : String(sendErr) });
+              log.debug("plan backfill send failed", {
+                planId,
+                err: sendErr instanceof Error ? sendErr.message : String(sendErr),
+              });
             }
           }
         }
@@ -259,35 +296,86 @@ function handleClientEvent(ws: WebSocket, event: ClientEvent): void {
         log.warn("agent.chat.send from client without project scope");
         break;
       }
-      const { taskId, message } = event;
+      const { taskId, message, clientMessageId } = event;
+      if (
+        typeof message !== "string" ||
+        !message.trim() ||
+        message.length > 32_000 ||
+        typeof clientMessageId !== "string" ||
+        !clientMessageId ||
+        clientMessageId.length > 200
+      ) {
+        sendSocketData(
+          ws,
+          JSON.stringify({
+            type: "agent.chat.unsupported",
+            taskId,
+            clientMessageId,
+            reason: "A message and clientMessageId are required (maximum 32000 characters).",
+          })
+        );
+        break;
+      }
 
-      const support = chatService.supportsChat(taskId);
+      const support = chatService.supportsChat(taskId, projectId);
       if (!support.supported) {
         const unsupported: AgentChatUnsupportedEvent = {
           type: "agent.chat.unsupported",
           taskId,
           reason: support.reason ?? "Chat not supported",
+          clientMessageId,
         };
-        broadcastToProject(projectId, unsupported);
+        sendSocketData(ws, JSON.stringify(unsupported));
         break;
       }
 
-      const result = chatService.sendMessage(projectId, taskId, message);
+      let result;
+      try {
+        const attemptId = chatService.getAttemptId(taskId);
+        if (!attemptId) throw new Error("Agent run ended");
+        const send = () => {
+          // The control callback may yield while a run ends or is replaced.
+          if (chatService.getAttemptId(taskId) !== attemptId)
+            throw new Error("Agent run changed; retry guidance");
+          return chatService.sendMessage(projectId, taskId, message, undefined, {
+            clientMessageId,
+          });
+        };
+        result = executeAgentGuidance
+          ? await executeAgentGuidance(projectId, taskId, attemptId, send)
+          : send();
+      } catch (error) {
+        log.error("Could not persist agent guidance", { taskId, error });
+        sendSocketData(
+          ws,
+          JSON.stringify({
+            type: "agent.chat.unsupported",
+            taskId,
+            clientMessageId,
+            reason: "Guidance was not accepted. Check run control and retry.",
+          })
+        );
+        break;
+      }
       if (result.delivered) {
         const received: AgentChatReceivedEvent = {
           type: "agent.chat.received",
           taskId,
           messageId: result.messageId,
           timestamp: result.timestamp,
+          clientMessageId,
+          attemptId: result.attemptId,
+          status: result.status,
         };
-        broadcastToProject(projectId, received);
+        sendSocketData(ws, JSON.stringify(received));
       } else {
         const unsupported: AgentChatUnsupportedEvent = {
           type: "agent.chat.unsupported",
           taskId,
           reason: result.error ?? "Failed to deliver message",
+          clientMessageId,
         };
-        broadcastToProject(projectId, unsupported);
+        sendSocketData(ws, JSON.stringify(unsupported));
       }
       break;
     }

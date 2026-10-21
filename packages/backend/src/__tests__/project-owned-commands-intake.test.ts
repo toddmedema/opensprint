@@ -10,6 +10,7 @@ import { commandPreview } from "../services/command-preview.service.js";
 import { createCommandsRouter } from "../routes/commands.js";
 import { createIntakeRouter } from "../routes/intake.js";
 import { errorHandler } from "../middleware/error-handler.js";
+import { notificationService } from "../services/notification.service.js";
 
 describe("project-scoped commands and intake with SQLite", () => {
   let db: AppDb;
@@ -45,6 +46,50 @@ describe("project-scoped commands and intake with SQLite", () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     await db.close();
+  });
+
+  it("reserves concurrent execution once before command effects begin", async () => {
+    const run = await commandStore.createRun({
+      project_id: "A",
+      actor: "user",
+      raw_input: "List tasks",
+    });
+    const intent = { commandType: "list_tasks" as const, args: {} };
+    await commandStore.updateInterpretation(run.id, intent, "safe");
+    const claims = await Promise.allSettled([
+      commandStore.claimExecution("A", run.id, intent, "same-request"),
+      commandStore.claimExecution("A", run.id, intent, "same-request"),
+    ]);
+    expect(claims.filter((c) => c.status === "fulfilled")).toHaveLength(1);
+    expect(claims.filter((c) => c.status === "rejected")).toHaveLength(1);
+    await commandStore.updateInterpretation(
+      run.id,
+      { commandType: "create_task", args: { title: "Changed" } },
+      "mutating-low-risk"
+    );
+    expect((await commandStore.getRun(run.id, "A"))?.interpreted_command).toEqual(intent);
+  });
+
+  it("accepts exactly one concurrent decision resolution", async () => {
+    const notification = await notificationService.create({
+      projectId: "A",
+      source: "execute",
+      sourceId: "task-1",
+      questions: [{ id: "q", text: "Proceed?" }],
+    });
+    const results = await Promise.allSettled([
+      notificationService.resolve("A", notification.id, {
+        responses: [{ questionId: "q", answer: "Alice" }],
+      }),
+      notificationService.resolve("A", notification.id, {
+        responses: [{ questionId: "q", answer: "Bob" }],
+      }),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+    expect((await notificationService.getById("A", notification.id))?.responses?.[0].answer).toBe(
+      "Alice"
+    );
   });
 
   it("scopes intake reads/mutations and preserves partial bulk outcomes", async () => {

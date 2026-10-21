@@ -13,6 +13,7 @@ import type {
   CommandHistoryFilters,
 } from "@opensprint/shared";
 import { taskStore } from "./task-store.service.js";
+import { AppError } from "../middleware/error-handler.js";
 
 interface CommandRunRow {
   id: string;
@@ -49,6 +50,43 @@ function rowToRun(row: CommandRunRow): CommandRun {
 }
 
 export class CommandStoreService {
+  /** Reserve execution before performing effects; interrupted execution is never retried blindly. */
+  async claimExecution(
+    projectId: string,
+    id: string,
+    expectedIntent: CommandIntent,
+    idempotencyKey?: string
+  ): Promise<CommandRun> {
+    return taskStore.runWrite(async (tx) => {
+      const changed = await tx.execute(
+        `UPDATE command_runs SET status = 'executing',
+        idempotency_key = $1, updated_at = $2 WHERE id = $3 AND project_id = $4
+        AND status IN ('previewing', 'awaiting_confirmation') AND interpreted_command = $5`,
+        [
+          idempotencyKey ?? null,
+          new Date().toISOString(),
+          id,
+          projectId,
+          JSON.stringify(expectedIntent),
+        ]
+      );
+      const row = await tx.queryOne(
+        "SELECT * FROM command_runs WHERE id = $1 AND project_id = $2",
+        [id, projectId]
+      );
+      if (!row) throw new AppError(404, "COMMAND_NOT_FOUND", "Command run not found.");
+      const run = rowToRun(row as unknown as CommandRunRow);
+      if (changed === 1) return run;
+      if (run.result && (!idempotencyKey || run.idempotency_key === idempotencyKey)) return run;
+      throw new AppError(
+        409,
+        "COMMAND_EXECUTION_CONFLICT",
+        run.status === "executing"
+          ? "Command execution is already accepted. Check its history before retrying."
+          : "Command changed or is no longer awaiting confirmation. Preview it again."
+      );
+    });
+  }
   async createRun(data: {
     project_id: string;
     actor: string;
@@ -94,7 +132,7 @@ export class CommandStoreService {
       await client.execute(
         `UPDATE command_runs SET
           interpreted_command = $1, risk_level = $2, status = $3, updated_at = $4
-        WHERE id = $5`,
+        WHERE id = $5 AND status IN ('interpreting', 'previewing', 'awaiting_confirmation')`,
         [JSON.stringify(intent), riskLevel, "previewing", now, id]
       );
     });
@@ -104,7 +142,8 @@ export class CommandStoreService {
     const now = new Date().toISOString();
     await taskStore.runWrite(async (client) => {
       await client.execute(
-        `UPDATE command_runs SET preview = $1, status = $2, updated_at = $3 WHERE id = $4`,
+        `UPDATE command_runs SET preview = $1, status = $2, updated_at = $3 WHERE id = $4
+         AND status IN ('interpreting', 'previewing', 'awaiting_confirmation')`,
         [JSON.stringify(preview), "awaiting_confirmation", now, id]
       );
     });

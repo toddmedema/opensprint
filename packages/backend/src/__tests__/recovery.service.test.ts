@@ -142,7 +142,7 @@ describe("RecoveryService — stale heartbeat recovery", () => {
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   });
 
-  it("terminates orphaned agent process group before recovering task when the leader is alive", async () => {
+  it("preserves a live orphan whose process ownership cannot be verified", async () => {
     mockFindStaleHeartbeats.mockResolvedValue([
       {
         taskId: "task-stale",
@@ -165,12 +165,8 @@ describe("RecoveryService — stale heartbeat recovery", () => {
     await service.runFullRecovery("proj-1", tmpDir, host);
 
     const sigtermCalls = mockKill.mock.calls.filter((c) => c[1] === "SIGTERM");
-    expect(sigtermCalls).toContainEqual([-TEST_PID, "SIGTERM"]);
-    expect(vi.mocked(taskStore.update)).toHaveBeenCalledWith(
-      "proj-1",
-      "task-stale",
-      expect.objectContaining({ status: "open" })
-    );
+    expect(sigtermCalls).toEqual([]);
+    expect(vi.mocked(taskStore.update)).not.toHaveBeenCalled();
   });
 
   it("does not call process.kill when processGroupLeaderPid is missing or invalid", async () => {
@@ -283,6 +279,103 @@ describe("RecoveryService — stale heartbeat recovery", () => {
       "task-stale",
       expect.objectContaining({ status: "open" })
     );
+  });
+
+  it.each(["live", "complete", "pending"])(
+    "inspects a fresh on-disk %s assignment while preserving cleanup protection",
+    async (mode) => {
+      const taskId = `fresh-${mode}`;
+      const promptDir = path.join(tmpDir, ".opensprint", "active", taskId);
+      const assignment = {
+        taskId,
+        projectId: "proj-1",
+        phase: "coding" as const,
+        branchName: `opensprint/${taskId}`,
+        worktreePath: tmpDir,
+        promptPath: path.join(promptDir, "prompt.md"),
+        agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
+        attempt: 1,
+        createdAt: new Date().toISOString(),
+      };
+      await fs.mkdir(promptDir, { recursive: true });
+      await fs.writeFile(path.join(promptDir, "assignment.json"), JSON.stringify(assignment));
+      if (mode === "complete") {
+        await fs.writeFile(
+          path.join(promptDir, "result.json"),
+          JSON.stringify({ status: "success" })
+        );
+      }
+      const recoveryHost = {
+        ...host,
+        reattachSlot: vi.fn().mockResolvedValue(true),
+        handleCompletedAssignment: vi.fn().mockResolvedValue(true),
+      };
+      vi.mocked(taskStore.listAll).mockResolvedValue([
+        { id: taskId, status: "in_progress" } as never,
+      ]);
+      vi.mocked(taskStore.listInProgressWithAgentAssignee).mockResolvedValue([
+        { id: taskId, status: "in_progress", updated_at: new Date(0).toISOString() } as never,
+      ]);
+      mockFindOrphanedAssignments.mockResolvedValue([{ taskId, assignment }]);
+      mockReadHeartbeat.mockResolvedValue(
+        mode === "live"
+          ? {
+              processGroupLeaderPid: TEST_PID,
+              lastOutputTimestamp: Date.now(),
+              heartbeatTimestamp: Date.now(),
+            }
+          : null
+      );
+      process.kill = mockKill as unknown as typeof process.kill;
+      mockKill.mockImplementation(() => true);
+
+      const result = await service.runFullRecovery("proj-1", tmpDir, recoveryHost, {
+        includeGupp: true,
+      });
+
+      expect(result.reattached).toEqual(mode === "pending" ? [] : [taskId]);
+      expect(vi.mocked(taskStore.update)).not.toHaveBeenCalled();
+      expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
+      if (mode === "live") expect(recoveryHost.reattachSlot).toHaveBeenCalledOnce();
+      if (mode === "complete")
+        expect(recoveryHost.handleCompletedAssignment).toHaveBeenCalledOnce();
+    }
+  );
+
+  it("does not delete worktrees after a task-store lookup failure", async () => {
+    mockFindStaleHeartbeats.mockResolvedValue([
+      {
+        taskId: "lookup-failure",
+        heartbeat: {
+          processGroupLeaderPid: TEST_PID,
+          lastOutputTimestamp: 0,
+          heartbeatTimestamp: 0,
+        },
+      },
+    ]);
+    vi.mocked(taskStore.show).mockRejectedValueOnce(new Error("database temporarily unavailable"));
+    await service.runFullRecovery("proj-1", tmpDir, host);
+    expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
+    expect(vi.mocked(taskStore.update)).not.toHaveBeenCalled();
+  });
+
+  it("does not delete a recoverable checkout when persisting the requeue fails", async () => {
+    mockFindStaleHeartbeats.mockResolvedValue([
+      {
+        taskId: "write-failure",
+        heartbeat: { processGroupLeaderPid: 0, lastOutputTimestamp: 0, heartbeatTimestamp: 0 },
+      },
+    ]);
+    vi.mocked(taskStore.show).mockResolvedValueOnce({
+      id: "write-failure",
+      status: "in_progress",
+    } as never);
+    vi.mocked(taskStore.update).mockRejectedValueOnce(
+      new Error("database temporarily unavailable")
+    );
+    const result = await service.runFullRecovery("proj-1", tmpDir, host);
+    expect(result.requeued).toEqual([]);
+    expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
   });
 
   it("completes orphaned assignments with terminal result.json during startup recovery", async () => {
@@ -736,7 +829,11 @@ describe("RecoveryService — stale heartbeat recovery", () => {
     const result = await service.runFullRecovery("proj-1", tmpDir, host);
 
     expect(vi.mocked(worktreeLeaseService.forceRelease)).not.toHaveBeenCalled();
-    expect(mockRemoveTaskWorktree).not.toHaveBeenCalledWith(tmpDir, "task-merged", "/tmp/wt-merged");
+    expect(mockRemoveTaskWorktree).not.toHaveBeenCalledWith(
+      tmpDir,
+      "task-merged",
+      "/tmp/wt-merged"
+    );
     expect(result.cleaned).not.toContain("cleanup_intent:task-merged");
   });
 
@@ -1098,7 +1195,10 @@ describe("RecoveryService — stale heartbeat recovery", () => {
           }
           return JSON.stringify({ status: "success" });
         }
-        return originalReadFile.call(fs, ...args as Parameters<typeof originalReadFile>) as Promise<string>;
+        return originalReadFile.call(
+          fs,
+          ...(args as Parameters<typeof originalReadFile>)
+        ) as Promise<string>;
       });
 
       const result = await service.runFullRecovery("proj-1", tmpDir, guppHost, {
@@ -1149,7 +1249,7 @@ describe("RecoveryService — stale heartbeat recovery", () => {
             promptPath: path.join(promptDir, "prompt.md"),
             agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
             attempt: 1,
-            createdAt: new Date().toISOString(),
+            createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
           },
         },
       ]);
@@ -1216,7 +1316,7 @@ describe("RecoveryService — stale heartbeat recovery", () => {
         promptPath: path.join(worktreePath, ".opensprint", "active", taskId, "prompt.md"),
         agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
         attempt: 1,
-        createdAt: new Date().toISOString(),
+        createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
       };
     }
 
@@ -1225,6 +1325,15 @@ describe("RecoveryService — stale heartbeat recovery", () => {
 
       const wtPath = path.join(tmpDir, "worktree-leased");
       await fs.mkdir(wtPath, { recursive: true });
+      const assignmentPath = path.join(
+        tmpDir,
+        ".opensprint",
+        "active",
+        "task-leased",
+        "assignment.json"
+      );
+      await fs.mkdir(path.dirname(assignmentPath), { recursive: true });
+      await fs.writeFile(assignmentPath, JSON.stringify(makeAssignment("task-leased", wtPath)));
 
       const guppHost = {
         ...host,
@@ -1240,6 +1349,7 @@ describe("RecoveryService — stale heartbeat recovery", () => {
 
       expect(mockCanCleanupLease).toHaveBeenCalledWith("task-leased");
       expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
+      await expect(fs.access(assignmentPath)).resolves.toBeUndefined();
     });
 
     it("proceeds with worktree removal when lease is released (canCleanup returns true)", async () => {
@@ -1261,15 +1371,12 @@ describe("RecoveryService — stale heartbeat recovery", () => {
       await service.runFullRecovery("proj-1", tmpDir, guppHost, { includeGupp: true });
 
       expect(mockCanCleanupLease).toHaveBeenCalledWith("task-released");
-      expect(mockRemoveTaskWorktree).toHaveBeenCalledWith(
-        tmpDir,
-        "task-released",
-        wtPath,
-        { ignoreLiveTaskStatusForTaskIds: new Set(["task-released"]) }
-      );
+      expect(mockRemoveTaskWorktree).toHaveBeenCalledWith(tmpDir, "task-released", wtPath, {
+        ignoreLiveTaskStatusForTaskIds: new Set(["task-released"]),
+      });
     });
 
-    it("defaults to allowing cleanup when canCleanup throws", async () => {
+    it("preserves the worktree when lease ownership cannot be checked", async () => {
       mockCanCleanupLease.mockRejectedValue(new Error("DB unavailable"));
 
       const wtPath = path.join(tmpDir, "worktree-err");
@@ -1287,12 +1394,7 @@ describe("RecoveryService — stale heartbeat recovery", () => {
 
       await service.runFullRecovery("proj-1", tmpDir, guppHost, { includeGupp: true });
 
-      expect(mockRemoveTaskWorktree).toHaveBeenCalledWith(
-        tmpDir,
-        "task-err",
-        wtPath,
-        { ignoreLiveTaskStatusForTaskIds: new Set(["task-err"]) }
-      );
+      expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
     });
 
     it("checks cleanup lease and removal using assignment worktreeKey for epic worktrees", async () => {
@@ -1341,7 +1443,11 @@ describe("RecoveryService — stale heartbeat recovery", () => {
   });
 
   describe("active-slot exclusion prevents worktree destruction (git_entry_missing fix)", () => {
-    function makeAssignment(taskId: string, worktreePath: string, extra?: Partial<Record<string, unknown>>) {
+    function makeAssignment(
+      taskId: string,
+      worktreePath: string,
+      extra?: Partial<Record<string, unknown>>
+    ) {
       return {
         taskId,
         projectId: "proj-1",
@@ -1351,7 +1457,7 @@ describe("RecoveryService — stale heartbeat recovery", () => {
         promptPath: path.join(worktreePath, ".opensprint", "active", taskId, "prompt.md"),
         agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
         attempt: 2,
-        createdAt: new Date().toISOString(),
+        createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
         ...extra,
       };
     }
@@ -1459,12 +1565,9 @@ describe("RecoveryService — stale heartbeat recovery", () => {
 
       await service.runFullRecovery("proj-1", tmpDir, mixedHost, { includeGupp: true });
 
-      expect(mockRemoveTaskWorktree).toHaveBeenCalledWith(
-        tmpDir,
-        "task-stale-gone",
-        wtPath,
-        { ignoreLiveTaskStatusForTaskIds: new Set(["task-stale-gone"]) }
-      );
+      expect(mockRemoveTaskWorktree).toHaveBeenCalledWith(tmpDir, "task-stale-gone", wtPath, {
+        ignoreLiveTaskStatusForTaskIds: new Set(["task-stale-gone"]),
+      });
     });
 
     it("skips cleanup for activeAgentIds even without explicit slot", async () => {
@@ -1599,7 +1702,9 @@ describe("RecoveryService — stale heartbeat recovery", () => {
       const wtKey = `stress-gap-${Date.now()}`;
       const wtPath = path.join(base, wtKey);
       try {
-        await fs.mkdir(path.join(wtPath, ".opensprint", "active", "task-live"), { recursive: true });
+        await fs.mkdir(path.join(wtPath, ".opensprint", "active", "task-live"), {
+          recursive: true,
+        });
         await fs.writeFile(
           path.join(wtPath, ".opensprint", "active", "task-live", "assignment.json"),
           JSON.stringify({

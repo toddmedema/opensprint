@@ -226,7 +226,9 @@ export class PhaseExecutorService {
       const conflictedFiles = rebaseConflict.conflictedFiles;
       if (round > MAX_RETRY_PATH_REBASE_MERGER_ROUNDS) {
         await this.host.branchManager.rebaseAbort(wtPath).catch((err: unknown) => {
-          log.warn("rebase abort failed", { err: err instanceof Error ? err.message : String(err) });
+          log.warn("rebase abort failed", {
+            err: err instanceof Error ? err.message : String(err),
+          });
         });
         await this.host.taskStore.setConflictFiles(projectId, task.id, conflictedFiles);
         await this.host.taskStore.setMergeStage(projectId, task.id, "rebase_before_merge");
@@ -267,7 +269,9 @@ export class PhaseExecutorService {
       });
       if (!resolved) {
         await this.host.branchManager.rebaseAbort(wtPath).catch((err: unknown) => {
-          log.warn("rebase abort failed", { err: err instanceof Error ? err.message : String(err) });
+          log.warn("rebase abort failed", {
+            err: err instanceof Error ? err.message : String(err),
+          });
         });
         await this.callbacks.handleTaskFailure(
           projectId,
@@ -281,8 +285,8 @@ export class PhaseExecutorService {
         return false;
       }
 
-      fireAndForget(eventLogService
-        .append(repoPath, {
+      fireAndForget(
+        eventLogService.append(repoPath, {
           timestamp: new Date().toISOString(),
           projectId,
           taskId: task.id,
@@ -295,7 +299,9 @@ export class PhaseExecutorService {
             round,
             context: "coding_retry",
           },
-        }), "phase-executor:merge.resolved");
+        }),
+        "phase-executor:merge.resolved"
+      );
 
       try {
         await this.host.branchManager.rebaseContinue(wtPath);
@@ -320,7 +326,9 @@ export class PhaseExecutorService {
             rebaseConflict = new RebaseConflictError(d.conflictedFiles);
           } else {
             await this.host.branchManager.rebaseAbort(wtPath).catch((err: unknown) => {
-              log.warn("rebase abort failed", { err: err instanceof Error ? err.message : String(err) });
+              log.warn("rebase abort failed", {
+                err: err instanceof Error ? err.message : String(err),
+              });
             });
             await this.callbacks.handleTaskFailure(
               projectId,
@@ -339,7 +347,9 @@ export class PhaseExecutorService {
             rebaseConflict = new RebaseConflictError(cf);
           } else {
             await this.host.branchManager.rebaseAbort(wtPath).catch((err: unknown) => {
-              log.warn("rebase abort failed", { err: err instanceof Error ? err.message : String(err) });
+              log.warn("rebase abort failed", {
+                err: err instanceof Error ? err.message : String(err),
+              });
             });
             throw continueErr;
           }
@@ -481,10 +491,14 @@ export class PhaseExecutorService {
         const wtUsable = await this.hasUsableExistingWorktree(repoPath, wtPath);
         if (!wtUsable) {
           log.error("Fail-closed: worktree unusable after creation/validation", {
-            taskId: task.id, worktreePath: wtPath,
+            taskId: task.id,
+            worktreePath: wtPath,
           });
           await this.callbacks.handleTaskFailure(
-            projectId, repoPath, task, branchName,
+            projectId,
+            repoPath,
+            task,
+            branchName,
             `Worktree at ${wtPath} is not usable after setup (missing .git or source files). ` +
               "Blocking task to prevent dispatch to a broken workspace.",
             null,
@@ -707,6 +721,7 @@ export class PhaseExecutorService {
           attempt: slot.attempt,
           agentLabel: slot.taskTitle ?? task.id,
           role: "coder",
+          isStillActive: () => this.host.getState(projectId).slots.get(task.id) === slot,
           onDone: (code) =>
             this.callbacks.handleCodingDone(projectId, repoPath, task, branchName, code),
           onStateChange: this.host.onAgentStateChange(projectId),
@@ -715,8 +730,8 @@ export class PhaseExecutorService {
         slot.timers
       );
 
-      fireAndForget(eventLogService
-        .append(repoPath, {
+      fireAndForget(
+        eventLogService.append(repoPath, {
           timestamp: new Date().toISOString(),
           projectId,
           taskId: task.id,
@@ -731,7 +746,9 @@ export class PhaseExecutorService {
               ? Math.max(0, Date.now() - Date.parse(slot.agent.startedAt ?? ""))
               : null,
           },
-        }), "phase-executor:agent.spawned");
+        }),
+        "phase-executor:agent.spawned"
+      );
 
       await this.host.persistCounters(projectId, repoPath);
     } catch (error) {
@@ -742,7 +759,12 @@ export class PhaseExecutorService {
         });
         return;
       }
-      log.error(`Coding phase failed for task ${task.id}`, { projectId, taskId: task.id, branchName, error });
+      log.error(`Coding phase failed for task ${task.id}`, {
+        projectId,
+        taskId: task.id,
+        branchName,
+        error,
+      });
       const { failureType, failureReason } = this.classifyPhaseError(error);
       await this.callbacks.handleTaskFailure(
         projectId,
@@ -938,6 +960,7 @@ export class PhaseExecutorService {
             attempt: slot.attempt,
             agentLabel: slot.taskTitle ?? task.id,
             role: "reviewer",
+            isStillActive: () => this.host.getState(projectId).slots.get(task.id) === slot,
             onDone: (code) =>
               this.callbacks.handleReviewDone(projectId, repoPath, task, branchName, code),
             onStateChange: this.host.onAgentStateChange(projectId),
@@ -945,8 +968,8 @@ export class PhaseExecutorService {
           slot.agent,
           slot.timers
         );
-        fireAndForget(eventLogService
-          .append(repoPath, {
+        fireAndForget(
+          eventLogService.append(repoPath, {
             timestamp: new Date().toISOString(),
             projectId,
             taskId: task.id,
@@ -961,7 +984,9 @@ export class PhaseExecutorService {
                 ? Math.max(0, Date.now() - Date.parse(slot.agent.startedAt ?? ""))
                 : null,
             },
-          }), "phase-executor:agent.spawned");
+          }),
+          "phase-executor:agent.spawned"
+        );
       };
 
       if (includeGeneralReview || runOnlyGeneralReview) {
@@ -1042,6 +1067,7 @@ export class PhaseExecutorService {
               attempt: slot.attempt,
               agentLabel: slot.taskTitle ?? task.id,
               role: "reviewer",
+              isStillActive: () => this.host.getState(projectId).slots.get(task.id) === slot,
               onDone: async (code) => {
                 await this.callbacks.handleReviewDone(
                   projectId,
@@ -1090,8 +1116,8 @@ export class PhaseExecutorService {
           );
 
           const angleStartedAt = angleAgent.startedAt ?? slot.agent.startedAt ?? null;
-          fireAndForget(eventLogService
-            .append(repoPath, {
+          fireAndForget(
+            eventLogService.append(repoPath, {
               timestamp: new Date().toISOString(),
               projectId,
               taskId: task.id,
@@ -1103,11 +1129,14 @@ export class PhaseExecutorService {
                 attemptId: slot.attemptId,
                 angle,
                 attemptStartedAt: angleStartedAt,
-                queueLagMs: angleStartedAt && Number.isFinite(Date.parse(angleStartedAt))
-                  ? Math.max(0, Date.now() - Date.parse(angleStartedAt))
-                  : null,
+                queueLagMs:
+                  angleStartedAt && Number.isFinite(Date.parse(angleStartedAt))
+                    ? Math.max(0, Date.now() - Date.parse(angleStartedAt))
+                    : null,
               },
-            }), "phase-executor:agent.spawned");
+            }),
+            "phase-executor:agent.spawned"
+          );
         };
 
         if (runAnglesSequentiallyForStability) {
@@ -1153,6 +1182,7 @@ export class PhaseExecutorService {
             attempt: slot.attempt,
             agentLabel: slot.taskTitle ?? task.id,
             role: "reviewer",
+            isStillActive: () => this.host.getState(projectId).slots.get(task.id) === slot,
             onDone: (code) =>
               this.callbacks.handleReviewDone(projectId, repoPath, task, branchName, code),
             onStateChange: this.host.onAgentStateChange(projectId),
@@ -1161,8 +1191,8 @@ export class PhaseExecutorService {
           slot.timers
         );
 
-        fireAndForget(eventLogService
-          .append(repoPath, {
+        fireAndForget(
+          eventLogService.append(repoPath, {
             timestamp: new Date().toISOString(),
             projectId,
             taskId: task.id,
@@ -1177,12 +1207,19 @@ export class PhaseExecutorService {
                 ? Math.max(0, Date.now() - Date.parse(slot.agent.startedAt ?? ""))
                 : null,
             },
-          }), "phase-executor:agent.spawned");
+          }),
+          "phase-executor:agent.spawned"
+        );
       }
 
       await this.host.persistCounters(projectId, repoPath);
     } catch (error) {
-      log.error(`Review phase failed for task ${task.id}`, { projectId, taskId: task.id, branchName, error });
+      log.error(`Review phase failed for task ${task.id}`, {
+        projectId,
+        taskId: task.id,
+        branchName,
+        error,
+      });
       const { failureType, failureReason } = this.classifyPhaseError(error);
       await this.callbacks.handleTaskFailure(
         projectId,

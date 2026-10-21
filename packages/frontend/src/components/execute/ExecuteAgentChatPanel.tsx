@@ -5,6 +5,7 @@ import { ChatIcon } from "../icons/PrdIcons";
 import { loadTextDraft } from "../../lib/agentInputDraftStorage";
 import { useOptimisticTextDraft } from "../../hooks/useOptimisticTextDraft";
 import { useAutoScroll } from "../../hooks/useAutoScroll";
+import type { AgentChatStatus } from "@opensprint/shared";
 
 export interface ExecuteChatMessage {
   role: "user" | "assistant";
@@ -12,6 +13,8 @@ export interface ExecuteChatMessage {
   timestamp: string;
   /** True once the backend has acknowledged receipt. */
   delivered?: boolean;
+  status?: AgentChatStatus | "sending" | "unknown";
+  error?: string;
 }
 
 export interface ExecuteAgentChatPanelProps {
@@ -49,13 +52,29 @@ function ExecuteChatBubble({ msg }: { msg: ExecuteChatMessage }) {
         {isUser ? (
           <span className="whitespace-pre-wrap">
             {msg.content}
-            {msg.delivered && (
+            {(msg.status || msg.delivered) && (
               <span
                 className="ml-1.5 inline-block text-theme-muted text-xs align-middle"
-                title="Delivered"
+                title={msg.error}
                 data-testid="delivery-checkmark"
               >
-                ✓
+                {msg.status === "included"
+                  ? "Included in model turn"
+                  : msg.status === "queued"
+                    ? "Queued for next model turn"
+                    : msg.status === "accepted"
+                      ? "Saved"
+                      : msg.status === "sending"
+                        ? "Saving guidance…"
+                        : msg.status === "failed"
+                          ? "Not included — send failed"
+                          : msg.status === "cancelled"
+                            ? "Cancelled before inclusion"
+                            : msg.status === "run-ended"
+                              ? "Run ended before inclusion"
+                              : msg.status === "unknown"
+                                ? "Receipt unknown — check history"
+                                : "Saved"}
               </span>
             )}
           </span>
@@ -87,6 +106,8 @@ export function ExecuteAgentChatPanel({
     setChatInput
   );
   const [localSendBusy, setLocalSendBusy] = useState(false);
+  const activeDraftKey = useRef(draftStorageKey);
+  activeDraftKey.current = draftStorageKey;
   const chatMessagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -103,6 +124,7 @@ export function ExecuteAgentChatPanel({
 
   useLayoutEffect(() => {
     setChatInput(draftStorageKey ? loadTextDraft(draftStorageKey) : "");
+    setLocalSendBusy(false);
   }, [draftStorageKey]);
 
   const runSend = useCallback(async () => {
@@ -114,15 +136,16 @@ export function ExecuteAgentChatPanel({
     }
     try {
       const outcome = await Promise.resolve(onSend(text));
+      if (activeDraftKey.current !== draftStorageKey) return;
       if (outcome !== false) {
         onSuccess();
       } else {
         onFailure();
       }
     } catch {
-      if (draftStorageKey) onFailure();
+      if (draftStorageKey && activeDraftKey.current === draftStorageKey) onFailure();
     } finally {
-      setLocalSendBusy(false);
+      if (activeDraftKey.current === draftStorageKey) setLocalSendBusy(false);
     }
   }, [chatInput, sending, localSendBusy, onSend, draftStorageKey, beginSend, onSuccess, onFailure]);
 
@@ -138,7 +161,7 @@ export function ExecuteAgentChatPanel({
     : !agentRunning
       ? "Agent is not running"
       : sending || localSendBusy
-        ? "Waiting for response…"
+        ? "Saving guidance…"
         : undefined;
 
   return (
@@ -191,11 +214,7 @@ export function ExecuteAgentChatPanel({
           {sending && (
             <div className="flex justify-start" data-testid="chat-typing-indicator">
               <div className="bg-theme-border-subtle rounded-2xl px-3.5 py-2.5 text-sm text-theme-muted">
-                <span className="flex gap-1">
-                  <span className="w-1.5 h-1.5 bg-theme-muted rounded-full animate-bounce [animation-delay:0ms]" />
-                  <span className="w-1.5 h-1.5 bg-theme-muted rounded-full animate-bounce [animation-delay:150ms]" />
-                  <span className="w-1.5 h-1.5 bg-theme-muted rounded-full animate-bounce [animation-delay:300ms]" />
-                </span>
+                Saving guidance…
               </div>
             </div>
           )}

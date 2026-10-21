@@ -30,6 +30,8 @@ import { createTodoistIntegrationRouter } from "./routes/integrations-todoist.js
 import { createGitHubIntegrationRouter } from "./routes/integrations-github.js";
 import { createIntakeRouter } from "./routes/intake.js";
 import { createCommandsRouter } from "./routes/commands.js";
+import { createCollaborationRouter } from "./routes/collaboration.js";
+import { createSpecPublicationRouter } from "./routes/spec-publication.js";
 import { integrationStore } from "./services/integration-store.service.js";
 import { tokenEncryption } from "./services/token-encryption.service.js";
 import { intakeIngestion } from "./services/intake-ingestion.service.js";
@@ -46,6 +48,8 @@ import {
 } from "./services/local-session-auth.service.js";
 import { buildSpaContentSecurityPolicyProduction } from "@opensprint/shared";
 import { allowDesktopLocalSessionScriptRequest } from "./desktop-local-session-guard.js";
+import { agentChatService } from "./services/agent-chat.service.js";
+import { AppError } from "./middleware/error-handler.js";
 
 export function createApp(services?: AppServices) {
   ensureLocalSessionToken();
@@ -71,7 +75,36 @@ export function createApp(services?: AppServices) {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // All API routes require Bearer token auth
+  // The scoped pilot resolves its own authenticated actor. Its credentials grant
+  // no access to the existing local execution, settings or publication APIs.
+  app.use(
+    `${API_PREFIX}/projects/:projectId/collaboration`,
+    requireDatabase,
+    createCollaborationRouter({
+      assertProjectExists: (projectId) => projectService.getProject(projectId),
+      getActiveRun: (projectId, taskId) => agentChatService.getActiveRun(projectId, taskId),
+      getGuidanceHistory: (projectId, taskId) =>
+        agentChatService.getHistory(projectId, taskId).slice(-200),
+      handleGuidance: async (input) => {
+        const active = agentChatService.getActiveRun(input.projectId, input.taskId);
+        if (!active || active.attemptId !== input.attemptId)
+          throw new AppError(
+            409,
+            "AGENT_ATTEMPT_CHANGED",
+            "The active attempt changed. Refresh before sending guidance."
+          );
+        return agentChatService.sendMessage(
+          input.projectId,
+          input.taskId,
+          input.content,
+          active.attempt,
+          { clientMessageId: input.clientMessageId, actorId: input.actorId }
+        );
+      },
+    })
+  );
+
+  // Other API routes require the local installation's Bearer token.
   app.use(API_PREFIX, requireLocalSessionAuth);
 
   // API routes (global agents count for desktop tray; must be before /projects so :projectId does not capture "agents")
@@ -153,6 +186,11 @@ export function createApp(services?: AppServices) {
   );
   app.use(`${API_PREFIX}/projects/:projectId/intake`, requireDatabase, createIntakeRouter());
   app.use(`${API_PREFIX}/projects/:projectId/commands`, requireDatabase, createCommandsRouter());
+  app.use(
+    `${API_PREFIX}/projects/:projectId/publication`,
+    requireDatabase,
+    createSpecPublicationRouter()
+  );
   app.use(
     `${API_PREFIX}/projects/:projectId/notifications`,
     requireDatabase,

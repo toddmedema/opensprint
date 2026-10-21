@@ -556,37 +556,41 @@ export class NotificationService {
     notificationId: string,
     options?: { approved?: boolean; responses?: NotificationResponseItem[] }
   ): Promise<Notification> {
-    const client = await taskStore.getDb();
-    const row = await client.queryOne(
-      "SELECT * FROM open_questions WHERE id = $1 AND project_id = $2",
-      [notificationId, projectId]
-    );
-
-    if (!row) {
-      throw new AppError(
-        404,
-        ErrorCodes.NOTIFICATION_NOT_FOUND,
-        `Notification '${notificationId}' not found`,
-        { notificationId, projectId }
-      );
-    }
-
     const resolvedAt = new Date().toISOString();
     const responsesJson =
       options?.responses && options.responses.length > 0 ? JSON.stringify(options.responses) : null;
 
-    await taskStore.runWrite(async (tx) => {
+    const row = await taskStore.runWrite(async (tx) => {
+      const current = await tx.queryOne(
+        "SELECT * FROM open_questions WHERE id = $1 AND project_id = $2",
+        [notificationId, projectId]
+      );
+      if (!current)
+        throw new AppError(
+          404,
+          ErrorCodes.NOTIFICATION_NOT_FOUND,
+          `Notification '${notificationId}' not found`,
+          { notificationId, projectId }
+        );
+      let changed: number;
       if (responsesJson != null) {
-        await tx.execute(
-          "UPDATE open_questions SET status = 'resolved', resolved_at = $1, responses = $2 WHERE id = $3 AND project_id = $4",
+        changed = await tx.execute(
+          "UPDATE open_questions SET status = 'resolved', resolved_at = $1, responses = $2 WHERE id = $3 AND project_id = $4 AND status = 'open'",
           [resolvedAt, responsesJson, notificationId, projectId]
         );
       } else {
-        await tx.execute(
-          "UPDATE open_questions SET status = 'resolved', resolved_at = $1 WHERE id = $2 AND project_id = $3",
+        changed = await tx.execute(
+          "UPDATE open_questions SET status = 'resolved', resolved_at = $1 WHERE id = $2 AND project_id = $3 AND status = 'open'",
           [resolvedAt, notificationId, projectId]
         );
       }
+      if (changed !== 1)
+        throw new AppError(
+          409,
+          "DECISION_ALREADY_RESOLVED",
+          "Another participant already resolved this decision."
+        );
+      return current;
     });
 
     log.info("Resolved notification", {
