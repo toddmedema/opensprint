@@ -1,5 +1,5 @@
 import { Router, Request } from "express";
-import { guardGovernedDeploymentSettings } from "../middleware/governance-settings.js";
+import { createGovernedDeploymentSettingsGuard } from "../middleware/governance-settings.js";
 import { wrapAsync } from "../middleware/wrap-async.js";
 import { validateParams, validateBody, validateQuery } from "../middleware/validate.js";
 import { projectIdParamSchema } from "../schemas/request-common.js";
@@ -237,7 +237,7 @@ export function createDeliverRouter(projectService: ProjectService): Router {
     "/settings",
     validateParams(projectIdParamSchema),
     validateBody(deliverSettingsBodySchema),
-    guardGovernedDeploymentSettings,
+    createGovernedDeploymentSettingsGuard(projectService),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const { projectId } = req.params;
       const deployment = req.body as Partial<DeploymentConfig>;

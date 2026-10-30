@@ -219,19 +219,24 @@ export const guardGovernedSettings: RequestHandler = (req, res, next) => {
 };
 
 /** Deployment commands execute repository code and must not become an alternate approval channel. */
-export const guardGovernedDeploymentSettings: RequestHandler = (req, res, next) => {
-  const projectId = String(req.params.projectId ?? req.params.id);
-  void import("../services/project.service.js")
-    .then(async ({ ProjectService }) => {
-      const settings = await new ProjectService().getSettings(projectId);
-      const request = Object.create(req) as Request;
-      request.body = {
-        deployment: mergeDeploymentConfigPatch(settings.deployment, req.body ?? {}),
-      };
-      guardGovernedSettings(request, res, next);
-    })
-    .catch(next);
-};
+export function createGovernedDeploymentSettingsGuard(
+  service?: Pick<import("../services/project.service.js").ProjectService, "getSettings">
+): RequestHandler {
+  return (req, res, next) => {
+    const projectId = String(req.params.projectId ?? req.params.id);
+    void import("../services/project.service.js")
+      .then(async ({ ProjectService }) => {
+        const settings = await (service ?? new ProjectService()).getSettings(projectId);
+        const request = Object.create(req) as Request;
+        request.body = {
+          deployment: mergeDeploymentConfigPatch(settings.deployment, req.body ?? {}),
+        };
+        guardGovernedSettings(request, res, next);
+      })
+      .catch(next);
+  };
+}
+export const guardGovernedDeploymentSettings = createGovernedDeploymentSettingsGuard();
 
 /** Global inherited model defaults and database authority cannot bypass project governance. */
 export const guardGovernedGlobalSettings: RequestHandler = (req, res, next) => {
