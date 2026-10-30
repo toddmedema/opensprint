@@ -284,7 +284,7 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
               key={finding.id}
               className="rounded-lg border border-theme-border bg-theme-bg/40 p-3"
             >
-              <p className="text-xs font-medium uppercase tracking-wide text-theme-muted">
+              <p className="break-all text-xs font-medium uppercase tracking-wide text-theme-muted">
                 {finding.category} · {finding.severity} · {finding.id}
               </p>
               <h4 className="mt-2 text-sm font-semibold text-theme-text">
