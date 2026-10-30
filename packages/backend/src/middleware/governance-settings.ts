@@ -7,6 +7,7 @@ import {
   requireGovernanceHuman,
 } from "./governance-auth.js";
 import { AppError } from "./error-handler.js";
+import { normalizeAgentTimeoutMs, mergeDeploymentConfigPatch } from "@opensprint/shared";
 
 function authorizeConfigurationChange(
   req: Request,
@@ -72,6 +73,7 @@ export const GOVERNANCE_REVIEW_SETTING_KEYS = [
   "runAgentEnhancementExperiments",
   "selfImprovementReviewerAgents",
   "selfImprovementIncludeGeneralReview",
+  "deployment",
 ] as const;
 /** Live settings cannot replace checker/prompt enforcement installed through an amendment. */
 export const GOVERNANCE_ENFORCEMENT_SETTING_KEYS = [
@@ -109,6 +111,30 @@ export function changedGovernanceSettings(
     agenticRepairEnabled: true,
     mergeStrategy: "per_task",
     gitWorkingMode: "worktree",
+    worktreeBaseBranch: "main",
+    unknownScopeStrategy: "optimistic",
+    deployment: { mode: "custom" },
+  };
+  const normalizedAgent = (value: unknown): unknown => {
+    if (!value || typeof value !== "object") return value;
+    const agent = value as Record<string, unknown>;
+    const fallbackUrl =
+      agent.type === "ollama"
+        ? "http://localhost:11434"
+        : agent.type === "lmstudio"
+          ? "http://localhost:1234"
+          : undefined;
+    const baseUrl =
+      typeof agent.baseUrl === "string" && agent.baseUrl.trim()
+        ? agent.baseUrl.trim().replace(/\/+$/, "")
+        : fallbackUrl;
+    return {
+      type: agent.type,
+      model: agent.model || null,
+      cliCommand: agent.cliCommand || null,
+      timeoutMs: normalizeAgentTimeoutMs(agent.timeoutMs),
+      ...(baseUrl ? { baseUrl } : {}),
+    };
   };
   return Object.keys(body).filter((key) => {
     const canonical = aliases[key] ?? key;
@@ -127,6 +153,10 @@ export function changedGovernanceSettings(
     )
       return false;
     let comparableBefore = before;
+    if (canonical === "simpleComplexityAgent" || canonical === "complexComplexityAgent") {
+      comparableBefore = normalizedAgent(before);
+      after = normalizedAgent(after);
+    }
     if (["reviewAngles", "selfImprovementReviewerAgents"].includes(canonical)) {
       comparableBefore = Array.isArray(before) ? [...before].sort() : before;
       after = Array.isArray(after) ? [...after].sort() : after;
@@ -184,6 +214,21 @@ export const guardGovernedSettings: RequestHandler = (req, res, next) => {
             /^selfImprovement(Pending|Behavior)/.test(key)
         )
       );
+    })
+    .catch(next);
+};
+
+/** Deployment commands execute repository code and must not become an alternate approval channel. */
+export const guardGovernedDeploymentSettings: RequestHandler = (req, res, next) => {
+  const projectId = String(req.params.projectId ?? req.params.id);
+  void import("../services/project.service.js")
+    .then(async ({ ProjectService }) => {
+      const settings = await new ProjectService().getSettings(projectId);
+      const request = Object.create(req) as Request;
+      request.body = {
+        deployment: mergeDeploymentConfigPatch(settings.deployment, req.body ?? {}),
+      };
+      guardGovernedSettings(request, res, next);
     })
     .catch(next);
 };

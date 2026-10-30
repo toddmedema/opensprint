@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
 /**
  * Serialized git commit queue (Refinery-like, PRD §5.9).
  * Async FIFO queue with single worker for all main-branch git operations.
@@ -5,6 +6,8 @@
  * commits (PRD update, worktree merge). Task state lives on the central server only.
  */
 
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { resolveTestCommand, type AgentConfig, type ToolchainProfile } from "@opensprint/shared";
 import { taskStore as taskStoreSingleton } from "./task-store.service.js";
 import {
@@ -30,8 +33,10 @@ import { shellExec } from "../utils/shell-exec.js";
 import { fireAndForget } from "../utils/fire-and-forget.js";
 import { governanceService } from "./governance.service.js";
 import { governanceExecutionService } from "./governance-execution.service.js";
+import { remotePublicationGovernanceService } from "./remote-publication-governance.service.js";
 
 const log = createLogger("git-commit-queue");
+const execGitForReceipt = promisify(execFile);
 const _MAX_REBASE_RESOLUTION_ROUNDS = 12;
 
 /** Thrown when a job cannot proceed due to existing unmerged files. */
@@ -754,6 +759,34 @@ class GitCommitQueueImpl implements GitCommitQueueService {
                 `publish validated merge ${job.branchName} into ${baseBranch}`,
                 async () => {
                   await waitForGitReady(repoPath);
+                  const [candidateHead, publicationBase] = await Promise.all([
+                    execGitForReceipt(
+                      "git",
+                      ["rev-parse", "--verify", `${mergeCandidate.branchName}^{commit}`],
+                      { env: agentProcessEnvironment(), cwd: repoPath, timeout: 10_000 }
+                    ),
+                    execGitForReceipt("git", ["rev-parse", "--verify", `${baseBranch}^{commit}`], {
+                      env: agentProcessEnvironment(),
+                      cwd: repoPath,
+                      timeout: 10_000,
+                    }),
+                  ]);
+                  await governanceExecutionService.assertPublicationAuthority({
+                    projectId: projectId ?? "unknown",
+                    taskId: job.taskId,
+                    repoPath,
+                    branchName: job.branchName,
+                  });
+                  await assertLease();
+                  await remotePublicationGovernanceService.registerLocalPublication({
+                    projectId: projectId ?? "unknown",
+                    taskId: job.taskId,
+                    repoPath,
+                    branchName: job.branchName,
+                    baseBranch,
+                    candidateHeadSha: candidateHead.stdout.trim(),
+                    baseSha: publicationBase.stdout.trim(),
+                  });
                   await assertLease();
                   await shellExec(`git merge --ff-only ${mergeCandidate.branchName}`, {
                     cwd: repoPath,

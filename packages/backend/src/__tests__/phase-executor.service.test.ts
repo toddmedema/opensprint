@@ -11,6 +11,16 @@ import type { AgentSlotLike } from "../services/orchestrator-phase-context.js";
 import { RepoPreflightError } from "../utils/git-repo-state.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 
+const { mockRemoteReviewBase, mockRemoteRequest } = vi.hoisted(() => ({
+  mockRemoteReviewBase: vi.fn(),
+  mockRemoteRequest: vi.fn(),
+}));
+vi.mock("../services/remote-publication-review-context.js", () => ({
+  getTrustedRemoteReviewRequest: mockRemoteRequest,
+  resolveTaskReviewBase: async (projectId: string, task: StoredTask, base: string) =>
+    mockRemoteReviewBase(projectId, task, base) ?? base,
+}));
+
 const { mockResolveExecuteReplayMetadata } = vi.hoisted(() => ({
   mockResolveExecuteReplayMetadata: vi.fn().mockResolvedValue(null),
 }));
@@ -175,6 +185,9 @@ describe("PhaseExecutorService", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    mockRemoteReviewBase.mockReset();
+    mockRemoteRequest.mockReset();
+    mockRemoteRequest.mockResolvedValue(null);
     mockResolveExecuteReplayMetadata.mockResolvedValue(null);
     mockIsWorktreeCheckoutUsable.mockResolvedValue(true);
     await fs.mkdir(repoPath, { recursive: true });
@@ -265,6 +278,33 @@ describe("PhaseExecutorService", () => {
   });
 
   describe("executeCodingPhase", () => {
+    it("keeps remote candidate corrections in their pinned private worktree even in branches mode", async () => {
+      const settings = await mockGetSettings();
+      mockGetSettings.mockResolvedValue({ ...settings, gitWorkingMode: "branches" });
+      const wtPath = path.join(os.tmpdir(), "opensprint-worktrees", taskId);
+      mockRemoteRequest.mockResolvedValue({ worktreePath: wtPath });
+      mockRemoteReviewBase.mockReturnValue("a".repeat(40));
+      const task = { ...makeTask(), remotePublicationReview: {} } as StoredTask;
+      const slot = makeSlot();
+      slot.worktreePath = wtPath;
+      mockGetState.mockReturnValue({
+        slots: new Map([[task.id, slot]]),
+        status: { queueDepth: 0 },
+      });
+      await phaseExecutor.executeCodingPhase(projectId, repoPath, task, slot as never, {
+        useExistingBranch: true,
+      });
+      expect(mockCreateOrCheckoutBranch).not.toHaveBeenCalled();
+      expect(mockCreateTaskWorktree).not.toHaveBeenCalled();
+      expect(mockSyncMainWithOrigin).not.toHaveBeenCalled();
+      expect(mockEnsureRepoNodeModules).toHaveBeenCalledWith(wtPath);
+      expect(mockLifecycleRun).toHaveBeenCalledWith(
+        expect.objectContaining({ wtPath, phase: "coding" }),
+        expect.anything(),
+        expect.anything()
+      );
+    });
+
     it("attaches replayMetadata to assignment when resolver returns metadata", async () => {
       mockResolveExecuteReplayMetadata.mockResolvedValue({
         baseCommitSha: "abc123deadbeef",
@@ -522,6 +562,51 @@ describe("PhaseExecutorService", () => {
   });
 
   describe("executeReviewPhase", () => {
+    it("uses the immutable remote origin for complete review and persists recovery assignment before spawn", async () => {
+      const origin = "a".repeat(40);
+      mockRemoteReviewBase.mockReturnValue(origin);
+      const task = {
+        ...makeTask(),
+        remotePublicationReview: { baseSha: "forged editable hint" },
+      } as StoredTask;
+      const slot = makeSlot();
+      mockGetState.mockReturnValue({
+        slots: new Map([[task.id, slot]]),
+        status: { queueDepth: 0 },
+      });
+      const capture = vi.fn().mockResolvedValue("complete origin-to-candidate diff");
+      mockHost.branchManager.captureBranchDiff = capture;
+      await phaseExecutor.executeReviewPhase(projectId, repoPath, task, slot.branchName);
+      expect(capture).toHaveBeenCalledWith(repoPath, slot.branchName, origin);
+      expect(mockPreflightCheck).toHaveBeenCalledWith(
+        repoPath,
+        repoPath,
+        task.id,
+        origin,
+        undefined,
+        true
+      );
+      expect(mockBuildContext).toHaveBeenCalledWith(
+        projectId,
+        repoPath,
+        task.id,
+        mockHost.taskStore,
+        mockHost.branchManager,
+        { task, baseBranch: origin }
+      );
+      const writes = mockWriteJsonAtomic.mock.calls.flatMap((call, index) =>
+        String(call[0]).endsWith("assignment.json") ? [index] : []
+      );
+      expect(writes.length).toBeGreaterThanOrEqual(2);
+      expect(mockWriteJsonAtomic.mock.invocationCallOrder[writes[0]!]).toBeLessThan(
+        mockLifecycleRun.mock.invocationCallOrder[0]!
+      );
+      expect(mockWriteJsonAtomic.mock.calls[writes[0]!]![1]).toMatchObject({
+        phase: "review",
+        taskId: task.id,
+      });
+    });
+
     it("spawns one general review agent when reviewAngles are empty", async () => {
       mockGetSettings.mockResolvedValue({
         testFramework: "vitest",

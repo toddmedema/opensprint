@@ -3549,6 +3549,7 @@ export class AgentClient {
             command,
             [...baseArgs, prompt],
             {
+              env: agentProcessEnvironment(),
               cwd: options.cwd || process.cwd(),
               encoding: "utf8",
               maxBuffer: 10 * 1024 * 1024,

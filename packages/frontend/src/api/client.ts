@@ -297,6 +297,21 @@ export interface DbStatusResponse {
 export const api = {
   governance: {
     get: (projectId: string) => request<GovernanceSummary>(`/projects/${projectId}/governance`),
+    revalidateTaskPolicy: (
+      projectId: string,
+      taskId: string,
+      expectedReleaseId: string,
+      rationale: string,
+      capability: string
+    ) =>
+      request<{ ok: true }>(
+        `/projects/${projectId}/governance/tasks/${encodeURIComponent(taskId)}/revalidate-policy`,
+        {
+          method: "POST",
+          headers: { "X-OpenSprint-Governance-Capability": capability },
+          body: JSON.stringify({ expectedReleaseId, rationale }),
+        }
+      ),
     revokeRelease: (projectId: string, releaseId: string, rationale: string, capability: string) =>
       request<{ ok: true }>(
         `/projects/${projectId}/governance/releases/${encodeURIComponent(releaseId)}/revoke`,
@@ -629,10 +644,15 @@ export const api = {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    archive: (id: string) => request<void>(`/projects/${id}/archive`, { method: "POST" }),
-    delete: (id: string) =>
+    archive: (id: string, capability?: string) =>
+      request<void>(`/projects/${id}/archive`, {
+        method: "POST",
+        ...(capability ? { headers: { "x-opensprint-governance-capability": capability } } : {}),
+      }),
+    delete: (id: string, capability?: string) =>
       request<void>(`/projects/${id}`, {
         method: "DELETE",
+        ...(capability ? { headers: { "x-opensprint-governance-capability": capability } } : {}),
       }),
     getAgentsInstructions: (id: string) =>
       request<{ content: string }>(`/projects/${id}/agents/instructions`),
@@ -913,10 +933,15 @@ export const api = {
       request<{ deployId: string }>(`/projects/${projectId}/deliver/${deployId}/rollback`, {
         method: "POST",
       }),
-    updateSettings: (projectId: string, deployment: Partial<DeploymentConfig>) =>
+    updateSettings: (
+      projectId: string,
+      deployment: Partial<DeploymentConfig>,
+      capability?: string
+    ) =>
       request<ProjectSettings>(`/projects/${projectId}/deliver/settings`, {
         method: "PUT",
         body: JSON.stringify(deployment),
+        ...(capability ? { headers: { "x-opensprint-governance-capability": capability } } : {}),
       }),
     cancel: (projectId: string) =>
       request<{ cleared: boolean }>(`/projects/${projectId}/deliver/cancel`, {

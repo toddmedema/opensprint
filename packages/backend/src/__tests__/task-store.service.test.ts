@@ -99,6 +99,22 @@ suite("TaskStoreService", () => {
   });
 
   describe("create", () => {
+    it("keeps an internally prepared review task out of the dispatch queue atomically", async () => {
+      const task = await store.create(TEST_PROJECT_ID, "Prepare review-only publication", {
+        initialStatus: "blocked",
+        description: "Do not dispatch before the worktree and assignment exist",
+      });
+      expect(task.status).toBe("blocked");
+      expect((await store.ready(TEST_PROJECT_ID)).some((ready) => ready.id === task.id)).toBe(
+        false
+      );
+      expect(
+        await client.queryOne(
+          "SELECT scope FROM governance_task_scopes WHERE project_id=$1 AND task_id=$2",
+          [TEST_PROJECT_ID, task.id]
+        )
+      ).toMatchObject({ scope: expect.stringContaining("Prepare review-only publication") });
+    });
     it("captures original protected-path scope atomically and ignores later task wording edits", async () => {
       const original = await store.create(TEST_PROJECT_ID, "Improve dashboard", {
         description: "Read-only UI changes",

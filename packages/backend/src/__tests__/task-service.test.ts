@@ -6,22 +6,32 @@ import { FeedbackService } from "../services/feedback.service.js";
 import { SessionManager } from "../services/session-manager.js";
 import { BranchManager } from "../services/branch-manager.js";
 import type { StoredTask } from "../services/task-store.service.js";
+import { governanceService } from "../services/governance.service.js";
+vi.mock("../services/governance.service.js", () => ({
+  governanceService: {
+    hasTaskHold: vi.fn().mockResolvedValue(false),
+    hasPendingResume: vi.fn().mockResolvedValue(false),
+    withPublicationLock: async <T>(
+      _projectId: string,
+      action: (assertLease: () => Promise<void>) => Promise<T>
+    ) => action(async () => {}),
+  },
+}));
 
-const { mockTaskStoreState, mockBranchManagerInstance, mockOrchestrator } =
-  vi.hoisted(() => ({
-    mockTaskStoreState: { listAll: [] as StoredTask[], readyCalls: 0 },
-    mockBranchManagerInstance: {
-      listTaskWorktrees: vi.fn().mockResolvedValue([]),
-      prepareWorktreeForRemoval: vi.fn().mockResolvedValue(undefined),
-      removeTaskWorktree: vi.fn().mockResolvedValue(undefined),
-      revertAndReturnToMain: vi.fn().mockResolvedValue(undefined),
-      createOrCheckoutBranch: vi.fn().mockResolvedValue(undefined),
-    },
-    mockOrchestrator: {
-      stopTaskAndFreeSlot: vi.fn().mockResolvedValue(undefined),
-      nudge: vi.fn(),
-    },
-  }));
+const { mockTaskStoreState, mockBranchManagerInstance, mockOrchestrator } = vi.hoisted(() => ({
+  mockTaskStoreState: { listAll: [] as StoredTask[], readyCalls: 0 },
+  mockBranchManagerInstance: {
+    listTaskWorktrees: vi.fn().mockResolvedValue([]),
+    prepareWorktreeForRemoval: vi.fn().mockResolvedValue(undefined),
+    removeTaskWorktree: vi.fn().mockResolvedValue(undefined),
+    revertAndReturnToMain: vi.fn().mockResolvedValue(undefined),
+    createOrCheckoutBranch: vi.fn().mockResolvedValue(undefined),
+  },
+  mockOrchestrator: {
+    stopTaskAndFreeSlot: vi.fn().mockResolvedValue(undefined),
+    nudge: vi.fn(),
+  },
+}));
 
 vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => args,
@@ -63,21 +73,23 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
       planUpdateMetadata: vi.fn(),
       syncForPush: vi.fn(),
       listRecentlyCompletedTasks: vi.fn().mockResolvedValue([]),
-      listTasksPaginated: vi.fn().mockImplementation(async (_pid: string, limit: number, offset: number) => {
-        const all = mockTaskStoreState.listAll;
-        const nonChore = all.filter((i) => (i.issue_type ?? "task") !== "chore");
-        nonChore.sort((a, b) => {
-          const pa = a.priority ?? 0;
-          const pb = b.priority ?? 0;
-          if (pa !== pb) return pa - pb;
-          return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
-        });
-        return {
-          page: nonChore.slice(offset, offset + limit) as StoredTask[],
-          total: nonChore.length,
-          allForGraph: [...all],
-        };
-      }),
+      listTasksPaginated: vi
+        .fn()
+        .mockImplementation(async (_pid: string, limit: number, offset: number) => {
+          const all = mockTaskStoreState.listAll;
+          const nonChore = all.filter((i) => (i.issue_type ?? "task") !== "chore");
+          nonChore.sort((a, b) => {
+            const pa = a.priority ?? 0;
+            const pb = b.priority ?? 0;
+            if (pa !== pb) return pa - pb;
+            return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
+          });
+          return {
+            page: nonChore.slice(offset, offset + limit) as StoredTask[],
+            total: nonChore.length,
+            allForGraph: [...all],
+          };
+        }),
     },
     TaskStoreService: vi.fn(),
     SCHEMA_SQL: "",
@@ -162,6 +174,8 @@ describe("TaskService", () => {
   let taskService: TaskService;
 
   beforeEach(() => {
+    vi.mocked(governanceService.hasTaskHold).mockResolvedValue(false);
+    vi.mocked(governanceService.hasPendingResume).mockResolvedValue(false);
     mockTaskStoreState.listAll = [...defaultIssues];
     mockTaskStoreState.readyCalls = 0;
     mockOrchestrator.stopTaskAndFreeSlot.mockClear();
@@ -178,6 +192,25 @@ describe("TaskService", () => {
       new BranchManager(),
       mockOrchestrator
     );
+  });
+  it.each(["unblock", "forceRetry", "deleteTask", "markDone"] as const)(
+    "preserves held evidence before ordinary %s cleanup",
+    async (operation) => {
+      vi.mocked(governanceService.hasTaskHold).mockResolvedValue(true);
+      await expect(taskService[operation]("project-1", "held-task")).rejects.toMatchObject({
+        code: "GOVERNANCE_HOLD",
+      });
+      expect(mockOrchestrator.stopTaskAndFreeSlot).not.toHaveBeenCalled();
+      expect(mockBranchManagerInstance.removeTaskWorktree).not.toHaveBeenCalled();
+      expect(mockBranchManagerInstance.revertAndReturnToMain).not.toHaveBeenCalled();
+    }
+  );
+  it("preserves an allowed worktree until its reviewed resume has been claimed", async () => {
+    vi.mocked(governanceService.hasPendingResume).mockResolvedValue(true);
+    await expect(taskService.forceRetry("project-1", "resuming-task")).rejects.toMatchObject({
+      code: "GOVERNANCE_HOLD",
+    });
+    expect(mockOrchestrator.stopTaskAndFreeSlot).not.toHaveBeenCalled();
   });
 
   it("getTaskAnalytics returns analytics grouped by complexity", async () => {

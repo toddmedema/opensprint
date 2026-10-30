@@ -63,6 +63,7 @@ describe("exact retained replay provenance", () => {
               headSha: base,
               prompt: `old policy + complete task${attempt}`,
               dynamicContext: `original input${attempt}`,
+              policyPin: pin,
               contextArtifacts: {
                 complete: true,
                 files: {

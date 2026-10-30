@@ -49,6 +49,7 @@ import {
 } from "../services/governance-execution.service.js";
 import {
   guardGovernedSettings,
+  guardGovernedDeploymentSettings,
   guardGovernedGlobalSettings,
   guardGovernedInstructionEdit,
 } from "../middleware/governance-settings.js";
@@ -57,6 +58,7 @@ import {
   governanceSourceDrift,
   governanceSensitiveSourcePaths,
   resolveGovernanceSensitiveSourcePaths,
+  resolveGovernanceCandidateSensitiveSourcePaths,
   assertGovernanceSensitiveSourceApproval,
 } from "../services/governance-source-hashes.js";
 import type { Request, Response } from "express";
@@ -332,6 +334,39 @@ describe("adversarial governance QA round 1", () => {
     expect(event.payload.keys).toEqual(["simpleComplexityAgent"]);
     expect(JSON.stringify(event)).not.toContain("contains-a-private-configuration-value");
   });
+  it.each(["project", "deliver"] as const)(
+    "requires owner authority for %s deployment-command changes",
+    async (channel) => {
+      await pin("enforced");
+      current.settings.deployment = { mode: "custom", customCommand: "npm run deploy" };
+      const command = "publish-another-tree";
+      const req = {
+        params: { id: projectId, projectId },
+        body:
+          channel === "project"
+            ? { deployment: { mode: "custom", customCommand: command } }
+            : { customCommand: command },
+        get: () => undefined,
+      } as unknown as Request;
+      const handler =
+        channel === "project" ? guardGovernedSettings : guardGovernedDeploymentSettings;
+      const invoke = () =>
+        new Promise<unknown>((resolve) => handler(req, {} as Response, (error) => resolve(error)));
+      expect(await invoke()).toMatchObject({ code: "GOVERNANCE_HUMAN_REQUIRED", statusCode: 403 });
+      const capability = "authorized-human-".repeat(3);
+      vi.stubEnv("OPENSPRINT_GOVERNANCE_OWNER", "QA owner");
+      vi.stubEnv("OPENSPRINT_GOVERNANCE_APPROVAL_SECRET", capability);
+      req.get = (() => capability) as Request["get"];
+      expect(await invoke()).toBeUndefined();
+      const events = await service.listEvents(projectId, [
+        "policy_configuration_change_authorized",
+      ]);
+      expect(events).toHaveLength(1);
+      expect(events[0]?.payload.keys).toEqual(["deployment"]);
+      expect(JSON.stringify(events)).not.toContain(command);
+      expect(JSON.stringify(events)).not.toContain(capability);
+    }
+  );
   it("does not switch database authority while a governed assignment is live", async () => {
     await pin("enforced");
     const req = {
@@ -592,6 +627,20 @@ describe("adversarial governance QA round 1", () => {
     const payload = { ...current.settings, maxConcurrentCoders: 4, deployment: { mode: "custom" } };
     expect(await invoke(payload)).toBeUndefined();
     expect(
+      await invoke({
+        ...payload,
+        simpleComplexityAgent: {
+          ...(current.settings.simpleComplexityAgent as object),
+          timeoutMs: 900_000,
+        },
+        complexComplexityAgent: {
+          ...(current.settings.complexComplexityAgent as object),
+          timeoutMs: 900_000,
+        },
+        worktreeBaseBranch: "main",
+      })
+    ).toBeUndefined();
+    expect(
       await invoke({ ...payload, lowComplexityAgent: current.settings.simpleComplexityAgent })
     ).toBeUndefined();
     expect(await invoke({ ...payload, reviewAngles: [] })).toMatchObject({ statusCode: 403 });
@@ -614,7 +663,12 @@ describe("adversarial governance QA round 1", () => {
       path.join(repo, "package.json"),
       JSON.stringify({ ...manifest, dependencies: { react: "2.0.0" } })
     );
-    await run("git", ["add", "package.json"], { cwd: repo });
+    await fs.mkdir(path.join(repo, "packages", "dependency-only"), { recursive: true });
+    await fs.writeFile(
+      path.join(repo, "packages", "dependency-only", "package.json"),
+      JSON.stringify({ name: "dependency-only", dependencies: { react: "2.0.0" } })
+    );
+    await run("git", ["add", "."], { cwd: repo });
     await run("git", ["commit", "-m", "ordinary dependency edit"], { cwd: repo });
     const dependencyHead = (await run("git", ["rev-parse", "HEAD"], { cwd: repo })).stdout.trim();
     expect(
@@ -622,12 +676,22 @@ describe("adversarial governance QA round 1", () => {
         repoPath: repo,
         baseSha: original,
         headSha: dependencyHead,
-        changedPaths: ["package.json"],
+        changedPaths: ["package.json", "packages/dependency-only/package.json"],
       })
     ).toEqual([]);
     expect(
       governanceSourceDrift(before, await readGovernanceSourceHashes(projectId, repo, db))
     ).not.toContain("package.json#gate-scripts");
+    expect(
+      governanceSourceDrift(before, await readGovernanceSourceHashes(projectId, repo, db))
+    ).not.toContain("packages/dependency-only/package.json#gate-scripts");
+    expect(
+      await resolveGovernanceCandidateSensitiveSourcePaths({
+        repoPath: repo,
+        baseSha: original,
+        changedPaths: ["package.json", "packages/dependency-only/package.json"],
+      })
+    ).toEqual([]);
     await fs.writeFile(
       path.join(repo, "package.json"),
       JSON.stringify({ ...manifest, scripts: { ...manifest.scripts, test: "true" } })
@@ -636,6 +700,13 @@ describe("adversarial governance QA round 1", () => {
       path.join(repo, "vitest.config.ts"),
       "export default { test: { exclude: ['**/*'] } };\n"
     );
+    expect(
+      await resolveGovernanceCandidateSensitiveSourcePaths({
+        repoPath: repo,
+        baseSha: original,
+        changedPaths: ["package.json", "vitest.config.ts"],
+      })
+    ).toEqual(["package.json", "vitest.config.ts"]);
     await run("git", ["add", "."], { cwd: repo });
     await run("git", ["commit", "-m", "attempt to suppress hard checks"], { cwd: repo });
     const bypassHead = (await run("git", ["rev-parse", "HEAD"], { cwd: repo })).stdout.trim();
@@ -717,5 +788,165 @@ describe("adversarial governance QA round 1", () => {
         projectId,
       ])
     ).toBeUndefined();
+  });
+  it("round 3: ordinary task reopening cannot turn an explicit human cancellation into consent", async () => {
+    const pinned = await pin("enforced");
+    const c = await service.openCase({
+      projectId,
+      taskId,
+      releaseId: pinned.releaseId,
+      baseSha: base,
+      headSha: base,
+      diffHash: "cancel-code",
+      changedPaths: ["src/diagnostic.ts"],
+      title: "Do not ship",
+      summary: "Disputed standard",
+      findings: [
+        {
+          id: "finding",
+          category: "standard",
+          ruleId: rule.ruleId,
+          ruleRevisionId: rule.id,
+          file: "src/diagnostic.ts",
+          codeRevision: base,
+          evidence: "Unresolved direct query",
+          severity: "blocking",
+          suggestedRemedy: "Repository",
+          provenance: { reviewer: "reviewer" },
+        },
+      ],
+      appeals: [],
+      evidence: { diff: "retained" },
+      worktreePath: repo,
+      branchName: "task",
+    });
+    await service.resolveCase(
+      projectId,
+      c.id,
+      {
+        expectedVersion: c.version,
+        idempotencyKey: "cancel",
+        action: "cancel",
+        rationale: "Do not ship this task",
+        headSha: base,
+        diffHash: c.diffHash,
+      },
+      "owner"
+    );
+    await db.execute("UPDATE tasks SET status='open' WHERE project_id=$1 AND id=$2", [
+      projectId,
+      taskId,
+    ]);
+    const receipt = (await service.refreshContext(pinned, "reviewer", c.changedPaths)).receipt;
+    await service.recordReviewApproval({
+      projectId,
+      taskId,
+      releaseId: pinned.releaseId,
+      headSha: base,
+      diffHash: c.diffHash,
+      receipt,
+      gatePassed: true,
+    });
+    await expect(
+      service.assertMergeAdmission({
+        projectId,
+        taskId,
+        headSha: base,
+        diffHash: c.diffHash,
+        changedPaths: c.changedPaths,
+      })
+    ).rejects.toThrow(/cancel|hold/i);
+  });
+  it("round 3: an allowance expiring during candidate commit is rejected at final publication", async () => {
+    const pinned = await pin("enforced", await readGovernanceSourceHashes(projectId, repo));
+    await run("git", ["checkout", "-b", "task"], { cwd: repo });
+    await fs.writeFile(path.join(repo, "src/diagnostic.ts"), "export const diagnostic = 2;\n");
+    await run("git", ["commit", "-am", "reviewed contribution"], { cwd: repo });
+    const reviewed = await governanceCodeSnapshot(repo, base);
+    const c = await service.openCase({
+      projectId,
+      taskId,
+      releaseId: pinned.releaseId,
+      ...reviewed,
+      title: "Temporary exception",
+      summary: "Disputed standard",
+      findings: [
+        {
+          id: "finding",
+          category: "standard",
+          ruleId: rule.ruleId,
+          ruleRevisionId: rule.id,
+          file: "src/diagnostic.ts",
+          codeRevision: reviewed.headSha,
+          evidence: "Direct query",
+          severity: "blocking",
+          suggestedRemedy: "Repository",
+          provenance: { reviewer: "reviewer" },
+        },
+      ],
+      appeals: [],
+      evidence: { diff: reviewed.diff },
+      worktreePath: repo,
+      branchName: "task",
+    });
+    const at = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(at);
+    try {
+      await service.resolveCase(
+        projectId,
+        c.id,
+        {
+          expectedVersion: c.version,
+          idempotencyKey: "short-allowance",
+          action: "allow_reusable",
+          rationale: "Temporary read-only exception",
+          headSha: c.headSha,
+          diffHash: c.diffHash,
+          conditions: {
+            version: 1,
+            paths: ["src/**"],
+            ruleRevisionIds: [rule.id],
+            expiresAt: new Date(at + 1_000).toISOString(),
+          },
+        },
+        "owner"
+      );
+      const receipt = (await service.refreshContext(pinned, "reviewer", reviewed.changedPaths))
+        .receipt;
+      await service.recordReviewApproval({
+        projectId,
+        taskId,
+        releaseId: pinned.releaseId,
+        ...reviewed,
+        receipt,
+        gatePassed: true,
+      });
+      const execution = new GovernanceExecutionService();
+      await service.withPublicationLock(projectId, async () => {
+        await execution.assertPublication({
+          projectId,
+          taskId,
+          repoPath: repo,
+          candidatePath: repo,
+          branchName: "task",
+          baseBranch: "main",
+        });
+        // A real candidate commit can consume the remaining lifetime; HEAD now has no uncommitted diff.
+        await run("git", ["commit", "--allow-empty", "-m", "candidate committed"], { cwd: repo });
+        clock.mockReturnValue(at + 2_000);
+        await expect(
+          execution.assertPublicationAuthority({
+            projectId,
+            taskId,
+            repoPath: repo,
+            branchName: "task",
+          })
+        ).rejects.toThrow(/hold|approval|expir/i);
+      });
+      expect(await service.hasTaskHold(projectId, taskId)).toBe(true);
+      expect((await run("git", ["rev-parse", "main"], { cwd: repo })).stdout.trim()).toBe(base);
+    } finally {
+      clock.mockRestore();
+    }
   });
 });

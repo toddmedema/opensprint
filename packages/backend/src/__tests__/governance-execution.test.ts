@@ -40,16 +40,59 @@ const mocks = vi.hoisted(() => ({
   deliverOutbox: vi.fn(),
   audit: vi.fn(),
   invoke: vi.fn(),
+  anthropicConstructor: vi.fn(),
+  openaiConstructor: vi.fn(),
+  anthropicStream: vi.fn(),
+  openaiCreate: vi.fn(),
 }));
 vi.mock("../services/governance.service.js", () => ({ governanceService: mocks }));
 vi.mock("../services/agent.service.js", () => ({
   agentService: { invokePlanningAgent: mocks.invoke },
+}));
+// One regression traverses the real AgentService with SDKs that cannot reach the network.
+vi.mock("@anthropic-ai/sdk", () => ({
+  default: class {
+    constructor(options: unknown) {
+      mocks.anthropicConstructor(options);
+    }
+    messages = { stream: (...args: unknown[]) => mocks.anthropicStream(...args) };
+  },
+}));
+vi.mock("openai", () => ({
+  default: class {
+    constructor(options: unknown) {
+      mocks.openaiConstructor(options);
+    }
+    chat = { completions: { create: (...args: unknown[]) => mocks.openaiCreate(...args) } };
+    responses = { create: (...args: unknown[]) => mocks.openaiCreate(...args) };
+  },
+}));
+vi.mock("../services/agent-client.js", () => ({ AgentClient: class {} }));
+vi.mock("../services/agent-global-concurrency.service.js", () => ({
+  acquireGlobalAgentSlot: async () => () => {},
+}));
+vi.mock("../services/active-agents.service.js", () => ({
+  activeAgentsService: { register: () => {}, unregister: () => {} },
+}));
+vi.mock("../services/api-key-resolver.service.js", () => ({
+  getNextKey: async () => ({ key: "test-sdk-key", keyId: "test-key", source: "env" }),
+  clearLimitHit: async () => {},
+  recordLimitHit: async () => {},
+  ENV_FALLBACK_KEY_ID: "test-key",
+}));
+vi.mock("../services/task-store.service.js", () => ({
+  taskStore: {
+    runWrite: async (fn: (db: unknown) => Promise<unknown>) => fn({ execute: async () => 1 }),
+  },
+  TaskStoreService: class {},
 }));
 vi.mock("../services/governance-source-hashes.js", () => ({
   readGovernanceSourceHashes: async () => ({}),
   governanceSourceDrift: () => [],
   assertGovernanceSensitiveSourceApproval: async () => {},
   governanceSensitiveSourcePaths: () => [],
+  resolveGovernanceCandidateSensitiveSourcePaths: async (_input: { changedPaths: string[] }) => [],
+  resolveGovernanceSensitiveSourcePaths: async () => [],
 }));
 vi.mock("../services/agent-instructions.service.js", () => ({
   getCombinedInstructions: async () => "live instructions",
@@ -253,6 +296,7 @@ function reject(appeals: ReviewAppeal[] = []) {
     result: { status: "rejected", summary: "Repository standard", findings: [finding], notes: "" },
     appeals,
     reviewOutput: "Full review log",
+    reviewerAgent: { type: "openai", model: "test-model", cliCommand: null },
   });
 }
 
@@ -294,6 +338,138 @@ describe("governance execution", () => {
     expect(mocks.recordReconsideration).toHaveBeenCalledTimes(1);
     expect(mocks.recordReviewApproval).not.toHaveBeenCalled();
   });
+  it("runs separately configured API reconsideration and judge after initial CLI review through the actual SDK adapters", async () => {
+    const config = await mocks.getConfig();
+    config.reconsiderationAgent = {
+      type: "claude",
+      model: "reconsideration-model",
+      cliCommand: null,
+    };
+    config.reconsiderationTokenPricing = { inputPerMillionUsd: 3, outputPerMillionUsd: 5 };
+    mocks.anthropicStream.mockImplementation((request, options) => {
+      expect(cases[0].state).toBe("awaiting_reconsideration");
+      expect(request).toMatchObject({ model: "reconsideration-model", max_tokens: 2048 });
+      expect(request).not.toHaveProperty("tools");
+      expect(options.signal).toBeInstanceOf(AbortSignal);
+      return {
+        finalMessage: async () => ({
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                status: "rejected",
+                summary: "Finding upheld",
+                findings: [finding],
+                withdrawnFindingIds: [],
+                notes: "Appeal reconsidered",
+              }),
+            },
+          ],
+        }),
+      };
+    });
+    mocks.openaiCreate.mockImplementation(async (request, options) => {
+      expect(cases[0].state).toBe("awaiting_judge");
+      expect(request).toMatchObject({ model: "test-model", max_tokens: 2048 });
+      expect(request).not.toHaveProperty("tools");
+      expect(options.signal).toBeInstanceOf(AbortSignal);
+      return {
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                disposition: "human_required",
+                rationale: "Novel diagnostic exception",
+                evidence: ["Direct storage access"],
+                ruleIds: ["repository"],
+                decisionIds: [],
+              }),
+            },
+          },
+        ],
+      };
+    });
+    const actual = await vi.importActual<typeof import("../services/agent.service.js")>(
+      "../services/agent.service.js"
+    );
+    mocks.invoke.mockImplementation((options) => actual.agentService.invokePlanningAgent(options));
+    const result = await service.rejected({
+      projectId: pin.projectId,
+      taskId: pin.taskId,
+      cwd: repo,
+      title: "Diagnostic",
+      result: { status: "rejected", summary: "Standard", findings: [finding], notes: "" },
+      appeals: [appeal],
+      reviewOutput: "retained",
+      reviewerAgent: { type: "claude-cli", model: "initial-cli-model", cliCommand: null },
+    });
+    expect(result).toMatchObject({ waiting: true, case: { state: "awaiting_human" } });
+    expect(mocks.anthropicStream).toHaveBeenCalledTimes(1);
+    expect(mocks.openaiCreate).toHaveBeenCalledTimes(1);
+    expect(mocks.anthropicConstructor).toHaveBeenCalledWith({
+      apiKey: "test-sdk-key",
+      maxRetries: 0,
+    });
+    expect(mocks.openaiConstructor).toHaveBeenCalledWith({ apiKey: "test-sdk-key", maxRetries: 0 });
+    const reservations = mocks.consumeBudget.mock.calls.map((call) => call[2]);
+    const calls = mocks.invoke.mock.calls.map((call) => call[0]);
+    expect(calls.map((call) => [call.role, call.config.type, call.config.model])).toEqual([
+      ["reviewer", "claude", "reconsideration-model"],
+      ["judge", "openai", "test-model"],
+    ]);
+    expect(reservations).toHaveLength(2);
+    expect(reservations.map((value) => value.appeals)).toEqual([1, 0]);
+    for (let i = 0; i < 2; i++) {
+      const inputTokens = Buffer.byteLength(
+        calls[i].systemPrompt + calls[i].messages[0].content,
+        "utf8"
+      );
+      const prices = i === 0 ? config.reconsiderationTokenPricing : config.judgeTokenPricing;
+      expect(reservations[i]).toMatchObject({ tokens: inputTokens + 2048, elapsedMs: 30_000 });
+      expect(reservations[i].costUsd).toBe(
+        (inputTokens * prices.inputPerMillionUsd + 2048 * prices.outputPerMillionUsd) / 1_000_000
+      );
+    }
+  });
+  it("requires a human for a different initial API reviewer without separate reconsideration authority", async () => {
+    const result = await service.rejected({
+      projectId: pin.projectId,
+      taskId: pin.taskId,
+      cwd: repo,
+      title: "Diagnostic",
+      result: { status: "rejected", summary: "Standard", findings: [finding], notes: "" },
+      appeals: [appeal],
+      reviewOutput: "retained",
+      reviewerAgent: { type: "claude", model: "different-reviewer-model", cliCommand: null },
+    });
+    expect(result).toMatchObject({
+      waiting: true,
+      case: {
+        recommendation: {
+          disposition: "human_required",
+          rationale: expect.stringContaining(
+            "Configure a separate read-only API reconsideration model"
+          ),
+        },
+      },
+    });
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(mocks.consumeBudget).not.toHaveBeenCalled();
+  });
+  it("does not borrow judge prices for an explicit reconsideration model with missing prices", async () => {
+    const config = await mocks.getConfig();
+    config.reconsiderationAgent = { type: "claude", model: "reviewer-model", cliCommand: null };
+    expect(await reject([appeal])).toMatchObject({
+      waiting: true,
+      case: {
+        recommendation: {
+          rationale: expect.stringContaining("reconsideration input/output price ceilings"),
+        },
+      },
+    });
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    expect(mocks.consumeBudget).not.toHaveBeenCalled();
+  });
   it("requires human attention when pricing or an API judge is unavailable", async () => {
     const config = await mocks.getConfig();
     delete config.judgeTokenPricing;
@@ -301,6 +477,41 @@ describe("governance execution", () => {
       waiting: true,
       case: { recommendation: { disposition: "human_required" } },
     });
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
+  it("reassociates an appeal to a prior aggregate ID after independent reviewers rename their local IDs", async () => {
+    await reject();
+    const canonical = cases[0]!.findings[0]!.id;
+    finding.id = "reviewer-renamed-local-id";
+    mocks.claimCaseJob.mockResolvedValue(false);
+    await reject([{ ...appeal, findingId: canonical }]);
+    expect(mocks.openCase).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        state: "awaiting_reconsideration",
+        appeals: [expect.objectContaining({ findingId: canonical })],
+      })
+    );
+  });
+  it("does not apply an ambiguous angle-local appeal to two distinct standards blockers", async () => {
+    mocks.claimCaseJob.mockResolvedValue(false);
+    await service.rejected({
+      projectId: pin.projectId,
+      taskId: pin.taskId,
+      cwd: repo,
+      title: "Diagnostic",
+      result: {
+        status: "rejected",
+        summary: "Two findings",
+        notes: "",
+        findings: [finding, { ...finding, evidence: "A second raw query" }],
+      },
+      appeals: [appeal],
+      reviewOutput: "retained",
+    });
+    expect(cases[0]!.findings).toHaveLength(2);
+    expect(cases[0]!.appeals).toEqual([]);
+    expect(cases[0]!.state).toBe("fix_required");
     expect(mocks.invoke).not.toHaveBeenCalled();
   });
   it("cannot appeal away a real defect reported by another review angle", async () => {

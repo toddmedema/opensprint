@@ -295,7 +295,13 @@ export interface StructuredReviewFinding {
   evidence: string;
   severity: "blocking" | "warning" | "info";
   suggestedRemedy: string;
-  provenance: { reviewer: string; angle?: string; model?: string };
+  provenance: {
+    reviewer: string;
+    angle?: string;
+    model?: string;
+    /** Server aggregation retains each independent report; agent parsers do not trust supplied aliases. */
+    sources?: Array<{ findingId: string; reviewer: string; angle?: string; model?: string }>;
+  };
 }
 
 /** A bounded request for reconsideration, never itself an approval. */

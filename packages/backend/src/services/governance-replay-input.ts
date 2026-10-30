@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
@@ -42,12 +43,6 @@ export async function retainGovernanceReplayInput(
     [projectId, session.taskId]
   );
   if (!row || !session.completedAt) return;
-  const pin = JSON.parse(String(row.payload)) as GovernanceTaskPin;
-  const releaseRow = await db.queryOne(
-    "SELECT payload FROM policy_releases WHERE project_id=$1 AND id=$2",
-    [projectId, pin.releaseId]
-  );
-  if (!releaseRow) return;
   const events = (
     await db.query(
       "SELECT payload FROM governance_events WHERE project_id=$1 AND kind='prompt_snapshot'",
@@ -72,6 +67,14 @@ export async function retainGovernanceReplayInput(
   const prompt = matching[0];
   if (!prompt || matching[1]?.payload.assignmentCreatedAt === prompt.payload.assignmentCreatedAt)
     return;
+  const pin = prompt.payload.policyPin as GovernanceTaskPin | undefined;
+  if (!pin || pin.projectId !== projectId || pin.taskId !== session.taskId || !pin.releaseId)
+    return;
+  const releaseRow = await db.queryOne(
+    "SELECT payload FROM policy_releases WHERE project_id=$1 AND id=$2",
+    [projectId, pin.releaseId]
+  );
+  if (!releaseRow) return;
   const contextArtifacts = prompt.payload.contextArtifacts as
     | GovernanceContextArtifacts
     | undefined;
@@ -84,7 +87,12 @@ export async function retainGovernanceReplayInput(
     return;
   const baseSha = String(prompt.payload.headSha);
   if (!/^[a-f0-9]{40,64}$/.test(baseSha)) return;
-  const options = { cwd: repoPath, timeout: 30_000, maxBuffer: 64 * 1024 * 1024 };
+  const options = {
+    env: agentProcessEnvironment(),
+    cwd: repoPath,
+    timeout: 30_000,
+    maxBuffer: 64 * 1024 * 1024,
+  };
   const headSha = (
     await run("git", ["rev-parse", "--verify", `${session.gitBranch}^{commit}`], options)
   ).stdout.trim();

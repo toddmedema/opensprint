@@ -54,6 +54,10 @@ import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 
 import { governanceService } from "./governance.service.js";
+import {
+  resolveTaskReviewBase,
+  getTrustedRemoteReviewRequest,
+} from "./remote-publication-review-context.js";
 import { captureGovernanceContextArtifacts } from "./governance-context-artifacts.js";
 import {
   governanceExecutionService,
@@ -451,8 +455,13 @@ export class PhaseExecutorService {
 
     const settings = await this.host.projectService.getSettings(projectId);
     const branchName = slot.branchName;
+    const remoteReview = await getTrustedRemoteReviewRequest(projectId, task);
     const gitWorkingMode = settings.gitWorkingMode ?? "worktree";
-    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+    const baseBranch = await resolveTaskReviewBase(
+      projectId,
+      task,
+      await resolveBaseBranch(repoPath, settings.worktreeBaseBranch)
+    );
 
     // Pre-flight: ensure API key available before any heavy work
     const complexity = await getComplexityForAgent(projectId, repoPath, task, this.host.taskStore);
@@ -487,7 +496,15 @@ export class PhaseExecutorService {
       }
 
       let wtPath: string;
-      if (gitWorkingMode === "branches") {
+      if (remoteReview) {
+        wtPath = remoteReview.worktreePath;
+        assertSafeTaskWorktreePath(repoPath, task.id, wtPath);
+        if (!(await this.hasUsableExistingWorktree(repoPath, wtPath)))
+          throw new Error(
+            "Remote review corrections require the original retained candidate workspace."
+          );
+        await this.host.branchManager.ensureRepoNodeModules(wtPath);
+      } else if (gitWorkingMode === "branches") {
         if (!retryContext?.useExistingBranch) {
           await this.host.branchManager.syncMainWithOrigin(repoPath, baseBranch);
         }
@@ -569,7 +586,11 @@ export class PhaseExecutorService {
         }
       }
 
-      if (retryContext?.useExistingBranch && !retryContext.structuredOutputRepairAttempted) {
+      if (
+        !remoteReview &&
+        retryContext?.useExistingBranch &&
+        !retryContext.structuredOutputRepairAttempted
+      ) {
         await this.host.branchManager.waitForGitReady(wtPath);
         let rebaseConflict: RebaseConflictError | null = null;
         try {
@@ -776,6 +797,7 @@ export class PhaseExecutorService {
             attempt: slot.attempt,
             invocationId: config.invocation_id,
             assignmentCreatedAt: assignment.createdAt,
+            policyPin: context.governance.pin,
             contextArtifacts: await captureGovernanceContextArtifacts(
               path.join(path.dirname(promptPath), "context")
             ),
@@ -901,7 +923,11 @@ export class PhaseExecutorService {
       return;
     }
     const settings = await this.host.projectService.getSettings(projectId);
-    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+    const baseBranch = await resolveTaskReviewBase(
+      projectId,
+      task,
+      await resolveBaseBranch(repoPath, settings.worktreeBaseBranch)
+    );
     const wtPath = slot.worktreePath ?? repoPath;
     if (wtPath !== repoPath) {
       assertSafeTaskWorktreePath(repoPath, task.id, wtPath);

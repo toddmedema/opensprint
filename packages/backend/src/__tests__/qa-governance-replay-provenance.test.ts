@@ -102,6 +102,9 @@ describe("QA final replay provenance attacks", () => {
         prompt: `full prompt ${attempt}`,
         dynamicContext: `task input ${attempt}`,
         contextArtifacts,
+        policyPin: JSON.parse(
+          String((await db.queryOne("SELECT payload FROM governance_task_pins"))!.payload)
+        ),
       },
     };
     await db.execute("INSERT INTO governance_events VALUES('project','prompt_snapshot',$1)", [
@@ -113,6 +116,23 @@ describe("QA final replay provenance attacks", () => {
     await snapshot(2, { complete: false, files: {}, error: "capture failed" });
     await retainGovernanceReplayInput(db, "project", 22, session, root);
     expect(await db.queryOne("SELECT payload FROM governance_replay_inputs")).toBeUndefined();
+  });
+  it("keeps the original policy pin when archival follows an authorized replacement-policy revalidation", async () => {
+    await snapshot(2);
+    await db.execute("UPDATE governance_task_pins SET payload=$1", [
+      JSON.stringify({
+        projectId: "project",
+        taskId: "task",
+        releaseId: "replacement",
+        baseSha: base,
+      }),
+    ]);
+    await retainGovernanceReplayInput(db, "project", 22, session, root);
+    const row = await db.queryOne("SELECT payload FROM governance_replay_inputs");
+    expect(row).toBeDefined();
+    const input = JSON.parse(String(row!.payload));
+    expect(input.pin.releaseId).toBe("release");
+    expect(input.release.id).toBe("release");
   });
   it("withholds ambiguous same-attempt invocations rather than choosing a convenient snapshot", async () => {
     await snapshot(2, artifacts, "first");

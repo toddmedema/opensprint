@@ -2053,3 +2053,48 @@ vi.mock("../services/governance-execution.service.js", () => ({
     changedPaths: [],
   }),
 }));
+
+const deferredDeployState = vi.hoisted(() => ({
+  jobs: new Map<string, { projectId: string; event: "each_task" | "each_epic" }>(),
+  published: false,
+}));
+beforeEach(() => {
+  deferredDeployState.jobs.clear();
+  deferredDeployState.published = false;
+});
+vi.mock("../services/deferred-auto-deploy.service.js", () => ({
+  deferredAutoDeployService: {
+    enqueue: async (
+      projectId: string,
+      event: "each_task" | "each_epic",
+      sourceId: string,
+      generation: string
+    ) => {
+      deferredDeployState.jobs.set(`${projectId}:${event}:${sourceId}:${generation}`, {
+        projectId,
+        event,
+      });
+    },
+    drain: async (projectId: string) => {
+      const { triggerDeployForEvent } = await import("../services/deploy-trigger.service.js");
+      for (const [id, job] of deferredDeployState.jobs)
+        if (job.projectId === projectId) {
+          await triggerDeployForEvent(projectId, job.event);
+          deferredDeployState.jobs.delete(id);
+        }
+    },
+  },
+}));
+vi.mock("../services/remote-publication-governance.service.js", () => ({
+  remotePublicationGovernanceService: {
+    beginPush: async () => ({ receiptIds: [], inputHeadSha: "head", baseBranch: "main" }),
+    assertPreparedPush: async () => ({ headSha: "head", receiptIds: [] }),
+    completePush: async () => {
+      deferredDeployState.published = true;
+    },
+    getDeployableHead: async () => {
+      const state = await mockInspectGitRepoState();
+      return state.remoteMode === "local_only" || deferredDeployState.published ? "head" : null;
+    },
+  },
+}));

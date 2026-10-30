@@ -59,7 +59,7 @@ export async function runGovernanceCongress(projectId: string): Promise<void> {
       return;
     }
     const decisions = await governanceService.listDecisions(projectId);
-    const events = await governanceService.listEvents(projectId);
+    const events = await governanceService.listAuditEvents(projectId);
     let processed = 0;
     for (const nomination of nominations) {
       // A durable claim bounds retries across restarts and repeated unchanged-code ticks.

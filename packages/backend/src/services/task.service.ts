@@ -15,6 +15,7 @@ import {
   isAgentAssignee,
 } from "@opensprint/shared";
 import { ProjectService } from "./project.service.js";
+import { governanceService } from "./governance.service.js";
 import type { TaskStoreService } from "./task-store.service.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
@@ -60,6 +61,27 @@ export class TaskService {
     private branchManager: BranchManager,
     private orchestrator: TaskOrchestratorControl
   ) {}
+
+  private async preserveGovernanceEvidence<T>(
+    projectId: string,
+    taskId: string,
+    action: () => Promise<T>
+  ): Promise<T> {
+    return governanceService.withPublicationLock(projectId, async (assertLease) => {
+      if (
+        (await governanceService.hasTaskHold(projectId, taskId)) ||
+        (await governanceService.hasPendingResume(projectId, taskId))
+      ) {
+        throw new AppError(
+          409,
+          "GOVERNANCE_HOLD",
+          "This task retains a governance hold or approved work awaiting review. Resolve its governance docket before retrying, completing, or deleting it."
+        );
+      }
+      await assertLease();
+      return action();
+    });
+  }
 
   /**
    * Get task analytics for the 100 most recently completed tasks.
@@ -601,6 +623,16 @@ export class TaskService {
     taskId: string,
     options?: { resetAttempts?: boolean }
   ): Promise<{ taskUnblocked: boolean }> {
+    return this.preserveGovernanceEvidence(projectId, taskId, () =>
+      this.unblockWithoutGovernanceHold(projectId, taskId, options)
+    );
+  }
+
+  private async unblockWithoutGovernanceHold(
+    projectId: string,
+    taskId: string,
+    options?: { resetAttempts?: boolean }
+  ): Promise<{ taskUnblocked: boolean }> {
     const project = await this.projectService.getProject(projectId);
     const repoPath = project.repoPath;
     const issue = await this.taskStore.show(projectId, taskId);
@@ -678,6 +710,12 @@ export class TaskService {
    * Returns 409 if the task is already completed.
    */
   async forceRetry(projectId: string, taskId: string): Promise<Task> {
+    return this.preserveGovernanceEvidence(projectId, taskId, () =>
+      this.forceRetryWithoutGovernanceHold(projectId, taskId)
+    );
+  }
+
+  private async forceRetryWithoutGovernanceHold(projectId: string, taskId: string): Promise<Task> {
     const project = await this.projectService.getProject(projectId);
     const repoPath = project.repoPath;
     const issue = await this.taskStore.show(projectId, taskId);
@@ -785,6 +823,15 @@ export class TaskService {
 
   /** Delete a task and cascade cleanup of references in store-backed entities. */
   async deleteTask(projectId: string, taskId: string): Promise<{ taskDeleted: boolean }> {
+    return this.preserveGovernanceEvidence(projectId, taskId, () =>
+      this.deleteTaskWithoutGovernanceHold(projectId, taskId)
+    );
+  }
+
+  private async deleteTaskWithoutGovernanceHold(
+    projectId: string,
+    taskId: string
+  ): Promise<{ taskDeleted: boolean }> {
     await this.projectService.getProject(projectId);
 
     // Best-effort: stop active work before deleting task state.
@@ -876,6 +923,15 @@ export class TaskService {
     projectId: string,
     taskId: string
   ): Promise<{ taskClosed: boolean; epicClosed?: boolean }> {
+    return this.preserveGovernanceEvidence(projectId, taskId, () =>
+      this.markDoneWithoutGovernanceHold(projectId, taskId)
+    );
+  }
+
+  private async markDoneWithoutGovernanceHold(
+    projectId: string,
+    taskId: string
+  ): Promise<{ taskClosed: boolean; epicClosed?: boolean }> {
     await this.projectService.getProject(projectId);
     const issue = await this.taskStore.show(projectId, taskId);
     const status = (issue.status as string) ?? "open";
@@ -935,5 +991,4 @@ export class TaskService {
 
     return { taskClosed: true, epicClosed };
   }
-
 }

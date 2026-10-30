@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
 /** Immutable replay inputs live outside the pruned agent-session archive. */
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -124,6 +125,7 @@ export class ReplayFixtureService {
     // Retain the original commit independently of disposable branches and session pruning.
     const ref = `refs/opensprint/replay/${safeProjectKey(fixture.projectId)}/${fixture.sessionId}`;
     await execFileAsync("git", ["cat-file", "-e", `${fixture.baseCommitSha}^{commit}`], {
+      env: agentProcessEnvironment(),
       cwd: repoPath,
     });
     const stored = { fixture, hash: replayInputHash(fixture) };
@@ -134,10 +136,13 @@ export class ReplayFixtureService {
       await execFileAsync(
         "git",
         ["update-ref", ref, fixture.baseCommitSha, "0".repeat(fixture.baseCommitSha.length)],
-        { cwd: repoPath }
+        { env: agentProcessEnvironment(), cwd: repoPath }
       );
     } catch {
-      const existing = await execFileAsync("git", ["rev-parse", ref], { cwd: repoPath });
+      const existing = await execFileAsync("git", ["rev-parse", ref], {
+        env: agentProcessEnvironment(),
+        cwd: repoPath,
+      });
       if (existing.stdout.trim() !== fixture.baseCommitSha)
         throw new Error("Replay commit retention conflict");
     }

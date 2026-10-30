@@ -25,6 +25,11 @@ export const GOVERNANCE_CASE_LABELS: Record<ReviewCase["state"], string> = {
   cancelled: "Cancelled",
   stale: "Changed since review",
 };
+export function governanceCaseLabel(item: ReviewCase): string {
+  return item.publishedRemediationOnly
+    ? "Published · remediation required"
+    : GOVERNANCE_CASE_LABELS[item.state];
+}
 
 export function formatGovernanceDate(value: string): string {
   const date = new Date(value);

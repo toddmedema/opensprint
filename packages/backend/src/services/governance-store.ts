@@ -51,6 +51,9 @@ const holdStates: ReviewCaseState[] = [
   "evidence_requested",
   "stale",
 ];
+const isHeldCase = (c: ReviewCase): boolean =>
+  (!c.publishedRemediationOnly && holdStates.includes(c.state)) ||
+  (c.humanCancelled === true && !c.supersededByReleaseId);
 export interface GovernanceStoreDeps {
   getDb: () => Promise<DbClient>;
   runWrite: <T>(fn: (client: DbClient) => Promise<T>) => Promise<T>;
@@ -233,14 +236,32 @@ export class GovernanceService {
         ] as const)
           if (!Number.isFinite(next[field]) || next[field] <= 0)
             governanceError(`Invalid ${field}.`);
+        for (const [name, pricing] of [
+          ["Judge", next.judgeTokenPricing],
+          ["Reconsideration", next.reconsiderationTokenPricing],
+        ] as const) {
+          if (
+            pricing !== undefined &&
+            pricing !== null &&
+            (typeof pricing !== "object" ||
+              ![pricing.inputPerMillionUsd, pricing.outputPerMillionUsd].every(
+                (v) => typeof v === "number" && Number.isFinite(v) && v >= 0
+              ))
+          )
+            governanceError(`${name} token price ceilings must be non-negative finite numbers.`);
+        }
         if (
-          next.judgeTokenPricing &&
-          ![
-            next.judgeTokenPricing.inputPerMillionUsd,
-            next.judgeTokenPricing.outputPerMillionUsd,
-          ].every((v) => typeof v === "number" && Number.isFinite(v) && v >= 0)
+          next.reconsiderationAgent !== undefined &&
+          next.reconsiderationAgent !== null &&
+          (typeof next.reconsiderationAgent !== "object" ||
+            !["claude", "openai"].includes(next.reconsiderationAgent.type) ||
+            typeof next.reconsiderationAgent.model !== "string" ||
+            !next.reconsiderationAgent.model.trim() ||
+            Boolean(next.reconsiderationAgent.cliCommand))
         )
-          governanceError("Judge token price ceilings must be non-negative finite numbers.");
+          governanceError(
+            "Reconsideration requires an explicit tool-free Claude or OpenAI API model; CLI commands are unavailable."
+          );
         if (next.mode !== "disabled" && !row!.active_release_id)
           governanceError("Approve an initial policy release before enabling governance.");
         if (
@@ -302,6 +323,7 @@ export class GovernanceService {
       attempt: number;
       invocationId: string;
       assignmentCreatedAt: string;
+      policyPin?: GovernanceTaskPin;
       contextArtifacts?: import("./governance-context-artifacts.js").GovernanceContextArtifacts;
     }
   ): Promise<void> {
@@ -318,7 +340,7 @@ export class GovernanceService {
     });
   }
   async getPromptSnapshots(projectId: string, taskId: string): Promise<GovernanceEvent[]> {
-    return (await this.listEvents(projectId)).filter(
+    return (await this.listEvents(projectId, ["prompt_snapshot"])).filter(
       (e) => e.kind === "prompt_snapshot" && e.payload.taskId === taskId
     );
   }
@@ -373,6 +395,7 @@ export class GovernanceService {
         if (!release) governanceError("Policy release not found.", "GOVERNANCE_NOT_FOUND", 404);
         if (await this.releaseRevokedInDb(db, projectId, releaseId)) return;
         const timestamp = now();
+        const pendingRemoteTasks = await this.pendingRemoteTaskIds(db, projectId);
         await this.event(db, projectId, "release_revoked", actor, { releaseId, rationale });
         await db.execute(
           "DELETE FROM governance_review_approvals WHERE project_id=$1 AND release_id=$2",
@@ -390,7 +413,7 @@ export class GovernanceService {
             [projectId, pin.taskId]
           );
           if (!task) continue;
-          if (task.status === "closed") {
+          if (task.status === "closed" && !pendingRemoteTasks.has(pin.taskId)) {
             const extra = {
               ...JSON.parse(String(task.extra ?? "{}")),
               governance_remediation_required: { releaseId, rationale, createdAt: timestamp },
@@ -734,13 +757,14 @@ export class GovernanceService {
     input: Omit<GovernanceTaskPin, "releaseId" | "mode" | "createdAt">
   ): Promise<GovernanceTaskPin | null> {
     const existing = await this.getTaskPin(input.projectId, input.taskId);
-    if (existing && !(await this.isReleaseRevoked(input.projectId, existing.releaseId)))
+    if (existing) {
+      if (await this.isReleaseRevoked(input.projectId, existing.releaseId))
+        governanceError(
+          "A critically revoked assignment requires an explicit human policy revalidation before resuming."
+        );
       return existing;
+    }
     const config = await this.getConfig(input.projectId);
-    if (existing && config.mode === "disabled")
-      governanceError(
-        "A critically revoked assignment requires a replacement approved policy before resuming."
-      );
     if (config.mode === "disabled") return null;
     const releaseId = await this.getActiveReleaseId(input.projectId);
     if (!releaseId) governanceError("No approved policy release.");
@@ -750,37 +774,155 @@ export class GovernanceService {
       );
     const release = await this.getRelease(input.projectId, releaseId);
     const pin: GovernanceTaskPin = {
-      ...(existing ?? input),
+      ...input,
       releaseId,
       mode: config.mode,
       instructionsByRole: { ...input.instructionsByRole, ...release.instructions },
       createdAt: now(),
     };
     await this.deps.runWrite(async (db) => {
-      if (existing) {
-        const count = await db.execute(
-          "UPDATE governance_task_pins SET release_id=$1,payload=$2 WHERE project_id=$3 AND task_id=$4 AND release_id=$5",
-          [pin.releaseId, JSON.stringify(pin), pin.projectId, pin.taskId, existing.releaseId]
-        );
-        if (count !== 1)
-          governanceError("Assignment policy changed concurrently; reload before resuming.");
-        await db.execute(
-          "DELETE FROM governance_review_approvals WHERE project_id=$1 AND task_id=$2",
-          [pin.projectId, pin.taskId]
-        );
-        await this.event(db, pin.projectId, "assignment_policy_revalidated", "system", {
-          taskId: pin.taskId,
-          previousReleaseId: existing.releaseId,
-          releaseId: pin.releaseId,
-        });
-        return;
-      }
       await db.execute(
         "INSERT INTO governance_task_pins(project_id,task_id,release_id,payload) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",
         [pin.projectId, pin.taskId, pin.releaseId, JSON.stringify(pin)]
       );
     });
     return this.getTaskPin(pin.projectId, pin.taskId);
+  }
+  /** Explicit human replacement of a held assignment's policy; this grants no code approval. */
+  async revalidateTaskPolicy(
+    projectId: string,
+    taskId: string,
+    input: { expectedReleaseId: string; rationale: string },
+    actor: string,
+    verifyRelease?: PolicyActivationVerifier
+  ): Promise<GovernanceTaskPin> {
+    if (!input.rationale?.trim() || !actor?.trim())
+      governanceError("Named human authority and a revalidation rationale are required.");
+    return this.withPublicationLock(projectId, () =>
+      this.deps.runWrite(async (db) => {
+        const oldPin = unpack<GovernanceTaskPin>(
+          await db.queryOne(
+            "SELECT payload FROM governance_task_pins WHERE project_id=$1 AND task_id=$2",
+            [projectId, taskId]
+          )
+        );
+        const task = await db.queryOne(
+          "SELECT status,assignee,extra FROM tasks WHERE project_id=$1 AND id=$2",
+          [projectId, taskId]
+        );
+        if (!oldPin || !task) governanceError("The held assignment is unavailable.");
+        const cases = (
+          await db.query("SELECT payload FROM review_cases WHERE project_id=$1 AND task_id=$2", [
+            projectId,
+            taskId,
+          ])
+        ).map((row) => unpack<ReviewCase>(row)!);
+        if (
+          task.status === "in_progress" ||
+          task.status === "closed" ||
+          String(task.assignee ?? "").trim() ||
+          !(task.status === "blocked" || cases.some(isHeldCase))
+        )
+          governanceError(
+            "Only a held, non-running task can be revalidated under replacement policy."
+          );
+        const state = await db.queryOne(
+          "SELECT active_release_id,config FROM project_governance WHERE project_id=$1",
+          [projectId]
+        );
+        if (
+          !state?.active_release_id ||
+          state.active_release_id !== input.expectedReleaseId ||
+          state.active_release_id === oldPin.releaseId
+        )
+          governanceError(
+            "Activate a different approved replacement policy and reload before revalidating."
+          );
+        if ((JSON.parse(String(state.config)) as GovernanceConfig).mode === "disabled")
+          governanceError("Enable governed review before requesting policy revalidation.");
+        const release = unpack<PolicyRelease>(
+          await db.queryOne("SELECT payload FROM policy_releases WHERE project_id=$1 AND id=$2", [
+            projectId,
+            input.expectedReleaseId,
+          ])
+        );
+        if (!release || (await this.releaseRevokedInDb(db, projectId, release.id)))
+          governanceError("Replacement policy is unavailable or critically revoked.");
+        await verifyRelease?.(release, db);
+        const next: GovernanceTaskPin = {
+          ...oldPin,
+          releaseId: release.id,
+          instructionsByRole: { ...oldPin.instructionsByRole, ...release.instructions },
+        };
+        const changed = await db.execute(
+          "UPDATE governance_task_pins SET release_id=$1,payload=$2 WHERE project_id=$3 AND task_id=$4 AND release_id=$5",
+          [release.id, JSON.stringify(next), projectId, taskId, oldPin.releaseId]
+        );
+        if (changed !== 1)
+          governanceError("Assignment policy changed concurrently; reload before revalidating.");
+        await db.execute(
+          "DELETE FROM governance_review_approvals WHERE project_id=$1 AND task_id=$2",
+          [projectId, taskId]
+        );
+        for (const c of cases.filter((c) => c.releaseId === oldPin.releaseId)) {
+          const superseded: ReviewCase = {
+            ...c,
+            state: "cancelled",
+            supersededByReleaseId: release.id,
+            version: c.version + 1,
+            updatedAt: now(),
+          };
+          await db.execute(
+            "UPDATE review_cases SET state='cancelled',version=$1,payload=$2 WHERE project_id=$3 AND id=$4 AND version=$5",
+            [superseded.version, JSON.stringify(superseded), projectId, c.id, c.version]
+          );
+          await this.event(
+            db,
+            projectId,
+            "case_superseded_by_policy_revalidation",
+            actor,
+            { previousCase: c, replacementReleaseId: release.id, rationale: input.rationale },
+            c.id
+          );
+          await db.execute(
+            "UPDATE open_questions SET status='resolved',resolved_at=$1 WHERE project_id=$2 AND id=$3",
+            [superseded.updatedAt, projectId, `gov-${c.id}`]
+          );
+        }
+        const extra = {
+          ...JSON.parse(String(task.extra ?? "{}")),
+          governance_resume: true,
+          useExistingBranch: true,
+          governance_revalidation_evidence: {
+            previousReleaseId: oldPin.releaseId,
+            replacementReleaseId: release.id,
+            actor,
+            rationale: input.rationale,
+            cases: cases
+              .filter((c) => c.releaseId === oldPin.releaseId)
+              .map((c) => ({
+                id: c.id,
+                state: c.state,
+                findings: c.findings,
+                recommendation: c.recommendation,
+              })),
+          },
+          block_reason: null,
+        };
+        await db.execute(
+          "UPDATE tasks SET status='open',assignee=NULL,extra=$1,updated_at=$2 WHERE project_id=$3 AND id=$4",
+          [JSON.stringify(extra), now(), projectId, taskId]
+        );
+        await this.event(db, projectId, "assignment_policy_revalidated", actor, {
+          taskId,
+          previousPin: oldPin,
+          replacementPin: next,
+          rationale: input.rationale,
+          codeApprovalGranted: false,
+        });
+        return next;
+      })
+    );
   }
   async refreshContext(
     pin: GovernanceTaskPin,
@@ -875,8 +1017,172 @@ export class GovernanceService {
     });
   }
   /** Expiry withdraws future authority; it never silently approves or removes an outstanding case. */
+  private async pendingRemoteTaskIds(db: DbClient, projectId: string): Promise<Set<string>> {
+    const events = (
+      await db.query(
+        "SELECT payload FROM governance_events WHERE project_id=$1 AND kind IN ('local_publication_registered','remote_publication_completed','remote_publication_attempt','remote_publication_superseded')",
+        [projectId]
+      )
+    ).map((row) => unpack<GovernanceEvent>(row)!);
+    const ids = (event: GovernanceEvent) =>
+      Array.isArray(event.payload.receiptIds)
+        ? event.payload.receiptIds.filter((value): value is string => typeof value === "string")
+        : [];
+    const completed = new Set(
+      events.filter((event) => event.kind === "remote_publication_completed").flatMap(ids)
+    );
+    const attempted = new Set(
+      events.filter((event) => event.kind === "remote_publication_attempt").flatMap(ids)
+    );
+    for (const event of events.filter((event) => event.kind === "remote_publication_superseded")) {
+      const replacement = event.payload.replacementReceiptId;
+      if (
+        typeof replacement === "string" &&
+        (attempted.has(replacement) || completed.has(replacement))
+      )
+        for (const receipt of ids(event)) completed.add(receipt);
+    }
+    const tasks = new Set<string>();
+    for (const event of events.filter((event) => event.kind === "local_publication_registered")) {
+      const receipt = event.payload.receipt as
+        | {
+            id?: string;
+            taskId?: string;
+            remoteExpected?: boolean;
+            owners?: Array<{ taskId: string }>;
+          }
+        | undefined;
+      if (!receipt?.id || receipt.remoteExpected === false || completed.has(receipt.id)) continue;
+      if (receipt.taskId) tasks.add(receipt.taskId);
+      for (const owner of receipt.owners ?? []) tasks.add(owner.taskId);
+    }
+    return tasks;
+  }
+  /**
+   * A completed Git publication can be proved after a crash. Retire only its automatically
+   * generated expiry hold, without restoring approval, changing a ruling, or clearing another hold.
+   * Called under the publication lease after trusted origin ancestry verification.
+   */
+  async reconcilePublishedExpiryHolds(
+    projectId: string,
+    receiptIds: string[],
+    publishedHeadSha: string
+  ): Promise<void> {
+    await this.deps.runWrite(async (db) => {
+      const events = (
+        await db.query(
+          "SELECT payload FROM governance_events WHERE project_id=$1 AND kind IN ('local_publication_registered','remote_publication_completed','governance_allowance_expired')",
+          [projectId]
+        )
+      ).map((row) => unpack<GovernanceEvent>(row)!);
+      const proof = events.find(
+        (event) =>
+          event.kind === "remote_publication_completed" &&
+          event.payload.recoveredFromOrigin === true &&
+          event.payload.publishedHeadSha === publishedHeadSha &&
+          receiptIds.every((id) => ((event.payload.receiptIds as string[]) ?? []).includes(id))
+      );
+      if (!proof)
+        governanceError(
+          "Trusted completed-publication proof is required for expiry reconciliation."
+        );
+      const affected = new Set<string>();
+      for (const event of events.filter((event) => event.kind === "local_publication_registered")) {
+        const receipt = event.payload.receipt as {
+          id: string;
+          taskId: string;
+          owners?: Array<{ taskId: string }>;
+        };
+        if (receiptIds.includes(receipt.id)) {
+          affected.add(receipt.taskId);
+          for (const owner of receipt.owners ?? []) affected.add(owner.taskId);
+        }
+      }
+      const cases = (
+        await db.query("SELECT payload FROM review_cases WHERE project_id=$1", [projectId])
+      ).map((row) => unpack<ReviewCase>(row)!);
+      for (const c of cases) {
+        if (
+          !affected.has(c.taskId) ||
+          c.state !== "stale" ||
+          c.humanCancelled ||
+          c.supersededByReleaseId ||
+          c.publishedRemediationOnly
+        )
+          continue;
+        const expiry = events.find(
+          (event) =>
+            event.kind === "governance_allowance_expired" &&
+            event.caseId === c.id &&
+            event.payload.version === c.version &&
+            event.payload.previousTaskStatus === "closed"
+        );
+        if (!expiry) continue;
+        const next: ReviewCase = {
+          ...c,
+          state: "cancelled",
+          publishedRemediationOnly: true,
+          version: c.version + 1,
+          updatedAt: now(),
+        };
+        const updated = await db.execute(
+          "UPDATE review_cases SET state='cancelled',version=$1,payload=$2 WHERE project_id=$3 AND id=$4 AND version=$5",
+          [next.version, JSON.stringify(next), projectId, c.id, c.version]
+        );
+        if (updated !== 1) continue;
+        Object.assign(c, next);
+        const task = await db.queryOne(
+          "SELECT status,extra,updated_at FROM tasks WHERE project_id=$1 AND id=$2",
+          [projectId, c.taskId]
+        );
+        const otherHolds = cases.some(
+          (other) => other.taskId === c.taskId && other.id !== c.id && isHeldCase(other)
+        );
+        const extra = JSON.parse(String(task?.extra ?? "{}")) as Record<string, unknown>;
+        if (
+          task?.status === "blocked" &&
+          task.updated_at === expiry.payload.taskBlockedAt &&
+          extra.block_reason === "Governance allowance expired" &&
+          !otherHolds
+        ) {
+          await db.execute(
+            "UPDATE tasks SET status='closed',extra=$1,updated_at=$2 WHERE project_id=$3 AND id=$4 AND updated_at=$5",
+            [
+              JSON.stringify({
+                ...extra,
+                block_reason: null,
+                governance_remediation_required: {
+                  caseId: c.id,
+                  publishedHeadSha,
+                  reason: "Allowance expiry discovered after completed publication",
+                },
+              }),
+              next.updatedAt,
+              projectId,
+              c.taskId,
+              task.updated_at,
+            ]
+          );
+        }
+        await db.execute(
+          "UPDATE open_questions SET status='resolved',resolved_at=$1 WHERE project_id=$2 AND kind='governance' AND scope_change_metadata LIKE $3",
+          [next.updatedAt, projectId, `%${c.id}%`]
+        );
+        await this.event(
+          db,
+          projectId,
+          "published_expiry_remediation_only",
+          "system",
+          { receiptIds, publishedHeadSha, caseId: c.id, approvalRestored: false },
+          c.id
+        );
+      }
+    });
+  }
+
   async refreshExpiredApprovals(projectId: string): Promise<void> {
     await this.deps.runWrite(async (db) => {
+      const pendingRemoteTasks = await this.pendingRemoteTaskIds(db, projectId);
       const decisions = (
         await db.query("SELECT payload FROM policy_decisions WHERE project_id=$1", [projectId])
       ).map((row) => unpack<PolicyDecision>(row)!);
@@ -895,6 +1201,7 @@ export class GovernanceService {
         await db.query("SELECT payload FROM review_cases WHERE project_id=$1", [projectId])
       ).map((row) => unpack<ReviewCase>(row)!);
       for (const c of cases) {
+        if (c.supersededByReleaseId) continue;
         if (holdStates.includes(c.state) || c.state === "fix_required") continue;
         const own = decisions.some(
           (decision) => decision.caseId === c.id && expired.has(decision.id)
@@ -908,7 +1215,7 @@ export class GovernanceService {
           [projectId, c.taskId]
         );
         // A completed publication keeps its historical ruling; expiry only forbids future reuse.
-        if (task?.status === "closed") continue;
+        if (task?.status === "closed" && !pendingRemoteTasks.has(c.taskId)) continue;
         const updatedAt = now();
         const next: ReviewCase = { ...c, state: "stale", version: c.version + 1, updatedAt };
         const count = await db.execute(
@@ -922,7 +1229,7 @@ export class GovernanceService {
         );
         if (task)
           await db.execute(
-            "UPDATE tasks SET status='blocked',assignee=NULL,extra=$1,updated_at=$2 WHERE project_id=$3 AND id=$4 AND status<>'closed'",
+            "UPDATE tasks SET status='blocked',assignee=NULL,extra=$1,updated_at=$2 WHERE project_id=$3 AND id=$4",
             [
               JSON.stringify({
                 ...JSON.parse(String(task.extra ?? "{}")),
@@ -939,7 +1246,13 @@ export class GovernanceService {
           projectId,
           "governance_allowance_expired",
           "system",
-          { caseId: c.id, taskId: c.taskId, version: next.version },
+          {
+            caseId: c.id,
+            taskId: c.taskId,
+            version: next.version,
+            previousTaskStatus: task?.status ?? null,
+            taskBlockedAt: updatedAt,
+          },
           c.id
         );
         await db.execute(
@@ -981,12 +1294,47 @@ export class GovernanceService {
     return c;
   }
   async hasTaskHold(projectId: string, taskId: string): Promise<boolean> {
-    return (await this.getTaskCases(projectId, taskId)).some((c) => holdStates.includes(c.state));
+    return (await this.getTaskCases(projectId, taskId)).some(isHeldCase);
+  }
+  /** Called under the publication lock before a project can disappear from scheduling/UI. */
+  async assertProjectRemovalAllowed(projectId: string, actor?: string): Promise<void> {
+    const cases = await this.listCases(projectId);
+    const config = await this.getConfig(projectId);
+    if (config.mode === "disabled" && !cases.length && !(await this.getActiveReleaseId(projectId)))
+      return;
+    if (!actor?.trim())
+      governanceError(
+        "Removing a governed project requires the owner's approval capability.",
+        "GOVERNANCE_HUMAN_REQUIRED",
+        403
+      );
+    const db = await this.deps.getDb();
+    const pendingRemote = await this.pendingRemoteTaskIds(db, projectId);
+    const pendingTasks = await db.query(
+      "SELECT t.id FROM tasks t JOIN governance_task_pins p ON p.project_id=t.project_id AND p.task_id=t.id WHERE t.project_id=$1 AND t.status<>'closed'",
+      [projectId]
+    );
+    if (
+      cases.some(
+        (c) => isHeldCase(c) || (c.state === "fix_required" && !c.supersededByReleaseId)
+      ) ||
+      pendingTasks.length ||
+      pendingRemote.size
+    )
+      governanceError(
+        "Complete governed tasks and resolve their dockets and pending publication before removing the project.",
+        "GOVERNANCE_HOLD"
+      );
+    await this.audit(projectId, "project_removal_authorized", actor, {
+      scope: "archive_or_delete",
+      evidenceRetained: true,
+    });
   }
   /** An allowance is not completion: preserve its worktree until review/merge finishes. */
   async retainsTaskWorktree(projectId: string, taskId: string): Promise<boolean> {
+    if (await this.hasPendingResume(projectId, taskId)) return true;
     const cases = await this.getTaskCases(projectId, taskId);
-    if (cases.some((c) => holdStates.includes(c.state))) return true;
+    if (cases.some(isHeldCase)) return true;
     if (
       !cases.some(
         (c) =>
@@ -999,6 +1347,21 @@ export class GovernanceService {
       await this.deps.getDb()
     ).queryOne("SELECT status FROM tasks WHERE project_id=$1 AND id=$2", [projectId, taskId]);
     return Boolean(task && task.status !== "closed");
+  }
+  /** Recover ownership from task pins even when an ordinary lease row was lost. */
+  async retainsWorktree(worktreeKey: string): Promise<boolean> {
+    const rows = await (await this.deps.getDb()).query("SELECT payload FROM governance_task_pins");
+    for (const row of rows) {
+      const pin = unpack<GovernanceTaskPin>(row)!;
+      if (
+        pin.taskId !== worktreeKey &&
+        pin.branchName !== worktreeKey &&
+        pin.branchName !== `opensprint/${worktreeKey}`
+      )
+        continue;
+      if (await this.retainsTaskWorktree(pin.projectId, pin.taskId)) return true;
+    }
+    return false;
   }
   async hasPendingResume(projectId: string, taskId: string): Promise<boolean> {
     const task = await (
@@ -1027,68 +1390,94 @@ export class GovernanceService {
         input.findings.map((f) => f.id).sort(),
         input.appeals,
       ]);
-    return this.deps.runWrite(async (db) => {
-      const existing = unpack<ReviewCase>(
-        await db.queryOne(
-          "SELECT payload FROM review_cases WHERE project_id=$1 AND idempotency_key=$2",
-          [input.projectId, key]
-        )
-      );
-      if (existing) return existing;
-      const release = unpack<PolicyRelease>(
-        await db.queryOne("SELECT payload FROM policy_releases WHERE project_id=$1 AND id=$2", [
-          input.projectId,
-          input.releaseId,
-        ])
-      );
-      if (!release) governanceError("Case policy release is unavailable.");
-      for (const f of input.findings) {
-        if (!f.id || !f.file || !f.codeRevision || !f.evidence?.trim())
-          governanceError("Every finding needs an identity and concrete code evidence.");
-        if (
-          f.category === "standard" &&
-          (!f.ruleRevisionId ||
-            !release.rules.some((r) => r.id === f.ruleRevisionId && r.ruleId === f.ruleId))
-        )
-          governanceError("Blocking standards findings must cite a governing rule revision.");
-      }
-      const c: ReviewCase = {
-        ...input,
-        id: id("case"),
-        version: 1,
-        state: input.state ?? "awaiting_human",
-        evidenceHash: governanceHash(input.evidence),
-        createdAt: timestamp,
-        updatedAt: timestamp,
-      };
-      await db.execute(
-        "INSERT INTO review_cases(project_id,id,task_id,release_id,state,version,idempotency_key,payload,created_at) VALUES($1,$2,$3,$4,$5,1,$6,$7,$8)",
-        [c.projectId, c.id, c.taskId, c.releaseId, c.state, key, JSON.stringify(c), timestamp]
-      );
-      for (const finding of c.findings)
-        await db.execute(
-          "INSERT INTO review_findings(project_id,case_id,id,payload) VALUES($1,$2,$3,$4)",
-          [c.projectId, c.id, finding.id, JSON.stringify(finding)]
+    return this.withPublicationLock(input.projectId, () =>
+      this.deps.runWrite(async (db) => {
+        const existing = unpack<ReviewCase>(
+          await db.queryOne(
+            "SELECT payload FROM review_cases WHERE project_id=$1 AND idempotency_key=$2",
+            [input.projectId, key]
+          )
         );
-      if (holdStates.includes(c.state))
-        await db.execute(
-          "UPDATE tasks SET status='blocked',assignee=NULL,updated_at=$1 WHERE project_id=$2 AND id=$3",
-          [timestamp, c.projectId, c.taskId]
+        if (existing) return existing;
+        if (input.evidence.invocationId || input.evidence.attempt !== undefined) {
+          const task = await db.queryOne("SELECT status FROM tasks WHERE project_id=$1 AND id=$2", [
+            input.projectId,
+            input.taskId,
+          ]);
+          if (!task || task.status !== "in_progress")
+            governanceError(
+              "The reviewed task is no longer active; a late invocation cannot recreate a case after cancellation or retry."
+            );
+        }
+        const release = unpack<PolicyRelease>(
+          await db.queryOne("SELECT payload FROM policy_releases WHERE project_id=$1 AND id=$2", [
+            input.projectId,
+            input.releaseId,
+          ])
         );
-      await db.execute(
-        "INSERT INTO governance_outbox(project_id,id,case_id,state,payload) VALUES($1,$2,$3,'pending',$4)",
-        [c.projectId, `docket-${c.id}`, c.id, JSON.stringify({ caseId: c.id })]
-      );
-      await this.event(
-        db,
-        c.projectId,
-        "case_opened",
-        "system",
-        { caseId: c.id, taskId: c.taskId, state: c.state, evidenceHash: c.evidenceHash },
-        c.id
-      );
-      return c;
-    });
+        if (!release) governanceError("Case policy release is unavailable.");
+        for (const f of input.findings) {
+          if (!f.id || !f.file || !f.codeRevision || !f.evidence?.trim())
+            governanceError("Every finding needs an identity and concrete code evidence.");
+          if (
+            f.category === "standard" &&
+            (!f.ruleRevisionId ||
+              !release.rules.some((r) => r.id === f.ruleRevisionId && r.ruleId === f.ruleId))
+          )
+            governanceError("Blocking standards findings must cite a governing rule revision.");
+        }
+        const c: ReviewCase = {
+          ...input,
+          id: id("case"),
+          version: 1,
+          state: input.state ?? "awaiting_human",
+          evidenceHash: governanceHash(input.evidence),
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        };
+        await db.execute(
+          "INSERT INTO review_cases(project_id,id,task_id,release_id,state,version,idempotency_key,payload,created_at) VALUES($1,$2,$3,$4,$5,1,$6,$7,$8)",
+          [c.projectId, c.id, c.taskId, c.releaseId, c.state, key, JSON.stringify(c), timestamp]
+        );
+        for (const finding of c.findings)
+          await db.execute(
+            "INSERT INTO review_findings(project_id,case_id,id,payload) VALUES($1,$2,$3,$4)",
+            [c.projectId, c.id, finding.id, JSON.stringify(finding)]
+          );
+        if (holdStates.includes(c.state)) {
+          const task = await db.queryOne("SELECT extra FROM tasks WHERE project_id=$1 AND id=$2", [
+            c.projectId,
+            c.taskId,
+          ]);
+          await db.execute(
+            "UPDATE tasks SET status='blocked',assignee=NULL,extra=$1,updated_at=$2 WHERE project_id=$3 AND id=$4",
+            [
+              JSON.stringify({
+                ...JSON.parse(String(task?.extra ?? "{}")),
+                governance_case_id: c.id,
+                block_reason: "Review governance: waiting for a human ruling",
+              }),
+              timestamp,
+              c.projectId,
+              c.taskId,
+            ]
+          );
+        }
+        await db.execute(
+          "INSERT INTO governance_outbox(project_id,id,case_id,state,payload) VALUES($1,$2,$3,'pending',$4)",
+          [c.projectId, `docket-${c.id}`, c.id, JSON.stringify({ caseId: c.id })]
+        );
+        await this.event(
+          db,
+          c.projectId,
+          "case_opened",
+          "system",
+          { caseId: c.id, taskId: c.taskId, state: c.state, evidenceHash: c.evidenceHash },
+          c.id
+        );
+        return c;
+      })
+    );
   }
   async recordRecommendation(
     projectId: string,
@@ -1489,7 +1878,7 @@ export class GovernanceService {
         [projectId]
       )
     ).map((r) => unpack<PolicyDecision>(r)!);
-    const revocations = (await this.listEvents(projectId)).filter(
+    const revocations = (await this.listEvents(projectId, ["decision_revoked"])).filter(
       (e) => e.kind === "decision_revoked"
     );
     return decisions.map((d) => ({
@@ -1499,14 +1888,26 @@ export class GovernanceService {
         : {}),
     }));
   }
-  async listEvents(projectId: string): Promise<GovernanceEvent[]> {
+  async listEvents(projectId: string, kinds?: readonly string[]): Promise<GovernanceEvent[]> {
+    if (kinds?.length === 0) return [];
     return (
       await (
         await this.deps.getDb()
-      ).query("SELECT payload FROM governance_events WHERE project_id=$1 ORDER BY created_at,id", [
-        projectId,
-      ])
+      ).query(
+        `SELECT payload FROM governance_events WHERE project_id=$1${kinds ? ` AND kind IN (${kinds.map((_, i) => `$${i + 2}`).join(",")})` : ""} ORDER BY created_at,id`,
+        [projectId, ...(kinds ?? [])]
+      )
     ).map((r) => unpack<GovernanceEvent>(r)!);
+  }
+  /** Full prompts/context remain retained, but polling the docket must not transfer them. */
+  async listAuditEvents(projectId: string): Promise<GovernanceEvent[]> {
+    const db = await this.deps.getDb();
+    return (
+      await db.query(
+        "SELECT payload FROM governance_events WHERE project_id=$1 AND kind<>'prompt_snapshot' ORDER BY created_at,id",
+        [projectId]
+      )
+    ).map((row) => unpack<GovernanceEvent>(row)!);
   }
   async resolveCase(
     projectId: string,
@@ -1540,13 +1941,13 @@ export class GovernanceService {
             caseId,
           ])
         );
-        if (!c || c.version !== input.expectedVersion || !holdStates.includes(c.state))
+        if (!c || c.version !== input.expectedVersion || !isHeldCase(c))
           governanceError("Case changed or was already decided; reload before approving.");
         if (!input.idempotencyKey?.trim() || !input.rationale?.trim() || !actor?.trim())
           governanceError("Named human, rationale, and idempotency key are required.");
         if (c.headSha !== input.headSha || c.diffHash !== input.diffHash)
           governanceError("This ruling is bound to stale code.", "GOVERNANCE_STALE_CODE");
-        if (c.state === "stale" && input.action.startsWith("allow"))
+        if ((c.state === "stale" || c.humanCancelled) && input.action.startsWith("allow"))
           governanceError(
             "A stale case requires a fresh review before it can grant an allowance.",
             "GOVERNANCE_STALE_CODE"
@@ -1627,7 +2028,13 @@ export class GovernanceService {
             : input.action === "cancel"
               ? "cancelled"
               : "evidence_requested";
-        const next = { ...c, state, version: c.version + 1, updatedAt: d.createdAt };
+        const next = {
+          ...c,
+          state,
+          version: c.version + 1,
+          updatedAt: d.createdAt,
+          humanCancelled: input.action === "cancel",
+        };
         await db.execute(
           "INSERT INTO policy_decisions(project_id,id,case_id,idempotency_key,payload,created_at) VALUES($1,$2,$3,$4,$5,$6)",
           [projectId, d.id, caseId, input.idempotencyKey, JSON.stringify(d), d.createdAt]
@@ -1638,10 +2045,13 @@ export class GovernanceService {
         );
         if (count !== 1) governanceError("Concurrent ruling; retry with the same idempotency key.");
         const others = await db.query(
-          "SELECT id FROM review_cases WHERE project_id=$1 AND task_id=$2 AND id<>$3 AND state IN ('awaiting_reconsideration','awaiting_judge','awaiting_human','evidence_requested','stale') LIMIT 1",
+          "SELECT payload FROM review_cases WHERE project_id=$1 AND task_id=$2 AND id<>$3",
           [projectId, c.taskId, c.id]
         );
-        if (!holdStates.includes(state) && !others.length) {
+        if (
+          !holdStates.includes(state) &&
+          !others.some((row) => isHeldCase(unpack<ReviewCase>(row)!))
+        ) {
           const task = await db.queryOne("SELECT extra FROM tasks WHERE project_id=$1 AND id=$2", [
             projectId,
             c.taskId,
@@ -1650,7 +2060,18 @@ export class GovernanceService {
             const extra = {
               ...JSON.parse(String(task.extra ?? "{}")),
               governance_resume: state === "allowed" ? true : null,
-              ...(state === "allowed" ? { useExistingBranch: true } : {}),
+              ...(["allowed", "fix_required"].includes(state) ? { useExistingBranch: true } : {}),
+              ...(state === "fix_required"
+                ? {
+                    next_retry_context: {
+                      ...JSON.parse(String(task.extra ?? "{}")).next_retry_context,
+                      previousFailure: `Human governance ruling requires a fix: ${d.rationale}`,
+                      reviewFeedback: `Human authority ${d.actor} requires the cited findings to be addressed. This ruling grants no exception.\nRationale: ${d.rationale}\nFindings: ${JSON.stringify(c.findings)}`,
+                      useExistingBranch: true,
+                      failureType: "review_rejection",
+                    },
+                  }
+                : {}),
               block_reason: state === "cancelled" ? "Governance case cancelled" : null,
             };
             await db.execute(
@@ -1665,10 +2086,11 @@ export class GovernanceService {
             );
           }
         }
-        await db.execute(
-          "UPDATE open_questions SET status='resolved',resolved_at=$1 WHERE project_id=$2 AND kind='governance' AND scope_change_metadata LIKE $3",
-          [d.createdAt, projectId, `%${caseId}%`]
-        );
+        if (input.action !== "request_evidence" && input.action !== "cancel")
+          await db.execute(
+            "UPDATE open_questions SET status='resolved',resolved_at=$1 WHERE project_id=$2 AND kind='governance' AND scope_change_metadata LIKE $3",
+            [d.createdAt, projectId, `%${caseId}%`]
+          );
         await this.event(
           db,
           projectId,
@@ -1759,6 +2181,15 @@ export class GovernanceService {
         { evidence, evidenceHash: next.evidenceHash },
         caseId
       );
+      await db.execute(
+        "INSERT INTO governance_outbox(project_id,id,case_id,state,payload) VALUES($1,$2,$3,'pending',$4) ON CONFLICT DO NOTHING",
+        [
+          projectId,
+          `evidence-${caseId}-${next.version}`,
+          caseId,
+          JSON.stringify({ caseId, caseVersion: next.version }),
+        ]
+      );
       return next;
     });
   }
@@ -1792,6 +2223,7 @@ export class GovernanceService {
           { decisionId, rationale },
           d.caseId
         );
+        const pendingRemoteTasks = await this.pendingRemoteTaskIds(db, projectId);
         const affected = (
           await db.query("SELECT payload FROM review_cases WHERE project_id=$1", [projectId])
         )
@@ -1806,7 +2238,7 @@ export class GovernanceService {
             "SELECT status,extra FROM tasks WHERE project_id=$1 AND id=$2",
             [projectId, affectedCase.taskId]
           );
-          if (task?.status === "closed") {
+          if (task?.status === "closed" && !pendingRemoteTasks.has(affectedCase.taskId)) {
             const extra = {
               ...JSON.parse(String(task.extra ?? "{}")),
               governance_remediation_required: {
@@ -1845,7 +2277,7 @@ export class GovernanceService {
             [projectId, affectedCase.taskId]
           );
           await db.execute(
-            "UPDATE tasks SET status='blocked',updated_at=$1 WHERE project_id=$2 AND id=$3 AND status<>'closed'",
+            "UPDATE tasks SET status='blocked',updated_at=$1 WHERE project_id=$2 AND id=$3",
             [now(), projectId, affectedCase.taskId]
           );
           await db.execute(
@@ -1955,7 +2387,7 @@ export class GovernanceService {
     baseSha?: string;
   }): Promise<void> {
     const cases = await this.getTaskCases(input.projectId, input.taskId);
-    if (cases.some((c) => holdStates.includes(c.state)))
+    if (cases.some(isHeldCase))
       governanceError("Unresolved durable governance hold prevents merging.", "GOVERNANCE_HOLD");
     const pin = await this.getTaskPin(input.projectId, input.taskId);
     if (pin && (await this.isReleaseRevoked(input.projectId, pin.releaseId)))
@@ -1987,6 +2419,7 @@ export class GovernanceService {
     );
     const decisions = await this.listDecisions(input.projectId);
     for (const c of cases) {
+      if (c.supersededByReleaseId === pin.releaseId) continue;
       if (c.verifiedDisposition?.kind === "precedent_applied") {
         for (const id of c.verifiedDisposition.decisionIds) {
           const d = decisions.find((d) => d.id === id && !d.revokedAt);
@@ -2023,7 +2456,7 @@ export class GovernanceService {
           governanceError("Reusable disposition expired.");
       }
     }
-    const revocations = (await this.listEvents(input.projectId)).filter(
+    const revocations = (await this.listEvents(input.projectId, ["release_revoked"])).filter(
       (e) => e.kind === "release_revoked" && e.payload.releaseId === pin.releaseId
     );
     if (revocations.length) governanceError("Governing policy was critically revoked.");
@@ -2337,8 +2770,8 @@ export class GovernanceService {
       ]);
       const events = (
         await db.query(
-          "SELECT payload FROM governance_events WHERE project_id=$1 ORDER BY created_at,id",
-          [projectId]
+          `SELECT payload FROM governance_events WHERE project_id=$1 AND kind IN (${[...relevantKinds].map((_, i) => `$${i + 2}`).join(",")}) ORDER BY created_at,id`,
+          [projectId, ...relevantKinds]
         )
       )
         .map((row) => unpack<GovernanceEvent>(row)!)
@@ -2522,7 +2955,7 @@ export class GovernanceService {
               pending.case_id,
             ])
           );
-          if (!c || !holdStates.includes(c.state)) {
+          if (!c || !isHeldCase(c)) {
             await db.execute(
               "UPDATE governance_outbox SET state='delivered' WHERE project_id=$1 AND id=$2",
               [projectId, entry.id]

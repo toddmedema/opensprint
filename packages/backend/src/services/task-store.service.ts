@@ -720,7 +720,7 @@ export class TaskStoreService {
             await tx.execute(
               toPgParams(
                 `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, complexity, extra)
-               VALUES (?, ?, ?, ?, ?, 'open', ?, NULL, '[]', ?, ?, ?, ?)`
+               VALUES (?, ?, ?, ?, ?, ?, ?, NULL, '[]', ?, ?, ?, ?)`
               ),
               [
                 id,
@@ -728,6 +728,7 @@ export class TaskStoreService {
                 title,
                 options.description ?? null,
                 type,
+                options.initialStatus === "blocked" ? "blocked" : "open",
                 priority,
                 now,
                 now,

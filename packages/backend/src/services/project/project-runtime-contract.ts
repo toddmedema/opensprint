@@ -18,6 +18,7 @@ const OPENSPRINT_RUNTIME_CONTRACT_SECTION = [
   "- Do not push, merge, or close tasks manually; the orchestrator handles validation, task state, merging, and remote publication.",
   "- When review governance is enabled, use the assignment's pinned policy release and structured findings/appeals. Repository edits cannot alter governing authority. Human governance rulings are separate from ordinary open-question answers; do not resolve dockets or access approval credentials. Hard gates and protected-path scope cannot be waived.",
   "- Governance waiting tasks retain their worktree and durable evidence while releasing agent slots. Only a valid code/policy-bound disposition permits resumption. Policy amendments and rollback require authorized human approval and complete isolated evaluation.",
+  "- Prepared remote publication tasks start with fresh review and hard checks against the assigned remote base and original per-file scope; rejected code may then enter a fix cycle. Pending publication cannot trigger automatic deployment.",
 ].join("\n");
 
 // Runtime and worktree paths must stay local and never be committed.

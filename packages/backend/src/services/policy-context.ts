@@ -164,9 +164,32 @@ export function resolvePolicyContext(
   for (const id of selected)
     for (const target of byId.get(id)!.overrideIds)
       overrides.set(target, [...(overrides.get(target) ?? []), id]);
-  for (const [target, children] of overrides)
-    if (children.length > 1)
-      conflicts.push(`Incomparable overrides of ${target}: ${children.join(", ")}`);
+  const ancestry = new Map<string, Set<string>>();
+  const ancestors = (id: string): Set<string> => {
+    const cached = ancestry.get(id);
+    if (cached) return cached;
+    const result = new Set<string>();
+    ancestry.set(id, result);
+    for (const parent of byId.get(id)!.parentIds) {
+      result.add(parent);
+      for (const inherited of ancestors(parent)) result.add(inherited);
+    }
+    return result;
+  };
+  for (const [target, children] of overrides) {
+    const incomparable = new Set<string>();
+    for (let left = 0; left < children.length; left++)
+      for (let right = left + 1; right < children.length; right++) {
+        const a = children[left]!,
+          b = children[right]!;
+        if (!ancestors(a).has(b) && !ancestors(b).has(a)) {
+          incomparable.add(a);
+          incomparable.add(b);
+        }
+      }
+    if (incomparable.size)
+      conflicts.push(`Incomparable overrides of ${target}: ${[...incomparable].sort().join(", ")}`);
+  }
   const ordered = [...selected]
     .map((id) => byId.get(id)!)
     .sort((a, b) => a.layer - b.layer || a.id.localeCompare(b.id));

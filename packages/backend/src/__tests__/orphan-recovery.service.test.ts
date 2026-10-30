@@ -8,6 +8,16 @@ import { OrphanRecoveryService } from "../services/orphan-recovery.service.js";
 import { resetLogLevelCache } from "../utils/logger.js";
 
 const execAsync = promisify(exec);
+vi.mock("../services/governance.service.js", async () => ({
+  governanceService: (await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+}));
+vi.mock("../services/worktree-lease.service.js", () => ({
+  worktreeLeaseService: {
+    canCleanup: vi.fn().mockResolvedValue(true),
+    forceRelease: vi.fn().mockResolvedValue(undefined),
+    get: vi.fn().mockResolvedValue(null),
+  },
+}));
 
 // Mock ProjectService so getProjectByRepoPath returns a project for any path (tests use temp dirs not in index)
 let mockGitWorkingMode: "worktree" | "branches" = "worktree";

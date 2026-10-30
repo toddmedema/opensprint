@@ -30,7 +30,7 @@ import { gitCommitQueue, MergeJobError } from "./git-commit-queue.service.js";
 import { agentIdentityService, buildAgentAttemptId } from "./agent-identity.service.js";
 import { eventLogService } from "./event-log.service.js";
 import { fireAndForget } from "../utils/fire-and-forget.js";
-import { triggerDeployForEvent } from "./deploy-trigger.service.js";
+import { deferredAutoDeployService } from "./deferred-auto-deploy.service.js";
 import { finalReviewService } from "./final-review.service.js";
 import { notificationService } from "./notification.service.js";
 import { selfImprovementService } from "./self-improvement.service.js";
@@ -75,6 +75,11 @@ import {
   governanceExecutionService,
   governanceCodeSnapshot,
 } from "./governance-execution.service.js";
+
+import {
+  remotePublicationGovernanceService,
+  type RemotePushBatch,
+} from "./remote-publication-governance.service.js";
 
 const log = createLogger("merge-coordinator");
 const _MAX_PUSH_REBASE_RESOLUTION_ROUNDS = 12;
@@ -2924,6 +2929,15 @@ export class MergeCoordinatorService {
     options?: { mergedToMain?: boolean }
   ): Promise<void> {
     const mergedToMain = options?.mergedToMain !== false;
+    if (mergedToMain) {
+      const task = await this.host.taskStore.show(projectId, taskId).catch(() => null);
+      await deferredAutoDeployService.enqueue(
+        projectId,
+        "each_task",
+        taskId,
+        String(task?.completed_at ?? "completed")
+      );
+    }
     let pushStatus: PushCompletionStatus = "publish_failed";
     if (!this.pushInProgress.has(projectId)) {
       let resolvePush!: () => void;
@@ -2953,12 +2967,8 @@ export class MergeCoordinatorService {
       log.warn("Auto-resolve feedback on task done failed", { taskId, err });
     });
 
-    // PRD §7.5.3: Auto-deploy on each task only when a merge to main occurred
-    if (mergedToMain) {
-      triggerDeployForEvent(projectId, "each_task").catch((err) => {
-        log.warn("Auto-deploy on task completion failed", { projectId, err });
-      });
-    }
+    // A completed local merge may still be waiting for remote code re-review.
+    await this.drainDeferredDeploysIfPublished(projectId, repoPath);
 
     const allIssues = await this.host.taskStore.listAll(projectId);
     const epicId = resolveEpicId(taskId, allIssues);
@@ -2975,9 +2985,7 @@ export class MergeCoordinatorService {
         } else {
           const shouldDeploy = await this.shouldTriggerDeployForEpic(projectId, epicId);
           if (shouldDeploy) {
-            triggerDeployForEvent(projectId, "each_epic").catch((err) => {
-              log.warn("Auto-deploy on epic completion failed", { projectId, err });
-            });
+            await this.enqueueEpicDeploy(projectId, repoPath, epicId);
           }
           const planRow = await this.host.taskStore.planGetByEpicId(projectId, epicId);
           if (planRow) {
@@ -3012,6 +3020,59 @@ export class MergeCoordinatorService {
    * Run final review agent when last task of epic is done.
    * If pass: close epic, trigger deploy. If issues: create tasks, epic stays open, nudge.
    */
+  async recoverDeferredPublications(projectId: string, repoPath: string): Promise<void> {
+    if (!(await deferredAutoDeployService.hasPending(projectId))) return;
+    const settings = await this.host.projectService.getSettings(projectId);
+    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+    const repo = await inspectGitRepoState(repoPath, baseBranch);
+    await governanceService.withPublicationLock(projectId, async (assertLease) => {
+      if (repo.remoteMode !== "local_only")
+        await remotePublicationGovernanceService.beginPush({ projectId, repoPath, baseBranch });
+      const head = await remotePublicationGovernanceService.getDeployableHead(
+        projectId,
+        repoPath,
+        baseBranch
+      );
+      if (!head) return;
+      await assertLease();
+      await deferredAutoDeployService.drain(projectId, repoPath, head, assertLease);
+    });
+  }
+
+  private async drainDeferredDeploysIfPublished(
+    projectId: string,
+    repoPath: string
+  ): Promise<void> {
+    await governanceService.withPublicationLock(projectId, async (assertLease) => {
+      const settings = await this.host.projectService.getSettings(projectId);
+      const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+      const head = await remotePublicationGovernanceService.getDeployableHead(
+        projectId,
+        repoPath,
+        baseBranch
+      );
+      if (!head) return;
+      await assertLease();
+      await deferredAutoDeployService.drain(projectId, repoPath, head, assertLease);
+    });
+  }
+  private async enqueueEpicDeploy(
+    projectId: string,
+    repoPath: string,
+    epicId: string
+  ): Promise<void> {
+    const task = await this.host.taskStore.show(projectId, epicId).catch(() => null);
+    const plan = await this.host.taskStore.planGetByEpicId(projectId, epicId);
+    const reviewedAt = (plan?.metadata as { reviewedAt?: string } | undefined)?.reviewedAt;
+    await deferredAutoDeployService.enqueue(
+      projectId,
+      "each_epic",
+      epicId,
+      String(reviewedAt ?? task?.completed_at ?? "completed")
+    );
+    await this.drainDeferredDeploysIfPublished(projectId, repoPath);
+  }
+
   private async runFinalReviewAndCloseOrCreateTasks(
     projectId: string,
     repoPath: string,
@@ -3024,9 +3085,7 @@ export class MergeCoordinatorService {
       await this.host.taskStore.close(projectId, epicId, "All tasks done");
       const shouldDeploy = await this.shouldTriggerDeployForEpic(projectId, epicId);
       if (shouldDeploy) {
-        triggerDeployForEvent(projectId, "each_epic").catch((err) => {
-          log.warn("Auto-deploy on epic completion failed", { projectId, err });
-        });
+        await this.enqueueEpicDeploy(projectId, repoPath, epicId);
       }
       const planRow = await this.host.taskStore.planGetByEpicId(projectId, epicId);
       if (planRow) {
@@ -3044,9 +3103,7 @@ export class MergeCoordinatorService {
       await this.host.taskStore.close(projectId, epicId, "All tasks done; final review passed");
       const shouldDeploy = await this.shouldTriggerDeployForEpic(projectId, epicId);
       if (shouldDeploy) {
-        triggerDeployForEvent(projectId, "each_epic").catch((err) => {
-          log.warn("Auto-deploy on epic completion failed", { projectId, err });
-        });
+        await this.enqueueEpicDeploy(projectId, repoPath, epicId);
       }
       const planRow = await this.host.taskStore.planGetByEpicId(projectId, epicId);
       if (planRow) {
@@ -3108,6 +3165,8 @@ export class MergeCoordinatorService {
     baseBranch: string;
     settings: Awaited<ReturnType<MergeCoordinatorHost["projectService"]["getSettings"]>>;
     initialConflict: RebaseConflictError;
+    batch: RemotePushBatch;
+    assertLease: () => Promise<void>;
   }): Promise<{ ok: true } | { ok: false; error: Error }> {
     const { projectId, repoPath, baseBranch, settings, initialConflict } = options;
     const MAX_PUSH_REBASE_CONFLICT_ROUNDS = 12;
@@ -3222,7 +3281,13 @@ export class MergeCoordinatorService {
         baseBranch,
         "push_rebase_recheck"
       );
-      await this.host.branchManager.pushMainToOrigin(repoPath, baseBranch);
+      await this.publishPreparedMain(
+        projectId,
+        repoPath,
+        baseBranch,
+        options.batch,
+        options.assertLease
+      );
       log.info("Merger resolved push rebase conflicts, push succeeded", { projectId });
       fireAndForget(
         eventLogService.append(repoPath, {
@@ -3244,6 +3309,33 @@ export class MergeCoordinatorService {
         error: pushErr instanceof Error ? pushErr : new Error(String(pushErr)),
       };
     }
+  }
+
+  private async publishPreparedMain(
+    projectId: string,
+    repoPath: string,
+    baseBranch: string,
+    batch: RemotePushBatch,
+    assertLease: () => Promise<void>
+  ): Promise<void> {
+    const prepared = await remotePublicationGovernanceService.assertPreparedPush({
+      projectId,
+      repoPath,
+      baseBranch,
+      batch,
+    });
+    await assertLease();
+    await this.host.branchManager.pushMainToOrigin(repoPath, baseBranch);
+    await remotePublicationGovernanceService.completePush(projectId, prepared);
+    await assertLease();
+    if (
+      (await remotePublicationGovernanceService.getDeployableHead(
+        projectId,
+        repoPath,
+        baseBranch
+      )) === prepared.headSha
+    )
+      await deferredAutoDeployService.drain(projectId, repoPath, prepared.headSha, assertLease);
   }
 
   /**
@@ -3279,78 +3371,88 @@ export class MergeCoordinatorService {
       return "local_only";
     }
 
-    try {
-      await this.host.branchManager.prepareMainForPush(repoPath, baseBranch);
-      await this.ensurePreparedMainQualityGates(projectId, repoPath, baseBranch, "push_precheck");
-      await this.host.branchManager.pushMainToOrigin(repoPath, baseBranch);
-      log.info("Push to origin succeeded", { projectId });
-      fireAndForget(
-        eventLogService.append(repoPath, {
-          timestamp: new Date().toISOString(),
-          projectId,
-          taskId: "",
-          event: "push.succeeded",
-        }),
-        "merge-coordinator:push-succeeded-event-log"
-      );
-      return "published";
-    } catch (err) {
-      let terminalError: Error = err instanceof Error ? err : new Error(String(err));
-      let pushStage: "push_rebase" | "push" | "quality_gate" = "push";
-      if (err instanceof RebaseConflictError) {
-        pushStage = "push_rebase";
-        const resolution = await this.resolvePushRebaseConflicts({
+    return governanceService.withPublicationLock(projectId, async (assertLease) => {
+      let batch: RemotePushBatch | undefined;
+      try {
+        batch = await remotePublicationGovernanceService.beginPush({
           projectId,
           repoPath,
           baseBranch,
-          settings,
-          initialConflict: err,
         });
-        if (resolution.ok) {
-          return "published";
-        }
-        terminalError = resolution.error;
-      } else {
-        log.warn("Push failed, will retry on next task completion", { projectId, err });
-      }
-      if (terminalError instanceof MergeJobError && terminalError.stage === "quality_gate") {
-        pushStage = "quality_gate";
-      }
-      const reason = terminalError.message.slice(0, 500);
-      fireAndForget(
-        eventLogService.append(repoPath, {
-          timestamp: new Date().toISOString(),
-          projectId,
-          taskId: "",
-          event: "push.failed",
-          data: {
-            reason,
-            conflictedFiles:
-              terminalError instanceof RebaseConflictError ? terminalError.conflictedFiles : [],
-            stage: pushStage,
-          },
-        }),
-        "merge-coordinator:push-failed-event-log"
-      );
-      await notificationService
-        .create({
-          projectId,
-          source: "execute",
-          sourceId: "remote-publish",
-          questions: [
-            {
-              id: `push-${projectId}`,
-              text: `Work merged locally, but publish to origin failed: ${reason}`,
-            },
-          ],
-        })
-        .catch((notificationErr) =>
-          log.warn("Failed to create remote publish warning notification", {
+        await this.host.branchManager.prepareMainForPush(repoPath, baseBranch);
+        await this.ensurePreparedMainQualityGates(projectId, repoPath, baseBranch, "push_precheck");
+        await this.publishPreparedMain(projectId, repoPath, baseBranch, batch, assertLease);
+        log.info("Push to origin succeeded", { projectId });
+        fireAndForget(
+          eventLogService.append(repoPath, {
+            timestamp: new Date().toISOString(),
             projectId,
-            notificationErr,
-          })
+            taskId: "",
+            event: "push.succeeded",
+          }),
+          "merge-coordinator:push-succeeded-event-log"
         );
-      return "publish_failed";
-    }
+        return "published";
+      } catch (err) {
+        let terminalError: Error = err instanceof Error ? err : new Error(String(err));
+        let pushStage: "push_rebase" | "push" | "quality_gate" = "push";
+        if (err instanceof RebaseConflictError && batch) {
+          pushStage = "push_rebase";
+          const resolution = await this.resolvePushRebaseConflicts({
+            projectId,
+            repoPath,
+            baseBranch,
+            settings,
+            initialConflict: err,
+            batch,
+            assertLease,
+          });
+          if (resolution.ok) {
+            return "published";
+          }
+          terminalError = resolution.error;
+        } else {
+          log.warn("Push failed, will retry on next task completion", { projectId, err });
+        }
+        if (terminalError instanceof MergeJobError && terminalError.stage === "quality_gate") {
+          pushStage = "quality_gate";
+        }
+        const reason = terminalError.message.slice(0, 500);
+        fireAndForget(
+          eventLogService.append(repoPath, {
+            timestamp: new Date().toISOString(),
+            projectId,
+            taskId: "",
+            event: "push.failed",
+            data: {
+              reason,
+              conflictedFiles:
+                terminalError instanceof RebaseConflictError ? terminalError.conflictedFiles : [],
+              stage: pushStage,
+            },
+          }),
+          "merge-coordinator:push-failed-event-log"
+        );
+        await notificationService
+          .create({
+            projectId,
+            source: "execute",
+            sourceId: "remote-publish",
+            questions: [
+              {
+                id: `push-${projectId}`,
+                text: `Work merged locally, but publish to origin failed: ${reason}`,
+              },
+            ],
+          })
+          .catch((notificationErr) =>
+            log.warn("Failed to create remote publish warning notification", {
+              projectId,
+              notificationErr,
+            })
+          );
+        return "publish_failed";
+      }
+    });
   }
 }

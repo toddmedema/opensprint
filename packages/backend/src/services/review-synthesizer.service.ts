@@ -15,6 +15,7 @@ import { getCombinedInstructions } from "./agent-instructions.service.js";
 import { createLogger } from "../utils/logger.js";
 import type { TaskStoreService } from "./task-store.service.js";
 import type { StoredTask } from "./task-store.service.js";
+import { aggregateReviewFindings } from "./review-findings.js";
 import { invokeStructuredPlanningAgent } from "./structured-agent-output.service.js";
 
 const log = createLogger("review-synthesizer");
@@ -127,7 +128,9 @@ Synthesize the above into a single report. Output ONLY valid JSON with status, s
           (status === "approved" ? "All angles passed" : "Review rejected"),
         ...(parsed.issues?.length ? { issues: parsed.issues } : {}),
         notes: parsed.notes?.trim() ?? "",
-        findings: angleInputs.flatMap((i) => i.result.findings ?? []),
+        findings: aggregateReviewFindings(
+          angleInputs.map((i) => ({ angle: i.angle, findings: i.result.findings ?? [] }))
+        ),
       };
     } catch (err) {
       log.error("Synthesizer agent failed, falling back to programmatic merge", {
@@ -157,7 +160,9 @@ Synthesize the above into a single report. Output ONLY valid JSON with status, s
         .join(" | ");
       return {
         status: "rejected",
-        findings: angleInputs.flatMap((i) => i.result.findings ?? []),
+        findings: aggregateReviewFindings(
+          angleInputs.map((i) => ({ angle: i.angle, findings: i.result.findings ?? [] }))
+        ),
         summary: summary || "Review rejected",
         ...(issues.length > 0 && { issues }),
         notes: rejected
@@ -169,7 +174,9 @@ Synthesize the above into a single report. Output ONLY valid JSON with status, s
     const first = angleInputs[0]!;
     return {
       status: "approved",
-      findings: angleInputs.flatMap((i) => i.result.findings ?? []),
+      findings: aggregateReviewFindings(
+        angleInputs.map((i) => ({ angle: i.angle, findings: i.result.findings ?? [] }))
+      ),
       summary: first.result.summary ?? "All angles passed",
       notes: angleInputs
         .map((i) => i.result.notes?.trim())

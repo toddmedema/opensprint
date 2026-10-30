@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import type { GovernanceDecisionAction, ReviewCase } from "@opensprint/shared";
 import { api } from "../../../api/client";
 import {
-  GOVERNANCE_CASE_LABELS,
+  governanceCaseLabel,
   OPEN_GOVERNANCE_CASE_STATES,
   formatGovernanceDate,
 } from "../../../lib/governance";
@@ -37,7 +37,8 @@ const ACTIONS: { value: GovernanceDecisionAction; label: string; consequence: st
   {
     value: "cancel",
     label: "Cancel this case",
-    consequence: "Cancel adjudication. This does not approve the code or grant an exception.",
+    consequence:
+      "Cancel adjudication and keep the task paused. A human must require a fix or request fresh evidence before it can continue.",
   },
 ];
 
@@ -48,9 +49,9 @@ export function GovernanceDocket(props: GovernancePanelProps & { selectedCaseId:
     setChosenId(props.selectedCaseId);
   }, [props.selectedCaseId]);
   const cases = props.summary.cases.filter(
-    (item) => showClosed || OPEN_GOVERNANCE_CASE_STATES.has(item.state)
+    (item) => showClosed || item.humanCancelled || OPEN_GOVERNANCE_CASE_STATES.has(item.state)
   );
-  const selected = props.summary.cases.find((item) => item.id === chosenId) ?? cases[0];
+  const selected = cases.find((item) => item.id === chosenId) ?? cases[0];
   if (props.summary.cases.length === 0)
     return (
       <div className="rounded-xl border border-dashed border-theme-border px-5 py-8 text-center">
@@ -71,11 +72,30 @@ export function GovernanceDocket(props: GovernancePanelProps & { selectedCaseId:
         />
         Show resolved cases
       </label>
+      {cases.length === 0 && (
+        <p className="py-4 text-sm text-theme-muted">No cases are waiting for a decision.</p>
+      )}
+      {cases.length > 0 && (
+        <label className="block text-sm font-medium text-theme-text xl:hidden">
+          Case to review
+          <select
+            value={selected?.id ?? ""}
+            onChange={(event) => setChosenId(event.target.value)}
+            className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+          >
+            {cases.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.title} · {governanceCaseLabel(item)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <div className="grid items-start gap-5 xl:grid-cols-[260px_minmax(0,1fr)]">
-        <nav aria-label="Review cases" className="space-y-2">
-          {cases.length === 0 && (
-            <p className="py-4 text-sm text-theme-muted">No cases are waiting for a decision.</p>
-          )}
+        <nav
+          aria-label="Review cases"
+          className="hidden max-h-[70vh] space-y-2 overflow-y-auto xl:block"
+        >
           {cases.map((item) => (
             <button
               key={item.id}
@@ -89,7 +109,7 @@ export function GovernanceDocket(props: GovernancePanelProps & { selectedCaseId:
               </span>
               <span className="mt-1 block text-sm font-semibold text-theme-text">{item.title}</span>
               <span className="mt-2 block text-xs font-medium text-violet-700 dark:text-violet-300">
-                {GOVERNANCE_CASE_LABELS[item.state]}
+                {governanceCaseLabel(item)}
               </span>
             </button>
           ))}
@@ -112,6 +132,7 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
   const [confirmed, setConfirmed] = useState(false);
   const [resolutionKey] = useState(() => crypto.randomUUID());
   const [additionalEvidence, setAdditionalEvidence] = useState("");
+  const [replacementRationale, setReplacementRationale] = useState("");
   const ruleIds = Array.from(
     new Set(
       item.findings.flatMap((finding) => (finding.ruleRevisionId ? [finding.ruleRevisionId] : []))
@@ -137,7 +158,11 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
       )
   );
   const allowanceBlocked =
-    hasHardBlockers || unavailableRules || nonWaivable || item.state === "stale";
+    hasHardBlockers ||
+    unavailableRules ||
+    nonWaivable ||
+    item.state === "stale" ||
+    item.humanCancelled;
   const precedent = props.summary.decisions.filter(
     (decision) =>
       decision.ruleRevisionIds.some((id) => ruleIds.includes(id)) ||
@@ -158,7 +183,8 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
   const canResolve =
     item.state === "awaiting_human" ||
     item.state === "evidence_requested" ||
-    item.state === "stale";
+    item.state === "stale" ||
+    item.humanCancelled;
   const currentAction = ACTIONS.find((option) => option.value === action)!;
   return (
     <article
@@ -169,13 +195,20 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-base font-semibold text-theme-text">{item.title}</h3>
           <span className="rounded-full bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-700 dark:text-violet-300">
-            {GOVERNANCE_CASE_LABELS[item.state]}
+            {governanceCaseLabel(item)}
           </span>
         </div>
         <p className="mt-2 whitespace-pre-wrap text-sm text-theme-muted">{item.summary}</p>
+        {item.publishedRemediationOnly && (
+          <p className="mt-3 rounded-lg border border-theme-border p-3 text-sm text-theme-text">
+            The original change was already published before this expiry was recovered. Its approval
+            remains withdrawn. Create an explicitly scoped remediation task if a code change is
+            needed.
+          </p>
+        )}
         <Link
           to={`/projects/${props.projectId}/execute?task=${encodeURIComponent(item.taskId)}`}
-          className="mt-2 inline-block text-sm text-brand-600 hover:underline"
+          className="mt-2 inline-block text-sm text-brand-600 hover:underline dark:text-brand-400"
         >
           Open task {item.taskId}
         </Link>
@@ -187,12 +220,60 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
             Worktree retained while waiting. Independent tasks can continue.
           </p>
         )}
+        {item.humanCancelled && (
+          <p role="alert" className="mt-3 rounded-lg bg-amber-500/10 p-3 text-sm text-theme-text">
+            A human cancelled this change. It remains paused. Require a fix or request fresh
+            evidence to resume safe review.
+          </p>
+        )}
         {item.state === "stale" && (
           <p role="alert" className="mt-3 rounded-lg bg-amber-500/10 p-3 text-sm text-theme-text">
             Code or policy changed after this review. This case cannot authorize the new revision; a
             fresh review is required.
           </p>
         )}
+        {item.state === "stale" &&
+          props.summary.activeReleaseId &&
+          props.summary.activeReleaseId !== item.releaseId && (
+            <details className="mt-3 rounded-lg border border-theme-border p-3">
+              <summary className="cursor-pointer text-sm font-medium text-theme-text">
+                Request a fresh review under the replacement policy
+              </summary>
+              <p className="mt-2 text-xs text-theme-muted">
+                Replace this task’s revoked or superseded policy with the active approved release.
+                This preserves its scope, evidence, and spent budgets. The code must pass a fresh
+                review and hard checks before merging.
+              </p>
+              <label className="mt-3 block text-sm text-theme-text">
+                Reason for revalidation
+                <textarea
+                  value={replacementRationale}
+                  onChange={(event) => setReplacementRationale(event.target.value)}
+                  className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+                />
+              </label>
+              <button
+                type="button"
+                className="btn-secondary mt-3 disabled:opacity-50"
+                disabled={!props.capability || props.busy || !replacementRationale.trim()}
+                onClick={() =>
+                  props.run(
+                    () =>
+                      api.governance.revalidateTaskPolicy(
+                        props.projectId,
+                        item.taskId,
+                        props.summary.activeReleaseId!,
+                        replacementRationale.trim(),
+                        props.capability
+                      ),
+                    "Requested a fresh review under the replacement policy. This action does not approve the code."
+                  )
+                }
+              >
+                Request fresh policy review
+              </button>
+            </details>
+          )}
       </header>
       <section aria-label="Findings" className="space-y-3">
         {item.findings.map((finding) => {
@@ -224,9 +305,15 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
                 Suggested fix: {finding.suggestedRemedy}
               </p>
               <p className="mt-2 text-xs text-theme-muted">
-                Reviewed by {finding.provenance.reviewer}
-                {finding.provenance.angle ? ` · ${finding.provenance.angle}` : ""}
-                {finding.provenance.model ? ` · ${finding.provenance.model}` : ""}
+                Reviewed by{" "}
+                {(finding.provenance.sources?.length
+                  ? finding.provenance.sources
+                  : [finding.provenance]
+                )
+                  .map((source) =>
+                    [source.reviewer, source.angle, source.model].filter(Boolean).join(" · ")
+                  )
+                  .join("; ")}
               </p>
               {appeal && (
                 <div className="mt-3 border-t border-theme-border pt-3">
@@ -393,7 +480,9 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
                 ),
               action === "request_evidence"
                 ? "Evidence request recorded. The task remains paused."
-                : "Human ruling recorded. The task will resume through normal review and hard checks."
+                : action === "cancel"
+                  ? "Adjudication cancelled. The task remains paused until a safe human disposition."
+                  : "Human ruling recorded. The task will resume through normal review and hard checks."
             );
           }}
         >
@@ -412,7 +501,10 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
                 <option
                   key={option.value}
                   value={option.value}
-                  disabled={item.state === "stale" && option.value.startsWith("allow")}
+                  disabled={
+                    (item.state === "stale" || item.humanCancelled) &&
+                    option.value.startsWith("allow")
+                  }
                 >
                   {option.label}
                 </option>
@@ -535,9 +627,20 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
             Record human ruling
           </button>
           {!props.capability && (
-            <p className="text-xs text-theme-muted">
-              Unlock approval controls under Human authority &amp; rollout to record a ruling.
-            </p>
+            <div className="space-y-2">
+              <p className="text-xs text-theme-muted">
+                Enter the designated owner’s capability before recording a binding ruling.
+              </p>
+              {props.unlockApproval && (
+                <button
+                  type="button"
+                  onClick={props.unlockApproval}
+                  className="text-sm font-medium text-brand-600 underline-offset-4 hover:underline dark:text-brand-400"
+                >
+                  Unlock approval controls
+                </button>
+              )}
+            </div>
           )}
         </form>
       )}

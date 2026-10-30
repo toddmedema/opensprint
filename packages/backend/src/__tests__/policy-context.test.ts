@@ -105,6 +105,40 @@ describe("deterministic policy context", () => {
       ])
     ).toThrow(/Incomparable/);
   });
+  it("resolves an explicit nested override chain without treating ancestors as competing siblings", () => {
+    const general = rule({ id: "general@1", ruleId: "general", paths: ["src/**"] });
+    const service = rule({
+      id: "service@1",
+      ruleId: "service",
+      paths: ["src/services/**"],
+      parentIds: [general.id],
+      overrideIds: [general.id],
+    });
+    const cache = rule({
+      id: "cache@1",
+      ruleId: "cache",
+      paths: ["src/services/cache/**"],
+      parentIds: [service.id, general.id],
+      overrideIds: [service.id, general.id],
+    });
+    const context = resolvePolicyContext(release([general, service, cache]), "reviewer", [
+      "src/services/cache/read.ts",
+    ]);
+    expect(context.receipt.conflicts).toEqual([]);
+    expect(context.receipt.selected.map((r) => r.id)).toEqual([cache.id, general.id, service.id]);
+    const sibling = rule({
+      id: "sibling@1",
+      ruleId: "sibling",
+      paths: ["src/services/cache/**"],
+      parentIds: [general.id],
+      overrideIds: [general.id],
+    });
+    expect(() =>
+      resolvePolicyContext(release([general, service, cache, sibling]), "reviewer", [
+        "src/services/cache/read.ts",
+      ])
+    ).toThrow(/Incomparable overrides/);
+  });
   it("does not allow higher authority constraints to be overridden or waived", () => {
     const constraint = rule({ severity: "constraint", exceptionEligible: false });
     expect(() =>

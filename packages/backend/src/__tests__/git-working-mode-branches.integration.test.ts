@@ -14,9 +14,29 @@ import {
   type MergeCoordinatorHost,
   type MergeSlot,
 } from "../services/merge-coordinator.service.js";
+import type { DbClient } from "../db/client.js";
 import type { StoredTask } from "../services/task-store.service.js";
 
 const execAsync = promisify(exec);
+vi.mock("../services/governance.service.js", async () => ({
+  governanceService: {
+    ...(await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+    // This real-Git lifecycle fixture has no governed tasks or publication receipts.
+    getTaskPinsForBranch: async () => [],
+    listEvents: async () => [],
+    audit: async () => {},
+  },
+}));
+vi.mock("../services/worktree-lease.service.js", () => ({
+  worktreeLeaseService: {
+    canCleanup: async () => true,
+    forceRelease: async () => {},
+    get: async () => null,
+  },
+}));
+vi.mock("../services/deferred-auto-deploy.service.js", () => ({
+  deferredAutoDeployService: { enqueue: async () => {}, drain: async () => {} },
+}));
 
 // Mock task-store to avoid sql.js load in test env (git-commit-queue imports it)
 vi.mock("../services/task-store.service.js", async (importOriginal) => {
@@ -24,8 +44,11 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
   return {
     ...actual,
     taskStore: {
-      init: vi.fn().mockResolvedValue(undefined),
-      show: vi.fn().mockResolvedValue({ title: "Integration test task" }),
+      init: async () => {},
+      show: async () => ({ title: "Integration test task" }),
+      // Publication reads its empty receipt journal through the same task-store transaction seam.
+      runWrite: async <T>(fn: (db: Pick<DbClient, "query">) => Promise<T>) =>
+        fn({ query: async () => [] }),
     },
   };
 });
@@ -46,14 +69,14 @@ vi.mock("../services/agent-identity.service.js", () => ({
     return `${baseId}-review-${options?.reviewScope ?? "general"}`;
   },
   agentIdentityService: {
-    recordAttempt: vi.fn().mockResolvedValue(undefined),
-    recordAttemptStarted: vi.fn().mockResolvedValue(undefined),
+    recordAttempt: async () => {},
+    recordAttemptStarted: async () => {},
   },
 }));
 
 vi.mock("../services/event-log.service.js", () => ({
   eventLogService: {
-    append: vi.fn().mockResolvedValue(undefined),
+    append: async () => {},
   },
 }));
 
@@ -62,7 +85,7 @@ vi.mock("../websocket/index.js", () => ({
 }));
 
 vi.mock("../services/deploy-trigger.service.js", () => ({
-  triggerDeployForEvent: vi.fn().mockResolvedValue(undefined),
+  triggerDeployForEvent: async () => {},
 }));
 
 vi.mock("../services/final-review.service.js", () => ({
@@ -239,6 +262,7 @@ describe("Git working mode Branches — full Execute flow integration", () => {
 
       // 5. Assertions
       expect(removeTaskWorktreeSpy).not.toHaveBeenCalled();
+      expect(mockHost.taskStore.close).toHaveBeenCalled();
 
       // Merge should have succeeded on main even if the local checkout has not switched branches yet.
       const { stdout: mergedContent } = await execAsync("git show main:feature.ts", {

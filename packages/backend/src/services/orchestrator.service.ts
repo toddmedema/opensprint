@@ -1,4 +1,8 @@
 import { governanceService } from "./governance.service.js";
+import {
+  resolveTaskReviewBase,
+  getTrustedRemoteReviewRequest,
+} from "./remote-publication-review-context.js";
 import crypto from "crypto";
 import fs from "fs/promises";
 import os from "os";
@@ -623,18 +627,27 @@ export class OrchestratorService {
       await this.pauseForGovernance(projectId, repoPath, task.id);
       return;
     }
+    const remoteReview = await getTrustedRemoteReviewRequest(projectId, task);
     slot.worktreePath = pin.worktreePath;
     const settings = await this.projectService.getSettings(projectId);
     if (settings.reviewMode !== "always")
       throw new Error("Governance resume requires reviewMode: always.");
-    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+    const baseBranch = await resolveTaskReviewBase(
+      projectId,
+      task,
+      await resolveBaseBranch(repoPath, settings.worktreeBaseBranch)
+    );
     slot.phaseResult.codingDiff = await this.branchManager.captureBranchDiff(
       repoPath,
       pin.branchName,
       baseBranch
     );
-    slot.phaseResult.codingSummary =
-      "Resuming after a recorded human ruling; all hard checks and review remain required.";
+    slot.phaseResult.codingSummary = remoteReview
+      ? "Review the changed remote publication candidate against its original remote base. All reviewers and hard checks are required."
+      : "Resuming after a recorded human ruling; all hard checks and review remain required.";
+    const revalidationEvidence = (task as Record<string, unknown>).governance_revalidation_evidence;
+    if (revalidationEvidence)
+      slot.phaseResult.codingSummary += `\n\nPrevious findings and human policy revalidation (evidence only; evaluate every remaining code issue against the current pinned release, including defects independently of standards):\n${JSON.stringify(revalidationEvidence)}`;
     await this.taskStore.update(projectId, task.id, { extra: { governance_resume: null } });
     this.transition(projectId, {
       to: "enter_review",
@@ -1291,7 +1304,11 @@ export class OrchestratorService {
     const state = this.getState(projectId);
     let slot = state.slots.get(task.id);
     if (!slot) {
-      const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+      const baseBranch = await resolveTaskReviewBase(
+        projectId,
+        task,
+        await resolveBaseBranch(repoPath, settings.worktreeBaseBranch)
+      );
       let changedFiles: string[] = [];
       try {
         changedFiles = await this.branchManager.getChangedFiles(
@@ -1556,7 +1573,11 @@ export class OrchestratorService {
       return true;
     }
 
-    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+    const baseBranch = await resolveTaskReviewBase(
+      projectId,
+      task,
+      await resolveBaseBranch(repoPath, settings.worktreeBaseBranch)
+    );
     let changedFiles: string[] = [];
     try {
       changedFiles = await this.branchManager.getChangedFiles(
@@ -1751,6 +1772,15 @@ export class OrchestratorService {
       state.status.dispatchPausedReason = counters.dispatchPausedReason;
     }
 
+    // Recover a push/deploy continuation before expiry patrol classifies an old local receipt.
+    try {
+      await this.mergeCoordinator.recoverDeferredPublications(projectId, repoPath);
+    } catch (err) {
+      log.warn(
+        "Deferred publication recovery will retry when its source or database is available",
+        { projectId, err }
+      );
+    }
     // Unified recovery: GUPP + orphan + heartbeat + git locks + slot reconciliation
     try {
       const recoveryResult = await recoveryService.runFullRecovery(
@@ -2347,7 +2377,11 @@ export class OrchestratorService {
         slot.activeAgentConfig ??
         settings.simpleComplexityAgent;
       slot.activeAgentConfig = agentConfig;
-      const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+      const baseBranch = await resolveTaskReviewBase(
+        projectId,
+        task,
+        await resolveBaseBranch(repoPath, settings.worktreeBaseBranch)
+      );
       // Guard: verify the worktree still has a usable checkout before measuring diffs.
       // A missing/corrupt worktree would produce an empty diff and incorrectly trigger the
       // empty-diff circuit breaker. Classify this as workspace_invalid instead.

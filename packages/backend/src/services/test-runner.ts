@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
 import { spawn } from "child_process";
 import { randomUUID } from "crypto";
 import fs from "fs/promises";
@@ -310,7 +311,7 @@ export class TestRunner {
         cwd,
         detached: true,
         stdio: ["ignore", "pipe", "pipe"],
-        env: { ...process.env, CI: "true", FORCE_COLOR: "0" },
+        env: agentProcessEnvironment({ ...process.env, CI: "true", FORCE_COLOR: "0" }),
       });
 
       if (child.pid) {
@@ -582,7 +583,9 @@ export class TestRunner {
       return null;
     } finally {
       await fs.rm(reportPath, { force: true }).catch((err: unknown) => {
-        log.warn("vitest report cleanup failed", { err: err instanceof Error ? err.message : String(err) });
+        log.warn("vitest report cleanup failed", {
+          err: err instanceof Error ? err.message : String(err),
+        });
       });
     }
   }

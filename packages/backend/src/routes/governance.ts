@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
 import { Router, type Request } from "express";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -35,7 +36,10 @@ export async function assertGovernanceEnforcementRevision(
   if (!/^[a-f0-9]{40}$/i.test(revision))
     governanceError("A complete immutable enforcement commit SHA is required.");
   try {
-    await run("git", ["merge-base", "--is-ancestor", revision, "HEAD"], { cwd: repoPath });
+    await run("git", ["merge-base", "--is-ancestor", revision, "HEAD"], {
+      env: agentProcessEnvironment(),
+      cwd: repoPath,
+    });
   } catch {
     governanceError(
       "Required enforcement revision has not landed; create a scoped implementation task before activation."
@@ -51,7 +55,11 @@ export function createGovernanceRouter(
     const { governanceCodeSnapshot } = await import("../services/governance-execution.service.js");
     const approval = await governanceService.getReviewApproval(pin.projectId, pin.taskId);
     const headSha = (
-      await run("git", ["rev-parse", "HEAD^{commit}"], { cwd: pin.worktreePath, timeout: 10_000 })
+      await run("git", ["rev-parse", "HEAD^{commit}"], {
+        env: agentProcessEnvironment(),
+        cwd: pin.worktreePath,
+        timeout: 10_000,
+      })
     ).stdout.trim();
     const scopeBaseSha =
       approval?.headSha === headSha
@@ -59,6 +67,7 @@ export function createGovernanceRouter(
         : pin.baseBranch
           ? (
               await run("git", ["rev-parse", `${pin.baseBranch}^{commit}`], {
+                env: agentProcessEnvironment(),
                 cwd: pin.worktreePath,
                 timeout: 10_000,
               })
@@ -106,7 +115,7 @@ export function createGovernanceRouter(
           governanceService.listCases(p),
           governanceService.listDecisions(p),
           governanceService.listProposals(p),
-          governanceService.listEvents(p),
+          governanceService.listAuditEvents(p),
         ]);
       const data: GovernanceSummary = {
         config,
@@ -167,6 +176,39 @@ export function createGovernanceRouter(
     })
   );
   router.post(
+    "/tasks/:taskId/revalidate-policy",
+    requireGovernanceHuman,
+    wrapAsync(async (req, res) => {
+      const p = projectId(req),
+        taskId = String(req.params.taskId);
+      if (typeof req.body.expectedReleaseId !== "string" || typeof req.body.rationale !== "string")
+        governanceError("Replacement release and rationale are required.");
+      const project = await projectService.getProject(p);
+      const { orchestratorService } = await import("../services/orchestrator.service.js");
+      if (orchestratorService.hasActiveTask(p, taskId))
+        governanceError(
+          "The old-policy agent is still stopping. Retry policy revalidation after its slot is released."
+        );
+      const previous = await governanceService.getTaskCases(p, taskId);
+      const pin = await governanceService.revalidateTaskPolicy(
+        p,
+        taskId,
+        req.body,
+        getGovernanceActor(req),
+        verifySourceSnapshot(p, project.repoPath)
+      );
+      for (const c of previous)
+        broadcastToProject(p, {
+          type: "notification.resolved",
+          notificationId: `gov-${c.id}`,
+          projectId: p,
+          source: "execute",
+          sourceId: taskId,
+        });
+      res.json({ data: pin });
+    })
+  );
+  router.post(
     "/tasks/:taskId/authorize-scope",
     requireGovernanceHuman,
     wrapAsync(async (req, res) => {
@@ -203,7 +245,10 @@ export function createGovernanceRouter(
     wrapAsync(async (req, res) => {
       const p = projectId(req);
       const project = await projectService.getProject(p);
-      const { stdout } = await run("git", ["rev-parse", "HEAD"], { cwd: project.repoPath });
+      const { stdout } = await run("git", ["rev-parse", "HEAD"], {
+        env: agentProcessEnvironment(),
+        cwd: project.repoPath,
+      });
       const enforcementRevision = req.body.enforcementRevision?.trim() || stdout.trim();
       await assertGovernanceEnforcementRevision(project.repoPath, enforcementRevision);
       const instructions = { ...req.body.instructions };
@@ -232,6 +277,15 @@ export function createGovernanceRouter(
         req.body.rationale,
         getGovernanceActor(req)
       );
+      const p = projectId(req);
+      const project = await projectService.getProject(p);
+      const { orchestratorService } = await import("../services/orchestrator.service.js");
+      const affected = (await governanceService.listCases(p)).filter(
+        (c) => c.releaseId === String(req.params.releaseId) && c.state === "stale"
+      );
+      for (const taskId of new Set(affected.map((c) => c.taskId)))
+        if (orchestratorService.hasActiveTask(p, taskId))
+          await orchestratorService.pauseForGovernance(p, project.repoPath, taskId);
       res.json({ data: { ok: true } });
     })
   );
@@ -264,13 +318,14 @@ export function createGovernanceRouter(
         req.body,
         getGovernanceActor(req)
       );
-      broadcastToProject(p, {
-        type: "notification.resolved",
-        notificationId: `gov-${req.params.caseId}`,
-        projectId: p,
-        source: "execute",
-        sourceId: data.taskId,
-      });
+      if (data.action !== "request_evidence" && data.action !== "cancel")
+        broadcastToProject(p, {
+          type: "notification.resolved",
+          notificationId: `gov-${req.params.caseId}`,
+          projectId: p,
+          source: "execute",
+          sourceId: data.taskId,
+        });
       res.json({ data });
     })
   );
@@ -361,15 +416,15 @@ export function createGovernanceRouter(
     "/cases/:caseId/evidence",
     requireGovernanceHuman,
     wrapAsync(async (req, res) => {
-      res.json({
-        data: await governanceService.appendCaseEvidence(
-          projectId(req),
-          String(req.params.caseId),
-          req.body.expectedVersion,
-          req.body.evidence,
-          getGovernanceActor(req)
-        ),
-      });
+      const data = await governanceService.appendCaseEvidence(
+        projectId(req),
+        String(req.params.caseId),
+        req.body.expectedVersion,
+        req.body.evidence,
+        getGovernanceActor(req)
+      );
+      await governanceService.deliverOutbox(projectId(req));
+      res.json({ data });
     })
   );
   router.post(

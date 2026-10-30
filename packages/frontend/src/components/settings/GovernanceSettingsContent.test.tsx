@@ -178,6 +178,90 @@ describe("GovernanceSettingsContent", () => {
     vi.mocked(api.governance.fixtures).mockResolvedValue([]);
     vi.mocked(api.governance.replaySources).mockResolvedValue([]);
   });
+  it("saves independent read-only reconsideration model and price ceilings without changing the judge", async () => {
+    const data = summary();
+    data.config.judgeAgent = { type: "openai", model: "judge-model", cliCommand: null };
+    data.config.judgeTokenPricing = { inputPerMillionUsd: 1, outputPerMillionUsd: 2 };
+    await renderGovernance(data);
+    await unlock();
+    expect(screen.getByText(/including an initial CLI reviewer/)).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Reconsideration provider"), "claude");
+    fireEvent.change(screen.getByLabelText("Reconsideration model"), {
+      target: { value: "reviewer-api-model" },
+    });
+    fireEvent.change(
+      screen.getByLabelText("Reconsideration input price ceiling ($ / million tokens)"),
+      { target: { value: "3" } }
+    );
+    fireEvent.change(
+      screen.getByLabelText("Reconsideration output price ceiling ($ / million tokens)"),
+      { target: { value: "5" } }
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Save rollout settings" }));
+    await waitFor(() =>
+      expect(api.governance.configure).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({
+          expectedVersion: 1,
+          judgeAgent: { type: "openai", model: "judge-model", cliCommand: null },
+          judgeTokenPricing: { inputPerMillionUsd: 1, outputPerMillionUsd: 2 },
+          reconsiderationAgent: { type: "claude", model: "reviewer-api-model", cliCommand: null },
+          reconsiderationTokenPricing: { inputPerMillionUsd: 3, outputPerMillionUsd: 5 },
+        }),
+        "owner-approval-capability"
+      )
+    );
+  });
+  it("explicitly clears optional reconsideration model and ceilings", async () => {
+    const data = summary();
+    data.config.reconsiderationAgent = {
+      type: "claude",
+      model: "reviewer-api-model",
+      cliCommand: null,
+    };
+    data.config.reconsiderationTokenPricing = { inputPerMillionUsd: 3, outputPerMillionUsd: 5 };
+    await renderGovernance(data);
+    await unlock();
+    fireEvent.change(screen.getByLabelText("Reconsideration model"), { target: { value: "" } });
+    fireEvent.change(
+      screen.getByLabelText("Reconsideration input price ceiling ($ / million tokens)"),
+      { target: { value: "" } }
+    );
+    fireEvent.change(
+      screen.getByLabelText("Reconsideration output price ceiling ($ / million tokens)"),
+      { target: { value: "" } }
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Save rollout settings" }));
+    await waitFor(() =>
+      expect(api.governance.configure).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ reconsiderationAgent: null, reconsiderationTokenPricing: null }),
+        "owner-approval-capability"
+      )
+    );
+  });
+  it("supports roving keyboard navigation between governance panels", async () => {
+    await renderGovernance();
+    const docket = screen.getByRole("tab", { name: "Docket (1)" });
+    docket.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    expect(screen.getByRole("tab", { name: "Standards" })).toHaveFocus();
+    expect(screen.getByRole("tab", { name: "Standards" })).toHaveAttribute("aria-selected", "true");
+    expect(docket).toHaveAttribute("tabindex", "-1");
+    await userEvent.keyboard("{End}");
+    expect(screen.getByRole("tab", { name: "Decision history" })).toHaveFocus();
+    await userEvent.keyboard("{Home}");
+    expect(docket).toHaveFocus();
+  });
+  it("opens and focuses approval authority from the ruling form without losing the draft rationale", async () => {
+    await renderGovernance();
+    fireEvent.change(screen.getByLabelText("Rationale"), {
+      target: { value: "Retain this drafted reasoning" },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Unlock approval controls" }));
+    expect(screen.getByLabelText("Approval capability")).toHaveFocus();
+    expect(screen.getByLabelText("Rationale")).toHaveValue("Retain this drafted reasoning");
+  });
 
   it("records an explicit one-time ruling bound to the reviewed code, policy case version, and diff", async () => {
     await renderGovernance();
@@ -261,6 +345,16 @@ describe("GovernanceSettingsContent", () => {
     );
   });
 
+  it("shows recovered published expiry as remediation history without new approval controls", async () => {
+    await renderGovernance(
+      summary({ cases: [{ ...item, state: "cancelled", publishedRemediationOnly: true }] })
+    );
+    expect(screen.getByText("No cases are waiting for a decision.")).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText("Show resolved cases"));
+    expect(screen.getAllByText("Published · remediation required").length).toBeGreaterThan(0);
+    expect(screen.getByText(/original change was already published/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Record human ruling" })).not.toBeInTheDocument();
+  });
   it("does not let a standards exception waive a defect or failed gate", async () => {
     await renderGovernance(
       summary({
@@ -327,7 +421,7 @@ describe("GovernanceSettingsContent", () => {
     expect(within(proposal).getByText("Before")).toBeInTheDocument();
     expect(within(proposal).getByText("After")).toBeInTheDocument();
     expect(
-      within(proposal).getByText(/Use the repository layer except approved read-only diagnostics/)
+      within(proposal).getByText("Use the repository layer except approved read-only diagnostics.")
     ).toBeInTheDocument();
     expect(within(proposal).getByText("decision-conflict")).toBeInTheDocument();
     expect(within(proposal).getByText(/No complete evaluation is available/)).toBeInTheDocument();
@@ -343,5 +437,14 @@ describe("GovernanceSettingsContent", () => {
     expect(screen.getByText(/diagnostic read/, { selector: "pre" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Record human ruling" })).toBeDisabled();
     expect(screen.getByRole("option", { name: "Allow this change once" })).toBeDisabled();
+  });
+  it("keeps a human-cancelled change visible with safe recovery and no allowance", async () => {
+    await renderGovernance(
+      summary({ cases: [{ ...item, state: "cancelled", humanCancelled: true }] })
+    );
+    expect(await screen.findByText(/A human cancelled this change/)).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: /Decision/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Allow this change once" })).toBeDisabled();
+    expect(screen.getByRole("option", { name: "Allow with reusable conditions" })).toBeDisabled();
   });
 });

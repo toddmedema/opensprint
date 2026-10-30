@@ -8,6 +8,7 @@
 
 import type { TestResults, ReviewAgentResult } from "@opensprint/shared";
 import type { FailureType, RetryQualityGateDetail } from "./orchestrator-phase-context.js";
+import { aggregateReviewFindings } from "./review-findings.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("phase-coordinator");
@@ -212,6 +213,12 @@ export class TaskPhaseCoordinator {
       outcome: this.reviewOutcomes.get(key)!,
     }));
     const outcomes = keyedOutcomes.map(({ outcome }) => outcome);
+    const findings = aggregateReviewFindings(
+      keyedOutcomes.map(({ key, outcome }) => ({
+        angle: key === DEFAULT_REVIEW_KEY ? "general" : key,
+        findings: outcome.result?.findings ?? [],
+      }))
+    );
     const noResultOutcomes = keyedOutcomes.filter(
       ({ outcome }) => outcome.status === "no_result" || outcome.status === "error"
     );
@@ -265,18 +272,14 @@ export class TaskPhaseCoordinator {
           summary: mergedSummary || "Review rejected",
           ...(mergedIssues.length > 0 && { issues: mergedIssues }),
           notes: mergedNotes,
-          ...(outcomes.some((o) => o.result?.findings)
-            ? { findings: outcomes.flatMap((o) => o.result?.findings ?? []) }
-            : {}),
+          ...(outcomes.some((o) => o.result?.findings) ? { findings } : {}),
         },
       };
     }
 
     return {
       status: "approved",
-      result: outcomes[0]?.result
-        ? { ...outcomes[0].result, findings: outcomes.flatMap((o) => o.result?.findings ?? []) }
-        : null,
+      result: outcomes[0]?.result ? { ...outcomes[0].result, findings } : null,
       exitCode: outcomes[0]?.exitCode ?? 0,
     };
   }

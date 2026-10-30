@@ -13,7 +13,7 @@ export function getGovernanceActor(_req: Request): string {
   return process.env.OPENSPRINT_GOVERNANCE_OWNER?.trim() ?? "";
 }
 /** A separate approval capability, never the local session bearer credential. */
-export const requireGovernanceHuman: RequestHandler = (req, _res, next) => {
+export function authorizedGovernanceActor(req: Request): string {
   const expected = process.env.OPENSPRINT_GOVERNANCE_APPROVAL_SECRET ?? "";
   const supplied = req.get(GOVERNANCE_CAPABILITY_HEADER) ?? "";
   if (
@@ -24,16 +24,21 @@ export const requireGovernanceHuman: RequestHandler = (req, _res, next) => {
       createHash("sha256").update(supplied).digest()
     )
   ) {
-    next(
-      new AppError(
-        403,
-        "GOVERNANCE_HUMAN_REQUIRED",
-        "An authorized human approval capability is required. Configure a separate owner and approval secret on the server."
-      )
+    throw new AppError(
+      403,
+      "GOVERNANCE_HUMAN_REQUIRED",
+      "An authorized human approval capability is required. Configure a separate owner and approval secret on the server."
     );
-    return;
   }
-  next();
+  return getGovernanceActor(req);
+}
+export const requireGovernanceHuman: RequestHandler = (req, _res, next) => {
+  try {
+    authorizedGovernanceActor(req);
+    next();
+  } catch (error) {
+    next(error);
+  }
 };
 export function withoutGovernanceCredentials(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const result = { ...env };

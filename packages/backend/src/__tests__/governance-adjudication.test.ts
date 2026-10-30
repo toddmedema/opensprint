@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { DbClient } from "../db/client.js";
 import { createSqliteDbClient } from "../db/sqlite-client.js";
 import { runSchema } from "../db/schema.js";
+import { TaskPhaseCoordinator } from "../services/task-phase-coordinator.js";
 import { GovernanceService } from "../services/governance-store.js";
 import type {
   PolicyRelease,
@@ -163,6 +164,170 @@ async function human(c: ReviewCase, reusable: boolean) {
   );
 }
 describe("durable bounded adjudication", () => {
+  it("persists a native docket from colliding angle-local IDs and equivalent reports without losing blockers", async () => {
+    const original = await docket("angle-collisions", "awaiting_human");
+    let stored: ReviewCase | undefined;
+    const coordinator = new TaskPhaseCoordinator(
+      original.taskId,
+      async (_test, review) => {
+        stored = await service.openCase({
+          ...original,
+          idempotencyKey: "angle-aggregate",
+          findings: review.result!.findings!,
+          evidence: { diff: "complete review input" },
+        });
+      },
+      { reviewAngles: ["security", "performance"], includeGeneralReview: true }
+    );
+    await coordinator.setTestOutcome({ status: "passed" });
+    await coordinator.setReviewOutcome(
+      {
+        status: "rejected",
+        exitCode: 0,
+        result: { status: "rejected", summary: "First", notes: "", findings: [finding] },
+      },
+      "security"
+    );
+    await coordinator.setReviewOutcome(
+      {
+        status: "rejected",
+        exitCode: 0,
+        result: {
+          status: "rejected",
+          summary: "Duplicate",
+          notes: "",
+          findings: [{ ...finding, id: "f9" }],
+        },
+      },
+      "performance"
+    );
+    await coordinator.setReviewOutcome({
+      status: "rejected",
+      exitCode: 0,
+      result: {
+        status: "rejected",
+        summary: "Another",
+        notes: "",
+        findings: [{ ...finding, evidence: "Another direct query" }],
+      },
+    });
+    expect(stored?.findings).toHaveLength(2);
+    expect(
+      await db.query("SELECT id FROM review_findings WHERE project_id='project' AND case_id=$1", [
+        stored!.id,
+      ])
+    ).toHaveLength(2);
+    expect(
+      stored?.findings.find((f) => f.evidence === finding.evidence)?.provenance.sources
+    ).toHaveLength(2);
+    expect(await service.hasTaskHold("project", original.taskId)).toBe(true);
+  });
+
+  it("preserves human cancellation until an explicit safe disposition, without treating verified cancellation as a hold", async () => {
+    const c = await docket("cancelled-task", "awaiting_human");
+    await service.deliverOutbox("project");
+    const ruling = {
+      expectedVersion: c.version,
+      idempotencyKey: "cancel-task",
+      action: "cancel" as const,
+      rationale: "Do not publish",
+      headSha: c.headSha,
+      diffHash: c.diffHash,
+    };
+    await service.resolveCase("project", c.id, ruling, "Owner");
+    expect(await service.hasTaskHold("project", c.taskId)).toBe(true);
+    expect(await service.retainsTaskWorktree("project", c.taskId)).toBe(true);
+    const cancelled = await service.getCase("project", c.id);
+    expect(cancelled.humanCancelled).toBe(true);
+    expect(
+      (await db.queryOne("SELECT status FROM open_questions WHERE id=$1", [`gov-${c.id}`]))?.status
+    ).toBe("open");
+    await expect(
+      service.resolveCase(
+        "project",
+        c.id,
+        {
+          ...ruling,
+          expectedVersion: cancelled.version,
+          idempotencyKey: "no-stale-consent",
+          action: "allow_once",
+        },
+        "Owner"
+      )
+    ).rejects.toMatchObject({ code: "GOVERNANCE_STALE_CODE" });
+    await service.resolveCase(
+      "project",
+      c.id,
+      {
+        ...ruling,
+        expectedVersion: cancelled.version,
+        idempotencyKey: "explicit-fix",
+        action: "require_fix",
+      },
+      "Owner"
+    );
+    expect(await service.hasTaskHold("project", c.taskId)).toBe(false);
+    expect((await db.queryOne("SELECT status FROM tasks WHERE id=$1", [c.taskId]))?.status).toBe(
+      "open"
+    );
+  });
+
+  it("does not recreate a late runtime case after an ordinary retry cancelled the invocation", async () => {
+    const c = await docket("late-runtime", "awaiting_human");
+    await db.execute("UPDATE tasks SET status='open' WHERE id=$1", [c.taskId]);
+    await expect(
+      service.openCase({
+        ...c,
+        evidence: { ...c.evidence, invocationId: "old-invocation", attempt: 1 },
+        findings: [{ ...c.findings[0], id: "new-late-finding" }],
+        idempotencyKey: "late-invocation-case",
+      })
+    ).rejects.toThrow("no longer active");
+  });
+  it("keeps a held task visible while requesting evidence and re-notifies when evidence arrives", async () => {
+    const c = await docket("evidence", "awaiting_human");
+    await service.deliverOutbox("project");
+    await service.resolveCase(
+      "project",
+      c.id,
+      {
+        expectedVersion: c.version,
+        idempotencyKey: `evidence-request-${c.id}`,
+        action: "request_evidence",
+        rationale: "Show the read-only invariant",
+        headSha: c.headSha,
+        diffHash: c.diffHash,
+      },
+      "Owner"
+    );
+    const notificationId = `gov-${c.id}`;
+    expect(
+      (await db.queryOne("SELECT status FROM open_questions WHERE id=$1", [notificationId]))?.status
+    ).toBe("open");
+    const requested = await service.getCase("project", c.id);
+    const updated = await service.appendCaseEvidence(
+      "project",
+      c.id,
+      requested.version,
+      { invariant: "No writes in diagnostic" },
+      "Owner"
+    );
+    expect(updated.state).toBe("awaiting_human");
+    expect(await service.hasTaskHold("project", c.taskId)).toBe(true);
+    expect((await db.queryOne("SELECT extra FROM tasks WHERE id=$1", [c.taskId]))?.extra).toContain(
+      "Review governance"
+    );
+    expect(
+      await db.queryOne("SELECT id FROM governance_outbox WHERE id=$1 AND state='pending'", [
+        `evidence-${c.id}-${updated.version}`,
+      ])
+    ).toBeDefined();
+    await db.execute("UPDATE open_questions SET status='resolved' WHERE id=$1", [notificationId]);
+    await service.deliverOutbox("project");
+    expect(
+      (await db.queryOne("SELECT status FROM open_questions WHERE id=$1", [notificationId]))?.status
+    ).toBe("open");
+  });
   it("reopens an expired allowance as a durable stale docket instead of retrying a closed case forever", async () => {
     const c = await docket("expires", "awaiting_human");
     const at = Date.now();

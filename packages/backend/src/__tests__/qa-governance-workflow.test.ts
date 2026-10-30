@@ -23,6 +23,10 @@ vi.mock("../services/governance-source-hashes.js", () => ({
   governanceSourceDrift: () => [],
   assertGovernanceSensitiveSourceApproval: (input: unknown) => calls.sourceApproval(input),
   governanceSensitiveSourcePaths: (paths: string[]) => calls.sensitivePaths(paths) ?? [],
+  resolveGovernanceCandidateSensitiveSourcePaths: async (input: { changedPaths: string[] }) =>
+    calls.sensitivePaths(input.changedPaths) ?? [],
+  resolveGovernanceSensitiveSourcePaths: async (input: { changedPaths: string[] }) =>
+    calls.sensitivePaths(input.changedPaths) ?? [],
 }));
 vi.mock("../services/agent-instructions.service.js", () => ({
   getCombinedInstructions: async () => "",

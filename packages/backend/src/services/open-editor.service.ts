@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
 import fs from "fs/promises";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -26,7 +27,10 @@ export interface OpenEditorResult {
 async function isCliAvailable(cmd: string): Promise<boolean> {
   const whichCmd = process.platform === "win32" ? "where" : "which";
   try {
-    await execFileAsync(whichCmd, [cmd], { timeout: WHICH_TIMEOUT_MS });
+    await execFileAsync(whichCmd, [cmd], {
+      env: agentProcessEnvironment(),
+      timeout: WHICH_TIMEOUT_MS,
+    });
     return true;
   } catch {
     return false;

@@ -20,7 +20,11 @@ import { getSelfImprovementStatus } from "../services/self-improvement-runner.se
 import { taskStore } from "../services/task-store.service.js";
 import type { ApiResponse, Project, ScaffoldProjectResponse } from "@opensprint/shared";
 import { createLogger } from "../utils/logger.js";
-import { requireGovernanceHuman } from "../middleware/governance-auth.js";
+import {
+  requireGovernanceHuman,
+  authorizedGovernanceActor,
+  GOVERNANCE_CAPABILITY_HEADER,
+} from "../middleware/governance-auth.js";
 import { governanceService } from "../services/governance.service.js";
 import { governanceError } from "../services/policy-context.js";
 
@@ -240,7 +244,10 @@ export function createProjectsRouter(
     validateParams(projectIdParamSchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const projectId = req.params.id;
-      await projectService.archiveProject(projectId);
+      await projectService.archiveProject(
+        projectId,
+        ...(req.get(GOVERNANCE_CAPABILITY_HEADER) ? [authorizedGovernanceActor(req)] : [])
+      );
       res.status(204).send();
     })
   );
@@ -251,7 +258,10 @@ export function createProjectsRouter(
     validateParams(projectIdParamSchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const projectId = req.params.id;
-      await projectService.deleteProject(projectId);
+      await projectService.deleteProject(
+        projectId,
+        ...(req.get(GOVERNANCE_CAPABILITY_HEADER) ? [authorizedGovernanceActor(req)] : [])
+      );
       res.status(204).send();
     })
   );

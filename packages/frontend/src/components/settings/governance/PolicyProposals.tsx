@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { PolicyProposal } from "@opensprint/shared";
+import type { PolicyProposal, PolicyRuleRevision } from "@opensprint/shared";
 import { api } from "../../../api/client";
 import { GOVERNANCE_INPUT_CLASS, type GovernancePanelProps } from "../GovernanceSettingsContent";
 import { formatGovernanceDate } from "../../../lib/governance";
@@ -110,17 +110,34 @@ function ProposalCard({ proposal, ...props }: GovernancePanelProps & { proposal:
             <div className="grid md:grid-cols-2">
               <div className="min-w-0 bg-red-500/5 p-3">
                 <p className="mb-2 text-xs font-semibold text-theme-muted">Before</p>
-                <pre className="overflow-auto whitespace-pre-wrap break-words text-xs text-theme-text">
-                  {patch.before ? JSON.stringify(patch.before, null, 2) : "New rule"}
-                </pre>
+                <RuleChangeContent rule={patch.before} emptyLabel="New rule" />
               </div>
               <div className="min-w-0 border-t border-theme-border bg-green-500/5 p-3 md:border-l md:border-t-0">
                 <p className="mb-2 text-xs font-semibold text-theme-muted">After</p>
-                <pre className="overflow-auto whitespace-pre-wrap break-words text-xs text-theme-text">
-                  {patch.after ? JSON.stringify(patch.after, null, 2) : "Rule retired"}
-                </pre>
+                <RuleChangeContent rule={patch.after} emptyLabel="Rule retired" />
               </div>
             </div>
+            <details
+              className="border-t border-theme-border px-3 py-3"
+              open={
+                JSON.stringify(ruleAuthority(patch.before)) !==
+                JSON.stringify(ruleAuthority(patch.after))
+              }
+            >
+              <summary className="cursor-pointer text-xs font-medium text-theme-text">
+                Full rule manifest · scope, authority, and exact content
+              </summary>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                {[patch.before, patch.after].map((rule, index) => (
+                  <pre
+                    key={index}
+                    className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-theme-bg p-3 text-xs text-theme-text"
+                  >
+                    {JSON.stringify(rule, null, 2)}
+                  </pre>
+                ))}
+              </div>
+            </details>
           </div>
         ))}
       </section>
@@ -186,7 +203,7 @@ function ProposalCard({ proposal, ...props }: GovernancePanelProps & { proposal:
       </div>
       <section className="rounded-lg border border-theme-border bg-theme-bg/40 p-3">
         <h5 className="text-sm font-semibold text-theme-text">Independent evaluation</h5>
-        {!terminal && proposal.patches.length > 0 && (
+        {!terminal && (proposal.patches.length > 0 || proposal.instructions) && (
           <button
             type="button"
             className="btn-secondary mt-3 disabled:opacity-50"
@@ -237,9 +254,13 @@ function ProposalCard({ proposal, ...props }: GovernancePanelProps & { proposal:
                     ])
                   ).map((key) => (
                     <tr key={key} className="border-b border-theme-border-subtle text-theme-text">
-                      <th className="py-2 pr-3 font-normal">{key}</th>
-                      <td className="py-2 pr-3 tabular-nums">{evaluation.baseline[key] ?? "—"}</td>
-                      <td className="py-2 tabular-nums">{evaluation.candidate[key] ?? "—"}</td>
+                      <th className="py-2 pr-3 font-normal">{metricLabel(key)}</th>
+                      <td className="py-2 pr-3 tabular-nums">
+                        {formatMetric(key, evaluation.baseline[key])}
+                      </td>
+                      <td className="py-2 tabular-nums">
+                        {formatMetric(key, evaluation.candidate[key])}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -395,6 +416,80 @@ function DecisionEvidence({
         </ul>
       )}
     </section>
+  );
+}
+function metricLabel(key: string): string {
+  return (
+    (
+      {
+        taskSuccessRate: "Task success",
+        reviewPassRate: "Review pass rate",
+        retryRate: "Retries per task",
+        avgLatencyMs: "Average duration",
+        avgCostUsd: "Average cost",
+      } as Record<string, string>
+    )[key] ?? key.replace(/([a-z])([A-Z])/g, "$1 $2")
+  );
+}
+function formatMetric(key: string, value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return "—";
+  if (key === "taskSuccessRate" || key === "reviewPassRate")
+    return `${(value * 100).toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;
+  if (key === "avgLatencyMs")
+    return value < 1000
+      ? `${value.toLocaleString(undefined, { maximumFractionDigits: 0 })} ms`
+      : `${(value / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} s`;
+  if (key === "avgCostUsd")
+    return value.toLocaleString(undefined, {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 4,
+    });
+  return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+function ruleAuthority(rule: PolicyRuleRevision | null) {
+  if (!rule) return null;
+  return {
+    owner: rule.owner,
+    paths: rule.paths,
+    components: rule.components,
+    roles: rule.roles,
+    severity: rule.severity,
+    mandatory: rule.mandatory,
+    exceptionEligible: rule.exceptionEligible,
+    parentIds: rule.parentIds,
+    overrideIds: rule.overrideIds,
+    conflictIds: rule.conflictIds,
+    layer: rule.layer,
+  };
+}
+function RuleChangeContent({
+  rule,
+  emptyLabel,
+}: {
+  rule: PolicyRuleRevision | null;
+  emptyLabel: string;
+}) {
+  if (!rule) return <p className="text-sm text-theme-muted">{emptyLabel}</p>;
+  return (
+    <div className="space-y-3 text-sm text-theme-text">
+      <p className="whitespace-pre-wrap break-words leading-relaxed">{rule.text}</p>
+      <p className="whitespace-pre-wrap break-words text-xs text-theme-muted">
+        <span className="font-medium text-theme-text">Rationale: </span>
+        {rule.rationale}
+      </p>
+      {(rule.examples.compliant.length > 0 || rule.examples.noncompliant.length > 0) && (
+        <div className="space-y-3">
+          <Examples title="Compliant examples" items={rule.examples.compliant} />
+          <Examples title="Noncompliant examples" items={rule.examples.noncompliant} />
+        </div>
+      )}
+      <p className="text-xs text-theme-muted">
+        Revision {rule.revision} · {rule.severity} ·{" "}
+        {rule.exceptionEligible ? "Explicit exceptions permitted" : "Non-waivable"}
+      </p>
+    </div>
   );
 }
 function Examples({ title, items }: { title: string; items: string[] }) {

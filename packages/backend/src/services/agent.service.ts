@@ -675,7 +675,7 @@ export class AgentService {
 
       const client = new Anthropic({
         apiKey: key,
-        ...(options.role === "judge" ? { maxRetries: 0 } : {}),
+        ...(options.governanceBounded || options.role === "judge" ? { maxRetries: 0 } : {}),
       });
 
       try {
@@ -715,7 +715,8 @@ export class AgentService {
         await clearLimitHit(projectId, "ANTHROPIC_API_KEY", keyId, source);
         return { content, cacheMetrics };
       } catch (error: unknown) {
-        if (options.role === "judge" || options.abortSignal?.aborted) throw error;
+        if (options.governanceBounded || options.role === "judge" || options.abortSignal?.aborted)
+          throw error;
         lastError = error;
         if (isLimitError(error)) {
           if (keyId === ENV_FALLBACK_KEY_ID) {
@@ -839,7 +840,7 @@ export class AgentService {
 
       const client = new OpenAI({
         apiKey: key,
-        ...(options.role === "judge" ? { maxRetries: 0 } : {}),
+        ...(options.governanceBounded || options.role === "judge" ? { maxRetries: 0 } : {}),
       });
 
       try {
@@ -959,7 +960,8 @@ export class AgentService {
         await clearLimitHit(projectId, "OPENAI_API_KEY", keyId, source);
         return { content, responseId, cacheMetrics };
       } catch (error: unknown) {
-        if (options.role === "judge" || options.abortSignal?.aborted) throw error;
+        if (options.governanceBounded || options.role === "judge" || options.abortSignal?.aborted)
+          throw error;
         lastError = error;
         if (isLimitError(error)) {
           if (keyId === ENV_FALLBACK_KEY_ID) {

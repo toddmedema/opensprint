@@ -183,6 +183,8 @@ export class WorktreeLeaseService {
       "SELECT project_id, task_id, expires_at, released_at FROM worktree_leases WHERE worktree_key = $1",
       [worktreeKey]
     );
+    // A shared epic lease may name a newer sibling while an earlier task still owns a docket.
+    if (await governanceService.retainsWorktree(worktreeKey)) return false;
     if (rows.length === 0) return true;
     const row = rows[0] as {
       project_id: string;

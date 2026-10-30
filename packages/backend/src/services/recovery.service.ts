@@ -181,7 +181,7 @@ export class RecoveryService {
           "evidence_requested",
           "stale",
         ].includes(c.state) &&
-        !(c.state === "allowed" && (await governanceService.hasPendingResume(projectId, c.taskId)))
+        !(await governanceService.hasPendingResume(projectId, c.taskId))
       )
         continue;
       if (opts.includeGupp && ["awaiting_judge", "awaiting_reconsideration"].includes(c.state)) {

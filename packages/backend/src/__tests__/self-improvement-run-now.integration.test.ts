@@ -15,6 +15,23 @@ import {
 } from "../services/self-improvement-runner.service.js";
 
 /* ---------- module-level mocks ---------- */
+const governed = vi.hoisted(() => ({
+  mode: "disabled" as "disabled" | "enforced",
+  proposals: [] as Array<{ id: string; state: string; version: number }>,
+}));
+vi.mock("../services/governance.service.js", async () => ({
+  governanceService: {
+    ...(await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+    getConfig: async () => ({ mode: governed.mode }),
+    listProposals: async () => governed.proposals,
+  },
+}));
+vi.mock("../services/congress.service.js", () => ({
+  runGovernanceCongress: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../services/policy-evaluation.service.js", () => ({
+  evaluatePolicyProposal: vi.fn().mockResolvedValue({ id: "proposal-1", state: "evaluated" }),
+}));
 
 const mockTaskStoreCreate = vi.fn().mockResolvedValue({ id: "os-si-1", title: "Improvement task" });
 const mockInsertSelfImprovementRunHistory = vi.fn().mockImplementation(async (record) => ({
@@ -264,6 +281,8 @@ describe("Run now: audit-only vs audit+experiments and approval flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     historyStore.length = 0;
+    governed.mode = "disabled";
+    governed.proposals = [];
   });
 
   afterEach(() => {
@@ -290,7 +309,9 @@ describe("Run now: audit-only vs audit+experiments and approval flow", () => {
 
   // ---- (2) runAgentEnhancementExperiments=true → audit + experiments ----
 
-  it("runs audit then experiment pipeline when runAgentEnhancementExperiments is true; history shows audit_and_experiments", async () => {
+  it("runs substantive governance evaluation before requesting human activation", async () => {
+    governed.mode = "enforced";
+    governed.proposals = [{ id: "proposal-1", state: "draft", version: 1 }];
     mockGetSettings.mockResolvedValue({ ...baseSettings, runAgentEnhancementExperiments: true });
 
     const result = await selfImprovementRunnerService.runSelfImprovement(projectId);
@@ -301,14 +322,12 @@ describe("Run now: audit-only vs audit+experiments and approval flow", () => {
       projectId,
       mode: "audit_and_experiments",
     });
-    // With confirm_all autonomy, equal metrics → approval_needed → promotion_pending
+    // Independently evaluated content still requires the separate human activation path.
     expect(historyStore[0]!.outcome).toBe("promotion_pending");
   });
 
   it("records experiment outcome when experiments enabled and experiment pipeline runs (or skips with no replay data)", async () => {
-    const { mineReplayGradeExecuteSessionIds } =
-      await import("../services/self-improvement-experiment.service.js");
-    (mineReplayGradeExecuteSessionIds as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
+    governed.mode = "enforced";
 
     mockGetSettings.mockResolvedValue({ ...baseSettings, runAgentEnhancementExperiments: true });
 
@@ -320,12 +339,12 @@ describe("Run now: audit-only vs audit+experiments and approval flow", () => {
     });
     // When no replay sessions, outcome stays as the audit outcome (no experiment result)
     expect(["tasks_created", "no_changes"]).toContain(historyStore[0]!.outcome);
-    expect(historyStore[0]!.summary).toContain("no replay-grade sessions");
+    expect(historyStore[0]!.summary).toContain("no unevaluated substantive policy amendment");
   });
 
   // ---- (3) promotion_pending → approval flow ----
 
-  it("creates self_improvement_approval notification when outcome is promotion_pending", async () => {
+  it("does not manufacture ordinary approval notifications when governance is not onboarded", async () => {
     mockGetSettings.mockResolvedValue({
       ...baseSettings,
       runAgentEnhancementExperiments: true,
@@ -334,13 +353,9 @@ describe("Run now: audit-only vs audit+experiments and approval flow", () => {
 
     await selfImprovementRunnerService.runSelfImprovement(projectId);
 
-    expect(historyStore[0]!.outcome).toBe("promotion_pending");
-    expect(mockCreateSelfImprovementApproval).toHaveBeenCalledWith(
-      expect.objectContaining({
-        projectId,
-        candidateId: expect.stringContaining("exp-"),
-      })
-    );
+    expect(["tasks_created", "no_changes"]).toContain(historyStore[0]!.outcome);
+    expect(historyStore[0]!.summary).toContain("onboard an approved governance policy");
+    expect(mockCreateSelfImprovementApproval).not.toHaveBeenCalled();
   });
 
   it("approve endpoint promotes candidate and clears pending", async () => {
@@ -459,7 +474,9 @@ describe("Run now: audit-only vs audit+experiments and approval flow", () => {
 
   // ---- auto-promote under full autonomy ----
 
-  it("auto-promotes under full autonomy with equal metrics; history shows promoted", async () => {
+  it("keeps evaluated policy pending explicit human activation even at full autonomy", async () => {
+    governed.mode = "enforced";
+    governed.proposals = [{ id: "proposal-1", state: "draft", version: 1 }];
     mockGetSettings.mockResolvedValue({
       ...baseSettings,
       runAgentEnhancementExperiments: true,
@@ -471,7 +488,7 @@ describe("Run now: audit-only vs audit+experiments and approval flow", () => {
     expect(historyStore.length).toBe(1);
     expect(historyStore[0]).toMatchObject({
       mode: "audit_and_experiments",
-      outcome: "promoted",
+      outcome: "promotion_pending",
     });
     // No approval notification for auto-promoted
     expect(mockCreateSelfImprovementApproval).not.toHaveBeenCalled();

@@ -17,8 +17,7 @@ describe("security QA round 3: replay host boundary", () => {
   let fixture: ReplayFixture;
   let store: ReplayFixtureService;
   const image = `offline/trusted@sha256:${"a".repeat(64)}`;
-  const git = async (args: string[], input?: string) =>
-    (await exec("git", args, { cwd: repo, ...(input === undefined ? {} : {}) })).stdout.trim();
+  const git = async (args: string[]) => (await exec("git", args, { cwd: repo })).stdout.trim();
   async function gitInput(args: string[], input: string): Promise<string> {
     return new Promise((resolve, reject) => {
       const child = execFile("git", args, { cwd: repo }, (error, stdout) =>
@@ -160,5 +159,115 @@ describe("security QA round 3: replay host boundary", () => {
         () => false
       )
     ).toBe(false);
+  });
+  it("never follows a coder-created runtime directory link during host cleanup", async () => {
+    const victim = path.join(root, "host-data");
+    const proof = path.join(victim, "active", "private.txt");
+    const evaluated = path.join(root, "unsafe-output-evaluated");
+    await fs.mkdir(path.dirname(proof), { recursive: true });
+    await fs.writeFile(proof, "retained host data");
+    await fs.writeFile(
+      docker,
+      `#!/usr/bin/env node
+const fs=require('node:fs'),path=require('node:path');
+const args=process.argv.slice(2);
+if(args[0]==='rm')process.exit(0);
+if(args.includes('/opensprint-replay/agent')) {
+ const mount=args.find(value=>value.startsWith('type=bind,')&&value.includes('target=/workspace'));
+ const workspace=mount.match(/source=([^,]+)/)[1];
+ fs.symlinkSync(${JSON.stringify(victim)},path.join(workspace,'.opensprint'),'dir');
+ process.stdout.write(JSON.stringify({completed:true,retryCount:0,costUsd:0}));
+} else {
+ fs.writeFileSync(${JSON.stringify(evaluated)},'evaluator ran');
+ process.stdout.write(JSON.stringify({rubricId:'qa',label:'defect',reviewPassed:true,checks:[{name:'independent',passed:true}]}));
+}
+`,
+      { mode: 0o700 }
+    );
+    await store.capture(fixture, repo);
+    const outcome = await new IsolatedReplayRunner({
+      projectId: fixture.projectId,
+      fixtures: store,
+      image,
+      dockerExecutable: docker,
+    }).run({ sessionId: 1, worktreePath: repo, variant: "baseline" });
+    expect(await fs.readFile(proof, "utf8")).toBe("retained host data");
+    expect(outcome).toMatchObject({ success: false, evaluationComplete: false });
+    expect(outcome.error).toMatch(/link|unsupported/i);
+    expect(
+      await fs.access(evaluated).then(
+        () => true,
+        () => false
+      )
+    ).toBe(false);
+  });
+  it("uses an unprivileged container UID when the server runs as root", async () => {
+    const uid = vi.spyOn(process, "getuid").mockReturnValue(0);
+    const gid = vi.spyOn(process, "getgid").mockReturnValue(0);
+    const ownership = vi.spyOn(fs, "chown").mockResolvedValue(undefined);
+    try {
+      await fs.writeFile(
+        docker,
+        `#!/usr/bin/env node
+const fs=require('node:fs'),args=process.argv.slice(2);
+if(args[0]==='rm')process.exit(0);
+fs.appendFileSync(${JSON.stringify(calls)},JSON.stringify(args)+'\\n');
+process.stdout.write(JSON.stringify(args.includes('/opensprint-replay/agent')?{completed:true,retryCount:0,costUsd:0}:{rubricId:'qa',label:'defect',reviewPassed:true,checks:[{name:'independent',passed:true}]}));
+`,
+        { mode: 0o700 }
+      );
+      await store.capture(fixture, repo);
+      const outcome = await new IsolatedReplayRunner({
+        projectId: fixture.projectId,
+        fixtures: store,
+        image,
+        dockerExecutable: docker,
+      }).run({ sessionId: 1, worktreePath: repo, variant: "baseline" });
+      expect(outcome).toMatchObject({ success: true, evaluationComplete: true });
+      const runs = (await fs.readFile(calls, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line) as string[]);
+      expect(runs).toHaveLength(2);
+      for (const run of runs) expect(run[run.indexOf("--user") + 1]).toBe("65534:65534");
+      expect(ownership).toHaveBeenCalled();
+      for (const [file, owner, group] of ownership.mock.calls) {
+        expect(String(file)).toMatch(/opensprint-replay-[^/]+\/(workspace|input|evaluation)(\/|$)/);
+        expect(owner).toBe(65534);
+        expect(group).toBe(65534);
+      }
+    } finally {
+      uid.mockRestore();
+      gid.mockRestore();
+      ownership.mockRestore();
+    }
+  });
+  it("quarantines output when container termination cannot be confirmed", async () => {
+    await fs.writeFile(
+      docker,
+      `#!/usr/bin/env node
+const fs=require('node:fs'),args=process.argv.slice(2);
+if(args[0]==='rm')process.exit(1);
+const mount=args.find(value=>value.startsWith('type=bind,')&&value.includes('target=/workspace'));
+fs.writeFileSync(${JSON.stringify(calls)},mount.match(/source=([^,]+)/)[1]);
+process.stderr.write('Docker transport lost');process.exit(1);
+`,
+      { mode: 0o700 }
+    );
+    await store.capture(fixture, repo);
+    const outcome = await new IsolatedReplayRunner({
+      projectId: fixture.projectId,
+      fixtures: store,
+      image,
+      dockerExecutable: docker,
+    }).run({ sessionId: 1, worktreePath: repo, variant: "baseline" });
+    const workspace = await fs.readFile(calls, "utf8");
+    try {
+      expect(outcome).toMatchObject({ success: false, evaluationComplete: false });
+      expect(await fs.stat(workspace)).toBeTruthy();
+    } finally {
+      // The fake executor has no live child; discard only this test's quarantined directory.
+      await fs.rm(path.dirname(workspace), { recursive: true, force: true });
+    }
   });
 });

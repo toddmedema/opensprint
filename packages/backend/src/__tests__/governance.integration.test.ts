@@ -132,6 +132,54 @@ for (const dialect of ["sqlite", "postgres"] as const) {
       };
       return { svc, projectId, taskId, release, pin, finding, caseInput };
     }
+    it("validates and clears separate human-approved reconsideration configuration", async () => {
+      const f = await fixture();
+      await expect(
+        f.svc.configure(
+          f.projectId,
+          {
+            expectedVersion: 2,
+            reconsiderationAgent: { type: "claude-cli", model: "cli-model", cliCommand: null },
+          },
+          "owner"
+        )
+      ).rejects.toThrow(/tool-free Claude or OpenAI/);
+      await expect(
+        f.svc.configure(
+          f.projectId,
+          {
+            expectedVersion: 2,
+            reconsiderationTokenPricing: { inputPerMillionUsd: -1, outputPerMillionUsd: 2 },
+          },
+          "owner"
+        )
+      ).rejects.toThrow(/Reconsideration token price/);
+      const configured = await f.svc.configure(
+        f.projectId,
+        {
+          expectedVersion: 2,
+          reconsiderationAgent: { type: "claude", model: "reviewer-model", cliCommand: null },
+          reconsiderationTokenPricing: { inputPerMillionUsd: 3, outputPerMillionUsd: 5 },
+          judgeAgent: { type: "openai", model: "judge-model", cliCommand: null },
+          judgeTokenPricing: { inputPerMillionUsd: 1, outputPerMillionUsd: 2 },
+        },
+        "owner"
+      );
+      expect(configured.reconsiderationAgent?.model).toBe("reviewer-model");
+      expect(configured.judgeAgent?.model).toBe("judge-model");
+      const cleared = await f.svc.configure(
+        f.projectId,
+        {
+          expectedVersion: configured.version,
+          reconsiderationAgent: null,
+          reconsiderationTokenPricing: null,
+        },
+        "owner"
+      );
+      expect(cleared.reconsiderationAgent).toBeNull();
+      expect(cleared.reconsiderationTokenPricing).toBeNull();
+      expect(cleared.judgeAgent?.model).toBe("judge-model");
+    });
     it("pins immutable policy and trusted scope across retries and live edits", async () => {
       const f = await fixture();
       expect(f.pin.instructionsByRole.coder).toBe("frozen coder");

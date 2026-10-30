@@ -11,7 +11,10 @@ export interface GovernanceConfig {
   mode: GovernanceMode;
   version: number;
   judgeAgent?: AgentConfig;
-  judgeTokenPricing?: { inputPerMillionUsd: number; outputPerMillionUsd: number };
+  /** Read-only API model for reconsideration; independent of the initial reviewer and judge. */
+  reconsiderationAgent?: AgentConfig | null;
+  reconsiderationTokenPricing?: { inputPerMillionUsd: number; outputPerMillionUsd: number } | null;
+  judgeTokenPricing?: { inputPerMillionUsd: number; outputPerMillionUsd: number } | null;
   maxAppeals: number;
   maxTokens: number;
   maxCostUsd: number;
@@ -111,6 +114,12 @@ export interface ReviewCase {
   projectId: string;
   taskId: string;
   releaseId: string;
+  /** Explicit human revalidation supersedes old-policy blockers, without approving code. */
+  supersededByReleaseId?: string;
+  /** Explicit human cancellation retains a hold until a safe human disposition. */
+  humanCancelled?: boolean;
+  /** Trusted origin proof established this artifact was already published; this is remediation evidence, never new authority. */
+  publishedRemediationOnly?: boolean;
   state: ReviewCaseState;
   version: number;
   headSha: string;

@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
 /**
  * Offline replay protocol. The owner pins a trusted image containing an actual coding agent,
  * its offline model/toolchain, and an independent evaluator. Docker supplies the external
@@ -37,6 +38,7 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
     const start = Date.now();
     let scratch: string | undefined;
     const containers: string[] = [];
+    const potentiallyRunning = new Set<string>();
     let docker: string | undefined;
     try {
       const image = this.options.image ?? process.env.OPENSPRINT_REPLAY_IMAGE;
@@ -69,7 +71,7 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
       await execFileAsync(
         "git",
         ["archive", "--format=tar", `--output=${archive}`, fixture.baseCommitSha],
-        { cwd: params.worktreePath, timeout: 30_000 }
+        { env: agentProcessEnvironment(), cwd: params.worktreePath, timeout: 30_000 }
       );
       await extractReplayArchive(archive, workspace);
       await extractReplayArchive(archive, original);
@@ -94,7 +96,11 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
           "Retained replay input",
         ],
       ])
-        await execFileAsync("git", args, { cwd: workspace, env: gitEnv, timeout: 30_000 });
+        await execFileAsync("git", args, {
+          cwd: workspace,
+          env: agentProcessEnvironment(gitEnv),
+          timeout: 30_000,
+        });
       let contextDirectory: string | undefined;
       if (fixture.contextArtifacts) {
         if (
@@ -153,8 +159,24 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
         JSON.stringify({ version: 1, ...fixture.rubric, expectedLabel: fixture.label }),
         { mode: 0o600 }
       );
-      const uid = process.getuid?.() ?? 1000;
-      const gid = process.getgid?.() ?? 1000;
+      const hostUid = process.getuid?.() ?? 1000;
+      const uid = hostUid === 0 ? 65534 : hostUid;
+      const gid = hostUid === 0 ? 65534 : (process.getgid?.() ?? 1000);
+      if (hostUid === 0) {
+        // These validated directories contain only exported source and server-owned input;
+        // hand them to an unprivileged UID before the coder can create any filesystem entries.
+        const assignOwnership = async (directory: string): Promise<void> => {
+          await fs.chown(directory, uid, gid);
+          for (const name of await fs.readdir(directory)) {
+            const file = path.join(directory, name);
+            const stat = await fs.lstat(file);
+            if (stat.isDirectory()) await assignOwnership(file);
+            else if (stat.isFile() && stat.nlink === 1) await fs.chown(file, uid, gid);
+            else throw new Error("Replay unavailable: unsupported input ownership path");
+          }
+        };
+        for (const directory of [workspace, input, evaluation]) await assignOwnership(directory);
+      }
       const dockerBase = [
         "run",
         "--rm",
@@ -185,6 +207,7 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
       const env = { PATH: process.env.PATH, HOME: scratch };
       const agentContainer = `opensprint-replay-${randomUUID()}`;
       containers.push(agentContainer);
+      potentiallyRunning.add(agentContainer);
       const agent = await execFileAsync(
         docker,
         [
@@ -198,8 +221,9 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
           image,
           "/replay-input/task.json",
         ],
-        { env, timeout: 600_000, maxBuffer: OUTPUT_LIMIT }
+        { env: agentProcessEnvironment(env), timeout: 600_000, maxBuffer: OUTPUT_LIMIT }
       );
+      potentiallyRunning.delete(agentContainer);
       const usage = JSON.parse(agent.stdout.trim()) as {
         completed?: boolean;
         costUsd?: number;
@@ -213,9 +237,13 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
         usage.retryCount! < 0
       )
         throw new Error("Incomplete measured agent result");
+      // Container output is untrusted. After Docker has stopped the coder, reject links and
+      // special files before any host traversal, nested cleanup, or independent evaluation.
+      await assertReplayOutputSafe(workspace);
       // Fresh container, immutable evaluator, read-only candidate files, and rubric unavailable to the coder.
       const evaluatorContainer = `opensprint-replay-${randomUUID()}`;
       containers.push(evaluatorContainer);
+      potentiallyRunning.add(evaluatorContainer);
       const evaluated = await execFileAsync(
         docker,
         [
@@ -229,8 +257,9 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
           image,
           "/replay-evaluation/rubric.json",
         ],
-        { env, timeout: 600_000, maxBuffer: OUTPUT_LIMIT }
+        { env: agentProcessEnvironment(env), timeout: 600_000, maxBuffer: OUTPUT_LIMIT }
       );
+      potentiallyRunning.delete(evaluatorContainer);
       const result = JSON.parse(evaluated.stdout.trim()) as {
         rubricId?: string;
         label?: string;
@@ -257,11 +286,24 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
         codeDiff = (
           await execFileAsync(
             "git",
-            ["diff", "--no-index", "--binary", "--no-ext-diff", "--", original, workspace],
+            [
+              "diff",
+              "--no-index",
+              "--binary",
+              "--no-ext-diff",
+              "--no-textconv",
+              "--",
+              original,
+              workspace,
+            ],
             {
               timeout: 30_000,
               maxBuffer: 64 * 1024 * 1024,
-              env: { PATH: process.env.PATH, HOME: scratch, GIT_CONFIG_NOSYSTEM: "1" },
+              env: agentProcessEnvironment({
+                PATH: process.env.PATH,
+                HOME: scratch,
+                GIT_CONFIG_NOSYSTEM: "1",
+              }),
             }
           )
         ).stdout;
@@ -294,13 +336,22 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
         error: err instanceof Error ? err.message : String(err),
       };
     } finally {
-      for (const name of containers)
-        await execFileAsync(docker!, ["rm", "--force", name], {
-          timeout: 15_000,
-          env: { PATH: process.env.PATH, HOME: scratch },
-          maxBuffer: 4096,
-        }).catch(() => {});
-      if (scratch) await fs.rm(scratch, { recursive: true, force: true });
+      for (const name of containers) {
+        try {
+          await execFileAsync(docker!, ["rm", "--force", name], {
+            timeout: 15_000,
+            env: agentProcessEnvironment({ PATH: process.env.PATH, HOME: scratch }),
+            maxBuffer: 4096,
+          });
+          potentiallyRunning.delete(name);
+        } catch {
+          // A successful run already confirms container exit. After a timeout/transport failure,
+          // an unsuccessful forced stop leaves its private directory quarantined: never traverse
+          // a writable tree while an untrusted process may still rename its ancestors.
+        }
+      }
+      if (scratch && potentiallyRunning.size === 0)
+        await fs.rm(scratch, { recursive: true, force: true });
     }
   }
 }
@@ -351,4 +402,26 @@ async function assertReplaySourceSafe(root: string, relative = ""): Promise<void
         throw new Error(`Replay unavailable: escaping source link ${rel}`);
     } else if (entry.isDirectory()) await assertReplaySourceSafe(root, rel);
   }
+}
+
+/** No host operation may follow a path introduced by the coder outside its disposable mount. */
+async function assertReplayOutputSafe(root: string): Promise<void> {
+  let files = 0;
+  let bytes = 0;
+  async function visit(directory: string): Promise<void> {
+    for (const name of await fs.readdir(directory)) {
+      const file = path.join(directory, name);
+      const stat = await fs.lstat(file);
+      if (stat.isSymbolicLink() || (!stat.isDirectory() && !stat.isFile()))
+        throw new Error(
+          "Replay unavailable: coder output contains an unsupported link or special file"
+        );
+      if (stat.isFile() && stat.nlink !== 1)
+        throw new Error("Replay unavailable: coder output contains unsupported hard links");
+      if (++files > 100_000 || (stat.isFile() && (bytes += stat.size) > 512 * 1024 * 1024))
+        throw new Error("Replay unavailable: coder output exceeds bounded artifact limits");
+      if (stat.isDirectory()) await visit(file);
+    }
+  }
+  await visit(root);
 }

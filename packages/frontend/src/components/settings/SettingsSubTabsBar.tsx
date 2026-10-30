@@ -62,8 +62,8 @@ export function SettingsSubTabsBar({
   }
   return (
     <div
-      className="px-4 sm:px-6 flex items-center justify-center bg-theme-surface shrink-0"
-      style={{ height: NAVBAR_HEIGHT }}
+      className="px-4 py-2 sm:px-6 sm:py-0 flex items-center justify-center bg-theme-surface shrink-0"
+      style={{ minHeight: NAVBAR_HEIGHT }}
       data-testid="settings-sub-tabs-bar"
     >
       {content}

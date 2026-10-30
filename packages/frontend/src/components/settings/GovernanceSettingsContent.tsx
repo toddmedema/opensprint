@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import type { GovernanceSummary, GovernanceMode } from "@opensprint/shared";
@@ -21,6 +21,7 @@ export interface GovernancePanelProps {
   capability: string;
   busy: boolean;
   run: GovernanceRun;
+  unlockApproval?: () => void;
 }
 
 const MODE_LABELS: Record<GovernanceMode, string> = {
@@ -32,6 +33,7 @@ const MODE_LABELS: Record<GovernanceMode, string> = {
 export function GovernanceSettingsContent({ projectId }: { projectId: string }) {
   // Approval credentials are intentionally kept in component memory only.
   const [capability, setCapability] = useState("");
+  const authorityRef = useRef<HTMLDetailsElement>(null);
   const [tab, setTab] = useState<"docket" | "standards" | "proposals" | "history">("docket");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [searchParams] = useSearchParams();
@@ -96,8 +98,8 @@ export function GovernanceSettingsContent({ projectId }: { projectId: string }) 
     );
 
   const summary = summaryQuery.data;
-  const pendingCount = summary.cases.filter((item) =>
-    OPEN_GOVERNANCE_CASE_STATES.has(item.state)
+  const pendingCount = summary.cases.filter(
+    (item) => item.humanCancelled || OPEN_GOVERNANCE_CASE_STATES.has(item.state)
   ).length;
   const props: GovernancePanelProps = {
     projectId,
@@ -105,6 +107,13 @@ export function GovernanceSettingsContent({ projectId }: { projectId: string }) 
     capability,
     busy: command.isPending,
     run,
+    unlockApproval: () => {
+      if (authorityRef.current) {
+        authorityRef.current.open = true;
+        authorityRef.current.scrollIntoView?.({ block: "start" });
+        authorityRef.current.querySelector<HTMLInputElement>('input[type="password"]')?.focus();
+      }
+    },
   };
 
   return (
@@ -122,7 +131,7 @@ export function GovernanceSettingsContent({ projectId }: { projectId: string }) 
         </span>
       </header>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <SummaryStat label="Waiting for a decision" value={String(pendingCount)} />
         <SummaryStat
           label="Approved standards"
@@ -142,6 +151,7 @@ export function GovernanceSettingsContent({ projectId }: { projectId: string }) 
       </div>
 
       <details
+        ref={authorityRef}
         className="rounded-xl border border-theme-border bg-theme-bg/40"
         open={!summary.authority.configured}
       >
@@ -217,8 +227,24 @@ export function GovernanceSettingsContent({ projectId }: { projectId: string }) 
 
       <div
         role="tablist"
+        tabIndex={-1}
         aria-label="Governance sections"
         className="flex flex-wrap gap-1 border-b border-theme-border pb-3"
+        onKeyDown={(event) => {
+          if (event.altKey || event.ctrlKey || event.metaKey) return;
+          const keys = ["docket", "standards", "proposals", "history"] as const;
+          let index = keys.indexOf(tab);
+          if (event.key === "ArrowRight") index = (index + 1) % keys.length;
+          else if (event.key === "ArrowLeft") index = (index + keys.length - 1) % keys.length;
+          else if (event.key === "Home") index = 0;
+          else if (event.key === "End") index = keys.length - 1;
+          else return;
+          event.preventDefault();
+          setTab(keys[index]);
+          event.currentTarget
+            .querySelector<HTMLButtonElement>(`#governance-tab-${keys[index]}`)
+            ?.focus();
+        }}
       >
         {(
           [
@@ -235,6 +261,7 @@ export function GovernanceSettingsContent({ projectId }: { projectId: string }) 
             id={`governance-tab-${id}`}
             aria-controls={`governance-panel-${id}`}
             aria-selected={tab === id}
+            tabIndex={tab === id ? 0 : -1}
             onClick={() => setTab(id)}
             className={`rounded-lg px-3 py-2 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 ${tab === id ? "bg-brand-500/10 text-brand-700 dark:text-brand-300" : "text-theme-muted hover:bg-theme-border-subtle"}`}
           >
@@ -266,8 +293,8 @@ export function GovernanceSettingsContent({ projectId }: { projectId: string }) 
 
 function SummaryStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-theme-border px-4 py-3">
-      <p className="text-2xl font-semibold tabular-nums text-theme-text">{value}</p>
+    <div className="min-w-0 rounded-xl border border-theme-border px-3 py-3 sm:px-4">
+      <p className="text-xl font-semibold tabular-nums text-theme-text sm:text-2xl">{value}</p>
       <p className="mt-1 text-xs text-theme-muted">{label}</p>
     </div>
   );
@@ -288,6 +315,18 @@ function GovernanceConfiguration({
   );
   const [outputPrice, setOutputPrice] = useState(
     summary.config.judgeTokenPricing?.outputPerMillionUsd.toString() ?? ""
+  );
+  const [reconsiderationModel, setReconsiderationModel] = useState(
+    summary.config.reconsiderationAgent?.model ?? ""
+  );
+  const [reconsiderationProvider, setReconsiderationProvider] = useState(
+    summary.config.reconsiderationAgent?.type ?? "openai"
+  );
+  const [reconsiderationInputPrice, setReconsiderationInputPrice] = useState(
+    summary.config.reconsiderationTokenPricing?.inputPerMillionUsd.toString() ?? ""
+  );
+  const [reconsiderationOutputPrice, setReconsiderationOutputPrice] = useState(
+    summary.config.reconsiderationTokenPricing?.outputPerMillionUsd.toString() ?? ""
   );
   const [limits, setLimits] = useState({
     maxAppeals: summary.config.maxAppeals,
@@ -310,6 +349,20 @@ function GovernanceConfiguration({
                 mode,
                 ...limits,
                 judgeAgent: { type: provider, model: model.trim() || null, cliCommand: null },
+                reconsiderationAgent: reconsiderationModel.trim()
+                  ? {
+                      type: reconsiderationProvider,
+                      model: reconsiderationModel.trim(),
+                      cliCommand: null,
+                    }
+                  : null,
+                reconsiderationTokenPricing:
+                  reconsiderationInputPrice && reconsiderationOutputPrice
+                    ? {
+                        inputPerMillionUsd: Number(reconsiderationInputPrice),
+                        outputPerMillionUsd: Number(reconsiderationOutputPrice),
+                      }
+                    : null,
                 ...(inputPrice && outputPrice
                   ? {
                       judgeTokenPricing: {
@@ -317,7 +370,7 @@ function GovernanceConfiguration({
                         outputPerMillionUsd: Number(outputPrice),
                       },
                     }
-                  : {}),
+                  : { judgeTokenPricing: null }),
               },
               capability
             ),
@@ -368,7 +421,7 @@ function GovernanceConfiguration({
           Input price ceiling ($ / million tokens)
           <input
             type="number"
-            min={0.001}
+            min={0}
             step="any"
             value={inputPrice}
             onChange={(event) => setInputPrice(event.target.value)}
@@ -380,7 +433,7 @@ function GovernanceConfiguration({
           Output price ceiling ($ / million tokens)
           <input
             type="number"
-            min={0.001}
+            min={0}
             step="any"
             value={outputPrice}
             onChange={(event) => setOutputPrice(event.target.value)}
@@ -393,6 +446,70 @@ function GovernanceConfiguration({
         Set verified price ceilings for the configured model to bound judge spending. Without
         configured ceilings, disputes go directly to the human docket.
       </p>
+      <fieldset className="rounded-lg border border-theme-border p-3">
+        <legend className="px-1 text-sm font-medium text-theme-text">
+          Read-only reviewer reconsideration
+        </legend>
+        <p className="mb-3 text-xs text-theme-muted">
+          Choose the API reviewer that reconsiders an appeal before the independent judge. This
+          model can differ from the judge and from the initial code reviewer, including an initial
+          CLI reviewer. It receives evidence and has no repository tools.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="text-sm text-theme-text">
+            Reconsideration provider
+            <select
+              value={reconsiderationProvider}
+              onChange={(event) =>
+                setReconsiderationProvider(event.target.value as typeof reconsiderationProvider)
+              }
+              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+            >
+              <option value="openai">OpenAI</option>
+              <option value="claude">Anthropic</option>
+            </select>
+          </label>
+          <label className="text-sm text-theme-text">
+            Reconsideration model
+            <input
+              value={reconsiderationModel}
+              onChange={(event) => setReconsiderationModel(event.target.value)}
+              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              placeholder="An API model for reviewing appeals"
+            />
+          </label>
+          <label className="text-sm text-theme-text">
+            Reconsideration input price ceiling ($ / million tokens)
+            <input
+              type="number"
+              min={0}
+              step="any"
+              value={reconsiderationInputPrice}
+              onChange={(event) => setReconsiderationInputPrice(event.target.value)}
+              required={Boolean(reconsiderationOutputPrice)}
+              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+            />
+          </label>
+          <label className="text-sm text-theme-text">
+            Reconsideration output price ceiling ($ / million tokens)
+            <input
+              type="number"
+              min={0}
+              step="any"
+              value={reconsiderationOutputPrice}
+              onChange={(event) => setReconsiderationOutputPrice(event.target.value)}
+              required={Boolean(reconsiderationInputPrice)}
+              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+            />
+          </label>
+        </div>
+        <p className="mt-3 text-xs text-theme-muted">
+          Set verified price ceilings for this model separately from the judge. With no
+          reconsideration model, only an initial API reviewer matching the judge’s exact provider
+          and model can use the judge’s ceilings. Otherwise the dispute requires a human. Clear this
+          model and both ceilings to remove the separate configuration.
+        </p>
+      </fieldset>
       <details className="rounded-lg border border-theme-border p-3">
         <summary className="cursor-pointer text-sm font-medium text-theme-text">
           Appeal budgets &amp; policy limits

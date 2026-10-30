@@ -246,7 +246,7 @@ function RuleCard({ rule, onEdit }: { rule: PolicyRuleRevision; onEdit: () => vo
         </div>
         <button
           type="button"
-          className="text-sm font-medium text-brand-600 hover:underline"
+          className="text-sm font-medium text-brand-600 hover:underline dark:text-brand-400"
           onClick={onEdit}
         >
           Propose a change

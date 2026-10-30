@@ -474,9 +474,16 @@ export function ExecutePhase({
     useOpenQuestionNotifications(projectId);
   const taskNotification =
     (effectiveSelectedTask &&
-      openQuestionNotifications.find(
-        (n) => n.source === "execute" && n.sourceId === effectiveSelectedTask
-      )) ??
+      (openQuestionNotifications.find(
+        (n) =>
+          n.source === "execute" &&
+          n.sourceId === effectiveSelectedTask &&
+          n.kind === "governance" &&
+          n.status === "open"
+      ) ??
+        openQuestionNotifications.find(
+          (n) => n.source === "execute" && n.sourceId === effectiveSelectedTask
+        ))) ??
     null;
 
   /* ── RENDER: Centered pulsing logo + status during fetch (no bordered container) ── */

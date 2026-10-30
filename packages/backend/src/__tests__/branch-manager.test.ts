@@ -18,6 +18,10 @@ import { ErrorCodes } from "../middleware/error-codes.js";
 import * as commandRunnerModule from "../utils/command-runner.js";
 import type { CommandSpec } from "../utils/command-runner.js";
 
+vi.mock("../services/governance.service.js", async () => ({
+  governanceService: (await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+}));
+
 function commandRunnerKey(spec: CommandSpec): string {
   return [spec.command, ...(spec.args ?? [])].join(" ");
 }
@@ -941,6 +945,53 @@ describe("BranchManager", () => {
       await branchManager.removeTaskWorktree(repoPath, taskId, wtPath);
       await fs.access(wtPath);
       expect(mockWorktreeLease.canCleanup).toHaveBeenCalledWith(taskId);
+    });
+
+    it("retains governed evidence across direct directory, escalation, and duplicate-branch cleanup", async () => {
+      const taskId = "held-governance-task";
+      const retainedPath = branchManager.getWorktreePath(taskId, repoPath);
+      await fs.mkdir(retainedPath, { recursive: true });
+      const evidencePath = path.join(retainedPath, "review-evidence.json");
+      await fs.writeFile(evidencePath, "retained evidence");
+      mockWorktreeLease.canCleanup.mockResolvedValue(false);
+      const manager = branchManager as unknown as {
+        removeWorktreeDirectorySafely: (...args: string[]) => Promise<boolean>;
+        removeWorktreePathWithEscalation: (...args: string[]) => Promise<boolean>;
+        freeBranchIfUsedElsewhere: (...args: string[]) => Promise<void>;
+        gitExec: (...args: unknown[]) => Promise<{ stdout: string; stderr: string }>;
+      };
+      const git = vi.spyOn(manager, "gitExec").mockResolvedValue({
+        stdout: `worktree ${retainedPath}\nbranch refs/heads/opensprint/${taskId}\n\n`,
+        stderr: "",
+      });
+      expect(
+        await manager.removeWorktreeDirectorySafely(repoPath, taskId, retainedPath, "test")
+      ).toBe(false);
+      expect(
+        await manager.removeWorktreePathWithEscalation(repoPath, taskId, retainedPath, "test")
+      ).toBe(false);
+      await expect(
+        manager.freeBranchIfUsedElsewhere(
+          repoPath,
+          `opensprint/${taskId}`,
+          path.join(repoPath, "new")
+        )
+      ).rejects.toThrow("retained by an active lease or governance review");
+      expect(await fs.readFile(evidencePath, "utf8")).toBe("retained evidence");
+      expect(git).toHaveBeenCalledTimes(1);
+    });
+
+    it("retains a worktree when cleanup authority cannot be loaded", async () => {
+      mockWorktreeLease.canCleanup.mockRejectedValue(new Error("database unavailable"));
+      const retainedPath = branchManager.getWorktreePath("held-task", repoPath);
+      await fs.mkdir(retainedPath, { recursive: true });
+      const manager = branchManager as unknown as {
+        removeWorktreePathWithEscalation: (...args: string[]) => Promise<boolean>;
+      };
+      expect(
+        await manager.removeWorktreePathWithEscalation(repoPath, "held-task", retainedPath, "test")
+      ).toBe(false);
+      await fs.access(retainedPath);
     });
 
     it("does not remove when durable lease path disagrees with removal target (TOCTOU guard)", async () => {

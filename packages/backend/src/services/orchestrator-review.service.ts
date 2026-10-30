@@ -69,6 +69,10 @@ import { fireAndForget } from "../utils/fire-and-forget.js";
 
 import { governanceExecutionService } from "./governance-execution.service.js";
 import { governanceService } from "./governance.service.js";
+import {
+  resolveTaskReviewBase,
+  acceptRemoteReviewIfRequested,
+} from "./remote-publication-review-context.js";
 
 const log = createLogger("orchestrator-review");
 
@@ -212,7 +216,11 @@ export class OrchestratorReviewService {
     }
 
     const testCommand = resolveTestCommand(settings) || undefined;
-    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+    const baseBranch = await resolveTaskReviewBase(
+      projectId,
+      task,
+      await resolveBaseBranch(repoPath, settings.worktreeBaseBranch)
+    );
     const mergeQualityGates = getMergeQualityGateCommands(settings.toolchainProfile);
     await this.writeReviewTestStatus(task.id, repoPath, wtPath, {
       status: "pending",
@@ -844,6 +852,13 @@ export class OrchestratorReviewService {
           task.id,
           slot.worktreePath ?? repoPath
         );
+        await acceptRemoteReviewIfRequested({
+          projectId,
+          task,
+          repoPath,
+          cwd: slot.worktreePath ?? repoPath,
+          branchName,
+        });
         await this.host.mergeCoordinator.performMergeAndDone(projectId, repoPath, task, branchName);
       } else if (reviewOutcome.status === "rejected") {
         const pin = await governanceService.getTaskPin(projectId, task.id);
@@ -926,6 +941,7 @@ export class OrchestratorReviewService {
     });
     if (adjudication.authorized) {
       await governanceExecutionService.approved(projectId, task.id, wtPath);
+      await acceptRemoteReviewIfRequested({ projectId, task, repoPath, cwd: wtPath, branchName });
       await this.host.mergeCoordinator.performMergeAndDone(projectId, repoPath, task, branchName);
       return;
     }
@@ -952,7 +968,11 @@ export class OrchestratorReviewService {
     });
 
     const settings = await this.host.projectService.getSettings(projectId);
-    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+    const baseBranch = await resolveTaskReviewBase(
+      projectId,
+      task,
+      await resolveBaseBranch(repoPath, settings.worktreeBaseBranch)
+    );
     let gitDiff = "";
     try {
       const branchDiff = await this.host.branchManager.captureBranchDiff(

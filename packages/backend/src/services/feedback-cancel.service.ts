@@ -12,6 +12,8 @@ import { orchestratorService } from "./orchestrator.service.js";
 import { broadcastToProject } from "../websocket/index.js";
 import { createLogger } from "../utils/logger.js";
 import { activeAgentsService } from "./active-agents.service.js";
+import { governanceService } from "./governance.service.js";
+import { governanceError } from "./policy-context.js";
 
 const log = createLogger("feedback-cancel");
 
@@ -28,9 +30,32 @@ export async function cancelFeedback(
   feedbackId: string,
   deps: FeedbackCancelDeps
 ): Promise<FeedbackItem> {
+  return governanceService.withPublicationLock(projectId, () =>
+    cancelFeedbackUnderLock(projectId, feedbackId, deps)
+  );
+}
+
+async function cancelFeedbackUnderLock(
+  projectId: string,
+  feedbackId: string,
+  deps: FeedbackCancelDeps
+): Promise<FeedbackItem> {
   const item = await deps.getFeedback(projectId, feedbackId);
   if (item.status !== "pending") {
     return item;
+  }
+  const linkedTasks = [
+    ...new Set([
+      ...(item.createdTaskIds ?? []),
+      ...(item.feedbackSourceTaskId ? [item.feedbackSourceTaskId] : []),
+    ]),
+  ];
+  for (const taskId of linkedTasks) {
+    if (await governanceService.retainsTaskWorktree(projectId, taskId))
+      governanceError(
+        "This feedback contains held governance work. Resolve its docket before cancelling feedback or deleting its tasks.",
+        "GOVERNANCE_HOLD"
+      );
   }
 
   // Unregister any Analyst agent currently categorizing this feedback so UI stops showing "Categorizing…"

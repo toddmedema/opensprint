@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { execFile } from "node:child_process";
@@ -16,9 +17,17 @@ const RUNTIME_POLICY_SOURCES = [
   "protected-path-policy",
   "agent-result-validation",
   "review-synthesizer.service",
+  "review-findings",
   "task-phase-coordinator",
   "git-commit-queue.service",
   "merge-quality-gates",
+  "merge-quality-gate-runner",
+  "test-runner",
+  "deployment-service",
+  "nightly-deploy-scheduler.service",
+  "scaffold-recovery.service",
+  "project/project-scaffold-flow",
+  "project/project-scaffold-recovery",
   "toolchain-profile.service",
   "policy-evaluation.service",
   "isolated-replay-runner.service",
@@ -26,6 +35,34 @@ const RUNTIME_POLICY_SOURCES = [
   "replay-fixture.service",
   "governance-replay-input",
   "governance-context-artifacts",
+  "remote-publication-governance.service",
+  "remote-publication-review-context",
+  "orchestrator-review.service",
+  "orchestrator-dispatch.service",
+  "phase-executor.service",
+  "merge-coordinator.service",
+  "orchestrator.service",
+  "recovery.service",
+  "worktree-lease.service",
+  "branch-manager",
+  "orphan-recovery.service",
+  "watchdog.service",
+  "orchestrator-recovery.service",
+  "notification.service",
+  "task.service",
+  "task-store.service",
+  "feedback-cancel.service",
+  "project.service",
+  "project/project-archive-delete-flow",
+  "project/project-runtime-contract",
+  "deferred-auto-deploy.service",
+  "deploy-trigger.service",
+  "governance-deployment.service",
+  "deployment-service",
+  "../routes/deliver",
+  "../app",
+  "../db/governance-schema",
+  "../db/schema",
   "experiment-scoring.service",
   "experiment-replay.service",
   "self-improvement-experiment.service",
@@ -42,11 +79,20 @@ const RUNTIME_POLICY_SOURCES = [
   "../middleware/governance-auth",
   "../middleware/governance-settings",
   "../utils/agent-process-env",
+  "../utils/command-runner",
+  "../utils/shell-exec",
+  "../utils/expo-install",
+  "../utils/expo-auth-check",
+  "../utils/eas-project-link",
+  "../utils/scaffold-expo-deps",
+  "../routes/deliver",
   "../routes/governance",
   "../routes/governance-replay",
   "../routes/global-settings",
   "../routes/agents",
   "../routes/projects",
+  "../routes/notifications",
+  "../routes/tasks",
 ] as const;
 
 /** Gate configuration and executable checker sources, independent of the instructions they enforce. */
@@ -56,7 +102,7 @@ function isCheckerSource(file: string): boolean {
   if (/^(vitest|eslint|vite|jest|webpack|rollup|playwright|cypress)(\..+)?\.[cm]?[jt]s$/.test(name))
     return true;
   if (
-    /^tsconfig(?:[.\-].+)?\.json$/.test(name) ||
+    /^tsconfig(?:[.-].+)?\.json$/.test(name) ||
     [
       "tsconfig.json",
       ".eslintrc",
@@ -75,10 +121,14 @@ function isCheckerSource(file: string): boolean {
   );
 }
 
-function manifestGateContent(text: string): unknown {
+function manifestGateContent(text: string): { scripts: unknown; workspaces: unknown } {
   if (!text) return { scripts: {}, workspaces: null };
   const manifest = JSON.parse(text) as Record<string, unknown>;
-  return { scripts: manifest.scripts ?? {}, workspaces: manifest.workspaces ?? null };
+  const workspaces =
+    Array.isArray(manifest.workspaces) && !manifest.workspaces.length
+      ? null
+      : (manifest.workspaces ?? null);
+  return { scripts: manifest.scripts ?? {}, workspaces };
 }
 
 async function optionalText(file: string | URL): Promise<string> {
@@ -157,11 +207,13 @@ export async function readGovernanceSourceHashes(
       if (entry.isDirectory() && !ignoredDirectories.has(entry.name.toLowerCase()))
         await visitNestedInstructions(child);
       else if (entry.isFile()) {
-        if (entry.name.toLowerCase() === "package.json")
-          hashes[`${child}#gate-scripts`] = governanceHash(
-            manifestGateContent(await fs.readFile(path.join(repoPath, child), "utf8"))
+        if (entry.name.toLowerCase() === "package.json") {
+          const projection = manifestGateContent(
+            await fs.readFile(path.join(repoPath, child), "utf8")
           );
-        else if (
+          if (governanceHash(projection) !== governanceHash(manifestGateContent("")))
+            hashes[`${child}#gate-scripts`] = governanceHash(projection);
+        } else if (
           ["agents.md", "skill.md"].includes(entry.name.toLowerCase()) ||
           isCheckerSource(child)
         )
@@ -229,6 +281,7 @@ export async function resolveGovernanceSensitiveSourcePaths(input: {
       try {
         return (
           await git("git", ["show", `${sha}:${file}`], {
+            env: agentProcessEnvironment(),
             cwd: input.repoPath,
             timeout: 10_000,
             maxBuffer: 8 * 1024 * 1024,
@@ -237,6 +290,7 @@ export async function resolveGovernanceSensitiveSourcePaths(input: {
       } catch {
         const entries = (
           await git("git", ["ls-tree", "--name-only", "-z", sha, "--", file], {
+            env: agentProcessEnvironment(),
             cwd: input.repoPath,
             timeout: 10_000,
           })
@@ -252,6 +306,62 @@ export async function resolveGovernanceSensitiveSourcePaths(input: {
     } catch {
       result.push(file);
     } // Missing/unparseable authority cannot make a checker change ordinary.
+  }
+  return result.sort();
+}
+
+/** Classify the actual uncommitted merge candidate without confusing dependency metadata with checkers. */
+export async function resolveGovernanceCandidateSensitiveSourcePaths(input: {
+  repoPath: string;
+  baseSha: string;
+  changedPaths: string[];
+}): Promise<string[]> {
+  if (!/^[a-f0-9]{40,64}$/i.test(input.baseSha))
+    governanceError("An immutable candidate base is required for source authority checks.");
+  const result: string[] = [];
+  for (const file of governanceSensitiveSourcePaths(input.changedPaths)) {
+    if (path.posix.basename(file.replaceAll("\\", "/")).toLowerCase() !== "package.json") {
+      result.push(file);
+      continue;
+    }
+    try {
+      let before = "";
+      try {
+        before = (
+          await git("git", ["show", `${input.baseSha}:${file}`], {
+            env: agentProcessEnvironment(),
+            cwd: input.repoPath,
+            timeout: 10_000,
+            maxBuffer: 8 * 1024 * 1024,
+          })
+        ).stdout;
+      } catch {
+        if (
+          (
+            await git("git", ["ls-tree", "--name-only", "-z", input.baseSha, "--", file], {
+              env: agentProcessEnvironment(),
+              cwd: input.repoPath,
+              timeout: 10_000,
+            })
+          ).stdout
+        )
+          throw new Error("Candidate baseline manifest cannot be retrieved");
+      }
+      const absolute = path.join(input.repoPath, file);
+      const kind = await fs.lstat(absolute).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      });
+      if (kind && !kind.isFile())
+        throw new Error("Candidate checker manifests must be regular files");
+      const after = kind ? await fs.readFile(absolute, "utf8") : "";
+      if (
+        governanceHash(manifestGateContent(before)) !== governanceHash(manifestGateContent(after))
+      )
+        result.push(file);
+    } catch {
+      result.push(file);
+    }
   }
   return result.sort();
 }
@@ -288,7 +398,9 @@ export async function assertGovernanceSensitiveSourceApproval(input: {
       : governanceSensitiveSourcePaths(input.changedPaths);
   if (!sensitive.length) return;
   const { governanceService } = await import("./governance.service.js");
-  const events = await governanceService.listEvents(input.projectId);
+  const events = await governanceService.listEvents(input.projectId, [
+    "policy_source_change_approved",
+  ]);
   const approval = events.find(
     (event) =>
       event.kind === "policy_source_change_approved" &&
