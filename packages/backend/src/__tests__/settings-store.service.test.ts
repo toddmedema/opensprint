@@ -10,6 +10,10 @@ import {
   updateSettingsInStore,
   deleteSettingsFromStore,
 } from "../services/settings-store.service.js";
+import {
+  acquireGlobalAgentSlot,
+  resetGlobalAgentConcurrencyForTests,
+} from "../services/agent-global-concurrency.service.js";
 
 function makeSettings(overrides: Partial<ProjectSettings> = {}): ProjectSettings {
   return {
@@ -28,12 +32,14 @@ describe("settings-store.service", () => {
   let originalHome: string | undefined;
 
   beforeEach(async () => {
+    resetGlobalAgentConcurrencyForTests();
     tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-settings-store-"));
     originalHome = process.env.HOME;
     process.env.HOME = tempHome;
   });
 
   afterEach(async () => {
+    resetGlobalAgentConcurrencyForTests();
     process.env.HOME = originalHome;
     await fs.rm(tempHome, { recursive: true, force: true });
   });
@@ -131,4 +137,24 @@ describe("settings-store.service", () => {
       updatedAt: null,
     });
   });
+
+  it.each(["increase", "remove"])(
+    "wakes queued agent admission when settings %s the cap",
+    async (mode) => {
+      await setSettingsInStore("resize-project", makeSettings({ maxTotalConcurrentAgents: 1 }));
+      const first = await acquireGlobalAgentSlot("resize-project");
+      const queued = acquireGlobalAgentSlot("resize-project");
+      if (mode === "increase") {
+        await updateSettingsInStore("resize-project", makeSettings(), (settings) => ({
+          ...settings,
+          maxTotalConcurrentAgents: 2,
+        }));
+      } else {
+        await deleteSettingsFromStore("resize-project");
+      }
+      const releaseQueued = await queued;
+      first();
+      releaseQueued();
+    }
+  );
 });

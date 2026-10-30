@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ThemeProvider } from "../contexts/ThemeContext";
 import { AgentsMdSection } from "./AgentsMdSection";
@@ -50,6 +50,48 @@ describe("AgentsMdSection", () => {
       </ThemeProvider>
     );
   }
+
+  it.each([true, false])(
+    "leaves no feedback timer when unmounted (save completed: %s)",
+    async (completeBeforeUnmount) => {
+      let finishSave!: () => void;
+      mockUpdateAgentsInstructions.mockReturnValue(
+        new Promise<void>((resolve) => {
+          finishSave = resolve;
+        })
+      );
+      const { unmount } = renderSection({ testMode: true });
+      await screen.findByTestId("agents-md-view");
+      fireEvent.click(screen.getByTestId("agents-md-edit"));
+      const textarea = screen.getByTestId("agents-md-textarea");
+      fireEvent.change(textarea, { target: { value: "Updated instructions" } });
+      vi.useFakeTimers();
+      try {
+        await act(async () => {
+          fireEvent.blur(textarea);
+        });
+        expect(mockUpdateAgentsInstructions).toHaveBeenCalledWith(
+          projectId,
+          "Updated instructions"
+        );
+        if (completeBeforeUnmount) {
+          await act(async () => {
+            finishSave();
+          });
+          expect(screen.getByTestId("agents-md-saved")).toHaveTextContent("Saved");
+          expect(vi.getTimerCount()).toBe(1);
+        }
+        unmount();
+        await act(async () => {
+          finishSave();
+        });
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        unmount();
+        vi.useRealTimers();
+      }
+    }
+  );
 
   it("fetches content on mount and displays markdown in view mode", async () => {
     renderSection();

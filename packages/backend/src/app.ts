@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs/promises";
 import { randomBytes } from "node:crypto";
-import express, { type Response } from "express";
+import express, { type Request, type Response } from "express";
 import { localhostCors } from "./middleware/cors.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { apiErrorNotificationMiddleware } from "./middleware/api-error-notification.js";
@@ -32,6 +32,8 @@ import { createIntakeRouter } from "./routes/intake.js";
 import { createGovernanceRouter } from "./routes/governance.js";
 import { createGovernanceReplayRouter } from "./routes/governance-replay.js";
 import { createCommandsRouter } from "./routes/commands.js";
+import { createCollaborationRouter } from "./routes/collaboration.js";
+import { createSpecPublicationRouter } from "./routes/spec-publication.js";
 import { integrationStore } from "./services/integration-store.service.js";
 import { tokenEncryption } from "./services/token-encryption.service.js";
 import { intakeIngestion } from "./services/intake-ingestion.service.js";
@@ -48,6 +50,8 @@ import {
 } from "./services/local-session-auth.service.js";
 import { buildSpaContentSecurityPolicyProduction } from "@opensprint/shared";
 import { allowDesktopLocalSessionScriptRequest } from "./desktop-local-session-guard.js";
+import { agentChatService } from "./services/agent-chat.service.js";
+import { AppError } from "./middleware/error-handler.js";
 
 export function createApp(services?: AppServices) {
   ensureLocalSessionToken();
@@ -73,7 +77,36 @@ export function createApp(services?: AppServices) {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // All API routes require Bearer token auth
+  // The scoped pilot resolves its own authenticated actor. Its credentials grant
+  // no access to the existing local execution, settings or publication APIs.
+  app.use(
+    `${API_PREFIX}/projects/:projectId/collaboration`,
+    requireDatabase,
+    createCollaborationRouter({
+      assertProjectExists: (projectId) => projectService.getProject(projectId),
+      getActiveRun: (projectId, taskId) => agentChatService.getActiveRun(projectId, taskId),
+      getGuidanceHistory: (projectId, taskId) =>
+        agentChatService.getHistory(projectId, taskId).slice(-200),
+      handleGuidance: async (input) => {
+        const active = agentChatService.getActiveRun(input.projectId, input.taskId);
+        if (!active || active.attemptId !== input.attemptId)
+          throw new AppError(
+            409,
+            "AGENT_ATTEMPT_CHANGED",
+            "The active attempt changed. Refresh before sending guidance."
+          );
+        return agentChatService.sendMessage(
+          input.projectId,
+          input.taskId,
+          input.content,
+          active.attempt,
+          { clientMessageId: input.clientMessageId, actorId: input.actorId }
+        );
+      },
+    })
+  );
+
+  // Other API routes require the local installation's Bearer token.
   app.use(API_PREFIX, requireLocalSessionAuth);
 
   // API routes (global agents count for desktop tray; must be before /projects so :projectId does not capture "agents")
@@ -166,6 +199,11 @@ export function createApp(services?: AppServices) {
     createGovernanceRouter(projectService)
   );
   app.use(
+    `${API_PREFIX}/projects/:projectId/publication`,
+    requireDatabase,
+    createSpecPublicationRouter()
+  );
+  app.use(
     `${API_PREFIX}/projects/:projectId/notifications`,
     requireDatabase,
     createProjectNotificationsRouter({ projectService, orchestratorService })
@@ -177,7 +215,15 @@ export function createApp(services?: AppServices) {
   if (process.env.OPENSPRINT_DESKTOP === "1") {
     const frontendDist = process.env.OPENSPRINT_FRONTEND_DIST;
     if (frontendDist) {
-      const sendDesktopSpaIndexHtml = async (res: Response) => {
+      const sendDesktopSpaIndexHtml = async (req: Request, res: Response) => {
+        if (!allowDesktopLocalSessionScriptRequest(req)) {
+          res
+            .status(403)
+            .setHeader("Cache-Control", "no-store")
+            .type("text/plain")
+            .send("Forbidden");
+          return;
+        }
         const indexPath = path.join(frontendDist, "index.html");
         const html = await fs.readFile(indexPath, "utf8");
         const token = getLocalSessionToken();
@@ -211,11 +257,11 @@ export function createApp(services?: AppServices) {
 
       app.get(
         "/",
-        wrapAsync(async (_req, res) => sendDesktopSpaIndexHtml(res))
+        wrapAsync(async (req, res) => sendDesktopSpaIndexHtml(req, res))
       );
       app.get(
         "/index.html",
-        wrapAsync(async (_req, res) => sendDesktopSpaIndexHtml(res))
+        wrapAsync(async (req, res) => sendDesktopSpaIndexHtml(req, res))
       );
 
       app.use(
@@ -232,7 +278,7 @@ export function createApp(services?: AppServices) {
             return;
           }
           try {
-            await sendDesktopSpaIndexHtml(res);
+            await sendDesktopSpaIndexHtml(req, res);
           } catch (err) {
             next(err);
           }

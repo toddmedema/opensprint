@@ -23,6 +23,8 @@ export interface PrdChatState {
   prdContent: Record<string, string>;
   prdHistory: PrdChangeLogEntry[];
   sendingChat: boolean;
+  activeChatRequestId?: string;
+  requestIds?: Record<string, string>;
   savingSections: string[];
   error: string | null;
 }
@@ -203,27 +205,46 @@ export function createPrdChatSlice(sliceName: string): PrdChatSliceResult {
     },
     extraReducers: (builder) => {
       builder
+        .addCase(fetchChat.pending, (state, action) => {
+          state.requestIds ??= {};
+          state.requestIds.fetchChat = action.meta.requestId;
+        })
         .addCase(fetchChat.fulfilled, (state, action) => {
+          if (state.requestIds?.fetchChat !== action.meta.requestId) return;
           state.messages = action.payload;
         })
+        .addCase(fetchPrd.pending, (state, action) => {
+          state.requestIds ??= {};
+          state.requestIds.fetchPrd = action.meta.requestId;
+        })
         .addCase(fetchPrd.fulfilled, (state, action) => {
+          if (state.requestIds?.fetchPrd !== action.meta.requestId) return;
           state.prdContent = action.payload;
         })
         .addCase(fetchPrd.rejected, (state, action) => {
+          if (state.requestIds?.fetchPrd !== action.meta.requestId) return;
           // PRD not found (e.g. adopted repo) — treat as empty so UI shows initial prompt
           const code = (action.error as { code?: string })?.code;
           if (code === "PRD_NOT_FOUND") {
             state.prdContent = {};
           }
         })
+        .addCase(fetchPrdHistory.pending, (state, action) => {
+          state.requestIds ??= {};
+          state.requestIds.fetchPrdHistory = action.meta.requestId;
+        })
         .addCase(fetchPrdHistory.fulfilled, (state, action) => {
+          if (state.requestIds?.fetchPrdHistory !== action.meta.requestId) return;
           state.prdHistory = action.payload;
         })
-        .addCase(sendMessage.pending, (state) => {
+        .addCase(sendMessage.pending, (state, action) => {
+          state.activeChatRequestId = action.meta.requestId;
           state.sendingChat = true;
           state.error = null;
         })
         .addCase(sendMessage.fulfilled, (state, action) => {
+          if (state.activeChatRequestId !== action.meta.requestId) return;
+          state.activeChatRequestId = undefined;
           state.sendingChat = false;
           const msg = action.payload?.message ?? "";
           state.messages.push({
@@ -245,6 +266,8 @@ export function createPrdChatSlice(sliceName: string): PrdChatSliceResult {
           }
         })
         .addCase(sendMessage.rejected, (state, action) => {
+          if (state.activeChatRequestId !== action.meta.requestId) return;
+          state.activeChatRequestId = undefined;
           state.sendingChat = false;
           if (!isNotificationManagedAgentFailure(action.error)) {
             state.error = action.error.message || "Failed to send message";
@@ -252,24 +275,33 @@ export function createPrdChatSlice(sliceName: string): PrdChatSliceResult {
         })
         .addCase(savePrdSection.pending, (state, action) => {
           const section = action.meta.arg.section;
+          state.requestIds ??= {};
+          state.requestIds[`save:${section}`] = action.meta.requestId;
           if (!state.savingSections.includes(section)) {
             state.savingSections.push(section);
           }
         })
         .addCase(savePrdSection.fulfilled, (state, action) => {
+          if (state.requestIds?.[`save:${action.meta.arg.section}`] !== action.meta.requestId)
+            return;
           state.savingSections = state.savingSections.filter((s) => s !== action.meta.arg.section);
         })
         .addCase(savePrdSection.rejected, (state, action) => {
+          if (state.requestIds?.[`save:${action.meta.arg.section}`] !== action.meta.requestId)
+            return;
           state.savingSections = state.savingSections.filter((s) => s !== action.meta.arg.section);
           if (!isNotificationManagedAgentFailure(action.error)) {
             state.error = action.error.message || "Failed to save PRD section";
           }
         })
-        .addCase(uploadPrdFile.pending, (state) => {
+        .addCase(uploadPrdFile.pending, (state, action) => {
+          state.activeChatRequestId = action.meta.requestId;
           state.sendingChat = true;
           state.error = null;
         })
         .addCase(uploadPrdFile.fulfilled, (state, action) => {
+          if (state.activeChatRequestId !== action.meta.requestId) return;
+          state.activeChatRequestId = undefined;
           state.sendingChat = false;
           const response = action.payload.response;
           if (response) {
@@ -293,6 +325,8 @@ export function createPrdChatSlice(sliceName: string): PrdChatSliceResult {
           }
         })
         .addCase(uploadPrdFile.rejected, (state, action) => {
+          if (state.activeChatRequestId !== action.meta.requestId) return;
+          state.activeChatRequestId = undefined;
           state.sendingChat = false;
           if (!isNotificationManagedAgentFailure(action.error)) {
             state.error = action.error.message || "Failed to process uploaded file";

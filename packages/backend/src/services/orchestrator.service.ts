@@ -677,6 +677,16 @@ export class OrchestratorService {
   }
 
   private killProcessIfActive(agent: AgentRunState): void {
+    agent.cancelled = true;
+    if (agent.runner) {
+      try {
+        agent.runner.cancel();
+      } catch {
+        // The runner retains stop_requested until process exit is observed.
+      }
+      agent.activeProcess = null;
+      return;
+    }
     if (!agent.activeProcess) return;
     try {
       agent.activeProcess.kill();
@@ -1026,13 +1036,15 @@ export class OrchestratorService {
 
     for (const reviewSlot of state.slots.values()) {
       if (buildReviewAgentId(reviewSlot.taskId, "general") === agentId) {
-        this.killProcessIfActive(reviewSlot.agent);
+        if (reviewSlot.agent.runner) reviewSlot.agent.runner.cancel(true);
+        else this.killProcessIfActive(reviewSlot.agent);
         return true;
       }
       if (!reviewSlot.reviewAgents || reviewSlot.reviewAgents.size === 0) continue;
       for (const [angle, reviewAgent] of reviewSlot.reviewAgents.entries()) {
         if (buildReviewAgentId(reviewSlot.taskId, angle) !== agentId) continue;
-        this.killProcessIfActive(reviewAgent.agent);
+        if (reviewAgent.agent.runner) reviewAgent.agent.runner.cancel(true);
+        else this.killProcessIfActive(reviewAgent.agent);
         return true;
       }
     }
@@ -1081,12 +1093,21 @@ export class OrchestratorService {
       slot.timers.clearAll();
       const preserveAgents = process.env.OPENSPRINT_PRESERVE_AGENTS === "1";
       if (!preserveAgents) this.killProcessIfActive(slot.agent);
-      else slot.agent.activeProcess = null;
+      else {
+        slot.agent.cancelled = true;
+        if (slot.agent.runner?.observe().state === "queued") slot.agent.runner.cancel();
+        slot.agent.activeProcess = null;
+      }
       if (slot.reviewAgents) {
         for (const reviewAgent of slot.reviewAgents.values()) {
           reviewAgent.timers.clearAll();
           if (!preserveAgents) this.killProcessIfActive(reviewAgent.agent);
-          else reviewAgent.agent.activeProcess = null;
+          else {
+            reviewAgent.agent.cancelled = true;
+            if (reviewAgent.agent.runner?.observe().state === "queued")
+              reviewAgent.agent.runner.cancel();
+            reviewAgent.agent.activeProcess = null;
+          }
         }
       }
     }

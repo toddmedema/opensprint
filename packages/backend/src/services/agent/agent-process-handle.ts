@@ -1,11 +1,19 @@
 import { isProcessAlive, signalProcessGroup } from "../../utils/process-group.js";
 import type { CodingAgentHandle } from "./agent-types.js";
 
-/** Create a handle for a detached agent process group after backend restart. */
-export function createProcessGroupHandle(processGroupLeaderPid: number): CodingAgentHandle {
+/**
+ * Create an observation handle after restart. A persisted PID is vulnerable to
+ * reuse; signalling requires independent ownership verification by the caller.
+ */
+export function createProcessGroupHandle(
+  processGroupLeaderPid: number,
+  options: { ownershipVerified?: boolean } = {}
+): CodingAgentHandle {
   return {
     pid: processGroupLeaderPid,
+    ownership: options.ownershipVerified ? "local" : "recovered_unverified",
     kill() {
+      if (!options.ownershipVerified) return;
       try {
         signalProcessGroup(processGroupLeaderPid, "SIGTERM");
       } catch {

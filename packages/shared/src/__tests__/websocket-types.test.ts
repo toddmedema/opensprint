@@ -19,6 +19,7 @@ describe("WebSocket agent chat event types", () => {
       type: "agent.chat.send",
       taskId: "os-abc",
       message: "hello",
+      clientMessageId: "client-1",
     };
     expect(ev.type).toBe("agent.chat.send");
   });

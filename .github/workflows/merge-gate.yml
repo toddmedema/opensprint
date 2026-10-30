@@ -76,15 +76,15 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v6
+        with:
+          # Workspace selection compares the PR with its base; both histories are required.
+          fetch-depth: 0
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Fetch PR base for affected workspace detection
-        if: matrix.gate == 'test' && github.event_name == 'pull_request'
-        run: git fetch --no-tags --prune --depth=1 origin "${{ github.base_ref }}"
       - name: Determine affected test workspaces
         if: matrix.gate == 'test'
         id: affected_tests

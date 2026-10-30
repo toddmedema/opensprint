@@ -874,6 +874,12 @@ export function SketchPhase({ projectId, onNavigateToPlan }: SketchPhaseProps) {
               />
             </div>
           )}
+          <a
+            href={`/projects/${encodeURIComponent(projectId)}/publication`}
+            className="mb-4 inline-block text-sm text-theme-link underline"
+          >
+            Review and publish a SPEC draft
+          </a>
           <PrdViewer
             prdContent={prdContent}
             savingSections={savingSections}

@@ -10,7 +10,7 @@ const sharedRoot = resolve(__dirname, "../..");
 const repoRoot = resolve(sharedRoot, "../..");
 const scriptPath = resolve(repoRoot, "scripts/ci/summarize-test-results.mjs");
 
-function makeVitestReport() {
+function makeVitestReport(testPath: string) {
   return {
     numTotalTestSuites: 1,
     numPassedTestSuites: 0,
@@ -24,7 +24,7 @@ function makeVitestReport() {
     success: false,
     testResults: [
       {
-        name: "/Users/todd/opensprint/packages/frontend/src/pages/ProjectSettingsPage.test.tsx",
+        name: testPath,
         status: "failed",
         assertionResults: [
           {
@@ -43,51 +43,57 @@ function makeVitestReport() {
 }
 
 describe("summarize-test-results script", () => {
-  it("writes artifact summary files and mirrors markdown to GITHUB_STEP_SUMMARY", () => {
-    const tmpRoot = mkdtempSync(join(tmpdir(), "opensprint-ci-summary-"));
-    const outputDir = join(tmpRoot, "artifacts", "test-results");
-    const stepSummaryPath = join(tmpRoot, "step-summary.md");
+  it.each([
+    "/Users/todd/opensprint/packages/frontend/src/pages/ProjectSettingsPage.test.tsx",
+    "C:\\repo\\packages\\frontend\\src\\pages\\ProjectSettingsPage.test.tsx",
+  ])(
+    "writes portable artifact paths and mirrors markdown to GITHUB_STEP_SUMMARY (%s)",
+    (testPath) => {
+      const tmpRoot = mkdtempSync(join(tmpdir(), "opensprint-ci-summary-"));
+      const outputDir = join(tmpRoot, "artifacts", "test-results");
+      const stepSummaryPath = join(tmpRoot, "step-summary.md");
 
-    try {
-      mkdirSync(outputDir, { recursive: true });
-      writeFileSync(
-        join(outputDir, "frontend-results.json"),
-        JSON.stringify(makeVitestReport(), null, 2),
-        "utf8"
-      );
-      writeFileSync(
-        join(outputDir, "affected-workspaces.json"),
-        JSON.stringify({ workspaces: ["frontend"] }, null, 2),
-        "utf8"
-      );
+      try {
+        mkdirSync(outputDir, { recursive: true });
+        writeFileSync(
+          join(outputDir, "frontend-results.json"),
+          JSON.stringify(makeVitestReport(testPath), null, 2),
+          "utf8"
+        );
+        writeFileSync(
+          join(outputDir, "affected-workspaces.json"),
+          JSON.stringify({ workspaces: ["frontend"] }, null, 2),
+          "utf8"
+        );
 
-      const result = spawnSync(process.execPath, [scriptPath, outputDir], {
-        cwd: repoRoot,
-        env: {
-          ...process.env,
-          GITHUB_STEP_SUMMARY: stepSummaryPath,
-        },
-        encoding: "utf8",
-      });
+        const result = spawnSync(process.execPath, [scriptPath, outputDir], {
+          cwd: repoRoot,
+          env: {
+            ...process.env,
+            GITHUB_STEP_SUMMARY: stepSummaryPath,
+          },
+          encoding: "utf8",
+        });
 
-      expect(result.status).toBe(0);
+        expect(result.status).toBe(0);
 
-      const markdown = readFileSync(join(outputDir, "ci-summary.md"), "utf8");
-      const stepSummary = readFileSync(stepSummaryPath, "utf8");
-      const summaryJson = JSON.parse(readFileSync(join(outputDir, "ci-summary.json"), "utf8"));
+        const markdown = readFileSync(join(outputDir, "ci-summary.md"), "utf8");
+        const stepSummary = readFileSync(stepSummaryPath, "utf8");
+        const summaryJson = JSON.parse(readFileSync(join(outputDir, "ci-summary.json"), "utf8"));
 
-      expect(markdown).toContain("# CI Test Summary");
-      expect(markdown).toContain("Affected workspaces: frontend");
-      expect(markdown).toContain("src/pages/ProjectSettingsPage.test.tsx");
-      expect(markdown).toContain("workflow-tab-content");
-      expect(stepSummary).toContain(markdown.trim());
-      expect(summaryJson.workspaces).toHaveLength(1);
-      expect(summaryJson.workspaces[0]).toMatchObject({
-        workspace: "frontend",
-        numFailedTests: 1,
-      });
-    } finally {
-      rmSync(tmpRoot, { recursive: true, force: true });
+        expect(markdown).toContain("# CI Test Summary");
+        expect(markdown).toContain("Affected workspaces: frontend");
+        expect(markdown).toContain("src/pages/ProjectSettingsPage.test.tsx");
+        expect(markdown).toContain("workflow-tab-content");
+        expect(stepSummary).toContain(markdown.trim());
+        expect(summaryJson.workspaces).toHaveLength(1);
+        expect(summaryJson.workspaces[0]).toMatchObject({
+          workspace: "frontend",
+          numFailedTests: 1,
+        });
+      } finally {
+        rmSync(tmpRoot, { recursive: true, force: true });
+      }
     }
-  });
+  );
 });

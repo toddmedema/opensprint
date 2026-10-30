@@ -7,7 +7,7 @@ import type { ProjectSettings } from "@opensprint/shared";
 import {
   getSettingsFromStore,
   getRawSettingsRecord,
-  setSettingsInStore,
+  transformRawSettingsInStore,
   updateSettingsInStore,
 } from "../settings-store.service.js";
 import { getGlobalSettings } from "../global-settings.service.js";
@@ -43,8 +43,10 @@ export async function loadProjectSettingsFromStore(
     canonicalDefaults.testFramework = detected?.framework ?? null;
     canonicalDefaults.testCommand =
       detected?.testCommand ?? (getTestCommandForFramework(null) || null);
-    await setSettingsInStore(projectId, canonicalDefaults as unknown as ProjectSettings);
-    const initial = projectSettingsFromRaw(canonicalDefaults, gs);
+    const initialized = await transformRawSettingsInStore(projectId, (_current, { exists }) =>
+      exists ? undefined : canonicalDefaults
+    );
+    const initial = projectSettingsFromRaw(initialized.settings, gs);
     return mergeRepoToolchainProfileOverride(repoPath, initial);
   }
   const raw = await getRawSettingsRecord(projectId);

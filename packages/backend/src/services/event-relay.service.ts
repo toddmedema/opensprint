@@ -1,6 +1,7 @@
 import type { WebSocket } from "ws";
 import type { ServerEvent } from "@opensprint/shared";
 import { createLogger } from "../utils/logger.js";
+import { sendSocketData } from "../websocket/send.js";
 
 const log = createLogger("event-relay");
 
@@ -39,8 +40,7 @@ class EventRelayService {
   private safeSend(client: WebSocket, data: string): boolean {
     try {
       if (client.readyState === 1 /* WebSocket.OPEN */) {
-        client.send(data);
-        return true;
+        return sendSocketData(client, data);
       }
     } catch (err) {
       log.debug("ws send failed, removing dead client", {

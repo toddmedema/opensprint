@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { partialDeploymentSchema } from "./deployment.js";
 
 export const projectIdParamSchema = z.object({
   id: z.string().min(1),
@@ -44,4 +45,8 @@ export const selfImprovementRollbackBodySchema = z.object({
 });
 
 /** PUT /projects/:id/settings — accepts partial project settings (apiKeys stripped by route) */
-export const updateSettingsBodySchema = z.record(z.string(), z.unknown()).optional().default({});
+export const updateSettingsBodySchema = z
+  .object({ deployment: partialDeploymentSchema.optional() })
+  .passthrough()
+  .optional()
+  .default({});

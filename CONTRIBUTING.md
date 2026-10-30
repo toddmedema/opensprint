@@ -25,16 +25,21 @@ For a faster setup that skips Electron/Puppeteer workspace installs: `OPENSPRINT
 
 From the repo root, run:
 
-| Command                | Purpose                             |
-| ---------------------- | ----------------------------------- |
-| `npm run test`         | Run the test suite (all workspaces) |
-| `npm run lint`         | Lint all packages                   |
-| `npm run format:check` | Check Prettier formatting           |
-| `npm run build`        | Build shared, backend, and frontend |
+| Command                          | Purpose                                                |
+| -------------------------------- | ------------------------------------------------------ |
+| `npm run test`                   | Run the test suite (all workspaces)                    |
+| `npm run lint`                   | Lint all packages                                      |
+| `npm run format:check`           | Check Prettier formatting                              |
+| `npm run build`                  | Build shared, backend, and frontend                    |
+| `npm run test:coverage:affected` | Run CI workspace selection and affected coverage gates |
 
-CI also runs `npm run lint:ci` (lint + format check). Fix any failures before submitting.
+CI runs `npm run lint`; use `npm run format:check` to check Prettier locally as well. Keep changed files formatted before submitting.
 
-**Merge gate and E2E:** The merge gate (`.github/workflows/merge-gate.yml`) runs `npm run test:coverage` for shared, backend, and frontend. The frontend suite includes E2E tests (`*.e2e.test.tsx`); the test step is bounded by a 20-minute timeout. The SPEC target of >80% coverage with passing E2E tests is enforced in CI; see `SPEC.md` for thresholds and details.
+**Coverage and E2E:** The test job in `.github/workflows/merge-gate.yml` selects affected workspaces and runs `npm run test:coverage` for shared, backend, frontend, and Electron as applicable. The frontend suite includes E2E tests (`*.e2e.test.tsx`); each workspace coverage step is bounded by a 20-minute timeout. The SPEC coverage targets and passing E2E tests are enforced in CI; see `SPEC.md` for thresholds and details.
+
+Before opening or updating a PR, run both `npm run verify:merge-gates` and `npm run test:coverage:affected` from the repository root. The first runs build, lint, and ordinary tests; the second exercises CI's Git-based workspace selection and coverage thresholds. Inspect the selection with `node scripts/affected-workspaces.mjs --coverage-only --json`. Do not substitute `--all` for this check: it bypasses Git comparison and cannot detect checkout/history problems.
+
+The shared test suite includes real complete-history and shallow Git checkout regressions. CI fetches full history for workspace selection; if a comparison base is unavailable, the selector conservatively runs every workspace. Missing PostgreSQL or other prerequisites make local validation incomplete. After pushing, verify every required CI job before reporting the PR ready; passing scoped tests or the ordinary merge gate alone does not establish that the coverage job passed.
 
 To fix formatting: `npm run format`.
 
@@ -59,6 +64,12 @@ Prefer extending existing shared provider helpers over introducing a new hand-wr
 ## Submitting changes
 
 - **Pull requests:** Open a PR against `main`. Describe what changed and how you tested it.
+- **Screenshots:** Every PR with user-visible UI changes must embed screenshots of the finished
+  interface in its description. Include desktop and mobile views when responsive behavior changes.
+  Upload review-only images as GitHub attachments rather than committing them, and check that they
+  contain no sensitive data. If capture or upload is blocked, explain why in the PR and tell the user.
+  Changes with no visible effect do not require screenshots. See the
+  [create-pr skill](.agents/skills/create-pr/SKILL.md) for capture and upload guidance.
 - **Bug reports and ideas:** Use [GitHub Issues](https://github.com/toddmedema/opensprint/issues).
 
 Maintainers will review and merge when ready. By contributing, you agree that your contributions are licensed under the project’s [AGPL-3.0 license](LICENSE).

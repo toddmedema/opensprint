@@ -6,6 +6,22 @@ Open Sprint is a web application that guides users through the full software dev
 
 **Tech stack:** Node.js + TypeScript (backend), React + TypeScript (frontend).
 
+## Repository development skills
+
+These skills guide contributions to this repository:
+
+- Use [verify-opensprint](.agents/skills/verify-opensprint/SKILL.md) for behavior changes,
+  regressions, and new guardrails. Prove the observable contract with the existing test tooling.
+- Use [create-pr](.agents/skills/create-pr/SKILL.md) when preparing or updating a pull request.
+  **Every PR with user-visible UI changes must embed screenshots of the finished interface in its
+  description**, including desktop and mobile views when responsive behavior is relevant. Review
+  images for sensitive data and upload them as GitHub attachments; do not commit review-only images.
+  If capture or upload is blocked, state the limitation in the PR and tell the user. Changes with no
+  visible effect do not require screenshots.
+
+These repository skills do not change the Execute agent runtime contract below. Execute agents must
+keep their prepared branch, use the requested result schema, and leave publication to the orchestrator.
+
 ## Open Sprint Runtime Contract
 
 Task tracking is handled internally by `TaskStoreService` backed by **SQLite (default)** or **PostgreSQL**. The connection is resolved in order: **`DATABASE_URL`**, then **`databaseUrl`** in `~/.opensprint/global-settings.json`, then the default SQLite path (`~/.opensprint/data/opensprint.sqlite`). There is no external task CLI.
@@ -26,6 +42,8 @@ When Open Sprint spawns an Execute agent:
 ## Orchestrator Recovery (GUPP-style)
 
 Work state is persisted before agent spawn via `assignment.json` in `.opensprint/active/<task-id>/`. If the backend crashes, recovery reads the assignment and re-spawns or resumes the agent. **Always write assignment before spawn; never spawn then write.**
+
+Agent admission is cancellable and FIFO. Recheck attempt generation and owning slot after admission and immediately before launch; cancelled or replaced queued attempts must never launch. Concurrency limit changes preserve active accounting. A recovered PID is observation-only until ownership is independently verified: report uncertain execution and retain its assignment instead of killing or requeueing it. A stop request becomes stopped only after observed completion. A terminal result file alone cannot complete an unverified recovered process. Guidance receipts distinguish durable queue acceptance from inclusion in a model turn.
 
 ## Review governance
 
@@ -115,5 +133,5 @@ Other tests that assign `process.env` are mostly unit-level (no in-process HTTP 
 
 ## Maintenance Notes
 
-- If you change the agent lifecycle or prompt contract, keep this file, the bootstrap contract in `packages/backend/src/services/project.service.ts`, and `packages/backend/docs/opensprint-help-context.md` in sync.
+- If you change the agent lifecycle or prompt contract, keep this file, the bootstrap contract in `packages/backend/src/services/project/project-runtime-contract.ts` (used by `project.service.ts`), and `packages/backend/docs/opensprint-help-context.md` in sync.
 - Prefer short, role-specific instructions over one long global ruleset when adding new agent guidance.

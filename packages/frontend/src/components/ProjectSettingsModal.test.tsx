@@ -1083,7 +1083,8 @@ describe("ProjectSettingsModal", () => {
     const nameInput = screen.getByPlaceholderText("My Awesome App");
     await userEvent.clear(nameInput);
     await userEvent.type(nameInput, "Updated Project");
-    await userEvent.tab();
+    // jsdom has no layout, so the modal's Tab trap cannot discover visible controls.
+    fireEvent.blur(nameInput);
 
     await waitFor(() => {
       expect(timestamps.saving).toBeDefined();

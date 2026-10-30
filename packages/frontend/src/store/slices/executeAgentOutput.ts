@@ -22,7 +22,7 @@ export const agentOutputReducers = {
     state.selectedTaskId = next;
     state.archivedSessions = [];
     if (changed) state.async.taskDetail.error = null;
-    if (next === null && prev && state.agentOutput[prev]) {
+    if (changed && prev) {
       delete state.agentOutput[prev];
       if (state.agentOutputLastReceivedAt?.[prev]) {
         delete state.agentOutputLastReceivedAt[prev];

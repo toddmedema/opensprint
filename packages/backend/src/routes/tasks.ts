@@ -210,7 +210,7 @@ export function createTasksRouter(taskService: TaskService): Router {
         messages = allMessages.filter((m) => m.attempt === attempt);
       }
 
-      const support = agentChatService.supportsChat(taskId);
+      const support = agentChatService.supportsChat(taskId, req.params.projectId);
 
       res.json({
         data: { messages, attempt, chatSupported: support.supported },
@@ -224,7 +224,7 @@ export function createTasksRouter(taskService: TaskService): Router {
     validateParams(taskIdParamSchema),
     wrapAsync(async (req: Request<TaskParams>, res) => {
       const { taskId } = req.params;
-      const support = agentChatService.supportsChat(taskId);
+      const support = agentChatService.supportsChat(taskId, req.params.projectId);
 
       res.json({
         data: {

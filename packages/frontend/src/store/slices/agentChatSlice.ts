@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk, type PayloadAction } from "@reduxjs/toolkit";
 import { api } from "../../api/client";
+import type { AgentChatStatus } from "@opensprint/shared";
 
 export interface AgentChatMessageEntry {
   id: string;
@@ -7,6 +8,10 @@ export interface AgentChatMessageEntry {
   content: string;
   timestamp: string;
   delivered?: boolean;
+  clientMessageId?: string;
+  attemptId?: string;
+  status?: AgentChatStatus | "sending" | "unknown";
+  error?: string;
 }
 
 export interface AgentChatState {
@@ -53,23 +58,41 @@ const agentChatSlice = createSlice({
         content,
         timestamp: new Date().toISOString(),
         delivered: false,
+        clientMessageId: tempId,
+        status: "sending",
       });
       state.sendingByTaskId[taskId] = true;
     },
 
     chatMessageReceived(
       state,
-      action: PayloadAction<{ taskId: string; messageId: string; timestamp: string }>
+      action: PayloadAction<{
+        taskId: string;
+        messageId: string;
+        timestamp: string;
+        clientMessageId?: string;
+        attemptId?: string;
+        status?: AgentChatStatus;
+        error?: string;
+      }>
     ) {
-      const { taskId, messageId, timestamp } = action.payload;
+      const { taskId, messageId, timestamp, clientMessageId, attemptId, status, error } =
+        action.payload;
       const msgs = state.messagesByTaskId[taskId];
       if (!msgs) return;
-      if (msgs.some((m) => m.id === messageId)) return;
-      const optimistic = msgs.find((m) => m.role === "user" && !m.delivered);
+      const optimistic = msgs.find(
+        (m) =>
+          m.id === messageId ||
+          (clientMessageId !== undefined && m.clientMessageId === clientMessageId)
+      );
       if (optimistic) {
+        if (optimistic.attemptId && attemptId && optimistic.attemptId !== attemptId) return;
         optimistic.id = messageId;
         optimistic.timestamp = timestamp;
-        optimistic.delivered = true;
+        optimistic.attemptId = attemptId;
+        optimistic.status = status ?? "queued";
+        optimistic.error = error;
+        state.sendingByTaskId[taskId] = msgs.some((m) => m.status === "sending");
       }
     },
 
@@ -91,10 +114,22 @@ const agentChatSlice = createSlice({
       state.sendingByTaskId[taskId] = false;
     },
 
-    chatUnsupported(state, action: PayloadAction<{ taskId: string; reason: string }>) {
-      const { taskId, reason } = action.payload;
-      state.supportByTaskId[taskId] = { supported: false, reason };
-      state.sendingByTaskId[taskId] = false;
+    chatUnsupported(
+      state,
+      action: PayloadAction<{ taskId: string; reason: string; clientMessageId?: string }>
+    ) {
+      const { taskId, reason, clientMessageId } = action.payload;
+      if (clientMessageId) {
+        const message = state.messagesByTaskId[taskId]?.find(
+          (m) => m.clientMessageId === clientMessageId
+        );
+        if (!message) return;
+        message.status = "failed";
+        message.error = reason;
+      } else state.supportByTaskId[taskId] = { supported: false, reason };
+      state.sendingByTaskId[taskId] = clientMessageId
+        ? (state.messagesByTaskId[taskId]?.some((m) => m.status === "sending") ?? false)
+        : false;
     },
 
     setChatSupport(
@@ -109,6 +144,31 @@ const agentChatSlice = createSlice({
       state.sendingByTaskId[action.payload.taskId] = false;
     },
 
+    chatConnectionLost(state) {
+      for (const [taskId, messages] of Object.entries(state.messagesByTaskId)) {
+        for (const message of messages) {
+          if (message.status === "sending") {
+            message.status = "unknown";
+            message.error = "Connection lost before receipt. Check history before resending.";
+          }
+        }
+        state.sendingByTaskId[taskId] = false;
+      }
+    },
+
+    chatReceiptTimedOut(state, action: PayloadAction<{ taskId: string; clientMessageId: string }>) {
+      const { taskId, clientMessageId } = action.payload;
+      const message = state.messagesByTaskId[taskId]?.find(
+        (m) => m.clientMessageId === clientMessageId
+      );
+      if (message?.status === "sending") {
+        message.status = "unknown";
+        message.error = "Receipt timed out. Check history before resending.";
+      }
+      state.sendingByTaskId[taskId] =
+        state.messagesByTaskId[taskId]?.some((m) => m.status === "sending") ?? false;
+    },
+
     clearChatForTask(state, action: PayloadAction<{ taskId: string }>) {
       delete state.messagesByTaskId[action.payload.taskId];
       delete state.sendingByTaskId[action.payload.taskId];
@@ -121,8 +181,9 @@ const agentChatSlice = createSlice({
         const { taskId, messages, chatSupported } = action.payload;
         const existing = state.messagesByTaskId[taskId] ?? [];
         const serverIds = new Set(messages.map((m) => m.id));
+        const clientIds = new Set(messages.map((m) => m.clientMessageId).filter(Boolean));
         const localOnly = existing.filter(
-          (m) => m.role === "user" && !m.delivered && !serverIds.has(m.id)
+          (m) => m.role === "user" && !serverIds.has(m.id) && !clientIds.has(m.clientMessageId)
         );
         state.messagesByTaskId[taskId] = [
           ...messages.map((m) => ({
@@ -130,10 +191,14 @@ const agentChatSlice = createSlice({
             role: m.role as "user" | "assistant",
             content: m.content,
             timestamp: m.timestamp,
-            delivered: true,
+            clientMessageId: m.clientMessageId,
+            attemptId: m.attemptId,
+            status: m.status,
+            error: m.error,
           })),
           ...localOnly,
         ];
+        state.sendingByTaskId[taskId] = localOnly.some((m) => m.status === "sending");
         if (chatSupported !== undefined) {
           const prev = state.supportByTaskId[taskId];
           if (!prev || prev.supported !== chatSupported) {
@@ -158,6 +223,8 @@ export const {
   chatUnsupported,
   setChatSupport,
   resetChatSending,
+  chatConnectionLost,
+  chatReceiptTimedOut,
   clearChatForTask,
 } = agentChatSlice.actions;
 

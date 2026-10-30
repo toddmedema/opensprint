@@ -4,6 +4,7 @@ import path from "path";
 import os from "os";
 import * as worktreeHealth from "../utils/worktree-health.js";
 import { RecoveryService } from "../services/recovery.service.js";
+import { governanceService } from "../services/governance.service.js";
 
 const TEST_PID = 99999;
 const mockFindStaleHeartbeats = vi.fn();
@@ -115,6 +116,9 @@ describe("RecoveryService — stale heartbeat recovery", () => {
     await fs.mkdir(path.join(tmpDir, ".git"), { recursive: true });
     service = new RecoveryService();
     vi.clearAllMocks();
+    vi.mocked(governanceService.listCases).mockResolvedValue([]);
+    vi.mocked(governanceService.hasTaskHold).mockResolvedValue(false);
+    vi.mocked(governanceService.hasPendingResume).mockResolvedValue(false);
     mockFindStaleHeartbeats.mockResolvedValue([]);
     mockReadHeartbeat.mockResolvedValue(null);
     mockFindOrphanedAssignments.mockResolvedValue([]);
@@ -142,7 +146,163 @@ describe("RecoveryService — stale heartbeat recovery", () => {
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   });
 
-  it("terminates orphaned agent process group before recovering task when the leader is alive", async () => {
+  it.each(["awaiting_human", "human_cancelled", "pending_resume"])(
+    "preserves a %s governance owner without reattaching or consuming a slot",
+    async (mode) => {
+      const taskId = "governed-task";
+      const worktreePath = path.join(tmpDir, "epic-retained");
+      const assignment = {
+        taskId,
+        projectId: "proj-1",
+        phase: "coding" as const,
+        branchName: "opensprint/epic_retained",
+        worktreePath,
+        worktreeKey: "epic_retained",
+        promptPath: path.join(worktreePath, ".opensprint", "active", taskId, "prompt.md"),
+        agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
+        attempt: 1,
+        createdAt: new Date(0).toISOString(),
+      };
+      await fs.mkdir(path.dirname(assignment.promptPath), { recursive: true });
+      await fs.writeFile(
+        path.join(path.dirname(assignment.promptPath), "result.json"),
+        JSON.stringify({ status: "success" })
+      );
+      vi.mocked(governanceService.listCases).mockResolvedValue([
+        {
+          id: "held-case",
+          taskId,
+          projectId: "proj-1",
+          worktreePath,
+          branchName: assignment.branchName,
+          state:
+            mode === "human_cancelled"
+              ? "cancelled"
+              : mode === "pending_resume"
+                ? "allowed"
+                : "awaiting_human",
+          humanCancelled: mode === "human_cancelled",
+        } as never,
+      ]);
+      vi.mocked(governanceService.hasTaskHold).mockResolvedValue(mode !== "pending_resume");
+      vi.mocked(governanceService.hasPendingResume).mockResolvedValue(mode === "pending_resume");
+      mockFindOrphanedAssignments.mockResolvedValue([{ taskId, assignment }]);
+      vi.mocked(taskStore.listAll).mockResolvedValue([
+        { id: taskId, status: "in_progress" } as never,
+      ]);
+      mockFindStaleHeartbeats.mockResolvedValue([
+        {
+          taskId,
+          heartbeat: {
+            processGroupLeaderPid: TEST_PID,
+            lastOutputTimestamp: 0,
+            heartbeatTimestamp: 0,
+          },
+        },
+      ]);
+      mockListTaskWorktrees.mockResolvedValue([{ taskId: "epic_retained", worktreePath }]);
+      const recoveryHost = {
+        ...host,
+        reattachSlot: vi.fn().mockResolvedValue(true),
+        handleCompletedAssignment: vi.fn().mockResolvedValue(true),
+      };
+      process.kill = mockKill as unknown as typeof process.kill;
+      mockKill.mockImplementation(() => true);
+
+      const result = await service.runFullRecovery("proj-1", tmpDir, recoveryHost, {
+        includeGupp: true,
+      });
+
+      expect(result.reattached).toEqual([]);
+      expect(result.requeued).toEqual([]);
+      expect(recoveryHost.reattachSlot).not.toHaveBeenCalled();
+      expect(recoveryHost.handleCompletedAssignment).not.toHaveBeenCalled();
+      expect(taskStore.update).not.toHaveBeenCalled();
+      expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
+      expect(mockKill).not.toHaveBeenCalled();
+      await expect(
+        fs.access(assignment.promptPath.replace("prompt.md", "result.json"))
+      ).resolves.toBeUndefined();
+    }
+  );
+
+  it("recovers a completed dead assignment despite published remediation history", async () => {
+    const taskId = "published-history";
+    const promptDir = path.join(tmpDir, ".opensprint", "active", taskId);
+    const assignment = {
+      taskId,
+      projectId: "proj-1",
+      phase: "coding" as const,
+      branchName: `opensprint/${taskId}`,
+      worktreePath: tmpDir,
+      promptPath: path.join(promptDir, "prompt.md"),
+      agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
+      attempt: 1,
+      createdAt: new Date(0).toISOString(),
+    };
+    await fs.mkdir(promptDir, { recursive: true });
+    await fs.writeFile(path.join(promptDir, "result.json"), JSON.stringify({ status: "success" }));
+    vi.mocked(governanceService.listCases).mockResolvedValue([
+      {
+        id: "historical-case",
+        taskId,
+        worktreePath: tmpDir,
+        branchName: assignment.branchName,
+        state: "stale",
+        publishedRemediationOnly: true,
+      } as never,
+    ]);
+    mockFindOrphanedAssignments.mockResolvedValue([{ taskId, assignment }]);
+    vi.mocked(taskStore.listAll).mockResolvedValue([
+      { id: taskId, status: "in_progress" } as never,
+    ]);
+    const recoveryHost = { ...host, handleCompletedAssignment: vi.fn().mockResolvedValue(true) };
+
+    const result = await service.runFullRecovery("proj-1", tmpDir, recoveryHost, {
+      includeGupp: true,
+    });
+
+    expect(recoveryHost.handleCompletedAssignment).toHaveBeenCalledOnce();
+    expect(result.reattached).toContain(taskId);
+    expect(taskStore.update).not.toHaveBeenCalled();
+    expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
+  });
+
+  it("escalates an interrupted judge durably while retaining its slot-free worktree", async () => {
+    vi.mocked(governanceService.hasTaskHold).mockResolvedValue(true);
+    vi.mocked(governanceService.listCases).mockResolvedValue([
+      {
+        id: "interrupted-judge",
+        taskId: "held-task",
+        projectId: "proj-1",
+        version: 7,
+        state: "awaiting_judge",
+        branchName: "opensprint/held-task",
+        worktreePath: tmpDir,
+        evidenceHash: "immutable-evidence",
+        findings: [{ ruleId: "rule-1" }],
+      } as never,
+    ]);
+
+    await service.runFullRecovery(
+      "proj-1",
+      tmpDir,
+      { ...host, reattachSlot: vi.fn() },
+      { includeGupp: true }
+    );
+
+    expect(governanceService.recordRecommendation).toHaveBeenCalledWith(
+      "proj-1",
+      "interrupted-judge",
+      expect.objectContaining({ disposition: "human_required", evidence: ["immutable-evidence"] }),
+      7
+    );
+    expect(governanceService.deliverOutbox).toHaveBeenCalledOnce();
+    expect(taskStore.update).not.toHaveBeenCalled();
+    expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
+  });
+
+  it("preserves a live orphan whose process ownership cannot be verified", async () => {
     mockFindStaleHeartbeats.mockResolvedValue([
       {
         taskId: "task-stale",
@@ -165,12 +325,8 @@ describe("RecoveryService — stale heartbeat recovery", () => {
     await service.runFullRecovery("proj-1", tmpDir, host);
 
     const sigtermCalls = mockKill.mock.calls.filter((c) => c[1] === "SIGTERM");
-    expect(sigtermCalls).toContainEqual([-TEST_PID, "SIGTERM"]);
-    expect(vi.mocked(taskStore.update)).toHaveBeenCalledWith(
-      "proj-1",
-      "task-stale",
-      expect.objectContaining({ status: "open" })
-    );
+    expect(sigtermCalls).toEqual([]);
+    expect(vi.mocked(taskStore.update)).not.toHaveBeenCalled();
   });
 
   it("does not call process.kill when processGroupLeaderPid is missing or invalid", async () => {
@@ -283,6 +439,103 @@ describe("RecoveryService — stale heartbeat recovery", () => {
       "task-stale",
       expect.objectContaining({ status: "open" })
     );
+  });
+
+  it.each(["live", "complete", "pending"])(
+    "inspects a fresh on-disk %s assignment while preserving cleanup protection",
+    async (mode) => {
+      const taskId = `fresh-${mode}`;
+      const promptDir = path.join(tmpDir, ".opensprint", "active", taskId);
+      const assignment = {
+        taskId,
+        projectId: "proj-1",
+        phase: "coding" as const,
+        branchName: `opensprint/${taskId}`,
+        worktreePath: tmpDir,
+        promptPath: path.join(promptDir, "prompt.md"),
+        agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
+        attempt: 1,
+        createdAt: new Date().toISOString(),
+      };
+      await fs.mkdir(promptDir, { recursive: true });
+      await fs.writeFile(path.join(promptDir, "assignment.json"), JSON.stringify(assignment));
+      if (mode === "complete") {
+        await fs.writeFile(
+          path.join(promptDir, "result.json"),
+          JSON.stringify({ status: "success" })
+        );
+      }
+      const recoveryHost = {
+        ...host,
+        reattachSlot: vi.fn().mockResolvedValue(true),
+        handleCompletedAssignment: vi.fn().mockResolvedValue(true),
+      };
+      vi.mocked(taskStore.listAll).mockResolvedValue([
+        { id: taskId, status: "in_progress" } as never,
+      ]);
+      vi.mocked(taskStore.listInProgressWithAgentAssignee).mockResolvedValue([
+        { id: taskId, status: "in_progress", updated_at: new Date(0).toISOString() } as never,
+      ]);
+      mockFindOrphanedAssignments.mockResolvedValue([{ taskId, assignment }]);
+      mockReadHeartbeat.mockResolvedValue(
+        mode === "live"
+          ? {
+              processGroupLeaderPid: TEST_PID,
+              lastOutputTimestamp: Date.now(),
+              heartbeatTimestamp: Date.now(),
+            }
+          : null
+      );
+      process.kill = mockKill as unknown as typeof process.kill;
+      mockKill.mockImplementation(() => true);
+
+      const result = await service.runFullRecovery("proj-1", tmpDir, recoveryHost, {
+        includeGupp: true,
+      });
+
+      expect(result.reattached).toEqual(mode === "pending" ? [] : [taskId]);
+      expect(vi.mocked(taskStore.update)).not.toHaveBeenCalled();
+      expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
+      if (mode === "live") expect(recoveryHost.reattachSlot).toHaveBeenCalledOnce();
+      if (mode === "complete")
+        expect(recoveryHost.handleCompletedAssignment).toHaveBeenCalledOnce();
+    }
+  );
+
+  it("does not delete worktrees after a task-store lookup failure", async () => {
+    mockFindStaleHeartbeats.mockResolvedValue([
+      {
+        taskId: "lookup-failure",
+        heartbeat: {
+          processGroupLeaderPid: TEST_PID,
+          lastOutputTimestamp: 0,
+          heartbeatTimestamp: 0,
+        },
+      },
+    ]);
+    vi.mocked(taskStore.show).mockRejectedValueOnce(new Error("database temporarily unavailable"));
+    await service.runFullRecovery("proj-1", tmpDir, host);
+    expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
+    expect(vi.mocked(taskStore.update)).not.toHaveBeenCalled();
+  });
+
+  it("does not delete a recoverable checkout when persisting the requeue fails", async () => {
+    mockFindStaleHeartbeats.mockResolvedValue([
+      {
+        taskId: "write-failure",
+        heartbeat: { processGroupLeaderPid: 0, lastOutputTimestamp: 0, heartbeatTimestamp: 0 },
+      },
+    ]);
+    vi.mocked(taskStore.show).mockResolvedValueOnce({
+      id: "write-failure",
+      status: "in_progress",
+    } as never);
+    vi.mocked(taskStore.update).mockRejectedValueOnce(
+      new Error("database temporarily unavailable")
+    );
+    const result = await service.runFullRecovery("proj-1", tmpDir, host);
+    expect(result.requeued).toEqual([]);
+    expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
   });
 
   it("completes orphaned assignments with terminal result.json during startup recovery", async () => {
@@ -1156,7 +1409,7 @@ describe("RecoveryService — stale heartbeat recovery", () => {
             promptPath: path.join(promptDir, "prompt.md"),
             agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
             attempt: 1,
-            createdAt: new Date().toISOString(),
+            createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
           },
         },
       ]);
@@ -1223,7 +1476,7 @@ describe("RecoveryService — stale heartbeat recovery", () => {
         promptPath: path.join(worktreePath, ".opensprint", "active", taskId, "prompt.md"),
         agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
         attempt: 1,
-        createdAt: new Date().toISOString(),
+        createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
       };
     }
 
@@ -1232,6 +1485,15 @@ describe("RecoveryService — stale heartbeat recovery", () => {
 
       const wtPath = path.join(tmpDir, "worktree-leased");
       await fs.mkdir(wtPath, { recursive: true });
+      const assignmentPath = path.join(
+        tmpDir,
+        ".opensprint",
+        "active",
+        "task-leased",
+        "assignment.json"
+      );
+      await fs.mkdir(path.dirname(assignmentPath), { recursive: true });
+      await fs.writeFile(assignmentPath, JSON.stringify(makeAssignment("task-leased", wtPath)));
 
       const guppHost = {
         ...host,
@@ -1247,6 +1509,7 @@ describe("RecoveryService — stale heartbeat recovery", () => {
 
       expect(mockCanCleanupLease).toHaveBeenCalledWith("task-leased");
       expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
+      await expect(fs.access(assignmentPath)).resolves.toBeUndefined();
     });
 
     it("proceeds with worktree removal when lease is released (canCleanup returns true)", async () => {
@@ -1273,7 +1536,7 @@ describe("RecoveryService — stale heartbeat recovery", () => {
       });
     });
 
-    it("defaults to allowing cleanup when canCleanup throws", async () => {
+    it("preserves the worktree when lease ownership cannot be checked", async () => {
       mockCanCleanupLease.mockRejectedValue(new Error("DB unavailable"));
 
       const wtPath = path.join(tmpDir, "worktree-err");
@@ -1291,9 +1554,7 @@ describe("RecoveryService — stale heartbeat recovery", () => {
 
       await service.runFullRecovery("proj-1", tmpDir, guppHost, { includeGupp: true });
 
-      expect(mockRemoveTaskWorktree).toHaveBeenCalledWith(tmpDir, "task-err", wtPath, {
-        ignoreLiveTaskStatusForTaskIds: new Set(["task-err"]),
-      });
+      expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
     });
 
     it("checks cleanup lease and removal using assignment worktreeKey for epic worktrees", async () => {
@@ -1356,7 +1617,7 @@ describe("RecoveryService — stale heartbeat recovery", () => {
         promptPath: path.join(worktreePath, ".opensprint", "active", taskId, "prompt.md"),
         agentConfig: { type: "cursor", model: "gpt-5", cliCommand: null },
         attempt: 2,
-        createdAt: new Date().toISOString(),
+        createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
         ...extra,
       };
     }
@@ -1712,5 +1973,12 @@ describe("RecoveryService — stale heartbeat recovery", () => {
 });
 
 vi.mock("../services/governance.service.js", async () => ({
-  governanceService: (await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+  governanceService: {
+    ...(await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+    listCases: vi.fn().mockResolvedValue([]),
+    hasTaskHold: vi.fn().mockResolvedValue(false),
+    hasPendingResume: vi.fn().mockResolvedValue(false),
+    recordRecommendation: vi.fn().mockResolvedValue(undefined),
+    deliverOutbox: vi.fn().mockResolvedValue(undefined),
+  },
 }));

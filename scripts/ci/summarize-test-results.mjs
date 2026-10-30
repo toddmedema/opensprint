@@ -20,7 +20,8 @@ function trimText(value, max = 320) {
 
 function toRelativePath(filePath) {
   if (!filePath) return "";
-  return path.isAbsolute(filePath) ? path.relative(process.cwd(), filePath) : filePath;
+  const relative = path.isAbsolute(filePath) ? path.relative(process.cwd(), filePath) : filePath;
+  return relative.replace(/\\/g, "/");
 }
 
 function getWorkspaceName(filePath) {

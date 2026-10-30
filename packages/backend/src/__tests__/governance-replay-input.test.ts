@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import Database from "better-sqlite3";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -7,6 +7,10 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { AgentSession } from "@opensprint/shared";
 import { createSqliteDbClient } from "../db/sqlite-client.js";
+const guidance = vi.hoisted(() => ({ history: vi.fn().mockReturnValue([]) }));
+vi.mock("../services/agent-chat.service.js", () => ({
+  agentChatService: { getHistory: guidance.history },
+}));
 import {
   retainGovernanceReplayInput,
   type GovernanceReplayInput,
@@ -119,6 +123,33 @@ describe("exact retained replay provenance", () => {
       expect(
         await db.queryOne("SELECT payload FROM governance_replay_inputs WHERE session_id=33")
       ).toBeUndefined();
+      guidance.history.mockReturnValue([
+        {
+          role: "user",
+          attempt: 2,
+          status: "included",
+          timestamp: "2026-10-30T00:00:03.000Z",
+          content: "Additional requirement delivered during execution",
+        },
+      ]);
+      await retainGovernanceReplayInput(db, "p", 44, session, root);
+      expect(
+        await db.queryOne("SELECT payload FROM governance_replay_inputs WHERE session_id=44")
+      ).toBeUndefined();
+      guidance.history.mockReturnValue([
+        {
+          role: "user",
+          attempt: 2,
+          status: "failed",
+          timestamp: "2026-10-30T00:00:03.000Z",
+          content: "Never reached the model",
+        },
+      ]);
+      await retainGovernanceReplayInput(db, "p", 45, session, root);
+      expect(
+        await db.queryOne("SELECT payload FROM governance_replay_inputs WHERE session_id=45")
+      ).toBeDefined();
+      guidance.history.mockReturnValue([]);
     } finally {
       native.close();
       await fs.rm(root, { recursive: true, force: true });

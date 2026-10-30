@@ -49,8 +49,17 @@ function isReasoningOnlyAgentTurn(
  * turns after tool execution completes.  On agent completion, any undrained
  * messages remain in the queue — the caller is responsible for handling them.
  */
+export interface PendingMessage {
+  message: string;
+  timestamp: Date;
+  messageId?: string;
+  onIncluded?: () => void;
+  onRunEnded?: () => void;
+}
+
 export class PendingMessageQueue {
-  private readonly items: Array<{ message: string; timestamp: Date }> = [];
+  private readonly items: PendingMessage[] = [];
+  private closed = false;
   readonly capacity: number;
 
   constructor(capacity = 10) {
@@ -58,15 +67,38 @@ export class PendingMessageQueue {
   }
 
   /** Push a message. Returns true if accepted, false if the queue is at capacity. */
-  push(message: string, timestamp?: Date): boolean {
-    if (this.items.length >= this.capacity) return false;
-    this.items.push({ message, timestamp: timestamp ?? new Date() });
+  push(
+    message: string,
+    timestamp?: Date,
+    metadata?: Omit<PendingMessage, "message" | "timestamp">
+  ): boolean {
+    if (this.closed || this.items.length >= this.capacity) return false;
+    this.items.push({ message, timestamp: timestamp ?? new Date(), ...metadata });
     return true;
   }
 
   /** Drain all pending messages, returning them in insertion order. */
-  drain(): Array<{ message: string; timestamp: Date }> {
+  drain(): PendingMessage[] {
+    for (const item of this.items) item.onIncluded?.();
     return this.items.splice(0);
+  }
+
+  close(): void {
+    this.closed = true;
+    const pending = this.items.splice(0);
+    const errors: unknown[] = [];
+    for (const item of pending) {
+      try {
+        item.onRunEnded?.();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length) throw new AggregateError(errors, "Could not persist guidance disposition");
+  }
+
+  get isClosed(): boolean {
+    return this.closed;
   }
 
   get size(): number {
@@ -262,6 +294,7 @@ export class OpenAIAgenticAdapter implements AgenticLoopAdapter {
           tool_call_id: r.id,
         });
       }
+      this.messageHistory.push({ role: "user", content: userMessage });
     }
 
     const promptCacheKey = buildOpenAIPromptCacheKey({
@@ -338,9 +371,12 @@ export class GeminiAgenticAdapter implements AgenticLoopAdapter {
     } else if (toolResults?.length) {
       this.contents.push({
         role: "user",
-        parts: toolResults.map((r) => ({
-          functionResponse: { name: r.id, response: { result: r.content } },
-        })) as GeminiPart[],
+        parts: [
+          ...toolResults.map((r) => ({
+            functionResponse: { name: r.id, response: { result: r.content } },
+          })),
+          { text: userMessage },
+        ] as GeminiPart[],
       });
     }
 
@@ -418,26 +454,29 @@ export async function runAgenticLoop(
   let userMessage = taskContent;
   let toolResults: Array<{ id: string; content: string }> | undefined;
 
-  while (turnCount < maxTurns) {
-    if (abortSignal?.aborted) break;
-    turnCount += 1;
-    const response = await adapter.send(userMessage, toolResults, state);
-    state = response.state;
-    fullText += response.text;
-    if (response.cacheMetrics) {
-      cacheMetrics.push(response.cacheMetrics);
-    }
-    if (response.text) onChunk?.(response.text);
-    if (abortSignal?.aborted) break;
-    if (response.toolCalls.length === 0) break;
-    toolResults = [];
-    for (const tc of response.toolCalls) {
-      const content = await executeTool(tc.name, tc.args, context);
-      toolResults.push({ id: tc.id, content });
+  try {
+    while (turnCount < maxTurns) {
+      if (abortSignal?.aborted) break;
+      if (turnCount > 0) userMessage = drainPendingMessages(options.pendingMessages);
+      turnCount += 1;
+      const response = await adapter.send(userMessage, toolResults, state);
+      state = response.state;
+      fullText += response.text;
+      if (response.cacheMetrics) {
+        cacheMetrics.push(response.cacheMetrics);
+      }
+      if (response.text) onChunk?.(response.text);
+      if (abortSignal?.aborted) break;
+      if (response.toolCalls.length === 0) break;
+      toolResults = [];
+      for (const tc of response.toolCalls) {
+        const content = await executeTool(tc.name, tc.args, context);
+        toolResults.push({ id: tc.id, content });
+      }
     }
 
-    userMessage = drainPendingMessages(options.pendingMessages);
+    return { content: fullText, turnCount, cacheMetrics };
+  } finally {
+    options.pendingMessages?.close();
   }
-
-  return { content: fullText, turnCount, cacheMetrics };
 }

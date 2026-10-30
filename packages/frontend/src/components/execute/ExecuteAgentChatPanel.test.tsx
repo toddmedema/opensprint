@@ -75,7 +75,7 @@ describe("ExecuteAgentChatPanel", () => {
     render(<ExecuteAgentChatPanel {...defaultProps} messages={messages} />);
 
     expect(screen.getByTestId("delivery-checkmark")).toBeInTheDocument();
-    expect(screen.getByTitle("Delivered")).toBeInTheDocument();
+    expect(screen.getByText("Saved")).toBeInTheDocument();
   });
 
   it("does not show delivery checkmark on undelivered user messages", () => {
@@ -225,7 +225,7 @@ describe("ExecuteAgentChatPanel", () => {
       render(<ExecuteAgentChatPanel {...defaultProps} sending={true} />);
 
       const sendButton = screen.getByRole("button", { name: "Send" });
-      expect(sendButton).toHaveAttribute("title", "Waiting for response…");
+      expect(sendButton).toHaveAttribute("title", "Saving guidance…");
     });
 
     it("allows typing in input while sending", async () => {

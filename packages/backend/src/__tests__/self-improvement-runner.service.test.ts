@@ -1515,14 +1515,12 @@ describe("experiment pipeline wiring", () => {
       () =>
         ({
           getProject: vi.fn().mockResolvedValue({ id: projectId, repoPath: "/tmp/repo" }),
-          getSettings: vi
-            .fn()
-            .mockResolvedValue({
-              simpleComplexityAgent: { type: "cursor", model: null, cliCommand: null },
-              complexComplexityAgent: { type: "cursor", model: null, cliCommand: null },
-              runAgentEnhancementExperiments: true,
-              aiAutonomyLevel: "full",
-            }),
+          getSettings: vi.fn().mockResolvedValue({
+            simpleComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+            complexComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+            runAgentEnhancementExperiments: true,
+            aiAutonomyLevel: "full",
+          }),
         }) as never
     );
     vi.mocked(governanceService.getConfig).mockResolvedValue({ mode: "enforced" } as never);

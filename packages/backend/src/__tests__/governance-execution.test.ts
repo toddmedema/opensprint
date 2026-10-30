@@ -40,6 +40,7 @@ const mocks = vi.hoisted(() => ({
   deliverOutbox: vi.fn(),
   audit: vi.fn(),
   invoke: vi.fn(),
+  guidance: vi.fn().mockReturnValue([]),
   anthropicConstructor: vi.fn(),
   openaiConstructor: vi.fn(),
   anthropicStream: vi.fn(),
@@ -48,6 +49,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../services/governance.service.js", () => ({ governanceService: mocks }));
 vi.mock("../services/agent.service.js", () => ({
   agentService: { invokePlanningAgent: mocks.invoke },
+}));
+vi.mock("../services/agent-chat.service.js", () => ({
+  agentChatService: { getHistory: mocks.guidance },
 }));
 // One regression traverses the real AgentService with SDKs that cannot reach the network.
 vi.mock("@anthropic-ai/sdk", () => ({
@@ -118,6 +122,7 @@ const appeal: ReviewAppeal = {
 };
 beforeEach(async () => {
   vi.resetAllMocks();
+  mocks.guidance.mockReturnValue([]);
   repo = await fs.mkdtemp(path.join(os.tmpdir(), "governance-execution-"));
   await exec("git", ["init", "-b", "main"], { cwd: repo });
   await fs.mkdir(path.join(repo, "src"));
@@ -302,9 +307,14 @@ function reject(appeals: ReviewAppeal[] = []) {
 
 describe("governance execution", () => {
   it("retains complete evidence and commits independently before a fix retry", async () => {
+    const guidance = [
+      { role: "user", status: "included", content: "Retained live clarification", attempt: 1 },
+    ];
+    mocks.guidance.mockReturnValue(guidance);
     expect(await reject()).toMatchObject({ waiting: false, case: { state: "fix_required" } });
     expect(mocks.invoke).not.toHaveBeenCalled();
     expect(cases[0].evidence.diff).toContain("diagnostic = 1");
+    expect(cases[0].evidence.guidance).toEqual(guidance);
     expect(cases[0].evidence.prompts).toEqual([
       { payload: { prompt: "full original coder prompt" } },
     ]);

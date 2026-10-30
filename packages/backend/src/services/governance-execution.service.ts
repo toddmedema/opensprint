@@ -857,6 +857,11 @@ export class GovernanceExecutionService {
       findings,
       appeals,
       evidence: {
+        guidance: (await import("./agent-chat.service.js")).agentChatService.getHistory(
+          input.projectId,
+          input.taskId,
+          input.attempt
+        ),
         attempt: input.attempt,
         invocationId: input.invocationId,
         retentionRefs: { base: `${refPrefix}/base`, head: `${refPrefix}/head` },

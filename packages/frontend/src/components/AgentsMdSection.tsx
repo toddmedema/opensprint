@@ -55,6 +55,16 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
   const [editValue, setEditValue] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState<"saved" | "error" | null>(null);
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (feedbackTimerRef.current !== null) clearTimeout(feedbackTimerRef.current);
+    };
+  }, []);
 
   const loadContent = useCallback(
     async (tab: AgentInstructionsTab) => {
@@ -87,6 +97,7 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
   editValueRef.current = editValue;
 
   const handleSave = useCallback(async () => {
+    if (feedbackTimerRef.current !== null) clearTimeout(feedbackTimerRef.current);
     const value = editValueRef.current;
     setSaving(true);
     setSaveFeedback(null);
@@ -97,16 +108,21 @@ export function AgentsMdSection({ projectId, testMode = false }: AgentsMdSection
       } else {
         await api.projects.updateAgentsInstructionsForRole(projectId, activeTab, toSave);
       }
+      if (!mountedRef.current) return;
       setContent(toSave);
       setEditValue(toSave);
       setEditing(false);
       setSaveFeedback("saved");
-      setTimeout(() => setSaveFeedback(null), 2000);
+      feedbackTimerRef.current = setTimeout(() => {
+        feedbackTimerRef.current = null;
+        setSaveFeedback(null);
+      }, 2000);
     } catch (err) {
+      if (!mountedRef.current) return;
       setSaveFeedback("error");
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
-      setSaving(false);
+      if (mountedRef.current) setSaving(false);
     }
   }, [projectId, activeTab]);
 

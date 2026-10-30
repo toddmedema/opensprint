@@ -174,10 +174,19 @@ export interface ExecuteStatusEvent {
 }
 
 /** Client → server: user message injected into the active Execute agent loop (API backends only). */
+export type AgentChatStatus =
+  | "accepted"
+  | "queued"
+  | "included"
+  | "failed"
+  | "cancelled"
+  | "run-ended";
+
 export interface AgentChatSendEvent {
   type: "agent.chat.send";
   taskId: string;
   message: string;
+  clientMessageId: string;
 }
 
 /** Server → client: message persisted and queued for the agent loop. */
@@ -186,6 +195,10 @@ export interface AgentChatReceivedEvent {
   taskId: string;
   messageId: string;
   timestamp: string;
+  clientMessageId?: string;
+  attemptId?: string;
+  status?: AgentChatStatus;
+  error?: string;
 }
 
 /** Server → client: assistant reply for a user chat turn. */
@@ -201,6 +214,7 @@ export interface AgentChatUnsupportedEvent {
   type: "agent.chat.unsupported";
   taskId: string;
   reason: string;
+  clientMessageId?: string;
 }
 
 export interface HilRequestEvent {

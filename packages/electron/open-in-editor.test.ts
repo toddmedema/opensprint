@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { openInEditor, type OpenInEditorDeps, type EditorMode } from "./open-in-editor";
+import { openInEditor, type OpenInEditorDeps } from "./open-in-editor";
 import type { execFile as cpExecFile } from "child_process";
 
 vi.mock("fs", () => ({
@@ -193,3 +193,29 @@ describe("openInEditor", () => {
     expect(openExternal).toHaveBeenCalledTimes(2);
   });
 });
+
+it.each(["vscode", "cursor"] as const)(
+  "encodes filesystem delimiters for %s URI fallback",
+  async (editor) => {
+    for (const folder of ["/tmp/日本 #?% folder/repo", "C:\\Users\\Todd #?%\\日本 Repo"]) {
+      const deps = makeDeps({ execFile: stubExecFileAllFail() });
+      expect((await openInEditor(folder, editor, deps)).method).toBe("uri");
+      const normalized = folder.replace(/\\/g, "/");
+      const uri = vi.mocked(deps.openExternal).mock.calls[0][0];
+      expect(uri).toBe(
+        editor +
+          "://file/" +
+          normalized
+            .split("/")
+            .map((part, i) =>
+              i === 0 && /^[a-zA-Z]:$/.test(part) ? part : encodeURIComponent(part)
+            )
+            .join("/")
+      );
+      const parsed = new URL(uri);
+      expect(parsed.search).toBe("");
+      expect(parsed.hash).toBe("");
+      expect(decodeURIComponent(parsed.pathname.slice(1))).toBe(normalized);
+    }
+  }
+);

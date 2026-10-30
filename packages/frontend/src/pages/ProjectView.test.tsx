@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, within, cleanup } from "@testing-library/react";
+import { render, screen, waitFor, within, cleanup, act } from "@testing-library/react";
 import { MemoryRouter, Routes, Route, useLocation, useNavigate, Navigate } from "react-router-dom";
 import { Provider } from "react-redux";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -794,8 +794,9 @@ describe("ProjectView URL deep linking for Plan and Build detail panes", () => {
       expect(screen.getByText("Test Project")).toBeInTheDocument();
     });
 
-    const state = store.getState();
-    expect(state.plan.selectedPlanId).toBe("opensprint.dev-abc");
+    await waitFor(() => {
+      expect(store.getState().plan.selectedPlanId).toBe("opensprint.dev-abc");
+    });
   });
 
   it("fetches plan chat history when loading plan phase with plan param (persistence across reloads)", async () => {
@@ -1086,4 +1087,142 @@ describe("ProjectView plan refresh toast", () => {
       ).toBeInTheDocument();
     });
   });
+});
+
+describe("ProjectShell database transport lifetime", () => {
+  it.each([true, false])(
+    "preserves stable cached task/plan/feedback references with initially ready=%s",
+    async (initiallyReady) => {
+      const client = createQueryClient();
+      client.setDefaultOptions({ queries: { staleTime: Infinity, retry: false } });
+      client.setQueryData(["db-status"], {
+        ok: initiallyReady,
+        state: initiallyReady ? "connected" : "disconnected",
+        lastCheckedAt: null,
+      });
+      const tasks = [
+        {
+          id: "cached-task",
+          title: "Cached task",
+          status: "open",
+          priority: 1,
+          type: "task",
+          kanbanColumn: "backlog",
+          labels: [],
+          dependencies: [],
+          createdAt: "",
+          updatedAt: "",
+          assignee: null,
+          epicId: null,
+          description: "",
+        },
+      ];
+      const plans = {
+        plans: [
+          {
+            metadata: { planId: "cached-plan", epicId: "epic", shippedAt: null, complexity: "low" },
+            content: "# Cached plan",
+            status: "planning",
+            taskCount: 0,
+            doneTaskCount: 0,
+            dependencyCount: 0,
+          },
+        ],
+        edges: [],
+      };
+      const feedback = [
+        {
+          id: "cached-feedback",
+          text: "Cached feedback",
+          status: "pending",
+          category: "bug",
+          mappedPlanId: null,
+          createdTaskIds: [],
+          createdAt: "",
+        },
+      ];
+      vi.mocked(api.tasks.list).mockResolvedValue(tasks as never);
+      vi.mocked(api.plans.list).mockResolvedValue(plans as never);
+      vi.mocked(api.feedback.list).mockResolvedValue(feedback as never);
+      client.setQueryData(queryKeys.tasks.list("proj-1"), tasks);
+      client.setQueryData(queryKeys.plans.list("proj-1"), plans);
+      client.setQueryData(queryKeys.feedback.list("proj-1"), feedback);
+      const store = createStore();
+      const view = renderWithRouter("/projects/proj-1/help", store, client);
+      await waitFor(() => expect(store.getState().execute.taskIdsOrder).toContain("cached-task"));
+      const before = {
+        tasks: store.getState().execute.tasksById,
+        plans: store.getState().plan.plans,
+        feedback: store.getState().eval.feedback,
+      };
+      for (const ok of [true, false, true]) {
+        await act(async () => {
+          client.setQueryData(["db-status"], {
+            ok,
+            state: ok ? "connected" : "disconnected",
+            lastCheckedAt: null,
+          });
+        });
+        expect(store.getState().execute.tasksById).toBe(before.tasks);
+        expect(store.getState().plan.plans).toBe(before.plans);
+        expect(store.getState().eval.feedback).toBe(before.feedback);
+      }
+      view.unmount();
+      expect(store.getState().execute.taskIdsOrder).toEqual([]);
+      expect(store.getState().plan.plans).toEqual([]);
+      expect(store.getState().eval.feedback).toEqual([]);
+      client.clear();
+    }
+  );
+});
+
+it("hydrates cached project data before pending database readiness resolves without resetting it", async () => {
+  let resolveReady!: (value: unknown) => void;
+  mockDbStatusGet.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveReady = resolve;
+      })
+  );
+  mockWsConnect.mockClear();
+  const client = createQueryClient();
+  const tasks = [TASK_FOR_DEEP_LINK];
+  const plans = { plans: [], edges: [] };
+  const feedback = [
+    {
+      id: "pending-ready-feedback",
+      text: "Draft",
+      status: "pending",
+      category: "bug",
+      mappedPlanId: null,
+      createdTaskIds: [],
+      createdAt: "",
+    },
+  ];
+  vi.mocked(api.tasks.list).mockResolvedValue(tasks);
+  vi.mocked(api.plans.list).mockResolvedValue(plans);
+  vi.mocked(api.feedback.list).mockResolvedValue(feedback as never);
+  client.setQueryData(queryKeys.tasks.list("proj-1"), tasks);
+  client.setQueryData(queryKeys.plans.list("proj-1"), plans);
+  client.setQueryData(queryKeys.feedback.list("proj-1"), feedback);
+  const store = createStore();
+  const view = renderWithRouter("/projects/proj-1/help", store, client);
+  await waitFor(() =>
+    expect(store.getState().execute.taskIdsOrder).toContain(TASK_FOR_DEEP_LINK.id)
+  );
+  expect(mockWsConnect).not.toHaveBeenCalled();
+  const before = {
+    tasks: store.getState().execute.tasksById,
+    plans: store.getState().plan.plans,
+    feedback: store.getState().eval.feedback,
+  };
+  await act(async () => {
+    resolveReady({ ok: true, state: "connected", lastCheckedAt: null });
+  });
+  await waitFor(() => expect(mockWsConnect).toHaveBeenCalledWith({ projectId: "proj-1" }));
+  expect(store.getState().execute.tasksById).toBe(before.tasks);
+  expect(store.getState().plan.plans).toBe(before.plans);
+  expect(store.getState().eval.feedback).toBe(before.feedback);
+  view.unmount();
+  client.clear();
 });

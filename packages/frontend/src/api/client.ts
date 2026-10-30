@@ -247,7 +247,7 @@ function getLocalSessionAuthHeaders(): Record<string, string> {
 }
 
 /** Generic fetch wrapper with typed responses */
-async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+export async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const url = `${BASE_URL}${endpoint}`;
   const { timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS, ...fetchOptions } = options;
   const signal = mergeRequestSignal(timeoutMs, fetchOptions.signal);
@@ -673,10 +673,18 @@ export const api = {
   // ─── PRD ───
   prd: {
     get: (projectId: string) => request<Prd>(`/projects/${projectId}/prd`),
-    updateSection: (projectId: string, section: string, content: string) =>
+    updateSection: (
+      projectId: string,
+      section: string,
+      content: string,
+      expectedVersion?: number
+    ) =>
       request<PrdSectionUpdateResult>(`/projects/${projectId}/prd/${section}`, {
         method: "PUT",
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({
+          content,
+          ...(expectedVersion === undefined ? {} : { expectedVersion }),
+        }),
       }),
     getHistory: (projectId: string) =>
       request<PrdChangeLogEntry[]>(`/projects/${projectId}/prd/history`),

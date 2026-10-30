@@ -25,16 +25,26 @@ function toSqliteSqlAndParams(
   sql: string,
   params: unknown[] = []
 ): { sql: string; params: unknown[] } {
-  let out = sql.replace(/\$(\d+)/g, "?");
-  // Strip Postgres ::type casts so the same SQL works on both (e.g. COUNT(*)::int)
-  out = out.replace(/::(int|integer|bigint|text)\b/gi, "");
-  return { sql: out, params };
+  const bound: unknown[] = [];
+  // Skip SQL literals, quoted identifiers and comments. PostgreSQL dollar-quoted
+  // strings are not supported by this SQLite compatibility adapter.
+  const out = sql.replace(
+    /'(?:[^']|'')*'|"(?:[^"]|"")*"|`[^`]*`|\[[^\]]*\]|--[^\r\n]*|\/\*[\s\S]*?\*\/|\$(\d+)|::(?:int|integer|bigint|text)\b/gi,
+    (token, index: string | undefined) => {
+      if (index !== undefined) {
+        bound.push(params[Number(index) - 1]);
+        return "?";
+      }
+      return token.startsWith("::") ? "" : token;
+    }
+  );
+  return { sql: out, params: bound.length > 0 ? bound : params };
 }
 
 function runAsync<T>(fn: () => T | Promise<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     setImmediate(() => {
-      Promise.resolve(fn()).then(resolve).catch(reject);
+      Promise.resolve().then(fn).then(resolve, reject);
     });
   });
 }

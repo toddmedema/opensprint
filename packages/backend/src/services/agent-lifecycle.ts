@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import { randomUUID } from "crypto";
 import type {
   AgentConfig,
   AgentPhase,
@@ -12,7 +13,10 @@ import {
   HEARTBEAT_INTERVAL_MS,
   OPENSPRINT_PATHS,
 } from "@opensprint/shared";
-import { acquireGlobalAgentSlot } from "./agent-global-concurrency.service.js";
+import {
+  acquireGlobalAgentSlot,
+  trackExistingGlobalAgentSlot,
+} from "./agent-global-concurrency.service.js";
 import { agentService } from "./agent.service.js";
 import type { CodingAgentHandle } from "./agent.service.js";
 import { activeAgentsService } from "./active-agents.service.js";
@@ -25,6 +29,7 @@ import { createLogger } from "../utils/logger.js";
 import { createAgentOutputFilter } from "../utils/agent-output-filter.js";
 import type { AgentOutputFilter } from "../utils/agent-output-filter.js";
 import { fireAndForget } from "../utils/fire-and-forget.js";
+import { AgentRunner } from "./agent/agent-runner.js";
 
 const log = createLogger("agent-lifecycle");
 
@@ -61,6 +66,11 @@ const MAX_OUTPUT_LOG_BYTES = 5 * 1024 * 1024; // 5 MB
  * updates them during agent execution.
  */
 export interface AgentRunState {
+  /** Local invocation identity; callbacks from earlier generations must not mutate this run. */
+  attemptId?: string;
+  runner?: AgentRunner;
+  /** Tombstone for a removed slot, including removal before run() was entered. */
+  cancelled?: boolean;
   activeProcess: CodingAgentHandle | null;
   lastOutputTime: number;
   lastOutputAtIso?: string;
@@ -116,6 +126,8 @@ export interface AgentRunParams {
    * .opensprint/active/<taskId>/<subpath>/heartbeat.json. Used for parallel angle reviewers.
    */
   heartbeatSubpath?: string;
+  /** Revalidate the owning slot after admission waits and preparation awaits. */
+  isStillActive?: () => boolean;
 }
 
 /**
@@ -152,6 +164,7 @@ export class AgentLifecycleManager {
    * finishes (either normally via onExit, or via dead-process detection).
    */
   async run(params: AgentRunParams, runState: AgentRunState, timers: TimerRegistry): Promise<void> {
+    if (runState.cancelled || params.isStillActive?.() === false) return;
     const {
       projectId,
       taskId,
@@ -165,6 +178,17 @@ export class AgentLifecycleManager {
       onDone,
     } = params;
     this.assertPromptPathMatchesWorktree(wtPath, taskId, promptPath);
+
+    runState.runner?.cancel();
+    const runner = new AgentRunner(`${taskId}:${phase}:${params.attempt}:${randomUUID()}`);
+    runState.runner = runner;
+    runState.attemptId = runner.attemptId;
+    const ownsRun = () =>
+      runState.attemptId === runner.attemptId &&
+      !runState.cancelled &&
+      params.isStillActive?.() !== false;
+    // A queued invocation is cancellable through the same handle used by slot removal.
+    runState.activeProcess = { kill: () => runner.cancel(), pid: null };
 
     runState.killedDueToTimeout = false;
     runState.exitHandled = false;
@@ -186,20 +210,30 @@ export class AgentLifecycleManager {
       path.join(wtPath, OPENSPRINT_PATHS.active, taskId, OPENSPRINT_PATHS.agentOutputLog);
     const heartbeatSubpath = params.heartbeatSubpath;
 
-    broadcastToProject(projectId, {
-      type: "agent.started",
-      taskId,
-      phase,
-      branchName,
-      startedAt: runState.startedAt,
-    });
-
     const invoke =
       role === "coder"
         ? agentService.invokeCodingAgent.bind(agentService)
         : agentService.invokeReviewAgent.bind(agentService);
 
-    const releaseGlobalSlot = await acquireGlobalAgentSlot(projectId);
+    let releaseGlobalSlot: () => void;
+    try {
+      releaseGlobalSlot = await acquireGlobalAgentSlot(projectId, runner.controller.signal);
+    } catch (err) {
+      if (runner.controller.signal.aborted) {
+        if (ownsRun()) runState.activeProcess = null;
+        if (ownsRun() && runner.notifyCompletionOnCancel) await onDone(null);
+        return;
+      }
+      if (ownsRun()) runState.activeProcess = null;
+      throw err;
+    }
+    if (!ownsRun() || runner.controller.signal.aborted || runState.exitHandled) {
+      releaseGlobalSlot();
+      runner.cancel();
+      if (ownsRun()) runState.activeProcess = null;
+      if (ownsRun() && runner.notifyCompletionOnCancel) await onDone(null);
+      return;
+    }
     const releaseSlotOnce = (() => {
       let done = false;
       return () => {
@@ -210,62 +244,99 @@ export class AgentLifecycleManager {
     })();
     const wrappedOnDone = async (code: number | null) => {
       releaseSlotOnce();
+      runner.complete();
+      if (!ownsRun() || (runner.controller.signal.aborted && !runner.notifyCompletionOnCancel))
+        return;
       await onDone(code);
     };
     try {
-      runState.activeProcess = invoke(promptPath, agentConfig, {
-        cwd: wtPath,
-        agentRole: role === "coder" ? "coder" : "code reviewer",
-        outputLogPath,
-        projectId,
-        tracking: {
-          id: taskId,
-          projectId,
-          phase,
-          role,
-          label: agentLabel,
-          branchName,
-        },
-        onOutput: (chunk: string) => {
-          const toolEvents = updateToolCallState(runState, chunk);
-          this.recordToolActivity(params, toolEvents);
-          const filtered = runState.outputFilter!.filter(chunk);
-          if (filtered) appendOutputLog(runState, filtered);
-          if (filtered) sendAgentOutputToProject(projectId, taskId, filtered);
-          void this.recordOutputActivity(params, runState, Date.now());
-        },
-        onExit: async (code: number | null) => {
-          if (runState.exitHandled) return;
-          runState.exitHandled = true;
-          runState.activeProcess = null;
-          this.cleanupTimers(timers);
-          const startedAtMs = Date.parse(runState.startedAt ?? "");
-          const durationMs = Number.isFinite(startedAtMs)
-            ? Math.max(0, Date.now() - startedAtMs)
-            : null;
-          fireAndForget(
-            eventLogService.append(params.repoPath, {
-              timestamp: new Date().toISOString(),
-              projectId: params.projectId,
-              taskId: params.taskId,
-              event: "agent.process_exited",
-              data: {
-                attempt: params.attempt,
-                phase: params.phase,
-                exitCode: code,
-                durationMs,
-              },
-            }),
-            "agent-lifecycle:process-exited"
-          );
-          await heartbeatService.deleteHeartbeat(wtPath, taskId, params.heartbeatSubpath);
-          try {
-            await wrappedOnDone(code);
-          } catch (err) {
-            log.error("onDone failed", { projectId: params.projectId, taskId, phase: params.phase, attempt: params.attempt, exitCode: code, err });
-          }
-        },
+      broadcastToProject(projectId, {
+        type: "agent.started",
+        taskId,
+        phase,
+        branchName,
+        startedAt: runState.startedAt,
       });
+      const handle = runner.start(() =>
+        invoke(promptPath, agentConfig, {
+          cwd: wtPath,
+          agentRole: role === "coder" ? "coder" : "code reviewer",
+          outputLogPath,
+          projectId,
+          tracking: {
+            id: taskId,
+            projectId,
+            phase,
+            role,
+            label: agentLabel,
+            branchName,
+            attempt: params.attempt,
+            attemptId: runner.attemptId,
+          },
+          onOutput: (chunk: string) => {
+            if (!ownsRun() || runner.controller.signal.aborted || runState.exitHandled) return;
+            const toolEvents = updateToolCallState(runState, chunk);
+            this.recordToolActivity(params, toolEvents);
+            const filtered = runState.outputFilter!.filter(chunk);
+            if (filtered) appendOutputLog(runState, filtered);
+            if (filtered) sendAgentOutputToProject(projectId, taskId, filtered);
+            void this.recordOutputActivity(params, runState, Date.now());
+          },
+          onExit: async (code: number | null) => {
+            releaseSlotOnce();
+            runner.complete();
+            if (!ownsRun() || runState.exitHandled) return;
+            runState.exitHandled = true;
+            runState.activeProcess = null;
+            this.cleanupTimers(timers);
+            if (runner.controller.signal.aborted && !runner.notifyCompletionOnCancel) return;
+            const startedAtMs = Date.parse(runState.startedAt ?? "");
+            const durationMs = Number.isFinite(startedAtMs)
+              ? Math.max(0, Date.now() - startedAtMs)
+              : null;
+            fireAndForget(
+              eventLogService.append(params.repoPath, {
+                timestamp: new Date().toISOString(),
+                projectId: params.projectId,
+                taskId: params.taskId,
+                event: "agent.process_exited",
+                data: {
+                  attempt: params.attempt,
+                  phase: params.phase,
+                  exitCode: code,
+                  durationMs,
+                },
+              }),
+              "agent-lifecycle:process-exited"
+            );
+            await heartbeatService.deleteHeartbeat(wtPath, taskId, params.heartbeatSubpath);
+            try {
+              await wrappedOnDone(code);
+            } catch (err) {
+              log.error("onDone failed", {
+                projectId: params.projectId,
+                taskId,
+                phase: params.phase,
+                attempt: params.attempt,
+                exitCode: code,
+                err,
+              });
+            }
+          },
+        })
+      );
+      if (!handle || !ownsRun() || runState.exitHandled) {
+        releaseSlotOnce();
+        return;
+      }
+      // Keep cancellation attached to admission ownership after the real handle exists.
+      runState.activeProcess = {
+        kill: () => handle.kill(),
+        get pid() {
+          return handle.pid;
+        },
+        pendingMessages: handle.pendingMessages,
+      };
 
       this.startHeartbeat(runState, wtPath, taskId, timers, heartbeatSubpath);
       this.startResultMonitor(
@@ -290,6 +361,8 @@ export class AgentLifecycleManager {
       );
     } catch (err) {
       releaseSlotOnce();
+      runner.complete();
+      if (ownsRun()) runState.activeProcess = null;
       throw err;
     }
   }
@@ -310,11 +383,22 @@ export class AgentLifecycleManager {
       recoveredLastOutputTimeMs?: number;
     }
   ): Promise<void> {
+    if (runState.cancelled || params.isStillActive?.() === false) return;
     const { projectId, wtPath, taskId, branchName, onDone, agentConfig } = params;
     this.assertPromptPathMatchesWorktree(wtPath, taskId, params.promptPath);
+    runState.runner?.cancel();
+    const runner = new AgentRunner(`${taskId}:${params.phase}:${params.attempt}:${randomUUID()}`);
+    runner.start(() => handle);
+    runState.runner = runner;
+    runState.attemptId = runner.attemptId;
     runState.activeProcess = handle;
+    const releaseGlobalSlot = trackExistingGlobalAgentSlot(projectId);
     if (handle.pendingMessages) {
-      activeAgentsService.registerChannel(taskId, handle.pendingMessages, agentConfig.type);
+      activeAgentsService.registerChannel(taskId, handle.pendingMessages, agentConfig.type, {
+        projectId,
+        attempt: params.attempt,
+        attemptId: runner.attemptId,
+      });
     }
     runState.outputLog = [];
     runState.outputLogBytes = 0;
@@ -331,53 +415,70 @@ export class AgentLifecycleManager {
     runState.suspendDeadlineMs = undefined;
     runState.firstOutputAtIso = undefined;
 
-    const outputLogPath = path.join(
-      wtPath,
-      OPENSPRINT_PATHS.active,
-      taskId,
-      OPENSPRINT_PATHS.agentOutputLog
-    );
-    await this.primeRecoveredRunState(outputLogPath, runState, options?.recoveredLastOutputTimeMs);
-    const outputTailStop = this.startOutputTail(
-      outputLogPath,
-      params,
-      runState,
-      projectId,
-      taskId,
-      timers
-    );
-    runState.outputTailStop = outputTailStop;
+    let monitoringInstalled = false;
+    try {
+      const outputLogPath =
+        params.outputLogPath ??
+        path.join(wtPath, OPENSPRINT_PATHS.active, taskId, OPENSPRINT_PATHS.agentOutputLog);
+      await this.primeRecoveredRunState(
+        outputLogPath,
+        runState,
+        options?.recoveredLastOutputTimeMs,
+        () => runState.attemptId === runner.attemptId && !runner.controller.signal.aborted
+      );
+      if (runState.attemptId !== runner.attemptId || runner.controller.signal.aborted) return;
+      const outputTailStop = this.startOutputTail(
+        outputLogPath,
+        params,
+        runState,
+        projectId,
+        taskId,
+        timers
+      );
+      runState.outputTailStop = outputTailStop;
 
-    const wrappedOnDone = async (code: number | null) => {
-      runState.outputTailStop?.();
-      runState.outputTailStop = undefined;
-      if (handle.pendingMessages) {
-        activeAgentsService.unregister(taskId);
+      const wrappedOnDone = async (code: number | null) => {
+        releaseGlobalSlot();
+        runner.complete();
+        if (runState.attemptId !== runner.attemptId || runner.controller.signal.aborted) return;
+        runState.outputTailStop?.();
+        runState.outputTailStop = undefined;
+        if (handle.pendingMessages) {
+          activeAgentsService.unregister(taskId, runner.attemptId);
+        }
+        await onDone(code);
+      };
+
+      this.startHeartbeat(runState, wtPath, taskId, timers);
+      // A result file does not establish ownership or prove the recovered
+      // process stopped; retain its assignment until completion is observed.
+      if (handle.ownership !== "recovered_unverified")
+        this.startResultMonitor(
+          params,
+          params.promptPath,
+          runState,
+          wtPath,
+          taskId,
+          timers,
+          wrappedOnDone
+        );
+      this.startInactivityMonitor(
+        runState,
+        wtPath,
+        taskId,
+        branchName,
+        timers,
+        wrappedOnDone,
+        params
+      );
+      monitoringInstalled = true;
+      if (options?.initialSuspendReason) {
+        await this.markSuspended(params, runState, options.initialSuspendReason);
       }
-      await onDone(code);
-    };
-
-    this.startHeartbeat(runState, wtPath, taskId, timers);
-    this.startResultMonitor(
-      params,
-      params.promptPath,
-      runState,
-      wtPath,
-      taskId,
-      timers,
-      wrappedOnDone
-    );
-    this.startInactivityMonitor(
-      runState,
-      wtPath,
-      taskId,
-      branchName,
-      timers,
-      wrappedOnDone,
-      params
-    );
-    if (options?.initialSuspendReason) {
-      await this.markSuspended(params, runState, options.initialSuspendReason);
+    } finally {
+      // Recovery only owns this admission after it installs completion monitoring.
+      // Cancellation, replacement, and initialization errors must not leak a slot.
+      if (!monitoringInstalled) releaseGlobalSlot();
     }
   }
 
@@ -435,17 +536,30 @@ export class AgentLifecycleManager {
   ): void {
     const resultPath = path.join(path.dirname(promptPath), "result.json");
     let checkInFlight = false;
+    const attemptId = runState.attemptId;
 
     timers.setInterval(
       "result",
       () => {
-        if (runState.exitHandled || checkInFlight) return;
+        if (
+          runState.attemptId !== attemptId ||
+          runState.runner?.controller.signal.aborted ||
+          runState.exitHandled ||
+          checkInFlight
+        )
+          return;
         checkInFlight = true;
         fs.readFile(resultPath, "utf-8")
           .then(async (raw) => {
             const parsed = JSON.parse(raw) as { status?: string };
             const status = typeof parsed?.status === "string" ? parsed.status.toLowerCase() : "";
-            if (!RESULT_TERMINAL_STATUSES.has(status) || runState.exitHandled) return;
+            if (
+              !RESULT_TERMINAL_STATUSES.has(status) ||
+              runState.exitHandled ||
+              runState.attemptId !== attemptId ||
+              runState.runner?.controller.signal.aborted
+            )
+              return;
 
             const exitCode = status === "success" || status === "approved" ? 0 : 1;
             const activeProcess = runState.activeProcess;
@@ -484,7 +598,11 @@ export class AgentLifecycleManager {
             }
             await heartbeatService
               .deleteHeartbeat(wtPath, taskId, heartbeatSubpath)
-              .catch((err: unknown) => { log.warn("heartbeat delete failed", { err: err instanceof Error ? err.message : String(err) }); });
+              .catch((err: unknown) => {
+                log.warn("heartbeat delete failed", {
+                  err: err instanceof Error ? err.message : String(err),
+                });
+              });
             await onDone(exitCode);
           })
           .catch(() => {
@@ -515,9 +633,13 @@ export class AgentLifecycleManager {
     let initialized = false;
     const TAIL_TIMER_NAME = "outputTail";
     const MAX_CHUNK = 256 * 1024;
+    const attemptId = runState.attemptId;
+    const ownsRun = () =>
+      runState.attemptId === attemptId && !runState.runner?.controller.signal.aborted;
 
     const drain = async (): Promise<void> => {
       try {
+        if (!ownsRun()) return;
         const s = await fs.stat(outputLogPath);
         if (!initialized) {
           readOffset = s.size;
@@ -530,7 +652,7 @@ export class AgentLifecycleManager {
         try {
           const buf = Buffer.alloc(toRead);
           const { bytesRead } = await fh.read(buf, 0, toRead, readOffset);
-          if (bytesRead > 0) {
+          if (bytesRead > 0 && ownsRun()) {
             readOffset += bytesRead;
             const chunk = buf.subarray(0, bytesRead).toString();
             const toolEvents = updateToolCallState(runState, chunk);
@@ -570,8 +692,14 @@ export class AgentLifecycleManager {
     timers: TimerRegistry,
     heartbeatSubpath?: string
   ): void {
+    const attemptId = runState.attemptId;
     const writeHeartbeat = () => {
-      if (!runState.activeProcess) return;
+      if (
+        runState.attemptId !== attemptId ||
+        runState.runner?.controller.signal.aborted ||
+        !runState.activeProcess
+      )
+        return;
       fireAndForget(
         heartbeatService.writeHeartbeat(
           wtPath,
@@ -605,10 +733,16 @@ export class AgentLifecycleManager {
     params?: AgentRunParams,
     heartbeatSubpath?: string
   ): void {
+    const attemptId = runState.attemptId;
     timers.setInterval(
       "inactivity",
       () => {
-        if (runState.exitHandled) return;
+        if (
+          runState.attemptId !== attemptId ||
+          runState.runner?.controller.signal.aborted ||
+          runState.exitHandled
+        )
+          return;
         const elapsed = Date.now() - runState.lastOutputTime;
         const hasActiveToolCalls = runState.activeToolCallIds.size > 0;
         const effectiveTimeout = hasActiveToolCalls
@@ -620,7 +754,13 @@ export class AgentLifecycleManager {
         if (pidDead) {
           if (runState.exitHandled) return;
           runState.exitHandled = true;
-          log.warn("Agent process dead, recovering immediately", { projectId: params?.projectId, taskId, phase: params?.phase, attempt: params?.attempt, pid: proc.pid });
+          log.warn("Agent process dead, recovering immediately", {
+            projectId: params?.projectId,
+            taskId,
+            phase: params?.phase,
+            attempt: params?.attempt,
+            pid: proc.pid,
+          });
           if (params) {
             fireAndForget(
               eventLogService.append(params.repoPath, {
@@ -639,16 +779,30 @@ export class AgentLifecycleManager {
           }
           runState.activeProcess = null;
           this.cleanupTimers(timers);
-          fireAndForget(heartbeatService.deleteHeartbeat(wtPath, taskId, heartbeatSubpath), "agent-lifecycle:heartbeat-delete");
+          fireAndForget(
+            heartbeatService.deleteHeartbeat(wtPath, taskId, heartbeatSubpath),
+            "agent-lifecycle:heartbeat-delete"
+          );
           this.branchManager
             .commitWip(wtPath, taskId)
             .then(() => onDone(null))
             .catch((err) => {
-              log.error("Post-death handler failed", { projectId: params?.projectId, taskId, phase: params?.phase, attempt: params?.attempt, err });
+              log.error("Post-death handler failed", {
+                projectId: params?.projectId,
+                taskId,
+                phase: params?.phase,
+                attempt: params?.attempt,
+                err,
+              });
               return onDone(null);
             })
             .catch((err) => {
-              log.error("onDone fallback also failed", { projectId: params?.projectId, taskId, phase: params?.phase, err });
+              log.error("onDone fallback also failed", {
+                projectId: params?.projectId,
+                taskId,
+                phase: params?.phase,
+                err,
+              });
             });
           return;
         }
@@ -717,6 +871,12 @@ export class AgentLifecycleManager {
           ) {
             return;
           }
+          if (proc?.ownership === "recovered_unverified") {
+            if (params && runState.lifecycleState !== "suspended") {
+              void this.markSuspended(params, runState, "backend_restart");
+            }
+            return;
+          }
           log.warn("Agent timeout", {
             projectId: params?.projectId,
             taskId,
@@ -731,10 +891,19 @@ export class AgentLifecycleManager {
             runState.killedDueToTimeout = true;
             this.branchManager
               .commitWip(wtPath, taskId)
-              .then(() => runState.activeProcess?.kill())
+              .then(() => {
+                if (runState.attemptId === attemptId && runState.activeProcess === proc)
+                  proc?.kill();
+              })
               .catch((err) => {
-                log.error("Inactivity handler failed", { projectId: params?.projectId, taskId, phase: params?.phase, err });
-                runState.activeProcess?.kill();
+                log.error("Inactivity handler failed", {
+                  projectId: params?.projectId,
+                  taskId,
+                  phase: params?.phase,
+                  err,
+                });
+                if (runState.attemptId === attemptId && runState.activeProcess === proc)
+                  proc?.kill();
               });
           }
         }
@@ -819,7 +988,8 @@ export class AgentLifecycleManager {
   private async primeRecoveredRunState(
     outputLogPath: string,
     runState: AgentRunState,
-    fallbackLastOutputTimeMs?: number
+    fallbackLastOutputTimeMs?: number,
+    ownsRun: () => boolean = () => true
   ): Promise<void> {
     let primedTime = fallbackLastOutputTimeMs ?? Date.now();
     try {
@@ -831,7 +1001,7 @@ export class AgentLifecycleManager {
         try {
           const buf = Buffer.alloc(stat.size - start);
           const { bytesRead } = await fh.read(buf, 0, buf.length, start);
-          if (bytesRead > 0) {
+          if (bytesRead > 0 && ownsRun()) {
             updateToolCallState(runState, buf.subarray(0, bytesRead).toString());
           }
         } finally {
@@ -841,7 +1011,7 @@ export class AgentLifecycleManager {
     } catch {
       // File may not exist yet; fall back to heartbeat timestamp when available.
     }
-    this.setRunningState(runState, primedTime);
+    if (ownsRun()) this.setRunningState(runState, primedTime);
   }
 
   private recordToolActivity(params: AgentRunParams, toolEvents: ToolCallLifecycleEvent[]): void {

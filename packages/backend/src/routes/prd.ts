@@ -13,7 +13,11 @@ import { prdFromCodebaseService } from "../services/prd-from-codebase.service.js
 import { broadcastToProject } from "../websocket/index.js";
 import { notificationService } from "../services/notification.service.js";
 import { prdProposalStore, hashSpecContent } from "../services/prd-proposal-store.js";
-import { applyDiffPagination, computeLineDiff, isDiffContentPayloadTooLarge } from "../utils/diff.js";
+import {
+  applyDiffPagination,
+  computeLineDiff,
+  isDiffContentPayloadTooLarge,
+} from "../utils/diff.js";
 import { prdToSpecMarkdown } from "@opensprint/shared";
 import type { PrdService } from "../services/prd.service.js";
 import type { ChatService } from "../services/chat.service.js";
@@ -208,8 +212,7 @@ export function createPrdRouter({ prdService, chatService }: PrdRouterDeps): Rou
       const proposedUpdates = scopeMeta?.scopeChangeProposedUpdates as
         | ScopeChangeProposedUpdate[]
         | undefined;
-      const hasLegacyProposed =
-        Array.isArray(proposedUpdates) && proposedUpdates.length > 0;
+      const hasLegacyProposed = Array.isArray(proposedUpdates) && proposedUpdates.length > 0;
 
       if (!pendingProposal && !hasLegacyProposed) {
         res.status(404).json({
@@ -287,12 +290,17 @@ export function createPrdRouter({ prdService, chatService }: PrdRouterDeps): Rou
     validateParams(prdSectionParamsSchema),
     validateBody(prdSectionPutBodySchema),
     wrapAsync(async (req: Request<SectionParams>, res) => {
-      const { content, source } = req.body as { content: string; source?: string };
+      const { content, source, expectedVersion } = req.body as {
+        content: string;
+        source?: string;
+        expectedVersion?: number;
+      };
       const result = await prdService.updateSection(
         req.params.projectId,
         req.params.section,
         content,
-        (source ?? "sketch") as PrdChangeLogEntry["source"]
+        (source ?? "sketch") as PrdChangeLogEntry["source"],
+        ...(expectedVersion === undefined ? [] : [expectedVersion])
       );
 
       // Sync direct edit to conversation context (PRD §7.1.5)

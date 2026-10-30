@@ -23,32 +23,26 @@ const rule = {
 };
 vi.mock("../services/governance.service.js", () => ({
   governanceService: {
-    getProposal: vi
-      .fn()
-      .mockResolvedValue({
-        id: "p1",
-        baseReleaseId: "base",
-        version: 1,
-        createdAt: "2026-10-30T00:00:00Z",
-        supportingDecisionIds: [],
-        contraryDecisionIds: [],
-      }),
-    getRelease: vi
-      .fn()
-      .mockImplementation(async () => ({
-        id: "base",
-        rules: [rule],
-        instructions: {},
-        contentHash: "base-hash",
-      })),
-    previewProposalRelease: vi
-      .fn()
-      .mockImplementation(async () => ({
-        id: "candidate",
-        rules: [rule],
-        instructions: {},
-        contentHash: "candidate-hash",
-      })),
+    getProposal: vi.fn().mockResolvedValue({
+      id: "p1",
+      baseReleaseId: "base",
+      version: 1,
+      createdAt: "2026-10-30T00:00:00Z",
+      supportingDecisionIds: [],
+      contraryDecisionIds: [],
+    }),
+    getRelease: vi.fn().mockImplementation(async () => ({
+      id: "base",
+      rules: [rule],
+      instructions: {},
+      contentHash: "base-hash",
+    })),
+    previewProposalRelease: vi.fn().mockImplementation(async () => ({
+      id: "candidate",
+      rules: [rule],
+      instructions: {},
+      contentHash: "candidate-hash",
+    })),
     recordEvaluation: mocks.record,
     activateProposal: mocks.activate,
   },
@@ -56,20 +50,18 @@ vi.mock("../services/governance.service.js", () => ({
 vi.mock("../services/replay-fixture.service.js", () => ({
   REPLAY_LABELS: ["compliant", "exception", "defect", "conflict", "retrieval_miss"],
   replayFixtureService: {
-    list: vi
-      .fn()
-      .mockImplementation(async () =>
-        Array.from({ length: 10 }, (_, i) => ({
-          hash: `fixture-${i}`,
-          fixture: {
-            sessionId: i + 1,
-            policyReleaseId: "base",
-            changedPaths: ["src/x.ts"],
-            label: ["compliant", "exception", "defect", "conflict", "retrieval_miss"][i % 5],
-            holdout: true,
-          },
-        }))
-      ),
+    list: vi.fn().mockImplementation(async () =>
+      Array.from({ length: 10 }, (_, i) => ({
+        hash: `fixture-${i}`,
+        fixture: {
+          sessionId: i + 1,
+          policyReleaseId: "base",
+          changedPaths: ["src/x.ts"],
+          label: ["compliant", "exception", "defect", "conflict", "retrieval_miss"][i % 5],
+          holdout: true,
+        },
+      }))
+    ),
     saveEvaluation: vi.fn().mockResolvedValue("retained-artifact-hash"),
   },
 }));

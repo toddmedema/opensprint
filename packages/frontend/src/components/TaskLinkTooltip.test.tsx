@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
+import { useRef } from "react";
+import { useModalA11y } from "../hooks/useModalA11y";
 import { TaskLinkTooltip } from "./TaskLinkTooltip";
 
 const mockTasksGet = vi.fn();
@@ -176,4 +178,121 @@ describe("TaskLinkTooltip", () => {
     expect(tooltip).toHaveClass("text-theme-text");
     expect(tooltip).toHaveClass("ring-theme-border");
   });
+});
+
+it("supports focused titles, retains existing descriptions and ignores fetch completion after Escape", async () => {
+  let resolveTitle!: (value: unknown) => void;
+  mockTasksGet.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveTitle = resolve;
+      })
+  );
+  render(
+    <>
+      <span id="existing-description">Existing description</span>
+      <TaskLinkTooltip projectId="A" taskId="task-focus">
+        <button aria-describedby="existing-description">Focused task</button>
+      </TaskLinkTooltip>
+    </>
+  );
+  const button = screen.getByRole("button", { name: "Focused task" });
+  fireEvent.focus(button);
+  expect(mockTasksGet).toHaveBeenCalledWith("A", "task-focus");
+  fireEvent.keyDown(button, { key: "Escape" });
+  await act(async () => {
+    resolveTitle({ title: "Late title" });
+  });
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  expect(button).toHaveAccessibleDescription("Existing description");
+});
+
+it("keeps a focused cached title visible on mouseleave and dismisses on blur", async () => {
+  render(
+    <TaskLinkTooltip projectId="A" taskId="task-focus" cachedTitle="Full cached title">
+      <button>Focused task</button>
+    </TaskLinkTooltip>
+  );
+  const button = screen.getByRole("button");
+  await act(async () => {
+    button.focus();
+  });
+  expect(button).toHaveAccessibleDescription("Full cached title");
+  fireEvent.mouseEnter(button);
+  fireEvent.mouseLeave(button);
+  expect(screen.getByRole("tooltip")).toBeInTheDocument();
+  fireEvent.blur(button);
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+});
+
+it("fetches an uncached focused title and retains it while the pointer still owns it", async () => {
+  mockTasksGet.mockResolvedValueOnce({ title: "Fetched keyboard title" });
+  render(
+    <TaskLinkTooltip projectId="A" taskId="focus-fetch">
+      <button>Task</button>
+    </TaskLinkTooltip>
+  );
+  const button = screen.getByRole("button");
+  await act(async () => {
+    button.focus();
+  });
+  expect(button).toHaveAccessibleDescription("Fetched keyboard title");
+  fireEvent.mouseEnter(button);
+  fireEvent.blur(button);
+  expect(screen.getByRole("tooltip")).toBeInTheDocument();
+  fireEvent.mouseLeave(button);
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+});
+
+it("rejects a focused task fetch from an obsolete project identity", async () => {
+  let resolveOld!: (value: unknown) => void;
+  mockTasksGet.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        resolveOld = resolve;
+      })
+  );
+  const view = render(
+    <TaskLinkTooltip projectId="A" taskId="same">
+      <button>Task</button>
+    </TaskLinkTooltip>
+  );
+  await act(async () => {
+    screen.getByRole("button").focus();
+  });
+  view.rerender(
+    <TaskLinkTooltip projectId="B" taskId="same">
+      <button>Task</button>
+    </TaskLinkTooltip>
+  );
+  await act(async () => {
+    resolveOld({ title: "Obsolete project title" });
+  });
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+});
+
+it("dismisses a focused tooltip before its containing modal, then lets the next Escape close the modal", () => {
+  const close = vi.fn();
+  function ModalWithTooltip() {
+    const containerRef = useRef<HTMLDivElement>(null);
+    useModalA11y({ containerRef, onClose: close });
+    return (
+      <div role="dialog" aria-label="Task dialog" tabIndex={-1} ref={containerRef}>
+        <TaskLinkTooltip projectId="A" taskId="task" cachedTitle="Full task title">
+          <button>Task chip</button>
+        </TaskLinkTooltip>
+      </div>
+    );
+  }
+  render(<ModalWithTooltip />);
+  const button = screen.getByRole("button", { name: "Task chip" });
+  act(() => button.focus());
+  expect(screen.getByRole("tooltip")).toHaveTextContent("Full task title");
+  fireEvent.keyDown(button, { key: "Escape" });
+  expect(close).not.toHaveBeenCalled();
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  expect(screen.getByRole("dialog", { name: "Task dialog" })).toBeInTheDocument();
+  expect(button).toHaveFocus();
+  fireEvent.keyDown(button, { key: "Escape" });
+  expect(close).toHaveBeenCalledTimes(1);
 });

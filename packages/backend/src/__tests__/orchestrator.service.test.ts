@@ -3639,6 +3639,8 @@ describe("OrchestratorService (slot-based model)", () => {
       slot.phase = "review";
       slot.includeGeneralReview = true;
       const killGeneral = vi.fn();
+      // This fixture replaces the invocation with a standalone legacy handle.
+      (slot.agent as { runner?: unknown }).runner = undefined;
       slot.agent.activeProcess = { kill: killGeneral };
       slot.reviewAgents = new Map([
         [

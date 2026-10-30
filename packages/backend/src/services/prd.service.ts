@@ -15,6 +15,7 @@ import { assertMigrationCompleteForResource } from "./migration-guard.service.js
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import { createLogger } from "../utils/logger.js";
+import { withProjectMutation } from "./project-mutation-lock.js";
 
 const log = createLogger("prd.service");
 
@@ -195,7 +196,9 @@ export class PrdService {
           await this.saveMetadataToDb(projectId, parsed);
         }
         await fs.unlink(prdJsonPath).catch((err: unknown) => {
-          log.warn("legacy prd.json cleanup failed", { err: err instanceof Error ? err.message : String(err) });
+          log.warn("legacy prd.json cleanup failed", {
+            err: err instanceof Error ? err.message : String(err),
+          });
         });
         log.info("Migrated prd.json to SPEC.md", { repoPath });
         return parsed;
@@ -216,7 +219,9 @@ export class PrdService {
           await this.saveMetadataToDb(projectId, prd);
         }
         await fs.unlink(prdMdPath).catch((err: unknown) => {
-          log.warn("legacy PRD.md cleanup failed", { err: err instanceof Error ? err.message : String(err) });
+          log.warn("legacy PRD.md cleanup failed", {
+            err: err instanceof Error ? err.message : String(err),
+          });
         });
         log.info("Migrated PRD.md to SPEC.md", { repoPath });
         return prd;
@@ -371,7 +376,20 @@ export class PrdService {
     projectId: string,
     sectionKey: string,
     content: string,
-    source: PrdChangeLogEntry["source"] = "sketch"
+    source: PrdChangeLogEntry["source"] = "sketch",
+    expectedVersion?: number
+  ): Promise<{ section: PrdSection; previousVersion: number; newVersion: number }> {
+    return withProjectMutation(projectId, () =>
+      this.updateSectionOwned(projectId, sectionKey, content, source, expectedVersion)
+    );
+  }
+
+  private async updateSectionOwned(
+    projectId: string,
+    sectionKey: string,
+    content: string,
+    source: PrdChangeLogEntry["source"],
+    expectedVersion?: number
   ): Promise<{ section: PrdSection; previousVersion: number; newVersion: number }> {
     this.validateSectionKey(sectionKey, source === "sketch");
     const prd = await this.loadOrCreatePrd(projectId);
@@ -380,6 +398,13 @@ export class PrdService {
 
     const existing = prd.sections[key];
     const previousVersion = existing ? existing.version : 0;
+    if (expectedVersion !== undefined && expectedVersion !== previousVersion) {
+      throw new AppError(409, "REVISION_CONFLICT", "This section changed. Refresh before saving.", {
+        expectedVersion,
+        currentVersion: previousVersion,
+        section: existing ?? emptySection(),
+      });
+    }
     const newVersion = previousVersion + 1;
     const diff = this.computeDiff(existing?.content ?? "", content);
 
@@ -411,6 +436,16 @@ export class PrdService {
     projectId: string,
     updates: Array<{ section: string; content: string }>,
     source: PrdChangeLogEntry["source"] = "sketch"
+  ): Promise<Array<{ section: string; previousVersion: number; newVersion: number }>> {
+    return withProjectMutation(projectId, () =>
+      this.updateSectionsOwned(projectId, updates, source)
+    );
+  }
+
+  private async updateSectionsOwned(
+    projectId: string,
+    updates: Array<{ section: string; content: string }>,
+    source: PrdChangeLogEntry["source"]
   ): Promise<Array<{ section: string; previousVersion: number; newVersion: number }>> {
     const prd = await this.loadOrCreatePrd(projectId);
     const changes: Array<{ section: string; previousVersion: number; newVersion: number }> = [];

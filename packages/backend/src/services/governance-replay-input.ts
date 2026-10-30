@@ -43,6 +43,21 @@ export async function retainGovernanceReplayInput(
     [projectId, session.taskId]
   );
   if (!row || !session.completedAt) return;
+  // The offline protocol reconstructs the initial invocation, not a live multi-turn session.
+  // Never present a guided run as complete replay evidence with its later inputs omitted.
+  const { agentChatService } = await import("./agent-chat.service.js");
+  if (
+    agentChatService
+      .getHistory(projectId, session.taskId, session.attempt)
+      .some(
+        (message) =>
+          message.role === "user" &&
+          message.status !== "failed" &&
+          (!Number.isFinite(Date.parse(message.timestamp)) ||
+            Date.parse(message.timestamp) <= Date.parse(session.completedAt!))
+      )
+  )
+    return;
   const events = (
     await db.query(
       "SELECT payload FROM governance_events WHERE project_id=$1 AND kind='prompt_snapshot'",

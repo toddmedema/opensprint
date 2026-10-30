@@ -1,3 +1,4 @@
+import { PendingMessageQueue } from "../services/agentic-loop.js";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createServer } from "http";
 import { WebSocket } from "ws";
@@ -323,15 +324,7 @@ describe("WebSocket agent.chat event handling", () => {
   let chatSvc: AgentChatService;
 
   function makePendingQueue(maxSize = 10) {
-    const items: string[] = [];
-    return {
-      push(msg: string): boolean {
-        if (items.length >= maxSize) return false;
-        items.push(msg);
-        return true;
-      },
-      items,
-    };
+    return new PendingMessageQueue(maxSize);
   }
 
   beforeEach(() => {
@@ -362,7 +355,7 @@ describe("WebSocket agent.chat event handling", () => {
 
   it("broadcasts agent.chat.received when message is delivered to API backend", async () => {
     const queue = makePendingQueue();
-    activeAgents.registerChannel("task-1", queue, "openai");
+    activeAgents.registerChannel("task-1", queue, "openai", { projectId: "proj-chat" });
 
     const ws = new WebSocket(`ws://localhost:${port}/ws/projects/proj-chat`, WS_AUTH);
     const msgPromise = new Promise<Record<string, unknown>>((resolve) => {
@@ -373,14 +366,21 @@ describe("WebSocket agent.chat event handling", () => {
     });
     await new Promise<void>((resolve) => ws.on("open", () => resolve()));
 
-    ws.send(JSON.stringify({ type: "agent.chat.send", taskId: "task-1", message: "hello agent" }));
+    ws.send(
+      JSON.stringify({
+        type: "agent.chat.send",
+        clientMessageId: "client-1",
+        taskId: "task-1",
+        message: "hello agent",
+      })
+    );
     const received = await msgPromise;
 
     expect(received.type).toBe("agent.chat.received");
     expect(received.taskId).toBe("task-1");
     expect(received.messageId).toBeTruthy();
     expect(received.timestamp).toBeTruthy();
-    expect(queue.items).toContain("hello agent");
+    expect(queue.drain().map((m) => m.message)).toContain("hello agent");
 
     ws.close();
     await waitForClose(ws);
@@ -388,7 +388,7 @@ describe("WebSocket agent.chat event handling", () => {
 
   it("broadcasts agent.chat.unsupported for CLI backends", async () => {
     const queue = makePendingQueue();
-    activeAgents.registerChannel("task-cli", queue, "claude-cli");
+    activeAgents.registerChannel("task-cli", queue, "claude-cli", { projectId: "proj-chat-cli" });
 
     const ws = new WebSocket(`ws://localhost:${port}/ws/projects/proj-chat-cli`, WS_AUTH);
     const msgPromise = new Promise<Record<string, unknown>>((resolve) => {
@@ -399,13 +399,20 @@ describe("WebSocket agent.chat event handling", () => {
     });
     await new Promise<void>((resolve) => ws.on("open", () => resolve()));
 
-    ws.send(JSON.stringify({ type: "agent.chat.send", taskId: "task-cli", message: "hello" }));
+    ws.send(
+      JSON.stringify({
+        type: "agent.chat.send",
+        clientMessageId: "client-1",
+        taskId: "task-cli",
+        message: "hello",
+      })
+    );
     const unsupported = await msgPromise;
 
     expect(unsupported.type).toBe("agent.chat.unsupported");
     expect(unsupported.taskId).toBe("task-cli");
     expect(typeof unsupported.reason).toBe("string");
-    expect(queue.items).toHaveLength(0);
+    expect(queue.size).toBe(0);
 
     ws.close();
     await waitForClose(ws);
@@ -421,7 +428,14 @@ describe("WebSocket agent.chat event handling", () => {
     });
     await new Promise<void>((resolve) => ws.on("open", () => resolve()));
 
-    ws.send(JSON.stringify({ type: "agent.chat.send", taskId: "task-ghost", message: "hello" }));
+    ws.send(
+      JSON.stringify({
+        type: "agent.chat.send",
+        clientMessageId: "client-1",
+        taskId: "task-ghost",
+        message: "hello",
+      })
+    );
     const unsupported = await msgPromise;
 
     expect(unsupported.type).toBe("agent.chat.unsupported");
@@ -434,7 +448,7 @@ describe("WebSocket agent.chat event handling", () => {
 
   it("broadcasts agent.chat.unsupported when pending queue is full", async () => {
     const queue = makePendingQueue(0);
-    activeAgents.registerChannel("task-full", queue, "claude");
+    activeAgents.registerChannel("task-full", queue, "claude", { projectId: "proj-chat-full" });
 
     const ws = new WebSocket(`ws://localhost:${port}/ws/projects/proj-chat-full`, WS_AUTH);
     const msgPromise = new Promise<Record<string, unknown>>((resolve) => {
@@ -445,7 +459,14 @@ describe("WebSocket agent.chat event handling", () => {
     });
     await new Promise<void>((resolve) => ws.on("open", () => resolve()));
 
-    ws.send(JSON.stringify({ type: "agent.chat.send", taskId: "task-full", message: "hello" }));
+    ws.send(
+      JSON.stringify({
+        type: "agent.chat.send",
+        clientMessageId: "client-1",
+        taskId: "task-full",
+        message: "hello",
+      })
+    );
     const unsupported = await msgPromise;
 
     expect(unsupported.type).toBe("agent.chat.unsupported");
@@ -458,7 +479,7 @@ describe("WebSocket agent.chat event handling", () => {
 
   it("silently ignores agent.chat.send from unscoped /ws clients", async () => {
     const queue = makePendingQueue();
-    activeAgents.registerChannel("task-2", queue, "openai");
+    activeAgents.registerChannel("task-2", queue, "openai", { projectId: "proj-any" });
 
     const ws = new WebSocket(`ws://localhost:${port}/ws`, WS_AUTH);
     const messages: Record<string, unknown>[] = [];
@@ -467,11 +488,18 @@ describe("WebSocket agent.chat event handling", () => {
     });
     await new Promise<void>((resolve) => ws.on("open", () => resolve()));
 
-    ws.send(JSON.stringify({ type: "agent.chat.send", taskId: "task-2", message: "hello" }));
+    ws.send(
+      JSON.stringify({
+        type: "agent.chat.send",
+        clientMessageId: "client-1",
+        taskId: "task-2",
+        message: "hello",
+      })
+    );
     await new Promise((r) => setTimeout(r, 100));
 
     expect(messages).toHaveLength(0);
-    expect(queue.items).toHaveLength(0);
+    expect(queue.size).toBe(0);
 
     ws.close();
     await waitForClose(ws);
@@ -485,8 +513,17 @@ describe("WebSocket agent.chat event handling", () => {
     });
     await new Promise<void>((resolve) => ws.on("open", () => resolve()));
 
-    ws.send(JSON.stringify({ type: "agent.chat.send", taskId: "", message: "hello" }));
-    ws.send(JSON.stringify({ type: "agent.chat.send", taskId: "task-1" }));
+    ws.send(
+      JSON.stringify({
+        type: "agent.chat.send",
+        clientMessageId: "client-1",
+        taskId: "",
+        message: "hello",
+      })
+    );
+    ws.send(
+      JSON.stringify({ type: "agent.chat.send", clientMessageId: "client-1", taskId: "task-1" })
+    );
     ws.send(JSON.stringify({ type: "agent.chat.send" }));
     await new Promise((r) => setTimeout(r, 100));
 
@@ -518,9 +555,9 @@ describe("WebSocket agent.chat event handling", () => {
     await waitForClose(ws);
   });
 
-  it("delivers chat to multiple project-scoped clients", async () => {
+  it("correlates acceptance only to the sending client", async () => {
     const queue = makePendingQueue();
-    activeAgents.registerChannel("task-multi", queue, "google");
+    activeAgents.registerChannel("task-multi", queue, "google", { projectId: "proj-multi" });
 
     const ws1 = new WebSocket(`ws://localhost:${port}/ws/projects/proj-multi`, WS_AUTH);
     const ws2 = new WebSocket(`ws://localhost:${port}/ws/projects/proj-multi`, WS_AUTH);
@@ -537,16 +574,23 @@ describe("WebSocket agent.chat event handling", () => {
         });
       });
     const p1 = collectFrom(ws1);
-    const p2 = collectFrom(ws2);
+    const otherEvents: unknown[] = [];
+    ws2.on("message", (data) => otherEvents.push(JSON.parse(data.toString())));
 
     ws1.send(
-      JSON.stringify({ type: "agent.chat.send", taskId: "task-multi", message: "hello all" })
+      JSON.stringify({
+        type: "agent.chat.send",
+        clientMessageId: "client-1",
+        taskId: "task-multi",
+        message: "hello all",
+      })
     );
-    const [r1, r2] = await Promise.all([p1, p2]);
+    const r1 = await p1;
+    await new Promise((resolve) => setTimeout(resolve, 40));
 
     expect(r1.type).toBe("agent.chat.received");
-    expect(r2.type).toBe("agent.chat.received");
-    expect(r1.messageId).toBe(r2.messageId);
+    expect(r1.clientMessageId).toBe("client-1");
+    expect(otherEvents).toHaveLength(0);
 
     ws1.close();
     ws2.close();

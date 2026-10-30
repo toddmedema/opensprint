@@ -90,7 +90,7 @@ export class MergeJobError extends Error {
  * - prd: updated after Plan <plan-id> built | prd: Sketch session update
  * - Closed <task-id>: <task title truncated to ~45 chars>
  */
-export type GitCommitJobType = "prd_update" | "worktree_merge";
+export type GitCommitJobType = "prd_update" | "worktree_merge" | "repository_operation";
 
 export interface PrdUpdateJob {
   type: "prd_update";
@@ -140,7 +140,13 @@ export function formatMergeCommitMessage(taskId: string, taskTitle: string): str
   return formatClosedCommitMessageUtil(taskId, taskTitle);
 }
 
-export type GitCommitJob = PrdUpdateJob | WorktreeMergeJob;
+/** An already recorded trusted publication, serialized with canonical merges/commits. */
+export interface RepositoryOperationJob {
+  type: "repository_operation";
+  repoPath: string;
+  run: () => Promise<void>;
+}
+export type GitCommitJob = PrdUpdateJob | WorktreeMergeJob | RepositoryOperationJob;
 
 export interface GitMergeQueueSnapshotForRepo {
   activeTaskId: string | null;
@@ -346,7 +352,8 @@ class GitCommitQueueImpl implements GitCommitQueueService {
     const item = this.queue.shift()!;
     const job = item.job;
     this.currentJob = job;
-    const maxRetries = 2;
+    // A publication reconciles recorded effects; blind retries could repeat one.
+    const maxRetries = job.type === "repository_operation" ? 1 : 2;
 
     try {
       for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -400,6 +407,10 @@ class GitCommitQueueImpl implements GitCommitQueueService {
     await waitForGitReady(repoPath);
 
     switch (job.type) {
+      case "repository_operation": {
+        await job.run();
+        break;
+      }
       case "prd_update": {
         const msg = formatPrdCommitMessage(job.source, job.planId);
         await this.addAndCommit(repoPath, ["SPEC.md"], msg);

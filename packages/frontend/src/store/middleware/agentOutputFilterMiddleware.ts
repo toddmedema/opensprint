@@ -3,6 +3,8 @@ import {
   appendAgentOutput,
   setAgentOutputBackfill,
   setSelectedTaskId,
+  fetchLiveOutputBackfill,
+  resetExecute,
 } from "../slices/executeSlice";
 import { createAgentOutputFilter, filterAgentOutput } from "../../utils/agentOutputFilter";
 
@@ -26,6 +28,11 @@ const hasRaf =
 export const agentOutputFilterMiddleware: Middleware = (store) => {
   const filter = createAgentOutputFilter();
   const buffer = new Map<string, string[]>();
+  const activeBackfillRequests = new Set<string>();
+  let selectionOwned = false;
+  const selectedTaskId = () =>
+    (store.getState() as { execute?: { selectedTaskId?: string | null } }).execute?.selectedTaskId;
+  const isStale = (taskId: string) => selectionOwned && selectedTaskId() !== taskId;
   let rafId: number | null = null;
   let maxWaitTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -46,6 +53,7 @@ export const agentOutputFilterMiddleware: Middleware = (store) => {
   ) => {
     cancelScheduledFlush();
     for (const [taskId, chunks] of buffer) {
+      if (isStale(taskId)) continue;
       const concatenated = chunks.join("");
       if (concatenated) {
         next(
@@ -92,14 +100,40 @@ export const agentOutputFilterMiddleware: Middleware = (store) => {
   };
 
   return (next) => (action) => {
+    if (resetExecute.match(action)) {
+      cancelScheduledFlush();
+      buffer.clear();
+      activeBackfillRequests.clear();
+      filter.reset();
+      // A project reset establishes a boundary: old output stays blocked until
+      // the next project's current task explicitly owns the subscription.
+      selectionOwned = true;
+      return next(action);
+    }
     if (setSelectedTaskId.match(action)) {
+      const changed = selectedTaskId() !== action.payload;
+      selectionOwned = true;
       // Flush runs before deselection is applied; without preserveCompletion, append would clear
       // per-task completion state that was set after the original chunks were buffered.
       flush(next, true);
-      filter.reset();
+      if (changed) {
+        filter.reset();
+        activeBackfillRequests.clear();
+      }
       return next(action);
     }
+    if (fetchLiveOutputBackfill.pending.match(action) && !isStale(action.meta.arg.taskId)) {
+      activeBackfillRequests.add(action.meta.requestId);
+    }
+    if (fetchLiveOutputBackfill.rejected.match(action)) {
+      activeBackfillRequests.delete(action.meta.requestId);
+    }
+    if (fetchLiveOutputBackfill.fulfilled.match(action)) {
+      const owned = activeBackfillRequests.delete(action.meta.requestId);
+      if (!owned || isStale(action.payload.taskId)) return;
+    }
     if (appendAgentOutput.match(action)) {
+      if (isStale(action.payload.taskId)) return;
       const { taskId, chunk } = action.payload;
       const filtered = filter.filter(chunk);
       if (filtered) {
@@ -111,6 +145,7 @@ export const agentOutputFilterMiddleware: Middleware = (store) => {
       return next({ type: "@@agentOutputFilter/batched" });
     }
     if (setAgentOutputBackfill.match(action)) {
+      if (isStale(action.payload.taskId)) return;
       const { taskId } = action.payload;
       const filtered = filterAgentOutput(action.payload.output);
 

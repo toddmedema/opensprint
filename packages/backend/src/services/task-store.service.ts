@@ -265,6 +265,7 @@ export class TaskStoreService {
   }
 
   private async withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.appDb?.runExclusive) return this.appDb.runExclusive(fn);
     const prev = this.writeLock;
     let release: () => void;
     this.writeLock = new Promise<void>((r) => {
@@ -1006,7 +1007,12 @@ export class TaskStoreService {
           const { sets, vals, nextIdx } = buildUpdateManySetsHelper(u, now, rowShape);
           vals.push(u.id, projectId);
           const sql = `UPDATE tasks SET ${sets.join(", ")} WHERE id = $${nextIdx} AND project_id = $${nextIdx + 1}`;
-          await tx.execute(sql, vals);
+          const modified = await tx.execute(sql, vals);
+          if (modified === 0) {
+            throw new AppError(404, ErrorCodes.ISSUE_NOT_FOUND, `Task ${u.id} not found`, {
+              issueId: u.id,
+            });
+          }
         }
       });
       const tasks: StoredTask[] = [];
@@ -1055,12 +1061,17 @@ export class TaskStoreService {
       const now = new Date().toISOString();
       await client.runInTransaction(async (tx) => {
         for (const item of items) {
-          await tx.execute(
+          const modified = await tx.execute(
             toPgParams(
               "UPDATE tasks SET status = 'closed', close_reason = ?, completed_at = ?, updated_at = ? WHERE id = ? AND project_id = ?"
             ),
             [item.reason, now, now, item.id, projectId]
           );
+          if (modified === 0) {
+            throw new AppError(404, ErrorCodes.ISSUE_NOT_FOUND, `Task ${item.id} not found`, {
+              issueId: item.id,
+            });
+          }
         }
       });
       const tasks: StoredTask[] = [];
@@ -1685,6 +1696,13 @@ export class TaskStoreService {
       const client = this.ensureClient();
       return await client.runInTransaction(fn);
     });
+  }
+
+  /** Read multiple tables from one committed snapshot. */
+  async runRead<T>(fn: (client: DbClient) => Promise<T>): Promise<T> {
+    await this.ensureInitialized();
+    if (this.appDb?.runRead) return this.appDb.runRead(fn);
+    return this.withWriteLock(() => this.ensureClient().runInTransaction(fn));
   }
 
   /** No-op for Postgres; data is persisted immediately. Use on shutdown for compatibility. */

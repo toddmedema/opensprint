@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useRef } from "react";
+import { StrictMode, useRef, useState } from "react";
 import { useModalA11y } from "./useModalA11y";
 
 /** jsdom often reports offsetParent as null; getFocusableElements skips those nodes. */
@@ -97,4 +97,115 @@ describe("useModalA11y", () => {
     });
     expect(actionBtn).toHaveFocus();
   });
+});
+
+function NestedDialogs({
+  parentClose,
+  childClose,
+}: {
+  parentClose: () => void;
+  childClose: () => void;
+}) {
+  const [parentOpen, setParentOpen] = useState(false);
+  const [childOpen, setChildOpen] = useState(false);
+  const parentRef = useRef<HTMLDivElement>(null);
+  const childRef = useRef<HTMLDivElement>(null);
+  useModalA11y({
+    containerRef: parentRef,
+    isOpen: parentOpen,
+    onClose: () => {
+      parentClose();
+      setParentOpen(false);
+    },
+  });
+  useModalA11y({
+    containerRef: childRef,
+    isOpen: childOpen,
+    onClose: () => {
+      childClose();
+      setChildOpen(false);
+    },
+  });
+  return (
+    <>
+      <button onClick={() => setParentOpen(true)}>Open parent</button>
+      {parentOpen && (
+        <div role="dialog" aria-label="Parent" ref={parentRef} tabIndex={-1}>
+          <button onClick={() => setChildOpen(true)}>Open child</button>
+          <button>Parent last</button>
+          {childOpen && (
+            <div role="dialog" aria-label="Child" ref={childRef} tabIndex={-1}>
+              <input aria-label="Child first" />
+              <input aria-label="Child last" />
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+describe("modal focus ownership", () => {
+  it("keeps focus through callback rerenders and calls the latest close callback", async () => {
+    const firstClose = vi.fn();
+    const latestClose = vi.fn();
+    const trigger = document.createElement("button");
+    document.body.append(trigger);
+    trigger.focus();
+    const view = render(<TestModal onClose={firstClose} />);
+    const action = screen.getByRole("button", { name: "Action" });
+    action.focus();
+    view.rerender(<TestModal onClose={latestClose} />);
+    expect(action).toHaveFocus();
+    fireEvent.keyDown(action, { key: "Escape" });
+    expect(firstClose).not.toHaveBeenCalled();
+    expect(latestClose).toHaveBeenCalledTimes(1);
+    view.unmount();
+    await waitFor(() => expect(trigger).toHaveFocus());
+    trigger.remove();
+  });
+
+  it("traps only the nested dialog and restores child then parent opening focus in StrictMode", async () => {
+    const parentClose = vi.fn();
+    const childClose = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <StrictMode>
+        <NestedDialogs parentClose={parentClose} childClose={childClose} />
+      </StrictMode>
+    );
+    const externalTrigger = screen.getByRole("button", { name: "Open parent" });
+    await user.click(externalTrigger);
+    const childTrigger = screen.getByRole("button", { name: "Open child" });
+    await user.click(childTrigger);
+    const last = screen.getByRole("textbox", { name: "Child last" });
+    last.focus();
+    fireEvent.keyDown(last, { key: "Tab", cancelable: true });
+    expect(screen.getByRole("textbox", { name: "Child first" })).toHaveFocus();
+    fireEvent.keyDown(document.activeElement!, { key: "Tab", shiftKey: true, cancelable: true });
+    expect(last).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(childClose).toHaveBeenCalledTimes(1);
+    expect(parentClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Parent" })).toBeInTheDocument();
+    await waitFor(() => expect(childTrigger).toHaveFocus());
+    await user.keyboard("{Escape}");
+    expect(parentClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(externalTrigger).toHaveFocus());
+  });
+});
+
+it("restores the original opening trigger after an initially open StrictMode session", async () => {
+  const trigger = document.createElement("button");
+  document.body.append(trigger);
+  trigger.focus();
+  const view = render(
+    <StrictMode>
+      <TestModal onClose={vi.fn()} />
+    </StrictMode>
+  );
+  expect(screen.getByRole("button", { name: "Close" })).toHaveFocus();
+  view.unmount();
+  await waitFor(() => expect(trigger).toHaveFocus());
+  trigger.remove();
 });

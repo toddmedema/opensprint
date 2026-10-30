@@ -115,6 +115,24 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
   const viewportWidth = useViewportWidth();
   const isMobile = viewportWidth < MOBILE_BREAKPOINT;
   const [resetLoading, setResetLoading] = useState(false);
+  const [operationError, setOperationError] = useState<{ kind: string; message: string } | null>(
+    null
+  );
+  const operationGeneration = useRef(0);
+  const beginOperation = (kind: string) => {
+    const generation = ++operationGeneration.current;
+    setOperationError(null);
+    return {
+      onError: (error: unknown) => {
+        if (generation === operationGeneration.current) {
+          setOperationError({
+            kind,
+            message: error instanceof Error ? error.message : "Deployment operation failed",
+          });
+        }
+      },
+    };
+  };
   const [envFilter, setEnvFilter] = useState<string>("all");
   const [filterDropdownOpen, setFilterDropdownOpen] = useState(false);
   const [filterDropdownAlignRight, setFilterDropdownAlignRight] = useState(false);
@@ -148,8 +166,14 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
   const expoDeployMutation = useExpoDeploy(projectId);
   const rollbackDeliverMutation = useRollbackDeliver(projectId);
   const history = deliverHistoryQuery.data ?? storeHistory;
-  const activeDeployId = deliverStatusQuery.data?.activeDeployId ?? storeActiveDeployId;
-  const currentDeploy = deliverStatusQuery.data?.currentDeploy ?? storeCurrentDeploy;
+  const activeDeployId =
+    deliverStatusQuery.data === undefined
+      ? storeActiveDeployId
+      : deliverStatusQuery.data.activeDeployId;
+  const currentDeploy =
+    deliverStatusQuery.data === undefined
+      ? storeCurrentDeploy
+      : deliverStatusQuery.data.currentDeploy;
 
   const envCounts = useMemo(() => {
     const counts: Record<string, number> = { all: history.length };
@@ -223,8 +247,6 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
     : EMPTY_DELIVER_LOG;
   const deliverLoading = triggerDeliverMutation.isPending;
   const expoDeployLoading = expoDeployMutation.isPending;
-  const expoDeployError =
-    expoDeployMutation.error instanceof Error ? expoDeployMutation.error.message : null;
   const historyLoading = deliverHistoryQuery.isFetching;
   const rollbackLoading = rollbackDeliverMutation.isPending;
 
@@ -249,16 +271,16 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
     selectedRecord?.status === "success";
 
   const handleDeployToBeta = () => {
-    expoDeployMutation.mutate("beta");
+    expoDeployMutation.mutate("beta", beginOperation("expo"));
   };
 
   const handleDeployToProd = () => {
-    expoDeployMutation.mutate("prod");
+    expoDeployMutation.mutate("prod", beginOperation("expo"));
   };
 
   const handleRollback = () => {
     if (!selectedRecord?.id || !canRollback || rollbackLoading) return;
-    rollbackDeliverMutation.mutate(selectedRecord.id);
+    rollbackDeliverMutation.mutate(selectedRecord.id, beginOperation("rollback"));
   };
 
   const handleSelectDeploy = (id: string) => {
@@ -278,10 +300,13 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
   const handleResetDeliver = async () => {
     if (resetLoading) return;
     setResetLoading(true);
+    const callbacks = beginOperation("cancel");
     try {
       await api.deliver.cancel(projectId);
       void queryClient.invalidateQueries({ queryKey: queryKeys.deliver.status(projectId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.deliver.history(projectId) });
+    } catch (error) {
+      callbacks.onError(error);
     } finally {
       setResetLoading(false);
     }
@@ -322,6 +347,27 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
   return (
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
+        {operationError && (
+          <div
+            role="alert"
+            className="mx-4 sm:mx-6 mt-2 p-4 bg-theme-error-bg border border-theme-error-border rounded-lg text-sm text-theme-error-text whitespace-pre-wrap shrink-0"
+            data-testid={
+              operationError.kind === "expo" ? "expo-deploy-auth-error" : "deliver-operation-error"
+            }
+          >
+            {operationError.message}
+            {operationError.kind === "expo" && onOpenSettings && (
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                className="block mt-3 text-brand-600 hover:text-brand-700 font-medium underline"
+                data-testid="expo-auth-settings-link"
+              >
+                Open Settings → Delivery → Expo access token
+              </button>
+            )}
+          </div>
+        )}
         {showExpoAuthBanner && (
           <div
             className="mx-4 sm:mx-6 mt-2 mb-0 p-4 bg-theme-error-bg border border-theme-error-border rounded-lg text-sm text-theme-error-text shrink-0"
@@ -473,7 +519,9 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
                         <button
                           key={t.name}
                           type="button"
-                          onClick={() => triggerDeliverMutation.mutate(t.name)}
+                          onClick={() =>
+                            triggerDeliverMutation.mutate(t.name, beginOperation("deploy"))
+                          }
                           style={{
                             minHeight: PHASE_TOOLBAR_BUTTON_SIZE,
                             minWidth: PHASE_TOOLBAR_BUTTON_SIZE,
@@ -812,26 +860,6 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
                 )}
               </div>
               <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-                {expoDeployError && (
-                  <div
-                    className="mb-4 p-4 bg-theme-error-bg border border-theme-error-border rounded-lg text-sm text-theme-error-text whitespace-pre-wrap"
-                    data-testid="expo-deploy-auth-error"
-                  >
-                    {expoDeployError}
-                    {onOpenSettings && (
-                      <div className="mt-3">
-                        <button
-                          type="button"
-                          onClick={onOpenSettings}
-                          className="text-brand-600 hover:text-brand-700 font-medium underline"
-                          data-testid="expo-auth-settings-link"
-                        >
-                          Open Settings → Delivery → Expo access token
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
                 <pre
                   className="text-xs font-mono whitespace-pre-wrap text-theme-text bg-theme-code-bg text-theme-code-text p-4 rounded-lg min-h-full"
                   data-testid="deploy-log"
@@ -918,26 +946,6 @@ export function DeliverPhase({ projectId, onOpenSettings }: DeliverPhaseProps) {
                     </div>
                   </div>
                   <div className="flex-1 overflow-y-auto p-4 min-h-0">
-                    {expoDeployError && (
-                      <div
-                        className="mb-4 p-4 bg-theme-error-bg border border-theme-error-border rounded-lg text-sm text-theme-error-text whitespace-pre-wrap"
-                        data-testid="expo-deploy-auth-error"
-                      >
-                        {expoDeployError}
-                        {onOpenSettings && (
-                          <div className="mt-3">
-                            <button
-                              type="button"
-                              onClick={onOpenSettings}
-                              className="text-brand-600 hover:text-brand-700 font-medium underline"
-                              data-testid="expo-auth-settings-link"
-                            >
-                              Open Settings → Delivery → Expo access token
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
                     <pre
                       className="text-xs font-mono whitespace-pre-wrap text-theme-text bg-theme-code-bg text-theme-code-text p-4 rounded-lg"
                       data-testid="deploy-log"

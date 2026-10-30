@@ -417,6 +417,9 @@ describe("E2E: Execute chat — API backend (Scenario A)", () => {
       store.dispatch(
         chatMessageReceived({
           taskId: "epic-1.1",
+          clientMessageId:
+            store.getState().agentChat.messagesByTaskId["epic-1.1"][0].clientMessageId,
+          status: "queued",
           messageId: "msg-server-1",
           timestamp: "2026-03-28T12:00:00Z",
         })
@@ -426,7 +429,7 @@ describe("E2E: Execute chat — API backend (Scenario A)", () => {
     await waitFor(() => {
       const msgs = store.getState().agentChat.messagesByTaskId["epic-1.1"];
       const userMsg = msgs?.find((m) => m.role === "user");
-      expect(userMsg?.delivered).toBe(true);
+      expect(userMsg?.status).toBe("queued");
       expect(userMsg?.id).toBe("msg-server-1");
     });
 
@@ -464,12 +467,15 @@ describe("E2E: Execute chat — API backend (Scenario A)", () => {
       expect(msgs?.length).toBe(1);
     });
 
-    expect(screen.queryByTestId("delivery-checkmark")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Saving guidance…").length).toBeGreaterThan(0);
 
     act(() => {
       store.dispatch(
         chatMessageReceived({
           taskId: "epic-1.1",
+          clientMessageId:
+            store.getState().agentChat.messagesByTaskId["epic-1.1"][0].clientMessageId,
+          status: "queued",
           messageId: "msg-delivered",
           timestamp: "2026-03-28T12:00:00Z",
         })

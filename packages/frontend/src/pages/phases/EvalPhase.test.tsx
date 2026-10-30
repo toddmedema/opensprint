@@ -1163,7 +1163,6 @@ describe("EvalPhase feedback form", () => {
         { timeout: 500 }
       );
     });
-
   });
 
   describe("Attach image button tooltip", () => {
@@ -1200,7 +1199,6 @@ describe("EvalPhase feedback form", () => {
         expect(tooltip).toHaveTextContent("Attach image(s)");
       });
     });
-
   });
 
   describe("feedback status filter", () => {
@@ -1222,7 +1220,10 @@ describe("EvalPhase feedback form", () => {
         expect(screen.getByTestId("eval-filter-segmented")).toBeInTheDocument();
       });
 
-      expect(screen.getByTestId("eval-filter-chip-pending")).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByTestId("eval-filter-chip-pending")).toHaveAttribute(
+        "aria-checked",
+        "true"
+      );
     });
 
     it("does not render a header title label in the toolbar", async () => {
@@ -1331,7 +1332,10 @@ describe("EvalPhase feedback form", () => {
         expect(screen.getByTestId("eval-filter-segmented")).toBeInTheDocument();
       });
 
-      expect(screen.getByTestId("eval-filter-chip-resolved")).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByTestId("eval-filter-chip-resolved")).toHaveAttribute(
+        "aria-checked",
+        "true"
+      );
     });
 
     it("treats invalid filter value as Pending", async () => {
@@ -1350,7 +1354,10 @@ describe("EvalPhase feedback form", () => {
         expect(screen.getByTestId("eval-filter-segmented")).toBeInTheDocument();
       });
 
-      expect(screen.getByTestId("eval-filter-chip-pending")).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByTestId("eval-filter-chip-pending")).toHaveAttribute(
+        "aria-checked",
+        "true"
+      );
     });
 
     it("Pending filter shows both pending and mapped items", async () => {
@@ -1366,7 +1373,10 @@ describe("EvalPhase feedback form", () => {
 
       await waitFor(() => expect(screen.getByTestId("eval-filter-segmented")).toBeInTheDocument());
 
-      expect(screen.getByTestId("eval-filter-chip-pending")).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByTestId("eval-filter-chip-pending")).toHaveAttribute(
+        "aria-checked",
+        "true"
+      );
 
       // Pending filter shows 5 items: 2 pending + 3 mapped
       expect(screen.getByText("Bug 1")).toBeInTheDocument();
@@ -1907,7 +1917,10 @@ describe("EvalPhase feedback form", () => {
       });
 
       await waitFor(() => {
-        expect(screen.getByTestId("eval-filter-chip-pending")).toHaveAttribute("aria-checked", "true");
+        expect(screen.getByTestId("eval-filter-chip-pending")).toHaveAttribute(
+          "aria-checked",
+          "true"
+        );
       });
     });
 
@@ -1944,7 +1957,6 @@ describe("EvalPhase feedback form", () => {
         );
       });
     });
-
   });
 
   describe("collapse button total reply count", () => {
@@ -3566,7 +3578,6 @@ describe("EvalPhase feedback form", () => {
         expect(toggles[0]).toHaveTextContent("show less");
       });
     });
-
   });
 
   describe("Todoist provenance badge", () => {
@@ -3629,5 +3640,72 @@ describe("EvalPhase feedback form", () => {
       expect(badge).toBeInTheDocument();
       expect(badge).not.toHaveAttribute("title");
     });
+  });
+});
+
+describe("feedback reply failure recovery", () => {
+  it("retains reply text, screenshot and priority after failure and clears only on successful retry", async () => {
+    const { api } = await import("../../api/client");
+    const store = createStore({ evalFeedback: mockFeedbackItems });
+    const queryClient = createQueryClientWithFeedbackPreloaded(mockFeedbackItems);
+    const user = userEvent.setup();
+    let rejectFirst!: (error: Error) => void;
+    vi.mocked(api.feedback.submit).mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectFirst = reject;
+        })
+    );
+    renderWithProviders(
+      <MemoryRouter>
+        <EvalPhase projectId="proj-1" />
+      </MemoryRouter>,
+      { store, queryClient }
+    );
+    await user.click(
+      within(screen.getByText("Bug 1").closest(".card")!).getByRole("button", { name: /^Reply$/ })
+    );
+    const input = screen.getByPlaceholderText("Write a reply...");
+    await user.type(input, "Keep my draft");
+    await user.click(screen.getByTestId("reply-priority-select"));
+    await user.click(screen.getByTestId("reply-priority-option-0"));
+    const png =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+    await user.upload(
+      screen.getByTestId("reply-attach-images-input"),
+      new File([Uint8Array.from(atob(png), (c) => c.charCodeAt(0))], "screen.png", {
+        type: "image/png",
+      })
+    );
+    await screen.findByAltText("Attachment 1");
+    const submit = within(input.closest(".card")!).getByRole("button", { name: /^Submit$/ });
+    await user.click(submit);
+    await waitFor(() => expect(api.feedback.submit).toHaveBeenCalledTimes(1));
+    expect(input).toHaveValue("Keep my draft");
+    expect(submit).toBeDisabled();
+    await act(async () => {
+      rejectFirst(new Error("Reply could not be saved"));
+    });
+    await waitFor(() => expect(submit).toBeEnabled());
+    expect(input).toHaveValue("Keep my draft");
+    expect(screen.getByAltText("Attachment 1")).toBeInTheDocument();
+    expect(screen.getByTestId("reply-priority-select")).toHaveTextContent("Critical");
+    vi.mocked(api.feedback.submit).mockResolvedValueOnce({
+      ...mockFeedbackItems[0],
+      id: "retry-reply",
+      parentId: mockFeedbackItems[0].id,
+      text: "Keep my draft",
+    });
+    await user.click(submit);
+    await waitFor(() =>
+      expect(screen.queryByPlaceholderText("Write a reply...")).not.toBeInTheDocument()
+    );
+    expect(api.feedback.submit).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(api.feedback.submit).mock.calls[1]).toEqual(
+      vi.mocked(api.feedback.submit).mock.calls[0]
+    );
+    expect(store.getState().eval.feedback.filter((item) => item.id === "retry-reply")).toHaveLength(
+      1
+    );
   });
 });

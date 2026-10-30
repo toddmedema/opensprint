@@ -7,6 +7,8 @@ import type { DatabaseDialect } from "@opensprint/shared";
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
+import { COLLABORATION_SCHEMA_SQL } from "./collaboration-schema.js";
+import { PUBLICATION_SCHEMA_SQL } from "./publication-schema.js";
 
 /**
  * Postgres-compatible schema for Open Sprint.
@@ -1125,4 +1127,6 @@ export async function runSchema(
         : `INSERT INTO schema_versions (version, applied_at) VALUES (?, ?)`;
     await client.query(insertVersionSql, [migration.version, new Date().toISOString()]);
   }
+  await executeSqlStatements(client, COLLABORATION_SCHEMA_SQL, dialect);
+  await executeSqlStatements(client, PUBLICATION_SCHEMA_SQL, dialect);
 }

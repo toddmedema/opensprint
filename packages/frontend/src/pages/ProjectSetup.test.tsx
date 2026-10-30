@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { api } from "../api/client";
@@ -373,4 +373,108 @@ describe("ProjectSetup - Back button", () => {
     expect(screen.getByTestId("project-metadata-step")).toBeInTheDocument();
     expect(screen.getByTestId("repository-step")).toBeInTheDocument();
   });
+});
+
+async function enterGoogleSetup() {
+  vi.mocked(api.globalSettings.get).mockResolvedValue({
+    apiKeys: { GOOGLE_API_KEY: [{ id: "g", masked: "key" }] },
+  } as never);
+  vi.mocked(api.env.getKeys).mockResolvedValue({
+    anthropic: false,
+    cursor: false,
+    openai: false,
+    google: true,
+    claudeCli: true,
+    cursorCli: true,
+    ollamaCli: false,
+  } as never);
+  vi.mocked(api.projects.list).mockResolvedValue([]);
+  const user = userEvent.setup();
+  renderProjectSetup();
+  await user.type(screen.getByLabelText(/project name/i), "Google Project");
+  await user.type(screen.getByLabelText(/project folder/i), "/repo/A");
+  await user.click(screen.getByRole("button", { name: /^Next$/ }));
+  await waitFor(() => expect(screen.getAllByRole("combobox")[0]).toHaveValue("google"));
+  return user;
+}
+
+it("keeps Google-only availability when switching provider and back", async () => {
+  const user = await enterGoogleSetup();
+  const selects = screen.getAllByRole("combobox");
+  expect(selects[2]).toHaveValue("google");
+  await user.selectOptions(selects[0], "openai");
+  expect(screen.getByRole("button", { name: /^Next$/ })).toBeDisabled();
+  await user.selectOptions(selects[0], "google");
+  expect(screen.getByRole("button", { name: /^Next$/ })).toBeEnabled();
+  expect(screen.queryByText(/GOOGLE_API_KEY.*required/i)).not.toBeInTheDocument();
+});
+
+it("preserves explicit None through late detection, step reentry and creation", async () => {
+  let resolveDetection!: (value: unknown) => void;
+  vi.mocked(api.filesystem.detectTestFramework)
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveDetection = resolve;
+        }) as never
+    )
+    .mockResolvedValue({ framework: "vitest" } as never);
+  vi.mocked(api.projects.create).mockResolvedValue({ id: "new", currentPhase: "sketch" } as never);
+  const user = await enterGoogleSetup();
+  await user.click(screen.getByRole("button", { name: /^Next$/ }));
+  await user.selectOptions(screen.getByLabelText("Test Framework"), "none");
+  await act(async () => {
+    resolveDetection({ framework: "vitest" });
+  });
+  expect(screen.getByLabelText("Test Framework")).toHaveValue("none");
+  await user.click(screen.getByRole("button", { name: /^Next$/ }));
+  await user.click(screen.getByRole("button", { name: /^Back$/ }));
+  await waitFor(() =>
+    expect(screen.queryByText("Detecting from project...")).not.toBeInTheDocument()
+  );
+  expect(screen.getByLabelText("Test Framework")).toHaveValue("none");
+  await user.selectOptions(screen.getByLabelText("Test Framework"), "jest");
+  await user.click(screen.getByRole("button", { name: /^Next$/ }));
+  await user.click(screen.getByRole("button", { name: /^Back$/ }));
+  await waitFor(() =>
+    expect(screen.queryByText("Detecting from project...")).not.toBeInTheDocument()
+  );
+  expect(screen.getByLabelText("Test Framework")).toHaveValue("jest");
+  await user.click(screen.getByRole("button", { name: /^Next$/ }));
+  await user.click(screen.getByRole("button", { name: /^Next$/ }));
+  await user.click(screen.getByRole("button", { name: "Create Project" }));
+  await waitFor(() =>
+    expect(api.projects.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        testFramework: "jest",
+        simpleComplexityAgent: expect.objectContaining({ type: "google" }),
+      })
+    )
+  );
+});
+
+it("ignores a stale framework response after repository identity changes", async () => {
+  let resolveOld!: (value: unknown) => void;
+  vi.mocked(api.filesystem.detectTestFramework)
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        }) as never
+    )
+    .mockResolvedValue({ framework: "pytest" } as never);
+  const user = await enterGoogleSetup();
+  await user.click(screen.getByRole("button", { name: /^Next$/ }));
+  await user.selectOptions(screen.getByLabelText("Test Framework"), "jest");
+  await user.click(screen.getByRole("button", { name: /^Back$/ }));
+  await user.click(screen.getByRole("button", { name: /^Back$/ }));
+  await user.clear(screen.getByLabelText(/project folder/i));
+  await user.type(screen.getByLabelText(/project folder/i), "/repo/B");
+  await user.click(screen.getByRole("button", { name: /^Next$/ }));
+  await user.click(screen.getByRole("button", { name: /^Next$/ }));
+  await waitFor(() => expect(screen.getByLabelText("Test Framework")).toHaveValue("pytest"));
+  await act(async () => {
+    resolveOld({ framework: "vitest" });
+  });
+  expect(screen.getByLabelText("Test Framework")).toHaveValue("pytest");
 });

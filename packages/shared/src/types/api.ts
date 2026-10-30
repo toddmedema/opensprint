@@ -184,6 +184,11 @@ export interface AgentChatMessage {
   role: "user" | "assistant";
   content: string;
   attempt: number;
+  clientMessageId?: string;
+  attemptId?: string;
+  actorId?: string;
+  status?: import("./websocket.js").AgentChatStatus;
+  error?: string;
 }
 
 /** Response from GET /projects/:projectId/tasks/:taskId/chat-history */

@@ -153,12 +153,9 @@ export function ProjectShell() {
       dispatch(resetWebsocket());
     }
     prevProjectIdRef.current = projectId;
-    if (shouldConnectProjectWs) {
-      dispatch(wsConnect({ projectId }));
-    }
 
     return () => {
-      dispatch(wsDisconnect());
+      lastSyncedRef.current = {};
       dispatch(resetProject());
       dispatch(resetWebsocket());
       dispatch(resetSketch(undefined as never));
@@ -168,7 +165,15 @@ export function ProjectShell() {
       dispatch(resetDeliver());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, shouldConnectProjectWs]);
+  }, [projectId]);
+
+  // Database availability controls transport only; cached project state survives outages.
+  useLayoutEffect(() => {
+    if (projectId && shouldConnectProjectWs) dispatch(wsConnect({ projectId }));
+    return () => {
+      dispatch(wsDisconnect());
+    };
+  }, [projectId, shouldConnectProjectWs, dispatch]);
 
   // Sync TanStack Query → Redux (keeps state populated even when on Help/Settings)
   useEffect(() => {

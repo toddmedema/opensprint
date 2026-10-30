@@ -137,6 +137,38 @@ describeIfDb("ChatService - Plan phase agent registry", () => {
   let repoPath: string;
   let originalHome: string | undefined;
 
+  it("keeps messages appended while an earlier model response is in flight", async () => {
+    let resolveModel!: (result: { content: string }) => void;
+    let modelStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      modelStarted = resolve;
+    });
+    mockInvokePlanningAgent.mockImplementationOnce(() => {
+      modelStarted();
+      return new Promise((resolve) => {
+        resolveModel = resolve;
+      });
+    });
+    const response = chatService.sendMessage(projectId, {
+      message: "Discuss this vision",
+      context: "sketch",
+    });
+    await started;
+    // The user message is durable even before a model has returned.
+    expect(
+      (await chatService.getHistory(projectId, "sketch")).messages.map((m) => m.content)
+    ).toContain("Discuss this vision");
+    await chatService.addDirectEditMessage(projectId, "feature_list", "Updated features");
+    resolveModel({ content: "Here are my thoughts." });
+    await response;
+    const history = await chatService.getHistory(projectId, "sketch");
+    expect(history.messages.map((m) => m.content)).toEqual([
+      "Discuss this vision",
+      expect.stringContaining("I edited the Feature List section"),
+      "Here are my thoughts.",
+    ]);
+  });
+
   beforeEach(async () => {
     vi.clearAllMocks();
     mockHilEvaluate.mockResolvedValue({ approved: true });

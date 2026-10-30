@@ -2398,3 +2398,29 @@ describe("self-improvement reviewer agent settings", () => {
     });
   });
 });
+
+it("recovers malformed stored target containers and filters bad neighbors without losing valid targets", () => {
+  const valid = {
+    name: "production",
+    command: "",
+    autoDeployTrigger: "nightly",
+    envVars: { SAFE: "value" },
+  };
+  for (const targets of [
+    { production: valid },
+    [null],
+    [null, { name: 42 }, { name: "bad", envVars: { X: 1 } }, valid],
+  ]) {
+    const settings = parseSettings({
+      deployment: { mode: "custom", targets, envVars: { LEGACY: "kept" } },
+    });
+    expect(Array.isArray(settings.deployment.targets)).toBe(true);
+    expect(() => getDefaultDeploymentTarget(settings.deployment)).not.toThrow();
+    expect(() => getTargetsForNightlyDeploy(settings.deployment)).not.toThrow();
+    if (Array.isArray(targets) && targets.includes(valid)) {
+      expect(settings.deployment.targets).toEqual([
+        { ...valid, envVars: { SAFE: "value", LEGACY: "kept" } },
+      ]);
+    }
+  }
+});

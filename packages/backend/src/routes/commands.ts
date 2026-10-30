@@ -103,7 +103,11 @@ export function createCommandsRouter(): Router {
         status: "previewing",
       });
 
-      await commandStore.updateInterpretation(run.id, interpretation.intent, interpretation.riskLevel);
+      await commandStore.updateInterpretation(
+        run.id,
+        interpretation.intent,
+        interpretation.riskLevel
+      );
       await commandStore.updatePreview(run.id, preview);
 
       res.json({
@@ -125,13 +129,17 @@ export function createCommandsRouter(): Router {
         idempotencyKey?: string;
       };
 
-      const run = await commandStore.getRun(commandRunId);
+      const run = await commandStore.getRun(commandRunId, req.params.projectId as string);
       if (!run) {
         res.status(404).json({ error: { code: "NOT_FOUND", message: "Command run not found" } });
         return;
       }
 
-      const result = await commandExecutor.execute(commandRunId, idempotencyKey);
+      const result = await commandExecutor.execute(
+        req.params.projectId as string,
+        commandRunId,
+        idempotencyKey
+      );
 
       res.json({
         data: {
@@ -163,7 +171,10 @@ export function createCommandsRouter(): Router {
     "/:runId",
     validateParams(runIdParamSchema),
     wrapAsync(async (req, res) => {
-      const run = await commandStore.getRun(req.params.runId as string);
+      const run = await commandStore.getRun(
+        req.params.runId as string,
+        req.params.projectId as string
+      );
       if (!run) {
         res.status(404).json({ error: { code: "NOT_FOUND", message: "Command run not found" } });
         return;

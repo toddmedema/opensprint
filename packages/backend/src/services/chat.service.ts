@@ -311,26 +311,39 @@ export class ChatService {
     return conversation;
   }
 
-  /** Save a conversation to DB */
-  private async saveConversation(projectId: string, conversation: Conversation): Promise<void> {
+  /** Append this operation's messages while holding the persisted row's write lock.
+   * A prompt snapshot must never replace messages appended during a model call.
+   */
+  private async saveConversation(
+    projectId: string,
+    conversation: Conversation,
+    additions: ConversationMessage[] = []
+  ): Promise<void> {
     const now = new Date().toISOString();
     await taskStore.runWrite(async (client) => {
       await client.execute(
         `INSERT INTO project_conversations (project_id, context, conversation_id, messages, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT(project_id, context) DO UPDATE SET
-           conversation_id = excluded.conversation_id,
-           messages = excluded.messages,
-           updated_at = excluded.updated_at`,
-        [
-          projectId,
-          conversation.context,
-          conversation.id,
-          JSON.stringify(conversation.messages),
-          now,
-          now,
-        ]
+         ON CONFLICT(project_id, context) DO NOTHING`,
+        [projectId, conversation.context, conversation.id, "[]", now, now]
       );
+      // Acquires a row lock on PostgreSQL and a write lock on SQLite.
+      await client.execute(
+        "UPDATE project_conversations SET updated_at = updated_at WHERE project_id = $1 AND context = $2",
+        [projectId, conversation.context]
+      );
+      const stored = await client.queryOne(
+        "SELECT conversation_id, messages FROM project_conversations WHERE project_id = $1 AND context = $2",
+        [projectId, conversation.context]
+      );
+      if (!stored) throw new Error("Conversation disappeared during append");
+      const messages = this.parseMessages(JSON.parse(String(stored.messages ?? "[]")));
+      messages.push(...additions);
+      await client.execute(
+        "UPDATE project_conversations SET messages = $3, updated_at = $4 WHERE project_id = $1 AND context = $2",
+        [projectId, conversation.context, JSON.stringify(messages), now]
+      );
+      conversation.id = String(stored.conversation_id);
     });
   }
 
@@ -362,7 +375,7 @@ export class ChatService {
         timestamp: createdAt,
       }
     );
-    await this.saveConversation(projectId, conversation);
+    await this.saveConversation(projectId, conversation, conversation.messages);
   }
 
   private async createPlanFromDraftSpec(
@@ -532,7 +545,7 @@ export class ChatService {
           timestamp: new Date().toISOString(),
         };
         conversation.messages.push(assistantMessage);
-        await this.saveConversation(projectId, conversation);
+        await this.saveConversation(projectId, conversation, [userMessage, assistantMessage]);
         outcome = "success";
         return {
           message: assistantMessage.content,
@@ -574,6 +587,7 @@ export class ChatService {
       timestamp: new Date().toISOString(),
     };
     conversation.messages.push(userMessage);
+    await this.saveConversation(projectId, conversation, [userMessage]);
 
     // Get agent config and project repo path (so CLI agents run in project directory)
     const [settings, repoPath] = await Promise.all([
@@ -877,7 +891,7 @@ export class ChatService {
     };
     conversation.messages.push(assistantMessage);
 
-    await this.saveConversation(projectId, conversation);
+    await this.saveConversation(projectId, conversation, [assistantMessage]);
 
     return {
       message: displayContent,
@@ -905,7 +919,7 @@ export class ChatService {
       timestamp: new Date().toISOString(),
     };
     conversation.messages.push(message);
-    await this.saveConversation(projectId, conversation);
+    await this.saveConversation(projectId, conversation, [message]);
   }
 
   /** Append an assistant message to the sketch conversation (e.g. after PRD generated from codebase). */
@@ -917,7 +931,7 @@ export class ChatService {
       timestamp: new Date().toISOString(),
     };
     conversation.messages.push(message);
-    await this.saveConversation(projectId, conversation);
+    await this.saveConversation(projectId, conversation, [message]);
   }
 
   /**

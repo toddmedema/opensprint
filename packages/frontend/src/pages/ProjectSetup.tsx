@@ -21,7 +21,10 @@ import type {
 } from "@opensprint/shared";
 import { DEFAULT_AI_AUTONOMY_LEVEL, DEFAULT_DEPLOYMENT_CONFIG } from "@opensprint/shared";
 import { api, isApiError } from "../api/client";
-import { getDefaultProviderFromEnvKeys } from "../utils/agentConfigDefaults";
+import {
+  getDefaultProviderFromEnvKeys,
+  getMissingApiKeyRequirements,
+} from "../utils/agentConfigDefaults";
 import {
   DEFAULT_LMSTUDIO_BASE_URL,
   DEFAULT_OLLAMA_BASE_URL,
@@ -81,32 +84,23 @@ export function ProjectSetup() {
     anthropic: boolean;
     cursor: boolean;
     openai: boolean;
+    google: boolean;
     claudeCli: boolean;
     cursorCli: boolean;
     ollamaCli: boolean;
   } | null>(null);
 
-  const needsAnthropic =
-    envKeys &&
-    !envKeys.anthropic &&
-    (simpleComplexityAgent.type === "claude" || complexComplexityAgent.type === "claude");
-  const needsCursor =
-    envKeys &&
-    !envKeys.cursor &&
-    (simpleComplexityAgent.type === "cursor" || complexComplexityAgent.type === "cursor");
-  const needsOpenai =
-    envKeys &&
-    !envKeys.openai &&
-    (simpleComplexityAgent.type === "openai" || complexComplexityAgent.type === "openai");
+  const missingKeys = getMissingApiKeyRequirements(envKeys, [
+    simpleComplexityAgent.type,
+    complexComplexityAgent.type,
+  ]);
   const usesClaudeCli =
     simpleComplexityAgent.type === "claude-cli" || complexComplexityAgent.type === "claude-cli";
   const claudeCliMissing = envKeys && !envKeys.claudeCli && usesClaudeCli;
 
   const canProceedFromAgents =
     envKeys !== null &&
-    !needsAnthropic &&
-    !needsCursor &&
-    !needsOpenai &&
+    missingKeys.length === 0 &&
     !claudeCliMissing &&
     hasConfiguredLocalModel(simpleComplexityAgent) &&
     hasConfiguredLocalModel(complexComplexityAgent) &&
@@ -153,13 +147,15 @@ export function ProjectSetup() {
     Promise.all([api.globalSettings.get(), api.env.getKeys()])
       .then(([global, env]) => {
         const apiKeys = global.apiKeys;
-        const anthropic = (apiKeys?.ANTHROPIC_API_KEY?.length ?? 0) > 0;
-        const cursor = (apiKeys?.CURSOR_API_KEY?.length ?? 0) > 0;
-        const openai = (apiKeys?.OPENAI_API_KEY?.length ?? 0) > 0;
+        const anthropic = env.anthropic || (apiKeys?.ANTHROPIC_API_KEY?.length ?? 0) > 0;
+        const cursor = env.cursor || (apiKeys?.CURSOR_API_KEY?.length ?? 0) > 0;
+        const openai = env.openai || (apiKeys?.OPENAI_API_KEY?.length ?? 0) > 0;
+        const google = env.google || (apiKeys?.GOOGLE_API_KEY?.length ?? 0) > 0;
         const keys = {
           anthropic,
           cursor,
           openai,
+          google,
           claudeCli: env.claudeCli,
           cursorCli: env.cursorCli,
           ollamaCli: env.ollamaCli,
@@ -187,22 +183,41 @@ export function ProjectSetup() {
       .catch(() => setEnvKeys(null));
   }, [step]);
 
+  const explicitFrameworkRef = useRef<string | null>(null);
   useEffect(() => {
-    if (step !== "testing" || !repoPath.trim()) return;
+    explicitFrameworkRef.current = null;
+    setTestFramework("none");
+    setDetectedFramework(null);
+  }, [repoPath]);
+
+  useEffect(() => {
+    let active = true;
+    if (step !== "testing" || !repoPath.trim()) {
+      setDetectingFramework(false);
+      return;
+    }
     setDetectingFramework(true);
     setDetectedFramework(null);
     api.filesystem
       .detectTestFramework(repoPath.trim())
       .then((result) => {
+        if (!active) return;
         if (result) {
           setDetectedFramework(result.framework);
-          setTestFramework(result.framework);
+          if (explicitFrameworkRef.current !== repoPath) setTestFramework(result.framework);
         } else {
           setDetectedFramework(null);
         }
       })
-      .catch(() => setDetectedFramework(null))
-      .finally(() => setDetectingFramework(false));
+      .catch(() => {
+        if (active) setDetectedFramework(null);
+      })
+      .finally(() => {
+        if (active) setDetectingFramework(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [step, repoPath]);
 
   const handleCreate = async () => {
@@ -386,7 +401,10 @@ export function ProjectSetup() {
             {step === "testing" && (
               <TestingStep
                 value={testFramework}
-                onChange={setTestFramework}
+                onChange={(value) => {
+                  explicitFrameworkRef.current = repoPath;
+                  setTestFramework(value);
+                }}
                 detectingFramework={detectingFramework}
                 detectedFramework={detectedFramework}
               />

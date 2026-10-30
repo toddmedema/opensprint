@@ -189,7 +189,7 @@ describe("GET /tasks/:taskId/chat-support", () => {
       backend: "claude",
       reason: null,
     });
-    expect(mockSupportsChat).toHaveBeenCalledWith("os-api");
+    expect(mockSupportsChat).toHaveBeenCalledWith("os-api", "proj-1");
   });
 
   it("returns supported=false for CLI backend with exact instructional reason", async () => {
@@ -255,16 +255,14 @@ describe("GET /tasks/:taskId/chat-support", () => {
       mockSupportsChat.mockReturnValue({ supported: true, backend, reason: null });
 
       const res = await withLocalSessionAuth(
-        request(app).get(
-          `${API_PREFIX}/projects/proj-1/tasks/os-chat-api-${backend}/chat-support`
-        )
+        request(app).get(`${API_PREFIX}/projects/proj-1/tasks/os-chat-api-${backend}/chat-support`)
       );
 
       expect(res.status).toBe(200);
       expect(res.body.data.supported).toBe(true);
       expect(res.body.data.backend).toBe(backend);
       expect(res.body.data.reason).toBeNull();
-      expect(mockSupportsChat).toHaveBeenCalledWith(`os-chat-api-${backend}`);
+      expect(mockSupportsChat).toHaveBeenCalledWith(`os-chat-api-${backend}`, "proj-1");
     }
   );
 });

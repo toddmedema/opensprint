@@ -38,6 +38,8 @@ Structured standards findings cite the applicable rule revision and reviewed fil
 
 Configure tool-free API models and verified price ceilings for reviewer reconsideration and the independent judge; initial code reviewers can still use CLI agents. Remote conflict-resolution changes get a retained review task against the actual remote base and original per-file scope, followed by hard checks. Pending publication suppresses automatic deployment; durable deferred actions resume only against verified published code. Archiving or deleting a governed project requires owner approval and completed governed work with no pending dockets or publication.
 
+Governed SPEC changes use the normal scoped Execute review workflow. Completed live-guided sessions retain their guidance journal as evidence but cannot supply replay fixtures until the complete model-turn protocol is captured.
+
 Configure a named server owner and a separate `OPENSPRINT_GOVERNANCE_APPROVAL_SECRET` (at least 32 characters) to authorize governance mutations. The UI keeps the entered capability in memory. It is distinct from the ordinary local bearer token and is removed from task subprocess environments. An agent with unrestricted access under the same OS account can still inspect server data; this is a cooperative local workflow, not a tamper-proof security boundary. Shared deployments must isolate the server account and explicitly designate approval authority.
 
 Congress processes decision events even when code has not changed. Nominations alone do not weaken rules. Substantive proposals contain exact before/after changes, supporting and contrary decisions, examples, compatibility and enforcement requirements. Isolated baseline/candidate evaluation uses retained original inputs, a pinned offline executor image, and an independent held-out rubric. Missing fixtures or an unavailable sandbox produces incomplete evaluation, never successful evidence. Policy amendments always require explicit human approval; activation and compatible rollback change the actual instruction content used by future assignments. See `review-governance.md` for the executor protocol and rollout.
@@ -45,6 +47,16 @@ Congress processes decision events even when code has not changed. Nominations a
 ### Orchestrator Recovery (GUPP-style)
 
 Work state is persisted before agent spawn via `assignment.json` in `.opensprint/active/<task-id>/`. If the backend crashes, recovery reads the assignment and re-spawns or resumes the agent. **Always write assignment before spawn; never spawn then write.**
+
+Agent admission is cancellable and FIFO. Recheck attempt generation and owning slot after admission and immediately before launch; cancelled or replaced queued attempts must never launch. Concurrency limit changes preserve active accounting. A recovered PID is observation-only until ownership is independently verified: retain the assignment and report uncertain execution instead of killing or requeueing it. A stop request becomes stopped only after observed completion. A terminal result file alone cannot complete an unverified recovered process. Guidance receipts distinguish durable queue acceptance from inclusion in a model turn.
+
+### Shared Execute pilot
+
+Open `/collaborate/<projectId>` (also linked from Execute) for attributed discussion, per-attempt controller claims/handoff, durable event replay and guidance history. Named users authenticate with project-scoped bearer tokens configured by the host in `OPENSPRINT_COLLABORATION_TOKENS`; only SHA-256 token hashes are stored in configuration. Roles are viewer, participant and controller. These credentials authorize collaboration endpoints only. Existing settings, filesystem, deployment and reviewed SPEC publication routes require the installation's local-session credential. Releasing control requires a new explicit claim, including by the local user. Closing a session page does not stop an agent.
+
+Guidance is journaled before acknowledgment. `queued` is durable acceptance, `included` records inclusion in a provider request, and `run-ended` means inclusion could not be confirmed. API providers support between-turn guidance; CLI providers do not. Reconnecting users can inspect the same history even after the run ends. The shared pilot uses one backend and trusted local execution; it does not provide isolated hosting or multiple backend replicas.
+
+Reviewed SPEC drafts are available at `/projects/<projectId>/publication`. Drafts are immutable SQL revisions bound to a content hash, Git base and destination; approval must match that revision. The trusted publisher validates a candidate worktree before advancing Git with a base comparison. Interrupted publication is reconciled or remains explicitly uncertain. Sketch autosaves retain the existing trusted local editing policy and do not use this reviewed publication workflow. See `docs/design/collaboration-foundations.md` for rollout limits.
 
 ### Loop Kicker vs Watchdog
 

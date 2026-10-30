@@ -1,3 +1,4 @@
+import { isMainModule } from "./node-cli.mjs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -27,6 +28,16 @@ function refExists(ref) {
     return true;
   } catch {
     return false;
+  }
+}
+
+function findMergeBase(baseRef, headRef) {
+  try {
+    return git(["merge-base", baseRef, headRef]);
+  } catch {
+    // A shallow checkout can contain both refs without their common ancestor.
+    // Unknown change scope must run every workspace, just like a missing ref.
+    return null;
   }
 }
 
@@ -61,7 +72,7 @@ function parseArgs(argv) {
 
 function resolveBaseRef(baseArg, headRef) {
   if (baseArg) {
-    return refExists(baseArg) ? git(["merge-base", baseArg, headRef]) : null;
+    return refExists(baseArg) ? findMergeBase(baseArg, headRef) : null;
   }
 
   const githubBaseRef = process.env.GITHUB_BASE_REF?.trim();
@@ -69,7 +80,7 @@ function resolveBaseRef(baseArg, headRef) {
     const candidates = [`origin/${githubBaseRef}`, githubBaseRef];
     for (const candidate of candidates) {
       if (refExists(candidate)) {
-        return git(["merge-base", candidate, headRef]);
+        return findMergeBase(candidate, headRef);
       }
     }
   }
@@ -80,7 +91,7 @@ function resolveBaseRef(baseArg, headRef) {
 
   for (const candidate of ["origin/main", "main"]) {
     if (refExists(candidate)) {
-      return git(["merge-base", candidate, headRef]);
+      return findMergeBase(candidate, headRef);
     }
   }
 
@@ -203,6 +214,6 @@ function main() {
   process.stdout.write(`${result.workspaces.join("\n")}\n`);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainModule(import.meta.url)) {
   main();
 }

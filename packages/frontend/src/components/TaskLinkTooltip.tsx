@@ -1,21 +1,24 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import {
+  cloneElement,
+  isValidElement,
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+  useId,
+  type ReactElement,
+} from "react";
 import { api } from "../api/client";
 
 const HOVER_DELAY_MS = 200;
-
 export interface TaskLinkTooltipProps {
   projectId: string;
   taskId: string;
-  /** If provided, used immediately when available (avoids API call) */
   cachedTitle?: string | null;
   children: React.ReactNode;
 }
 
-/**
- * Wraps ticket links in the Evaluate feedback feed. On hover, shows a tooltip with the
- * task's full title after a short delay. Fetches title via API when not cached.
- * Gracefully handles fetch failures (e.g. deleted ticket) by not showing tooltip.
- */
+/** Full task title shared by pointer and keyboard users, without an extra tab stop. */
 export function TaskLinkTooltip({
   projectId,
   taskId,
@@ -24,82 +27,107 @@ export function TaskLinkTooltip({
 }: TaskLinkTooltipProps) {
   const [tooltipVisible, setTooltipVisible] = useState(false);
   const [fetchedTitle, setFetchedTitle] = useState<string | null>(null);
-  const [fetchFailed, setFetchFailed] = useState(false);
-  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isHoveringRef = useRef(false);
-  const anchorRef = useRef<HTMLSpanElement>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
-
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerRef = useRef(false);
+  const focusRef = useRef(false);
+  const generationRef = useRef(0);
+  const revealActiveRef = useRef(false);
+  const tooltipId = useId();
   const title = cachedTitle ?? fetchedTitle;
-
   const clearTimer = useCallback(() => {
-    if (hoverTimerRef.current) {
-      clearTimeout(hoverTimerRef.current);
-      hoverTimerRef.current = null;
-    }
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
   }, []);
-
-  const hideTooltip = useCallback(() => {
+  const invalidateReveal = useCallback(() => {
+    generationRef.current++;
+  }, []);
+  const dismiss = useCallback(() => {
+    revealActiveRef.current = false;
+    invalidateReveal();
     clearTimer();
     setTooltipVisible(false);
-  }, [clearTimer]);
-
+  }, [clearTimer, invalidateReveal]);
   useEffect(() => {
-    return () => clearTimer();
-  }, [clearTimer]);
-
-  const handleMouseEnter = useCallback(() => {
-    isHoveringRef.current = true;
-    setFetchFailed(false);
-    if (cachedTitle) {
-      hoverTimerRef.current = setTimeout(() => setTooltipVisible(true), HOVER_DELAY_MS);
-      return;
-    }
-    if (fetchedTitle) {
-      hoverTimerRef.current = setTimeout(() => setTooltipVisible(true), HOVER_DELAY_MS);
-      return;
-    }
-    if (fetchFailed) {
-      return;
-    }
-    hoverTimerRef.current = setTimeout(async () => {
-      hoverTimerRef.current = null;
-      try {
-        const task = await api.tasks.get(projectId, taskId);
-        setFetchedTitle(task.title ?? taskId);
-        if (isHoveringRef.current) setTooltipVisible(true);
-      } catch {
-        setFetchFailed(true);
-      }
-    }, HOVER_DELAY_MS);
-  }, [projectId, taskId, cachedTitle, fetchedTitle, fetchFailed]);
-
-  const handleMouseLeave = useCallback(() => {
-    isHoveringRef.current = false;
-    hideTooltip();
-  }, [hideTooltip]);
-
-  const showTooltip = title && tooltipVisible;
-
+    dismiss();
+    setFetchedTitle(null);
+    return () => {
+      invalidateReveal();
+      clearTimer();
+    };
+  }, [projectId, taskId, dismiss, clearTimer, invalidateReveal]);
+  const reveal = useCallback(
+    (delay: number) => {
+      revealActiveRef.current = true;
+      clearTimer();
+      const generation = ++generationRef.current;
+      const show = async () => {
+        timerRef.current = null;
+        try {
+          const nextTitle = title ?? (await api.tasks.get(projectId, taskId)).title ?? taskId;
+          if (generation !== generationRef.current || (!pointerRef.current && !focusRef.current))
+            return;
+          setFetchedTitle(nextTitle);
+          setTooltipVisible(true);
+        } catch {
+          /* Deleted or unavailable tasks have no tooltip. */
+          if (generation === generationRef.current) revealActiveRef.current = false;
+        }
+      };
+      if (delay === 0) void show();
+      else
+        timerRef.current = setTimeout(() => {
+          void show();
+        }, delay);
+    },
+    [clearTimer, title, projectId, taskId]
+  );
+  const showTooltip = Boolean(title && tooltipVisible);
+  const trigger = isValidElement(children)
+    ? cloneElement(children as ReactElement<{ "aria-describedby"?: string }>, {
+        "aria-describedby":
+          [
+            (children as ReactElement<{ "aria-describedby"?: string }>).props["aria-describedby"],
+            showTooltip ? tooltipId : undefined,
+          ]
+            .filter(Boolean)
+            .join(" ") || undefined,
+      })
+    : children;
   return (
     <span
-      ref={anchorRef}
       className="relative inline-flex"
       role="presentation"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      onKeyDown={() => {}}
-      tabIndex={-1}
+      onMouseEnter={() => {
+        pointerRef.current = true;
+        reveal(HOVER_DELAY_MS);
+      }}
+      onMouseLeave={() => {
+        pointerRef.current = false;
+        if (!focusRef.current) dismiss();
+      }}
+      onFocusCapture={() => {
+        focusRef.current = true;
+        reveal(0);
+      }}
+      onBlurCapture={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget)) return;
+        focusRef.current = false;
+        if (!pointerRef.current) dismiss();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && revealActiveRef.current) {
+          event.preventDefault();
+          event.stopPropagation();
+          dismiss();
+        }
+      }}
     >
-      {children}
+      {trigger}
       {showTooltip && (
         <div
-          ref={tooltipRef}
+          id={tooltipId}
           role="tooltip"
-          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1.5 text-xs font-normal
-            bg-theme-bg-elevated text-theme-text rounded-lg shadow-lg ring-1 ring-theme-border
-            whitespace-normal max-w-[280px] z-50 pointer-events-none
-            animate-fade-in"
+          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 px-2 py-1.5 text-xs font-normal bg-theme-bg-elevated text-theme-text rounded-lg shadow-lg ring-1 ring-theme-border whitespace-normal max-w-[280px] z-50 pointer-events-none animate-fade-in"
           style={{ minWidth: "max-content" }}
         >
           {title}

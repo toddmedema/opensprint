@@ -852,6 +852,7 @@ export class PhaseExecutorService {
           attempt: slot.attempt,
           agentLabel: slot.taskTitle ?? task.id,
           role: "coder",
+          isStillActive: () => this.host.getState(projectId).slots.get(task.id) === slot,
           onDone: (code) =>
             this.callbacks.handleCodingDone(projectId, repoPath, task, branchName, code),
           onStateChange: this.host.onAgentStateChange(projectId),
@@ -1150,6 +1151,7 @@ export class PhaseExecutorService {
             attempt: slot.attempt,
             agentLabel: slot.taskTitle ?? task.id,
             role: "reviewer",
+            isStillActive: () => this.host.getState(projectId).slots.get(task.id) === slot,
             onDone: (code) =>
               this.callbacks.handleReviewDone(projectId, repoPath, task, branchName, code),
             onStateChange: this.host.onAgentStateChange(projectId),
@@ -1256,6 +1258,7 @@ export class PhaseExecutorService {
               attempt: slot.attempt,
               agentLabel: slot.taskTitle ?? task.id,
               role: "reviewer",
+              isStillActive: () => this.host.getState(projectId).slots.get(task.id) === slot,
               onDone: async (code) => {
                 await this.callbacks.handleReviewDone(
                   projectId,
@@ -1370,6 +1373,7 @@ export class PhaseExecutorService {
             attempt: slot.attempt,
             agentLabel: slot.taskTitle ?? task.id,
             role: "reviewer",
+            isStillActive: () => this.host.getState(projectId).slots.get(task.id) === slot,
             onDone: (code) =>
               this.callbacks.handleReviewDone(projectId, repoPath, task, branchName, code),
             onStateChange: this.host.onAgentStateChange(projectId),

@@ -24,7 +24,7 @@ import { heartbeatService } from "./heartbeat.service.js";
 import { eventLogService } from "./event-log.service.js";
 import { worktreeCleanupIntentService } from "./worktree-cleanup-intent.service.js";
 import type { RetryContext } from "./orchestrator-phase-context.js";
-import { isProcessAlive, terminateProcessGroup } from "../utils/process-group.js";
+import { isProcessAlive } from "../utils/process-group.js";
 import { createLogger } from "../utils/logger.js";
 import { fireAndForget } from "../utils/fire-and-forget.js";
 import {
@@ -171,16 +171,10 @@ export class RecoveryService {
     );
 
     // Governance waits are durable, slot-free owners. Protect them before every recovery pass,
-    // even when task status or assignment files were changed through ordinary APIs.
+    // including human cancellation and pending resumes, using the same authority as merge admission.
     for (const c of await governanceService.listCases(projectId)) {
       if (
-        ![
-          "awaiting_reconsideration",
-          "awaiting_judge",
-          "awaiting_human",
-          "evidence_requested",
-          "stale",
-        ].includes(c.state) &&
+        !(await governanceService.hasTaskHold(projectId, c.taskId)) &&
         !(await governanceService.hasPendingResume(projectId, c.taskId))
       )
         continue;
@@ -205,15 +199,7 @@ export class RecoveryService {
       if (c.branchName.startsWith("opensprint/epic_"))
         excludeWorktreeKeys.add(c.branchName.slice("opensprint/".length));
     }
-
     await governanceService.deliverOutbox(projectId);
-    await this.augmentExclusionsFromRecentAssignments(
-      projectId,
-      repoPath,
-      excludeIds,
-      excludeWorktreeKeys,
-      excludeWorktreePaths
-    );
 
     // 1. GUPP crash recovery (startup only) — now receives exclude sets
     if (
@@ -238,12 +224,24 @@ export class RecoveryService {
       guppResult.worktreePaths.forEach((p) => excludeWorktreePaths.add(p));
     }
 
+    // Recent assignments protect destructive cleanup, but must not hide orphaned
+    // runs from the safe startup reattachment and terminal-result inspection above.
+    await this.augmentExclusionsFromRecentAssignments(
+      projectId,
+      repoPath,
+      excludeIds,
+      excludeWorktreeKeys,
+      excludeWorktreePaths
+    );
+
     // 2. Stale heartbeat recovery
     const staleResult = await this.recoverFromStaleHeartbeats(
       projectId,
       repoPath,
       excludeIds,
-      host
+      host,
+      excludeWorktreeKeys,
+      excludeWorktreePaths
     );
     result.reattached.push(...staleResult.reattached);
     result.requeued.push(...staleResult.requeued);
@@ -387,6 +385,7 @@ export class RecoveryService {
     const recoveredWorktreePaths: string[] = [];
 
     for (const { taskId, assignment } of orphaned) {
+      if (assignment.projectId !== projectId) continue;
       const assignmentAgeMs = Date.now() - new Date(assignment.createdAt).getTime();
       const worktreeKey = this.resolveCleanupWorktreeKey(
         taskId,
@@ -394,6 +393,14 @@ export class RecoveryService {
         assignment.worktreePath
       );
       const resolvedWtPath = assignment.worktreePath ? path.resolve(assignment.worktreePath) : null;
+      const protectedByAge =
+        !Number.isFinite(assignmentAgeMs) ||
+        assignmentAgeMs < getWorktreeCleanupAssignmentGuardMs();
+      const protectAssignment = () => {
+        excludeIds.add(taskId);
+        excludeWorktreeKeys.add(worktreeKey);
+        if (resolvedWtPath) excludeWorktreePaths.add(resolvedWtPath);
+      };
 
       // Skip destructive cleanup for tasks/worktrees that belong to active slots
       if (
@@ -412,6 +419,10 @@ export class RecoveryService {
 
       const task = idToIssue.get(taskId);
       if (!task) {
+        if (protectedByAge) {
+          protectAssignment();
+          continue;
+        }
         this.emitStaleAssignmentTelemetry(
           repoPath,
           projectId,
@@ -421,18 +432,22 @@ export class RecoveryService {
           assignment
         );
         log.warn("Recovery: task not found, cleaning up assignment", { projectId, taskId });
-        await this.removeWorktreeIfNeeded(
+        const removed = await this.removeWorktreeIfNeeded(
           projectId,
           repoPath,
           taskId,
           assignment.worktreePath,
           assignment.worktreeKey
         );
-        await this.deleteAssignment(repoPath, taskId, assignment.worktreePath);
+        if (removed) await this.deleteAssignment(repoPath, taskId, assignment.worktreePath);
         continue;
       }
 
       if ((task.status as string) !== "in_progress") {
+        if (protectedByAge) {
+          protectAssignment();
+          continue;
+        }
         this.emitStaleAssignmentTelemetry(
           repoPath,
           projectId,
@@ -446,14 +461,14 @@ export class RecoveryService {
           taskId,
           status: task.status,
         });
-        await this.removeWorktreeIfNeeded(
+        const removed = await this.removeWorktreeIfNeeded(
           projectId,
           repoPath,
           taskId,
           assignment.worktreePath,
           assignment.worktreeKey
         );
-        await this.deleteAssignment(repoPath, taskId, assignment.worktreePath);
+        if (removed) await this.deleteAssignment(repoPath, taskId, assignment.worktreePath);
         continue;
       }
 
@@ -550,6 +565,20 @@ export class RecoveryService {
         }
       }
 
+      if (pidAlive || protectedByAge) {
+        // Liveness alone does not establish process ownership. A reused PID or
+        // temporarily unavailable recovery host must never trigger an orphan kill
+        // or a second execution of the same assignment.
+        protectAssignment();
+        log.warn("Recovery: assignment ownership remains uncertain; preserving run", {
+          projectId,
+          taskId,
+          pidAlive,
+          protectedByAge,
+        });
+        continue;
+      }
+
       this.emitStaleAssignmentTelemetry(
         repoPath,
         projectId,
@@ -569,15 +598,17 @@ export class RecoveryService {
         );
       } catch (err) {
         log.warn("Recovery: failed to requeue task", { projectId, taskId, err });
+        protectAssignment();
+        continue;
       }
-      await this.removeWorktreeIfNeeded(
+      const removed = await this.removeWorktreeIfNeeded(
         projectId,
         repoPath,
         taskId,
         assignment.worktreePath,
         assignment.worktreeKey
       );
-      await this.deleteAssignment(repoPath, taskId, assignment.worktreePath);
+      if (removed) await this.deleteAssignment(repoPath, taskId, assignment.worktreePath);
       trackRequeue();
     }
 
@@ -595,7 +626,9 @@ export class RecoveryService {
     projectId: string,
     repoPath: string,
     excludeIds: Set<string>,
-    host: RecoveryHost
+    host: RecoveryHost,
+    excludeWorktreeKeys: Set<string>,
+    excludeWorktreePaths: Set<string>
   ): Promise<{ reattached: string[]; requeued: string[] }> {
     const durableBase = this.branchManager.getWorktreeBasePath(repoPath);
     const legacyBase = this.branchManager.getLegacyWorktreeBasePath();
@@ -627,6 +660,15 @@ export class RecoveryService {
         })
         .catch((err) => log.debug("Best-effort event log append failed", { taskId, err }));
 
+      let assignment: GuppAssignment | null = null;
+      const preserveTask = () => {
+        excludeIds.add(taskId);
+        excludeWorktreeKeys.add(
+          this.resolveCleanupWorktreeKey(taskId, assignment?.worktreeKey, assignment?.worktreePath)
+        );
+        if (assignment?.worktreePath)
+          excludeWorktreePaths.add(path.resolve(assignment.worktreePath));
+      };
       try {
         const task = await this.taskStore.show(projectId, taskId);
         if (task.status === "in_progress") {
@@ -637,7 +679,11 @@ export class RecoveryService {
             isProcessAlive(heartbeat.processGroupLeaderPid);
           const exceededSuspendGrace =
             Date.now() - heartbeat.lastOutputTimestamp > AGENT_SUSPEND_GRACE_MS;
-          const assignment = await this.readAssignment(repoPath, taskId);
+          assignment = await this.readAssignment(repoPath, taskId);
+          if (assignment && assignment.projectId !== projectId) {
+            preserveTask();
+            continue;
+          }
 
           if (!pidAlive && assignment && host.handleCompletedAssignment) {
             const terminalResult = await this.readTerminalAssignmentResult(assignment);
@@ -655,13 +701,7 @@ export class RecoveryService {
             }
           }
 
-          if (
-            pidAlive &&
-            !exceededSuspendGrace &&
-            staleForMs <= RECOVERABLE_HEARTBEAT_GAP_MAX_MS &&
-            assignment &&
-            host.handleRecoverableHeartbeatGap
-          ) {
+          if (pidAlive && assignment && host.handleRecoverableHeartbeatGap) {
             const handled = await host.handleRecoverableHeartbeatGap(
               projectId,
               repoPath,
@@ -675,7 +715,7 @@ export class RecoveryService {
           }
 
           if (pidAlive) {
-            log.info("Terminating orphaned agent process", {
+            log.warn("Recovery: live process ownership uncertain; preserving task", {
               taskId,
               processGroupLeaderPid: heartbeat.processGroupLeaderPid,
               exceededSuspendGrace,
@@ -683,7 +723,8 @@ export class RecoveryService {
               maxRecoverableGapMs: RECOVERABLE_HEARTBEAT_GAP_MAX_MS,
               hasAssignment: Boolean(assignment),
             });
-            await terminateProcessGroup(heartbeat.processGroupLeaderPid, 2000);
+            preserveTask();
+            continue;
           }
 
           // Final re-read: the agent may have flushed result.json between the
@@ -712,16 +753,15 @@ export class RecoveryService {
           await this.recoverTask(projectId, repoPath, task);
           requeued.push(taskId);
         }
-      } catch {
-        // Task may not exist — clean up worktree only in Worktree mode (Branches: no worktree)
-        const settings = await this.projectService.getSettings(projectId);
-        if (settings.gitWorkingMode !== "branches") {
-          try {
-            await this.branchManager.removeTaskWorktree(repoPath, taskId);
-          } catch {
-            // Ignore
-          }
-        }
+      } catch (err) {
+        // A database, filesystem, or host callback failure does not establish that
+        // the task is absent. Defer deletion to guarded orphan-worktree cleanup.
+        preserveTask();
+        log.warn("Recovery: heartbeat inspection failed; preserving worktree", {
+          projectId,
+          taskId,
+          err,
+        });
       }
     }
 
@@ -1608,6 +1648,10 @@ export class RecoveryService {
   private async recoverTask(projectId: string, repoPath: string, task: StoredTask): Promise<void> {
     const settings = await this.projectService.getSettings(projectId);
     const gitWorkingMode = settings.gitWorkingMode ?? "worktree";
+    // Persist the ownership transition before destructive filesystem cleanup.
+    // A failed task-store write must leave the recoverable checkout intact.
+    await this.taskStore.update(projectId, task.id, { status: "open", assignee: "" });
+    await this.taskStore.setMergeStage(projectId, task.id, null);
 
     // In Branches mode, agent runs in repoPath; no worktree. In Worktree mode, use worktree path.
     const workPath =
@@ -1643,11 +1687,6 @@ export class RecoveryService {
               referencingTaskIds: protection.referencingTaskIds,
               cleanupTrigger: "recover_task",
             });
-            await this.taskStore.update(projectId, task.id, {
-              status: "open",
-              assignee: "",
-            });
-            await this.taskStore.setMergeStage(projectId, task.id, null);
             return;
           }
         }
@@ -1658,12 +1697,6 @@ export class RecoveryService {
         // Worktree may not exist
       }
     }
-
-    await this.taskStore.update(projectId, task.id, {
-      status: "open",
-      assignee: "",
-    });
-    await this.taskStore.setMergeStage(projectId, task.id, null);
   }
 
   private async readAssignment(repoPath: string, taskId: string): Promise<GuppAssignment | null> {
@@ -1729,11 +1762,11 @@ export class RecoveryService {
     taskId: string,
     worktreePath?: string,
     assignmentWorktreeKey?: string
-  ): Promise<void> {
-    if (!worktreePath) return;
+  ): Promise<boolean> {
+    if (!worktreePath) return true;
     const repoResolved = path.resolve(repoPath);
     const wtResolved = path.resolve(worktreePath);
-    if (repoResolved === wtResolved) return; // Branches mode: no worktree
+    if (repoResolved === wtResolved) return true; // Branches mode: no worktree
     const protection = await evaluateWorktreeCleanupProtection(
       projectId,
       wtResolved,
@@ -1749,17 +1782,24 @@ export class RecoveryService {
         referencingTaskIds: protection.referencingTaskIds,
         cleanupTrigger: "recovery_remove_worktree_if_needed",
       });
-      return;
+      return false;
     }
     const worktreeKey = this.resolveCleanupWorktreeKey(taskId, assignmentWorktreeKey, worktreePath);
-    const canCleanup = await worktreeLeaseService.canCleanup(worktreeKey).catch(() => true);
+    const canCleanup = await worktreeLeaseService.canCleanup(worktreeKey).catch((err) => {
+      log.warn("Skipping worktree removal: lease ownership could not be checked", {
+        taskId,
+        worktreeKey,
+        err,
+      });
+      return false;
+    });
     if (!canCleanup) {
       log.info("Skipping worktree removal: active lease exists", {
         taskId,
         worktreeKey,
         worktreePath,
       });
-      return;
+      return false;
     }
     const lease = await worktreeLeaseService.get(worktreeKey).catch(() => null);
     log.info("Proceeding with worktree removal (lease allows cleanup)", {
@@ -1771,17 +1811,25 @@ export class RecoveryService {
       leaseReleasedAt: lease?.releasedAt ?? null,
     });
     try {
-      await this.branchManager.removeTaskWorktree(repoPath, worktreeKey, worktreePath, {
-        ignoreLiveTaskStatusForTaskIds: new Set([taskId]),
-      });
+      const removed = await this.branchManager.removeTaskWorktree(
+        repoPath,
+        worktreeKey,
+        worktreePath,
+        {
+          ignoreLiveTaskStatusForTaskIds: new Set([taskId]),
+        }
+      );
+      if (!removed) return false;
       await worktreeLeaseService.forceRelease(worktreeKey).catch((err) => {
         log.warn("worktree lease force-release failed", {
           worktreeKey,
           err: err instanceof Error ? err.message : String(err),
         });
       });
+      return true;
     } catch {
       // Best effort; worktree may already be gone
+      return false;
     }
   }
 
