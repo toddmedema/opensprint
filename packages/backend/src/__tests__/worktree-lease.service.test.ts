@@ -29,7 +29,7 @@ function createInMemoryLeaseStore() {
       norm.includes("select") &&
       norm.includes("worktree_leases") &&
       norm.includes("worktree_key") &&
-      !norm.includes("project_id")
+      !norm.includes("where project_id")
     ) {
       const key = params[0] as string;
       const row = rows.get(key);
@@ -91,7 +91,12 @@ function createInMemoryLeaseStore() {
     }
 
     // UPDATE worktree_leases SET expires_at = ... WHERE worktree_key = ... AND released_at IS NULL  (renew)
-    if (norm.includes("update") && norm.includes("expires_at") && norm.includes("released_at is null") && !norm.includes("set released_at")) {
+    if (
+      norm.includes("update") &&
+      norm.includes("expires_at") &&
+      norm.includes("released_at is null") &&
+      !norm.includes("set released_at")
+    ) {
       const expiresAt = params[0] as string;
       const key = params[1] as string;
       const row = rows.get(key);
@@ -376,3 +381,7 @@ describe("WorktreeLeaseService", () => {
     });
   });
 });
+
+vi.mock("../services/governance.service.js", async () => ({
+  governanceService: (await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+}));

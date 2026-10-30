@@ -1,3 +1,4 @@
+import { governanceService } from "./governance.service.js";
 import crypto from "crypto";
 import fs from "fs/promises";
 import os from "os";
@@ -609,6 +610,59 @@ export class OrchestratorService {
     }
   }
 
+  /** Resume approved dockets with fresh hard checks and all reviewers, retaining the original policy. */
+  async resumeGovernanceTask(
+    projectId: string,
+    repoPath: string,
+    task: StoredTask,
+    dispatchSlot: unknown
+  ): Promise<void> {
+    const slot = dispatchSlot as AgentSlot;
+    const pin = await governanceService.getTaskPin(projectId, task.id);
+    if (!pin || (await governanceService.hasTaskHold(projectId, task.id))) {
+      await this.pauseForGovernance(projectId, repoPath, task.id);
+      return;
+    }
+    slot.worktreePath = pin.worktreePath;
+    const settings = await this.projectService.getSettings(projectId);
+    if (settings.reviewMode !== "always")
+      throw new Error("Governance resume requires reviewMode: always.");
+    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+    slot.phaseResult.codingDiff = await this.branchManager.captureBranchDiff(
+      repoPath,
+      pin.branchName,
+      baseBranch
+    );
+    slot.phaseResult.codingSummary =
+      "Resuming after a recorded human ruling; all hard checks and review remain required.";
+    await this.taskStore.update(projectId, task.id, { extra: { governance_resume: null } });
+    this.transition(projectId, {
+      to: "enter_review",
+      taskId: task.id,
+      queueDepth: this.getState(projectId).status.queueDepth,
+      assignee: getAgentNameForRole("reviewer", this.getState(projectId).nextReviewerIndex++),
+    });
+    await this.startReviewCoordinatorAndTests(
+      projectId,
+      repoPath,
+      task,
+      pin.branchName,
+      settings,
+      await this.branchManager.getChangedFiles(repoPath, pin.branchName, baseBranch)
+    );
+    await this.executeReviewPhase(projectId, repoPath, task, pin.branchName);
+  }
+
+  /** Waiting governance work retains durable leases and assignment but occupies no agent slot. */
+  async pauseForGovernance(projectId: string, repoPath: string, taskId: string): Promise<void> {
+    const state = this.getState(projectId);
+    this.removeSlot(state, taskId);
+    await this.persistCounters(projectId, repoPath);
+    await broadcastAuthoritativeTaskUpdated(broadcastToProject, projectId, taskId);
+    broadcastToProject(projectId, this.buildExecuteStatusPayload(projectId, state));
+    this.nudge(projectId);
+  }
+
   private killProcessIfActive(agent: AgentRunState): void {
     if (!agent.activeProcess) return;
     try {
@@ -666,7 +720,11 @@ export class OrchestratorService {
 
     const wtPath = slot.worktreePath ?? repoPath;
     await heartbeatService.deleteHeartbeat(wtPath, taskId).catch((err) => {
-      log.warn("heartbeat delete failed", { taskId, wtPath, err: err instanceof Error ? err.message : String(err) });
+      log.warn("heartbeat delete failed", {
+        taskId,
+        wtPath,
+        err: err instanceof Error ? err.message : String(err),
+      });
     });
 
     // Drop assignment before worktree teardown so assignment-based cleanup guards (and recovery scans)
@@ -890,12 +948,15 @@ export class OrchestratorService {
       if (validIds.has(taskId)) {
         const taskStatus = statusById.get(taskId);
         if (taskStatus != null && taskStatus !== "in_progress") {
-          log.warn("Task-agent status drift detected: slot active while task status is not in_progress", {
-            projectId,
-            taskId,
-            taskStatus,
-            slotPhase: slot.phase,
-          });
+          log.warn(
+            "Task-agent status drift detected: slot active while task status is not in_progress",
+            {
+              projectId,
+              taskId,
+              taskStatus,
+              slotPhase: slot.phase,
+            }
+          );
           try {
             await this.taskStore.update(projectId, taskId, {
               status: "in_progress",
@@ -909,7 +970,9 @@ export class OrchestratorService {
               taskId,
               slotPhase: slot.phase,
               repairedAssignee:
-                typeof slot.assignee === "string" && slot.assignee.length > 0 ? slot.assignee : null,
+                typeof slot.assignee === "string" && slot.assignee.length > 0
+                  ? slot.assignee
+                  : null,
             });
             void broadcastAuthoritativeTaskUpdated(broadcastToProject, projectId, taskId);
           } catch (err) {
@@ -1136,11 +1199,14 @@ export class OrchestratorService {
         assignment.attempt
       ))
     ) {
-      log.warn("Recovery: assignment worktree is missing checkout files; skipping terminal result", {
-        taskId: task.id,
-        branchName: assignment.branchName,
-        worktreePath: assignment.worktreePath,
-      });
+      log.warn(
+        "Recovery: assignment worktree is missing checkout files; skipping terminal result",
+        {
+          taskId: task.id,
+          branchName: assignment.branchName,
+          worktreePath: assignment.worktreePath,
+        }
+      );
       return false;
     }
 
@@ -1757,15 +1823,13 @@ export class OrchestratorService {
     if (slotsFull) {
       // Analyst doesn't use a slot; allow loop to run when there's pending feedback
       fireAndForget(
-        this.feedbackService
-          .getNextPendingFeedbackId(projectId)
-          .then((nextId) => {
-            const s = this.getState(projectId);
-            if (nextId && !s.loopActive && !s.globalTimers.has("loop")) {
-              log.info("Nudge (pending feedback), starting loop for project", { projectId });
-              this.startRunLoop(projectId, "nudge-pending-feedback");
-            }
-          }),
+        this.feedbackService.getNextPendingFeedbackId(projectId).then((nextId) => {
+          const s = this.getState(projectId);
+          if (nextId && !s.loopActive && !s.globalTimers.has("loop")) {
+            log.info("Nudge (pending feedback), starting loop for project", { projectId });
+            this.startRunLoop(projectId, "nudge-pending-feedback");
+          }
+        }),
         "orchestrator:phase-transition-event-log"
       );
       return;
@@ -2335,6 +2399,7 @@ export class OrchestratorService {
         baseBranch
       );
       slot.phaseResult.codingSummary = result.summary ?? "";
+      slot.phaseResult.governanceAppeals = result.appeals;
       agentIdentityService
         .recordAttempt(repoPath, {
           taskId: task.id,
@@ -2493,10 +2558,13 @@ export class OrchestratorService {
         // Fall back to full suite
       }
 
+      const governancePin = await governanceService.getTaskPin(projectId, task.id);
+      if (governancePin && settings.reviewMode !== "always") {
+        throw new Error("Policy-governed Execute requires reviewMode: always.");
+      }
       const reviewMode = settings.reviewMode ?? DEFAULT_REVIEW_MODE;
       const skipReview =
-        reviewMode === "never" ||
-        (reviewMode === "on-failure-only" && slot.attempt <= 1);
+        reviewMode === "never" || (reviewMode === "on-failure-only" && slot.attempt <= 1);
 
       if (skipReview) {
         const scopedResult = await this.runAdaptiveValidation(
@@ -2717,7 +2785,10 @@ export class OrchestratorService {
       return scopedResult;
     } catch (err) {
       const durationMs = Date.now() - startedAt;
-      fireAndForget(this.projectService.recordValidationDuration(projectId, preferredScope, durationMs), "orchestrator:record-validation-duration");
+      fireAndForget(
+        this.projectService.recordValidationDuration(projectId, preferredScope, durationMs),
+        "orchestrator:record-validation-duration"
+      );
       throw err;
     }
   }
@@ -3189,10 +3260,7 @@ export class OrchestratorService {
         error instanceof AppError && gitPreflightCodes.includes(error.code)
           ? error.code
           : ErrorCodes.GIT_BASE_BRANCH_INVALID;
-      throw new RepoPreflightError(
-        error instanceof Error ? error.message : String(error),
-        code
-      );
+      throw new RepoPreflightError(error instanceof Error ? error.message : String(error), code);
     }
 
     if (wtPath === repoPath) {
@@ -3244,13 +3312,27 @@ export class OrchestratorService {
  * contract drift — adding / removing / renaming a host-expected method
  * will cause a build error here rather than a silent runtime failure.
  */
-type _AssertFailureHandlerHost = OrchestratorService extends FailureHandlerHost ? true : { __err: "OrchestratorService does not satisfy FailureHandlerHost" };
-type _AssertMergeCoordinatorHost = OrchestratorService extends MergeCoordinatorHost ? true : { __err: "OrchestratorService does not satisfy MergeCoordinatorHost" };
-type _AssertReviewHost = OrchestratorService extends OrchestratorReviewHost ? true : { __err: "OrchestratorService does not satisfy OrchestratorReviewHost" };
-type _AssertLoopHost = OrchestratorService extends OrchestratorLoopHost ? true : { __err: "OrchestratorService does not satisfy OrchestratorLoopHost" };
-type _AssertDispatchHost = OrchestratorService extends OrchestratorDispatchHost ? true : { __err: "OrchestratorService does not satisfy OrchestratorDispatchHost" };
-type _AssertPhaseHost = OrchestratorService extends PhaseExecutorHost ? true : { __err: "OrchestratorService does not satisfy PhaseExecutorHost" };
-type _AssertRecoveryHost = OrchestratorService extends OrchestratorRecoveryHost ? true : { __err: "OrchestratorService does not satisfy OrchestratorRecoveryHost" };
+type _AssertFailureHandlerHost = OrchestratorService extends FailureHandlerHost
+  ? true
+  : { __err: "OrchestratorService does not satisfy FailureHandlerHost" };
+type _AssertMergeCoordinatorHost = OrchestratorService extends MergeCoordinatorHost
+  ? true
+  : { __err: "OrchestratorService does not satisfy MergeCoordinatorHost" };
+type _AssertReviewHost = OrchestratorService extends OrchestratorReviewHost
+  ? true
+  : { __err: "OrchestratorService does not satisfy OrchestratorReviewHost" };
+type _AssertLoopHost = OrchestratorService extends OrchestratorLoopHost
+  ? true
+  : { __err: "OrchestratorService does not satisfy OrchestratorLoopHost" };
+type _AssertDispatchHost = OrchestratorService extends OrchestratorDispatchHost
+  ? true
+  : { __err: "OrchestratorService does not satisfy OrchestratorDispatchHost" };
+type _AssertPhaseHost = OrchestratorService extends PhaseExecutorHost
+  ? true
+  : { __err: "OrchestratorService does not satisfy PhaseExecutorHost" };
+type _AssertRecoveryHost = OrchestratorService extends OrchestratorRecoveryHost
+  ? true
+  : { __err: "OrchestratorService does not satisfy OrchestratorRecoveryHost" };
 
 /** Shared orchestrator instance for build routes and task list (kanban phase override) */
 export const orchestratorService = new OrchestratorService();

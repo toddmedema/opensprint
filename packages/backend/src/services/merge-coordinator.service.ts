@@ -70,6 +70,12 @@ import {
   toQualityGateOutputSnippet,
 } from "./merge-quality-gate-failure-utils.js";
 
+import { governanceService } from "./governance.service.js";
+import {
+  governanceExecutionService,
+  governanceCodeSnapshot,
+} from "./governance-execution.service.js";
+
 const log = createLogger("merge-coordinator");
 const _MAX_PUSH_REBASE_RESOLUTION_ROUNDS = 12;
 const NEXT_RETRY_CONTEXT_KEY = "next_retry_context";
@@ -490,7 +496,9 @@ export class MergeCoordinatorService {
           if (pathForGuard) {
             try {
               await fs.access(pathForGuard);
-              const resolvedWt = path.resolve(await fs.realpath(pathForGuard).catch(() => pathForGuard));
+              const resolvedWt = path.resolve(
+                await fs.realpath(pathForGuard).catch(() => pathForGuard)
+              );
               const protection = await evaluateWorktreeCleanupProtection(
                 projectId,
                 resolvedWt,
@@ -2015,6 +2023,16 @@ export class MergeCoordinatorService {
       await this.waitForPushComplete(projectId);
       const settings = await this.host.projectService.getSettings(projectId);
       const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+      const pin = await governanceService.getTaskPin(projectId, task.id);
+      const code = await governanceCodeSnapshot(
+        wtPath,
+        pin?.baseSha ?? baseBranch,
+        "HEAD",
+        false,
+        pin?.baseBranch
+      );
+      await governanceExecutionService.assertScope(projectId, task.id, code.changedPaths);
+      await governanceService.assertMergeAdmission({ projectId, taskId: task.id, ...code });
       const mergeStrategy = settings.mergeStrategy ?? "per_task";
       const allIssuesForEpic = await this.host.taskStore.listAll(projectId);
       const epicId = resolveEpicId(task.id, allIssuesForEpic);
@@ -2123,6 +2141,7 @@ export class MergeCoordinatorService {
           );
           await gitCommitQueue.enqueueAndWait({
             type: "worktree_merge",
+            projectId,
             repoPath,
             worktreePath: wtPath,
             branchName,
@@ -2249,6 +2268,7 @@ export class MergeCoordinatorService {
         );
         await gitCommitQueue.enqueueAndWait({
           type: "worktree_merge",
+          projectId,
           repoPath,
           worktreePath: wtPath,
           branchName,
@@ -2343,7 +2363,7 @@ export class MergeCoordinatorService {
       mergeErr instanceof MergeJobError
         ? mergeErr.stage
         : mergeErr instanceof RebaseContinueBlockedError
-          ? mergeErr.mergeFailureStage ?? "merge_to_main"
+          ? (mergeErr.mergeFailureStage ?? "merge_to_main")
           : mergeErr instanceof RebaseConflictError
             ? "push_rebase"
             : "merge_to_main";

@@ -3,6 +3,10 @@ import {
   SelfImprovementService,
   type SelfImprovementRunResult,
 } from "../services/self-improvement.service.js";
+import { runGovernanceCongress } from "../services/congress.service.js";
+vi.mock("../services/congress.service.js", () => ({
+  runGovernanceCongress: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock("../services/project.service.js", () => ({
   ProjectService: vi.fn().mockImplementation(() => ({
@@ -87,6 +91,7 @@ describe("SelfImprovementService", () => {
       vi.mocked(hasCodeChangesSince).mockResolvedValue(false);
 
       const result = await service.run(projectId);
+      expect(runGovernanceCongress).toHaveBeenCalledWith(projectId);
 
       expect(result).toEqual({ tasksCreated: 0, skipped: "no_changes" });
       expect(taskStore.create).not.toHaveBeenCalled();

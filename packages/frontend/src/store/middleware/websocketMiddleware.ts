@@ -22,6 +22,7 @@ import { setConnected } from "../slices/websocketSlice";
 import { addNotification as addToast } from "../slices/notificationSlice";
 import {
   addNotification,
+  updateNotification,
   removeNotification,
   selectProjectNotifications,
   type OpenQuestionsState,
@@ -164,8 +165,7 @@ const API_V1_BASE = `${(import.meta.env.VITE_API_BASE as string | undefined) ?? 
  * in the WebSocket URL, which is often logged). Node `ws` clients can use the header instead.
  */
 async function fetchWebSocketUpgradeTicket(): Promise<string | null> {
-  const token =
-    typeof window !== "undefined" ? window.__OPENSPRINT_LOCAL_SESSION__ : undefined;
+  const token = typeof window !== "undefined" ? window.__OPENSPRINT_LOCAL_SESSION__ : undefined;
   if (!token) return null;
   try {
     const res = await fetch(`${API_V1_BASE}/ws-upgrade-ticket`, {
@@ -389,7 +389,10 @@ export const websocketMiddleware: Middleware = (storeApi) => {
         if (socket !== ws) return;
         dispatch(setConnected(false));
         if (!intentionalClose && currentProjectId === HOME_SENTINEL) {
-          const delay = Math.min(RECONNECT_BASE_MS * Math.pow(2, reconnectAttempt), RECONNECT_MAX_MS);
+          const delay = Math.min(
+            RECONNECT_BASE_MS * Math.pow(2, reconnectAttempt),
+            RECONNECT_MAX_MS
+          );
           reconnectAttempt++;
           reconnectTimer = setTimeout(() => {
             if (currentProjectId === HOME_SENTINEL) connectHome();
@@ -766,7 +769,41 @@ export const websocketMiddleware: Middleware = (storeApi) => {
       case "notification.added": {
         const ev = event as { type: "notification.added"; notification: Notification };
         if (ev.notification) {
-          d(addNotification(ev.notification));
+          const incoming = ev.notification;
+          const version = (item: Notification) => {
+            const metadata = item.scopeChangeMetadata;
+            return Number(metadata && "caseVersion" in metadata ? metadata.caseVersion : 0);
+          };
+          const merge = (items: Notification[] | undefined): Notification[] => {
+            const existing = items?.find((item) => item.id === incoming.id);
+            if (
+              existing &&
+              (version(existing) > version(incoming) ||
+                (existing.status === "resolved" &&
+                  (incoming.kind !== "governance" || version(existing) === version(incoming))))
+            )
+              return items!;
+            return existing
+              ? items!.map((item) => (item.id === incoming.id ? incoming : item))
+              : [incoming, ...(items ?? [])];
+          };
+          qc.setQueryData<Notification[]>(
+            queryKeys.notifications.project(incoming.projectId),
+            merge
+          );
+          qc.setQueryData<Notification[]>(queryKeys.notifications.global(), merge);
+          if (incoming.kind === "governance") {
+            const state = storeApi.getState() as { openQuestions?: OpenQuestionsState };
+            const old = selectProjectNotifications(state, incoming.projectId).find(
+              (item) => item.id === incoming.id
+            );
+            if (
+              !old ||
+              version(old) < version(incoming) ||
+              (old.status !== "resolved" && version(old) === version(incoming))
+            )
+              d(updateNotification(incoming));
+          } else d(addNotification(incoming));
         }
         break;
       }
@@ -777,6 +814,14 @@ export const websocketMiddleware: Middleware = (storeApi) => {
           notificationId: string;
           projectId: string;
         };
+        const resolved = (items: Notification[] | undefined) =>
+          items?.filter(
+            (item) =>
+              item.id !== ev.notificationId ||
+              (item.status === "resolved" && item.kind !== "governance")
+          );
+        qc.setQueryData<Notification[]>(queryKeys.notifications.project(ev.projectId), resolved);
+        qc.setQueryData<Notification[]>(queryKeys.notifications.global(), resolved);
         // Keep resolved notification in state when already updated (e.g. after user submitted answer)
         // so the UI can show "Answered" and the reply until the user dismisses.
         const state = storeApi.getState() as { openQuestions?: OpenQuestionsState };
@@ -852,7 +897,9 @@ export const websocketMiddleware: Middleware = (storeApi) => {
           void qc.invalidateQueries({ queryKey: queryKeys.feedback.list(projectId) });
           if (syncEv.provider === "todoist") {
             const label =
-              syncEv.imported === 1 ? "1 item imported from Todoist" : `${syncEv.imported} items imported from Todoist`;
+              syncEv.imported === 1
+                ? "1 item imported from Todoist"
+                : `${syncEv.imported} items imported from Todoist`;
             d(
               addToast({
                 message: label,

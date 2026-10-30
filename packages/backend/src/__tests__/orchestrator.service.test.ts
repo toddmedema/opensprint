@@ -3795,3 +3795,21 @@ describe("OrchestratorService (slot-based model)", () => {
     });
   });
 });
+
+vi.mock("../services/governance.service.js", async () => ({
+  governanceService: (await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+}));
+vi.mock("../services/governance-execution.service.js", () => ({
+  governanceExecutionService: {
+    assertScope: async () => {},
+    approved: async () => {},
+    rejected: async () => ({ waiting: false }),
+  },
+  governanceCodeSnapshot: async () => ({
+    headSha: "head",
+    baseSha: "base",
+    diff: "",
+    diffHash: "hash",
+    changedPaths: [],
+  }),
+}));

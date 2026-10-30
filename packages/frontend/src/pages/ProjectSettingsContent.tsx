@@ -17,6 +17,7 @@ const VALID_SUB_TABS: SettingsSubTab[] = [
   "basics",
   "agents",
   "workflow",
+  "governance",
   "deployment",
   "hil",
   "team",

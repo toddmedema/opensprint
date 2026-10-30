@@ -30,6 +30,16 @@ Task tracking is handled internally by `TaskStoreService` backed by **SQLite (de
 - They should commit incremental logical units while working so crash recovery can preserve progress.
 - They must not push, merge, or close tasks manually; the orchestrator handles validation, task state, merging, and remote publication.
 
+### Review governance
+
+Project Settings → Review governance provides opt-in disabled, shadow, and enforced modes. Enabled governance requires review on every task. Approved immutable releases contain manual standards, rule revision IDs, deterministic path/role scope, parent/override relationships, rationale, and instruction content. Assignments pin their release and original task scope before spawn; edits to live instruction files do not silently change review authority.
+
+Structured standards findings cite the applicable rule revision and reviewed file/code revision. Defects need concrete evidence but do not require a preexisting rule. A structured appeal can obtain one reconsideration and a separate tool-free judge recommendation within persistent task budgets. Novel, uncertain, conflicting, or exhausted appeals need a human docket. Dockets show competing arguments, evidence, precedent, and the consequence of each action. Allow once, explicitly bounded reusable allowance, require a fix, request evidence, and cancellation have distinct effects. Waiting tasks retain worktrees and release agent slots; restarting the backend preserves the hold. Ordinary task reopening, notification resolution/deletion, or autonomy settings cannot authorize a merge.
+
+Configure a named server owner and a separate `OPENSPRINT_GOVERNANCE_APPROVAL_SECRET` (at least 32 characters) to authorize governance mutations. The UI keeps the entered capability in memory. It is distinct from the ordinary local bearer token and is removed from task subprocess environments. An agent with unrestricted access under the same OS account can still inspect server data; this is a cooperative local workflow, not a tamper-proof security boundary. Shared deployments must isolate the server account and explicitly designate approval authority.
+
+Congress processes decision events even when code has not changed. Nominations alone do not weaken rules. Substantive proposals contain exact before/after changes, supporting and contrary decisions, examples, compatibility and enforcement requirements. Isolated baseline/candidate evaluation uses retained original inputs, a pinned offline executor image, and an independent held-out rubric. Missing fixtures or an unavailable sandbox produces incomplete evaluation, never successful evidence. Policy amendments always require explicit human approval; activation and compatible rollback change the actual instruction content used by future assignments. See `review-governance.md` for the executor protocol and rollout.
+
 ### Orchestrator Recovery (GUPP-style)
 
 Work state is persisted before agent spawn via `assignment.json` in `.opensprint/active/<task-id>/`. If the backend crashes, recovery reads the assignment and re-spawns or resumes the agent. **Always write assignment before spawn; never spawn then write.**

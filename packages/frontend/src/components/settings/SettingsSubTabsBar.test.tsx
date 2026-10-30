@@ -11,6 +11,7 @@ describe("SettingsSubTabsBar", () => {
     expect(screen.getByText("Project Info")).toBeInTheDocument();
     expect(screen.getByText("Agent Config")).toBeInTheDocument();
     expect(screen.getByText("Workflow")).toBeInTheDocument();
+    expect(screen.getByText("Review governance")).toBeInTheDocument();
     expect(screen.getByText("Deliver")).toBeInTheDocument();
     expect(screen.getByText("Autonomy")).toBeInTheDocument();
     expect(screen.getByText("Team")).toBeInTheDocument();

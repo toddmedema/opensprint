@@ -3,6 +3,7 @@
  * Extracted from OrchestratorService so the main orchestrator composes dispatch as a dependency.
  */
 
+import { governanceService } from "./governance.service.js";
 import { getAgentName } from "@opensprint/shared";
 import type { StoredTask } from "./task-store.service.js";
 import { resolveEpicId } from "./task-store.service.js";
@@ -317,10 +318,7 @@ export interface OrchestratorDispatchHost {
     assignee?: string,
     worktreeKey?: string
   ): DispatchSlotLike;
-  transition(
-    projectId: string,
-    t: unknown
-  ): void;
+  transition(projectId: string, t: unknown): void;
   persistCounters(projectId: string, repoPath: string): Promise<void>;
   getTaskStore(): {
     update(projectId: string, taskId: string, fields: Record<string, unknown>): Promise<unknown>;
@@ -353,6 +351,12 @@ export interface OrchestratorDispatchHost {
     slot: DispatchSlotLike,
     retryContext?: RetryContext
   ): Promise<void>;
+  resumeGovernanceTask?(
+    projectId: string,
+    repoPath: string,
+    task: StoredTask,
+    slot: DispatchSlotLike
+  ): Promise<void>;
   performMergeRetry(
     projectId: string,
     repoPath: string,
@@ -371,6 +375,12 @@ export class OrchestratorDispatchService {
     slotQueueDepth: number
   ): Promise<void> {
     const state = this.host.getState(projectId);
+    if (await governanceService.hasTaskHold(projectId, task.id)) return;
+    await governanceService.captureTrustedScope(
+      projectId,
+      task.id,
+      `${task.title ?? ""}\n${task.description ?? ""}`
+    );
     log.info("Picking task", { projectId, taskId: task.id, title: task.title });
     if (state.slots.has(task.id)) {
       log.info("Skipping dispatch: task already has an active slot", {
@@ -468,7 +478,12 @@ export class OrchestratorDispatchService {
     await this.host.getBranchManager().ensureOnMain(repoPath, baseBranch);
 
     if (slot.worktreePath && slot.worktreePath !== repoPath) {
-      const integrity = await assertWorktreeIntegrity(repoPath, slot.worktreePath, task.id, "dispatch");
+      const integrity = await assertWorktreeIntegrity(
+        repoPath,
+        slot.worktreePath,
+        task.id,
+        "dispatch"
+      );
       if (!integrity.valid) {
         log.warn("Worktree integrity check failed at dispatch, attempting rebuild", {
           taskId: task.id,
@@ -484,9 +499,17 @@ export class OrchestratorDispatchService {
             repoPath: string,
             worktreeKey: string,
             actualPath?: string,
-            opts?: { bypassReferenceProtection?: boolean; ignoreLiveTaskStatusForTaskIds?: Set<string> }
+            opts?: {
+              bypassReferenceProtection?: boolean;
+              ignoreLiveTaskStatusForTaskIds?: Set<string>;
+            }
           ): Promise<boolean>;
-          createTaskWorktree(repoPath: string, taskId: string, baseBranch: string, options?: { worktreeKey?: string; branchName?: string }): Promise<string>;
+          createTaskWorktree(
+            repoPath: string,
+            taskId: string,
+            baseBranch: string,
+            options?: { worktreeKey?: string; branchName?: string }
+          ): Promise<string>;
         };
         const rebuildResult = await rebuildWorktreeIfInvalid(
           repoPath,
@@ -548,6 +571,13 @@ export class OrchestratorDispatchService {
       worktreeRegistry.transition(worktreeKey, "in_use");
     }
 
+    if (
+      (task as Record<string, unknown>).governance_resume === true &&
+      this.host.resumeGovernanceTask
+    ) {
+      await this.host.resumeGovernanceTask(projectId, repoPath, task, slot);
+      return;
+    }
     if (mergeResumeState) {
       await this.host.performMergeRetry(projectId, repoPath, task, slot);
       return;

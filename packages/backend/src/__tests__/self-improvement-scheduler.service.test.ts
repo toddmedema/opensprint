@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { runGovernanceCongress } from "../services/congress.service.js";
+vi.mock("../services/congress.service.js", () => ({
+  runGovernanceCongress: vi.fn().mockResolvedValue(undefined),
+}));
 
 const { mockListProjects, mockGetSettings, mockRunIfDue } = vi.hoisted(() => ({
   mockListProjects: vi.fn(),
@@ -55,6 +59,7 @@ describe("self-improvement-scheduler.service", () => {
       expect(results[0]).toEqual({ projectId: "proj-daily", triggered: true });
       expect(mockRunIfDue).toHaveBeenCalledTimes(1);
       expect(mockRunIfDue).toHaveBeenCalledWith("proj-daily", { trigger: "scheduled" });
+      expect(runGovernanceCongress).toHaveBeenCalledWith("proj-daily");
     });
 
     it("does not call runIfDue for daily project at midnight UTC when already run today", async () => {

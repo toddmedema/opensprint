@@ -100,12 +100,24 @@ export function scoreExperiment(
 export function decideExperimentOutcome(
   baseline: SelfImprovementMetrics,
   candidate: SelfImprovementMetrics,
-  autonomyLevel: AiAutonomyLevel
+  autonomyLevel: AiAutonomyLevel,
+  governance?: { policyAffecting: boolean; evaluationComplete: boolean }
 ): ExperimentScoringResult {
   const { successRateDelta, guardrailTriggered, guardrailDetails } = scoreExperiment(
     baseline,
     candidate
   );
+
+  if (governance && !governance.evaluationComplete) {
+    return {
+      decision: "reject",
+      reason:
+        "Evaluation is incomplete; missing or placeholder replay inputs cannot authorize promotion.",
+      successRateDelta,
+      guardrailTriggered: true,
+      guardrailDetails: [...guardrailDetails, "Incomplete independent evaluation"],
+    };
+  }
 
   const candidateWorse = successRateDelta < -0.001;
   const candidateBetter = successRateDelta > 0.001;
@@ -144,6 +156,17 @@ export function decideExperimentOutcome(
     return {
       decision: "approval_needed",
       reason,
+      successRateDelta,
+      guardrailTriggered,
+      guardrailDetails,
+    };
+  }
+
+  if (governance?.policyAffecting) {
+    return {
+      decision: "approval_needed",
+      reason:
+        "Instruction and policy amendments require explicit human approval at every autonomy level.",
       successRateDelta,
       guardrailTriggered,
       guardrailDetails,

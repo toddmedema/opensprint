@@ -1,6 +1,9 @@
 /** Central query key factory for TanStack Query. Use these in hooks and in WebSocket middleware. */
 
 export const queryKeys = {
+  governance: {
+    summary: (projectId: string) => ["governance", projectId] as const,
+  },
   projects: {
     all: ["projects"] as const,
     detail: (projectId: string) => ["projects", projectId] as const,

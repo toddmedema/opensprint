@@ -8,7 +8,9 @@ import { computeMergeGateCommandsFingerprint } from "../services/merge-verificat
 import type { StoredTask } from "../services/task-store.service.js";
 
 vi.mock("../services/task-store.service.js", async () => {
-  const actual = await vi.importActual<typeof import("../services/task-store.service.js")>("../services/task-store.service.js");
+  const actual = await vi.importActual<typeof import("../services/task-store.service.js")>(
+    "../services/task-store.service.js"
+  );
   return {
     taskStore: {},
     resolveEpicId: actual.resolveEpicId,
@@ -82,7 +84,9 @@ const mockListCleanupIntents = vi.fn();
 const mockRemoveCleanupIntent = vi.fn();
 
 vi.mock("../services/git-commit-queue.service.js", async () => {
-  const actual = await vi.importActual<typeof import("../services/git-commit-queue.service.js")>("../services/git-commit-queue.service.js");
+  const actual = await vi.importActual<typeof import("../services/git-commit-queue.service.js")>(
+    "../services/git-commit-queue.service.js"
+  );
   return {
     MergeJobError: actual.MergeJobError,
     gitCommitQueue: {
@@ -337,7 +341,9 @@ describe("MergeCoordinatorService", () => {
         planGetByEpicId: vi.fn().mockResolvedValue(null),
       },
       branchManager: {
-        getWorktreePath: vi.fn().mockImplementation((key: string) => `/tmp/opensprint-worktrees/${key}`),
+        getWorktreePath: vi
+          .fn()
+          .mockImplementation((key: string) => `/tmp/opensprint-worktrees/${key}`),
         waitForGitReady: vi.fn().mockResolvedValue(undefined),
         commitWip: vi.fn().mockResolvedValue(undefined),
         prepareWorktreeForRemoval: mockPrepareWorktreeForRemoval.mockResolvedValue(undefined),
@@ -1668,9 +1674,8 @@ describe("MergeCoordinatorService", () => {
   });
 
   it("runs another merger round when rebaseContinue is blocked preflight (unmerged paths)", async () => {
-    const { RebaseConflictError, RebaseContinueBlockedError } = await import(
-      "../services/branch-manager.js"
-    );
+    const { RebaseConflictError, RebaseContinueBlockedError } =
+      await import("../services/branch-manager.js");
     const prepareMainForPush = mockHost.branchManager.prepareMainForPush as unknown as ReturnType<
       typeof vi.fn
     >;
@@ -2033,3 +2038,18 @@ describe("MergeCoordinatorService", () => {
     });
   });
 });
+
+vi.mock("../services/governance.service.js", async () => ({
+  governanceService: (await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+}));
+
+vi.mock("../services/governance-execution.service.js", () => ({
+  governanceExecutionService: { assertScope: async () => {} },
+  governanceCodeSnapshot: async () => ({
+    headSha: "head",
+    baseSha: "base",
+    diff: "",
+    diffHash: "hash",
+    changedPaths: [],
+  }),
+}));

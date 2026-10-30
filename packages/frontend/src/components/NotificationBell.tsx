@@ -1,3 +1,4 @@
+import { getGovernanceCaseId } from "../lib/governance";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
@@ -66,6 +67,13 @@ export function NotificationBell({ projectId }: NotificationBellProps) {
 
   const handleNotificationClick = useCallback(
     (n: Notification) => {
+      if (n.kind === "governance") {
+        navigate(
+          `/projects/${projectId}/settings?tab=governance&case=${encodeURIComponent(getGovernanceCaseId(n))}`
+        );
+        setOpen(false);
+        return;
+      }
       // RATE LIMIT: navigate to project settings with Global tab for quick access to API keys
       if (n.kind === "api_blocked" && n.errorCode === "rate_limit") {
         navigate(`/projects/${projectId}/settings?level=global`);
@@ -139,7 +147,9 @@ export function NotificationBell({ projectId }: NotificationBellProps) {
             onClick={handleClearAll}
             className="text-sm text-theme-muted hover:text-theme-text transition-colors"
           >
-            Clear all
+            {notifications.some((n) => n.kind === "governance")
+              ? "Clear other notifications"
+              : "Clear all"}
           </button>
         </div>
         <ul className="divide-y divide-theme-border-subtle">
@@ -154,6 +164,11 @@ export function NotificationBell({ projectId }: NotificationBellProps) {
               >
                 <div className="font-medium text-theme-text flex items-center gap-2">
                   {NOTIFICATION_SOURCE_LABELS[n.source]}
+                  {n.kind === "governance" && (
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-700 dark:text-violet-300">
+                      Human decision
+                    </span>
+                  )}
                   {isApiBlocked(n) && (
                     <span
                       className="text-xs px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-600 dark:text-amber-400"

@@ -1,3 +1,4 @@
+import { guardGovernedInstructionEdit } from "../middleware/governance-settings.js";
 import { Router, Request } from "express";
 import { wrapAsync } from "../middleware/wrap-async.js";
 import { validateParams, validateBody } from "../middleware/validate.js";
@@ -51,6 +52,7 @@ export function createAgentsRouter({
     "/instructions",
     validateParams(projectIdParamSchema),
     validateBody(agentInstructionsBodySchema),
+    guardGovernedInstructionEdit,
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       await projectService.getProject(req.params.projectId);
       await agentInstructionsService.setGeneralInstructions(req.params.projectId, req.body.content);
@@ -78,6 +80,7 @@ export function createAgentsRouter({
     "/instructions/:role",
     validateParams(agentRoleParamsSchema),
     validateBody(agentInstructionsBodySchema),
+    guardGovernedInstructionEdit,
     wrapAsync(async (req: Request<RoleParams>, res) => {
       await projectService.getProject(req.params.projectId);
       await agentInstructionsService.setRoleInstructions(

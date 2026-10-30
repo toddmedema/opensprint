@@ -67,7 +67,11 @@ async function readLimit(projectId: string): Promise<number | undefined> {
  * Wait until a global agent slot is available for this project, then return a release function.
  * When maxTotalConcurrentAgents is unset, returns a no-op release immediately.
  */
-export async function acquireGlobalAgentSlot(projectId: string): Promise<() => void> {
+export async function acquireGlobalAgentSlot(
+  projectId: string,
+  signal?: AbortSignal
+): Promise<() => void> {
+  signal?.throwIfAborted();
   const limit = await readLimit(projectId);
   if (limit == null || limit < 1) {
     return () => {};
@@ -76,11 +80,24 @@ export async function acquireGlobalAgentSlot(projectId: string): Promise<() => v
   const state = getState(projectId, limit);
 
   while (state.inFlight >= state.limit) {
-    await new Promise<void>((resolve) => {
-      state.waitQueue.push(resolve);
+    await new Promise<void>((resolve, reject) => {
+      const wake = () => {
+        signal?.removeEventListener("abort", abort);
+        resolve();
+      };
+      const abort = () => {
+        const index = state.waitQueue.indexOf(wake);
+        if (index >= 0) state.waitQueue.splice(index, 1);
+        reject(signal?.reason ?? new Error("Agent invocation aborted"));
+      };
+      state.waitQueue.push(wake);
+      signal?.addEventListener("abort", abort, { once: true });
+      if (signal?.aborted) abort();
     });
+    signal?.throwIfAborted();
   }
 
+  signal?.throwIfAborted();
   state.inFlight += 1;
 
   let released = false;

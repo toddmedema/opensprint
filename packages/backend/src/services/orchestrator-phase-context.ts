@@ -4,7 +4,13 @@
  */
 
 import type { StoredTask } from "./task-store.service.js";
-import type { AgentConfig, ApiKeyProvider, ReviewAgentResult, ReviewAngle, TestResults } from "@opensprint/shared";
+import type {
+  AgentConfig,
+  ApiKeyProvider,
+  ReviewAgentResult,
+  ReviewAngle,
+  TestResults,
+} from "@opensprint/shared";
 import type { MergeGateVerificationArtifact } from "./merge-verification.service.js";
 
 export type FailureType =
@@ -84,6 +90,7 @@ export interface AgentSlotLike {
   phaseResult: {
     codingDiff: string;
     codingSummary: string;
+    governanceAppeals?: import("@opensprint/shared").ReviewAppeal[];
     testResults: TestResults | null;
     testOutput: string;
     validationCommand?: string | null;
@@ -113,6 +120,7 @@ export type ReviewRetryTarget = "general" | ReviewAngle;
 export interface PhaseResult {
   codingDiff: string;
   codingSummary: string;
+  governanceAppeals?: import("@opensprint/shared").ReviewAppeal[];
   testResults: TestResults | null;
   testOutput: string;
   validationCommand?: string | null;
@@ -131,6 +139,11 @@ export function formatReviewFeedback(result: ReviewAgentResult): string {
     for (const issue of result.issues) {
       parts.push(`\n- ${issue}`);
     }
+  }
+  if (result.findings?.length) {
+    parts.push(
+      `\n\nStructured findings (fix or submit a bounded appeal for an eligible standard):\n${JSON.stringify(result.findings)}`
+    );
   }
   if (result.notes?.trim()) {
     parts.push(`\n\nNotes: ${result.notes.trim()}`);
@@ -212,6 +225,14 @@ export interface TaskAssignmentLike {
   retryContext?: RetryContext;
   angle?: string;
   createdAt: string;
+  invocationId?: string;
+  governance?: {
+    releaseId: string;
+    contextHash: string;
+    baseSha: string;
+    headSha: string;
+    trustedScopeHash: string;
+  };
   /** Present when agent enhancement / behavior versioning supplies replay context (assignment.json). */
   replayMetadata?: {
     baseCommitSha: string;

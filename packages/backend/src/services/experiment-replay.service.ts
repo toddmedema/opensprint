@@ -25,6 +25,12 @@ export interface ReplayOutcome {
   latencyMs: number;
   costUsd: number;
   error?: string;
+  evaluationComplete?: boolean;
+  inputHash?: string;
+  rubricId?: string;
+  holdout?: boolean;
+  label?: string;
+  artifact?: { agentResult: string; evaluatorResult: string; codeDiff: string };
 }
 
 /** Baseline + candidate outcomes for one replayed session. */
@@ -40,6 +46,8 @@ export interface ExperimentReplayResult {
   baselineMetrics: SelfImprovementMetrics;
   candidateMetrics: SelfImprovementMetrics;
   sampleSize: number;
+  /** Only measured runs with held-out positive/negative cases can support activation. */
+  evaluationComplete?: boolean;
 }
 
 /**
@@ -85,6 +93,7 @@ export interface ExperimentReplayOptions {
   maxSessions?: number;
   /** Callback invoked when replay stage changes (for status broadcasting). */
   onStageChange?: (stage: "replaying" | "scoring") => void;
+  resolveBaseCommit?: (sessionId: number) => Promise<string>;
 }
 
 export class ExperimentReplayService {
@@ -135,11 +144,27 @@ export class ExperimentReplayService {
     const results: ReplaySessionResult[] = [];
 
     for (const sessionId of sampled) {
+      let originalBase = baseBranch;
+      try {
+        originalBase = (await options.resolveBaseCommit?.(sessionId)) ?? baseBranch;
+      } catch (err) {
+        const unavailable: ReplayOutcome = {
+          success: false,
+          retryCount: 0,
+          reviewPassed: false,
+          latencyMs: 0,
+          costUsd: 0,
+          evaluationComplete: false,
+          error: err instanceof Error ? err.message : String(err),
+        };
+        results.push({ sessionId, baseline: unavailable, candidate: { ...unavailable } });
+        continue;
+      }
       const result = await this.replaySession({
         sessionId,
         repoPath,
         runId,
-        baseBranch,
+        baseBranch: originalBase,
         candidateBundle,
         agentRunner,
       });
@@ -156,6 +181,21 @@ export class ExperimentReplayService {
       baselineMetrics: aggregateMetrics(baselineOutcomes),
       candidateMetrics: aggregateMetrics(candidateOutcomes),
       sampleSize: results.length,
+      evaluationComplete:
+        results.length > 0 &&
+        results.every(
+          (r) =>
+            r.baseline.evaluationComplete === true &&
+            r.candidate.evaluationComplete === true &&
+            r.baseline.inputHash === r.candidate.inputHash &&
+            r.baseline.rubricId === r.candidate.rubricId
+        ) &&
+        results.some((r) => r.baseline.holdout && r.baseline.label === "compliant") &&
+        results.some(
+          (r) =>
+            r.baseline.holdout &&
+            ["defect", "conflict", "retrieval_miss"].includes(r.baseline.label ?? "")
+        ),
     };
 
     log.info("Experiment replay completed", {

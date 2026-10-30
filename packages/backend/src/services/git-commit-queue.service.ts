@@ -28,6 +28,9 @@ import { getGitNoHooksPath } from "../utils/git-no-hooks.js";
 import { waitForGitReady } from "../utils/git-lock.js";
 import { shellExec } from "../utils/shell-exec.js";
 import { fireAndForget } from "../utils/fire-and-forget.js";
+import { governanceService } from "./governance.service.js";
+import { governanceExecutionService } from "./governance-execution.service.js";
+
 const log = createLogger("git-commit-queue");
 const _MAX_REBASE_RESOLUTION_ROUNDS = 12;
 
@@ -94,6 +97,7 @@ export interface PrdUpdateJob {
 
 export interface WorktreeMergeJob {
   type: "worktree_merge";
+  projectId?: string;
   repoPath: string;
   worktreePath: string;
   branchName: string;
@@ -398,11 +402,11 @@ class GitCommitQueueImpl implements GitCommitQueueService {
       }
       case "worktree_merge": {
         let taskTitle = job.taskTitle ?? job.taskId;
-        let projectId: string | null = null;
+        let projectId: string | null = job.projectId ?? null;
         try {
           await this.taskStore.init();
           const project = await this.projectService.getProjectByRepoPath(repoPath);
-          projectId = project?.id ?? null;
+          projectId = project?.id ?? job.projectId ?? null;
           if (project) {
             const issue = await this.taskStore.show(project.id, job.taskId);
             taskTitle = (issue.title as string) || job.taskId;
@@ -562,7 +566,9 @@ class GitCommitQueueImpl implements GitCommitQueueService {
         } finally {
           if (cleanupFallbackWorktree) {
             await this.branchManager.rebaseAbort(rebaseWorktreePath).catch((err) => {
-              log.warn("Failed to abort rebase during cleanup", { err: err instanceof Error ? err.message : String(err) });
+              log.warn("Failed to abort rebase during cleanup", {
+                err: err instanceof Error ? err.message : String(err),
+              });
             });
             await this.branchManager.prepareWorktreeForRemoval(job.taskId);
             await this.branchManager
@@ -641,20 +647,20 @@ class GitCommitQueueImpl implements GitCommitQueueService {
                     branchName: job.branchName,
                   });
                   fireAndForget(
-                  eventLogService.append(repoPath, {
-                    timestamp: new Date().toISOString(),
-                    projectId,
-                    taskId: job.taskId,
-                    event: "merge.resolved",
-                    data: {
-                      stage: "merge_to_main",
-                      branchName: job.branchName,
-                      conflictedFiles: mergeErr.conflictedFiles,
-                      resolvedBy: "merger",
-                    },
-                  }),
-                  "git-commit-queue:merge-completed-event-log"
-                );
+                    eventLogService.append(repoPath, {
+                      timestamp: new Date().toISOString(),
+                      projectId,
+                      taskId: job.taskId,
+                      event: "merge.resolved",
+                      data: {
+                        stage: "merge_to_main",
+                        branchName: job.branchName,
+                        conflictedFiles: mergeErr.conflictedFiles,
+                        resolvedBy: "merger",
+                      },
+                    }),
+                    "git-commit-queue:merge-completed-event-log"
+                  );
                 } catch (continueErr) {
                   log.warn("merge commit failed after merger", {
                     branchName: job.branchName,
@@ -707,36 +713,54 @@ class GitCommitQueueImpl implements GitCommitQueueService {
             throw this.buildQualityGateJobError(qualityGateFailure, mergeCandidate.worktreePath);
           }
 
-          taskTitle = await this.resolveWorktreeMergeTaskTitle(repoPath, job, taskTitle);
-          const msg = formatMergeCommitMessage(job.taskId, taskTitle);
-          await waitForGitReady(mergeCandidate.worktreePath);
-          const noHooksMerge = getGitNoHooksPath();
-          await shellExec(
-            `git -c core.hooksPath="${noHooksMerge}" commit -m "${msg.replace(/"/g, '\\"')}"`,
-            {
-              cwd: mergeCandidate.worktreePath,
-              timeout: 30_000,
-            }
-          );
-          log.info("Merge commit created in candidate workspace", {
-            branchName: job.branchName,
-            candidateBranch: mergeCandidate.branchName,
-          });
-
-          if (!mergeCandidate.branchName) {
-            throw new Error("Merge candidate workspace is missing a branch name");
-          }
-
-          await this.branchManager.ensureOnMain(repoPath, baseBranch);
-          await this.branchManager.withRepoRootAutoStash(
-            repoPath,
-            `publish validated merge ${job.branchName} into ${baseBranch}`,
-            async () => {
-              await waitForGitReady(repoPath);
-              await shellExec(`git merge --ff-only ${mergeCandidate.branchName}`, {
-                cwd: repoPath,
-                timeout: 30_000,
+          // Publication and revocation share an ordering. Admission reads durable state, including
+          // holds on manually reopened tasks, against the actual post-rebase/merger candidate.
+          await governanceService.withPublicationLock(
+            projectId ?? "unknown",
+            async (assertLease) => {
+              await governanceExecutionService.assertPublication({
+                projectId: projectId ?? "unknown",
+                taskId: job.taskId,
+                repoPath,
+                candidatePath: mergeCandidate.worktreePath,
+                branchName: job.branchName,
+                baseBranch,
               });
+
+              taskTitle = await this.resolveWorktreeMergeTaskTitle(repoPath, job, taskTitle);
+              const msg = formatMergeCommitMessage(job.taskId, taskTitle);
+              await waitForGitReady(mergeCandidate.worktreePath);
+              const noHooksMerge = getGitNoHooksPath();
+              await assertLease();
+              await shellExec(
+                `git -c core.hooksPath="${noHooksMerge}" commit -m "${msg.replace(/"/g, '\\"')}"`,
+                {
+                  cwd: mergeCandidate.worktreePath,
+                  timeout: 30_000,
+                }
+              );
+              log.info("Merge commit created in candidate workspace", {
+                branchName: job.branchName,
+                candidateBranch: mergeCandidate.branchName,
+              });
+
+              if (!mergeCandidate.branchName) {
+                throw new Error("Merge candidate workspace is missing a branch name");
+              }
+
+              await this.branchManager.ensureOnMain(repoPath, baseBranch);
+              await this.branchManager.withRepoRootAutoStash(
+                repoPath,
+                `publish validated merge ${job.branchName} into ${baseBranch}`,
+                async () => {
+                  await waitForGitReady(repoPath);
+                  await assertLease();
+                  await shellExec(`git merge --ff-only ${mergeCandidate.branchName}`, {
+                    cwd: repoPath,
+                    timeout: 30_000,
+                  });
+                }
+              );
             }
           );
         } finally {

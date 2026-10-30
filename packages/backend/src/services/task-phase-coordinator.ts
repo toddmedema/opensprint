@@ -265,13 +265,18 @@ export class TaskPhaseCoordinator {
           summary: mergedSummary || "Review rejected",
           ...(mergedIssues.length > 0 && { issues: mergedIssues }),
           notes: mergedNotes,
+          ...(outcomes.some((o) => o.result?.findings)
+            ? { findings: outcomes.flatMap((o) => o.result?.findings ?? []) }
+            : {}),
         },
       };
     }
 
     return {
       status: "approved",
-      result: outcomes[0]?.result ?? null,
+      result: outcomes[0]?.result
+        ? { ...outcomes[0].result, findings: outcomes.flatMap((o) => o.result?.findings ?? []) }
+        : null,
       exitCode: outcomes[0]?.exitCode ?? 0,
     };
   }

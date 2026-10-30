@@ -4,10 +4,11 @@
  */
 
 import { getDatabaseDialect } from "@opensprint/shared";
-import type { DbRow } from "../db/client.js";
+import type { DbClient, DbRow } from "../db/client.js";
 import { createPostgresDbClientFromUrl } from "../db/client.js";
 import { runSchema } from "../db/schema.js";
 import { initAppDb } from "../db/app-db.js";
+import { GOVERNANCE_TABLES_IN_DEPENDENCY_ORDER } from "../db/governance-schema.js";
 
 const TABLES = [
   "tasks",
@@ -33,9 +34,11 @@ const TABLES = [
   "project_workflows",
   "help_chat_histories",
   "repo_file_migrations",
+  "worktree_leases",
+  ...GOVERNANCE_TABLES_IN_DEPENDENCY_ORDER,
 ] as const;
 
-/** Tables that have SERIAL id in Postgres; omit id when inserting so Postgres generates. */
+/** Preserve IDs for durable replay/session references, then advance PostgreSQL sequences. */
 const SERIAL_ID_TABLES = new Set([
   "agent_sessions",
   "agent_stats",
@@ -44,16 +47,39 @@ const SERIAL_ID_TABLES = new Set([
   "self_improvement_runs",
 ]);
 
-function getInsertColumns(table: string, row: DbRow): string[] {
+function getInsertColumns(row: DbRow): string[] {
   const cols = Object.keys(row).filter((k) => row[k] !== undefined);
-  if (SERIAL_ID_TABLES.has(table)) {
-    return cols.filter((c) => c !== "id");
-  }
   return cols;
 }
 
 function rowToValues(row: DbRow, columns: string[]): unknown[] {
   return columns.map((c) => row[c]);
+}
+
+/** Copy one consistent source snapshot, retaining policy authority and exact session identity. */
+export async function copyDatabaseRows(
+  sourceClient: DbClient,
+  targetClient: DbClient
+): Promise<void> {
+  await sourceClient.runInTransaction(async (source) =>
+    targetClient.runInTransaction(async (tx) => {
+      for (const table of TABLES) {
+        const rows = await source.query(`SELECT * FROM ${table}`);
+        if (!rows.length) continue;
+        const columns = getInsertColumns(rows[0]);
+        if (!columns.length) continue;
+        const placeholders = columns.map((_, i) => `$${i + 1}`).join(", ");
+        const sql = `INSERT INTO ${table} (${columns.map((column) => `"${column.replaceAll('"', '""')}"`).join(", ")}) VALUES (${placeholders})`;
+        for (const row of rows) await tx.execute(sql, rowToValues(row, columns));
+      }
+      for (const table of SERIAL_ID_TABLES) {
+        await tx.execute(
+          `SELECT setval(pg_get_serial_sequence($1, 'id'), COALESCE((SELECT MAX(id) FROM ${table}), 1), EXISTS(SELECT 1 FROM ${table}))`,
+          [table]
+        );
+      }
+    })
+  );
 }
 
 export async function migrateSqliteToPostgres(sourceUrl: string, targetUrl: string): Promise<void> {
@@ -73,24 +99,7 @@ export async function migrateSqliteToPostgres(sourceUrl: string, targetUrl: stri
 
     const sourceClient = await sourceAppDb.getClient();
 
-    await targetClient.runInTransaction(async (tx) => {
-      for (const table of TABLES) {
-        const rows = await sourceClient.query(`SELECT * FROM ${table}`);
-        if (rows.length === 0) continue;
-
-        const first = rows[0] as DbRow;
-        const columns = getInsertColumns(table, first);
-        if (columns.length === 0) continue;
-
-        const placeholders = columns.map((_, i) => `$${i + 1}`).join(", ");
-        const sql = `INSERT INTO ${table} (${columns.join(", ")}) VALUES (${placeholders})`;
-
-        for (const row of rows) {
-          const values = rowToValues(row as DbRow, columns);
-          await tx.execute(sql, values);
-        }
-      }
-    });
+    await copyDatabaseRows(sourceClient, targetClient);
   } finally {
     await sourceAppDb.close();
     await targetPool.end();

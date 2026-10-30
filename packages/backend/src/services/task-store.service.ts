@@ -464,9 +464,10 @@ export class TaskStoreService {
         ),
         [projectId]
       ),
-      client.query(toPgParams("SELECT id, status, issue_type, description FROM tasks WHERE project_id = ?"), [
-        projectId,
-      ]),
+      client.query(
+        toPgParams("SELECT id, status, issue_type, description FROM tasks WHERE project_id = ?"),
+        [projectId]
+      ),
       client.query(toPgParams(nonChoreSql), [projectId, limit, offset]),
     ]);
 
@@ -715,24 +716,30 @@ export class TaskStoreService {
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         try {
           id = await this.generateId(projectId, options.parentId);
-          await client.execute(
-            toPgParams(
-              `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, complexity, extra)
+          await client.runInTransaction(async (tx) => {
+            await tx.execute(
+              toPgParams(
+                `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, complexity, extra)
                VALUES (?, ?, ?, ?, ?, 'open', ?, NULL, '[]', ?, ?, ?, ?)`
-            ),
-            [
-              id,
-              projectId,
-              title,
-              options.description ?? null,
-              type,
-              priority,
-              now,
-              now,
-              complexity ?? null,
-              extra,
-            ]
-          );
+              ),
+              [
+                id,
+                projectId,
+                title,
+                options.description ?? null,
+                type,
+                priority,
+                now,
+                now,
+                complexity ?? null,
+                extra,
+              ]
+            );
+            await tx.execute(
+              "INSERT INTO governance_task_scopes(project_id,task_id,scope) VALUES($1,$2,$3)",
+              [projectId, id, `${title}\n${options.description ?? ""}`]
+            );
+          });
           break;
         } catch (err: unknown) {
           lastError = err;
@@ -855,6 +862,11 @@ export class TaskStoreService {
               complexity ?? null,
               extraJson,
             ]
+          );
+
+          await tx.execute(
+            "INSERT INTO governance_task_scopes(project_id,task_id,scope) VALUES($1,$2,$3)",
+            [projectId, id, `${input.title}\n${input.description ?? ""}`]
           );
 
           if (input.parentId) {

@@ -73,6 +73,11 @@ describe.skipIf(!projectsPostgresOk)("Projects REST API — spec/sketch phase ro
   let projectId: string;
 
   beforeEach(async () => {
+    vi.stubEnv("OPENSPRINT_GOVERNANCE_OWNER", "Test Owner");
+    vi.stubEnv(
+      "OPENSPRINT_GOVERNANCE_APPROVAL_SECRET",
+      "test-human-capability-12345678901234567890"
+    );
     app = createApp();
     projectService = new ProjectService();
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-projects-route-test-"));
@@ -101,6 +106,7 @@ describe.skipIf(!projectsPostgresOk)("Projects REST API — spec/sketch phase ro
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await cleanupTestProject({ projectService, projectId });
     projectService.clearListCacheForTesting();
     setGlobalSettingsPathForTesting(null);
@@ -202,6 +208,7 @@ describe.skipIf(!projectsPostgresOk)("Projects REST API — spec/sketch phase ro
 
     const res = await authedSupertest(app)
       .post(`${API_PREFIX}/projects/${projectId}/self-improvement/approve`)
+      .set("x-opensprint-governance-capability", "test-human-capability-12345678901234567890")
       .send();
 
     expect(res.status).toBe(200);
@@ -234,6 +241,7 @@ describe.skipIf(!projectsPostgresOk)("Projects REST API — spec/sketch phase ro
 
     const res = await authedSupertest(app)
       .post(`${API_PREFIX}/projects/${projectId}/self-improvement/reject`)
+      .set("x-opensprint-governance-capability", "test-human-capability-12345678901234567890")
       .send({ candidateId: "bv-candidate-2" });
 
     expect(res.status).toBe(200);
@@ -262,6 +270,7 @@ describe.skipIf(!projectsPostgresOk)("Projects REST API — spec/sketch phase ro
 
     const res = await authedSupertest(app)
       .post(`${API_PREFIX}/projects/${projectId}/self-improvement/rollback`)
+      .set("x-opensprint-governance-capability", "test-human-capability-12345678901234567890")
       .send({ behaviorVersionId: "bv-previous" });
 
     expect(res.status).toBe(200);
@@ -275,6 +284,7 @@ describe.skipIf(!projectsPostgresOk)("Projects REST API — spec/sketch phase ro
   it("POST /projects/:id/self-improvement/approve returns 404 when no pending candidate", async () => {
     const res = await authedSupertest(app)
       .post(`${API_PREFIX}/projects/${projectId}/self-improvement/approve`)
+      .set("x-opensprint-governance-capability", "test-human-capability-12345678901234567890")
       .send();
 
     expect(res.status).toBe(404);
@@ -286,6 +296,7 @@ describe.skipIf(!projectsPostgresOk)("Projects REST API — spec/sketch phase ro
     });
     const res = await authedSupertest(app)
       .post(`${API_PREFIX}/projects/${projectId}/self-improvement/reject`)
+      .set("x-opensprint-governance-capability", "test-human-capability-12345678901234567890")
       .send({ candidateId: "wrong-id" });
 
     expect(res.status).toBe(400);
@@ -298,6 +309,7 @@ describe.skipIf(!projectsPostgresOk)("Projects REST API — spec/sketch phase ro
 
     const res = await authedSupertest(app)
       .post(`${API_PREFIX}/projects/${projectId}/self-improvement/rollback`)
+      .set("x-opensprint-governance-capability", "test-human-capability-12345678901234567890")
       .send({ behaviorVersionId: "bv-missing" });
 
     expect(res.status).toBe(400);

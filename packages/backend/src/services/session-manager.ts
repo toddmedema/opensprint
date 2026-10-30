@@ -17,6 +17,9 @@ import type { DbRow } from "../db/client.js";
 import { taskStore } from "./task-store.service.js";
 import type { ProjectService } from "./project.service.js";
 import { LOG_DIFF_TRUNCATE_AT_CHARS, truncateToThreshold } from "../utils/log-diff-truncation.js";
+import { retainGovernanceReplayInput } from "./governance-replay-input.js";
+import { createLogger } from "../utils/logger.js";
+const log = createLogger("session-manager");
 
 export interface RawJsonReadResult<T> {
   raw: string | null;
@@ -242,6 +245,26 @@ export class SessionManager {
           session.rootCauseCategory ?? null,
         ]
       );
+      const archived = await client.queryOne(
+        "SELECT id FROM agent_sessions WHERE project_id=$1 AND task_id=$2 AND attempt=$3 AND started_at=$4 ORDER BY id DESC LIMIT 1",
+        [projectId, taskId, attempt, session.startedAt]
+      );
+      if (archived) {
+        try {
+          await retainGovernanceReplayInput(
+            client,
+            projectId,
+            Number(archived.id),
+            session,
+            repoPath
+          );
+        } catch (err) {
+          log.warn(
+            "Replay input unavailable; archived session cannot authorize policy evaluation",
+            { projectId, taskId, attempt, error: err instanceof Error ? err.message : String(err) }
+          );
+        }
+      }
     });
 
     // Active files live in the worktree (if provided), archive goes to runtime dir (outside repo)

@@ -27,6 +27,16 @@ When Open Sprint spawns an Execute agent:
 
 Work state is persisted before agent spawn via `assignment.json` in `.opensprint/active/<task-id>/`. If the backend crashes, recovery reads the assignment and re-spawns or resumes the agent. **Always write assignment before spawn; never spawn then write.**
 
+## Review governance
+
+Review governance is opt-in (`disabled`, `shadow`, or `enforced`) and requires `reviewMode: always` when enabled. The server pins an immutable approved policy release, instruction snapshot, original task scope, and base revision before spawning. Task edits to instructions or descriptions cannot change that authority. Reviews report structured findings with concrete evidence and rule revisions for standards; defects and failed hard checks remain independent blockers.
+
+A coder may submit a structured appeal with alternatives, evidence, risks, and requested limits. One reconsideration and independent judge cycle is permitted per finding and material diff, within durable task-wide budgets. Novel or uncertain exceptions require a durable human docket. Waiting tasks release agent slots and retain their worktree. A ruling is bound to reviewed code and policy; code changes or revocation require revalidation. A one-time allowance never becomes reusable authority.
+
+Only the designated human approval capability can resolve governance dockets, mutate policy-sensitive configuration, activate amendments, or roll back policy. Ordinary task/notification actions and the autonomy slider cannot clear a governance hold. Never pass approval credentials to agent subprocesses. Deterministic protected-path checks and build/lint/test gates cannot be waived by a judge or ruling.
+
+Congress mines immutable decisions independently of code changes and proposes exact amendments with supporting and contrary evidence. Evaluate full baseline/candidate content against retained original inputs and independent held-out checks in an externally isolated offline executor. Missing inputs, unavailable isolation, and placeholder metrics are incomplete evaluations. Human approval activates actual immutable content only after compatible enforcement lands. See `packages/backend/docs/review-governance.md` for setup and the cooperative same-OS-account trust boundary.
+
 ## Loop Kicker vs Watchdog
 
 - **Loop kicker** (60s): Restarts the orchestrator loop when idle. Runs inside the orchestrator.
@@ -71,13 +81,13 @@ Certain file paths are **sensitive surfaces** (integration, OAuth, token handlin
 
 **Protected patterns:**
 
-| Pattern | Label |
-|---------|-------|
-| `routes/integrations-*` | Integration routes |
-| `integration-store` | Integration store service |
-| `token-encryption` | Token encryption service |
-| `routes/oauth` | OAuth routes |
-| `todoist-sync` | Todoist sync service |
+| Pattern                 | Label                     |
+| ----------------------- | ------------------------- |
+| `routes/integrations-*` | Integration routes        |
+| `integration-store`     | Integration store service |
+| `token-encryption`      | Token encryption service  |
+| `routes/oauth`          | OAuth routes              |
+| `todoist-sync`          | Todoist sync service      |
 
 **Scope keywords that unlock protected paths:** integration, oauth, todoist, token-encrypt, api-key-stor, third-party-auth, external-service, connect(ion)-service.
 

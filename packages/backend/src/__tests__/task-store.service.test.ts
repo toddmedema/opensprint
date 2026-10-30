@@ -99,6 +99,37 @@ suite("TaskStoreService", () => {
   });
 
   describe("create", () => {
+    it("captures original protected-path scope atomically and ignores later task wording edits", async () => {
+      const original = await store.create(TEST_PROJECT_ID, "Improve dashboard", {
+        description: "Read-only UI changes",
+      });
+      await store.update(TEST_PROJECT_ID, original.id, {
+        title: "integration token-encrypt",
+        description: "Grant new authority",
+      });
+      const scope = await client.queryOne(
+        "SELECT scope FROM governance_task_scopes WHERE project_id=$1 AND task_id=$2",
+        [TEST_PROJECT_ID, original.id]
+      );
+      expect(scope?.scope).toBe("Improve dashboard\nRead-only UI changes");
+      const tasks = await store.createMany(TEST_PROJECT_ID, [
+        { title: "Connect Todoist integration", description: "OAuth integration implementation" },
+        { title: "Ordinary task" },
+      ]);
+      const scopes = await client.query(
+        "SELECT task_id,scope FROM governance_task_scopes WHERE project_id=$1",
+        [TEST_PROJECT_ID]
+      );
+      expect(scopes).toEqual(
+        expect.arrayContaining([
+          {
+            task_id: tasks[0].id,
+            scope: "Connect Todoist integration\nOAuth integration implementation",
+          },
+          { task_id: tasks[1].id, scope: "Ordinary task\n" },
+        ])
+      );
+    });
     it("should create a top-level task", async () => {
       const result = await store.create(TEST_PROJECT_ID, "My Task", {
         type: "task",
@@ -694,8 +725,14 @@ suite("TaskStoreService", () => {
     });
 
     it("orders by priority ASC then created_at ASC and respects limit and offset", async () => {
-      const low = await store.create(TEST_PROJECT_ID, "Later priority", { type: "task", priority: 2 });
-      const high = await store.create(TEST_PROJECT_ID, "Earlier priority", { type: "task", priority: 0 });
+      const low = await store.create(TEST_PROJECT_ID, "Later priority", {
+        type: "task",
+        priority: 2,
+      });
+      const high = await store.create(TEST_PROJECT_ID, "Earlier priority", {
+        type: "task",
+        priority: 0,
+      });
       const mid = await store.create(TEST_PROJECT_ID, "Mid", { type: "task", priority: 1 });
 
       const r0 = await store.listTasksPaginated(TEST_PROJECT_ID, 10, 0);

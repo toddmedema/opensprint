@@ -9,6 +9,7 @@ import type {
 import type { FeedbackItem } from "./feedback.js";
 import type { IntegrationConnectionStatus } from "./integrations.js";
 import type {
+  NotificationKind,
   ScopeChangeMetadata,
   ScopeChangeProposedUpdate,
   SelfImprovementApprovalPayload,
@@ -260,12 +261,7 @@ export interface NotificationAddedEvent {
     status: "open" | "resolved";
     createdAt: string;
     resolvedAt: string | null;
-    kind?:
-      | "open_question"
-      | "api_blocked"
-      | "hil_approval"
-      | "agent_failed"
-      | "self_improvement_approval";
+    kind?: NotificationKind;
     errorCode?: "rate_limit" | "auth" | "out_of_credit" | "scope_compliance";
     scopeChangeMetadata?: ScopeChangeMetadata | SelfImprovementApprovalPayload;
   };

@@ -16,3 +16,5 @@ export * from "./workflow.js";
 export * from "./integrations.js";
 export * from "./commands.js";
 export * from "./agentic-repair.js";
+
+export * from "./governance.js";

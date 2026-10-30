@@ -736,7 +736,11 @@ describe("RecoveryService — stale heartbeat recovery", () => {
     const result = await service.runFullRecovery("proj-1", tmpDir, host);
 
     expect(vi.mocked(worktreeLeaseService.forceRelease)).not.toHaveBeenCalled();
-    expect(mockRemoveTaskWorktree).not.toHaveBeenCalledWith(tmpDir, "task-merged", "/tmp/wt-merged");
+    expect(mockRemoveTaskWorktree).not.toHaveBeenCalledWith(
+      tmpDir,
+      "task-merged",
+      "/tmp/wt-merged"
+    );
     expect(result.cleaned).not.toContain("cleanup_intent:task-merged");
   });
 
@@ -1098,7 +1102,10 @@ describe("RecoveryService — stale heartbeat recovery", () => {
           }
           return JSON.stringify({ status: "success" });
         }
-        return originalReadFile.call(fs, ...args as Parameters<typeof originalReadFile>) as Promise<string>;
+        return originalReadFile.call(
+          fs,
+          ...(args as Parameters<typeof originalReadFile>)
+        ) as Promise<string>;
       });
 
       const result = await service.runFullRecovery("proj-1", tmpDir, guppHost, {
@@ -1261,12 +1268,9 @@ describe("RecoveryService — stale heartbeat recovery", () => {
       await service.runFullRecovery("proj-1", tmpDir, guppHost, { includeGupp: true });
 
       expect(mockCanCleanupLease).toHaveBeenCalledWith("task-released");
-      expect(mockRemoveTaskWorktree).toHaveBeenCalledWith(
-        tmpDir,
-        "task-released",
-        wtPath,
-        { ignoreLiveTaskStatusForTaskIds: new Set(["task-released"]) }
-      );
+      expect(mockRemoveTaskWorktree).toHaveBeenCalledWith(tmpDir, "task-released", wtPath, {
+        ignoreLiveTaskStatusForTaskIds: new Set(["task-released"]),
+      });
     });
 
     it("defaults to allowing cleanup when canCleanup throws", async () => {
@@ -1287,12 +1291,9 @@ describe("RecoveryService — stale heartbeat recovery", () => {
 
       await service.runFullRecovery("proj-1", tmpDir, guppHost, { includeGupp: true });
 
-      expect(mockRemoveTaskWorktree).toHaveBeenCalledWith(
-        tmpDir,
-        "task-err",
-        wtPath,
-        { ignoreLiveTaskStatusForTaskIds: new Set(["task-err"]) }
-      );
+      expect(mockRemoveTaskWorktree).toHaveBeenCalledWith(tmpDir, "task-err", wtPath, {
+        ignoreLiveTaskStatusForTaskIds: new Set(["task-err"]),
+      });
     });
 
     it("checks cleanup lease and removal using assignment worktreeKey for epic worktrees", async () => {
@@ -1341,7 +1342,11 @@ describe("RecoveryService — stale heartbeat recovery", () => {
   });
 
   describe("active-slot exclusion prevents worktree destruction (git_entry_missing fix)", () => {
-    function makeAssignment(taskId: string, worktreePath: string, extra?: Partial<Record<string, unknown>>) {
+    function makeAssignment(
+      taskId: string,
+      worktreePath: string,
+      extra?: Partial<Record<string, unknown>>
+    ) {
       return {
         taskId,
         projectId: "proj-1",
@@ -1459,12 +1464,9 @@ describe("RecoveryService — stale heartbeat recovery", () => {
 
       await service.runFullRecovery("proj-1", tmpDir, mixedHost, { includeGupp: true });
 
-      expect(mockRemoveTaskWorktree).toHaveBeenCalledWith(
-        tmpDir,
-        "task-stale-gone",
-        wtPath,
-        { ignoreLiveTaskStatusForTaskIds: new Set(["task-stale-gone"]) }
-      );
+      expect(mockRemoveTaskWorktree).toHaveBeenCalledWith(tmpDir, "task-stale-gone", wtPath, {
+        ignoreLiveTaskStatusForTaskIds: new Set(["task-stale-gone"]),
+      });
     });
 
     it("skips cleanup for activeAgentIds even without explicit slot", async () => {
@@ -1599,7 +1601,9 @@ describe("RecoveryService — stale heartbeat recovery", () => {
       const wtKey = `stress-gap-${Date.now()}`;
       const wtPath = path.join(base, wtKey);
       try {
-        await fs.mkdir(path.join(wtPath, ".opensprint", "active", "task-live"), { recursive: true });
+        await fs.mkdir(path.join(wtPath, ".opensprint", "active", "task-live"), {
+          recursive: true,
+        });
         await fs.writeFile(
           path.join(wtPath, ".opensprint", "active", "task-live", "assignment.json"),
           JSON.stringify({
@@ -1706,3 +1710,7 @@ describe("RecoveryService — stale heartbeat recovery", () => {
     });
   });
 });
+
+vi.mock("../services/governance.service.js", async () => ({
+  governanceService: (await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+}));

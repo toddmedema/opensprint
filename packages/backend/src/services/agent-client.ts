@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
 import { spawn, execFile } from "child_process";
 import {
   readFileSync,
@@ -322,7 +323,7 @@ function buildCursorSpawnEnv(cursorApiKey?: string): {
   isolatedConfigDir: string | null;
 } {
   if (!cursorApiKey?.trim()) {
-    return { env: normalizeSpawnEnvPath({ ...process.env }), isolatedConfigDir: null };
+    return { env: normalizeSpawnEnvPath(agentProcessEnvironment()), isolatedConfigDir: null };
   }
 
   const baseConfigDir =
@@ -333,7 +334,7 @@ function buildCursorSpawnEnv(cursorApiKey?: string): {
 
   return {
     env: normalizeSpawnEnvPath({
-      ...process.env,
+      ...agentProcessEnvironment(),
       CURSOR_API_KEY: cursorApiKey,
       CURSOR_CONFIG_DIR: isolatedConfigDir,
     }),
@@ -2303,7 +2304,7 @@ export class AgentClient {
         : null;
     const spawnEnv = isolatedCursorEnv
       ? isolatedCursorEnv.env
-      : normalizeSpawnEnvPath({ ...process.env });
+      : normalizeSpawnEnvPath(agentProcessEnvironment());
 
     const child = spawn(command, args, {
       cwd,
@@ -2532,7 +2533,7 @@ export class AgentClient {
     const child = spawn("claude", args, {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
-      env: normalizeSpawnEnvPath({ ...process.env }),
+      env: normalizeSpawnEnvPath(agentProcessEnvironment()),
       detached: true,
     });
 
@@ -3542,23 +3543,25 @@ export class AgentClient {
 
     try {
       const timeoutMs = resolveInvokeTimeoutMs(options);
-      const { stdout } = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-        execFile(
-          command,
-          [...baseArgs, prompt],
-          {
-            cwd: options.cwd || process.cwd(),
-            encoding: "utf8",
-            maxBuffer: 10 * 1024 * 1024,
-            windowsHide: true,
-            ...(timeoutMs !== null && { timeout: timeoutMs }),
-          },
-          (error, out, errOut) => {
-            if (error) reject(error);
-            else resolve({ stdout: String(out ?? ""), stderr: String(errOut ?? "") });
-          }
-        );
-      });
+      const { stdout } = await new Promise<{ stdout: string; stderr: string }>(
+        (resolve, reject) => {
+          execFile(
+            command,
+            [...baseArgs, prompt],
+            {
+              cwd: options.cwd || process.cwd(),
+              encoding: "utf8",
+              maxBuffer: 10 * 1024 * 1024,
+              windowsHide: true,
+              ...(timeoutMs !== null && { timeout: timeoutMs }),
+            },
+            (error, out, errOut) => {
+              if (error) reject(error);
+              else resolve({ stdout: String(out ?? ""), stderr: String(errOut ?? "") });
+            }
+          );
+        }
+      );
 
       const content = stdout.trim();
       if (options.onChunk) {

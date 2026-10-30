@@ -18,13 +18,7 @@ import {
   extractJsonFromAgentResponse,
   extractJsonArrayFromAgentResponse,
 } from "../utils/json-extract.js";
-import { agentInstructionsService, getCombinedInstructions } from "./agent-instructions.service.js";
-import { runBehaviorVersionStoreWrite } from "./behavior-version-store.service.js";
-import { SelfImprovementExperimentService } from "./self-improvement-experiment.service.js";
-import { mineReplayGradeExecuteSessionIds } from "./self-improvement-experiment.service.js";
-import { ExperimentReplayService } from "./experiment-replay.service.js";
-import type { ReplayAgentRunner, ReplayOutcome } from "./experiment-replay.service.js";
-import { decideExperimentOutcome } from "./experiment-scoring.service.js";
+import { getCombinedInstructions } from "./agent-instructions.service.js";
 import type { SelfImprovementRunOutcome } from "./self-improvement-run-history.service.js";
 import {
   collectFailuresSince,
@@ -35,6 +29,9 @@ import {
 } from "./self-improvement-failure-collector.service.js";
 import type { StoredTask } from "./task-store.types.js";
 import { createLogger } from "../utils/logger.js";
+import { governanceService } from "./governance.service.js";
+import { runGovernanceCongress } from "./congress.service.js";
+import { evaluatePolicyProposal } from "./policy-evaluation.service.js";
 import { shellExec } from "../utils/shell-exec.js";
 import { notificationService } from "./notification.service.js";
 import { broadcastToProject } from "../websocket/index.js";
@@ -996,158 +993,46 @@ Review the codebase and output a structured list of improvement tasks (JSON arra
           status: "running_experiments",
           stage: "collecting_replay_cases",
         });
-
-        const sessionIds = await mineReplayGradeExecuteSessionIds(projectId);
-
-        if (sessionIds.length === 0) {
-          log.info("Experiment step skipped: no replay-grade sessions available", {
-            projectId,
-            runId,
-          });
-          summary = `${summary} Experiment step skipped (no replay-grade sessions available).`;
+        const governance = await governanceService.getConfig(projectId);
+        if (governance.mode === "disabled") {
+          summary +=
+            " Experiment step skipped: onboard an approved governance policy and retained labeled replay inputs first.";
         } else {
-          inProgressProjects.set(projectId, {
-            status: "running_experiments",
-            stage: "generating_candidate",
-          });
-
-          const experimentService = new SelfImprovementExperimentService(agentInstructionsService);
-          const { versionId, bundle } = await experimentService.generateAndPersistCandidate(
-            projectId,
-            runId
-          );
-
-          const replayService = new ExperimentReplayService();
-          const defaultRunner: ReplayAgentRunner = {
-            async run({ variant }): Promise<ReplayOutcome> {
-              const start = Date.now();
-              return {
-                success: variant === "baseline",
-                retryCount: 0,
-                reviewPassed: variant === "baseline",
-                latencyMs: Date.now() - start,
-                costUsd: 0,
-              };
-            },
-          };
-          const replayResult = await replayService.runReplay({
-            projectId,
-            repoPath,
-            runId,
-            sessionIds,
-            candidateBundle: bundle,
-            agentRunner: defaultRunner,
-            onStageChange: (stage) => {
-              inProgressProjects.set(projectId, {
-                status: "running_experiments",
-                stage,
-              });
-            },
-          });
-
-          inProgressProjects.set(projectId, {
-            status: "running_experiments",
-            stage: "scoring",
-          });
-
-          const autonomyLevel = settings.aiAutonomyLevel ?? "full";
-          const scoringResult = decideExperimentOutcome(
-            replayResult.baselineMetrics,
-            replayResult.candidateMetrics,
-            autonomyLevel
-          );
-
-          const replaySummary = `Replayed ${replayResult.sampleSize} session(s): baseline success ${(replayResult.baselineMetrics.taskSuccessRate * 100).toFixed(0)}%, candidate success ${(replayResult.candidateMetrics.taskSuccessRate * 100).toFixed(0)}%.`;
-
-          if (scoringResult.decision === "promote") {
+          await runGovernanceCongress(projectId);
+          const proposals = await governanceService.listProposals(projectId);
+          const proposal = proposals.find((p) => p.state === "draft" && !p.evaluation);
+          if (!proposal) {
+            summary +=
+              " Experiment step skipped: no unevaluated substantive policy amendment is available.";
+          } else {
             inProgressProjects.set(projectId, {
               status: "running_experiments",
-              stage: "promoting",
+              stage: "replaying",
             });
-
-            const now = new Date().toISOString();
-            await updateSettingsInStore(projectId, settings as ProjectSettings, (current) => {
-              const versions = current.selfImprovementBehaviorVersions ?? [];
-              const hasVersion = versions.some((v) => v.id === versionId);
-              return {
-                ...current,
-                selfImprovementPendingCandidateId: undefined,
-                selfImprovementActiveBehaviorVersionId: versionId,
-                selfImprovementBehaviorVersions: hasVersion
-                  ? versions
-                  : [...versions, { id: versionId, promotedAt: now }],
-                selfImprovementBehaviorHistory: [
-                  ...(current.selfImprovementBehaviorHistory ?? []),
-                  {
-                    timestamp: now,
-                    action: "approved" as const,
-                    behaviorVersionId: versionId,
-                    candidateId: versionId,
-                  },
-                ],
-              };
-            });
-
-            await runBehaviorVersionStoreWrite((store) =>
-              store.promoteToActive(projectId, versionId, now, null)
-            );
-
-            outcome = "promoted";
-            summary = `${summary} Experiment candidate ${versionId} auto-promoted. ${replaySummary} ${scoringResult.reason}`;
-          } else if (scoringResult.decision === "reject") {
-            outcome = "candidate_rejected";
-            summary = `${summary} Experiment candidate ${versionId} rejected. ${replaySummary} ${scoringResult.reason}`;
-          } else {
-            pendingCandidateId = versionId;
-            outcome = "promotion_pending";
-            summary = `${summary} Experiment candidate ${versionId} awaiting approval. ${replaySummary} ${scoringResult.reason}`;
-
-            await updateSettingsInStore(projectId, settings as ProjectSettings, (current) => ({
-              ...current,
-              selfImprovementPendingCandidateId: versionId,
-              selfImprovementPendingReplaySampleSize: replayResult.sampleSize,
-              selfImprovementPendingBaselineMetrics: replayResult.baselineMetrics,
-              selfImprovementPendingCandidateMetrics: replayResult.candidateMetrics,
-            }));
-
-            const approvalNotification = await notificationService.createSelfImprovementApproval({
+            const evaluated = await evaluatePolicyProposal(
               projectId,
-              candidateId: versionId,
-              deepLinkPath: `/projects/${projectId}/settings#self-improvement`,
-              payload: {
-                replaySampleSize: replayResult.sampleSize,
-                baselineMetrics: replayResult.baselineMetrics,
-                candidateMetrics: replayResult.candidateMetrics,
-                scoringReason: scoringResult.reason,
-              },
-            });
-            broadcastToProject(projectId, {
-              type: "notification.added",
-              notification: {
-                id: approvalNotification.id,
-                projectId: approvalNotification.projectId,
-                source: approvalNotification.source,
-                sourceId: approvalNotification.sourceId,
-                questions: approvalNotification.questions.map((q) => ({
-                  id: q.id,
-                  text: q.text,
-                })),
-                status: approvalNotification.status,
-                createdAt: approvalNotification.createdAt,
-                resolvedAt: approvalNotification.resolvedAt,
-                kind: approvalNotification.kind,
-              },
-            });
+              proposal.id,
+              proposal.version,
+              repoPath
+            );
+            if (evaluated.state === "evaluated") {
+              pendingCandidateId = evaluated.id;
+              outcome = "promotion_pending";
+              summary += ` Policy proposal ${evaluated.id} passed independent replay and requires explicit human approval in Review governance.`;
+            } else {
+              outcome = "candidate_rejected";
+              summary += ` Policy proposal ${evaluated.id} remains inactive: evaluation is incomplete or regressed. Inspect its retained evaluation evidence in Review governance.`;
+            }
           }
         }
       } catch (err) {
-        log.warn("Self-improvement experiment pipeline failed", {
+        log.warn("Self-improvement governance evaluation failed", {
           projectId,
           runId,
           err: err instanceof Error ? err.message : String(err),
         });
         outcome = "failed";
-        summary = `${summary} Experiment pipeline failed: ${err instanceof Error ? err.message : String(err)}`;
+        summary += ` Governance evaluation unavailable: ${err instanceof Error ? err.message : String(err)}`;
       }
     }
 

@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
 /**
  * Coding agent tools: read_file, write_file, edit_file, run_command, list_files, search_files.
  * Used by the agentic loop to give API-based providers (Claude, OpenAI, Gemini, LM Studio)
@@ -117,6 +118,7 @@ async function executeRunCommand(
   try {
     const { stdout, stderr } = await execAsync(args.command, {
       cwd: workDir,
+      env: agentProcessEnvironment(),
       timeout: RUN_COMMAND_TIMEOUT_MS,
       maxBuffer: RUN_COMMAND_MAX_BUFFER,
     });

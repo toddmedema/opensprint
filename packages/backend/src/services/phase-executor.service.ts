@@ -4,6 +4,7 @@
  */
 
 import fs from "fs/promises";
+import { createHash, randomUUID } from "node:crypto";
 import path from "path";
 import type { ActiveTaskConfig, ReviewAngle } from "@opensprint/shared";
 import {
@@ -51,6 +52,13 @@ import { getMergeQualityGateCommands } from "./merge-quality-gates.js";
 import { isWorktreeCheckoutUsable, IncompleteWorktreeError } from "../utils/worktree-health.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
+
+import { governanceService } from "./governance.service.js";
+import { captureGovernanceContextArtifacts } from "./governance-context-artifacts.js";
+import {
+  governanceExecutionService,
+  governanceCodeSnapshot,
+} from "./governance-execution.service.js";
 
 const log = createLogger("phase-executor");
 
@@ -110,6 +118,59 @@ export class PhaseExecutorService {
     private host: PhaseExecutorHost,
     private callbacks: PhaseExecutorCallbacks
   ) {}
+
+  /** Pin policy and trusted scope before prompt/assignment persistence and agent spawn. */
+  private async attachGovernanceContext(
+    projectId: string,
+    repoPath: string,
+    task: StoredTask,
+    wtPath: string,
+    branchName: string,
+    baseBranch: string,
+    settings: ProjectSettings,
+    context: TaskContext,
+    config: ActiveTaskConfig
+  ): Promise<void> {
+    await governanceService.captureTrustedScope(
+      projectId,
+      task.id,
+      `${task.title ?? ""}\n${task.description ?? ""}`
+    );
+    const existing = await governanceService.getTaskPin(projectId, task.id);
+    const governance = await governanceService.getConfig(projectId);
+    if (!existing && governance.mode === "disabled") return;
+    const baseSha = existing?.baseSha ?? (await this.host.branchManager.getGitRev(wtPath, "HEAD"));
+    if (!baseSha) throw new Error("Cannot pin governance without an exact base revision.");
+    const pin = await governanceExecutionService.prepareTask({
+      projectId,
+      taskId: task.id,
+      repoPath,
+      worktreePath: wtPath,
+      branchName,
+      baseSha,
+      baseBranch,
+      mergeBaseSha: (await this.host.branchManager.getGitRev(repoPath, baseBranch)) ?? undefined,
+      trustedScope: `${task.title ?? ""}\n${task.description ?? ""}`,
+      settings,
+    });
+    if (!pin) return;
+    const code = await governanceCodeSnapshot(wtPath, pin.baseSha, "HEAD", false, pin.baseBranch);
+    const policyContext = await governanceExecutionService.context(
+      pin,
+      config.agent_role,
+      code.changedPaths
+    );
+    context.governance = { pin, context: policyContext, headSha: code.headSha };
+    config.governance = {
+      releaseId: pin.releaseId,
+      contextHash: policyContext.receipt.contentHash,
+      baseSha: pin.baseSha,
+      headSha: code.headSha,
+    };
+    context.governanceAppeals = this.host
+      .getState(projectId)
+      .slots.get(task.id)?.phaseResult.governanceAppeals;
+  }
 
   private createAgentRunState(startedAt: string): AgentRunState {
     return {
@@ -226,7 +287,9 @@ export class PhaseExecutorService {
       const conflictedFiles = rebaseConflict.conflictedFiles;
       if (round > MAX_RETRY_PATH_REBASE_MERGER_ROUNDS) {
         await this.host.branchManager.rebaseAbort(wtPath).catch((err: unknown) => {
-          log.warn("rebase abort failed", { err: err instanceof Error ? err.message : String(err) });
+          log.warn("rebase abort failed", {
+            err: err instanceof Error ? err.message : String(err),
+          });
         });
         await this.host.taskStore.setConflictFiles(projectId, task.id, conflictedFiles);
         await this.host.taskStore.setMergeStage(projectId, task.id, "rebase_before_merge");
@@ -267,7 +330,9 @@ export class PhaseExecutorService {
       });
       if (!resolved) {
         await this.host.branchManager.rebaseAbort(wtPath).catch((err: unknown) => {
-          log.warn("rebase abort failed", { err: err instanceof Error ? err.message : String(err) });
+          log.warn("rebase abort failed", {
+            err: err instanceof Error ? err.message : String(err),
+          });
         });
         await this.callbacks.handleTaskFailure(
           projectId,
@@ -281,8 +346,8 @@ export class PhaseExecutorService {
         return false;
       }
 
-      fireAndForget(eventLogService
-        .append(repoPath, {
+      fireAndForget(
+        eventLogService.append(repoPath, {
           timestamp: new Date().toISOString(),
           projectId,
           taskId: task.id,
@@ -295,7 +360,9 @@ export class PhaseExecutorService {
             round,
             context: "coding_retry",
           },
-        }), "phase-executor:merge.resolved");
+        }),
+        "phase-executor:merge.resolved"
+      );
 
       try {
         await this.host.branchManager.rebaseContinue(wtPath);
@@ -320,7 +387,9 @@ export class PhaseExecutorService {
             rebaseConflict = new RebaseConflictError(d.conflictedFiles);
           } else {
             await this.host.branchManager.rebaseAbort(wtPath).catch((err: unknown) => {
-              log.warn("rebase abort failed", { err: err instanceof Error ? err.message : String(err) });
+              log.warn("rebase abort failed", {
+                err: err instanceof Error ? err.message : String(err),
+              });
             });
             await this.callbacks.handleTaskFailure(
               projectId,
@@ -339,7 +408,9 @@ export class PhaseExecutorService {
             rebaseConflict = new RebaseConflictError(cf);
           } else {
             await this.host.branchManager.rebaseAbort(wtPath).catch((err: unknown) => {
-              log.warn("rebase abort failed", { err: err instanceof Error ? err.message : String(err) });
+              log.warn("rebase abort failed", {
+                err: err instanceof Error ? err.message : String(err),
+              });
             });
             throw continueErr;
           }
@@ -481,10 +552,14 @@ export class PhaseExecutorService {
         const wtUsable = await this.hasUsableExistingWorktree(repoPath, wtPath);
         if (!wtUsable) {
           log.error("Fail-closed: worktree unusable after creation/validation", {
-            taskId: task.id, worktreePath: wtPath,
+            taskId: task.id,
+            worktreePath: wtPath,
           });
           await this.callbacks.handleTaskFailure(
-            projectId, repoPath, task, branchName,
+            projectId,
+            repoPath,
+            task,
+            branchName,
             `Worktree at ${wtPath} is not usable after setup (missing .git or source files). ` +
               "Blocking task to prevent dispatch to a broken workspace.",
             null,
@@ -572,7 +647,7 @@ export class PhaseExecutorService {
       }
 
       const config: ActiveTaskConfig = {
-        invocation_id: task.id,
+        invocation_id: randomUUID(),
         agent_role: "coder",
         taskId: task.id,
         repoPath: wtPath,
@@ -594,6 +669,17 @@ export class PhaseExecutorService {
         aiAutonomyLevel: settings.aiAutonomyLevel,
       };
 
+      await this.attachGovernanceContext(
+        projectId,
+        repoPath,
+        task,
+        wtPath,
+        branchName,
+        baseBranch,
+        settings,
+        context,
+        config
+      );
       await this.host.contextAssembler.assembleTaskDirectory(wtPath, task.id, config, context);
       if (!this.isTaskStillActive(projectId, task.id)) {
         return;
@@ -665,10 +751,47 @@ export class PhaseExecutorService {
         attempt: slot.attempt,
         retryContext,
         createdAt: new Date().toISOString(),
+        invocationId: config.invocation_id,
         ...(replayMetadata && { replayMetadata }),
+        ...(context.governance && {
+          governance: {
+            ...config.governance!,
+            trustedScopeHash: createHash("sha256")
+              .update(context.governance.pin.trustedScope)
+              .digest("hex"),
+          },
+        }),
       };
+      if (context.governance)
+        await governanceService.recordPromptSnapshot(
+          projectId,
+          task.id,
+          "coder",
+          await fs.readFile(promptPath, "utf-8"),
+          context.governance.headSha,
+          JSON.parse(
+            await fs.readFile(path.join(path.dirname(promptPath), "prompt-envelope.json"), "utf-8")
+          ) as { stablePrefix: string; dynamicContext: string },
+          {
+            attempt: slot.attempt,
+            invocationId: config.invocation_id,
+            assignmentCreatedAt: assignment.createdAt,
+            contextArtifacts: await captureGovernanceContextArtifacts(
+              path.join(path.dirname(promptPath), "context")
+            ),
+          }
+        );
       // Set startedAt before agent spawn so getActiveAgents returns correct elapsed time from first frame (no 0s flash)
       slot.agent.startedAt = assignment.createdAt;
+      if (context.governance)
+        await governanceService.audit(projectId, "agent_configuration_pinned", "system", {
+          taskId: task.id,
+          attempt: slot.attempt,
+          invocationId: config.invocation_id,
+          agentConfig,
+          role: config.agent_role,
+          releaseId: context.governance.pin.releaseId,
+        });
       await writeJsonAtomic(path.join(taskDir, OPENSPRINT_PATHS.assignment), assignment);
       // Also write to main repo so crash recovery finds it (worktree base can differ after restart via os.tmpdir())
       const mainRepoActiveDir = this.host.sessionManager.getActiveDir(repoPath, task.id);
@@ -715,8 +838,8 @@ export class PhaseExecutorService {
         slot.timers
       );
 
-      fireAndForget(eventLogService
-        .append(repoPath, {
+      fireAndForget(
+        eventLogService.append(repoPath, {
           timestamp: new Date().toISOString(),
           projectId,
           taskId: task.id,
@@ -731,7 +854,9 @@ export class PhaseExecutorService {
               ? Math.max(0, Date.now() - Date.parse(slot.agent.startedAt ?? ""))
               : null,
           },
-        }), "phase-executor:agent.spawned");
+        }),
+        "phase-executor:agent.spawned"
+      );
 
       await this.host.persistCounters(projectId, repoPath);
     } catch (error) {
@@ -742,7 +867,12 @@ export class PhaseExecutorService {
         });
         return;
       }
-      log.error(`Coding phase failed for task ${task.id}`, { projectId, taskId: task.id, branchName, error });
+      log.error(`Coding phase failed for task ${task.id}`, {
+        projectId,
+        taskId: task.id,
+        branchName,
+        error,
+      });
       const { failureType, failureReason } = this.classifyPhaseError(error);
       await this.callbacks.handleTaskFailure(
         projectId,
@@ -802,7 +932,7 @@ export class PhaseExecutorService {
       );
 
       const config: ActiveTaskConfig = {
-        invocation_id: task.id,
+        invocation_id: randomUUID(),
         agent_role: "reviewer",
         taskId: task.id,
         repoPath: wtPath,
@@ -841,7 +971,45 @@ export class PhaseExecutorService {
         baseBranch
       );
 
+      await this.attachGovernanceContext(
+        projectId,
+        repoPath,
+        task,
+        wtPath,
+        branchName,
+        baseBranch,
+        settings,
+        context,
+        config
+      );
       await this.host.contextAssembler.assembleTaskDirectory(wtPath, task.id, config, context);
+      const governanceAssignmentCreatedAt = new Date().toISOString();
+      if (context.governance) {
+        const prompts = useAngleSpecificReview
+          ? [
+              ...reviewAngles.map((angle) =>
+                path.join(taskDir, "review-angles", angle, "prompt.md")
+              ),
+              ...(includeGeneralReview ? [path.join(taskDir, "prompt.md")] : []),
+            ]
+          : [path.join(taskDir, "prompt.md")];
+        for (const file of prompts)
+          await governanceService.recordPromptSnapshot(
+            projectId,
+            task.id,
+            "reviewer",
+            await fs.readFile(file, "utf-8"),
+            context.governance.headSha,
+            JSON.parse(
+              await fs.readFile(path.join(path.dirname(file), "prompt-envelope.json"), "utf-8")
+            ) as { stablePrefix: string; dynamicContext: string },
+            {
+              attempt: slot.attempt,
+              invocationId: config.invocation_id,
+              assignmentCreatedAt: governanceAssignmentCreatedAt,
+            }
+          );
+      }
 
       const complexity = await getComplexityForAgent(
         projectId,
@@ -896,11 +1064,29 @@ export class PhaseExecutorService {
             : path.join(taskDir, "review-angles", reviewAngles[0]!, "prompt.md"),
         agentConfig,
         attempt: slot.attempt,
-        createdAt: new Date().toISOString(),
+        createdAt: governanceAssignmentCreatedAt,
+        invocationId: config.invocation_id,
         ...(replayMetadata && { replayMetadata }),
+        ...(context.governance && {
+          governance: {
+            ...config.governance!,
+            trustedScopeHash: createHash("sha256")
+              .update(context.governance.pin.trustedScope)
+              .digest("hex"),
+          },
+        }),
       };
       // Set startedAt before agent spawn so getActiveAgents returns correct elapsed time from first frame (no 0s flash)
       slot.agent.startedAt = assignment.createdAt;
+      if (context.governance)
+        await governanceService.audit(projectId, "agent_configuration_pinned", "system", {
+          taskId: task.id,
+          attempt: slot.attempt,
+          invocationId: config.invocation_id,
+          agentConfig,
+          role: config.agent_role,
+          releaseId: context.governance.pin.releaseId,
+        });
       await writeJsonAtomic(path.join(taskDir, OPENSPRINT_PATHS.assignment), assignment);
       const mainRepoActiveDirReview = this.host.sessionManager.getActiveDir(repoPath, task.id);
       await fs.mkdir(mainRepoActiveDirReview, { recursive: true });
@@ -945,8 +1131,8 @@ export class PhaseExecutorService {
           slot.agent,
           slot.timers
         );
-        fireAndForget(eventLogService
-          .append(repoPath, {
+        fireAndForget(
+          eventLogService.append(repoPath, {
             timestamp: new Date().toISOString(),
             projectId,
             taskId: task.id,
@@ -961,7 +1147,9 @@ export class PhaseExecutorService {
                 ? Math.max(0, Date.now() - Date.parse(slot.agent.startedAt ?? ""))
                 : null,
             },
-          }), "phase-executor:agent.spawned");
+          }),
+          "phase-executor:agent.spawned"
+        );
       };
 
       if (includeGeneralReview || runOnlyGeneralReview) {
@@ -1090,8 +1278,8 @@ export class PhaseExecutorService {
           );
 
           const angleStartedAt = angleAgent.startedAt ?? slot.agent.startedAt ?? null;
-          fireAndForget(eventLogService
-            .append(repoPath, {
+          fireAndForget(
+            eventLogService.append(repoPath, {
               timestamp: new Date().toISOString(),
               projectId,
               taskId: task.id,
@@ -1103,11 +1291,14 @@ export class PhaseExecutorService {
                 attemptId: slot.attemptId,
                 angle,
                 attemptStartedAt: angleStartedAt,
-                queueLagMs: angleStartedAt && Number.isFinite(Date.parse(angleStartedAt))
-                  ? Math.max(0, Date.now() - Date.parse(angleStartedAt))
-                  : null,
+                queueLagMs:
+                  angleStartedAt && Number.isFinite(Date.parse(angleStartedAt))
+                    ? Math.max(0, Date.now() - Date.parse(angleStartedAt))
+                    : null,
               },
-            }), "phase-executor:agent.spawned");
+            }),
+            "phase-executor:agent.spawned"
+          );
         };
 
         if (runAnglesSequentiallyForStability) {
@@ -1161,8 +1352,8 @@ export class PhaseExecutorService {
           slot.timers
         );
 
-        fireAndForget(eventLogService
-          .append(repoPath, {
+        fireAndForget(
+          eventLogService.append(repoPath, {
             timestamp: new Date().toISOString(),
             projectId,
             taskId: task.id,
@@ -1177,12 +1368,19 @@ export class PhaseExecutorService {
                 ? Math.max(0, Date.now() - Date.parse(slot.agent.startedAt ?? ""))
                 : null,
             },
-          }), "phase-executor:agent.spawned");
+          }),
+          "phase-executor:agent.spawned"
+        );
       }
 
       await this.host.persistCounters(projectId, repoPath);
     } catch (error) {
-      log.error(`Review phase failed for task ${task.id}`, { projectId, taskId: task.id, branchName, error });
+      log.error(`Review phase failed for task ${task.id}`, {
+        projectId,
+        taskId: task.id,
+        branchName,
+        error,
+      });
       const { failureType, failureReason } = this.classifyPhaseError(error);
       await this.callbacks.handleTaskFailure(
         projectId,

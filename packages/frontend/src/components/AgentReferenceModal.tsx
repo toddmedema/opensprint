@@ -15,7 +15,7 @@ export interface AgentReferenceModalProps {
 }
 
 /**
- * Modal showing all 9 agents with icon, name, phase(s), and description.
+ * Modal showing all agent roles with icon, name, phase(s), and description.
  * Accessible: keyboard-navigable, screen-reader friendly.
  */
 export function AgentReferenceModal({ onClose }: AgentReferenceModalProps) {

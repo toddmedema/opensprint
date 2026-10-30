@@ -38,6 +38,9 @@ export interface InvokePlanningAgentOptions {
   messages: PlanningMessage[];
   /** Optional system prompt */
   systemPrompt?: string;
+  /** Server-owned cancellation for bounded adjudication; never set from task result data. */
+  abortSignal?: AbortSignal;
+  maxOutputTokens?: number;
   /** Optional image attachments (base64 or data URLs). Claude: inline in message. Cursor/custom: written to temp files and paths appended to prompt. */
   images?: string[];
   /** Working directory for CLI agents (cursor/custom) */

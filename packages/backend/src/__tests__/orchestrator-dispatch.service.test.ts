@@ -107,10 +107,16 @@ describe("OrchestratorDispatchService", () => {
         getWorktreePath: vi.fn().mockImplementation((key: string) => `/tmp/repo/.worktrees/${key}`),
         prepareWorktreeForRemoval: vi.fn().mockResolvedValue(undefined),
         removeTaskWorktree: vi.fn().mockResolvedValue(undefined),
-        createTaskWorktree: vi.fn().mockImplementation(
-          (_repoPath: string, taskId: string, _baseBranch: string, opts?: { worktreeKey?: string }) =>
-            Promise.resolve(`/tmp/repo/.worktrees/${opts?.worktreeKey ?? taskId}`)
-        ),
+        createTaskWorktree: vi
+          .fn()
+          .mockImplementation(
+            (
+              _repoPath: string,
+              taskId: string,
+              _baseBranch: string,
+              opts?: { worktreeKey?: string }
+            ) => Promise.resolve(`/tmp/repo/.worktrees/${opts?.worktreeKey ?? taskId}`)
+          ),
       }),
       getFileScopeAnalyzer: vi
         .fn()
@@ -391,3 +397,7 @@ describe("OrchestratorDispatchService", () => {
     expect(performMergeRetry).not.toHaveBeenCalled();
   });
 });
+
+vi.mock("../services/governance.service.js", async () => ({
+  governanceService: (await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+}));

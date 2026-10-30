@@ -29,6 +29,8 @@ import { dbStatusRouter } from "./routes/db-status.js";
 import { createTodoistIntegrationRouter } from "./routes/integrations-todoist.js";
 import { createGitHubIntegrationRouter } from "./routes/integrations-github.js";
 import { createIntakeRouter } from "./routes/intake.js";
+import { createGovernanceRouter } from "./routes/governance.js";
+import { createGovernanceReplayRouter } from "./routes/governance-replay.js";
 import { createCommandsRouter } from "./routes/commands.js";
 import { integrationStore } from "./services/integration-store.service.js";
 import { tokenEncryption } from "./services/token-encryption.service.js";
@@ -154,6 +156,16 @@ export function createApp(services?: AppServices) {
   app.use(`${API_PREFIX}/projects/:projectId/intake`, requireDatabase, createIntakeRouter());
   app.use(`${API_PREFIX}/projects/:projectId/commands`, requireDatabase, createCommandsRouter());
   app.use(
+    `${API_PREFIX}/projects/:projectId/governance/replay`,
+    requireDatabase,
+    createGovernanceReplayRouter()
+  );
+  app.use(
+    `${API_PREFIX}/projects/:projectId/governance`,
+    requireDatabase,
+    createGovernanceRouter(projectService)
+  );
+  app.use(
     `${API_PREFIX}/projects/:projectId/notifications`,
     requireDatabase,
     createProjectNotificationsRouter({ projectService, orchestratorService })
@@ -184,7 +196,11 @@ export function createApp(services?: AppServices) {
 
       app.get("/__opensprint_local_session.js", (req, res) => {
         if (!allowDesktopLocalSessionScriptRequest(req)) {
-          res.status(403).setHeader("Cache-Control", "no-store").type("text/plain").send("Forbidden");
+          res
+            .status(403)
+            .setHeader("Cache-Control", "no-store")
+            .type("text/plain")
+            .send("Forbidden");
           return;
         }
         const token = getLocalSessionToken();
@@ -193,8 +209,14 @@ export function createApp(services?: AppServices) {
         res.send(`window.__OPENSPRINT_LOCAL_SESSION__=${JSON.stringify(token)};`);
       });
 
-      app.get("/", wrapAsync(async (_req, res) => sendDesktopSpaIndexHtml(res)));
-      app.get("/index.html", wrapAsync(async (_req, res) => sendDesktopSpaIndexHtml(res)));
+      app.get(
+        "/",
+        wrapAsync(async (_req, res) => sendDesktopSpaIndexHtml(res))
+      );
+      app.get(
+        "/index.html",
+        wrapAsync(async (_req, res) => sendDesktopSpaIndexHtml(res))
+      );
 
       app.use(
         express.static(frontendDist, {

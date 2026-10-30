@@ -1,3 +1,4 @@
+import { getGovernanceCaseId } from "../lib/governance";
 import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Notification, ApiBlockedErrorCode, NotificationSource } from "@opensprint/shared";
@@ -91,6 +92,30 @@ export function OpenQuestionsBlock({
   }, [projectId, notification.id, onResolved]);
 
   const questions = notification.questions ?? [];
+  if (notification.kind === "governance") {
+    return (
+      <div
+        className="p-4 border-b border-theme-border border-l-4 border-l-violet-500 bg-violet-500/5"
+        data-testid="governance-hold"
+      >
+        <h4 className="text-sm font-semibold text-theme-text">Waiting for a human ruling</h4>
+        <p className="mt-1 text-sm text-theme-muted">
+          This task is paused for a standards decision. Its worktree and evidence are retained.
+        </p>
+        <button
+          type="button"
+          className="mt-3 btn-secondary text-sm"
+          onClick={() =>
+            navigate(
+              `/projects/${projectId}/settings?tab=governance&case=${encodeURIComponent(getGovernanceCaseId(notification))}`
+            )
+          }
+        >
+          Review docket
+        </button>
+      </div>
+    );
+  }
   if (questions.length === 0) return null;
 
   const isResolvedWithReply =

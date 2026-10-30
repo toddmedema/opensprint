@@ -11,6 +11,7 @@
  * Called once on startup by the orchestrator and periodically by the watchdog.
  */
 
+import { governanceService } from "./governance.service.js";
 import fs from "fs/promises";
 import path from "path";
 import { AGENT_SUSPEND_GRACE_MS, HEARTBEAT_STALE_MS, OPENSPRINT_PATHS } from "@opensprint/shared";
@@ -129,6 +130,7 @@ export interface GuppAssignment {
   attempt: number;
   retryContext?: RetryContext;
   createdAt: string;
+  governance?: import("./orchestrator-phase-context.js").TaskAssignmentLike["governance"];
   replayMetadata?: {
     baseCommitSha: string;
     behaviorVersionId?: string;
@@ -168,6 +170,43 @@ export class RecoveryService {
       (host.getSlottedWorktreePaths?.(projectId) ?? []).map((p) => path.resolve(p))
     );
 
+    // Governance waits are durable, slot-free owners. Protect them before every recovery pass,
+    // even when task status or assignment files were changed through ordinary APIs.
+    for (const c of await governanceService.listCases(projectId)) {
+      if (
+        ![
+          "awaiting_reconsideration",
+          "awaiting_judge",
+          "awaiting_human",
+          "evidence_requested",
+          "stale",
+        ].includes(c.state) &&
+        !(c.state === "allowed" && (await governanceService.hasPendingResume(projectId, c.taskId)))
+      )
+        continue;
+      if (opts.includeGupp && ["awaiting_judge", "awaiting_reconsideration"].includes(c.state)) {
+        await governanceService.recordRecommendation(
+          projectId,
+          c.id,
+          {
+            disposition: "human_required",
+            rationale:
+              "Backend restarted during adjudication. No agent recommendation or approval was assumed.",
+            evidence: [c.evidenceHash],
+            ruleIds: c.findings.flatMap((f) => (f.ruleId ? [f.ruleId] : [])),
+            decisionIds: [],
+          },
+          c.version
+        );
+      }
+      excludeIds.add(c.taskId);
+      excludeWorktreePaths.add(path.resolve(c.worktreePath));
+      excludeWorktreeKeys.add(c.taskId);
+      if (c.branchName.startsWith("opensprint/epic_"))
+        excludeWorktreeKeys.add(c.branchName.slice("opensprint/".length));
+    }
+
+    await governanceService.deliverOutbox(projectId);
     await this.augmentExclusionsFromRecentAssignments(
       projectId,
       repoPath,
@@ -182,7 +221,12 @@ export class RecoveryService {
       (host.reattachSlot || host.resumeReviewPhase || host.handleCompletedAssignment)
     ) {
       const guppResult = await this.recoverFromAssignments(
-        projectId, repoPath, host, excludeIds, excludeWorktreeKeys, excludeWorktreePaths
+        projectId,
+        repoPath,
+        host,
+        excludeIds,
+        excludeWorktreeKeys,
+        excludeWorktreePaths
       );
       result.reattached.push(...guppResult.reattached);
       result.requeued.push(...guppResult.requeued);
@@ -273,15 +317,15 @@ export class RecoveryService {
     }
 
     // 10. Emit failure-type baseline snapshot for KPI tracking
-    fireAndForget(this.emitFailureBaselineSnapshot(projectId, repoPath), "recovery:failure-baseline-snapshot");
+    fireAndForget(
+      this.emitFailureBaselineSnapshot(projectId, repoPath),
+      "recovery:failure-baseline-snapshot"
+    );
 
     return result;
   }
 
-  private async emitFailureBaselineSnapshot(
-    projectId: string,
-    repoPath: string
-  ): Promise<void> {
+  private async emitFailureBaselineSnapshot(projectId: string, repoPath: string): Promise<void> {
     try {
       const windowMs = 60 * 60 * 1000;
       const sinceIso = new Date(Date.now() - windowMs).toISOString();
@@ -320,10 +364,8 @@ export class RecoveryService {
   }> {
     const durableBase = this.branchManager.getWorktreeBasePath(repoPath);
     const legacyBase = this.branchManager.getLegacyWorktreeBasePath();
-    const fromDurable =
-      await this.crashRecovery.findOrphanedAssignmentsFromWorktrees(durableBase);
-    const fromLegacy =
-      await this.crashRecovery.findOrphanedAssignmentsFromWorktrees(legacyBase);
+    const fromDurable = await this.crashRecovery.findOrphanedAssignmentsFromWorktrees(durableBase);
+    const fromLegacy = await this.crashRecovery.findOrphanedAssignmentsFromWorktrees(legacyBase);
     const fromMainRepo = await this.crashRecovery.findOrphanedAssignments(repoPath);
     const byTaskId = new Map<string, { taskId: string; assignment: GuppAssignment }>();
     for (const o of fromMainRepo)
@@ -334,7 +376,8 @@ export class RecoveryService {
       byTaskId.set(o.taskId, o as { taskId: string; assignment: GuppAssignment });
     const orphaned = [...byTaskId.values()];
 
-    if (orphaned.length === 0) return { reattached: [], requeued: [], worktreeKeys: [], worktreePaths: [] };
+    if (orphaned.length === 0)
+      return { reattached: [], requeued: [], worktreeKeys: [], worktreePaths: [] };
 
     const allIssues = await this.taskStore.listAll(projectId);
     const idToIssue = new Map(allIssues.map((i) => [i.id, i]));
@@ -345,21 +388,38 @@ export class RecoveryService {
 
     for (const { taskId, assignment } of orphaned) {
       const assignmentAgeMs = Date.now() - new Date(assignment.createdAt).getTime();
-      const worktreeKey = this.resolveCleanupWorktreeKey(taskId, assignment.worktreeKey, assignment.worktreePath);
+      const worktreeKey = this.resolveCleanupWorktreeKey(
+        taskId,
+        assignment.worktreeKey,
+        assignment.worktreePath
+      );
       const resolvedWtPath = assignment.worktreePath ? path.resolve(assignment.worktreePath) : null;
 
       // Skip destructive cleanup for tasks/worktrees that belong to active slots
-      if (excludeIds.has(taskId) || excludeWorktreeKeys.has(worktreeKey) ||
-          (resolvedWtPath && excludeWorktreePaths.has(resolvedWtPath))) {
+      if (
+        excludeIds.has(taskId) ||
+        excludeWorktreeKeys.has(worktreeKey) ||
+        (resolvedWtPath && excludeWorktreePaths.has(resolvedWtPath))
+      ) {
         log.info("Recovery: skipping assignment cleanup for active slot", {
-          projectId, taskId, worktreeKey, worktreePath: assignment.worktreePath,
+          projectId,
+          taskId,
+          worktreeKey,
+          worktreePath: assignment.worktreePath,
         });
         continue;
       }
 
       const task = idToIssue.get(taskId);
       if (!task) {
-        this.emitStaleAssignmentTelemetry(repoPath, projectId, taskId, assignmentAgeMs, "task_not_found", assignment);
+        this.emitStaleAssignmentTelemetry(
+          repoPath,
+          projectId,
+          taskId,
+          assignmentAgeMs,
+          "task_not_found",
+          assignment
+        );
         log.warn("Recovery: task not found, cleaning up assignment", { projectId, taskId });
         await this.removeWorktreeIfNeeded(
           projectId,
@@ -373,7 +433,14 @@ export class RecoveryService {
       }
 
       if ((task.status as string) !== "in_progress") {
-        this.emitStaleAssignmentTelemetry(repoPath, projectId, taskId, assignmentAgeMs, "status_mismatch", assignment);
+        this.emitStaleAssignmentTelemetry(
+          repoPath,
+          projectId,
+          taskId,
+          assignmentAgeMs,
+          "status_mismatch",
+          assignment
+        );
         log.info("Recovery: task no longer in_progress, removing stale assignment", {
           projectId,
           taskId,
@@ -413,7 +480,14 @@ export class RecoveryService {
       if (!pidAlive && host.handleCompletedAssignment) {
         const terminalResult = await this.readTerminalAssignmentResult(assignment);
         if (terminalResult) {
-          this.emitStaleAssignmentTelemetry(repoPath, projectId, taskId, assignmentAgeMs, "stale_success", assignment);
+          this.emitStaleAssignmentTelemetry(
+            repoPath,
+            projectId,
+            taskId,
+            assignmentAgeMs,
+            "stale_success",
+            assignment
+          );
           const completed = await host.handleCompletedAssignment(
             projectId,
             repoPath,
@@ -450,7 +524,14 @@ export class RecoveryService {
       if (!pidAlive && host.handleCompletedAssignment) {
         const lateResult = await this.readTerminalAssignmentResult(assignment);
         if (lateResult) {
-          this.emitStaleAssignmentTelemetry(repoPath, projectId, taskId, assignmentAgeMs, "stale_success", assignment);
+          this.emitStaleAssignmentTelemetry(
+            repoPath,
+            projectId,
+            taskId,
+            assignmentAgeMs,
+            "stale_success",
+            assignment
+          );
           log.info("Recovery: late terminal result found before requeue, completing instead", {
             projectId,
             taskId,
@@ -469,7 +550,14 @@ export class RecoveryService {
         }
       }
 
-      this.emitStaleAssignmentTelemetry(repoPath, projectId, taskId, assignmentAgeMs, "pid_dead_requeue", assignment);
+      this.emitStaleAssignmentTelemetry(
+        repoPath,
+        projectId,
+        taskId,
+        assignmentAgeMs,
+        "pid_dead_requeue",
+        assignment
+      );
       log.info("Recovery: PID dead or missing, requeuing task", { projectId, taskId });
       try {
         await this.taskStore.update(projectId, taskId, { status: "open", assignee: "" });
@@ -493,7 +581,12 @@ export class RecoveryService {
       trackRequeue();
     }
 
-    return { reattached, requeued, worktreeKeys: recoveredWorktreeKeys, worktreePaths: recoveredWorktreePaths };
+    return {
+      reattached,
+      requeued,
+      worktreeKeys: recoveredWorktreeKeys,
+      worktreePaths: recoveredWorktreePaths,
+    };
   }
 
   // ─── Stale heartbeat recovery ───
@@ -677,11 +770,14 @@ export class RecoveryService {
           if (assignment) {
             const terminalResult = await this.readTerminalAssignmentResult(assignment);
             if (terminalResult) {
-              log.info("Recovery: orphaned task has terminal result; completing instead of requeue", {
-                projectId,
-                taskId: task.id,
-                status: terminalResult,
-              });
+              log.info(
+                "Recovery: orphaned task has terminal result; completing instead of requeue",
+                {
+                  projectId,
+                  taskId: task.id,
+                  status: terminalResult,
+                }
+              );
               const completed = await host.handleCompletedAssignment(
                 projectId,
                 repoPath,
@@ -771,11 +867,14 @@ export class RecoveryService {
           if (assignment) {
             const terminalResult = await this.readTerminalAssignmentResult(assignment);
             if (terminalResult) {
-              log.info("Recovery: assignee-less task has terminal result; completing instead of requeue", {
-                projectId,
-                taskId: task.id,
-                status: terminalResult,
-              });
+              log.info(
+                "Recovery: assignee-less task has terminal result; completing instead of requeue",
+                {
+                  projectId,
+                  taskId: task.id,
+                  status: terminalResult,
+                }
+              );
               const completed = await host.handleCompletedAssignment(
                 projectId,
                 repoPath,
@@ -836,7 +935,11 @@ export class RecoveryService {
     }
 
     if (recovered.length > 0) {
-      log.warn("Recovered assignee-less in-progress tasks", { projectId, count: recovered.length, recovered });
+      log.warn("Recovered assignee-less in-progress tasks", {
+        projectId,
+        count: recovered.length,
+        recovered,
+      });
     }
     return recovered;
   }
@@ -849,7 +952,11 @@ export class RecoveryService {
       const stat = await fs.stat(lockPath);
       const ageMs = Date.now() - stat.mtimeMs;
       if (ageMs > GIT_LOCK_STALE_MS) {
-        log.warn("Removing stale .git/index.lock", { projectId, repoPath, ageSec: Math.round(ageMs / 1000) });
+        log.warn("Removing stale .git/index.lock", {
+          projectId,
+          repoPath,
+          ageSec: Math.round(ageMs / 1000),
+        });
         await fs.unlink(lockPath);
         eventLogService
           .append(repoPath, {
@@ -1081,10 +1188,7 @@ export class RecoveryService {
         continue;
       }
       const createdMs = intent.createdAt ? Date.parse(intent.createdAt) : NaN;
-      if (
-        Number.isFinite(createdMs) &&
-        Date.now() - createdMs < CLEANUP_INTENT_REPLAY_MIN_AGE_MS
-      ) {
+      if (Number.isFinite(createdMs) && Date.now() - createdMs < CLEANUP_INTENT_REPLAY_MIN_AGE_MS) {
         log.info("Skipping cleanup intent replay: within post-merge cooldown window", {
           projectId,
           taskId: intent.taskId,
@@ -1236,7 +1340,10 @@ export class RecoveryService {
       let dirBudget = maxDirsPerBase;
       for (const e of entries) {
         if (dirBudget <= 0) {
-          log.debug("Recovery: assignment exclusion scan budget exhausted for base", { base, maxDirsPerBase });
+          log.debug("Recovery: assignment exclusion scan budget exhausted for base", {
+            base,
+            maxDirsPerBase,
+          });
           break;
         }
         if (!e.isDirectory() || e.name.startsWith("_")) continue;
@@ -1504,7 +1611,9 @@ export class RecoveryService {
 
     // In Branches mode, agent runs in repoPath; no worktree. In Worktree mode, use worktree path.
     const workPath =
-      gitWorkingMode === "branches" ? repoPath : this.branchManager.getWorktreePath(task.id, repoPath);
+      gitWorkingMode === "branches"
+        ? repoPath
+        : this.branchManager.getWorktreePath(task.id, repoPath);
     try {
       await fs.access(workPath);
       await this.branchManager.commitWip(workPath, task.id);
@@ -1645,7 +1754,11 @@ export class RecoveryService {
     const worktreeKey = this.resolveCleanupWorktreeKey(taskId, assignmentWorktreeKey, worktreePath);
     const canCleanup = await worktreeLeaseService.canCleanup(worktreeKey).catch(() => true);
     if (!canCleanup) {
-      log.info("Skipping worktree removal: active lease exists", { taskId, worktreeKey, worktreePath });
+      log.info("Skipping worktree removal: active lease exists", {
+        taskId,
+        worktreeKey,
+        worktreePath,
+      });
       return;
     }
     const lease = await worktreeLeaseService.get(worktreeKey).catch(() => null);
@@ -1653,9 +1766,7 @@ export class RecoveryService {
       taskId,
       worktreeKey,
       worktreePath,
-      leaseState: lease
-        ? (lease.releasedAt ? "released" : "expired")
-        : "no_lease",
+      leaseState: lease ? (lease.releasedAt ? "released" : "expired") : "no_lease",
       leaseExpiresAt: lease?.expiresAt ?? null,
       leaseReleasedAt: lease?.releasedAt ?? null,
     });
@@ -1664,7 +1775,10 @@ export class RecoveryService {
         ignoreLiveTaskStatusForTaskIds: new Set([taskId]),
       });
       await worktreeLeaseService.forceRelease(worktreeKey).catch((err) => {
-        log.warn("worktree lease force-release failed", { worktreeKey, err: err instanceof Error ? err.message : String(err) });
+        log.warn("worktree lease force-release failed", {
+          worktreeKey,
+          err: err instanceof Error ? err.message : String(err),
+        });
       });
     } catch {
       // Best effort; worktree may already be gone

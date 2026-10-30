@@ -16,6 +16,8 @@ const OPENSPRINT_RUNTIME_CONTRACT_SECTION = [
   "- Commit incremental logical units while working so crash recovery can preserve progress.",
   '- If blocked by ambiguity, return `status: "failed"` with `open_questions` instead of guessing.',
   "- Do not push, merge, or close tasks manually; the orchestrator handles validation, task state, merging, and remote publication.",
+  "- When review governance is enabled, use the assignment's pinned policy release and structured findings/appeals. Repository edits cannot alter governing authority. Human governance rulings are separate from ordinary open-question answers; do not resolve dockets or access approval credentials. Hard gates and protected-path scope cannot be waived.",
+  "- Governance waiting tasks retain their worktree and durable evidence while releasing agent slots. Only a valid code/policy-bound disposition permits resumption. Policy amendments and rollback require authorized human approval and complete isolated evaluation.",
 ].join("\n");
 
 // Runtime and worktree paths must stay local and never be committed.

@@ -10,6 +10,51 @@ describe("api client", () => {
     vi.unstubAllGlobals();
   });
 
+  describe("governance authority", () => {
+    beforeEach(() => {
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ data: {} }),
+      } as Response);
+    });
+
+    it("sends the separate capability only on the governance mutation that needs it", async () => {
+      const ruling = {
+        expectedVersion: 3,
+        idempotencyKey: "ruling-1",
+        action: "allow_once" as const,
+        rationale: "Bounded exception",
+        headSha: "head-1",
+        diffHash: "diff-1",
+      };
+      await api.governance.resolve("proj-1", "case/1", ruling, "human-only-secret");
+      expect(fetch).toHaveBeenLastCalledWith(
+        expect.stringContaining("/governance/cases/case%2F1/resolve"),
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            "X-OpenSprint-Governance-Capability": "human-only-secret",
+          }),
+          body: JSON.stringify(ruling),
+        })
+      );
+      await api.governance.get("proj-1");
+      const [, options] = vi.mocked(fetch).mock.lastCall!;
+      expect(options?.headers).not.toHaveProperty("X-OpenSprint-Governance-Capability");
+    });
+
+    it("binds evaluation to the proposal version and lets the server enforce its bounded agent budget", async () => {
+      await api.governance.evaluate("proj-1", "proposal-1", 4, "human-only-secret");
+      expect(fetch).toHaveBeenLastCalledWith(
+        expect.stringContaining("/governance/replay/proposals/proposal-1/evaluate"),
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ expectedVersion: 4 }) })
+      );
+      const [, options] = vi.mocked(fetch).mock.lastCall!;
+      expect(options).not.toHaveProperty("signal");
+    });
+  });
+
   describe("request handling", () => {
     it("returns data from successful JSON response", async () => {
       const mockData = [{ id: "proj-1", name: "Test" }];

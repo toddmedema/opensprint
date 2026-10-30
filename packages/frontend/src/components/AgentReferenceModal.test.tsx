@@ -2,9 +2,10 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AgentReferenceModal } from "./AgentReferenceModal";
+import { AGENT_ROLE_CANONICAL_ORDER } from "@opensprint/shared";
 
 describe("AgentReferenceModal", () => {
-  it("renders title and all 9 agents", () => {
+  it("renders title and all agent roles", () => {
     const onClose = vi.fn();
     render(<AgentReferenceModal onClose={onClose} />);
 
@@ -19,6 +20,7 @@ describe("AgentReferenceModal", () => {
     expect(screen.getByText("Auditor")).toBeInTheDocument();
     expect(screen.getByText("Coder")).toBeInTheDocument();
     expect(screen.getByText("Reviewer")).toBeInTheDocument();
+    expect(screen.getByText("Judge")).toBeInTheDocument();
     expect(screen.getByText("Merger")).toBeInTheDocument();
   });
 
@@ -61,11 +63,11 @@ describe("AgentReferenceModal", () => {
     expect(contentWrapper?.className).toMatch(/\bitems-start\b/);
   });
 
-  it("renders 9 agent cards in grid", () => {
+  it("renders a card for every registered role", () => {
     render(<AgentReferenceModal onClose={vi.fn()} />);
 
     const listItems = screen.getAllByRole("listitem");
-    expect(listItems).toHaveLength(9);
+    expect(listItems).toHaveLength(AGENT_ROLE_CANONICAL_ORDER.length);
   });
 
   it("calls onClose when close button is clicked", async () => {

@@ -571,6 +571,13 @@ export class NotificationService {
       );
     }
 
+    if (row.kind === "governance") {
+      throw new AppError(
+        403,
+        "GOVERNANCE_HUMAN_REQUIRED",
+        "Governance dockets require an explicit authorized ruling through the governance API."
+      );
+    }
     const resolvedAt = new Date().toISOString();
     const responsesJson =
       options?.responses && options.responses.length > 0 ? JSON.stringify(options.responses) : null;
@@ -613,7 +620,7 @@ export class NotificationService {
   async deleteByProject(projectId: string): Promise<number> {
     const db = await taskStore.getDb();
     const row = await db.queryOne(
-      "SELECT COUNT(*)::int as cnt FROM open_questions WHERE project_id = $1",
+      "SELECT COUNT(*)::int as cnt FROM open_questions WHERE project_id = $1 AND kind <> 'governance'",
       [projectId]
     );
     const count = (row?.cnt as number) ?? 0;
@@ -623,7 +630,10 @@ export class NotificationService {
     }
 
     await taskStore.runWrite(async (tx) => {
-      await tx.execute("DELETE FROM open_questions WHERE project_id = $1", [projectId]);
+      await tx.execute(
+        "DELETE FROM open_questions WHERE project_id = $1 AND kind <> 'governance'",
+        [projectId]
+      );
     });
 
     log.info("Deleted project notifications", { projectId, deletedCount: count });
@@ -636,7 +646,9 @@ export class NotificationService {
    */
   async deleteAll(): Promise<number> {
     const db = await taskStore.getDb();
-    const row = await db.queryOne("SELECT COUNT(*)::int as cnt FROM open_questions");
+    const row = await db.queryOne(
+      "SELECT COUNT(*)::int as cnt FROM open_questions WHERE kind <> 'governance'"
+    );
     const count = (row?.cnt as number) ?? 0;
 
     if (count === 0) {
@@ -644,7 +656,7 @@ export class NotificationService {
     }
 
     await taskStore.runWrite(async (db) => {
-      await db.execute("DELETE FROM open_questions");
+      await db.execute("DELETE FROM open_questions WHERE kind <> 'governance'");
     });
 
     log.info("Deleted all HIL notifications", { deletedCount: count });

@@ -9,6 +9,7 @@ export type SettingsSubTab =
   | "basics"
   | "agents"
   | "workflow"
+  | "governance"
   | "deployment"
   | "hil"
   | "team"
@@ -18,6 +19,7 @@ const TABS: { key: SettingsSubTab; label: string }[] = [
   { key: "basics", label: "Project Info" },
   { key: "agents", label: "Agent Config" },
   { key: "workflow", label: "Workflow" },
+  { key: "governance", label: "Review governance" },
   { key: "deployment", label: "Deliver" },
   { key: "hil", label: "Autonomy" },
   { key: "team", label: "Team" },

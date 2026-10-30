@@ -64,6 +64,12 @@ import type {
   CommandIntent,
   CommandPreview,
   CommandExecutionResult,
+  GovernanceSummary,
+  GovernanceConfig,
+  PolicyRelease,
+  PolicyProposal,
+  ReviewCase,
+  ResolveGovernanceCaseInput,
 } from "@opensprint/shared";
 import type { TaskListResponse } from "./taskList";
 import type { PrdProposedDiffResponse, PrdVersionDiffResponse } from "./prdDiffTypes";
@@ -138,6 +144,39 @@ export interface SelfImprovementHistoryEntry {
   runId?: string;
   promotedVersionId?: string;
   pendingCandidateId?: string;
+}
+
+export type GovernanceReplayLabel =
+  | "compliant"
+  | "exception"
+  | "defect"
+  | "conflict"
+  | "retrieval_miss";
+export interface GovernanceReplayFixtureSummary {
+  sessionId: number;
+  label: GovernanceReplayLabel;
+  holdout: boolean;
+  policyReleaseId?: string;
+  rubricId: string;
+  hash: string;
+}
+export interface GovernanceReplaySource {
+  sessionId: number;
+  taskId: string;
+  attempt: number;
+  status: string;
+}
+export interface CaptureGovernanceFixtureInput {
+  sessionId: number;
+  taskId: string;
+  toolchain: string;
+  label: GovernanceReplayLabel;
+  holdout: boolean;
+  rubric: {
+    id: string;
+    text: string;
+    checks: Array<{ name: string; command: string; args: string[] }>;
+  };
 }
 
 /** API base; set VITE_API_BASE for production/staging (e.g. empty for same-origin, or full origin). */
@@ -256,6 +295,195 @@ export interface DbStatusResponse {
 // ─── Projects ───
 
 export const api = {
+  governance: {
+    get: (projectId: string) => request<GovernanceSummary>(`/projects/${projectId}/governance`),
+    revokeRelease: (projectId: string, releaseId: string, rationale: string, capability: string) =>
+      request<{ ok: true }>(
+        `/projects/${projectId}/governance/releases/${encodeURIComponent(releaseId)}/revoke`,
+        {
+          method: "POST",
+          headers: { "X-OpenSprint-Governance-Capability": capability },
+          body: JSON.stringify({ rationale }),
+        }
+      ),
+    sourceChanges: (projectId: string, taskId: string) =>
+      request<{
+        taskId: string;
+        releaseId: string;
+        headSha: string;
+        diffHash: string;
+        changedPaths: string[];
+        diff: string;
+      }>(`/projects/${projectId}/governance/source-changes/${encodeURIComponent(taskId)}`),
+    approveSourceChanges: (
+      projectId: string,
+      body: { taskId: string; headSha: string; diffHash: string; rationale: string },
+      capability: string
+    ) =>
+      request<{ ok: true }>(`/projects/${projectId}/governance/source-changes/approve`, {
+        method: "POST",
+        headers: { "X-OpenSprint-Governance-Capability": capability },
+        body: JSON.stringify(body),
+      }),
+    fixtures: (projectId: string) =>
+      request<GovernanceReplayFixtureSummary[]>(
+        `/projects/${projectId}/governance/replay/fixtures`
+      ),
+    replaySources: (projectId: string) =>
+      request<GovernanceReplaySource[]>(`/projects/${projectId}/governance/replay/sources`),
+    captureFixture: (projectId: string, body: CaptureGovernanceFixtureInput, capability: string) =>
+      request<{ sessionId: number; hash: string }>(
+        `/projects/${projectId}/governance/replay/fixtures`,
+        {
+          method: "POST",
+          headers: { "X-OpenSprint-Governance-Capability": capability },
+          body: JSON.stringify(body),
+        }
+      ),
+    evaluate: (
+      projectId: string,
+      proposalId: string,
+      expectedVersion: number,
+      capability: string
+    ) =>
+      request<PolicyProposal>(
+        `/projects/${projectId}/governance/replay/proposals/${encodeURIComponent(proposalId)}/evaluate`,
+        {
+          method: "POST",
+          headers: { "X-OpenSprint-Governance-Capability": capability },
+          body: JSON.stringify({ expectedVersion }),
+          ...NO_REQUEST_TIMEOUT,
+        }
+      ),
+    configure: (
+      projectId: string,
+      updates: Partial<GovernanceConfig> & { expectedVersion: number },
+      capability: string
+    ) =>
+      request<GovernanceConfig>(`/projects/${projectId}/governance/config`, {
+        method: "PATCH",
+        headers: { "X-OpenSprint-Governance-Capability": capability },
+        body: JSON.stringify(updates),
+      }),
+    createRelease: (
+      projectId: string,
+      body: Pick<
+        PolicyRelease,
+        "rules" | "instructions" | "sourceHashes" | "enforcementRevision"
+      > & { expectedActiveReleaseId: string | null; rationale: string },
+      capability: string
+    ) =>
+      request<PolicyRelease>(`/projects/${projectId}/governance/releases`, {
+        method: "POST",
+        headers: { "X-OpenSprint-Governance-Capability": capability },
+        body: JSON.stringify(body),
+      }),
+    activateRelease: (
+      projectId: string,
+      releaseId: string,
+      body: { expectedActiveReleaseId: string | null; rationale: string },
+      capability: string
+    ) =>
+      request<PolicyRelease>(
+        `/projects/${projectId}/governance/releases/${encodeURIComponent(releaseId)}/activate`,
+        {
+          method: "POST",
+          headers: { "X-OpenSprint-Governance-Capability": capability },
+          body: JSON.stringify(body),
+        }
+      ),
+    resolve: (
+      projectId: string,
+      caseId: string,
+      body: ResolveGovernanceCaseInput,
+      capability: string
+    ) =>
+      request<ReviewCase>(
+        `/projects/${projectId}/governance/cases/${encodeURIComponent(caseId)}/resolve`,
+        {
+          method: "POST",
+          headers: { "X-OpenSprint-Governance-Capability": capability },
+          body: JSON.stringify(body),
+        }
+      ),
+    addEvidence: (
+      projectId: string,
+      caseId: string,
+      expectedVersion: number,
+      evidence: Record<string, unknown>,
+      capability: string
+    ) =>
+      request<ReviewCase>(
+        `/projects/${projectId}/governance/cases/${encodeURIComponent(caseId)}/evidence`,
+        {
+          method: "POST",
+          headers: { "X-OpenSprint-Governance-Capability": capability },
+          body: JSON.stringify({ expectedVersion, evidence }),
+        }
+      ),
+    revoke: (projectId: string, decisionId: string, rationale: string, capability: string) =>
+      request<{ ok: true }>(
+        `/projects/${projectId}/governance/decisions/${encodeURIComponent(decisionId)}/revoke`,
+        {
+          method: "POST",
+          headers: { "X-OpenSprint-Governance-Capability": capability },
+          body: JSON.stringify({ rationale, idempotencyKey: crypto.randomUUID() }),
+        }
+      ),
+    mine: (projectId: string, capability: string) =>
+      request<PolicyProposal[]>(`/projects/${projectId}/governance/mine`, {
+        method: "POST",
+        headers: { "X-OpenSprint-Governance-Capability": capability },
+      }),
+    activate: (
+      projectId: string,
+      proposalId: string,
+      body: { expectedVersion: number; expectedActiveReleaseId: string | null; rationale: string },
+      capability: string
+    ) =>
+      request<PolicyRelease>(
+        `/projects/${projectId}/governance/proposals/${encodeURIComponent(proposalId)}/activate`,
+        {
+          method: "POST",
+          headers: { "X-OpenSprint-Governance-Capability": capability },
+          body: JSON.stringify(body),
+        }
+      ),
+    propose: (
+      projectId: string,
+      body: Omit<PolicyProposal, "id" | "state" | "version" | "createdAt">,
+      capability: string
+    ) =>
+      request<PolicyProposal>(`/projects/${projectId}/governance/proposals`, {
+        method: "POST",
+        headers: { "X-OpenSprint-Governance-Capability": capability },
+        body: JSON.stringify(body),
+      }),
+    rejectProposal: (
+      projectId: string,
+      proposalId: string,
+      body: { expectedVersion: number; rationale: string },
+      capability: string
+    ) =>
+      request<{ ok: true }>(
+        `/projects/${projectId}/governance/proposals/${encodeURIComponent(proposalId)}/reject`,
+        {
+          method: "POST",
+          headers: { "X-OpenSprint-Governance-Capability": capability },
+          body: JSON.stringify(body),
+        }
+      ),
+    rollback: (
+      projectId: string,
+      body: { releaseId: string; expectedActiveReleaseId: string | null; rationale: string },
+      capability: string
+    ) =>
+      request<PolicyRelease>(`/projects/${projectId}/governance/rollback`, {
+        method: "POST",
+        headers: { "X-OpenSprint-Governance-Capability": capability },
+        body: JSON.stringify(body),
+      }),
+  },
   dbStatus: {
     get: (signal?: AbortSignal) =>
       request<DbStatusResponse>("/db-status", signal ? { signal } : {}),
@@ -288,8 +516,7 @@ export const api = {
           method: "POST",
         }
       ),
-    revealTodoistSecret: () =>
-      request<{ value: string }>("/global-settings/reveal-todoist-secret"),
+    revealTodoistSecret: () => request<{ value: string }>("/global-settings/reveal-todoist-secret"),
     setupTables: (databaseUrl: string) =>
       request<{ ok: boolean }>("/global-settings/setup-tables", {
         method: "POST",
@@ -368,9 +595,12 @@ export const api = {
         body: JSON.stringify(data),
       }),
     getSettings: (id: string) => request<ProjectSettings>(`/projects/${id}/settings`),
-    updateSettings: (id: string, data: ProjectSettingsApiUpdate) =>
+    updateSettings: (id: string, data: ProjectSettingsApiUpdate, governanceCapability?: string) =>
       request<ProjectSettings>(`/projects/${id}/settings`, {
         method: "PUT",
+        ...(governanceCapability
+          ? { headers: { "X-OpenSprint-Governance-Capability": governanceCapability } }
+          : {}),
         body: JSON.stringify(data),
       }),
     runSelfImprovement: (id: string) =>
@@ -871,9 +1101,7 @@ export const api = {
     },
     github: {
       getStatus: (projectId: string) =>
-        request<IntegrationStatusResponse>(
-          `/projects/${projectId}/integrations/github/status`
-        ),
+        request<IntegrationStatusResponse>(`/projects/${projectId}/integrations/github/status`),
       connect: (projectId: string, body: GitHubConnectRequest) =>
         request<{ success: boolean; user: string }>(
           `/projects/${projectId}/integrations/github/connect`,
@@ -889,15 +1117,13 @@ export const api = {
           { method: "PUT", body: JSON.stringify(body) }
         ),
       syncNow: (projectId: string) =>
-        request<IntegrationSyncResponse>(
-          `/projects/${projectId}/integrations/github/sync`,
-          { method: "POST" }
-        ),
+        request<IntegrationSyncResponse>(`/projects/${projectId}/integrations/github/sync`, {
+          method: "POST",
+        }),
       disconnect: (projectId: string) =>
-        request<{ disconnected: boolean }>(
-          `/projects/${projectId}/integrations/github`,
-          { method: "DELETE" }
-        ),
+        request<{ disconnected: boolean }>(`/projects/${projectId}/integrations/github`, {
+          method: "DELETE",
+        }),
     },
   },
 
@@ -910,17 +1136,23 @@ export const api = {
     get: (projectId: string, itemId: string) =>
       request<IntakeItem>(`/projects/${projectId}/intake/${itemId}`),
     convert: (projectId: string, itemId: string, body: { action: string; linkTaskId?: string }) =>
-      request<{ intakeItemId: string; action: string }>(`/projects/${projectId}/intake/${itemId}/convert`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      request<{ intakeItemId: string; action: string }>(
+        `/projects/${projectId}/intake/${itemId}/convert`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        }
+      ),
     ignore: (projectId: string, itemId: string) =>
       request<IntakeItem>(`/projects/${projectId}/intake/${itemId}/ignore`, { method: "POST" }),
     bulk: (projectId: string, body: { itemIds: string[]; action: string; dryRun?: boolean }) =>
-      request<{ processed: number; errors: number; results: unknown[] }>(`/projects/${projectId}/intake/bulk`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
+      request<{ processed: number; errors: number; results: unknown[] }>(
+        `/projects/${projectId}/intake/bulk`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        }
+      ),
   },
 
   // ─── Commands ───
