@@ -4,6 +4,7 @@ import fs from "fs/promises";
 import os from "os";
 import {
   getFsBrowsePolicyRuntimeInfo,
+  getLogicalFsAllowedRoot,
   getResolvedFsAllowedRoot,
   isHomeBrowseEffective,
   isPathUnderAllowedRoot,
@@ -19,7 +20,9 @@ describe("fs-allowed-root", () => {
       OPENSPRINT_ALLOW_HOME_BROWSE_IN_CI: process.env.OPENSPRINT_ALLOW_HOME_BROWSE_IN_CI,
       CI: process.env.CI,
       HOME: process.env.HOME,
+      OPENSPRINT_DESKTOP: process.env.OPENSPRINT_DESKTOP,
     };
+    delete process.env.OPENSPRINT_DESKTOP;
   });
 
   afterEach(() => {
@@ -38,6 +41,34 @@ describe("fs-allowed-root", () => {
 
     process.env.OPENSPRINT_ALLOW_HOME_BROWSE_IN_CI = "1";
     expect(isHomeBrowseEffective()).toBe(true);
+  });
+
+  it("defaults desktop to home while keeping explicit roots and opt-outs", () => {
+    process.env.OPENSPRINT_DESKTOP = "1";
+    process.env.HOME = path.join(os.tmpdir(), "desktop-user-home");
+    delete process.env.OPENSPRINT_FS_ROOT;
+    delete process.env.OPENSPRINT_ALLOW_HOME_BROWSE;
+    delete process.env.CI;
+    expect(getLogicalFsAllowedRoot()).toBe(process.env.HOME);
+    expect(getFsBrowsePolicyRuntimeInfo()).toMatchObject({
+      homeBrowseEffective: true,
+      homeBrowseEnvRequested: false,
+      adminWarning: null,
+    });
+    process.env.OPENSPRINT_FS_ROOT = path.join(os.tmpdir(), "explicit-root");
+    expect(getLogicalFsAllowedRoot()).toBe(process.env.OPENSPRINT_FS_ROOT);
+    expect(getFsBrowsePolicyRuntimeInfo().homeBrowseEffective).toBe(false);
+    delete process.env.OPENSPRINT_FS_ROOT;
+    process.env.OPENSPRINT_ALLOW_HOME_BROWSE = "0";
+    expect(getLogicalFsAllowedRoot()).toBe(process.cwd());
+  });
+
+  it("does not expand desktop browsing in CI without an explicit override", () => {
+    process.env.OPENSPRINT_DESKTOP = "1";
+    process.env.CI = "true";
+    delete process.env.OPENSPRINT_ALLOW_HOME_BROWSE;
+    delete process.env.OPENSPRINT_ALLOW_HOME_BROWSE_IN_CI;
+    expect(isHomeBrowseEffective()).toBe(false);
   });
 
   it("getFsBrowsePolicyRuntimeInfo reports suppression when CI blocks home browse", () => {

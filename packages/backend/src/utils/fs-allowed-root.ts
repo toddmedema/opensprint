@@ -39,12 +39,16 @@ function isAllowHomeBrowseInCi(): boolean {
 }
 
 /**
- * When `OPENSPRINT_ALLOW_HOME_BROWSE` is set, expand the FS API tree to the user home.
+ * Desktop folder pickers start in the user home by default. Server deployments require
+ * `OPENSPRINT_ALLOW_HOME_BROWSE` to expand beyond cwd; an explicit false value also opts
+ * desktop out. `OPENSPRINT_FS_ROOT` still takes precedence over either default.
  * In CI (`CI=true`), this is ignored unless `OPENSPRINT_ALLOW_HOME_BROWSE_IN_CI` is also set,
  * so non-interactive automation does not accidentally expose the entire home directory.
  */
 export function isHomeBrowseEffective(): boolean {
-  if (!isHomeBrowseEnvToken()) return false;
+  const desktopDefault =
+    process.env.OPENSPRINT_DESKTOP === "1" && !process.env.OPENSPRINT_ALLOW_HOME_BROWSE?.trim();
+  if (!isHomeBrowseEnvToken() && !desktopDefault) return false;
   if (isCiLike() && !isAllowHomeBrowseInCi()) return false;
   return true;
 }
@@ -63,7 +67,7 @@ export function realpathOrNormalized(absPath: string): string {
 
 /**
  * Configured allowed tree for FS API routes before realpath canonicalization.
- * `OPENSPRINT_FS_ROOT` wins when set; else home when browse opt-in is effective; else cwd.
+ * `OPENSPRINT_FS_ROOT` wins when set; else home for desktop or explicit opt-in; else cwd.
  */
 export function getLogicalFsAllowedRoot(): string {
   const configuredRoot = process.env.OPENSPRINT_FS_ROOT?.trim();
@@ -108,7 +112,7 @@ export function getFsBrowsePolicyRuntimeInfo(): FsBrowsePolicyRuntimeInfo {
   } else if (homeBrowseSuppressedByCi) {
     adminWarning =
       "OPENSPRINT_ALLOW_HOME_BROWSE is set but ignored while CI=true. Home-wide filesystem browse is disabled in CI unless you also set OPENSPRINT_ALLOW_HOME_BROWSE_IN_CI=1 (avoid unless required).";
-  } else if (homeBrowseEffective) {
+  } else if (homeBrowseEffective && homeBrowseEnvRequested) {
     adminWarning =
       "The filesystem browse API can reach your entire user home directory (OPENSPRINT_ALLOW_HOME_BROWSE). Use only on trusted hosts. Unset the variable or set OPENSPRINT_FS_ROOT to cap exposure.";
   }

@@ -56,7 +56,7 @@ fsRouter.get(
     const parentPath = dirname(targetPath);
     const result: BrowseResult = {
       current: targetPath,
-      parent: parentPath !== targetPath ? parentPath : null,
+      parent: parentPath !== targetPath && isPathUnderAllowedRoot(parentPath) ? parentPath : null,
       entries: dirEntries,
     };
 

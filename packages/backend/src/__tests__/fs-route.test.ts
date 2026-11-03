@@ -29,6 +29,7 @@ describe("Filesystem API", () => {
   let originalPlatform: PropertyDescriptor | undefined;
   let originalCi: string | undefined;
   let originalAllowHomeInCi: string | undefined;
+  let originalDesktop: string | undefined;
 
   beforeEach(async () => {
     vi.useRealTimers();
@@ -45,6 +46,8 @@ describe("Filesystem API", () => {
     originalPlatform = Object.getOwnPropertyDescriptor(process, "platform");
     originalCi = process.env.CI;
     originalAllowHomeInCi = process.env.OPENSPRINT_ALLOW_HOME_BROWSE_IN_CI;
+    originalDesktop = process.env.OPENSPRINT_DESKTOP;
+    delete process.env.OPENSPRINT_DESKTOP;
     process.env.HOME = tempDir;
     delete process.env.OPENSPRINT_FS_ROOT;
     delete process.env.OPENSPRINT_ALLOW_HOME_BROWSE;
@@ -89,6 +92,8 @@ describe("Filesystem API", () => {
     } else {
       process.env.OPENSPRINT_ALLOW_HOME_BROWSE_IN_CI = originalAllowHomeInCi;
     }
+    if (originalDesktop === undefined) delete process.env.OPENSPRINT_DESKTOP;
+    else process.env.OPENSPRINT_DESKTOP = originalDesktop;
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
@@ -126,6 +131,41 @@ describe("Filesystem API", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.data.current).toBe(nestedDir);
+  });
+
+  it("starts desktop browsing at home rather than the packaged backend directory", async () => {
+    const appResources = path.join(tempDir, "Open Sprint.app", "Contents", "Resources", "backend");
+    const home = path.join(tempDir, "user-home");
+    await fs.mkdir(appResources, { recursive: true });
+    await fs.mkdir(path.join(home, "Projects"), { recursive: true });
+    process.chdir(appResources);
+    process.env.HOME = home;
+    process.env.OPENSPRINT_DESKTOP = "1";
+    delete process.env.CI;
+
+    const res = await request(app).get(`${API_PREFIX}/fs/browse`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.current).toBe(home);
+    expect(res.body.data.parent).toBeNull();
+    expect(res.body.data.entries).toContainEqual({
+      name: "Projects",
+      path: path.join(home, "Projects"),
+      isDirectory: true,
+    });
+    const nested = await request(app)
+      .get(`${API_PREFIX}/fs/browse`)
+      .query({ path: path.join(home, "Projects") });
+    expect(nested.status).toBe(200);
+    expect(nested.body.data.parent).toBe(home);
+  });
+
+  it("does not offer navigation above a configured browse root", async () => {
+    const root = path.join(tempDir, "restricted-root");
+    await fs.mkdir(root);
+    process.env.OPENSPRINT_FS_ROOT = root;
+    const res = await request(app).get(`${API_PREFIX}/fs/browse`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.parent).toBeNull();
   });
 
   it("rejects browse outside cwd when OPENSPRINT_FS_ROOT and home opt-in are unset", async () => {

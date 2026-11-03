@@ -19,33 +19,42 @@ export function FolderBrowser({ initialPath, onSelect, onCancel }: FolderBrowser
   const [currentPath, setCurrentPath] = useState(initialPath || "");
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [parentPath, setParentPath] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [manualPath, setManualPath] = useState("");
   const [showCreateFolder, setShowCreateFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const browseRequestRef = useRef(0);
 
   const browse = useCallback(async (path?: string) => {
+    const requestId = ++browseRequestRef.current;
     setLoading(true);
     setError(null);
     try {
       const result = await api.filesystem.browse(path);
+      if (requestId !== browseRequestRef.current) return;
       setCurrentPath(result.current);
       setParentPath(result.parent);
       setEntries(result.entries);
       setManualPath(result.current);
     } catch (err) {
+      if (requestId !== browseRequestRef.current) return;
       setError(err instanceof Error ? err.message : "Failed to browse directory");
     } finally {
-      setLoading(false);
+      if (requestId === browseRequestRef.current) setLoading(false);
     }
+  }, []);
+
+  const cancelBrowse = useCallback(() => {
+    browseRequestRef.current++;
   }, []);
 
   useEffect(() => {
     browse(initialPath || undefined);
-  }, [browse, initialPath]);
+    return cancelBrowse;
+  }, [browse, cancelBrowse, initialPath]);
 
   const handleNavigate = (path: string) => {
     browse(path);
@@ -80,6 +89,7 @@ export function FolderBrowser({ initialPath, onSelect, onCancel }: FolderBrowser
   useModalA11y({ containerRef, onClose: onCancel, isOpen: true });
 
   const pathEdited = manualPath.trim() !== currentPath.trim();
+  const canSelect = !loading && !error && Boolean(currentPath);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -112,7 +122,8 @@ export function FolderBrowser({ initialPath, onSelect, onCancel }: FolderBrowser
           <div className="flex gap-2">
             <input
               type="text"
-              className="input font-mono text-sm flex-1"
+              className="input font-mono text-sm flex-1 min-w-0"
+              aria-label="Folder path"
               value={manualPath}
               onChange={(e) => setManualPath(e.target.value)}
               placeholder="/path/to/folder"
@@ -124,6 +135,7 @@ export function FolderBrowser({ initialPath, onSelect, onCancel }: FolderBrowser
             )}
             <button
               type="button"
+              disabled={!canSelect}
               onClick={() => {
                 setShowCreateFolder(true);
                 setCreateError(null);
@@ -185,7 +197,10 @@ export function FolderBrowser({ initialPath, onSelect, onCancel }: FolderBrowser
         {/* Directory listing */}
         <div className="flex-1 overflow-y-auto px-5 py-2 min-h-[300px]">
           {error && (
-            <div className="p-3 rounded-lg bg-theme-error-bg text-theme-error-text text-sm mb-2">
+            <div
+              role="alert"
+              className="p-3 rounded-lg bg-theme-error-bg text-theme-error-text text-sm mb-2"
+            >
               {error}
             </div>
           )}
@@ -252,19 +267,17 @@ export function FolderBrowser({ initialPath, onSelect, onCancel }: FolderBrowser
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-5 py-4 border-t border-theme-border bg-theme-surface-muted rounded-b-xl">
-          <p
-            className="text-xs text-theme-muted font-mono truncate max-w-[60%]"
-            title={currentPath}
-          >
-            {currentPath}
-          </p>
+        <div className="flex items-center justify-end px-5 py-4 border-t border-theme-border bg-theme-surface-muted rounded-b-xl">
           <div className="flex gap-2">
             <button onClick={onCancel} className="btn-secondary text-sm">
               Cancel
             </button>
-            <button onClick={() => onSelect(currentPath)} className="btn-primary text-sm">
-              Select This Folder
+            <button
+              disabled={!canSelect}
+              onClick={() => onSelect(currentPath)}
+              className="btn-primary text-sm"
+            >
+              Select
             </button>
           </div>
         </div>
