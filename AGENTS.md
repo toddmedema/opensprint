@@ -45,6 +45,18 @@ Work state is persisted before agent spawn via `assignment.json` in `.opensprint
 
 Agent admission is cancellable and FIFO. Recheck attempt generation and owning slot after admission and immediately before launch; cancelled or replaced queued attempts must never launch. Concurrency limit changes preserve active accounting. A recovered PID is observation-only until ownership is independently verified: report uncertain execution and retain its assignment instead of killing or requeueing it. A stop request becomes stopped only after observed completion. A terminal result file alone cannot complete an unverified recovered process. Guidance receipts distinguish durable queue acceptance from inclusion in a model turn.
 
+## Review governance
+
+Review governance is opt-in (`disabled`, `shadow`, or `enforced`) and requires `reviewMode: always` when enabled. The server pins an immutable approved policy release, instruction snapshot, original task scope, and base revision before spawning. Task edits to instructions or descriptions cannot change that authority. Reviews report structured findings with concrete evidence and rule revisions for standards; defects and failed hard checks remain independent blockers.
+
+A coder may submit a structured appeal with alternatives, evidence, risks, and requested limits. One reconsideration and independent judge cycle is permitted per finding and material diff, within durable task-wide budgets. Novel or uncertain exceptions require a durable human docket. Waiting tasks release agent slots and retain their worktree. A ruling is bound to reviewed code and policy; code changes or revocation require revalidation. A one-time allowance never becomes reusable authority.
+
+Remote conflict-resolution changes require fresh review against the actual remote base with the original per-file scope. Prepared publication review tasks start with review and hard checks; rejected code may then enter a fix cycle. Pending publication suppresses automatic deployment; durable deploy actions resume only against verified published code.
+
+Only the designated human approval capability can resolve governance dockets, mutate policy-sensitive configuration, activate amendments, or roll back policy. Ordinary task/notification actions and the autonomy slider cannot clear a governance hold. Never pass approval credentials to agent subprocesses. Deterministic protected-path checks and build/lint/test gates cannot be waived by a judge or ruling.
+
+Congress mines immutable decisions independently of code changes and proposes exact amendments with supporting and contrary evidence. Evaluate full baseline/candidate content against retained original inputs and independent held-out checks in an externally isolated offline executor. Missing inputs, unavailable isolation, and placeholder metrics are incomplete evaluations. Human approval activates actual immutable content only after compatible enforcement lands. See `packages/backend/docs/review-governance.md` for setup and the cooperative same-OS-account trust boundary.
+
 ## Loop Kicker vs Watchdog
 
 - **Loop kicker** (60s): Restarts the orchestrator loop when idle. Runs inside the orchestrator.
@@ -97,7 +109,7 @@ Certain file paths are **sensitive surfaces** (integration, OAuth, token handlin
 | `routes/oauth`          | OAuth routes              |
 | `todoist-sync`          | Todoist sync service      |
 
-**Scope keywords that unlock protected paths:** integration, oauth, todoist, token-encrypt, api-key-stor, third-party-auth, external-service, connect(ion)-service.
+**Scope keywords that unlock protected paths:** integration, oauth, todoist, token-encrypt, api-key-stor, third-party-auth, external-service, connect(ion)-service. Outside enforced governance they match task wording as whole words (`token-encrypt`, `api-key-stor` and `third-party-auth` are stems). Under enforced governance task wording is evidence only: the owner grants scope as exact comma-separated values through `POST /governance/tasks/:taskId/authorize-scope` before the task is assigned.
 
 If a non-integration task genuinely needs to touch these files, the agent should report `status: "failed"` with `open_questions` asking for explicit scope confirmation.
 
@@ -106,6 +118,9 @@ The policy is enforced in:
 - `packages/backend/src/services/protected-path-policy.ts` — path definitions and audit logic
 - `packages/backend/src/services/agent-default-instructions.ts` — coder and reviewer default instructions
 - `packages/backend/src/services/context-assembler.ts` — coding prompt (Protected Path Policy section) and review checklist
+- `packages/backend/src/services/governance-execution.service.ts` (`assertScope`) and `remote-publication-governance.service.ts` — governed review, publication and remote-review admission
+
+Governance errors carry explicit codes rather than being classified from their message: `GOVERNANCE_INVALID_INPUT` (400), `GOVERNANCE_STALE_VERSION`, `GOVERNANCE_STALE_CODE`, `GOVERNANCE_HOLD`, `GOVERNANCE_NOT_PINNED`, `GOVERNANCE_NOT_FOUND` (404), `GOVERNANCE_HUMAN_REQUIRED` (403) and `GOVERNANCE_CONFLICT` (the default, 409).
 
 ## Merge quality gates and test stability
 

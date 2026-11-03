@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "./agent-process-env.js";
 /**
  * Expo installation detection and auto-install for first-time deploy.
  * Detects if Expo/EAS CLI is available; if not, installs before deploy.
@@ -37,7 +38,7 @@ export async function isExpoInstalled(repoPath: string): Promise<boolean> {
     const { stdout } = await execAsync("npx eas-cli --version", {
       cwd: repoPath,
       timeout: 15000,
-      env: { ...process.env },
+      env: agentProcessEnvironment({ ...process.env }),
     });
     return !!stdout?.trim();
   } catch {
@@ -55,7 +56,7 @@ export async function installExpo(repoPath: string): Promise<ExpoInstallResult> 
     const { stdout, stderr } = await execAsync("npm install expo --save", {
       cwd: repoPath,
       timeout: 120000, // 2 min
-      env: { ...process.env },
+      env: agentProcessEnvironment({ ...process.env }),
     });
     const out = (stdout || "") + (stderr || "");
     if (out.toLowerCase().includes("error") && !out.toLowerCase().includes("0 error")) {

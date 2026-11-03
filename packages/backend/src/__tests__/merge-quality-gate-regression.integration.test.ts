@@ -7,6 +7,28 @@ import { MergeCoordinatorService } from "../services/merge-coordinator.service.j
 import { OrchestratorService } from "../services/orchestrator.service.js";
 import { BranchManager } from "../services/branch-manager.js";
 import { TaskExecutionDiagnosticsService } from "../services/task-execution-diagnostics.service.js";
+// These gate/repair fixtures intentionally contain a fake .git marker; code admission is covered
+// by the native governance/Git suites and must not run against this synthetic repository.
+vi.mock("../services/governance-execution.service.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/governance-execution.service.js")>()),
+  governanceCodeSnapshot: async () => ({
+    baseSha: "a".repeat(40),
+    headSha: "b".repeat(40),
+    diffHash: "gate-fixture",
+    changedPaths: [],
+  }),
+  governanceExecutionService: { assertScope: async () => {} },
+}));
+vi.mock("../services/governance.service.js", async () => ({
+  governanceService: (await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+}));
+vi.mock("../services/worktree-lease.service.js", () => ({
+  worktreeLeaseService: {
+    canCleanup: vi.fn().mockResolvedValue(true),
+    forceRelease: vi.fn().mockResolvedValue(undefined),
+    get: vi.fn().mockResolvedValue(null),
+  },
+}));
 
 /** Merge gate runner runs node/npm preflight before gates; integration mocks must accept these. */
 function mergeGateToolchainPreflightOk(
@@ -1290,7 +1312,7 @@ describe("Cross-service quality-gate regression integration", () => {
           waitForGitReady: vi.fn().mockResolvedValue(undefined),
           commitWip: vi.fn().mockResolvedValue(undefined),
           prepareWorktreeForRemoval: vi.fn().mockResolvedValue(undefined),
-        removeTaskWorktree: vi.fn().mockResolvedValue(undefined),
+          removeTaskWorktree: vi.fn().mockResolvedValue(undefined),
           deleteBranch: vi.fn().mockResolvedValue(undefined),
           getChangedFiles: vi.fn().mockResolvedValue([]),
           pushMain: vi.fn().mockResolvedValue(undefined),
@@ -1458,7 +1480,7 @@ describe("Cross-service quality-gate regression integration", () => {
           waitForGitReady: vi.fn().mockResolvedValue(undefined),
           commitWip: vi.fn().mockResolvedValue(undefined),
           prepareWorktreeForRemoval: vi.fn().mockResolvedValue(undefined),
-        removeTaskWorktree: vi.fn().mockResolvedValue(undefined),
+          removeTaskWorktree: vi.fn().mockResolvedValue(undefined),
           deleteBranch: vi.fn().mockResolvedValue(undefined),
           getChangedFiles: vi.fn().mockResolvedValue([]),
           pushMain: vi.fn().mockResolvedValue(undefined),

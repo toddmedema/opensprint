@@ -3,6 +3,11 @@
  * Extracted from OrchestratorService so the main orchestrator composes dispatch as a dependency.
  */
 
+import { governanceService } from "./governance.service.js";
+import {
+  getTrustedRemoteReviewRequest,
+  restoreRemoteReviewWorkspace,
+} from "./remote-publication-review-context.js";
 import { getAgentName } from "@opensprint/shared";
 import type { StoredTask } from "./task-store.service.js";
 import { resolveEpicId } from "./task-store.service.js";
@@ -317,10 +322,7 @@ export interface OrchestratorDispatchHost {
     assignee?: string,
     worktreeKey?: string
   ): DispatchSlotLike;
-  transition(
-    projectId: string,
-    t: unknown
-  ): void;
+  transition(projectId: string, t: unknown): void;
   persistCounters(projectId: string, repoPath: string): Promise<void>;
   getTaskStore(): {
     update(projectId: string, taskId: string, fields: Record<string, unknown>): Promise<unknown>;
@@ -353,6 +355,12 @@ export interface OrchestratorDispatchHost {
     slot: DispatchSlotLike,
     retryContext?: RetryContext
   ): Promise<void>;
+  resumeGovernanceTask?(
+    projectId: string,
+    repoPath: string,
+    task: StoredTask,
+    slot: DispatchSlotLike
+  ): Promise<void>;
   performMergeRetry(
     projectId: string,
     repoPath: string,
@@ -371,6 +379,14 @@ export class OrchestratorDispatchService {
     slotQueueDepth: number
   ): Promise<void> {
     const state = this.host.getState(projectId);
+    if (!(await governanceService.isGovernanceInactive(projectId))) {
+      if (await governanceService.hasTaskHold(projectId, task.id)) return;
+      await governanceService.captureTrustedScope(
+        projectId,
+        task.id,
+        `${task.title ?? ""}\n${task.description ?? ""}`
+      );
+    }
     log.info("Picking task", { projectId, taskId: task.id, title: task.title });
     if (state.slots.has(task.id)) {
       log.info("Skipping dispatch: task already has an active slot", {
@@ -386,6 +402,48 @@ export class OrchestratorDispatchService {
       });
       return;
     }
+    let remoteReview: Awaited<ReturnType<typeof getTrustedRemoteReviewRequest>>;
+    try {
+      remoteReview = await getTrustedRemoteReviewRequest(projectId, task);
+      if (remoteReview) {
+        let integrity = await assertWorktreeIntegrity(
+          repoPath,
+          remoteReview.worktreePath,
+          task.id,
+          "dispatch"
+        );
+        if (!integrity.valid) {
+          await restoreRemoteReviewWorkspace(projectId, task, repoPath);
+          integrity = await assertWorktreeIntegrity(
+            repoPath,
+            remoteReview.worktreePath,
+            task.id,
+            "dispatch"
+          );
+          if (!integrity.valid)
+            throw new Error(
+              "The retained remote review workspace is invalid; restore the pinned candidate before review."
+            );
+        }
+      }
+    } catch (error) {
+      // One unreviewable candidate stops its own task; a rethrow would stop every task in the project.
+      const reason = error instanceof Error ? error.message : String(error);
+      log.warn("Blocking remote review that cannot be dispatched", {
+        projectId,
+        taskId: task.id,
+        reason,
+      });
+      await this.host
+        .getTaskStore()
+        .update(projectId, task.id, { status: "blocked", extra: { block_reason: reason } });
+      return;
+    }
+    const requiresRemoteFix =
+      remoteReview &&
+      (await governanceService.getTaskCases(projectId, task.id)).some(
+        (c) => c.state === "fix_required" && !c.supersededByReleaseId
+      );
     const retryContext = extractRetryContext(task);
     const mergeResumeState = extractMergeResumeState(task);
     const hasMergeValidationPause =
@@ -431,8 +489,10 @@ export class OrchestratorDispatchService {
     const allIssues = await taskStore.listAll(projectId);
     const epicId = resolveEpicId(task.id, allIssues);
     const useEpicBranch = mergeStrategy === "per_epic" && epicId != null;
-    const branchName = useEpicBranch ? `opensprint/epic_${epicId}` : `opensprint/${task.id}`;
-    const worktreeKey = useEpicBranch ? `epic_${epicId}` : task.id;
+    const branchName =
+      remoteReview?.branchName ??
+      (useEpicBranch ? `opensprint/epic_${epicId}` : `opensprint/${task.id}`);
+    const worktreeKey = !remoteReview && useEpicBranch ? `epic_${epicId}` : task.id;
 
     const slot = this.host.createSlot(
       task.id,
@@ -442,7 +502,9 @@ export class OrchestratorDispatchService {
       assignee,
       worktreeKey
     );
-    if (mergeResumeState) {
+    if (remoteReview) {
+      slot.worktreePath = remoteReview.worktreePath;
+    } else if (mergeResumeState) {
       slot.worktreePath = mergeResumeState.worktreePath;
     } else if (settings.gitWorkingMode === "branches") {
       slot.worktreePath = repoPath;
@@ -465,11 +527,20 @@ export class OrchestratorDispatchService {
 
     await this.host.persistCounters(projectId, repoPath);
     const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
-    await this.host.getBranchManager().ensureOnMain(repoPath, baseBranch);
+    if (!remoteReview) await this.host.getBranchManager().ensureOnMain(repoPath, baseBranch);
 
     if (slot.worktreePath && slot.worktreePath !== repoPath) {
-      const integrity = await assertWorktreeIntegrity(repoPath, slot.worktreePath, task.id, "dispatch");
+      const integrity = await assertWorktreeIntegrity(
+        repoPath,
+        slot.worktreePath,
+        task.id,
+        "dispatch"
+      );
       if (!integrity.valid) {
+        if (remoteReview)
+          throw new Error(
+            "The retained remote review workspace is invalid; restore the pinned candidate before review."
+          );
         log.warn("Worktree integrity check failed at dispatch, attempting rebuild", {
           taskId: task.id,
           phase: integrity.phase,
@@ -484,9 +555,17 @@ export class OrchestratorDispatchService {
             repoPath: string,
             worktreeKey: string,
             actualPath?: string,
-            opts?: { bypassReferenceProtection?: boolean; ignoreLiveTaskStatusForTaskIds?: Set<string> }
+            opts?: {
+              bypassReferenceProtection?: boolean;
+              ignoreLiveTaskStatusForTaskIds?: Set<string>;
+            }
           ): Promise<boolean>;
-          createTaskWorktree(repoPath: string, taskId: string, baseBranch: string, options?: { worktreeKey?: string; branchName?: string }): Promise<string>;
+          createTaskWorktree(
+            repoPath: string,
+            taskId: string,
+            baseBranch: string,
+            options?: { worktreeKey?: string; branchName?: string }
+          ): Promise<string>;
         };
         const rebuildResult = await rebuildWorktreeIfInvalid(
           repoPath,
@@ -548,6 +627,14 @@ export class OrchestratorDispatchService {
       worktreeRegistry.transition(worktreeKey, "in_use");
     }
 
+    if (
+      ((task as Record<string, unknown>).governance_resume === true ||
+        (remoteReview && !retryContext && !requiresRemoteFix)) &&
+      this.host.resumeGovernanceTask
+    ) {
+      await this.host.resumeGovernanceTask(projectId, repoPath, task, slot);
+      return;
+    }
     if (mergeResumeState) {
       await this.host.performMergeRetry(projectId, repoPath, task, slot);
       return;

@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "./agent-process-env.js";
 /**
  * Pre-deploy validation for Expo/EAS: identifies missing auth (login or API key)
  * and returns explicit, actionable prompts for the user.
@@ -69,7 +70,7 @@ export async function checkExpoAuth(
     const { stdout } = await execAsync("npx eas-cli whoami", {
       cwd: repoPath,
       timeout: 10000,
-      env: { ...process.env },
+      env: agentProcessEnvironment({ ...process.env }),
     });
     if (stdout?.trim()) {
       return { ok: true };

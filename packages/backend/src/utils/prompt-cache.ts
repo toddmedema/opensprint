@@ -31,6 +31,9 @@ export interface AgentCacheUsageMetrics {
   promptFingerprint: string;
   cacheReadTokens: number | null;
   cacheWriteTokens: number | null;
+  /** All input tokens the provider billed, cached ones included. Absent when it did not report them. */
+  inputTokens?: number;
+  outputTokens?: number;
   promptCacheKey?: string;
   responseId?: string | null;
 }
@@ -125,6 +128,10 @@ export function extractOpenAICacheUsage(params: {
     | {
         id?: string | null;
         usage?: {
+          input_tokens?: number | null;
+          output_tokens?: number | null;
+          prompt_tokens?: number | null;
+          completion_tokens?: number | null;
           input_tokens_details?: { cached_tokens?: number | null } | null;
           prompt_tokens_details?: { cached_tokens?: number | null } | null;
         } | null;
@@ -141,10 +148,15 @@ export function extractOpenAICacheUsage(params: {
     usage?.prompt_tokens_details?.cached_tokens ??
     null;
 
+  const inputTokens = usage?.input_tokens ?? usage?.prompt_tokens;
+  const outputTokens = usage?.output_tokens ?? usage?.completion_tokens;
   return {
     provider: "openai",
     flow: params.flow,
     promptFingerprint: params.promptFingerprint,
+    ...(inputTokens != null && outputTokens != null
+      ? { inputTokens: Number(inputTokens), outputTokens: Number(outputTokens) }
+      : {}),
     cacheReadTokens: cachedTokens == null ? null : Number(cachedTokens),
     cacheWriteTokens: null,
     promptCacheKey: params.promptCacheKey,
@@ -156,6 +168,8 @@ export function extractAnthropicCacheUsage(params: {
   response:
     | {
         usage?: {
+          input_tokens?: number | null;
+          output_tokens?: number | null;
           cache_creation_input_tokens?: number | null;
           cache_read_input_tokens?: number | null;
         } | null;
@@ -170,6 +184,15 @@ export function extractAnthropicCacheUsage(params: {
     provider: "anthropic",
     flow: params.flow,
     promptFingerprint: params.promptFingerprint,
+    ...(usage?.input_tokens != null && usage.output_tokens != null
+      ? {
+          inputTokens:
+            Number(usage.input_tokens) +
+            Number(usage.cache_read_input_tokens ?? 0) +
+            Number(usage.cache_creation_input_tokens ?? 0),
+          outputTokens: Number(usage.output_tokens),
+        }
+      : {}),
     cacheReadTokens:
       usage?.cache_read_input_tokens == null ? null : Number(usage.cache_read_input_tokens),
     cacheWriteTokens:

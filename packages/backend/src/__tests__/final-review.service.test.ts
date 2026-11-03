@@ -237,3 +237,7 @@ describe("FinalReviewService", () => {
     expect(agentService.invokePlanningAgent).toHaveBeenCalledTimes(3);
   });
 });
+
+vi.mock("../services/governance-execution.service.js", () => ({
+  governanceExecutionService: { epicInstructions: async () => null },
+}));

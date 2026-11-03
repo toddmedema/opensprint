@@ -7,6 +7,11 @@ import { errorHandler } from "../middleware/error-handler.js";
 import type { ProjectService } from "../services/project.service.js";
 import type { PlanService } from "../services/plan.service.js";
 
+// Keep request validation independent of the host's database and retained governance state.
+vi.mock("../services/governance.service.js", async () => ({
+  governanceService: (await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+}));
+
 vi.mock("../services/orchestrator.service.js", () => ({
   orchestratorService: { refreshMaxSlotsAndNudge: vi.fn() },
 }));

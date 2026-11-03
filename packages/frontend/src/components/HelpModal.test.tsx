@@ -1,3 +1,4 @@
+import { AGENT_ROLE_CANONICAL_ORDER } from "@opensprint/shared";
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, fireEvent, waitFor, within } from "@testing-library/react";
@@ -56,7 +57,7 @@ describe("HelpModal", () => {
     expect(screen.getByText("Dreamer")).toBeInTheDocument();
     expect(screen.getByText("Planner")).toBeInTheDocument();
     expect(screen.getByText("Sketch")).toBeInTheDocument();
-    expect(screen.getAllByRole("listitem")).toHaveLength(9);
+    expect(screen.getAllByRole("listitem")).toHaveLength(AGENT_ROLE_CANONICAL_ORDER.length);
   });
 
   it("Meet your Team tab shows agent roles and phases", async () => {

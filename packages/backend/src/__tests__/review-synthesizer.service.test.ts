@@ -121,4 +121,62 @@ describe("ReviewSynthesizerService", () => {
     expect(result.status).toBe("rejected");
     expect(result.issues).toEqual(expect.arrayContaining(["A", "B"]));
   });
+  it.each(["success", "failure"])(
+    "preserves unique structured blocker identities through %s synthesis",
+    async (mode) => {
+      const { agentService } = await import("../services/agent.service.js");
+      if (mode === "failure")
+        vi.mocked(agentService.invokePlanningAgent).mockRejectedValue(new Error("offline"));
+      else
+        vi.mocked(agentService.invokePlanningAgent).mockResolvedValue({
+          content: JSON.stringify({
+            status: "approved",
+            summary: "Lead cannot erase blockers",
+            notes: "",
+          }),
+        });
+      const finding = {
+        id: "f1",
+        category: "standard" as const,
+        ruleId: "repository",
+        ruleRevisionId: "repository@1",
+        file: "src/service.ts",
+        codeRevision: "a".repeat(40),
+        evidence: "Direct read",
+        severity: "blocking" as const,
+        suggestedRemedy: "Use repository",
+        provenance: { reviewer: "reviewer" },
+      };
+      const result = await reviewSynthesizerService.synthesize(
+        projectId,
+        repoPath,
+        task,
+        [
+          {
+            angle: "security",
+            result: { status: "rejected", summary: "Blocked", notes: "", findings: [finding] },
+          },
+          {
+            angle: "performance",
+            result: {
+              status: "rejected",
+              summary: "Also blocked",
+              notes: "",
+              findings: [
+                { ...finding, id: "f9" },
+                { ...finding, evidence: "Another distinct blocker" },
+              ],
+            },
+          },
+        ],
+        {} as never
+      );
+      expect(result.status).toBe("rejected");
+      expect(result.findings).toHaveLength(2);
+      expect(new Set(result.findings!.map((f) => f.id)).size).toBe(2);
+      expect(
+        result.findings!.find((f) => f.evidence === finding.evidence)?.provenance.sources
+      ).toHaveLength(2);
+    }
+  );
 });

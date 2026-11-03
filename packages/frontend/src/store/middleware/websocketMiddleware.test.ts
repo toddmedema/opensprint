@@ -802,6 +802,41 @@ describe("websocketMiddleware", () => {
       });
     });
 
+    it("updates both notification query caches and reopens only a newer governance docket version", async () => {
+      const store = createStore();
+      store.dispatch(wsConnect({ projectId: "proj-1" }));
+      await flushPendingWsInstance("/ws/projects/proj-1");
+      wsInstance!.simulateOpen();
+      const notification = {
+        id: "gov-case",
+        projectId: "proj-1",
+        source: "execute" as const,
+        sourceId: "task",
+        questions: [],
+        status: "open" as const,
+        resolvedAt: null,
+        createdAt: "2026-10-30T00:00:00Z",
+        kind: "governance" as const,
+        scopeChangeMetadata: { caseId: "case", caseVersion: 3 },
+      };
+      wsInstance!.simulateMessage({ type: "notification.added", notification });
+      for (const key of [
+        queryKeys.notifications.project("proj-1"),
+        queryKeys.notifications.global(),
+      ]) {
+        const call = mockSetQueryData.mock.calls.find(
+          ([queryKey]) => JSON.stringify(queryKey) === JSON.stringify(key)
+        );
+        expect(call).toBeDefined();
+        const merge = call![1] as (items: unknown[]) => unknown[];
+        expect(
+          merge([{ ...notification, status: "resolved", scopeChangeMetadata: { caseVersion: 2 } }])
+        ).toEqual([notification]);
+        const newer = { ...notification, scopeChangeMetadata: { caseVersion: 4 } };
+        expect(merge([newer])).toEqual([newer]);
+        expect(merge([notification])).toHaveLength(1);
+      }
+    });
     describe("notification.resolved", () => {
       it("does not remove notification when it is already resolved (show reply until dismiss)", async () => {
         const store = createStore();
@@ -863,6 +898,22 @@ describe("websocketMiddleware", () => {
           const list = store.getState().openQuestions?.byProject?.["proj-1"] ?? [];
           expect(list.some((n) => n.id === "oq-2")).toBe(false);
         });
+        for (const key of [
+          queryKeys.notifications.project("proj-1"),
+          queryKeys.notifications.global(),
+        ]) {
+          const updates = mockSetQueryData.mock.calls.filter(
+            ([queryKey]) => JSON.stringify(queryKey) === JSON.stringify(key)
+          );
+          const update = updates.at(-1)![1] as (items: unknown[]) => unknown[];
+          expect(update([openNotification])).toEqual([]);
+          const answered = {
+            ...openNotification,
+            status: "resolved",
+            responses: [{ questionId: "q1", answer: "Keep this reply" }],
+          };
+          expect(update([answered])).toEqual([answered]);
+        }
       });
     });
 

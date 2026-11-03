@@ -4,6 +4,7 @@ import { createLogger } from "./utils/logger.js";
 import { getErrorMessage } from "./utils/error-utils.js";
 import { ProjectService } from "./services/project.service.js";
 import { taskStore } from "./services/task-store.service.js";
+import { governanceService } from "./services/governance.service.js";
 import { FeedbackService } from "./services/feedback.service.js";
 import { orchestratorService } from "./services/orchestrator.service.js";
 import { watchdogService } from "./services/watchdog.service.js";
@@ -28,6 +29,7 @@ import { initAppDb } from "./db/app-db.js";
 import type { AppDb } from "./db/app-db.js";
 import { databaseRuntime } from "./services/database-runtime.service.js";
 import { PlanService } from "./services/plan.service.js";
+import { sweepReplayContainers } from "./services/isolated-replay-runner.service.js";
 import { resumePlanExecuteBatchesOnStartup } from "./services/plan-execute-batch.service.js";
 
 const logOrchestrator = createLogger("orchestrator-startup");
@@ -203,6 +205,12 @@ export async function startDatabaseFeatures(
     try {
       nextAppDb = await initAppDb(databaseUrl);
       await taskStore.init(databaseUrl, nextAppDb);
+      await governanceService.clearDeadPublicationLeases().catch((err: unknown) =>
+        logOrchestrator.warn("Could not clear dead publication leases; they will expire", {
+          err: err instanceof Error ? err.message : String(err),
+        })
+      );
+      void sweepReplayContainers();
       appDb = nextAppDb;
       databaseFeaturesStarted = true;
       startNightlyDeployScheduler();
@@ -214,10 +222,18 @@ export async function startDatabaseFeatures(
       );
     } catch (err) {
       if (nextAppDb) {
-        await nextAppDb.close().catch((e: unknown) => logOrchestrator.warn("appDb close failed during startup rollback", { err: e instanceof Error ? e.message : String(e) }));
+        await nextAppDb.close().catch((e: unknown) =>
+          logOrchestrator.warn("appDb close failed during startup rollback", {
+            err: e instanceof Error ? e.message : String(e),
+          })
+        );
       }
       appDb = null;
-      await taskStore.closePool().catch((e: unknown) => logOrchestrator.warn("taskStore pool close failed during startup rollback", { err: e instanceof Error ? e.message : String(e) }));
+      await taskStore.closePool().catch((e: unknown) =>
+        logOrchestrator.warn("taskStore pool close failed during startup rollback", {
+          err: e instanceof Error ? e.message : String(e),
+        })
+      );
       databaseFeaturesStarted = false;
       databaseRuntime.handleOperationalFailure(err);
       throw err;

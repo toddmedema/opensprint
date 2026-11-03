@@ -8,6 +8,7 @@
 import { exec, ExecOptions } from "child_process";
 import fs from "fs";
 import { promisify } from "util";
+import { agentProcessEnvironment } from "./agent-process-env.js";
 
 const execAsync = promisify(exec);
 
@@ -32,6 +33,7 @@ export async function shellExec(
 ): Promise<{ stdout: string; stderr: string }> {
   const opts: ExecOptions = {
     ...options,
+    env: agentProcessEnvironment(options?.env ?? process.env),
     timeout: options?.timeout ?? 30_000,
     encoding: "utf8",
   };

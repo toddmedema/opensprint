@@ -4,6 +4,7 @@
  */
 
 import fs from "fs/promises";
+import { createHash, randomUUID } from "node:crypto";
 import path from "path";
 import type { ActiveTaskConfig, ReviewAngle } from "@opensprint/shared";
 import {
@@ -51,6 +52,18 @@ import { getMergeQualityGateCommands } from "./merge-quality-gates.js";
 import { isWorktreeCheckoutUsable, IncompleteWorktreeError } from "../utils/worktree-health.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
+
+import { governanceService } from "./governance.service.js";
+import {
+  resolveTaskReviewBase,
+  getTrustedRemoteReviewRequest,
+} from "./remote-publication-review-context.js";
+import { captureGovernanceContextArtifacts } from "./governance-context-artifacts.js";
+import {
+  governanceExecutionService,
+  governanceBranchPathSnapshot,
+  governanceCodeSnapshot,
+} from "./governance-execution.service.js";
 
 const log = createLogger("phase-executor");
 
@@ -110,6 +123,62 @@ export class PhaseExecutorService {
     private host: PhaseExecutorHost,
     private callbacks: PhaseExecutorCallbacks
   ) {}
+
+  /** Pin policy and trusted scope before prompt/assignment persistence and agent spawn. */
+  private async attachGovernanceContext(
+    projectId: string,
+    repoPath: string,
+    task: StoredTask,
+    wtPath: string,
+    branchName: string,
+    baseBranch: string,
+    settings: ProjectSettings,
+    context: TaskContext,
+    config: ActiveTaskConfig
+  ): Promise<void> {
+    if (await governanceService.isGovernanceInactive(projectId)) return;
+    await governanceService.captureTrustedScope(
+      projectId,
+      task.id,
+      `${task.title ?? ""}\n${task.description ?? ""}`
+    );
+    const existing = await governanceService.getTaskPin(projectId, task.id);
+    const governance = await governanceService.getConfig(projectId);
+    if (!existing && governance.mode === "disabled") return;
+    // A task first pinned at review already has commits: HEAD would hide them from its diff.
+    const baseSha =
+      existing?.baseSha ?? (await governanceBranchPathSnapshot(wtPath, baseBranch)).baseSha;
+    if (!baseSha) throw new Error("Cannot pin governance without an exact base revision.");
+    const pin = await governanceExecutionService.prepareTask({
+      projectId,
+      taskId: task.id,
+      repoPath,
+      worktreePath: wtPath,
+      branchName,
+      baseSha,
+      baseBranch,
+      mergeBaseSha: (await this.host.branchManager.getGitRev(repoPath, baseBranch)) ?? undefined,
+      trustedScope: `${task.title ?? ""}\n${task.description ?? ""}`,
+      settings,
+    });
+    if (!pin) return;
+    const code = await governanceCodeSnapshot(wtPath, pin.baseSha, "HEAD", false, pin.baseBranch);
+    const policyContext = await governanceExecutionService.context(
+      pin,
+      config.agent_role,
+      code.changedPaths
+    );
+    context.governance = { pin, context: policyContext, headSha: code.headSha };
+    config.governance = {
+      releaseId: pin.releaseId,
+      contextHash: policyContext.receipt.contentHash,
+      baseSha: pin.baseSha,
+      headSha: code.headSha,
+    };
+    context.governanceAppeals = this.host
+      .getState(projectId)
+      .slots.get(task.id)?.phaseResult.governanceAppeals;
+  }
 
   private createAgentRunState(startedAt: string): AgentRunState {
     return {
@@ -390,8 +459,13 @@ export class PhaseExecutorService {
 
     const settings = await this.host.projectService.getSettings(projectId);
     const branchName = slot.branchName;
+    const remoteReview = await getTrustedRemoteReviewRequest(projectId, task);
     const gitWorkingMode = settings.gitWorkingMode ?? "worktree";
-    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+    const baseBranch = await resolveTaskReviewBase(
+      projectId,
+      task,
+      await resolveBaseBranch(repoPath, settings.worktreeBaseBranch)
+    );
 
     // Pre-flight: ensure API key available before any heavy work
     const complexity = await getComplexityForAgent(projectId, repoPath, task, this.host.taskStore);
@@ -426,7 +500,15 @@ export class PhaseExecutorService {
       }
 
       let wtPath: string;
-      if (gitWorkingMode === "branches") {
+      if (remoteReview) {
+        wtPath = remoteReview.worktreePath;
+        assertSafeTaskWorktreePath(repoPath, task.id, wtPath);
+        if (!(await this.hasUsableExistingWorktree(repoPath, wtPath)))
+          throw new Error(
+            "Remote review corrections require the original retained candidate workspace."
+          );
+        await this.host.branchManager.ensureRepoNodeModules(wtPath);
+      } else if (gitWorkingMode === "branches") {
         if (!retryContext?.useExistingBranch) {
           await this.host.branchManager.syncMainWithOrigin(repoPath, baseBranch);
         }
@@ -508,7 +590,11 @@ export class PhaseExecutorService {
         }
       }
 
-      if (retryContext?.useExistingBranch && !retryContext.structuredOutputRepairAttempted) {
+      if (
+        !remoteReview &&
+        retryContext?.useExistingBranch &&
+        !retryContext.structuredOutputRepairAttempted
+      ) {
         await this.host.branchManager.waitForGitReady(wtPath);
         let rebaseConflict: RebaseConflictError | null = null;
         try {
@@ -586,7 +672,7 @@ export class PhaseExecutorService {
       }
 
       const config: ActiveTaskConfig = {
-        invocation_id: task.id,
+        invocation_id: randomUUID(),
         agent_role: "coder",
         taskId: task.id,
         repoPath: wtPath,
@@ -608,6 +694,17 @@ export class PhaseExecutorService {
         aiAutonomyLevel: settings.aiAutonomyLevel,
       };
 
+      await this.attachGovernanceContext(
+        projectId,
+        repoPath,
+        task,
+        wtPath,
+        branchName,
+        baseBranch,
+        settings,
+        context,
+        config
+      );
       await this.host.contextAssembler.assembleTaskDirectory(wtPath, task.id, config, context);
       if (!this.isTaskStillActive(projectId, task.id)) {
         return;
@@ -679,10 +776,48 @@ export class PhaseExecutorService {
         attempt: slot.attempt,
         retryContext,
         createdAt: new Date().toISOString(),
+        invocationId: config.invocation_id,
         ...(replayMetadata && { replayMetadata }),
+        ...(context.governance && {
+          governance: {
+            ...config.governance!,
+            trustedScopeHash: createHash("sha256")
+              .update(context.governance.pin.trustedScope)
+              .digest("hex"),
+          },
+        }),
       };
+      if (context.governance)
+        await governanceService.recordPromptSnapshot(
+          projectId,
+          task.id,
+          "coder",
+          await fs.readFile(promptPath, "utf-8"),
+          context.governance.headSha,
+          JSON.parse(
+            await fs.readFile(path.join(path.dirname(promptPath), "prompt-envelope.json"), "utf-8")
+          ) as { stablePrefix: string; dynamicContext: string },
+          {
+            attempt: slot.attempt,
+            invocationId: config.invocation_id,
+            assignmentCreatedAt: assignment.createdAt,
+            policyPin: context.governance.pin,
+            contextArtifacts: await captureGovernanceContextArtifacts(
+              path.join(path.dirname(promptPath), "context")
+            ),
+          }
+        );
       // Set startedAt before agent spawn so getActiveAgents returns correct elapsed time from first frame (no 0s flash)
       slot.agent.startedAt = assignment.createdAt;
+      if (context.governance)
+        await governanceService.audit(projectId, "agent_configuration_pinned", "system", {
+          taskId: task.id,
+          attempt: slot.attempt,
+          invocationId: config.invocation_id,
+          agentConfig,
+          role: config.agent_role,
+          releaseId: context.governance.pin.releaseId,
+        });
       await writeJsonAtomic(path.join(taskDir, OPENSPRINT_PATHS.assignment), assignment);
       // Also write to main repo so crash recovery finds it (worktree base can differ after restart via os.tmpdir())
       const mainRepoActiveDir = this.host.sessionManager.getActiveDir(repoPath, task.id);
@@ -793,7 +928,11 @@ export class PhaseExecutorService {
       return;
     }
     const settings = await this.host.projectService.getSettings(projectId);
-    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+    const baseBranch = await resolveTaskReviewBase(
+      projectId,
+      task,
+      await resolveBaseBranch(repoPath, settings.worktreeBaseBranch)
+    );
     const wtPath = slot.worktreePath ?? repoPath;
     if (wtPath !== repoPath) {
       assertSafeTaskWorktreePath(repoPath, task.id, wtPath);
@@ -824,7 +963,7 @@ export class PhaseExecutorService {
       );
 
       const config: ActiveTaskConfig = {
-        invocation_id: task.id,
+        invocation_id: randomUUID(),
         agent_role: "reviewer",
         taskId: task.id,
         repoPath: wtPath,
@@ -863,7 +1002,45 @@ export class PhaseExecutorService {
         baseBranch
       );
 
+      await this.attachGovernanceContext(
+        projectId,
+        repoPath,
+        task,
+        wtPath,
+        branchName,
+        baseBranch,
+        settings,
+        context,
+        config
+      );
       await this.host.contextAssembler.assembleTaskDirectory(wtPath, task.id, config, context);
+      const governanceAssignmentCreatedAt = new Date().toISOString();
+      if (context.governance) {
+        const prompts = useAngleSpecificReview
+          ? [
+              ...reviewAngles.map((angle) =>
+                path.join(taskDir, "review-angles", angle, "prompt.md")
+              ),
+              ...(includeGeneralReview ? [path.join(taskDir, "prompt.md")] : []),
+            ]
+          : [path.join(taskDir, "prompt.md")];
+        for (const file of prompts)
+          await governanceService.recordPromptSnapshot(
+            projectId,
+            task.id,
+            "reviewer",
+            await fs.readFile(file, "utf-8"),
+            context.governance.headSha,
+            JSON.parse(
+              await fs.readFile(path.join(path.dirname(file), "prompt-envelope.json"), "utf-8")
+            ) as { stablePrefix: string; dynamicContext: string },
+            {
+              attempt: slot.attempt,
+              invocationId: config.invocation_id,
+              assignmentCreatedAt: governanceAssignmentCreatedAt,
+            }
+          );
+      }
 
       const complexity = await getComplexityForAgent(
         projectId,
@@ -918,11 +1095,29 @@ export class PhaseExecutorService {
             : path.join(taskDir, "review-angles", reviewAngles[0]!, "prompt.md"),
         agentConfig,
         attempt: slot.attempt,
-        createdAt: new Date().toISOString(),
+        createdAt: governanceAssignmentCreatedAt,
+        invocationId: config.invocation_id,
         ...(replayMetadata && { replayMetadata }),
+        ...(context.governance && {
+          governance: {
+            ...config.governance!,
+            trustedScopeHash: createHash("sha256")
+              .update(context.governance.pin.trustedScope)
+              .digest("hex"),
+          },
+        }),
       };
       // Set startedAt before agent spawn so getActiveAgents returns correct elapsed time from first frame (no 0s flash)
       slot.agent.startedAt = assignment.createdAt;
+      if (context.governance)
+        await governanceService.audit(projectId, "agent_configuration_pinned", "system", {
+          taskId: task.id,
+          attempt: slot.attempt,
+          invocationId: config.invocation_id,
+          agentConfig,
+          role: config.agent_role,
+          releaseId: context.governance.pin.releaseId,
+        });
       await writeJsonAtomic(path.join(taskDir, OPENSPRINT_PATHS.assignment), assignment);
       const mainRepoActiveDirReview = this.host.sessionManager.getActiveDir(repoPath, task.id);
       await fs.mkdir(mainRepoActiveDirReview, { recursive: true });

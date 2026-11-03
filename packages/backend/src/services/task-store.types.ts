@@ -33,6 +33,8 @@ export interface StoredTask {
 }
 
 export interface CreateOpts {
+  /** Internal orchestration preparation barrier; ordinary create routes do not expose this field. */
+  initialStatus?: "open" | "blocked";
   type?: TaskType | string;
   priority?: TaskPriority | number;
   description?: string;

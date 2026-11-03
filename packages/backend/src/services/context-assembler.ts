@@ -6,7 +6,13 @@ import {
   SPEC_MD,
   prdToSpecMarkdown,
 } from "@opensprint/shared";
-import type { ActiveTaskConfig, ReviewAngle } from "@opensprint/shared";
+import type {
+  ActiveTaskConfig,
+  ReviewAngle,
+  GovernanceTaskPin,
+  PolicyContext,
+  ReviewAppeal,
+} from "@opensprint/shared";
 import { buildAutonomyDescription } from "./autonomy-description.js";
 import { BranchManager } from "./branch-manager.js";
 import { PrdService } from "./prd.service.js";
@@ -20,10 +26,7 @@ import { getSafeTaskActiveDir } from "../utils/path-safety.js";
 import { getOrchestratorTestStatusPromptPath } from "./orchestrator-test-status.js";
 import { buildFailureDebugPacket, formatDebugPacketForPrompt } from "./agentic-repair.service.js";
 import { buildPromptEnvelope } from "../utils/prompt-cache.js";
-import {
-  PROTECTED_PATH_PATTERNS,
-  SCOPE_UNLOCK_KEYWORDS,
-} from "./protected-path-policy.js";
+import { PROTECTED_PATH_PATTERNS, SCOPE_UNLOCK_KEYWORDS } from "./protected-path-policy.js";
 
 /** Short checklist items per review angle for angle-specific prompts. Exported for epic final review. */
 export const REVIEW_ANGLE_CHECKLISTS: Record<ReviewAngle, string[]> = {
@@ -65,6 +68,9 @@ export { buildAutonomyDescription };
 
 export interface TaskContext {
   taskId: string;
+  /** Durable policy snapshot is supplied by the orchestrator, never read from the task worktree. */
+  governance?: { pin: GovernanceTaskPin; context: PolicyContext; headSha: string };
+  governanceAppeals?: ReviewAppeal[];
   title: string;
   description: string;
   planContent: string;
@@ -131,15 +137,53 @@ export class ContextAssembler {
     // Generate prompt(s) — inject agent instructions (AGENTS.md + role-specific) per acceptance criteria
     // agentRole from config (phase 'coding' maps to coder, 'review' to reviewer)
     const agentRole = config.agent_role;
-    const agentInstructions = await getCombinedInstructions(repoPath, agentRole);
-    if (config.phase === "coding") {
-      const prompt = this.buildPromptWithInstructions(
-        agentInstructions,
-        this.generateCodingPrompt(config, context)
+    const policy = context.governance;
+    const policyContract = policy
+      ? `
+
+## Pinned review policy
+Release: ${policy.pin.releaseId}
+Base: ${policy.pin.baseSha}
+Reviewed head: ${policy.headSha}
+Context receipt: ${JSON.stringify(policy.context.receipt)}\nFull immutable release and content hash: policy-release.json in this active task directory. Inspect it for additional path/role rules; request expanded context from the server when scope grows. The server resolves applicability and records review coverage. Never replace the pinned release with worktree instruction edits.
+${policy.context.content}
+
+${config.phase === "review" ? "Return a findings array in result.json. Every blocking standard must cite ruleId and ruleRevisionId from this receipt plus file, codeRevision (the reviewed head above), evidence, severity (blocking/warning/info), suggestedRemedy, and provenance {reviewer,angle?,model?}. category is standard, defect, security, gate, or advisory. Defects/security/gate findings do not require an existing rule. Unsupported preferences are advisory and cannot block. Use a stable id per finding. Preserve every blocker from every angle." : "Fix findings or appeal an eligible standard by returning appeals in result.json: [{findingId,requestedException,alternatives:[string],whyCompliantOptionsFail,tests:[string],risks:[string],proposedLimits:[string]}]. Explain analyzed alternatives; pointless experiments are not required. Appeals do not waive hard checks or protected scope. Use status success for a completed implementation submitted for reconsideration."}
+${
+  context.governanceAppeals?.length
+    ? `## Coder appeals — one reviewer reconsideration
+${JSON.stringify(context.governanceAppeals)}
+Reconsider these against the pinned policy. Preserve the original finding IDs for unresolved findings. Do not treat an appeal as consent or an amendment.`
+    : ""
+}`
+      : "";
+    const agentInstructions = policy
+      ? `${policy.pin.instructionsByRole[agentRole] ?? ""}${policyContract}`
+      : await getCombinedInstructions(repoPath, agentRole);
+    if (policy) {
+      await fs.writeFile(
+        path.join(contextDir, "policy-receipt.json"),
+        JSON.stringify(policy.context.receipt, null, 2)
       );
-      await fs.writeFile(path.join(taskDir, "prompt.md"), prompt);
+      await fs.writeFile(path.join(contextDir, "policy.md"), policy.context.content);
+      const { governanceService } = await import("./governance.service.js");
+      const release = await governanceService.getRelease(
+        policy.pin.projectId,
+        policy.pin.releaseId
+      );
+      await fs.writeFile(
+        path.join(taskDir, "policy-release.json"),
+        JSON.stringify(release, null, 2)
+      );
+    }
+    if (config.phase === "coding") {
+      await this.writePrompt(
+        path.join(taskDir, "prompt.md"),
+        agentInstructions,
+        this.generateCodingPrompt(config, context),
+        Boolean(policy)
+      );
     } else {
-      const agentInstructions = await getCombinedInstructions(repoPath, "reviewer");
       const reviewAngles = config.reviewAngles;
       const includeGeneral =
         config.includeGeneralReview === true && reviewAngles && reviewAngles.length > 0;
@@ -148,11 +192,12 @@ export class ContextAssembler {
         for (const angle of reviewAngles as ReviewAngle[]) {
           const angleDir = path.join(taskDir, "review-angles", angle);
           await fs.mkdir(angleDir, { recursive: true });
-          const prompt = this.buildPromptWithInstructions(
+          await this.writePrompt(
+            path.join(angleDir, "prompt.md"),
             agentInstructions,
-            this.generateReviewPromptForAngle(config, context, angle)
+            this.generateReviewPromptForAngle(config, context, angle),
+            Boolean(policy)
           );
-          await fs.writeFile(path.join(angleDir, "prompt.md"), prompt);
           await fs.writeFile(
             path.join(angleDir, "config.json"),
             JSON.stringify({ ...config, reviewAngle: angle }, null, 2)
@@ -161,11 +206,12 @@ export class ContextAssembler {
       }
       if (!reviewAngles || reviewAngles.length === 0 || includeGeneral) {
         // General: single prompt at task dir (default or general+angles)
-        const prompt = this.buildPromptWithInstructions(
+        await this.writePrompt(
+          path.join(taskDir, "prompt.md"),
           agentInstructions,
-          this.generateReviewPrompt(config, context)
+          this.generateReviewPrompt(config, context),
+          Boolean(policy)
         );
-        await fs.writeFile(path.join(taskDir, "prompt.md"), prompt);
       }
     }
 
@@ -334,6 +380,20 @@ export class ContextAssembler {
     return outputs;
   }
 
+  private async writePrompt(
+    file: string,
+    stablePrefix: string,
+    dynamicContext: string,
+    governed: boolean
+  ): Promise<void> {
+    await fs.writeFile(file, this.buildPromptWithInstructions(stablePrefix, dynamicContext));
+    if (governed)
+      await fs.writeFile(
+        path.join(path.dirname(file), "prompt-envelope.json"),
+        JSON.stringify({ stablePrefix, dynamicContext }, null, 2)
+      );
+  }
+
   /** Prepend reusable instructions so cacheable prompt prefixes stay stable across tasks. */
   private buildPromptWithInstructions(agentInstructions: string, basePrompt: string): string {
     return agentInstructions.trim()
@@ -416,9 +476,9 @@ export class ContextAssembler {
 
   /** Build the Protected Path Policy section for coding and review prompts. */
   buildProtectedPathPolicySection(role: "coder" | "reviewer"): string {
-    const patterns = PROTECTED_PATH_PATTERNS.map(
-      (p) => `| \`${p.pattern}\` | ${p.label} |`
-    ).join("\n");
+    const patterns = PROTECTED_PATH_PATTERNS.map((p) => `| \`${p.pattern}\` | ${p.label} |`).join(
+      "\n"
+    );
     const keywords = SCOPE_UNLOCK_KEYWORDS.map((k) => `\`${k}\``).join(", ");
 
     let section = `## Protected Path Policy\n\n`;

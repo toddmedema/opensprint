@@ -128,7 +128,7 @@ export class AgentService {
    * Claude: uses @anthropic-ai/sdk API. Cursor/custom: delegates to AgentClient (CLI).
    */
   async invokePlanningAgent(options: InvokePlanningAgentOptions): Promise<PlanningAgentResponse> {
-    const releaseGlobalSlot = await acquireGlobalAgentSlot(options.projectId);
+    const releaseGlobalSlot = await acquireGlobalAgentSlot(options.projectId, options.abortSignal);
     try {
       const { tracking } = options;
       const startedAt = new Date().toISOString();
@@ -620,6 +620,9 @@ export class AgentService {
     options: InvokePlanningAgentOptions
   ): Promise<PlanningAgentResponse> {
     const { projectId, config, messages, systemPrompt, images, onChunk } = options;
+    const abortOptions: [{ signal: AbortSignal }] | [] = options.abortSignal
+      ? [{ signal: options.abortSignal }]
+      : [];
 
     const model = config.model ?? "claude-sonnet-4-20250514";
     const promptFingerprint = fingerprintPrompt(systemPrompt?.trim() || model);
@@ -686,15 +689,21 @@ export class AgentService {
       }
       triedKeyIds.add(keyId);
 
-      const client = new Anthropic({ apiKey: key });
+      const client = new Anthropic({
+        apiKey: key,
+        ...(options.governanceBounded || options.role === "judge" ? { maxRetries: 0 } : {}),
+      });
 
       try {
-        const stream = client.messages.stream({
-          model,
-          max_tokens: 8192,
-          system: anthropicSystem,
-          messages: anthropicMessages,
-        });
+        const stream = client.messages.stream(
+          {
+            model,
+            max_tokens: options.maxOutputTokens ?? 8192,
+            system: anthropicSystem,
+            messages: anthropicMessages,
+          },
+          ...abortOptions
+        );
 
         let fullContent = "";
         if (onChunk) {
@@ -722,6 +731,8 @@ export class AgentService {
         await clearLimitHit(projectId, "ANTHROPIC_API_KEY", keyId, source);
         return { content, cacheMetrics };
       } catch (error: unknown) {
+        if (options.governanceBounded || options.role === "judge" || options.abortSignal?.aborted)
+          throw error;
         lastError = error;
         if (isLimitError(error)) {
           if (keyId === ENV_FALLBACK_KEY_ID) {
@@ -763,6 +774,9 @@ export class AgentService {
   ): Promise<PlanningAgentResponse> {
     const { projectId, config, messages, systemPrompt, images, onChunk, previousResponseId } =
       options;
+    const abortOptions: [{ signal: AbortSignal }] | [] = options.abortSignal
+      ? [{ signal: options.abortSignal }]
+      : [];
 
     const model = config.model ?? "gpt-4o-mini";
     const useResponsesApi = isOpenAIResponsesModel(model);
@@ -840,7 +854,10 @@ export class AgentService {
       }
       triedKeyIds.add(keyId);
 
-      const client = new OpenAI({ apiKey: key });
+      const client = new OpenAI({
+        apiKey: key,
+        ...(options.governanceBounded || options.role === "judge" ? { maxRetries: 0 } : {}),
+      });
 
       try {
         let content: string;
@@ -850,16 +867,19 @@ export class AgentService {
           const responseInput = buildOpenAIPlanningResponsesInput(messages, images);
           if (onChunk) {
             const streamResult = await collectOpenAIResponsesStream(
-              (await client.responses.create({
-                model,
-                instructions: systemPrompt?.trim() || undefined,
-                input: responseInput,
-                max_output_tokens: 8192,
-                previous_response_id: previousResponseId,
-                prompt_cache_key: promptCacheKey,
-                prompt_cache_retention: "in-memory",
-                stream: true,
-              })) as AsyncIterable<OpenAIResponsesStreamEvent>,
+              (await client.responses.create(
+                {
+                  model,
+                  instructions: systemPrompt?.trim() || undefined,
+                  input: responseInput,
+                  max_output_tokens: options.maxOutputTokens ?? 8192,
+                  previous_response_id: previousResponseId,
+                  prompt_cache_key: promptCacheKey,
+                  prompt_cache_retention: "in-memory",
+                  stream: true,
+                },
+                ...abortOptions
+              )) as AsyncIterable<OpenAIResponsesStreamEvent>,
               onChunk
             );
             content = streamResult.content;
@@ -874,15 +894,18 @@ export class AgentService {
               promptCacheKey,
             });
           } else {
-            const response = await client.responses.create({
-              model,
-              instructions: systemPrompt?.trim() || undefined,
-              input: responseInput,
-              max_output_tokens: 8192,
-              previous_response_id: previousResponseId,
-              prompt_cache_key: promptCacheKey,
-              prompt_cache_retention: "in-memory",
-            });
+            const response = await client.responses.create(
+              {
+                model,
+                instructions: systemPrompt?.trim() || undefined,
+                input: responseInput,
+                max_output_tokens: options.maxOutputTokens ?? 8192,
+                previous_response_id: previousResponseId,
+                prompt_cache_key: promptCacheKey,
+                prompt_cache_retention: "in-memory",
+              },
+              ...abortOptions
+            );
             content = response.output_text;
             responseId = response.id;
             cacheMetrics = extractOpenAICacheUsage({
@@ -893,15 +916,18 @@ export class AgentService {
             });
           }
         } else if (onChunk) {
-          const stream = await client.chat.completions.create({
-            model,
-            messages: openaiMessages,
-            max_tokens: 8192,
-            prompt_cache_key: promptCacheKey,
-            prompt_cache_retention: "in-memory",
-            stream: true,
-            stream_options: { include_usage: true },
-          });
+          const stream = await client.chat.completions.create(
+            {
+              model,
+              messages: openaiMessages,
+              max_tokens: options.maxOutputTokens ?? 8192,
+              prompt_cache_key: promptCacheKey,
+              prompt_cache_retention: "in-memory",
+              stream: true,
+              stream_options: { include_usage: true },
+            },
+            ...abortOptions
+          );
           let fullContent = "";
           let usage:
             | {
@@ -927,13 +953,16 @@ export class AgentService {
             promptCacheKey,
           });
         } else {
-          const response = await client.chat.completions.create({
-            model,
-            messages: openaiMessages,
-            max_tokens: 8192,
-            prompt_cache_key: promptCacheKey,
-            prompt_cache_retention: "in-memory",
-          });
+          const response = await client.chat.completions.create(
+            {
+              model,
+              messages: openaiMessages,
+              max_tokens: options.maxOutputTokens ?? 8192,
+              prompt_cache_key: promptCacheKey,
+              prompt_cache_retention: "in-memory",
+            },
+            ...abortOptions
+          );
           content = response.choices[0]?.message?.content ?? "";
           responseId = response.id;
           cacheMetrics = extractOpenAICacheUsage({
@@ -947,6 +976,8 @@ export class AgentService {
         await clearLimitHit(projectId, "OPENAI_API_KEY", keyId, source);
         return { content, responseId, cacheMetrics };
       } catch (error: unknown) {
+        if (options.governanceBounded || options.role === "judge" || options.abortSignal?.aborted)
+          throw error;
         lastError = error;
         if (isLimitError(error)) {
           if (keyId === ENV_FALLBACK_KEY_ID) {

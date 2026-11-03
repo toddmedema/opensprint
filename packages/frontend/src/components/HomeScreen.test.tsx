@@ -558,6 +558,26 @@ describe("HomeScreen", () => {
     expect(mockProjectsList).toHaveBeenCalledTimes(2); // initial load + refresh
   });
 
+  it("retains a governed project removal request and asks for the separate owner capability", async () => {
+    mockProjectsList.mockResolvedValue([mockProject]);
+    mockArchive
+      .mockRejectedValueOnce(
+        Object.assign(new Error("Owner approval required"), { code: "GOVERNANCE_HUMAN_REQUIRED" })
+      )
+      .mockResolvedValueOnce(undefined);
+    const user = userEvent.setup();
+    renderHomeScreen();
+    await screen.findByText("My Project");
+    await user.click(screen.getByTestId("project-card-menu-proj-1"));
+    await user.click(screen.getByRole("menuitem", { name: /archive/i }));
+    await user.click(screen.getByRole("button", { name: /proceed/i }));
+    const capability = await screen.findByLabelText(/Owner approval capability/);
+    expect(screen.getByRole("button", { name: /proceed/i })).toBeDisabled();
+    await user.type(capability, "owner-secret");
+    await user.click(screen.getByRole("button", { name: /proceed/i }));
+    expect(mockArchive).toHaveBeenLastCalledWith("proj-1", "owner-secret");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
   it("Proceed on Delete calls delete API and refreshes list", async () => {
     mockProjectsList.mockResolvedValue([mockProject]);
     mockDelete.mockResolvedValue(undefined);

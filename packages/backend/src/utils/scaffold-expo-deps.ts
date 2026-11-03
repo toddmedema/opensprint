@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "./agent-process-env.js";
 import fs from "fs/promises";
 import path from "path";
 import { exec } from "child_process";
@@ -50,6 +51,7 @@ export async function ensureExpoLintMergeGateTooling(repoPath: string): Promise<
   log.info("Ensuring Expo ESLint tooling for merge quality gates", { repoPath });
   try {
     await execAsync("npx expo install eslint eslint-config-expo", {
+      env: agentProcessEnvironment(),
       cwd: repoPath,
       timeout: 180_000,
     });
@@ -110,6 +112,7 @@ export async function ensureExpoReactTypeDevDependencies(repoPath: string): Prom
   log.info("Installing missing React TypeScript definitions for Expo scaffold", { repoPath });
   try {
     await execAsync("npx expo install @types/react @types/react-dom", {
+      env: agentProcessEnvironment(),
       cwd: repoPath,
       timeout: 120_000,
     });

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import type { DeploymentRecord } from "@opensprint/shared";
 import { ProjectService } from "./project.service.js";
 import { taskStore } from "./task-store.service.js";
@@ -28,10 +28,22 @@ export class DeployStorageService {
   async createRecord(
     projectId: string,
     previousDeployId?: string | null,
-    options?: { commitHash?: string | null; target?: string; mode?: "expo" | "custom" }
+    options?: {
+      commitHash?: string | null;
+      target?: string;
+      mode?: "expo" | "custom";
+      idempotencyKey?: string;
+    }
   ): Promise<DeploymentRecord> {
     const record: DeploymentRecord = {
-      id: randomUUID(),
+      id: options?.idempotencyKey
+        ? (() => {
+            const value = createHash("sha256")
+              .update(projectId + ":" + options.idempotencyKey)
+              .digest("hex");
+            return `${value.slice(0, 8)}-${value.slice(8, 12)}-5${value.slice(13, 16)}-a${value.slice(17, 20)}-${value.slice(20, 32)}`;
+          })()
+        : randomUUID(),
       projectId,
       status: "pending",
       startedAt: new Date().toISOString(),
@@ -43,7 +55,18 @@ export class DeployStorageService {
       mode: options?.mode ?? "custom",
     };
 
+    let existing: DeploymentRecord | null = null;
     await taskStore.runWrite(async (client) => {
+      if (options?.idempotencyKey) {
+        const row = await client.queryOne(
+          "SELECT * FROM deployments WHERE project_id=$1 AND id=$2",
+          [projectId, record.id]
+        );
+        if (row) {
+          existing = rowToRecord(row);
+          return;
+        }
+      }
       await client.execute(
         `INSERT INTO deployments (
           id, project_id, status, started_at, completed_at, commit_hash, target, mode,
@@ -67,7 +90,17 @@ export class DeployStorageService {
         ]
       );
     });
-    return record;
+    return existing ?? record;
+  }
+
+  async claimIdempotentRun(projectId: string, deployId: string): Promise<boolean> {
+    return taskStore.runWrite(
+      async (db) =>
+        (await db.execute(
+          "UPDATE deployments SET status='running' WHERE project_id=$1 AND id=$2 AND status='pending'",
+          [projectId, deployId]
+        )) === 1
+    );
   }
 
   async getRecord(projectId: string, deployId: string): Promise<DeploymentRecord | null> {

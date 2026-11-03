@@ -1,3 +1,4 @@
+import { AGENT_ROLE_CANONICAL_ORDER } from "@opensprint/shared";
 import type { ReactElement } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
@@ -1207,7 +1208,7 @@ describe("Navbar", () => {
       expect(screen.getByText("Dreamer")).toBeInTheDocument();
       expect(screen.getByText("Planner")).toBeInTheDocument();
       expect(screen.getByText("Sketch")).toBeInTheDocument();
-      expect(screen.getAllByRole("listitem")).toHaveLength(9);
+      expect(screen.getAllByRole("listitem")).toHaveLength(AGENT_ROLE_CANONICAL_ORDER.length);
     });
 
     // Non-layout theme contract: help link uses muted color, not brand accent

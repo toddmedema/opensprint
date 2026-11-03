@@ -37,6 +37,7 @@ import { getProjects } from "../services/project-index.js";
 import { initAppDb } from "../db/app-db.js";
 import { databaseRuntime } from "../services/database-runtime.service.js";
 import { parseAgentConfig } from "../schemas/agent-config.js";
+import { guardGovernedGlobalSettings } from "../middleware/governance-settings.js";
 
 export const globalSettingsRouter = Router();
 
@@ -116,6 +117,7 @@ globalSettingsRouter.post(
 globalSettingsRouter.post(
   "/migrate-to-postgres",
   validateBody(migrateToPostgresBodySchema),
+  guardGovernedGlobalSettings,
   wrapAsync(async (req: Request, res) => {
     const body = req.body as { databaseUrl: string };
     const trimmed = body.databaseUrl.trim();
@@ -195,6 +197,7 @@ globalSettingsRouter.get(
 globalSettingsRouter.put(
   "/",
   validateBody(globalSettingsPutBodySchema),
+  guardGovernedGlobalSettings,
   wrapAsync(async (req: Request, res) => {
     const body = req.body as {
       databaseUrl?: string;

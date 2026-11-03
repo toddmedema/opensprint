@@ -82,6 +82,23 @@ export async function evaluateWorktreeCleanupProtection(
     ignoreFreshAssignmentForTaskIds?: Set<string>;
   }
 ): Promise<WorktreeCleanupProtectionResult> {
+  const { governanceService } = await import("../services/governance.service.js");
+  const held = (await governanceService.listCases(projectId)).filter(
+    (c) =>
+      [
+        "awaiting_reconsideration",
+        "awaiting_judge",
+        "awaiting_human",
+        "evidence_requested",
+        "stale",
+      ].includes(c.state) && path.resolve(c.worktreePath) === path.resolve(resolvedWorktreePath)
+  );
+  if (held.length)
+    return {
+      forbid: true,
+      reason: "governance_hold",
+      referencingTaskIds: [...new Set(held.map((c) => c.taskId))],
+    };
   const summaries = await listAssignmentSummariesInWorktree(resolvedWorktreePath);
   if (summaries.length === 0) return { forbid: false };
 
@@ -162,7 +179,6 @@ export function logWorktreeDeletionImminent(
     ...meta,
   });
 }
-
 
 const EXCLUDED_ROOT_DIRS = new Set([
   ".git",

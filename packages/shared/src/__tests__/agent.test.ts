@@ -15,6 +15,7 @@ describe("AgentRole and slot mapping", () => {
     it("returns coding for coder and reviewer", () => {
       expect(getSlotForRole("coder")).toBe("coding");
       expect(getSlotForRole("reviewer")).toBe("coding");
+      expect(getSlotForRole("judge")).toBe("coding");
     });
 
     it("returns planning for all other roles", () => {
@@ -56,6 +57,7 @@ describe("AgentRole and slot mapping", () => {
         "auditor",
         "coder",
         "reviewer",
+        "judge",
         "merger",
       ]);
     });
@@ -71,6 +73,7 @@ describe("AgentRole and slot mapping", () => {
       expect(AGENT_ROLE_PHASES.auditor).toEqual(["Execute"]);
       expect(AGENT_ROLE_PHASES.coder).toEqual(["Execute"]);
       expect(AGENT_ROLE_PHASES.reviewer).toEqual(["Execute"]);
+      expect(AGENT_ROLE_PHASES.judge).toEqual(["Execute"]);
       expect(AGENT_ROLE_PHASES.merger).toEqual(["Execute"]);
     });
   });
@@ -86,10 +89,12 @@ describe("AgentRole and slot mapping", () => {
       auditor: "Surveys what's actually built and what still needs doing.",
       coder: "Implements tasks and ships working code with tests.",
       reviewer: "Validates implementation against acceptance criteria.",
+      judge:
+        "Resolves disputed standards under approved policy and escalates new exceptions to a human.",
       merger: "Resolves rebase conflicts and keeps the journey moving.",
     };
 
-    it("has entry for all 9 roles in AGENT_ROLE_CANONICAL_ORDER", () => {
+    it("has entry for all 10 roles in AGENT_ROLE_CANONICAL_ORDER", () => {
       for (const role of AGENT_ROLE_CANONICAL_ORDER) {
         expect(AGENT_ROLE_DESCRIPTIONS[role]).toBeDefined();
         expect(typeof AGENT_ROLE_DESCRIPTIONS[role]).toBe("string");
@@ -97,7 +102,7 @@ describe("AgentRole and slot mapping", () => {
       }
     });
 
-    it("matches README table descriptions exactly for all 9 agents", () => {
+    it("matches README table descriptions exactly for all 10 agents", () => {
       for (const role of AGENT_ROLE_CANONICAL_ORDER) {
         expect(AGENT_ROLE_DESCRIPTIONS[role]).toBe(README_ROLE_DESCRIPTIONS[role]);
       }
@@ -173,6 +178,7 @@ describe("AgentRole and slot mapping", () => {
       expect(AGENT_ROLE_PHASES.auditor).toEqual(["Execute"]);
       expect(AGENT_ROLE_PHASES.coder).toEqual(["Execute"]);
       expect(AGENT_ROLE_PHASES.reviewer).toEqual(["Execute"]);
+      expect(AGENT_ROLE_PHASES.judge).toEqual(["Execute"]);
       expect(AGENT_ROLE_PHASES.merger).toEqual(["Execute"]);
     });
 
@@ -184,7 +190,7 @@ describe("AgentRole and slot mapping", () => {
       }
     });
 
-    it("matches README table phases for all 9 agents", () => {
+    it("matches README table phases for all 10 agents", () => {
       const README_PHASES: Record<string, readonly string[]> = {
         dreamer: ["Sketch"],
         planner: ["Plan"],
@@ -194,6 +200,7 @@ describe("AgentRole and slot mapping", () => {
         auditor: ["Execute"],
         coder: ["Execute"],
         reviewer: ["Execute"],
+        judge: ["Execute"],
         merger: ["Execute"],
       };
       for (const role of AGENT_ROLE_CANONICAL_ORDER) {

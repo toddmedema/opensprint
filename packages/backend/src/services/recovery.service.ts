@@ -11,6 +11,8 @@
  * Called once on startup by the orchestrator and periodically by the watchdog.
  */
 
+import { governanceService } from "./governance.service.js";
+import { isActiveHold } from "./policy-context.js";
 import fs from "fs/promises";
 import path from "path";
 import { AGENT_SUSPEND_GRACE_MS, HEARTBEAT_STALE_MS, OPENSPRINT_PATHS } from "@opensprint/shared";
@@ -129,6 +131,7 @@ export interface GuppAssignment {
   attempt: number;
   retryContext?: RetryContext;
   createdAt: string;
+  governance?: import("./orchestrator-phase-context.js").TaskAssignmentLike["governance"];
   replayMetadata?: {
     baseCommitSha: string;
     behaviorVersionId?: string;
@@ -167,6 +170,52 @@ export class RecoveryService {
     const excludeWorktreePaths = new Set(
       (host.getSlottedWorktreePaths?.(projectId) ?? []).map((p) => path.resolve(p))
     );
+
+    // Governance waits are durable, slot-free owners. Protect them before every recovery pass,
+    // including human cancellation and pending resumes, using the same authority as merge admission.
+    const cases = await governanceService.listCases(projectId);
+    const heldTasks = new Set(cases.filter(isActiveHold).map((c) => c.taskId));
+    const pendingResume = new Map<string, boolean>();
+    for (const c of cases) {
+      if (!heldTasks.has(c.taskId)) {
+        const resuming =
+          pendingResume.get(c.taskId) ??
+          (await governanceService.hasPendingResume(projectId, c.taskId));
+        pendingResume.set(c.taskId, resuming);
+        if (!resuming) continue;
+      }
+      // This pass also runs on the watchdog: a judge call from this process may still answer.
+      if (
+        opts.includeGupp &&
+        ["awaiting_judge", "awaiting_reconsideration"].includes(c.state) &&
+        (await governanceService.isAdjudicationOrphaned(c))
+      ) {
+        await governanceService.recordRecommendation(
+          projectId,
+          c.id,
+          {
+            disposition: "human_required",
+            rationale:
+              "Backend restarted during adjudication. No agent recommendation or approval was assumed.",
+            evidence: [c.evidenceHash],
+            ruleIds: c.findings.flatMap((f) => (f.ruleId ? [f.ruleId] : [])),
+            decisionIds: [],
+          },
+          c.version
+        );
+      }
+      excludeIds.add(c.taskId);
+      excludeWorktreePaths.add(path.resolve(c.worktreePath));
+      excludeWorktreeKeys.add(c.taskId);
+      if (c.branchName.startsWith("opensprint/epic_"))
+        excludeWorktreeKeys.add(c.branchName.slice("opensprint/".length));
+    }
+    // Notification delivery retries later; it must never stand between a crash and its recovery.
+    try {
+      await governanceService.deliverOutbox(projectId);
+    } catch (err) {
+      log.warn("Governance outbox delivery failed during recovery", { projectId, err });
+    }
 
     // 1. GUPP crash recovery (startup only) — now receives exclude sets
     if (

@@ -29,6 +29,8 @@ import { dbStatusRouter } from "./routes/db-status.js";
 import { createTodoistIntegrationRouter } from "./routes/integrations-todoist.js";
 import { createGitHubIntegrationRouter } from "./routes/integrations-github.js";
 import { createIntakeRouter } from "./routes/intake.js";
+import { createGovernanceRouter } from "./routes/governance.js";
+import { createGovernanceReplayRouter } from "./routes/governance-replay.js";
 import { createCommandsRouter } from "./routes/commands.js";
 import { createCollaborationRouter } from "./routes/collaboration.js";
 import { createSpecPublicationRouter } from "./routes/spec-publication.js";
@@ -186,6 +188,16 @@ export function createApp(services?: AppServices) {
   );
   app.use(`${API_PREFIX}/projects/:projectId/intake`, requireDatabase, createIntakeRouter());
   app.use(`${API_PREFIX}/projects/:projectId/commands`, requireDatabase, createCommandsRouter());
+  app.use(
+    `${API_PREFIX}/projects/:projectId/governance/replay`,
+    requireDatabase,
+    createGovernanceReplayRouter()
+  );
+  app.use(
+    `${API_PREFIX}/projects/:projectId/governance`,
+    requireDatabase,
+    createGovernanceRouter(projectService)
+  );
   app.use(
     `${API_PREFIX}/projects/:projectId/publication`,
     requireDatabase,

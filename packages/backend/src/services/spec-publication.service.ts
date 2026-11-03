@@ -13,10 +13,15 @@ import { runMergeQualityGates } from "./merge-quality-gate-runner.js";
 import { AppError } from "../middleware/error-handler.js";
 import { getGitNoHooksPath } from "../utils/git-no-hooks.js";
 import { gitCommitQueue } from "./git-commit-queue.service.js";
+import { governanceService } from "./governance.service.js";
+import { GovernanceService } from "./governance-store.js";
+import { governanceError } from "./policy-context.js";
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
 
 const execFileAsync = promisify(execFile);
 async function git(repoPath: string, ...args: string[]): Promise<string> {
   const { stdout } = await execFileAsync("git", args, {
+    env: agentProcessEnvironment(),
     cwd: repoPath,
     encoding: "utf8",
     timeout: 30_000,
@@ -48,8 +53,15 @@ export class SpecPublicationService {
   private store: PublicationStore;
   private projects: NonNullable<PublicationDeps["projects"]>;
   private validate: NonNullable<PublicationDeps["validate"]>;
+  private governance: GovernanceService;
   constructor(deps: PublicationDeps = {}) {
     this.store = deps.store ?? taskStore;
+    this.governance = deps.store
+      ? new GovernanceService({
+          getDb: () => this.store.getDb(),
+          runWrite: (fn) => this.store.runWrite(fn),
+        })
+      : governanceService;
     this.projects = deps.projects ?? new ProjectService();
     this.validate =
       deps.validate ??
@@ -347,7 +359,9 @@ export class SpecPublicationService {
         | undefined;
       let candidateSha: string | null = null;
       let advanced = false;
-      const publishCandidate = async (): Promise<DbRow> => {
+      const publishCandidate = async (
+        assertPublicationLease: () => Promise<void>
+      ): Promise<DbRow> => {
         try {
           const assertBase = async () => {
             if (
@@ -410,6 +424,7 @@ export class SpecPublicationService {
           await assertBase();
           // The prepared immutable commit is recorded before the external effect.
           await this.updateOperation(projectId, operationId, "publishing", candidateSha);
+          await assertPublicationLease();
           await git(
             project.repoPath,
             "update-ref",
@@ -453,7 +468,34 @@ export class SpecPublicationService {
           type: "repository_operation",
           repoPath: project.repoPath,
           run: async () => {
-            result = await publishCandidate();
+            // Keep queue -> governance lease ordering consistent with ordinary task merges.
+            await this.governance.withPublicationLock(projectId, async (assertLease) => {
+              const [config, active, cases] = await Promise.all([
+                this.governance.getConfig(projectId),
+                this.governance.getActiveReleaseId(projectId),
+                this.governance.listCases(projectId),
+              ]);
+              if (
+                config.mode !== "disabled" ||
+                active ||
+                cases.some(
+                  (c) =>
+                    c.humanCancelled ||
+                    [
+                      "awaiting_reconsideration",
+                      "awaiting_judge",
+                      "awaiting_human",
+                      "evidence_requested",
+                      "stale",
+                    ].includes(c.state)
+                )
+              )
+                governanceError(
+                  "This project retains governed review authority. Publish the SPEC change through an explicitly scoped Execute task and its normal reviews and gates; a draft approval cannot authorize a governed Git publication.",
+                  "GOVERNANCE_SPEC_PUBLICATION_REVIEW_REQUIRED"
+                );
+              result = await publishCandidate(assertLease);
+            });
           },
         });
       } catch (err) {

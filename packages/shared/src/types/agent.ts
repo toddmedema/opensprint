@@ -22,6 +22,7 @@ export type AgentRole =
   | "auditor"
   | "coder"
   | "reviewer"
+  | "judge"
   | "merger";
 
 /** Agent slot: Planning (concurrent) or Coding (single task slot; review can fan out per angle) */
@@ -29,7 +30,9 @@ export type AgentSlot = "planning" | "coding";
 
 /** Map role to slot */
 export function getSlotForRole(role: AgentRole): AgentSlot {
-  return role === "coder" || role === "reviewer" || role === "merger" ? "coding" : "planning";
+  return role === "coder" || role === "reviewer" || role === "judge" || role === "merger"
+    ? "coding"
+    : "planning";
 }
 
 /**
@@ -45,6 +48,7 @@ export const AGENT_ROLE_CANONICAL_ORDER: readonly AgentRole[] = [
   "auditor",
   "coder",
   "reviewer",
+  "judge",
   "merger",
 ] as const;
 
@@ -116,6 +120,7 @@ export const AGENT_ROLE_LABELS: Record<AgentRole, string> = {
   auditor: "Auditor",
   coder: "Coder",
   reviewer: "Reviewer",
+  judge: "Judge",
   merger: "Merger",
 };
 
@@ -132,6 +137,7 @@ export const AGENT_ROLE_PHASES: Record<AgentRole, readonly string[]> = {
   auditor: ["Execute"],
   coder: ["Execute"],
   reviewer: ["Execute"],
+  judge: ["Execute"],
   merger: ["Execute"],
 };
 
@@ -148,6 +154,8 @@ export const AGENT_ROLE_DESCRIPTIONS: Record<AgentRole, string> = {
   auditor: "Surveys what's actually built and what still needs doing.",
   coder: "Implements tasks and ships working code with tests.",
   reviewer: "Validates implementation against acceptance criteria.",
+  judge:
+    "Resolves disputed standards under approved policy and escalates new exceptions to a human.",
   merger: "Resolves rebase conflicts and keeps the journey moving.",
 };
 
@@ -181,6 +189,7 @@ export interface ActiveTaskConfig {
   testCommand: string;
   attempt: number;
   phase: AgentPhase;
+  governance?: { releaseId: string; contextHash: string; baseSha: string; headSha: string };
   previousFailure: string | null;
   reviewFeedback: string | null;
   /** Condensed test diagnostics from the previous failed attempt */
@@ -275,6 +284,37 @@ export interface AgentOpenQuestion {
   createdAt?: string;
 }
 
+/** Findings carry evidence independently of stylistic policy. Server code validates policy authority. */
+export interface StructuredReviewFinding {
+  id: string;
+  category: "standard" | "defect" | "security" | "gate" | "advisory";
+  ruleId?: string;
+  ruleRevisionId?: string;
+  file: string;
+  codeRevision: string;
+  evidence: string;
+  severity: "blocking" | "warning" | "info";
+  suggestedRemedy: string;
+  provenance: {
+    reviewer: string;
+    angle?: string;
+    model?: string;
+    /** Server aggregation retains each independent report; agent parsers do not trust supplied aliases. */
+    sources?: Array<{ findingId: string; reviewer: string; angle?: string; model?: string }>;
+  };
+}
+
+/** A bounded request for reconsideration, never itself an approval. */
+export interface ReviewAppeal {
+  findingId: string;
+  requestedException: string;
+  alternatives: string[];
+  whyCompliantOptionsFail: string;
+  tests: string[];
+  risks: string[];
+  proposedLimits: string[];
+}
+
 /** Coding agent result (result.json) */
 export interface CodingAgentResult {
   status: "success" | "failed" | "partial";
@@ -286,6 +326,7 @@ export interface CodingAgentResult {
   /** When task spec is ambiguous: emit questions and pause rather than guessing (agent question protocol) */
   open_questions?: AgentOpenQuestion[];
   openQuestions?: AgentOpenQuestion[];
+  appeals?: ReviewAppeal[];
   /** Structured diagnosis from the agent when it encountered and repaired (or could not repair) a failure. */
   debugArtifact?: DebugArtifact;
 }
@@ -295,6 +336,9 @@ export interface ReviewAgentResult {
   status: "approved" | "rejected";
   summary: string;
   issues?: string[];
+  findings?: StructuredReviewFinding[];
+  /** Explicit reviewer reconsideration withdrawals; unmentioned findings remain blockers. */
+  withdrawnFindingIds?: string[];
   notes: string;
   /** Structured diagnosis from the agent when it encountered and repaired (or could not repair) a failure. */
   debugArtifact?: DebugArtifact;

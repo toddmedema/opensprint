@@ -362,3 +362,7 @@ describe("worktree-health", () => {
     });
   });
 });
+
+vi.mock("../services/governance.service.js", async () => ({
+  governanceService: (await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+}));

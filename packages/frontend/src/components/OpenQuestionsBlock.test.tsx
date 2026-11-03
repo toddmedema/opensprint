@@ -61,6 +61,27 @@ describe("OpenQuestionsBlock", () => {
     });
   });
 
+  it("keeps governance holds out of ordinary answer and dismiss controls", async () => {
+    renderWithRouter(
+      <OpenQuestionsBlock
+        notification={{ ...mockNotification, kind: "governance", sourceId: "case-1" }}
+        projectId="proj-1"
+        source="execute"
+        sourceId="task-1"
+        onResolved={onResolved}
+        onAnswerSent={onAnswerSent}
+      />
+    );
+    expect(screen.getByText("Waiting for a human ruling")).toBeInTheDocument();
+    expect(screen.queryByTestId("open-questions-answer-btn")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("open-questions-dismiss-btn")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Review docket" }));
+    expect(screen.getByTestId("current-location")).toHaveTextContent(
+      "/projects/proj-1/settings?tab=governance&case=case-1"
+    );
+    expect(api.notifications.resolve).not.toHaveBeenCalled();
+  });
+
   it("renders open questions with Answer and Dismiss", () => {
     renderWithRouter(
       <OpenQuestionsBlock

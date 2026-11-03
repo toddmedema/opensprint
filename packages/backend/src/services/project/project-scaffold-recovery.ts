@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../../utils/agent-process-env.js";
 import { exec } from "child_process";
 import { promisify } from "util";
 import type { ScaffoldRecoveryInfo } from "@opensprint/shared";
@@ -17,9 +18,7 @@ export async function checkScaffoldPrerequisites(): Promise<{ missing: string[] 
   const isCommandNotFound = (err: unknown): boolean => {
     const msg = err instanceof Error ? err.message : String(err);
     const code =
-      err && typeof err === "object" && "code" in err
-        ? (err as { code?: string }).code
-        : undefined;
+      err && typeof err === "object" && "code" in err ? (err as { code?: string }).code : undefined;
     return (
       code === "ENOENT" ||
       /command not found/i.test(msg) ||
@@ -29,7 +28,7 @@ export async function checkScaffoldPrerequisites(): Promise<{ missing: string[] 
   };
 
   try {
-    await execAsync("git --version", { timeout });
+    await execAsync("git --version", { env: agentProcessEnvironment(), timeout });
   } catch (err) {
     if (isCommandNotFound(err)) {
       missing.push("Git");
@@ -39,7 +38,7 @@ export async function checkScaffoldPrerequisites(): Promise<{ missing: string[] 
   }
 
   try {
-    await execAsync("node --version", { timeout });
+    await execAsync("node --version", { env: agentProcessEnvironment(), timeout });
   } catch (err) {
     if (isCommandNotFound(err)) {
       missing.push("Node.js");
@@ -62,7 +61,7 @@ export async function runScaffoldCommandWithRecovery(
   fallbackMessage: string
 ): Promise<{ success: boolean; errorMessage?: string; recovery?: ScaffoldRecoveryInfo }> {
   try {
-    await execAsync(command, { cwd });
+    await execAsync(command, { env: agentProcessEnvironment(), cwd });
     return { success: true };
   } catch (firstErr) {
     const rawError = getErrorMessage(firstErr, fallbackMessage);
@@ -105,7 +104,7 @@ export async function runScaffoldCommandWithRecovery(
 
     log.info("Recovery agent succeeded, retrying command", { command });
     try {
-      await execAsync(command, { cwd });
+      await execAsync(command, { env: agentProcessEnvironment(), cwd });
       return {
         success: true,
         recovery: {

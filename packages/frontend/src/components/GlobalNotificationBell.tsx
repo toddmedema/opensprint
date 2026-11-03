@@ -1,3 +1,4 @@
+import { getGovernanceCaseId } from "../lib/governance";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
@@ -72,6 +73,13 @@ export function GlobalNotificationBell() {
 
   const handleNotificationClick = useCallback(
     (n: Notification) => {
+      if (n.kind === "governance") {
+        navigate(
+          `/projects/${n.projectId}/settings?tab=governance&case=${encodeURIComponent(getGovernanceCaseId(n))}`
+        );
+        setOpen(false);
+        return;
+      }
       if (n.kind === "self_improvement_approval") {
         navigate(`/projects/${n.projectId}/settings?tab=workflow&focus=self-improvement`);
         setOpen(false);
@@ -134,7 +142,9 @@ export function GlobalNotificationBell() {
             onClick={handleClearAll}
             className="text-sm text-theme-muted hover:text-theme-text transition-colors"
           >
-            Clear all
+            {notifications.some((n) => n.kind === "governance")
+              ? "Clear other notifications"
+              : "Clear all"}
           </button>
         </div>
         <ul className="divide-y divide-theme-border-subtle">
@@ -148,6 +158,7 @@ export function GlobalNotificationBell() {
                 <div className="font-medium text-theme-text">
                   {projectNameMap.get(n.projectId) ?? n.projectId} ·{" "}
                   {NOTIFICATION_SOURCE_LABELS[n.source]}
+                  {n.kind === "governance" && " · Human decision"}
                 </div>
                 <div className="text-theme-muted mt-0.5">{truncatePreview(preview(n), 80)}</div>
                 <div className="text-theme-muted text-xs mt-1">

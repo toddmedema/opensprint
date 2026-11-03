@@ -68,6 +68,9 @@ export { resolveEpicId, getBlockersFromIssue, getParentId } from "./task-store-h
 export type { PlanInsertData, StoredPlan } from "./plan-store.service.js";
 
 const log = createLogger("task-store");
+/** Child IDs are reused after deletion; a recreated task's scope must reflect the new task. */
+const UPSERT_TASK_SCOPE_SQL =
+  "INSERT INTO governance_task_scopes(project_id,task_id,scope) VALUES($1,$2,$3) ON CONFLICT(project_id,task_id) DO UPDATE SET scope=excluded.scope";
 const MERGE_ATTEMPT_LEASE_EXPIRES_AT_KEY = "merge_attempt_lease_expires_at";
 
 function hasActiveMergeAttemptLease(task: StoredTask, nowMs = Date.now()): boolean {
@@ -717,24 +720,32 @@ export class TaskStoreService {
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
         try {
           id = await this.generateId(projectId, options.parentId);
-          await client.execute(
-            toPgParams(
-              `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, complexity, extra)
-               VALUES (?, ?, ?, ?, ?, 'open', ?, NULL, '[]', ?, ?, ?, ?)`
-            ),
-            [
-              id,
+          await client.runInTransaction(async (tx) => {
+            await tx.execute(
+              toPgParams(
+                `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, assignee, labels, created_at, updated_at, complexity, extra)
+               VALUES (?, ?, ?, ?, ?, ?, ?, NULL, '[]', ?, ?, ?, ?)`
+              ),
+              [
+                id,
+                projectId,
+                title,
+                options.description ?? null,
+                type,
+                options.initialStatus === "blocked" ? "blocked" : "open",
+                priority,
+                now,
+                now,
+                complexity ?? null,
+                extra,
+              ]
+            );
+            await tx.execute(UPSERT_TASK_SCOPE_SQL, [
               projectId,
-              title,
-              options.description ?? null,
-              type,
-              priority,
-              now,
-              now,
-              complexity ?? null,
-              extra,
-            ]
-          );
+              id,
+              `${title}\n${options.description ?? ""}`,
+            ]);
+          });
           break;
         } catch (err: unknown) {
           lastError = err;
@@ -858,6 +869,12 @@ export class TaskStoreService {
               extraJson,
             ]
           );
+
+          await tx.execute(UPSERT_TASK_SCOPE_SQL, [
+            projectId,
+            id,
+            `${input.title}\n${input.description ?? ""}`,
+          ]);
 
           if (input.parentId) {
             await tx.execute(

@@ -30,7 +30,7 @@ import { gitCommitQueue, MergeJobError } from "./git-commit-queue.service.js";
 import { agentIdentityService, buildAgentAttemptId } from "./agent-identity.service.js";
 import { eventLogService } from "./event-log.service.js";
 import { fireAndForget } from "../utils/fire-and-forget.js";
-import { triggerDeployForEvent } from "./deploy-trigger.service.js";
+import { deferredAutoDeployService, type ClaimedDeploy } from "./deferred-auto-deploy.service.js";
 import { finalReviewService } from "./final-review.service.js";
 import { notificationService } from "./notification.service.js";
 import { selfImprovementService } from "./self-improvement.service.js";
@@ -69,6 +69,20 @@ import {
   QUALITY_GATE_OUTPUT_SNIPPET_LIMIT,
   toQualityGateOutputSnippet,
 } from "./merge-quality-gate-failure-utils.js";
+
+import { governanceService } from "./governance.service.js";
+import { isPublicationLeaseContention } from "./governance-store.js";
+import { triggerDeployForEvent } from "./deploy-trigger.service.js";
+import {
+  governanceExecutionService,
+  governanceBranchPathSnapshot,
+  governanceCodeSnapshot,
+} from "./governance-execution.service.js";
+
+import {
+  remotePublicationGovernanceService,
+  type RemotePushBatch,
+} from "./remote-publication-governance.service.js";
 
 const log = createLogger("merge-coordinator");
 const _MAX_PUSH_REBASE_RESOLUTION_ROUNDS = 12;
@@ -490,7 +504,9 @@ export class MergeCoordinatorService {
           if (pathForGuard) {
             try {
               await fs.access(pathForGuard);
-              const resolvedWt = path.resolve(await fs.realpath(pathForGuard).catch(() => pathForGuard));
+              const resolvedWt = path.resolve(
+                await fs.realpath(pathForGuard).catch(() => pathForGuard)
+              );
               const protection = await evaluateWorktreeCleanupProtection(
                 projectId,
                 resolvedWt,
@@ -2015,6 +2031,14 @@ export class MergeCoordinatorService {
       await this.waitForPushComplete(projectId);
       const settings = await this.host.projectService.getSettings(projectId);
       const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+      if (!(await governanceService.isGovernanceInactive(projectId))) {
+        const pin = await governanceService.getTaskPin(projectId, task.id);
+        const code = pin
+          ? await governanceCodeSnapshot(wtPath, pin.baseSha, "HEAD", false, pin.baseBranch)
+          : await governanceBranchPathSnapshot(wtPath, baseBranch);
+        await governanceExecutionService.assertScope(projectId, task.id, code.changedPaths);
+        await governanceService.assertMergeAdmission({ projectId, taskId: task.id, ...code });
+      }
       const mergeStrategy = settings.mergeStrategy ?? "per_task";
       const allIssuesForEpic = await this.host.taskStore.listAll(projectId);
       const epicId = resolveEpicId(task.id, allIssuesForEpic);
@@ -2123,6 +2147,7 @@ export class MergeCoordinatorService {
           );
           await gitCommitQueue.enqueueAndWait({
             type: "worktree_merge",
+            projectId,
             repoPath,
             worktreePath: wtPath,
             branchName,
@@ -2249,6 +2274,7 @@ export class MergeCoordinatorService {
         );
         await gitCommitQueue.enqueueAndWait({
           type: "worktree_merge",
+          projectId,
           repoPath,
           worktreePath: wtPath,
           branchName,
@@ -2343,7 +2369,7 @@ export class MergeCoordinatorService {
       mergeErr instanceof MergeJobError
         ? mergeErr.stage
         : mergeErr instanceof RebaseContinueBlockedError
-          ? mergeErr.mergeFailureStage ?? "merge_to_main"
+          ? (mergeErr.mergeFailureStage ?? "merge_to_main")
           : mergeErr instanceof RebaseConflictError
             ? "push_rebase"
             : "merge_to_main";
@@ -2401,6 +2427,16 @@ export class MergeCoordinatorService {
 
     let shouldNudge = false;
     try {
+      if (isPublicationLeaseContention(mergeErr)) {
+        // Another publication owned the lease; the code was never judged, so spend no attempt.
+        await this.host.taskStore.update(projectId, task.id, {
+          status: "open",
+          assignee: "",
+          extra: { [NEXT_RETRY_CONTEXT_KEY]: null },
+        });
+        shouldNudge = true;
+        return;
+      }
       const freshIssue = await this.host.taskStore.show(projectId, task.id);
       const cumulativeAttempts = this.host.taskStore.getCumulativeAttemptsFromIssue(freshIssue) + 1;
       await this.host.taskStore.setCumulativeAttempts(projectId, task.id, cumulativeAttempts);
@@ -2904,6 +2940,28 @@ export class MergeCoordinatorService {
     options?: { mergedToMain?: boolean }
   ): Promise<void> {
     const mergedToMain = options?.mergedToMain !== false;
+    const governanceInactive = await governanceService
+      .isGovernanceInactive(projectId)
+      .catch((err) => {
+        log.warn("Could not read governance state; keeping deploys durable", { projectId, err });
+        return false;
+      });
+    if (mergedToMain) {
+      if (governanceInactive) {
+        // PRD §7.5.3: Auto-deploy on each task only when a merge to main occurred
+        triggerDeployForEvent(projectId, "each_task").catch((err) => {
+          log.warn("Auto-deploy on task completion failed", { projectId, err });
+        });
+      } else {
+        const task = await this.host.taskStore.show(projectId, taskId).catch(() => null);
+        await deferredAutoDeployService.enqueue(
+          projectId,
+          "each_task",
+          taskId,
+          String(task?.completed_at ?? "completed")
+        );
+      }
+    }
     let pushStatus: PushCompletionStatus = "publish_failed";
     if (!this.pushInProgress.has(projectId)) {
       let resolvePush!: () => void;
@@ -2933,12 +2991,8 @@ export class MergeCoordinatorService {
       log.warn("Auto-resolve feedback on task done failed", { taskId, err });
     });
 
-    // PRD §7.5.3: Auto-deploy on each task only when a merge to main occurred
-    if (mergedToMain) {
-      triggerDeployForEvent(projectId, "each_task").catch((err) => {
-        log.warn("Auto-deploy on task completion failed", { projectId, err });
-      });
-    }
+    // A completed local merge may still be waiting for remote code re-review.
+    if (!governanceInactive) await this.drainDeferredDeploysIfPublished(projectId, repoPath);
 
     const allIssues = await this.host.taskStore.listAll(projectId);
     const epicId = resolveEpicId(taskId, allIssues);
@@ -2955,9 +3009,7 @@ export class MergeCoordinatorService {
         } else {
           const shouldDeploy = await this.shouldTriggerDeployForEpic(projectId, epicId);
           if (shouldDeploy) {
-            triggerDeployForEvent(projectId, "each_epic").catch((err) => {
-              log.warn("Auto-deploy on epic completion failed", { projectId, err });
-            });
+            await this.enqueueEpicDeploy(projectId, repoPath, epicId);
           }
           const planRow = await this.host.taskStore.planGetByEpicId(projectId, epicId);
           if (planRow) {
@@ -2992,6 +3044,86 @@ export class MergeCoordinatorService {
    * Run final review agent when last task of epic is done.
    * If pass: close epic, trigger deploy. If issues: create tasks, epic stays open, nudge.
    */
+  async recoverDeferredPublications(projectId: string, repoPath: string): Promise<void> {
+    if (!(await deferredAutoDeployService.hasPending(projectId))) return;
+    const settings = await this.host.projectService.getSettings(projectId);
+    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+    const repo = await inspectGitRepoState(repoPath, baseBranch);
+    const claimed = await governanceService.withPublicationLock(projectId, async (assertLease) => {
+      if (repo.remoteMode !== "local_only")
+        await remotePublicationGovernanceService.beginPush({ projectId, repoPath, baseBranch });
+      return this.claimDeferredDeploys(projectId, repoPath, baseBranch, assertLease);
+    });
+    this.runClaimedDeploys(projectId, claimed);
+  }
+
+  private async claimDeferredDeploys(
+    projectId: string,
+    repoPath: string,
+    baseBranch: string,
+    assertLease: () => Promise<void>
+  ): Promise<ClaimedDeploy[]> {
+    const head = await remotePublicationGovernanceService.getDeployableHead(
+      projectId,
+      repoPath,
+      baseBranch
+    );
+    if (!head) return [];
+    await assertLease();
+    return deferredAutoDeployService.claim(projectId, repoPath, head, assertLease);
+  }
+
+  /** Deploys run detached and unlocked: a long delivery must not hold up merges or completion. */
+  private runClaimedDeploys(projectId: string, claimed: ClaimedDeploy[]): void {
+    if (claimed.length)
+      fireAndForget(
+        deferredAutoDeployService.runClaimed(projectId, claimed),
+        "merge-coordinator:deferred-auto-deploy"
+      );
+  }
+
+  /** Unclaimed jobs stay durable, so a busy lease or a database blip only postpones them. */
+  private async drainDeferredDeploysIfPublished(
+    projectId: string,
+    repoPath: string
+  ): Promise<void> {
+    try {
+      const settings = await this.host.projectService.getSettings(projectId);
+      const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+      const claimed = await governanceService.withPublicationLock(projectId, (assertLease) =>
+        this.claimDeferredDeploys(projectId, repoPath, baseBranch, assertLease)
+      );
+      this.runClaimedDeploys(projectId, claimed);
+    } catch (err) {
+      log.warn("Deferred auto-deploy will retry on the next completion or restart", {
+        projectId,
+        err,
+      });
+    }
+  }
+  private async enqueueEpicDeploy(
+    projectId: string,
+    repoPath: string,
+    epicId: string
+  ): Promise<void> {
+    if (await governanceService.isGovernanceInactive(projectId)) {
+      triggerDeployForEvent(projectId, "each_epic").catch((err) => {
+        log.warn("Auto-deploy on epic completion failed", { projectId, err });
+      });
+      return;
+    }
+    const task = await this.host.taskStore.show(projectId, epicId).catch(() => null);
+    const plan = await this.host.taskStore.planGetByEpicId(projectId, epicId);
+    const reviewedAt = (plan?.metadata as { reviewedAt?: string } | undefined)?.reviewedAt;
+    await deferredAutoDeployService.enqueue(
+      projectId,
+      "each_epic",
+      epicId,
+      String(reviewedAt ?? task?.completed_at ?? "completed")
+    );
+    await this.drainDeferredDeploysIfPublished(projectId, repoPath);
+  }
+
   private async runFinalReviewAndCloseOrCreateTasks(
     projectId: string,
     repoPath: string,
@@ -3004,9 +3136,7 @@ export class MergeCoordinatorService {
       await this.host.taskStore.close(projectId, epicId, "All tasks done");
       const shouldDeploy = await this.shouldTriggerDeployForEpic(projectId, epicId);
       if (shouldDeploy) {
-        triggerDeployForEvent(projectId, "each_epic").catch((err) => {
-          log.warn("Auto-deploy on epic completion failed", { projectId, err });
-        });
+        await this.enqueueEpicDeploy(projectId, repoPath, epicId);
       }
       const planRow = await this.host.taskStore.planGetByEpicId(projectId, epicId);
       if (planRow) {
@@ -3024,9 +3154,7 @@ export class MergeCoordinatorService {
       await this.host.taskStore.close(projectId, epicId, "All tasks done; final review passed");
       const shouldDeploy = await this.shouldTriggerDeployForEpic(projectId, epicId);
       if (shouldDeploy) {
-        triggerDeployForEvent(projectId, "each_epic").catch((err) => {
-          log.warn("Auto-deploy on epic completion failed", { projectId, err });
-        });
+        await this.enqueueEpicDeploy(projectId, repoPath, epicId);
       }
       const planRow = await this.host.taskStore.planGetByEpicId(projectId, epicId);
       if (planRow) {
@@ -3088,6 +3216,8 @@ export class MergeCoordinatorService {
     baseBranch: string;
     settings: Awaited<ReturnType<MergeCoordinatorHost["projectService"]["getSettings"]>>;
     initialConflict: RebaseConflictError;
+    batch: RemotePushBatch;
+    assertLease: () => Promise<void>;
   }): Promise<{ ok: true } | { ok: false; error: Error }> {
     const { projectId, repoPath, baseBranch, settings, initialConflict } = options;
     const MAX_PUSH_REBASE_CONFLICT_ROUNDS = 12;
@@ -3202,7 +3332,13 @@ export class MergeCoordinatorService {
         baseBranch,
         "push_rebase_recheck"
       );
-      await this.host.branchManager.pushMainToOrigin(repoPath, baseBranch);
+      await this.publishPreparedMain(
+        projectId,
+        repoPath,
+        baseBranch,
+        options.batch,
+        options.assertLease
+      );
       log.info("Merger resolved push rebase conflicts, push succeeded", { projectId });
       fireAndForget(
         eventLogService.append(repoPath, {
@@ -3224,6 +3360,24 @@ export class MergeCoordinatorService {
         error: pushErr instanceof Error ? pushErr : new Error(String(pushErr)),
       };
     }
+  }
+
+  private async publishPreparedMain(
+    projectId: string,
+    repoPath: string,
+    baseBranch: string,
+    batch: RemotePushBatch,
+    assertLease: () => Promise<void>
+  ): Promise<void> {
+    const prepared = await remotePublicationGovernanceService.assertPreparedPush({
+      projectId,
+      repoPath,
+      baseBranch,
+      batch,
+    });
+    await assertLease();
+    await this.host.branchManager.pushMainToOrigin(repoPath, baseBranch);
+    await remotePublicationGovernanceService.completePush(projectId, prepared);
   }
 
   /**
@@ -3259,10 +3413,44 @@ export class MergeCoordinatorService {
       return "local_only";
     }
 
+    // Lease acquisition or release failing must not undo what the push actually achieved.
+    let outcome: PushCompletionStatus | undefined;
     try {
+      await governanceService.withPublicationLock(projectId, async (assertLease) => {
+        outcome = await this.publishWithLease(
+          projectId,
+          repoPath,
+          baseBranch,
+          settings,
+          assertLease
+        );
+      });
+    } catch (err) {
+      log.warn("Publication lock unavailable; push will retry on next task completion", {
+        projectId,
+        err,
+      });
+    }
+    return outcome ?? "publish_failed";
+  }
+
+  private async publishWithLease(
+    projectId: string,
+    repoPath: string,
+    baseBranch: string,
+    settings: Awaited<ReturnType<MergeCoordinatorHost["projectService"]["getSettings"]>>,
+    assertLease: () => Promise<void>
+  ): Promise<PushCompletionStatus> {
+    let batch: RemotePushBatch | undefined;
+    try {
+      batch = await remotePublicationGovernanceService.beginPush({
+        projectId,
+        repoPath,
+        baseBranch,
+      });
       await this.host.branchManager.prepareMainForPush(repoPath, baseBranch);
       await this.ensurePreparedMainQualityGates(projectId, repoPath, baseBranch, "push_precheck");
-      await this.host.branchManager.pushMainToOrigin(repoPath, baseBranch);
+      await this.publishPreparedMain(projectId, repoPath, baseBranch, batch, assertLease);
       log.info("Push to origin succeeded", { projectId });
       fireAndForget(
         eventLogService.append(repoPath, {
@@ -3277,7 +3465,7 @@ export class MergeCoordinatorService {
     } catch (err) {
       let terminalError: Error = err instanceof Error ? err : new Error(String(err));
       let pushStage: "push_rebase" | "push" | "quality_gate" = "push";
-      if (err instanceof RebaseConflictError) {
+      if (err instanceof RebaseConflictError && batch) {
         pushStage = "push_rebase";
         const resolution = await this.resolvePushRebaseConflicts({
           projectId,
@@ -3285,6 +3473,8 @@ export class MergeCoordinatorService {
           baseBranch,
           settings,
           initialConflict: err,
+          batch,
+          assertLease,
         });
         if (resolution.ok) {
           return "published";

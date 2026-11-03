@@ -34,8 +34,8 @@ export const PROTECTED_PATH_PATTERNS: ProtectedPathPattern[] = [
 ];
 
 /**
- * Keywords in a task title/description that unlock protected path edits.
- * Matched case-insensitively as substrings.
+ * Scope values that unlock protected path edits. The open-ended ones are stems (`token-encrypt`
+ * covers token-encryption); the rest match whole words, so "disintegration" unlocks nothing.
  */
 export const SCOPE_UNLOCK_KEYWORDS: string[] = [
   "integration",
@@ -49,18 +49,14 @@ export const SCOPE_UNLOCK_KEYWORDS: string[] = [
   "connect-service",
 ];
 
-/**
- * Check whether any of the changed files touch protected paths and whether
- * the task scope explicitly unlocks those paths.
- */
-export function auditProtectedPaths(
-  changedFiles: string[],
-  taskTitle: string,
-  taskDescription: string
-): AuditResult {
-  const scopeText = `${taskTitle}\n${taskDescription}`.toLowerCase();
-  const scopeUnlocked = SCOPE_UNLOCK_KEYWORDS.some((kw) => scopeText.includes(kw));
+const OPEN_ENDED_KEYWORDS = new Set(["token-encrypt", "api-key-stor", "third-party-auth"]);
+const keywordPatterns = SCOPE_UNLOCK_KEYWORDS.map((keyword) => {
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const end = OPEN_ENDED_KEYWORDS.has(keyword) ? "" : "s?(?![a-z])";
+  return new RegExp(`(?<![a-z0-9])${escaped}${end}`);
+});
 
+function findProtectedPaths(changedFiles: string[]): ProtectedPathViolation[] {
   const violations: ProtectedPathViolation[] = [];
   for (const file of changedFiles) {
     const lower = file.toLowerCase();
@@ -71,12 +67,30 @@ export function auditProtectedPaths(
       }
     }
   }
+  return violations;
+}
 
-  return {
-    allowed: scopeUnlocked || violations.length === 0,
-    violations,
-    scopeUnlocked,
-  };
+/** Mutable task wording, used where no enforced authority is at stake. */
+export function auditProtectedPaths(
+  changedFiles: string[],
+  taskTitle: string,
+  taskDescription: string
+): AuditResult {
+  const scopeText = `${taskTitle}\n${taskDescription}`.toLowerCase();
+  const scopeUnlocked = keywordPatterns.some((pattern) => pattern.test(scopeText));
+  const violations = findProtectedPaths(changedFiles);
+  return { allowed: scopeUnlocked || violations.length === 0, violations, scopeUnlocked };
+}
+
+/**
+ * Enforced authority: a human grant is a comma- or newline-separated list of exact scope values.
+ * Prose never matches, so wording copied into a grant cannot widen it by containing a keyword.
+ */
+export function auditProtectedPathsForGrant(changedFiles: string[], grant: string): AuditResult {
+  const values = new Set(grant.split(/[,\n]/).map((value) => value.trim().toLowerCase()));
+  const scopeUnlocked = SCOPE_UNLOCK_KEYWORDS.some((keyword) => values.has(keyword));
+  const violations = findProtectedPaths(changedFiles);
+  return { allowed: scopeUnlocked || violations.length === 0, violations, scopeUnlocked };
 }
 
 /**

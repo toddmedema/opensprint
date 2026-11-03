@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { Layout } from "./layout/Layout";
@@ -79,6 +79,7 @@ interface ProjectActionConfirmModalProps {
   onConfirm: () => void;
   onCancel: () => void;
   confirming?: boolean;
+  confirmDisabled?: boolean;
   children?: React.ReactNode;
   /** Ref to element that opened the modal; focus returns here on close */
   triggerRef?: React.RefObject<HTMLElement | null>;
@@ -90,6 +91,7 @@ function ProjectActionConfirmModal({
   onConfirm,
   onCancel,
   confirming = false,
+  confirmDisabled = false,
   children,
   triggerRef,
 }: ProjectActionConfirmModalProps) {
@@ -128,7 +130,7 @@ function ProjectActionConfirmModal({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={confirming}
+            disabled={confirming || confirmDisabled}
             className="btn-primary disabled:opacity-50"
           >
             {confirming ? "Processing…" : "Proceed"}
@@ -154,7 +156,19 @@ export function HomeScreen() {
   const [menuAnchorRect, setMenuAnchorRect] = useState<DOMRect | null>(null);
   const [archiveModal, setArchiveModal] = useState<Project | null>(null);
   const [deleteModal, setDeleteModal] = useState<Project | null>(null);
+  const closeArchiveModal = useCallback(() => setArchiveModal(null), []);
+  const closeDeleteModal = useCallback(() => setDeleteModal(null), []);
   const [confirming, setConfirming] = useState(false);
+  const [removalCapability, setRemovalCapability] = useState("");
+  const [removalRequiresAuthority, setRemovalRequiresAuthority] = useState(false);
+  const removalCapabilityRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (removalRequiresAuthority) removalCapabilityRef.current?.focus();
+  }, [removalRequiresAuthority]);
+  useEffect(() => {
+    setRemovalCapability("");
+    setRemovalRequiresAuthority(false);
+  }, [archiveModal?.id, deleteModal?.id]);
   const menuRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const modalTriggerRef = useRef<HTMLElement | null>(null);
@@ -313,11 +327,16 @@ export function HomeScreen() {
     if (!archiveModal) return;
     setConfirming(true);
     try {
-      await api.projects.archive(archiveModal.id);
+      await api.projects.archive(
+        archiveModal.id,
+        ...(removalCapability ? [removalCapability] : [])
+      );
       setArchiveModal(null);
       setMenuOpenId(null);
       refreshProjects();
     } catch (err) {
+      if (err instanceof Error && "code" in err && err.code === "GOVERNANCE_HUMAN_REQUIRED")
+        setRemovalRequiresAuthority(true);
       dispatch(
         addNotification({
           message: err instanceof Error ? err.message : "Failed to archive project",
@@ -333,11 +352,13 @@ export function HomeScreen() {
     if (!deleteModal) return;
     setConfirming(true);
     try {
-      await api.projects.delete(deleteModal.id);
+      await api.projects.delete(deleteModal.id, ...(removalCapability ? [removalCapability] : []));
       setDeleteModal(null);
       setMenuOpenId(null);
       refreshProjects();
     } catch (err) {
+      if (err instanceof Error && "code" in err && err.code === "GOVERNANCE_HUMAN_REQUIRED")
+        setRemovalRequiresAuthority(true);
       dispatch(
         addNotification({
           message: err instanceof Error ? err.message : "Failed to delete project",
@@ -349,6 +370,23 @@ export function HomeScreen() {
     }
   };
 
+  const removalAuthorization = removalRequiresAuthority ? (
+    <label className="mt-4 block text-sm font-medium text-theme-text">
+      Owner approval capability
+      <input
+        ref={removalCapabilityRef}
+        type="password"
+        autoComplete="off"
+        value={removalCapability}
+        onChange={(event) => setRemovalCapability(event.target.value)}
+        className="mt-1.5 w-full rounded-lg border border-theme-border bg-theme-bg px-3 py-2 text-theme-text"
+      />
+      <span className="mt-1 block text-xs font-normal text-theme-muted">
+        Governed projects require owner approval. Pending dockets and publication must be resolved
+        first.
+      </span>
+    </label>
+  ) : null;
   return (
     <Layout>
       <div
@@ -648,10 +686,13 @@ export function HomeScreen() {
           title="Archive project"
           message="This will remove the project from the UI, but not delete its data."
           onConfirm={handleArchive}
-          onCancel={() => setArchiveModal(null)}
+          onCancel={closeArchiveModal}
           confirming={confirming}
+          confirmDisabled={removalRequiresAuthority && !removalCapability.trim()}
           triggerRef={modalTriggerRef}
-        />
+        >
+          {removalAuthorization}
+        </ProjectActionConfirmModal>
       )}
 
       {deleteModal && (
@@ -659,10 +700,13 @@ export function HomeScreen() {
           title="Delete project"
           message="This will remove the project from the UI and permanently delete all Open Sprint data for this project: tasks, plans, settings, feedback, and all data in the project folder."
           onConfirm={handleDelete}
-          onCancel={() => setDeleteModal(null)}
+          onCancel={closeDeleteModal}
           confirming={confirming}
+          confirmDisabled={removalRequiresAuthority && !removalCapability.trim()}
           triggerRef={modalTriggerRef}
-        />
+        >
+          {removalAuthorization}
+        </ProjectActionConfirmModal>
       )}
 
       <a

@@ -6,22 +6,38 @@ import { FeedbackService } from "../services/feedback.service.js";
 import { SessionManager } from "../services/session-manager.js";
 import { BranchManager } from "../services/branch-manager.js";
 import type { StoredTask } from "../services/task-store.service.js";
+import { governanceService } from "../services/governance.service.js";
+vi.mock("../services/governance.service.js", () => ({
+  governanceService: {
+    isGovernanceInactive: vi.fn().mockResolvedValue(false),
+    hasTaskHold: vi.fn().mockResolvedValue(false),
+    hasPendingResume: vi.fn().mockResolvedValue(false),
+    withPublicationLock: async <T>(
+      _projectId: string,
+      action: (assertLease: () => Promise<void>) => Promise<T>
+    ) => action(async () => {}),
+  },
+}));
 
-const { mockTaskStoreState, mockBranchManagerInstance, mockOrchestrator } =
-  vi.hoisted(() => ({
-    mockTaskStoreState: { listAll: [] as StoredTask[], readyCalls: 0 },
-    mockBranchManagerInstance: {
-      listTaskWorktrees: vi.fn().mockResolvedValue([]),
-      prepareWorktreeForRemoval: vi.fn().mockResolvedValue(undefined),
-      removeTaskWorktree: vi.fn().mockResolvedValue(undefined),
-      revertAndReturnToMain: vi.fn().mockResolvedValue(undefined),
-      createOrCheckoutBranch: vi.fn().mockResolvedValue(undefined),
-    },
-    mockOrchestrator: {
-      stopTaskAndFreeSlot: vi.fn().mockResolvedValue(undefined),
-      nudge: vi.fn(),
-    },
-  }));
+const { mockTaskStoreState, mockBranchManagerInstance, mockOrchestrator } = vi.hoisted(() => ({
+  mockTaskStoreState: { listAll: [] as StoredTask[], readyCalls: 0 },
+  mockBranchManagerInstance: {
+    listTaskWorktrees: vi.fn().mockResolvedValue([]),
+    prepareWorktreeForRemoval: vi.fn().mockResolvedValue(undefined),
+    removeTaskWorktree: vi.fn().mockResolvedValue(undefined),
+    revertAndReturnToMain: vi.fn().mockResolvedValue(undefined),
+    createOrCheckoutBranch: vi.fn().mockResolvedValue(undefined),
+  },
+  mockOrchestrator: {
+    stopTaskAndFreeSlot: vi.fn().mockResolvedValue(undefined),
+    nudge: vi.fn(),
+  },
+}));
+
+const remoteReview = vi.hoisted(() => ({ trusted: vi.fn().mockResolvedValue(null) }));
+vi.mock("../services/remote-publication-review-context.js", () => ({
+  getTrustedRemoteReviewRequest: remoteReview.trusted,
+}));
 
 vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => args,
@@ -63,21 +79,23 @@ vi.mock("../services/task-store.service.js", async (importOriginal) => {
       planUpdateMetadata: vi.fn(),
       syncForPush: vi.fn(),
       listRecentlyCompletedTasks: vi.fn().mockResolvedValue([]),
-      listTasksPaginated: vi.fn().mockImplementation(async (_pid: string, limit: number, offset: number) => {
-        const all = mockTaskStoreState.listAll;
-        const nonChore = all.filter((i) => (i.issue_type ?? "task") !== "chore");
-        nonChore.sort((a, b) => {
-          const pa = a.priority ?? 0;
-          const pb = b.priority ?? 0;
-          if (pa !== pb) return pa - pb;
-          return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
-        });
-        return {
-          page: nonChore.slice(offset, offset + limit) as StoredTask[],
-          total: nonChore.length,
-          allForGraph: [...all],
-        };
-      }),
+      listTasksPaginated: vi
+        .fn()
+        .mockImplementation(async (_pid: string, limit: number, offset: number) => {
+          const all = mockTaskStoreState.listAll;
+          const nonChore = all.filter((i) => (i.issue_type ?? "task") !== "chore");
+          nonChore.sort((a, b) => {
+            const pa = a.priority ?? 0;
+            const pb = b.priority ?? 0;
+            if (pa !== pb) return pa - pb;
+            return String(a.created_at ?? "").localeCompare(String(b.created_at ?? ""));
+          });
+          return {
+            page: nonChore.slice(offset, offset + limit) as StoredTask[],
+            total: nonChore.length,
+            allForGraph: [...all],
+          };
+        }),
     },
     TaskStoreService: vi.fn(),
     SCHEMA_SQL: "",
@@ -162,6 +180,8 @@ describe("TaskService", () => {
   let taskService: TaskService;
 
   beforeEach(() => {
+    vi.mocked(governanceService.hasTaskHold).mockResolvedValue(false);
+    vi.mocked(governanceService.hasPendingResume).mockResolvedValue(false);
     mockTaskStoreState.listAll = [...defaultIssues];
     mockTaskStoreState.readyCalls = 0;
     mockOrchestrator.stopTaskAndFreeSlot.mockClear();
@@ -178,6 +198,34 @@ describe("TaskService", () => {
       new BranchManager(),
       mockOrchestrator
     );
+  });
+  it("takes no publication lock on an inactive project", async () => {
+    vi.mocked(governanceService.isGovernanceInactive).mockResolvedValueOnce(true);
+    const lock = vi.spyOn(governanceService, "withPublicationLock");
+    vi.mocked(governanceService.hasTaskHold).mockClear();
+    await taskService.deleteTask("proj-1", "task-1");
+    expect(lock).not.toHaveBeenCalled();
+    expect(governanceService.hasTaskHold).not.toHaveBeenCalled();
+    lock.mockRestore();
+  });
+  it.each(["unblock", "forceRetry", "deleteTask", "markDone"] as const)(
+    "preserves held evidence before ordinary %s cleanup",
+    async (operation) => {
+      vi.mocked(governanceService.hasTaskHold).mockResolvedValue(true);
+      await expect(taskService[operation]("project-1", "held-task")).rejects.toMatchObject({
+        code: "GOVERNANCE_HOLD",
+      });
+      expect(mockOrchestrator.stopTaskAndFreeSlot).not.toHaveBeenCalled();
+      expect(mockBranchManagerInstance.removeTaskWorktree).not.toHaveBeenCalled();
+      expect(mockBranchManagerInstance.revertAndReturnToMain).not.toHaveBeenCalled();
+    }
+  );
+  it("preserves an allowed worktree until its reviewed resume has been claimed", async () => {
+    vi.mocked(governanceService.hasPendingResume).mockResolvedValue(true);
+    await expect(taskService.forceRetry("project-1", "resuming-task")).rejects.toMatchObject({
+      code: "GOVERNANCE_HOLD",
+    });
+    expect(mockOrchestrator.stopTaskAndFreeSlot).not.toHaveBeenCalled();
   });
 
   it("getTaskAnalytics returns analytics grouped by complexity", async () => {
@@ -1018,6 +1066,24 @@ describe("TaskService", () => {
 
     const result = await taskService.unblock("proj-1", "task-1");
     expect(result.taskUnblocked).toBe(true);
+  });
+
+  it("W9: refuses to unblock a remote review that dispatch could only block again", async () => {
+    const { taskStore } = await import("../services/task-store.service.js");
+    vi.mocked(taskStore.show).mockResolvedValue({
+      id: "review-1",
+      title: "Review changed remote publication candidate",
+      status: "blocked",
+      issue_type: "task",
+      source: "governance-remote-review",
+      dependencies: [],
+    } as StoredTask);
+    remoteReview.trusted.mockRejectedValueOnce(new Error("no durable request"));
+    await expect(taskService.unblock("proj-1", "review-1")).rejects.toMatchObject({
+      code: "GOVERNANCE_HOLD",
+    });
+    expect(mockOrchestrator.stopTaskAndFreeSlot).not.toHaveBeenCalled();
+    expect(mockBranchManagerInstance.revertAndReturnToMain).not.toHaveBeenCalled();
   });
 
   it("unblock performs full cleanup: stop agent, revert branch, delete active dir", async () => {

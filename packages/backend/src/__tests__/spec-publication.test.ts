@@ -7,6 +7,11 @@ import path from "node:path";
 import { initAppDb, type AppDb } from "../db/app-db.js";
 import { SpecPublicationService } from "../services/spec-publication.service.js";
 import type { ProjectService } from "../services/project.service.js";
+import { GovernanceService } from "../services/governance-store.js";
+import express from "express";
+import request from "supertest";
+import { createSpecPublicationRouter } from "../routes/spec-publication.js";
+import { errorHandler } from "../middleware/error-handler.js";
 
 const exec = promisify(execFile);
 describe("immutable SPEC proposals and publication", () => {
@@ -102,6 +107,67 @@ describe("immutable SPEC proposals and publication", () => {
     await expect(service.publish("project", "bad-gates", 1)).rejects.toThrow("Gate failed");
     expect(await git("rev-parse", "HEAD")).toBe(head);
     expect((await service.getOperation("project", "bad-gates"))?.status).toBe("failed");
+  });
+
+  it("refuses ordinary SPEC publication for retained governed policy before Git or file mutation", async () => {
+    const authority = new GovernanceService({
+      getDb: () => db.getClient(),
+      runWrite: (fn) => db.runWrite(fn),
+    });
+    const head = await git("rev-parse", "HEAD");
+    const original = await fs.readFile(path.join(repo, "SPEC.md"), "utf8");
+    const release = await authority.createRelease(
+      "project",
+      {
+        rules: [
+          {
+            id: "rule@1",
+            ruleId: "rule",
+            revision: 1,
+            text: "Review documentation",
+            rationale: "Consistency",
+            owner: "Owner",
+            paths: ["**"],
+            components: [],
+            roles: [],
+            severity: "standard",
+            mandatory: true,
+            exceptionEligible: false,
+            examples: { compliant: [], noncompliant: [] },
+            parentIds: [],
+            overrideIds: [],
+            conflictIds: [],
+            layer: 1,
+            sourceHash: "",
+          },
+        ],
+        instructions: { coder: "coder", reviewer: "reviewer" },
+        sourceHashes: {},
+        enforcementRevision: head,
+      },
+      "Owner"
+    );
+    await authority.activateRelease(
+      "project",
+      release.id,
+      { expectedActiveReleaseId: null, rationale: "Initial approved policy" },
+      "Owner"
+    );
+    const draft = await service.saveDraft("project", "New SPEC\n", 0);
+    await service.approve("project", 1, String(draft.content_hash));
+    const app = express();
+    app.use(express.json());
+    app.use("/projects/:projectId/spec-publication", createSpecPublicationRouter(service));
+    app.use(errorHandler);
+    const response = await request(app)
+      .post("/projects/project/spec-publication/publish")
+      .send({ revision: 1, operationId: "governed-publish" });
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe("GOVERNANCE_SPEC_PUBLICATION_REVIEW_REQUIRED");
+    expect(await git("rev-parse", "HEAD")).toBe(head);
+    expect(await fs.readFile(path.join(repo, "SPEC.md"), "utf8")).toBe(original);
+    expect(validate).not.toHaveBeenCalled();
+    expect((await service.getOperation("project", "governed-publish"))?.status).toBe("failed");
   });
 
   it("rejects a candidate changed by its validation command", async () => {

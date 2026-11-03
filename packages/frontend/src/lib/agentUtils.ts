@@ -13,6 +13,7 @@ const ROLE_TO_PHASE: Record<string, ProjectPhase> = {
   auditor: "execute",
   coder: "execute",
   reviewer: "execute",
+  judge: "execute",
   merger: "execute",
 };
 
