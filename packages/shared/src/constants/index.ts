@@ -1,6 +1,13 @@
 /** Maximum length for commit message title / task title display (e.g. "Closed <id>: <title>"). */
 export const COMMIT_MESSAGE_TITLE_MAX_LENGTH = 45;
 
+/** Current same-family fallbacks for API configurations that omit an explicit model. */
+export const DEFAULT_API_MODELS = {
+  claude: "claude-sonnet-5-5",
+  openai: "gpt-6-luna",
+  google: "gemini-3.8-flash",
+} as const;
+
 /** Open Sprint directory within project repos */
 export const OPENSPRINT_DIR = ".opensprint";
 

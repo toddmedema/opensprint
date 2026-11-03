@@ -198,6 +198,7 @@ export function GlobalSettingsContent({ onSaveStateChange }: GlobalSettingsConte
       openai: (keys?.OPENAI_API_KEY?.length ?? 0) > 0,
       google: (keys?.GOOGLE_API_KEY?.length ?? 0) > 0,
       claudeCli: env.claudeCli,
+      codexCli: env.codexCli,
       cursorCli: env.cursorCli,
       ollamaCli: env.ollamaCli,
     });

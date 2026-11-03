@@ -295,6 +295,50 @@ describe.skipIf(!agentIdentityPostgresOk)("AgentIdentityService", () => {
       expect(config.model).toContain("opus");
     });
 
+    it.each(["default", "opus", "fable"])(
+      "does not downgrade Claude CLI %s during retry",
+      (model) => {
+        const settings = {
+          ...baseSettings,
+          simpleComplexityAgent: { type: "claude-cli", model, cliCommand: null },
+        };
+        const attempts = [
+          makeRecord({ attempt: 1, outcome: "test_failure" }),
+          makeRecord({ attempt: 2, outcome: "test_failure" }),
+        ];
+        const config = service.selectAgentForRetry(
+          settings as unknown as ProjectSettings,
+          "task-1",
+          4,
+          "test_failure",
+          undefined,
+          attempts
+        );
+        expect(config.model).toBe(model);
+      }
+    );
+
+    it("escalates Claude CLI Sonnet to the current Opus alias", () => {
+      const settings = {
+        ...baseSettings,
+        simpleComplexityAgent: { type: "claude-cli", model: "sonnet", cliCommand: null },
+      };
+      const attempts = [
+        makeRecord({ attempt: 1, outcome: "test_failure" }),
+        makeRecord({ attempt: 2, outcome: "test_failure" }),
+      ];
+      expect(
+        service.selectAgentForRetry(
+          settings as unknown as ProjectSettings,
+          "task-1",
+          4,
+          "test_failure",
+          undefined,
+          attempts
+        ).model
+      ).toBe("opus");
+    });
+
     it("should not escalate when failure types differ", () => {
       const attempts: TaskAttemptRecord[] = [
         makeRecord({ attempt: 1, outcome: "test_failure" }),

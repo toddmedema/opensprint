@@ -12,7 +12,10 @@ import {
   HilStep,
   ConfirmStep,
 } from "../components/ProjectSetupWizard";
-import type { ProjectMetadataState } from "../components/ProjectSetupWizard";
+import type {
+  AgentConfig as WizardAgentConfig,
+  ProjectMetadataState,
+} from "../components/ProjectSetupWizard";
 import type {
   AgentType,
   AiAutonomyLevel,
@@ -21,10 +24,7 @@ import type {
 } from "@opensprint/shared";
 import { DEFAULT_AI_AUTONOMY_LEVEL, DEFAULT_DEPLOYMENT_CONFIG } from "@opensprint/shared";
 import { api, isApiError } from "../api/client";
-import {
-  getDefaultProviderFromEnvKeys,
-  getMissingApiKeyRequirements,
-} from "../utils/agentConfigDefaults";
+import { getInitialAgentConfig, getMissingApiKeyRequirements } from "../utils/agentConfigDefaults";
 import {
   DEFAULT_LMSTUDIO_BASE_URL,
   DEFAULT_OLLAMA_BASE_URL,
@@ -52,13 +52,13 @@ export function ProjectSetup() {
   const [metadata, setMetadata] = useState<ProjectMetadataState>({ name: "" });
   const [metadataError, setMetadataError] = useState<string | null>(null);
   const [repoPath, setRepoPath] = useState("");
-  const [simpleComplexityAgent, setSimpleComplexityAgent] = useState({
+  const [simpleComplexityAgent, setSimpleComplexityAgent] = useState<WizardAgentConfig>({
     type: "cursor" as AgentType,
     model: "",
     cliCommand: "",
     baseUrl: DEFAULT_LMSTUDIO_BASE_URL,
   });
-  const [complexComplexityAgent, setComplexComplexityAgent] = useState({
+  const [complexComplexityAgent, setComplexComplexityAgent] = useState<WizardAgentConfig>({
     type: "cursor" as AgentType,
     model: "",
     cliCommand: "",
@@ -86,6 +86,7 @@ export function ProjectSetup() {
     openai: boolean;
     google: boolean;
     claudeCli: boolean;
+    codexCli?: boolean;
     cursorCli: boolean;
     ollamaCli: boolean;
   } | null>(null);
@@ -97,11 +98,16 @@ export function ProjectSetup() {
   const usesClaudeCli =
     simpleComplexityAgent.type === "claude-cli" || complexComplexityAgent.type === "claude-cli";
   const claudeCliMissing = envKeys && !envKeys.claudeCli && usesClaudeCli;
+  const codexCliMissing =
+    envKeys &&
+    !envKeys.codexCli &&
+    (simpleComplexityAgent.type === "codex" || complexComplexityAgent.type === "codex");
 
   const canProceedFromAgents =
     envKeys !== null &&
     missingKeys.length === 0 &&
     !claudeCliMissing &&
+    !codexCliMissing &&
     hasConfiguredLocalModel(simpleComplexityAgent) &&
     hasConfiguredLocalModel(complexComplexityAgent) &&
     (simpleComplexityAgent.type !== "custom" || simpleComplexityAgent.cliCommand.trim()) &&
@@ -157,27 +163,15 @@ export function ProjectSetup() {
           openai,
           google,
           claudeCli: env.claudeCli,
+          codexCli: env.codexCli,
           cursorCli: env.cursorCli,
           ollamaCli: env.ollamaCli,
         };
         setEnvKeys(keys);
         if (!hasSetAgentDefaultRef.current) {
           hasSetAgentDefaultRef.current = true;
-          const defaultType = getDefaultProviderFromEnvKeys(keys);
-          setSimpleComplexityAgent((prev) => ({
-            ...prev,
-            type: defaultType,
-            model: "",
-            cliCommand: "",
-            baseUrl: DEFAULT_LMSTUDIO_BASE_URL,
-          }));
-          setComplexComplexityAgent((prev) => ({
-            ...prev,
-            type: defaultType,
-            model: "",
-            cliCommand: "",
-            baseUrl: DEFAULT_LMSTUDIO_BASE_URL,
-          }));
+          setSimpleComplexityAgent(getInitialAgentConfig(global.simpleComplexityAgent, keys));
+          setComplexComplexityAgent(getInitialAgentConfig(global.complexComplexityAgent, keys));
         }
       })
       .catch(() => setEnvKeys(null));
@@ -229,6 +223,7 @@ export function ProjectSetup() {
         repoPath,
         simpleComplexityAgent: {
           type: simpleComplexityAgent.type,
+          timeoutMs: simpleComplexityAgent.timeoutMs,
           model:
             simpleComplexityAgent.type === "custom" ? null : simpleComplexityAgent.model || null,
           cliCommand:
@@ -246,6 +241,7 @@ export function ProjectSetup() {
         },
         complexComplexityAgent: {
           type: complexComplexityAgent.type,
+          timeoutMs: complexComplexityAgent.timeoutMs,
           model:
             complexComplexityAgent.type === "custom" ? null : complexComplexityAgent.model || null,
           cliCommand:

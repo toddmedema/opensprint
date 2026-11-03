@@ -77,7 +77,7 @@ export interface AgentProfile {
 }
 
 /** Known model escalation ladder (from faster/cheaper to more capable) */
-const MODEL_ESCALATION: string[] = ["claude-sonnet-4-20250514", "claude-opus-4-20250514"];
+const MODEL_ESCALATION: string[] = ["claude-sonnet-5-5", "claude-opus-5-5"];
 
 export function buildAgentAttemptId(
   agentConfig: { type: string; model?: string | null },
@@ -259,7 +259,12 @@ export class AgentIdentityService {
       baseConfig.model &&
       (baseConfig.type === "claude" || baseConfig.type === "claude-cli")
     ) {
-      const escalated = this.escalateModel(baseConfig.model);
+      const escalated =
+        baseConfig.type === "claude-cli"
+          ? /haiku|sonnet/i.test(baseConfig.model)
+            ? "opus"
+            : null
+          : this.escalateModel(baseConfig.model);
       if (escalated && escalated !== baseConfig.model) {
         log.info("Escalating model", {
           taskId,

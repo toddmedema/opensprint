@@ -310,6 +310,7 @@ export const api = {
         openai: boolean;
         google: boolean;
         claudeCli: boolean;
+        codexCli?: boolean;
         cursorCli: boolean;
         ollamaCli: boolean;
         useCustomCli: boolean;
@@ -325,7 +326,9 @@ export const api = {
         method: "POST",
       }),
     getGlobalStatus: () =>
-      request<{ hasAnyKey: boolean; useCustomCli: boolean }>("/env/global-status"),
+      request<{ hasAnyKey: boolean; useCustomCli: boolean; hasLocalProvider?: boolean }>(
+        "/env/global-status"
+      ),
     validateKey: (provider: "claude" | "cursor" | "openai" | "google", value: string) =>
       request<{ valid: boolean; error?: string }>("/env/keys/validate", {
         method: "POST",

@@ -31,7 +31,8 @@ type AttemptVerdict = {
 const PROVIDER_LABELS: Record<string, string> = {
   cursor: "Cursor",
   claude: "Claude",
-  "claude-cli": "Claude CLI",
+  "claude-cli": "Claude Code (CLI)",
+  codex: "OpenAI Codex (CLI)",
   openai: "OpenAI",
   google: "Google",
   lmstudio: "LM Studio",
@@ -43,7 +44,8 @@ const PROVIDER_LABELS: Record<string, string> = {
 const DEFAULT_MODEL_DISPLAY: Record<string, string> = {
   cursor: "Composer 1.5",
   claude: "Claude",
-  "claude-cli": "Claude CLI",
+  "claude-cli": "Claude Code (CLI)",
+  codex: "OpenAI Codex (CLI)",
   openai: "OpenAI",
   google: "Google",
   lmstudio: "LM Studio",

@@ -1,14 +1,17 @@
-import type { AgentType, ApiKeyProvider } from "@opensprint/shared";
+import type { AgentConfig, AgentType, ApiKeyProvider } from "@opensprint/shared";
+import { DEFAULT_LMSTUDIO_BASE_URL, DEFAULT_OLLAMA_BASE_URL } from "../lib/localModelProviders";
 
 export interface EnvKeysForDefaults {
   anthropic: boolean;
   cursor: boolean;
   openai: boolean;
   google?: boolean;
+  claudeCli?: boolean;
+  codexCli?: boolean;
 }
 
 export type ApiKeyBackedProvider = "claude" | "cursor" | "openai" | "google";
-export type ApiKeyInputKey = keyof EnvKeysForDefaults;
+export type ApiKeyInputKey = "anthropic" | "cursor" | "openai" | "google";
 
 export interface ApiKeyRequirement {
   agentType: ApiKeyBackedProvider;
@@ -125,7 +128,22 @@ export function getDefaultProviderFromEnvKeys(envKeys: EnvKeysForDefaults | null
   if (envKeys.openai) return "openai";
   if (envKeys.google) return "google";
   if (envKeys.cursor) return "cursor";
+  if (envKeys.codexCli) return "codex";
+  if (envKeys.claudeCli) return "claude-cli";
   return "claude";
+}
+
+/** Setup wizards inherit the saved global tier, including its CLI command and model. */
+export function getInitialAgentConfig(agent: AgentConfig | undefined, envKeys: EnvKeysForDefaults) {
+  const type = agent?.type ?? getDefaultProviderFromEnvKeys(envKeys);
+  return {
+    type,
+    model: agent?.model ?? "",
+    cliCommand: agent?.cliCommand ?? "",
+    timeoutMs: agent?.timeoutMs,
+    baseUrl:
+      agent?.baseUrl ?? (type === "ollama" ? DEFAULT_OLLAMA_BASE_URL : DEFAULT_LMSTUDIO_BASE_URL),
+  };
 }
 
 /**

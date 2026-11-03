@@ -5,6 +5,7 @@ import type { DebugArtifact } from "./agentic-repair.js";
 export type AgentType =
   | "claude"
   | "claude-cli"
+  | "codex"
   | "cursor"
   | "custom"
   | "openai"

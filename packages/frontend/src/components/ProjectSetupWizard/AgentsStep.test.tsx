@@ -69,6 +69,42 @@ describe("AgentsStep", () => {
     mockModelsList.mockResolvedValue([]);
   });
 
+  it("offers both native CLIs and allows Codex without API keys", () => {
+    renderAgentsStep({
+      simpleComplexityAgent: { type: "codex", model: "default", cliCommand: "" },
+      complexComplexityAgent: { type: "claude-cli", model: "sonnet", cliCommand: "" },
+      envKeys: {
+        ...defaultEnvKeys,
+        anthropic: false,
+        openai: false,
+        cursor: false,
+        google: false,
+        codexCli: true,
+      },
+    });
+    expect(screen.getAllByRole("option", { name: "OpenAI Codex (CLI)" })).toHaveLength(2);
+    expect(screen.getAllByRole("option", { name: "Anthropic Claude Code (CLI)" })).toHaveLength(2);
+    expect(screen.queryByText(/API key required/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("agent-provider-cli-banner-codex")).not.toBeInTheDocument();
+  });
+
+  it("shows Codex installation guidance instead of an API-key requirement", () => {
+    renderAgentsStep({
+      simpleComplexityAgent: { type: "codex", model: "default", cliCommand: "" },
+      complexComplexityAgent: { type: "codex", model: "default", cliCommand: "" },
+      envKeys: {
+        ...defaultEnvKeys,
+        anthropic: false,
+        openai: false,
+        cursor: false,
+        google: false,
+        codexCli: false,
+      },
+    });
+    expect(screen.getByTestId("agent-provider-cli-banner-codex")).toHaveTextContent("codex login");
+    expect(screen.queryByText(/API key required/)).not.toBeInTheDocument();
+  });
+
   it("renders agents step with Task Complexity section and Simple/Complex rows", () => {
     renderAgentsStep();
 

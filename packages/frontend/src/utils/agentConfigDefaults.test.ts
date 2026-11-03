@@ -1,5 +1,37 @@
 import { describe, it, expect } from "vitest";
-import { getDefaultProviderFromEnvKeys, hasNoApiKeys } from "./agentConfigDefaults";
+import {
+  getDefaultProviderFromEnvKeys,
+  getInitialAgentConfig,
+  getMissingApiKeyRequirements,
+  hasNoApiKeys,
+} from "./agentConfigDefaults";
+
+describe("subscription CLI setup defaults", () => {
+  const noKeys = { anthropic: false, cursor: false, openai: false, google: false, codexCli: true };
+  it("defaults to an installed Codex CLI when no API keys exist", () => {
+    expect(getDefaultProviderFromEnvKeys(noKeys)).toBe("codex");
+    expect(getMissingApiKeyRequirements(noKeys, ["codex", "claude-cli", "custom"])).toEqual([]);
+  });
+  it("uses Ollama's own default port when hydrating an unpinned local provider", () => {
+    expect(
+      getInitialAgentConfig({ type: "ollama", model: "local", cliCommand: null }, noKeys).baseUrl
+    ).toBe("http://localhost:11434");
+  });
+  it("preserves the saved provider, model and custom command in project setup", () => {
+    expect(
+      getInitialAgentConfig(
+        { type: "custom", model: null, cliCommand: "/usr/local/bin/my-cli" },
+        noKeys
+      )
+    ).toMatchObject({ type: "custom", model: "", cliCommand: "/usr/local/bin/my-cli" });
+    expect(
+      getInitialAgentConfig(
+        { type: "codex", model: "gpt-6.1-sol", cliCommand: null, timeoutMs: 3600000 },
+        noKeys
+      )
+    ).toMatchObject({ type: "codex", model: "gpt-6.1-sol", cliCommand: "", timeoutMs: 3600000 });
+  });
+});
 
 describe("getDefaultProviderFromEnvKeys", () => {
   it("returns claude when anthropic has keys", () => {

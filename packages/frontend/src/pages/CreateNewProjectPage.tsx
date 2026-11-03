@@ -11,7 +11,10 @@ import {
   RepositoryStep,
   SimplifiedAgentsStep,
 } from "../components/ProjectSetupWizard";
-import type { ProjectMetadataState } from "../components/ProjectSetupWizard";
+import type {
+  AgentConfig as WizardAgentConfig,
+  ProjectMetadataState,
+} from "../components/ProjectSetupWizard";
 import type {
   AgentType,
   EnvRuntimeResponse,
@@ -23,7 +26,7 @@ import { isWindowsMountedWslPath, UNSUPPORTED_WSL_REPO_PATH_MESSAGE } from "@ope
 import { api, ApiError } from "../api/client";
 import {
   getApiKeyRequirementForEnvKey,
-  getDefaultProviderFromEnvKeys,
+  getInitialAgentConfig,
   getMissingApiKeyRequirements,
   type ApiKeyInputKey,
 } from "../utils/agentConfigDefaults";
@@ -62,13 +65,13 @@ export function CreateNewProjectPage() {
   const [template, setTemplate] = useState<ScaffoldTemplate>(TEMPLATE_OPTIONS[0].value);
   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
 
-  const [simpleComplexityAgent, setSimpleComplexityAgent] = useState({
+  const [simpleComplexityAgent, setSimpleComplexityAgent] = useState<WizardAgentConfig>({
     type: "cursor" as AgentType,
     model: "",
     cliCommand: "",
     baseUrl: DEFAULT_LMSTUDIO_BASE_URL,
   });
-  const [complexComplexityAgent, setComplexComplexityAgent] = useState({
+  const [complexComplexityAgent, setComplexComplexityAgent] = useState<WizardAgentConfig>({
     type: "cursor" as AgentType,
     model: "",
     cliCommand: "",
@@ -112,27 +115,13 @@ export function CreateNewProjectPage() {
 
   useEffect(() => {
     if (step !== "agents") return;
-    api.env
-      .getKeys()
-      .then((keys) => {
+    Promise.all([api.globalSettings.get(), api.env.getKeys()])
+      .then(([global, keys]) => {
         setEnvKeys(keys);
         if (!hasSetAgentDefaultRef.current) {
           hasSetAgentDefaultRef.current = true;
-          const defaultType = getDefaultProviderFromEnvKeys(keys);
-          setSimpleComplexityAgent((prev) => ({
-            ...prev,
-            type: defaultType,
-            model: "",
-            cliCommand: "",
-            baseUrl: DEFAULT_LMSTUDIO_BASE_URL,
-          }));
-          setComplexComplexityAgent((prev) => ({
-            ...prev,
-            type: defaultType,
-            model: "",
-            cliCommand: "",
-            baseUrl: DEFAULT_LMSTUDIO_BASE_URL,
-          }));
+          setSimpleComplexityAgent(getInitialAgentConfig(global.simpleComplexityAgent, keys));
+          setComplexComplexityAgent(getInitialAgentConfig(global.complexComplexityAgent, keys));
         }
       })
       .catch(() => setEnvKeys(null));
@@ -199,6 +188,7 @@ export function CreateNewProjectPage() {
           template,
           simpleComplexityAgent: {
             type: simpleComplexityAgent.type,
+            timeoutMs: simpleComplexityAgent.timeoutMs,
             model:
               simpleComplexityAgent.type === "custom" ? null : simpleComplexityAgent.model || null,
             cliCommand:
@@ -216,6 +206,7 @@ export function CreateNewProjectPage() {
           },
           complexComplexityAgent: {
             type: complexComplexityAgent.type,
+            timeoutMs: complexComplexityAgent.timeoutMs,
             model:
               complexComplexityAgent.type === "custom"
                 ? null
@@ -280,10 +271,12 @@ export function CreateNewProjectPage() {
     simpleComplexityAgent.type,
     simpleComplexityAgent.model,
     simpleComplexityAgent.cliCommand,
+    simpleComplexityAgent.timeoutMs,
     simpleComplexityAgent.baseUrl,
     complexComplexityAgent.type,
     complexComplexityAgent.model,
     complexComplexityAgent.cliCommand,
+    complexComplexityAgent.timeoutMs,
     complexComplexityAgent.baseUrl,
   ]);
 
@@ -299,6 +292,7 @@ export function CreateNewProjectPage() {
         template,
         simpleComplexityAgent: {
           type: simpleComplexityAgent.type,
+          timeoutMs: simpleComplexityAgent.timeoutMs,
           model:
             simpleComplexityAgent.type === "custom" ? null : simpleComplexityAgent.model || null,
           cliCommand:
@@ -316,6 +310,7 @@ export function CreateNewProjectPage() {
         },
         complexComplexityAgent: {
           type: complexComplexityAgent.type,
+          timeoutMs: complexComplexityAgent.timeoutMs,
           model:
             complexComplexityAgent.type === "custom" ? null : complexComplexityAgent.model || null,
           cliCommand:
@@ -395,12 +390,17 @@ export function CreateNewProjectPage() {
   const usesClaudeCli =
     simpleComplexityAgent.type === "claude-cli" || complexComplexityAgent.type === "claude-cli";
   const claudeCliMissing = envKeys && !envKeys.claudeCli && usesClaudeCli;
+  const codexCliMissing =
+    envKeys &&
+    !envKeys.codexCli &&
+    (simpleComplexityAgent.type === "codex" || complexComplexityAgent.type === "codex");
 
   const canProceedFromAgents =
     envKeys !== null &&
     !repoPathValidationMessage &&
     missingApiKeyRequirements.length === 0 &&
     !claudeCliMissing &&
+    !codexCliMissing &&
     hasConfiguredLocalModel(simpleComplexityAgent) &&
     hasConfiguredLocalModel(complexComplexityAgent) &&
     (simpleComplexityAgent.type !== "custom" || simpleComplexityAgent.cliCommand.trim()) &&

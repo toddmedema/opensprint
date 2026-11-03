@@ -23,6 +23,7 @@ interface ModelSelectProps {
 const FETCH_PROVIDERS = [
   "claude",
   "claude-cli",
+  "codex",
   "cursor",
   "openai",
   "google",
@@ -77,10 +78,12 @@ export function ModelSelect({
     if (models.length === 0) return;
     const hasValue = value != null && value.length > 0;
     const valueInList = hasValue && models.some((m) => m.id === value);
-    if (!hasValue || !valueInList) {
+    // An offline/older CLI can expose only its default; never overwrite a saved explicit choice.
+    const preserveCliChoice = provider === "codex" || provider === "claude-cli";
+    if (!hasValue || (!valueInList && !preserveCliChoice)) {
       onChange(models[0].id);
     }
-  }, [models, value, onChange]);
+  }, [models, value, onChange, provider]);
 
   if (provider === "custom") {
     return (
@@ -120,13 +123,15 @@ export function ModelSelect({
             ? "Anthropic API key required — configure in Global Settings → API keys"
             : provider === "claude-cli"
               ? "Ensure claude CLI is installed"
-              : provider === "cursor"
-                ? "Cursor API key required — configure in Global Settings → API keys"
-                : provider === "openai"
-                  ? "OpenAI API key required — configure in Global Settings → API keys"
-                  : provider === "google"
-                    ? "Google API key required — configure in Global Settings → API keys"
-                    : "";
+              : provider === "codex"
+                ? "Install Codex CLI and run codex login with ChatGPT"
+                : provider === "cursor"
+                  ? "Cursor API key required — configure in Global Settings → API keys"
+                  : provider === "openai"
+                    ? "OpenAI API key required — configure in Global Settings → API keys"
+                    : provider === "google"
+                      ? "Google API key required — configure in Global Settings → API keys"
+                      : "";
     const displayMessage = provider === "lmstudio" || provider === "ollama" ? hint : error;
     const optionLabel =
       provider === "lmstudio" || provider === "ollama"

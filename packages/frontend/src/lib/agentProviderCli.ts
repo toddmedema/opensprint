@@ -1,16 +1,18 @@
 import type { AgentProviderValue } from "./agentProviders";
 
 /** Local CLI tooling checked via GET /env/keys (Cursor, Claude). */
-export type AgentCliCheckKind = "cursor" | "claude";
+export type AgentCliCheckKind = "cursor" | "claude" | "codex";
 
-const KEYS_FIELD: Record<AgentCliCheckKind, "cursorCli" | "claudeCli"> = {
+const KEYS_FIELD: Record<AgentCliCheckKind, "cursorCli" | "claudeCli" | "codexCli"> = {
   cursor: "cursorCli",
   claude: "claudeCli",
+  codex: "codexCli",
 };
 
 export type EnvKeysCliSlice = {
   cursorCli: boolean;
   claudeCli: boolean;
+  codexCli?: boolean;
 };
 
 export type OnboardingCliRequirement = {
@@ -30,6 +32,8 @@ export function getOnboardingAgentCliRequirement(
   provider: AgentProviderValue
 ): OnboardingCliRequirement | null {
   if (provider === "cursor") return { kind: "cursor", blockContinueWhenMissing: true };
+  if (provider === "codex") return { kind: "codex", blockContinueWhenMissing: true };
+  if (provider === "claude-cli") return { kind: "claude", blockContinueWhenMissing: true };
   if (provider === "claude") return { kind: "claude", blockContinueWhenMissing: false };
   return null;
 }
@@ -39,5 +43,5 @@ export function getKeysFieldForCliKind(kind: AgentCliCheckKind): keyof EnvKeysCl
 }
 
 export function isCliInstalledForKind(keys: EnvKeysCliSlice, kind: AgentCliCheckKind): boolean {
-  return keys[getKeysFieldForCliKind(kind)];
+  return Boolean(keys[getKeysFieldForCliKind(kind)]);
 }

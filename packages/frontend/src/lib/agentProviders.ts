@@ -5,6 +5,8 @@
 
 export type AgentProviderValue =
   | "claude"
+  | "claude-cli"
+  | "codex"
   | "cursor"
   | "openai"
   | "google"
@@ -21,6 +23,8 @@ export interface AgentProviderOption {
 
 export const AGENT_PROVIDER_OPTIONS: AgentProviderOption[] = [
   { value: "claude", label: "Claude", needsKeyInput: true },
+  { value: "claude-cli", label: "Anthropic Claude Code (CLI)", needsKeyInput: false },
+  { value: "codex", label: "OpenAI Codex (CLI)", needsKeyInput: false },
   { value: "cursor", label: "Cursor", needsKeyInput: true },
   { value: "openai", label: "OpenAI", needsKeyInput: true },
   { value: "google", label: "Google", needsKeyInput: true },

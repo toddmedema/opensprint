@@ -22,6 +22,15 @@ describe("ModelSelect", () => {
     vi.clearAllMocks();
   });
 
+  it("preserves an explicit Codex model when an offline catalog exposes only default", async () => {
+    mockModelsList.mockResolvedValue([{ id: "default", displayName: "Codex default" }]);
+    const onChange = vi.fn();
+    render(<ModelSelect provider="codex" value="gpt-6.1-sol" onChange={onChange} />);
+    await screen.findByRole("option", { name: "gpt-6.1-sol" });
+    expect(screen.getByRole("combobox")).toHaveValue("gpt-6.1-sol");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("renders custom provider as text input", () => {
     render(<ModelSelect provider="custom" value={null} onChange={() => {}} />);
     expect(screen.getByPlaceholderText("CLI command handles model")).toBeInTheDocument();

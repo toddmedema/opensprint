@@ -38,7 +38,7 @@ export interface SendMessageResult {
   status?: AgentChatStatus;
   error?: string;
 }
-const CLI_BACKENDS: ReadonlySet<AgentType> = new Set(["claude-cli", "cursor", "custom"]);
+const CLI_BACKENDS: ReadonlySet<AgentType> = new Set(["claude-cli", "codex", "cursor", "custom"]);
 const API_BACKENDS: ReadonlySet<AgentType> = new Set([
   "claude",
   "openai",

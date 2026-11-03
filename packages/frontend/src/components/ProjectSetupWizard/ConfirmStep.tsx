@@ -42,6 +42,8 @@ export function ConfirmStep({
         return "Claude (API)";
       case "claude-cli":
         return "Claude (CLI)";
+      case "codex":
+        return "OpenAI Codex (CLI)";
       case "cursor":
         return "Cursor";
       case "openai":

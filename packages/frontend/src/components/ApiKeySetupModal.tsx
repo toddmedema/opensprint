@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { AgentProviderCliBanner } from "./AgentProviderCliBanner";
 import { CloseButton } from "./CloseButton";
 import { useModalA11y } from "../hooks/useModalA11y";
 import { api, isConnectionError } from "../api/client";
@@ -73,11 +74,40 @@ export function ApiKeySetupModal({
 
   const providerOption = AGENT_PROVIDER_OPTIONS.find((o) => o.value === provider);
   const needsKeyInput = providerOption?.needsKeyInput ?? true;
+  const [nativeCliAvailable, setNativeCliAvailable] = useState<boolean | null>(null);
+  const nativeCli = provider === "codex" || provider === "claude-cli";
+  useEffect(() => {
+    if (!nativeCli) return;
+    let active = true;
+    setNativeCliAvailable(null);
+    api.env
+      .getKeys()
+      .then((keys) => {
+        if (active)
+          setNativeCliAvailable(provider === "codex" ? Boolean(keys.codexCli) : keys.claudeCli);
+      })
+      .catch(() => {
+        if (active) setNativeCliAvailable(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [provider, nativeCli]);
 
   const handleSave = async () => {
     setError(null);
     setSaving(true);
     try {
+      if (provider === "claude-cli" || provider === "codex") {
+        if (!nativeCliAvailable) return;
+        const agent = { type: provider, model: null, cliCommand: null };
+        await api.globalSettings.put({
+          simpleComplexityAgent: agent,
+          complexComplexityAgent: agent,
+        });
+        onComplete();
+        return;
+      }
       if (provider === "lmstudio" || provider === "ollama") {
         onComplete();
         setSaving(false);
@@ -123,6 +153,7 @@ export function ApiKeySetupModal({
   };
 
   const canSave =
+    (nativeCli && nativeCliAvailable === true) ||
     provider === "custom" ||
     provider === "lmstudio" ||
     provider === "ollama" ||
@@ -193,6 +224,9 @@ export function ApiKeySetupModal({
                 ? "No API key needed — install/start Ollama and then you’re good to go."
                 : NO_KEY_MESSAGE}
             </p>
+          )}
+          {nativeCli && nativeCliAvailable === false && (
+            <AgentProviderCliBanner kind={provider === "codex" ? "codex" : "claude"} />
           )}
 
           {needsKeyInput && (

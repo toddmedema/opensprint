@@ -20,7 +20,11 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { GoogleGenAI } from "@google/genai";
 import type { AgentConfig, ApiKeyProvider } from "@opensprint/shared";
-import { DEFAULT_AGENT_TIMEOUT_MS, normalizeAgentTimeoutMs } from "@opensprint/shared";
+import {
+  DEFAULT_AGENT_TIMEOUT_MS,
+  DEFAULT_API_MODELS,
+  normalizeAgentTimeoutMs,
+} from "@opensprint/shared";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import {
@@ -59,6 +63,7 @@ import {
   runAgenticLoop,
   AnthropicAgenticAdapter,
   OpenAIAgenticAdapter,
+  OpenAIResponsesAgenticAdapter,
   GeminiAgenticAdapter,
   PendingMessageQueue,
 } from "./agentic-loop.js";
@@ -82,6 +87,21 @@ import {
   parseCustomCliCommandLine,
 } from "../utils/custom-cli-command.js";
 import { fireAndForget } from "../utils/fire-and-forget.js";
+import {
+  collectOpenAIResponsesStream,
+  type OpenAIResponsesStreamEvent,
+} from "./agent/agent-openai-planning-stream.js";
+import {
+  assertAnthropicCompletion,
+  assertGeminiCompletion,
+  getGeminiResponseText,
+} from "../utils/provider-response.js";
+import {
+  assertClaudeSubscription,
+  buildCodexArgs,
+  buildNativeCliEnv,
+  resolveNativeCliCommand,
+} from "../utils/native-cli.js";
 const log = createLogger("agent-client");
 
 const OUTPUT_POLL_MS = 150;
@@ -398,48 +418,6 @@ function buildOpenAIResponsesInput(options: {
   return input;
 }
 
-type OpenAIResponsesStreamEvent = {
-  type?: string;
-  delta?: string;
-  response?: {
-    id?: string | null;
-    usage?: {
-      input_tokens_details?: { cached_tokens?: number | null } | null;
-    } | null;
-  } | null;
-};
-
-async function collectOpenAIResponsesStream(
-  stream: AsyncIterable<OpenAIResponsesStreamEvent>,
-  onChunk: (chunk: string) => void
-): Promise<{
-  content: string;
-  responseId?: string;
-  usage?: {
-    input_tokens_details?: { cached_tokens?: number | null } | null;
-  } | null;
-}> {
-  let fullContent = "";
-  let responseId: string | undefined;
-  let usage:
-    | {
-        input_tokens_details?: { cached_tokens?: number | null } | null;
-      }
-    | null
-    | undefined;
-  for await (const event of stream) {
-    if (event.type === "response.output_text.delta" && event.delta) {
-      fullContent += event.delta;
-      onChunk(event.delta);
-    }
-    if (event.type === "response.completed" && event.response) {
-      responseId = event.response.id ?? undefined;
-      usage = event.response.usage;
-    }
-  }
-  return { content: fullContent, responseId, usage };
-}
-
 const LM_STUDIO_NOT_RUNNING_MESSAGE =
   "LM Studio is not running. Start LM Studio, load a model, and ensure the local server is started (e.g. port 1234).";
 const OLLAMA_NOT_RUNNING_MESSAGE =
@@ -753,15 +731,6 @@ function extractExplicitAgentErrors(rawOutput: string): string {
  * Safely get text from a Gemini response or stream chunk.
  * @google/genai uses `text` as a property; legacy SDK used text() method.
  */
-function safeGeminiText(obj: { text?: string | (() => string) }): string {
-  try {
-    if (typeof obj.text === "function") return obj.text() ?? "";
-    return obj.text ?? "";
-  } catch {
-    return "";
-  }
-}
-
 /**
  * Returns the Cursor model to pass to the CLI, or null to omit --model (Cursor uses its default).
  * The Cursor API no longer supports "auto"; when no model is set we omit --model.
@@ -1094,6 +1063,8 @@ export class AgentClient {
         return this.invokeClaudeApi(options);
       case "claude-cli":
         return this.invokeClaudeCli(options);
+      case "codex":
+        return this.invokeCodexCli(options);
       case "cursor":
         return this.invokeCursorCli(options);
       case "openai":
@@ -1139,6 +1110,44 @@ export class AgentClient {
     projectId?: string
   ): { kill: () => void; pid: number | null; pendingMessages: PendingMessageQueue | null } {
     const workspaceCwd = this.resolveWorkspaceCwd(cwd, taskFilePath);
+    if (config.type === "claude-cli") {
+      let inner: { kill: () => void; pid: number | null } | null = null;
+      let cancelled = false;
+      let exited = false;
+      const exitOnce = (code: number | null) => {
+        if (exited) return;
+        exited = true;
+        return onExit(code);
+      };
+      void assertClaudeSubscription(workspaceCwd)
+        .then(() => {
+          if (cancelled) return;
+          inner = this.doSpawnWithTaskFile(
+            config,
+            taskFilePath,
+            workspaceCwd,
+            onOutput,
+            exitOnce,
+            agentRole,
+            outputLogPath
+          );
+        })
+        .catch((error) => {
+          if (!cancelled) onOutput(`[Agent error: ${getErrorMessage(error)}]\n`);
+          return exitOnce(1);
+        });
+      return {
+        get pid() {
+          return inner?.pid ?? null;
+        },
+        pendingMessages: null,
+        kill() {
+          cancelled = true;
+          if (inner) inner.kill();
+          else fireAndForget(Promise.resolve(exitOnce(1)), "agent-client:cancel-claude-preflight");
+        },
+      };
+    }
     if (config.type === "claude") {
       return this.spawnClaudeWithTaskFile(
         config,
@@ -1491,19 +1500,10 @@ export class AgentClient {
         return Promise.resolve(onExit(1)).catch((e) => log.error("onExit failed", { err: e }));
       }
 
-      const model = config.model ?? "gpt-4o-mini";
+      const model = config.model ?? DEFAULT_API_MODELS.openai;
       const systemPrompt = `You are a coding agent. Execute the task described in the user message. Use the provided tools to read and edit files, run commands, and list or search files. When done, write a result.json file (or report success/failure in your final message).`;
       const useResponsesApi = isOpenAIResponsesModel(model);
       const promptFingerprint = fingerprintPrompt(systemPrompt);
-      const promptCacheKey = buildOpenAIPromptCacheKey({
-        provider: "openai",
-        model,
-        flow: "task",
-        projectId,
-        role: agentRole ?? "coder",
-        promptVersion: "v1",
-        instructionsFingerprint: promptFingerprint,
-      });
 
       const triedKeyIds = new Set<string>();
       let lastError: unknown;
@@ -1544,69 +1544,37 @@ export class AgentClient {
 
         const client = new OpenAI({ apiKey: key });
         try {
-          let fullContent: string;
-          if (useResponsesApi) {
-            const streamResult = await collectOpenAIResponsesStream(
-              (await client.responses.create({
-                model,
-                instructions: systemPrompt,
-                input: [{ role: "user", content: taskContent }],
-                max_output_tokens: 16384,
-                prompt_cache_key: promptCacheKey,
-                prompt_cache_retention: "in-memory",
-                stream: true,
-              })) as AsyncIterable<OpenAIResponsesStreamEvent>,
-              (delta) => {
-                if (!aborted) emit(delta);
-              }
-            );
-            fullContent = streamResult.content;
-            const cacheMetrics = extractOpenAICacheUsage({
-              response: {
-                id: streamResult.responseId ?? null,
-                usage: streamResult.usage ?? null,
+          const Adapter = useResponsesApi ? OpenAIResponsesAgenticAdapter : OpenAIAgenticAdapter;
+          const adapter = new Adapter(client, model, systemPrompt, {
+            provider: "openai",
+            model,
+            flow: "loop",
+            projectId,
+            taskId: taskFilePath,
+            role: agentRole ?? "coder",
+            toolSchemaVersion: "agent-tools-v1",
+            instructionsFingerprint: promptFingerprint,
+          });
+          const result = await runAgenticLoop(adapter, taskContent, {
+            cwd,
+            onChunk: (text) => {
+              if (!aborted) emit(text);
+            },
+            abortSignal: {
+              get aborted() {
+                return aborted;
               },
-              flow: "task",
-              promptFingerprint,
-              promptCacheKey,
+            },
+            pendingMessages,
+          });
+          const fullContent = result.content;
+          const lastCacheMetric = result.cacheMetrics.at(-1);
+          if (lastCacheMetric) {
+            log.info("OpenAI coding loop cache usage", {
+              cacheReadTokens: lastCacheMetric.cacheReadTokens,
+              promptFingerprint: lastCacheMetric.promptFingerprint,
             });
-            log.info("OpenAI coding agent cache usage", {
-              cacheReadTokens: cacheMetrics.cacheReadTokens,
-              promptFingerprint: cacheMetrics.promptFingerprint,
-            });
-          } else {
-            const adapter = new OpenAIAgenticAdapter(client, model, systemPrompt, {
-              provider: "openai",
-              model,
-              flow: "loop",
-              projectId,
-              taskId: taskFilePath,
-              role: agentRole ?? "coder",
-              toolSchemaVersion: "agent-tools-v1",
-              instructionsFingerprint: promptFingerprint,
-            });
-            const result = await runAgenticLoop(adapter, taskContent, {
-              cwd,
-              onChunk: (text) => {
-                if (!aborted) emit(text);
-              },
-              abortSignal: {
-                get aborted() {
-                  return aborted;
-                },
-              },
-              pendingMessages,
-            });
-            fullContent = result.content;
-            const lastCacheMetric = result.cacheMetrics.at(-1);
-            if (lastCacheMetric) {
-              log.info("OpenAI coding loop cache usage", {
-                cacheReadTokens: lastCacheMetric.cacheReadTokens,
-                promptFingerprint: lastCacheMetric.promptFingerprint,
-              });
-            }
           }
-
           if (aborted) return;
 
           if (projectId && keyId !== ENV_FALLBACK_KEY_ID) {
@@ -1698,7 +1666,7 @@ export class AgentClient {
         return Promise.resolve(onExit(1)).catch((e) => log.error("onExit failed", { err: e }));
       }
 
-      const model = config.model ?? "claude-sonnet-4-20250514";
+      const model = config.model ?? DEFAULT_API_MODELS.claude;
       const systemPrompt = `You are a coding agent. Execute the task described in the user message. Use the provided tools to read and edit files, run commands, and list or search files. When done, write a result.json file (or report success/failure in your final message).`;
 
       const triedKeyIds = new Set<string>();
@@ -1858,7 +1826,7 @@ export class AgentClient {
         return Promise.resolve(onExit(1)).catch((e) => log.error("onExit failed", { err: e }));
       }
 
-      const model = config.model ?? "gemini-2.5-flash";
+      const model = config.model ?? DEFAULT_API_MODELS.google;
       const systemPrompt = `You are a coding agent. Execute the task described in the user message. Use the provided tools to read and edit files, run commands, and list or search files. When done, write a result.json file (or report success/failure in your final message).`;
 
       const triedKeyIds = new Set<string>();
@@ -2016,7 +1984,13 @@ export class AgentClient {
       });
 
       try {
-        const adapter = new OpenAIAgenticAdapter(client, provider.model, systemPrompt);
+        const adapter = new OpenAIAgenticAdapter(
+          client,
+          provider.model,
+          systemPrompt,
+          undefined,
+          "max_tokens"
+        );
         const result = await runAgenticLoop(adapter, taskContent, {
           cwd,
           onChunk: (text) => {
@@ -2191,11 +2165,12 @@ export class AgentClient {
   ): { kill: () => void; pid: number | null } {
     let command: string;
     let args: string[];
+    let stdinPrompt: string | undefined;
 
     switch (config.type) {
       case "claude":
       case "claude-cli": {
-        command = "claude";
+        command = resolveNativeCliCommand("claude-cli");
         let taskContent: string;
         try {
           taskContent = readFileSync(taskFilePath, "utf-8");
@@ -2211,10 +2186,33 @@ export class AgentClient {
             }
           );
         }
-        args = ["--dangerously-skip-permissions", "--print", taskContent];
+        args = [
+          "--permission-mode",
+          "acceptEdits",
+          "--settings",
+          JSON.stringify({
+            sandbox: { enabled: true, failIfUnavailable: true, allowUnsandboxedCommands: false },
+          }),
+          "--print",
+        ];
+        stdinPrompt = taskContent;
         if (config.model) {
           args.unshift("--model", config.model);
         }
+        break;
+      }
+      case "codex": {
+        command = resolveNativeCliCommand("codex");
+        try {
+          stdinPrompt = readFileSync(taskFilePath, "utf-8");
+        } catch (error) {
+          throw new AppError(
+            500,
+            ErrorCodes.AGENT_TASK_FILE_READ_FAILED,
+            `Could not read task file: ${taskFilePath}. ${getErrorMessage(error)}`
+          );
+        }
+        args = buildCodexArgs(config.model, true);
         break;
       }
       case "cursor": {
@@ -2284,8 +2282,10 @@ export class AgentClient {
       outputFd = openSync(outputLogPath, "w");
     }
 
-    const stdio: ["ignore", "pipe" | number, "pipe" | number] =
-      outputFd !== undefined ? ["ignore", outputFd, outputFd] : ["ignore", "pipe", "pipe"];
+    const stdio: ["ignore" | "pipe", "pipe" | number, "pipe" | number] =
+      outputFd !== undefined
+        ? [stdinPrompt === undefined ? "ignore" : "pipe", outputFd, outputFd]
+        : [stdinPrompt === undefined ? "ignore" : "pipe", "pipe", "pipe"];
 
     const role = agentRole ?? "coder";
     log.info(`Spawning agent subprocess — role: ${colorizeRole(role)}`, {
@@ -2303,7 +2303,9 @@ export class AgentClient {
         : null;
     const spawnEnv = isolatedCursorEnv
       ? isolatedCursorEnv.env
-      : normalizeSpawnEnvPath({ ...process.env });
+      : config.type === "codex" || config.type === "claude-cli"
+        ? buildNativeCliEnv(config.type)
+        : normalizeSpawnEnvPath({ ...process.env });
 
     const child = spawn(command, args, {
       cwd,
@@ -2311,6 +2313,11 @@ export class AgentClient {
       env: spawnEnv,
       detached: true,
     });
+    if (stdinPrompt !== undefined) {
+      // Prompts can exceed OS argv limits; use Codex's documented stdin interface.
+      child.stdin?.on("error", () => {});
+      child.stdin?.end(stdinPrompt);
+    }
 
     // Close our copy of the fd; the child process inherits its own.
     if (outputFd !== undefined) {
@@ -2330,6 +2337,8 @@ export class AgentClient {
     let readOffset = 0;
     /** Set when we invoke onExit from result.json terminal-status path so we don't double-invoke on process exit */
     let exitNotified = false;
+    let processClosed = false;
+    let stopRequested = false;
 
     const stopPoll = () => {
       if (pollTimer) {
@@ -2399,11 +2408,12 @@ export class AgentClient {
           // If process doesn't exit (e.g. Cursor ignores SIGTERM), force SIGKILL within 10–30s so agent is gone quickly.
           sigkillAfterTermTimer = setTimeout(() => {
             sigkillAfterTermTimer = null;
+            if (processClosed) return;
             try {
               signalProcessGroup(child.pid!, "SIGKILL");
             } catch {
               try {
-                if (!child.killed) child.kill("SIGKILL");
+                if (!processClosed) child.kill("SIGKILL");
               } catch {
                 // Process may already have exited
               }
@@ -2461,6 +2471,7 @@ export class AgentClient {
     }
 
     child.on("close", (code) => {
+      processClosed = true;
       if (sigkillAfterTermTimer) {
         clearTimeout(sigkillAfterTermTimer);
         sigkillAfterTermTimer = null;
@@ -2480,6 +2491,7 @@ export class AgentClient {
     });
 
     child.on("error", (err: NodeJS.ErrnoException) => {
+      processClosed = true;
       const friendly =
         err.code === "ENOENT" && config.type === "cursor"
           ? `Cursor agent CLI was not found. Install: ${getCursorCliInstallInstructions()}. Then restart your terminal.`
@@ -2496,6 +2508,8 @@ export class AgentClient {
     return {
       pid: child.pid ?? null,
       kill: () => {
+        if (processClosed || stopRequested) return;
+        stopRequested = true;
         try {
           signalProcessGroup(child.pid!, "SIGTERM");
         } catch {
@@ -2503,14 +2517,11 @@ export class AgentClient {
         }
         killTimer = setTimeout(() => {
           killTimer = null;
+          if (processClosed) return;
           try {
-            if (!child.killed) {
-              signalProcessGroup(child.pid!, "SIGKILL");
-            }
+            signalProcessGroup(child.pid!, "SIGKILL");
           } catch {
-            if (!child.killed) {
-              child.kill("SIGKILL");
-            }
+            if (!processClosed) child.kill("SIGKILL");
           }
         }, 5000);
       },
@@ -2519,22 +2530,71 @@ export class AgentClient {
 
   // ─── Private Invocation Methods ───
 
+  private async invokeCodexCli(options: AgentInvokeOptions): Promise<AgentResponse> {
+    const fullPrompt = buildFullPrompt(options);
+    const child = spawn(
+      resolveNativeCliCommand("codex"),
+      buildCodexArgs(options.config.model, false),
+      {
+        cwd: options.cwd || process.cwd(),
+        stdio: ["pipe", "pipe", "pipe"],
+        env: buildNativeCliEnv("codex"),
+        detached: true,
+      }
+    );
+    child.stdin?.on("error", () => {});
+    child.stdin?.end(fullPrompt);
+    if (child.pid) registerAgentProcess(child.pid, { processGroup: true });
+    try {
+      // Codex sends progress to stderr and only the final answer to stdout.
+      const content = (
+        await this.runClaudeAgentSpawn(child, {
+          processGroup: true,
+          timeoutMs: resolveInvokeTimeoutMs(options),
+        })
+      ).trim();
+      options.onChunk?.(content);
+      return { content };
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      const shape = getExecErrorShape(error);
+      const raw = shape.stderr || shape.message || getErrorMessage(error);
+      throw new AppError(
+        502,
+        ErrorCodes.AGENT_INVOKE_FAILED,
+        `Codex CLI failed. Run codex login with ChatGPT and check the selected model. ${raw}`,
+        { agentType: "codex", raw, isLimitError: isLimitError(error) }
+      );
+    } finally {
+      if (child.pid) unregisterAgentProcess(child.pid, { processGroup: true });
+    }
+  }
+
   private async invokeClaudeCli(options: AgentInvokeOptions): Promise<AgentResponse> {
     const { config, prompt, systemPrompt, conversationHistory } = options;
     const fullPrompt = buildFullPrompt({ systemPrompt, conversationHistory, prompt });
+    const cwd = options.cwd || process.cwd();
+    try {
+      await assertClaudeSubscription(cwd);
+    } catch (error) {
+      throw new AppError(400, ErrorCodes.AGENT_INVOKE_FAILED, getErrorMessage(error), {
+        agentType: "claude-cli",
+      });
+    }
 
-    const args = ["--tools", "", "--max-turns", "1", "--print", fullPrompt];
-    if (config.model) {
+    const args = ["--tools", "", "--max-turns", "1", "--print"];
+    if (config.model && config.model !== "default") {
       args.unshift("--model", config.model);
     }
-    const cwd = options.cwd || process.cwd();
 
-    const child = spawn("claude", args, {
+    const child = spawn(resolveNativeCliCommand("claude-cli"), args, {
       cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: normalizeSpawnEnvPath({ ...process.env }),
+      stdio: ["pipe", "pipe", "pipe"],
+      env: buildNativeCliEnv("claude-cli"),
       detached: true,
     });
+    child.stdin?.on("error", () => {});
+    child.stdin?.end(fullPrompt);
 
     if (child.pid) {
       registerAgentProcess(child.pid, { processGroup: true });
@@ -2551,6 +2611,7 @@ export class AgentClient {
       }
       return { content };
     } catch (error: unknown) {
+      if (error instanceof AppError) throw error;
       const shape = getExecErrorShape(error);
       const raw =
         shape.stderr || shape.message || (error instanceof Error ? error.message : String(error));
@@ -2572,7 +2633,7 @@ export class AgentClient {
    */
   private async invokeClaudeApi(options: AgentInvokeOptions): Promise<AgentResponse> {
     const { config, prompt, systemPrompt, conversationHistory, projectId } = options;
-    const model = config.model ?? "claude-sonnet-4-20250514";
+    const model = config.model ?? DEFAULT_API_MODELS.claude;
     const promptFingerprint = fingerprintPrompt(systemPrompt?.trim() || prompt);
     const anthropicSystem = systemPrompt?.trim()
       ? [toAnthropicTextBlock(systemPrompt.trim(), true)]
@@ -2655,14 +2716,13 @@ export class AgentClient {
           });
         }
         const finalMessage = await stream.finalMessage();
+        assertAnthropicCompletion(finalMessage);
         const contentBlocks = finalMessage?.content ?? [];
-        const textBlock = Array.isArray(contentBlocks)
-          ? contentBlocks.find((b: { type?: string }) => b.type === "text")
-          : undefined;
         const content =
-          textBlock && typeof textBlock === "object" && "text" in textBlock
-            ? String(textBlock.text)
-            : fullContent;
+          contentBlocks
+            .filter((block): block is Anthropic.TextBlock => block.type === "text")
+            .map((block) => block.text)
+            .join("") || fullContent;
         const cacheMetrics = extractAnthropicCacheUsage({
           response: finalMessage,
           flow: options.promptCacheContext?.flow ?? "task",
@@ -2717,67 +2777,60 @@ export class AgentClient {
     options?: { processGroup?: boolean; timeoutMs?: number | null }
   ): Promise<string> {
     return new Promise((resolve, reject) => {
-      const TIMEOUT_MS =
+      const timeoutMs =
         options?.timeoutMs === undefined ? DEFAULT_AGENT_TIMEOUT_MS : options.timeoutMs;
       let stdout = "";
       let stderr = "";
-
+      let closed = false;
+      let timedOut = false;
+      let killTimer: ReturnType<typeof setTimeout> | null = null;
       const killChild = (signal: "SIGTERM" | "SIGKILL") => {
-        if (child.killed) return;
+        if (closed) return;
         try {
-          if (options?.processGroup && child.pid) {
-            signalProcessGroup(child.pid, signal);
-          } else {
-            child.kill(signal);
-          }
+          if (options?.processGroup && child.pid) signalProcessGroup(child.pid, signal);
+          else child.kill(signal);
         } catch {
           child.kill(signal);
         }
       };
       const timeout =
-        TIMEOUT_MS === null
+        timeoutMs === null
           ? null
           : setTimeout(() => {
-              if (child.killed) return;
+              timedOut = true;
               killChild("SIGTERM");
-              setTimeout(() => killChild("SIGKILL"), 3000);
-              if (stdout.trim()) {
-                resolve(stdout.trim());
-              } else {
-                reject(
-                  new AppError(
-                    504,
-                    ErrorCodes.AGENT_INVOKE_FAILED,
-                    `Claude CLI timed out after ${formatTimeoutLabel(TIMEOUT_MS)}. stderr: ${stderr.slice(0, 500)}`,
-                    {
-                      agentType: "claude",
-                      isTimeout: true,
-                      stderr: stderr.slice(0, 500),
-                    }
-                  )
-                );
-              }
-            }, TIMEOUT_MS);
-
-      // Attach close/error first so we handle early exit (e.g. ENOENT) before data listeners
+              killTimer = setTimeout(() => killChild("SIGKILL"), 3000);
+            }, timeoutMs);
+      const cleanup = () => {
+        closed = true;
+        if (timeout) clearTimeout(timeout);
+        if (killTimer) clearTimeout(killTimer);
+      };
+      // Wait for observed process completion even after timeout; partial text is never success.
       child.on("close", (code) => {
-        if (timeout) clearTimeout(timeout);
-        if (code === 0 || stdout.trim()) {
-          resolve(stdout.trim());
-        } else {
-          reject(new Error(stderr || `claude exited with code ${code}`));
-        }
+        cleanup();
+        if (timedOut) {
+          reject(
+            new AppError(
+              504,
+              ErrorCodes.AGENT_INVOKE_FAILED,
+              `Agent CLI timed out after ${formatTimeoutLabel(timeoutMs!)}.`,
+              { isTimeout: true }
+            )
+          );
+        } else if (code !== 0) {
+          reject(new Error(stderr || `Agent CLI exited with code ${code}`));
+        } else if (!stdout.trim()) {
+          reject(new Error("Agent CLI returned no final response."));
+        } else resolve(stdout.trim());
       });
-
-      child.on("error", (err) => {
-        if (timeout) clearTimeout(timeout);
-        reject(err);
+      child.on("error", (error) => {
+        cleanup();
+        reject(error);
       });
-
       child.stdout?.on("data", (data: Buffer) => {
         stdout += data.toString();
       });
-
       child.stderr?.on("data", (data: Buffer) => {
         stderr += data.toString();
       });
@@ -3085,7 +3138,7 @@ export class AgentClient {
 
   private async invokeOpenAIApi(options: AgentInvokeOptions): Promise<AgentResponse> {
     const { config, prompt, systemPrompt, conversationHistory, projectId } = options;
-    const model = config.model ?? "gpt-4o-mini";
+    const model = config.model ?? DEFAULT_API_MODELS.openai;
     const useResponsesApi = isOpenAIResponsesModel(model);
     const promptFingerprint = fingerprintPrompt(systemPrompt?.trim() || prompt);
     const promptCacheContext: PromptCacheContext = {
@@ -3198,6 +3251,11 @@ export class AgentClient {
               prompt_cache_key: promptCacheKey,
               prompt_cache_retention: "in-memory",
             });
+            if (response.status && response.status !== "completed") {
+              throw new Error(
+                `OpenAI response did not complete: ${response.error?.message ?? response.incomplete_details?.reason ?? response.status}`
+              );
+            }
             content = response.output_text;
             responseId = response.id;
             cacheMetrics = extractOpenAICacheUsage({
@@ -3211,13 +3269,14 @@ export class AgentClient {
           const stream = await client.chat.completions.create({
             model,
             messages: openaiMessages,
-            max_tokens: 8192,
+            max_completion_tokens: 8192,
             prompt_cache_key: promptCacheKey,
             prompt_cache_retention: "in-memory",
             stream: true,
             stream_options: { include_usage: true },
           });
           let fullContent = "";
+          let finishReason: string | null | undefined;
           let usage:
             | {
                 prompt_tokens_details?: { cached_tokens?: number | null } | null;
@@ -3225,6 +3284,8 @@ export class AgentClient {
             | null
             | undefined;
           for await (const chunk of stream) {
+            const reason = chunk.choices[0]?.finish_reason;
+            if (reason) finishReason = reason;
             const delta = chunk.choices[0]?.delta?.content;
             if (delta) {
               fullContent += delta;
@@ -3233,6 +3294,11 @@ export class AgentClient {
             if (chunk.usage) {
               usage = chunk.usage;
             }
+          }
+          if (finishReason !== "stop") {
+            throw new Error(
+              `OpenAI response did not complete: ${finishReason ?? "stream ended before completion"}`
+            );
           }
           content = fullContent;
           cacheMetrics = extractOpenAICacheUsage({
@@ -3245,10 +3311,19 @@ export class AgentClient {
           const response = await client.chat.completions.create({
             model,
             messages: openaiMessages,
-            max_tokens: 8192,
+            max_completion_tokens: 8192,
             prompt_cache_key: promptCacheKey,
             prompt_cache_retention: "in-memory",
           });
+          const choice = response.choices[0];
+          if (
+            choice?.message?.refusal ||
+            (choice?.finish_reason && choice.finish_reason !== "stop")
+          ) {
+            throw new Error(
+              `OpenAI response did not complete: ${choice.message.refusal ?? choice.finish_reason}`
+            );
+          }
           content = response.choices[0]?.message?.content ?? "";
           responseId = response.id;
           cacheMetrics = extractOpenAICacheUsage({
@@ -3259,6 +3334,7 @@ export class AgentClient {
           });
         }
 
+        if (!content?.trim()) throw new Error("OpenAI response returned no final text.");
         if (projectId && keyId !== ENV_FALLBACK_KEY_ID) {
           await clearLimitHit(projectId, "OPENAI_API_KEY", keyId, source);
         }
@@ -3399,7 +3475,7 @@ export class AgentClient {
 
   private async invokeGoogleApi(options: AgentInvokeOptions): Promise<AgentResponse> {
     const { config, prompt, systemPrompt, conversationHistory, projectId } = options;
-    const model = config.model ?? "gemini-2.5-flash";
+    const model = config.model ?? DEFAULT_API_MODELS.google;
 
     const triedKeyIds = new Set<string>();
     let lastError: unknown;
@@ -3465,13 +3541,18 @@ export class AgentClient {
           });
           const stream = await streamPromise;
           let fullContent = "";
+          let completed = false;
           for await (const chunk of stream) {
-            const text = safeGeminiText(chunk);
+            assertGeminiCompletion(chunk);
+            if (chunk.candidates?.[0]?.finishReason === "STOP") completed = true;
+            const text = getGeminiResponseText(chunk);
             if (text) {
               fullContent += text;
               options.onChunk(text);
             }
           }
+          if (!completed) throw new Error("Gemini response stream ended before completion.");
+          if (!fullContent) throw new Error("Gemini returned no final text.");
           if (projectId && keyId !== ENV_FALLBACK_KEY_ID) {
             await clearLimitHit(projectId, "GOOGLE_API_KEY", keyId, source);
           }
@@ -3483,7 +3564,9 @@ export class AgentClient {
           contents,
           config: systemPrompt?.trim() ? { systemInstruction: systemPrompt.trim() } : undefined,
         });
-        const content = safeGeminiText(response);
+        assertGeminiCompletion(response);
+        const content = getGeminiResponseText(response);
+        if (!content) throw new Error("Gemini returned no final text.");
 
         if (projectId && keyId !== ENV_FALLBACK_KEY_ID) {
           await clearLimitHit(projectId, "GOOGLE_API_KEY", keyId, source);
@@ -3542,23 +3625,25 @@ export class AgentClient {
 
     try {
       const timeoutMs = resolveInvokeTimeoutMs(options);
-      const { stdout } = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-        execFile(
-          command,
-          [...baseArgs, prompt],
-          {
-            cwd: options.cwd || process.cwd(),
-            encoding: "utf8",
-            maxBuffer: 10 * 1024 * 1024,
-            windowsHide: true,
-            ...(timeoutMs !== null && { timeout: timeoutMs }),
-          },
-          (error, out, errOut) => {
-            if (error) reject(error);
-            else resolve({ stdout: String(out ?? ""), stderr: String(errOut ?? "") });
-          }
-        );
-      });
+      const { stdout } = await new Promise<{ stdout: string; stderr: string }>(
+        (resolve, reject) => {
+          execFile(
+            command,
+            [...baseArgs, prompt],
+            {
+              cwd: options.cwd || process.cwd(),
+              encoding: "utf8",
+              maxBuffer: 10 * 1024 * 1024,
+              windowsHide: true,
+              ...(timeoutMs !== null && { timeout: timeoutMs }),
+            },
+            (error, out, errOut) => {
+              if (error) reject(error);
+              else resolve({ stdout: String(out ?? ""), stderr: String(errOut ?? "") });
+            }
+          );
+        }
+      );
 
       const content = stdout.trim();
       if (options.onChunk) {

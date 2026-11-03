@@ -4,7 +4,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
-import type { AgentConfig, AgentRole } from "@opensprint/shared";
+import { DEFAULT_API_MODELS, type AgentConfig, type AgentRole } from "@opensprint/shared";
 import { AgentClient } from "./agent-client.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
@@ -14,6 +14,7 @@ import {
   isLimitError,
 } from "../utils/error-utils.js";
 import { isOpenAIResponsesModel } from "../utils/openai-models.js";
+import { assertAnthropicCompletion } from "../utils/provider-response.js";
 import { acquireGlobalAgentSlot } from "./agent-global-concurrency.service.js";
 import { activeAgentsService } from "./active-agents.service.js";
 import {
@@ -621,7 +622,7 @@ export class AgentService {
   ): Promise<PlanningAgentResponse> {
     const { projectId, config, messages, systemPrompt, images, onChunk } = options;
 
-    const model = config.model ?? "claude-sonnet-4-20250514";
+    const model = config.model ?? DEFAULT_API_MODELS.claude;
     const promptFingerprint = fingerprintPrompt(systemPrompt?.trim() || model);
     const anthropicSystem = systemPrompt?.trim()
       ? [toAnthropicTextBlock(systemPrompt.trim(), true)]
@@ -705,14 +706,16 @@ export class AgentService {
         }
 
         const finalMessage = await stream.finalMessage();
+        assertAnthropicCompletion(finalMessage);
         const contentBlocks = finalMessage?.content ?? [];
-        const textBlock = Array.isArray(contentBlocks)
-          ? contentBlocks.find((b: { type?: string }) => b.type === "text")
-          : undefined;
-        const content =
-          textBlock && typeof textBlock === "object" && "text" in textBlock
-            ? String(textBlock.text)
-            : fullContent;
+        const text = Array.isArray(contentBlocks)
+          ? contentBlocks
+              .filter((block) => block.type === "text")
+              .map((block) => (block.type === "text" ? block.text : ""))
+              .join("")
+          : "";
+        const content = text || fullContent;
+        if (!content.trim()) throw new Error("Claude planning response returned no final text.");
         const cacheMetrics = extractAnthropicCacheUsage({
           response: finalMessage,
           flow: "plan",
@@ -764,7 +767,7 @@ export class AgentService {
     const { projectId, config, messages, systemPrompt, images, onChunk, previousResponseId } =
       options;
 
-    const model = config.model ?? "gpt-4o-mini";
+    const model = config.model ?? DEFAULT_API_MODELS.openai;
     const useResponsesApi = isOpenAIResponsesModel(model);
     const promptFingerprint = fingerprintPrompt(systemPrompt?.trim() || model);
     const promptCacheContext: PromptCacheContext = {
@@ -883,7 +886,14 @@ export class AgentService {
               prompt_cache_key: promptCacheKey,
               prompt_cache_retention: "in-memory",
             });
+            if (response.error || (response.status && response.status !== "completed")) {
+              throw new Error(
+                `OpenAI planning response did not complete: ${response.error?.message ?? response.incomplete_details?.reason ?? response.status}`
+              );
+            }
             content = response.output_text;
+            if (!content?.trim())
+              throw new Error("OpenAI planning response returned no final text.");
             responseId = response.id;
             cacheMetrics = extractOpenAICacheUsage({
               response,
@@ -896,13 +906,14 @@ export class AgentService {
           const stream = await client.chat.completions.create({
             model,
             messages: openaiMessages,
-            max_tokens: 8192,
+            max_completion_tokens: 8192,
             prompt_cache_key: promptCacheKey,
             prompt_cache_retention: "in-memory",
             stream: true,
             stream_options: { include_usage: true },
           });
           let fullContent = "";
+          let finishReason: string | null | undefined;
           let usage:
             | {
                 prompt_tokens_details?: { cached_tokens?: number | null } | null;
@@ -910,6 +921,8 @@ export class AgentService {
             | null
             | undefined;
           for await (const chunk of stream) {
+            const reason = chunk.choices[0]?.finish_reason;
+            if (reason) finishReason = reason;
             const delta = chunk.choices[0]?.delta?.content;
             if (delta) {
               fullContent += delta;
@@ -919,6 +932,13 @@ export class AgentService {
               usage = chunk.usage;
             }
           }
+          if (finishReason !== "stop") {
+            throw new Error(
+              `OpenAI planning response did not complete: ${finishReason ?? "stream ended before completion"}`
+            );
+          }
+          if (!fullContent.trim())
+            throw new Error("OpenAI planning response returned no final text.");
           content = fullContent;
           cacheMetrics = extractOpenAICacheUsage({
             response: { id: null, usage },
@@ -930,11 +950,21 @@ export class AgentService {
           const response = await client.chat.completions.create({
             model,
             messages: openaiMessages,
-            max_tokens: 8192,
+            max_completion_tokens: 8192,
             prompt_cache_key: promptCacheKey,
             prompt_cache_retention: "in-memory",
           });
+          const choice = response.choices[0];
+          if (
+            choice?.message?.refusal ||
+            (choice?.finish_reason && choice.finish_reason !== "stop")
+          ) {
+            throw new Error(
+              `OpenAI planning response did not complete: ${choice.message.refusal ?? choice.finish_reason}`
+            );
+          }
           content = response.choices[0]?.message?.content ?? "";
+          if (!content.trim()) throw new Error("OpenAI planning response returned no final text.");
           responseId = response.id;
           cacheMetrics = extractOpenAICacheUsage({
             response,

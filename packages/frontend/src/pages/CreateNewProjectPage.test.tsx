@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { CreateNewProjectPage } from "./CreateNewProjectPage";
@@ -52,7 +52,11 @@ vi.mock("../components/FolderBrowser", () => ({
 }));
 
 vi.mock("../components/ModelSelect", () => ({
-  ModelSelect: () => <select data-testid="model-select" />,
+  ModelSelect: ({ value }: { value: string | null }) => (
+    <select data-testid="model-select" value={value ?? ""} onChange={() => {}}>
+      <option value={value ?? ""}>{value ?? ""}</option>
+    </select>
+  ),
 }));
 
 function renderCreateNewProjectPage() {
@@ -115,6 +119,40 @@ describe("CreateNewProjectPage", () => {
 
   afterEach(() => {
     vi.stubGlobal("navigator", originalNavigator);
+  });
+
+  it("inherits saved subscription and custom CLI tiers after Project Info without API-key gating", async () => {
+    mockGlobalSettingsGet.mockResolvedValueOnce({
+      databaseUrl: "",
+      simpleComplexityAgent: { type: "custom", model: null, cliCommand: "my-agent" },
+      complexComplexityAgent: {
+        type: "codex",
+        model: "gpt-6.1-sol",
+        cliCommand: null,
+        timeoutMs: 3600000,
+      },
+    });
+    mockGetKeys.mockResolvedValueOnce({
+      anthropic: false,
+      cursor: false,
+      openai: false,
+      google: false,
+      claudeCli: false,
+      codexCli: true,
+      cursorCli: false,
+      ollamaCli: false,
+      useCustomCli: false,
+    });
+    const user = userEvent.setup();
+    renderCreateNewProjectPage();
+    await user.type(screen.getByLabelText(/project name/i), "New Project");
+    await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/path/to/parent");
+    await user.click(screen.getByTestId("next-button"));
+    await screen.findByTestId("simplified-agents-step");
+    await waitFor(() => expect(screen.getByLabelText("CLI command")).toHaveValue("my-agent"));
+    expect(screen.getByTestId("model-select")).toHaveValue("gpt-6.1-sol");
+    expect(screen.queryByText(/API key required/)).not.toBeInTheDocument();
+    expect(screen.getByTestId("next-button")).toBeEnabled();
   });
 
   it("renders Create New Project title", () => {
@@ -340,7 +378,7 @@ describe("CreateNewProjectPage", () => {
       cursor: false,
       openai: false,
       google: false,
-      claudeCli: true,
+      claudeCli: false,
       cursorCli: true,
       ollamaCli: true,
       useCustomCli: false,

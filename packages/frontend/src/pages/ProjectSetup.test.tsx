@@ -49,7 +49,11 @@ vi.mock("../components/FolderBrowser", () => ({
 }));
 
 vi.mock("../components/ModelSelect", () => ({
-  ModelSelect: () => <select data-testid="model-select" />,
+  ModelSelect: ({ value }: { value: string | null }) => (
+    <select data-testid="model-select" value={value ?? ""} onChange={() => {}}>
+      <option value={value ?? ""}>{value ?? ""}</option>
+    </select>
+  ),
 }));
 
 function renderProjectSetup(initialRoute = "/projects/add-existing") {
@@ -61,6 +65,34 @@ function renderProjectSetup(initialRoute = "/projects/add-existing") {
 }
 
 describe("ProjectSetup - Step 1 validation", () => {
+  it("inherits saved custom CLI defaults without requiring API keys", async () => {
+    vi.mocked(api.globalSettings.get).mockResolvedValueOnce({
+      databaseUrl: "",
+      simpleComplexityAgent: { type: "custom", model: null, cliCommand: "my-agent" },
+      complexComplexityAgent: { type: "codex", model: "gpt-6.1-sol", cliCommand: null },
+    });
+    vi.mocked(api.env.getKeys).mockResolvedValueOnce({
+      anthropic: false,
+      cursor: false,
+      openai: false,
+      google: false,
+      claudeCli: false,
+      codexCli: true,
+      cursorCli: false,
+      ollamaCli: false,
+      useCustomCli: false,
+    });
+    const user = userEvent.setup();
+    renderProjectSetup();
+    await user.type(screen.getByLabelText(/project name/i), "Existing Project");
+    await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/path/to/repo");
+    await user.click(screen.getByRole("button", { name: /next/i }));
+    await waitFor(() => expect(screen.getByLabelText("CLI command")).toHaveValue("my-agent"));
+    expect(screen.getByTestId("model-select")).toHaveValue("gpt-6.1-sol");
+    expect(screen.queryByText(/API key required/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /next/i })).toBeEnabled();
+  });
+
   it("shows project info step (name and repository) on first load", () => {
     renderProjectSetup();
 
@@ -268,7 +300,7 @@ describe("ProjectSetup - Agents step API key validation", () => {
       anthropic: false,
       cursor: false,
       openai: false,
-      claudeCli: true,
+      claudeCli: false,
       useCustomCli: false,
     });
 

@@ -191,8 +191,8 @@ export function Navbar({
   ) => {
     setDropdownOpen(false);
     try {
-      const { hasAnyKey, useCustomCli } = await api.env.getGlobalStatus();
-      if (hasAnyKey || useCustomCli) {
+      const { hasAnyKey, useCustomCli, hasLocalProvider } = await api.env.getGlobalStatus();
+      if (hasAnyKey || useCustomCli || hasLocalProvider) {
         navigate(route);
       } else {
         navigate(`/onboarding?intended=${encodeURIComponent(route)}`);

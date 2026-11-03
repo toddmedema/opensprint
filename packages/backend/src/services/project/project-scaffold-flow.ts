@@ -106,6 +106,7 @@ export async function runScaffoldProjectFlow(
       | "cursor"
       | "claude"
       | "claude-cli"
+      | "codex"
       | "custom"
       | "openai"
       | "google"

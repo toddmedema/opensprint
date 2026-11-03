@@ -3,6 +3,7 @@ export interface AgentApiFailureDetails {
   agentType:
     | "claude"
     | "claude-cli"
+    | "codex"
     | "cursor"
     | "custom"
     | "openai"
@@ -59,6 +60,7 @@ function asFailureDetails(value: unknown): AgentApiFailureDetails | null {
       kind === "scope_compliance") &&
     (agentType === "claude" ||
       agentType === "claude-cli" ||
+      agentType === "codex" ||
       agentType === "cursor" ||
       agentType === "custom" ||
       agentType === "openai" ||

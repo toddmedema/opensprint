@@ -2044,12 +2044,12 @@ describe("getProvidersInUse", () => {
     expect(getProvidersInUse(settings)).toEqual(["CURSOR_API_KEY"]);
   });
 
-  it("returns ANTHROPIC_API_KEY for claude-cli", () => {
+  it("does not require API keys for native CLI providers", () => {
     const settings = makeSettings({
       simpleComplexityAgent: { type: "claude-cli", model: null, cliCommand: "claude" },
-      complexComplexityAgent: { type: "claude-cli", model: null, cliCommand: null },
+      complexComplexityAgent: { type: "codex", model: null, cliCommand: null },
     });
-    expect(getProvidersInUse(settings)).toEqual(["ANTHROPIC_API_KEY"]);
+    expect(getProvidersInUse(settings)).toEqual([]);
   });
 
   it("returns OPENAI_API_KEY when openai in use", () => {

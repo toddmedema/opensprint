@@ -25,6 +25,27 @@ export function AgentProviderCliBanner({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  if (kind === "codex") {
+    return (
+      <div
+        className="p-3 rounded-lg bg-theme-warning-bg border border-theme-warning-border"
+        data-testid="agent-provider-cli-banner-codex"
+      >
+        <p className="text-sm text-theme-warning-text">
+          <strong>Codex CLI not found.</strong> Install the{" "}
+          <a
+            href="https://learn.chatgpt.com/docs/codex/cli"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline"
+          >
+            OpenAI Codex CLI
+          </a>
+          , then run <code>codex login</code> and sign in with ChatGPT. No API key is required.
+        </p>
+      </div>
+    );
+  }
   if (kind === "cursor") {
     return (
       <div
@@ -120,12 +141,12 @@ export function AgentProviderCliBanner({
       <p className="text-sm text-theme-warning-text">
         <strong>Claude CLI not found.</strong> Install it from{" "}
         <a
-          href="https://docs.anthropic.com/en/docs/claude-code/getting-started"
+          href="https://code.claude.com/docs/en/setup"
           target="_blank"
           rel="noopener noreferrer"
           className="underline hover:opacity-80"
         >
-          docs.anthropic.com
+          code.claude.com
         </a>{" "}
         and run <code className="font-mono text-xs">claude</code> to complete authentication.
       </p>

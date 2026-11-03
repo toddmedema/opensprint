@@ -131,3 +131,9 @@ When `maxConcurrentCoders > 1`, the **TaskScheduler** selects non-overlapping ta
 - **`gitWorkingMode`:** `"worktree"` (default) or `"branches"`. Branches mode forces `maxConcurrentCoders` to `1`.
 - **`unknownScopeStrategy`:** `"conservative"` or `"optimistic"` for tasks whose file scope is only heuristic.
 - **Filesystem browse API (`/api/v1/fs/*`):** By default the server only allows browse/create/detect paths under `process.cwd()`. Set **`OPENSPRINT_FS_ROOT`** to an absolute path to cap all FS API access to that directory tree (paths are validated against the **resolved real path** after `realpath`, including symlink resolution). Set **`OPENSPRINT_ALLOW_HOME_BROWSE`** to `1`, `true`, or `yes` to expand the allowed tree to the current user’s home instead of cwd when `OPENSPRINT_FS_ROOT` is unset (risk: exposes the entire home directory to anything that can call the API). In **CI** (`CI=true`), home-wide browse is **ignored** unless **`OPENSPRINT_ALLOW_HOME_BROWSE_IN_CI`** is also set to `1`/`true`/`yes` so non-interactive installs do not accidentally widen access. Global Settings shows an admin banner when a custom root or elevated home browse policy applies; unset the variables to return to the cwd default.
+
+### Native subscription CLIs
+
+Native Claude Code (`claude-cli`) and Codex (`codex`) agents use local subscription sign-in, not API-key settings. Their task prompts are passed on stdin. Sandbox restrictions remain active; if a required action is blocked, report it rather than claiming success. The orchestrator commits remaining worktree changes before merge.
+
+Select **Anthropic Claude Code (CLI)** or **OpenAI Codex (CLI)** in global or project agent settings. Install the CLI and sign in through its own flow (`claude` or `codex login`). Claude model aliases follow current releases; Codex model choices come from the installed CLI catalog. Available models still depend on your account.

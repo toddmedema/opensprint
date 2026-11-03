@@ -28,6 +28,8 @@ Task tracking is handled internally by `TaskStoreService` backed by **SQLite (de
 
 **Integration token encryption:** Integration OAuth tokens are encrypted at rest. Without **`INTEGRATION_ENCRYPTION_KEY`** (base64-encoded 32-byte key), the backend derives a key from the hostname and `~/.opensprint/encryption-salt`, which is acceptable for typical local single-user use but **not** for shared hosts where other users might read `~/.opensprint`. For those deployments, set `INTEGRATION_ENCRYPTION_KEY` in the environment; the backend emits a startup warning when it is unset.
 
+Native Claude Code (`claude-cli`) and Codex (`codex`) agents use local subscription sign-in, not API-key settings. Their task prompts are passed on stdin. Sandbox restrictions remain active; if a required action is blocked, report it rather than claiming success. The orchestrator commits remaining worktree changes before merge.
+
 When Open Sprint spawns an Execute agent:
 
 1. The task branch and worktree are already prepared. Do not create or switch branches unless the task prompt explicitly tells you to recover git state.

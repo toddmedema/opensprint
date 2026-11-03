@@ -8,10 +8,16 @@ export const OPENAI_EXCLUDED_MODEL_PATTERNS = [
   /^gpt-image-/,
   /^gpt-realtime/,
   /^gpt-audio/,
+  /^gpt-live(?:-|$)/,
+  /^gpt-transcribe(?:-|$)/,
+  /^chatgpt-image-/,
   /^gpt-4o-(?:audio|mini-audio|realtime|mini-realtime|transcribe)/,
+  /-instruct(?:-|$)/,
+  /-search-preview(?:-|$)/,
+  /-deep-research(?:-|$)/,
 ];
 
-const OPENAI_CHAT_PATTERNS = [/^chatgpt-/, /^gpt-/, /^o(?:1|3|4)(?:$|-)/];
+const OPENAI_CHAT_PATTERNS = [/^chatgpt-/, /^chat-latest$/, /^gpt-/, /^o(?:1|3|4)(?:$|-)/];
 
 export type OpenAIResponsesInputContent =
   | {
@@ -33,7 +39,12 @@ export interface OpenAIResponsesInputMessage {
 
 export function isOpenAIResponsesModel(model: string | null | undefined): boolean {
   if (!model) return false;
-  return model.toLowerCase().includes("codex");
+  const normalized = model.toLowerCase();
+  return (
+    normalized.includes("codex") ||
+    /^gpt-[56](?:[.-]|$)/.test(normalized) ||
+    /^o\d+-pro(?:-|$)/.test(normalized)
+  );
 }
 
 export function isOpenAITextModel(id: string): boolean {

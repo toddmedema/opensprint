@@ -22,6 +22,7 @@ export interface AgentApiFailureDetails {
   agentType:
     | "claude"
     | "claude-cli"
+    | "codex"
     | "cursor"
     | "custom"
     | "openai"

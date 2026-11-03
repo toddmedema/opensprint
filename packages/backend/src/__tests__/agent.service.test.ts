@@ -868,11 +868,73 @@ describe("AgentService", () => {
 
   describe("invokePlanningAgent (Claude + ApiKeyResolver)", () => {
     const projectId = "proj-123";
+
+    it("combines all Claude planning text blocks while omitting thought blocks", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "test-key", keyId: "k1", source: "global" });
+      mockMessagesStream.mockReturnValue({
+        finalMessage: async () => ({
+          stop_reason: "end_turn",
+          content: [
+            { type: "text", text: "first " },
+            { type: "thinking", thinking: "not visible" },
+            { type: "text", text: "second" },
+          ],
+        }),
+      });
+
+      const result = await service.invokePlanningAgent({
+        projectId,
+        role: "planner",
+        config: { type: "claude", model: "claude-sonnet-5-5", cliCommand: null },
+        messages: [{ role: "user", content: "Plan this" }],
+      });
+
+      expect(result.content).toBe("first second");
+    });
+
+    it.each(["max_tokens", "refusal", "model_context_window_exceeded"])(
+      "rejects Claude planning stop reason %s",
+      async (stopReason) => {
+        mockGetNextKey.mockResolvedValue({ key: "test-key", keyId: "k1", source: "global" });
+        mockMessagesStream.mockReturnValue({
+          finalMessage: async () => ({
+            stop_reason: stopReason,
+            content: [{ type: "text", text: "partial plan" }],
+          }),
+        });
+
+        await expect(
+          service.invokePlanningAgent({
+            projectId,
+            role: "planner",
+            config: { type: "claude", model: "claude-sonnet-5-5", cliCommand: null },
+            messages: [{ role: "user", content: "Plan this" }],
+          })
+        ).rejects.toMatchObject({ code: "AGENT_INVOKE_FAILED" });
+        expect(mockClearLimitHit).not.toHaveBeenCalled();
+      }
+    );
     const claudeConfig: AgentConfig = {
       type: "claude",
       model: "claude-sonnet-4",
       cliCommand: null,
     };
+
+    it("uses the current shared Claude API fallback when no model is selected", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "test-key", keyId: "k1", source: "global" });
+      mockMessagesStream.mockReturnValue(claudePlanningStreamWithText("plan"));
+
+      await service.invokePlanningAgent({
+        projectId,
+        role: "planner",
+        config: { ...claudeConfig, model: null },
+        messages: [{ role: "user", content: "Plan this" }],
+      });
+
+      expect(mockMessagesStream).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "claude-sonnet-5-5" })
+      );
+    });
 
     it("uses getNextKey and clearLimitHit on success", async () => {
       mockGetNextKey.mockResolvedValue({ key: "sk-ant-test", keyId: "k1", source: "global" });
@@ -1012,6 +1074,76 @@ describe("AgentService", () => {
     const projectId = "proj-456";
     const openaiConfig: AgentConfig = { type: "openai", model: "gpt-4o", cliCommand: null };
 
+    it("uses the current shared OpenAI fallback through Responses when no model is selected", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "test-key", keyId: "k1", source: "global" });
+      mockOpenAIResponsesCreate.mockResolvedValue({ status: "completed", output_text: "plan" });
+
+      await service.invokePlanningAgent({
+        projectId,
+        role: "planner",
+        config: { ...openaiConfig, model: null },
+        messages: [{ role: "user", content: "Plan this" }],
+      });
+
+      expect(mockOpenAIResponsesCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "gpt-6-luna" })
+      );
+      expect(mockOpenAICreate).not.toHaveBeenCalled();
+    });
+
+    it("uses the supported completion token field for legacy OpenAI planning", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "test-key", keyId: "k1", source: "global" });
+      mockOpenAICreate.mockResolvedValue({
+        choices: [{ message: { content: "plan" }, finish_reason: "stop" }],
+      });
+
+      await service.invokePlanningAgent({
+        projectId,
+        role: "planner",
+        config: openaiConfig,
+        messages: [{ role: "user", content: "Plan this" }],
+      });
+
+      expect(mockOpenAICreate).toHaveBeenCalledWith(
+        expect.objectContaining({ max_completion_tokens: 8192 })
+      );
+      expect(mockOpenAICreate.mock.calls[0][0]).not.toHaveProperty("max_tokens");
+    });
+
+    it.each(["failed", "incomplete", "cancelled"])(
+      "rejects %s nonstream Responses planning output",
+      async (status) => {
+        mockGetNextKey.mockResolvedValue({ key: "test-key", keyId: "k1", source: "global" });
+        mockOpenAIResponsesCreate.mockResolvedValue({ status, output_text: "partial plan" });
+
+        await expect(
+          service.invokePlanningAgent({
+            projectId,
+            role: "planner",
+            config: { ...openaiConfig, model: "gpt-6.1-sol" },
+            messages: [{ role: "user", content: "Plan this" }],
+          })
+        ).rejects.toMatchObject({ code: "AGENT_INVOKE_FAILED" });
+        expect(mockClearLimitHit).not.toHaveBeenCalled();
+      }
+    );
+
+    it("rejects a truncated legacy OpenAI planning completion", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "test-key", keyId: "k1", source: "global" });
+      mockOpenAICreate.mockResolvedValue({
+        choices: [{ message: { content: "partial plan" }, finish_reason: "length" }],
+      });
+
+      await expect(
+        service.invokePlanningAgent({
+          projectId,
+          role: "planner",
+          config: openaiConfig,
+          messages: [{ role: "user", content: "Plan this" }],
+        })
+      ).rejects.toMatchObject({ code: "AGENT_INVOKE_FAILED" });
+    });
+
     it("uses getNextKey and clearLimitHit on success", async () => {
       mockGetNextKey.mockResolvedValue({ key: "sk-openai-test", keyId: "k1", source: "global" });
       mockOpenAICreate.mockResolvedValue({
@@ -1098,6 +1230,7 @@ describe("AgentService", () => {
         (async function* () {
           yield { choices: [{ delta: { content: "Hello " } }] };
           yield { choices: [{ delta: { content: "world" } }] };
+          yield { choices: [{ delta: {}, finish_reason: "stop" }] };
         })()
       );
 
@@ -1121,6 +1254,10 @@ describe("AgentService", () => {
         (async function* () {
           yield { type: "response.output_text.delta", delta: "Hello " };
           yield { type: "response.output_text.delta", delta: "codex" };
+          yield {
+            type: "response.completed",
+            response: { id: "planning-response", status: "completed" },
+          };
         })()
       );
 

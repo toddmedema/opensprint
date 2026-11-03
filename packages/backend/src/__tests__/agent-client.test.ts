@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import OpenAI from "openai";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
+import * as processGroup from "../utils/process-group.js";
 import { AgentClient } from "../services/agent-client.js";
 import { PendingMessageQueue } from "../services/agentic-loop.js";
 import type { AgentConfig } from "@opensprint/shared";
@@ -191,6 +194,9 @@ describe("AgentClient", () => {
     Object.defineProperty(process, "platform", { value: originalPlatform });
     client = new AgentClient();
     vi.clearAllMocks();
+    mockExecFile.mockImplementation((_command, _args, _options, callback) => {
+      callback(null, JSON.stringify({ loggedIn: true, authMethod: "claude.ai" }), "");
+    });
     mockCheckInternetConnectivity.mockResolvedValue({ reachable: true, target: "8.8.8.8:53" });
     mockBuildLostInternetMessage.mockImplementation(
       (target: string) =>
@@ -199,6 +205,107 @@ describe("AgentClient", () => {
   });
 
   describe("invoke", () => {
+    function nativeCliChild() {
+      return Object.assign(new EventEmitter(), {
+        pid: 45123,
+        stdout: new PassThrough(),
+        stderr: new PassThrough(),
+        stdin: Object.assign(new PassThrough(), { end: vi.fn() }),
+        killed: false,
+        kill: vi.fn(),
+      });
+    }
+
+    it("runs native Codex with stdin, model choice and subscription-only auth", async () => {
+      const child = nativeCliChild();
+      mockSpawn.mockReturnValue(child);
+      const pending = client.invoke({
+        config: { type: "codex", model: "gpt-6.1-sol", cliCommand: null },
+        prompt: "Hello",
+      });
+      child.stdout.emit("data", Buffer.from("Final response"));
+      child.emit("close", 0);
+      expect((await pending).content).toBe("Final response");
+      expect(child.stdin.end).toHaveBeenCalledWith(expect.stringContaining("Human: Hello"));
+      expect(mockSpawn.mock.calls[0][1]).toEqual(
+        expect.arrayContaining([
+          "--model",
+          "gpt-6.1-sol",
+          "read-only",
+          'forced_login_method="chatgpt"',
+        ])
+      );
+      expect(mockSpawn.mock.calls[0][2].env.OPENAI_API_KEY).toBeUndefined();
+    });
+
+    it("rejects native CLI partial output when its process exits unsuccessfully", async () => {
+      const child = nativeCliChild();
+      mockSpawn.mockReturnValue(child);
+      const pending = client.invoke({
+        config: { type: "codex", model: null, cliCommand: null },
+        prompt: "Hello",
+      });
+      const failure = expect(pending).rejects.toThrow(/exited with code 1/);
+      child.stdout.emit("data", Buffer.from("Incomplete output"));
+      child.emit("close", 1);
+      await failure;
+    });
+
+    it("rejects an empty native CLI final response", async () => {
+      const child = nativeCliChild();
+      mockSpawn.mockReturnValue(child);
+      const pending = client.invoke({
+        config: { type: "codex", model: null, cliCommand: null },
+        prompt: "Hello",
+      });
+      const failure = expect(pending).rejects.toThrow(/no final response/);
+      child.emit("close", 0);
+      await failure;
+    });
+
+    it("does not accept timeout partial output before observed process exit", async () => {
+      vi.useFakeTimers();
+      try {
+        const child = nativeCliChild();
+        mockSpawn.mockReturnValue(child);
+        const pending = client.invoke({
+          config: { type: "codex", model: null, cliCommand: null, timeoutMs: 300000 },
+          prompt: "Hello",
+        });
+        let settled = false;
+        const observed = pending.then(
+          () => {
+            settled = true;
+          },
+          () => {
+            settled = true;
+          }
+        );
+        const failure = expect(pending).rejects.toThrow(/timed out/);
+        child.stdout.emit("data", Buffer.from("Incomplete output"));
+        await vi.advanceTimersByTimeAsync(300000);
+        expect(settled).toBe(false);
+        child.emit("close", 0);
+        await failure;
+        await observed;
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("rejects Claude API-key-helper auth before any inference launch", async () => {
+      mockExecFile.mockImplementation((_command, _args, _options, callback) => {
+        callback(null, JSON.stringify({ loggedIn: true, authMethod: "api_key_helper" }), "");
+      });
+      await expect(
+        client.invoke({
+          config: { type: "claude-cli", model: "sonnet", cliCommand: null },
+          prompt: "Hello",
+        })
+      ).rejects.toThrow(/subscription sign-in required/);
+      expect(mockSpawn).not.toHaveBeenCalled();
+    });
+
     it("should route claude config to Claude API (not CLI)", async () => {
       mockGetNextKey.mockResolvedValue({ key: "sk-ant-api", keyId: "k1", source: "global" });
       mockAnthropicStream.mockReturnValue(
@@ -238,7 +345,7 @@ describe("AgentClient", () => {
 
       expect(mockAnthropicStream).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: "claude-sonnet-4-20250514",
+          model: "claude-sonnet-5-5",
           messages: [{ role: "user", content: [{ type: "text", text: "Test" }] }],
         })
       );
@@ -255,6 +362,7 @@ describe("AgentClient", () => {
             fn(Buffer.from("Claude CLI response"))
           ),
         },
+        stdin: { on: vi.fn(), end: vi.fn() },
         stderr: { on: vi.fn() },
         on: vi.fn((ev: string, fn: (code: number) => void) => {
           if (ev === "close") setTimeout(() => fn(0), 0);
@@ -280,10 +388,10 @@ describe("AgentClient", () => {
           "--max-turns",
           "1",
           "--print",
-          expect.stringContaining("Human: Hello"),
         ]),
-        expect.objectContaining({ cwd: "/tmp", stdio: ["ignore", "pipe", "pipe"], detached: true })
+        expect.objectContaining({ cwd: "/tmp", stdio: ["pipe", "pipe", "pipe"], detached: true })
       );
+      expect(mockChild.stdin.end).toHaveBeenCalledWith(expect.stringContaining("Human: Hello"));
       expect(mockExec).not.toHaveBeenCalled();
       expect(result.content).toContain("Claude CLI response");
     });
@@ -312,6 +420,7 @@ describe("AgentClient", () => {
           stdout: {
             on: vi.fn((_ev: string, fn: (d: Buffer) => void) => fn(Buffer.from("Cursor response"))),
           },
+          stdin: { on: vi.fn(), end: vi.fn() },
           stderr: { on: vi.fn() },
           on: vi.fn((ev: string, fn: (code: number) => void) => {
             if (ev === "close") setTimeout(() => fn(0), 0);
@@ -348,6 +457,7 @@ describe("AgentClient", () => {
                 fn(Buffer.from("Cursor response"))
               ),
             },
+            stdin: { on: vi.fn(), end: vi.fn() },
             stderr: { on: vi.fn() },
             on: vi.fn((ev: string, fn: (code: number) => void) => {
               if (ev === "close") setTimeout(() => fn(0), 0);
@@ -381,6 +491,7 @@ describe("AgentClient", () => {
           stdout: {
             on: vi.fn((_ev: string, fn: (d: Buffer) => void) => fn(Buffer.from("Cursor response"))),
           },
+          stdin: { on: vi.fn(), end: vi.fn() },
           stderr: { on: vi.fn() },
           on: vi.fn((ev: string, fn: (code: number) => void) => {
             if (ev === "close") setTimeout(() => fn(0), 0);
@@ -614,7 +725,7 @@ describe("AgentClient", () => {
           messages: expect.arrayContaining([
             expect.objectContaining({ role: "user", content: "Implement login" }),
           ]),
-          max_tokens: 8192,
+          max_completion_tokens: 8192,
         })
       );
       expect(result.content).toBe("OpenAI coding response");
@@ -643,6 +754,174 @@ describe("AgentClient", () => {
       );
       expect(result.content).toBe("Codex coding response");
       delete process.env.OPENAI_API_KEY;
+    });
+
+    it("uses the current OpenAI fallback through Responses when no model is configured", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "sk-api-test", keyId: "k1", source: "global" });
+      mockOpenAIResponsesCreate.mockResolvedValue({ status: "completed", output_text: "done" });
+      const result = await client.invoke({
+        config: { type: "openai", model: null, cliCommand: null },
+        prompt: "Plan a change",
+        projectId: "project-current",
+      });
+      expect(result.content).toBe("done");
+      expect(mockOpenAIResponsesCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "gpt-6-luna" })
+      );
+      expect(mockOpenAICreate).not.toHaveBeenCalled();
+    });
+
+    it("uses the current Gemini Flash fallback when no model is configured", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "google-test", keyId: "k1", source: "global" });
+      mockGeminiGenerateContent.mockResolvedValue({
+        candidates: [{ finishReason: "STOP", content: { parts: [{ text: "done" }] } }],
+      });
+      const result = await client.invoke({
+        config: { type: "google", model: null, cliCommand: null },
+        prompt: "Plan a change",
+        projectId: "project-current",
+      });
+      expect(result.content).toBe("done");
+      expect(mockGeminiGenerateContent).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "gemini-3.8-flash" })
+      );
+    });
+
+    it.each(["gpt-6.1-sol", "gpt-6-astra", "gpt-5.6-sol"])(
+      "streams current OpenAI model %s through Responses with a terminal event",
+      async (model) => {
+        mockGetNextKey.mockResolvedValue({ key: "sk-api-test", keyId: "k1", source: "global" });
+        mockOpenAIResponsesCreate.mockImplementation(async () => {
+          async function* stream() {
+            yield { type: "response.output_text.delta", delta: "Current model response" };
+            yield { type: "response.completed", response: { id: "response-current" } };
+          }
+          return stream();
+        });
+        const onChunk = vi.fn();
+        const result = await client.invoke({
+          config: { type: "openai", model, cliCommand: null },
+          prompt: "Plan a change",
+          projectId: "project-current",
+          onChunk,
+        });
+        expect(result.content).toBe("Current model response");
+        expect(result.responseId).toBe("response-current");
+        expect(onChunk).toHaveBeenCalledWith("Current model response");
+        expect(mockOpenAICreate).not.toHaveBeenCalled();
+        expect(mockOpenAIResponsesCreate).toHaveBeenCalledWith(
+          expect.objectContaining({ model, stream: true, max_output_tokens: 8192 })
+        );
+      }
+    );
+
+    it.each(["response.incomplete", "response.failed", "disconnect"])(
+      "rejects a Responses stream ending with %s instead of accepting partial output",
+      async (terminal) => {
+        mockGetNextKey.mockResolvedValue({ key: "sk-api-test", keyId: "k1", source: "global" });
+        mockOpenAIResponsesCreate.mockImplementation(async () => {
+          async function* stream() {
+            yield { type: "response.output_text.delta", delta: "Partial output" };
+            if (terminal !== "disconnect") {
+              yield {
+                type: terminal,
+                response: { incomplete_details: { reason: "max_output_tokens" } },
+              };
+            }
+          }
+          return stream();
+        });
+        await expect(
+          client.invoke({
+            config: { type: "openai", model: "gpt-6.1-sol", cliCommand: null },
+            prompt: "Plan a change",
+            projectId: "project-current",
+            onChunk: vi.fn(),
+          })
+        ).rejects.toMatchObject({
+          code: ErrorCodes.AGENT_INVOKE_FAILED,
+          details: { raw: expect.stringMatching(/did not complete|ended before completion/) },
+        });
+      }
+    );
+
+    it("rejects an incomplete non-streaming Responses result", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "sk-api-test", keyId: "k1", source: "global" });
+      mockOpenAIResponsesCreate.mockResolvedValue({
+        status: "incomplete",
+        incomplete_details: { reason: "max_output_tokens" },
+        output_text: "Partial output",
+      });
+      await expect(
+        client.invoke({
+          config: { type: "openai", model: "gpt-6.1-sol", cliCommand: null },
+          prompt: "Plan a change",
+          projectId: "project-current",
+        })
+      ).rejects.toMatchObject({
+        code: ErrorCodes.AGENT_INVOKE_FAILED,
+        details: { raw: expect.stringMatching(/did not complete/) },
+      });
+    });
+
+    it.each(["length", "content_filter"])(
+      "rejects partial legacy OpenAI output ending with %s",
+      async (finish_reason) => {
+        mockGetNextKey.mockResolvedValue({ key: "sk-api-test", keyId: "k1", source: "global" });
+        mockOpenAICreate.mockResolvedValue({
+          choices: [{ finish_reason, message: { content: "partial" } }],
+        });
+        await expect(
+          client.invoke({
+            config: { type: "openai", model: "gpt-4.1", cliCommand: null },
+            prompt: "Task",
+            projectId: "project-current",
+          })
+        ).rejects.toMatchObject({
+          code: ErrorCodes.AGENT_INVOKE_FAILED,
+          details: { raw: expect.stringContaining("did not complete") },
+        });
+      }
+    );
+
+    it.each(["stop", "length", "disconnect"])(
+      "requires successful legacy OpenAI streaming completion (%s)",
+      async (finish) => {
+        mockGetNextKey.mockResolvedValue({ key: "sk-api-test", keyId: "k1", source: "global" });
+        mockOpenAICreate.mockImplementation(async () =>
+          (async function* () {
+            yield { choices: [{ delta: { content: "output" } }] };
+            if (finish !== "disconnect") yield { choices: [{ delta: {}, finish_reason: finish }] };
+          })()
+        );
+        const result = client.invoke({
+          config: { type: "openai", model: "gpt-4.1", cliCommand: null },
+          prompt: "Task",
+          projectId: "project-current",
+          onChunk: vi.fn(),
+        });
+        if (finish === "stop") await expect(result).resolves.toMatchObject({ content: "output" });
+        else
+          await expect(result).rejects.toMatchObject({
+            code: ErrorCodes.AGENT_INVOKE_FAILED,
+            details: { raw: expect.stringContaining("did not complete") },
+          });
+      }
+    );
+
+    it("rejects empty completed OpenAI Responses output", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "sk-api-test", keyId: "k1", source: "global" });
+      mockOpenAIResponsesCreate.mockResolvedValue({ status: "completed", output_text: "" });
+      await expect(
+        client.invoke({
+          config: { type: "openai", model: "gpt-6.1-sol", cliCommand: null },
+          prompt: "Task",
+          projectId: "project-current",
+        })
+      ).rejects.toMatchObject({
+        code: ErrorCodes.AGENT_INVOKE_FAILED,
+        details: { raw: expect.stringContaining("no final text") },
+      });
     });
 
     it("should use ApiKeyResolver when projectId provided for openai", async () => {
@@ -714,7 +993,7 @@ describe("AgentClient", () => {
       expect(result.content).toBe("Gemini planning response");
     });
 
-    it("should use safeGeminiText when Gemini response has no text (blocked)", async () => {
+    it("rejects a Gemini response with no final text instead of reporting success", async () => {
       mockGetNextKey.mockResolvedValue({ key: "gemini-key", keyId: "k1", source: "global" });
       const responseWithNoText = {
         text: () => {
@@ -725,14 +1004,95 @@ describe("AgentClient", () => {
       };
       mockGeminiGenerateContent.mockResolvedValue(responseWithNoText);
 
-      const result = await client.invoke({
-        config: { type: "google", model: "gemini-1.5-pro", cliCommand: null },
-        prompt: "Hello",
-        cwd: "/tmp",
-        projectId: "proj-blocked",
+      await expect(
+        client.invoke({
+          config: { type: "google", model: "gemini-1.5-pro", cliCommand: null },
+          prompt: "Hello",
+          cwd: "/tmp",
+          projectId: "proj-blocked",
+        })
+      ).rejects.toMatchObject({
+        code: ErrorCodes.AGENT_INVOKE_FAILED,
+        details: { raw: "Gemini returned no final text." },
       });
+    });
 
-      expect(result.content).toBe("");
+    it("combines every visible Anthropic response block", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "sk-ant-test", keyId: "k1", source: "global" });
+      mockAnthropicStream.mockReturnValue(
+        createMockAnthropicMessageStream({
+          content: [
+            { type: "text", text: "First " },
+            { type: "text", text: "second" },
+          ],
+        })
+      );
+      const result = await client.invoke({
+        config: { type: "claude", model: "claude-sonnet-5-5", cliCommand: null },
+        prompt: "Plan a change",
+        projectId: "project-current",
+      });
+      expect(result.content).toBe("First second");
+    });
+
+    it("rejects a truncated Anthropic response even when partial text exists", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "sk-ant-test", keyId: "k1", source: "global" });
+      mockAnthropicStream.mockReturnValue({
+        on: vi.fn(),
+        finalMessage: async () => ({
+          stop_reason: "max_tokens",
+          content: [{ type: "text", text: "partial" }],
+        }),
+      });
+      await expect(
+        client.invoke({
+          config: { type: "claude", model: "claude-sonnet-5-5", cliCommand: null },
+          prompt: "Plan a change",
+          projectId: "project-current",
+        })
+      ).rejects.toMatchObject({
+        code: ErrorCodes.AGENT_INVOKE_FAILED,
+        details: {
+          raw: expect.stringContaining("Anthropic response did not complete: max_tokens"),
+        },
+      });
+    });
+
+    it("rejects a blocked Gemini stream instead of accepting its earlier partial text", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "google-test", keyId: "k1", source: "global" });
+      mockGeminiGenerateContentStream.mockImplementation(async function* () {
+        yield { candidates: [{ content: { parts: [{ text: "partial" }] } }] };
+        yield { candidates: [{ finishReason: "SAFETY" }] };
+      });
+      await expect(
+        client.invoke({
+          config: { type: "google", model: "gemini-4-argon", cliCommand: null },
+          prompt: "Plan a change",
+          projectId: "project-current",
+          onChunk: vi.fn(),
+        })
+      ).rejects.toMatchObject({
+        code: ErrorCodes.AGENT_INVOKE_FAILED,
+        details: { raw: expect.stringContaining("Gemini response did not complete: SAFETY") },
+      });
+    });
+
+    it("rejects a disconnected Gemini stream even after partial text", async () => {
+      mockGetNextKey.mockResolvedValue({ key: "google-test", keyId: "k1", source: "global" });
+      mockGeminiGenerateContentStream.mockImplementation(async function* () {
+        yield { candidates: [{ content: { parts: [{ text: "partial" }] } }] };
+      });
+      await expect(
+        client.invoke({
+          config: { type: "google", model: "gemini-4-argon", cliCommand: null },
+          prompt: "Task",
+          projectId: "project-current",
+          onChunk: vi.fn(),
+        })
+      ).rejects.toMatchObject({
+        code: ErrorCodes.AGENT_INVOKE_FAILED,
+        details: { raw: expect.stringContaining("ended before completion") },
+      });
     });
 
     it("should route custom config to Custom CLI via execFile (no shell)", async () => {
@@ -1115,6 +1475,82 @@ describe("AgentClient", () => {
   });
 
   describe("spawnWithTaskFile", () => {
+    it.each([true, false])(
+      "uses observed close, rather than .killed, for stop escalation (closes early: %s)",
+      async (closesEarly) => {
+        const fs = await import("node:fs/promises");
+        const os = await import("node:os");
+        const path = await import("node:path");
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-cli-stop-"));
+        const taskPath = path.join(root, ".opensprint/active/os-stop/prompt.md");
+        await fs.mkdir(path.dirname(taskPath), { recursive: true });
+        await fs.writeFile(taskPath, "Write the result file for this task.");
+        const child = Object.assign(new EventEmitter(), {
+          pid: 46123,
+          killed: false,
+          kill: vi.fn(),
+          stdin: new PassThrough(),
+          stdout: new PassThrough(),
+          stderr: new PassThrough(),
+        });
+        const signal = vi
+          .spyOn(processGroup, "signalProcessGroup")
+          .mockImplementation((_pid, requestedSignal) => {
+            if (requestedSignal === "SIGTERM") child.killed = true;
+          });
+        vi.useFakeTimers();
+        try {
+          mockSpawn.mockReturnValue(child);
+          const onExit = vi.fn();
+          const handle = client.spawnWithTaskFile(
+            { type: "codex", model: "default", cliCommand: null },
+            taskPath,
+            root,
+            vi.fn(),
+            onExit
+          );
+          handle.kill();
+          handle.kill();
+          expect(child.killed).toBe(true);
+          expect(signal).toHaveBeenCalledTimes(1);
+          expect(onExit).not.toHaveBeenCalled();
+          if (closesEarly) child.emit("close", 0);
+          await vi.advanceTimersByTimeAsync(5000);
+          expect(signal.mock.calls.filter(([, requested]) => requested === "SIGKILL")).toHaveLength(
+            closesEarly ? 0 : 1
+          );
+          if (!closesEarly) child.emit("close", 0);
+          await Promise.resolve();
+        } finally {
+          vi.useRealTimers();
+          signal.mockRestore();
+          await fs.rm(root, { recursive: true, force: true });
+        }
+      }
+    );
+
+    it("cancels a queued Claude auth preflight without launching afterwards", async () => {
+      let finishAuth: ((error: null, output: string) => void) | undefined;
+      mockExecFile.mockImplementation((_command, _args, _options, callback) => {
+        finishAuth = callback;
+      });
+      const onExit = vi.fn();
+      const handle = client.spawnWithTaskFile(
+        { type: "claude-cli", model: "sonnet", cliCommand: null },
+        "/tmp/project/.opensprint/active/os-queued/prompt.md",
+        "/tmp/project",
+        vi.fn(),
+        onExit
+      );
+      expect(handle.pid).toBeNull();
+      handle.kill();
+      finishAuth?.(null, JSON.stringify({ loggedIn: true, authMethod: "claude.ai" }));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(mockSpawn).not.toHaveBeenCalled();
+      expect(onExit).toHaveBeenCalledTimes(1);
+    });
+
     const createDetachedChild = (pid: number) => {
       const listeners: Record<string, Array<(code?: number) => void>> = {};
       const emitClose = (code?: number) => {
@@ -1142,7 +1578,7 @@ describe("AgentClient", () => {
       return child;
     };
 
-    it("should spawn Claude CLI with --print prompt content (no --task-file)", async () => {
+    it("should spawn sandboxed Claude CLI with task content on stdin", async () => {
       const fs = await import("fs/promises");
       const path = await import("path");
       const os = await import("os");
@@ -1156,6 +1592,7 @@ describe("AgentClient", () => {
         killed: false,
         kill: vi.fn(),
         pid: 33001,
+        stdin: { on: vi.fn(), end: vi.fn() },
         stdout: { on: vi.fn(), removeAllListeners: vi.fn() },
         stderr: { on: vi.fn(), removeAllListeners: vi.fn() },
         on: vi.fn(() => ({ on: vi.fn(), removeAllListeners: vi.fn() })),
@@ -1168,18 +1605,23 @@ describe("AgentClient", () => {
         model: "claude-sonnet-4-20250514",
         cliCommand: null,
       };
-      client.spawnWithTaskFile(config, taskFilePath, tmpDir, vi.fn(), vi.fn());
+      const handle = client.spawnWithTaskFile(config, taskFilePath, tmpDir, vi.fn(), vi.fn());
+      expect(handle.pid).toBeNull();
 
+      await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalled());
       expect(mockSpawn).toHaveBeenCalledWith(
         "claude",
         expect.any(Array),
         expect.objectContaining({ cwd: tmpDir, detached: true })
       );
+      expect(handle.pid).toBe(33001);
       const args = mockSpawn.mock.calls[0][1] as string[];
       expect(args).not.toContain("--task-file");
       const printIndex = args.indexOf("--print");
       expect(printIndex).toBeGreaterThanOrEqual(0);
-      expect(args[printIndex + 1]).toContain("Implement login");
+      expect(mockChild.stdin.end).toHaveBeenCalledWith(expect.stringContaining("Implement login"));
+      expect(args).not.toContain("--dangerously-skip-permissions");
+      expect(args).toContain("acceptEdits");
       const modelIndex = args.indexOf("--model");
       expect(modelIndex).toBeGreaterThanOrEqual(0);
       expect(args[modelIndex + 1]).toBe("claude-sonnet-4-20250514");
@@ -2080,12 +2522,11 @@ describe("AgentClient", () => {
 
       mockGetNextKey.mockResolvedValue({ key: "sk-openai-spawn", keyId: "k1", source: "global" });
       mockOpenAIResponsesCreate.mockImplementation(async () => {
-        async function* stream() {
-          yield { type: "response.output_text.delta", delta: "Here " };
-          yield { type: "response.output_text.delta", delta: "is " };
-          yield { type: "response.output_text.delta", delta: "the code." };
-        }
-        return stream();
+        return {
+          status: "completed",
+          output_text: "Here is the code.",
+          output: [],
+        };
       });
 
       const onOutput = vi.fn();
@@ -2118,7 +2559,10 @@ describe("AgentClient", () => {
           instructions: expect.stringContaining("coding agent"),
           input: [expect.objectContaining({ role: "user", content: "# Task\n\nAdd a button" })],
           max_output_tokens: 16384,
-          stream: true,
+          tools: expect.arrayContaining([
+            expect.objectContaining({ type: "function", name: "write_file" }),
+          ]),
+          store: false,
         })
       );
 

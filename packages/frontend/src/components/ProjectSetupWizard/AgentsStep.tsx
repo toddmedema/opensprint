@@ -1,8 +1,14 @@
+import { AgentProviderCliBanner } from "../AgentProviderCliBanner";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ModelSelect } from "../ModelSelect";
 import { AgentReferenceModal } from "../AgentReferenceModal";
-import type { AgentType, GitWorkingMode, UnknownScopeStrategy } from "@opensprint/shared";
+import type {
+  AgentTimeoutValue,
+  AgentType,
+  GitWorkingMode,
+  UnknownScopeStrategy,
+} from "@opensprint/shared";
 import {
   AGENT_ROLE_CANONICAL_ORDER,
   AGENT_ROLE_LABELS,
@@ -21,6 +27,7 @@ export interface AgentConfig {
   type: AgentType;
   model: string;
   cliCommand: string;
+  timeoutMs?: AgentTimeoutValue;
   baseUrl?: string;
 }
 
@@ -30,6 +37,7 @@ export interface EnvKeys {
   openai: boolean;
   google?: boolean;
   claudeCli: boolean;
+  codexCli?: boolean;
   cursorCli: boolean;
   ollamaCli: boolean;
   useCustomCli?: boolean;
@@ -81,6 +89,9 @@ export function AgentsStep({
   const usesClaudeCli =
     simpleComplexityAgent.type === "claude-cli" || complexComplexityAgent.type === "claude-cli";
   const claudeCliMissing = envKeys && !envKeys.claudeCli && usesClaudeCli;
+  const usesCodex =
+    simpleComplexityAgent.type === "codex" || complexComplexityAgent.type === "codex";
+  const codexCliMissing = envKeys && !envKeys.codexCli && usesCodex;
   const usesCursor =
     simpleComplexityAgent.type === "cursor" || complexComplexityAgent.type === "cursor";
   const cursorCliMissing = envKeys && !envKeys.cursorCli && usesCursor;
@@ -234,6 +245,13 @@ export function AgentsStep({
           )}
         </div>
       )}
+      {codexCliMissing && <AgentProviderCliBanner kind="codex" />}
+      {usesCodex && !codexCliMissing && (
+        <p className="text-sm text-theme-info-text">
+          Using Codex CLI with your ChatGPT sign-in. Run <code>codex login</code> if authentication
+          is needed. No API key is required.
+        </p>
+      )}
       {claudeCliMissing && (
         <div className="p-3 rounded-lg bg-theme-warning-bg border border-theme-warning-border">
           <p className="text-sm text-theme-warning-text">
@@ -294,7 +312,8 @@ export function AgentsStep({
                 }}
               >
                 <option value="claude">Claude (API)</option>
-                <option value="claude-cli">Claude (CLI)</option>
+                <option value="claude-cli">Anthropic Claude Code (CLI)</option>
+                <option value="codex">OpenAI Codex (CLI)</option>
                 <option value="cursor">Cursor</option>
                 <option value="openai">OpenAI</option>
                 <option value="google">Google (Gemini)</option>
@@ -412,7 +431,8 @@ export function AgentsStep({
                 }}
               >
                 <option value="claude">Claude (API)</option>
-                <option value="claude-cli">Claude (CLI)</option>
+                <option value="claude-cli">Anthropic Claude Code (CLI)</option>
+                <option value="codex">OpenAI Codex (CLI)</option>
                 <option value="cursor">Cursor</option>
                 <option value="openai">OpenAI</option>
                 <option value="google">Google (Gemini)</option>

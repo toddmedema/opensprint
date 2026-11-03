@@ -44,6 +44,9 @@ export function SimplifiedAgentsStep({
   const usesClaudeCli =
     simpleComplexityAgent.type === "claude-cli" || complexComplexityAgent.type === "claude-cli";
   const claudeCliMissing = envKeys && !envKeys.claudeCli && usesClaudeCli;
+  const usesCodex =
+    simpleComplexityAgent.type === "codex" || complexComplexityAgent.type === "codex";
+  const codexCliMissing = envKeys && !envKeys.codexCli && usesCodex;
   const usesCursor =
     simpleComplexityAgent.type === "cursor" || complexComplexityAgent.type === "cursor";
   const cursorCliMissing = envKeys && !envKeys.cursorCli && usesCursor;
@@ -83,8 +86,7 @@ export function SimplifiedAgentsStep({
               ) : (
                 <>
                   Add the missing API {missingApiKeyRequirements.length === 1 ? "key" : "keys"}{" "}
-                  below to continue.{" "}
-                  Or{" "}
+                  below to continue. Or{" "}
                   <Link
                     to="/settings"
                     className="underline hover:opacity-80 font-medium"
@@ -143,6 +145,13 @@ export function SimplifiedAgentsStep({
         </>
       )}
       {cursorCliMissing && <AgentProviderCliBanner kind="cursor" />}
+      {codexCliMissing && <AgentProviderCliBanner kind="codex" />}
+      {usesCodex && !codexCliMissing && (
+        <p className="text-sm text-theme-info-text">
+          Using Codex CLI with your ChatGPT sign-in. Run <code>codex login</code> if authentication
+          is needed. No API key is required.
+        </p>
+      )}
       {claudeCliMissing && <AgentProviderCliBanner kind="claude" />}
       {usesClaudeCli && !claudeCliMissing && (
         <div className="p-3 rounded-lg bg-theme-info-bg border border-theme-info-border">
@@ -188,7 +197,8 @@ export function SimplifiedAgentsStep({
                 }}
               >
                 <option value="claude">Claude (API)</option>
-                <option value="claude-cli">Claude (CLI)</option>
+                <option value="claude-cli">Anthropic Claude Code (CLI)</option>
+                <option value="codex">OpenAI Codex (CLI)</option>
                 <option value="cursor">Cursor</option>
                 <option value="openai">OpenAI</option>
                 <option value="google">Google (Gemini)</option>
@@ -306,7 +316,8 @@ export function SimplifiedAgentsStep({
                 }}
               >
                 <option value="claude">Claude (API)</option>
-                <option value="claude-cli">Claude (CLI)</option>
+                <option value="claude-cli">Anthropic Claude Code (CLI)</option>
+                <option value="codex">OpenAI Codex (CLI)</option>
                 <option value="cursor">Cursor</option>
                 <option value="openai">OpenAI</option>
                 <option value="google">Google (Gemini)</option>

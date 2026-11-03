@@ -15,6 +15,15 @@ import { authedSupertest } from "./local-auth-test-helpers.js";
 
 const mockModelsList = vi.fn();
 const mockGetNextKey = vi.fn();
+const mockListCodexModels = vi.fn();
+
+vi.mock("../services/cli-models.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../services/cli-models.js")>();
+  return {
+    ...actual,
+    listCodexModels: (...args: unknown[]) => mockListCodexModels(...args),
+  };
+});
 
 vi.mock("../services/api-key-resolver.service.js", () => ({
   getNextKey: (...args: unknown[]) => mockGetNextKey(...args),
@@ -77,6 +86,10 @@ describe("Models API", () => {
     originalOpenAIKey = process.env.OPENAI_API_KEY;
     originalGoogleKey = process.env.GOOGLE_API_KEY;
     vi.clearAllMocks();
+    mockListCodexModels.mockResolvedValue([
+      { id: "default", displayName: "Codex default (account's latest)" },
+      { id: "gpt-6.1-sol", displayName: "GPT-6.1 Sol" },
+    ]);
     mockGetNextKey.mockImplementation(async (_projectId: string, provider: string) => {
       const key = process.env[provider];
       return key?.trim() ? { key, keyId: "__env__" } : null;
@@ -144,6 +157,183 @@ describe("Models API", () => {
       });
       expect(res.body.data).toEqual([{ id: "gpt-4o", displayName: "gpt-4o" }]);
     });
+
+    it("lists the current Cursor v1 model catalog and preserves display names", async () => {
+      process.env.CURSOR_API_KEY = "cursor-test-key";
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          items: [
+            { id: "composer-2.5", displayName: "Composer 2.5", parameters: [] },
+            { id: "gpt-6.1-sol", displayName: "GPT-6.1 Sol" },
+          ],
+        }),
+      });
+
+      const res = await authedGetWithHangupRetry(app, `${API_PREFIX}/models?provider=cursor`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual([
+        { id: "composer-2.5", displayName: "Composer 2.5" },
+        { id: "gpt-6.1-sol", displayName: "GPT-6.1 Sol" },
+      ]);
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "https://api.cursor.com/v1/models",
+        expect.objectContaining({
+          headers: { Authorization: "Bearer cursor-test-key" },
+          signal: expect.any(AbortSignal),
+        })
+      );
+    });
+
+    it("paginates Gemini models and only offers text generation models", async () => {
+      process.env.GOOGLE_API_KEY = "google-test-key";
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            models: [
+              {
+                name: "models/gemini-3.8-flash",
+                displayName: "Gemini 3.8 Flash",
+                supportedGenerationMethods: ["generateContent"],
+              },
+              { name: "models/gemini-embedding-001", supportedGenerationMethods: ["embedContent"] },
+              {
+                name: "models/gemini-tts",
+                supportedGenerationMethods: ["generateContent"],
+                description: "Text-to-speech model",
+              },
+            ],
+            nextPageToken: "page/2+token",
+          }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            models: [
+              { name: "models/gemini-3.1-pro", supportedGenerationMethods: ["generateContent"] },
+            ],
+          }),
+        });
+
+      const res = await authedGetWithHangupRetry(app, `${API_PREFIX}/models?provider=google`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual([
+        { id: "gemini-3.8-flash", displayName: "Gemini 3.8 Flash" },
+        { id: "gemini-3.1-pro", displayName: "gemini-3.1-pro" },
+      ]);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+      const calls = vi.mocked(globalThis.fetch).mock.calls;
+      const first = new URL(String(calls[0][0]));
+      const second = new URL(String(calls[1][0]));
+      expect(first.searchParams.has("key")).toBe(false);
+      expect(second.searchParams.get("pageToken")).toBe("page/2+token");
+      expect(calls[0][1]).toEqual(
+        expect.objectContaining({
+          headers: { "x-goog-api-key": "google-test-key" },
+          signal: expect.any(AbortSignal),
+        })
+      );
+    });
+
+    it("does not share cached model entitlements between API keys", async () => {
+      process.env.OPENAI_API_KEY = "first-account-key";
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [{ id: "gpt-6-luna" }] }) })
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [{ id: "gpt-6-astra" }] }) });
+
+      const first = await authedGetWithHangupRetry(app, `${API_PREFIX}/models?provider=openai`);
+      process.env.OPENAI_API_KEY = "second-account-key";
+      const second = await authedGetWithHangupRetry(app, `${API_PREFIX}/models?provider=openai`);
+
+      expect(first.body.data).toEqual([{ id: "gpt-6-luna", displayName: "gpt-6-luna" }]);
+      expect(second.body.data).toEqual([{ id: "gpt-6-astra", displayName: "gpt-6-astra" }]);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("omits shut down OpenAI models and audio/image-only model families", async () => {
+      process.env.OPENAI_API_KEY = "openai-test-key";
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: [
+            { id: "gpt-6.1-sol", shutdown_date: null },
+            { id: "gpt-6.1-terra", shutdown_date: "2999-12-31" },
+            { id: "gpt-5.2-codex", shutdown_date: "2000-01-01" },
+            { id: "gpt-transcribe" },
+            { id: "gpt-live-1" },
+            { id: "chatgpt-image-latest" },
+            { id: "gpt-3.5-turbo-instruct" },
+          ],
+        }),
+      });
+
+      const res = await authedGetWithHangupRetry(app, `${API_PREFIX}/models?provider=openai`);
+
+      expect(res.body.data).toEqual([
+        { id: "gpt-6.1-sol", displayName: "gpt-6.1-sol" },
+        { id: "gpt-6.1-terra", displayName: "gpt-6.1-terra" },
+      ]);
+    });
+
+    it("does not loop forever if Gemini repeats a pagination token", async () => {
+      process.env.GOOGLE_API_KEY = "google-test-key";
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ models: [], nextPageToken: "same-page" }),
+      });
+
+      const res = await authedGetWithHangupRetry(app, `${API_PREFIX}/models?provider=google`);
+
+      expect(res.status).toBe(502);
+      expect(res.body.error.code).toBe("GOOGLE_API_ERROR");
+      expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("excludes retired Claude models while preserving current and accessible deprecated models", async () => {
+      process.env.ANTHROPIC_API_KEY = "anthropic-test-key";
+      mockModelsList.mockImplementation(async function* () {
+        yield { id: "claude-opus-5-5", display_name: "Claude Opus 5.5", lifecycle: "active" };
+        yield {
+          id: "claude-sonnet-4-6",
+          display_name: "Claude Sonnet 4.6",
+          lifecycle: "deprecated",
+        };
+        yield { id: "claude-retired", display_name: "Retired model", lifecycle: "retired" };
+      });
+
+      const res = await authedGetWithHangupRetry(app, `${API_PREFIX}/models?provider=claude`);
+
+      expect(res.body.data.map((model: { id: string }) => model.id)).toEqual([
+        "claude-opus-5-5",
+        "claude-sonnet-4-6",
+      ]);
+    });
+
+    it.each([
+      ["openai", "OPENAI_API_KEY", "OPENAI_API_ERROR"],
+      ["cursor", "CURSOR_API_KEY", "CURSOR_API_ERROR"],
+      ["google", "GOOGLE_API_KEY", "GOOGLE_API_ERROR"],
+    ])(
+      "returns a bounded provider error for %s connection timeouts",
+      async (provider, envKey, code) => {
+        process.env[envKey] = "test-key";
+        globalThis.fetch = vi.fn().mockRejectedValue(new DOMException("timed out", "TimeoutError"));
+
+        const res = await authedGetWithHangupRetry(
+          app,
+          `${API_PREFIX}/models?provider=${provider}`
+        );
+
+        expect(res.status).toBe(502);
+        expect(res.body.error.code).toBe(code);
+        expect(res.body.error.message).toContain("timed out");
+      }
+    );
 
     it("returns empty array for unknown provider", async () => {
       const res = await authedSupertest(app).get(`${API_PREFIX}/models?provider=unknown`);
@@ -590,15 +780,34 @@ describe("Models API", () => {
       expect(res.body.data[0]).toHaveProperty("displayName");
     });
 
-    it("returns API model list for claude-cli when API key is available", async () => {
+    it("uses Claude CLI aliases without consulting API keys even when a key exists", async () => {
       process.env.ANTHROPIC_API_KEY = "sk-ant-test";
-      mockModelsList.mockImplementation(async function* () {
-        yield { id: "claude-sonnet-4", display_name: "Claude Sonnet 4" };
-      });
 
       const res = await authedSupertest(app).get(`${API_PREFIX}/models?provider=claude-cli`);
       expect(res.status).toBe(200);
-      expect(res.body.data).toEqual([{ id: "claude-sonnet-4", displayName: "Claude Sonnet 4" }]);
+      expect(res.body.data.map((model: { id: string }) => model.id)).toEqual([
+        "default",
+        "sonnet",
+        "opus",
+        "haiku",
+        "fable",
+      ]);
+      expect(
+        res.body.data.find((model: { id: string }) => model.id === "fable").displayName
+      ).toMatch(/usage credits/i);
+      expect(mockGetNextKey).not.toHaveBeenCalled();
+      expect(mockModelsList).not.toHaveBeenCalled();
+    });
+
+    it("lists Codex models using local CLI auth without API keys", async () => {
+      const res = await authedGetWithHangupRetry(app, `${API_PREFIX}/models?provider=codex`);
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual([
+        { id: "default", displayName: "Codex default (account's latest)" },
+        { id: "gpt-6.1-sol", displayName: "GPT-6.1 Sol" },
+      ]);
+      expect(mockListCodexModels).toHaveBeenCalledOnce();
+      expect(mockGetNextKey).not.toHaveBeenCalled();
     });
 
     it("coalesces concurrent Cursor requests to avoid rate limits", async () => {
@@ -669,7 +878,9 @@ describe("Models API", () => {
       });
 
       delete process.env.ANTHROPIC_API_KEY;
-      const res = await authedSupertest(app).get(`${API_PREFIX}/models?provider=claude&projectId=proj-123`);
+      const res = await authedSupertest(app).get(
+        `${API_PREFIX}/models?provider=claude&projectId=proj-123`
+      );
 
       expect(res.status).toBe(200);
       expect(res.body.data).toEqual([{ id: "claude-sonnet-4", displayName: "Claude Sonnet 4" }]);
@@ -750,6 +961,36 @@ describe("Models API", () => {
   });
 
   describe("validateApiKey", () => {
+    it("validates Google keys in a header with a bounded, non-inference request", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({ ok: true });
+
+      expect(await validateApiKey("google", "  google-key  ")).toEqual({ valid: true });
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        "https://generativelanguage.googleapis.com/v1beta/models",
+        expect.objectContaining({
+          headers: { "x-goog-api-key": "google-key" },
+          signal: expect.any(AbortSignal),
+        })
+      );
+    });
+
+    it.each(["cursor", "openai", "google"] as const)(
+      "does not return %s key material echoed by a failed provider",
+      async (provider) => {
+        globalThis.fetch = vi.fn().mockResolvedValue({
+          ok: false,
+          status: 401,
+          text: async () => "The key secret-test-key was rejected",
+        });
+
+        const result = await validateApiKey(provider, "secret-test-key");
+
+        expect(result.valid).toBe(false);
+        expect(result.error).not.toContain("secret-test-key");
+        expect(result.error).toContain("[redacted]");
+      }
+    );
+
     it("returns valid: true for Claude when API succeeds", async () => {
       mockModelsList.mockImplementation(async function* () {
         yield { id: "claude-1", display_name: "Claude 1" };
@@ -785,7 +1026,7 @@ describe("Models API", () => {
       const result = await validateApiKey("cursor", "cursor-key");
       expect(result).toEqual({ valid: true });
       expect(globalThis.fetch).toHaveBeenCalledWith(
-        "https://api.cursor.com/v0/models",
+        "https://api.cursor.com/v1/models",
         expect.objectContaining({
           headers: { Authorization: "Bearer cursor-key" },
         })

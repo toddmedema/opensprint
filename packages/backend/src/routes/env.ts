@@ -28,6 +28,7 @@ import { getBackendRuntimeInfo } from "../utils/runtime-info.js";
 import { getFsBrowsePolicyRuntimeInfo } from "../utils/fs-allowed-root.js";
 import { validateApiKey } from "./env-keys-validate.js";
 import { getGlobalSettings, updateGlobalSettings } from "../services/global-settings.service.js";
+import { resolveNativeCliCommand } from "../utils/native-cli.js";
 
 const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
@@ -131,8 +132,22 @@ export const envRouter = Router();
 /** Check whether the `claude` CLI binary is on $PATH */
 async function isClaudeCliAvailable(): Promise<boolean> {
   try {
+    if (path.isAbsolute(resolveNativeCliCommand("claude-cli"))) return true;
     const cmd = process.platform === "win32" ? "where" : "which";
     await execFileAsync(cmd, ["claude"], { timeout: 3000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function isCodexCliAvailable(): Promise<boolean> {
+  try {
+    const command = resolveNativeCliCommand("codex");
+    if (path.isAbsolute(command)) return true;
+    await execFileAsync(process.platform === "win32" ? "where" : "which", [command], {
+      timeout: 3000,
+    });
     return true;
   } catch {
     return false;
@@ -216,10 +231,14 @@ envRouter.get(
       Boolean(process.env.GOOGLE_API_KEY?.trim());
     const hasAnyKey = fromGlobalStore || fromEnv;
     const useCustomCli = settings.useCustomCli ?? false;
+    const hasLocalProvider = [settings.simpleComplexityAgent, settings.complexComplexityAgent].some(
+      (agent) =>
+        agent && ["claude-cli", "codex", "lmstudio", "ollama", "custom"].includes(agent.type)
+    );
 
     res.json({
-      data: { hasAnyKey, useCustomCli },
-    } as ApiResponse<{ hasAnyKey: boolean; useCustomCli: boolean }>);
+      data: { hasAnyKey, useCustomCli, hasLocalProvider },
+    } as ApiResponse<{ hasAnyKey: boolean; useCustomCli: boolean; hasLocalProvider: boolean }>);
   })
 );
 
@@ -264,20 +283,32 @@ envRouter.get(
     const google =
       Boolean(process.env.GOOGLE_API_KEY?.trim()) ||
       globalStoreHasProvider(settings.apiKeys, "GOOGLE_API_KEY");
-    const [claudeCli, cursorCli, ollamaCli] = await Promise.all([
+    const [claudeCli, codexCli, cursorCli, ollamaCli] = await Promise.all([
       isClaudeCliAvailable(),
+      isCodexCliAvailable(),
       isCursorCliAvailable(),
       isOllamaCliAvailable(),
     ]);
     const useCustomCli = settings.useCustomCli ?? false;
     res.json({
-      data: { anthropic, cursor, openai, google, claudeCli, cursorCli, ollamaCli, useCustomCli },
+      data: {
+        anthropic,
+        cursor,
+        openai,
+        google,
+        claudeCli,
+        codexCli,
+        cursorCli,
+        ollamaCli,
+        useCustomCli,
+      },
     } as ApiResponse<{
       anthropic: boolean;
       cursor: boolean;
       openai: boolean;
       google: boolean;
       claudeCli: boolean;
+      codexCli: boolean;
       cursorCli: boolean;
       ollamaCli: boolean;
       useCustomCli: boolean;

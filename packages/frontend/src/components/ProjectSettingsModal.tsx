@@ -1,3 +1,4 @@
+import { AgentProviderCliBanner } from "./AgentProviderCliBanner";
 import {
   useState,
   useEffect,
@@ -215,6 +216,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
       openai: boolean;
       google: boolean;
       claudeCli: boolean;
+      codexCli?: boolean;
       cursorCli: boolean;
       ollamaCli: boolean;
     } | null>(null);
@@ -294,6 +296,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
             openai,
             google,
             claudeCli: env.claudeCli,
+            codexCli: env.codexCli,
             cursorCli: env.cursorCli,
             ollamaCli: env.ollamaCli,
           });
@@ -902,6 +905,13 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
         );
       }
 
+      if (provider === "codex" && !envKeys.codexCli) {
+        return (
+          <div data-testid={`${rowKey}-provider-prerequisite`}>
+            <AgentProviderCliBanner kind="codex" />
+          </div>
+        );
+      }
       if (provider === "claude-cli" && !envKeys.claudeCli) {
         return (
           <div
@@ -1108,7 +1118,8 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                                 {GLOBAL_DEFAULT_AGENT_UI_LABEL}
                               </option>
                               <option value="claude">Claude (API)</option>
-                              <option value="claude-cli">Claude (CLI)</option>
+                              <option value="claude-cli">Anthropic Claude Code (CLI)</option>
+                              <option value="codex">OpenAI Codex (CLI)</option>
                               <option value="cursor">Cursor</option>
                               <option value="openai">OpenAI</option>
                               <option value="google">Google (Gemini)</option>
@@ -1282,7 +1293,8 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                                 {GLOBAL_DEFAULT_AGENT_UI_LABEL}
                               </option>
                               <option value="claude">Claude (API)</option>
-                              <option value="claude-cli">Claude (CLI)</option>
+                              <option value="claude-cli">Anthropic Claude Code (CLI)</option>
+                              <option value="codex">OpenAI Codex (CLI)</option>
                               <option value="cursor">Cursor</option>
                               <option value="openai">OpenAI</option>
                               <option value="google">Google (Gemini)</option>

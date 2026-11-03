@@ -6,6 +6,7 @@ import { ErrorCodes } from "../middleware/error-codes.js";
 const agentTypeSchema = z.enum([
   "claude",
   "claude-cli",
+  "codex",
   "cursor",
   "custom",
   "openai",

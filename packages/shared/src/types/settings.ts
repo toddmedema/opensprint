@@ -1631,13 +1631,13 @@ export function sanitizeApiKeys(raw: unknown): ApiKeys | undefined {
 
 /**
  * Get API key providers in use based on agent config (simple + complex).
- * claude/claude-cli → ANTHROPIC_API_KEY; cursor → CURSOR_API_KEY; openai → OPENAI_API_KEY; google → GOOGLE_API_KEY.
+ * claude → ANTHROPIC_API_KEY; cursor → CURSOR_API_KEY; openai → OPENAI_API_KEY; google → GOOGLE_API_KEY.
  */
 export function getProvidersInUse(settings: ProjectSettings): ApiKeyProvider[] {
   const providers: Set<ApiKeyProvider> = new Set();
   const agents = [settings.simpleComplexityAgent, settings.complexComplexityAgent];
   for (const a of agents) {
-    if (a.type === "claude" || a.type === "claude-cli") providers.add("ANTHROPIC_API_KEY");
+    if (a.type === "claude") providers.add("ANTHROPIC_API_KEY");
     if (a.type === "cursor") providers.add("CURSOR_API_KEY");
     if (a.type === "openai") providers.add("OPENAI_API_KEY");
     if (a.type === "google") providers.add("GOOGLE_API_KEY");
@@ -1646,7 +1646,7 @@ export function getProvidersInUse(settings: ProjectSettings): ApiKeyProvider[] {
 }
 
 /**
- * Map agent type to API key provider. Returns null for claude-cli/custom/lmstudio/ollama
+ * Map agent type to API key provider. Returns null for claude-cli/codex/custom/lmstudio/ollama
  * (CLI uses local auth; local model providers run without API keys).
  */
 export function getProviderForAgentType(agentType: AgentConfig["type"]): ApiKeyProvider | null {

@@ -25,6 +25,11 @@ import {
   type PromptCacheContext,
 } from "../utils/prompt-cache.js";
 import { isReasoningOnlyCompletion } from "../utils/local-openai-provider.js";
+import {
+  assertAnthropicCompletion,
+  assertGeminiCompletion,
+  getGeminiResponseText,
+} from "../utils/provider-response.js";
 
 const DEFAULT_MAX_TURNS = 100;
 const SYSTEM_PROMPT =
@@ -185,7 +190,7 @@ export class AnthropicAgenticAdapter implements AgenticLoopAdapter {
             tool_use_id: r.id,
             content: r.content,
           })),
-          { type: "text" as const, text: userMessage },
+          ...(userMessage === "Continue." ? [] : [{ type: "text" as const, text: userMessage }]),
         ],
       });
     }
@@ -199,6 +204,7 @@ export class AnthropicAgenticAdapter implements AgenticLoopAdapter {
       messages,
     });
     const response = await stream.finalMessage();
+    assertAnthropicCompletion(response);
 
     const content = response.content ?? [];
     let text = "";
@@ -241,7 +247,8 @@ export class OpenAIAgenticAdapter implements AgenticLoopAdapter {
     private client: OpenAI,
     private model: string,
     private systemPrompt: string = SYSTEM_PROMPT,
-    promptCacheContext?: Partial<PromptCacheContext>
+    promptCacheContext?: Partial<PromptCacheContext>,
+    private tokenLimitField: "max_tokens" | "max_completion_tokens" = "max_completion_tokens"
   ) {
     this.promptCacheContext = promptCacheContext ?? {};
   }
@@ -252,7 +259,9 @@ export class OpenAIAgenticAdapter implements AgenticLoopAdapter {
     const request = {
       model: this.model,
       messages: this.messageHistory,
-      max_tokens: 16384,
+      ...(this.tokenLimitField === "max_tokens"
+        ? { max_tokens: 16384 }
+        : { max_completion_tokens: 16384 }),
       tools: toOpenAITools() as OpenAI.Chat.Completions.ChatCompletionTool[],
       prompt_cache_key: promptCacheKey,
       prompt_cache_retention: "in-memory" as const,
@@ -264,7 +273,9 @@ export class OpenAIAgenticAdapter implements AgenticLoopAdapter {
 
     const fallback = await this.client.chat.completions.create({
       ...request,
-      max_tokens: request.max_tokens * 2,
+      ...(this.tokenLimitField === "max_tokens"
+        ? { max_tokens: 32768 }
+        : { max_completion_tokens: 32768 }),
     });
     if (isReasoningOnlyAgentTurn(fallback.choices?.[0])) {
       throw new Error(
@@ -311,7 +322,15 @@ export class OpenAIAgenticAdapter implements AgenticLoopAdapter {
 
     const choice = response.choices?.[0];
     const msg = choice?.message;
-    if (!msg) return { text: "", toolCalls: [] };
+    if (!msg) throw new Error("OpenAI-compatible provider returned no message.");
+    if (
+      msg.refusal ||
+      (choice?.finish_reason && !["stop", "tool_calls"].includes(choice.finish_reason))
+    ) {
+      throw new Error(
+        `OpenAI-compatible response did not complete: ${msg.refusal ?? choice?.finish_reason}`
+      );
+    }
 
     this.messageHistory.push({
       role: "assistant",
@@ -326,15 +345,22 @@ export class OpenAIAgenticAdapter implements AgenticLoopAdapter {
       const id = tc.id ?? "";
       const fn = "function" in tc ? tc.function : undefined;
       const name = fn?.name ?? "";
-      let args: Record<string, unknown> = {};
+      if (!id || !name)
+        throw new Error("OpenAI-compatible provider returned an invalid function call.");
+      let args: unknown;
       try {
         const raw = fn && "arguments" in fn ? fn.arguments : undefined;
         args = typeof raw === "string" ? JSON.parse(raw) : {};
       } catch {
-        // ignore
+        throw new Error(`OpenAI-compatible provider returned invalid JSON for tool ${name}.`);
       }
-      toolCalls.push({ id, name, args });
+      if (!args || typeof args !== "object" || Array.isArray(args)) {
+        throw new Error(`OpenAI-compatible provider returned invalid arguments for tool ${name}.`);
+      }
+      toolCalls.push({ id, name, args: args as Record<string, unknown> });
     }
+    if (!text && toolCalls.length === 0)
+      throw new Error("OpenAI-compatible provider returned no final content or tool calls.");
     const cacheMetrics = extractOpenAICacheUsage({
       response,
       flow: this.promptCacheContext.flow ?? "loop",
@@ -345,15 +371,119 @@ export class OpenAIAgenticAdapter implements AgenticLoopAdapter {
   }
 }
 
+/** Responses adapter for current OpenAI reasoning/coding models and Codex API models. */
+export class OpenAIResponsesAgenticAdapter implements AgenticLoopAdapter {
+  private input: OpenAI.Responses.ResponseInputItem[] = [];
+
+  constructor(
+    private client: OpenAI,
+    private model: string,
+    private systemPrompt: string = SYSTEM_PROMPT,
+    private promptCacheContext: Partial<PromptCacheContext> = {}
+  ) {}
+
+  async send(
+    userMessage: string,
+    toolResults?: Array<{ id: string; content: string }>
+  ): Promise<AdapterResponse> {
+    for (const result of toolResults ?? []) {
+      this.input.push({ type: "function_call_output", call_id: result.id, output: result.content });
+    }
+    this.input.push({ role: "user", content: userMessage });
+
+    const promptFingerprint = fingerprintPrompt(this.systemPrompt);
+    const tools: OpenAI.Responses.FunctionTool[] = toOpenAITools().map((tool) => ({
+      type: "function",
+      ...tool.function,
+      // Preserve optional tool arguments instead of implicitly requiring every field.
+      strict: false,
+    }));
+    const promptCacheKey = buildOpenAIPromptCacheKey({
+      provider: "openai",
+      model: this.model,
+      flow: this.promptCacheContext.flow ?? "loop",
+      projectId: this.promptCacheContext.projectId,
+      taskId: this.promptCacheContext.taskId,
+      toolSchemaVersion: this.promptCacheContext.toolSchemaVersion ?? fingerprintJson(tools),
+      instructionsFingerprint: this.promptCacheContext.instructionsFingerprint ?? promptFingerprint,
+    });
+    const request: OpenAI.Responses.ResponseCreateParamsNonStreaming = {
+      model: this.model,
+      instructions: this.systemPrompt,
+      input: [...this.input],
+      tools,
+      max_output_tokens: 16384,
+      store: false,
+      include: ["reasoning.encrypted_content"],
+      prompt_cache_key: promptCacheKey,
+      prompt_cache_retention: "in-memory",
+    };
+    let response = await this.client.responses.create(request);
+    if (
+      response.status === "incomplete" &&
+      response.incomplete_details?.reason === "max_output_tokens"
+    ) {
+      response = await this.client.responses.create({ ...request, max_output_tokens: 32768 });
+    }
+    if (response.status && response.status !== "completed") {
+      throw new Error(
+        `OpenAI response did not complete: ${response.error?.message ?? response.incomplete_details?.reason ?? response.status}`
+      );
+    }
+
+    const toolCalls: ToolCall[] = [];
+    let text = "";
+    for (const item of response.output ?? []) {
+      if (item.type === "message") {
+        for (const content of item.content) {
+          if (content.type === "output_text") text += content.text;
+        }
+      }
+      if (item.type !== "function_call") continue;
+      if (!item.call_id || !item.name) throw new Error("OpenAI returned an invalid function call.");
+      let args: unknown;
+      try {
+        args = JSON.parse(item.arguments);
+      } catch {
+        throw new Error(`OpenAI returned invalid JSON for tool ${item.name}.`);
+      }
+      if (!args || typeof args !== "object" || Array.isArray(args)) {
+        throw new Error(`OpenAI returned invalid arguments for tool ${item.name}.`);
+      }
+      toolCalls.push({ id: item.call_id, name: item.name, args: args as Record<string, unknown> });
+    }
+    text = response.output_text || text;
+    if (!text && toolCalls.length === 0) {
+      throw new Error("OpenAI returned neither final content nor tool calls.");
+    }
+    // Reasoning items must be replayed with their associated function calls and outputs.
+    this.input.push(...(response.output ?? []));
+    return {
+      text,
+      toolCalls,
+      cacheMetrics: extractOpenAICacheUsage({
+        response,
+        flow: this.promptCacheContext.flow ?? "loop",
+        promptFingerprint,
+        promptCacheKey,
+      }),
+    };
+  }
+}
+
 /** Gemini adapter. */
 type GeminiPart = {
   text?: string;
-  functionCall?: { name: string; args?: Record<string, unknown> };
-  functionResponse?: { name: string; response: unknown };
+  thought?: boolean;
+  thoughtSignature?: string;
+  functionCall?: { id?: string; name: string; args?: Record<string, unknown> };
+  functionResponse?: { id?: string; name: string; response: unknown };
 };
 
 export class GeminiAgenticAdapter implements AgenticLoopAdapter {
   private contents: Array<{ role: "user" | "model"; parts: GeminiPart[] }> = [];
+  private calls = new Map<string, { name: string; providerId?: string }>();
+  private nextCallId = 0;
 
   constructor(
     private ai: GoogleGenAI,
@@ -372,9 +502,16 @@ export class GeminiAgenticAdapter implements AgenticLoopAdapter {
       this.contents.push({
         role: "user",
         parts: [
-          ...toolResults.map((r) => ({
-            functionResponse: { name: r.id, response: { result: r.content } },
-          })),
+          ...toolResults.map((r) => {
+            const call = this.calls.get(r.id);
+            return {
+              functionResponse: {
+                ...(call?.providerId ? { id: call.providerId } : {}),
+                name: call?.name ?? r.id,
+                response: { result: r.content },
+              },
+            };
+          }),
           { text: userMessage },
         ] as GeminiPart[],
       });
@@ -391,27 +528,30 @@ export class GeminiAgenticAdapter implements AgenticLoopAdapter {
       },
     });
 
-    const response = result as {
-      candidates?: Array<{ content?: { parts?: unknown[] } }>;
-      text?: string;
-    };
+    const response = result;
+    assertGeminiCompletion(response);
     const candidates = response.candidates;
     const parts =
       candidates?.[0]?.content?.parts ?? (response.text ? [{ text: response.text }] : []);
-    let text = "";
+    const text = getGeminiResponseText(response);
     const toolCalls: ToolCall[] = [];
     for (const part of Array.isArray(parts) ? parts : []) {
       if (typeof part === "object" && part !== null) {
-        if ("text" in part && typeof (part as { text?: string }).text === "string") {
-          text += (part as { text: string }).text;
-        }
         if ("functionCall" in part && (part as { functionCall?: unknown }).functionCall) {
-          const fc = (part as { functionCall: { name?: string; args?: Record<string, unknown> } })
+          const fc = (part as { functionCall: { id?: string; name?: string; args?: unknown } })
             .functionCall;
+          if (
+            !fc.name ||
+            (fc.args != null && (typeof fc.args !== "object" || Array.isArray(fc.args)))
+          ) {
+            throw new Error("Gemini returned an invalid function call.");
+          }
+          const id = fc.id ?? `gemini-call-${++this.nextCallId}`;
+          this.calls.set(id, { name: fc.name, providerId: fc.id });
           toolCalls.push({
-            id: fc.name ?? "",
-            name: fc.name ?? "",
-            args: fc.args ?? {},
+            id,
+            name: fc.name,
+            args: (fc.args ?? {}) as Record<string, unknown>,
           });
         }
       }
@@ -420,6 +560,8 @@ export class GeminiAgenticAdapter implements AgenticLoopAdapter {
       role: "model",
       parts: (Array.isArray(parts) ? parts : [{ text }]) as GeminiPart[],
     });
+    if (!text && toolCalls.length === 0)
+      throw new Error("Gemini returned neither final content nor tool calls.");
     return { text, toolCalls };
   }
 }

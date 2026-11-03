@@ -97,7 +97,7 @@ export function OnboardingPage() {
   const isConnectionErr = error !== null && error === CONNECTION_ERROR_MESSAGE;
   const onboardingCli = getOnboardingAgentCliRequirement(provider);
   const hasKeyContent = keyValue.trim().length > 0;
-  const shouldFetchCliKeys = onboardingCli !== null && hasKeyContent;
+  const shouldFetchCliKeys = onboardingCli !== null && (hasKeyContent || !needsKeyInput);
   const noKeyMessage =
     provider === "ollama"
       ? "No API key needed — install/start Ollama and you’re good to go."
@@ -147,14 +147,14 @@ export function OnboardingPage() {
   const cliMissingForContinue =
     onboardingCli !== null &&
     onboardingCli.blockContinueWhenMissing &&
-    hasKeyContent &&
+    (hasKeyContent || !needsKeyInput) &&
     cliCheckKeys !== null &&
     !isCliInstalledForKind(cliCheckKeys, onboardingCli.kind);
 
   const cliCheckPending =
     onboardingCli !== null &&
     onboardingCli.blockContinueWhenMissing &&
-    hasKeyContent &&
+    (hasKeyContent || !needsKeyInput) &&
     cliCheckLoading;
 
   const handleContinue = async () => {
@@ -164,6 +164,15 @@ export function OnboardingPage() {
     }
     setSaving(true);
     try {
+      if (provider === "claude-cli" || provider === "codex") {
+        const agent = { type: provider, model: null, cliCommand: null };
+        await api.globalSettings.put({
+          simpleComplexityAgent: agent,
+          complexComplexityAgent: agent,
+        });
+        navigate(intended);
+        return;
+      }
       if (provider === "lmstudio" || provider === "ollama") {
         navigate(intended);
         setSaving(false);
@@ -211,10 +220,10 @@ export function OnboardingPage() {
   };
 
   const canContinue =
-    provider === "custom" ||
-    provider === "lmstudio" ||
-    provider === "ollama" ||
-    (needsKeyInput && keyValue.trim().length > 0 && !cliMissingForContinue && !cliCheckPending);
+    (!needsKeyInput || keyValue.trim().length > 0) &&
+    !cliMissingForContinue &&
+    !cliCheckPending &&
+    (!(provider === "codex" || provider === "claude-cli") || cliCheckKeys !== null);
 
   const handleCancel = () => {
     navigate("/");
