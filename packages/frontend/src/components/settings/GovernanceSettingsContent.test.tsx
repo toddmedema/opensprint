@@ -14,6 +14,8 @@ vi.mock("../../api/client", async (importOriginal) => {
     api: {
       governance: {
         get: vi.fn(),
+        getCase: vi.fn(),
+        revokeRelease: vi.fn(),
         configure: vi.fn(),
         resolve: vi.fn(),
         createRelease: vi.fn(),
@@ -28,6 +30,7 @@ vi.mock("../../api/client", async (importOriginal) => {
         replaySources: vi.fn(),
         captureFixture: vi.fn(),
         evaluate: vi.fn(),
+        authorizeScope: vi.fn(),
       },
     },
   };
@@ -142,7 +145,17 @@ function summary(overrides: Partial<GovernanceSummary> = {}): GovernanceSummary 
   };
 }
 async function renderGovernance(data = summary()) {
-  vi.mocked(api.governance.get).mockResolvedValue(data);
+  vi.mocked(api.governance.getCase).mockImplementation(async (_project, caseId) => {
+    const current = data.cases.find((entry) => entry.id === caseId)!;
+    return { ...current, evidence: item.evidence };
+  });
+  vi.mocked(api.governance.get).mockResolvedValue({
+    ...data,
+    cases: data.cases.map((entry) => {
+      const { evidence: _evidence, ...brief } = entry as ReviewCase;
+      return brief;
+    }),
+  });
   render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
@@ -174,7 +187,21 @@ async function prepareRuling(action: string) {
 describe("GovernanceSettingsContent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(api.governance.resolve).mockResolvedValue({ ...item, state: "allowed", version: 4 });
+    vi.mocked(api.governance.resolve).mockResolvedValue({
+      id: "decision-1",
+      projectId: "proj-1",
+      caseId: item.id,
+      taskId: item.taskId,
+      releaseId: item.releaseId,
+      action: "allow_once",
+      actor: "Owner",
+      rationale: "Bounded",
+      headSha: item.headSha,
+      diffHash: item.diffHash,
+      findingIds: [],
+      ruleRevisionIds: [],
+      createdAt: item.createdAt,
+    });
     vi.mocked(api.governance.fixtures).mockResolvedValue([]);
     vi.mocked(api.governance.replaySources).mockResolvedValue([]);
   });
@@ -240,6 +267,18 @@ describe("GovernanceSettingsContent", () => {
       )
     );
   });
+  it("allows saving rollout settings without an automated judge", async () => {
+    await renderGovernance();
+    await unlock();
+    await userEvent.click(screen.getByRole("button", { name: "Save rollout settings" }));
+    await waitFor(() =>
+      expect(api.governance.configure).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ judgeAgent: null, judgeTokenPricing: null }),
+        "owner-approval-capability"
+      )
+    );
+  });
   it("supports roving keyboard navigation between governance panels", async () => {
     await renderGovernance();
     const docket = screen.getByRole("tab", { name: "Docket (1)" });
@@ -252,6 +291,44 @@ describe("GovernanceSettingsContent", () => {
     expect(screen.getByRole("tab", { name: "Decision history" })).toHaveFocus();
     await userEvent.keyboard("{Home}");
     expect(docket).toHaveFocus();
+  });
+  it("abandons a human-cancelled case, the only way to end it without a fix", async () => {
+    await renderGovernance(summary({ cases: [{ ...item, state: "cancelled", humanCancelled: true }] }));
+    await prepareRuling("abandon");
+    expect(screen.getByTestId("governance-action-consequence")).toHaveTextContent(
+      "close the task without merging"
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Record human ruling" }));
+    await waitFor(() =>
+      expect(vi.mocked(api.governance.resolve).mock.calls[0]?.[2]).toMatchObject({
+        action: "abandon",
+        expectedVersion: item.version,
+      })
+    );
+  });
+  it("grants protected scope as structured values for a named task", async () => {
+    vi.mocked(api.governance.authorizeScope).mockResolvedValue({ ok: true });
+    await renderGovernance();
+    await unlock();
+    await userEvent.click(screen.getByRole("tab", { name: "Standards" }));
+    await userEvent.click(screen.getByText("Authorize protected scope for a task"));
+    const panel = screen.getByText("Authorize protected scope for a task").closest("details")!;
+    fireEvent.change(within(panel).getByLabelText("Task to authorize"), { target: { value: "os-42" } });
+    await userEvent.click(within(panel).getByLabelText("oauth"));
+    await userEvent.click(within(panel).getByLabelText("integration"));
+    fireEvent.change(within(panel).getByLabelText("Reason for the grant"), {
+      target: { value: "Connector rewrite" },
+    });
+    await userEvent.click(within(panel).getByRole("button", { name: "Grant scope" }));
+    await waitFor(() =>
+      expect(api.governance.authorizeScope).toHaveBeenCalledWith(
+        "proj-1",
+        "os-42",
+        "oauth, integration",
+        "Connector rewrite",
+        "owner-approval-capability"
+      )
+    );
   });
   it("opens and focuses approval authority from the ruling form without losing the draft rationale", async () => {
     await renderGovernance();
@@ -320,10 +397,10 @@ describe("GovernanceSettingsContent", () => {
       summary({ cases: [{ ...item, state: "stale", version: 4 }] })
     );
     vi.mocked(api.governance.resolve).mockRejectedValue(
-      new ApiError("Case revision changed", "GOVERNANCE_CONFLICT")
+      new ApiError("Case revision changed", "GOVERNANCE_STALE_VERSION")
     );
     await userEvent.click(screen.getByRole("button", { name: "Record human ruling" }));
-    await screen.findByText(/This review changed before your decision was saved/);
+    await screen.findByText(/changed before your action was saved/);
     await screen.findByText(/Code or policy changed after this review/);
     expect(screen.getByRole("option", { name: "Allow this change once" })).toBeDisabled();
     expect(screen.getByRole("option", { name: "Allow with reusable conditions" })).toBeDisabled();
@@ -434,9 +511,12 @@ describe("GovernanceSettingsContent", () => {
     await renderGovernance(summary({ cases: [{ ...item, state: "stale" }] }));
     expect(screen.getByText(/a fresh review is required/)).toBeInTheDocument();
     await userEvent.click(screen.getByText("Inspect full diff & retained evidence"));
-    expect(screen.getByText(/diagnostic read/, { selector: "pre" })).toBeInTheDocument();
+    expect(await screen.findByTestId("governance-evidence-diff")).toHaveTextContent(
+      "diagnostic read"
+    );
     expect(screen.getByRole("button", { name: "Record human ruling" })).toBeDisabled();
     expect(screen.getByRole("option", { name: "Allow this change once" })).toBeDisabled();
+    expect(screen.getByRole("option", { name: "Request more evidence" })).toBeDisabled();
   });
   it("keeps a human-cancelled change visible with safe recovery and no allowance", async () => {
     await renderGovernance(
@@ -446,5 +526,6 @@ describe("GovernanceSettingsContent", () => {
     expect(screen.getByRole("combobox", { name: /Decision/ })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Allow this change once" })).toBeDisabled();
     expect(screen.getByRole("option", { name: "Allow with reusable conditions" })).toBeDisabled();
+    expect(screen.getByRole("option", { name: "Request more evidence" })).toBeDisabled();
   });
 });

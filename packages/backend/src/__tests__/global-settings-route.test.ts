@@ -206,6 +206,34 @@ describe("Global Settings API", () => {
       );
     });
 
+    it("refuses to replace an unreachable database when retained policy cannot be checked", async () => {
+      const before = await getGlobalSettings();
+      const { taskStore } = await import("../services/task-store.service.js");
+      vi.mocked(taskStore.getDb).mockRejectedValueOnce(
+        Object.assign(new Error("Database unavailable"), { code: "DATABASE_UNAVAILABLE" })
+      );
+      vi.stubEnv("OPENSPRINT_GOVERNANCE_OWNER", "");
+      vi.stubEnv("OPENSPRINT_GOVERNANCE_APPROVAL_SECRET", "");
+      const res = await gsAuthed(app).put(`${API_PREFIX}/global-settings`).send({
+        databaseUrl: "postgresql://u:p@replacement.example.com:5432/db",
+      });
+      vi.unstubAllEnvs();
+      expect(res.status).toBeGreaterThanOrEqual(500);
+      expect(await getGlobalSettings()).toEqual(before);
+    });
+
+    it("keeps refusing a repoint when the database is down and the check is not a connection failure", async () => {
+      const { taskStore } = await import("../services/task-store.service.js");
+      vi.mocked(taskStore.getDb).mockRejectedValueOnce(new Error("schema corrupted"));
+      vi.stubEnv("OPENSPRINT_GOVERNANCE_OWNER", "");
+      vi.stubEnv("OPENSPRINT_GOVERNANCE_APPROVAL_SECRET", "");
+      const res = await gsAuthed(app).put(`${API_PREFIX}/global-settings`).send({
+        databaseUrl: "postgresql://u:p@replacement.example.com:5432/db",
+      });
+      vi.unstubAllEnvs();
+      expect(res.status).toBeGreaterThanOrEqual(500);
+    });
+
     it("accepts postgres:// scheme", async () => {
       const res = await gsAuthed(app).put(`${API_PREFIX}/global-settings`).send({
         databaseUrl: "postgres://u:secret@localhost:5432/test",

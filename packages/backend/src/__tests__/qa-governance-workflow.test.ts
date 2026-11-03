@@ -7,10 +7,15 @@ import { promisify } from "node:util";
 import type { GovernanceTaskPin } from "@opensprint/shared";
 
 const calls = vi.hoisted(() => ({
+  isGovernanceInactive: async () => false,
   getTaskPinsForBranch: vi.fn(),
   listCases: vi.fn(),
   getReviewApproval: vi.fn(),
   getTrustedScope: vi.fn(),
+  getGrantedScope: vi.fn(),
+  getTaskPin: vi.fn(),
+  getConfig: vi.fn(),
+  audit: vi.fn(),
   assertMergeAdmission: vi.fn(),
   getRelease: vi.fn(),
   isReleaseRevoked: vi.fn(),
@@ -40,6 +45,8 @@ const exec = promisify(execFile);
 describe("fresh end-to-end governance QA", () => {
   it("shadow governance permits an ordinarily valid upstream same-file merge", async () => {
     vi.resetAllMocks();
+    calls.getConfig.mockResolvedValue({ mode: "shadow" });
+    calls.getGrantedScope.mockResolvedValue("Ordinary feature");
     const repo = await fs.mkdtemp(path.join(os.tmpdir(), "qa-shadow-publication-"));
     try {
       await exec("git", ["init", "-b", "main"], { cwd: repo });
@@ -99,8 +106,12 @@ describe("fresh end-to-end governance QA", () => {
       await fs.rm(repo, { recursive: true, force: true });
     }
   });
-  it("cannot add an unapproved policy source after a shadow review", async () => {
+  // Shadow promises ordinary review, so a missing source approval is recorded rather than refusing
+  // the merge. This test used to expect the refusal; enforced mode keeps it.
+  it("records an unapproved policy source after a shadow review without blocking", async () => {
     vi.resetAllMocks();
+    calls.getConfig.mockResolvedValue({ mode: "shadow" });
+    calls.getGrantedScope.mockResolvedValue("Ordinary feature");
     calls.sensitivePaths.mockImplementation((paths: string[]) =>
       paths.filter((file) => file === "AGENTS.md")
     );
@@ -151,7 +162,13 @@ describe("fresh end-to-end governance QA", () => {
           branchName: "task",
           baseBranch: "main",
         })
-      ).rejects.toThrow("Human source approval required");
+      ).resolves.toBeUndefined();
+      expect(calls.audit).toHaveBeenCalledWith(
+        "p",
+        "shadow_source_approval_missing",
+        "system",
+        expect.objectContaining({ taskId: "t" })
+      );
     } finally {
       await fs.rm(repo, { recursive: true, force: true });
     }

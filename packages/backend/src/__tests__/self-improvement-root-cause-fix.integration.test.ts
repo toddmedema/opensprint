@@ -153,27 +153,6 @@ vi.mock("../services/behavior-version-store.service.js", () => ({
   }),
 }));
 
-vi.mock("../services/self-improvement-experiment.service.js", () => ({
-  mineReplayGradeExecuteSessionIds: vi.fn().mockResolvedValue([]),
-  SelfImprovementExperimentService: vi.fn().mockImplementation(() => ({
-    generateAndPersistCandidate: vi.fn().mockResolvedValue({
-      versionId: "exp-test",
-      bundle: {},
-    }),
-  })),
-}));
-
-vi.mock("../services/experiment-replay.service.js", () => ({
-  ExperimentReplayService: vi.fn().mockImplementation(() => ({
-    runReplay: vi.fn().mockResolvedValue({
-      sessions: [],
-      baselineMetrics: { taskSuccessRate: 0.8 },
-      candidateMetrics: { taskSuccessRate: 0.8 },
-      sampleSize: 0,
-    }),
-  })),
-}));
-
 const mockReadSinceByProjectId = vi.fn().mockResolvedValue([]);
 
 vi.mock("../services/event-log.service.js", () => ({

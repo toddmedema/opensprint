@@ -9,6 +9,7 @@ import type {
   GovernanceTaskPin,
   PolicyProposal,
   PolicyRelease,
+  PolicyRuleRevision,
 } from "@opensprint/shared";
 import type { DbClient } from "../db/client.js";
 import { wrapAsync } from "../middleware/wrap-async.js";
@@ -18,12 +19,14 @@ import {
   requireGovernanceHuman,
 } from "../middleware/governance-auth.js";
 import { governanceService } from "../services/governance.service.js";
-import { governanceError } from "../services/policy-context.js";
+import { notificationService } from "../services/notification.service.js";
+import { GOVERNANCE_INVALID_INPUT, governanceError } from "../services/policy-context.js";
 import { ProjectService } from "../services/project.service.js";
 import { getCombinedInstructions } from "../services/agent-instructions.service.js";
 import { broadcastToProject } from "../websocket/index.js";
 import {
   readGovernanceSourceHashes,
+  governanceRuntimeDrift,
   governanceSourceDrift,
   resolveGovernanceSensitiveSourcePaths,
 } from "../services/governance-source-hashes.js";
@@ -34,7 +37,10 @@ export async function assertGovernanceEnforcementRevision(
   revision: string
 ): Promise<void> {
   if (!/^[a-f0-9]{40}$/i.test(revision))
-    governanceError("A complete immutable enforcement commit SHA is required.");
+    governanceError(
+      "A complete immutable enforcement commit SHA is required.",
+      GOVERNANCE_INVALID_INPUT
+    );
   try {
     await run("git", ["merge-base", "--is-ancestor", revision, "HEAD"], {
       env: agentProcessEnvironment(),
@@ -82,14 +88,27 @@ export function createGovernanceRouter(
     );
     return { ...code, scopeBaseSha };
   };
+  const sourceDrift = async (
+    p: string,
+    repoPath: string,
+    release: PolicyRelease,
+    db?: DbClient
+  ) => {
+    const approved = await governanceService.getApprovedSourceHashes(p, release);
+    const current = db
+      ? await readGovernanceSourceHashes(p, repoPath, db)
+      : await governanceService.readSourceHashes(p, repoPath);
+    return {
+      current,
+      blocking: governanceSourceDrift(approved, current),
+      runtime: governanceRuntimeDrift(approved, current),
+    };
+  };
   const verifySourceSnapshot =
     (p: string, repoPath: string) =>
     async (release: PolicyRelease, db: DbClient): Promise<void> => {
       await assertGovernanceEnforcementRevision(repoPath, release.enforcementRevision);
-      const drift = governanceSourceDrift(
-        release.sourceHashes,
-        await readGovernanceSourceHashes(p, repoPath, db)
-      );
+      const { blocking: drift } = await sourceDrift(p, repoPath, release, db);
       if (drift.length)
         governanceError(
           `Policy sources changed after the approved/evaluated snapshot: ${drift.join(", ")}. Create and evaluate an exact reconciliation proposal.`,
@@ -112,7 +131,7 @@ export function createGovernanceRouter(
           governanceService.getConfig(p),
           governanceService.getActiveReleaseId(p),
           governanceService.listReleases(p),
-          governanceService.listCases(p),
+          governanceService.listCaseSummaries(p),
           governanceService.listDecisions(p),
           governanceService.listProposals(p),
           governanceService.listAuditEvents(p),
@@ -182,7 +201,10 @@ export function createGovernanceRouter(
       const p = projectId(req),
         taskId = String(req.params.taskId);
       if (typeof req.body.expectedReleaseId !== "string" || typeof req.body.rationale !== "string")
-        governanceError("Replacement release and rationale are required.");
+        governanceError(
+          "Replacement release and rationale are required.",
+          GOVERNANCE_INVALID_INPUT
+        );
       const project = await projectService.getProject(p);
       const { orchestratorService } = await import("../services/orchestrator.service.js");
       if (orchestratorService.hasActiveTask(p, taskId))
@@ -213,7 +235,7 @@ export function createGovernanceRouter(
     requireGovernanceHuman,
     wrapAsync(async (req, res) => {
       if (typeof req.body.scope !== "string" || typeof req.body.rationale !== "string")
-        governanceError("Scope and rationale are required.");
+        governanceError("Scope and rationale are required.", GOVERNANCE_INVALID_INPUT);
       await governanceService.authorizeTaskScope(
         projectId(req),
         String(req.params.taskId),
@@ -229,6 +251,8 @@ export function createGovernanceRouter(
     requireGovernanceHuman,
     wrapAsync(async (req, res) => {
       const p = projectId(req);
+      if (!Number.isInteger(req.body.expectedVersion))
+        governanceError("An expected configuration version is required.", GOVERNANCE_INVALID_INPUT);
       if (
         req.body.mode !== "disabled" &&
         (await projectService.getSettings(p)).reviewMode !== "always"
@@ -244,25 +268,100 @@ export function createGovernanceRouter(
     requireGovernanceHuman,
     wrapAsync(async (req, res) => {
       const p = projectId(req);
+      const {
+        expectedActiveReleaseId,
+        rationale,
+        rules,
+        enforcementRevision: requested,
+      } = req.body as {
+        expectedActiveReleaseId?: unknown;
+        rationale?: unknown;
+        rules?: unknown;
+        enforcementRevision?: unknown;
+      };
+      const supplied: unknown = req.body.instructions ?? {};
+      if (
+        typeof supplied !== "object" ||
+        supplied === null ||
+        Array.isArray(supplied) ||
+        Object.values(supplied).some((text) => typeof text !== "string")
+      )
+        governanceError(
+          "Release instructions must map agent roles to text.",
+          GOVERNANCE_INVALID_INPUT
+        );
+      if (!Array.isArray(rules))
+        governanceError("A release must list its rules.", GOVERNANCE_INVALID_INPUT);
+      if (requested !== undefined && typeof requested !== "string")
+        governanceError("An enforcement revision must be a commit SHA.", GOVERNANCE_INVALID_INPUT);
+      if (expectedActiveReleaseId !== null && typeof expectedActiveReleaseId !== "string")
+        governanceError(
+          "The expected active release must be a release ID or null.",
+          GOVERNANCE_INVALID_INPUT,
+          400
+        );
+      if (typeof rationale !== "string" || !rationale.trim())
+        governanceError("A release approval rationale is required.", GOVERNANCE_INVALID_INPUT, 400);
       const project = await projectService.getProject(p);
       const { stdout } = await run("git", ["rev-parse", "HEAD"], {
         env: agentProcessEnvironment(),
         cwd: project.repoPath,
       });
-      const enforcementRevision = req.body.enforcementRevision?.trim() || stdout.trim();
+      const enforcementRevision = requested?.trim() || stdout.trim();
       await assertGovernanceEnforcementRevision(project.repoPath, enforcementRevision);
-      const instructions = { ...req.body.instructions };
+      const instructions = { ...(supplied as PolicyRelease["instructions"]) };
       for (const role of AGENT_ROLE_CANONICAL_ORDER) {
         const source = await getCombinedInstructions(project.repoPath, role);
         if (instructions[role] === undefined) instructions[role] = source;
       }
-      const sourceHashes = await readGovernanceSourceHashes(p, project.repoPath);
-      const data = await governanceService.createRelease(
-        p,
-        { rules: req.body.rules, instructions, sourceHashes, enforcementRevision },
-        getGovernanceActor(req)
+      const sourceHashes = await governanceService.readSourceHashes(p, project.repoPath);
+      const data = await governanceService.withPublicationLock(p, () =>
+        governanceService.createRelease(
+          p,
+          {
+            rules: rules as PolicyRuleRevision[],
+            instructions,
+            sourceHashes,
+            enforcementRevision,
+            publication: { rationale, expectedActiveReleaseId },
+          },
+          getGovernanceActor(req)
+        )
       );
       res.status(201).json({ data });
+    })
+  );
+  router.post(
+    "/releases/reconcile-source-snapshot",
+    requireGovernanceHuman,
+    wrapAsync(async (req, res) => {
+      const p = projectId(req);
+      const { expectedActiveReleaseId, rationale } = req.body as Record<string, unknown>;
+      if (typeof expectedActiveReleaseId !== "string" || typeof rationale !== "string")
+        governanceError(
+          "The expected active release and a rationale are required.",
+          GOVERNANCE_INVALID_INPUT
+        );
+      const project = await projectService.getProject(p);
+      const active = await governanceService.getRelease(p, expectedActiveReleaseId);
+      const { current, blocking, runtime } = await sourceDrift(p, project.repoPath, active);
+      const { stdout } = await run("git", ["rev-parse", "HEAD"], {
+        env: agentProcessEnvironment(),
+        cwd: project.repoPath,
+      });
+      res.status(201).json({
+        data: await governanceService.reconcileSourceSnapshot(
+          p,
+          {
+            expectedActiveReleaseId,
+            rationale,
+            sourceHashes: current,
+            enforcementRevision: stdout.trim(),
+            drift: [...blocking, ...runtime],
+          },
+          getGovernanceActor(req)
+        ),
+      });
     })
   );
   router.post(
@@ -270,7 +369,7 @@ export function createGovernanceRouter(
     requireGovernanceHuman,
     wrapAsync(async (req, res) => {
       if (typeof req.body.rationale !== "string")
-        governanceError("A human revocation rationale is required.");
+        governanceError("A human revocation rationale is required.", GOVERNANCE_INVALID_INPUT);
       await governanceService.revokeRelease(
         projectId(req),
         String(req.params.releaseId),
@@ -335,10 +434,15 @@ export function createGovernanceRouter(
       const p = projectId(req);
       const pin = await governanceService.getTaskPin(p, String(req.params.taskId));
       if (!pin)
-        governanceError("A retained governed assignment is required for source-change approval.");
+        governanceError(
+          "A retained governed assignment is required for source-change approval.",
+          "GOVERNANCE_NOT_FOUND",
+          404
+        );
       const code = await sourceCodeSnapshot(pin);
       const changedPaths = await resolveGovernanceSensitiveSourcePaths({
         repoPath: pin.worktreePath,
+        projectId: p,
         ...code,
       });
       res.json({
@@ -371,7 +475,10 @@ export function createGovernanceRouter(
         typeof input.rationale !== "string" ||
         !input.rationale.trim()
       )
-        governanceError("Task, reviewed code binding, and approval rationale are required.");
+        governanceError(
+          "Task, reviewed code binding, and approval rationale are required.",
+          GOVERNANCE_INVALID_INPUT
+        );
       const taskId = input.taskId,
         headSha = input.headSha,
         diffHash = input.diffHash,
@@ -379,7 +486,11 @@ export function createGovernanceRouter(
       const data = await governanceService.withPublicationLock(p, async (assertLease) => {
         const pin = await governanceService.getTaskPin(p, taskId);
         if (!pin)
-          governanceError("A retained governed assignment is required for source-change approval.");
+          governanceError(
+            "A retained governed assignment is required for source-change approval.",
+            "GOVERNANCE_NOT_FOUND",
+            404
+          );
         const code = await sourceCodeSnapshot(pin);
         if (headSha !== code.headSha || diffHash !== code.diffHash)
           governanceError(
@@ -388,6 +499,7 @@ export function createGovernanceRouter(
           );
         const changedPaths = await resolveGovernanceSensitiveSourcePaths({
           repoPath: pin.worktreePath,
+          projectId: p,
           ...code,
         });
         if (!changedPaths.length)
@@ -431,12 +543,19 @@ export function createGovernanceRouter(
     "/decisions/:decisionId/revoke",
     requireGovernanceHuman,
     wrapAsync(async (req, res) => {
-      await governanceService.revokeDecision(
-        projectId(req),
+      const p = projectId(req);
+      const stopped = await governanceService.revokeDecision(
+        p,
         String(req.params.decisionId),
         req.body.rationale,
         getGovernanceActor(req)
       );
+      const project = await projectService.getProject(p);
+      const { orchestratorService } = await import("../services/orchestrator.service.js");
+      for (const taskId of stopped)
+        if (orchestratorService.hasActiveTask(p, taskId))
+          await orchestratorService.pauseForGovernance(p, project.repoPath, taskId);
+      await governanceService.deliverOutbox(p);
       res.json({ data: { ok: true } });
     })
   );
@@ -454,7 +573,7 @@ export function createGovernanceRouter(
       const p = projectId(req);
       const project = await projectService.getProject(p);
       // Source hashes are server-derived and part of the evaluated immutable candidate manifest.
-      const sourceHashes = await readGovernanceSourceHashes(p, project.repoPath);
+      const sourceHashes = await governanceService.readSourceHashes(p, project.repoPath);
       return res.status(201).json({
         data: await governanceService.createProposal(
           p,
@@ -478,15 +597,18 @@ export function createGovernanceRouter(
         String(req.params.proposalId)
       );
       await assertGovernanceEnforcementRevision(project.repoPath, candidate.enforcementRevision);
-      res.json({
-        data: await governanceService.activateProposal(
-          p,
-          String(req.params.proposalId),
-          req.body,
-          getGovernanceActor(req),
-          verifySourceSnapshot(p, project.repoPath)
-        ),
-      });
+      const activated = await governanceService.activateProposal(
+        p,
+        String(req.params.proposalId),
+        req.body,
+        getGovernanceActor(req),
+        verifySourceSnapshot(p, project.repoPath)
+      );
+      await notificationService.resolveSelfImprovementApprovalNotifications(
+        p,
+        String(req.params.proposalId)
+      );
+      res.json({ data: activated });
     })
   );
   router.post(
@@ -500,6 +622,10 @@ export function createGovernanceRouter(
         req.body.rationale,
         getGovernanceActor(req)
       );
+      await notificationService.resolveSelfImprovementApprovalNotifications(
+        projectId(req),
+        String(req.params.proposalId)
+      );
       res.json({ data: { ok: true } });
     })
   );
@@ -511,6 +637,8 @@ export function createGovernanceRouter(
       const project = await projectService.getProject(p);
       const release = await governanceService.getRelease(p, req.body.releaseId);
       await assertGovernanceEnforcementRevision(project.repoPath, release.enforcementRevision);
+      // Rollback is the way out of a bad state, so drift is recorded rather than refused. New work
+      // stays held until the owner reconciles the restored release's source snapshot.
       res.json({
         data: await governanceService.rollback(
           p,
@@ -518,7 +646,10 @@ export function createGovernanceRouter(
           req.body.expectedActiveReleaseId,
           req.body.rationale,
           getGovernanceActor(req),
-          verifySourceSnapshot(p, project.repoPath)
+          async (restored, db) => {
+            const { blocking, runtime } = await sourceDrift(p, project.repoPath, restored, db);
+            return { sourceDrift: [...blocking, ...runtime] };
+          }
         ),
       });
     })

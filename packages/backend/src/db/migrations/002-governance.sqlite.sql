@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS governance_events (
   project_id TEXT NOT NULL, id TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL,
   PRIMARY KEY(project_id,id)
 );
+CREATE INDEX IF NOT EXISTS idx_governance_events_kind ON governance_events(project_id,kind);
 CREATE TABLE IF NOT EXISTS governance_outbox (
   project_id TEXT NOT NULL, id TEXT NOT NULL, case_id TEXT NOT NULL,
   state TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0, payload TEXT NOT NULL,
@@ -78,6 +79,6 @@ CREATE TABLE IF NOT EXISTS governance_review_approvals (
 );
 
 CREATE TABLE IF NOT EXISTS governance_publication_leases (
- project_id TEXT PRIMARY KEY, token TEXT NOT NULL, expires_at TEXT NOT NULL
+ project_id TEXT PRIMARY KEY, token TEXT NOT NULL, expires_at TEXT NOT NULL, owner TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_policy_proposals_nomination ON policy_proposals(project_id,source_nomination_id);

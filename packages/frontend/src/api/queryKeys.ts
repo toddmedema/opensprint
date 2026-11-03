@@ -3,6 +3,8 @@
 export const queryKeys = {
   governance: {
     summary: (projectId: string) => ["governance", projectId] as const,
+    caseEvidence: (projectId: string, caseId: string, version: number, evidenceHash: string) =>
+      ["governance", projectId, "case", caseId, version, evidenceHash] as const,
   },
   projects: {
     all: ["projects"] as const,

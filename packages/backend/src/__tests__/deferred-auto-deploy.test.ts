@@ -43,6 +43,13 @@ function service(status = "success") {
     notify,
   });
 }
+/** The lock covers claim; runClaimed happens after the caller has released it. */
+async function drain(queue: DeferredAutoDeployService, expectedHead: string) {
+  await queue.runClaimed(
+    "project",
+    await queue.claim("project", repo, expectedHead, async () => {})
+  );
+}
 it("retains and deduplicates task/epic deploy actions across service restart", async () => {
   const first = service();
   await first.enqueue("project", "each_task", "task", "completed");
@@ -50,41 +57,58 @@ it("retains and deduplicates task/epic deploy actions across service restart", a
   await first.enqueue("project", "each_epic", "epic", "reviewed");
   expect(deploy).not.toHaveBeenCalled();
   const restarted = service();
-  await restarted.drain("project", repo, head, async () => {});
+  await drain(restarted, head);
   expect(deploy).toHaveBeenCalledTimes(2);
   expect(deploy).toHaveBeenCalledWith(
     "project",
     "each_task",
     expect.objectContaining({ expectedCommitHash: head, idempotencyKey: expect.any(String) })
   );
-  await restarted.drain("project", repo, head, async () => {});
+  await drain(restarted, head);
   expect(deploy).toHaveBeenCalledTimes(2);
 });
 it("withholds deploy when the actual checkout differs from the published reviewed head", async () => {
   const queue = service();
   await queue.enqueue("project", "each_task", "task", "completed");
-  await expect(queue.drain("project", repo, "0".repeat(40), async () => {})).rejects.toThrow(
-    "Published code changed"
-  );
+  await expect(drain(queue, "0".repeat(40))).rejects.toThrow("Published code changed");
   expect(deploy).not.toHaveBeenCalled();
   expect((await db.queryOne("SELECT state FROM governance_jobs"))?.state).toBe("pending");
 });
 it("does not rerun an interrupted external deployment blindly", async () => {
   const queue = service("running");
   await queue.enqueue("project", "each_epic", "epic", "reviewed");
-  await queue.drain("project", repo, head, async () => {});
+  await drain(queue, head);
   expect((await db.queryOne("SELECT state FROM governance_jobs"))?.state).toBe("needs_attention");
   expect(notify).toHaveBeenCalledTimes(1);
-  await service().drain("project", repo, head, async () => {});
+  await drain(service(), head);
   expect(deploy).toHaveBeenCalledTimes(1);
 });
 it("retries a known busy deployment without losing the durable action", async () => {
   const queue = service();
   await queue.enqueue("project", "each_task", "task", "completed");
   deploy.mockRejectedValueOnce(Object.assign(new Error("busy"), { code: "DEPLOYMENT_BUSY" }));
-  await queue.drain("project", repo, head, async () => {});
+  await drain(queue, head);
   expect((await db.queryOne("SELECT state FROM governance_jobs"))?.state).toBe("pending");
-  await queue.drain("project", repo, head, async () => {});
+  await drain(queue, head);
   expect((await db.queryOne("SELECT state FROM governance_jobs"))?.state).toBe("complete");
   expect(notify).not.toHaveBeenCalled();
+});
+it("claims under the lock and does not start the deployment until runClaimed", async () => {
+  const queue = service();
+  await queue.enqueue("project", "each_task", "task", "completed");
+  const claimed = await queue.claim("project", repo, head, async () => {});
+  expect(claimed).toHaveLength(1);
+  expect(deploy).not.toHaveBeenCalled();
+  expect((await db.queryOne("SELECT state FROM governance_jobs"))?.state).toBe("dispatching");
+  await queue.runClaimed("project", claimed);
+  expect(deploy).toHaveBeenCalledOnce();
+  expect((await db.queryOne("SELECT state FROM governance_jobs"))?.state).toBe("complete");
+});
+it("does not claim a job that is still running in this process", async () => {
+  const queue = service();
+  await queue.enqueue("project", "each_task", "task", "completed");
+  const claimed = await queue.claim("project", repo, head, async () => {});
+  expect(await queue.claim("project", repo, head, async () => {})).toEqual([]);
+  await queue.runClaimed("project", claimed);
+  expect(deploy).toHaveBeenCalledOnce();
 });

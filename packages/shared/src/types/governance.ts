@@ -10,7 +10,7 @@ export type GovernanceMode = "disabled" | "shadow" | "enforced";
 export interface GovernanceConfig {
   mode: GovernanceMode;
   version: number;
-  judgeAgent?: AgentConfig;
+  judgeAgent?: AgentConfig | null;
   /** Read-only API model for reconsideration; independent of the initial reviewer and judge. */
   reconsiderationAgent?: AgentConfig | null;
   reconsiderationTokenPricing?: { inputPerMillionUsd: number; outputPerMillionUsd: number } | null;
@@ -95,7 +95,9 @@ export type GovernanceDecisionAction =
   | "allow_once"
   | "allow_reusable"
   | "request_evidence"
-  | "cancel";
+  | "cancel"
+  /** Ends the work: the case stops holding its task, and the task closes unmerged. */
+  | "abandon";
 export interface PrecedentConditions {
   version: 1;
   paths: string[];
@@ -118,6 +120,7 @@ export interface ReviewCase {
   supersededByReleaseId?: string;
   /** Explicit human cancellation retains a hold until a safe human disposition. */
   humanCancelled?: boolean;
+  abandoned?: boolean;
   /** Trusted origin proof established this artifact was already published; this is remediation evidence, never new authority. */
   publishedRemediationOnly?: boolean;
   state: ReviewCaseState;
@@ -143,6 +146,8 @@ export interface ReviewCase {
   createdAt: string;
   updatedAt: string;
 }
+/** A docket row. Evidence holds whole prompts and diffs, so it is fetched per selected case. */
+export type ReviewCaseSummary = Omit<ReviewCase, "evidence">;
 export interface PolicyDecision {
   id: string;
   projectId: string;
@@ -174,6 +179,22 @@ export interface PolicyRulePatch {
   before: PolicyRuleRevision | null;
   after: PolicyRuleRevision | null;
 }
+/** Accept: the output must stand. Block or avoid: the known violation must not be accepted. */
+export type ReplayExpectedOutcome = "accept" | "block_or_avoid";
+/** One replayed fixture's bound identity and whether it actually exercised the amendment. */
+export interface PolicyEvaluationFixtureCoverage {
+  fixtureId: string;
+  fixtureHash: string;
+  taskId: string;
+  label: string;
+  expectedOutcome: ReplayExpectedOutcome;
+  holdout: boolean;
+  /** The task is cited by the amendment's own evidence, so it cannot count as held out. */
+  evidenceTask: boolean;
+  amendedRuleSelected: boolean;
+  /** Rendered policy differs beyond release and revision identifiers. */
+  contentDiffers: boolean;
+}
 export interface PolicyEvaluation {
   complete: boolean;
   passed: boolean;
@@ -182,6 +203,8 @@ export interface PolicyEvaluation {
   heldOutCount: number;
   positiveCount: number;
   negativeCount: number;
+  fixtureCoverage: PolicyEvaluationFixtureCoverage[];
+  /** Server-measured values only; image-reported usage is labeled and never gates activation. */
   baseline: Record<string, number>;
   candidate: Record<string, number>;
   artifactHash: string;
@@ -193,6 +216,8 @@ export interface PolicyProposal {
   projectId: string;
   baseReleaseId: string;
   sourceNominationId?: string;
+  /** Set on mined nominations: the only rule revision a Congress draft may change. */
+  nominatedRuleRevisionId?: string;
   state: "nominated" | "draft" | "evaluated" | "activated" | "rejected";
   version: number;
   title: string;
@@ -218,7 +243,7 @@ export interface GovernanceSummary {
   activeReleaseId: string | null;
   rules: PolicyRuleRevision[];
   releases: PolicyRelease[];
-  cases: ReviewCase[];
+  cases: ReviewCaseSummary[];
   decisions: PolicyDecision[];
   proposals: PolicyProposal[];
   events: GovernanceEvent[];

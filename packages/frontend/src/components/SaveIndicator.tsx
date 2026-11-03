@@ -1,8 +1,9 @@
 /**
  * Secondary-styled saving-state indicator for settings pages.
- * Shows "Saved" by default, "(spinner) Saving" when save in progress.
+ * Shows "Saved" by default, "(spinner) Saving" when save in progress, and
+ * "Not saved" when the latest save failed.
  */
-export type SaveStatus = "idle" | "saving" | "saved";
+export type SaveStatus = "idle" | "saving" | "saved" | "not_saved";
 
 interface SaveIndicatorProps {
   status: SaveStatus;
@@ -25,6 +26,8 @@ export function SaveIndicator({ status, "data-testid": testId }: SaveIndicatorPr
           />
           <span>Saving</span>
         </>
+      ) : status === "not_saved" ? (
+        <span className="font-medium text-theme-error-text">Not saved</span>
       ) : (
         <span>Saved</span>
       )}

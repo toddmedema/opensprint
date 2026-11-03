@@ -17,13 +17,19 @@ import {
 /* ---------- module-level mocks ---------- */
 const governed = vi.hoisted(() => ({
   mode: "disabled" as "disabled" | "enforced",
-  proposals: [] as Array<{ id: string; state: string; version: number }>,
+  proposals: [] as Array<{
+    id: string;
+    state: string;
+    version: number;
+    baseReleaseId: string;
+  }>,
 }));
 vi.mock("../services/governance.service.js", async () => ({
   governanceService: {
     ...(await import("./mocks/disabled-governance.js")).disabledGovernanceService,
     getConfig: async () => ({ mode: governed.mode }),
     listProposals: async () => governed.proposals,
+    getActiveReleaseId: async () => "active-release",
   },
 }));
 vi.mock("../services/congress.service.js", () => ({
@@ -222,49 +228,6 @@ vi.mock("../services/behavior-version-store.service.js", () => ({
   }),
 }));
 
-vi.mock("../services/self-improvement-experiment.service.js", async () => {
-  return {
-    mineReplayGradeExecuteSessionIds: vi.fn().mockResolvedValue([101, 102]),
-    SelfImprovementExperimentService: vi.fn().mockImplementation(() => ({
-      generateAndPersistCandidate: vi.fn().mockResolvedValue({
-        versionId: "exp-test-run-1",
-        bundle: {
-          versionType: "candidate",
-          minedSessionIds: [101, 102],
-          runId: "test-run-1",
-          generalInstructionDiff: "diff --git ...",
-          roleInstructionDiffs: {},
-          promptTemplateDiffs: { coder: "", reviewer: "", finalReview: "", selfImprovement: "" },
-          createdAt: new Date().toISOString(),
-        },
-      }),
-    })),
-  };
-});
-
-vi.mock("../services/experiment-replay.service.js", () => ({
-  ExperimentReplayService: vi.fn().mockImplementation(() => ({
-    runReplay: vi.fn().mockResolvedValue({
-      sessions: [],
-      baselineMetrics: {
-        taskSuccessRate: 0.8,
-        retryRate: 0,
-        reviewPassRate: 1,
-        avgLatencyMs: 100,
-        avgCostUsd: 0.01,
-      },
-      candidateMetrics: {
-        taskSuccessRate: 0.8,
-        retryRate: 0,
-        reviewPassRate: 1,
-        avgLatencyMs: 100,
-        avgCostUsd: 0.01,
-      },
-      sampleSize: 2,
-    }),
-  })),
-}));
-
 /* ---------- tests ---------- */
 
 const projectId = "proj-1";
@@ -311,7 +274,9 @@ describe("Run now: audit-only vs audit+experiments and approval flow", () => {
 
   it("runs substantive governance evaluation before requesting human activation", async () => {
     governed.mode = "enforced";
-    governed.proposals = [{ id: "proposal-1", state: "draft", version: 1 }];
+    governed.proposals = [
+      { id: "proposal-1", state: "draft", version: 1, baseReleaseId: "active-release" },
+    ];
     mockGetSettings.mockResolvedValue({ ...baseSettings, runAgentEnhancementExperiments: true });
 
     const result = await selfImprovementRunnerService.runSelfImprovement(projectId);
@@ -476,7 +441,9 @@ describe("Run now: audit-only vs audit+experiments and approval flow", () => {
 
   it("keeps evaluated policy pending explicit human activation even at full autonomy", async () => {
     governed.mode = "enforced";
-    governed.proposals = [{ id: "proposal-1", state: "draft", version: 1 }];
+    governed.proposals = [
+      { id: "proposal-1", state: "draft", version: 1, baseReleaseId: "active-release" },
+    ];
     mockGetSettings.mockResolvedValue({
       ...baseSettings,
       runAgentEnhancementExperiments: true,
@@ -490,7 +457,9 @@ describe("Run now: audit-only vs audit+experiments and approval flow", () => {
       mode: "audit_and_experiments",
       outcome: "promotion_pending",
     });
-    // No approval notification for auto-promoted
-    expect(mockCreateSelfImprovementApproval).not.toHaveBeenCalled();
+    // Nothing is auto-promoted, so the human who must act is notified.
+    expect(mockCreateSelfImprovementApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: "proj-1", candidateId: "proposal-1" })
+    );
   });
 });

@@ -1,4 +1,9 @@
 import { randomUUID } from "crypto";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import Database from "better-sqlite3";
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type {
@@ -10,7 +15,9 @@ import type { DbClient } from "../db/client.js";
 import { createSqliteDbClient } from "../db/sqlite-client.js";
 import { runSchema } from "../db/schema.js";
 import { GovernanceService } from "../services/governance-store.js";
+import { ReplayFixtureService } from "../services/replay-fixture.service.js";
 import { createTestPostgresClient } from "./test-db-helper.js";
+import { MemoryReplayEvidence } from "./replay-evidence-test-helper.js";
 
 const pg = await createTestPostgresClient();
 const sqlitedb = new Database(":memory:");
@@ -45,9 +52,11 @@ for (const dialect of ["sqlite", "postgres"] as const) {
       await runSchema(db, dialect);
       await runSchema(db, dialect);
     });
+    const replayEvidence = new MemoryReplayEvidence();
     const service = () =>
       new GovernanceService({
         getDb: async () => db,
+        replayEvidence,
         runWrite: (fn) => {
           const task = serial.then(() => db.runInTransaction(fn));
           serial = task.then(
@@ -179,6 +188,18 @@ for (const dialect of ["sqlite", "postgres"] as const) {
       expect(cleared.reconsiderationAgent).toBeNull();
       expect(cleared.reconsiderationTokenPricing).toBeNull();
       expect(cleared.judgeAgent?.model).toBe("judge-model");
+      const humanOnly = await f.svc.configure(
+        f.projectId,
+        {
+          expectedVersion: cleared.version,
+          judgeAgent: null,
+          judgeTokenPricing: null,
+        },
+        "owner"
+      );
+      expect(humanOnly.judgeAgent).toBeNull();
+      expect(humanOnly.judgeTokenPricing).toBeNull();
+      expect((await service().getConfig(f.projectId)).judgeAgent).toBeNull();
     });
     it("pins immutable policy and trusted scope across retries and live edits", async () => {
       const f = await fixture();
@@ -356,6 +377,183 @@ for (const dialect of ["sqlite", "postgres"] as const) {
         "complete prompt"
       );
     });
+    it("refuses activation when retained replay evidence is missing, changed, or unbound", async () => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), "replay-evidence-"));
+      const repo = path.join(root, "repo");
+      const run = promisify(execFile);
+      try {
+        await fs.mkdir(repo);
+        await run("git", ["init", "-q"], { cwd: repo });
+        await run(
+          "git",
+          ["-c", "user.name=T", "-c", "user.email=t@e.test", "commit", "--allow-empty", "-m", "x"],
+          { cwd: repo }
+        );
+        const sha = (await run("git", ["rev-parse", "HEAD"], { cwd: repo })).stdout.trim();
+        const store = new ReplayFixtureService(path.join(root, "evidence"));
+        const f = await fixture();
+        const svc = new GovernanceService({
+          getDb: async () => db,
+          runWrite: (fn) => db.runInTransaction(fn),
+          replayEvidence: store,
+        });
+        const c = await svc.openCase(f.caseInput);
+        const d = await svc.resolveCase(
+          f.projectId,
+          c.id,
+          {
+            expectedVersion: 1,
+            idempotencyKey: "binding",
+            action: "allow_once",
+            rationale: "bounded",
+            headSha: c.headSha,
+            diffHash: c.diffHash,
+          },
+          "owner"
+        );
+        const p = await svc.createProposal(f.projectId, {
+          baseReleaseId: f.release.id,
+          title: "Amend",
+          rationale: "ruling",
+          patches: [
+            {
+              ruleId: fixtureRule.ruleId,
+              before: f.release.rules[0],
+              after: { ...f.release.rules[0], id: "repository@3", revision: 3, text: "Amended." },
+            },
+          ],
+          supportingDecisionIds: [d.id],
+          contraryDecisionIds: [],
+          scope: "src",
+          compatibility: "same",
+          enforcementRevision: f.release.enforcementRevision,
+          positiveExamples: ["ok"],
+          negativeExamples: ["bad"],
+        });
+        const candidate = await svc.previewProposalRelease(f.projectId, p.id);
+        const stored = await Promise.all(
+          (["compliant", "defect"] as const).map((label, i) =>
+            store.capture(
+              {
+                version: 1,
+                projectId: f.projectId,
+                sessionId: i + 1,
+                baseCommitSha: sha,
+                taskPrompt: "task",
+                instructions: {
+                  general: "g",
+                  roles: { coder: "c", reviewer: "r" },
+                  templates: { coder: "c", reviewer: "r", finalReview: "f", selfImprovement: "s" },
+                },
+                toolchain: "offline",
+                rubric: {
+                  id: "rubric",
+                  text: "text",
+                  checks: [{ name: "check", command: "true", args: [] }],
+                },
+                label,
+                holdout: true,
+                humanActor: "owner",
+                createdAt: "2026-10-30T00:00:00Z",
+              },
+              repo
+            )
+          )
+        );
+        const fixtureCoverage = stored.map((s, i) => ({
+          fixtureId: String(s.fixture.sessionId),
+          fixtureHash: s.hash,
+          taskId: `held-out-${i}`,
+          label: s.fixture.label,
+          expectedOutcome: i ? ("block_or_avoid" as const) : ("accept" as const),
+          holdout: true,
+          evidenceTask: false,
+          amendedRuleSelected: true,
+          contentDiffers: true,
+        }));
+        const artifactHash = await store.saveEvaluation(f.projectId, {
+          proposalId: p.id,
+          candidateRelease: { contentHash: candidate.contentHash },
+          fixtureHashes: stored.map((s) => s.hash),
+          complete: true,
+          passed: true,
+        });
+        const evaluated = await svc.recordEvaluation(
+          f.projectId,
+          p.id,
+          {
+            complete: true,
+            passed: true,
+            executor: "offline-docker:trusted",
+            fixtureIds: ["1", "2"],
+            heldOutCount: 2,
+            positiveCount: 1,
+            negativeCount: 1,
+            fixtureCoverage,
+            baseline: { taskSuccessRate: 1 },
+            candidate: { taskSuccessRate: 1 },
+            artifactHash,
+            releaseContentHash: candidate.contentHash,
+            measuredAt: new Date().toISOString(),
+          },
+          p.version
+        );
+        const activate = () =>
+          svc.activateProposal(
+            f.projectId,
+            p.id,
+            {
+              expectedVersion: evaluated.version,
+              expectedActiveReleaseId: f.release.id,
+              rationale: "accepted",
+            },
+            "owner"
+          );
+        // Files are intact but no database binding exists yet.
+        await expect(activate()).rejects.toThrow("does not match this evaluation");
+        for (const [i, s] of stored.entries())
+          await svc.recordReplayFixture(f.projectId, {
+            sessionId: s.fixture.sessionId,
+            taskId: `held-out-${i}`,
+            releaseId: f.release.id,
+            hash: s.hash,
+          });
+        await expect(
+          svc.recordReplayFixture(f.projectId, {
+            sessionId: 1,
+            taskId: "held-out-0",
+            releaseId: f.release.id,
+            hash: "replacement",
+          })
+        ).rejects.toThrow("immutable");
+        const dir = path.join(
+          root,
+          "evidence",
+          (await fs.readdir(path.join(root, "evidence")))[0]!
+        );
+        const artifactFile = path.join(dir, "evaluations", `${artifactHash}.json`);
+        const artifact = await fs.readFile(artifactFile, "utf8");
+        await fs.writeFile(artifactFile, artifact.replace("true", "false"));
+        await expect(activate()).rejects.toThrow("evidence is unavailable");
+        await fs.rm(artifactFile);
+        await expect(activate()).rejects.toThrow("evidence is unavailable");
+        await fs.writeFile(artifactFile, artifact);
+        const fixtureFile = path.join(dir, "2.json");
+        const original = await fs.readFile(fixtureFile, "utf8");
+        await fs.writeFile(fixtureFile, original.replace('"task"', '"changed"'));
+        await expect(activate()).rejects.toThrow("evidence is unavailable");
+        await fs.writeFile(fixtureFile, original);
+        // Valid evidence still cannot strand unfinished work under the previous release.
+        await expect(activate()).rejects.toMatchObject({ code: "GOVERNANCE_HOLD" });
+        await db.execute("UPDATE tasks SET status='closed' WHERE project_id=$1 AND id=$2", [
+          f.projectId,
+          f.taskId,
+        ]);
+        expect((await activate()).rules[0].text).toBe("Amended.");
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
     it("mines human decisions without commits and refuses synthetic or stale proposal activation", async () => {
       const f = await fixture();
       await f.svc.configure(f.projectId, { expectedVersion: 2, recurrenceThreshold: 1 }, "owner");
@@ -412,7 +610,13 @@ for (const dialect of ["sqlite", "postgres"] as const) {
         negativeCount: 1,
         baseline: { passed: 1 },
         candidate: { passed: 1 },
-        artifactHash: "artifact",
+        ...(await replayEvidence.seed(
+          f.svc,
+          f.projectId,
+          p.id,
+          candidate.contentHash,
+          f.release.id
+        )),
         releaseContentHash: candidate.contentHash,
         measuredAt: new Date().toISOString(),
       };
@@ -431,6 +635,11 @@ for (const dialect of ["sqlite", "postgres"] as const) {
         { ...incomplete, complete: true, passed: true },
         2
       );
+      // The source task has completed before a new release is activated.
+      await db.execute("UPDATE tasks SET status='closed' WHERE project_id=$1 AND id=$2", [
+        f.projectId,
+        f.taskId,
+      ]);
       const activated = await f.svc.activateProposal(
         f.projectId,
         p.id,

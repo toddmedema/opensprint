@@ -15,6 +15,8 @@ import {
   isAgentAssignee,
 } from "@opensprint/shared";
 import { ProjectService } from "./project.service.js";
+import { getTrustedRemoteReviewRequest } from "./remote-publication-review-context.js";
+import { getErrorMessage } from "../utils/error-utils.js";
 import { governanceService } from "./governance.service.js";
 import type { TaskStoreService } from "./task-store.service.js";
 import { AppError } from "../middleware/error-handler.js";
@@ -67,6 +69,7 @@ export class TaskService {
     taskId: string,
     action: () => Promise<T>
   ): Promise<T> {
+    if (await governanceService.isGovernanceInactive(projectId)) return action();
     return governanceService.withPublicationLock(projectId, async (assertLease) => {
       if (
         (await governanceService.hasTaskHold(projectId, taskId)) ||
@@ -640,6 +643,16 @@ export class TaskService {
 
     if (status !== "blocked") {
       return { taskUnblocked: false };
+    }
+    // Dispatch would only block it again, and the cleanup below would destroy the retained candidate.
+    try {
+      await getTrustedRemoteReviewRequest(projectId, issue);
+    } catch (error) {
+      throw new AppError(
+        409,
+        "GOVERNANCE_HOLD",
+        `This remote review cannot be unblocked: ${getErrorMessage(error)}`
+      );
     }
 
     // 1. Stop any running agent and free slot (removes worktree in worktree mode)

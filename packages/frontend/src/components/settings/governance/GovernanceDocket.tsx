@@ -1,13 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import type { GovernanceDecisionAction, ReviewCase } from "@opensprint/shared";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { GovernanceDecisionAction, ReviewCaseSummary } from "@opensprint/shared";
 import { api } from "../../../api/client";
+import { queryKeys } from "../../../api/queryKeys";
 import {
   governanceCaseLabel,
+  isAgentHeldCase,
   OPEN_GOVERNANCE_CASE_STATES,
   formatGovernanceDate,
 } from "../../../lib/governance";
-import { GOVERNANCE_INPUT_CLASS, type GovernancePanelProps } from "../GovernanceSettingsContent";
+import type { GovernancePanelProps } from "../GovernanceSettingsContent";
+import { GovernanceResult } from "./GovernanceResult";
 
 const ACTIONS: { value: GovernanceDecisionAction; label: string; consequence: string }[] = [
   {
@@ -38,9 +42,25 @@ const ACTIONS: { value: GovernanceDecisionAction; label: string; consequence: st
     value: "cancel",
     label: "Cancel this case",
     consequence:
-      "Cancel adjudication and keep the task paused. A human must require a fix or request fresh evidence before it can continue.",
+      "Cancel adjudication and keep the task paused. A human must require a fix before it can continue through a fresh review.",
+  },
+  {
+    value: "abandon",
+    label: "Abandon this work",
+    consequence:
+      "End this case and close the task without merging. Nothing is approved. If another case still holds the task, it stays paused until that case is decided.",
   },
 ];
+
+const VERIFIED_DISPOSITION_LABELS: Record<
+  NonNullable<ReviewCaseSummary["verifiedDisposition"]>["kind"],
+  string
+> = {
+  reviewer_withdrew: "Reviewer withdrew the finding",
+  finding_not_applicable: "Finding does not apply",
+  precedent_applied: "Approved precedent applied",
+  fix_required: "Fix required",
+};
 
 export function GovernanceDocket(props: GovernancePanelProps & { selectedCaseId: string | null }) {
   const [chosenId, setChosenId] = useState<string | null>(props.selectedCaseId);
@@ -48,10 +68,15 @@ export function GovernanceDocket(props: GovernancePanelProps & { selectedCaseId:
   useEffect(() => {
     setChosenId(props.selectedCaseId);
   }, [props.selectedCaseId]);
-  const cases = props.summary.cases.filter(
+  const openCases = props.summary.cases.filter(
     (item) => showClosed || item.humanCancelled || OPEN_GOVERNANCE_CASE_STATES.has(item.state)
   );
-  const selected = cases.find((item) => item.id === chosenId) ?? cases[0];
+  const chosen = props.summary.cases.find((item) => item.id === chosenId);
+  // A chosen case stays selected after it closes, so a link or ruling never lands on another case.
+  const cases = chosen && !openCases.includes(chosen) ? [chosen, ...openCases] : openCases;
+  const selected = chosen ?? openCases[0];
+  const missingCaseId = chosenId !== null && !chosen ? chosenId : null;
+  const chosenIsClosed = chosen !== undefined && !openCases.some((item) => item.id === chosen.id);
   if (props.summary.cases.length === 0)
     return (
       <div className="rounded-xl border border-dashed border-theme-border px-5 py-8 text-center">
@@ -72,7 +97,23 @@ export function GovernanceDocket(props: GovernancePanelProps & { selectedCaseId:
         />
         Show resolved cases
       </label>
-      {cases.length === 0 && (
+      {missingCaseId && (
+        <p
+          role="status"
+          className="rounded-lg border border-theme-border p-3 text-sm text-theme-text"
+        >
+          Case {missingCaseId} was not found in this project.
+        </p>
+      )}
+      {chosen && chosenIsClosed && (
+        <p
+          role="status"
+          className="rounded-lg border border-theme-border p-3 text-sm text-theme-text"
+        >
+          This case is resolved · {governanceCaseLabel(chosen)}. It needs no decision.
+        </p>
+      )}
+      {openCases.length === 0 && (
         <p className="py-4 text-sm text-theme-muted">No cases are waiting for a decision.</p>
       )}
       {cases.length > 0 && (
@@ -81,7 +122,7 @@ export function GovernanceDocket(props: GovernancePanelProps & { selectedCaseId:
           <select
             value={selected?.id ?? ""}
             onChange={(event) => setChosenId(event.target.value)}
-            className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+            className="input mt-1.5"
           >
             {cases.map((item) => (
               <option key={item.id} value={item.id}>
@@ -115,14 +156,23 @@ export function GovernanceDocket(props: GovernancePanelProps & { selectedCaseId:
           ))}
         </nav>
         {selected && (
-          <CaseDetail key={`${selected.id}:${selected.version}`} {...props} item={selected} />
+          <CaseDetail
+            key={selected.id}
+            {...props}
+            item={selected}
+            onSubmitted={() => setChosenId(selected.id)}
+          />
         )}
       </div>
     </div>
   );
 }
 
-function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCase }) {
+function CaseDetail({
+  item,
+  onSubmitted,
+  ...props
+}: GovernancePanelProps & { item: ReviewCaseSummary; onSubmitted: () => void }) {
   const release = props.summary.releases.find((entry) => entry.id === item.releaseId);
   const decisions = props.summary.decisions.filter((decision) => decision.caseId === item.id);
   const [action, setAction] = useState<GovernanceDecisionAction>("require_fix");
@@ -130,7 +180,26 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
   const [paths, setPaths] = useState(item.changedPaths.join("\n"));
   const [expiry, setExpiry] = useState("");
   const [confirmed, setConfirmed] = useState(false);
-  const [resolutionKey] = useState(() => crypto.randomUUID());
+  // A ruling binds to one case version, so a new version needs a new key and a fresh confirmation.
+  const [binding, setBinding] = useState(() => ({
+    version: item.version,
+    resolutionKey: crypto.randomUUID(),
+  }));
+  const [changedFromVersion, setChangedFromVersion] = useState<number | null>(null);
+  const changedBannerRef = useRef<HTMLParagraphElement>(null);
+  if (binding.version !== item.version) {
+    setBinding({ version: item.version, resolutionKey: crypto.randomUUID() });
+    setChangedFromVersion((current) => current ?? binding.version);
+    setConfirmed(false);
+  }
+  const resolutionKey = binding.resolutionKey;
+  const caseChanged = changedFromVersion !== null;
+  useEffect(() => {
+    if (!caseChanged) return;
+    // Keep keystrokes in the field someone is typing in; a poll must not steal them.
+    if (document.activeElement?.matches("input, textarea, select")) return;
+    changedBannerRef.current?.focus();
+  }, [caseChanged, item.version]);
   const [additionalEvidence, setAdditionalEvidence] = useState("");
   const [replacementRationale, setReplacementRationale] = useState("");
   const ruleIds = Array.from(
@@ -180,6 +249,9 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
       expiryDate !== null &&
       expiryDate.getTime() > Date.now());
   const allowance = action === "allow_once" || action === "allow_reusable";
+  const recoveryRequired = item.state === "stale" || item.humanCancelled;
+  const actionBlocked =
+    (allowance && allowanceBlocked) || (action === "request_evidence" && recoveryRequired);
   const canResolve =
     item.state === "awaiting_human" ||
     item.state === "evidence_requested" ||
@@ -222,8 +294,8 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
         )}
         {item.humanCancelled && (
           <p role="alert" className="mt-3 rounded-lg bg-amber-500/10 p-3 text-sm text-theme-text">
-            A human cancelled this change. It remains paused. Require a fix or request fresh
-            evidence to resume safe review.
+            A human cancelled this change. It remains paused. Require a fix to resume through a
+            fresh review, or abandon the work to close the task.
           </p>
         )}
         {item.state === "stale" && (
@@ -249,7 +321,7 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
                 <textarea
                   value={replacementRationale}
                   onChange={(event) => setReplacementRationale(event.target.value)}
-                  className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+                  className="input mt-1.5"
                 />
               </label>
               <button
@@ -266,7 +338,8 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
                         replacementRationale.trim(),
                         props.capability
                       ),
-                    "Requested a fresh review under the replacement policy. This action does not approve the code."
+                    "Requested a fresh review under the replacement policy. This action does not approve the code.",
+                    `case:${item.id}`
                   )
                 }
               >
@@ -322,7 +395,14 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
                     {appeal.requestedException}
                   </p>
                   <EvidenceList title="Alternatives analyzed" items={appeal.alternatives} />
-                  <p className="mt-2 text-sm text-theme-muted">{appeal.whyCompliantOptionsFail}</p>
+                  <div className="mt-2">
+                    <h6 className="text-xs font-medium text-theme-muted">
+                      Why compliant options fail
+                    </h6>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-theme-text">
+                      {appeal.whyCompliantOptionsFail}
+                    </p>
+                  </div>
                   <EvidenceList title="Tests" items={appeal.tests} />
                   <EvidenceList title="Risks" items={appeal.risks} />
                   <EvidenceList title="Proposed limits" items={appeal.proposedLimits} />
@@ -332,6 +412,44 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
           );
         })}
       </section>
+      {item.reconsideration && (
+        <section
+          aria-label="Reviewer reconsideration"
+          className="rounded-lg border border-theme-border p-3"
+        >
+          <h4 className="text-sm font-semibold text-theme-text">
+            Reviewer reconsideration ·{" "}
+            {item.reconsideration.status === "approved" ? "Approved" : "Still rejected"}
+          </h4>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-theme-text">
+            {item.reconsideration.summary}
+          </p>
+          {item.reconsideration.notes && (
+            <p className="mt-2 whitespace-pre-wrap text-sm text-theme-muted">
+              {item.reconsideration.notes}
+            </p>
+          )}
+          <EvidenceList
+            title="Withdrawn findings"
+            items={item.reconsideration.withdrawnFindingIds ?? []}
+          />
+        </section>
+      )}
+      {item.verifiedDisposition && (
+        <section
+          aria-label="Verified disposition"
+          className="rounded-lg border border-theme-border p-3"
+        >
+          <h4 className="text-sm font-semibold text-theme-text">
+            Verified disposition · {VERIFIED_DISPOSITION_LABELS[item.verifiedDisposition.kind]}
+          </h4>
+          {item.verifiedDisposition.decisionIds.length > 0 && (
+            <p className="mt-2 break-all text-xs text-theme-muted">
+              Decisions: {item.verifiedDisposition.decisionIds.join(", ")}
+            </p>
+          )}
+        </section>
+      )}
       {item.recommendation && (
         <section className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-3">
           <h4 className="text-sm font-semibold text-theme-text">
@@ -377,17 +495,7 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
           </ul>
         </details>
       )}
-      <details className="rounded-lg border border-theme-border p-3">
-        <summary className="cursor-pointer text-sm font-medium text-theme-text">
-          Inspect full diff &amp; retained evidence
-        </summary>
-        <p className="mt-3 break-all text-xs text-theme-muted">
-          Evidence hash: {item.evidenceHash} · Diff hash: {item.diffHash}
-        </p>
-        <pre className="mt-3 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-theme-bg p-3 text-xs text-theme-text">
-          {JSON.stringify(item.evidence, null, 2)}
-        </pre>
-      </details>
+      <CaseEvidence projectId={props.projectId} item={item} />
       {item.state === "evidence_requested" && (
         <form
           className="space-y-3 rounded-lg border border-theme-border p-3"
@@ -402,7 +510,8 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
                   { humanEvidence: additionalEvidence.trim() },
                   props.capability
                 ),
-              "Additional evidence retained. The case is ready for a fresh human decision."
+              "Additional evidence retained. The case is ready for a fresh human decision.",
+              `case:${item.id}`
             );
           }}
         >
@@ -412,7 +521,7 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
               value={additionalEvidence}
               onChange={(event) => setAdditionalEvidence(event.target.value)}
               rows={3}
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
               required
             />
           </label>
@@ -447,12 +556,22 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
           </ul>
         </section>
       )}
+      {isAgentHeldCase(item) && !item.humanCancelled && (
+        <p
+          className="rounded-lg bg-theme-bg p-3 text-sm text-theme-text"
+          data-testid="governance-agent-held"
+        >
+          No action needed right now. An agent is working on this case, and it will return here if
+          it needs your decision.
+        </p>
+      )}
       {canResolve && (
         <form
           className="space-y-4 border-t border-theme-border pt-5"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!reusableValid || (allowance && allowanceBlocked)) return;
+            if (!reusableValid || caseChanged || actionBlocked) return;
+            onSubmitted();
             props.run(
               () =>
                 api.governance.resolve(
@@ -482,7 +601,10 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
                 ? "Evidence request recorded. The task remains paused."
                 : action === "cancel"
                   ? "Adjudication cancelled. The task remains paused until a safe human disposition."
-                  : "Human ruling recorded. The task will resume through normal review and hard checks."
+                  : action === "abandon"
+                    ? "Work abandoned. The task is closed without merging."
+                    : "Human ruling recorded. The task will resume through normal review and hard checks.",
+              `case:${item.id}`
             );
           }}
         >
@@ -495,15 +617,15 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
                 setAction(event.target.value as GovernanceDecisionAction);
                 setConfirmed(false);
               }}
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
             >
               {ACTIONS.map((option) => (
                 <option
                   key={option.value}
                   value={option.value}
                   disabled={
-                    (item.state === "stale" || item.humanCancelled) &&
-                    option.value.startsWith("allow")
+                    recoveryRequired &&
+                    (option.value.startsWith("allow") || option.value === "request_evidence")
                   }
                 >
                   {option.label}
@@ -525,8 +647,8 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
           )}
           {item.state === "stale" && (
             <p className="text-sm text-theme-muted">
-              Return this task for a fix, request current evidence, or cancel adjudication. A stale
-              review cannot grant an allowance.
+              Return this task for a fix, cancel adjudication, or abandon the work. Adding evidence
+              cannot replace the fresh review required for changed code or policy.
             </p>
           )}
           {allowance && nonWaivable && (
@@ -552,7 +674,7 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
                   value={paths}
                   onChange={(event) => setPaths(event.target.value)}
                   rows={3}
-                  className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+                  className="input mt-1.5"
                   required
                 />
               </label>
@@ -562,7 +684,7 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
                   type="datetime-local"
                   value={expiry}
                   onChange={(event) => setExpiry(event.target.value)}
-                  className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+                  className="input mt-1.5"
                   required
                 />
               </label>
@@ -593,7 +715,7 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
             <textarea
               value={rationale}
               onChange={(event) => setRationale(event.target.value)}
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
               rows={3}
               required
               placeholder={
@@ -607,11 +729,26 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
             <input
               type="checkbox"
               checked={confirmed}
-              onChange={(event) => setConfirmed(event.target.checked)}
+              onChange={(event) => {
+                setConfirmed(event.target.checked);
+                if (event.target.checked) setChangedFromVersion(null);
+              }}
               className="mt-0.5"
             />
             I reviewed the evidence and the consequence of this action.
           </label>
+          {caseChanged && (
+            <p
+              ref={changedBannerRef}
+              role="alert"
+              tabIndex={-1}
+              className="rounded-lg bg-amber-500/10 p-3 text-sm text-theme-text focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+              data-testid="governance-case-changed"
+            >
+              Case changed from version {changedFromVersion} to {item.version} while you were
+              deciding. Your draft is kept. Review the updated case, then confirm again to submit.
+            </p>
+          )}
           <button
             type="submit"
             className="btn-primary disabled:opacity-50"
@@ -621,7 +758,8 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
               !rationale.trim() ||
               !confirmed ||
               !reusableValid ||
-              (allowance && allowanceBlocked)
+              caseChanged ||
+              actionBlocked
             }
           >
             Record human ruling
@@ -644,7 +782,110 @@ function CaseDetail({ item, ...props }: GovernancePanelProps & { item: ReviewCas
           )}
         </form>
       )}
+      <GovernanceResult
+        scope={`case:${item.id}`}
+        outcome={props.outcome}
+        pendingScope={props.pendingScope}
+      />
     </article>
+  );
+}
+
+function CaseEvidence({ projectId, item }: { projectId: string; item: ReviewCaseSummary }) {
+  const [expanded, setExpanded] = useState(false);
+  const client = useQueryClient();
+  const evidence = useQuery({
+    queryKey: queryKeys.governance.caseEvidence(
+      projectId,
+      item.id,
+      item.version,
+      item.evidenceHash
+    ),
+    enabled: expanded,
+    staleTime: Infinity,
+    retry: false,
+    queryFn: async () => {
+      const current = await api.governance.getCase(projectId, item.id);
+      if (current.version !== item.version || current.evidenceHash !== item.evidenceHash) {
+        void client.invalidateQueries({
+          queryKey: queryKeys.governance.summary(projectId),
+          exact: true,
+        });
+        throw new Error(
+          "This case changed. Review the refreshed case and load its evidence again."
+        );
+      }
+      return current.evidence;
+    },
+  });
+  return (
+    <details
+      className="rounded-lg border border-theme-border p-3"
+      onToggle={(event) => {
+        if (event.target === event.currentTarget) setExpanded(event.currentTarget.open);
+      }}
+    >
+      <summary className="cursor-pointer text-sm font-medium text-theme-text">
+        Inspect full diff &amp; retained evidence
+      </summary>
+      <p className="mt-3 break-all text-xs text-theme-muted">
+        Evidence hash: {item.evidenceHash} · Diff hash: {item.diffHash}
+      </p>
+      {expanded && evidence.isPending && (
+        <p role="status" className="mt-3 text-sm text-theme-muted">
+          Loading case evidence…
+        </p>
+      )}
+      {evidence.isError && (
+        <div role="alert" className="mt-3 space-y-2 text-sm text-theme-text">
+          <p>{evidence.error.message}</p>
+          <button type="button" className="btn-secondary" onClick={() => void evidence.refetch()}>
+            Retry loading evidence
+          </button>
+        </div>
+      )}
+      {evidence.data && (
+        <>
+          {typeof evidence.data.diff === "string" && evidence.data.diff ? (
+            <EvidenceDiff diff={evidence.data.diff} />
+          ) : (
+            <p className="mt-3 text-sm text-theme-muted">No diff was retained for this case.</p>
+          )}
+          <details className="mt-3">
+            <summary className="cursor-pointer text-xs font-medium text-theme-muted">
+              Raw retained evidence (JSON)
+            </summary>
+            <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-theme-bg p-3 text-xs text-theme-text">
+              {JSON.stringify(evidence.data, null, 2)}
+            </pre>
+          </details>
+        </>
+      )}
+    </details>
+  );
+}
+
+function EvidenceDiff({ diff }: { diff: string }) {
+  return (
+    <pre
+      className="mt-3 max-h-96 overflow-auto rounded-lg bg-theme-bg p-3 font-mono text-xs text-theme-text"
+      data-testid="governance-evidence-diff"
+    >
+      {diff.split("\n").map((line, index) => (
+        <span
+          key={index}
+          className={`block whitespace-pre-wrap break-words ${
+            line.startsWith("+") && !line.startsWith("+++")
+              ? "bg-green-500/10"
+              : line.startsWith("-") && !line.startsWith("---")
+                ? "bg-red-500/10"
+                : ""
+          }`}
+        >
+          {line || " "}
+        </span>
+      ))}
+    </pre>
   );
 }
 

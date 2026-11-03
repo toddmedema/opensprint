@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { Request, Response, NextFunction, RequestHandler } from "express";
 import { governanceService } from "../services/governance.service.js";
 import { governanceError, governanceHash } from "../services/policy-context.js";
@@ -39,22 +40,29 @@ function authorizeConfigurationChange(
   });
 }
 
-/** Live prompt edits cannot alter approved releases; use an evaluated amendment. */
+/** Default-off projects keep their ordinary self-improvement approvals; no capability exists to ask for. */
+export const requireGovernanceHumanWhenActive: RequestHandler = (req, res, next) => {
+  void governanceService
+    .isGovernanceInactive(String(req.params.projectId ?? req.params.id))
+    .then((inactive) => (inactive ? next() : requireGovernanceHuman(req, res, next)))
+    .catch(next);
+};
+
+/** Pinned work keeps its approved prompts. Edits need the owner and leave drift to reconcile. */
 export const guardGovernedInstructionEdit: RequestHandler = (req, res, next) => {
   const projectId = String(req.params.projectId ?? req.params.id);
   void governanceService
-    .getConfig(projectId)
-    .then(async (config) => {
-      const cases = await governanceService.listCases(projectId);
-      if (
-        config.mode !== "disabled" ||
-        (await governanceService.getActiveReleaseId(projectId)) !== null ||
-        cases.some((c) => !["cancelled", "fix_required"].includes(c.state))
-      )
-        governanceError(
-          "Instruction changes require an evaluated policy amendment while governance is active or assignments retain governed policy."
-        );
-      next();
+    .isGovernanceInactive(projectId)
+    .then(async (inactive) => {
+      if (inactive) {
+        next();
+        return;
+      }
+      if (await governanceService.isGovernanceDormant(projectId)) {
+        next();
+        return;
+      }
+      authorizeConfigurationChange(req, res, next, [projectId], ["instructions"]);
     })
     .catch(next);
 };
@@ -75,7 +83,7 @@ export const GOVERNANCE_REVIEW_SETTING_KEYS = [
   "selfImprovementIncludeGeneralReview",
   "deployment",
 ] as const;
-/** Live settings cannot replace checker/prompt enforcement installed through an amendment. */
+/** Enforcement settings: changed only by the owner, and every change is audited. */
 export const GOVERNANCE_ENFORCEMENT_SETTING_KEYS = [
   "testCommand",
   "testFramework",
@@ -166,21 +174,16 @@ export function changedGovernanceSettings(
 }
 export const guardGovernedSettings: RequestHandler = (req, res, next) => {
   let keys = Object.keys(req.body ?? {});
-  let behaviorPayload = keys.some((key) => /^selfImprovement(Pending|Behavior)/.test(key));
+  const behaviorPayload = keys.some((key) => /^selfImprovement(Pending|Behavior)/.test(key));
   if (!behaviorPayload && !sensitive.some((key) => keys.includes(key))) {
     next();
     return;
   }
   const projectId = String(req.params.projectId ?? req.params.id);
   void governanceService
-    .getConfig(projectId)
-    .then(async (config) => {
-      const cases = await governanceService.listCases(projectId);
-      if (
-        config.mode === "disabled" &&
-        !cases.length &&
-        !(await governanceService.getActiveReleaseId(projectId))
-      ) {
+    .isGovernanceInactive(projectId)
+    .then(async (inactive) => {
+      if (inactive) {
         next();
         return;
       }
@@ -190,18 +193,14 @@ export const guardGovernedSettings: RequestHandler = (req, res, next) => {
         req.body ?? {},
         current as unknown as Record<string, unknown>
       );
-      behaviorPayload = keys.some((key) => /^selfImprovement(Pending|Behavior)/.test(key));
-      if (!keys.length) {
+      // Disabled with nothing retained has nothing to protect, even with releases on record.
+      if (!keys.length || (await governanceService.isGovernanceDormant(projectId))) {
         next();
         return;
       }
       if (req.body.reviewMode !== undefined && req.body.reviewMode !== "always")
         governanceError(
           "Governance requires reviewMode: always. Resolve all holds and explicitly disable governance before changing review mode."
-        );
-      if (behaviorPayload || GOVERNANCE_ENFORCEMENT_SETTING_KEYS.some((key) => keys.includes(key)))
-        governanceError(
-          "Policy-sensitive enforcement and behavior changes require an evaluated amendment."
         );
       authorizeConfigurationChange(
         req,
@@ -217,6 +216,31 @@ export const guardGovernedSettings: RequestHandler = (req, res, next) => {
     })
     .catch(next);
 };
+
+/** Pins, retained refs and approved hashes all name one checkout. */
+export function createGovernedRepoPathGuard(
+  service: Pick<import("../services/project.service.js").ProjectService, "getProject">
+): RequestHandler {
+  return (req, res, next) => {
+    const requested = (req.body as { repoPath?: unknown } | undefined)?.repoPath;
+    if (typeof requested !== "string") {
+      next();
+      return;
+    }
+    const projectId = String(req.params.id);
+    void (async () => {
+      if (await governanceService.isGovernanceInactive(projectId)) return next();
+      const project = await service.getProject(projectId);
+      if (path.resolve(project.repoPath) === path.resolve(requested)) return next();
+      requireGovernanceHuman(req, res, (error?: unknown) => {
+        if (error) return next(error);
+        governanceService
+          .assertRepoPathChangeAllowed(projectId, getGovernanceActor(req))
+          .then(() => next(), next);
+      });
+    })().catch(next);
+  };
+}
 
 /** Deployment commands execute repository code and must not become an alternate approval channel. */
 export function createGovernedDeploymentSettingsGuard(

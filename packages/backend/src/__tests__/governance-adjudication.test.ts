@@ -422,8 +422,10 @@ describe("durable bounded adjudication", () => {
       )
     ).rejects.toThrow("stale");
   });
-  it("requires explicit reviewer withdrawals, and still requires hard checks and code approval", async () => {
-    const c = await docket("task");
+  // A withdrawal is only honoured where the cited rule cannot bind the file. This test used to withdraw
+  // an applicable rule and call that safe; authority-regressions now covers that case escalating.
+  it("requires explicit reviewer withdrawals of inapplicable rules, and still requires hard checks and code approval", async () => {
+    const c = await docket("task", "awaiting_reconsideration", "docs/diagnostic.md");
     const updated = await service.recordReconsideration(
       "project",
       c.id,

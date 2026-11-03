@@ -4,32 +4,45 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type {
   AgentRole,
+  GovernanceConfig,
   GovernanceTaskPin,
   PolicyContext,
+  PolicyRelease,
   ReviewAgentResult,
   ReviewAppeal,
   ReviewCase,
   JudgeRecommendation,
   ProjectSettings,
   AgentConfig,
+  StructuredReviewFinding,
 } from "@opensprint/shared";
 import { governanceService } from "./governance.service.js";
 import {
   readGovernanceSourceHashes,
+  governanceRuntimeDrift,
   governanceSourceDrift,
+  governanceSourceHashesForPaths,
   assertGovernanceSensitiveSourceApproval,
   resolveGovernanceCandidateSensitiveSourcePaths,
   resolveGovernanceSensitiveSourcePaths,
 } from "./governance-source-hashes.js";
+import { aggregateReviewFindings, mapReviewAppeals, reviewFindingKey } from "./review-findings.js";
 import {
-  aggregateReviewFindings,
-  mapReviewAppeals,
-  reviewFindingIdentity,
-} from "./review-findings.js";
-import { resolvePolicyContext } from "./policy-context.js";
+  effectiveGovernanceMode,
+  GOVERNANCE_NOT_PINNED,
+  GOVERNANCE_STALE_VERSION,
+  governanceError,
+  isActiveHold,
+  matchesPolicyPath,
+  ruleAppliesToFile,
+} from "./policy-context.js";
 import { getCombinedInstructions } from "./agent-instructions.service.js";
 import { parseReviewAgentResult } from "./agent-result-validation.js";
-import { auditProtectedPaths, formatViolationSummary } from "./protected-path-policy.js";
+import {
+  auditProtectedPaths,
+  auditProtectedPathsForGrant,
+  formatViolationSummary,
+} from "./protected-path-policy.js";
 
 const exec = promisify(execFile);
 
@@ -51,7 +64,15 @@ export async function governanceCodeSnapshot(
     exec("git", ["rev-parse", "--verify", `${headRef}^{commit}`], options),
     exec(
       "git",
-      ["diff", "--binary", "--no-ext-diff", baseSha, ...(candidate ? [] : [headRef]), "--"],
+      [
+        "diff",
+        "--binary",
+        "--no-ext-diff",
+        "--no-textconv",
+        baseSha,
+        ...(candidate ? [] : [headRef]),
+        "--",
+      ],
       options
     ),
     exec(
@@ -89,6 +110,28 @@ export async function governanceCodeSnapshot(
   };
 }
 
+/** Unpinned admission needs only what the branch itself changed, not main-only changes or file bytes. */
+export async function governanceBranchPathSnapshot(cwd: string, baseRef: string, headRef = "HEAD") {
+  const options = { env: agentProcessEnvironment(), cwd, maxBuffer: 64 * 1024 * 1024 };
+  const [{ stdout: head }, { stdout: mergeBase }] = await Promise.all([
+    exec("git", ["rev-parse", "--verify", `${headRef}^{commit}`], options),
+    exec("git", ["merge-base", baseRef, headRef], options),
+  ]);
+  const baseSha = mergeBase.trim();
+  const { stdout: names } = await exec(
+    "git",
+    ["diff", "--name-only", "-z", "--no-renames", baseSha, headRef, "--"],
+    options
+  );
+  const changedPaths = names.split("\0").filter(Boolean).sort();
+  return {
+    headSha: head.trim(),
+    baseSha,
+    diffHash: createHash("sha256").update(names).digest("hex"),
+    changedPaths,
+  };
+}
+
 /** Enforcement revisions are resolved as Git objects with argument-safe subprocess calls. */
 export async function assertPolicyEnforcementRevision(
   repoPath: string,
@@ -102,6 +145,56 @@ export async function assertPolicyEnforcementRevision(
     cwd: repoPath,
     timeout: 10_000,
   });
+}
+
+const MAX_FINDING_CHARS = 2_000;
+const MAX_DIFF_CHARS = 20_000;
+const MIN_DIFF_CHARS = 2_000;
+/** Findings, instructions and structure, kept out of the share a diff may use of one call. */
+const CALL_OVERHEAD_TOKENS = 6_000;
+const capped = (text: string, limit: number): string =>
+  text.length > limit ? `${text.slice(0, limit)}\n[truncated]` : text;
+
+/**
+ * What a model needs to rule on a case. The stored case also holds whole prompts and every rule,
+ * which alone can exceed the budget; a full maxAppeals cycle (reconsideration and judge, each
+ * reserving by bytes) must fit, so the diff's share shrinks with the budget. O(findings + rules).
+ */
+function boundedCasePayload(c: ReviewCase, release: PolicyRelease, config: GovernanceConfig) {
+  const perCall = Math.floor(config.maxTokens / (Math.max(1, config.maxAppeals) * 2));
+  const diffLimit = Math.max(
+    MIN_DIFF_CHARS,
+    Math.min(MAX_DIFF_CHARS, perCall - CALL_OVERHEAD_TOKENS)
+  );
+  const diff = typeof c.evidence.diff === "string" ? c.evidence.diff : "";
+  const cited = new Set(c.findings.map((f) => f.ruleRevisionId));
+  return {
+    case: {
+      id: c.id,
+      title: c.title,
+      summary: capped(c.summary, MAX_FINDING_CHARS),
+      headSha: c.headSha,
+      changedPaths: c.changedPaths,
+      findings: c.findings.map((f) => ({
+        ...f,
+        evidence: capped(f.evidence, MAX_FINDING_CHARS),
+        suggestedRemedy: capped(f.suggestedRemedy, MAX_FINDING_CHARS),
+      })),
+      appeals: c.appeals,
+      reconsideration: c.reconsideration,
+      diff: capped(diff, diffLimit),
+      diffTruncated: diff.length > diffLimit,
+    },
+    rules: release.rules
+      .filter(
+        (r) =>
+          cited.has(r.id) ||
+          r.mandatory ||
+          !r.paths.length ||
+          c.changedPaths.some((file) => r.paths.some((glob) => matchesPolicyPath(glob, file)))
+      )
+      .map(({ examples: _examples, sourceHash: _sourceHash, ...rule }) => rule),
+  };
 }
 
 /** Read-only model invocation: tool-free API providers only, fixed prompt and no CLI execution. */
@@ -159,16 +252,19 @@ async function invokeGovernanceModel(
   const usage = await governanceService.getBudgetUsage(projectId, pin.taskId);
   const remainingMs = Math.floor(config.maxElapsedMs - usage.elapsedMs);
   if (remainingMs <= 0) throw new Error("Adjudication elapsed-time budget exhausted.");
+  // Each appeal can use two calls: reconsideration, then the judge.
   const callTimeoutMs = Math.min(
     remainingMs,
-    Math.max(1, Math.floor(config.maxElapsedMs / Math.max(1, config.maxAppeals)))
+    Math.max(1, Math.floor(config.maxElapsedMs / Math.max(1, config.maxAppeals * 2)))
   );
+  const costOf = (input: number, output: number) =>
+    (input * pricing.inputPerMillionUsd + output * pricing.outputPerMillionUsd) / 1_000_000;
+  const reservedTokens = inputTokens + maxOutputTokens;
+  const reservedCost = costOf(inputTokens, maxOutputTokens);
   await governanceService.consumeBudget(projectId, pin.taskId, {
     elapsedMs: callTimeoutMs,
-    tokens: inputTokens + maxOutputTokens,
-    costUsd:
-      (inputTokens * pricing.inputPerMillionUsd + maxOutputTokens * pricing.outputPerMillionUsd) /
-      1_000_000,
+    tokens: reservedTokens,
+    costUsd: reservedCost,
     appeals: role === "reviewer" ? 1 : 0,
   });
   const signal = AbortSignal.timeout(callTimeoutMs);
@@ -186,6 +282,7 @@ async function invokeGovernanceModel(
     releaseId: pin.releaseId,
   });
   const started = Date.now();
+  let reported: { input: number; output: number } | undefined;
   try {
     const { agentService } = await import("./agent.service.js");
     const response = await agentService.invokePlanningAgent({
@@ -206,17 +303,49 @@ async function invokeGovernanceModel(
         label: `Governance ${role}`,
       },
     });
+    const usage = response.cacheMetrics;
+    if (usage?.inputTokens !== undefined && usage.outputTokens !== undefined)
+      reported = { input: usage.inputTokens, output: usage.outputTokens };
     return response.content;
   } finally {
+    const measuredElapsedMs = Date.now() - started;
+    // Without provider figures (including on failure) the conservative token reservation stands.
+    await governanceService.settleBudget(projectId, pin.taskId, {
+      elapsedMs: callTimeoutMs - measuredElapsedMs,
+      tokens: reported ? reservedTokens - reported.input - reported.output : 0,
+      costUsd: reported ? reservedCost - costOf(reported.input, reported.output) : 0,
+    });
     await governanceService.audit(projectId, "adjudication_usage", "system", {
       taskId: pin.taskId,
       role,
-      measuredElapsedMs: Date.now() - started,
+      measuredElapsedMs,
       reservedElapsedMs: callTimeoutMs,
       reservedInputTokens: inputTokens,
       maxOutputTokens,
+      ...(reported
+        ? { reportedInputTokens: reported.input, reportedOutputTokens: reported.output }
+        : {}),
     });
   }
+}
+
+function unstructuredFinding(
+  result: ReviewAgentResult,
+  code: { headSha: string; changedPaths: string[] }
+): StructuredReviewFinding {
+  return {
+    id: "unstructured-review",
+    category: "defect",
+    severity: "blocking",
+    file: code.changedPaths[0] ?? "review-output",
+    codeRevision: code.headSha,
+    evidence: capped(
+      result.issues?.join("\n") || result.summary || "The reviewer rejected without details.",
+      MAX_DIFF_CHARS
+    ),
+    suggestedRemedy: "Address the issues the reviewer reported.",
+    provenance: { reviewer: "reviewer" },
+  };
 }
 
 /** Coordinates policy snapshots with Execute. Disabled mode preserves ordinary instruction behavior. */
@@ -255,16 +384,50 @@ export class GovernanceExecutionService {
     if (config.mode === "disabled") return null;
     const active = await governanceService.getActiveRelease(input.projectId);
     if (!active) throw new Error("No approved governing release is available.");
-    const drift = governanceSourceDrift(
-      active.sourceHashes,
-      await readGovernanceSourceHashes(input.projectId, input.repoPath)
+    await this.assertSourcesApproved(
+      input.projectId,
+      input.taskId,
+      input.repoPath,
+      active,
+      config.mode
     );
-    if (drift.length) throw new Error(`Approved policy source drift detected: ${drift.join(", ")}`);
     const instructionsByRole: Partial<Record<AgentRole, string>> = {};
     for (const role of ["coder", "reviewer", "judge"] as const) {
       instructionsByRole[role] = await getCombinedInstructions(input.repoPath, role);
     }
     return governanceService.pinTask({ ...input, trustedScope, instructionsByRole });
+  }
+
+  /** Runtime drift is only recorded. Shadow mode records everything, and falls back to ordinary review. */
+  private async assertSourcesApproved(
+    projectId: string,
+    taskId: string,
+    repoPath: string,
+    release: PolicyRelease,
+    mode: GovernanceConfig["mode"]
+  ): Promise<void> {
+    const shadow = mode !== "enforced";
+    try {
+      const approved = await governanceService.getApprovedSourceHashes(projectId, release);
+      const current = await readGovernanceSourceHashes(projectId, repoPath);
+      const runtimeDrift = governanceRuntimeDrift(approved, current);
+      if (runtimeDrift.length)
+        await governanceService.audit(projectId, "policy_runtime_drift_observed", "system", {
+          taskId,
+          releaseId: release.id,
+          drift: runtimeDrift,
+        });
+      const drift = governanceSourceDrift(approved, current);
+      if (drift.length)
+        throw new Error(`Approved policy source drift detected: ${drift.join(", ")}`);
+    } catch (error) {
+      if (!shadow) throw error;
+      await governanceService.audit(projectId, "shadow_policy_drift", "system", {
+        taskId,
+        releaseId: release.id,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   async context(
@@ -279,10 +442,15 @@ export class GovernanceExecutionService {
     return context;
   }
 
-  /** Production-owned scope enforcement runs in all modes. Missing scope never authorizes sensitive edits. */
+  /** Scope enforcement runs in every governed mode. Missing scope never authorizes sensitive edits. */
   async assertScope(projectId: string, taskId: string, changedPaths: string[]): Promise<void> {
-    const scope = await governanceService.getTrustedScope(projectId, taskId);
-    const audit = auditProtectedPaths(changedPaths, scope ?? "", "");
+    const pin = await governanceService.getTaskPin(projectId, taskId);
+    const { mode } = await governanceService.getConfig(projectId);
+    const scope = await governanceService.getGrantedScope(projectId, taskId);
+    const audit =
+      effectiveGovernanceMode(pin?.mode, mode) === "enforced"
+        ? auditProtectedPathsForGrant(changedPaths, scope)
+        : auditProtectedPaths(changedPaths, scope, "");
     if (!audit.allowed)
       throw new Error(
         `Protected path authorization failed. ${formatViolationSummary(audit.violations)}`
@@ -296,10 +464,12 @@ export class GovernanceExecutionService {
     repoPath: string;
     branchName: string;
   }): Promise<void> {
+    if (await governanceService.isGovernanceInactive(input.projectId)) return;
     const pins = await governanceService.getTaskPinsForBranch(input.projectId, input.branchName);
-    const shadowTasks = new Set(
-      pins.filter((pin) => pin.mode === "shadow").map((pin) => pin.taskId)
-    );
+    const { mode } = await governanceService.getConfig(input.projectId);
+    const isShadow = (pin: GovernanceTaskPin) =>
+      effectiveGovernanceMode(pin.mode, mode) !== "enforced";
+    const shadowTasks = new Set(pins.filter(isShadow).map((pin) => pin.taskId));
     const cases = (await governanceService.listCases(input.projectId)).filter(
       (c) => c.branchName === input.branchName
     );
@@ -310,20 +480,14 @@ export class GovernanceExecutionService {
           (c.humanCancelled ||
             ((!shadowTasks.has(c.taskId) ||
               c.findings.some((f) => f.category === "gate" && f.severity === "blocking")) &&
-              [
-                "awaiting_reconsideration",
-                "awaiting_judge",
-                "awaiting_human",
-                "evidence_requested",
-                "stale",
-              ].includes(c.state)))
+              isActiveHold(c)))
       )
     )
       throw new Error("An unresolved or cancelled governance hold prevents publication.");
     for (const pin of pins) {
       if (await governanceService.isReleaseRevoked(input.projectId, pin.releaseId))
         throw new Error("The governing policy was critically revoked before publication.");
-      if (pin.mode === "shadow") continue;
+      if (isShadow(pin)) continue;
       const approval = await governanceService.getReviewApproval(input.projectId, pin.taskId);
       if (!approval || approval.releaseId !== pin.releaseId)
         throw new Error(`Task ${pin.taskId} has no current durable code approval.`);
@@ -341,6 +505,11 @@ export class GovernanceExecutionService {
       });
     }
     if (!pins.length) {
+      if (mode === "enforced")
+        governanceError(
+          `Enforced governance admits only pinned tasks; ${input.taskId} has no governing policy.`,
+          GOVERNANCE_NOT_PINNED
+        );
       for (const taskId of new Set([input.taskId, ...cases.map((c) => c.taskId)])) {
         if (await governanceService.hasTaskHold(input.projectId, taskId))
           throw new Error("A retained governance hold prevents publication.");
@@ -361,9 +530,13 @@ export class GovernanceExecutionService {
     branchName: string;
     baseBranch: string;
   }): Promise<void> {
+    if (await governanceService.isGovernanceInactive(input.projectId)) return;
     const allPins = await governanceService.getTaskPinsForBranch(input.projectId, input.branchName);
-    const pins = allPins.filter((pin) => pin.mode !== "shadow");
-    const shadowPins = allPins.filter((pin) => pin.mode === "shadow");
+    const { mode } = await governanceService.getConfig(input.projectId);
+    const isShadow = (pin: GovernanceTaskPin) =>
+      effectiveGovernanceMode(pin.mode, mode) !== "enforced";
+    const pins = allPins.filter((pin) => !isShadow(pin));
+    const shadowPins = allPins.filter(isShadow);
     const shadowTasks = new Set(shadowPins.map((pin) => pin.taskId));
     for (const pin of allPins) {
       if (await governanceService.isReleaseRevoked(input.projectId, pin.releaseId))
@@ -392,19 +565,7 @@ export class GovernanceExecutionService {
             (finding) => finding.severity === "blocking" && finding.category === "gate"
           ))
     );
-    if (
-      branchCases.some(
-        (c) =>
-          c.humanCancelled ||
-          [
-            "awaiting_reconsideration",
-            "awaiting_judge",
-            "awaiting_human",
-            "evidence_requested",
-            "stale",
-          ].includes(c.state)
-      )
-    )
+    if (branchCases.some((c) => c.humanCancelled || isActiveHold(c)))
       throw new Error("An unresolved governance hold on this branch prevents publication.");
     const shadowCovered = new Set<string>();
     const shadowSourceCovered = new Set<string>();
@@ -416,8 +577,8 @@ export class GovernanceExecutionService {
       })
     ).stdout.trim();
     for (const pin of shadowPins) {
-      // Scope/source authorization remains enforced; shadow standards do not impose
-      // exact-file review equivalence or require a durable approval as merge authority.
+      // Scope authorization remains enforced. Source approval is observed, not required, and shadow
+      // standards do not impose exact-file review equivalence or a durable approval as merge authority.
       const approval = await governanceService.getReviewApproval(input.projectId, pin.taskId);
       let contribution;
       try {
@@ -438,33 +599,31 @@ export class GovernanceExecutionService {
         );
       }
       await this.assertScope(input.projectId, pin.taskId, contribution.changedPaths);
-      await assertGovernanceSensitiveSourceApproval({
-        projectId: input.projectId,
-        taskId: pin.taskId,
-        releaseId: pin.releaseId,
-        ...contribution,
-        repoPath: input.repoPath,
-        scopeBaseSha: approval?.scopeBaseSha ?? publicationBaseSha,
-      });
+      const scopeBaseSha = approval?.scopeBaseSha ?? publicationBaseSha;
+      try {
+        await assertGovernanceSensitiveSourceApproval({
+          projectId: input.projectId,
+          taskId: pin.taskId,
+          releaseId: pin.releaseId,
+          ...contribution,
+          repoPath: input.repoPath,
+          scopeBaseSha,
+        });
+      } catch (error) {
+        await governanceService.audit(input.projectId, "shadow_source_approval_missing", "system", {
+          taskId: pin.taskId,
+          releaseId: pin.releaseId,
+          headSha: contribution.headSha,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
       for (const file of await resolveGovernanceSensitiveSourcePaths({
         repoPath: input.repoPath,
+        projectId: input.projectId,
         ...contribution,
-        scopeBaseSha: approval?.scopeBaseSha ?? publicationBaseSha,
-      })) {
-        try {
-          await exec("git", ["diff", "--exit-code", contribution.headSha, "--", file], {
-            env: agentProcessEnvironment(),
-            cwd: input.candidatePath,
-            timeout: 10_000,
-            maxBuffer: 1024 * 1024,
-          });
-        } catch {
-          throw new Error(
-            "Merged candidate changed policy-sensitive source after human approval; renewed source review is required."
-          );
-        }
+        scopeBaseSha,
+      }))
         shadowSourceCovered.add(file);
-      }
       for (const file of contribution.changedPaths) shadowCovered.add(file);
     }
     if (!pins.length) {
@@ -476,44 +635,17 @@ export class GovernanceExecutionService {
       const additionalSources = (
         await resolveGovernanceCandidateSensitiveSourcePaths({
           repoPath: input.candidatePath,
+          projectId: input.projectId,
           baseSha: publicationBaseSha,
           changedPaths: candidate.changedPaths,
         })
       ).filter((file) => !shadowSourceCovered.has(file));
-      if (additionalSources.length && shadowPins.length) {
-        const pin =
-          shadowPins.find((item) => item.taskId === input.taskId) ??
-          shadowPins[shadowPins.length - 1];
-        const current = await governanceCodeSnapshot(
-          input.repoPath,
-          pin.baseSha,
-          input.branchName,
-          false,
-          input.baseBranch
-        );
-        await assertGovernanceSensitiveSourceApproval({
-          projectId: input.projectId,
-          taskId: pin.taskId,
-          releaseId: pin.releaseId,
-          ...current,
-          repoPath: input.repoPath,
-          scopeBaseSha: publicationBaseSha,
+      if (additionalSources.length && shadowPins.length)
+        await governanceService.audit(input.projectId, "shadow_source_approval_missing", "system", {
+          taskId: input.taskId,
+          paths: additionalSources,
+          reason: "Merged candidate introduced policy-sensitive source outside its contributions.",
         });
-        for (const file of additionalSources) {
-          try {
-            await exec("git", ["diff", "--exit-code", current.headSha, "--", file], {
-              env: agentProcessEnvironment(),
-              cwd: input.candidatePath,
-              timeout: 10_000,
-              maxBuffer: 1024 * 1024,
-            });
-          } catch {
-            throw new Error(
-              "Merged candidate introduced policy-sensitive source outside its human approval."
-            );
-          }
-        }
-      }
       if (!allPins.length) {
         await governanceService.assertMergeAdmission({
           projectId: input.projectId,
@@ -562,7 +694,10 @@ export class GovernanceExecutionService {
             "An epic requires compatible governing policy across every approved task contribution."
           );
         compatiblePolicy = signature;
-        const drift = governanceSourceDrift(release.sourceHashes, currentSources);
+        const drift = governanceSourceDrift(
+          await governanceService.getApprovedSourceHashes(input.projectId, release),
+          currentSources
+        );
         if (drift.length)
           throw new Error(
             `Published policy sources drifted from the governing release: ${drift.join(", ")}`
@@ -634,15 +769,7 @@ export class GovernanceExecutionService {
     const rulings = [];
     for (const c of await governanceService.listCases(projectId)) {
       if (!taskIds.includes(c.taskId)) continue;
-      if (
-        [
-          "awaiting_reconsideration",
-          "awaiting_judge",
-          "awaiting_human",
-          "evidence_requested",
-          "stale",
-        ].includes(c.state)
-      )
+      if (isActiveHold(c))
         throw new Error("Final epic review cannot bypass an unresolved child governance hold.");
       const ruling = decisions.find(
         (d) =>
@@ -720,6 +847,109 @@ export class GovernanceExecutionService {
     });
   }
 
+  /** Live human allowances for exactly this code: re-review may reword a finding but not reopen it. */
+  private async liveAllowance(pin: GovernanceTaskPin, headSha: string, diffHash: string) {
+    const [decisions, cases] = await Promise.all([
+      governanceService.listDecisions(pin.projectId),
+      governanceService.getTaskCases(pin.projectId, pin.taskId),
+    ]);
+    return cases.filter(
+      (c) =>
+        c.state === "allowed" &&
+        c.headSha === headSha &&
+        c.diffHash === diffHash &&
+        c.releaseId === pin.releaseId &&
+        decisions.some(
+          (d) =>
+            d.caseId === c.id &&
+            !d.revokedAt &&
+            d.action.startsWith("allow") &&
+            (!d.conditions || Date.parse(d.conditions.expiresAt) > Date.now())
+        )
+    );
+  }
+
+  /** Review-prompt context so a resumed reviewer is told what a human already ruled on this code. */
+  async validRulings(projectId: string, taskId: string, cwd: string): Promise<string> {
+    const pin = await governanceService.getTaskPin(projectId, taskId);
+    if (!pin) return "";
+    const code = await governanceCodeSnapshot(cwd, pin.baseSha, "HEAD", false, pin.baseBranch);
+    const allowed = await this.liveAllowance(pin, code.headSha, code.diffHash);
+    if (!allowed.length) return "";
+    const findings = allowed.flatMap((c) =>
+      c.findings.map(({ category, ruleRevisionId, file, evidence }) => ({
+        category,
+        ruleRevisionId,
+        file,
+        evidence,
+      }))
+    );
+    return `Human rulings valid for this exact code and policy (honor these without reopening the same standard on the same file; defects and hard checks remain in scope):\n${JSON.stringify(findings)}`;
+  }
+
+  /** After a merge, an exactly approved source becomes part of the approved snapshot. */
+  async refreshMergedSources(input: {
+    projectId: string;
+    repoPath: string;
+    branchName: string;
+  }): Promise<void> {
+    if (await governanceService.isGovernanceInactive(input.projectId)) return;
+    const pins = await governanceService.getTaskPinsForBranch(input.projectId, input.branchName);
+    if (!pins.length) return;
+    const current = await readGovernanceSourceHashes(input.projectId, input.repoPath);
+    for (const pin of pins) {
+      const approval = await governanceService.getReviewApproval(input.projectId, pin.taskId);
+      if (!approval) continue;
+      const reviewed = await governanceCodeSnapshot(
+        input.repoPath,
+        pin.baseSha,
+        approval.headSha,
+        false,
+        approval.scopeBaseSha
+      );
+      const sourcePaths = await resolveGovernanceSensitiveSourcePaths({
+        repoPath: input.repoPath,
+        projectId: input.projectId,
+        ...reviewed,
+        scopeBaseSha: approval.scopeBaseSha,
+      });
+      await governanceService.refreshApprovedSourceHashes({
+        projectId: input.projectId,
+        taskId: pin.taskId,
+        releaseId: pin.releaseId,
+        headSha: reviewed.headSha,
+        diffHash: reviewed.diffHash,
+        sourcePaths,
+        hashes: governanceSourceHashesForPaths(current, sourcePaths),
+      });
+    }
+  }
+
+  /** A human or a restart may decide the case while a model call is out; that result is simply late. */
+  private async recommendUnlessDecided(
+    c: ReviewCase,
+    recommendation: JudgeRecommendation
+  ): Promise<{ case: ReviewCase; late: boolean }> {
+    try {
+      return {
+        case: await governanceService.recordRecommendation(
+          c.projectId,
+          c.id,
+          recommendation,
+          c.version
+        ),
+        late: false,
+      };
+    } catch (error) {
+      if ((error as { code?: unknown }).code !== GOVERNANCE_STALE_VERSION) throw error;
+      await governanceService.audit(c.projectId, "late_adjudication_discarded", "system", {
+        caseId: c.id,
+        expectedVersion: c.version,
+      });
+      return { case: await governanceService.getCase(c.projectId, c.id), late: true };
+    }
+  }
+
   private async exhaustedCase(c: ReviewCase): Promise<ReviewCase> {
     try {
       return await governanceService.recordRecommendation(
@@ -755,6 +985,8 @@ export class GovernanceExecutionService {
   }): Promise<{ waiting: boolean; authorized?: boolean; case?: ReviewCase }> {
     const pin = await governanceService.getTaskPin(input.projectId, input.taskId);
     if (!pin) return { waiting: false };
+    const config = await governanceService.getConfig(input.projectId);
+    const enforced = effectiveGovernanceMode(pin.mode, config.mode) === "enforced";
     const code = await governanceCodeSnapshot(
       input.cwd,
       pin.baseSha,
@@ -764,14 +996,26 @@ export class GovernanceExecutionService {
     );
     await this.assertScope(input.projectId, input.taskId, code.changedPaths);
     const context = await this.context(pin, "reviewer", code.changedPaths);
-    const findings = aggregateReviewFindings([{ findings: input.result.findings ?? [] }]);
-    if (!findings.length)
-      throw new Error(
-        "Governed rejection requires structured findings with rule revisions or concrete defect evidence."
-      );
+    const reported = input.result.findings ?? [];
+    if (!reported.length && !enforced) {
+      await governanceService.audit(input.projectId, "shadow_unstructured_review", "system", {
+        taskId: input.taskId,
+        headSha: code.headSha,
+        summary: input.result.summary,
+      });
+      return { waiting: false };
+    }
+    // A plain-text rejection is still a rejection: keep it as a fix request, never a crash.
+    const findings = aggregateReviewFindings([
+      { findings: reported.length ? reported : [unstructuredFinding(input.result, code)] },
+    ]);
     const release = await governanceService.getRelease(input.projectId, pin.releaseId);
     for (const f of findings) {
-      if (f.codeRevision !== code.headSha || !code.changedPaths.includes(f.file)) {
+      // A reviewer may report a real defect in code this change relies on but did not edit.
+      if (
+        f.codeRevision !== code.headSha ||
+        (f.category === "standard" && !code.changedPaths.includes(f.file))
+      ) {
         throw new Error(
           `Finding ${f.id} does not refer to the reviewed code revision and changed file.`
         );
@@ -785,24 +1029,11 @@ export class GovernanceExecutionService {
       }
     }
     const blockers = findings.filter((f) => f.severity === "blocking");
-    const decisions = await governanceService.listDecisions(input.projectId);
-    const existingCases = await governanceService.getTaskCases(input.projectId, input.taskId);
-    const authorized = existingCases.find(
+    const authorized = (await this.liveAllowance(pin, code.headSha, code.diffHash)).find(
       (c) =>
-        c.state === "allowed" &&
-        c.headSha === code.headSha &&
-        c.diffHash === code.diffHash &&
-        c.releaseId === pin.releaseId &&
         blockers.length > 0 &&
         blockers.every((f) =>
-          c.findings.some((old) => reviewFindingIdentity(old) === reviewFindingIdentity(f))
-        ) &&
-        decisions.some(
-          (d) =>
-            d.caseId === c.id &&
-            !d.revokedAt &&
-            d.action.startsWith("allow") &&
-            (!d.conditions || Date.parse(d.conditions.expiresAt) > Date.now())
+          c.findings.some((old) => reviewFindingKey(old) === reviewFindingKey(f))
         )
     );
     if (authorized) return { waiting: false, authorized: true, case: authorized };
@@ -815,15 +1046,7 @@ export class GovernanceExecutionService {
             (r) =>
               r.id === f.ruleRevisionId &&
               r.severity === "standard" &&
-              (r.exceptionEligible ||
-                (!r.components.length &&
-                  !resolvePolicyContext(
-                    release,
-                    "reviewer",
-                    [f.file],
-                    [],
-                    Number.MAX_SAFE_INTEGER
-                  ).receipt.selected.some((selected) => selected.id === r.id)))
+              (r.exceptionEligible || !ruleAppliesToFile(release, r.id, f.file))
           )
       );
     const appeals = mapReviewAppeals(blockers, input.appeals);
@@ -875,7 +1098,7 @@ export class GovernanceExecutionService {
       },
       worktreePath: pin.worktreePath,
       branchName: pin.branchName,
-      state: disputed && pin.mode !== "shadow" ? "awaiting_reconsideration" : "fix_required",
+      state: disputed && enforced ? "awaiting_reconsideration" : "fix_required",
       idempotencyKey: createHash("sha256")
         .update(
           JSON.stringify([
@@ -892,7 +1115,7 @@ export class GovernanceExecutionService {
     });
     await governanceService.deliverOutbox(input.projectId);
     if (!disputed) return { waiting: false, case: docket };
-    if (pin.mode === "shadow") {
+    if (!enforced) {
       try {
         const raw = await invokeGovernanceModel(
           input.projectId,
@@ -902,8 +1125,7 @@ export class GovernanceExecutionService {
             mode: "shadow",
             instruction:
               "Assess the dispute advisory-only. Return a concise recommendation; no code, standards or outcome may change.",
-            case: docket,
-            policy: release,
+            ...boundedCasePayload(docket, release, config),
           })
         );
         await governanceService.audit(input.projectId, "shadow_judge_recommendation", "judge", {
@@ -937,8 +1159,7 @@ export class GovernanceExecutionService {
           JSON.stringify({
             instruction:
               'Reconsider every original standards finding using the coder appeal and pinned policy. Keep each unresolved original finding with its original id and evidence. Explicitly withdraw invalid findings using withdrawnFindingIds. Missing or unmentioned IDs remain blockers. Return {status:"approved"|"rejected",summary:string,findings:[{id,category,ruleId,ruleRevisionId,file,codeRevision,evidence,severity,suggestedRemedy,provenance}],withdrawnFindingIds:string[],notes:string}. Approval requires explicitly withdrawing all original blocking findings. Defects and hard checks cannot be waived.',
-            case: docket,
-            policy: release,
+            ...boundedCasePayload(docket, release, config),
           }),
           input.reviewerAgent
         );
@@ -952,20 +1173,15 @@ export class GovernanceExecutionService {
           docket.version
         );
       } catch (error) {
-        const updated = await governanceService.recordRecommendation(
-          input.projectId,
-          docket.id,
-          {
-            disposition: "human_required",
-            rationale: `Reviewer reconsideration unavailable: ${error instanceof Error ? error.message : String(error)}`,
-            evidence: [docket.evidenceHash],
-            ruleIds: blockers.flatMap((f) => (f.ruleId ? [f.ruleId] : [])),
-            decisionIds: [],
-          },
-          docket.version
-        );
+        const updated = await this.recommendUnlessDecided(docket, {
+          disposition: "human_required",
+          rationale: `Reviewer reconsideration unavailable: ${error instanceof Error ? error.message : String(error)}`,
+          evidence: [docket.evidenceHash],
+          ruleIds: blockers.flatMap((f) => (f.ruleId ? [f.ruleId] : [])),
+          decisionIds: [],
+        });
         await governanceService.deliverOutbox(input.projectId);
-        return { waiting: true, case: updated };
+        return { waiting: true, case: updated.case };
       }
     }
     if (adjudicating.state === "cancelled")
@@ -1007,8 +1223,7 @@ export class GovernanceExecutionService {
         JSON.stringify({
           instruction:
             "The reviewer has reconsidered and still objects. Assess both sides. Cite evidence/rules/decisions. New exceptions, mixed or uncertain precedent require human_required. Disposition cannot waive hard checks. Return {disposition: finding_invalid|fix_required|exception_authorized|human_required,rationale:string,evidence:string[],ruleIds:string[],decisionIds:string[]}.",
-          case: adjudicating,
-          policy: release,
+          ...boundedCasePayload(adjudicating, release, config),
           precedent: precedents,
         })
       );
@@ -1041,13 +1256,9 @@ export class GovernanceExecutionService {
         decisionIds: [],
       };
     }
-    const updated = await governanceService.recordRecommendation(
-      input.projectId,
-      adjudicating.id,
-      recommendation,
-      adjudicating.version
-    );
+    const { case: updated, late } = await this.recommendUnlessDecided(adjudicating, recommendation);
     await governanceService.deliverOutbox(input.projectId);
+    if (late) return { waiting: true, case: updated };
     if (
       ["finding_invalid", "exception_authorized", "fix_required"].includes(
         recommendation.disposition

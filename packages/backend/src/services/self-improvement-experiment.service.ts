@@ -1,28 +1,9 @@
-/**
- * Self-improvement experiment pipeline (mining replay-grade Execute sessions + candidate behavior bundles).
- * Replay-grade: archived session with completion metadata and an opensprint/* task branch (merge-style success path).
- */
+/** Instruction snapshots and candidate bundles replayed by policy evaluation. */
 
 import type { AgentRole, PolicyRelease } from "@opensprint/shared";
 import { AGENT_ROLE_CANONICAL_ORDER } from "@opensprint/shared";
 import type { AgentInstructionsService } from "./agent-instructions.service.js";
-import { runBehaviorVersionStoreWrite } from "./behavior-version-store.service.js";
-import { taskStore } from "./task-store.service.js";
-import { toPgParams } from "../db/sql-params.js";
-import { createLogger } from "../utils/logger.js";
 import { createPatch } from "diff";
-
-const log = createLogger("self-improvement-experiment");
-
-const REPLAY_GRADE_SESSION_SQL = toPgParams(`
-  SELECT id FROM agent_sessions
-  WHERE project_id = ?
-    AND completed_at IS NOT NULL
-    AND TRIM(git_branch) <> ''
-    AND git_branch LIKE 'opensprint/%'
-  ORDER BY id DESC
-  LIMIT 500
-`);
 
 /** Baseline instruction + template bodies used to build experiment diffs. */
 export interface BehaviorExperimentInstructionBaseline {
@@ -83,21 +64,6 @@ function diffText(path: string, before: string, after: string): string {
   return before === after
     ? ""
     : createPatch(path, before, after, "approved baseline", "proposed amendment");
-}
-
-/**
- * Mine agent_sessions ids suitable for Execute replay (completed, branch under opensprint/).
- */
-export async function mineReplayGradeExecuteSessionIds(projectId: string): Promise<number[]> {
-  const client = await taskStore.getDb();
-  const rows = await client.query(REPLAY_GRADE_SESSION_SQL, [projectId]);
-  const ids: number[] = [];
-  for (const row of rows) {
-    const id = row.id;
-    if (typeof id === "number" && Number.isFinite(id)) ids.push(id);
-    else if (typeof id === "string" && /^\d+$/.test(id)) ids.push(Number(id));
-  }
-  return ids;
 }
 
 export async function buildBehaviorInstructionBaseline(
@@ -189,44 +155,4 @@ export function buildBehaviorExperimentCandidateBundle(params: {
     ],
     policyAffecting: true,
   };
-}
-
-export class SelfImprovementExperimentService {
-  constructor(private readonly instructions: AgentInstructionsService) {}
-
-  /**
-   * Mine sessions, build a rule-based candidate bundle, persist as behavior_versions (version_type candidate).
-   */
-  async generateAndPersistCandidate(
-    projectId: string,
-    runId: string,
-    amendments: BehaviorAmendment[] = []
-  ): Promise<{ versionId: string; bundle: BehaviorExperimentCandidateBundle }> {
-    const sessionIds = await mineReplayGradeExecuteSessionIds(projectId);
-    const baseline = await buildBehaviorInstructionBaseline(projectId, this.instructions);
-    if (amendments.length === 0)
-      throw new Error(
-        "No evidence-backed amendments available; nominate a governance proposal first"
-      );
-    const bundle = buildBehaviorExperimentCandidateBundle({
-      sessionIds,
-      baseline,
-      runId,
-      amendments,
-    });
-    const versionId = `exp-${runId}`;
-
-    await runBehaviorVersionStoreWrite(async (store) => {
-      await store.saveCandidate(projectId, versionId, JSON.stringify(bundle));
-    });
-
-    log.info("Persisted behavior experiment candidate", {
-      projectId,
-      runId,
-      versionId,
-      minedCount: sessionIds.length,
-    });
-
-    return { versionId, bundle };
-  }
 }

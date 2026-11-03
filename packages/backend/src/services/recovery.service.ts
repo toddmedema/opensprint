@@ -12,6 +12,7 @@
  */
 
 import { governanceService } from "./governance.service.js";
+import { isActiveHold } from "./policy-context.js";
 import fs from "fs/promises";
 import path from "path";
 import { AGENT_SUSPEND_GRACE_MS, HEARTBEAT_STALE_MS, OPENSPRINT_PATHS } from "@opensprint/shared";
@@ -172,13 +173,23 @@ export class RecoveryService {
 
     // Governance waits are durable, slot-free owners. Protect them before every recovery pass,
     // including human cancellation and pending resumes, using the same authority as merge admission.
-    for (const c of await governanceService.listCases(projectId)) {
+    const cases = await governanceService.listCases(projectId);
+    const heldTasks = new Set(cases.filter(isActiveHold).map((c) => c.taskId));
+    const pendingResume = new Map<string, boolean>();
+    for (const c of cases) {
+      if (!heldTasks.has(c.taskId)) {
+        const resuming =
+          pendingResume.get(c.taskId) ??
+          (await governanceService.hasPendingResume(projectId, c.taskId));
+        pendingResume.set(c.taskId, resuming);
+        if (!resuming) continue;
+      }
+      // This pass also runs on the watchdog: a judge call from this process may still answer.
       if (
-        !(await governanceService.hasTaskHold(projectId, c.taskId)) &&
-        !(await governanceService.hasPendingResume(projectId, c.taskId))
-      )
-        continue;
-      if (opts.includeGupp && ["awaiting_judge", "awaiting_reconsideration"].includes(c.state)) {
+        opts.includeGupp &&
+        ["awaiting_judge", "awaiting_reconsideration"].includes(c.state) &&
+        (await governanceService.isAdjudicationOrphaned(c))
+      ) {
         await governanceService.recordRecommendation(
           projectId,
           c.id,
@@ -199,7 +210,12 @@ export class RecoveryService {
       if (c.branchName.startsWith("opensprint/epic_"))
         excludeWorktreeKeys.add(c.branchName.slice("opensprint/".length));
     }
-    await governanceService.deliverOutbox(projectId);
+    // Notification delivery retries later; it must never stand between a crash and its recovery.
+    try {
+      await governanceService.deliverOutbox(projectId);
+    } catch (err) {
+      log.warn("Governance outbox delivery failed during recovery", { projectId, err });
+    }
 
     // 1. GUPP crash recovery (startup only) — now receives exclude sets
     if (

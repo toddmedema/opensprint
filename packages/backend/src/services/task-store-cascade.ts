@@ -168,4 +168,8 @@ export async function cascadeDeleteTaskReferences(
 ): Promise<void> {
   await removeTaskReferencesFromFeedback(client, projectId, taskId);
   await removeTaskReferencesFromPlans(client, projectId, taskId);
+  await client.execute("DELETE FROM governance_task_scopes WHERE project_id=$1 AND task_id=$2", [
+    projectId,
+    taskId,
+  ]);
 }

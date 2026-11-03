@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import type { GovernanceSummary, GovernanceMode } from "@opensprint/shared";
@@ -9,11 +9,20 @@ import { PolicyRegistry } from "./governance/PolicyRegistry";
 import { PolicyProposals } from "./governance/PolicyProposals";
 import { GovernanceHistory } from "./governance/GovernanceHistory";
 import { PolicySourceChanges, PolicyReleaseRevocation } from "./governance/PolicySourceChanges";
-import { OPEN_GOVERNANCE_CASE_STATES } from "../../lib/governance";
+import { TaskScopeAuthorization } from "./governance/TaskScopeAuthorization";
+import { GovernanceResult, type GovernanceOutcome } from "./governance/GovernanceResult";
+import {
+  isAgentHeldCase,
+  isGovernanceStaleError,
+  isHumanActionableCase,
+} from "../../lib/governance";
 
-export const GOVERNANCE_INPUT_CLASS =
-  "w-full rounded-lg border border-theme-border bg-theme-bg px-3 py-2 text-sm text-theme-text focus:outline-none focus:ring-2 focus:ring-brand-500 disabled:opacity-50";
-export type GovernanceRun = (operation: () => Promise<unknown>, successMessage: string) => void;
+/** `scope` names the control that submitted, so its result appears beside that control. */
+export type GovernanceRun = (
+  operation: () => Promise<unknown>,
+  successMessage: string,
+  scope: string
+) => void;
 
 export interface GovernancePanelProps {
   projectId: string;
@@ -21,8 +30,14 @@ export interface GovernancePanelProps {
   capability: string;
   busy: boolean;
   run: GovernanceRun;
+  outcome: GovernanceOutcome | null;
+  pendingScope: string | null;
   unlockApproval?: () => void;
+  openStandards?: () => void;
 }
+
+const GOVERNANCE_TABS = ["docket", "standards", "proposals", "history"] as const;
+type GovernanceTab = (typeof GOVERNANCE_TABS)[number];
 
 const MODE_LABELS: Record<GovernanceMode, string> = {
   disabled: "Off",
@@ -34,8 +49,15 @@ export function GovernanceSettingsContent({ projectId }: { projectId: string }) 
   // Approval credentials are intentionally kept in component memory only.
   const [capability, setCapability] = useState("");
   const authorityRef = useRef<HTMLDetailsElement>(null);
-  const [tab, setTab] = useState<"docket" | "standards" | "proposals" | "history">("docket");
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [tab, setTabState] = useState<GovernanceTab>("docket");
+  // Panels stay mounted once visited so unpublished drafts survive switching tabs.
+  const [visited, setVisited] = useState<ReadonlySet<GovernanceTab>>(() => new Set(["docket"]));
+  const setTab = useCallback((next: GovernanceTab) => {
+    setTabState(next);
+    setVisited((current) => (current.has(next) ? current : new Set(current).add(next)));
+  }, []);
+  const [outcome, setOutcome] = useState<GovernanceOutcome | null>(null);
+  const outcomeId = useRef(0);
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const summaryQuery = useQuery({
@@ -50,27 +72,34 @@ export function GovernanceSettingsContent({ projectId }: { projectId: string }) 
     }: {
       operation: () => Promise<unknown>;
       message: string;
+      scope: string;
     }) => {
       await operation();
       return message;
     },
-    onSuccess: (message) => {
-      setFeedback(message);
+    onSuccess: (message, { scope }) => {
+      setOutcome({ id: ++outcomeId.current, scope, kind: "success", message, stale: false });
       void queryClient.invalidateQueries({ queryKey: queryKeys.governance.summary(projectId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.notifications.project(projectId) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.notifications.global() });
       void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
     },
-    onError: (error) => {
-      setFeedback(null);
-      if (isApiError(error) && /STALE|CONFLICT|VERSION/.test(error.code)) {
+    onError: (error, { scope }) => {
+      const stale = isApiError(error) && isGovernanceStaleError(error);
+      setOutcome({
+        id: ++outcomeId.current,
+        scope,
+        kind: "error",
+        message: error.message,
+        stale,
+      });
+      if (stale)
         void queryClient.invalidateQueries({ queryKey: queryKeys.governance.summary(projectId) });
-      }
     },
   });
-  const run: GovernanceRun = (operation, message) => {
-    setFeedback(null);
-    command.mutate({ operation, message });
+  const run: GovernanceRun = (operation, message, scope) => {
+    setOutcome(null);
+    command.mutate({ operation, message, scope });
   };
 
   if (summaryQuery.isPending)
@@ -98,15 +127,18 @@ export function GovernanceSettingsContent({ projectId }: { projectId: string }) 
     );
 
   const summary = summaryQuery.data;
-  const pendingCount = summary.cases.filter(
-    (item) => item.humanCancelled || OPEN_GOVERNANCE_CASE_STATES.has(item.state)
-  ).length;
+  const pendingCount = summary.cases.filter(isHumanActionableCase).length;
+  const inProgressCount = summary.cases.filter(isAgentHeldCase).length;
+  const pendingScope = command.isPending ? command.variables.scope : null;
   const props: GovernancePanelProps = {
     projectId,
     summary,
     capability,
     busy: command.isPending,
     run,
+    outcome,
+    pendingScope,
+    openStandards: () => setTab("standards"),
     unlockApproval: () => {
       if (authorityRef.current) {
         authorityRef.current.open = true;
@@ -118,6 +150,14 @@ export function GovernanceSettingsContent({ projectId }: { projectId: string }) 
 
   return (
     <div className="space-y-6 pb-8" data-testid="governance-settings">
+      <div role="status" aria-live="polite" data-testid="governance-connection-status">
+        {summaryQuery.isRefetchError && (
+          <p className="rounded-lg border border-theme-border px-4 py-3 text-sm text-theme-text">
+            Last updated {new Date(summaryQuery.dataUpdatedAt).toLocaleTimeString()} · Reconnecting…
+            This page may be out of date.
+          </p>
+        )}
+      </div>
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-theme-text">Review governance</h2>
@@ -132,7 +172,11 @@ export function GovernanceSettingsContent({ projectId }: { projectId: string }) 
       </header>
 
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        <SummaryStat label="Waiting for a decision" value={String(pendingCount)} />
+        <SummaryStat
+          label="Waiting for a decision"
+          value={String(pendingCount)}
+          hint={inProgressCount > 0 ? `${inProgressCount} in progress` : undefined}
+        />
         <SummaryStat
           label="Approved standards"
           value={String(
@@ -176,8 +220,8 @@ export function GovernanceSettingsContent({ projectId }: { projectId: string }) 
               type="password"
               value={capability}
               onChange={(event) => setCapability(event.target.value)}
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
-              autoComplete="off"
+              className="input mt-1.5"
+              autoComplete="new-password"
               spellCheck={false}
               disabled={!summary.authority.configured}
               aria-describedby="governance-capability-help"
@@ -197,33 +241,9 @@ export function GovernanceSettingsContent({ projectId }: { projectId: string }) 
             </button>
           )}
           <GovernanceConfiguration key={`${summary.config.version}:${projectId}`} {...props} />
+          <GovernanceResult scope="configuration" outcome={outcome} pendingScope={pendingScope} />
         </div>
       </details>
-
-      {command.error && (
-        <div
-          role="alert"
-          className="rounded-lg border border-theme-error-border bg-theme-error-bg px-4 py-3 text-sm text-theme-text"
-        >
-          {isApiError(command.error) && /STALE|CONFLICT|VERSION/.test(command.error.code)
-            ? "This review changed before your decision was saved. Review the refreshed evidence and submit a new decision. "
-            : ""}
-          {command.error.message}
-        </div>
-      )}
-      {feedback && (
-        <p
-          role="status"
-          className="rounded-lg border border-theme-border px-4 py-3 text-sm text-theme-text"
-        >
-          {feedback}
-        </p>
-      )}
-      {command.isPending && (
-        <p role="status" className="text-sm text-theme-muted">
-          Processing governance request… Evaluations may take several minutes.
-        </p>
-      )}
 
       <div
         role="tablist"
@@ -232,7 +252,7 @@ export function GovernanceSettingsContent({ projectId }: { projectId: string }) 
         className="flex flex-wrap gap-1 border-b border-theme-border pb-3"
         onKeyDown={(event) => {
           if (event.altKey || event.ctrlKey || event.metaKey) return;
-          const keys = ["docket", "standards", "proposals", "history"] as const;
+          const keys = GOVERNANCE_TABS;
           let index = keys.indexOf(tab);
           if (event.key === "ArrowRight") index = (index + 1) % keys.length;
           else if (event.key === "ArrowLeft") index = (index + keys.length - 1) % keys.length;
@@ -269,33 +289,41 @@ export function GovernanceSettingsContent({ projectId }: { projectId: string }) 
           </button>
         ))}
       </div>
-      <section
-        role="tabpanel"
-        id={`governance-panel-${tab}`}
-        aria-labelledby={`governance-tab-${tab}`}
-      >
-        {tab === "docket" && (
-          <GovernanceDocket {...props} selectedCaseId={searchParams.get("case")} />
-        )}
-        {tab === "standards" && (
-          <div className="space-y-5">
-            <PolicyRegistry {...props} />
-            <PolicySourceChanges {...props} />
-            <PolicyReleaseRevocation {...props} />
-          </div>
-        )}
-        {tab === "proposals" && <PolicyProposals {...props} />}
-        {tab === "history" && <GovernanceHistory {...props} />}
-      </section>
+      {GOVERNANCE_TABS.map((id) => (
+        <section
+          key={id}
+          role="tabpanel"
+          id={`governance-panel-${id}`}
+          aria-labelledby={`governance-tab-${id}`}
+          tabIndex={0}
+          hidden={tab !== id}
+          className="focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+        >
+          {visited.has(id) && id === "docket" && (
+            <GovernanceDocket {...props} selectedCaseId={searchParams.get("case")} />
+          )}
+          {visited.has(id) && id === "standards" && (
+            <div className="space-y-5">
+              <PolicyRegistry {...props} />
+              <PolicySourceChanges {...props} />
+              <TaskScopeAuthorization {...props} />
+              <PolicyReleaseRevocation {...props} />
+            </div>
+          )}
+          {visited.has(id) && id === "proposals" && <PolicyProposals {...props} />}
+          {visited.has(id) && id === "history" && <GovernanceHistory {...props} />}
+        </section>
+      ))}
     </div>
   );
 }
 
-function SummaryStat({ label, value }: { label: string; value: string }) {
+function SummaryStat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="min-w-0 rounded-xl border border-theme-border px-3 py-3 sm:px-4">
       <p className="text-xl font-semibold tabular-nums text-theme-text sm:text-2xl">{value}</p>
       <p className="mt-1 text-xs text-theme-muted">{label}</p>
+      {hint && <p className="mt-0.5 text-xs text-theme-muted">{hint}</p>}
     </div>
   );
 }
@@ -348,7 +376,9 @@ function GovernanceConfiguration({
                 expectedVersion: summary.config.version,
                 mode,
                 ...limits,
-                judgeAgent: { type: provider, model: model.trim() || null, cliCommand: null },
+                judgeAgent: model.trim()
+                  ? { type: provider, model: model.trim(), cliCommand: null }
+                  : null,
                 reconsiderationAgent: reconsiderationModel.trim()
                   ? {
                       type: reconsiderationProvider,
@@ -374,7 +404,8 @@ function GovernanceConfiguration({
               },
               capability
             ),
-          "Governance configuration saved."
+          "Governance configuration saved.",
+          "configuration"
         );
       }}
       className="space-y-3"
@@ -385,7 +416,7 @@ function GovernanceConfiguration({
           <select
             value={mode}
             onChange={(event) => setMode(event.target.value as GovernanceMode)}
-            className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+            className="input mt-1.5"
           >
             <option value="disabled">Off</option>
             <option value="shadow">Shadow pilot</option>
@@ -397,7 +428,7 @@ function GovernanceConfiguration({
           <select
             value={provider}
             onChange={(event) => setProvider(event.target.value as typeof provider)}
-            className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+            className="input mt-1.5"
           >
             <option value="openai">OpenAI</option>
             <option value="claude">Anthropic</option>
@@ -411,7 +442,7 @@ function GovernanceConfiguration({
           <input
             value={model}
             onChange={(event) => setModel(event.target.value)}
-            className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+            className="input mt-1.5"
             placeholder="A model for difficult reasoning"
           />
         </label>
@@ -425,7 +456,7 @@ function GovernanceConfiguration({
             step="any"
             value={inputPrice}
             onChange={(event) => setInputPrice(event.target.value)}
-            className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+            className="input mt-1.5"
             required={Boolean(outputPrice)}
           />
         </label>
@@ -437,14 +468,15 @@ function GovernanceConfiguration({
             step="any"
             value={outputPrice}
             onChange={(event) => setOutputPrice(event.target.value)}
-            className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+            className="input mt-1.5"
             required={Boolean(inputPrice)}
           />
         </label>
       </div>
       <p className="text-xs text-theme-muted">
-        Set verified price ceilings for the configured model to bound judge spending. Without
-        configured ceilings, disputes go directly to the human docket.
+        Set verified price ceilings for the configured model to bound judge spending. Without a
+        model and configured ceilings, disputes go directly to the human docket. Clear the model to
+        use human decisions without paid adjudication.
       </p>
       <fieldset className="rounded-lg border border-theme-border p-3">
         <legend className="px-1 text-sm font-medium text-theme-text">
@@ -463,7 +495,7 @@ function GovernanceConfiguration({
               onChange={(event) =>
                 setReconsiderationProvider(event.target.value as typeof reconsiderationProvider)
               }
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
             >
               <option value="openai">OpenAI</option>
               <option value="claude">Anthropic</option>
@@ -474,7 +506,7 @@ function GovernanceConfiguration({
             <input
               value={reconsiderationModel}
               onChange={(event) => setReconsiderationModel(event.target.value)}
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
               placeholder="An API model for reviewing appeals"
             />
           </label>
@@ -487,7 +519,7 @@ function GovernanceConfiguration({
               value={reconsiderationInputPrice}
               onChange={(event) => setReconsiderationInputPrice(event.target.value)}
               required={Boolean(reconsiderationOutputPrice)}
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
             />
           </label>
           <label className="text-sm text-theme-text">
@@ -499,7 +531,7 @@ function GovernanceConfiguration({
               value={reconsiderationOutputPrice}
               onChange={(event) => setReconsiderationOutputPrice(event.target.value)}
               required={Boolean(reconsiderationInputPrice)}
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
             />
           </label>
         </div>
@@ -535,7 +567,7 @@ function GovernanceConfiguration({
                 onChange={(event) =>
                   setLimits((current) => ({ ...current, [key]: Number(event.target.value) }))
                 }
-                className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+                className="input mt-1.5"
                 required
               />
             </label>
@@ -546,11 +578,17 @@ function GovernanceConfiguration({
           not reset the task’s overall budget. Missing mandatory policy blocks approval.
         </p>
       </details>
-      <p className="text-xs text-theme-muted">
-        Shadow recommendations preserve normal review outcomes. Bounded adjudication requires review
-        on every task and an approved release. Open holds must be explicitly resolved before
-        governance can be turned off.
-      </p>
+      <div className="space-y-1 text-xs text-theme-muted" data-testid="governance-rollout-help">
+        <p>
+          Off: reviews work as usual and no governance decisions are made. Shadow pilot: the judge
+          makes recommendations, but review outcomes do not change. Bounded adjudication: disputes
+          are decided by the judge within your limits or sent to your docket.
+        </p>
+        <p>
+          Shadow pilot and Bounded adjudication both need an approved release and Workflow review
+          mode set to review every task. Resolve open holds before turning governance off.
+        </p>
+      </div>
       <button
         type="submit"
         className="btn-secondary disabled:opacity-50"

@@ -5,7 +5,10 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { ReplayFixtureService, type ReplayFixture } from "../services/replay-fixture.service.js";
-import { IsolatedReplayRunner } from "../services/isolated-replay-runner.service.js";
+import {
+  IsolatedReplayRunner,
+  sweepReplayContainers,
+} from "../services/isolated-replay-runner.service.js";
 const exec = promisify(execFile);
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 describe("security QA round 3: replay host boundary", () => {
@@ -41,7 +44,7 @@ describe("security QA round 3: replay host boundary", () => {
     docker = path.join(root, "docker");
     await fs.writeFile(
       docker,
-      `#!/usr/bin/env node\nrequire('node:fs').writeFileSync(${JSON.stringify(calls)},'called'); const args=process.argv.slice(2); if(args[0]==='rm')process.exit(0); process.stdout.write(JSON.stringify(args.includes('/opensprint-replay/agent')?{completed:true,retryCount:0,costUsd:0}:{rubricId:'qa',label:'defect',reviewPassed:true,checks:[{name:'independent',passed:true}]}));\n`,
+      `#!/usr/bin/env node\nrequire('node:fs').writeFileSync(${JSON.stringify(calls)},'called'); const args=process.argv.slice(2); if(args[0]==='rm')process.exit(0); process.stdout.write(JSON.stringify(args.includes('/opensprint-replay/agent')?{completed:true,retryCount:0,costUsd:0}:{rubricId:'qa',label:'defect',reviewPassed:false,checks:[{name:'independent',passed:true}]}));\n`,
       { mode: 0o700 }
     );
     fixture = {
@@ -179,7 +182,7 @@ if(args.includes('/opensprint-replay/agent')) {
  process.stdout.write(JSON.stringify({completed:true,retryCount:0,costUsd:0}));
 } else {
  fs.writeFileSync(${JSON.stringify(evaluated)},'evaluator ran');
- process.stdout.write(JSON.stringify({rubricId:'qa',label:'defect',reviewPassed:true,checks:[{name:'independent',passed:true}]}));
+ process.stdout.write(JSON.stringify({rubricId:'qa',label:'defect',reviewPassed:false,checks:[{name:'independent',passed:true}]}));
 }
 `,
       { mode: 0o700 }
@@ -212,7 +215,7 @@ if(args.includes('/opensprint-replay/agent')) {
 const fs=require('node:fs'),args=process.argv.slice(2);
 if(args[0]==='rm')process.exit(0);
 fs.appendFileSync(${JSON.stringify(calls)},JSON.stringify(args)+'\\n');
-process.stdout.write(JSON.stringify(args.includes('/opensprint-replay/agent')?{completed:true,retryCount:0,costUsd:0}:{rubricId:'qa',label:'defect',reviewPassed:true,checks:[{name:'independent',passed:true}]}));
+process.stdout.write(JSON.stringify(args.includes('/opensprint-replay/agent')?{completed:true,retryCount:0,costUsd:0}:{rubricId:'qa',label:'defect',reviewPassed:false,checks:[{name:'independent',passed:true}]}));
 `,
         { mode: 0o700 }
       );
@@ -270,4 +273,138 @@ process.stderr.write('Docker transport lost');process.exit(1);
       await fs.rm(path.dirname(workspace), { recursive: true, force: true });
     }
   });
+  const runner = (overrides = {}) =>
+    new IsolatedReplayRunner({
+      projectId: fixture.projectId,
+      fixtures: store,
+      image,
+      dockerExecutable: docker,
+      ...overrides,
+    });
+  const replay = (overrides = {}) =>
+    runner(overrides).run({ sessionId: 1, worktreePath: repo, variant: "baseline" });
+  const fakeDocker = (agent: string, verdict: Record<string, unknown>) =>
+    fs.writeFile(
+      docker,
+      `#!/usr/bin/env node
+const fs=require('node:fs'),path=require('node:path'),args=process.argv.slice(2);
+if(args[0]==='rm')process.exit(0);
+const log=${JSON.stringify(calls)};
+fs.appendFileSync(log,JSON.stringify({args,host:process.env.DOCKER_HOST,context:process.env.DOCKER_CONTEXT,home:process.env.HOME})+'\\n');
+const rubric=args.find(a=>a.includes('target=/replay-evaluation'));
+if(rubric)fs.writeFileSync(log+'.rubric',fs.readFileSync(rubric.match(/source=([^,]+)/)[1]+'/rubric.json'));
+if(args.includes('/opensprint-replay/agent')){
+ const workspace=args.find(a=>a.includes('target=/workspace')).match(/source=([^,]+)/)[1];
+ ${agent}
+ process.stdout.write(JSON.stringify({completed:true,retryCount:0,costUsd:0}));
+} else process.stdout.write(JSON.stringify(${JSON.stringify({ rubricId: "qa", checks: [{ name: "independent", passed: true }], ...verdict })}));
+`,
+      { mode: 0o700 }
+    );
+  it("scores an accepted defect as failure and a blocked one as success with a blind rubric", async () => {
+    await store.capture(fixture, repo);
+    await fakeDocker("", { label: "defect", reviewPassed: true });
+    expect(await replay()).toMatchObject({
+      success: false,
+      reviewPassed: false,
+      verdict: "escaped",
+      evaluationComplete: true,
+    });
+    const rubric = JSON.parse(await fs.readFile(`${calls}.rubric`, "utf8")) as object;
+    expect(rubric).not.toHaveProperty("expectedLabel");
+    expect(JSON.stringify(rubric)).not.toContain("defect");
+    await fakeDocker("", { label: "defect", reviewPassed: false });
+    expect(await replay()).toMatchObject({ success: true, verdict: "blocked" });
+  });
+  it("treats an evaluator without a recognized label as incomplete", async () => {
+    await store.capture(fixture, repo);
+    await fakeDocker("", { reviewPassed: false });
+    expect(await replay()).toMatchObject({ success: false, evaluationComplete: false });
+  });
+  it("keeps the measured outcome and removes scratch when the coder leaves restrictive modes", async () => {
+    await store.capture(fixture, repo);
+    await fakeDocker(
+      `for(const d of [path.join(workspace,'locked'),path.join(workspace,'.git','locked')]){fs.mkdirSync(d);fs.writeFileSync(path.join(d,'f'),'x');fs.chmodSync(d,0o500);}`,
+      { label: "defect", reviewPassed: false }
+    );
+    const outcome = await replay();
+    expect(outcome).toMatchObject({ success: true, evaluationComplete: true });
+    const { args } = JSON.parse((await fs.readFile(calls, "utf8")).split("\n")[0]!) as {
+      args: string[];
+    };
+    const workspace = args
+      .find((a) => a.includes("target=/workspace"))!
+      .match(/source=([^,]+)/)![1]!;
+    await expect(fs.stat(path.dirname(workspace))).rejects.toThrow();
+  });
+  it("stops a coder that exceeds the workspace disk budget", async () => {
+    await store.capture(fixture, repo);
+    await fakeDocker(
+      `fs.writeFileSync(path.join(workspace,'big'),Buffer.alloc(4096));require('node:child_process').execFileSync('sleep',['60']);`,
+      { label: "defect", reviewPassed: false }
+    );
+    const outcome = await replay({ diskLimitBytes: 1024, diskPollMs: 25 });
+    expect(outcome).toMatchObject({ success: false, evaluationComplete: false });
+    expect(outcome.error).toContain("disk budget");
+  });
+  it("labels containers, enforces the limit inside them, and keeps the Docker client's daemon selection", async () => {
+    await store.capture(fixture, repo);
+    await fakeDocker("", { label: "defect", reviewPassed: false });
+    vi.stubEnv("DOCKER_HOST", "unix:///tmp/selected.sock");
+    vi.stubEnv("DOCKER_CONTEXT", "selected");
+    await replay();
+    const runs = (await fs.readFile(calls, "utf8"))
+      .trim()
+      .split("\n")
+      .map(
+        (line) =>
+          JSON.parse(line) as { args: string[]; host: string; context: string; home: string }
+      );
+    expect(runs).toHaveLength(2);
+    for (const run of runs) {
+      expect(run).toMatchObject({
+        host: "unix:///tmp/selected.sock",
+        context: "selected",
+        home: process.env.HOME,
+      });
+      expect(run.args).toContain("opensprint.replay=1");
+      expect(run.args[run.args.indexOf("--entrypoint") + 1]).toBe("timeout");
+      const limit = run.args.slice(run.args.indexOf(image) + 1);
+      expect(limit.slice(0, 3)).toEqual(["-s", "KILL", "590"]);
+    }
+  });
+  it("sweeps only labeled containers past their limit and is silent without Docker", async () => {
+    const stale = Date.now() - 3_600_000;
+    await fs.writeFile(
+      docker,
+      `#!/usr/bin/env node
+const fs=require('node:fs'),args=process.argv.slice(2);
+if(args[0]==='ps'){fs.writeFileSync(${JSON.stringify(calls)}+'.ps',JSON.stringify(args));process.stdout.write('old ${stale}\\nunknown \\nyoung '+Date.now()+'\\n');}
+else fs.writeFileSync(${JSON.stringify(calls)},JSON.stringify(args));
+`,
+      { mode: 0o700 }
+    );
+    expect(await sweepReplayContainers(docker)).toBe(2);
+    expect(JSON.parse(await fs.readFile(calls, "utf8"))).toEqual([
+      "rm",
+      "--force",
+      "old",
+      "unknown",
+    ]);
+    expect(await fs.readFile(`${calls}.ps`, "utf8")).toContain("label=opensprint.replay=1");
+    expect(await sweepReplayContainers(path.join(root, "missing-docker"))).toBe(0);
+  });
+  it.each([".npmrc", "credentials.json", "id_rsa", "deploy.p12", "nested/.netrc", "ci/app.jks"])(
+    "refuses tracked sensitive input %s before Docker runs",
+    async (file) => {
+      await fs.mkdir(path.dirname(path.join(repo, file)), { recursive: true });
+      await fs.writeFile(path.join(repo, file), "secret\n");
+      await git(["add", "."]);
+      await git(["commit", "-m", "tracked secret"]);
+      await store.capture({ ...fixture, baseCommitSha: await git(["rev-parse", "HEAD"]) }, repo);
+      const outcome = await replay();
+      expect(outcome.error).toContain("potentially sensitive tracked input");
+      await expect(fs.access(calls)).rejects.toThrow();
+    }
+  );
 });

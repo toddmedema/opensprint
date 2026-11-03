@@ -2037,6 +2037,147 @@ describe("MergeCoordinatorService", () => {
       });
     });
   });
+
+  describe("governance opt-in", () => {
+    const publishableRepo = {
+      isGitRepo: true,
+      hasHead: true,
+      currentBranch: "main",
+      baseBranch: "main",
+      hasOrigin: true,
+      originReachable: true,
+      remoteMode: "remote",
+      originUrl: "git@example.test:repo.git",
+      identity: { name: "Test", email: "test@test.com", valid: true },
+    };
+    const leaseBusy = () =>
+      Object.assign(new Error("Another publication owns the lease"), {
+        code: "GOVERNANCE_PUBLICATION_LEASE_BUSY",
+      });
+    const governance = async () =>
+      (await import("../services/governance.service.js")).governanceService;
+    const spies: { mockRestore(): void }[] = [];
+    const setActive = async () => {
+      spies.push(vi.spyOn(await governance(), "isGovernanceInactive").mockResolvedValue(false));
+    };
+    const mockLock = async () => {
+      const spy = vi.spyOn(await governance(), "withPublicationLock");
+      spies.push(spy);
+      return spy;
+    };
+    afterEach(() => {
+      for (const spy of spies.splice(0)) spy.mockRestore();
+    });
+
+    it("deploys an inactive project fire-and-forget without any publication receipt", async () => {
+      const { triggerDeployForEvent } = await import("../services/deploy-trigger.service.js");
+      let finishDeploy!: () => void;
+      vi.mocked(triggerDeployForEvent).mockReturnValueOnce(
+        new Promise((resolve) => {
+          finishDeploy = () => resolve([]);
+        })
+      );
+      mockInspectGitRepoState.mockResolvedValue(publishableRepo);
+
+      await coordinator.postCompletionAsync(projectId, repoPath, taskId);
+
+      expect(triggerDeployForEvent).toHaveBeenCalledWith(projectId, "each_task");
+      expect(deferredDeployState.jobs.size).toBe(0);
+      expect(deferredDeployState.claim).not.toHaveBeenCalled();
+      finishDeploy();
+    });
+
+    it("runs an active deploy after the push block and never reports its failure as a publish failure", async () => {
+      await setActive();
+      mockInspectGitRepoState.mockResolvedValue(publishableRepo);
+      deferredDeployState.claim.mockRejectedValue(new Error("deploy claim failed"));
+
+      await expect(
+        coordinator.postCompletionAsync(projectId, repoPath, taskId)
+      ).resolves.toBeUndefined();
+
+      expect(deferredDeployState.published).toBe(true);
+      expect(mockListCleanupIntents).toHaveBeenCalled();
+      expect(mockNotificationCreate).not.toHaveBeenCalled();
+    });
+
+    it("does not wait for a long claimed deploy or keep the push marked in progress", async () => {
+      await setActive();
+      mockInspectGitRepoState.mockResolvedValue(publishableRepo);
+      deferredDeployState.claim.mockResolvedValue([{ id: "job" }]);
+      deferredDeployState.runClaimed.mockReturnValue(new Promise(() => {}));
+
+      await coordinator.postCompletionAsync(projectId, repoPath, taskId);
+
+      expect(deferredDeployState.runClaimed).toHaveBeenCalledOnce();
+      await expect(
+        (
+          coordinator as unknown as { waitForPushComplete(id: string): Promise<void> }
+        ).waitForPushComplete(projectId)
+      ).resolves.toBeUndefined();
+    });
+
+    it("treats a busy publication lease as a retryable push, not a thrown completion", async () => {
+      await setActive();
+      mockInspectGitRepoState.mockResolvedValue(publishableRepo);
+      (await mockLock()).mockRejectedValue(leaseBusy());
+
+      await expect(
+        coordinator.postCompletionAsync(projectId, repoPath, taskId)
+      ).resolves.toBeUndefined();
+    });
+
+    it("keeps a successful push when releasing its lease fails afterwards", async () => {
+      await setActive();
+      mockInspectGitRepoState.mockResolvedValue(publishableRepo);
+      (await mockLock()).mockImplementation(async (_id, fn) => {
+        await fn(async () => {});
+        throw new Error("lease cleanup lost the database");
+      });
+
+      await coordinator.postCompletionAsync(projectId, repoPath, taskId);
+
+      expect(mockListCleanupIntents).toHaveBeenCalled();
+    });
+
+    it("spends no merge attempt when only the publication lease was busy", async () => {
+      await setActive();
+      mockGitQueueEnqueueAndWait.mockRejectedValueOnce(leaseBusy());
+
+      await coordinator.performMergeAndDone(projectId, repoPath, makeTask(), branchName);
+
+      expect(mockHost.taskStore.setCumulativeAttempts).not.toHaveBeenCalled();
+      expect(mockHost.taskStore.update).toHaveBeenCalledWith(
+        projectId,
+        taskId,
+        expect.objectContaining({ status: "open", assignee: "" })
+      );
+      expect(mockHost.taskStore.close).not.toHaveBeenCalled();
+    });
+
+    it("skips admission for an inactive project", async () => {
+      const execution = await import("../services/governance-execution.service.js");
+
+      await coordinator.performMergeAndDone(projectId, repoPath, makeTask(), branchName);
+
+      expect(execution.governanceCodeSnapshot).not.toHaveBeenCalled();
+      expect(execution.governanceBranchPathSnapshot).not.toHaveBeenCalled();
+      expect(mockGitQueueEnqueueAndWait).toHaveBeenCalled();
+    });
+
+    it("uses the bounded merge-base path list for a pinless task on an active project", async () => {
+      await setActive();
+      const execution = await import("../services/governance-execution.service.js");
+
+      await coordinator.performMergeAndDone(projectId, repoPath, makeTask(), branchName);
+
+      expect(execution.governanceBranchPathSnapshot).toHaveBeenCalledWith(
+        "/tmp/worktree",
+        expect.any(String)
+      );
+      expect(execution.governanceCodeSnapshot).not.toHaveBeenCalled();
+    });
+  });
 });
 
 vi.mock("../services/governance.service.js", async () => ({
@@ -2045,22 +2186,32 @@ vi.mock("../services/governance.service.js", async () => ({
 
 vi.mock("../services/governance-execution.service.js", () => ({
   governanceExecutionService: { assertScope: async () => {} },
-  governanceCodeSnapshot: async () => ({
+  governanceCodeSnapshot: vi.fn(async () => ({
     headSha: "head",
     baseSha: "base",
     diff: "",
     diffHash: "hash",
     changedPaths: [],
-  }),
+  })),
+  governanceBranchPathSnapshot: vi.fn(async () => ({
+    headSha: "head",
+    baseSha: "base",
+    diffHash: "hash",
+    changedPaths: [],
+  })),
 }));
 
 const deferredDeployState = vi.hoisted(() => ({
   jobs: new Map<string, { projectId: string; event: "each_task" | "each_epic" }>(),
   published: false,
+  claim: vi.fn(),
+  runClaimed: vi.fn(),
 }));
 beforeEach(() => {
   deferredDeployState.jobs.clear();
   deferredDeployState.published = false;
+  deferredDeployState.claim.mockReset().mockResolvedValue([]);
+  deferredDeployState.runClaimed.mockReset().mockResolvedValue(undefined);
 });
 vi.mock("../services/deferred-auto-deploy.service.js", () => ({
   deferredAutoDeployService: {
@@ -2075,14 +2226,9 @@ vi.mock("../services/deferred-auto-deploy.service.js", () => ({
         event,
       });
     },
-    drain: async (projectId: string) => {
-      const { triggerDeployForEvent } = await import("../services/deploy-trigger.service.js");
-      for (const [id, job] of deferredDeployState.jobs)
-        if (job.projectId === projectId) {
-          await triggerDeployForEvent(projectId, job.event);
-          deferredDeployState.jobs.delete(id);
-        }
-    },
+    hasPending: async () => deferredDeployState.jobs.size > 0,
+    claim: (...args: unknown[]) => deferredDeployState.claim(...args),
+    runClaimed: (...args: unknown[]) => deferredDeployState.runClaimed(...args),
   },
 }));
 vi.mock("../services/remote-publication-governance.service.js", () => ({

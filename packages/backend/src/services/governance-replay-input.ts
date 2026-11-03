@@ -30,19 +30,26 @@ export interface GovernanceReplayInput {
   release: PolicyRelease;
   contextArtifacts: GovernanceContextArtifacts;
 }
-/** Called under the session archive transaction before pruning. Never reconstruct from a later attempt. */
-export async function retainGovernanceReplayInput(
+export type PreparedGovernanceReplayInput = Omit<GovernanceReplayInput, "sessionId">;
+/** Escape a task ID as the exact JSON value inside a LIKE pattern. */
+function taskPayloadPattern(taskId: string): string {
+  return `%${`"taskId":${JSON.stringify(taskId)}`.replace(/[\\%_]/g, "\\$&")}%`;
+}
+/**
+ * Gather inputs and retain Git objects before the session archive transaction, so no Git process
+ * holds it open. Never reconstruct from a later attempt.
+ */
+export async function prepareGovernanceReplayInput(
   db: DbClient,
   projectId: string,
-  sessionId: number,
   session: AgentSession,
   repoPath: string
-): Promise<void> {
+): Promise<PreparedGovernanceReplayInput | null> {
   const row = await db.queryOne(
     "SELECT payload FROM governance_task_pins WHERE project_id=$1 AND task_id=$2",
     [projectId, session.taskId]
   );
-  if (!row || !session.completedAt) return;
+  if (!row || !session.completedAt) return null;
   // The offline protocol reconstructs the initial invocation, not a live multi-turn session.
   // Never present a guided run as complete replay evidence with its later inputs omitted.
   const { agentChatService } = await import("./agent-chat.service.js");
@@ -57,11 +64,11 @@ export async function retainGovernanceReplayInput(
             Date.parse(message.timestamp) <= Date.parse(session.completedAt!))
       )
   )
-    return;
+    return null;
   const events = (
     await db.query(
-      "SELECT payload FROM governance_events WHERE project_id=$1 AND kind='prompt_snapshot'",
-      [projectId]
+      "SELECT payload FROM governance_events WHERE project_id=$1 AND kind='prompt_snapshot' AND payload LIKE $2 ESCAPE '\\'",
+      [projectId, taskPayloadPattern(session.taskId)]
     )
   ).map((row) => JSON.parse(String(row.payload)) as GovernanceEvent);
   const matching = events
@@ -81,15 +88,15 @@ export async function retainGovernanceReplayInput(
     );
   const prompt = matching[0];
   if (!prompt || matching[1]?.payload.assignmentCreatedAt === prompt.payload.assignmentCreatedAt)
-    return;
+    return null;
   const pin = prompt.payload.policyPin as GovernanceTaskPin | undefined;
   if (!pin || pin.projectId !== projectId || pin.taskId !== session.taskId || !pin.releaseId)
-    return;
+    return null;
   const releaseRow = await db.queryOne(
     "SELECT payload FROM policy_releases WHERE project_id=$1 AND id=$2",
     [projectId, pin.releaseId]
   );
-  if (!releaseRow) return;
+  if (!releaseRow) return null;
   const contextArtifacts = prompt.payload.contextArtifacts as
     | GovernanceContextArtifacts
     | undefined;
@@ -99,9 +106,9 @@ export async function retainGovernanceReplayInput(
     !("spec.md" in contextArtifacts.files) ||
     !("plan.md" in contextArtifacts.files)
   )
-    return;
+    return null;
   const baseSha = String(prompt.payload.headSha);
-  if (!/^[a-f0-9]{40,64}$/.test(baseSha)) return;
+  if (!/^[a-f0-9]{40,64}$/.test(baseSha)) return null;
   const options = {
     env: agentProcessEnvironment(),
     cwd: repoPath,
@@ -120,17 +127,20 @@ export async function retainGovernanceReplayInput(
     .split("\0")
     .filter(Boolean)
     .sort();
-  const ref = `refs/opensprint/replay-inputs/${createHash("sha256").update(projectId).digest("hex")}/${sessionId}`;
+  // Named by invocation because the archive row, and so its session ID, does not exist yet.
+  const projectKey = createHash("sha256").update(projectId).digest("hex");
+  const invocationId = String(prompt.payload.invocationId);
+  const invocationKey = createHash("sha256").update(invocationId).digest("hex");
+  const ref = `refs/opensprint/replay-inputs/${projectKey}/${invocationKey}`;
   await run("git", ["update-ref", `${ref}/base`, baseSha], options);
   await run("git", ["update-ref", `${ref}/head`, headSha], options);
-  const input: GovernanceReplayInput = {
-    sessionId,
+  return {
     taskId: session.taskId,
     attempt: session.attempt,
     status: session.status,
     startedAt: session.startedAt,
     completedAt: session.completedAt,
-    invocationId: String(prompt.payload.invocationId),
+    invocationId,
     promptEventId: prompt.id,
     taskPrompt: String(prompt.payload.dynamicContext),
     originalPrompt: String(prompt.payload.prompt),
@@ -142,8 +152,17 @@ export async function retainGovernanceReplayInput(
     release: JSON.parse(String(releaseRow.payload)) as PolicyRelease,
     contextArtifacts,
   };
+}
+/** Called under the session archive transaction before pruning. */
+export async function persistGovernanceReplayInput(
+  db: DbClient,
+  projectId: string,
+  sessionId: number,
+  prepared: PreparedGovernanceReplayInput
+): Promise<void> {
+  const input: GovernanceReplayInput = { ...prepared, sessionId };
   await db.execute(
-    "INSERT INTO governance_replay_inputs(project_id,session_id,task_id,payload) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",
-    [projectId, sessionId, session.taskId, JSON.stringify(input)]
+    "INSERT INTO governance_replay_inputs(project_id,session_id,task_id,attempt,status,payload) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING",
+    [projectId, sessionId, input.taskId, input.attempt, input.status, JSON.stringify(input)]
   );
 }

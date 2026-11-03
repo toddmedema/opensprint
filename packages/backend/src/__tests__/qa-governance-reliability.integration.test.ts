@@ -10,6 +10,7 @@ import { createTestPostgresClient } from "./test-db-helper.js";
 import { resetProjectScopedTestData } from "./test-db-helper.js";
 import { copyDatabaseRows } from "../services/migrate-to-postgres.service.js";
 import { GOVERNANCE_TABLES_IN_DEPENDENCY_ORDER } from "../db/governance-schema.js";
+import { MemoryReplayEvidence } from "./replay-evidence-test-helper.js";
 
 const singleton = vi.hoisted(() => ({
   db: null as DbClient | null,
@@ -63,9 +64,11 @@ for (const dialect of ["sqlite", "postgres"] as const)
       db = dialect === "sqlite" ? sqlite : pg!.client;
       await runSchema(db, dialect);
     });
+    const replayEvidence = new MemoryReplayEvidence();
     const service = (client = db) =>
       new GovernanceService({
         getDb: async () => client,
+        replayEvidence,
         runWrite: (fn) => client.runInTransaction(fn),
       });
     async function fixture(client = db, branchName = "opensprint/qa") {
@@ -368,6 +371,9 @@ for (const dialect of ["sqlite", "postgres"] as const)
       );
       const cases = [];
       for (const index of [1, 2]) {
+        // The second finding is demonstrably outside the rule's src/** scope. A model cannot
+        // withdraw an applicable standard just by calling it a false positive.
+        const changedPath = index === 1 ? "src/diagnostic.ts" : "docs/diagnostic.md";
         const taskId = `os-${randomUUID()}`;
         await db.execute(
           "INSERT INTO tasks(id,project_id,title,status,created_at,updated_at)VALUES($1,$2,'Diagnostic','in_progress',$3,$4)",
@@ -389,7 +395,7 @@ for (const dialect of ["sqlite", "postgres"] as const)
           headSha: "b".repeat(40),
           diffHash: `diff${index}`,
           baseSha: "a".repeat(40),
-          changedPaths: ["src/diagnostic.ts"],
+          changedPaths: [changedPath],
           title: "Diagnostic",
           summary: "Rule finding",
           state: index === 1 ? "fix_required" : "awaiting_reconsideration",
@@ -399,7 +405,7 @@ for (const dialect of ["sqlite", "postgres"] as const)
               category: "standard",
               ruleId: rule.ruleId,
               ruleRevisionId: rule.id,
-              file: "src/diagnostic.ts",
+              file: changedPath,
               codeRevision: "b".repeat(40),
               evidence: "Direct query",
               severity: "blocking",
@@ -490,8 +496,19 @@ for (const dialect of ["sqlite", "postgres"] as const)
         "INSERT INTO governance_events(project_id,id,kind,payload,created_at)VALUES($1,$2,$3,$4,$5)",
         [projectId, late.id, late.kind, JSON.stringify(late), late.createdAt]
       );
-      expect(await svc.mineDecisions(projectId)).toHaveLength(1);
+      // Late evidence updates the same nomination in place; its open draft is not re-created.
       expect(await svc.mineDecisions(projectId)).toHaveLength(0);
+      const nomination = await svc.getProposal(projectId, nominations[0].id);
+      expect(nomination).toMatchObject({ version: 2, state: "nominated" });
+      expect(nomination.contraryEventIds).toContain(late.id);
+      await svc.rejectProposal(projectId, nomination.id, nomination.version, "Declined", "owner");
+      const later = { ...late, id: `0001-${randomUUID()}` };
+      await db.execute(
+        "INSERT INTO governance_events(project_id,id,kind,payload,created_at)VALUES($1,$2,$3,$4,$5)",
+        [projectId, later.id, later.kind, JSON.stringify(later), later.createdAt]
+      );
+      expect(await svc.mineDecisions(projectId)).toHaveLength(0);
+      expect(await svc.getProposal(projectId, nomination.id)).toMatchObject({ state: "rejected" });
     });
     it("critically revokes routine and shadow approvals, retains holds, and records published remediation", async () => {
       const f = await fixture();
@@ -636,7 +653,13 @@ for (const dialect of ["sqlite", "postgres"] as const)
         negativeCount: 1,
         baseline: { taskSuccessRate: 1 },
         candidate: { taskSuccessRate: 1 },
-        artifactHash: "retained-evaluation",
+        ...(await replayEvidence.seed(
+          f.svc,
+          f.projectId,
+          p.id,
+          candidate.contentHash,
+          f.release.id
+        )),
         releaseContentHash: candidate.contentHash,
         measuredAt: new Date().toISOString(),
       };
@@ -745,6 +768,11 @@ for (const dialect of ["sqlite", "postgres"] as const)
       "rejects activation when a concurrent reviewer already rejected that proposal version",
       async () => {
         const f = await fixture();
+        // Isolate proposal concurrency from the guard against stranding unfinished pinned tasks.
+        await db.execute("UPDATE tasks SET status='closed' WHERE project_id=$1 AND id=$2", [
+          f.projectId,
+          f.taskId,
+        ]);
         const before = f.release.rules[0];
         const after = {
           ...before,
@@ -777,7 +805,13 @@ for (const dialect of ["sqlite", "postgres"] as const)
           negativeCount: 1,
           baseline: { taskSuccessRate: 1 },
           candidate: { taskSuccessRate: 1 },
-          artifactHash: "artifact",
+          ...(await replayEvidence.seed(
+            f.svc,
+            f.projectId,
+            p.id,
+            candidate.contentHash,
+            f.release.id
+          )),
           releaseContentHash: candidate.contentHash,
           measuredAt: new Date().toISOString(),
         };
@@ -792,6 +826,7 @@ for (const dialect of ["sqlite", "postgres"] as const)
         });
         const racing = new GovernanceService({
           getDb: async () => db,
+          replayEvidence,
           runWrite: (fn) =>
             db.runInTransaction(async (tx) =>
               fn({

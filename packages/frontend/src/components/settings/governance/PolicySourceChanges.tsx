@@ -1,12 +1,23 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "../../../api/client";
-import { GOVERNANCE_INPUT_CLASS, type GovernancePanelProps } from "../GovernanceSettingsContent";
+import { revokedGovernanceReleaseIds } from "../../../lib/governance";
+import type { GovernancePanelProps } from "../GovernanceSettingsContent";
+import { GovernanceResult } from "./GovernanceResult";
 type SourceChange = Awaited<ReturnType<typeof api.governance.sourceChanges>>;
 
-export function PolicySourceChanges({ projectId, capability, busy, run }: GovernancePanelProps) {
+export function PolicySourceChanges({
+  projectId,
+  capability,
+  busy,
+  run,
+  outcome,
+  pendingScope,
+}: GovernancePanelProps) {
   const [taskId, setTaskId] = useState("");
   const [preview, setPreview] = useState<SourceChange | null>(null);
   const [rationale, setRationale] = useState("");
+  // Only the newest lookup may show its diff; an older response must never be approvable.
+  const lookup = useRef(0);
   return (
     <details className="rounded-xl border border-theme-border p-4">
       <summary className="cursor-pointer text-sm font-medium text-theme-text">
@@ -23,11 +34,12 @@ export function PolicySourceChanges({ projectId, capability, busy, run }: Govern
           <input
             value={taskId}
             onChange={(event) => {
+              lookup.current += 1;
               setTaskId(event.target.value);
               setPreview(null);
             }}
             placeholder="os-1234"
-            className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+            className="input mt-1.5"
           />
         </label>
         <button
@@ -35,9 +47,15 @@ export function PolicySourceChanges({ projectId, capability, busy, run }: Govern
           disabled={!taskId.trim() || busy}
           className="btn-secondary disabled:opacity-50"
           onClick={() =>
-            run(async () => {
-              setPreview(await api.governance.sourceChanges(projectId, taskId.trim()));
-            }, "Loaded the current policy-source change.")
+            run(
+              async () => {
+                const current = ++lookup.current;
+                const change = await api.governance.sourceChanges(projectId, taskId.trim());
+                if (current === lookup.current) setPreview(change);
+              },
+              "Loaded the current policy-source change.",
+              "source-changes"
+            )
           }
         >
           Inspect change
@@ -48,24 +66,28 @@ export function PolicySourceChanges({ projectId, capability, busy, run }: Govern
           className="mt-4 space-y-3"
           onSubmit={(event) => {
             event.preventDefault();
-            run(async () => {
-              await api.governance.approveSourceChanges(
-                projectId,
-                {
-                  taskId: preview.taskId,
-                  headSha: preview.headSha,
-                  diffHash: preview.diffHash,
-                  rationale: rationale.trim(),
-                },
-                capability
-              );
-              setPreview(null);
-              setRationale("");
-            }, "Approved these exact source changes. Gates and policy release requirements remain in force.");
+            run(
+              async () => {
+                await api.governance.approveSourceChanges(
+                  projectId,
+                  {
+                    taskId: preview.taskId,
+                    headSha: preview.headSha,
+                    diffHash: preview.diffHash,
+                    rationale: rationale.trim(),
+                  },
+                  capability
+                );
+                setPreview(null);
+                setRationale("");
+              },
+              "Approved these exact source changes. Gates and policy release requirements remain in force.",
+              "source-changes"
+            );
           }}
         >
           <p className="break-all text-xs text-theme-muted">
-            Code {preview.headSha} · Policy {preview.releaseId}
+            Task {preview.taskId} · Code {preview.headSha} · Policy {preview.releaseId}
           </p>
           {preview.changedPaths.length ? (
             <ul className="list-inside list-disc break-words text-sm text-theme-text">
@@ -92,7 +114,7 @@ export function PolicySourceChanges({ projectId, capability, busy, run }: Govern
               required
               value={rationale}
               onChange={(event) => setRationale(event.target.value)}
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
             />
           </label>
           <p className="text-xs text-theme-muted">
@@ -108,6 +130,9 @@ export function PolicySourceChanges({ projectId, capability, busy, run }: Govern
           </button>
         </form>
       )}
+      <div className="mt-3">
+        <GovernanceResult scope="source-changes" outcome={outcome} pendingScope={pendingScope} />
+      </div>
     </details>
   );
 }
@@ -118,13 +143,14 @@ export function PolicyReleaseRevocation({
   capability,
   busy,
   run,
+  outcome,
+  pendingScope,
 }: GovernancePanelProps) {
   const [rationale, setRationale] = useState("");
-  const [confirmed, setConfirmed] = useState(false);
   const releaseId = summary.activeReleaseId;
-  const revoked = summary.events.some(
-    (event) => event.kind === "release_revoked" && event.payload.releaseId === releaseId
-  );
+  const [confirmedReleaseId, setConfirmedReleaseId] = useState<string | null>(null);
+  const confirmed = releaseId !== null && confirmedReleaseId === releaseId;
+  const revoked = releaseId !== null && revokedGovernanceReleaseIds(summary).has(releaseId);
   if (!releaseId) return null;
   return (
     <details className="rounded-xl border border-theme-border p-4">
@@ -141,10 +167,12 @@ export function PolicyReleaseRevocation({
           className="mt-3 space-y-3"
           onSubmit={(event) => {
             event.preventDefault();
+            if (!confirmed) return;
             run(
               () =>
                 api.governance.revokeRelease(projectId, releaseId, rationale.trim(), capability),
-              "Critically revoked this release. Affected pending tasks are held for a new policy and review; published work has a remediation record."
+              "Critically revoked this release. Affected pending tasks are held for a new policy and review; published work has a remediation record.",
+              "release-revocation"
             );
           }}
         >
@@ -153,20 +181,21 @@ export function PolicyReleaseRevocation({
             and invalidates pending approvals under this release. It preserves the audit trail and
             does not undo published commits.
           </p>
+          <p className="break-all text-xs text-theme-muted">Release to revoke: {releaseId}</p>
           <label className="block text-sm text-theme-text">
             Reason for critical revocation
             <textarea
               required
               value={rationale}
               onChange={(event) => setRationale(event.target.value)}
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
             />
           </label>
           <label className="flex items-start gap-2 text-sm text-theme-text">
             <input
               type="checkbox"
               checked={confirmed}
-              onChange={(event) => setConfirmed(event.target.checked)}
+              onChange={(event) => setConfirmedReleaseId(event.target.checked ? releaseId : null)}
               required
               className="mt-1"
             />
@@ -176,12 +205,19 @@ export function PolicyReleaseRevocation({
           <button
             type="submit"
             disabled={!capability || busy || !rationale.trim() || !confirmed}
-            className="btn-secondary disabled:opacity-50"
+            className="btn-danger disabled:opacity-50"
           >
             Revoke current policy release
           </button>
         </form>
       )}
+      <div className="mt-3">
+        <GovernanceResult
+          scope="release-revocation"
+          outcome={outcome}
+          pendingScope={pendingScope}
+        />
+      </div>
     </details>
   );
 }

@@ -30,6 +30,8 @@ export async function cancelFeedback(
   feedbackId: string,
   deps: FeedbackCancelDeps
 ): Promise<FeedbackItem> {
+  if (await governanceService.isGovernanceInactive(projectId))
+    return cancelFeedbackUnderLock(projectId, feedbackId, deps);
   return governanceService.withPublicationLock(projectId, () =>
     cancelFeedbackUnderLock(projectId, feedbackId, deps)
   );

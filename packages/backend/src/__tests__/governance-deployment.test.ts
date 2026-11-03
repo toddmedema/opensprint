@@ -16,8 +16,8 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("../services/governance.service.js", () => ({
   governanceService: {
-    getConfig: mocks.config,
-    getActiveReleaseId: mocks.active,
+    isGovernanceInactive: async () =>
+      (await mocks.config()).mode === "disabled" && !(await mocks.active()),
     withPublicationLock: mocks.lock,
   },
 }));
@@ -114,23 +114,43 @@ describe("governed delivery publication authority", () => {
     ).rejects.toThrow("publication lease lost");
     expect(external).not.toHaveBeenCalled();
   });
-  it("requires a valid exact-head continuation for a deployment with an already held lease", async () => {
+  it("requires a valid exact-head claim for a durable auto-deployment", async () => {
     const external = vi.fn();
     await expect(
-      withGovernedDeployment("p", repo, settings, external, {
-        publicationLeaseHeld: true,
-        expectedCommitHash: head,
-      })
-    ).rejects.toThrow("publication lease");
+      withGovernedDeployment("p", repo, settings, external, { claimedJob: true })
+    ).rejects.toThrow("exact published revision");
     await expect(
       withGovernedDeployment("p", repo, settings, external, {
-        publicationLeaseHeld: true,
+        claimedJob: true,
         expectedCommitHash: "b".repeat(40),
-        assertPublicationLease: mocks.lease,
       })
     ).rejects.toMatchObject({ code: "GOVERNANCE_DEPLOYMENT_HOLD" });
     expect(external).not.toHaveBeenCalled();
-    expect(mocks.lock).not.toHaveBeenCalled();
+  });
+  it("runs a claimed auto-deployment without holding the publication lock", async () => {
+    let locksHeld = 0;
+    mocks.lock.mockImplementation(async (_project, run) => {
+      locksHeld++;
+      try {
+        return await run(mocks.lease);
+      } finally {
+        locksHeld--;
+      }
+    });
+    const heldDuringDeploy: number[] = [];
+    await withGovernedDeployment(
+      "p",
+      repo,
+      settings,
+      async (admit) => {
+        heldDuringDeploy.push(locksHeld);
+        await admit();
+        heldDuringDeploy.push(locksHeld);
+      },
+      { claimedJob: true, expectedCommitHash: head }
+    );
+    expect(heldDuringDeploy).toEqual([0, 0]);
+    expect(mocks.lock).toHaveBeenCalledTimes(2);
   });
   it("preserves legacy delivery when governance has never been enabled", async () => {
     mocks.config.mockResolvedValue({ mode: "disabled" });

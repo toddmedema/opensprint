@@ -154,7 +154,7 @@ beforeEach(async () => {
         const row = await db.queryOne("SELECT * FROM tasks WHERE project_id='project' AND id=$1", [
           id,
         ]);
-        if (!row) throw new Error("Missing task");
+        if (!row) throw Object.assign(new Error("Missing task"), { code: "ISSUE_NOT_FOUND" });
         return { ...row, ...JSON.parse(String(row.extra ?? "{}")) } as unknown as StoredTask;
       },
       update: async (_project, id, fields) => {
@@ -392,6 +392,69 @@ describe("remote publication governance with real divergent Git remotes", () => 
       .catch(() => {});
     expect(created).toBe(1);
   });
+  async function mergerChangedCandidate(value: number) {
+    await diverge();
+    const batch = await service.beginPush({ projectId: "project", repoPath: repo, baseBranch: "main" });
+    await git(repo, ["rebase", "origin/main"]);
+    await fs.writeFile(path.join(repo, "src/a.ts"), `export const a = ${value};\n`);
+    await commit(repo, "merger changed task code");
+    return batch;
+  }
+  const prepare = (batch: Awaited<ReturnType<typeof service.beginPush>>) =>
+    service
+      .assertPreparedPush({ projectId: "project", repoPath: repo, baseBranch: "main", batch })
+      .catch((error: unknown) => error);
+  it("W9: a closed or deleted review cannot answer for its candidate; a fresh one is created", async () => {
+    const batch = await mergerChangedCandidate(999);
+    expect(await prepare(batch)).toBeInstanceOf(RemotePublicationReviewRequiredError);
+    await db.execute("UPDATE tasks SET status='closed' WHERE id='review-1'");
+    const error = (await prepare(batch)) as RemotePublicationReviewRequiredError;
+    expect(error.request.taskId).toBe("review-2");
+    await db.execute("DELETE FROM governance_task_scopes WHERE task_id='review-2'");
+    await db.execute("DELETE FROM governance_task_pins WHERE task_id='review-2'");
+    await db.execute("DELETE FROM tasks WHERE id='review-2'");
+    expect(((await prepare(batch)) as RemotePublicationReviewRequiredError).request.taskId).toBe(
+      "review-3"
+    );
+  });
+  it("W9: a new head for the same batch supersedes the open review instead of racing it", async () => {
+    const batch = await mergerChangedCandidate(998);
+    await prepare(batch);
+    await fs.writeFile(path.join(repo, "src/a.ts"), "export const a = 997;\n");
+    await commit(repo, "another merger head");
+    expect(((await prepare(batch)) as RemotePublicationReviewRequiredError).request.taskId).toBe(
+      "review-2"
+    );
+    expect((await db.queryOne("SELECT status FROM tasks WHERE id='review-1'"))?.status).toBe(
+      "closed"
+    );
+    const events = await governance.listEvents("project", ["remote_publication_review_superseded"]);
+    expect(events.map((e) => e.payload)).toEqual([
+      { taskId: "review-1", replacementTaskId: "review-2" },
+    ]);
+  });
+  it("W12: finished publication history costs no git process on the next push", async () => {
+    const batch = await service.beginPush({ projectId: "project", repoPath: repo, baseBranch: "main" });
+    const prepared = await service.assertPreparedPush({
+      projectId: "project",
+      repoPath: repo,
+      baseBranch: "main",
+      batch,
+    });
+    await git(repo, ["push", "origin", "main"]);
+    await service.completePush("project", prepared);
+    for (let i = 0; i < 20; i++)
+      await governance.audit("project", "remote_publication_prepared", "system", {
+        receiptIds: prepared.receiptIds,
+        preparedHeadSha: prepared.headSha,
+      });
+    const spy = vi.spyOn(
+      service as unknown as { ancestor: (...args: string[]) => Promise<boolean> },
+      "ancestor"
+    );
+    await service.beginPush({ projectId: "project", repoPath: repo, baseBranch: "main" });
+    expect(spy).not.toHaveBeenCalled();
+  });
   it("checks a human cancellation before creating a changed-code followup", async () => {
     const pin = (await governance.getTaskPin("project", taskId))!;
     const code = await governanceCodeSnapshot(repo, base);
@@ -548,7 +611,8 @@ it("resumes publication only after a real remote conflict's retained candidate r
   const receipt = (await governance.listEvents("project"))
     .filter((e) => e.kind === "local_publication_registered")
     .at(-1)!.payload.receipt as { scopesByPath: Record<string, string[]> };
-  expect(receipt.scopesByPath["src/a.ts"]).toEqual(["Ordinary feature"]);
+  // Under enforcement, task wording is evidence only: the receipt carries the grant, which is none.
+  expect(receipt.scopesByPath["src/a.ts"]).toEqual([""]);
 });
 
 it.each([false, true])(

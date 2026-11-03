@@ -4,7 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { ReplayFixtureService, type ReplayFixture } from "../services/replay-fixture.service.js";
+import {
+  promptTimeChangedPaths,
+  ReplayFixtureService,
+  type ReplayFixture,
+} from "../services/replay-fixture.service.js";
 import { IsolatedReplayRunner } from "../services/isolated-replay-runner.service.js";
 const exec = promisify(execFile);
 
@@ -102,6 +106,41 @@ describe("durable replay inputs", () => {
     expect(result.error).toContain("immutable");
     await expect(store.read("project-1", 7)).rejects.toThrow();
   });
+  it("publishes fixtures atomically and skips one unreadable file without hiding the rest", async () => {
+    await store.capture(fixture, repo);
+    await store.capture({ ...fixture, sessionId: 8 }, repo);
+    const dir = path.dirname(
+      path.join(root, "evidence", (await fs.readdir(path.join(root, "evidence")))[0]!, "x")
+    );
+    expect((await fs.readdir(dir)).filter((name) => name.endsWith(".tmp"))).toEqual([]);
+    await fs.writeFile(path.join(dir, "7.json"), "{ torn");
+    expect((await store.list("project-1")).map((f) => f.fixture.sessionId)).toEqual([8]);
+  });
+  it("detects a changed evaluation artifact and purges only on request", async () => {
+    const hash = await store.saveEvaluation("project-1", { proposalId: "p" });
+    await expect(store.readEvaluation("project-1", hash)).resolves.toMatchObject({
+      proposalId: "p",
+    });
+    const dir = path.join(root, "evidence", (await fs.readdir(path.join(root, "evidence")))[0]!);
+    await fs.writeFile(
+      path.join(dir, "evaluations", `${hash}.json`),
+      JSON.stringify({ proposalId: "other" })
+    );
+    await expect(store.readEvaluation("project-1", hash)).rejects.toThrow("mismatch");
+    await store.purge("project-1");
+    await expect(store.readEvaluation("project-1", hash)).rejects.toThrow();
+  });
+  it("reads prompt-time paths from the retained policy receipt", () => {
+    const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64");
+    const artifacts = (files: Record<string, string>) => ({ complete: true, files });
+    expect(
+      promptTimeChangedPaths(
+        artifacts({ "policy-receipt.json": encode({ changedPaths: ["src/a.ts"] }) })
+      )
+    ).toEqual(["src/a.ts"]);
+    expect(promptTimeChangedPaths(artifacts({}))).toBeUndefined();
+    expect(promptTimeChangedPaths(artifacts({ "policy-receipt.json": "%%" }))).toBeUndefined();
+  });
   it("requires explicit independent checks and complete original instructions", async () => {
     await expect(
       store.capture({ ...fixture, rubric: { ...fixture.rubric, checks: [] } }, repo)
@@ -125,7 +164,7 @@ if(args.includes('/opensprint-replay/agent')){
  const source=mount.match(/source=([^,]+)/)[1];
  fs.writeFileSync(source+'/source.ts','export const x = 2;\\n');
  process.stdout.write(JSON.stringify({completed:true,costUsd:0.03,retryCount:1}));
-} else process.stdout.write(JSON.stringify({rubricId:'rubric1',label:'defect',reviewPassed:true,checks:[{name:'unit',passed:true}]}));
+} else process.stdout.write(JSON.stringify({rubricId:'rubric1',label:'defect',reviewPassed:false,checks:[{name:'unit',passed:true}]}));
 `;
     await fs.writeFile(path.join(bin, "docker"), script, { mode: 0o700 });
     vi.stubEnv("PATH", `${bin}:${process.env.PATH}`);

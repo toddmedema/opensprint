@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import type { FeedbackItem } from "@opensprint/shared";
 import { cancelFeedback } from "../services/feedback-cancel.service.js";
 const mocks = vi.hoisted(() => ({
+  inactive: false,
   held: new Set<string>(),
   stop: vi.fn(),
   removeTasks: vi.fn(),
@@ -10,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("../services/governance.service.js", () => ({
   governanceService: {
+    isGovernanceInactive: async () => mocks.inactive,
     withPublicationLock: async (_project: string, operation: () => Promise<unknown>) => operation(),
     retainsTaskWorktree: async (_project: string, taskId: string) => mocks.held.has(taskId),
   },
@@ -30,6 +32,18 @@ vi.mock("../services/active-agents.service.js", () => ({
   },
 }));
 vi.mock("../websocket/index.js", () => ({ broadcastToProject: vi.fn() }));
+it("cancels on an inactive project without any publication lock", async () => {
+  mocks.inactive = true;
+  const { governanceService } = await import("../services/governance.service.js");
+  const lock = vi.spyOn(governanceService, "withPublicationLock");
+  await cancelFeedback("project", "feedback", {
+    getFeedback: async () => ({ status: "resolved" }) as FeedbackItem,
+  });
+  mocks.inactive = false;
+  expect(lock).not.toHaveBeenCalled();
+  lock.mockRestore();
+});
+
 describe("feedback cancellation preserves governed work", () => {
   beforeEach(() => {
     vi.clearAllMocks();

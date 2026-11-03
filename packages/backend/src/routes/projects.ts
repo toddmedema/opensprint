@@ -1,4 +1,8 @@
-import { guardGovernedSettings } from "../middleware/governance-settings.js";
+import {
+  createGovernedRepoPathGuard,
+  guardGovernedSettings,
+  requireGovernanceHumanWhenActive,
+} from "../middleware/governance-settings.js";
 import { Router, Request } from "express";
 import { wrapAsync } from "../middleware/wrap-async.js";
 import { validateParams, validateBody, validateQuery } from "../middleware/validate.js";
@@ -21,7 +25,6 @@ import { taskStore } from "../services/task-store.service.js";
 import type { ApiResponse, Project, ScaffoldProjectResponse } from "@opensprint/shared";
 import { createLogger } from "../utils/logger.js";
 import {
-  requireGovernanceHuman,
   authorizedGovernanceActor,
   GOVERNANCE_CAPABILITY_HEADER,
 } from "../middleware/governance-auth.js";
@@ -128,7 +131,12 @@ export function createProjectsRouter(
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const projectId = req.params.id;
       const settings = await projectService.getSettings(projectId);
-      const snapshot = getSelfImprovementStatus(projectId, settings);
+      const proposals = await governanceService.listProposals(projectId);
+      const snapshot = getSelfImprovementStatus(
+        projectId,
+        settings,
+        proposals.find((proposal) => proposal.state === "evaluated")?.id
+      );
       res.json({ data: snapshot });
     })
   );
@@ -148,7 +156,7 @@ export function createProjectsRouter(
   // POST /projects/:id/self-improvement/approve — promote pending candidate and clear pending state
   router.post(
     "/:id/self-improvement/approve",
-    requireGovernanceHuman,
+    requireGovernanceHumanWhenActive,
     validateParams(projectIdParamSchema),
     validateBody(selfImprovementApproveRejectBodySchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
@@ -170,7 +178,7 @@ export function createProjectsRouter(
   // POST /projects/:id/self-improvement/reject — reject pending candidate and clear pending state
   router.post(
     "/:id/self-improvement/reject",
-    requireGovernanceHuman,
+    requireGovernanceHumanWhenActive,
     validateParams(projectIdParamSchema),
     validateBody(selfImprovementApproveRejectBodySchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
@@ -185,7 +193,7 @@ export function createProjectsRouter(
   // POST /projects/:id/self-improvement/rollback — switch active behavior version to a previous promoted version
   router.post(
     "/:id/self-improvement/rollback",
-    requireGovernanceHuman,
+    requireGovernanceHumanWhenActive,
     validateParams(projectIdParamSchema),
     validateBody(selfImprovementRollbackBodySchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
@@ -220,6 +228,7 @@ export function createProjectsRouter(
     "/:id",
     validateParams(projectIdParamSchema),
     validateBody(updateProjectBodySchema),
+    createGovernedRepoPathGuard(projectService),
     wrapAsync(async (req, res) => {
       const projectId = getProjectId(req);
       const { project, repoPathChanged } = await projectService.updateProject(projectId, req.body);

@@ -803,6 +803,19 @@ class GitCommitQueueImpl implements GitCommitQueueService {
                     cwd: repoPath,
                     timeout: 30_000,
                   });
+                  // The merge stands either way; a missed refresh surfaces as reconcilable drift.
+                  await governanceExecutionService
+                    .refreshMergedSources({
+                      projectId: projectId ?? "unknown",
+                      repoPath,
+                      branchName: job.branchName,
+                    })
+                    .catch((err) =>
+                      log.warn("Failed to refresh approved policy sources", {
+                        taskId: job.taskId,
+                        err,
+                      })
+                    );
                 }
               );
             }

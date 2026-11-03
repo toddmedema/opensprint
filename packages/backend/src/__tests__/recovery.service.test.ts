@@ -268,6 +268,15 @@ describe("RecoveryService — stale heartbeat recovery", () => {
     expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
   });
 
+  it("continues recovery when governance outbox delivery fails", async () => {
+    vi.mocked(governanceService.deliverOutbox).mockRejectedValueOnce(
+      Object.assign(new Error("lease busy"), { code: "GOVERNANCE_PUBLICATION_LEASE_BUSY" })
+    );
+    await expect(
+      service.runFullRecovery("proj-1", tmpDir, host, { includeGupp: false })
+    ).resolves.toMatchObject({ requeued: expect.any(Array) });
+  });
+
   it("escalates an interrupted judge durably while retaining its slot-free worktree", async () => {
     vi.mocked(governanceService.hasTaskHold).mockResolvedValue(true);
     vi.mocked(governanceService.listCases).mockResolvedValue([
@@ -300,6 +309,31 @@ describe("RecoveryService — stale heartbeat recovery", () => {
     expect(governanceService.deliverOutbox).toHaveBeenCalledOnce();
     expect(taskStore.update).not.toHaveBeenCalled();
     expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
+  });
+
+  it("leaves a live adjudication from this process alone on a watchdog pass", async () => {
+    vi.mocked(governanceService.isAdjudicationOrphaned).mockResolvedValueOnce(false);
+    vi.mocked(governanceService.hasTaskHold).mockResolvedValue(true);
+    vi.mocked(governanceService.listCases).mockResolvedValue([
+      {
+        id: "live-judge",
+        taskId: "held-task",
+        projectId: "proj-1",
+        version: 7,
+        state: "awaiting_judge",
+        branchName: "opensprint/held-task",
+        worktreePath: tmpDir,
+        evidenceHash: "immutable-evidence",
+        findings: [],
+      } as never,
+    ]);
+    await service.runFullRecovery(
+      "proj-1",
+      tmpDir,
+      { ...host, reattachSlot: vi.fn() },
+      { includeGupp: true }
+    );
+    expect(governanceService.recordRecommendation).not.toHaveBeenCalled();
   });
 
   it("preserves a live orphan whose process ownership cannot be verified", async () => {
@@ -1979,6 +2013,7 @@ vi.mock("../services/governance.service.js", async () => ({
     hasTaskHold: vi.fn().mockResolvedValue(false),
     hasPendingResume: vi.fn().mockResolvedValue(false),
     recordRecommendation: vi.fn().mockResolvedValue(undefined),
+    isAdjudicationOrphaned: vi.fn().mockResolvedValue(true),
     deliverOutbox: vi.fn().mockResolvedValue(undefined),
   },
 }));

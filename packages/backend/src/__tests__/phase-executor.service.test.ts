@@ -305,6 +305,23 @@ describe("PhaseExecutorService", () => {
       );
     });
 
+    it("starts Execute on an inactive project even when governance writes would fail", async () => {
+      const { governanceService } = await import("../services/governance.service.js");
+      const capture = vi
+        .spyOn(governanceService, "captureTrustedScope")
+        .mockRejectedValue(new Error("database write failed"));
+      const task = makeTask();
+      const slot = makeSlot();
+      mockGetState.mockReturnValue({
+        slots: new Map([[task.id, slot]]),
+        status: { queueDepth: 0 },
+      });
+      await phaseExecutor.executeCodingPhase(projectId, repoPath, task, slot);
+      expect(capture).not.toHaveBeenCalled();
+      expect(mockLifecycleRun).toHaveBeenCalled();
+      capture.mockRestore();
+    });
+
     it("ties delayed invocation ownership to the exact slot rather than just the task ID", async () => {
       const task = makeTask();
       const slot = makeSlot();
@@ -617,6 +634,48 @@ describe("PhaseExecutorService", () => {
         phase: "review",
         taskId: task.id,
       });
+    });
+
+    it("A2: a task first pinned at review is pinned at its merge base, not its own HEAD", async () => {
+      const { execFileSync } = await import("node:child_process");
+      const repo = await fs.mkdtemp(path.join(os.tmpdir(), "pin-at-review-"));
+      const git = (...args: string[]) =>
+        execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@e", ...args], {
+          cwd: repo,
+        })
+          .toString()
+          .trim();
+      git("init", "-q", "-b", "main");
+      git("commit", "-q", "--allow-empty", "-m", "base");
+      const mainSha = git("rev-parse", "HEAD");
+      git("checkout", "-q", "-b", `opensprint/${taskId}`);
+      git("commit", "-q", "--allow-empty", "-m", "coded before governance was on");
+      const { governanceService } = await import("../services/governance.service.js");
+      const { governanceExecutionService } = await import(
+        "../services/governance-execution.service.js"
+      );
+      const spies = [
+        vi.spyOn(governanceService, "isGovernanceInactive").mockResolvedValue(false),
+        vi.spyOn(governanceService, "captureTrustedScope").mockResolvedValue(""),
+        vi.spyOn(governanceService, "getTaskPin").mockResolvedValue(null),
+        vi.spyOn(governanceService, "getConfig").mockResolvedValue({ mode: "enforced" } as never),
+      ];
+      const prepare = vi.spyOn(governanceExecutionService, "prepareTask").mockResolvedValue(null);
+      spies.push(prepare as never);
+      const task = makeTask();
+      const slot = makeSlot();
+      mockGetState.mockReturnValue({ slots: new Map([[task.id, slot]]), status: { queueDepth: 0 } });
+      mockRemoteReviewBase.mockReturnValue("main");
+      mockHost.branchManager.captureBranchDiff = vi.fn().mockResolvedValue("");
+      // The old code pinned at getGitRev(worktree, "HEAD"), which this returns.
+      mockHost.branchManager.getGitRev = vi.fn(async () => git("rev-parse", "HEAD"));
+      try {
+        await phaseExecutor.executeReviewPhase(projectId, repo, task, slot.branchName);
+        expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ baseSha: mainSha }));
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+        await fs.rm(repo, { recursive: true, force: true });
+      }
     });
 
     it("spawns one general review agent when reviewAngles are empty", async () => {

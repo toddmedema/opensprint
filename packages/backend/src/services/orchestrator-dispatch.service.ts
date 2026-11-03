@@ -379,12 +379,14 @@ export class OrchestratorDispatchService {
     slotQueueDepth: number
   ): Promise<void> {
     const state = this.host.getState(projectId);
-    if (await governanceService.hasTaskHold(projectId, task.id)) return;
-    await governanceService.captureTrustedScope(
-      projectId,
-      task.id,
-      `${task.title ?? ""}\n${task.description ?? ""}`
-    );
+    if (!(await governanceService.isGovernanceInactive(projectId))) {
+      if (await governanceService.hasTaskHold(projectId, task.id)) return;
+      await governanceService.captureTrustedScope(
+        projectId,
+        task.id,
+        `${task.title ?? ""}\n${task.description ?? ""}`
+      );
+    }
     log.info("Picking task", { projectId, taskId: task.id, title: task.title });
     if (state.slots.has(task.id)) {
       log.info("Skipping dispatch: task already has an active slot", {
@@ -400,27 +402,42 @@ export class OrchestratorDispatchService {
       });
       return;
     }
-    const remoteReview = await getTrustedRemoteReviewRequest(projectId, task);
-    if (remoteReview) {
-      let integrity = await assertWorktreeIntegrity(
-        repoPath,
-        remoteReview.worktreePath,
-        task.id,
-        "dispatch"
-      );
-      if (!integrity.valid) {
-        await restoreRemoteReviewWorkspace(projectId, task, repoPath);
-        integrity = await assertWorktreeIntegrity(
+    let remoteReview: Awaited<ReturnType<typeof getTrustedRemoteReviewRequest>>;
+    try {
+      remoteReview = await getTrustedRemoteReviewRequest(projectId, task);
+      if (remoteReview) {
+        let integrity = await assertWorktreeIntegrity(
           repoPath,
           remoteReview.worktreePath,
           task.id,
           "dispatch"
         );
-        if (!integrity.valid)
-          throw new Error(
-            "The retained remote review workspace is invalid; restore the pinned candidate before review."
+        if (!integrity.valid) {
+          await restoreRemoteReviewWorkspace(projectId, task, repoPath);
+          integrity = await assertWorktreeIntegrity(
+            repoPath,
+            remoteReview.worktreePath,
+            task.id,
+            "dispatch"
           );
+          if (!integrity.valid)
+            throw new Error(
+              "The retained remote review workspace is invalid; restore the pinned candidate before review."
+            );
+        }
       }
+    } catch (error) {
+      // One unreviewable candidate stops its own task; a rethrow would stop every task in the project.
+      const reason = error instanceof Error ? error.message : String(error);
+      log.warn("Blocking remote review that cannot be dispatched", {
+        projectId,
+        taskId: task.id,
+        reason,
+      });
+      await this.host
+        .getTaskStore()
+        .update(projectId, task.id, { status: "blocked", extra: { block_reason: reason } });
+      return;
     }
     const requiresRemoteFix =
       remoteReview &&

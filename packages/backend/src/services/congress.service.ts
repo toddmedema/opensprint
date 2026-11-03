@@ -4,6 +4,7 @@ import { getAgentForPlanningRole } from "@opensprint/shared";
 import { governanceService } from "./governance.service.js";
 import { governanceHash } from "./policy-context.js";
 import { ProjectService } from "./project.service.js";
+import { readGovernanceSourceHashes } from "./governance-source-hashes.js";
 import { taskStore } from "./task-store.service.js";
 import { invokeStructuredPlanningAgent } from "./structured-agent-output.service.js";
 import { extractJsonFromAgentResponse } from "../utils/json-extract.js";
@@ -124,26 +125,28 @@ export async function runGovernanceCongress(projectId: string): Promise<void> {
         if (!response.ok || !response.parsed)
           throw new Error("Congress returned no valid substantive amendment");
         const draft = response.parsed;
-        const permitted = new Set(evidence.map((d) => d.id));
-        const permittedEvents = new Set(eventEvidence.map((event) => event.id));
+        const available = new Set(evidence.map((d) => d.id));
+        const availableEvents = new Set(eventEvidence.map((event) => event.id));
+        const withinSide = (cited: string[], side: string[] | undefined, known: Set<string>) =>
+          cited.every((id) => side?.includes(id) && known.has(id));
         if (
-          [...draft.supportingEventIds, ...draft.contraryEventIds].some(
-            (id) => !permittedEvents.has(id)
-          )
+          !withinSide(draft.supportingEventIds, nomination.supportingEventIds, availableEvents) ||
+          !withinSide(draft.contraryEventIds, nomination.contraryEventIds, availableEvents)
         )
-          throw new Error("Congress cited an event outside the nominated evidence");
+          throw new Error("Congress cited an event outside its nominated side of the evidence");
         if (draft.supportingDecisionIds.length + draft.supportingEventIds.length === 0)
           throw new Error("Congress must cite substantive supporting evidence");
         if (
-          [...draft.supportingDecisionIds, ...draft.contraryDecisionIds].some(
-            (id) => !permitted.has(id)
-          )
+          !withinSide(draft.supportingDecisionIds, nomination.supportingDecisionIds, available) ||
+          !withinSide(draft.contraryDecisionIds, nomination.contraryDecisionIds, available)
         )
-          throw new Error("Congress cited evidence outside the nominated rulings");
+          throw new Error("Congress cited a ruling outside its nominated side of the evidence");
         const patches = draft.changes.map((change) => {
           const before = release.rules.find((rule) => rule.ruleId === change.ruleId);
           if (!before || before.severity !== "standard")
             throw new Error("Congress may only draft changes to existing standards");
+          if (before.id !== nomination.nominatedRuleRevisionId)
+            throw new Error("Congress may only draft changes to the nominated rule");
           const after = {
             ...before,
             id: `${before.ruleId}-r${before.revision + 1}-${governanceHash(change.text).slice(0, 8)}`,
@@ -156,6 +159,11 @@ export async function runGovernanceCongress(projectId: string): Promise<void> {
           return { ruleId: before.ruleId, before, after };
         });
         await governanceService.createProposal(projectId, {
+          // Drafted for today's sources: a base release's older hashes could never activate.
+          sourceHashes: await readGovernanceSourceHashes(
+            projectId,
+            (await new ProjectService().getProject(projectId)).repoPath
+          ),
           sourceNominationId: nomination.id,
           baseReleaseId: nomination.baseReleaseId,
           title: draft.title,

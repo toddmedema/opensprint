@@ -127,6 +127,17 @@ describe("OrchestratorDispatchService", () => {
     service = new OrchestratorDispatchService(host);
   });
 
+  it("dispatches an inactive project even when governance writes would fail", async () => {
+    const { governanceService } = await import("../services/governance.service.js");
+    const capture = vi
+      .spyOn(governanceService, "captureTrustedScope")
+      .mockRejectedValue(new Error("database write failed"));
+    await service.dispatchTask("proj-1", "/tmp/repo", baseTask("os-1234"), 0);
+    expect(capture).not.toHaveBeenCalled();
+    expect(executeCodingPhase).toHaveBeenCalled();
+    capture.mockRestore();
+  });
+
   it("hydrates persisted retry context and passes it to coding phase on redispatch", async () => {
     const task = {
       ...baseTask("os-1234"),

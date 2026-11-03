@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import type { DbClient } from "../db/client.js";
 import { createSqliteDbClient } from "../db/sqlite-client.js";
 import { runSchema } from "../db/schema.js";
+import { MemoryReplayEvidence } from "./replay-evidence-test-helper.js";
 import { GovernanceService } from "../services/governance-store.js";
 import type { PolicyRuleRevision, PolicyRelease, PolicyEvaluation } from "@opensprint/shared";
 const current = vi.hoisted(() => ({
@@ -86,6 +87,7 @@ const rule: PolicyRuleRevision = {
 describe("adversarial governance QA round 1", () => {
   let native: Database.Database;
   let db: DbClient;
+  let replayEvidence: MemoryReplayEvidence;
   let service: GovernanceService;
   let repo: string;
   let base: string;
@@ -108,8 +110,10 @@ describe("adversarial governance QA round 1", () => {
       toolchainProfile: { mergeQualityGateCommands: ["npm run build", "npm run lint", "npm test"] },
     };
     await runSchema(db, "sqlite");
+    replayEvidence = new MemoryReplayEvidence();
     service = new GovernanceService({
       getDb: async () => db,
+      replayEvidence,
       runWrite: (fn) => db.runInTransaction(fn),
     });
     current.service = service;
@@ -266,6 +270,7 @@ describe("adversarial governance QA round 1", () => {
   it("releases the in-process publication gate even when durable lease cleanup loses the DB", async () => {
     let failDelete = true;
     const mockDb = {
+      queryOne: async () => ({ config: '{"mode":"enforced"}', version: 1, active_release_id: "r" }),
       execute: async (sql: string) => {
         if (sql.startsWith("DELETE") && failDelete) {
           failDelete = false;
@@ -291,6 +296,7 @@ describe("adversarial governance QA round 1", () => {
   it("withholds publication after an expired or stolen lease", async () => {
     let published = false;
     const mockDb = {
+      queryOne: async () => ({ config: '{"mode":"enforced"}', version: 1, active_release_id: "r" }),
       execute: async (sql: string) => (sql.startsWith("UPDATE") ? 0 : 1),
     } as unknown as DbClient;
     const isolated = new GovernanceService({
@@ -573,7 +579,13 @@ describe("adversarial governance QA round 1", () => {
       negativeCount: 5,
       baseline: { taskSuccessRate: 1 },
       candidate: { taskSuccessRate: 1 },
-      artifactHash: "b".repeat(64),
+      ...(await replayEvidence.seed(
+        service,
+        projectId,
+        proposal.id,
+        candidate.contentHash,
+        release.id
+      )),
       releaseContentHash: candidate.contentHash,
       measuredAt: new Date().toISOString(),
     };
@@ -583,6 +595,11 @@ describe("adversarial governance QA round 1", () => {
       evaluation,
       proposal.version
     );
+    // Activation now waits for work pinned to the old release, so this task has to finish first.
+    await db.execute("UPDATE tasks SET status='closed' WHERE project_id=$1 AND id=$2", [
+      projectId,
+      c.taskId,
+    ]);
     await fs.writeFile(path.join(repo, "AGENTS.md"), "Changed after independent evaluation\n");
     await expect(
       service.activateProposal(
@@ -603,16 +620,39 @@ describe("adversarial governance QA round 1", () => {
       verify
     );
     expect((await service.getActiveRelease(projectId))?.sourceHashes).toEqual(reconciledHashes);
-    await expect(
-      service.rollback(
-        projectId,
-        release.id,
-        activated.id,
-        "Try incompatible source rollback",
-        "owner",
-        verify
-      )
-    ).rejects.toThrow("drift");
+    // Rollback used to refuse here, which trapped a project on a bad release whenever sources had
+    // moved. It now proceeds under the owner and records the drift for reconciliation.
+    const restored = await service.rollback(
+      projectId,
+      release.id,
+      activated.id,
+      "Restore the prior policy despite source drift",
+      "owner",
+      async (content, client) => ({
+        sourceDrift: governanceSourceDrift(
+          content.sourceHashes,
+          await readGovernanceSourceHashes(projectId, repo, client)
+        ),
+      })
+    );
+    expect(restored.id).toBe(release.id);
+    const [rollback] = await service.listEvents(projectId, ["policy_rollback"]);
+    expect(rollback?.payload.sourceDrift).toContain("AGENTS.md");
+    const current = await readGovernanceSourceHashes(projectId, repo, db);
+    const reconciled = await service.reconcileSourceSnapshot(
+      projectId,
+      {
+        expectedActiveReleaseId: release.id,
+        rationale: "Accept current sources",
+        sourceHashes: current,
+        enforcementRevision: base,
+        drift: rollback?.payload.sourceDrift as string[],
+      },
+      "owner"
+    );
+    expect(reconciled.rules).toEqual(release.rules);
+    expect(reconciled.sourceHashes).toEqual(current);
+    expect(await service.getActiveReleaseId(projectId)).toBe(reconciled.id);
   });
   it("round 3: an unchanged full settings payload permits unrelated edits while actual gate changes remain blocked", async () => {
     await pin("enforced");
@@ -644,9 +684,8 @@ describe("adversarial governance QA round 1", () => {
       await invoke({ ...payload, lowComplexityAgent: current.settings.simpleComplexityAgent })
     ).toBeUndefined();
     expect(await invoke({ ...payload, reviewAngles: [] })).toMatchObject({ statusCode: 403 });
-    expect(await invoke({ ...payload, testCommand: "true" })).toMatchObject({
-      code: "GOVERNANCE_CONFLICT",
-    });
+    // Gate settings used to be refused outright; now they need the owner, like review settings.
+    expect(await invoke({ ...payload, testCommand: "true" })).toMatchObject({ statusCode: 403 });
   });
   it("round 3: scripts true and checker config changes need source authority; dependency-only manifest edits do not", async () => {
     const manifest = {
@@ -744,14 +783,36 @@ describe("adversarial governance QA round 1", () => {
     await service.configure(projectId, { mode: "disabled", expectedVersion: 2 }, "owner");
     const failure = await new Promise<unknown>((resolve) =>
       guardGovernedInstructionEdit(
-        { params: { projectId }, body: { content: "weaken review" } } as unknown as Request,
+        {
+          params: { projectId },
+          body: { content: "weaken review" },
+          get: () => undefined,
+        } as unknown as Request,
         {} as Response,
         (error) => resolve(error)
       )
     );
-    expect(failure).toMatchObject({ code: "GOVERNANCE_CONFLICT" });
+    // The pinned task is retained work, so the edit needs the owner rather than being impossible.
+    expect(failure).toMatchObject({ code: "GOVERNANCE_HUMAN_REQUIRED" });
+  });
+  it("round 3: disabled governance with no retained work treats instruction edits as ordinary", async () => {
+    await pin("enforced");
+    await service.configure(projectId, { mode: "disabled", expectedVersion: 2 }, "owner");
+    await db.execute("UPDATE tasks SET status='closed' WHERE project_id=$1 AND id=$2", [
+      projectId,
+      taskId,
+    ]);
+    const failure = await new Promise<unknown>((resolve) =>
+      guardGovernedInstructionEdit(
+        { params: { projectId }, body: { content: "edit" }, get: () => undefined } as never,
+        {} as Response,
+        (error) => resolve(error)
+      )
+    );
+    expect(failure).toBeUndefined();
   });
   it("round 3: cleanup retry removes a real orphaned durable lease after a transient DB failure", async () => {
+    await pin("enforced");
     let failCleanup = true;
     const isolated = new GovernanceService({
       getDb: async () => db,

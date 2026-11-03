@@ -78,7 +78,6 @@ const RUNTIME_POLICY_SOURCES = [
   "../db/governance-schema",
   "../db/schema",
   "experiment-scoring.service",
-  "experiment-replay.service",
   "self-improvement-experiment.service",
   "self-improvement-runner.service",
   "self-improvement.service",
@@ -109,6 +108,13 @@ const RUNTIME_POLICY_SOURCES = [
   "../routes/tasks",
 ] as const;
 
+/** Open Sprint's own runtime paths: a managed repo's unrelated app.ts or schema.ts must not match. */
+const RUNTIME_POLICY_SOURCE_PATHS = new Set(
+  RUNTIME_POLICY_SOURCES.map((source) =>
+    path.posix.normalize(`packages/backend/src/services/${source}`).toLowerCase()
+  )
+);
+
 /** Gate configuration and executable checker sources, independent of the instructions they enforce. */
 function isCheckerSource(file: string): boolean {
   const normalized = file.replaceAll("\\", "/").toLowerCase();
@@ -133,6 +139,82 @@ function isCheckerSource(file: string): boolean {
     /(^|\/)(scripts?|checks?)\//.test(normalized) &&
     /(?:\.(?:[cm]?[jt]s|tsx|sh|bash|zsh|py|rb|pl|ps1|bat)|\/[^/.]+)$/.test(normalized)
   );
+}
+
+const COMMAND_RUNNERS = /^(?:npm|pnpm|yarn|bun)$/;
+const repoRelative = (token: string): string | null => {
+  const file = path.posix.normalize(token.replace(/^['"]|['"]$/g, "").replaceAll("\\", "/"));
+  return file.startsWith("/") || file.startsWith("..") || file === "." ? null : file;
+};
+/**
+ * The files a configured gate really runs, whatever they are called: `node tools/verify.mjs`
+ * escapes the name-based checker list. Root package scripts are followed by name. O(tokens).
+ */
+export async function governanceGateCheckerPaths(
+  repoPath: string,
+  projectId?: string
+): Promise<string[]> {
+  const commands: string[] = [];
+  const addProfile = (record: unknown) => {
+    const { toolchainProfile, testCommand } = (record ?? {}) as {
+      toolchainProfile?: { mergeQualityGateCommands?: unknown };
+      testCommand?: unknown;
+    };
+    const configured = toolchainProfile?.mergeQualityGateCommands;
+    if (Array.isArray(configured)) commands.push(...configured.map(String));
+    if (typeof testCommand === "string") commands.push(testCommand);
+  };
+  const override = await optionalText(path.join(repoPath, ".opensprint/merge-toolchain.json"));
+  try {
+    addProfile(override ? JSON.parse(override) : null);
+  } catch {
+    /* Malformed overrides are hashed as text, so editing one is already drift. */
+  }
+  if (projectId) {
+    const { getRawSettingsRecord } = await import("./settings-store.service.js");
+    addProfile(await getRawSettingsRecord(projectId).catch(() => null));
+  }
+  let scripts: Record<string, unknown> = {};
+  try {
+    scripts = manifestGateContent(await optionalText(path.join(repoPath, "package.json")))
+      .scripts as Record<string, unknown>;
+  } catch {
+    /* An unparseable manifest is classified as a checker change by its own path. */
+  }
+  const files = new Set<string>();
+  const seen = new Set<string>();
+  const visit = async (command: string): Promise<void> => {
+    if (seen.has(command)) return;
+    seen.add(command);
+    const tokens = command.split(/\s+|&&|\|\||;|\|/).filter(Boolean);
+    for (const [index, token] of tokens.entries()) {
+      if (COMMAND_RUNNERS.test(token)) {
+        const name = tokens[index + 1] === "run" ? tokens[index + 2] : tokens[index + 1];
+        const script = name ? scripts[name] : undefined;
+        if (typeof script === "string") await visit(script);
+      }
+      const file = repoRelative(token);
+      if (!file) continue;
+      const kind = await fs.lstat(path.join(repoPath, file)).catch(() => null);
+      if (kind?.isFile() || kind?.isSymbolicLink()) files.add(file);
+    }
+  };
+  for (const command of commands) await visit(command);
+  return [...files].sort();
+}
+
+/** The Open Sprint repository governs its own runtime; a managed repo's governance.ts is its own code. */
+async function isOpenSprintRepository(repoPath: string): Promise<boolean> {
+  try {
+    const manifest = JSON.parse(await fs.readFile(path.join(repoPath, "package.json"), "utf8")) as {
+      name?: unknown;
+    };
+    if (manifest.name !== "opensprint") return false;
+    await fs.access(path.join(repoPath, "packages/backend/src/services/governance-store.ts"));
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function manifestGateContent(text: string): { scripts: unknown; workspaces: unknown } {
@@ -218,8 +300,21 @@ export async function readGovernanceSourceHashes(
     const entries = await fs.readdir(path.join(repoPath, relative), { withFileTypes: true });
     for (const entry of entries) {
       const child = path.posix.join(relative, entry.name);
-      if (entry.isDirectory() && !ignoredDirectories.has(entry.name.toLowerCase()))
-        await visitNestedInstructions(child);
+      if (ignoredDirectories.has(entry.name.toLowerCase())) continue;
+      if (entry.isSymbolicLink()) {
+        // A skipped link would let a checker's real content change without any hash moving. An
+        // unrelated file link is inert; a linked directory could hide anything.
+        const lowerName = entry.name.toLowerCase();
+        const target = await fs.stat(path.join(repoPath, child)).catch(() => null);
+        if (
+          target?.isDirectory() ||
+          ["agents.md", "skill.md", "package.json"].includes(lowerName) ||
+          isCheckerSource(child)
+        )
+          governanceError(
+            `Policy source ${child} is a symlink; reconcile its content into an approved source snapshot.`
+          );
+      } else if (entry.isDirectory()) await visitNestedInstructions(child);
       else if (entry.isFile()) {
         if (entry.name.toLowerCase() === "package.json") {
           const projection = manifestGateContent(
@@ -236,24 +331,28 @@ export async function readGovernanceSourceHashes(
     }
   };
   await visitNestedInstructions("");
+  for (const file of await governanceGateCheckerPaths(repoPath, projectId)) {
+    if ((await fs.lstat(path.join(repoPath, file))).isSymbolicLink())
+      governanceError(
+        `Gate checker ${file} is a symlink; reconcile its content into an approved source snapshot.`
+      );
+    hashes[file] = governanceHash(await fs.readFile(path.join(repoPath, file), "utf8"));
+  }
   return hashes;
 }
 
 /** Exact known policy surfaces require a human scoped implementation authorization, independently of review votes. */
-export function governanceSensitiveSourcePaths(changedPaths: string[]): string[] {
+export function governanceSensitiveSourcePaths(
+  changedPaths: string[],
+  options: { openSprintRepository?: boolean; gateCheckers?: string[] } = {}
+): string[] {
+  const gateCheckers = new Set(options.gateCheckers ?? []);
   return changedPaths
     .filter((file) => {
       // Git preserves spelling but supported macOS filesystems can resolve these names case-insensitively.
       const normalized = file.replaceAll("\\", "/").toLowerCase();
-      if (
-        RUNTIME_POLICY_SOURCES.some((source) =>
-          new RegExp(
-            `^${path.posix.basename(source).replaceAll(".", "\\.")}\\.[cm]?[jt]s$`,
-            "i"
-          ).test(path.posix.basename(normalized))
-        )
-      )
-        return true;
+      if (gateCheckers.has(file)) return true;
+      if (RUNTIME_POLICY_SOURCE_PATHS.has(normalized.replace(/\.[cm]?[jt]s$/, ""))) return true;
       if (path.posix.basename(normalized) === "package.json" || isCheckerSource(normalized))
         return true;
       if (/(^|\/)(agents|skill)\.md$/.test(normalized)) return true;
@@ -263,12 +362,23 @@ export function governanceSensitiveSourcePaths(changedPaths: string[]): string[]
         )
       )
         return true;
-      if (normalized.includes("/__tests__/")) return false;
+      if (normalized.includes("/__tests__/") || !options.openSprintRepository) return false;
       return /(^|\/)(agent-default-instructions|agent-result-validation|agent-process-env|context-assembler|policy-context|protected-path-policy|governance[^/]*|review-synthesizer\.service|task-phase-coordinator|git-commit-queue\.service|merge-quality-gates|toolchain-profile\.service)\.[cm]?[jt]s$/.test(
         normalized
       );
     })
     .sort();
+}
+
+async function classifySourcePaths(
+  repoPath: string,
+  changedPaths: string[],
+  projectId?: string
+): Promise<string[]> {
+  return governanceSensitiveSourcePaths(changedPaths, {
+    openSprintRepository: await isOpenSprintRepository(repoPath),
+    gateCheckers: await governanceGateCheckerPaths(repoPath, projectId),
+  });
 }
 
 /** Manifest dependency edits are ordinary code work; only verified script/workspace changes govern hard checks. */
@@ -278,8 +388,9 @@ export async function resolveGovernanceSensitiveSourcePaths(input: {
   scopeBaseSha?: string;
   headSha: string;
   changedPaths: string[];
+  projectId?: string;
 }): Promise<string[]> {
-  const candidates = governanceSensitiveSourcePaths(input.changedPaths);
+  const candidates = await classifySourcePaths(input.repoPath, input.changedPaths, input.projectId);
   const baseSha = input.scopeBaseSha ?? input.baseSha;
   if (!/^[a-f0-9]{40,64}$/i.test(baseSha) || !/^[a-f0-9]{40,64}$/i.test(input.headSha))
     governanceError(
@@ -329,11 +440,16 @@ export async function resolveGovernanceCandidateSensitiveSourcePaths(input: {
   repoPath: string;
   baseSha: string;
   changedPaths: string[];
+  projectId?: string;
 }): Promise<string[]> {
   if (!/^[a-f0-9]{40,64}$/i.test(input.baseSha))
     governanceError("An immutable candidate base is required for source authority checks.");
   const result: string[] = [];
-  for (const file of governanceSensitiveSourcePaths(input.changedPaths)) {
+  for (const file of await classifySourcePaths(
+    input.repoPath,
+    input.changedPaths,
+    input.projectId
+  )) {
     if (path.posix.basename(file.replaceAll("\\", "/")).toLowerCase() !== "package.json") {
       result.push(file);
       continue;
@@ -380,8 +496,7 @@ export async function resolveGovernanceCandidateSensitiveSourcePaths(input: {
   return result.sort();
 }
 
-/** New source additions/removals count as drift; compare only actual source keys, not legacy rendered-role receipts. */
-export function governanceSourceDrift(
+function allSourceDrift(
   approved: Record<string, string>,
   current: Record<string, string>
 ): string[] {
@@ -389,6 +504,38 @@ export function governanceSourceDrift(
   return [...keys]
     .filter((key) => !key.startsWith("role:") && approved[key] !== current[key])
     .sort();
+}
+
+/**
+ * New source additions/removals count as drift; compare only actual source keys, not legacy
+ * rendered-role receipts. The server's own runtime is not repository policy: every Open Sprint
+ * upgrade would otherwise stop all governed work, so it is reported by
+ * {@link governanceRuntimeDrift} and audited instead.
+ */
+export function governanceSourceDrift(
+  approved: Record<string, string>,
+  current: Record<string, string>
+): string[] {
+  return allSourceDrift(approved, current).filter((key) => !key.startsWith("runtime:"));
+}
+
+export function governanceRuntimeDrift(
+  approved: Record<string, string>,
+  current: Record<string, string>
+): string[] {
+  return allSourceDrift(approved, current).filter((key) => key.startsWith("runtime:"));
+}
+
+/** Current hashes for exactly these repository paths, for refreshing an approved snapshot. */
+export function governanceSourceHashesForPaths(
+  current: Record<string, string>,
+  paths: string[]
+): Record<string, string> {
+  const hashes: Record<string, string> = {};
+  for (const file of paths)
+    for (const key of [file, `${file}#gate-scripts`])
+      if (current[key] !== undefined) hashes[key] = current[key];
+  return hashes;
 }
 
 export async function assertGovernanceSensitiveSourceApproval(input: {

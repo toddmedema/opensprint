@@ -2,7 +2,13 @@ import { useState } from "react";
 import type { PolicyRuleRevision } from "@opensprint/shared";
 import { AGENT_ROLE_CANONICAL_ORDER, AGENT_ROLE_LABELS } from "@opensprint/shared";
 import { api } from "../../../api/client";
-import { GOVERNANCE_INPUT_CLASS, type GovernancePanelProps } from "../GovernanceSettingsContent";
+import {
+  formatGovernanceDate,
+  pendingInitialReleases,
+  revokedGovernanceReleaseIds,
+} from "../../../lib/governance";
+import type { GovernancePanelProps } from "../GovernanceSettingsContent";
+import { GovernanceResult } from "./GovernanceResult";
 
 const lines = (value: string) =>
   value
@@ -37,9 +43,13 @@ export function PolicyRegistry(props: GovernancePanelProps) {
   const [before, setBefore] = useState<PolicyRuleRevision | null>(null);
   const [enforcement, setEnforcement] = useState(active?.enforcementRevision ?? "");
   const [releaseRationale, setReleaseRationale] = useState("");
-  const initialRelease = props.summary.releases.find(
-    (release) => release.id !== props.summary.activeReleaseId
-  );
+  const [activationRationale, setActivationRationale] = useState("");
+  const [selectedReleaseId, setSelectedReleaseId] = useState("");
+  const candidates = pendingInitialReleases(props.summary);
+  const initialRelease =
+    candidates.find((release) => release.id === selectedReleaseId) ?? candidates[0];
+  const activeRevoked =
+    active !== undefined && revokedGovernanceReleaseIds(props.summary).has(active.id);
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -63,7 +73,14 @@ export function PolicyRegistry(props: GovernancePanelProps) {
       </div>
       {active ? (
         <div className="rounded-lg border border-theme-border bg-theme-bg/40 p-3">
-          <p className="text-sm font-medium text-theme-text">Active release · {active.id}</p>
+          <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-theme-text">
+            Active release · {active.id}
+            {activeRevoked && (
+              <span className="rounded-full bg-theme-error-bg px-2.5 py-0.5 text-xs font-medium text-theme-error-text">
+                Revoked
+              </span>
+            )}
+          </p>
           <p className="mt-1 break-all text-xs text-theme-muted">
             Content {active.contentHash} · Enforcement {active.enforcementRevision}
           </p>
@@ -111,6 +128,7 @@ export function PolicyRegistry(props: GovernancePanelProps) {
           initial={editing}
           before={before}
           onCancel={() => setEditing(null)}
+          onSubmitted={() => setEditing(null)}
           onDraft={(rule) => {
             setDraftRules((current) => [
               ...current.filter((entry) => entry.ruleId !== rule.ruleId),
@@ -126,8 +144,8 @@ export function PolicyRegistry(props: GovernancePanelProps) {
           onSubmit={(event) => {
             event.preventDefault();
             props.run(
-              () =>
-                api.governance.createRelease(
+              async () => {
+                await api.governance.createRelease(
                   props.projectId,
                   {
                     expectedActiveReleaseId: null,
@@ -138,8 +156,12 @@ export function PolicyRegistry(props: GovernancePanelProps) {
                     rationale: releaseRationale.trim(),
                   },
                   props.capability
-                ),
-              "Initial release saved. Review its complete content before activation."
+                );
+                setDraftRules([]);
+                setReleaseRationale("");
+              },
+              "Initial release saved. Review its complete content before activation.",
+              "initial-release"
             );
           }}
         >
@@ -150,7 +172,7 @@ export function PolicyRegistry(props: GovernancePanelProps) {
               value={enforcement}
               onChange={(event) => setEnforcement(event.target.value)}
               placeholder="Full Git commit SHA"
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
               required
             />
           </label>
@@ -160,7 +182,7 @@ export function PolicyRegistry(props: GovernancePanelProps) {
               value={releaseRationale}
               onChange={(event) => setReleaseRationale(event.target.value)}
               rows={2}
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
               required
             />
           </label>
@@ -180,6 +202,22 @@ export function PolicyRegistry(props: GovernancePanelProps) {
           <h4 className="text-sm font-semibold text-theme-text">
             Initial release ready to activate
           </h4>
+          {candidates.length > 1 && (
+            <label className="block text-sm font-medium text-theme-text">
+              Release to activate
+              <select
+                value={initialRelease.id}
+                onChange={(event) => setSelectedReleaseId(event.target.value)}
+                className="input mt-1.5"
+              >
+                {candidates.map((release) => (
+                  <option key={release.id} value={release.id}>
+                    {release.id} · {formatGovernanceDate(release.createdAt)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <p className="text-sm text-theme-muted">
             {initialRelease.id} · {initialRelease.rules.length} standards. Activation makes this
             immutable content govern new assignments.
@@ -195,26 +233,29 @@ export function PolicyRegistry(props: GovernancePanelProps) {
           <label className="block text-sm font-medium text-theme-text">
             Activation rationale
             <textarea
-              value={releaseRationale}
-              onChange={(event) => setReleaseRationale(event.target.value)}
+              value={activationRationale}
+              onChange={(event) => setActivationRationale(event.target.value)}
               rows={2}
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
             />
           </label>
           <button
             type="button"
             className="btn-primary disabled:opacity-50"
-            disabled={!props.capability || props.busy || !releaseRationale.trim()}
+            disabled={!props.capability || props.busy || !activationRationale.trim()}
             onClick={() =>
               props.run(
-                () =>
-                  api.governance.activateRelease(
+                async () => {
+                  await api.governance.activateRelease(
                     props.projectId,
                     initialRelease.id,
-                    { expectedActiveReleaseId: null, rationale: releaseRationale.trim() },
+                    { expectedActiveReleaseId: null, rationale: activationRationale.trim() },
                     props.capability
-                  ),
-                "Initial policy activated. New assignments will use this release."
+                  );
+                  setActivationRationale("");
+                },
+                "Initial policy activated. New assignments will use this release.",
+                "initial-release"
               )
             }
           >
@@ -222,6 +263,16 @@ export function PolicyRegistry(props: GovernancePanelProps) {
           </button>
         </section>
       )}
+      <GovernanceResult
+        scope="initial-release"
+        outcome={props.outcome}
+        pendingScope={props.pendingScope}
+      />
+      <GovernanceResult
+        scope="rule-amendment"
+        outcome={props.outcome}
+        pendingScope={props.pendingScope}
+      />
     </div>
   );
 }
@@ -274,11 +325,13 @@ function RuleEditor({
   before,
   onCancel,
   onDraft,
+  onSubmitted,
   ...props
 }: GovernancePanelProps & {
   initial: PolicyRuleRevision;
   before: PolicyRuleRevision | null;
   onCancel: () => void;
+  onSubmitted: () => void;
   onDraft: (rule: PolicyRuleRevision) => void;
 }) {
   const [rule, setRule] = useState(initial);
@@ -291,6 +344,7 @@ function RuleEditor({
   const [supporting, setSupporting] = useState("");
   const [contrary, setContrary] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [examplesOpen, setExamplesOpen] = useState(false);
   const patch = <K extends keyof PolicyRuleRevision>(key: K, value: PolicyRuleRevision[K]) =>
     setRule((current) => ({ ...current, [key]: value }));
   const initialOnboarding = props.summary.activeReleaseId === null;
@@ -320,9 +374,23 @@ function RuleEditor({
           onDraft(after);
           return;
         }
+        const supportingIds = lines(supporting);
+        const missing = [
+          !scope.trim() && "intended scope",
+          !compatibility.trim() && "migration and compatibility effects",
+          !enforcement.trim() && "compatible enforcement commit",
+          supportingIds.length === 0 && "at least one supporting decision ID",
+          after.examples.compliant.length === 0 && "a compliant example",
+          after.examples.noncompliant.length === 0 && "a noncompliant example",
+        ].filter(Boolean);
+        if (missing.length > 0) {
+          setExamplesOpen(true);
+          setFormError(`Still required: ${missing.join(", ")}.`);
+          return;
+        }
         props.run(
-          () =>
-            api.governance.propose(
+          async () => {
+            await api.governance.propose(
               props.projectId,
               {
                 projectId: props.projectId,
@@ -330,7 +398,7 @@ function RuleEditor({
                 title: `${before ? "Amend" : "Add"} ${after.ruleId}`,
                 rationale: after.rationale,
                 patches: [{ ruleId: after.ruleId, before, after }],
-                supportingDecisionIds: lines(supporting),
+                supportingDecisionIds: supportingIds,
                 contraryDecisionIds: lines(contrary),
                 scope,
                 compatibility,
@@ -339,8 +407,11 @@ function RuleEditor({
                 negativeExamples: after.examples.noncompliant,
               },
               props.capability
-            ),
-          "Amendment proposed. Evaluation and explicit human activation are required before policy changes."
+            );
+            onSubmitted();
+          },
+          "Amendment proposed. Evaluation and explicit human activation are required before policy changes.",
+          "rule-amendment"
         );
       }}
     >
@@ -368,7 +439,7 @@ function RuleEditor({
             value={rule.ruleId}
             onChange={(event) => patch("ruleId", event.target.value)}
             disabled={before !== null}
-            className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+            className="input mt-1.5"
             placeholder="architecture.repository-access"
             required
           />
@@ -378,7 +449,7 @@ function RuleEditor({
           <input
             value={rule.owner}
             onChange={(event) => patch("owner", event.target.value)}
-            className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+            className="input mt-1.5"
             required
           />
         </label>
@@ -389,7 +460,7 @@ function RuleEditor({
           value={rule.text}
           onChange={(event) => patch("text", event.target.value)}
           rows={4}
-          className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+          className="input mt-1.5"
           required
         />
       </label>
@@ -399,7 +470,7 @@ function RuleEditor({
           value={rule.rationale}
           onChange={(event) => patch("rationale", event.target.value)}
           rows={3}
-          className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+          className="input mt-1.5"
           required
         />
       </label>
@@ -412,7 +483,7 @@ function RuleEditor({
               patch("severity", event.target.value as PolicyRuleRevision["severity"]);
               if (event.target.value === "constraint") patch("exceptionEligible", false);
             }}
-            className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+            className="input mt-1.5"
           >
             <option value="standard">Standard</option>
             <option value="constraint">Non-waivable constraint</option>
@@ -425,7 +496,7 @@ function RuleEditor({
             min={0}
             value={rule.layer}
             onChange={(event) => patch("layer", Number(event.target.value))}
-            className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+            className="input mt-1.5"
           />
         </label>
       </div>
@@ -455,7 +526,7 @@ function RuleEditor({
             defaultValue={rule.paths.join("\n")}
             onChange={(event) => patch("paths", lines(event.target.value))}
             rows={2}
-            className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+            className="input mt-1.5"
             placeholder="packages/backend/src/**"
           />
         </label>
@@ -465,7 +536,7 @@ function RuleEditor({
             defaultValue={rule.components.join("\n")}
             onChange={(event) => patch("components", lines(event.target.value))}
             rows={2}
-            className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+            className="input mt-1.5"
             placeholder="One per line; empty means all"
           />
         </label>
@@ -492,7 +563,7 @@ function RuleEditor({
           ))}
         </div>
       </fieldset>
-      <details>
+      <details open={examplesOpen} onToggle={(event) => setExamplesOpen(event.currentTarget.open)}>
         <summary className="cursor-pointer text-sm font-medium text-theme-text">
           Parents, overrides, conflicts &amp; examples
         </summary>
@@ -510,14 +581,20 @@ function RuleEditor({
                 defaultValue={rule[key].join("\n")}
                 onChange={(event) => patch(key, lines(event.target.value))}
                 rows={2}
-                className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+                className="input mt-1.5"
               />
             </label>
           ))}
           {(
             [
-              ["compliant", "Compliant examples"],
-              ["noncompliant", "Noncompliant examples"],
+              [
+                "compliant",
+                initialOnboarding ? "Compliant examples" : "Compliant examples (required)",
+              ],
+              [
+                "noncompliant",
+                initialOnboarding ? "Noncompliant examples" : "Noncompliant examples (required)",
+              ],
             ] as const
           ).map(([key, label]) => (
             <label key={key} className="text-sm text-theme-text">
@@ -531,7 +608,7 @@ function RuleEditor({
                   })
                 }
                 rows={3}
-                className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+                className="input mt-1.5"
               />
             </label>
           ))}
@@ -540,58 +617,61 @@ function RuleEditor({
       {!initialOnboarding && (
         <fieldset className="space-y-3 border-t border-theme-border pt-4">
           <legend className="text-sm font-semibold text-theme-text">Amendment evidence</legend>
+          <p className="text-xs text-theme-muted">
+            Fields marked required must be complete before evaluation, including compliant and
+            noncompliant examples above.
+          </p>
           <label className="block text-sm text-theme-text">
-            Intended scope
+            Intended scope (required)
             <textarea
               value={scope}
               onChange={(event) => setScope(event.target.value)}
               rows={2}
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
               required
             />
           </label>
           <label className="block text-sm text-theme-text">
-            Migration &amp; compatibility effects
+            Migration &amp; compatibility effects (required)
             <textarea
               value={compatibility}
               onChange={(event) => setCompatibility(event.target.value)}
               rows={2}
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
               required
             />
           </label>
           <label className="block text-sm text-theme-text">
-            Compatible enforcement commit
+            Compatible enforcement commit (required)
             <input
               value={enforcement}
               onChange={(event) => setEnforcement(event.target.value)}
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
               required
             />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm text-theme-text">
-              Supporting decision IDs
+              Supporting decision IDs (required)
               <textarea
                 value={supporting}
                 onChange={(event) => setSupporting(event.target.value)}
                 rows={2}
-                className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+                className="input mt-1.5"
               />
             </label>
             <label className="text-sm text-theme-text">
-              Contrary decision IDs
+              Contrary decision IDs (optional)
               <textarea
                 value={contrary}
                 onChange={(event) => setContrary(event.target.value)}
                 rows={2}
-                className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+                className="input mt-1.5"
               />
             </label>
           </div>
           <p className="text-xs text-theme-muted">
-            Include positive and negative examples above. Contrary decisions remain part of the
-            review even when an exception has recurred.
+            Contrary decisions remain part of the review even when an exception has recurred.
           </p>
         </fieldset>
       )}

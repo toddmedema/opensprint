@@ -116,6 +116,23 @@ describe.skipIf(!projectsPostgresOk)("Projects REST API — spec/sketch phase ro
     await fs.rm(tempDir, { recursive: true, force: true });
   });
 
+  it.each([
+    ["approve", { candidateId: "missing" }],
+    ["reject", { candidateId: "missing" }],
+    ["rollback", { behaviorVersionId: "missing" }],
+  ])(
+    "does not require a governance capability to %s on a default-off project",
+    async (action, body) => {
+      vi.stubEnv("OPENSPRINT_GOVERNANCE_OWNER", "");
+      vi.stubEnv("OPENSPRINT_GOVERNANCE_APPROVAL_SECRET", "");
+      const res = await authedSupertest(app)
+        .post(`${API_PREFIX}/projects/${projectId}/self-improvement/${action}`)
+        .send(body);
+      expect(res.body?.error?.code).not.toBe("GOVERNANCE_HUMAN_REQUIRED");
+      expect(res.status).not.toBe(403);
+    }
+  );
+
   it("GET /projects/:id/sketch-context returns hasExistingCode false when repo has no source files", async () => {
     const res = await authedSupertest(app).get(
       `${API_PREFIX}/projects/${projectId}/sketch-context`

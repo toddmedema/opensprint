@@ -615,7 +615,8 @@ export function getSelfImprovementStatus(
     selfImprovementPendingReplaySampleSize?: number;
     selfImprovementPendingBaselineMetrics?: SelfImprovementMetrics;
     selfImprovementPendingCandidateMetrics?: SelfImprovementMetrics;
-  }
+  },
+  evaluatedProposalId?: string
 ): SelfImprovementStatusSnapshot {
   const runState = inProgressProjects.get(projectId);
   if (runState) {
@@ -647,6 +648,13 @@ export function getSelfImprovementStatus(
       }),
     };
   }
+  // Not a pending candidate: only the owner's Review governance approval can activate this.
+  if (evaluatedProposalId) {
+    return {
+      status: "awaiting_approval",
+      summary: `Policy proposal ${evaluatedProposalId} passed replay and awaits approval in Review governance.`,
+    };
+  }
   return { status: "idle" };
 }
 
@@ -665,6 +673,32 @@ export function setSelfImprovementRunInProgressForTest(
   } else {
     inProgressProjects.set(projectId, inProgress);
   }
+}
+
+/** Evaluated proposals stay inactive until a human acts, so that person must be told. */
+async function notifyProposalAwaitingApproval(
+  projectId: string,
+  proposalId: string
+): Promise<void> {
+  const notification = await notificationService.createSelfImprovementApproval({
+    projectId,
+    candidateId: proposalId,
+    deepLinkPath: `/projects/${encodeURIComponent(projectId)}/settings?tab=governance`,
+  });
+  broadcastToProject(projectId, {
+    type: "notification.added",
+    notification: {
+      id: notification.id,
+      projectId: notification.projectId,
+      source: notification.source,
+      sourceId: notification.sourceId,
+      questions: notification.questions.map((q) => ({ id: q.id, text: q.text })),
+      status: notification.status,
+      createdAt: notification.createdAt,
+      resolvedAt: notification.resolvedAt,
+      kind: notification.kind,
+    },
+  });
 }
 
 export class SelfImprovementRunnerService {
@@ -1000,7 +1034,10 @@ Review the codebase and output a structured list of improvement tasks (JSON arra
         } else {
           await runGovernanceCongress(projectId);
           const proposals = await governanceService.listProposals(projectId);
-          const proposal = proposals.find((p) => p.state === "draft" && !p.evaluation);
+          const activeReleaseId = await governanceService.getActiveReleaseId(projectId);
+          const proposal = proposals.find(
+            (p) => p.state === "draft" && !p.evaluation && p.baseReleaseId === activeReleaseId
+          );
           if (!proposal) {
             summary +=
               " Experiment step skipped: no unevaluated substantive policy amendment is available.";
@@ -1019,6 +1056,7 @@ Review the codebase and output a structured list of improvement tasks (JSON arra
               pendingCandidateId = evaluated.id;
               outcome = "promotion_pending";
               summary += ` Policy proposal ${evaluated.id} passed independent replay and requires explicit human approval in Review governance.`;
+              await notifyProposalAwaitingApproval(projectId, evaluated.id);
             } else {
               outcome = "candidate_rejected";
               summary += ` Policy proposal ${evaluated.id} remains inactive: evaluation is incomplete or regressed. Inspect its retained evaluation evidence in Review governance.`;

@@ -17,6 +17,7 @@ vi.mock("../services/governance.service.js", () => ({
   governanceService: {
     getConfig: vi.fn().mockResolvedValue({ mode: "disabled" }),
     listProposals: vi.fn().mockResolvedValue([]),
+    getActiveReleaseId: vi.fn().mockResolvedValue("active"),
   },
 }));
 vi.mock("../services/congress.service.js", () => ({
@@ -105,6 +106,17 @@ vi.mock("../utils/shell-exec.js", () => ({
 
 vi.mock("../services/notification.service.js", () => ({
   notificationService: {
+    createSelfImprovementApproval: vi.fn().mockResolvedValue({
+      id: "sia-1",
+      projectId: "proj-1",
+      source: "self-improvement",
+      sourceId: "proposal1",
+      questions: [],
+      status: "open",
+      createdAt: "2026-10-30T00:00:00Z",
+      resolvedAt: null,
+      kind: "self_improvement_approval",
+    }),
     createAgentFailed: vi.fn().mockResolvedValue({
       id: "af-1",
       projectId: "proj-1",
@@ -1525,16 +1537,26 @@ describe("experiment pipeline wiring", () => {
     );
     vi.mocked(governanceService.getConfig).mockResolvedValue({ mode: "enforced" } as never);
     vi.mocked(governanceService.listProposals).mockResolvedValue([
-      { id: "proposal1", state: "draft", version: 2 },
+      { id: "stale", state: "draft", version: 1, baseReleaseId: "superseded" },
+      { id: "proposal1", state: "draft", version: 2, baseReleaseId: "active" },
     ] as never);
     vi.mocked(evaluatePolicyProposal).mockResolvedValue({
       id: "proposal1",
       state: "evaluated",
     } as never);
+    const { notificationService } = await import("../services/notification.service.js");
     await new SelfImprovementRunnerService().runSelfImprovement(projectId, {
       runId: "actual-evaluation",
     });
+    expect(evaluatePolicyProposal).toHaveBeenCalledTimes(1);
     expect(evaluatePolicyProposal).toHaveBeenCalledWith(projectId, "proposal1", 2, "/tmp/repo");
+    expect(notificationService.createSelfImprovementApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId, candidateId: "proposal1" })
+    );
+    expect(getSelfImprovementStatus(projectId, {}, "proposal1")).toMatchObject({
+      status: "awaiting_approval",
+      summary: expect.stringContaining("Review governance"),
+    });
     expect(taskStore.insertSelfImprovementRunHistory).toHaveBeenCalledWith(
       expect.objectContaining({ outcome: "promotion_pending", pendingCandidateId: "proposal1" })
     );

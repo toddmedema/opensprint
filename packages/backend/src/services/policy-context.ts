@@ -1,10 +1,13 @@
 import { createHash } from "crypto";
 import type {
   AgentRole,
+  GovernanceMode,
   PolicyContext,
   PolicyRelease,
   PolicyRuleRevision,
   PolicyProposal,
+  ReviewCase,
+  ReviewCaseState,
 } from "@opensprint/shared";
 import { AppError } from "../middleware/error-handler.js";
 
@@ -23,12 +26,41 @@ export function governanceHash(value: unknown): string {
     .update(typeof value === "string" ? value : canonicalJson(value))
     .digest("hex");
 }
+/** The caller acted on an outdated version of a case, proposal, config, or active release. */
+export const GOVERNANCE_STALE_VERSION = "GOVERNANCE_STALE_VERSION";
+/** The request itself is malformed or incomplete; retrying unchanged cannot succeed. */
+export const GOVERNANCE_INVALID_INPUT = "GOVERNANCE_INVALID_INPUT";
+/** Enforced work must carry a policy pin; an unpinned task has no governing release to be judged by. */
+export const GOVERNANCE_NOT_PINNED = "GOVERNANCE_NOT_PINNED";
+/** Call sites name their code, so changing a message cannot change what a client is told. */
 export function governanceError(
   message: string,
   code = "GOVERNANCE_CONFLICT",
-  status = 409
+  status?: number
 ): never {
-  throw new AppError(status, code, message);
+  throw new AppError(status ?? (code === GOVERNANCE_INVALID_INPUT ? 400 : 409), code, message);
+}
+const ACTIVE_HOLD_STATES: readonly ReviewCaseState[] = [
+  "awaiting_reconsideration",
+  "awaiting_judge",
+  "awaiting_human",
+  "evidence_requested",
+  "stale",
+];
+/** The one definition of a case that stops its task: an open docket, or an unresolved human cancel. */
+export function isActiveHold(c: ReviewCase): boolean {
+  return (
+    (!c.publishedRemediationOnly && ACTIVE_HOLD_STATES.includes(c.state)) ||
+    (c.humanCancelled === true && !c.supersededByReleaseId)
+  );
+}
+/** A pin records the mode at assignment; turning enforcement on must still reach in-flight work. */
+export function effectiveGovernanceMode(
+  pinMode: GovernanceMode | undefined,
+  configMode: GovernanceMode
+): GovernanceMode {
+  if (pinMode === "enforced" || configMode === "enforced") return "enforced";
+  return pinMode === "shadow" || configMode === "shadow" ? "shadow" : "disabled";
 }
 /** Small versioned path language: literals, *, and **. No regex or model-supplied predicates. */
 export function matchesPolicyPath(pattern: string, candidate: string): boolean {
@@ -56,10 +88,16 @@ export function matchesPolicyPath(pattern: string, candidate: string): boolean {
 }
 export function validatePolicyRules(rules: PolicyRuleRevision[]): void {
   if (!Array.isArray(rules) || !rules.length)
-    governanceError("A release must contain at least one explicit human-approved rule.");
+    governanceError(
+      "A release must contain at least one explicit human-approved rule.",
+      GOVERNANCE_INVALID_INPUT
+    );
   const byId = new Map(rules.map((r) => [r.id, r]));
   if (byId.size !== rules.length || new Set(rules.map((r) => r.ruleId)).size !== rules.length)
-    governanceError("A release must select exactly one revision of each rule.");
+    governanceError(
+      "A release must select exactly one revision of each rule.",
+      GOVERNANCE_INVALID_INPUT
+    );
   for (const r of rules) {
     if (
       !r.id?.trim() ||
@@ -72,12 +110,18 @@ export function validatePolicyRules(rules: PolicyRuleRevision[]): void {
       !Number.isInteger(r.layer) ||
       r.layer < 0
     )
-      governanceError("Rule identity, text, rationale, owner, revision, and layer are required.");
+      governanceError(
+        "Rule identity, text, rationale, owner, revision, and layer are required.",
+        GOVERNANCE_INVALID_INPUT
+      );
     if (
       !["standard", "constraint"].includes(r.severity) ||
       (r.severity === "constraint" && r.exceptionEligible)
     )
-      governanceError("Runtime/security/authorization constraints cannot grant exceptions.");
+      governanceError(
+        "Runtime/security/authorization constraints cannot grant exceptions.",
+        GOVERNANCE_INVALID_INPUT
+      );
     for (const key of [
       "paths",
       "components",
@@ -87,17 +131,17 @@ export function validatePolicyRules(rules: PolicyRuleRevision[]): void {
       "conflictIds",
     ] as const)
       if (!Array.isArray(r[key]) || r[key].some((v) => typeof v !== "string"))
-        governanceError(`Rule ${r.id} has invalid ${key}.`);
+        governanceError(`Rule ${r.id} has invalid ${key}.`, GOVERNANCE_INVALID_INPUT);
     if (r.paths.some((p) => p.startsWith("/") || p.includes("..")))
-      governanceError(`Rule ${r.id} paths must be repository-relative.`);
+      governanceError(`Rule ${r.id} paths must be repository-relative.`, GOVERNANCE_INVALID_INPUT);
     if (
       !r.examples ||
       !Array.isArray(r.examples.compliant) ||
       !Array.isArray(r.examples.noncompliant)
     )
-      governanceError(`Rule ${r.id} examples are required.`);
+      governanceError(`Rule ${r.id} examples are required.`, GOVERNANCE_INVALID_INPUT);
     for (const parent of r.parentIds)
-      if (!byId.has(parent)) governanceError(`Missing parent ${parent}.`);
+      if (!byId.has(parent)) governanceError(`Missing parent ${parent}.`, GOVERNANCE_INVALID_INPUT);
     for (const overridden of r.overrideIds) {
       const target = byId.get(overridden);
       if (
@@ -108,7 +152,8 @@ export function validatePolicyRules(rules: PolicyRuleRevision[]): void {
         !r.parentIds.includes(overridden)
       )
         governanceError(
-          `Rule ${r.id} cannot override ${overridden}: overrides require explicit same-layer standard parent authority.`
+          `Rule ${r.id} cannot override ${overridden}: overrides require explicit same-layer standard parent authority.`,
+          GOVERNANCE_INVALID_INPUT
         );
       if (
         !r.paths.length ||
@@ -119,10 +164,19 @@ export function validatePolicyRules(rules: PolicyRuleRevision[]): void {
           )
         )
       )
-        governanceError(`Override ${r.id} must narrow its parent's scope.`);
+        governanceError(
+          `Override ${r.id} must narrow its parent's scope.`,
+          GOVERNANCE_INVALID_INPUT
+        );
     }
+    for (const conflict of r.conflictIds)
+      if (!byId.has(conflict))
+        governanceError(
+          `Rule ${r.id} conflicts with unknown ${conflict}.`,
+          GOVERNANCE_INVALID_INPUT
+        );
     const visit = (id: string, seen: Set<string>): void => {
-      if (seen.has(id)) governanceError("Policy parent/override cycle.");
+      if (seen.has(id)) governanceError("Policy parent/override cycle.", GOVERNANCE_INVALID_INPUT);
       const next = new Set(seen).add(id);
       for (const p of byId.get(id)?.parentIds ?? []) visit(p, next);
     };
@@ -226,6 +280,67 @@ export function resolvePolicyContext(
     );
   return { content, receipt };
 }
+/**
+ * Whether a rule binds a file, from approved paths and `mandatory` alone (parents included). Roles
+ * choose who is told about a rule, not whether it binds the code, and components are model-unverifiable
+ * facts, so a component-scoped rule is treated as applying. A rule outside this is the only one a
+ * model may set aside. The check fails closed: conflicting context throws.
+ */
+export function ruleAppliesToFile(
+  release: PolicyRelease,
+  ruleRevisionId: string,
+  file: string
+): boolean {
+  const rule = release.rules.find((r) => r.id === ruleRevisionId);
+  if (!rule || rule.components.length) return true;
+  const unfiltered = {
+    ...release,
+    rules: release.rules.map((r) => ({ ...r, roles: [], components: [] })),
+  };
+  return resolvePolicyContext(
+    unfiltered,
+    "reviewer",
+    [file],
+    [],
+    Number.MAX_SAFE_INTEGER
+  ).receipt.selected.some((selected) => selected.id === rule.id);
+}
+/** Rule links name immutable revisions, so replacing a rule gives each dependent a new revision. */
+function relinkReplacedRevisions(
+  rules: Map<string, PolicyRuleRevision>,
+  patches: PolicyProposal["patches"]
+): void {
+  const replaced = new Map<string, string>();
+  const fresh = new Set<string>();
+  for (const { before, after } of patches) {
+    if (before && after) replaced.set(before.id, after.id);
+    if (after) fresh.add(after.id);
+  }
+  for (let changed = replaced.size > 0; changed; ) {
+    changed = false;
+    for (const [ruleId, rule] of rules) {
+      const rename = (ids: string[]) => ids.map((id) => replaced.get(id) ?? id);
+      const linked = {
+        ...rule,
+        parentIds: rename(rule.parentIds),
+        overrideIds: rename(rule.overrideIds),
+        conflictIds: rename(rule.conflictIds),
+      };
+      if (canonicalJson(linked) === canonicalJson(rule)) continue;
+      changed = true;
+      if (fresh.has(rule.id)) {
+        rules.set(ruleId, linked);
+        continue;
+      }
+      const revision = rule.revision + 1;
+      const links = [linked.parentIds, linked.overrideIds, linked.conflictIds];
+      const id = `${ruleId}-r${revision}-${governanceHash(links).slice(0, 8)}`;
+      replaced.set(rule.id, id);
+      fresh.add(id);
+      rules.set(ruleId, { ...linked, id, revision });
+    }
+  }
+}
 export function buildProposalRelease(base: PolicyRelease, proposal: PolicyProposal): PolicyRelease {
   const rules = new Map(base.rules.map((r) => [r.ruleId, r]));
   if (!proposal.patches.length && !proposal.instructions)
@@ -233,7 +348,7 @@ export function buildProposalRelease(base: PolicyRelease, proposal: PolicyPropos
   for (const patch of proposal.patches) {
     const current = rules.get(patch.ruleId) ?? null;
     if (canonicalJson(current) !== canonicalJson(patch.before))
-      governanceError(`Stale before content for ${patch.ruleId}.`);
+      governanceError(`Stale before content for ${patch.ruleId}.`, GOVERNANCE_STALE_VERSION);
     if (patch.after) {
       if (
         patch.after.ruleId !== patch.ruleId ||
@@ -244,6 +359,7 @@ export function buildProposalRelease(base: PolicyRelease, proposal: PolicyPropos
       rules.set(patch.ruleId, patch.after);
     } else rules.delete(patch.ruleId);
   }
+  relinkReplacedRevisions(rules, proposal.patches);
   const updated = [...rules.values()].map((r) => ({
     ...r,
     sourceHash: governanceHash({ ...r, sourceHash: undefined }),

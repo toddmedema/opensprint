@@ -7,15 +7,27 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { AgentSession } from "@opensprint/shared";
 import { createSqliteDbClient } from "../db/sqlite-client.js";
+import type { DbClient } from "../db/client.js";
 const guidance = vi.hoisted(() => ({ history: vi.fn().mockReturnValue([]) }));
 vi.mock("../services/agent-chat.service.js", () => ({
   agentChatService: { getHistory: guidance.history },
 }));
 import {
-  retainGovernanceReplayInput,
+  persistGovernanceReplayInput,
+  prepareGovernanceReplayInput,
   type GovernanceReplayInput,
 } from "../services/governance-replay-input.js";
 const exec = promisify(execFile);
+async function retainGovernanceReplayInput(
+  db: DbClient,
+  projectId: string,
+  sessionId: number,
+  session: AgentSession,
+  repoPath: string
+): Promise<void> {
+  const prepared = await prepareGovernanceReplayInput(db, projectId, session, repoPath);
+  if (prepared) await persistGovernanceReplayInput(db, projectId, sessionId, prepared);
+}
 describe("exact retained replay provenance", () => {
   it("binds the actual retry invocation and survives ordinary session pruning without a disputed case", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "replay-provenance-"));
@@ -35,7 +47,7 @@ describe("exact retained replay provenance", () => {
         "CREATE TABLE governance_task_pins(project_id TEXT,task_id TEXT,payload TEXT)",
         "CREATE TABLE policy_releases(project_id TEXT,id TEXT,payload TEXT)",
         "CREATE TABLE governance_events(project_id TEXT,kind TEXT,payload TEXT)",
-        "CREATE TABLE governance_replay_inputs(project_id TEXT,session_id INTEGER,task_id TEXT,payload TEXT,PRIMARY KEY(project_id,session_id))",
+        "CREATE TABLE governance_replay_inputs(project_id TEXT,session_id INTEGER,task_id TEXT,payload TEXT,attempt INTEGER,status TEXT,PRIMARY KEY(project_id,session_id))",
         "CREATE TABLE agent_sessions(id INTEGER)",
       ])
         await db.execute(sql);
@@ -117,8 +129,8 @@ describe("exact retained replay provenance", () => {
           { cwd: root }
         )
       ).stdout;
-      expect(refs).toContain("/22/base");
-      expect(refs).toContain("/22/head");
+      expect(refs).toMatch(/\/[0-9a-f]{64}\/base/);
+      expect(refs).toMatch(/\/[0-9a-f]{64}\/head/);
       await retainGovernanceReplayInput(db, "p", 33, { ...session, attempt: 3 }, root);
       expect(
         await db.queryOne("SELECT payload FROM governance_replay_inputs WHERE session_id=33")

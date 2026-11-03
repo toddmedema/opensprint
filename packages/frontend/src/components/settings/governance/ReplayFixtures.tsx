@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type GovernanceReplayLabel } from "../../../api/client";
-import { GOVERNANCE_INPUT_CLASS, type GovernancePanelProps } from "../GovernanceSettingsContent";
+import type { GovernancePanelProps } from "../GovernanceSettingsContent";
+import { GovernanceResult } from "./GovernanceResult";
 
 const LABELS: Array<{ value: GovernanceReplayLabel; label: string }> = [
   { value: "compliant", label: "Compliant change" },
@@ -102,35 +103,46 @@ export function ReplayFixtures(props: GovernancePanelProps) {
           onSubmit={(event) => {
             event.preventDefault();
             if (!selectedSource) return;
-            props.run(async () => {
-              const result = await api.governance.captureFixture(
-                props.projectId,
-                {
-                  sessionId: selectedSource.sessionId,
-                  taskId: selectedSource.taskId,
-                  toolchain: toolchain.trim(),
-                  label,
-                  holdout,
-                  rubric: {
-                    id: rubricId.trim(),
-                    text: rubric.trim(),
-                    checks: [
-                      {
-                        name: "Independent verification",
-                        command: command.trim(),
-                        args: args.split("\n").filter(Boolean),
-                      },
-                    ],
+            props.run(
+              async () => {
+                const result = await api.governance.captureFixture(
+                  props.projectId,
+                  {
+                    sessionId: selectedSource.sessionId,
+                    taskId: selectedSource.taskId,
+                    toolchain: toolchain.trim(),
+                    label,
+                    holdout,
+                    rubric: {
+                      id: rubricId.trim(),
+                      text: rubric.trim(),
+                      checks: [
+                        {
+                          name: "Independent verification",
+                          command: command.trim(),
+                          args: args.split("\n").filter(Boolean),
+                        },
+                      ],
+                    },
                   },
-                },
-                props.capability
-              );
-              await queryClient.invalidateQueries({
-                queryKey: ["governance", props.projectId, "replay-fixtures"],
-              });
-              setSessionId("");
-              return result;
-            }, "Human-labeled fixture retained with original task inputs. Its rubric is immutable.");
+                  props.capability
+                );
+                await queryClient.invalidateQueries({
+                  queryKey: ["governance", props.projectId, "replay-fixtures"],
+                });
+                setSessionId("");
+                setLabel("compliant");
+                setHoldout(true);
+                setToolchain("");
+                setRubricId("");
+                setRubric("");
+                setCommand("");
+                setArgs("");
+                return result;
+              },
+              "Human-labeled fixture retained with original task inputs. Its rubric is immutable.",
+              "replay-fixture"
+            );
           }}
         >
           <h4 className="text-sm font-semibold text-theme-text">Add a labeled fixture</h4>
@@ -139,7 +151,7 @@ export function ReplayFixtures(props: GovernancePanelProps) {
             <select
               value={sessionId}
               onChange={(event) => setSessionId(event.target.value)}
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
               required
             >
               <option value="">Select a completed task session</option>
@@ -157,7 +169,7 @@ export function ReplayFixtures(props: GovernancePanelProps) {
               <select
                 value={label}
                 onChange={(event) => setLabel(event.target.value as GovernanceReplayLabel)}
-                className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+                className="input mt-1.5"
               >
                 {LABELS.map((entry) => (
                   <option key={entry.value} value={entry.value}>
@@ -171,7 +183,7 @@ export function ReplayFixtures(props: GovernancePanelProps) {
               <input
                 value={toolchain}
                 onChange={(event) => setToolchain(event.target.value)}
-                className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+                className="input mt-1.5"
                 placeholder="Node 24 / npm lockfile revision"
                 required
               />
@@ -191,7 +203,7 @@ export function ReplayFixtures(props: GovernancePanelProps) {
             <input
               value={rubricId}
               onChange={(event) => setRubricId(event.target.value)}
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
               required
             />
           </label>
@@ -201,7 +213,7 @@ export function ReplayFixtures(props: GovernancePanelProps) {
               value={rubric}
               onChange={(event) => setRubric(event.target.value)}
               rows={3}
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
               required
             />
           </label>
@@ -211,7 +223,7 @@ export function ReplayFixtures(props: GovernancePanelProps) {
               <input
                 value={command}
                 onChange={(event) => setCommand(event.target.value)}
-                className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+                className="input mt-1.5"
                 placeholder="npm"
                 required
               />
@@ -222,7 +234,7 @@ export function ReplayFixtures(props: GovernancePanelProps) {
                 value={args}
                 onChange={(event) => setArgs(event.target.value)}
                 rows={3}
-                className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+                className="input mt-1.5"
                 placeholder={"run\ntest:governance"}
               />
             </label>
@@ -240,6 +252,13 @@ export function ReplayFixtures(props: GovernancePanelProps) {
           </button>
         </form>
       )}
+      <div className="mt-3">
+        <GovernanceResult
+          scope="replay-fixture"
+          outcome={props.outcome}
+          pendingScope={props.pendingScope}
+        />
+      </div>
     </details>
   );
 }

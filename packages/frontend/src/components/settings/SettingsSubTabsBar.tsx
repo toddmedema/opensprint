@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { NavButton } from "../layout/NavButton";
 import { NAVBAR_HEIGHT } from "../../lib/constants";
 
@@ -38,8 +39,21 @@ export function SettingsSubTabsBar({
   onTabChange,
   variant = "bar",
 }: SettingsSubTabsBarProps) {
+  const tabsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const tabs = tabsRef.current;
+    const selected = tabs?.querySelector<HTMLElement>('[data-active="true"]');
+    if (tabs && selected && tabs.scrollWidth > tabs.clientWidth) {
+      tabs.scrollTo?.({
+        left: selected.offsetLeft - (tabs.clientWidth - selected.offsetWidth) / 2,
+      });
+    }
+  }, [activeTab]);
   const content = (
-    <div className="flex flex-wrap items-center gap-1 rounded-xl border border-theme-border-subtle p-1">
+    <div
+      ref={tabsRef}
+      className="relative flex max-w-full items-center gap-1 overflow-x-auto rounded-xl border border-theme-border-subtle p-1 sm:flex-wrap"
+    >
       {TABS.map((tab) => {
         const isActive = activeTab === tab.key;
         return (
@@ -47,6 +61,8 @@ export function SettingsSubTabsBar({
             key={tab.key}
             active={isActive}
             tone="accent"
+            className="shrink-0 whitespace-nowrap min-h-[44px] sm:min-h-[36px]"
+            aria-current={isActive ? "page" : undefined}
             onClick={() => onTabChange(tab.key)}
             data-testid={`settings-tab-${tab.key}`}
           >

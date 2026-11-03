@@ -22,6 +22,7 @@ vi.mock("../services/remote-publication-review-context.js", () => ({
 }));
 vi.mock("../services/governance.service.js", () => ({
   governanceService: {
+    isGovernanceInactive: async () => false,
     hasTaskHold: async () => false,
     captureTrustedScope: async () => {},
     getTaskCases: calls.cases,
@@ -177,8 +178,15 @@ describe("remote review dispatch with retained real Git worktrees", () => {
   });
   it("does not rebuild a lost candidate from current main or destroy retained evidence", async () => {
     await fs.rm(request.worktreePath, { recursive: true, force: true });
-    await expect(service.dispatchTask("p", repo, task, 0)).rejects.toThrow(
-      /restore the pinned candidate/
+    // This used to throw into the loop and stop every task in the project.
+    await expect(service.dispatchTask("p", repo, task, 0)).resolves.toBeUndefined();
+    expect(update).toHaveBeenCalledWith(
+      "p",
+      task.id,
+      expect.objectContaining({
+        status: "blocked",
+        extra: { block_reason: expect.stringMatching(/restore the pinned candidate/) },
+      })
     );
     expect(coder).not.toHaveBeenCalled();
     expect(review).not.toHaveBeenCalled();
@@ -186,10 +194,10 @@ describe("remote review dispatch with retained real Git worktrees", () => {
   });
   it("rejects an untrusted routing hint before claiming or spawning a task", async () => {
     calls.request.mockRejectedValue(new Error("No original durable request"));
-    await expect(service.dispatchTask("p", repo, task, 0)).rejects.toThrow(
-      /No original durable request/
-    );
-    expect(update).not.toHaveBeenCalled();
+    await expect(service.dispatchTask("p", repo, task, 0)).resolves.toBeUndefined();
+    expect(update.mock.calls).toEqual([
+      ["p", task.id, { status: "blocked", extra: { block_reason: "No original durable request" } }],
+    ]);
     expect(coder).not.toHaveBeenCalled();
     expect(review).not.toHaveBeenCalled();
   });

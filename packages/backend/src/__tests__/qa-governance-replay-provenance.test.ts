@@ -13,10 +13,21 @@ import {
   type GovernanceContextArtifacts,
 } from "../services/governance-context-artifacts.js";
 import {
-  retainGovernanceReplayInput,
+  persistGovernanceReplayInput,
+  prepareGovernanceReplayInput,
   type GovernanceReplayInput,
 } from "../services/governance-replay-input.js";
 const exec = promisify(execFile);
+async function retainGovernanceReplayInput(
+  db: DbClient,
+  projectId: string,
+  sessionId: number,
+  session: AgentSession,
+  repoPath: string
+): Promise<void> {
+  const prepared = await prepareGovernanceReplayInput(db, projectId, session, repoPath);
+  if (prepared) await persistGovernanceReplayInput(db, projectId, sessionId, prepared);
+}
 describe("QA final replay provenance attacks", () => {
   let root: string,
     db: DbClient,
@@ -60,7 +71,7 @@ describe("QA final replay provenance attacks", () => {
       "CREATE TABLE governance_task_pins(project_id TEXT,task_id TEXT,payload TEXT)",
       "CREATE TABLE policy_releases(project_id TEXT,id TEXT,payload TEXT)",
       "CREATE TABLE governance_events(project_id TEXT,kind TEXT,payload TEXT)",
-      "CREATE TABLE governance_replay_inputs(project_id TEXT,session_id INTEGER,task_id TEXT,payload TEXT,PRIMARY KEY(project_id,session_id))",
+      "CREATE TABLE governance_replay_inputs(project_id TEXT,session_id INTEGER,task_id TEXT,payload TEXT,attempt INTEGER,status TEXT,PRIMARY KEY(project_id,session_id))",
       "CREATE TABLE agent_sessions(id INTEGER)",
     ])
       await db.execute(sql);

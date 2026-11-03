@@ -203,4 +203,43 @@ describe("deterministic policy context", () => {
       })
     ).toThrow(/Stale before/);
   });
+  it("gives rules linked to an amended rule new revisions pointing at the replacement", () => {
+    const parent = rule({ paths: ["src/**"] });
+    const child = rule({
+      id: "child@1",
+      ruleId: "child",
+      parentIds: [parent.id],
+      overrideIds: [parent.id],
+      paths: ["src/a/**"],
+    });
+    const peer = rule({ id: "peer@1", ruleId: "peer", conflictIds: [parent.id] });
+    const grandchild = rule({ id: "leaf@1", ruleId: "leaf", parentIds: [child.id] });
+    const base = {
+      id: "base",
+      rules: [parent, child, peer, grandchild],
+      instructions: {},
+      sourceHashes: {},
+    } as unknown as PolicyRelease;
+    const after = rule({ id: "repository@2", revision: 2, text: "Amended." });
+    const release = buildProposalRelease(base, {
+      id: "p",
+      patches: [{ ruleId: parent.ruleId, before: parent, after }],
+      enforcementRevision: "e",
+      createdAt: "2026-10-30T00:00:00Z",
+    } as unknown as PolicyProposal);
+    const by = new Map(release.rules.map((r) => [r.ruleId, r]));
+    expect(by.get("child")).toMatchObject({
+      revision: 2,
+      parentIds: ["repository@2"],
+      overrideIds: ["repository@2"],
+    });
+    expect(by.get("child")!.id).not.toBe(child.id);
+    expect(by.get("peer")).toMatchObject({ revision: 2, conflictIds: ["repository@2"] });
+    expect(by.get("leaf")).toMatchObject({ revision: 2, parentIds: [by.get("child")!.id] });
+  });
+  it("rejects a conflict with a rule outside the release", () => {
+    expect(() => validatePolicyRules([rule({ conflictIds: ["missing@1"] })])).toThrow(
+      "conflicts with unknown missing@1"
+    );
+  });
 });

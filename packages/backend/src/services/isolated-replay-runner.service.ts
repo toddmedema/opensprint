@@ -11,16 +11,57 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { extractReplayArchive } from "./replay-source-archive.js";
-import type { ReplayAgentRunner, ReplayOutcome } from "./experiment-replay.service.js";
 import {
+  REPLAY_LABELS,
   replayFixtureService,
   replayInputHash,
   type ReplayFixtureService,
 } from "./replay-fixture.service.js";
+import type { BehaviorExperimentCandidateBundle } from "./self-improvement-experiment.service.js";
+import { scoreReplayVerdict, type ReplayVerdict } from "./experiment-scoring.service.js";
+import { createLogger } from "../utils/logger.js";
 
+const log = createLogger("isolated-replay");
 const execFileAsync = promisify(execFile);
 const IMAGE_RE = /^[a-zA-Z0-9][a-zA-Z0-9./:_-]*@sha256:[a-f0-9]{64}$/;
 const OUTPUT_LIMIT = 8 * 1024 * 1024;
+/** Enforced by PID 1 inside the container, so a lost client or crashed server cannot extend it. */
+const CONTAINER_TIMEOUT_SECONDS = 590;
+const CLIENT_TIMEOUT_MS = 600_000;
+const REPLAY_LABEL = "opensprint.replay";
+const REPLAY_STARTED_LABEL = "opensprint.replay.started";
+const DISK_LIMIT_BYTES = 1024 * 1024 * 1024;
+const DISK_POLL_MS = 2_000;
+const DISK_ENTRY_LIMIT = 200_000;
+
+/** Per-session outcome from a single replay run. */
+export interface ReplayOutcome {
+  /** Trusted server score: the fixture's expected outcome was met. */
+  success: boolean;
+  /** Review produced the fixture's expected result; a blocked violation counts. */
+  reviewPassed: boolean;
+  verdict?: ReplayVerdict;
+  /** Image-reported through container stdout; recorded, never used as a guardrail. */
+  retryCount: number;
+  latencyMs: number;
+  /** Image-reported through container stdout; recorded, never used as a guardrail. */
+  costUsd: number;
+  error?: string;
+  evaluationComplete?: boolean;
+  inputHash?: string;
+  rubricId?: string;
+  holdout?: boolean;
+  label?: string;
+  artifact?: { agentResult: string; evaluatorResult: string; codeDiff: string };
+}
+export interface ReplayAgentRunner {
+  run(params: {
+    sessionId: number;
+    worktreePath: string;
+    variant: "baseline" | "candidate";
+    candidateBundle?: BehaviorExperimentCandidateBundle;
+  }): Promise<ReplayOutcome>;
+}
 export interface IsolatedReplayOptions {
   projectId: string;
   /** Server-owned configuration only; never read this from a task or agent result. */
@@ -28,6 +69,9 @@ export interface IsolatedReplayOptions {
   fixtures?: ReplayFixtureService;
   /** Absolute trusted host executable, never resolved through a task-controlled PATH. */
   dockerExecutable?: string;
+  /** Workspace budget while the coder runs. */
+  diskLimitBytes?: number;
+  diskPollMs?: number;
 }
 export class IsolatedReplayRunner implements ReplayAgentRunner {
   private fixtures: ReplayFixtureService;
@@ -40,6 +84,7 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
     const containers: string[] = [];
     const potentiallyRunning = new Set<string>();
     let docker: string | undefined;
+    const diskBudget = new AbortController();
     try {
       const image = this.options.image ?? process.env.OPENSPRINT_REPLAY_IMAGE;
       if (!image || !IMAGE_RE.test(image))
@@ -156,7 +201,8 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
       );
       await fs.writeFile(
         path.join(evaluation, "rubric.json"),
-        JSON.stringify({ version: 1, ...fixture.rubric, expectedLabel: fixture.label }),
+        // The evaluator's verdict stays blind: the human label is applied only by server scoring.
+        JSON.stringify({ version: 1, ...fixture.rubric }),
         { mode: 0o600 }
       );
       const hostUid = process.getuid?.() ?? 1000;
@@ -194,6 +240,10 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
         "/tmp:rw,nosuid,nodev,size=512m,mode=1777",
         "--workdir",
         "/workspace",
+        "--label",
+        `${REPLAY_LABEL}=1`,
+        "--label",
+        `${REPLAY_STARTED_LABEL}=${Date.now()}`,
         "--env",
         "HOME=/tmp/replay-home",
         "--env",
@@ -203,11 +253,16 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
         "--mount",
         `type=bind,source=${source},target=${target}${readOnly ? ",readonly" : ""}`,
       ];
-      // Only PATH reaches the Docker client; neither server approval nor provider credentials reach a container.
-      const env = { PATH: process.env.PATH, HOME: scratch };
+      const env = dockerClientEnvironment();
       const agentContainer = `opensprint-replay-${randomUUID()}`;
       containers.push(agentContainer);
       potentiallyRunning.add(agentContainer);
+      const stopDiskWatchdog = watchReplayDisk(
+        workspace,
+        this.options.diskLimitBytes ?? DISK_LIMIT_BYTES,
+        this.options.diskPollMs ?? DISK_POLL_MS,
+        () => diskBudget.abort()
+      );
       const agent = await execFileAsync(
         docker,
         [
@@ -216,13 +271,10 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
           agentContainer,
           ...mount(workspace, "/workspace"),
           ...mount(input, "/replay-input", true),
-          "--entrypoint",
-          "/opensprint-replay/agent",
-          image,
-          "/replay-input/task.json",
+          ...containerCommand("/opensprint-replay/agent", image, "/replay-input/task.json"),
         ],
-        { env: agentProcessEnvironment(env), timeout: 600_000, maxBuffer: OUTPUT_LIMIT }
-      );
+        { env, timeout: CLIENT_TIMEOUT_MS, maxBuffer: OUTPUT_LIMIT, signal: diskBudget.signal }
+      ).finally(stopDiskWatchdog);
       potentiallyRunning.delete(agentContainer);
       const usage = JSON.parse(agent.stdout.trim()) as {
         completed?: boolean;
@@ -239,6 +291,7 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
         throw new Error("Incomplete measured agent result");
       // Container output is untrusted. After Docker has stopped the coder, reject links and
       // special files before any host traversal, nested cleanup, or independent evaluation.
+      await makeTreeRemovable(workspace);
       await assertReplayOutputSafe(workspace);
       // Fresh container, immutable evaluator, read-only candidate files, and rubric unavailable to the coder.
       const evaluatorContainer = `opensprint-replay-${randomUUID()}`;
@@ -252,12 +305,13 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
           evaluatorContainer,
           ...mount(workspace, "/workspace", true),
           ...mount(evaluation, "/replay-evaluation", true),
-          "--entrypoint",
-          "/opensprint-replay/evaluate",
-          image,
-          "/replay-evaluation/rubric.json",
+          ...containerCommand(
+            "/opensprint-replay/evaluate",
+            image,
+            "/replay-evaluation/rubric.json"
+          ),
         ],
-        { env: agentProcessEnvironment(env), timeout: 600_000, maxBuffer: OUTPUT_LIMIT }
+        { env, timeout: CLIENT_TIMEOUT_MS, maxBuffer: OUTPUT_LIMIT }
       );
       potentiallyRunning.delete(evaluatorContainer);
       const result = JSON.parse(evaluated.stdout.trim()) as {
@@ -269,6 +323,7 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
       if (
         result.rubricId !== fixture.rubric.id ||
         typeof result.reviewPassed !== "boolean" ||
+        !(REPLAY_LABELS as readonly (string | undefined)[]).includes(result.label) ||
         !Array.isArray(result.checks) ||
         fixture.rubric.checks.some(
           (check) =>
@@ -276,11 +331,14 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
         )
       )
         throw new Error("Incomplete independent evaluation");
-      const passed =
-        result.checks.every((check) => check.passed === true) && result.label === fixture.label;
+      const scored = scoreReplayVerdict(fixture.label, {
+        label: result.label!,
+        reviewPassed: result.reviewPassed,
+        checksPassed: result.checks.every((check) => check.passed === true),
+      });
       // Runtime artifacts and local commits are retained separately from the actual code diff.
-      await fs.rm(path.join(workspace, ".git"), { recursive: true, force: true });
-      await fs.rm(path.join(workspace, ".opensprint", "active"), { recursive: true, force: true });
+      await removeQuietly(path.join(workspace, ".git"));
+      await removeQuietly(path.join(workspace, ".opensprint", "active"));
       let codeDiff = "";
       try {
         codeDiff = (
@@ -313,8 +371,9 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
         codeDiff = diffError.stdout;
       }
       return {
-        success: passed && result.reviewPassed,
-        reviewPassed: result.reviewPassed && passed,
+        success: scored.success,
+        reviewPassed: scored.success,
+        verdict: scored.verdict,
         retryCount: usage.retryCount!,
         costUsd: usage.costUsd!,
         latencyMs: Date.now() - start,
@@ -333,14 +392,18 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
         costUsd: 0,
         latencyMs: Date.now() - start,
         evaluationComplete: false,
-        error: err instanceof Error ? err.message : String(err),
+        error: diskBudget.signal.aborted
+          ? "Replay unavailable: coder output exceeded its disk budget"
+          : err instanceof Error
+            ? err.message
+            : String(err),
       };
     } finally {
       for (const name of containers) {
         try {
           await execFileAsync(docker!, ["rm", "--force", name], {
             timeout: 15_000,
-            env: agentProcessEnvironment({ PATH: process.env.PATH, HOME: scratch }),
+            env: dockerClientEnvironment(),
             maxBuffer: 4096,
           });
           potentiallyRunning.delete(name);
@@ -350,10 +413,124 @@ export class IsolatedReplayRunner implements ReplayAgentRunner {
           // a writable tree while an untrusted process may still rename its ancestors.
         }
       }
-      if (scratch && potentiallyRunning.size === 0)
-        await fs.rm(scratch, { recursive: true, force: true });
+      if (scratch && potentiallyRunning.size === 0) await removeQuietly(scratch);
     }
   }
+}
+
+/** The client needs its daemon selection and config; containers never receive this environment. */
+function dockerClientEnvironment(): NodeJS.ProcessEnv {
+  const selected: NodeJS.ProcessEnv = { PATH: process.env.PATH, HOME: process.env.HOME };
+  for (const key of ["DOCKER_HOST", "DOCKER_CONTEXT"])
+    if (process.env[key]) selected[key] = process.env[key];
+  return agentProcessEnvironment(selected);
+}
+/** A coreutils or BusyBox `timeout` in the image kills the executable from inside the container. */
+function containerCommand(executable: string, image: string, input: string): string[] {
+  return [
+    "--entrypoint",
+    "timeout",
+    image,
+    "-s",
+    "KILL",
+    String(CONTAINER_TIMEOUT_SECONDS),
+    executable,
+    input,
+  ];
+}
+/** Remove replay containers that outlived the in-container limit. Never fails server startup. */
+export async function sweepReplayContainers(dockerExecutable?: string): Promise<number> {
+  try {
+    const docker = await resolveReplayDocker(dockerExecutable);
+    const env = dockerClientEnvironment();
+    const listed = await execFileAsync(
+      docker,
+      [
+        "ps",
+        "--all",
+        "--filter",
+        `label=${REPLAY_LABEL}=1`,
+        "--format",
+        `{{.ID}} {{.Label "${REPLAY_STARTED_LABEL}"}}`,
+      ],
+      { env, timeout: 15_000, maxBuffer: OUTPUT_LIMIT }
+    );
+    // Younger containers may belong to another live server and end themselves by their own limit.
+    const cutoff = Date.now() - CLIENT_TIMEOUT_MS;
+    const stale = listed.stdout
+      .split("\n")
+      .map((line) => line.trim().split(/\s+/))
+      .filter(([id, started]) => id && !(Number(started) > cutoff))
+      .map(([id]) => id!);
+    if (stale.length)
+      await execFileAsync(docker, ["rm", "--force", ...stale], { env, timeout: 30_000 });
+    return stale.length;
+  } catch {
+    return 0;
+  }
+}
+/** Lets host cleanup remove restrictive modes from a stopped container; links are not followed. */
+async function makeTreeRemovable(root: string): Promise<void> {
+  const stat = await fs.lstat(root).catch(() => null);
+  if (!stat || stat.isSymbolicLink()) return;
+  if (stat.isFile()) {
+    await fs.chmod(root, stat.mode | 0o600).catch(() => undefined);
+    return;
+  }
+  if (!stat.isDirectory()) return;
+  await fs.chmod(root, stat.mode | 0o700).catch(() => undefined);
+  for (const name of await fs.readdir(root).catch(() => []))
+    await makeTreeRemovable(path.join(root, name));
+}
+/** Cleanup is best effort: it must never replace the replay outcome already measured. */
+async function removeQuietly(target: string): Promise<void> {
+  try {
+    await makeTreeRemovable(target);
+    await fs.rm(target, { recursive: true, force: true });
+  } catch (err) {
+    log.warn("Replay cleanup incomplete", {
+      target,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+/** Abort when lstat-measured workspace bytes or entries exceed the budget. Never follows links. */
+function watchReplayDisk(
+  root: string,
+  limitBytes: number,
+  pollMs: number,
+  onExceeded: () => void
+): () => void {
+  const over = async (): Promise<boolean> => {
+    let bytes = 0;
+    let entries = 0;
+    const pending = [root];
+    while (pending.length) {
+      const directory = pending.pop()!;
+      for (const entry of await fs.readdir(directory, { withFileTypes: true }).catch(() => [])) {
+        if (++entries > DISK_ENTRY_LIMIT) return true;
+        const file = path.join(directory, entry.name);
+        if (entry.isDirectory()) pending.push(file);
+        else bytes += (await fs.lstat(file).catch(() => null))?.size ?? 0;
+        if (bytes > limitBytes) return true;
+      }
+    }
+    return false;
+  };
+  let active = true;
+  const poll = async (): Promise<void> => {
+    if (!active) return;
+    if (await over()) {
+      if (active) onExceeded();
+      return;
+    }
+    if (active) timer = setTimeout(() => void poll(), pollMs);
+  };
+  let timer = setTimeout(() => void poll(), pollMs);
+  return () => {
+    active = false;
+    clearTimeout(timer);
+  };
 }
 
 async function resolveReplayDocker(configured?: string): Promise<string> {
@@ -387,6 +564,9 @@ async function assertReplaySourceSafe(root: string, relative = ""): Promise<void
     const lower = entry.name.toLowerCase();
     if (
       lower === ".env" ||
+      [".npmrc", ".netrc", ".pypirc", "credentials.json"].includes(lower) ||
+      /^id_(rsa|dsa|ecdsa|ed25519)$/.test(lower) ||
+      /\.(p12|pfx|jks|keystore)$/.test(lower) ||
       (lower.startsWith(".env.") && !/\.(example|sample|template)$/.test(lower)) ||
       [".git", ".aws", ".ssh", ".gnupg"].includes(lower) ||
       /\.(sqlite|sqlite3|db|pem|key)$/.test(lower) ||

@@ -9,6 +9,7 @@ import type { StoredTask } from "../services/task-store.service.js";
 import { governanceService } from "../services/governance.service.js";
 vi.mock("../services/governance.service.js", () => ({
   governanceService: {
+    isGovernanceInactive: vi.fn().mockResolvedValue(false),
     hasTaskHold: vi.fn().mockResolvedValue(false),
     hasPendingResume: vi.fn().mockResolvedValue(false),
     withPublicationLock: async <T>(
@@ -31,6 +32,11 @@ const { mockTaskStoreState, mockBranchManagerInstance, mockOrchestrator } = vi.h
     stopTaskAndFreeSlot: vi.fn().mockResolvedValue(undefined),
     nudge: vi.fn(),
   },
+}));
+
+const remoteReview = vi.hoisted(() => ({ trusted: vi.fn().mockResolvedValue(null) }));
+vi.mock("../services/remote-publication-review-context.js", () => ({
+  getTrustedRemoteReviewRequest: remoteReview.trusted,
 }));
 
 vi.mock("drizzle-orm", () => ({
@@ -192,6 +198,15 @@ describe("TaskService", () => {
       new BranchManager(),
       mockOrchestrator
     );
+  });
+  it("takes no publication lock on an inactive project", async () => {
+    vi.mocked(governanceService.isGovernanceInactive).mockResolvedValueOnce(true);
+    const lock = vi.spyOn(governanceService, "withPublicationLock");
+    vi.mocked(governanceService.hasTaskHold).mockClear();
+    await taskService.deleteTask("proj-1", "task-1");
+    expect(lock).not.toHaveBeenCalled();
+    expect(governanceService.hasTaskHold).not.toHaveBeenCalled();
+    lock.mockRestore();
   });
   it.each(["unblock", "forceRetry", "deleteTask", "markDone"] as const)(
     "preserves held evidence before ordinary %s cleanup",
@@ -1051,6 +1066,24 @@ describe("TaskService", () => {
 
     const result = await taskService.unblock("proj-1", "task-1");
     expect(result.taskUnblocked).toBe(true);
+  });
+
+  it("W9: refuses to unblock a remote review that dispatch could only block again", async () => {
+    const { taskStore } = await import("../services/task-store.service.js");
+    vi.mocked(taskStore.show).mockResolvedValue({
+      id: "review-1",
+      title: "Review changed remote publication candidate",
+      status: "blocked",
+      issue_type: "task",
+      source: "governance-remote-review",
+      dependencies: [],
+    } as StoredTask);
+    remoteReview.trusted.mockRejectedValueOnce(new Error("no durable request"));
+    await expect(taskService.unblock("proj-1", "review-1")).rejects.toMatchObject({
+      code: "GOVERNANCE_HOLD",
+    });
+    expect(mockOrchestrator.stopTaskAndFreeSlot).not.toHaveBeenCalled();
+    expect(mockBranchManagerInstance.revertAndReturnToMain).not.toHaveBeenCalled();
   });
 
   it("unblock performs full cleanup: stop agent, revert branch, delete active dir", async () => {

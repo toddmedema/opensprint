@@ -16,6 +16,7 @@ interface DeferredDeploy {
   id: string;
   expectedHeadSha?: string;
 }
+export type ClaimedDeploy = DeferredDeploy & { expectedHeadSha: string };
 interface Dependencies {
   read: () => Promise<DbClient>;
   write: <T>(fn: (db: DbClient) => Promise<T>) => Promise<T>;
@@ -25,7 +26,6 @@ interface Dependencies {
     options: {
       expectedCommitHash: string;
       idempotencyKey: string;
-      assertPublicationLease: () => Promise<void>;
     }
   ) => Promise<string[]>;
   status: (projectId: string, id: string) => Promise<string | null>;
@@ -47,6 +47,7 @@ const defaults: Dependencies = {
 };
 /** Durable, action-only continuation; it does not repeat task cleanup, counters, review, or self-improvement. */
 export class DeferredAutoDeployService {
+  private running = new Set<string>();
   constructor(private deps: Dependencies = defaults) {}
   async hasPending(projectId: string): Promise<boolean> {
     return Boolean(
@@ -77,20 +78,24 @@ export class DeferredAutoDeployService {
       )
     );
   }
-  /** Caller holds publication serialization. Only the exact successfully published head may be deployed. */
-  async drain(
+  /** Caller holds publication serialization. Only the exact successfully published head may be claimed. */
+  async claim(
     projectId: string,
     repoPath: string,
     expectedHeadSha: string,
     assertPublicationLease: () => Promise<void>
-  ): Promise<void> {
+  ): Promise<ClaimedDeploy[]> {
     const rows = await (
       await this.deps.read()
     ).query(
       "SELECT id,payload,state FROM governance_jobs WHERE project_id=$1 AND kind='deferred_auto_deploy' AND state IN ('pending','dispatching') ORDER BY id",
       [projectId]
     );
+    const claimed: ClaimedDeploy[] = [];
     for (const row of rows) {
+      const job = JSON.parse(String(row.payload)) as DeferredDeploy;
+      // A job in this process is already running outside the lock; 'dispatching' alone may be a crash.
+      if (this.running.has(job.id)) continue;
       await assertPublicationLease();
       const head = (
         await exec("git", ["rev-parse", "HEAD"], {
@@ -101,7 +106,6 @@ export class DeferredAutoDeployService {
       ).stdout.trim();
       if (head !== expectedHeadSha)
         throw new Error("Published code changed before its deferred auto-deployment.");
-      const job = JSON.parse(String(row.payload)) as DeferredDeploy;
       if (job.expectedHeadSha && job.expectedHeadSha !== expectedHeadSha) {
         await this.deps.write((db) =>
           db.execute(
@@ -123,55 +127,68 @@ export class DeferredAutoDeployService {
           [JSON.stringify(payload), projectId, job.id]
         )
       );
+      this.running.add(job.id);
+      claimed.push({ ...payload, expectedHeadSha });
+    }
+    return claimed;
+  }
+  /** Runs claimed jobs after the publication lock is released; deploys can take many minutes. */
+  async runClaimed(projectId: string, claimed: ClaimedDeploy[]): Promise<void> {
+    for (const payload of claimed) {
       try {
-        const ids = await this.deps.deploy(projectId, job.event, {
-          expectedCommitHash: expectedHeadSha,
-          idempotencyKey: job.id,
-          assertPublicationLease,
-        });
-        const statuses = await Promise.all(ids.map((id) => this.deps.status(projectId, id)));
-        const state = statuses.some(
-          (status) => status === "pending" || status === "running" || status === null
-        )
-          ? "needs_attention"
-          : statuses.some((status) => status === "failed")
-            ? "failed"
-            : "complete";
-        await this.deps.write((db) =>
-          db.execute(
-            "UPDATE governance_jobs SET state=$1,payload=$2 WHERE project_id=$3 AND id=$4",
-            [state, JSON.stringify({ ...payload, deployIds: ids }), projectId, job.id]
-          )
-        );
-        if (state === "needs_attention")
-          await this.deps.notify?.(
-            projectId,
-            job.id,
-            "A deferred auto-deployment has an interrupted or running delivery record. Inspect Deliver before retrying; the server will not launch the same deployment twice."
-          );
-      } catch (error) {
-        const busy = (error as { code?: string }).code === "DEPLOYMENT_BUSY";
-        await this.deps.write((db) =>
-          db.execute(
-            "UPDATE governance_jobs SET state=$1,payload=$2 WHERE project_id=$3 AND id=$4",
-            [
-              busy ? "pending" : "needs_attention",
-              JSON.stringify({
-                ...payload,
-                error: error instanceof Error ? error.message : String(error),
-              }),
-              projectId,
-              job.id,
-            ]
-          )
-        );
-        if (!busy)
-          await this.deps.notify?.(
-            projectId,
-            job.id,
-            `Deferred auto-deployment requires attention in Deliver: ${error instanceof Error ? error.message : String(error)}`
-          );
+        await this.runJob(projectId, payload);
+      } finally {
+        this.running.delete(payload.id);
       }
+    }
+  }
+  private async runJob(projectId: string, payload: ClaimedDeploy): Promise<void> {
+    try {
+      const ids = await this.deps.deploy(projectId, payload.event, {
+        expectedCommitHash: payload.expectedHeadSha,
+        idempotencyKey: payload.id,
+      });
+      const statuses = await Promise.all(ids.map((id) => this.deps.status(projectId, id)));
+      const state = statuses.some(
+        (status) => status === "pending" || status === "running" || status === null
+      )
+        ? "needs_attention"
+        : statuses.some((status) => status === "failed")
+          ? "failed"
+          : "complete";
+      await this.deps.write((db) =>
+        db.execute("UPDATE governance_jobs SET state=$1,payload=$2 WHERE project_id=$3 AND id=$4", [
+          state,
+          JSON.stringify({ ...payload, deployIds: ids }),
+          projectId,
+          payload.id,
+        ])
+      );
+      if (state === "needs_attention")
+        await this.deps.notify?.(
+          projectId,
+          payload.id,
+          "A deferred auto-deployment has an interrupted or running delivery record. Inspect Deliver before retrying; the server will not launch the same deployment twice."
+        );
+    } catch (error) {
+      const busy = (error as { code?: string }).code === "DEPLOYMENT_BUSY";
+      await this.deps.write((db) =>
+        db.execute("UPDATE governance_jobs SET state=$1,payload=$2 WHERE project_id=$3 AND id=$4", [
+          busy ? "pending" : "needs_attention",
+          JSON.stringify({
+            ...payload,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+          projectId,
+          payload.id,
+        ])
+      );
+      if (!busy)
+        await this.deps.notify?.(
+          projectId,
+          payload.id,
+          `Deferred auto-deployment requires attention in Deliver: ${error instanceof Error ? error.message : String(error)}`
+        );
     }
   }
 }

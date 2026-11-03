@@ -1,9 +1,10 @@
 import { useState } from "react";
 import type { PolicyProposal, PolicyRuleRevision } from "@opensprint/shared";
 import { api } from "../../../api/client";
-import { GOVERNANCE_INPUT_CLASS, type GovernancePanelProps } from "../GovernanceSettingsContent";
+import type { GovernancePanelProps } from "../GovernanceSettingsContent";
 import { formatGovernanceDate } from "../../../lib/governance";
 import { ReplayFixtures } from "./ReplayFixtures";
+import { GovernanceConfirmAction, GovernanceResult } from "./GovernanceResult";
 
 export function PolicyProposals(props: GovernancePanelProps) {
   return (
@@ -23,13 +24,15 @@ export function PolicyProposals(props: GovernancePanelProps) {
           onClick={() =>
             props.run(
               () => api.governance.mine(props.projectId, props.capability),
-              "Decision events processed. New nominations appear below when supported by recurring rulings."
+              "Decision events processed. New nominations appear below when supported by recurring rulings.",
+              "mine"
             )
           }
         >
           Review recent decisions
         </button>
       </header>
+      <GovernanceResult scope="mine" outcome={props.outcome} pendingScope={props.pendingScope} />
       <ReplayFixtures {...props} />
       {props.summary.proposals.length === 0 && (
         <p className="rounded-xl border border-dashed border-theme-border p-6 text-sm text-theme-muted">
@@ -38,7 +41,7 @@ export function PolicyProposals(props: GovernancePanelProps) {
         </p>
       )}
       {props.summary.proposals.map((proposal) => (
-        <ProposalCard key={`${proposal.id}:${proposal.version}`} {...props} proposal={proposal} />
+        <ProposalCard key={proposal.id} {...props} proposal={proposal} />
       ))}
     </div>
   );
@@ -47,6 +50,13 @@ export function PolicyProposals(props: GovernancePanelProps) {
 function ProposalCard({ proposal, ...props }: GovernancePanelProps & { proposal: PolicyProposal }) {
   const [rationale, setRationale] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const [reviewedVersion, setReviewedVersion] = useState(proposal.version);
+  // Keep the drafted rationale across versions, but require a new review of the changed proposal.
+  if (reviewedVersion !== proposal.version) {
+    setReviewedVersion(proposal.version);
+    setConfirmed(false);
+  }
+  const resultScope = `proposal:${proposal.id}`;
   const evaluation = proposal.evaluation;
   const evaluated = proposal.state === "evaluated" && evaluation?.complete && evaluation.passed;
   const stale = proposal.baseReleaseId !== props.summary.activeReleaseId;
@@ -91,10 +101,22 @@ function ProposalCard({ proposal, ...props }: GovernancePanelProps & { proposal:
         </div>
       </dl>
       {stale && !terminal && (
-        <p role="alert" className="rounded-lg bg-amber-500/10 p-3 text-sm text-theme-text">
-          The active policy has changed since this proposal was drafted. It must be rebased and
-          evaluated against the new release before activation.
-        </p>
+        <div role="alert" className="rounded-lg bg-amber-500/10 p-3 text-sm text-theme-text">
+          <p>
+            The active policy changed after this proposal was drafted, so it can no longer be
+            evaluated or activated. Reject this proposal below, then draft the same change again
+            from the current standard.
+          </p>
+          {props.openStandards && (
+            <button
+              type="button"
+              className="mt-2 font-medium text-brand-600 underline-offset-4 hover:underline dark:text-brand-400"
+              onClick={props.openStandards}
+            >
+              Go to Standards
+            </button>
+          )}
+        </div>
       )}
       <section className="space-y-3" aria-label="Exact rule changes">
         {proposal.patches.length === 0 && (
@@ -217,7 +239,8 @@ function ProposalCard({ proposal, ...props }: GovernancePanelProps & { proposal:
                     proposal.version,
                     props.capability
                   ),
-                "Evaluation finished. Inspect completeness, independent checks, held-out results, and measured outcomes before activation."
+                "Evaluation finished. Inspect completeness, independent checks, held-out results, and measured outcomes before activation.",
+                resultScope
               )
             }
           >
@@ -298,7 +321,8 @@ function ProposalCard({ proposal, ...props }: GovernancePanelProps & { proposal:
                   },
                   props.capability
                 ),
-              "Amendment activated. New assignments will use the approved release content."
+              "Amendment activated. New assignments will use the approved release content.",
+              resultScope
             );
           }}
           className="space-y-3 border-t border-theme-border pt-4"
@@ -309,7 +333,7 @@ function ProposalCard({ proposal, ...props }: GovernancePanelProps & { proposal:
               value={rationale}
               onChange={(event) => setRationale(event.target.value)}
               rows={3}
-              className={`${GOVERNANCE_INPUT_CLASS} mt-1.5`}
+              className="input mt-1.5"
               required
             />
           </label>
@@ -342,25 +366,26 @@ function ProposalCard({ proposal, ...props }: GovernancePanelProps & { proposal:
             >
               Approve &amp; activate amendment
             </button>
-            <button
-              type="button"
-              className="btn-secondary disabled:opacity-50"
-              disabled={!props.capability || props.busy || !rationale.trim()}
-              onClick={() =>
+            <GovernanceConfirmAction
+              label="Reject amendment"
+              reasonLabel="Reason for rejecting this amendment"
+              consequence="This amendment closes permanently. The active policy does not change."
+              confirmLabel="Confirm rejection"
+              disabled={!props.capability || props.busy}
+              onConfirm={(reason) =>
                 props.run(
                   () =>
                     api.governance.rejectProposal(
                       props.projectId,
                       proposal.id,
-                      { expectedVersion: proposal.version, rationale: rationale.trim() },
+                      { expectedVersion: proposal.version, rationale: reason },
                       props.capability
                     ),
-                  "Amendment rejected. The active policy is unchanged."
+                  "Amendment rejected. The active policy is unchanged.",
+                  resultScope
                 )
               }
-            >
-              Reject amendment
-            </button>
+            />
           </div>
           {!evaluated && (
             <p className="text-xs text-theme-muted">
@@ -370,6 +395,11 @@ function ProposalCard({ proposal, ...props }: GovernancePanelProps & { proposal:
           )}
         </form>
       )}
+      <GovernanceResult
+        scope={resultScope}
+        outcome={props.outcome}
+        pendingScope={props.pendingScope}
+      />
     </article>
   );
 }

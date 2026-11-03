@@ -1,4 +1,5 @@
 import { governanceService } from "./governance.service.js";
+import { governanceExecutionService } from "./governance-execution.service.js";
 import {
   resolveTaskReviewBase,
   getTrustedRemoteReviewRequest,
@@ -624,6 +625,16 @@ export class OrchestratorService {
     const slot = dispatchSlot as AgentSlot;
     const pin = await governanceService.getTaskPin(projectId, task.id);
     if (!pin || (await governanceService.hasTaskHold(projectId, task.id))) {
+      // Dispatch already marked the task running; without a slot it must not stay that way.
+      await this.taskStore.update(projectId, task.id, {
+        status: "blocked",
+        assignee: "",
+        extra: {
+          block_reason: pin
+            ? "Review governance: waiting for a human ruling"
+            : "Governance resume has no retained policy pin",
+        },
+      });
       await this.pauseForGovernance(projectId, repoPath, task.id);
       return;
     }
@@ -648,7 +659,12 @@ export class OrchestratorService {
     const revalidationEvidence = (task as Record<string, unknown>).governance_revalidation_evidence;
     if (revalidationEvidence)
       slot.phaseResult.codingSummary += `\n\nPrevious findings and human policy revalidation (evidence only; evaluate every remaining code issue against the current pinned release, including defects independently of standards):\n${JSON.stringify(revalidationEvidence)}`;
-    await this.taskStore.update(projectId, task.id, { extra: { governance_resume: null } });
+    const rulings = await governanceExecutionService.validRulings(
+      projectId,
+      task.id,
+      pin.worktreePath
+    );
+    if (rulings) slot.phaseResult.codingSummary += `\n\n${rulings}`;
     this.transition(projectId, {
       to: "enter_review",
       taskId: task.id,
@@ -664,6 +680,8 @@ export class OrchestratorService {
       await this.branchManager.getChangedFiles(repoPath, pin.branchName, baseBranch)
     );
     await this.executeReviewPhase(projectId, repoPath, task, pin.branchName);
+    // Only now: a failure above must leave the resume durable for the next dispatch.
+    await this.taskStore.update(projectId, task.id, { extra: { governance_resume: null } });
   }
 
   /** Waiting governance work retains durable leases and assignment but occupies no agent slot. */

@@ -724,7 +724,7 @@ export class OrchestratorReviewService {
         .catch((err) =>
           log.warn("Failed to record reviewer run for Agent Log (approved)", { err })
         );
-      await this.host.mergeCoordinator.performMergeAndDone(projectId, repoPath, task, branchName);
+      await this.acceptApprovedReview(projectId, repoPath, task, branchName, wtPath);
     } else if (result && result.status === "rejected") {
       await this.handleReviewRejection(projectId, repoPath, task, branchName, result);
     } else {
@@ -847,19 +847,13 @@ export class OrchestratorReviewService {
       }
 
       if (reviewOutcome.status === "approved") {
-        await governanceExecutionService.approved(
+        await this.acceptApprovedReview(
           projectId,
-          task.id,
+          repoPath,
+          task,
+          branchName,
           slot.worktreePath ?? repoPath
         );
-        await acceptRemoteReviewIfRequested({
-          projectId,
-          task,
-          repoPath,
-          cwd: slot.worktreePath ?? repoPath,
-          branchName,
-        });
-        await this.host.mergeCoordinator.performMergeAndDone(projectId, repoPath, task, branchName);
       } else if (reviewOutcome.status === "rejected") {
         const pin = await governanceService.getTaskPin(projectId, task.id);
         if (!pin && this.isPendingValidationOnlyRejection(reviewOutcome.result!)) {
@@ -915,6 +909,19 @@ export class OrchestratorReviewService {
     }
   }
 
+  /** Every approval reaches the merge the same way, so none can skip the durable review record. */
+  private async acceptApprovedReview(
+    projectId: string,
+    repoPath: string,
+    task: StoredTask,
+    branchName: string,
+    cwd: string
+  ): Promise<void> {
+    await governanceExecutionService.approved(projectId, task.id, cwd);
+    await acceptRemoteReviewIfRequested({ projectId, task, repoPath, cwd, branchName });
+    await this.host.mergeCoordinator.performMergeAndDone(projectId, repoPath, task, branchName);
+  }
+
   public async handleReviewRejection(
     projectId: string,
     repoPath: string,
@@ -940,9 +947,7 @@ export class OrchestratorReviewService {
       invocationId: (await this.host.readAssignmentForRun(wtPath, task.id))?.invocationId,
     });
     if (adjudication.authorized) {
-      await governanceExecutionService.approved(projectId, task.id, wtPath);
-      await acceptRemoteReviewIfRequested({ projectId, task, repoPath, cwd: wtPath, branchName });
-      await this.host.mergeCoordinator.performMergeAndDone(projectId, repoPath, task, branchName);
+      await this.acceptApprovedReview(projectId, repoPath, task, branchName, wtPath);
       return;
     }
     if (adjudication.waiting) {

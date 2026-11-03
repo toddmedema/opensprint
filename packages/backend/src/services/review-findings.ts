@@ -19,6 +19,11 @@ export function reviewFindingIdentity(f: StructuredReviewFinding): string {
     .digest("hex")}`;
 }
 
+/** Stable across re-reviews of one revision, where reviewers reword the same objection. */
+export function reviewFindingKey(f: StructuredReviewFinding): string {
+  return JSON.stringify([f.category, f.ruleRevisionId ?? null, f.file]);
+}
+
 /** O(n log n): retain every distinct blocker, deduplicate exact facts and preserve all original reports. */
 export function aggregateReviewFindings(
   inputs: Array<{ angle?: string; findings: StructuredReviewFinding[] }>

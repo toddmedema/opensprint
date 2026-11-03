@@ -38,7 +38,6 @@ async function doDeploy(
     waitForCompletion?: boolean;
     expectedCommitHash?: string;
     idempotencyKey?: string;
-    assertPublicationLease?: () => Promise<void>;
   }
 ): Promise<string | null> {
   if (activeAutoDeployments.has(projectId)) {
@@ -96,23 +95,9 @@ async function doDeploy(
       throw new Error("Published code changed before deployment execution.");
 
     const { runDeployAsync } = await import("../routes/deliver.js");
-    const deploymentLeaseOptions:
-      | [
-          {
-            publicationLeaseHeld: true;
-            expectedCommitHash: string;
-            assertPublicationLease: () => Promise<void>;
-          },
-        ]
-      | [] =
-      options?.expectedCommitHash && options.idempotencyKey && options.assertPublicationLease
-        ? [
-            {
-              publicationLeaseHeld: true,
-              expectedCommitHash: options.expectedCommitHash,
-              assertPublicationLease: options.assertPublicationLease,
-            },
-          ]
+    const claimedJobOptions: [{ claimedJob: true; expectedCommitHash: string }] | [] =
+      options?.expectedCommitHash && options.idempotencyKey
+        ? [{ claimedJob: true, expectedCommitHash: options.expectedCommitHash }]
         : [];
     const deployPromise = runDeployAsync(
       projectId,
@@ -121,7 +106,7 @@ async function doDeploy(
       settings,
       target,
       project.name,
-      ...deploymentLeaseOptions
+      ...claimedJobOptions
     )
       .catch((err) => {
         log.error("Deploy failed", { deployId: record.id, err });
@@ -168,7 +153,6 @@ export async function triggerDeployForEvent(
   options?: {
     expectedCommitHash: string;
     idempotencyKey: string;
-    assertPublicationLease?: () => Promise<void>;
   }
 ): Promise<string[]> {
   const settings = await projectService.getSettings(projectId);

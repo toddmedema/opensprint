@@ -1,5 +1,6 @@
 /** Legacy orchestration unit tests exercise their host contract with governance disabled. */
 export const disabledGovernanceService = {
+  isGovernanceInactive: async () => true,
   getConfig: async () => ({ mode: "disabled", version: 0 }),
   getTaskPin: async () => null,
   isReleaseRevoked: async () => false,
@@ -7,6 +8,9 @@ export const disabledGovernanceService = {
   getActiveReleaseId: async () => null,
   assertProjectRemovalAllowed: async () => {},
   getTrustedScope: async () => null,
+  getGrantedScope: async () => "",
+  getApprovedSourceHashes: async () => ({}),
+  isAdjudicationOrphaned: async () => false,
   captureTrustedScope: async (_projectId: string, _taskId: string, scope: string) => scope,
   hasTaskHold: async () => false,
   retainsTaskWorktree: async () => false,

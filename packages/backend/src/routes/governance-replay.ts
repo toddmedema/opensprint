@@ -3,7 +3,12 @@ import { z } from "zod";
 import { wrapAsync } from "../middleware/wrap-async.js";
 import { requireGovernanceHuman, getGovernanceActor } from "../middleware/governance-auth.js";
 import { governanceError } from "../services/policy-context.js";
-import { replayFixtureService, REPLAY_LABELS } from "../services/replay-fixture.service.js";
+import {
+  promptTimeChangedPaths,
+  replayFixtureService,
+  REPLAY_LABELS,
+} from "../services/replay-fixture.service.js";
+import { governanceService } from "../services/governance.service.js";
 import {
   evaluatePolicyProposal,
   policyReplayInstructions,
@@ -46,19 +51,16 @@ export function createGovernanceReplayRouter(): Router {
       await projects.getProject(pid);
       const db = await taskStore.getDb();
       const sessions = await db.query(
-        "SELECT session_id,task_id,payload FROM governance_replay_inputs WHERE project_id=$1 ORDER BY session_id DESC LIMIT 500",
+        "SELECT session_id,task_id,attempt,status FROM governance_replay_inputs WHERE project_id=$1 ORDER BY session_id DESC LIMIT 500",
         [pid]
       );
       res.json({
-        data: sessions.map((s) => {
-          const input = JSON.parse(String(s.payload)) as GovernanceReplayInput;
-          return {
-            sessionId: Number(s.session_id),
-            taskId: String(s.task_id),
-            attempt: input.attempt,
-            status: input.status,
-          };
-        }),
+        data: sessions.map((s) => ({
+          sessionId: Number(s.session_id),
+          taskId: String(s.task_id),
+          attempt: s.attempt === null ? undefined : Number(s.attempt),
+          status: s.status === null ? undefined : String(s.status),
+        })),
       });
     })
   );
@@ -108,6 +110,7 @@ export function createGovernanceReplayRouter(): Router {
       )
         governanceError("Retained session provenance is incomplete.");
       const release = source.release;
+      const promptChangedPaths = promptTimeChangedPaths(source.contextArtifacts);
       const stored = await replayFixtureService.capture(
         {
           version: 1,
@@ -116,9 +119,10 @@ export function createGovernanceReplayRouter(): Router {
           originalPrompt: source.originalPrompt,
           projectId: pid,
           baseCommitSha: source.baseSha,
-          instructions: policyReplayInstructions(release, source.changedPaths),
+          instructions: policyReplayInstructions(release, source.changedPaths, promptChangedPaths),
           policyReleaseId: source.pin.releaseId,
           changedPaths: source.changedPaths,
+          promptChangedPaths,
           taskId: source.taskId,
           originalWorkspaceRoot: source.pin.worktreePath,
           contextArtifacts: source.contextArtifacts,
@@ -128,7 +132,25 @@ export function createGovernanceReplayRouter(): Router {
         },
         project.repoPath
       );
+      await governanceService.recordReplayFixture(pid, {
+        sessionId: stored.fixture.sessionId,
+        taskId: source.taskId,
+        releaseId: source.pin.releaseId,
+        hash: stored.hash,
+      });
       res.status(201).json({ data: { sessionId: stored.fixture.sessionId, hash: stored.hash } });
+    })
+  );
+  router.delete(
+    "/evidence",
+    requireGovernanceHuman,
+    validateBody(z.object({ confirm: z.literal(true) }).strict()),
+    wrapAsync(async (req, res) => {
+      const pid = projectId(req.params);
+      await projects.getProject(pid);
+      await governanceService.purgeReplayFixtureBindings(pid, getGovernanceActor(req));
+      await replayFixtureService.purge(pid);
+      res.status(204).end();
     })
   );
   router.post(

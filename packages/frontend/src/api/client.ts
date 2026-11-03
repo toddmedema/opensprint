@@ -66,6 +66,8 @@ import type {
   CommandExecutionResult,
   GovernanceSummary,
   GovernanceConfig,
+  GovernanceTaskPin,
+  PolicyDecision,
   PolicyRelease,
   PolicyProposal,
   ReviewCase,
@@ -246,6 +248,10 @@ function getLocalSessionAuthHeaders(): Record<string, string> {
   return sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {};
 }
 
+function governanceCapabilityHeader(capability?: string): RequestInit {
+  return capability ? { headers: { "X-OpenSprint-Governance-Capability": capability } } : {};
+}
+
 /** Generic fetch wrapper with typed responses */
 export async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const url = `${BASE_URL}${endpoint}`;
@@ -297,6 +303,8 @@ export interface DbStatusResponse {
 export const api = {
   governance: {
     get: (projectId: string) => request<GovernanceSummary>(`/projects/${projectId}/governance`),
+    getCase: (projectId: string, caseId: string) =>
+      request<ReviewCase>(`/projects/${projectId}/governance/cases/${encodeURIComponent(caseId)}`),
     revalidateTaskPolicy: (
       projectId: string,
       taskId: string,
@@ -304,7 +312,7 @@ export const api = {
       rationale: string,
       capability: string
     ) =>
-      request<{ ok: true }>(
+      request<GovernanceTaskPin>(
         `/projects/${projectId}/governance/tasks/${encodeURIComponent(taskId)}/revalidate-policy`,
         {
           method: "POST",
@@ -321,6 +329,32 @@ export const api = {
           body: JSON.stringify({ rationale }),
         }
       ),
+    authorizeScope: (
+      projectId: string,
+      taskId: string,
+      scope: string,
+      rationale: string,
+      capability: string
+    ) =>
+      request<{ ok: true }>(
+        `/projects/${projectId}/governance/tasks/${encodeURIComponent(taskId)}/authorize-scope`,
+        {
+          method: "POST",
+          headers: { "X-OpenSprint-Governance-Capability": capability },
+          body: JSON.stringify({ scope, rationale }),
+        }
+      ),
+    reconcileSourceSnapshot: (
+      projectId: string,
+      expectedActiveReleaseId: string,
+      rationale: string,
+      capability: string
+    ) =>
+      request<PolicyRelease>(`/projects/${projectId}/governance/releases/reconcile-source-snapshot`, {
+        method: "POST",
+        headers: { "X-OpenSprint-Governance-Capability": capability },
+        body: JSON.stringify({ expectedActiveReleaseId, rationale }),
+      }),
     sourceChanges: (projectId: string, taskId: string) =>
       request<{
         taskId: string;
@@ -335,7 +369,13 @@ export const api = {
       body: { taskId: string; headSha: string; diffHash: string; rationale: string },
       capability: string
     ) =>
-      request<{ ok: true }>(`/projects/${projectId}/governance/source-changes/approve`, {
+      request<{
+        taskId: string;
+        releaseId: string;
+        headSha: string;
+        diffHash: string;
+        changedPaths: string[];
+      }>(`/projects/${projectId}/governance/source-changes/approve`, {
         method: "POST",
         headers: { "X-OpenSprint-Governance-Capability": capability },
         body: JSON.stringify(body),
@@ -413,7 +453,7 @@ export const api = {
       body: ResolveGovernanceCaseInput,
       capability: string
     ) =>
-      request<ReviewCase>(
+      request<PolicyDecision>(
         `/projects/${projectId}/governance/cases/${encodeURIComponent(caseId)}/resolve`,
         {
           method: "POST",
@@ -442,7 +482,7 @@ export const api = {
         {
           method: "POST",
           headers: { "X-OpenSprint-Governance-Capability": capability },
-          body: JSON.stringify({ rationale, idempotencyKey: crypto.randomUUID() }),
+          body: JSON.stringify({ rationale }),
         }
       ),
     mine: (projectId: string, capability: string) =>
@@ -629,19 +669,26 @@ export const api = {
       request<SelfImprovementHistoryEntry[]>(
         `/projects/${id}/self-improvement/history${limit != null ? `?limit=${limit}` : ""}`
       ),
-    approveSelfImprovement: (id: string, candidateId?: string) =>
+    approveSelfImprovement: (id: string, candidateId?: string, capability?: string) =>
       request<SelfImprovementBehaviorStatus>(`/projects/${id}/self-improvement/approve`, {
         method: "POST",
+        ...governanceCapabilityHeader(capability),
         ...(candidateId ? { body: JSON.stringify({ candidateId }) } : {}),
       }),
-    rejectSelfImprovement: (id: string, candidateId?: string) =>
+    rejectSelfImprovement: (id: string, candidateId?: string, capability?: string) =>
       request<SelfImprovementBehaviorStatus>(`/projects/${id}/self-improvement/reject`, {
         method: "POST",
+        ...governanceCapabilityHeader(capability),
         ...(candidateId ? { body: JSON.stringify({ candidateId }) } : {}),
       }),
-    rollbackSelfImprovement: (id: string, body: { behaviorVersionId: string }) =>
+    rollbackSelfImprovement: (
+      id: string,
+      body: { behaviorVersionId: string },
+      capability?: string
+    ) =>
       request<SelfImprovementBehaviorStatus>(`/projects/${id}/self-improvement/rollback`, {
         method: "POST",
+        ...governanceCapabilityHeader(capability),
         body: JSON.stringify(body),
       }),
     archive: (id: string, capability?: string) =>

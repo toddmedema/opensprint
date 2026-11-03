@@ -15,10 +15,16 @@ import type {
 const mocks = vi.hoisted(() => ({
   getConfig: vi.fn(),
   getTaskPin: vi.fn(),
+  getActiveRelease: vi.fn(),
+  pinTask: vi.fn(),
   refreshContext: vi.fn(),
   getRelease: vi.fn(),
   isReleaseRevoked: vi.fn(),
   getTrustedScope: vi.fn(),
+  getGrantedScope: vi.fn(),
+  getCase: vi.fn(),
+  getApprovedSourceHashes: vi.fn(),
+  settleBudget: vi.fn(),
   captureTrustedScope: vi.fn(),
   openCase: vi.fn(),
   claimCaseJob: vi.fn(),
@@ -27,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   applyVerifiedDisposition: vi.fn(),
   consumeBudget: vi.fn(),
   getBudgetUsage: vi.fn(),
+  isGovernanceInactive: async () => false,
   getTaskPinsForBranch: vi.fn(),
   getReviewApproval: vi.fn(),
   assertMergeAdmission: vi.fn(),
@@ -90,9 +97,9 @@ vi.mock("../services/task-store.service.js", () => ({
   },
   TaskStoreService: class {},
 }));
-vi.mock("../services/governance-source-hashes.js", () => ({
+vi.mock("../services/governance-source-hashes.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/governance-source-hashes.js")>()),
   readGovernanceSourceHashes: async () => ({}),
-  governanceSourceDrift: () => [],
   assertGovernanceSensitiveSourceApproval: async () => {},
   governanceSensitiveSourcePaths: () => [],
   resolveGovernanceCandidateSensitiveSourcePaths: async (_input: { changedPaths: string[] }) => [],
@@ -226,6 +233,10 @@ beforeEach(async () => {
     },
   });
   mocks.getTrustedScope.mockResolvedValue("Diagnostic");
+  mocks.getGrantedScope.mockResolvedValue("Diagnostic");
+  mocks.getApprovedSourceHashes.mockImplementation(
+    async (_project: string, r: PolicyRelease) => r.sourceHashes
+  );
   mocks.getTaskCases.mockImplementation(async () => cases);
   mocks.listCases.mockImplementation(async () => cases);
   mocks.listDecisions.mockResolvedValue([]);
@@ -305,6 +316,205 @@ function reject(appeals: ReviewAppeal[] = []) {
   });
 }
 
+describe("re-review, budgets and reviewer output", () => {
+  const ruled = (over: Partial<ReviewCase> = {}) =>
+    ({
+      id: "allowed-case",
+      state: "allowed",
+      headSha: finding.codeRevision,
+      releaseId: release.id,
+      findings: [finding],
+      evidence: {},
+      ...over,
+    }) as ReviewCase;
+  const snapshot = () => governanceCodeSnapshot(repo, pin.baseSha, "HEAD", false, undefined);
+  it("W2: a reworded finding on the same rule and file stays allowed for the same code", async () => {
+    const { diffHash } = await snapshot();
+    cases = [ruled({ diffHash })];
+    mocks.listDecisions.mockResolvedValue([
+      { caseId: "allowed-case", action: "allow_once", conditions: undefined },
+    ]);
+    finding = { ...finding, id: "other", evidence: "Reworded by the second reviewer" };
+    expect(await reject()).toMatchObject({ waiting: false, authorized: true });
+    expect(mocks.openCase).not.toHaveBeenCalled();
+  });
+  it("W2: a revoked ruling is not carried into re-review or the prompt", async () => {
+    const { diffHash } = await snapshot();
+    cases = [ruled({ diffHash })];
+    mocks.listDecisions.mockResolvedValue([
+      { caseId: "allowed-case", action: "allow_once", revokedAt: "now" },
+    ]);
+    expect(await service.validRulings("project", pin.taskId, repo)).toBe("");
+    expect((await reject()).authorized).toBeUndefined();
+  });
+  it("W2: valid rulings reach the resumed reviewer's prompt", async () => {
+    const { diffHash } = await snapshot();
+    cases = [ruled({ diffHash })];
+    mocks.listDecisions.mockResolvedValue([{ caseId: "allowed-case", action: "allow_once" }]);
+    const text = await service.validRulings("project", pin.taskId, repo);
+    expect(text).toContain("repository@1");
+    expect(text).toContain("src/diagnostic.ts");
+  });
+  it("W3: three default appeals fit the budget once usage is reconciled, despite a huge case", async () => {
+    let tokens = 0;
+    mocks.getConfig.mockResolvedValue({
+      mode: "enforced",
+      version: 1,
+      judgeAgent: { type: "openai", model: "test-model" },
+      judgeTokenPricing: { inputPerMillionUsd: 1, outputPerMillionUsd: 2 },
+      maxTokens: 100_000,
+      maxCostUsd: 10,
+      maxAppeals: 3,
+      maxElapsedMs: 1_800_000,
+      contextMaxChars: 100_000,
+    });
+    mocks.consumeBudget.mockImplementation(async (_p, _t, usage: { tokens: number }) => {
+      if (tokens + usage.tokens > 100_000) throw new Error("Budget exhausted");
+      tokens += usage.tokens;
+    });
+    mocks.settleBudget.mockImplementation(async (_p, _t, refund: { tokens: number }) => {
+      tokens -= refund.tokens;
+    });
+    mocks.invoke.mockImplementation(async (input) => ({
+      cacheMetrics: {
+        inputTokens: Math.ceil(input.messages[0].content.length / 4),
+        outputTokens: 200,
+      },
+      content: JSON.stringify(
+        input.role === "reviewer"
+          ? { status: "rejected", summary: "Upheld", findings: [finding], notes: "" }
+          : {
+              disposition: "human_required",
+              rationale: "Novel",
+              evidence: ["e"],
+              ruleIds: ["repository"],
+              decisionIds: [],
+            }
+      ),
+    }));
+    for (let cycle = 0; cycle < 3; cycle++) {
+      await fs.writeFile(
+        path.join(repo, "src/diagnostic.ts"),
+        `export const diagnostic = ${cycle + 2}; // ${"x".repeat(300_000)}\n`
+      );
+      await exec("git", ["commit", "-am", `cycle ${cycle}`], { cwd: repo });
+      finding = {
+        ...finding,
+        codeRevision: (await exec("git", ["rev-parse", "HEAD"], { cwd: repo })).stdout.trim(),
+      };
+      mocks.getPromptSnapshots.mockResolvedValue([{ payload: { prompt: "p".repeat(500_000) } }]);
+      const outcome = await reject([appeal]);
+      expect(outcome.case?.recommendation?.rationale).toBe("Novel");
+    }
+    expect(mocks.invoke).toHaveBeenCalledTimes(6);
+  });
+  it("W3: the prompt carries the applicable rules and a capped diff, not stored evidence", async () => {
+    mocks.getPromptSnapshots.mockResolvedValue([{ payload: { prompt: "secret-prompt" } }]);
+    await reject([appeal]);
+    const prompt = mocks.invoke.mock.calls[0]?.[0].messages[0].content as string;
+    expect(prompt).not.toContain("secret-prompt");
+    expect(JSON.parse(prompt).rules.map((r: { id: string }) => r.id)).toEqual(["repository@1"]);
+    expect(JSON.parse(prompt).case.diff).toContain("diagnostic");
+  });
+  it("W4: a judge result arriving after the case moved is discarded, not a crash", async () => {
+    mocks.getCase.mockImplementation(async () => cases[0]);
+    mocks.recordRecommendation.mockImplementation(async () => {
+      throw Object.assign(new Error("Late judge result"), { code: "GOVERNANCE_STALE_VERSION" });
+    });
+    expect(await reject([appeal])).toMatchObject({ waiting: true });
+    expect(mocks.applyVerifiedDisposition).not.toHaveBeenCalled();
+  });
+  const rejectPlain = () =>
+    service.rejected({
+      projectId: pin.projectId,
+      taskId: pin.taskId,
+      cwd: repo,
+      title: "T",
+      result: { status: "rejected", summary: "No", issues: ["Tests are missing"], notes: "" },
+      appeals: [],
+      reviewOutput: "log",
+    });
+  it("W5: an unstructured enforced rejection becomes a fix request with its raw issues", async () => {
+    expect(await rejectPlain()).toMatchObject({ waiting: false, case: { state: "fix_required" } });
+    expect(cases[0]?.findings[0]).toMatchObject({
+      category: "defect",
+      severity: "blocking",
+      evidence: "Tests are missing",
+    });
+  });
+  it("W5: a defect in an unchanged file is recorded", async () => {
+    finding = {
+      ...finding,
+      category: "defect",
+      ruleId: undefined,
+      ruleRevisionId: undefined,
+      file: "src/untouched.ts",
+    };
+    expect(await reject()).toMatchObject({ case: { state: "fix_required" } });
+  });
+  it("W6: an unstructured shadow rejection falls back to ordinary review with an audit", async () => {
+    mocks.getConfig.mockResolvedValue({ mode: "shadow", version: 1 });
+    mocks.getTaskPin.mockResolvedValue({ ...pin, mode: "shadow" });
+    expect(await rejectPlain()).toEqual({ waiting: false });
+    expect(mocks.openCase).not.toHaveBeenCalled();
+    expect(mocks.audit).toHaveBeenCalledWith(
+      "project",
+      "shadow_unstructured_review",
+      "system",
+      expect.objectContaining({ taskId: pin.taskId })
+    );
+  });
+  it("W6: shadow admission records drift, while enforced admission refuses it", async () => {
+    release.sourceHashes = { "AGENTS.md": "approved" };
+    mocks.getActiveRelease.mockResolvedValue(release);
+    mocks.getTaskPin.mockResolvedValue(null);
+    mocks.pinTask.mockResolvedValue(pin);
+    const prepare = () =>
+      service.prepareTask({
+        projectId: "project",
+        taskId: pin.taskId,
+        repoPath: repo,
+        worktreePath: repo,
+        branchName: "main",
+        baseSha: pin.baseSha,
+        trustedScope: "",
+        settings: { reviewMode: "always" } as never,
+      });
+    await expect(prepare()).rejects.toThrow("source drift");
+    mocks.getConfig.mockResolvedValue({ mode: "shadow", version: 1 });
+    await expect(prepare()).resolves.toBe(pin);
+    expect(mocks.audit).toHaveBeenCalledWith(
+      "project",
+      "shadow_policy_drift",
+      "system",
+      expect.objectContaining({ taskId: pin.taskId })
+    );
+  });
+  it("A2: enforcement reaches a shadow pin at publication", async () => {
+    mocks.getTaskPinsForBranch.mockResolvedValue([{ ...pin, mode: "shadow" }]);
+    mocks.getReviewApproval.mockResolvedValue(null);
+    await expect(
+      service.assertPublicationAuthority({
+        projectId: "project",
+        taskId: pin.taskId,
+        repoPath: repo,
+        branchName: "main",
+      })
+    ).rejects.toThrow("no current durable code approval");
+  });
+  it("A2: a pinless task cannot publish in enforced mode", async () => {
+    mocks.getTaskPinsForBranch.mockResolvedValue([]);
+    await expect(
+      service.assertPublicationAuthority({
+        projectId: "project",
+        taskId: pin.taskId,
+        repoPath: repo,
+        branchName: "main",
+      })
+    ).rejects.toMatchObject({ code: "GOVERNANCE_NOT_PINNED" });
+  });
+});
+
 describe("governance execution", () => {
   it("retains complete evidence and commits independently before a fix retry", async () => {
     const guidance = [
@@ -341,7 +551,8 @@ describe("governance execution", () => {
     expect(mocks.consumeBudget).toHaveBeenCalledWith(
       "project",
       "os-test",
-      expect.objectContaining({ appeals: 1, elapsedMs: 30_000, costUsd: expect.any(Number) })
+      // A per-call share of maxElapsedMs allows both calls of all three default appeals.
+      expect.objectContaining({ appeals: 1, elapsedMs: 15_000, costUsd: expect.any(Number) })
     );
     expect(await reject([appeal])).toMatchObject({ waiting: true });
     expect(mocks.invoke).toHaveBeenCalledTimes(2);
@@ -435,7 +646,7 @@ describe("governance execution", () => {
         "utf8"
       );
       const prices = i === 0 ? config.reconsiderationTokenPricing : config.judgeTokenPricing;
-      expect(reservations[i]).toMatchObject({ tokens: inputTokens + 2048, elapsedMs: 30_000 });
+      expect(reservations[i]).toMatchObject({ tokens: inputTokens + 2048, elapsedMs: 15_000 });
       expect(reservations[i].costUsd).toBe(
         (inputTokens * prices.inputPerMillionUsd + 2048 * prices.outputPerMillionUsd) / 1_000_000
       );
@@ -541,7 +752,12 @@ describe("governance execution", () => {
     await expect(
       service.assertScope("project", "os-test", ["packages/backend/src/routes/oauth.ts"])
     ).rejects.toThrow("Protected path authorization failed");
-    mocks.getTrustedScope.mockResolvedValue("Explicit OAuth integration task");
+    // Enforced mode takes structured human grants; a sentence containing the word grants nothing.
+    mocks.getGrantedScope.mockResolvedValue("Explicit OAuth integration task");
+    await expect(
+      service.assertScope("project", "os-test", ["packages/backend/src/routes/oauth.ts"])
+    ).rejects.toThrow("Protected path authorization failed");
+    mocks.getGrantedScope.mockResolvedValue("oauth");
     await expect(
       service.assertScope("project", "os-test", ["packages/backend/src/routes/oauth.ts"])
     ).resolves.toBeUndefined();
@@ -594,8 +810,8 @@ it("audits each epic child contribution and detects later merger edits", async (
     diffHash: id === pinOne.taskId ? childOne.diffHash : childTwo.diffHash,
     releaseId: pin.releaseId,
   }));
-  mocks.getTrustedScope.mockImplementation(async (_project, id) =>
-    id === pinOne.taskId ? "Explicit integration work" : "Ordinary feature"
+  mocks.getGrantedScope.mockImplementation(async (_project, id) =>
+    id === pinOne.taskId ? "integration" : ""
   );
   await exec("git", ["checkout", "main"], { cwd: repo });
   await exec("git", ["merge", "--no-commit", "--no-ff", "epic"], { cwd: repo });

@@ -61,6 +61,7 @@ import {
 import { captureGovernanceContextArtifacts } from "./governance-context-artifacts.js";
 import {
   governanceExecutionService,
+  governanceBranchPathSnapshot,
   governanceCodeSnapshot,
 } from "./governance-execution.service.js";
 
@@ -135,6 +136,7 @@ export class PhaseExecutorService {
     context: TaskContext,
     config: ActiveTaskConfig
   ): Promise<void> {
+    if (await governanceService.isGovernanceInactive(projectId)) return;
     await governanceService.captureTrustedScope(
       projectId,
       task.id,
@@ -143,7 +145,9 @@ export class PhaseExecutorService {
     const existing = await governanceService.getTaskPin(projectId, task.id);
     const governance = await governanceService.getConfig(projectId);
     if (!existing && governance.mode === "disabled") return;
-    const baseSha = existing?.baseSha ?? (await this.host.branchManager.getGitRev(wtPath, "HEAD"));
+    // A task first pinned at review already has commits: HEAD would hide them from its diff.
+    const baseSha =
+      existing?.baseSha ?? (await governanceBranchPathSnapshot(wtPath, baseBranch)).baseSha;
     if (!baseSha) throw new Error("Cannot pin governance without an exact base revision.");
     const pin = await governanceExecutionService.prepareTask({
       projectId,

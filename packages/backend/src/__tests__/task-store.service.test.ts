@@ -286,6 +286,50 @@ suite("TaskStoreService", () => {
     });
   });
 
+  describe("governance task scopes", () => {
+    const scopeOf = async (taskId: string) =>
+      (
+        await (
+          await store.getDb()
+        ).queryOne("SELECT scope FROM governance_task_scopes WHERE project_id=$1 AND task_id=$2", [
+          TEST_PROJECT_ID,
+          taskId,
+        ])
+      )?.scope;
+
+    it("removes the scope with the task so a reused child id can be recreated", async () => {
+      const parent = await store.create(TEST_PROJECT_ID, "Parent", { type: "epic" });
+      const child = await store.create(TEST_PROJECT_ID, "First child", { parentId: parent.id });
+      await store.delete(TEST_PROJECT_ID, child.id);
+      expect(await scopeOf(child.id)).toBeUndefined();
+      const again = await store.create(TEST_PROJECT_ID, "Second child", { parentId: parent.id });
+      expect(again.id).toBe(child.id);
+      expect(await scopeOf(again.id)).toContain("Second child");
+    });
+
+    it("replaces, never keeps, a stale scope row in create and createMany", async () => {
+      const parent = await store.create(TEST_PROJECT_ID, "Parent", { type: "epic" });
+      const db = await store.getDb();
+      for (const suffix of [".1", ".2"])
+        await db.execute(
+          "INSERT INTO governance_task_scopes(project_id,task_id,scope) VALUES($1,$2,'stale')",
+          [TEST_PROJECT_ID, `${parent.id}${suffix}`]
+        );
+      const first = await store.create(TEST_PROJECT_ID, "Fresh one", { parentId: parent.id });
+      const [second] = await store.createMany(TEST_PROJECT_ID, [
+        { title: "Fresh two", parentId: parent.id },
+      ]);
+      expect(await scopeOf(first.id)).toContain("Fresh one");
+      expect(await scopeOf(second.id)).toContain("Fresh two");
+    });
+
+    it("removes scopes in deleteMany", async () => {
+      const task = await store.create(TEST_PROJECT_ID, "Bulk delete");
+      await store.deleteMany(TEST_PROJECT_ID, [task.id]);
+      expect(await scopeOf(task.id)).toBeUndefined();
+    });
+  });
+
   describe("createMany", () => {
     it("should create multiple tasks in a single transaction", async () => {
       const results = await store.createMany(TEST_PROJECT_ID, [

@@ -68,6 +68,9 @@ export { resolveEpicId, getBlockersFromIssue, getParentId } from "./task-store-h
 export type { PlanInsertData, StoredPlan } from "./plan-store.service.js";
 
 const log = createLogger("task-store");
+/** Child IDs are reused after deletion; a recreated task's scope must reflect the new task. */
+const UPSERT_TASK_SCOPE_SQL =
+  "INSERT INTO governance_task_scopes(project_id,task_id,scope) VALUES($1,$2,$3) ON CONFLICT(project_id,task_id) DO UPDATE SET scope=excluded.scope";
 const MERGE_ATTEMPT_LEASE_EXPIRES_AT_KEY = "merge_attempt_lease_expires_at";
 
 function hasActiveMergeAttemptLease(task: StoredTask, nowMs = Date.now()): boolean {
@@ -737,10 +740,11 @@ export class TaskStoreService {
                 extra,
               ]
             );
-            await tx.execute(
-              "INSERT INTO governance_task_scopes(project_id,task_id,scope) VALUES($1,$2,$3)",
-              [projectId, id, `${title}\n${options.description ?? ""}`]
-            );
+            await tx.execute(UPSERT_TASK_SCOPE_SQL, [
+              projectId,
+              id,
+              `${title}\n${options.description ?? ""}`,
+            ]);
           });
           break;
         } catch (err: unknown) {
@@ -866,10 +870,11 @@ export class TaskStoreService {
             ]
           );
 
-          await tx.execute(
-            "INSERT INTO governance_task_scopes(project_id,task_id,scope) VALUES($1,$2,$3)",
-            [projectId, id, `${input.title}\n${input.description ?? ""}`]
-          );
+          await tx.execute(UPSERT_TASK_SCOPE_SQL, [
+            projectId,
+            id,
+            `${input.title}\n${input.description ?? ""}`,
+          ]);
 
           if (input.parentId) {
             await tx.execute(

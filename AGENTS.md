@@ -109,7 +109,7 @@ Certain file paths are **sensitive surfaces** (integration, OAuth, token handlin
 | `routes/oauth`          | OAuth routes              |
 | `todoist-sync`          | Todoist sync service      |
 
-**Scope keywords that unlock protected paths:** integration, oauth, todoist, token-encrypt, api-key-stor, third-party-auth, external-service, connect(ion)-service.
+**Scope keywords that unlock protected paths:** integration, oauth, todoist, token-encrypt, api-key-stor, third-party-auth, external-service, connect(ion)-service. Outside enforced governance they match task wording as whole words (`token-encrypt`, `api-key-stor` and `third-party-auth` are stems). Under enforced governance task wording is evidence only: the owner grants scope as exact comma-separated values through `POST /governance/tasks/:taskId/authorize-scope` before the task is assigned.
 
 If a non-integration task genuinely needs to touch these files, the agent should report `status: "failed"` with `open_questions` asking for explicit scope confirmation.
 
@@ -118,6 +118,9 @@ The policy is enforced in:
 - `packages/backend/src/services/protected-path-policy.ts` — path definitions and audit logic
 - `packages/backend/src/services/agent-default-instructions.ts` — coder and reviewer default instructions
 - `packages/backend/src/services/context-assembler.ts` — coding prompt (Protected Path Policy section) and review checklist
+- `packages/backend/src/services/governance-execution.service.ts` (`assertScope`) and `remote-publication-governance.service.ts` — governed review, publication and remote-review admission
+
+Governance errors carry explicit codes rather than being classified from their message: `GOVERNANCE_INVALID_INPUT` (400), `GOVERNANCE_STALE_VERSION`, `GOVERNANCE_STALE_CODE`, `GOVERNANCE_HOLD`, `GOVERNANCE_NOT_PINNED`, `GOVERNANCE_NOT_FOUND` (404), `GOVERNANCE_HUMAN_REQUIRED` (403) and `GOVERNANCE_CONFLICT` (the default, 409).
 
 ## Merge quality gates and test stability
 

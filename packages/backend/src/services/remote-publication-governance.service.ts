@@ -10,8 +10,9 @@ import {
   governanceExecutionService,
   governanceCodeSnapshot,
 } from "./governance-execution.service.js";
-import { governanceHash } from "./policy-context.js";
-import { auditProtectedPaths } from "./protected-path-policy.js";
+import { effectiveGovernanceMode, governanceHash } from "./policy-context.js";
+import { auditProtectedPaths, auditProtectedPathsForGrant } from "./protected-path-policy.js";
+import { ErrorCodes } from "../middleware/error-codes.js";
 import {
   assertGovernanceSensitiveSourceApproval,
   resolveGovernanceSensitiveSourcePaths,
@@ -119,7 +120,7 @@ export class RemotePublicationGovernanceService {
     // Full coder prompts are retained in the same audit journal; publication must not load them.
     const rows = await this.deps.tasks.runWrite((db) =>
       db.query(
-        "SELECT payload FROM governance_events WHERE project_id=$1 AND kind IN ('local_publication_registered','remote_publication_attempt','remote_publication_prepared','remote_publication_completed','remote_publication_superseded','remote_publication_review_requested','remote_publication_review_prepared') ORDER BY created_at,id",
+        "SELECT payload FROM governance_events WHERE project_id=$1 AND kind IN ('local_publication_registered','remote_publication_attempt','remote_publication_prepared','remote_publication_completed','remote_publication_superseded','remote_publication_review_requested','remote_publication_review_prepared','remote_publication_review_superseded') ORDER BY created_at,id",
         [projectId]
       )
     );
@@ -148,7 +149,8 @@ export class RemotePublicationGovernanceService {
     baseBranch: string;
     candidateHeadSha: string;
     baseSha: string;
-  }): Promise<RemotePublicationReceipt> {
+  }): Promise<RemotePublicationReceipt | null> {
+    if (await this.deps.governance.isGovernanceInactive(input.projectId)) return null;
     const pins = await this.deps.governance.getTaskPinsForBranch(input.projectId, input.branchName);
     const id = governanceHash([
       input.projectId,
@@ -194,7 +196,7 @@ export class RemotePublicationGovernanceService {
       owners.push({
         taskId: pin.taskId,
         branchName: pin.branchName,
-        scope: (await this.deps.governance.getTrustedScope(input.projectId, pin.taskId)) ?? "",
+        scope: await this.deps.governance.getGrantedScope(input.projectId, pin.taskId),
         releaseId: pin.releaseId,
         mode: pin.mode,
         baseSha: pin.baseSha,
@@ -213,7 +215,7 @@ export class RemotePublicationGovernanceService {
       owners.push({
         taskId: input.taskId,
         branchName: input.branchName,
-        scope: (await this.deps.governance.getTrustedScope(input.projectId, input.taskId)) ?? "",
+        scope: await this.deps.governance.getGrantedScope(input.projectId, input.taskId),
         mode: "disabled",
         baseSha: input.baseSha,
         headSha: input.candidateHeadSha,
@@ -284,9 +286,11 @@ export class RemotePublicationGovernanceService {
     repoPath: string;
     baseBranch: string;
   }): Promise<RemotePushBatch> {
-    await this.git(input.repoPath, ["fetch", "--no-tags", "origin"]);
+    const inactive = await this.deps.governance.isGovernanceInactive(input.projectId);
+    if (!inactive) await this.git(input.repoPath, ["fetch", "--no-tags", "origin"]);
     const local = await this.rev(input.repoPath, input.baseBranch);
     if (!local) throw new Error("Remote publication has no local candidate revision.");
+    if (inactive) return { receiptIds: [], inputHeadSha: local, baseBranch: input.baseBranch };
     const origin = await this.rev(input.repoPath, `refs/remotes/origin/${input.baseBranch}`);
     const history = await this.receipts(input.projectId);
     const completed = new Set(
@@ -294,12 +298,23 @@ export class RemotePublicationGovernanceService {
         .filter((e) => e.kind === "remote_publication_completed")
         .flatMap((e) => (e.payload.receiptIds as string[]) ?? [])
     );
+    // History grows without bound, so only events with unfinished receipts may cost a git process.
+    const unfinished = (e: GovernanceEvent) =>
+      ((e.payload.receiptIds as string[]) ?? []).some((id) => !completed.has(id));
+    const reachable = new Map<string, Promise<boolean>>();
+    const isAncestor = (ancestor: string, descendant: string): Promise<boolean> => {
+      const key = `${ancestor}..${descendant}`;
+      const known = reachable.get(key) ?? this.ancestor(input.repoPath, ancestor, descendant);
+      reachable.set(key, known);
+      return known;
+    };
     const recovered = new Set<string>();
     for (const e of history.events.filter((e) => e.kind === "remote_publication_prepared"))
       if (
         origin &&
+        unfinished(e) &&
         typeof e.payload.preparedHeadSha === "string" &&
-        (await this.ancestor(input.repoPath, e.payload.preparedHeadSha, origin))
+        (await isAncestor(e.payload.preparedHeadSha, origin))
       )
         for (const id of (e.payload.receiptIds as string[]) ?? []) {
           if (!completed.has(id)) recovered.add(id);
@@ -323,14 +338,13 @@ export class RemotePublicationGovernanceService {
         .flatMap((e) => (e.payload.receiptIds as string[]) ?? [])
     );
     for (const e of history.events.filter((e) => e.kind === "remote_publication_superseded")) {
+      if (!unfinished(e)) continue;
       const replacement = history.receipts.find((r) => r.id === e.payload.replacementReceiptId);
       if (
         replacement &&
         (attempted.has(replacement.id) ||
-          (await this.ancestor(input.repoPath, replacement.localHeadSha, local)) ||
-          Boolean(
-            origin && (await this.ancestor(input.repoPath, replacement.localHeadSha, origin))
-          ))
+          (await isAncestor(replacement.localHeadSha, local)) ||
+          Boolean(origin && (await isAncestor(replacement.localHeadSha, origin))))
       )
         for (const id of (e.payload.receiptIds as string[]) ?? []) completed.add(id);
     }
@@ -338,9 +352,8 @@ export class RemotePublicationGovernanceService {
     for (const r of history.receipts.filter(
       (r) => r.baseBranch === input.baseBranch && !completed.has(r.id)
     )) {
-      if (origin && (await this.ancestor(input.repoPath, r.localHeadSha, origin))) continue;
-      if (attempted.has(r.id) || (await this.ancestor(input.repoPath, r.localHeadSha, local)))
-        pending.push(r);
+      if (origin && (await isAncestor(r.localHeadSha, origin))) continue;
+      if (attempted.has(r.id) || (await isAncestor(r.localHeadSha, local))) pending.push(r);
     }
     const batch = {
       receiptIds: pending.sort((a, b) => a.sequence - b.sequence).map((r) => r.id),
@@ -363,6 +376,11 @@ export class RemotePublicationGovernanceService {
     baseBranch: string;
     batch: RemotePushBatch;
   }): Promise<{ headSha: string; receiptIds: string[] }> {
+    if (await this.deps.governance.isGovernanceInactive(input.projectId)) {
+      const current = await this.rev(input.repoPath, input.baseBranch);
+      if (!current) throw new Error("Remote candidate revision is unavailable.");
+      return { headSha: current, receiptIds: [] };
+    }
     const history = await this.receipts(input.projectId);
     const pending = input.batch.receiptIds
       .map((id) => history.receipts.find((r) => r.id === id))
@@ -398,15 +416,29 @@ export class RemotePublicationGovernanceService {
         ? (r.scopesByPath?.[file] ??
           r.owners.filter((o) => o.changedPaths.includes(file)).map((o) => o.scope))
         : [];
-      if (!auditProtectedPaths([file], scopes.join("\n"), "").allowed) changed.push(file);
+      const audit = governed
+        ? auditProtectedPathsForGrant([file], scopes.join("\n"))
+        : auditProtectedPaths([file], scopes.join("\n"), "");
+      if (!audit.allowed) changed.push(file);
       if (governed && !matching) changed.push(file);
       const sensitive = await resolveGovernanceSensitiveSourcePaths({
         repoPath: input.repoPath,
+        projectId: input.projectId,
         baseSha: base,
         headSha: head,
         changedPaths: [file],
       });
-      if (sensitive.length && !matching) changed.push(file);
+      if (sensitive.length && !matching) {
+        // Shadow observes source changes; the ordinary push proceeds.
+        if (governed) changed.push(file);
+        else
+          await this.deps.governance.audit(
+            input.projectId,
+            "shadow_source_approval_missing",
+            "system",
+            { file, headSha: head }
+          );
+      }
     }
     // Upstream changes to policy/checkers invalidate carried review authority even when task blobs are unchanged.
     if (governed && origin)
@@ -428,6 +460,7 @@ export class RemotePublicationGovernanceService {
           (
             await resolveGovernanceSensitiveSourcePaths({
               repoPath: input.repoPath,
+              projectId: input.projectId,
               baseSha: r.baseSha,
               headSha: origin,
               changedPaths: upstream,
@@ -448,7 +481,7 @@ export class RemotePublicationGovernanceService {
         branchName: r.branchName,
       });
       for (const owner of r.owners) {
-        if (owner.releaseId)
+        if (owner.releaseId && governed)
           await assertGovernanceSensitiveSourceApproval({
             projectId: input.projectId,
             taskId: owner.taskId,
@@ -478,6 +511,7 @@ export class RemotePublicationGovernanceService {
   ): Promise<string | null> {
     const head = await this.rev(repoPath, baseBranch);
     if (!head) return null;
+    if (await this.deps.governance.isGovernanceInactive(projectId)) return head;
     const history = await this.receipts(projectId);
     let hasOrigin = true;
     try {
@@ -511,6 +545,7 @@ export class RemotePublicationGovernanceService {
     projectId: string,
     prepared: { headSha: string; receiptIds: string[] }
   ): Promise<void> {
+    if (await this.deps.governance.isGovernanceInactive(projectId)) return;
     await this.deps.governance.audit(projectId, "remote_publication_completed", "system", {
       receiptIds: prepared.receiptIds,
       publishedHeadSha: prepared.headSha,
@@ -566,19 +601,30 @@ export class RemotePublicationGovernanceService {
   ): Promise<RemoteReviewRequest> {
     const key = governanceHash([input.baseBranch, baseSha, candidateSha, pending.map((r) => r.id)]);
     const events = await this.publicationEvents(input.projectId);
-    const old = events.find(
-      (e) => e.kind === "remote_publication_review_requested" && e.payload.key === key
-    );
+    const requested = events.filter((e) => e.kind === "remote_publication_review_requested");
+    const liveTask = async (taskId: string) =>
+      this.deps.tasks.show(input.projectId, taskId).then(
+        (task) => (task.status === "closed" ? null : task),
+        (error: { code?: string }) => {
+          if (error?.code === ErrorCodes.ISSUE_NOT_FOUND) return null;
+          throw error;
+        }
+      );
+    // Newest first: a closed or deleted review cannot answer for this candidate.
+    const old = requested.filter((e) => e.payload.key === key).at(-1);
     if (old) {
       const request = old.payload.request as unknown as RemoteReviewRequest;
-      const task = await this.deps.tasks.show(input.projectId, request.taskId);
-      if (
-        task.status === "blocked" &&
-        !(await this.deps.governance.getTaskPin(input.projectId, request.taskId))
-      )
-        await this.prepareRemoteReview(input.projectId, request.taskId, input.repoPath);
-      return request;
+      const task = await liveTask(request.taskId);
+      if (task) {
+        if (
+          task.status === "blocked" &&
+          !(await this.deps.governance.getTaskPin(input.projectId, request.taskId))
+        )
+          await this.prepareRemoteReview(input.projectId, request.taskId, input.repoPath);
+        return request;
+      }
     }
+    const batch = governanceHash(pending.map((r) => r.id).sort());
     const scopes = [...new Set(pending.flatMap((r) => r.owners.map((o) => o.scope)))];
     const task = await this.deps.tasks.create(
       input.projectId,
@@ -621,6 +667,30 @@ export class RemotePublicationGovernanceService {
       "system",
       { key, taskId: task.id, request }
     );
+    // A new head of the same batch replaces its open review; two must not race to supersede receipts.
+    for (const e of requested) {
+      const earlier = e.payload.request as unknown as RemoteReviewRequest;
+      if (
+        governanceHash([...earlier.receiptIds].sort()) !== batch ||
+        !(await liveTask(earlier.taskId))
+      )
+        continue;
+      await this.deps.tasks.update(input.projectId, earlier.taskId, {
+        status: "closed",
+        assignee: "",
+        extra: {
+          governance_resume: null,
+          block_reason: null,
+          remote_review_superseded_by: task.id,
+        },
+      });
+      await this.deps.governance.audit(
+        input.projectId,
+        "remote_publication_review_superseded",
+        "system",
+        { taskId: earlier.taskId, replacementTaskId: task.id }
+      );
+    }
     await this.prepareRemoteReview(input.projectId, task.id, input.repoPath);
     return request;
   }
@@ -717,7 +787,7 @@ export class RemotePublicationGovernanceService {
       trustedScope: pending.flatMap((r) => r.owners.map((o) => o.scope)).join("\n"),
       createdAt: new Date().toISOString(),
     };
-    await this.deps.tasks.runWrite(async (db) => {
+    const pinnedNow = await this.deps.tasks.runWrite(async (db) => {
       const inserted = await db.execute(
         "INSERT INTO governance_task_pins(project_id,task_id,release_id,payload)VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING",
         [projectId, taskId, frozen.releaseId, JSON.stringify(frozen)]
@@ -727,7 +797,15 @@ export class RemotePublicationGovernanceService {
           "UPDATE governance_task_scopes SET scope=$1 WHERE project_id=$2 AND task_id=$3",
           [frozen.trustedScope, projectId, taskId]
         );
+      return inserted === 1;
     });
+    // The review carries its owners' grants, no more: their task wording stays evidence.
+    if (pinnedNow)
+      await this.deps.governance.audit(projectId, "task_scope_inherited", "system", {
+        taskId,
+        scope: frozen.trustedScope,
+        receiptIds: request.receiptIds,
+      });
     try {
       await this.assertCompatibleReviewPolicies(projectId, pending, frozen);
     } catch (error) {
@@ -818,6 +896,15 @@ export class RemotePublicationGovernanceService {
       throw new Error("Remote review has missing original publication receipts.");
     const target = await this.deps.governance.getTaskPin(input.projectId, input.taskId);
     if (!target) throw new Error("Remote review has no retained governing policy pin.");
+    if (
+      history.events.some(
+        (e) =>
+          e.kind === "remote_publication_review_superseded" && e.payload.taskId === input.taskId
+      )
+    )
+      throw new Error("A newer candidate replaced this remote review.");
+    const { mode } = await this.deps.governance.getConfig(input.projectId);
+    const enforced = effectiveGovernanceMode(target.mode, mode) === "enforced";
     await this.assertCompatibleReviewPolicies(input.projectId, originals, target);
     for (const r of originals)
       await this.deps.authority.assertPublicationAuthority({
@@ -832,7 +919,10 @@ export class RemotePublicationGovernanceService {
           r.scopesByPath?.[file] ??
           r.owners.filter((o) => o.changedPaths.includes(file)).map((o) => o.scope)
       );
-      if (!auditProtectedPaths([file], scopes.join("\n"), "").allowed)
+      const audit = enforced
+        ? auditProtectedPathsForGrant([file], scopes.join("\n"))
+        : auditProtectedPaths([file], scopes.join("\n"), "");
+      if (!audit.allowed)
         throw new Error(
           `Original task authority does not permit protected remote path ${file}. Explicit human scope authorization is required.`
         );
@@ -866,6 +956,7 @@ export class RemotePublicationGovernanceService {
       candidateHeadSha: head,
       baseSha: request.baseSha,
     });
+    if (!receipt) throw new Error("Remote review has no governed publication receipt.");
     await this.deps.governance.audit(input.projectId, "remote_publication_superseded", "system", {
       receiptIds: request.receiptIds,
       replacementReceiptId: receipt.id,

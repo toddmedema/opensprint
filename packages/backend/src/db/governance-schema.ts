@@ -6,6 +6,7 @@ export const GOVERNANCE_TABLES_IN_DEPENDENCY_ORDER = [
   "policy_rule_revisions",
   "policy_releases",
   "governance_replay_inputs",
+  "governance_replay_fixtures",
   "governance_task_scopes",
   "governance_task_pins",
   "review_cases",
@@ -39,7 +40,12 @@ CREATE TABLE IF NOT EXISTS policy_releases (
 );
 CREATE TABLE IF NOT EXISTS governance_replay_inputs (
   project_id TEXT NOT NULL, session_id INTEGER NOT NULL, task_id TEXT NOT NULL,
-  payload TEXT NOT NULL, PRIMARY KEY(project_id,session_id)
+  payload TEXT NOT NULL, attempt INTEGER, status TEXT, PRIMARY KEY(project_id,session_id)
+);
+CREATE TABLE IF NOT EXISTS governance_replay_fixtures (
+  project_id TEXT NOT NULL, session_id INTEGER NOT NULL, task_id TEXT NOT NULL,
+  release_id TEXT NOT NULL, hash TEXT NOT NULL, created_at TEXT NOT NULL,
+  PRIMARY KEY(project_id,session_id)
 );
 CREATE TABLE IF NOT EXISTS governance_task_scopes (
   project_id TEXT NOT NULL, task_id TEXT NOT NULL, scope TEXT NOT NULL,
@@ -76,6 +82,7 @@ CREATE TABLE IF NOT EXISTS governance_events (
   project_id TEXT NOT NULL, id TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL, created_at TEXT NOT NULL,
   PRIMARY KEY(project_id,id)
 );
+CREATE INDEX IF NOT EXISTS idx_governance_events_kind ON governance_events(project_id,kind);
 CREATE TABLE IF NOT EXISTS governance_outbox (
   project_id TEXT NOT NULL, id TEXT NOT NULL, case_id TEXT NOT NULL,
   state TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0, payload TEXT NOT NULL,
@@ -100,7 +107,8 @@ CREATE TABLE IF NOT EXISTS governance_review_approvals (
 `;
 export const GOVERNANCE_LEASE_SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS governance_publication_leases (
- project_id TEXT PRIMARY KEY, token TEXT NOT NULL, expires_at TEXT NOT NULL
+ project_id TEXT PRIMARY KEY, token TEXT NOT NULL, expires_at TEXT NOT NULL, owner TEXT
 );
+ALTER TABLE governance_publication_leases ADD COLUMN IF NOT EXISTS owner TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_policy_proposals_nomination ON policy_proposals(project_id,source_nomination_id);
 `;
