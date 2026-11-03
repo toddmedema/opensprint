@@ -474,6 +474,18 @@ export type GitWorkingMode = "worktree" | "branches";
 /** Per-project merge strategy: per_task (one branch per task) or per_epic (shared branch per epic) */
 export type MergeStrategy = "per_task" | "per_epic";
 
+/** How completed agent work is delivered to the project's base branch. */
+export type DeliveryMode = "direct" | "pull_request";
+
+export function getEffectiveMergeStrategy(settings: {
+  deliveryMode?: DeliveryMode;
+  mergeStrategy?: string;
+}): MergeStrategy {
+  return settings.deliveryMode === "pull_request" || settings.mergeStrategy === "per_epic"
+    ? "per_epic"
+    : "per_task";
+}
+
 /** Valid merge strategy values for parsing/validation */
 export const VALID_MERGE_STRATEGIES: MergeStrategy[] = ["per_task", "per_epic"];
 
@@ -942,6 +954,8 @@ export interface ProjectSettings {
   gitWorkingMode?: GitWorkingMode;
   /** Merge strategy: "per_task" (one branch per task, merge on task completion) or "per_epic" (shared epic branch, merge when epic completes). Default: "per_task". */
   mergeStrategy?: MergeStrategy;
+  /** Default direct delivery; pull_request keeps plan work on an epic branch for human merge. */
+  deliveryMode?: DeliveryMode;
   /** Project base branch (task branches are created from and merged into this). Persisted under the legacy field name for backward compatibility. */
   worktreeBaseBranch?: string;
   /** Read-only runtime status: whether the repo can publish to origin, is local-only, or has a remote configured but currently unreachable. */
@@ -1356,6 +1370,7 @@ export function parseSettings(raw: unknown): ProjectSettings {
     toolchainProfile: parseToolchainProfile(r?.toolchainProfile),
     gitWorkingMode,
     mergeStrategy,
+    deliveryMode: r?.deliveryMode === "pull_request" ? "pull_request" : "direct",
     worktreeBaseBranch: normalizeWorktreeBaseBranch(r?.worktreeBaseBranch),
     reviewAngles: parseReviewAngles(r?.reviewAngles),
     includeGeneralReview: r?.includeGeneralReview === true ? true : undefined,

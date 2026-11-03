@@ -125,7 +125,11 @@ export async function runCreateProjectFlow(
     await ensureRepoHasInitialCommit(repoPath, input.worktreeBaseBranch);
   }
 
-  const { hadHead, baseBranch } = await prepareRepoForProject(repoPath, input.worktreeBaseBranch);
+  const { hadHead, baseBranch } = await prepareRepoForProject(
+    repoPath,
+    input.worktreeBaseBranch,
+    input.gitChangesAction
+  );
 
   if (!hadHead) {
     await ensureRepoHasInitialCommit(repoPath, baseBranch);
@@ -183,6 +187,7 @@ export async function runCreateProjectFlow(
   const settingsPayload: Record<string, unknown> = {
     deployment,
     aiAutonomyLevel,
+    deliveryMode: input.deliveryMode === "pull_request" ? "pull_request" : "direct",
     hilConfig,
     testFramework,
     testCommand,

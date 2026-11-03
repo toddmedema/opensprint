@@ -3,6 +3,7 @@ import type { StoredTask } from "../services/task-store.service.js";
 import { TimerRegistry } from "../services/timer-registry.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
+import { planPullRequestReconciler } from "../services/plan-pull-request-reconcile.service.js";
 import {
   OrchestratorLoopService,
   type LoopState,
@@ -62,6 +63,24 @@ describe("OrchestratorLoopService", () => {
   let service: OrchestratorLoopService;
   let dispatchTask: ReturnType<typeof vi.fn>;
   let setMaxSlotsCache: ReturnType<typeof vi.fn>;
+
+  it("reconciles merged plan PRs before computing dependency readiness", async () => {
+    const reconcile = vi.spyOn(planPullRequestReconciler, "reconcile").mockResolvedValue(undefined);
+    const currentSettings = await host.getProjectService().getSettings(projectId);
+    vi.mocked(host.getProjectService().getSettings).mockResolvedValue({
+      ...currentSettings,
+      gitWorkingMode: "worktree",
+      deliveryMode: "pull_request",
+      maxConcurrentCoders: 1,
+    });
+    await service.runLoop(projectId);
+    expect(reconcile).toHaveBeenCalledWith(projectId, repoPath, host.getTaskStore());
+    expect(reconcile.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(host.getTaskStore().readyWithStatusMap).mock.invocationCallOrder[0]
+    );
+    expect(dispatchTask).toHaveBeenCalled();
+    reconcile.mockRestore();
+  });
 
   const buildTask = (id: string): StoredTask =>
     ({

@@ -1,3 +1,4 @@
+import { getEffectiveMergeStrategy } from "@opensprint/shared";
 import fs from "fs/promises";
 import path from "path";
 
@@ -32,6 +33,8 @@ import { eventLogService } from "./event-log.service.js";
 import { fireAndForget } from "../utils/fire-and-forget.js";
 import { triggerDeployForEvent } from "./deploy-trigger.service.js";
 import { finalReviewService } from "./final-review.service.js";
+import { publishPlanPullRequest } from "./plan-pull-request.service.js";
+import { reviewPublishedPlanPullRequest } from "./plan-pull-request-review.service.js";
 import { notificationService } from "./notification.service.js";
 import { selfImprovementService } from "./self-improvement.service.js";
 import { broadcastToProject } from "../websocket/index.js";
@@ -206,6 +209,11 @@ export interface MergeCoordinatorHost {
     getCumulativeAttemptsFromIssue(issue: StoredTask): number;
     setConflictFiles(projectId: string, id: string, files: string[]): Promise<void>;
     setMergeStage(projectId: string, id: string, stage: string | null): Promise<void>;
+    planUpdateMetadata(
+      projectId: string,
+      planId: string,
+      metadata: Record<string, unknown>
+    ): Promise<void>;
     planGetByEpicId(
       projectId: string,
       epicId: string
@@ -309,6 +317,7 @@ export interface MergeCoordinatorHost {
       worktreeBaseBranch?: string;
       unknownScopeStrategy?: "conservative" | "optimistic";
       mergeStrategy?: "per_task" | "per_epic";
+      deliveryMode?: "direct" | "pull_request";
     }>;
   };
   transition(projectId: string, t: { to: "complete" | "fail"; taskId: string }): void;
@@ -490,7 +499,9 @@ export class MergeCoordinatorService {
           if (pathForGuard) {
             try {
               await fs.access(pathForGuard);
-              const resolvedWt = path.resolve(await fs.realpath(pathForGuard).catch(() => pathForGuard));
+              const resolvedWt = path.resolve(
+                await fs.realpath(pathForGuard).catch(() => pathForGuard)
+              );
               const protection = await evaluateWorktreeCleanupProtection(
                 projectId,
                 resolvedWt,
@@ -2015,9 +2026,98 @@ export class MergeCoordinatorService {
       await this.waitForPushComplete(projectId);
       const settings = await this.host.projectService.getSettings(projectId);
       const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
-      const mergeStrategy = settings.mergeStrategy ?? "per_task";
+      const mergeStrategy = getEffectiveMergeStrategy(settings);
       const allIssuesForEpic = await this.host.taskStore.listAll(projectId);
       const epicId = resolveEpicId(task.id, allIssuesForEpic);
+
+      if (settings.deliveryMode === "pull_request") {
+        const implTasks = epicId
+          ? this.getEpicImplementationTasks(allIssuesForEpic, epicId)
+          : [task];
+        const planFinished =
+          implTasks.length > 0 && implTasks.every((i) => i.id === task.id || i.status === "closed");
+        try {
+          // Old per-task branches can still be active when delivery mode changes. Fail safely
+          // rather than publishing a partial plan or merging its code into the base branch.
+          if (epicId && branchName !== `opensprint/epic_${epicId}`) {
+            throw new Error(
+              "PR delivery requires a shared plan branch. Retry this task to prepare the plan branch."
+            );
+          }
+          await this.ensureMergeQualityGates({
+            projectId,
+            repoPath,
+            worktreePath: wtPath,
+            taskId: task.id,
+            branchName,
+            baseBranch,
+            validationWorkspace: "task_worktree",
+            toolchainProfile: settings.toolchainProfile,
+          });
+          if (planFinished) {
+            const epic = allIssuesForEpic.find((i) => i.id === epicId);
+            const url = await publishPlanPullRequest({
+              repoPath,
+              branchName,
+              baseBranch,
+              title: epic?.title || task.title || task.id,
+              taskIds: implTasks.map((i) => i.id),
+            });
+            await this.host.taskStore.update(projectId, epicId ?? task.id, {
+              extra: {
+                pull_request_url: url,
+                delivery_branch: branchName,
+                worktree_base_branch: baseBranch,
+                final_review_pending: true,
+              },
+            });
+            const plan = epicId
+              ? await this.host.taskStore.planGetByEpicId(projectId, epicId)
+              : null;
+            if (plan) {
+              await this.host.taskStore.planUpdateMetadata(projectId, plan.plan_id, {
+                ...plan.metadata,
+                pullRequestUrl: url,
+              });
+              broadcastToProject(projectId, { type: "plan.updated", planId: plan.plan_id });
+            }
+            await eventLogService.append(repoPath, {
+              timestamp: new Date().toISOString(),
+              projectId,
+              taskId: task.id,
+              event: "task.pull_request_created",
+              data: { url, branchName, baseBranch },
+            });
+          }
+        } catch (err) {
+          await this.requeueTaskAfterMergeFailure(projectId, repoPath, task, err as Error);
+          return;
+        }
+        await this.closeTaskRecordAndReleaseSlot(
+          projectId,
+          repoPath,
+          task,
+          branchName,
+          baseBranch,
+          wtPath,
+          slot,
+          settings
+        );
+        if (planFinished && epicId) {
+          try {
+            await reviewPublishedPlanPullRequest({
+              projectId,
+              epicId,
+              worktreePath: wtPath,
+              taskStore: this.host.taskStore,
+            });
+          } catch (err) {
+            log.warn("Final review after PR publication failed", { projectId, epicId, err });
+          }
+        }
+        this.host.nudge(projectId);
+        return;
+      }
 
       const isPerEpicIntermediate = mergeStrategy === "per_epic" && epicId != null;
 
@@ -2343,7 +2443,7 @@ export class MergeCoordinatorService {
       mergeErr instanceof MergeJobError
         ? mergeErr.stage
         : mergeErr instanceof RebaseContinueBlockedError
-          ? mergeErr.mergeFailureStage ?? "merge_to_main"
+          ? (mergeErr.mergeFailureStage ?? "merge_to_main")
           : mergeErr instanceof RebaseConflictError
             ? "push_rebase"
             : "merge_to_main";

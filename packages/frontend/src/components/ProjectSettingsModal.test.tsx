@@ -848,6 +848,48 @@ describe("ProjectSettingsModal", () => {
     expect(screen.getByTestId("ai-autonomy-slider")).toBeInTheDocument();
   });
 
+  it("saves PR delivery from Autonomy and can switch back to direct delivery", async () => {
+    renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
+    await waitForModalReady();
+    await userEvent.click(screen.getByRole("button", { name: "Autonomy" }));
+    const select = screen.getByRole("combobox", { name: "Code delivery" });
+    expect(select).toHaveValue("direct");
+    await userEvent.selectOptions(select, "pull_request");
+    await waitFor(() =>
+      expect(mockUpdateSettings).toHaveBeenCalledWith(
+        mockProject.id,
+        expect.objectContaining({ deliveryMode: "pull_request" })
+      )
+    );
+    expect(screen.getByText(/Requires an origin remote/)).toBeInTheDocument();
+    await userEvent.selectOptions(select, "direct");
+    await waitFor(() =>
+      expect(mockUpdateSettings).toHaveBeenLastCalledWith(
+        mockProject.id,
+        expect.objectContaining({ deliveryMode: "direct" })
+      )
+    );
+  });
+
+  it("restores the saved delivery mode when an active-plan guard rejects the change", async () => {
+    renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} />);
+    await waitForModalReady();
+    await userEvent.click(screen.getByRole("button", { name: "Autonomy" }));
+    mockUpdateSettings.mockRejectedValueOnce(
+      new Error("Finish active plans before changing code delivery.")
+    );
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Code delivery" }),
+      "pull_request"
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Code delivery" })).toHaveValue("direct")
+    );
+    expect(
+      screen.getByText("Finish active plans before changing code delivery.")
+    ).toBeInTheDocument();
+  });
+
   it("Team tab shows Enable human teammates checkbox; when enabled shows team members list", async () => {
     mockGetSettings.mockResolvedValueOnce({
       ...mockSettings,
@@ -1692,11 +1734,11 @@ describe("ProjectSettingsModal", () => {
     expect(select).toBeInTheDocument();
     expect(select).toHaveValue("per_task");
     expect(
-      screen.getByText(/Per task \(default\): merge each task to main when complete/)
+      screen.getByText(/Per task \(default\): merge each task to the base branch when complete/)
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Per epic: build entire plan\/epic on one branch; merge once all tasks are done/
+        /Per epic: build the entire plan\/epic on one branch; merge once all tasks are done/
       )
     ).toBeInTheDocument();
   });

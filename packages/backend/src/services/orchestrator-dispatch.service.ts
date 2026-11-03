@@ -1,3 +1,4 @@
+import { getEffectiveMergeStrategy } from "@opensprint/shared";
 /**
  * OrchestratorDispatchService — task selection and agent dispatch (slot creation, transition, coding phase).
  * Extracted from OrchestratorService so the main orchestrator composes dispatch as a dependency.
@@ -317,10 +318,7 @@ export interface OrchestratorDispatchHost {
     assignee?: string,
     worktreeKey?: string
   ): DispatchSlotLike;
-  transition(
-    projectId: string,
-    t: unknown
-  ): void;
+  transition(projectId: string, t: unknown): void;
   persistCounters(projectId: string, repoPath: string): Promise<void>;
   getTaskStore(): {
     update(projectId: string, taskId: string, fields: Record<string, unknown>): Promise<unknown>;
@@ -330,6 +328,7 @@ export interface OrchestratorDispatchHost {
   getProjectService(): {
     getSettings(projectId: string): Promise<{
       mergeStrategy?: string;
+      deliveryMode?: "direct" | "pull_request";
       worktreeBaseBranch?: string;
       gitWorkingMode?: "worktree" | "branches";
     }>;
@@ -427,7 +426,7 @@ export class OrchestratorDispatchService {
       }),
     });
     const settings = await this.host.getProjectService().getSettings(projectId);
-    const mergeStrategy = settings.mergeStrategy ?? "per_task";
+    const mergeStrategy = getEffectiveMergeStrategy(settings);
     const allIssues = await taskStore.listAll(projectId);
     const epicId = resolveEpicId(task.id, allIssues);
     const useEpicBranch = mergeStrategy === "per_epic" && epicId != null;
@@ -468,7 +467,12 @@ export class OrchestratorDispatchService {
     await this.host.getBranchManager().ensureOnMain(repoPath, baseBranch);
 
     if (slot.worktreePath && slot.worktreePath !== repoPath) {
-      const integrity = await assertWorktreeIntegrity(repoPath, slot.worktreePath, task.id, "dispatch");
+      const integrity = await assertWorktreeIntegrity(
+        repoPath,
+        slot.worktreePath,
+        task.id,
+        "dispatch"
+      );
       if (!integrity.valid) {
         log.warn("Worktree integrity check failed at dispatch, attempting rebuild", {
           taskId: task.id,
@@ -484,9 +488,17 @@ export class OrchestratorDispatchService {
             repoPath: string,
             worktreeKey: string,
             actualPath?: string,
-            opts?: { bypassReferenceProtection?: boolean; ignoreLiveTaskStatusForTaskIds?: Set<string> }
+            opts?: {
+              bypassReferenceProtection?: boolean;
+              ignoreLiveTaskStatusForTaskIds?: Set<string>;
+            }
           ): Promise<boolean>;
-          createTaskWorktree(repoPath: string, taskId: string, baseBranch: string, options?: { worktreeKey?: string; branchName?: string }): Promise<string>;
+          createTaskWorktree(
+            repoPath: string,
+            taskId: string,
+            baseBranch: string,
+            options?: { worktreeKey?: string; branchName?: string }
+          ): Promise<string>;
         };
         const rebuildResult = await rebuildWorktreeIfInvalid(
           repoPath,

@@ -32,7 +32,7 @@ import {
 } from "../lib/localModelProviders";
 
 type Step = "basics" | "agents" | "testing" | "hil" | "confirm";
-type ActionableError = { message: string; commands?: string[] };
+type ActionableError = { message: string; commands?: string[]; code?: string };
 
 /** Add Existing flow: no Delivery step; configure later via project settings. */
 const ADD_EXISTING_STEPS: { key: Step; label: string }[] = [
@@ -73,6 +73,7 @@ export function ProjectSetup() {
   );
   const [unknownScopeStrategy, setUnknownScopeStrategy] =
     useState<UnknownScopeStrategy>("optimistic");
+  const [deliveryMode, setDeliveryMode] = useState<"direct" | "pull_request">("direct");
   const [gitWorkingMode, setGitWorkingMode] = useState<GitWorkingMode>("worktree");
   const [worktreeBaseBranch, setWorktreeBaseBranch] = useState("");
   const [showFolderBrowser, setShowFolderBrowser] = useState(false);
@@ -214,7 +215,7 @@ export function ProjectSetup() {
     };
   }, [step, repoPath]);
 
-  const handleCreate = async () => {
+  const handleCreate = async (gitChangesAction?: "stash" | "commit") => {
     setCreating(true);
     setCreateError(null);
     try {
@@ -261,12 +262,14 @@ export function ProjectSetup() {
         },
         deployment: { ...DEFAULT_DEPLOYMENT_CONFIG },
         aiAutonomyLevel,
+        deliveryMode,
         testFramework: testFramework === "none" ? null : testFramework,
         maxConcurrentCoders: gitWorkingMode === "branches" ? 1 : maxConcurrentCoders,
         ...(maxTotalConcurrentAgents != null ? { maxTotalConcurrentAgents } : {}),
         unknownScopeStrategy,
         gitWorkingMode,
         worktreeBaseBranch: worktreeBaseBranch.trim() || undefined,
+        ...(gitChangesAction ? { gitChangesAction } : {}),
       });
       navigate(getProjectPhasePath((project as { id: string }).id, "sketch"));
     } catch (err) {
@@ -288,6 +291,7 @@ export function ProjectSetup() {
         const details = err.details as { commands?: string[] } | undefined;
         setCreateError({
           message: msg,
+          code: err.code,
           commands: Array.isArray(details?.commands) ? details.commands : undefined,
         });
       } else {
@@ -408,7 +412,15 @@ export function ProjectSetup() {
               />
             )}
 
-            {step === "hil" && <HilStep value={aiAutonomyLevel} onChange={setAiAutonomyLevel} />}
+            {step === "hil" && (
+              <HilStep
+                value={aiAutonomyLevel}
+                onChange={setAiAutonomyLevel}
+                deliveryMode={deliveryMode}
+                onDeliveryModeChange={setDeliveryMode}
+                baseBranch={worktreeBaseBranch.trim() || "the base branch"}
+              />
+            )}
 
             {step === "confirm" && (
               <ConfirmStep
@@ -427,7 +439,10 @@ export function ProjectSetup() {
           </div>
 
           {createError && (
-            <div className="mt-4 p-3 bg-theme-error-bg border border-theme-error-border rounded-lg text-sm text-theme-error-text">
+            <div
+              role="alert"
+              className="mt-4 p-3 bg-theme-error-bg border border-theme-error-border rounded-lg text-sm text-theme-error-text"
+            >
               <div className="flex justify-between items-start gap-4">
                 <span>{createError.message}</span>
                 <button
@@ -438,6 +453,32 @@ export function ProjectSetup() {
                   Dismiss
                 </button>
               </div>
+              {createError.code === "GIT_CHECKOUT_CONFLICT" && (
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs">
+                    Save all tracked and untracked changes on the current branch, then retry.
+                    Stashed changes remain in your Git stash.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={creating}
+                      onClick={() => void handleCreate("stash")}
+                    >
+                      Stash all changes
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={creating}
+                      onClick={() => void handleCreate("commit")}
+                    >
+                      Commit all changes
+                    </button>
+                  </div>
+                </div>
+              )}
               {createError.commands && createError.commands.length > 0 && (
                 <pre className="mt-3 p-3 bg-theme-surface-muted rounded-lg font-mono text-xs overflow-x-auto">
                   {createError.commands.join("\n")}
@@ -461,7 +502,7 @@ export function ProjectSetup() {
             )}
             {step === "confirm" ? (
               <button
-                onClick={handleCreate}
+                onClick={() => void handleCreate()}
                 disabled={
                   creating ||
                   (simpleComplexityAgent.type === "custom" &&

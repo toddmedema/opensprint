@@ -39,6 +39,7 @@ export interface CreateProjectRequest {
   deployment: DeploymentConfigInput;
   /** AI Autonomy level. When provided, replaces hilConfig. Legacy hilConfig accepted for backward compat. */
   aiAutonomyLevel?: AiAutonomyLevel;
+  deliveryMode?: "direct" | "pull_request";
   /** @deprecated Use aiAutonomyLevel. Accepted for backward compat. */
   hilConfig?: HilConfigInput;
   /** Detected or user-selected test framework (PRD §10.2) */
@@ -55,6 +56,8 @@ export interface CreateProjectRequest {
   gitWorkingMode?: "worktree" | "branches";
   /** Project base branch used when creating task branches and merging completed work. */
   worktreeBaseBranch?: string;
+  /** Explicit recovery after a checkout conflict; applies to all non-ignored changes. */
+  gitChangesAction?: "stash" | "commit";
 }
 
 /** Project update request (partial fields) */

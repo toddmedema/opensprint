@@ -5,6 +5,7 @@ import path from "path";
 import { exec as execCallback } from "child_process";
 import { promisify } from "util";
 import { resolveBaseBranch } from "../utils/git-repo-state.js";
+import { prepareRepoForProject } from "../services/project/project-repo-prepare.js";
 
 const execAsync = promisify(execCallback);
 
@@ -30,6 +31,34 @@ describe("resolveBaseBranch", () => {
 
     await expect(resolveBaseBranch(repoPath)).resolves.toBe("main");
   });
+
+  it.each(["stash", "commit"] as const)(
+    "preserves all changes with %s before retrying checkout",
+    async (action) => {
+      await execAsync("git checkout -b feature", { cwd: repoPath });
+      await fs.writeFile(path.join(repoPath, "README.md"), "feature\n");
+      await execAsync('git commit -am "feature"', { cwd: repoPath });
+      await fs.writeFile(path.join(repoPath, "README.md"), "unsaved\n");
+      await fs.writeFile(path.join(repoPath, "new.txt"), "untracked\n");
+      await expect(prepareRepoForProject(repoPath, "main")).rejects.toMatchObject({
+        code: "GIT_CHECKOUT_CONFLICT",
+      });
+      await expect(prepareRepoForProject(repoPath, "main", action)).resolves.toMatchObject({
+        baseBranch: "main",
+      });
+      expect((await execAsync("git branch --show-current", { cwd: repoPath })).stdout.trim()).toBe(
+        "main"
+      );
+      expect((await execAsync("git status --porcelain", { cwd: repoPath })).stdout.trim()).toBe("");
+      if (action === "stash") {
+        await execAsync("git checkout feature && git stash pop", { cwd: repoPath });
+      } else {
+        await execAsync("git checkout feature", { cwd: repoPath });
+      }
+      expect(await fs.readFile(path.join(repoPath, "README.md"), "utf8")).toBe("unsaved\n");
+      expect(await fs.readFile(path.join(repoPath, "new.txt"), "utf8")).toBe("untracked\n");
+    }
+  );
 
   it("falls back to the current branch when no main or master branch exists", async () => {
     await execAsync("git checkout -b develop", { cwd: repoPath });

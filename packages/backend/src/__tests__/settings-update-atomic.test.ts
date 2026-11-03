@@ -58,6 +58,7 @@ describe("atomic raw project settings transformations", () => {
     deployment: { mode: "custom", customCommand: "npm run deploy" },
   };
   const deps = {
+    listTasks: async () => [],
     getRepoPath: async () => directory,
     getSettingsWithRuntimeState: async (projectId: string) =>
       projectSettingsFromRaw(await getRawSettingsRecord(projectId), globalDefaults),

@@ -65,6 +65,13 @@ function renderWorkflowContent(overrides?: Partial<ProjectSettings>, routeEntrie
 }
 
 describe("WorkflowSettingsContent", () => {
+  it("uses and locks a shared plan branch for PR delivery", () => {
+    renderWorkflowContent({ deliveryMode: "pull_request", mergeStrategy: "per_task" });
+    expect(screen.getByRole("combobox", { name: "Merge strategy" })).toHaveValue("per_epic");
+    expect(screen.getByRole("combobox", { name: "Merge strategy" })).toBeDisabled();
+    expect(screen.getByText(/PR delivery uses one shared branch per plan/)).toBeInTheDocument();
+  });
+
   beforeEach(() => {
     vi.mocked(api.projects.runSelfImprovement).mockReset();
     vi.mocked(api.projects.getSelfImprovementStatus).mockReset();

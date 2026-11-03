@@ -44,7 +44,9 @@ Guidance is journaled before acknowledgment. `queued` is durable acceptance, `in
 
 Reviewed SPEC drafts are available at `/projects/<projectId>/publication`. Drafts are immutable SQL revisions bound to a content hash, Git base and destination; approval must match that revision. The trusted publisher validates a candidate worktree before advancing Git with a base comparison. Interrupted publication is reconciled or remains explicitly uncertain. Sketch autosaves retain the existing trusted local editing policy and do not use this reviewed publication workflow. See `docs/design/collaboration-foundations.md` for rollout limits.
 
-### Loop Kicker vs Watchdog
+#In Autonomy settings, code delivery defaults to direct merge into the configured base branch. Pull request delivery uses one shared branch per plan, runs quality checks, and publishes a GitHub PR via the signed-in `gh` CLI without merging, pushing the base branch, or auto-deploying. Plan branches and worktrees are retained for review and follow-up tasks; Execute agents still leave publication to the orchestrator.
+
+## Loop Kicker vs Watchdog
 
 - **Loop kicker** (60s): Restarts the orchestrator loop when idle. Runs inside the orchestrator.
 - **Watchdog** (5 min): Witness-style health patrol — stale heartbeats, orphaned tasks, stale `.git/index.lock`. Runs in a separate `WatchdogService`.

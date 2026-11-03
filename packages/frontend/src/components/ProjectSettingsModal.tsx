@@ -1,3 +1,4 @@
+import { CodeDeliverySelect } from "./CodeDeliverySelect";
 import { AgentProviderCliBanner } from "./AgentProviderCliBanner";
 import {
   useState,
@@ -32,6 +33,7 @@ import type {
   DeploymentMode,
   GitWorkingMode,
   MergeStrategy,
+  DeliveryMode,
   ReviewAngle,
   ReviewMode,
   SelfImprovementFrequency,
@@ -346,6 +348,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
     const aiAutonomyLevel = settings?.aiAutonomyLevel ?? DEFAULT_AI_AUTONOMY_LEVEL;
     const gitWorkingMode = settings?.gitWorkingMode ?? "worktree";
     const mergeStrategy = settings?.mergeStrategy ?? "per_task";
+    const deliveryMode = settings?.deliveryMode ?? "direct";
     type PersistOverrides = Partial<{
       name: string;
       repoPath: string;
@@ -357,6 +360,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
       aiAutonomyLevel: AiAutonomyLevel;
       gitWorkingMode: GitWorkingMode;
       mergeStrategy: MergeStrategy;
+      deliveryMode: DeliveryMode;
       worktreeBaseBranch: string;
       testCommand: string | null;
       reviewMode: ReviewMode;
@@ -494,6 +498,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                 "optimistic",
               gitWorkingMode: effGitMode,
               mergeStrategy: effMergeStrategy,
+              deliveryMode: overrides?.deliveryMode ?? deliveryMode,
               worktreeBaseBranch:
                 overrides?.worktreeBaseBranch ?? effSettings?.worktreeBaseBranch ?? "main",
               enableHumanTeammates: effEnableHumanTeammates,
@@ -536,6 +541,9 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
           if (notifyOnComplete) onSaved?.();
         } catch (err) {
           setError(err instanceof Error ? err.message : "Failed to save settings");
+          if (overrides?.deliveryMode !== undefined) {
+            setSettings((s) => (s ? { ...s, deliveryMode } : null));
+          }
         } finally {
           const elapsed = Date.now() - startTime;
           const remaining = Math.max(0, MIN_SAVE_SPINNER_MS - elapsed);
@@ -562,6 +570,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
         aiAutonomyLevel,
         gitWorkingMode,
         mergeStrategy,
+        deliveryMode,
         loading,
         onSaved,
         queryClient,
@@ -2100,6 +2109,14 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                         </div>
                       </div>
                     </div>
+                    <CodeDeliverySelect
+                      value={deliveryMode}
+                      baseBranch={settings?.worktreeBaseBranch ?? "main"}
+                      onChange={(value) => {
+                        setSettings((s) => (s ? { ...s, deliveryMode: value } : null));
+                        void persistSettings(undefined, { deliveryMode: value });
+                      }}
+                    />
                   </div>
                 )}
 

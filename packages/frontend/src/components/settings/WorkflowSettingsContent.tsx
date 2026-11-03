@@ -289,7 +289,8 @@ export function WorkflowSettingsContent({
   };
 
   const gitWorkingMode = draftSettings.gitWorkingMode ?? "worktree";
-  const mergeStrategy = draftSettings.mergeStrategy ?? "per_task";
+  const isPrDelivery = draftSettings.deliveryMode === "pull_request";
+  const mergeStrategy = isPrDelivery ? "per_epic" : (draftSettings.mergeStrategy ?? "per_task");
   const maxConcurrentCoders = draftSettings.maxConcurrentCoders ?? 1;
   const maxTotalConcurrentAgents = draftSettings.maxTotalConcurrentAgents;
   const gitRemoteModeText =
@@ -388,13 +389,15 @@ export function WorkflowSettingsContent({
           <div className="min-w-0 flex-1">
             <h4 className="text-sm font-semibold text-theme-text">Merge strategy</h4>
             <p className="text-xs text-theme-muted">
-              Per task (default): merge each task to main when complete. Per epic: build entire
-              plan/epic on one branch; merge once all tasks are done.
+              {isPrDelivery
+                ? "PR delivery uses one shared branch per plan. Change code delivery in Autonomy to enable automatic merges."
+                : "Per task (default): merge each task to the base branch when complete. Per epic: build the entire plan/epic on one branch; merge once all tasks are done."}
             </p>
           </div>
           <select
             aria-label="Merge strategy"
             className="input w-48 shrink-0"
+            disabled={isPrDelivery}
             value={mergeStrategy}
             onChange={(e) => {
               const strategy = e.target.value as MergeStrategy;

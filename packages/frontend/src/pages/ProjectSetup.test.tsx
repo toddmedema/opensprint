@@ -11,6 +11,7 @@ function LocationDisplay() {
 
 // Mock the API and Layout to avoid network calls and complex layout
 vi.mock("../api/client", () => ({
+  isApiError: (error: unknown) => error instanceof Error && "code" in error,
   api: {
     projects: {
       create: vi.fn(),
@@ -539,3 +540,60 @@ it("ignores a stale framework response after repository identity changes", async
   });
   expect(screen.getByLabelText("Test Framework")).toHaveValue("pytest");
 });
+
+it.each(["stash", "commit"] as const)(
+  "retries a checkout conflict with explicit %s recovery",
+  async (action) => {
+    vi.mocked(api.globalSettings.get).mockResolvedValue({
+      databaseUrl: "",
+      simpleComplexityAgent: { type: "custom", model: null, cliCommand: "agent" },
+      complexComplexityAgent: { type: "custom", model: null, cliCommand: "agent" },
+    });
+    vi.mocked(api.env.getKeys).mockResolvedValue({
+      anthropic: false,
+      cursor: false,
+      openai: false,
+      google: false,
+      claudeCli: false,
+      codexCli: false,
+      useCustomCli: true,
+    });
+    const error = Object.assign(
+      new Error(
+        "Cannot checkout master: local changes would be overwritten. Stash or commit changes first."
+      ),
+      { code: "GIT_CHECKOUT_CONFLICT" }
+    );
+    vi.mocked(api.projects.create)
+      .mockReset()
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce({ id: "new" } as never);
+    const user = userEvent.setup();
+    renderProjectSetup();
+    await user.type(screen.getByLabelText(/project name/i), "Sample project");
+    await user.type(screen.getByPlaceholderText("/Users/you/projects/my-app"), "/tmp/sample");
+    await user.click(screen.getByRole("button", { name: /^Next$/ }));
+    await user.click(screen.getByRole("button", { name: /^Next$/ }));
+    await user.click(screen.getByRole("button", { name: /^Next$/ }));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "Code delivery" }),
+      "pull_request"
+    );
+    await user.click(screen.getByRole("button", { name: /^Next$/ }));
+    await user.click(screen.getByRole("button", { name: "Create Project" }));
+    await user.click(
+      await screen.findByRole("button", {
+        name: action === "stash" ? "Stash all changes" : "Commit all changes",
+      })
+    );
+    await waitFor(() =>
+      expect(api.projects.create).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          repoPath: "/tmp/sample",
+          gitChangesAction: action,
+          deliveryMode: "pull_request",
+        })
+      )
+    );
+  }
+);

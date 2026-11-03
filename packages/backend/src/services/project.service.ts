@@ -229,6 +229,7 @@ export class ProjectService {
       {
         getRepoPath: (id) => this.getRepoPath(id),
         getSettingsWithRuntimeState: (id) => this.getSettingsWithRuntimeState(id),
+        listTasks: (id) => this.taskStore.listAll(id),
       },
       projectId,
       updates

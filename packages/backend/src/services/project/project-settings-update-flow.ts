@@ -20,6 +20,7 @@ import { getErrorMessage } from "../../utils/error-utils.js";
 import { getGlobalSettings } from "../global-settings.service.js";
 import { transformRawSettingsInStore } from "../settings-store.service.js";
 import { projectGitRuntimeCache } from "../project-git-runtime-cache.js";
+import type { StoredTask } from "../task-store.types.js";
 import { projectSettingsFromRaw } from "./project-settings-from-raw.js";
 import {
   clampValidationTimeoutMs,
@@ -30,6 +31,7 @@ import {
 export type UpdateSettingsFlowDeps = {
   getRepoPath: (projectId: string) => Promise<string>;
   getSettingsWithRuntimeState: (projectId: string) => Promise<ProjectSettings>;
+  listTasks: (projectId: string) => Promise<StoredTask[]>;
 };
 
 export async function runUpdateSettingsFlow(
@@ -38,6 +40,13 @@ export async function runUpdateSettingsFlow(
   updates: ProjectSettingsApiUpdate
 ): Promise<ProjectSettings> {
   await deps.getRepoPath(projectId);
+  const changesDelivery = [
+    "deliveryMode",
+    "gitWorkingMode",
+    "mergeStrategy",
+    "worktreeBaseBranch",
+  ].some((key) => Object.prototype.hasOwnProperty.call(updates, key));
+  const tasks = changesDelivery ? await deps.listTasks(projectId) : [];
   const gs = await getGlobalSettings();
   let baseBranchChanged = false;
   await transformRawSettingsInStore(projectId, (diskRaw) => {
@@ -134,6 +143,46 @@ export async function runUpdateSettingsFlow(
         ? sanitizedUpdates.aiAutonomyLevel
         : (current.aiAutonomyLevel ?? DEFAULT_AI_AUTONOMY_LEVEL);
     const hilConfig = hilConfigFromAiAutonomyLevel(aiAutonomyLevel);
+    if (
+      sanitizedUpdates.deliveryMode !== undefined &&
+      sanitizedUpdates.deliveryMode !== "direct" &&
+      sanitizedUpdates.deliveryMode !== "pull_request"
+    ) {
+      throw new AppError(
+        400,
+        ErrorCodes.INVALID_INPUT,
+        "Delivery mode must be direct or pull_request."
+      );
+    }
+    const changesBranchPolicy =
+      (sanitizedUpdates.deliveryMode !== undefined &&
+        sanitizedUpdates.deliveryMode !== current.deliveryMode) ||
+      (sanitizedUpdates.gitWorkingMode !== undefined &&
+        sanitizedUpdates.gitWorkingMode !== current.gitWorkingMode) ||
+      (sanitizedUpdates.mergeStrategy !== undefined &&
+        sanitizedUpdates.mergeStrategy !== current.mergeStrategy) ||
+      (sanitizedUpdates.worktreeBaseBranch !== undefined &&
+        sanitizedUpdates.worktreeBaseBranch !== current.worktreeBaseBranch);
+    const hasUnfinishedWork = tasks.some(
+      (task) =>
+        task.status === "in_progress" ||
+        ((task.issue_type ?? task.type) === "epic" &&
+          task.status !== "closed" &&
+          tasks.some(
+            (child) =>
+              child.id.startsWith(task.id + ".") &&
+              !child.id.endsWith(".0") &&
+              (child.issue_type ?? child.type) !== "epic" &&
+              child.status === "closed"
+          ))
+    );
+    if (changesBranchPolicy && hasUnfinishedWork) {
+      throw new AppError(
+        409,
+        ErrorCodes.INVALID_INPUT,
+        "Finish active plans and merge their pull requests before changing code delivery or branch settings."
+      );
+    }
     const gitWorkingMode =
       sanitizedUpdates.gitWorkingMode === "worktree" ||
       sanitizedUpdates.gitWorkingMode === "branches"

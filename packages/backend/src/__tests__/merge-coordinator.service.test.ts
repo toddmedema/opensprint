@@ -7,8 +7,12 @@ import {
 import { computeMergeGateCommandsFingerprint } from "../services/merge-verification.service.js";
 import type { StoredTask } from "../services/task-store.service.js";
 
+vi.mock("../services/plan-pull-request.service.js", () => ({ publishPlanPullRequest: vi.fn() }));
+
 vi.mock("../services/task-store.service.js", async () => {
-  const actual = await vi.importActual<typeof import("../services/task-store.service.js")>("../services/task-store.service.js");
+  const actual = await vi.importActual<typeof import("../services/task-store.service.js")>(
+    "../services/task-store.service.js"
+  );
   return {
     taskStore: {},
     resolveEpicId: actual.resolveEpicId,
@@ -82,7 +86,9 @@ const mockListCleanupIntents = vi.fn();
 const mockRemoveCleanupIntent = vi.fn();
 
 vi.mock("../services/git-commit-queue.service.js", async () => {
-  const actual = await vi.importActual<typeof import("../services/git-commit-queue.service.js")>("../services/git-commit-queue.service.js");
+  const actual = await vi.importActual<typeof import("../services/git-commit-queue.service.js")>(
+    "../services/git-commit-queue.service.js"
+  );
   return {
     MergeJobError: actual.MergeJobError,
     gitCommitQueue: {
@@ -335,9 +341,12 @@ describe("MergeCoordinatorService", () => {
         setConflictFiles: vi.fn().mockResolvedValue(undefined),
         setMergeStage: vi.fn().mockResolvedValue(undefined),
         planGetByEpicId: vi.fn().mockResolvedValue(null),
+        planUpdateMetadata: vi.fn().mockResolvedValue(undefined),
       },
       branchManager: {
-        getWorktreePath: vi.fn().mockImplementation((key: string) => `/tmp/opensprint-worktrees/${key}`),
+        getWorktreePath: vi
+          .fn()
+          .mockImplementation((key: string) => `/tmp/opensprint-worktrees/${key}`),
         waitForGitReady: vi.fn().mockResolvedValue(undefined),
         commitWip: vi.fn().mockResolvedValue(undefined),
         prepareWorktreeForRemoval: mockPrepareWorktreeForRemoval.mockResolvedValue(undefined),
@@ -1668,9 +1677,8 @@ describe("MergeCoordinatorService", () => {
   });
 
   it("runs another merger round when rebaseContinue is blocked preflight (unmerged paths)", async () => {
-    const { RebaseConflictError, RebaseContinueBlockedError } = await import(
-      "../services/branch-manager.js"
-    );
+    const { RebaseConflictError, RebaseContinueBlockedError } =
+      await import("../services/branch-manager.js");
     const prepareMainForPush = mockHost.branchManager.prepareMainForPush as unknown as ReturnType<
       typeof vi.fn
     >;
@@ -1892,6 +1900,77 @@ describe("MergeCoordinatorService", () => {
       expect(mockDeleteBranch).not.toHaveBeenCalled();
       const { triggerDeployForEvent } = await import("../services/deploy-trigger.service.js");
       expect(triggerDeployForEvent).not.toHaveBeenCalled();
+    });
+
+    it.each([false, true])(
+      "PR delivery retains the plan branch and publishes only when finished=%s",
+      async (finished) => {
+        const { publishPlanPullRequest } = await import("../services/plan-pull-request.service.js");
+        vi.mocked(publishPlanPullRequest).mockResolvedValue("https://github.com/test/repo/pull/1");
+        mockGetSettings.mockResolvedValue({
+          simpleComplexityAgent: { type: "cursor", model: null },
+          complexComplexityAgent: { type: "cursor", model: null },
+          deployment: {},
+          deliveryMode: "pull_request",
+          mergeStrategy: "per_task",
+        });
+        hostState.slots = new Map([
+          [
+            epicTaskId,
+            { ...makeSlot("/tmp/epic-wt"), taskId: epicTaskId, branchName: epicBranchName },
+          ],
+        ]);
+        mockHost.getState = vi.fn().mockImplementation(() => hostState);
+        mockHost.taskStore.listAll.mockResolvedValue([
+          { id: "os-abc", title: "Epic", status: "open", issue_type: "epic" },
+          makeEpicTask(),
+          {
+            id: "os-abc.2",
+            title: "Other",
+            status: finished ? "closed" : "open",
+            issue_type: "task",
+          },
+        ]);
+        await coordinator.performMergeAndDone(projectId, repoPath, makeEpicTask(), epicBranchName);
+        expect(publishPlanPullRequest).toHaveBeenCalledTimes(finished ? 1 : 0);
+        expect(mockHost.taskStore.close).toHaveBeenCalledWith(
+          projectId,
+          epicTaskId,
+          expect.any(String)
+        );
+        expect(mockGitQueueEnqueueAndWait).not.toHaveBeenCalled();
+        expect(mockRemoveTaskWorktree).not.toHaveBeenCalled();
+        expect(mockDeleteBranch).not.toHaveBeenCalled();
+        expect(mockHost.branchManager.pushMainToOrigin).not.toHaveBeenCalled();
+        const { triggerDeployForEvent } = await import("../services/deploy-trigger.service.js");
+        expect(triggerDeployForEvent).not.toHaveBeenCalled();
+      }
+    );
+
+    it("does not complete the last task if PR publication fails", async () => {
+      const { publishPlanPullRequest } = await import("../services/plan-pull-request.service.js");
+      vi.mocked(publishPlanPullRequest).mockRejectedValue(new Error("GitHub is offline"));
+      mockGetSettings.mockResolvedValue({
+        simpleComplexityAgent: { type: "cursor", model: null },
+        complexComplexityAgent: { type: "cursor", model: null },
+        deployment: {},
+        deliveryMode: "pull_request",
+      });
+      hostState.slots = new Map([
+        [
+          epicTaskId,
+          { ...makeSlot("/tmp/epic-wt"), taskId: epicTaskId, branchName: epicBranchName },
+        ],
+      ]);
+      mockHost.getState = vi.fn().mockImplementation(() => hostState);
+      mockHost.taskStore.listAll.mockResolvedValue([
+        { id: "os-abc", issue_type: "epic", status: "open" },
+        makeEpicTask(),
+      ]);
+      await coordinator.performMergeAndDone(projectId, repoPath, makeEpicTask(), epicBranchName);
+      expect(mockHost.taskStore.close).not.toHaveBeenCalled();
+      expect(mockGitQueueEnqueueAndWait).not.toHaveBeenCalled();
+      expect(mockDeleteBranch).not.toHaveBeenCalled();
     });
 
     it("merges epic branch to main when mergeStrategy is per_epic and last task in epic completes", async () => {

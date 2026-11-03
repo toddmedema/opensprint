@@ -41,6 +41,8 @@ When Open Sprint spawns an Execute agent:
 7. If blocked by ambiguity, return `status: "failed"` with `open_questions` instead of guessing.
 8. Do not push, merge, or close tasks manually. The orchestrator handles validation, task state, merging, and remote publication.
 
+In Autonomy settings, code delivery defaults to direct merge into the configured base branch. Pull request delivery uses one shared branch per plan, runs quality checks, and publishes a GitHub PR via the signed-in `gh` CLI without merging, pushing the base branch, or auto-deploying. Plan branches and worktrees are retained for review and follow-up tasks; Execute agents still leave publication to the orchestrator.
+
 ## Orchestrator Recovery (GUPP-style)
 
 Work state is persisted before agent spawn via `assignment.json` in `.opensprint/active/<task-id>/`. If the backend crashes, recovery reads the assignment and re-spawns or resumes the agent. **Always write assignment before spawn; never spawn then write.**

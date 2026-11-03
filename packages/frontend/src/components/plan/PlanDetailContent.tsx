@@ -14,8 +14,7 @@ import { usePlanVersions, usePlanVersion } from "../../api/hooks";
 /** Matches PrdSectionEditor / Sketch phase debounce for consistency */
 const DEBOUNCE_MS = 800;
 
-const PARENT_SUBPLANS_SIDEBAR_COPY =
-  "Sub-plans created — generate tasks on each sub-plan";
+const PARENT_SUBPLANS_SIDEBAR_COPY = "Sub-plans created — generate tasks on each sub-plan";
 
 const PLAN_TOO_LARGE_SIDEBAR_COPY =
   "This plan may be too large for a single batch — consider narrowing scope in the SPEC";
@@ -262,6 +261,16 @@ export function PlanDetailContent({
 
   const header = (
     <div className="flex flex-col gap-2 p-4">
+      {plan.metadata.pullRequestUrl?.startsWith("https://") && (
+        <a
+          href={plan.metadata.pullRequestUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm text-brand-600 hover:underline"
+        >
+          Review pull request
+        </a>
+      )}
       {parentPlanNav && onSelectHierarchyPlan && (
         <div className="min-w-0">
           <button

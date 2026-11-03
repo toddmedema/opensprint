@@ -1,12 +1,22 @@
-import type { AiAutonomyLevel } from "@opensprint/shared";
+import type { AiAutonomyLevel, DeliveryMode } from "@opensprint/shared";
+import { CodeDeliverySelect } from "../CodeDeliverySelect";
 import { AI_AUTONOMY_LEVELS, DEFAULT_AI_AUTONOMY_LEVEL } from "@opensprint/shared";
 
 export interface HilStepProps {
   value: AiAutonomyLevel;
   onChange: (level: AiAutonomyLevel) => void;
+  deliveryMode?: DeliveryMode;
+  onDeliveryModeChange?: (mode: DeliveryMode) => void;
+  baseBranch?: string;
 }
 
-export function HilStep({ value, onChange }: HilStepProps) {
+export function HilStep({
+  value,
+  onChange,
+  deliveryMode = "direct",
+  onDeliveryModeChange,
+  baseBranch = "the base branch",
+}: HilStepProps) {
   const level = value ?? DEFAULT_AI_AUTONOMY_LEVEL;
   const index = AI_AUTONOMY_LEVELS.findIndex((l) => l.value === level);
   const sliderValue = index >= 0 ? index : AI_AUTONOMY_LEVELS.length - 1;
@@ -48,6 +58,13 @@ export function HilStep({ value, onChange }: HilStepProps) {
           </div>
         </div>
       </div>
+      {onDeliveryModeChange && (
+        <CodeDeliverySelect
+          value={deliveryMode}
+          baseBranch={baseBranch}
+          onChange={onDeliveryModeChange}
+        />
+      )}
     </div>
   );
 }

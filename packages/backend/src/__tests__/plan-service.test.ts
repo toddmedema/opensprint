@@ -21,6 +21,10 @@ const mockTaskStoreAddLabel = vi.fn();
 const mockTaskStoreListAll = vi.fn();
 const mockTaskStoreShow = vi.fn();
 
+vi.mock("../services/deploy-trigger.service.js", () => ({
+  triggerDeployForEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
 /** In-memory plan store for tests: projectId -> planId -> row with version fields */
 const mockPlanStore = new Map<
   string,
@@ -2697,6 +2701,62 @@ No wrapper changes needed.`,
   });
 
   describe("markPlanComplete", () => {
+    it("does not deploy a plan whose pull request is still awaiting merge", async () => {
+      const { triggerDeployForEvent } = await import("../services/deploy-trigger.service.js");
+      const planId = "pending-pr-plan";
+      const epicId = "epic-pending-pr";
+      await mockPlanInsert(projectId, planId, {
+        content: "# Pending PR\n\n## Overview\n\nContent.",
+        metadata: JSON.stringify({
+          planId,
+          epicId,
+          shippedAt: null,
+          complexity: "medium",
+          pullRequestUrl: "https://github.com/test/repo/pull/1",
+        }),
+      });
+      mockTaskStoreListAll.mockResolvedValue([
+        { id: epicId, status: "open", type: "epic" },
+        { id: `${epicId}.1`, status: "closed", type: "task" },
+      ]);
+
+      await expect(planService.markPlanComplete(projectId, planId)).rejects.toMatchObject({
+        statusCode: 400,
+        code: "INVALID_INPUT",
+        message: "Merge the plan pull request before marking the plan complete.",
+      });
+
+      expect(triggerDeployForEvent).not.toHaveBeenCalled();
+      expect(mockPlanUpdateMetadata).not.toHaveBeenCalled();
+    });
+
+    it("allows completion and deployment after the published PR epic is merged", async () => {
+      const { triggerDeployForEvent } = await import("../services/deploy-trigger.service.js");
+      const planId = "merged-pr-plan";
+      const epicId = "epic-merged-pr";
+      await mockPlanInsert(projectId, planId, {
+        content: "# Merged PR\n\n## Overview\n\nContent.",
+        metadata: JSON.stringify({
+          planId,
+          epicId,
+          shippedAt: null,
+          complexity: "medium",
+          pullRequestUrl: "https://github.com/test/repo/pull/1",
+        }),
+      });
+      mockTaskStoreShow.mockResolvedValue({ status: "closed" });
+      mockTaskStoreListAll.mockResolvedValue([
+        { id: epicId, status: "closed", type: "epic" },
+        { id: `${epicId}.1`, status: "closed", type: "task" },
+      ]);
+
+      const plan = await planService.markPlanComplete(projectId, planId);
+
+      expect(plan.status).toBe("complete");
+      expect(plan.metadata.reviewedAt).toEqual(expect.any(String));
+      expect(triggerDeployForEvent).toHaveBeenCalledWith(projectId, "each_epic");
+    });
+
     it("sets reviewedAt and returns plan with status complete when all epic tasks are closed", async () => {
       const planId = "mark-complete-plan";
       const epicId = "epic-mark-complete";

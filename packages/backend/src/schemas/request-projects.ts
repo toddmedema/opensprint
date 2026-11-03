@@ -10,6 +10,8 @@ export const createProjectBodySchema = z
     name: z.string().min(1, { message: "name is required" }),
     repoPath: z.string().min(1, { message: "repoPath is required" }),
     deployment: z.record(z.string(), z.unknown()),
+    gitChangesAction: z.enum(["stash", "commit"]).optional(),
+    deliveryMode: z.enum(["direct", "pull_request"]).optional(),
   })
   .passthrough();
 
@@ -46,7 +48,10 @@ export const selfImprovementRollbackBodySchema = z.object({
 
 /** PUT /projects/:id/settings — accepts partial project settings (apiKeys stripped by route) */
 export const updateSettingsBodySchema = z
-  .object({ deployment: partialDeploymentSchema.optional() })
+  .object({
+    deployment: partialDeploymentSchema.optional(),
+    deliveryMode: z.enum(["direct", "pull_request"]).optional(),
+  })
   .passthrough()
   .optional()
   .default({});

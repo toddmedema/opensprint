@@ -6,6 +6,7 @@ import {
   getAgentForComplexity,
   getAgentForPlanningRole,
   parseSettings,
+  getEffectiveMergeStrategy,
   getDefaultDeploymentTarget,
   getDeploymentTargetConfig,
   getTargetsForDeployEvent,
@@ -228,6 +229,17 @@ describe("getAgentForPlanningRole", () => {
 });
 
 describe("parseSettings", () => {
+  it("defaults to direct delivery and keeps all PR plan tasks on one branch", () => {
+    expect(parseSettings({}).deliveryMode).toBe("direct");
+    expect(parseSettings({ deliveryMode: "invalid" }).deliveryMode).toBe("direct");
+    expect(parseSettings({ deliveryMode: "pull_request" }).deliveryMode).toBe("pull_request");
+    expect(
+      getEffectiveMergeStrategy({ deliveryMode: "pull_request", mergeStrategy: "per_task" })
+    ).toBe("per_epic");
+    expect(getEffectiveMergeStrategy({ deliveryMode: "direct", mergeStrategy: "per_task" })).toBe(
+      "per_task"
+    );
+  });
   const defaultParsed = { type: "cursor", model: null, cliCommand: null };
 
   it("should pass through two-tier format unchanged", () => {

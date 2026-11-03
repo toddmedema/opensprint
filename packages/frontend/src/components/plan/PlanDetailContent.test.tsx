@@ -127,6 +127,22 @@ describe("PlanDetailContent", () => {
     expect(onHierarchy).toHaveBeenCalledWith("parent-plan");
   });
 
+  it("shows the published plan PR for human review", () => {
+    render(
+      <PlanDetailContent
+        plan={{
+          ...mockPlan,
+          metadata: { ...mockPlan.metadata, pullRequestUrl: "https://github.com/test/repo/pull/1" },
+        }}
+        onContentSave={onContentSave}
+      />
+    );
+    expect(screen.getByRole("link", { name: "Review pull request" })).toHaveAttribute(
+      "href",
+      "https://github.com/test/repo/pull/1"
+    );
+  });
+
   describe("planTasksHint", () => {
     it("renders too-large warning", () => {
       render(
@@ -165,7 +181,9 @@ describe("PlanDetailContent", () => {
           planTasksHint={{ showParentDelegateSubplans: true }}
         />
       );
-      expect(screen.getByTestId("plan-detail-parent-delegate")).toHaveTextContent("Sub-plans created");
+      expect(screen.getByTestId("plan-detail-parent-delegate")).toHaveTextContent(
+        "Sub-plans created"
+      );
     });
 
     it("renders prominent Generate tasks and invokes callback", async () => {

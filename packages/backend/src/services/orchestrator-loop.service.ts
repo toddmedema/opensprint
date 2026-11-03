@@ -1,3 +1,4 @@
+import { getEffectiveMergeStrategy } from "@opensprint/shared";
 /**
  * OrchestratorLoopService — main runLoop: feedback mailbox, task selection, dispatch batching.
  * Extracted from OrchestratorService for clarity and testability.
@@ -22,6 +23,7 @@ import { getProviderOutageBackoff } from "./provider-outage-backoff.service.js";
 import { getComplexityForAgent } from "./plan-complexity.js";
 import { WorktreeBranchInUseError } from "./branch-manager.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
+import { planPullRequestReconciler } from "./plan-pull-request-reconcile.service.js";
 
 const log = createLogger("orchestrator-loop");
 
@@ -84,6 +86,7 @@ export interface OrchestratorLoopHost {
       maxConcurrentCoders?: number;
       unknownScopeStrategy?: string;
       mergeStrategy?: string;
+      deliveryMode?: "direct" | "pull_request";
     }>;
   };
   getTaskStore(): {
@@ -225,6 +228,9 @@ export class OrchestratorLoopService {
       this.host.setMaxSlotsCache(projectId, maxSlots);
 
       const taskStore = this.host.getTaskStore() as unknown as TaskStoreService;
+      if (settings.deliveryMode === "pull_request" && state.slots.size === 0) {
+        await planPullRequestReconciler.reconcile(projectId, repoPath, taskStore);
+      }
       const { tasks: readyTasksRaw, allIssues } = await taskStore.readyWithStatusMap(projectId);
 
       let readyTasks = readyTasksRaw.filter((t) => (t.issue_type ?? t.type) !== "epic");
@@ -371,7 +377,7 @@ export class OrchestratorLoopService {
         dispatchableTasks.push(st);
       }
 
-      const mergeStrategy = settings.mergeStrategy ?? "per_task";
+      const mergeStrategy = getEffectiveMergeStrategy(settings);
       const worktreeKeysPlanned = this.collectActiveWorktreeKeys(state);
       const epicAwareDispatch: SchedulerResult[] = [];
       let skippedForWorktreeConflict = 0;

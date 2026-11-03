@@ -1323,6 +1323,40 @@ describe("BranchManager", () => {
       expect(listAfter.some((w) => w.taskId === activeTaskId)).toBe(true);
     });
 
+    it("retains shared PR worktrees while their epic is open even when every child is closed", async () => {
+      await execAsync("git init", { cwd: repoPath });
+      await execAsync("git branch -M main", { cwd: repoPath });
+      await execAsync('git config user.email "test@test.com"', { cwd: repoPath });
+      await execAsync('git config user.name "Test"', { cwd: repoPath });
+      await fs.writeFile(path.join(repoPath, "README"), "initial");
+      await execAsync('git add README && git commit -m "initial"', { cwd: repoPath });
+      const epicId = `os-pr-${Date.now()}`;
+      const worktreeKey = `epic_${epicId}`;
+      const wtPath = await branchManager.createTaskWorktree(repoPath, `${epicId}.1`, "main", {
+        worktreeKey,
+        branchName: `opensprint/${worktreeKey}`,
+      });
+      worktreePaths.push(wtPath);
+      const taskStore = {
+        listAll: vi.fn().mockResolvedValue([
+          { id: epicId, status: "open" },
+          { id: `${epicId}.1`, status: "closed" },
+        ]),
+      };
+      const pruned = await branchManager.pruneOrphanWorktrees(
+        repoPath,
+        "test-project",
+        new Set(),
+        new Set(),
+        new Set(),
+        taskStore
+      );
+      expect(pruned).not.toContain(worktreeKey);
+      expect(
+        (await branchManager.listTaskWorktrees(repoPath)).some((w) => w.taskId === worktreeKey)
+      ).toBe(true);
+    });
+
     it("pruneOrphanWorktrees skips excluded worktree keys and paths", async () => {
       await execAsync("git init", { cwd: repoPath });
       await execAsync("git branch -M main", { cwd: repoPath });

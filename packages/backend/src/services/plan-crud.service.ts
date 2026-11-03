@@ -261,6 +261,8 @@ export class PlanCrudService {
       reviewedAt:
         "reviewedAt" in row.metadata ? (row.metadata.reviewedAt as string | null) : undefined,
       complexity: (row.metadata.complexity as PlanMetadata["complexity"]) ?? "medium",
+      pullRequestUrl:
+        typeof row.metadata.pullRequestUrl === "string" ? row.metadata.pullRequestUrl : undefined,
       mockups: (row.metadata.mockups as PlanMetadata["mockups"]) ?? undefined,
       parentPlanId: parentPlanId || undefined,
       ...(typeof storedMetaDepth === "number" && Number.isFinite(storedMetaDepth)
@@ -602,9 +604,14 @@ export class PlanCrudService {
     if (parentPlanId) {
       const parentRow = await this.taskStore.planGet(projectId, parentPlanId);
       if (!parentRow) {
-        throw new AppError(404, ErrorCodes.PLAN_NOT_FOUND, `Parent plan '${parentPlanId}' not found`, {
-          parentPlanId,
-        });
+        throw new AppError(
+          404,
+          ErrorCodes.PLAN_NOT_FOUND,
+          `Parent plan '${parentPlanId}' not found`,
+          {
+            parentPlanId,
+          }
+        );
       }
       const { plansMap } = await this.buildHierarchyMaps(projectId);
       let parentDepth: number;
@@ -728,6 +735,17 @@ export class PlanCrudService {
   /** Mark plan complete: set reviewedAt when all tasks for the current plan version are closed. */
   async markPlanComplete(projectId: string, planId: string): Promise<Plan> {
     const plan = await this.getPlan(projectId, planId);
+
+    if (plan.metadata.pullRequestUrl) {
+      const epic = await this.taskStore.show(projectId, plan.metadata.epicId);
+      if (epic.status !== "closed") {
+        throw new AppError(
+          400,
+          ErrorCodes.INVALID_INPUT,
+          "Merge the plan pull request before marking the plan complete."
+        );
+      }
+    }
 
     const epicId = plan.metadata.epicId;
     const currentVersion = plan.currentVersionNumber ?? 1;
@@ -857,7 +875,9 @@ export class PlanCrudService {
     const buildNode = async (planId: string): Promise<PlanHierarchyNode> => {
       const row = rowMap.get(planId);
       if (!row) {
-        throw new AppError(404, ErrorCodes.PLAN_NOT_FOUND, `Plan '${planId}' not found`, { planId });
+        throw new AppError(404, ErrorCodes.PLAN_NOT_FOUND, `Plan '${planId}' not found`, {
+          planId,
+        });
       }
       const plan = await this.materializePlanFromStoreRow(projectId, planId, row, {
         allIssues,

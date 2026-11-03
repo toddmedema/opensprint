@@ -49,6 +49,8 @@ export interface PlanMetadata {
   shippedAt: string | null;
   /** ISO timestamp when plan was marked complete (human approval); null until then */
   reviewedAt?: string | null;
+  /** Published plan branch awaiting human review and merge. */
+  pullRequestUrl?: string;
   complexity: PlanComplexity;
   /** UI/UX mockups for this plan */
   mockups?: PlanMockup[];
