@@ -424,6 +424,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                     model: effSimple.model || null,
                     cliCommand: effSimple.cliCommand || null,
                     timeoutMs: normalizeAgentTimeoutMs(effSimple.timeoutMs),
+                    effort: effSimple.effort,
                     ...((effSimple.type === "lmstudio" || effSimple.type === "ollama") && {
                       baseUrl:
                         effSimple.baseUrl ||
@@ -439,6 +440,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                     model: effComplex.model || null,
                     cliCommand: effComplex.cliCommand || null,
                     timeoutMs: normalizeAgentTimeoutMs(effComplex.timeoutMs),
+                    effort: effComplex.effort,
                     ...((effComplex.type === "lmstudio" || effComplex.type === "ollama") && {
                       baseUrl:
                         effComplex.baseUrl ||
@@ -1103,6 +1105,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                                   {
                                     type,
                                     model: null,
+                                    effort: undefined,
                                     baseUrl:
                                       type === "lmstudio"
                                         ? DEFAULT_LMSTUDIO_BASE_URL
@@ -1159,21 +1162,20 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                             )}
                           {simpleInherited ? (
                             <p className="text-sm text-theme-muted flex-1 min-w-[200px] self-end pb-1">
-                              Provider, model, and timeout follow global Settings → Agent Config.
+                              Provider, model, effort, and timeout follow global Settings → Agent
+                              Config.
                             </p>
                           ) : simpleComplexityAgent.type !== "custom" ? (
-                            <div className="flex-1 min-w-[140px]">
-                              <label
-                                htmlFor="simple-agent-select"
-                                className="block text-xs font-medium text-theme-muted mb-1"
-                              >
-                                Agent
-                              </label>
+                            <div className="flex-[2] min-w-[240px]">
                               <ModelSelect
                                 id="simple-agent-select"
                                 provider={simpleComplexityAgent.type}
                                 value={simpleComplexityAgent.model}
-                                onChange={(id) => updateSimpleComplexityAgent({ model: id })}
+                                effort={simpleComplexityAgent.effort}
+                                onEffortChange={(effort) => updateSimpleComplexityAgent({ effort })}
+                                onChange={(id, effort) =>
+                                  updateSimpleComplexityAgent({ model: id, effort })
+                                }
                                 onBlur={scheduleSaveOnBlur}
                                 projectId={project.id}
                                 refreshTrigger={modelRefreshTrigger}
@@ -1278,6 +1280,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                                   {
                                     type,
                                     model: null,
+                                    effort: undefined,
                                     baseUrl:
                                       type === "lmstudio"
                                         ? DEFAULT_LMSTUDIO_BASE_URL
@@ -1334,21 +1337,22 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                             )}
                           {complexInherited ? (
                             <p className="text-sm text-theme-muted flex-1 min-w-[200px] self-end pb-1">
-                              Provider, model, and timeout follow global Settings → Agent Config.
+                              Provider, model, effort, and timeout follow global Settings → Agent
+                              Config.
                             </p>
                           ) : complexComplexityAgent.type !== "custom" ? (
-                            <div className="flex-1 min-w-[140px]">
-                              <label
-                                htmlFor="complex-agent-select"
-                                className="block text-xs font-medium text-theme-muted mb-1"
-                              >
-                                Agent
-                              </label>
+                            <div className="flex-[2] min-w-[240px]">
                               <ModelSelect
                                 id="complex-agent-select"
                                 provider={complexComplexityAgent.type}
                                 value={complexComplexityAgent.model}
-                                onChange={(id) => updateComplexComplexityAgent({ model: id })}
+                                effort={complexComplexityAgent.effort}
+                                onEffortChange={(effort) =>
+                                  updateComplexComplexityAgent({ effort })
+                                }
+                                onChange={(id, effort) =>
+                                  updateComplexComplexityAgent({ model: id, effort })
+                                }
                                 onBlur={scheduleSaveOnBlur}
                                 projectId={project.id}
                                 refreshTrigger={modelRefreshTrigger}

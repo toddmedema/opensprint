@@ -724,6 +724,51 @@ describe("GlobalSettingsContent", () => {
     expect(mockEnvGetKeys).toHaveBeenCalled();
   });
 
+  it("saves independent native efforts from both global dropdowns", async () => {
+    mockGlobalSettingsGet.mockResolvedValue({
+      databaseUrl: "",
+      simpleComplexityAgent: { type: "codex", model: "sol", cliCommand: null, effort: "high" },
+      complexComplexityAgent: {
+        type: "claude-cli",
+        model: "opus",
+        cliCommand: null,
+        effort: "max",
+      },
+    });
+    mockModelsList.mockImplementation((provider: string) =>
+      Promise.resolve([
+        {
+          id: provider === "codex" ? "sol" : "opus",
+          displayName: "Model",
+          supportedEfforts: [{ effort: "low" }, { effort: "high" }, { effort: "max" }],
+        },
+      ])
+    );
+    renderGlobalSettingsContent();
+    await screen.findByTestId("api-keys-section-wrapper");
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("global-settings-tab-agents"));
+    });
+    await waitFor(() =>
+      expect(document.getElementById("global-simple-agent-select-effort")).toHaveValue("high")
+    );
+    expect(document.getElementById("global-complex-agent-select-effort")).toHaveValue("max");
+    await act(async () => {
+      fireEvent.change(document.getElementById("global-simple-agent-select-effort")!, {
+        target: { value: "low" },
+      });
+    });
+    fireEvent.blur(document.getElementById("global-simple-agent-select-effort")!);
+    await waitFor(() =>
+      expect(mockGlobalSettingsPut).toHaveBeenCalledWith(
+        expect.objectContaining({
+          simpleComplexityAgent: expect.objectContaining({ type: "codex", effort: "low" }),
+          complexComplexityAgent: expect.objectContaining({ type: "claude-cli", effort: "max" }),
+        })
+      )
+    );
+  });
+
   it("loads simple and complex agents from GET into Agent Config tab", async () => {
     mockGlobalSettingsGet.mockResolvedValue({
       databaseUrl: "postgresql://user:***@localhost:5432/opensprint",

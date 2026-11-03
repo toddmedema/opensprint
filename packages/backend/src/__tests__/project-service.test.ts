@@ -602,8 +602,18 @@ describe("ProjectService", () => {
         ANTHROPIC_API_KEY: [{ id: "test-ant", value: "sk-ant-test" }],
         CURSOR_API_KEY: [{ id: "test-cur", value: "cursor-test" }],
       },
-      simpleComplexityAgent: { type: "cursor", model: "from-global-simple", cliCommand: null },
-      complexComplexityAgent: { type: "cursor", model: "from-global-complex", cliCommand: null },
+      simpleComplexityAgent: {
+        type: "codex",
+        model: "gpt-6.1-sol",
+        cliCommand: null,
+        effort: "high",
+      },
+      complexComplexityAgent: {
+        type: "claude-cli",
+        model: "opus",
+        cliCommand: null,
+        effort: "max",
+      },
     });
 
     const repoPath = path.join(tempDir, "global-agent-fallback");
@@ -636,8 +646,8 @@ describe("ProjectService", () => {
     await fs.writeFile(storePath, JSON.stringify(raw));
 
     const settings = await projectService.getSettings(project.id);
-    expect(settings.simpleComplexityAgent.model).toBe("from-global-simple");
-    expect(settings.complexComplexityAgent.model).toBe("from-global-complex");
+    expect(settings.simpleComplexityAgent).toMatchObject({ model: "gpt-6.1-sol", effort: "high" });
+    expect(settings.complexComplexityAgent).toMatchObject({ model: "opus", effort: "max" });
     expect(settings.simpleComplexityAgentInherited).toBe(true);
     expect(settings.complexComplexityAgentInherited).toBe(true);
   });

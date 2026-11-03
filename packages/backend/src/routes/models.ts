@@ -4,7 +4,7 @@ import { validateQuery } from "../middleware/validate.js";
 import { modelsListQuerySchema } from "../schemas/request-models.js";
 import Anthropic from "@anthropic-ai/sdk";
 import { createHash } from "crypto";
-import type { ApiErrorResponse, ApiResponse } from "@opensprint/shared";
+import type { AgentModelOption, ApiErrorResponse, ApiResponse } from "@opensprint/shared";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import * as modelListCache from "../services/model-list-cache.js";
@@ -17,10 +17,7 @@ import {
   normalizeLocalOpenAIProviderBaseUrl,
 } from "../utils/local-openai-provider.js";
 
-export interface ModelOption {
-  id: string;
-  displayName: string;
-}
+export type ModelOption = AgentModelOption;
 
 export const modelsRouter = Router();
 

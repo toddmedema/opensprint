@@ -31,6 +31,187 @@ describe("ModelSelect", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it("uses each model's efforts and clears an incompatible model switch atomically", async () => {
+    mockModelsList.mockResolvedValue([
+      {
+        id: "sol",
+        displayName: "Sol",
+        defaultEffort: "low",
+        supportedEfforts: [{ effort: "low" }, { effort: "high" }, { effort: "ultra" }],
+      },
+      {
+        id: "luna",
+        displayName: "Luna",
+        supportedEfforts: [{ effort: "high" }, { effort: "max" }],
+      },
+    ]);
+    const onChange = vi.fn();
+    const onEffortChange = vi.fn();
+    const { rerender } = render(
+      <ModelSelect
+        id="simple-model"
+        provider="codex"
+        value="sol"
+        effort="ultra"
+        onChange={onChange}
+        onEffortChange={onEffortChange}
+      />
+    );
+    await screen.findByRole("option", { name: "Ultra (automatic delegation)" });
+    expect(screen.getByRole("combobox", { name: "Effort" })).toHaveValue("ultra");
+    expect(screen.getByRole("option", { name: "CLI default" })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Model selection" }), {
+      target: { value: "luna" },
+    });
+    expect(onChange).toHaveBeenLastCalledWith("luna", undefined);
+    rerender(
+      <ModelSelect
+        id="simple-model"
+        provider="codex"
+        value="luna"
+        effort="high"
+        onChange={onChange}
+        onEffortChange={onEffortChange}
+      />
+    );
+    expect(
+      screen.queryByRole("option", { name: "Ultra (automatic delegation)" })
+    ).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Model selection" }), {
+      target: { value: "sol" },
+    });
+    expect(onChange).toHaveBeenLastCalledWith("sol", "high");
+    fireEvent.change(screen.getByRole("combobox", { name: "Effort" }), { target: { value: "" } });
+    expect(onEffortChange).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it.each(["fallback", "error"])(
+    "retains saved model and effort during a catalog %s",
+    async (failure) => {
+      if (failure === "error") mockModelsList.mockRejectedValue(new Error("CLI unavailable"));
+      else
+        mockModelsList.mockResolvedValue([
+          { id: "default", displayName: "CLI default", supportedEfforts: [] },
+        ]);
+      const onChange = vi.fn();
+      const onEffortChange = vi.fn();
+      render(
+        <ModelSelect
+          id="complex-model"
+          provider="codex"
+          value="sol"
+          effort="high"
+          onChange={onChange}
+          onEffortChange={onEffortChange}
+        />
+      );
+      await screen.findByText(/Your saved selection is retained/);
+      expect(screen.getByRole("combobox", { name: "Effort" })).toHaveValue("high");
+      expect(onChange).not.toHaveBeenCalled();
+      expect(onEffortChange).not.toHaveBeenCalled();
+    }
+  );
+
+  it("clears a reliably unsupported saved effort and offers only default for an unsupported model", async () => {
+    mockModelsList.mockResolvedValue([
+      { id: "haiku-old", displayName: "Old Haiku", supportedEfforts: [] },
+    ]);
+    const onEffortChange = vi.fn();
+    render(
+      <ModelSelect
+        provider="claude-cli"
+        value="haiku-old"
+        effort="high"
+        onChange={vi.fn()}
+        onEffortChange={onEffortChange}
+      />
+    );
+    await waitFor(() => expect(onEffortChange).toHaveBeenCalledWith(undefined));
+    expect(screen.queryByRole("option", { name: "Max" })).not.toBeInTheDocument();
+  });
+
+  it.each(["aliases", "error"])(
+    "offers documented efforts for a saved explicit Claude model with catalog %s",
+    async (catalog) => {
+      if (catalog === "error") mockModelsList.mockRejectedValue(new Error("CLI unavailable"));
+      else
+        mockModelsList.mockResolvedValue([
+          {
+            id: "opus",
+            displayName: "Opus latest",
+            supportedEfforts: ["low", "medium", "high", "xhigh", "max"].map((effort) => ({
+              effort,
+            })),
+          },
+        ]);
+      const onEffortChange = vi.fn();
+      render(
+        <ModelSelect
+          id="pinned-model"
+          provider="claude-cli"
+          value="claude-opus-4-6"
+          onChange={vi.fn()}
+          onEffortChange={onEffortChange}
+        />
+      );
+      await waitFor(() => expect(screen.getByRole("combobox", { name: "Effort" })).toBeEnabled());
+      expect(screen.getByRole("option", { name: "Low" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Medium" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "High" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Max" })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: "Extra high" })).not.toBeInTheDocument();
+      fireEvent.change(screen.getByRole("combobox", { name: "Effort" }), {
+        target: { value: "max" },
+      });
+      expect(onEffortChange).toHaveBeenLastCalledWith("max");
+    }
+  );
+
+  it("invalidates an effort unsupported by a documented pinned Claude model", async () => {
+    mockModelsList.mockResolvedValue([{ id: "opus", displayName: "Opus latest" }]);
+    const onEffortChange = vi.fn();
+    const { rerender } = render(
+      <ModelSelect
+        provider="claude-cli"
+        value="claude-opus-4-6"
+        effort="xhigh"
+        onChange={vi.fn()}
+        onEffortChange={onEffortChange}
+      />
+    );
+    await waitFor(() => expect(onEffortChange).toHaveBeenCalledWith(undefined));
+    await screen.findByRole("option", { name: "claude-opus-4-6" });
+    onEffortChange.mockClear();
+    rerender(
+      <ModelSelect
+        provider="claude-cli"
+        value="claude-sonnet-5-5"
+        effort="xhigh"
+        onChange={vi.fn()}
+        onEffortChange={onEffortChange}
+      />
+    );
+    await screen.findByRole("option", { name: "Extra high" });
+    expect(onEffortChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps unknown pinned Claude effort unverified when the catalog is unavailable", async () => {
+    mockModelsList.mockRejectedValue(new Error("CLI unavailable"));
+    const onEffortChange = vi.fn();
+    render(
+      <ModelSelect
+        provider="claude-cli"
+        value="claude-custom-unknown"
+        effort="high"
+        onChange={vi.fn()}
+        onEffortChange={onEffortChange}
+      />
+    );
+    await screen.findByText(/Your saved selection is retained/);
+    expect(screen.getByRole("combobox", { name: "Effort" })).toHaveValue("high");
+    expect(onEffortChange).not.toHaveBeenCalled();
+  });
+
   it("renders custom provider as text input", () => {
     render(<ModelSelect provider="custom" value={null} onChange={() => {}} />);
     expect(screen.getByPlaceholderText("CLI command handles model")).toBeInTheDocument();

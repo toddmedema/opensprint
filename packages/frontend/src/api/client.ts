@@ -240,10 +240,7 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
 }
 
 // ─── Models ───
-export interface ModelOption {
-  id: string;
-  displayName: string;
-}
+export type ModelOption = import("@opensprint/shared").AgentModelOption;
 
 // ─── DB Status ───
 export interface DbStatusResponse {

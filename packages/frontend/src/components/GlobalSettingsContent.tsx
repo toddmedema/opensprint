@@ -68,6 +68,7 @@ function toPutAgent(agent: AgentConfig): AgentConfig {
     model: agent.model || null,
     cliCommand: agent.cliCommand || null,
     timeoutMs,
+    effort: agent.effort,
   };
   if (agent.type === "lmstudio" || agent.type === "ollama") {
     return {

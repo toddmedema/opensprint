@@ -187,6 +187,7 @@ export function SimplifiedAgentsStep({
                     ...simpleComplexityAgent,
                     type,
                     model: "",
+                    effort: undefined,
                     baseUrl:
                       type === "lmstudio"
                         ? DEFAULT_LMSTUDIO_BASE_URL
@@ -236,19 +237,21 @@ export function SimplifiedAgentsStep({
               </div>
             )}
             {simpleComplexityAgent.type !== "custom" ? (
-              <div className="flex-1 min-w-[140px]">
-                <label
-                  htmlFor="simplified-simple-agent-select"
-                  className="block text-sm font-medium text-theme-text mb-1"
-                >
-                  Agent
-                </label>
+              <div className="flex-[2] min-w-[240px]">
                 <ModelSelect
                   id="simplified-simple-agent-select"
                   provider={simpleComplexityAgent.type}
                   value={simpleComplexityAgent.model || null}
-                  onChange={(id) =>
-                    onSimpleComplexityAgentChange({ ...simpleComplexityAgent, model: id ?? "" })
+                  effort={simpleComplexityAgent.effort}
+                  onEffortChange={(effort) =>
+                    onSimpleComplexityAgentChange({ ...simpleComplexityAgent, effort })
+                  }
+                  onChange={(id, effort) =>
+                    onSimpleComplexityAgentChange({
+                      ...simpleComplexityAgent,
+                      model: id ?? "",
+                      effort,
+                    })
                   }
                   refreshTrigger={modelRefreshTrigger}
                   baseUrl={
@@ -306,6 +309,7 @@ export function SimplifiedAgentsStep({
                     ...complexComplexityAgent,
                     type,
                     model: "",
+                    effort: undefined,
                     baseUrl:
                       type === "lmstudio"
                         ? DEFAULT_LMSTUDIO_BASE_URL
@@ -355,19 +359,21 @@ export function SimplifiedAgentsStep({
               </div>
             )}
             {complexComplexityAgent.type !== "custom" ? (
-              <div className="flex-1 min-w-[140px]">
-                <label
-                  htmlFor="simplified-complex-agent-select"
-                  className="block text-sm font-medium text-theme-text mb-1"
-                >
-                  Agent
-                </label>
+              <div className="flex-[2] min-w-[240px]">
                 <ModelSelect
                   id="simplified-complex-agent-select"
                   provider={complexComplexityAgent.type}
                   value={complexComplexityAgent.model || null}
-                  onChange={(id) =>
-                    onComplexComplexityAgentChange({ ...complexComplexityAgent, model: id ?? "" })
+                  effort={complexComplexityAgent.effort}
+                  onEffortChange={(effort) =>
+                    onComplexComplexityAgentChange({ ...complexComplexityAgent, effort })
+                  }
+                  onChange={(id, effort) =>
+                    onComplexComplexityAgentChange({
+                      ...complexComplexityAgent,
+                      model: id ?? "",
+                      effort,
+                    })
                   }
                   refreshTrigger={modelRefreshTrigger}
                   baseUrl={

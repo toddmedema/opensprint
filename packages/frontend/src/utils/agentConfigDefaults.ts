@@ -141,6 +141,7 @@ export function getInitialAgentConfig(agent: AgentConfig | undefined, envKeys: E
     model: agent?.model ?? "",
     cliCommand: agent?.cliCommand ?? "",
     timeoutMs: agent?.timeoutMs,
+    effort: agent?.effort,
     baseUrl:
       agent?.baseUrl ?? (type === "ollama" ? DEFAULT_OLLAMA_BASE_URL : DEFAULT_LMSTUDIO_BASE_URL),
   };

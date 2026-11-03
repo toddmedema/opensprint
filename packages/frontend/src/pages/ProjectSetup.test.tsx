@@ -49,8 +49,13 @@ vi.mock("../components/FolderBrowser", () => ({
 }));
 
 vi.mock("../components/ModelSelect", () => ({
-  ModelSelect: ({ value }: { value: string | null }) => (
-    <select data-testid="model-select" value={value ?? ""} onChange={() => {}}>
+  ModelSelect: ({ value, effort }: { value: string | null; effort?: string }) => (
+    <select
+      data-testid="model-select"
+      data-effort={effort ?? ""}
+      value={value ?? ""}
+      onChange={() => {}}
+    >
       <option value={value ?? ""}>{value ?? ""}</option>
     </select>
   ),
@@ -69,7 +74,12 @@ describe("ProjectSetup - Step 1 validation", () => {
     vi.mocked(api.globalSettings.get).mockResolvedValueOnce({
       databaseUrl: "",
       simpleComplexityAgent: { type: "custom", model: null, cliCommand: "my-agent" },
-      complexComplexityAgent: { type: "codex", model: "gpt-6.1-sol", cliCommand: null },
+      complexComplexityAgent: {
+        type: "codex",
+        model: "gpt-6.1-sol",
+        cliCommand: null,
+        effort: "xhigh",
+      },
     });
     vi.mocked(api.env.getKeys).mockResolvedValueOnce({
       anthropic: false,
@@ -91,6 +101,25 @@ describe("ProjectSetup - Step 1 validation", () => {
     expect(screen.getByTestId("model-select")).toHaveValue("gpt-6.1-sol");
     expect(screen.queryByText(/API key required/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /next/i })).toBeEnabled();
+    expect(screen.getByTestId("model-select")).toHaveAttribute("data-effort", "xhigh");
+    vi.mocked(api.projects.create).mockResolvedValueOnce({
+      id: "native-effort",
+      currentPhase: "sketch",
+    } as never);
+    for (let step = 0; step < 3; step++)
+      await user.click(screen.getByRole("button", { name: /^Next$/ }));
+    await user.click(screen.getByRole("button", { name: "Create Project" }));
+    await waitFor(() =>
+      expect(api.projects.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          complexComplexityAgent: expect.objectContaining({
+            type: "codex",
+            model: "gpt-6.1-sol",
+            effort: "xhigh",
+          }),
+        })
+      )
+    );
   });
 
   it("shows project info step (name and repository) on first load", () => {

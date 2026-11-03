@@ -189,6 +189,7 @@ export function CreateNewProjectPage() {
           simpleComplexityAgent: {
             type: simpleComplexityAgent.type,
             timeoutMs: simpleComplexityAgent.timeoutMs,
+            effort: simpleComplexityAgent.effort,
             model:
               simpleComplexityAgent.type === "custom" ? null : simpleComplexityAgent.model || null,
             cliCommand:
@@ -207,6 +208,7 @@ export function CreateNewProjectPage() {
           complexComplexityAgent: {
             type: complexComplexityAgent.type,
             timeoutMs: complexComplexityAgent.timeoutMs,
+            effort: complexComplexityAgent.effort,
             model:
               complexComplexityAgent.type === "custom"
                 ? null
@@ -272,11 +274,13 @@ export function CreateNewProjectPage() {
     simpleComplexityAgent.model,
     simpleComplexityAgent.cliCommand,
     simpleComplexityAgent.timeoutMs,
+    simpleComplexityAgent.effort,
     simpleComplexityAgent.baseUrl,
     complexComplexityAgent.type,
     complexComplexityAgent.model,
     complexComplexityAgent.cliCommand,
     complexComplexityAgent.timeoutMs,
+    complexComplexityAgent.effort,
     complexComplexityAgent.baseUrl,
   ]);
 
@@ -293,6 +297,7 @@ export function CreateNewProjectPage() {
         simpleComplexityAgent: {
           type: simpleComplexityAgent.type,
           timeoutMs: simpleComplexityAgent.timeoutMs,
+          effort: simpleComplexityAgent.effort,
           model:
             simpleComplexityAgent.type === "custom" ? null : simpleComplexityAgent.model || null,
           cliCommand:
@@ -311,6 +316,7 @@ export function CreateNewProjectPage() {
         complexComplexityAgent: {
           type: complexComplexityAgent.type,
           timeoutMs: complexComplexityAgent.timeoutMs,
+          effort: complexComplexityAgent.effort,
           model:
             complexComplexityAgent.type === "custom" ? null : complexComplexityAgent.model || null,
           cliCommand:

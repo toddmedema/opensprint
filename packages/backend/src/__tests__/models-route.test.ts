@@ -799,6 +799,33 @@ describe("Models API", () => {
       expect(mockModelsList).not.toHaveBeenCalled();
     });
 
+    it("returns native effort capabilities without consulting cloud API keys", async () => {
+      mockListCodexModels.mockResolvedValueOnce([
+        {
+          id: "sol",
+          displayName: "Sol",
+          defaultEffort: "low",
+          supportedEfforts: [{ effort: "low" }, { effort: "ultra" }],
+        },
+      ]);
+      const codex = await authedGetWithHangupRetry(app, `${API_PREFIX}/models?provider=codex`);
+      expect(codex.body.data[0]).toMatchObject({
+        defaultEffort: "low",
+        supportedEfforts: [{ effort: "low" }, { effort: "ultra" }],
+      });
+      const claude = await authedGetWithHangupRetry(
+        app,
+        `${API_PREFIX}/models?provider=claude-cli`
+      );
+      expect(claude.body.data.find((model: { id: string }) => model.id === "sonnet")).toMatchObject(
+        {
+          defaultEffort: "medium",
+          supportedEfforts: ["low", "medium", "high", "xhigh", "max"].map((effort) => ({ effort })),
+        }
+      );
+      expect(mockGetNextKey).not.toHaveBeenCalled();
+    });
+
     it("lists Codex models using local CLI auth without API keys", async () => {
       const res = await authedGetWithHangupRetry(app, `${API_PREFIX}/models?provider=codex`);
       expect(res.status).toBe(200);

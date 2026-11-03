@@ -134,6 +134,6 @@ When `maxConcurrentCoders > 1`, the **TaskScheduler** selects non-overlapping ta
 
 ### Native subscription CLIs
 
-Native Claude Code (`claude-cli`) and Codex (`codex`) agents use local subscription sign-in, not API-key settings. Their task prompts are passed on stdin. Sandbox restrictions remain active; if a required action is blocked, report it rather than claiming success. The orchestrator commits remaining worktree changes before merge.
+Native Claude Code (`claude-cli`) and Codex (`codex`) agents use local subscription sign-in, not API-key settings. Their task prompts are passed on stdin. An optional per-tier effort uses the selected model’s supported levels; omitted effort preserves CLI defaults. Explicit effort is verified before launch and passed through the native CLI configuration, including task-file runs. Sandbox restrictions remain active; if a required action is blocked, report it rather than claiming success. The orchestrator commits remaining worktree changes before merge.
 
 Select **Anthropic Claude Code (CLI)** or **OpenAI Codex (CLI)** in global or project agent settings. Install the CLI and sign in through its own flow (`claude` or `codex login`). Claude model aliases follow current releases; Codex model choices come from the installed CLI catalog. Available models still depend on your account.

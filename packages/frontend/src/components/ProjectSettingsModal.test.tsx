@@ -1355,6 +1355,48 @@ describe("ProjectSettingsModal", () => {
     );
   });
 
+  it("persists both native effort dropdowns in project settings payload", async () => {
+    mockGetSettings.mockResolvedValueOnce({
+      ...mockSettings,
+      simpleComplexityAgent: { type: "codex", model: "sol", cliCommand: null, effort: "high" },
+      complexComplexityAgent: {
+        type: "claude-cli",
+        model: "opus",
+        cliCommand: null,
+        effort: "max",
+      },
+    });
+    mockModelsList.mockImplementation((provider: string) =>
+      Promise.resolve([
+        {
+          id: provider === "codex" ? "sol" : "opus",
+          displayName: "Model",
+          supportedEfforts: [{ effort: "low" }, { effort: "high" }, { effort: "max" }],
+        },
+      ])
+    );
+    renderModal(<ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />);
+    await waitForModalReady();
+    await userEvent.click(screen.getByRole("button", { name: "Agent Config" }));
+    await waitFor(() =>
+      expect(document.getElementById("simple-agent-select-effort")).toHaveValue("high")
+    );
+    expect(document.getElementById("complex-agent-select-effort")).toHaveValue("max");
+    fireEvent.change(document.getElementById("complex-agent-select-effort")!, {
+      target: { value: "low" },
+    });
+    fireEvent.blur(document.getElementById("complex-agent-select-effort")!);
+    await waitFor(() =>
+      expect(mockUpdateSettings).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({
+          simpleComplexityAgent: expect.objectContaining({ type: "codex", effort: "high" }),
+          complexComplexityAgent: expect.objectContaining({ type: "claude-cli", effort: "low" }),
+        })
+      )
+    );
+  });
+
   it("persists configured agent timeouts in project settings payload", async () => {
     mockGetSettings.mockResolvedValueOnce({
       ...mockSettings,

@@ -224,6 +224,7 @@ export function ProjectSetup() {
         simpleComplexityAgent: {
           type: simpleComplexityAgent.type,
           timeoutMs: simpleComplexityAgent.timeoutMs,
+          effort: simpleComplexityAgent.effort,
           model:
             simpleComplexityAgent.type === "custom" ? null : simpleComplexityAgent.model || null,
           cliCommand:
@@ -242,6 +243,7 @@ export function ProjectSetup() {
         complexComplexityAgent: {
           type: complexComplexityAgent.type,
           timeoutMs: complexComplexityAgent.timeoutMs,
+          effort: complexComplexityAgent.effort,
           model:
             complexComplexityAgent.type === "custom" ? null : complexComplexityAgent.model || null,
           cliCommand:

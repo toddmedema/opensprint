@@ -52,8 +52,13 @@ vi.mock("../components/FolderBrowser", () => ({
 }));
 
 vi.mock("../components/ModelSelect", () => ({
-  ModelSelect: ({ value }: { value: string | null }) => (
-    <select data-testid="model-select" value={value ?? ""} onChange={() => {}}>
+  ModelSelect: ({ value, effort }: { value: string | null; effort?: string }) => (
+    <select
+      data-testid="model-select"
+      data-effort={effort ?? ""}
+      value={value ?? ""}
+      onChange={() => {}}
+    >
       <option value={value ?? ""}>{value ?? ""}</option>
     </select>
   ),
@@ -130,6 +135,7 @@ describe("CreateNewProjectPage", () => {
         model: "gpt-6.1-sol",
         cliCommand: null,
         timeoutMs: 3600000,
+        effort: "high",
       },
     });
     mockGetKeys.mockResolvedValueOnce({
@@ -153,6 +159,19 @@ describe("CreateNewProjectPage", () => {
     expect(screen.getByTestId("model-select")).toHaveValue("gpt-6.1-sol");
     expect(screen.queryByText(/API key required/)).not.toBeInTheDocument();
     expect(screen.getByTestId("next-button")).toBeEnabled();
+    expect(screen.getByTestId("model-select")).toHaveAttribute("data-effort", "high");
+    await user.click(screen.getByTestId("next-button"));
+    await screen.findByText(/your project is ready/i);
+    expect(mockScaffold).toHaveBeenCalledWith(
+      expect.objectContaining({
+        complexComplexityAgent: expect.objectContaining({
+          type: "codex",
+          model: "gpt-6.1-sol",
+          effort: "high",
+          timeoutMs: 3600000,
+        }),
+      })
+    );
   });
 
   it("renders Create New Project title", () => {

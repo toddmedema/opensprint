@@ -216,6 +216,76 @@ describe("AgentClient", () => {
       });
     }
 
+    it.each(["codex", "claude-cli"] as const)(
+      "passes explicit %s effort on chat invocations",
+      async (type) => {
+        const child = nativeCliChild();
+        mockSpawn.mockReturnValue(child);
+        mockExec.mockImplementation((_cmd, _opts, callback) =>
+          callback(
+            null,
+            JSON.stringify({
+              models: [{ slug: "gpt-6.1-sol", supported_reasoning_levels: [{ effort: "high" }] }],
+            }),
+            ""
+          )
+        );
+        const previous = process.env.CLAUDE_CODE_EFFORT_LEVEL;
+        process.env.CLAUDE_CODE_EFFORT_LEVEL = "low";
+        try {
+          const pending = client.invoke({
+            config: {
+              type,
+              model: type === "codex" ? "gpt-6.1-sol" : "opus",
+              cliCommand: null,
+              effort: "high",
+            },
+            prompt: "Check the code",
+          });
+          await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalledOnce());
+          const args = mockSpawn.mock.calls[0][1] as string[];
+          if (type === "codex") expect(args).toContain('model_reasoning_effort="high"');
+          else {
+            expect(args.slice(args.indexOf("--effort"), args.indexOf("--effort") + 2)).toEqual([
+              "--effort",
+              "high",
+            ]);
+            expect(mockSpawn.mock.calls[0][2].env.CLAUDE_CODE_EFFORT_LEVEL).toBe("high");
+          }
+          child.stdout.emit("data", Buffer.from("Done"));
+          child.emit("close", 0);
+          expect((await pending).content).toBe("Done");
+        } finally {
+          if (previous === undefined) delete process.env.CLAUDE_CODE_EFFORT_LEVEL;
+          else process.env.CLAUDE_CODE_EFFORT_LEVEL = previous;
+        }
+      }
+    );
+
+    it("rejects unsupported Codex effort before starting an inference process", async () => {
+      mockExec.mockImplementation((_cmd, _opts, callback) =>
+        callback(
+          null,
+          JSON.stringify({
+            models: [
+              {
+                slug: "gpt-6-luna",
+                supported_reasoning_levels: [{ effort: "high" }, { effort: "max" }],
+              },
+            ],
+          }),
+          ""
+        )
+      );
+      await expect(
+        client.invoke({
+          config: { type: "codex", model: "gpt-6-luna", cliCommand: null, effort: "ultra" },
+          prompt: "Hello",
+        })
+      ).rejects.toThrow(/Cannot verify ultra effort/);
+      expect(mockSpawn).not.toHaveBeenCalled();
+    });
+
     it("runs native Codex with stdin, model choice and subscription-only auth", async () => {
       const child = nativeCliChild();
       mockSpawn.mockReturnValue(child);
@@ -1475,6 +1545,71 @@ describe("AgentClient", () => {
   });
 
   describe("spawnWithTaskFile", () => {
+    it.each(["codex", "claude-cli"] as const)(
+      "passes explicit %s effort to task-file coding runs",
+      async (type) => {
+        const fs = await import("node:fs/promises");
+        const os = await import("node:os");
+        const path = await import("node:path");
+        const root = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-effort-task-"));
+        try {
+          const taskPath = path.join(root, "prompt.md");
+          await fs.writeFile(taskPath, "Implement effort selection");
+          const child = Object.assign(new EventEmitter(), {
+            pid: 46124,
+            killed: false,
+            kill: vi.fn(),
+            stdin: Object.assign(new PassThrough(), { end: vi.fn() }),
+            stdout: new PassThrough(),
+            stderr: new PassThrough(),
+          });
+          mockSpawn.mockReturnValue(child);
+          mockExec.mockImplementation((_cmd, _opts, callback) =>
+            callback(
+              null,
+              JSON.stringify({
+                models: [{ slug: "gpt-6.1-sol", supported_reasoning_levels: [{ effort: "max" }] }],
+              }),
+              ""
+            )
+          );
+          const onExit = vi.fn();
+          const handle = client.spawnWithTaskFile(
+            {
+              type,
+              model: type === "codex" ? "gpt-6.1-sol" : "sonnet",
+              cliCommand: null,
+              effort: "max",
+            },
+            taskPath,
+            root,
+            vi.fn(),
+            onExit
+          );
+          expect(handle.pid).toBeNull();
+          await vi.waitFor(() => expect(mockSpawn).toHaveBeenCalledOnce());
+          expect(handle.pid).toBe(46124);
+          const args = mockSpawn.mock.calls[0][1] as string[];
+          if (type === "codex") {
+            expect(args).toContain('model_reasoning_effort="max"');
+            expect(args).toContain("workspace-write");
+            expect(args).toContain("sandbox_workspace_write.network_access=false");
+          } else {
+            expect(args.slice(args.indexOf("--effort"), args.indexOf("--effort") + 2)).toEqual([
+              "--effort",
+              "max",
+            ]);
+            expect(args).toContain("acceptEdits");
+            expect(mockSpawn.mock.calls[0][2].env.CLAUDE_CODE_EFFORT_LEVEL).toBe("max");
+          }
+          expect(child.stdin.end).toHaveBeenCalledWith("Implement effort selection");
+          child.emit("close", 0);
+        } finally {
+          await fs.rm(root, { recursive: true, force: true });
+        }
+      }
+    );
+
     it.each([true, false])(
       "uses observed close, rather than .killed, for stop escalation (closes early: %s)",
       async (closesEarly) => {

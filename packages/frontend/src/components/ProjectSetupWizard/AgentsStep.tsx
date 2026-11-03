@@ -5,6 +5,7 @@ import { ModelSelect } from "../ModelSelect";
 import { AgentReferenceModal } from "../AgentReferenceModal";
 import type {
   AgentTimeoutValue,
+  AgentEffort,
   AgentType,
   GitWorkingMode,
   UnknownScopeStrategy,
@@ -28,6 +29,7 @@ export interface AgentConfig {
   model: string;
   cliCommand: string;
   timeoutMs?: AgentTimeoutValue;
+  effort?: AgentEffort;
   baseUrl?: string;
 }
 
@@ -302,6 +304,7 @@ export function AgentsStep({
                     ...simpleComplexityAgent,
                     type,
                     model: "",
+                    effort: undefined,
                     baseUrl:
                       type === "lmstudio"
                         ? DEFAULT_LMSTUDIO_BASE_URL
@@ -351,19 +354,21 @@ export function AgentsStep({
               </div>
             )}
             {simpleComplexityAgent.type !== "custom" ? (
-              <div className="flex-1 min-w-[140px]">
-                <label
-                  htmlFor="simple-agent-select"
-                  className="block text-sm font-medium text-theme-text mb-1"
-                >
-                  Agent
-                </label>
+              <div className="flex-[2] min-w-[240px]">
                 <ModelSelect
                   id="simple-agent-select"
                   provider={simpleComplexityAgent.type}
                   value={simpleComplexityAgent.model || null}
-                  onChange={(id) =>
-                    onSimpleComplexityAgentChange({ ...simpleComplexityAgent, model: id ?? "" })
+                  effort={simpleComplexityAgent.effort}
+                  onEffortChange={(effort) =>
+                    onSimpleComplexityAgentChange({ ...simpleComplexityAgent, effort })
+                  }
+                  onChange={(id, effort) =>
+                    onSimpleComplexityAgentChange({
+                      ...simpleComplexityAgent,
+                      model: id ?? "",
+                      effort,
+                    })
                   }
                   refreshTrigger={modelRefreshTrigger}
                   baseUrl={
@@ -421,6 +426,7 @@ export function AgentsStep({
                     ...complexComplexityAgent,
                     type,
                     model: "",
+                    effort: undefined,
                     baseUrl:
                       type === "lmstudio"
                         ? DEFAULT_LMSTUDIO_BASE_URL
@@ -470,19 +476,21 @@ export function AgentsStep({
               </div>
             )}
             {complexComplexityAgent.type !== "custom" ? (
-              <div className="flex-1 min-w-[140px]">
-                <label
-                  htmlFor="complex-agent-select"
-                  className="block text-sm font-medium text-theme-text mb-1"
-                >
-                  Agent
-                </label>
+              <div className="flex-[2] min-w-[240px]">
                 <ModelSelect
                   id="complex-agent-select"
                   provider={complexComplexityAgent.type}
                   value={complexComplexityAgent.model || null}
-                  onChange={(id) =>
-                    onComplexComplexityAgentChange({ ...complexComplexityAgent, model: id ?? "" })
+                  effort={complexComplexityAgent.effort}
+                  onEffortChange={(effort) =>
+                    onComplexComplexityAgentChange({ ...complexComplexityAgent, effort })
+                  }
+                  onChange={(id, effort) =>
+                    onComplexComplexityAgentChange({
+                      ...complexComplexityAgent,
+                      model: id ?? "",
+                      effort,
+                    })
                   }
                   refreshTrigger={modelRefreshTrigger}
                   baseUrl={

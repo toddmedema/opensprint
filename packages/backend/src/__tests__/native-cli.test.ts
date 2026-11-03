@@ -77,6 +77,67 @@ describe("native subscription CLIs", () => {
     ]);
   });
 
+  it("preserves per-model effort metadata from both native and app-server catalogs", () => {
+    expect(
+      parseCodexModelCatalog({
+        models: [
+          {
+            slug: "sol",
+            default_reasoning_level: "low",
+            supported_reasoning_levels: [
+              { effort: "low", description: "Fast" },
+              { effort: "ultra", description: "Delegates" },
+              { effort: "invalid" },
+            ],
+          },
+        ],
+      })[0]
+    ).toMatchObject({
+      defaultEffort: "low",
+      supportedEfforts: [
+        { effort: "low", description: "Fast" },
+        { effort: "ultra", description: "Delegates" },
+      ],
+    });
+    expect(
+      parseCodexModelCatalog({
+        result: {
+          data: [
+            {
+              id: "luna",
+              defaultReasoningEffort: "high",
+              supportedReasoningEfforts: [
+                { reasoningEffort: "high", description: "Careful" },
+                { reasoningEffort: "max" },
+              ],
+            },
+          ],
+        },
+      })[0]
+    ).toMatchObject({
+      defaultEffort: "high",
+      supportedEfforts: [{ effort: "high", description: "Careful" }, { effort: "max" }],
+    });
+    expect(parseCodexModelCatalog([{ id: "legacy" }])[0]).not.toHaveProperty("supportedEfforts");
+  });
+
+  it("passes an explicit Codex override while omitting it for CLI defaults", () => {
+    expect(buildCodexArgs("gpt-6.1-sol", true, "xhigh")).toContain(
+      'model_reasoning_effort="xhigh"'
+    );
+    expect(buildCodexArgs("gpt-6.1-sol", false, "max")).toContain('model_reasoning_effort="max"');
+    expect(
+      buildCodexArgs("gpt-6.1-sol", true).some((arg) => arg.startsWith("model_reasoning_effort="))
+    ).toBe(false);
+  });
+
+  it("makes an explicit Claude override outrank the inherited effort environment", () => {
+    vi.stubEnv("CLAUDE_CODE_EFFORT_LEVEL", "low");
+    expect(buildNativeCliEnv("claude-cli", "max").CLAUDE_CODE_EFFORT_LEVEL).toBe("max");
+    expect(buildNativeCliEnv("claude-cli").CLAUDE_CODE_EFFORT_LEVEL).toBe("low");
+    expect(process.env.CLAUDE_CODE_EFFORT_LEVEL).toBe("low");
+  });
+
   it("uses Claude Code's rolling aliases without requiring an API model ID", () => {
     expect(CLAUDE_CLI_MODELS.map((model) => model.id)).toEqual([
       "default",

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AGENT_EFFORT_LEVELS, getClaudeCliEffortCapabilities } from "@opensprint/shared";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 
@@ -50,9 +51,26 @@ export const agentConfigSchema = z
     model: z.string().nullable(),
     cliCommand: z.string().nullable(),
     timeoutMs: timeoutMsSchema,
+    effort: z.enum(AGENT_EFFORT_LEVELS).optional(),
     baseUrl: baseUrlSchema,
   })
   .superRefine((data, ctx) => {
+    if (
+      data.effort &&
+      ((data.type !== "codex" && data.type !== "claude-cli") ||
+        !data.model ||
+        data.model === "default" ||
+        (data.type === "claude-cli" &&
+          !getClaudeCliEffortCapabilities(data.model).supportedEfforts?.some(
+            (level) => level.effort === data.effort
+          )))
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "effort must be supported by an explicitly selected native CLI model",
+        path: ["effort"],
+      });
+    }
     if ((data.type === "lmstudio" || data.type === "ollama") && data.baseUrl === "") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

@@ -1,12 +1,15 @@
 import { MAX_TOTAL_CONCURRENT_AGENTS_CAP } from "../constants/index.js";
 import type { AgentType } from "./agent.js";
 import type { PlanComplexity } from "./plan.js";
+import type { AgentEffort } from "../agent-effort.js";
 
 /** Agent configuration */
 export interface AgentConfig {
   type: AgentType;
   model: string | null;
   cliCommand: string | null;
+  /** Native CLI effort override; omitted means use the CLI default. */
+  effort?: AgentEffort;
   /**
    * Timeout for a single agent invocation.
    * null => no timeout ("never"), undefined => use default.

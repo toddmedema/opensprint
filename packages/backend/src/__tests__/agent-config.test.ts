@@ -4,6 +4,32 @@ import { parseAgentConfig } from "../schemas/agent-config.js";
 
 describe("agent-config schema", () => {
   describe("parseAgentConfig", () => {
+    it("round-trips native effort and rejects unsupported provider/model combinations", () => {
+      expect(
+        parseAgentConfig(
+          { type: "codex", model: "gpt-6.1-sol", cliCommand: null, effort: "ultra" },
+          "simpleComplexityAgent"
+        ).effort
+      ).toBe("ultra");
+      expect(
+        parseAgentConfig(
+          { type: "claude-cli", model: "sonnet", cliCommand: null, effort: "max" },
+          "complexComplexityAgent"
+        ).effort
+      ).toBe("max");
+      for (const config of [
+        { type: "codex", model: "default", effort: "high" },
+        { type: "claude-cli", model: "haiku", effort: "ultra" },
+        { type: "claude-cli", model: "claude-sonnet-4-6", effort: "xhigh" },
+        { type: "claude-cli", model: "unknown", effort: "high" },
+        { type: "openai", model: "gpt-6.1-sol", effort: "high" },
+        { type: "codex", model: "gpt-6.1-sol", effort: "invented" },
+      ])
+        expect(() =>
+          parseAgentConfig({ ...config, cliCommand: null }, "simpleComplexityAgent")
+        ).toThrow(/effort/);
+    });
+
     it("should accept valid simpleComplexityAgent config", () => {
       const config = parseAgentConfig(
         { type: "claude", model: "claude-sonnet-4", cliCommand: null },

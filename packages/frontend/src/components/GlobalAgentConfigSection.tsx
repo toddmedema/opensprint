@@ -299,6 +299,7 @@ export function GlobalAgentConfigSection({
                     {
                       type,
                       model: null,
+                      effort: undefined,
                       baseUrl:
                         type === "lmstudio"
                           ? DEFAULT_LMSTUDIO_BASE_URL
@@ -346,18 +347,14 @@ export function GlobalAgentConfigSection({
               </div>
             )}
             {simpleAgent.type !== "custom" ? (
-              <div className="flex-1 min-w-[140px]">
-                <label
-                  htmlFor="global-simple-agent-select"
-                  className="block text-xs font-medium text-theme-muted mb-1"
-                >
-                  Agent
-                </label>
+              <div className="flex-[2] min-w-[240px]">
                 <ModelSelect
                   id="global-simple-agent-select"
                   provider={simpleAgent.type}
                   value={simpleAgent.model}
-                  onChange={(id) => onUpdateSimple({ model: id })}
+                  effort={simpleAgent.effort}
+                  onEffortChange={(effort) => onUpdateSimple({ effort })}
+                  onChange={(id, effort) => onUpdateSimple({ model: id, effort })}
                   onBlur={scheduleSaveOnBlur}
                   refreshTrigger={modelRefreshTrigger}
                   baseUrl={
@@ -442,6 +439,7 @@ export function GlobalAgentConfigSection({
                     {
                       type,
                       model: null,
+                      effort: undefined,
                       baseUrl:
                         type === "lmstudio"
                           ? DEFAULT_LMSTUDIO_BASE_URL
@@ -489,18 +487,14 @@ export function GlobalAgentConfigSection({
               </div>
             )}
             {complexAgent.type !== "custom" ? (
-              <div className="flex-1 min-w-[140px]">
-                <label
-                  htmlFor="global-complex-agent-select"
-                  className="block text-xs font-medium text-theme-muted mb-1"
-                >
-                  Agent
-                </label>
+              <div className="flex-[2] min-w-[240px]">
                 <ModelSelect
                   id="global-complex-agent-select"
                   provider={complexAgent.type}
                   value={complexAgent.model}
-                  onChange={(id) => onUpdateComplex({ model: id })}
+                  effort={complexAgent.effort}
+                  onEffortChange={(effort) => onUpdateComplex({ effort })}
+                  onChange={(id, effort) => onUpdateComplex({ model: id, effort })}
                   onBlur={scheduleSaveOnBlur}
                   refreshTrigger={modelRefreshTrigger}
                   baseUrl={

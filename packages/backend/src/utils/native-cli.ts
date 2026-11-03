@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import type { AgentEffort } from "@opensprint/shared";
 import os from "node:os";
 import path from "node:path";
 import { execFile } from "child_process";
@@ -32,7 +33,10 @@ export function resolveNativeCliCommand(provider: NativeCliProvider): string {
 }
 
 /** A subscription CLI must never silently inherit API-key billing or alternate gateways. */
-export function buildNativeCliEnv(provider: NativeCliProvider): NodeJS.ProcessEnv {
+export function buildNativeCliEnv(
+  provider: NativeCliProvider,
+  effort?: AgentEffort
+): NodeJS.ProcessEnv {
   const env = normalizeSpawnEnvPath({ ...process.env });
   const keys =
     provider === "codex"
@@ -46,10 +50,15 @@ export function buildNativeCliEnv(provider: NativeCliProvider): NodeJS.ProcessEn
           "CLAUDE_CODE_USE_FOUNDRY",
         ];
   for (const key of keys) delete env[key];
+  if (provider === "claude-cli" && effort) env.CLAUDE_CODE_EFFORT_LEVEL = effort;
   return env;
 }
 
-export function buildCodexArgs(model: string | null, coding: boolean): string[] {
+export function buildCodexArgs(
+  model: string | null,
+  coding: boolean,
+  effort?: AgentEffort
+): string[] {
   return [
     "-a",
     "never",
@@ -59,6 +68,7 @@ export function buildCodexArgs(model: string | null, coding: boolean): string[] 
     'model_provider="openai"',
     "-c",
     "sandbox_workspace_write.network_access=false",
+    ...(effort ? ["-c", `model_reasoning_effort="${effort}"`] : []),
     "exec",
     "--sandbox",
     coding ? "workspace-write" : "read-only",

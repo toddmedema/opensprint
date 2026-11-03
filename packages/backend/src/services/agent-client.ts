@@ -19,6 +19,7 @@ import path from "path";
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { GoogleGenAI } from "@google/genai";
+import { assertNativeCliEffort } from "./cli-models.js";
 import type { AgentConfig, ApiKeyProvider } from "@opensprint/shared";
 import {
   DEFAULT_AGENT_TIMEOUT_MS,
@@ -1110,7 +1111,7 @@ export class AgentClient {
     projectId?: string
   ): { kill: () => void; pid: number | null; pendingMessages: PendingMessageQueue | null } {
     const workspaceCwd = this.resolveWorkspaceCwd(cwd, taskFilePath);
-    if (config.type === "claude-cli") {
+    if (config.type === "claude-cli" || (config.type === "codex" && config.effort)) {
       let inner: { kill: () => void; pid: number | null } | null = null;
       let cancelled = false;
       let exited = false;
@@ -1119,7 +1120,10 @@ export class AgentClient {
         exited = true;
         return onExit(code);
       };
-      void assertClaudeSubscription(workspaceCwd)
+      void (async () => {
+        if (config.effort) await assertNativeCliEffort(config);
+        if (config.type === "claude-cli") await assertClaudeSubscription(workspaceCwd);
+      })()
         .then(() => {
           if (cancelled) return;
           inner = this.doSpawnWithTaskFile(
@@ -2195,6 +2199,7 @@ export class AgentClient {
           }),
           "--print",
         ];
+        if (config.type === "claude-cli" && config.effort) args.unshift("--effort", config.effort);
         stdinPrompt = taskContent;
         if (config.model) {
           args.unshift("--model", config.model);
@@ -2212,7 +2217,7 @@ export class AgentClient {
             `Could not read task file: ${taskFilePath}. ${getErrorMessage(error)}`
           );
         }
-        args = buildCodexArgs(config.model, true);
+        args = buildCodexArgs(config.model, true, config.effort);
         break;
       }
       case "cursor": {
@@ -2304,7 +2309,7 @@ export class AgentClient {
     const spawnEnv = isolatedCursorEnv
       ? isolatedCursorEnv.env
       : config.type === "codex" || config.type === "claude-cli"
-        ? buildNativeCliEnv(config.type)
+        ? buildNativeCliEnv(config.type, config.effort)
         : normalizeSpawnEnvPath({ ...process.env });
 
     const child = spawn(command, args, {
@@ -2531,10 +2536,11 @@ export class AgentClient {
   // ─── Private Invocation Methods ───
 
   private async invokeCodexCli(options: AgentInvokeOptions): Promise<AgentResponse> {
+    if (options.config.effort) await assertNativeCliEffort(options.config);
     const fullPrompt = buildFullPrompt(options);
     const child = spawn(
       resolveNativeCliCommand("codex"),
-      buildCodexArgs(options.config.model, false),
+      buildCodexArgs(options.config.model, false, options.config.effort),
       {
         cwd: options.cwd || process.cwd(),
         stdio: ["pipe", "pipe", "pipe"],
@@ -2575,6 +2581,7 @@ export class AgentClient {
     const fullPrompt = buildFullPrompt({ systemPrompt, conversationHistory, prompt });
     const cwd = options.cwd || process.cwd();
     try {
+      if (config.effort) await assertNativeCliEffort(config);
       await assertClaudeSubscription(cwd);
     } catch (error) {
       throw new AppError(400, ErrorCodes.AGENT_INVOKE_FAILED, getErrorMessage(error), {
@@ -2583,6 +2590,7 @@ export class AgentClient {
     }
 
     const args = ["--tools", "", "--max-turns", "1", "--print"];
+    if (config.effort) args.unshift("--effort", config.effort);
     if (config.model && config.model !== "default") {
       args.unshift("--model", config.model);
     }
@@ -2590,7 +2598,7 @@ export class AgentClient {
     const child = spawn(resolveNativeCliCommand("claude-cli"), args, {
       cwd,
       stdio: ["pipe", "pipe", "pipe"],
-      env: buildNativeCliEnv("claude-cli"),
+      env: buildNativeCliEnv("claude-cli", config.effort),
       detached: true,
     });
     child.stdin?.on("error", () => {});

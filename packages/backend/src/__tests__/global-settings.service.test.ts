@@ -41,6 +41,30 @@ describe("global-settings.service", () => {
     return path.join(tempDir, ".opensprint", "global-settings.json");
   }
 
+  it("persists independent effort for both tiers and can return to CLI default", async () => {
+    await updateGlobalSettings({
+      simpleComplexityAgent: {
+        type: "codex",
+        model: "gpt-6.1-sol",
+        cliCommand: null,
+        effort: "high",
+      },
+      complexComplexityAgent: {
+        type: "claude-cli",
+        model: "opus",
+        cliCommand: null,
+        effort: "max",
+      },
+    });
+    expect((await getGlobalSettings()).simpleComplexityAgent?.effort).toBe("high");
+    expect((await getGlobalSettings()).complexComplexityAgent?.effort).toBe("max");
+    await updateGlobalSettings({
+      simpleComplexityAgent: { type: "codex", model: "gpt-6.1-sol", cliCommand: null },
+    });
+    expect((await getGlobalSettings()).simpleComplexityAgent?.effort).toBeUndefined();
+    expect((await getGlobalSettings()).complexComplexityAgent?.effort).toBe("max");
+  });
+
   describe("getGlobalSettings", () => {
     it("returns default settings with preferredEditor 'auto' when file does not exist", async () => {
       const settings = await getGlobalSettings();
