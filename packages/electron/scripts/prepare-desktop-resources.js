@@ -647,14 +647,22 @@ function writeRuntimeDiagnosticsManifest(backendOut, diagnostics) {
   console.log(`Wrote desktop runtime diagnostics manifest: ${manifestPath}`);
 }
 
-async function bundleBackendRuntime(backendOut) {
+async function bundleBackendRuntime(
+  backendOut,
+  entryPoint = path.join(backendDir, "dist", "index.js")
+) {
   const esbuild = require("esbuild");
-  const entryPoint = path.join(backendDir, "dist", "index.js");
   const outFile = path.join(backendOut, "dist", "services", "index.mjs");
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
 
   // Preserve docs path resolution in help-chat service by keeping bundle under dist/services.
   fs.cpSync(path.join(backendDir, "docs"), path.join(backendOut, "docs"), { recursive: true });
+  // Schema discovery resolves migrations relative to the bundled module's import.meta.url.
+  fs.cpSync(
+    path.join(backendDir, "src", "db", "migrations"),
+    path.join(path.dirname(outFile), "migrations"),
+    { recursive: true }
+  );
 
   console.log("Bundling backend runtime...");
   await esbuild.build({
@@ -663,6 +671,10 @@ async function bundleBackendRuntime(backendOut) {
     bundle: true,
     platform: "node",
     format: "esm",
+    // Bundled CommonJS dependencies still require Node built-ins at runtime.
+    banner: {
+      js: 'import { createRequire as __opensprintCreateRequire } from "node:module"; const require = __opensprintCreateRequire(import.meta.url);',
+    },
     target: ["node24"],
     minify: true,
     sourcemap: false,
@@ -846,6 +858,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  bundleBackendRuntime,
   buildElectronRebuildArgs,
   generateIconComposerAssets,
   parseCliOptions,

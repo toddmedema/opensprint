@@ -1,11 +1,14 @@
 import { createRequire } from "module";
 import fs from "fs";
+import os from "os";
 import path from "path";
+import { execFileSync } from "child_process";
 import { describe, expect, it } from "vitest";
 import { fileURLToPath } from "url";
 
 const require = createRequire(import.meta.url);
 const {
+  bundleBackendRuntime,
   buildElectronRebuildArgs,
   generateIconComposerAssets,
   normalizeElectronVersion,
@@ -17,6 +20,62 @@ const {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 describe("prepare-desktop-resources", () => {
+  it("runs bundled CommonJS dependencies that require Node built-ins", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensprint-backend-bundle-"));
+    try {
+      const entryPoint = path.join(tempDir, "entry.cjs");
+      const dataPath = path.join(tempDir, "message.txt");
+      fs.writeFileSync(dataPath, "backend bundle started");
+      fs.writeFileSync(
+        entryPoint,
+        `const fs = require("node:fs");
+console.log(fs.readFileSync(${JSON.stringify(dataPath)}, "utf8"));`
+      );
+      const backendOut = path.join(tempDir, "backend");
+      await bundleBackendRuntime(backendOut, entryPoint);
+
+      const output = execFileSync(
+        process.execPath,
+        [path.join(backendOut, "dist", "services", "index.mjs")],
+        { encoding: "utf8" }
+      );
+      expect(output.trim()).toBe("backend bundle started");
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("initializes a fresh SQLite database from the packaged migrations", async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "opensprint-schema-bundle-"));
+    try {
+      const entryPoint = path.join(tempDir, "entry.mjs");
+      const schemaPath = path.resolve(__dirname, "../../backend/src/db/schema.ts");
+      fs.writeFileSync(
+        entryPoint,
+        `import { runSchema } from ${JSON.stringify(schemaPath)};
+import { DatabaseSync } from "node:sqlite";
+const db = new DatabaseSync(":memory:");
+await runSchema({ query: async (sql, params = []) => db.prepare(sql).all(...params) }, "sqlite");
+console.log(JSON.stringify({
+  plans: db.prepare("SELECT COUNT(*) AS count FROM plans").get().count,
+  tasks: db.prepare("SELECT COUNT(*) AS count FROM tasks").get().count
+}));
+db.close();`
+      );
+      const backendOut = path.join(tempDir, "backend");
+      await bundleBackendRuntime(backendOut, entryPoint);
+
+      const output = execFileSync(
+        process.execPath,
+        [path.join(backendOut, "dist", "services", "index.mjs")],
+        { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }
+      );
+      expect(JSON.parse(output)).toEqual({ plans: 0, tasks: 0 });
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("normalizes semver prefixes", () => {
     expect(normalizeElectronVersion("^41.0.0")).toBe("41.0.0");
     expect(normalizeElectronVersion("  ~41.0.2 ")).toBe("41.0.2");
