@@ -44,6 +44,9 @@ export interface TaskDetailHeaderProps {
   worktreePath?: string | null;
   /** True when the project uses branches mode (shared checkout warning). */
   isBranchesMode?: boolean;
+  /** A durable standards hold is resolved through its docket, not ordinary retry actions. */
+  isGovernanceHeld?: boolean;
+  governanceCaseId?: string;
 }
 
 export function TaskDetailHeader({
@@ -71,6 +74,8 @@ export function TaskDetailHeader({
   isInProgressTask = false,
   worktreePath,
   isBranchesMode = false,
+  isGovernanceHeld = false,
+  governanceCaseId,
 }: TaskDetailHeaderProps) {
   const [actionsMenuOpen, setActionsMenuOpen] = React.useState(false);
   const [actionsMenuAlignRight, setActionsMenuAlignRight] = React.useState(false);
@@ -135,6 +140,7 @@ export function TaskDetailHeader({
   };
 
   const handleConfirmForceRetry = async () => {
+    if (isGovernanceHeld) return;
     await onForceRetry();
     setForceRetryConfirmOpen(false);
   };
@@ -182,6 +188,17 @@ export function TaskDetailHeader({
                 className={`dropdown-menu-elevated dropdown-menu-surface absolute top-full mt-1 min-w-[140px] ${actionsMenuAlignRight ? "right-0 left-auto" : "left-0 right-auto"}`}
                 data-testid="sidebar-actions-menu"
               >
+                {isGovernanceHeld && projectId && (
+                  <li role="none">
+                    <a
+                      role="menuitem"
+                      className="dropdown-item block px-3 py-2 text-xs font-medium text-violet-700 dark:text-violet-300"
+                      href={`/projects/${projectId}/settings?tab=governance${governanceCaseId ? `&case=${encodeURIComponent(governanceCaseId)}` : ""}`}
+                    >
+                      Review governance docket
+                    </a>
+                  </li>
+                )}
                 {isBlockedTask && (
                   <li role="none">
                     <button
@@ -190,7 +207,12 @@ export function TaskDetailHeader({
                       onClick={() => {
                         onUnblock();
                       }}
-                      disabled={unblockLoading}
+                      disabled={unblockLoading || isGovernanceHeld}
+                      title={
+                        isGovernanceHeld
+                          ? "Resolve the governance docket before retrying"
+                          : undefined
+                      }
                       aria-busy={unblockLoading}
                       aria-label={unblockLoading ? "Retrying" : "Retry"}
                       className="dropdown-item w-full flex items-center gap-2 text-left text-xs text-theme-error-text hover:bg-theme-border focus-visible:bg-theme-border transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[2rem]"
@@ -217,7 +239,7 @@ export function TaskDetailHeader({
                         onMarkDone();
                         setActionsMenuOpen(false);
                       }}
-                      disabled={markDoneLoading}
+                      disabled={markDoneLoading || isGovernanceHeld}
                       className="dropdown-item w-full flex items-center gap-2 text-left text-xs font-medium text-brand-600 hover:bg-theme-border focus-visible:bg-theme-border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       data-testid="sidebar-mark-done-btn"
                     >
@@ -234,7 +256,7 @@ export function TaskDetailHeader({
                         setForceRetryConfirmOpen(true);
                         setActionsMenuOpen(false);
                       }}
-                      disabled={forceRetryLoading}
+                      disabled={forceRetryLoading || isGovernanceHeld}
                       className="dropdown-item w-full flex items-center gap-2 text-left text-xs text-theme-warning-text hover:bg-theme-border focus-visible:bg-theme-border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       data-testid="sidebar-force-retry-btn"
                     >
@@ -370,7 +392,7 @@ export function TaskDetailHeader({
                 }}
                 className="btn-primary disabled:opacity-50"
                 data-testid="sidebar-force-retry-confirm-btn"
-                disabled={forceRetryLoading}
+                disabled={forceRetryLoading || isGovernanceHeld}
               >
                 {forceRetryLoading ? (
                   <span className="flex items-center gap-2">

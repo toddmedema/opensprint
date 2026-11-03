@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
 import { Router, Request } from "express";
 import { wrapAsync } from "../middleware/wrap-async.js";
 import { validateBody } from "../middleware/validate.js";
@@ -50,13 +51,13 @@ async function checkPrerequisites(): Promise<{ missing: string[] }> {
     );
   };
   try {
-    await execAsync("git --version", { timeout });
+    await execAsync("git --version", { env: agentProcessEnvironment(), timeout });
   } catch (err) {
     if (isCommandNotFound(err)) missing.push("Git");
     else throw err;
   }
   try {
-    await execAsync("node --version", { timeout });
+    await execAsync("node --version", { env: agentProcessEnvironment(), timeout });
   } catch (err) {
     if (isCommandNotFound(err)) missing.push("Node.js");
     else throw err;
@@ -134,7 +135,7 @@ async function isClaudeCliAvailable(): Promise<boolean> {
   try {
     if (path.isAbsolute(resolveNativeCliCommand("claude-cli"))) return true;
     const cmd = process.platform === "win32" ? "where" : "which";
-    await execFileAsync(cmd, ["claude"], { timeout: 3000 });
+    await execFileAsync(cmd, ["claude"], { env: agentProcessEnvironment(), timeout: 3000 });
     return true;
   } catch {
     return false;
@@ -158,7 +159,7 @@ async function isCodexCliAvailable(): Promise<boolean> {
 async function isCursorCliAvailable(): Promise<boolean> {
   try {
     const cmd = process.platform === "win32" ? "where" : "which";
-    await execFileAsync(cmd, ["agent"], { timeout: 3000 });
+    await execFileAsync(cmd, ["agent"], { env: agentProcessEnvironment(), timeout: 3000 });
     return true;
   } catch {
     return false;
@@ -169,7 +170,7 @@ async function isCursorCliAvailable(): Promise<boolean> {
 async function isOllamaCliAvailable(): Promise<boolean> {
   try {
     const cmd = process.platform === "win32" ? "where" : "which";
-    await execFileAsync(cmd, ["ollama"], { timeout: 3000 });
+    await execFileAsync(cmd, ["ollama"], { env: agentProcessEnvironment(), timeout: 3000 });
     return true;
   } catch {
     return false;

@@ -7,7 +7,7 @@ import { SettingsSubTabsBar } from "./SettingsSubTabsBar";
 import { NAVBAR_HEIGHT } from "../../lib/constants";
 
 describe("GlobalSettingsSubTabsBar", () => {
-  it("uses the same bar shell as SettingsSubTabsBar (height, testid) and both contain a tab group", () => {
+  it("uses a navbar-height shell with room for project tabs to wrap", () => {
     const { container: globalContainer, unmount: unmountGlobal } = render(
       <GlobalSettingsSubTabsBar activeTab="general" onTabChange={vi.fn()} />
     );
@@ -22,7 +22,7 @@ describe("GlobalSettingsSubTabsBar", () => {
     );
     const projectBar = projectContainer.firstElementChild as HTMLElement;
     expect(projectBar).toHaveAttribute("data-testid", "settings-sub-tabs-bar");
-    expect(projectBar).toHaveStyle({ height: `${NAVBAR_HEIGHT}px` });
+    expect(projectBar).toHaveStyle({ minHeight: `${NAVBAR_HEIGHT}px` });
     expect(projectBar.children.length).toBeGreaterThanOrEqual(1);
   });
 

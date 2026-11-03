@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
 import { execSync } from "child_process";
 import { ProjectService } from "./project.service.js";
 import { triggerDeploy } from "./deploy-trigger.service.js";
@@ -15,6 +16,7 @@ const DEFAULT_NIGHTLY_TIME = "02:00";
 function hasMainCommitsAfter(repoPath: string, afterTimestamp: string): boolean {
   try {
     const out = execSync(`git rev-list main --after="${afterTimestamp}" --count`, {
+      env: agentProcessEnvironment(),
       cwd: repoPath,
       encoding: "utf-8",
     });

@@ -5,14 +5,8 @@
 
 import fs from "fs/promises";
 import path from "path";
-import type {
-  ReviewAgentResult,
-  AgentConfig,
-  ReviewAngle,
-} from "@opensprint/shared";
-import {
-  resolveTestCommand,
-} from "@opensprint/shared";
+import type { ReviewAgentResult, AgentConfig, ReviewAngle } from "@opensprint/shared";
+import { resolveTestCommand } from "@opensprint/shared";
 import type { StoredTask } from "./task-store.service.js";
 import type {
   FailureType,
@@ -56,7 +50,10 @@ import {
   buildReviewNoResultFailureReason,
   classifyNoResultReasonCode,
 } from "./no-result-reason.service.js";
-import { describeStructuredOutputProblem, parseReviewAgentResult } from "./agent-result-validation.js";
+import {
+  describeStructuredOutputProblem,
+  parseReviewAgentResult,
+} from "./agent-result-validation.js";
 import { summarizeDebugArtifact } from "./agentic-repair.service.js";
 import {
   buildTaskLastExecutionSummary,
@@ -69,6 +66,13 @@ import { getMergeQualityGateCommands } from "./merge-quality-gates.js";
 import { getErrorMessage } from "../utils/error-utils.js";
 import { createLogger } from "../utils/logger.js";
 import { fireAndForget } from "../utils/fire-and-forget.js";
+
+import { governanceExecutionService } from "./governance-execution.service.js";
+import { governanceService } from "./governance.service.js";
+import {
+  resolveTaskReviewBase,
+  acceptRemoteReviewIfRequested,
+} from "./remote-publication-review-context.js";
 
 const log = createLogger("orchestrator-review");
 
@@ -120,6 +124,7 @@ export interface OrchestratorReviewHost {
   ): string;
   clearQualityGateDetail(phaseResult: PhaseResult): void;
   persistCounters(projectId: string, repoPath: string): Promise<void>;
+  pauseForGovernance?(projectId: string, repoPath: string, taskId: string): Promise<void>;
   onAgentStateChange(projectId: string): () => void;
   branchManager: BranchManager;
   sessionManager: SessionManager;
@@ -211,7 +216,11 @@ export class OrchestratorReviewService {
     }
 
     const testCommand = resolveTestCommand(settings) || undefined;
-    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+    const baseBranch = await resolveTaskReviewBase(
+      projectId,
+      task,
+      await resolveBaseBranch(repoPath, settings.worktreeBaseBranch)
+    );
     const mergeQualityGates = getMergeQualityGateCommands(settings.toolchainProfile);
     await this.writeReviewTestStatus(task.id, repoPath, wtPath, {
       status: "pending",
@@ -227,7 +236,8 @@ export class OrchestratorReviewService {
     );
     slot.phaseCoordinator = coordinator;
 
-    this.host.runAdaptiveValidation(projectId, wtPath, changedFiles, testCommand)
+    this.host
+      .runAdaptiveValidation(projectId, wtPath, changedFiles, testCommand)
       .then(async (scopedResult) => {
         const sl = this.host.getState(projectId).slots.get(task.id);
         if (!sl) {
@@ -274,7 +284,11 @@ export class OrchestratorReviewService {
             sl
           );
           if (qualityGateFailure) {
-            const detail = this.host.applyQualityGateFailure(sl.phaseResult, qualityGateFailure, wtPath);
+            const detail = this.host.applyQualityGateFailure(
+              sl.phaseResult,
+              qualityGateFailure,
+              wtPath
+            );
             await this.writeReviewTestStatus(task.id, repoPath, wtPath, {
               status: "failed",
               testCommand: qualityGateFailure.command,
@@ -710,7 +724,7 @@ export class OrchestratorReviewService {
         .catch((err) =>
           log.warn("Failed to record reviewer run for Agent Log (approved)", { err })
         );
-      await this.host.mergeCoordinator.performMergeAndDone(projectId, repoPath, task, branchName);
+      await this.acceptApprovedReview(projectId, repoPath, task, branchName, wtPath);
     } else if (result && result.status === "rejected") {
       await this.handleReviewRejection(projectId, repoPath, task, branchName, result);
     } else {
@@ -780,9 +794,13 @@ export class OrchestratorReviewService {
           );
           return;
         }
-        const r =
-          testOutcome.results ??
-          { passed: 0, failed: 0, skipped: 0, total: 0, details: [] };
+        const r = testOutcome.results ?? {
+          passed: 0,
+          failed: 0,
+          skipped: 0,
+          total: 0,
+          details: [],
+        };
         await this.host.failureHandler.handleTaskFailure(
           projectId,
           repoPath,
@@ -829,9 +847,16 @@ export class OrchestratorReviewService {
       }
 
       if (reviewOutcome.status === "approved") {
-        await this.host.mergeCoordinator.performMergeAndDone(projectId, repoPath, task, branchName);
+        await this.acceptApprovedReview(
+          projectId,
+          repoPath,
+          task,
+          branchName,
+          slot.worktreePath ?? repoPath
+        );
       } else if (reviewOutcome.status === "rejected") {
-        if (this.isPendingValidationOnlyRejection(reviewOutcome.result!)) {
+        const pin = await governanceService.getTaskPin(projectId, task.id);
+        if (!pin && this.isPendingValidationOnlyRejection(reviewOutcome.result!)) {
           log.warn("Ignoring review rejection caused only by pending validation status", {
             projectId,
             taskId: task.id,
@@ -884,6 +909,19 @@ export class OrchestratorReviewService {
     }
   }
 
+  /** Every approval reaches the merge the same way, so none can skip the durable review record. */
+  private async acceptApprovedReview(
+    projectId: string,
+    repoPath: string,
+    task: StoredTask,
+    branchName: string,
+    cwd: string
+  ): Promise<void> {
+    await governanceExecutionService.approved(projectId, task.id, cwd);
+    await acceptRemoteReviewIfRequested({ projectId, task, repoPath, cwd, branchName });
+    await this.host.mergeCoordinator.performMergeAndDone(projectId, repoPath, task, branchName);
+  }
+
   public async handleReviewRejection(
     projectId: string,
     repoPath: string,
@@ -896,6 +934,34 @@ export class OrchestratorReviewService {
     if (!slot) return;
     const wtPath = slot.worktreePath ?? repoPath;
 
+    const adjudication = await governanceExecutionService.rejected({
+      projectId,
+      taskId: task.id,
+      cwd: wtPath,
+      title: String(task.title ?? task.id),
+      result,
+      appeals: slot.phaseResult.governanceAppeals ?? [],
+      reviewOutput: slot.agent.outputLog.join(""),
+      reviewerAgent: slot.activeAgentConfig,
+      attempt: slot.attempt,
+      invocationId: (await this.host.readAssignmentForRun(wtPath, task.id))?.invocationId,
+    });
+    if (adjudication.authorized) {
+      await this.acceptApprovedReview(projectId, repoPath, task, branchName, wtPath);
+      return;
+    }
+    if (adjudication.waiting) {
+      // Case/task hold has already been committed; dropping the in-memory slot is restart safe.
+      if (this.host.pauseForGovernance)
+        await this.host.pauseForGovernance(projectId, repoPath, task.id);
+      else {
+        slot.timers.clearAll();
+        state.slots.delete(task.id);
+        await this.host.persistCounters(projectId, repoPath);
+      }
+      return;
+    }
+
     const reason = `Review rejected: ${result.issues?.join("; ") || result.summary || "No details provided"}`;
     const reviewFeedback = formatReviewFeedback(result);
     const rejectionSummary = buildTaskLastExecutionSummary({
@@ -907,7 +973,11 @@ export class OrchestratorReviewService {
     });
 
     const settings = await this.host.projectService.getSettings(projectId);
-    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+    const baseBranch = await resolveTaskReviewBase(
+      projectId,
+      task,
+      await resolveBaseBranch(repoPath, settings.worktreeBaseBranch)
+    );
     let gitDiff = "";
     try {
       const branchDiff = await this.host.branchManager.captureBranchDiff(
@@ -938,9 +1008,14 @@ export class OrchestratorReviewService {
       rootCauseCategory: result.debugArtifact?.rootCauseCategory ?? null,
     });
     await this.host.sessionManager.archiveSession(repoPath, task.id, slot.attempt, session, wtPath);
-    await persistTaskLastExecutionSummary(this.host.taskStore, projectId, task.id, rejectionSummary);
-    fireAndForget(eventLogService
-      .append(repoPath, {
+    await persistTaskLastExecutionSummary(
+      this.host.taskStore,
+      projectId,
+      task.id,
+      rejectionSummary
+    );
+    fireAndForget(
+      eventLogService.append(repoPath, {
         timestamp: new Date().toISOString(),
         projectId,
         taskId: task.id,
@@ -954,7 +1029,9 @@ export class OrchestratorReviewService {
           reason,
           nextAction: "Retry coding with review feedback",
         },
-      }), "orchestrator-review:review.rejected");
+      }),
+      "orchestrator-review:review.rejected"
+    );
 
     await this.host.failureHandler.handleTaskFailure(
       projectId,

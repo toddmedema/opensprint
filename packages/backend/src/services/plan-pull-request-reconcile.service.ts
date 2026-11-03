@@ -3,6 +3,7 @@ import { runCommand } from "../utils/command-runner.js";
 import { runGit } from "../utils/git-command.js";
 import { createLogger } from "../utils/logger.js";
 import { reviewPublishedPlanPullRequest } from "./plan-pull-request-review.service.js";
+import { withUngovernedPullRequestDelivery } from "./plan-pull-request-governance.js";
 
 const log = createLogger("plan-pr-reconcile");
 const POLL_INTERVAL_MS = 60_000;
@@ -54,7 +55,9 @@ export class PlanPullRequestReconciler {
       );
       for (const epic of pending) {
         try {
-          await this.reconcileEpic(projectId, repoPath, taskStore, epic);
+          await withUngovernedPullRequestDelivery(projectId, () =>
+            this.reconcileEpic(projectId, repoPath, taskStore, epic)
+          );
         } catch (err) {
           log.warn("PR delivery remains pending; local base was not advanced safely", {
             projectId,

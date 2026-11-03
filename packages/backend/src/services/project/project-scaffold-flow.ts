@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../../utils/agent-process-env.js";
 import fs from "fs/promises";
 import path from "path";
 import { exec } from "child_process";
@@ -151,7 +152,10 @@ export async function runScaffoldProjectFlow(
     }
 
     try {
-      await execAsync("npx expo install react-dom react-native-web", { cwd: repoPath });
+      await execAsync("npx expo install react-dom react-native-web", {
+        env: agentProcessEnvironment(),
+        cwd: repoPath,
+      });
     } catch (expoInstallErr) {
       const msg = getErrorMessage(
         expoInstallErr,

@@ -385,6 +385,10 @@ export class BranchManager {
     candidatePath: string,
     reason: string
   ): Promise<boolean> {
+    if (!(await worktreeLeaseService.canCleanup(taskId).catch(() => false))) {
+      log.warn("Retaining worktree before directory removal", { taskId, candidatePath });
+      return false;
+    }
     let safePath: string;
     try {
       safePath = await this.validateDisposableWorktreePath(repoPath, taskId, candidatePath, reason);
@@ -1352,6 +1356,17 @@ export class BranchManager {
 
         // Derive taskId that owns that path (worktree path is base + taskId)
         const otherTaskId = path.basename(otherResolved);
+        if (
+          !(await worktreeLeaseService.canCleanup(otherTaskId).catch(() => false)) ||
+          !(await worktreeLeaseService.canCleanup(branchName).catch(() => false))
+        ) {
+          throw new WorktreeBranchInUseError(
+            `Branch ${branchName} is retained by an active lease or governance review at ${worktreePath}.`,
+            branchName,
+            worktreePath,
+            otherTaskId
+          );
+        }
         const safeOtherPath = await this.validateDisposableWorktreePath(
           repoPath,
           otherTaskId,
@@ -2153,7 +2168,7 @@ export class BranchManager {
       }
     }
 
-    const dbCanCleanup = await worktreeLeaseService.canCleanup(worktreeKey).catch(() => true);
+    const dbCanCleanup = await worktreeLeaseService.canCleanup(worktreeKey).catch(() => false);
     if (!dbCanCleanup) {
       log.warn("Skipping worktree removal: active DB lease prevents cleanup", {
         worktreeKey,
@@ -2182,11 +2197,14 @@ export class BranchManager {
     }
 
     const leaseAllowsCleanup = await worktreeLeaseService.canCleanup(worktreeKey).catch((err) => {
-      log.warn("Worktree lease cleanup check failed; allowing removal (degraded)", {
-        worktreeKey,
-        err: err instanceof Error ? err.message : String(err),
-      });
-      return true;
+      log.warn(
+        "Worktree lease cleanup check failed; retaining the worktree until authority can be verified",
+        {
+          worktreeKey,
+          err: err instanceof Error ? err.message : String(err),
+        }
+      );
+      return false;
     });
     if (!leaseAllowsCleanup) {
       log.warn(
@@ -2365,6 +2383,13 @@ export class BranchManager {
       }
     };
     if (await pathGone()) return true;
+    if (!(await worktreeLeaseService.canCleanup(worktreeKey).catch(() => false))) {
+      log.warn("Retaining worktree before destructive cleanup escalation", {
+        worktreeKey,
+        candidatePath,
+      });
+      return false;
+    }
 
     if (!opts?.skipGitWorktreeRemove) {
       try {
@@ -2377,6 +2402,7 @@ export class BranchManager {
 
     await this.removeWorktreeDirectorySafely(repoPath, worktreeKey, safePath, reason);
     if (await pathGone()) return true;
+    if (!(await worktreeLeaseService.canCleanup(worktreeKey).catch(() => false))) return false;
 
     log.warn("Worktree path survived fs.rm, escalating to shell rm -rf", {
       worktreeKey,
@@ -2403,6 +2429,7 @@ export class BranchManager {
     });
     if (await pathGone()) return true;
 
+    if (!(await worktreeLeaseService.canCleanup(worktreeKey).catch(() => false))) return false;
     const stalePath = `${safePath}-stale-${Date.now()}`;
     log.warn("Worktree path cannot be deleted, renaming aside", {
       worktreeKey,

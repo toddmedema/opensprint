@@ -1,3 +1,4 @@
+import { governanceService } from "../services/governance.service.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PlanPullRequestReconciler } from "../services/plan-pull-request-reconcile.service.js";
 import { runCommand } from "../utils/command-runner.js";
@@ -7,6 +8,9 @@ import { reviewPublishedPlanPullRequest } from "../services/plan-pull-request-re
 
 vi.mock("../utils/git-command.js", () => ({ runGit: vi.fn() }));
 vi.mock("../utils/command-runner.js", () => ({ runCommand: vi.fn() }));
+vi.mock("../services/governance.service.js", async () => ({
+  governanceService: (await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+}));
 vi.mock("../services/plan-pull-request-review.service.js", () => ({
   reviewPublishedPlanPullRequest: vi.fn(),
 }));
@@ -70,6 +74,18 @@ beforeEach(() => {
 });
 
 describe("plan PR merge reconciliation", () => {
+  it("does not advance or close a stored PR plan when governance has retained authority", async () => {
+    const inactive = vi.spyOn(governanceService, "isGovernanceInactive").mockResolvedValue(false);
+    try {
+      await reconciler.reconcile("project", "/tmp/repo", taskStore);
+      expect(runGit).not.toHaveBeenCalled();
+      expect(runCommand).not.toHaveBeenCalled();
+      expect(taskStore.close).not.toHaveBeenCalled();
+    } finally {
+      inactive.mockRestore();
+    }
+  });
+
   it("fetches and fast-forwards local configured base before releasing dependent work", async () => {
     await reconciler.reconcile("project", "/tmp/repo", taskStore);
     expect(runCommand).toHaveBeenCalledWith(

@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "./agent-process-env.js";
 import fs from "fs/promises";
 import path from "path";
 import { exec } from "child_process";
@@ -33,7 +34,7 @@ export async function isEasProjectLinked(repoPath: string): Promise<boolean> {
     await execAsync("npx eas-cli project:info", {
       cwd: repoPath,
       timeout: 15000,
-      env: { ...process.env },
+      env: agentProcessEnvironment({ ...process.env }),
     });
     return true;
   } catch {

@@ -17,6 +17,7 @@ import type { Pool } from "pg";
 import type { DbClient } from "../db/client.js";
 import { createPostgresDbClientFromUrl } from "../db/client.js";
 import { runSchema } from "../db/schema.js";
+import { GOVERNANCE_TABLES_IN_DEPENDENCY_ORDER } from "../db/governance-schema.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const URL_FILE = path.resolve(__dirname, "../../.vitest-postgres-url");
@@ -262,6 +263,8 @@ const FULL_TRUNCATE_TABLES = [
   "project_workflows",
   "help_chat_histories",
   "repo_file_migrations",
+  "worktree_leases",
+  ...GOVERNANCE_TABLES_IN_DEPENDENCY_ORDER,
 ];
 
 /**
@@ -281,6 +284,10 @@ export async function resetProjectScopedTestData(
   client: DbClient,
   projectId: string
 ): Promise<void> {
+  for (const table of [...GOVERNANCE_TABLES_IN_DEPENDENCY_ORDER].reverse()) {
+    await client.execute(`DELETE FROM ${table} WHERE project_id=$1`, [projectId]);
+  }
+  await client.execute("DELETE FROM worktree_leases WHERE project_id=$1", [projectId]);
   const taskRows = await client.query("SELECT id FROM tasks WHERE project_id = $1", [projectId]);
   const taskIds = taskRows.map((r) => String((r as { id?: unknown }).id ?? "")).filter(Boolean);
   for (const taskId of taskIds) {

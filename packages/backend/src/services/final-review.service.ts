@@ -20,6 +20,8 @@ import { getCombinedInstructions } from "./agent-instructions.service.js";
 import { createLogger } from "../utils/logger.js";
 import { invokeStructuredPlanningAgent } from "./structured-agent-output.service.js";
 
+import { governanceExecutionService } from "./governance-execution.service.js";
+
 const log = createLogger("final-review");
 
 export interface FinalReviewProposedTask {
@@ -104,6 +106,21 @@ export class FinalReviewService {
     }
 
     const depIds = implTasks.map((t) => t.id);
+    let governingInstructions: string | null;
+    try {
+      governingInstructions = await governanceExecutionService.epicInstructions(
+        projectId,
+        depIds,
+        repoPath
+      );
+    } catch (error) {
+      return {
+        status: "issues",
+        assessment: error instanceof Error ? error.message : String(error),
+        proposedTasks: [],
+      };
+    }
+
     const dependencyOutputs = await this.contextAssembler.collectDependencyOutputs(
       repoPath,
       depIds
@@ -161,13 +178,14 @@ Assess the implementation against the plan scope. Return JSON with status, asses
         repoPath,
         basePrompt,
         reviewAngles,
-        settings
+        settings,
+        governingInstructions
       );
     }
 
     const agentId = `final-review-${projectId}-${epicId}-${Date.now()}`;
     const startedAt = new Date().toISOString();
-    const finalReviewSystemPrompt = `${FINAL_REVIEW_SYSTEM_PROMPT}\n\n${await getCombinedInstructions(repoPath, "auditor")}`;
+    const finalReviewSystemPrompt = `${FINAL_REVIEW_SYSTEM_PROMPT}\n\n${governingInstructions ?? (await getCombinedInstructions(repoPath, "auditor"))}`;
     try {
       const response = await invokeStructuredPlanningAgent({
         projectId,
@@ -216,7 +234,13 @@ Assess the implementation against the plan scope. Return JSON with status, asses
         "failed",
         err instanceof Error ? err.message : String(err)
       );
-      return null;
+      return governingInstructions
+        ? {
+            status: "issues",
+            assessment: "Final governance review failed; approval is withheld.",
+            proposedTasks: [],
+          }
+        : null;
     }
   }
 
@@ -230,7 +254,8 @@ Assess the implementation against the plan scope. Return JSON with status, asses
     repoPath: string,
     basePrompt: string,
     reviewAngles: ReviewAngle[],
-    settings: import("@opensprint/shared").ProjectSettings
+    settings: import("@opensprint/shared").ProjectSettings,
+    governingInstructions: string | null = null
   ): Promise<FinalReviewResult | null> {
     const EPIC_ANGLE_SYSTEM = `You are a Final Review angle reviewer for Open Sprint. Focus ONLY on your assigned angle. Assess the epic implementation from that lens.
 
@@ -239,7 +264,7 @@ Respond with ONLY valid JSON (no markdown):
 - status "pass": This angle has no significant issues. proposedTasks must be [].
 - status "issues": You found issues. proposedTasks lists concrete tasks for this angle only.`;
 
-    const angleSystemPrompt = `${EPIC_ANGLE_SYSTEM}\n\n${await getCombinedInstructions(repoPath, "auditor")}`;
+    const angleSystemPrompt = `${EPIC_ANGLE_SYSTEM}\n\n${governingInstructions ?? (await getCombinedInstructions(repoPath, "auditor"))}`;
     const config = getAgentForPlanningRole(settings, "auditor");
     const angleResults: Array<{
       angle: string;
@@ -298,8 +323,10 @@ Respond with ONLY valid JSON (no markdown):
         log.warn("Epic angle review failed", { projectId, epicId, angle, err });
         return {
           angle,
-          status: "pass",
-          assessment: "Angle review failed; assuming pass.",
+          status: governingInstructions ? "issues" : "pass",
+          assessment: governingInstructions
+            ? "Angle review failed; approval is withheld."
+            : "Angle review failed; assuming pass.",
           proposedTasks: [],
         };
       }
@@ -314,7 +341,8 @@ Respond with ONLY valid JSON (no markdown):
       epicId,
       planId,
       repoPath,
-      settings
+      settings,
+      governingInstructions
     );
   }
 
@@ -329,7 +357,8 @@ Respond with ONLY valid JSON (no markdown):
     epicId: string,
     planId: string,
     repoPath: string,
-    settings: import("@opensprint/shared").ProjectSettings
+    settings: import("@opensprint/shared").ProjectSettings,
+    governingInstructions: string | null = null
   ): Promise<FinalReviewResult> {
     const EPIC_SYNTHESIZER_PROMPT = `You are the Final Review Lead for Open Sprint. Multiple angle reviewers have assessed an epic. Synthesize their findings into one report.
 
@@ -338,7 +367,7 @@ Rules:
 - If ALL angles passed, status "pass", proposedTasks [].
 - Output ONLY valid JSON: {"status":"pass"|"issues","assessment":"Synthesis summary","proposedTasks":[{"title":"...","description":"...","priority":0-4}]}`;
 
-    const synthesizerSystemPrompt = `${EPIC_SYNTHESIZER_PROMPT}\n\n${await getCombinedInstructions(repoPath, "auditor")}`;
+    const synthesizerSystemPrompt = `${EPIC_SYNTHESIZER_PROMPT}\n\n${governingInstructions ?? (await getCombinedInstructions(repoPath, "auditor"))}`;
     const blocks = angleResults
       .map((r) => {
         const label = REVIEW_ANGLE_OPTIONS.find((o) => o.value === r.angle)?.label ?? r.angle;

@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
 import { exec } from "child_process";
 import { promisify } from "util";
 import type { DeploymentConfig } from "@opensprint/shared";
@@ -102,7 +103,7 @@ export class DeploymentService {
         {
           cwd: repoPath,
           timeout: 600000, // 10 min timeout
-          env: { ...process.env },
+          env: agentProcessEnvironment({ ...process.env }),
         }
       );
 
@@ -154,7 +155,7 @@ export class DeploymentService {
         {
           cwd: repoPath,
           timeout: 1800000, // 30 min timeout
-          env: { ...process.env },
+          env: agentProcessEnvironment({ ...process.env }),
         }
       );
 
@@ -219,7 +220,7 @@ export class DeploymentService {
       await execAsync(command, {
         cwd: repoPath,
         timeout: 600000,
-        env: { ...process.env },
+        env: agentProcessEnvironment({ ...process.env }),
       });
       return {
         success: true,

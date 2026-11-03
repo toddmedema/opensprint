@@ -20,6 +20,18 @@ import {
 } from "../services/merge-coordinator.service.js";
 import type { StoredTask } from "../services/task-store.service.js";
 import { selfImprovementService } from "../services/self-improvement.service.js";
+vi.mock("../services/deferred-auto-deploy.service.js", () => ({
+  deferredAutoDeployService: {
+    enqueue: vi.fn().mockResolvedValue(undefined),
+    drain: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+vi.mock("../services/governance.service.js", async () => ({
+  governanceService: (await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+}));
+vi.mock("../services/congress.service.js", () => ({
+  runGovernanceCongress: vi.fn().mockResolvedValue(undefined),
+}));
 
 function resolveEpicId(
   taskId: string | undefined | null,

@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
 /**
  * Serialized git commit queue (Refinery-like, PRD §5.9).
  * Async FIFO queue with single worker for all main-branch git operations.
@@ -5,6 +6,8 @@
  * commits (PRD update, worktree merge). Task state lives on the central server only.
  */
 
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { resolveTestCommand, type AgentConfig, type ToolchainProfile } from "@opensprint/shared";
 import { taskStore as taskStoreSingleton } from "./task-store.service.js";
 import {
@@ -28,7 +31,12 @@ import { getGitNoHooksPath } from "../utils/git-no-hooks.js";
 import { waitForGitReady } from "../utils/git-lock.js";
 import { shellExec } from "../utils/shell-exec.js";
 import { fireAndForget } from "../utils/fire-and-forget.js";
+import { governanceService } from "./governance.service.js";
+import { governanceExecutionService } from "./governance-execution.service.js";
+import { remotePublicationGovernanceService } from "./remote-publication-governance.service.js";
+
 const log = createLogger("git-commit-queue");
+const execGitForReceipt = promisify(execFile);
 const _MAX_REBASE_RESOLUTION_ROUNDS = 12;
 
 /** Thrown when a job cannot proceed due to existing unmerged files. */
@@ -94,6 +102,7 @@ export interface PrdUpdateJob {
 
 export interface WorktreeMergeJob {
   type: "worktree_merge";
+  projectId?: string;
   repoPath: string;
   worktreePath: string;
   branchName: string;
@@ -409,11 +418,11 @@ class GitCommitQueueImpl implements GitCommitQueueService {
       }
       case "worktree_merge": {
         let taskTitle = job.taskTitle ?? job.taskId;
-        let projectId: string | null = null;
+        let projectId: string | null = job.projectId ?? null;
         try {
           await this.taskStore.init();
           const project = await this.projectService.getProjectByRepoPath(repoPath);
-          projectId = project?.id ?? null;
+          projectId = project?.id ?? job.projectId ?? null;
           if (project) {
             const issue = await this.taskStore.show(project.id, job.taskId);
             taskTitle = (issue.title as string) || job.taskId;
@@ -720,36 +729,95 @@ class GitCommitQueueImpl implements GitCommitQueueService {
             throw this.buildQualityGateJobError(qualityGateFailure, mergeCandidate.worktreePath);
           }
 
-          taskTitle = await this.resolveWorktreeMergeTaskTitle(repoPath, job, taskTitle);
-          const msg = formatMergeCommitMessage(job.taskId, taskTitle);
-          await waitForGitReady(mergeCandidate.worktreePath);
-          const noHooksMerge = getGitNoHooksPath();
-          await shellExec(
-            `git -c core.hooksPath="${noHooksMerge}" commit -m "${msg.replace(/"/g, '\\"')}"`,
-            {
-              cwd: mergeCandidate.worktreePath,
-              timeout: 30_000,
-            }
-          );
-          log.info("Merge commit created in candidate workspace", {
-            branchName: job.branchName,
-            candidateBranch: mergeCandidate.branchName,
-          });
-
-          if (!mergeCandidate.branchName) {
-            throw new Error("Merge candidate workspace is missing a branch name");
-          }
-
-          await this.branchManager.ensureOnMain(repoPath, baseBranch);
-          await this.branchManager.withRepoRootAutoStash(
-            repoPath,
-            `publish validated merge ${job.branchName} into ${baseBranch}`,
-            async () => {
-              await waitForGitReady(repoPath);
-              await shellExec(`git merge --ff-only ${mergeCandidate.branchName}`, {
-                cwd: repoPath,
-                timeout: 30_000,
+          // Publication and revocation share an ordering. Admission reads durable state, including
+          // holds on manually reopened tasks, against the actual post-rebase/merger candidate.
+          await governanceService.withPublicationLock(
+            projectId ?? "unknown",
+            async (assertLease) => {
+              await governanceExecutionService.assertPublication({
+                projectId: projectId ?? "unknown",
+                taskId: job.taskId,
+                repoPath,
+                candidatePath: mergeCandidate.worktreePath,
+                branchName: job.branchName,
+                baseBranch,
               });
+
+              taskTitle = await this.resolveWorktreeMergeTaskTitle(repoPath, job, taskTitle);
+              const msg = formatMergeCommitMessage(job.taskId, taskTitle);
+              await waitForGitReady(mergeCandidate.worktreePath);
+              const noHooksMerge = getGitNoHooksPath();
+              await assertLease();
+              await shellExec(
+                `git -c core.hooksPath="${noHooksMerge}" commit -m "${msg.replace(/"/g, '\\"')}"`,
+                {
+                  cwd: mergeCandidate.worktreePath,
+                  timeout: 30_000,
+                }
+              );
+              log.info("Merge commit created in candidate workspace", {
+                branchName: job.branchName,
+                candidateBranch: mergeCandidate.branchName,
+              });
+
+              if (!mergeCandidate.branchName) {
+                throw new Error("Merge candidate workspace is missing a branch name");
+              }
+
+              await this.branchManager.ensureOnMain(repoPath, baseBranch);
+              await this.branchManager.withRepoRootAutoStash(
+                repoPath,
+                `publish validated merge ${job.branchName} into ${baseBranch}`,
+                async () => {
+                  await waitForGitReady(repoPath);
+                  const [candidateHead, publicationBase] = await Promise.all([
+                    execGitForReceipt(
+                      "git",
+                      ["rev-parse", "--verify", `${mergeCandidate.branchName}^{commit}`],
+                      { env: agentProcessEnvironment(), cwd: repoPath, timeout: 10_000 }
+                    ),
+                    execGitForReceipt("git", ["rev-parse", "--verify", `${baseBranch}^{commit}`], {
+                      env: agentProcessEnvironment(),
+                      cwd: repoPath,
+                      timeout: 10_000,
+                    }),
+                  ]);
+                  await governanceExecutionService.assertPublicationAuthority({
+                    projectId: projectId ?? "unknown",
+                    taskId: job.taskId,
+                    repoPath,
+                    branchName: job.branchName,
+                  });
+                  await assertLease();
+                  await remotePublicationGovernanceService.registerLocalPublication({
+                    projectId: projectId ?? "unknown",
+                    taskId: job.taskId,
+                    repoPath,
+                    branchName: job.branchName,
+                    baseBranch,
+                    candidateHeadSha: candidateHead.stdout.trim(),
+                    baseSha: publicationBase.stdout.trim(),
+                  });
+                  await assertLease();
+                  await shellExec(`git merge --ff-only ${mergeCandidate.branchName}`, {
+                    cwd: repoPath,
+                    timeout: 30_000,
+                  });
+                  // The merge stands either way; a missed refresh surfaces as reconcilable drift.
+                  await governanceExecutionService
+                    .refreshMergedSources({
+                      projectId: projectId ?? "unknown",
+                      repoPath,
+                      branchName: job.branchName,
+                    })
+                    .catch((err) =>
+                      log.warn("Failed to refresh approved policy sources", {
+                        taskId: job.taskId,
+                        err,
+                      })
+                    );
+                }
+              );
             }
           );
         } finally {

@@ -10,6 +10,7 @@ import { BranchManager } from "../services/branch-manager.js";
 import { notificationService } from "../services/notification.service.js";
 import { setGlobalSettings } from "../services/global-settings.service.js";
 import { taskStore } from "../services/task-store.service.js";
+import { governanceService } from "../services/governance.service.js";
 import {
   DEFAULT_HIL_CONFIG,
   DEFAULT_REVIEW_MODE,
@@ -18,6 +19,16 @@ import {
 } from "@opensprint/shared";
 
 const mockStopProject = vi.fn();
+vi.mock("../services/governance.service.js", async () => ({
+  governanceService: (await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+}));
+vi.mock("../services/worktree-lease.service.js", () => ({
+  worktreeLeaseService: {
+    canCleanup: vi.fn().mockResolvedValue(true),
+    forceRelease: vi.fn().mockResolvedValue(undefined),
+    get: vi.fn().mockResolvedValue(null),
+  },
+}));
 
 // Full mock so we never load task-store.service (which pulls in drizzle). ProjectService only needs
 // listAll, deleteOpenQuestionsByProjectId, deleteByProjectId for these tests.
@@ -823,6 +834,26 @@ describe("ProjectService", () => {
     expect((await projectService.getSettings(project.id)).deliveryMode).toBe("pull_request");
   });
 
+  it("rejects PR delivery when governance retains authority and preserves direct delivery", async () => {
+    const project = await projectService.createProject({
+      name: "Governed delivery",
+      repoPath: path.join(tempDir, "governed-delivery"),
+      deployment: { mode: "custom" },
+    });
+    const inactive = vi.spyOn(governanceService, "isGovernanceInactive").mockResolvedValue(false);
+    try {
+      await expect(
+        projectService.updateSettings(project.id, { deliveryMode: "pull_request" })
+      ).rejects.toMatchObject({ code: "GOVERNANCE_INVALID_INPUT" });
+      expect((await projectService.getSettings(project.id)).deliveryMode).toBe("direct");
+      await expect(
+        projectService.updateSettings(project.id, { deliveryMode: "direct" })
+      ).resolves.toMatchObject({ deliveryMode: "direct" });
+    } finally {
+      inactive.mockRestore();
+    }
+  });
+
   it.each(["direct", "pull_request"] as const)(
     "refuses switching from %s delivery while a task is running and preserves settings",
     async (deliveryMode) => {
@@ -1486,6 +1517,31 @@ describe("ProjectService", () => {
     expect(stat.isDirectory()).toBe(true);
   });
 
+  it.each(["archiveProject", "deleteProject"] as const)(
+    "%s preserves a project when governance rejects removal",
+    async (method) => {
+      const project = await projectService.createProject({
+        name: "Held Project",
+        repoPath: path.join(tempDir, "held-project"),
+        simpleComplexityAgent: { type: "claude", model: null, cliCommand: null },
+        complexComplexityAgent: { type: "claude", model: null, cliCommand: null },
+        deployment: { mode: "custom" },
+        hilConfig: DEFAULT_HIL_CONFIG,
+      });
+      const guard = vi
+        .spyOn(governanceService, "assertProjectRemovalAllowed")
+        .mockRejectedValueOnce(new Error("Governance hold"));
+      try {
+        await expect(projectService[method](project.id, "Owner")).rejects.toThrow(
+          "Governance hold"
+        );
+        expect(mockStopProject).not.toHaveBeenCalled();
+        expect(await projectService.getProject(project.id)).toMatchObject({ id: project.id });
+      } finally {
+        guard.mockRestore();
+      }
+    }
+  );
   it("archiveProject removes registered project worktrees", async () => {
     const repoPath = path.join(tempDir, "archive-project-worktrees");
     const project = await projectService.createProject({

@@ -8,6 +8,7 @@ const mockGetSettings = vi.fn();
 const mockGetLatestDeploy = vi.fn();
 const mockCreateRecord = vi.fn();
 const mockUpdateRecord = vi.fn();
+const mockClaimIdempotentRun = vi.fn();
 const mockBroadcastToProject = vi.fn();
 const mockRunDeployAsync = vi.fn().mockResolvedValue(undefined);
 const mockExecSync = vi.fn();
@@ -24,6 +25,7 @@ vi.mock("../services/deploy-storage.service.js", () => ({
     getLatestDeploy: (...args: unknown[]) => mockGetLatestDeploy(...args),
     createRecord: (...args: unknown[]) => mockCreateRecord(...args),
     updateRecord: (...args: unknown[]) => mockUpdateRecord(...args),
+    claimIdempotentRun: (...args: unknown[]) => mockClaimIdempotentRun(...args),
   },
 }));
 
@@ -68,6 +70,7 @@ describe("deploy-trigger.service", () => {
       mode: "custom",
     });
     mockUpdateRecord.mockResolvedValue({});
+    mockClaimIdempotentRun.mockResolvedValue(true);
     mockExecSync.mockReturnValue("abc123def");
   });
 
@@ -284,5 +287,46 @@ describe("deploy-trigger.service", () => {
       expect(ids).toEqual([]);
       expect(mockRunDeployAsync).not.toHaveBeenCalled();
     });
+  });
+  it("does not launch the same durable deployment twice after a retry", async () => {
+    mockGetSettings.mockResolvedValue({
+      deployment: {
+        mode: "custom",
+        targets: [{ name: "production", autoDeployTrigger: "each_task" }],
+      },
+    });
+    mockExecSync.mockReturnValue("reviewed-head\n");
+    mockCreateRecord.mockResolvedValue({
+      id: "durable-deploy",
+      commitHash: "reviewed-head",
+      status: "pending",
+    });
+    mockClaimIdempotentRun.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const options = { expectedCommitHash: "reviewed-head", idempotencyKey: "deferred-job" };
+    await triggerDeployForEvent("proj-1", "each_task", options);
+    await triggerDeployForEvent("proj-1", "each_task", options);
+    expect(mockRunDeployAsync).toHaveBeenCalledTimes(1);
+    expect(mockCreateRecord).toHaveBeenCalledWith(
+      "proj-1",
+      null,
+      expect.objectContaining({ idempotencyKey: "deferred-job:production" })
+    );
+  });
+  it("withholds a deferred deploy when the published checkout changed", async () => {
+    mockGetSettings.mockResolvedValue({
+      deployment: {
+        mode: "custom",
+        targets: [{ name: "production", autoDeployTrigger: "each_task" }],
+      },
+    });
+    mockExecSync.mockReturnValue("changed-head\n");
+    await expect(
+      triggerDeployForEvent("proj-1", "each_task", {
+        expectedCommitHash: "reviewed-head",
+        idempotencyKey: "deferred-job",
+      })
+    ).rejects.toThrow("Code changed");
+    expect(mockCreateRecord).not.toHaveBeenCalled();
+    expect(mockRunDeployAsync).not.toHaveBeenCalled();
   });
 });

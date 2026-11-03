@@ -96,6 +96,8 @@ Open Sprint uses the SPEED Product Management lifecycle:
 
 Specialized agents handle planning, implementation, review, and handoff so the project keeps moving without manual orchestration at every step.
 
+Optional [review governance](packages/backend/docs/review-governance.md) adds approved policy releases, durable human dockets, and evaluated rule amendments. Its Judge resolves disputed standards under approved policy and escalates new exceptions to a human. Enable it in Project Settings after configuring the designated owner's separate approval capability.
+
 ## Architecture at a Glance
 
 Open Sprint is a monorepo with four main packages:

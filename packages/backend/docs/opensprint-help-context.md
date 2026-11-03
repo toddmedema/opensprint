@@ -2,6 +2,8 @@
 
 This document provides context for the Help Chat agent to answer questions about Open Sprint's scheduling, configuration, orchestrator logic, and task runnability.
 
+Core execution model: `maxConcurrentCoders` limits simultaneous coders (default `1`). `TaskStoreService.ready()` returns tasks whose blockers are resolved. The orchestrator’s loop kicker restarts idle scheduling; the separate Watchdog patrol checks health.
+
 ---
 
 ## Agent Instructions (AGENTS.md)
@@ -30,6 +32,10 @@ Task tracking is handled internally by `TaskStoreService` backed by **SQLite (de
 - They should commit incremental logical units while working so crash recovery can preserve progress.
 - They must not push, merge, or close tasks manually; the orchestrator handles validation, task state, merging, and remote publication.
 
+### Review governance
+
+Opt-in governance in Project Settings requires review on every task. Assignments pin immutable policy and original scope. Bounded reviewer/judge appeals can reach durable human dockets; waiting tasks retain worktrees and release slots. Ordinary task/notification actions and autonomy cannot clear holds. Hard checks and protected scope cannot be waived; in enforced mode only an owner's structured scope grant unlocks protected paths, and task wording is evidence. A separate named owner capability authorizes rulings and evaluated policy amendments. Missing replay inputs or isolation means incomplete evidence. See the detailed governance section below and `review-governance.md` for setup, publication, delivery, and replay.
+
 ### Orchestrator Recovery (GUPP-style)
 
 Work state is persisted before agent spawn via `assignment.json` in `.opensprint/active/<task-id>/`. If the backend crashes, recovery reads the assignment and re-spawns or resumes the agent. **Always write assignment before spawn; never spawn then write.**
@@ -44,7 +50,7 @@ Guidance is journaled before acknowledgment. `queued` is durable acceptance, `in
 
 Reviewed SPEC drafts are available at `/projects/<projectId>/publication`. Drafts are immutable SQL revisions bound to a content hash, Git base and destination; approval must match that revision. The trusted publisher validates a candidate worktree before advancing Git with a base comparison. Interrupted publication is reconciled or remains explicitly uncertain. Sketch autosaves retain the existing trusted local editing policy and do not use this reviewed publication workflow. See `docs/design/collaboration-foundations.md` for rollout limits.
 
-#In Autonomy settings, code delivery defaults to direct merge into the configured base branch. Pull request delivery uses one shared branch per plan, runs quality checks, and publishes a GitHub PR via the signed-in `gh` CLI without merging, pushing the base branch, or auto-deploying. Plan branches and worktrees are retained for review and follow-up tasks; Execute agents still leave publication to the orchestrator.
+In Autonomy settings, code delivery defaults to direct merge into the configured base branch. Pull request delivery uses one shared branch per plan, runs quality checks, and publishes a GitHub PR via the signed-in `gh` CLI without merging, pushing the base branch, or auto-deploying. Plan branches and worktrees are retained for review and follow-up tasks; Execute agents still leave publication to the orchestrator. PR delivery currently requires a project without active or retained review governance; governed projects use direct delivery.
 
 ## Loop Kicker vs Watchdog
 
@@ -139,3 +145,17 @@ When `maxConcurrentCoders > 1`, the **TaskScheduler** selects non-overlapping ta
 Native Claude Code (`claude-cli`) and Codex (`codex`) agents use local subscription sign-in, not API-key settings. Their task prompts are passed on stdin. An optional per-tier effort uses the selected model’s supported levels; omitted effort preserves CLI defaults. Explicit effort is verified before launch and passed through the native CLI configuration, including task-file runs. Sandbox restrictions remain active; if a required action is blocked, report it rather than claiming success. The orchestrator commits remaining worktree changes before merge.
 
 Select **Anthropic Claude Code (CLI)** or **OpenAI Codex (CLI)** in global or project agent settings. Install the CLI and sign in through its own flow (`claude` or `codex login`). Claude model aliases follow current releases; Codex model choices come from the installed CLI catalog. Available models still depend on your account.
+
+## Detailed review governance
+
+Project Settings → Review governance provides opt-in disabled, shadow, and enforced modes. Enabled governance requires review on every task. Approved immutable releases contain manual standards, rule revision IDs, deterministic path/role scope, parent/override relationships, rationale, and instruction content. Assignments pin their release and original task scope before spawn; edits to live instruction files do not silently change review authority. Enforced mode admits only pinned tasks and reaches tasks first pinned in shadow. Runtime drift is audited; repository policy drift holds enforced work until an approved source change merges or the owner reconciles the snapshot. A human can abandon a case to close its task unmerged.
+
+Structured standards findings cite the applicable rule revision and reviewed file/code revision. Defects need concrete evidence but do not require a preexisting rule. A structured appeal can obtain one reconsideration and a separate tool-free judge recommendation within persistent task budgets. Novel, uncertain, conflicting, or exhausted appeals need a human docket. Dockets show competing arguments, evidence, precedent, and the consequence of each action. Allow once, explicitly bounded reusable allowance, require a fix, request evidence, and cancellation have distinct effects. Waiting tasks retain worktrees and release agent slots; restarting the backend preserves the hold. Ordinary task reopening, notification resolution/deletion, or autonomy settings cannot authorize a merge.
+
+Configure tool-free API models and verified price ceilings for reviewer reconsideration and the independent judge; initial code reviewers can still use CLI agents. Remote conflict-resolution changes get a retained review task against the actual remote base and original per-file scope, followed by hard checks. Pending publication suppresses automatic deployment; durable deferred actions resume only against verified published code. Archiving or deleting a governed project requires owner approval and completed governed work with no pending dockets or publication.
+
+Governed SPEC changes use the normal scoped Execute review workflow. Completed live-guided sessions retain their guidance journal as evidence but cannot supply replay fixtures until the complete model-turn protocol is captured.
+
+Configure a named server owner and a separate `OPENSPRINT_GOVERNANCE_APPROVAL_SECRET` (at least 32 characters) to authorize governance mutations. The UI keeps the entered capability in memory. It is distinct from the ordinary local bearer token and is removed from task subprocess environments. An agent with unrestricted access under the same OS account can still inspect server data; this is a cooperative local workflow, not a tamper-proof security boundary. Shared deployments must isolate the server account and explicitly designate approval authority.
+
+Congress processes decision events even when code has not changed. Nominations alone do not weaken rules. Substantive proposals contain exact before/after changes, supporting and contrary decisions, examples, compatibility and enforcement requirements. Isolated baseline/candidate evaluation uses retained original inputs, a pinned offline executor image, and an independent held-out rubric. Missing fixtures or an unavailable sandbox produces incomplete evaluation, never successful evidence. Policy amendments always require explicit human approval; activation and compatible rollback change the actual instruction content used by future assignments. See `review-governance.md` for the executor protocol and rollout.

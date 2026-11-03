@@ -3,6 +3,12 @@ import {
   SelfImprovementService,
   type SelfImprovementRunResult,
 } from "../services/self-improvement.service.js";
+import { runGovernanceCongress } from "../services/congress.service.js";
+const governanceMock = vi.hoisted(() => ({ isGovernanceInactive: vi.fn() }));
+vi.mock("../services/governance.service.js", () => ({ governanceService: governanceMock }));
+vi.mock("../services/congress.service.js", () => ({
+  runGovernanceCongress: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock("../services/project.service.js", () => ({
   ProjectService: vi.fn().mockImplementation(() => ({
@@ -79,6 +85,25 @@ describe("SelfImprovementService", () => {
     service = new SelfImprovementService();
   });
 
+  describe("governance congress", () => {
+    it("does not call congress for an inactive project", async () => {
+      governanceMock.isGovernanceInactive.mockResolvedValue(true);
+      await service.run(projectId);
+      expect(runGovernanceCongress).not.toHaveBeenCalled();
+    });
+    it("continues self-improvement when congress fails", async () => {
+      const { hasCodeChangesSince } =
+        await import("../services/self-improvement-change-detection.js");
+      vi.mocked(hasCodeChangesSince).mockResolvedValue(false);
+      governanceMock.isGovernanceInactive.mockResolvedValue(false);
+      vi.mocked(runGovernanceCongress).mockRejectedValueOnce(new Error("lease busy"));
+      await expect(service.run(projectId)).resolves.toEqual({
+        tasksCreated: 0,
+        skipped: "no_changes",
+      });
+    });
+  });
+
   describe("change detection gate", () => {
     it("returns skipped no_changes when repo has not changed since last run", async () => {
       const { hasCodeChangesSince } =
@@ -86,7 +111,9 @@ describe("SelfImprovementService", () => {
       const { taskStore } = await import("../services/task-store.service.js");
       vi.mocked(hasCodeChangesSince).mockResolvedValue(false);
 
+      governanceMock.isGovernanceInactive.mockResolvedValue(false);
       const result = await service.run(projectId);
+      expect(runGovernanceCongress).toHaveBeenCalledWith(projectId);
 
       expect(result).toEqual({ tasksCreated: 0, skipped: "no_changes" });
       expect(taskStore.create).not.toHaveBeenCalled();

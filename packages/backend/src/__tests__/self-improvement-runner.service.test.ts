@@ -11,6 +11,19 @@ import {
   getSelfImprovementRunState,
   setSelfImprovementRunInProgressForTest,
 } from "../services/self-improvement-runner.service.js";
+import { governanceService } from "../services/governance.service.js";
+import { evaluatePolicyProposal } from "../services/policy-evaluation.service.js";
+vi.mock("../services/governance.service.js", () => ({
+  governanceService: {
+    getConfig: vi.fn().mockResolvedValue({ mode: "disabled" }),
+    listProposals: vi.fn().mockResolvedValue([]),
+    getActiveReleaseId: vi.fn().mockResolvedValue("active"),
+  },
+}));
+vi.mock("../services/congress.service.js", () => ({
+  runGovernanceCongress: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../services/policy-evaluation.service.js", () => ({ evaluatePolicyProposal: vi.fn() }));
 
 vi.mock("../services/task-store.service.js", () => ({
   taskStore: {
@@ -93,6 +106,17 @@ vi.mock("../utils/shell-exec.js", () => ({
 
 vi.mock("../services/notification.service.js", () => ({
   notificationService: {
+    createSelfImprovementApproval: vi.fn().mockResolvedValue({
+      id: "sia-1",
+      projectId: "proj-1",
+      source: "self-improvement",
+      sourceId: "proposal1",
+      questions: [],
+      status: "open",
+      createdAt: "2026-10-30T00:00:00Z",
+      resolvedAt: null,
+      kind: "self_improvement_approval",
+    }),
     createAgentFailed: vi.fn().mockResolvedValue({
       id: "af-1",
       projectId: "proj-1",
@@ -1479,6 +1503,7 @@ describe("experiment pipeline wiring", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    vi.mocked(governanceService.getConfig).mockResolvedValue({ mode: "disabled" } as never);
     setSelfImprovementRunInProgressForTest(projectId, false);
     const { taskStore } = await import("../services/task-store.service.js");
     const { agentService } = await import("../services/agent.service.js");
@@ -1492,6 +1517,53 @@ describe("experiment pipeline wiring", () => {
 
   afterEach(() => {
     setSelfImprovementRunInProgressForTest(projectId, false);
+  });
+
+  it("runs the independent evaluator and never auto-promotes policy under full autonomy", async () => {
+    const { ProjectService } = await import("../services/project.service.js");
+    const { taskStore } = await import("../services/task-store.service.js");
+    const { updateSettingsInStore } = await import("../services/settings-store.service.js");
+    vi.mocked(ProjectService).mockImplementation(
+      () =>
+        ({
+          getProject: vi.fn().mockResolvedValue({ id: projectId, repoPath: "/tmp/repo" }),
+          getSettings: vi.fn().mockResolvedValue({
+            simpleComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+            complexComplexityAgent: { type: "cursor", model: null, cliCommand: null },
+            runAgentEnhancementExperiments: true,
+            aiAutonomyLevel: "full",
+          }),
+        }) as never
+    );
+    vi.mocked(governanceService.getConfig).mockResolvedValue({ mode: "enforced" } as never);
+    vi.mocked(governanceService.listProposals).mockResolvedValue([
+      { id: "stale", state: "draft", version: 1, baseReleaseId: "superseded" },
+      { id: "proposal1", state: "draft", version: 2, baseReleaseId: "active" },
+    ] as never);
+    vi.mocked(evaluatePolicyProposal).mockResolvedValue({
+      id: "proposal1",
+      state: "evaluated",
+    } as never);
+    const { notificationService } = await import("../services/notification.service.js");
+    await new SelfImprovementRunnerService().runSelfImprovement(projectId, {
+      runId: "actual-evaluation",
+    });
+    expect(evaluatePolicyProposal).toHaveBeenCalledTimes(1);
+    expect(evaluatePolicyProposal).toHaveBeenCalledWith(projectId, "proposal1", 2, "/tmp/repo");
+    expect(notificationService.createSelfImprovementApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId, candidateId: "proposal1" })
+    );
+    expect(getSelfImprovementStatus(projectId, {}, "proposal1")).toMatchObject({
+      status: "awaiting_approval",
+      summary: expect.stringContaining("Review governance"),
+    });
+    expect(taskStore.insertSelfImprovementRunHistory).toHaveBeenCalledWith(
+      expect.objectContaining({ outcome: "promotion_pending", pendingCandidateId: "proposal1" })
+    );
+    for (const [, , update] of vi.mocked(updateSettingsInStore).mock.calls) {
+      const next = update({} as never);
+      expect(next.selfImprovementActiveBehaviorVersionId).toBeUndefined();
+    }
   });
 
   it("initial status is running_audit even when experiments are enabled", async () => {
@@ -1612,6 +1684,7 @@ describe("experiment pipeline wiring", () => {
   });
 
   it("records history status as failed when experiment pipeline throws", async () => {
+    vi.mocked(governanceService.getConfig).mockRejectedValueOnce(new Error("DB connection lost"));
     const { ProjectService } = await import("../services/project.service.js");
     const { taskStore } = await import("../services/task-store.service.js");
     vi.mocked(ProjectService).mockImplementation(
@@ -1639,7 +1712,7 @@ describe("experiment pipeline wiring", () => {
         mode: "audit_and_experiments",
         outcome: "failed",
         status: "failed",
-        summary: expect.stringContaining("Experiment pipeline failed"),
+        summary: expect.stringContaining("Governance evaluation unavailable"),
       })
     );
   });

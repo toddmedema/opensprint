@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
 import { spawn, execFile } from "child_process";
 import {
   readFileSync,
@@ -343,7 +344,7 @@ function buildCursorSpawnEnv(cursorApiKey?: string): {
   isolatedConfigDir: string | null;
 } {
   if (!cursorApiKey?.trim()) {
-    return { env: normalizeSpawnEnvPath({ ...process.env }), isolatedConfigDir: null };
+    return { env: normalizeSpawnEnvPath(agentProcessEnvironment()), isolatedConfigDir: null };
   }
 
   const baseConfigDir =
@@ -354,7 +355,7 @@ function buildCursorSpawnEnv(cursorApiKey?: string): {
 
   return {
     env: normalizeSpawnEnvPath({
-      ...process.env,
+      ...agentProcessEnvironment(),
       CURSOR_API_KEY: cursorApiKey,
       CURSOR_CONFIG_DIR: isolatedConfigDir,
     }),
@@ -2310,7 +2311,7 @@ export class AgentClient {
       ? isolatedCursorEnv.env
       : config.type === "codex" || config.type === "claude-cli"
         ? buildNativeCliEnv(config.type, config.effort)
-        : normalizeSpawnEnvPath({ ...process.env });
+        : normalizeSpawnEnvPath(agentProcessEnvironment());
 
     const child = spawn(command, args, {
       cwd,
@@ -3639,6 +3640,7 @@ export class AgentClient {
             command,
             [...baseArgs, prompt],
             {
+              env: agentProcessEnvironment(),
               cwd: options.cwd || process.cwd(),
               encoding: "utf8",
               maxBuffer: 10 * 1024 * 1024,

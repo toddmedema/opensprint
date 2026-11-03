@@ -1,4 +1,6 @@
 import fs from "fs";
+import { governanceService } from "./governance.service.js";
+import { withUngovernedPullRequestDelivery } from "./plan-pull-request-governance.js";
 import type {
   Project,
   CreateProjectRequest,
@@ -225,40 +227,50 @@ export class ProjectService {
     projectId: string,
     updates: ProjectSettingsApiUpdate
   ): Promise<ProjectSettings> {
-    return runUpdateSettingsFlow(
-      {
-        getRepoPath: (id) => this.getRepoPath(id),
-        getSettingsWithRuntimeState: (id) => this.getSettingsWithRuntimeState(id),
-        listTasks: (id) => this.taskStore.listAll(id),
-      },
-      projectId,
-      updates
-    );
+    const save = () =>
+      runUpdateSettingsFlow(
+        {
+          getRepoPath: (id) => this.getRepoPath(id),
+          getSettingsWithRuntimeState: (id) => this.getSettingsWithRuntimeState(id),
+          listTasks: (id) => this.taskStore.listAll(id),
+        },
+        projectId,
+        updates
+      );
+    return updates.deliveryMode === "pull_request"
+      ? withUngovernedPullRequestDelivery(projectId, save)
+      : save();
   }
 
   /** Archive a project: remove from index only. Data in project folder remains. */
-  async archiveProject(id: string): Promise<void> {
-    await runArchiveProjectFlow(
-      {
-        getProject: (pid) => this.getProject(pid),
-        invalidateListCache: () => this.invalidateListCache(),
-        taskStore: this.taskStore,
-        invalidateProjectGitRuntime: (pid) => projectGitRuntimeCache.invalidate(pid),
-      },
-      id
-    );
+  async archiveProject(id: string, actor?: string): Promise<void> {
+    await governanceService.withPublicationLock(id, async () => {
+      await governanceService.assertProjectRemovalAllowed(id, actor);
+      await runArchiveProjectFlow(
+        {
+          getProject: (pid) => this.getProject(pid),
+          invalidateListCache: () => this.invalidateListCache(),
+          taskStore: this.taskStore,
+          invalidateProjectGitRuntime: (pid) => projectGitRuntimeCache.invalidate(pid),
+        },
+        id
+      );
+    });
   }
 
   /** Delete a project: remove all project data from global store and delete .opensprint directory. */
-  async deleteProject(id: string): Promise<void> {
-    await runDeleteProjectFlow(
-      {
-        getProject: (pid) => this.getProject(pid),
-        invalidateListCache: () => this.invalidateListCache(),
-        taskStore: this.taskStore,
-        invalidateProjectGitRuntime: (pid) => projectGitRuntimeCache.invalidate(pid),
-      },
-      id
-    );
+  async deleteProject(id: string, actor?: string): Promise<void> {
+    await governanceService.withPublicationLock(id, async () => {
+      await governanceService.assertProjectRemovalAllowed(id, actor);
+      await runDeleteProjectFlow(
+        {
+          getProject: (pid) => this.getProject(pid),
+          invalidateListCache: () => this.invalidateListCache(),
+          taskStore: this.taskStore,
+          invalidateProjectGitRuntime: (pid) => projectGitRuntimeCache.invalidate(pid),
+        },
+        id
+      );
+    });
   }
 }

@@ -26,6 +26,13 @@ import {
 import type { StoredTask } from "../services/task-store.service.js";
 import type { AgentSlotLike } from "../services/orchestrator-phase-context.js";
 import type { ReviewAgentResult } from "@opensprint/shared";
+import { eventLogService } from "../services/event-log.service.js";
+
+// This suite exercises review orchestration with governance off. Do not consult a real task
+// database (DATABASE_URL is deliberately set in the combined CI merge-gate job).
+vi.mock("../services/governance.service.js", async () => ({
+  governanceService: (await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+}));
 
 const mockProjectServiceForSession = {
   getProjectByRepoPath: vi.fn().mockResolvedValue(null),
@@ -47,6 +54,7 @@ const {
   mockBuildContext,
   mockWriteJsonAtomic,
   mockLifecycleRun,
+  mockHandleTaskFailure,
   mockPersistCounters,
   mockGetState,
   mockGetNextKey,
@@ -61,6 +69,7 @@ const {
   mockBuildContext: vi.fn(),
   mockWriteJsonAtomic: vi.fn(),
   mockLifecycleRun: vi.fn(),
+  mockHandleTaskFailure: vi.fn(),
   mockPersistCounters: vi.fn(),
   mockGetState: vi.fn(),
   mockGetNextKey: vi.fn(),
@@ -177,6 +186,7 @@ describe("Multi-angle review flow — integration", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    vi.mocked(eventLogService.append).mockResolvedValue(undefined);
     repoPath = path.join(os.tmpdir(), `multi-angle-review-integration-${Date.now()}`);
     await fs.mkdir(repoPath, { recursive: true });
     await fs.mkdir(path.join(repoPath, ".opensprint"), { recursive: true });
@@ -247,11 +257,12 @@ describe("Multi-angle review flow — integration", () => {
     phaseExecutor = new PhaseExecutorService(mockHost, {
       handleCodingDone: vi.fn().mockResolvedValue(undefined),
       handleReviewDone: vi.fn().mockResolvedValue(undefined),
-      handleTaskFailure: vi.fn().mockResolvedValue(undefined),
+      handleTaskFailure: mockHandleTaskFailure,
     });
   });
 
   afterEach(async () => {
+    expect(mockHandleTaskFailure).not.toHaveBeenCalled();
     vi.restoreAllMocks();
     try {
       await fs.rm(repoPath, { recursive: true, force: true });
@@ -282,7 +293,7 @@ describe("Multi-angle review flow — integration", () => {
       phaseExecutor = new PhaseExecutorService(mockHost, {
         handleCodingDone: vi.fn().mockResolvedValue(undefined),
         handleReviewDone: mockHandleReviewDone,
-        handleTaskFailure: vi.fn().mockResolvedValue(undefined),
+        handleTaskFailure: mockHandleTaskFailure,
       });
 
       await phaseExecutor.executeReviewPhase(projectId, repoPath, task, slot.branchName);
@@ -350,7 +361,7 @@ describe("Multi-angle review flow — integration", () => {
       phaseExecutor = new PhaseExecutorService(mockHost, {
         handleCodingDone: vi.fn().mockResolvedValue(undefined),
         handleReviewDone: mockHandleReviewDone,
-        handleTaskFailure: vi.fn().mockResolvedValue(undefined),
+        handleTaskFailure: mockHandleTaskFailure,
       });
 
       await phaseExecutor.executeReviewPhase(projectId, repoPath, task, slot.branchName);
@@ -570,7 +581,7 @@ describe("Multi-angle review flow — integration", () => {
       phaseExecutor = new PhaseExecutorService(mockHost, {
         handleCodingDone: vi.fn().mockResolvedValue(undefined),
         handleReviewDone: mockHandleReviewDone,
-        handleTaskFailure: vi.fn().mockResolvedValue(undefined),
+        handleTaskFailure: mockHandleTaskFailure,
       });
 
       await phaseExecutor.executeReviewPhase(projectId, repoPath, task, slot.branchName);

@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
 import { exec } from "child_process";
 import { promisify } from "util";
 import type { AgentConfig } from "@opensprint/shared";
@@ -297,7 +298,11 @@ export async function attemptRecovery(
   const verifyCmd = verifyCommandForCategory(classification.category);
   if (verifyCmd) {
     try {
-      await execAsync(verifyCmd, { timeout: VERIFY_TIMEOUT_MS, cwd: projectPath });
+      await execAsync(verifyCmd, {
+        env: agentProcessEnvironment(),
+        timeout: VERIFY_TIMEOUT_MS,
+        cwd: projectPath,
+      });
       log.info("Recovery verification passed", { category: classification.category, verifyCmd });
       return {
         success: true,

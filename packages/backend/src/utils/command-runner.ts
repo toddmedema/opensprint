@@ -2,6 +2,7 @@ import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 import { normalizeSpawnEnvPath } from "./path-env.js";
+import { agentProcessEnvironment } from "./agent-process-env.js";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const KILL_GRACE_MS = 5_000;
@@ -124,7 +125,9 @@ export async function runCommand(
   spec: CommandSpec,
   options: CommandRunOptions
 ): Promise<CommandRunResult> {
-  const env = normalizeSpawnEnvPath({ ...process.env, ...(options.env ?? {}) });
+  const env = agentProcessEnvironment(
+    normalizeSpawnEnvPath({ ...process.env, ...(options.env ?? {}) })
+  );
   const executable = resolveCommandExecutable(spec.command, env);
   const cwd = options.cwd;
 

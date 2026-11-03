@@ -1,3 +1,4 @@
+import { governanceService } from "./governance.service.js";
 import fs from "fs/promises";
 import { taskStore as taskStoreSingleton, type StoredTask } from "./task-store.service.js";
 import { BranchManager } from "./branch-manager.js";
@@ -53,7 +54,8 @@ export class OrphanRecoveryService {
     const recovered: string[] = [];
 
     for (const { taskId } of stale) {
-      if (excludeSet.has(taskId)) continue;
+      if (excludeSet.has(taskId) || (await governanceService.hasTaskHold(projectId, taskId)))
+        continue;
       try {
         const task = await this.taskStore.show(projectId, taskId);
         if (task.status === "in_progress") {
@@ -98,6 +100,7 @@ export class OrphanRecoveryService {
     const recovered: string[] = [];
 
     for (const task of toRecover) {
+      if (await governanceService.hasTaskHold(projectId, task.id)) continue;
       try {
         await this.recoverOne(projectId, repoPath, task);
         recovered.push(task.id);
@@ -119,7 +122,9 @@ export class OrphanRecoveryService {
 
     // In Branches mode, agent runs in repoPath; no worktree. In Worktree mode, use worktree path.
     const workPath =
-      gitWorkingMode === "branches" ? repoPath : this.branchManager.getWorktreePath(task.id, repoPath);
+      gitWorkingMode === "branches"
+        ? repoPath
+        : this.branchManager.getWorktreePath(task.id, repoPath);
     try {
       await fs.access(workPath);
       await this.branchManager.commitWip(workPath, task.id);

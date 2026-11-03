@@ -17,12 +17,14 @@ import { useSearchParams, Link } from "react-router-dom";
 import { FolderBrowser } from "./FolderBrowser";
 import { CloseButton } from "./CloseButton";
 import { ModelSelect } from "./ModelSelect";
-import { SaveIndicator } from "./SaveIndicator";
+import { SaveIndicator, type SaveStatus } from "./SaveIndicator";
+import { governanceAuthorityReason } from "../lib/governance";
 import { SettingsTopBar } from "./settings/SettingsTopBar";
 import { SettingsSubTabsBar, type SettingsSubTab } from "./settings/SettingsSubTabsBar";
 import { WorkflowSettingsContent } from "./settings/WorkflowSettingsContent";
+import { GovernanceSettingsContent } from "./settings/GovernanceSettingsContent";
 import { IntegrationsSettingsContent } from "./settings/IntegrationsSettingsContent";
-import { api, isConnectionError } from "../api/client";
+import { api, isConnectionError, isApiError } from "../api/client";
 import type {
   Project,
   ProjectSettings,
@@ -70,7 +72,7 @@ interface ProjectSettingsModalProps {
   /** When fullScreen, parent renders tabs in topbar; pass these to control tab state externally */
   activeTab?: SettingsSubTab;
   onTabChange?: (tab: SettingsSubTab) => void;
-  onSaveStatusChange?: (status: "saving" | "saved") => void;
+  onSaveStatusChange?: (status: SaveStatus) => void;
 }
 
 const AgentsMdSection = lazy(() =>
@@ -117,6 +119,7 @@ function parseTabFromSearch(search: string): SettingsSubTab | null {
     "basics",
     "agents",
     "workflow",
+    "governance",
     "deployment",
     "hil",
     "team",
@@ -173,17 +176,21 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
     const loadRequestRef = useRef(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [needsGovernanceCapability, setNeedsGovernanceCapability] = useState(false);
+    const [governanceCapability, setGovernanceCapability] = useState("");
+    const [governanceCapabilityError, setGovernanceCapabilityError] = useState<string | null>(null);
+    const [saveFailed, setSaveFailed] = useState(false);
     const [showFolderBrowser, setShowFolderBrowser] = useState(false);
     /** Inline "add new env var" row state per target (key: custom-0, expo-staging, etc.) */
     const [newEnvRow, setNewEnvRow] = useState<Record<string, { key: string; value: string }>>({});
-    const saveStatus = saving ? "saving" : "saved";
+    const saveStatus: SaveStatus = saving ? "saving" : saveFailed ? "not_saved" : "saved";
 
     useEffect(() => {
       if (onSaveStatusChange) onSaveStatusChange(saveStatus);
     }, [saveStatus, onSaveStatusChange]);
 
     useEffect(() => {
-      if (saveStatus !== "saving") return;
+      if (saveStatus !== "saving" && saveStatus !== "not_saved") return;
       const handler = (e: BeforeUnloadEvent) => {
         e.preventDefault();
         e.returnValue = "";
@@ -378,8 +385,8 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
     }>;
 
     const persistSettings = useCallback(
-      async (notifyOnComplete?: boolean, overrides?: PersistOverrides) => {
-        if (loading || !settings) return;
+      async (notifyOnComplete?: boolean, overrides?: PersistOverrides): Promise<boolean> => {
+        if (loading || !settings) return true;
         const effName = overrides?.name ?? name;
         const effRepoPath = overrides?.repoPath ?? repoPath;
         const effSimple =
@@ -406,147 +413,175 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
           overrides?.enableHumanTeammates ?? settings?.enableHumanTeammates ?? false;
         const effTeamMembers = overrides?.teamMembers ?? settings?.teamMembers ?? [];
         const effSettings = overrides ? { ...settings } : settings;
-        if (effSimple.type === "custom" && !(effSimple.cliCommand ?? "").trim()) return;
-        if (effComplex.type === "custom" && !(effComplex.cliCommand ?? "").trim()) return;
+        if (effSimple.type === "custom" && !(effSimple.cliCommand ?? "").trim()) return true;
+        if (effComplex.type === "custom" && !(effComplex.cliCommand ?? "").trim()) return true;
         if (!hasConfiguredLocalModel(effSimple) || !hasConfiguredLocalModel(effComplex)) {
           setError(LOCAL_PROVIDER_MODEL_REQUIRED_MESSAGE);
-          return;
+          return true;
         }
         setSaving(true);
         setError(null);
         saveGenerationRef.current += 1;
         const startTime = Date.now();
         const completedGeneration = saveGenerationRef.current;
+        let saveSucceeded = false;
         try {
           await Promise.all([
             api.projects.update(project.id, { name: effName, repoPath: effRepoPath }),
-            api.projects.updateSettings(project.id, {
-              simpleComplexityAgent: persistSimpleAsGlobal
-                ? null
-                : {
-                    type: effSimple.type,
-                    model: effSimple.model || null,
-                    cliCommand: effSimple.cliCommand || null,
-                    timeoutMs: normalizeAgentTimeoutMs(effSimple.timeoutMs),
-                    effort: effSimple.effort,
-                    ...((effSimple.type === "lmstudio" || effSimple.type === "ollama") && {
-                      baseUrl:
-                        effSimple.baseUrl ||
-                        (effSimple.type === "ollama"
-                          ? DEFAULT_OLLAMA_BASE_URL
-                          : DEFAULT_LMSTUDIO_BASE_URL),
-                    }),
-                  },
-              complexComplexityAgent: persistComplexAsGlobal
-                ? null
-                : {
-                    type: effComplex.type,
-                    model: effComplex.model || null,
-                    cliCommand: effComplex.cliCommand || null,
-                    timeoutMs: normalizeAgentTimeoutMs(effComplex.timeoutMs),
-                    effort: effComplex.effort,
-                    ...((effComplex.type === "lmstudio" || effComplex.type === "ollama") && {
-                      baseUrl:
-                        effComplex.baseUrl ||
-                        (effComplex.type === "ollama"
-                          ? DEFAULT_OLLAMA_BASE_URL
-                          : DEFAULT_LMSTUDIO_BASE_URL),
-                    }),
-                  },
-              deployment: {
-                mode: effDeployment.mode,
-                expoConfig:
-                  effDeployment.mode === "expo"
-                    ? {
-                        channel: effDeployment.expoConfig?.channel ?? "preview",
-                        projectId:
-                          effDeployment.expoConfig?.projectId ??
-                          effDeployment.easProjectId ??
-                          undefined,
-                      }
-                    : undefined,
-                customCommand: effDeployment.customCommand ?? undefined,
-                webhookUrl: effDeployment.webhookUrl ?? undefined,
-                rollbackCommand: effDeployment.rollbackCommand ?? undefined,
-                targets: effDeployment.targets,
-                autoResolveFeedbackOnTaskCompletion:
-                  effDeployment.autoResolveFeedbackOnTaskCompletion ?? false,
-              },
-              aiAutonomyLevel: effAiAutonomy,
-              testCommand: overrides?.testCommand ?? effSettings?.testCommand ?? undefined,
-              reviewMode: overrides?.reviewMode ?? effSettings?.reviewMode ?? DEFAULT_REVIEW_MODE,
-              // Send [] when empty so backend receives it (undefined is omitted from JSON and would keep old value)
-              reviewAngles:
-                overrides?.reviewAngles ??
-                lastReviewAnglesRef.current ??
-                effSettings?.reviewAngles ??
-                [],
-              includeGeneralReview:
-                overrides?.includeGeneralReview ?? effSettings?.includeGeneralReview ?? undefined,
-              maxConcurrentCoders:
-                effGitMode === "branches"
-                  ? 1
-                  : (overrides?.maxConcurrentCoders ?? effSettings?.maxConcurrentCoders ?? 1),
-              ...(overrides?.maxTotalConcurrentAgents !== undefined
-                ? { maxTotalConcurrentAgents: overrides.maxTotalConcurrentAgents }
-                : effSettings.maxTotalConcurrentAgents != null
-                  ? { maxTotalConcurrentAgents: effSettings.maxTotalConcurrentAgents }
-                  : {}),
-              unknownScopeStrategy:
-                overrides?.unknownScopeStrategy ??
-                effSettings?.unknownScopeStrategy ??
-                "optimistic",
-              gitWorkingMode: effGitMode,
-              mergeStrategy: effMergeStrategy,
-              deliveryMode: overrides?.deliveryMode ?? deliveryMode,
-              worktreeBaseBranch:
-                overrides?.worktreeBaseBranch ?? effSettings?.worktreeBaseBranch ?? "main",
-              enableHumanTeammates: effEnableHumanTeammates,
-              teamMembers: effTeamMembers,
-              selfImprovementFrequency:
-                overrides?.selfImprovementFrequency ??
-                effSettings?.selfImprovementFrequency ??
-                "never",
-              ...(overrides?.runAgentEnhancementExperiments !== undefined
-                ? { runAgentEnhancementExperiments: overrides.runAgentEnhancementExperiments }
-                : effSettings?.runAgentEnhancementExperiments !== undefined
-                  ? { runAgentEnhancementExperiments: effSettings.runAgentEnhancementExperiments }
-                  : {}),
-              ...(patchDefines(overrides, "selfImprovementReviewerAgents")
-                ? {
-                    selfImprovementReviewerAgents:
-                      overrides!.selfImprovementReviewerAgents === undefined
-                        ? null
-                        : overrides!.selfImprovementReviewerAgents,
-                  }
-                : effSettings?.selfImprovementReviewerAgents !== undefined
-                  ? { selfImprovementReviewerAgents: effSettings.selfImprovementReviewerAgents }
-                  : {}),
-              ...(patchDefines(overrides, "selfImprovementIncludeGeneralReview")
-                ? {
-                    selfImprovementIncludeGeneralReview:
-                      overrides!.selfImprovementIncludeGeneralReview === undefined
-                        ? null
-                        : overrides!.selfImprovementIncludeGeneralReview,
-                  }
-                : effSettings?.selfImprovementIncludeGeneralReview !== undefined
+            api.projects.updateSettings(
+              project.id,
+              {
+                simpleComplexityAgent: persistSimpleAsGlobal
+                  ? null
+                  : {
+                      type: effSimple.type,
+                      model: effSimple.model || null,
+                      cliCommand: effSimple.cliCommand || null,
+                      timeoutMs: normalizeAgentTimeoutMs(effSimple.timeoutMs),
+                      effort: effSimple.effort,
+                      ...((effSimple.type === "lmstudio" || effSimple.type === "ollama") && {
+                        baseUrl:
+                          effSimple.baseUrl ||
+                          (effSimple.type === "ollama"
+                            ? DEFAULT_OLLAMA_BASE_URL
+                            : DEFAULT_LMSTUDIO_BASE_URL),
+                      }),
+                    },
+                complexComplexityAgent: persistComplexAsGlobal
+                  ? null
+                  : {
+                      type: effComplex.type,
+                      model: effComplex.model || null,
+                      cliCommand: effComplex.cliCommand || null,
+                      timeoutMs: normalizeAgentTimeoutMs(effComplex.timeoutMs),
+                      effort: effComplex.effort,
+                      ...((effComplex.type === "lmstudio" || effComplex.type === "ollama") && {
+                        baseUrl:
+                          effComplex.baseUrl ||
+                          (effComplex.type === "ollama"
+                            ? DEFAULT_OLLAMA_BASE_URL
+                            : DEFAULT_LMSTUDIO_BASE_URL),
+                      }),
+                    },
+                deployment: {
+                  mode: effDeployment.mode,
+                  expoConfig:
+                    effDeployment.mode === "expo"
+                      ? {
+                          channel: effDeployment.expoConfig?.channel ?? "preview",
+                          projectId:
+                            effDeployment.expoConfig?.projectId ??
+                            effDeployment.easProjectId ??
+                            undefined,
+                        }
+                      : undefined,
+                  customCommand: effDeployment.customCommand ?? undefined,
+                  webhookUrl: effDeployment.webhookUrl ?? undefined,
+                  rollbackCommand: effDeployment.rollbackCommand ?? undefined,
+                  targets: effDeployment.targets,
+                  autoResolveFeedbackOnTaskCompletion:
+                    effDeployment.autoResolveFeedbackOnTaskCompletion ?? false,
+                },
+                aiAutonomyLevel: effAiAutonomy,
+                testCommand: overrides?.testCommand ?? effSettings?.testCommand ?? undefined,
+                reviewMode: overrides?.reviewMode ?? effSettings?.reviewMode ?? DEFAULT_REVIEW_MODE,
+                // Send [] when empty so backend receives it (undefined is omitted from JSON and would keep old value)
+                reviewAngles:
+                  overrides?.reviewAngles ??
+                  lastReviewAnglesRef.current ??
+                  effSettings?.reviewAngles ??
+                  [],
+                includeGeneralReview:
+                  overrides?.includeGeneralReview ?? effSettings?.includeGeneralReview ?? undefined,
+                maxConcurrentCoders:
+                  effGitMode === "branches"
+                    ? 1
+                    : (overrides?.maxConcurrentCoders ?? effSettings?.maxConcurrentCoders ?? 1),
+                ...(overrides?.maxTotalConcurrentAgents !== undefined
+                  ? { maxTotalConcurrentAgents: overrides.maxTotalConcurrentAgents }
+                  : effSettings.maxTotalConcurrentAgents != null
+                    ? { maxTotalConcurrentAgents: effSettings.maxTotalConcurrentAgents }
+                    : {}),
+                unknownScopeStrategy:
+                  overrides?.unknownScopeStrategy ??
+                  effSettings?.unknownScopeStrategy ??
+                  "optimistic",
+                gitWorkingMode: effGitMode,
+                mergeStrategy: effMergeStrategy,
+                deliveryMode: overrides?.deliveryMode ?? deliveryMode,
+                worktreeBaseBranch:
+                  overrides?.worktreeBaseBranch ?? effSettings?.worktreeBaseBranch ?? "main",
+                enableHumanTeammates: effEnableHumanTeammates,
+                teamMembers: effTeamMembers,
+                selfImprovementFrequency:
+                  overrides?.selfImprovementFrequency ??
+                  effSettings?.selfImprovementFrequency ??
+                  "never",
+                ...(overrides?.runAgentEnhancementExperiments !== undefined
+                  ? { runAgentEnhancementExperiments: overrides.runAgentEnhancementExperiments }
+                  : effSettings?.runAgentEnhancementExperiments !== undefined
+                    ? { runAgentEnhancementExperiments: effSettings.runAgentEnhancementExperiments }
+                    : {}),
+                ...(patchDefines(overrides, "selfImprovementReviewerAgents")
+                  ? {
+                      selfImprovementReviewerAgents:
+                        overrides!.selfImprovementReviewerAgents === undefined
+                          ? null
+                          : overrides!.selfImprovementReviewerAgents,
+                    }
+                  : effSettings?.selfImprovementReviewerAgents !== undefined
+                    ? { selfImprovementReviewerAgents: effSettings.selfImprovementReviewerAgents }
+                    : {}),
+                ...(patchDefines(overrides, "selfImprovementIncludeGeneralReview")
                   ? {
                       selfImprovementIncludeGeneralReview:
-                        effSettings.selfImprovementIncludeGeneralReview,
+                        overrides!.selfImprovementIncludeGeneralReview === undefined
+                          ? null
+                          : overrides!.selfImprovementIncludeGeneralReview,
                     }
-                  : {}),
-            }),
+                  : effSettings?.selfImprovementIncludeGeneralReview !== undefined
+                    ? {
+                        selfImprovementIncludeGeneralReview:
+                          effSettings.selfImprovementIncludeGeneralReview,
+                      }
+                    : {}),
+              },
+              ...(governanceCapability ? ([governanceCapability] as [string]) : ([] as []))
+            ),
           ]);
+          setNeedsGovernanceCapability(false);
+          setGovernanceCapability("");
+          setGovernanceCapabilityError(null);
+          setSaveFailed(false);
           void queryClient.invalidateQueries({ queryKey: queryKeys.projects.settings(project.id) });
           if (notifyOnComplete) onSaved?.();
+          saveSucceeded = true;
+          return true;
         } catch (err) {
-          setError(err instanceof Error ? err.message : "Failed to save settings");
+          setSaveFailed(true);
           if (overrides?.deliveryMode !== undefined) {
             setSettings((s) => (s ? { ...s, deliveryMode } : null));
           }
+          const authorityReason =
+            isApiError(err) && err.code === "GOVERNANCE_HUMAN_REQUIRED"
+              ? governanceAuthorityReason(err.details)
+              : undefined;
+          if (isApiError(err) && err.code === "GOVERNANCE_HUMAN_REQUIRED") {
+            if (authorityReason === "not_configured") {
+              setNeedsGovernanceCapability(false);
+              setError(err.message);
+            } else {
+              // The owner-approval form below explains this state and offers the only next step.
+              setNeedsGovernanceCapability(true);
+              setGovernanceCapabilityError(authorityReason === "incorrect" ? err.message : null);
+            }
+          } else {
+            setError(err instanceof Error ? err.message : "Failed to save settings");
+          }
+          return false;
         } finally {
           const elapsed = Date.now() - startTime;
-          const remaining = Math.max(0, MIN_SAVE_SPINNER_MS - elapsed);
+          const remaining = saveSucceeded ? Math.max(0, MIN_SAVE_SPINNER_MS - elapsed) : 0;
           const run = () => {
             if (saveGenerationRef.current === completedGeneration) {
               setSaving(false);
@@ -574,6 +609,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
         loading,
         onSaved,
         queryClient,
+        governanceCapability,
       ]
     );
 
@@ -606,9 +642,12 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
     );
 
     const handleClose = useCallback(async () => {
-      if (settings && !loading) {
-        await persistSettings(true);
-      }
+      const saved = settings && !loading ? await persistSettings(true) : true;
+      if (
+        !saved &&
+        !window.confirm("Your latest settings changes were not saved. Leave without saving them?")
+      )
+        return;
       onClose();
     }, [settings, loading, persistSettings, onClose]);
 
@@ -1478,6 +1517,8 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                   </div>
                 )}
 
+                {activeTab === "governance" && <GovernanceSettingsContent projectId={project.id} />}
+
                 {activeTab === "deployment" && (
                   <div className="space-y-4">
                     <div className="space-y-3 p-3 rounded-lg bg-theme-bg-elevated border border-theme-border">
@@ -2209,6 +2250,44 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
             <div className="mx-5 mb-3 p-3 bg-theme-error-bg border border-theme-error-border rounded-lg">
               <p className="text-sm text-theme-error-text">{error}</p>
             </div>
+          )}
+          {needsGovernanceCapability && (
+            <form
+              className="mx-5 mb-3 space-y-3 rounded-lg border border-theme-border bg-theme-surface p-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void persistSettings();
+              }}
+            >
+              <p className="text-sm text-theme-text">
+                <span className="font-medium">Not saved.</span> This change affects governed review
+                settings and needs the designated owner’s approval.
+              </p>
+              {governanceCapabilityError && (
+                <p role="alert" className="text-sm text-theme-error-text">
+                  {governanceCapabilityError}
+                </p>
+              )}
+              <label className="block text-sm text-theme-text">
+                Owner approval capability
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  spellCheck={false}
+                  value={governanceCapability}
+                  onChange={(event) => setGovernanceCapability(event.target.value)}
+                  className="input mt-1.5"
+                  required
+                />
+              </label>
+              <button
+                type="submit"
+                className="btn-secondary"
+                disabled={!governanceCapability || saving}
+              >
+                Authorize and save settings
+              </button>
+            </form>
           )}
         </div>
 

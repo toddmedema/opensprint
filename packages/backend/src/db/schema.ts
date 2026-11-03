@@ -1,3 +1,8 @@
+import {
+  GOVERNANCE_SCHEMA_SQL,
+  GOVERNANCE_APPROVAL_SCHEMA_SQL,
+  GOVERNANCE_LEASE_SCHEMA_SQL,
+} from "./governance-schema.js";
 import type { DatabaseDialect } from "@opensprint/shared";
 import fs from "fs/promises";
 import path from "path";
@@ -960,7 +965,12 @@ function stripLeadingCommentLines(s: string): string {
 
 /** Return schema SQL for the given dialect. */
 export function getSchemaSql(dialect: DatabaseDialect): string {
-  return dialect === "sqlite" ? SCHEMA_SQL_SQLITE : SCHEMA_SQL;
+  return (
+    (dialect === "sqlite" ? SCHEMA_SQL_SQLITE : SCHEMA_SQL) +
+    GOVERNANCE_SCHEMA_SQL +
+    GOVERNANCE_APPROVAL_SCHEMA_SQL +
+    GOVERNANCE_LEASE_SCHEMA_SQL
+  );
 }
 
 function parseSqliteAddColumnIfNotExists(

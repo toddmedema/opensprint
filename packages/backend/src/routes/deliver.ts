@@ -1,4 +1,5 @@
 import { Router, Request } from "express";
+import { createGovernedDeploymentSettingsGuard } from "../middleware/governance-settings.js";
 import { wrapAsync } from "../middleware/wrap-async.js";
 import { validateParams, validateBody, validateQuery } from "../middleware/validate.js";
 import { projectIdParamSchema } from "../schemas/request-common.js";
@@ -39,6 +40,11 @@ import { ensureExpoConfig, getExpoConfigStatus } from "../utils/expo-config.js";
 import { checkExpoAuth } from "../utils/expo-auth-check.js";
 import { ensureEasProjectIdInAppJson, isEasProjectLinked } from "../utils/eas-project-link.js";
 import { createLogger } from "../utils/logger.js";
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
+import {
+  withGovernedDeployment,
+  type GovernedDeploymentOptions,
+} from "../services/governance-deployment.service.js";
 
 const log = createLogger("deliver");
 
@@ -231,6 +237,7 @@ export function createDeliverRouter(projectService: ProjectService): Router {
     "/settings",
     validateParams(projectIdParamSchema),
     validateBody(deliverSettingsBodySchema),
+    createGovernedDeploymentSettingsGuard(projectService),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const { projectId } = req.params;
       const deployment = req.body as Partial<DeploymentConfig>;
@@ -370,18 +377,29 @@ export function createDeliverRouter(projectService: ProjectService): Router {
           broadcastToProject(projectId, { type: "deliver.output", deployId: record.id, chunk });
         };
 
-        const deployPromise = runExpoDeployAsync(
+        const deployPromise = withGovernedDeployment(
           projectId,
-          record.id,
           project.repoPath,
-          variant,
-          emit,
-          envVars,
-          undefined,
-          getConfiguredEasProjectId(settings.deployment)
+          settings,
+          (assertAdmission) =>
+            runExpoDeployAsync(
+              projectId,
+              record.id,
+              project.repoPath,
+              variant,
+              emit,
+              envVars,
+              undefined,
+              getConfiguredEasProjectId(settings.deployment),
+              assertAdmission
+            )
         )
-          .catch((err) => {
+          .catch(async (err) => {
             log.error("Expo deploy failed", { deployId: record.id, err });
+            await completeDeployFn(projectId, record.id, {
+              success: false,
+              error: getErrorMessage(err),
+            });
           })
           .finally(() => {
             activeDeployments.delete(projectId);
@@ -515,7 +533,8 @@ export function createDeliverRouter(projectService: ProjectService): Router {
           project.repoPath,
           rollbackCommand,
           rolledBackDeployId,
-          completeDeployFn
+          completeDeployFn,
+          settings
         ).catch((err) => {
           log.error("Rollback failed", {
             rollbackId: rollbackRecord.id,
@@ -556,6 +575,38 @@ export async function runDeployAsync(
   deployId: string,
   repoPath: string,
   settings: ProjectSettings,
+  targetName?: string,
+  projectName?: string,
+  options?: GovernedDeploymentOptions
+): Promise<void> {
+  try {
+    await withGovernedDeployment(
+      projectId,
+      repoPath,
+      settings,
+      (assertAdmission) =>
+        runDeployBody(
+          projectId,
+          deployId,
+          repoPath,
+          settings,
+          assertAdmission,
+          targetName,
+          projectName
+        ),
+      options
+    );
+  } catch (error) {
+    await completeDeployFn(projectId, deployId, { success: false, error: getErrorMessage(error) });
+  }
+}
+
+async function runDeployBody(
+  projectId: string,
+  deployId: string,
+  repoPath: string,
+  settings: ProjectSettings,
+  assertAdmission: () => Promise<void>,
   targetName?: string,
   projectName?: string
 ): Promise<void> {
@@ -621,6 +672,7 @@ export async function runDeployAsync(
     emit("All tests passed. Proceeding with deployment...\n");
 
     const handler = deployHandlers[config.mode] ?? deployHandlers.unknown;
+    await assertAdmission();
     await handler({
       projectId,
       deployId,
@@ -631,6 +683,7 @@ export async function runDeployAsync(
       envVars,
       emit,
       projectName,
+      assertAdmission,
     });
   } catch (err) {
     const msg = getErrorMessage(err);
@@ -649,6 +702,7 @@ type DeployHandlerContext = {
   envVars: Record<string, string>;
   emit: (chunk: string) => void | Promise<unknown>;
   projectName?: string;
+  assertAdmission: () => Promise<void>;
 };
 
 const deployHandlers: Record<string, (ctx: DeployHandlerContext) => Promise<void>> = {
@@ -677,7 +731,8 @@ const deployHandlers: Record<string, (ctx: DeployHandlerContext) => Promise<void
       (chunk) => ctx.emit(chunk),
       expoEnvVars,
       ctx.projectName,
-      getConfiguredEasProjectId(ctx.settings.deployment)
+      getConfiguredEasProjectId(ctx.settings.deployment),
+      ctx.assertAdmission
     );
   },
   custom: async (ctx) => {
@@ -727,9 +782,10 @@ async function runExpoDeployAsync(
   repoPath: string,
   variant: "beta" | "prod",
   emit: (chunk: string) => void,
-  envVars?: Record<string, string>,
-  projectName?: string,
-  easProjectId?: string
+  envVars: Record<string, string> | undefined,
+  projectName: string | undefined,
+  easProjectId: string | undefined,
+  assertAdmission: () => Promise<void>
 ): Promise<void> {
   const cmd = getExpoDeployCommand(variant);
   try {
@@ -800,6 +856,7 @@ async function runExpoDeployAsync(
       }
     }
     await ensureEasConfig(repoPath);
+    await assertAdmission();
     emit(`Running: ${cmd}\n`);
     await runCommandStreaming("sh", ["-c", cmd], repoPath, emit, envVars);
     await completeDeployFn(projectId, deployId, { success: true });
@@ -824,7 +881,8 @@ async function runRollbackAsync(
   repoPath: string,
   rollbackCommand: string,
   rolledBackDeployId: string | null,
-  complete: typeof completeDeployFn
+  complete: typeof completeDeployFn,
+  settings: ProjectSettings
 ): Promise<void> {
   const emit = (chunk: string) => {
     const p = deployStorageService.appendLog(projectId, deployId, chunk);
@@ -833,7 +891,10 @@ async function runRollbackAsync(
   };
 
   try {
-    await runCommandStreaming("sh", ["-c", rollbackCommand], repoPath, emit);
+    await withGovernedDeployment(projectId, repoPath, settings, async (assertAdmission) => {
+      await assertAdmission();
+      await runCommandStreaming("sh", ["-c", rollbackCommand], repoPath, emit);
+    });
     if (rolledBackDeployId) {
       await deployStorageService.updateRecord(projectId, rolledBackDeployId, {
         status: "rolled_back",
@@ -865,7 +926,7 @@ function runCommandStreaming(
   onOutput: (chunk: string) => void | Promise<unknown>,
   envVars?: Record<string, string>
 ): Promise<void> {
-  const env = { ...process.env, ...envVars };
+  const env = agentProcessEnvironment({ ...process.env, ...envVars });
   const pendingOutput: Promise<unknown>[] = [];
   const capture = (chunk: string) => {
     const result = onOutput(chunk);

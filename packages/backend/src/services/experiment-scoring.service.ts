@@ -1,47 +1,67 @@
 /**
- * Experiment scoring and autonomy-aware promotion decision.
+ * Trusted scoring for policy replay. The evaluator reports what it observed without knowing the
+ * expected result; only this server code applies each fixture's polarity.
  *
- * Scoring priority: task success quality first; retry/review regressions
- * and latency/cost as guardrails.
- *
- * Autonomy mapping:
- *   confirm_all  → never auto-promote; always queue approval
- *   major_only   → auto-promote only for clear, non-regressing improvements
- *   full         → auto-promote when candidate is not worse (v1 auto-promotion)
+ * Retry counts and cost come from the replay image's stdout, so they are recorded as
+ * image-reported values and never act as guardrails. Success, review and server-timed latency do.
  */
 
-import type { AiAutonomyLevel } from "@opensprint/shared";
+import type { PolicyEvaluationFixtureCoverage, ReplayExpectedOutcome } from "@opensprint/shared";
 import type { SelfImprovementMetrics } from "./self-improvement-runner.service.js";
-import { createLogger } from "../utils/logger.js";
-
-const log = createLogger("experiment-scoring");
-
-export type ExperimentDecision = "promote" | "approval_needed" | "reject";
-
-export interface ExperimentScoringResult {
-  decision: ExperimentDecision;
-  /** Human-readable reason for the decision. */
-  reason: string;
-  /** Candidate minus baseline success rate (positive = improvement). */
-  successRateDelta: number;
-  /** True when any guardrail (retry, review, latency, cost) regressed beyond threshold. */
-  guardrailTriggered: boolean;
-  guardrailDetails: string[];
-}
 
 /** Thresholds for guardrail checks. */
 const GUARDRAIL = {
-  /** Max acceptable increase in retry rate (absolute). */
-  retryRateIncrease: 0.15,
   /** Max acceptable decrease in review pass rate (absolute). */
   reviewPassRateDecrease: 0.1,
   /** Max acceptable latency multiplier over baseline. */
   latencyMultiplier: 2.0,
-  /** Max acceptable cost multiplier over baseline. */
-  costMultiplier: 2.0,
-  /** Minimum success rate improvement for auto-promotion under major_only. */
-  majorOnlyMinDelta: 0.0,
 } as const;
+
+const NEGATIVE_REPLAY_LABELS: readonly string[] = ["defect", "conflict", "retrieval_miss"];
+
+export function replayExpectedOutcome(label: string): ReplayExpectedOutcome {
+  return NEGATIVE_REPLAY_LABELS.includes(label) ? "block_or_avoid" : "accept";
+}
+
+export type ReplayVerdict = "accepted" | "rejected" | "blocked" | "avoided" | "escaped";
+
+/** Apply a fixture's polarity to the blind evaluator's observations. */
+export function scoreReplayVerdict(
+  fixtureLabel: string,
+  observed: { label: string; reviewPassed: boolean; checksPassed: boolean }
+): { success: boolean; verdict: ReplayVerdict } {
+  if (replayExpectedOutcome(fixtureLabel) === "accept") {
+    const success =
+      observed.reviewPassed && observed.checksPassed && observed.label === fixtureLabel;
+    return { success, verdict: success ? "accepted" : "rejected" };
+  }
+  if (!observed.reviewPassed) return { success: true, verdict: "blocked" };
+  const clean = observed.checksPassed && replayExpectedOutcome(observed.label) === "accept";
+  return { success: clean, verdict: clean ? "avoided" : "escaped" };
+}
+
+/** Coverage that counts: an independent task on which the amendment changed what the agent saw. */
+export function exercisedHeldOut(coverage: PolicyEvaluationFixtureCoverage): boolean {
+  return (
+    coverage.holdout &&
+    !coverage.evidenceTask &&
+    coverage.amendedRuleSelected &&
+    coverage.contentDiffers
+  );
+}
+
+/** At least one exercised held-out positive and negative, drawn from distinct tasks. */
+export function hasExercisedHeldOutPair(coverage: PolicyEvaluationFixtureCoverage[]): boolean {
+  const exercised = coverage.filter(exercisedHeldOut);
+  return exercised.some(
+    (positive) =>
+      positive.expectedOutcome === "accept" &&
+      exercised.some(
+        (negative) =>
+          negative.expectedOutcome === "block_or_avoid" && negative.taskId !== positive.taskId
+      )
+  );
+}
 
 /**
  * Score baseline vs candidate metrics and produce guardrail flags.
@@ -54,14 +74,6 @@ export function scoreExperiment(
   const successRateDelta = candidate.taskSuccessRate - baseline.taskSuccessRate;
 
   const guardrailDetails: string[] = [];
-
-  const baseRetry = baseline.retryRate ?? 0;
-  const candRetry = candidate.retryRate ?? 0;
-  if (candRetry > baseRetry + GUARDRAIL.retryRateIncrease) {
-    guardrailDetails.push(
-      `Retry rate regression: ${(candRetry * 100).toFixed(0)}% vs baseline ${(baseRetry * 100).toFixed(0)}%`
-    );
-  }
 
   const baseReview = baseline.reviewPassRate ?? 1;
   const candReview = candidate.reviewPassRate ?? 1;
@@ -79,150 +91,9 @@ export function scoreExperiment(
     );
   }
 
-  const baseCost = baseline.avgCostUsd ?? 0;
-  const candCost = candidate.avgCostUsd ?? 0;
-  if (baseCost > 0 && candCost > baseCost * GUARDRAIL.costMultiplier) {
-    guardrailDetails.push(
-      `Cost regression: $${candCost.toFixed(4)} vs baseline $${baseCost.toFixed(4)} (>${GUARDRAIL.costMultiplier}x)`
-    );
-  }
-
   return {
     successRateDelta,
     guardrailTriggered: guardrailDetails.length > 0,
     guardrailDetails,
   };
-}
-
-/**
- * Decide promote / approval_needed / reject based on scoring result and autonomy level.
- */
-export function decideExperimentOutcome(
-  baseline: SelfImprovementMetrics,
-  candidate: SelfImprovementMetrics,
-  autonomyLevel: AiAutonomyLevel
-): ExperimentScoringResult {
-  const { successRateDelta, guardrailTriggered, guardrailDetails } = scoreExperiment(
-    baseline,
-    candidate
-  );
-
-  const candidateWorse = successRateDelta < -0.001;
-  const candidateBetter = successRateDelta > 0.001;
-
-  if (candidateWorse) {
-    const reason = `Candidate task success rate is worse than baseline (${(successRateDelta * 100).toFixed(1)}% delta).`;
-    log.info("Experiment decision: reject (success regression)", {
-      autonomyLevel,
-      successRateDelta,
-    });
-    return { decision: "reject", reason, successRateDelta, guardrailTriggered, guardrailDetails };
-  }
-
-  if (guardrailTriggered) {
-    if (autonomyLevel === "full" && candidateBetter) {
-      const reason = `Candidate improves success rate (+${(successRateDelta * 100).toFixed(1)}%) but has guardrail regressions: ${guardrailDetails.join("; ")}. Queuing for approval.`;
-      log.info("Experiment decision: approval_needed (guardrail triggered under full autonomy)", {
-        autonomyLevel,
-        successRateDelta,
-        guardrailDetails,
-      });
-      return {
-        decision: "approval_needed",
-        reason,
-        successRateDelta,
-        guardrailTriggered,
-        guardrailDetails,
-      };
-    }
-    const reason = `Guardrail regressions detected: ${guardrailDetails.join("; ")}. Queuing for approval.`;
-    log.info("Experiment decision: approval_needed (guardrail)", {
-      autonomyLevel,
-      successRateDelta,
-      guardrailDetails,
-    });
-    return {
-      decision: "approval_needed",
-      reason,
-      successRateDelta,
-      guardrailTriggered,
-      guardrailDetails,
-    };
-  }
-
-  switch (autonomyLevel) {
-    case "confirm_all": {
-      const reason = candidateBetter
-        ? `Candidate improves success rate (+${(successRateDelta * 100).toFixed(1)}%) with no guardrail regressions. Autonomy is confirm_all; queuing for approval.`
-        : `Candidate matches baseline with no guardrail regressions. Autonomy is confirm_all; queuing for approval.`;
-      log.info("Experiment decision: approval_needed (confirm_all)", {
-        autonomyLevel,
-        successRateDelta,
-      });
-      return {
-        decision: "approval_needed",
-        reason,
-        successRateDelta,
-        guardrailTriggered,
-        guardrailDetails,
-      };
-    }
-
-    case "major_only": {
-      if (candidateBetter && successRateDelta > GUARDRAIL.majorOnlyMinDelta) {
-        const reason = `Candidate improves success rate (+${(successRateDelta * 100).toFixed(1)}%) with no guardrail regressions. Auto-promoting under major_only autonomy.`;
-        log.info("Experiment decision: promote (major_only, clear improvement)", {
-          autonomyLevel,
-          successRateDelta,
-        });
-        return {
-          decision: "promote",
-          reason,
-          successRateDelta,
-          guardrailTriggered,
-          guardrailDetails,
-        };
-      }
-      const reason = `Candidate does not clearly improve success rate (${(successRateDelta * 100).toFixed(1)}% delta). Queuing for approval under major_only autonomy.`;
-      log.info("Experiment decision: approval_needed (major_only, no clear improvement)", {
-        autonomyLevel,
-        successRateDelta,
-      });
-      return {
-        decision: "approval_needed",
-        reason,
-        successRateDelta,
-        guardrailTriggered,
-        guardrailDetails,
-      };
-    }
-
-    case "full": {
-      const reason = candidateBetter
-        ? `Candidate improves success rate (+${(successRateDelta * 100).toFixed(1)}%) with no guardrail regressions. Auto-promoting under full autonomy.`
-        : `Candidate matches baseline with no guardrail regressions. Auto-promoting under full autonomy.`;
-      log.info("Experiment decision: promote (full autonomy)", {
-        autonomyLevel,
-        successRateDelta,
-      });
-      return {
-        decision: "promote",
-        reason,
-        successRateDelta,
-        guardrailTriggered,
-        guardrailDetails,
-      };
-    }
-
-    default: {
-      const reason = `Unknown autonomy level '${autonomyLevel as string}'. Queuing for approval.`;
-      return {
-        decision: "approval_needed",
-        reason,
-        successRateDelta,
-        guardrailTriggered,
-        guardrailDetails,
-      };
-    }
-  }
 }

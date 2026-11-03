@@ -410,6 +410,18 @@ function TaskDetailSidebarInner({
         hasActions={hasActions}
         isBlockedTask={isBlockedTask}
         isDoneTask={isDoneTask}
+        isGovernanceHeld={
+          (openQuestionNotification?.kind === "governance" &&
+            openQuestionNotification.status === "open") ||
+          (isBlockedTask && /governance/i.test(task?.blockReason ?? ""))
+        }
+        governanceCaseId={
+          openQuestionNotification?.kind === "governance" &&
+          openQuestionNotification.scopeChangeMetadata &&
+          "caseId" in openQuestionNotification.scopeChangeMetadata
+            ? String(openQuestionNotification.scopeChangeMetadata.caseId)
+            : undefined
+        }
         markDoneLoading={markDoneLoading}
         unblockLoading={unblockLoading}
         deleteLoading={deleteLoading}
@@ -539,7 +551,10 @@ function TaskDetailSidebarInner({
           <ExecuteOutputTabs
             key={selectedTask}
             outputContent={
-              <div className="h-full min-h-0 overflow-y-auto" data-testid="live-output-scroll-container">
+              <div
+                className="h-full min-h-0 overflow-y-auto"
+                data-testid="live-output-scroll-container"
+              >
                 <TaskDetailAgentOutput
                   projectId={projectId}
                   taskDetailLoading={taskDetailLoading}
@@ -554,7 +569,9 @@ function TaskDetailSidebarInner({
                   showJumpToBottom={showJumpToBottom}
                   jumpToBottom={jumpToBottom}
                   scrollResetKey={selectedTask}
-                  lastOutputReceivedAtIso={!isDoneTask && wsConnected ? lastOutputReceivedAtIso : null}
+                  lastOutputReceivedAtIso={
+                    !isDoneTask && wsConnected ? lastOutputReceivedAtIso : null
+                  }
                 />
               </div>
             }

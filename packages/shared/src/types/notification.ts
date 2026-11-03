@@ -7,6 +7,7 @@ export type NotificationKind =
   | "api_blocked"
   | "hil_approval"
   | "agent_failed"
+  | "governance"
   | "self_improvement_approval";
 
 /** Error code for api_blocked notifications (rate_limit, auth, out_of_credit, scope_compliance) */

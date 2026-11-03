@@ -820,6 +820,44 @@ describe("OrchestratorService (slot-based model)", () => {
     }
   });
 
+  describe("governance resume", () => {
+    const task = { id: "held", title: "Held", status: "in_progress" } as never;
+    const slot = () => ({ phaseResult: {}, timers: { clearAll: vi.fn() }, agent: {} }) as never;
+    it("W10: a hold found at resume gives the task back its blocked state and no assignee", async () => {
+      const { governanceService } = await import("../services/governance.service.js");
+      vi.spyOn(governanceService, "getTaskPin").mockResolvedValueOnce({
+        worktreePath: repoPath,
+      } as never);
+      vi.spyOn(governanceService, "hasTaskHold").mockResolvedValueOnce(true);
+      await orchestrator.resumeGovernanceTask(projectId, repoPath, task, slot());
+      expect(mockTaskStoreUpdate).toHaveBeenCalledWith(
+        projectId,
+        "held",
+        expect.objectContaining({ status: "blocked", assignee: "" })
+      );
+    });
+    it("W10: governance_resume survives a failure before review starts", async () => {
+      const { governanceService } = await import("../services/governance.service.js");
+      vi.spyOn(governanceService, "getTaskPin").mockResolvedValueOnce({
+        worktreePath: repoPath,
+        branchName: "opensprint/held",
+      } as never);
+      mockGetSettings.mockResolvedValueOnce({ ...defaultSettings, reviewMode: "always" });
+      vi.spyOn(
+        orchestrator as unknown as { startReviewCoordinatorAndTests: () => Promise<void> },
+        "startReviewCoordinatorAndTests"
+      ).mockRejectedValueOnce(new Error("review spawn failed"));
+      await expect(
+        orchestrator.resumeGovernanceTask(projectId, repoPath, task, slot())
+      ).rejects.toThrow("review spawn failed");
+      expect(mockTaskStoreUpdate).not.toHaveBeenCalledWith(
+        projectId,
+        "held",
+        expect.objectContaining({ extra: { governance_resume: null } })
+      );
+    });
+  });
+
   describe("formatReviewFeedback (exported helper)", () => {
     it("formats result with summary only", () => {
       const result: ReviewAgentResult = {
@@ -3797,3 +3835,22 @@ describe("OrchestratorService (slot-based model)", () => {
     });
   });
 });
+
+vi.mock("../services/governance.service.js", async () => ({
+  governanceService: (await import("./mocks/disabled-governance.js")).disabledGovernanceService,
+}));
+vi.mock("../services/governance-execution.service.js", () => ({
+  governanceExecutionService: {
+    assertScope: async () => {},
+    approved: async () => {},
+    rejected: async () => ({ waiting: false }),
+    validRulings: async () => "",
+  },
+  governanceCodeSnapshot: async () => ({
+    headSha: "head",
+    baseSha: "base",
+    diff: "",
+    diffHash: "hash",
+    changedPaths: [],
+  }),
+}));

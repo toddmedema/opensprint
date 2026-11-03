@@ -7,6 +7,12 @@ const coverageReporters =
 
 export default defineConfig({
   test: {
+    // Vitest 3 creates its worker pool from the root config, not project configs. Keep
+    // HTTP/database suites sequential here so their existing isolation policy takes effect
+    // in both `test` and `test:coverage` (which runs all three projects together).
+    fileParallelism: false,
+    maxWorkers: 1,
+    minWorkers: 1,
     projects: [
       "./vitest.unit.config.ts",
       "./vitest.env-route.config.ts",

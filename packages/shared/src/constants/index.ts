@@ -201,6 +201,7 @@ export const AGENT_NAMES_BY_ROLE: Record<string, readonly string[]> = {
     "Forlong",
     "Angbor",
   ],
+  judge: ["Mandos", "Vaire", "Manwe", "Varda", "Nienna"],
   merger: ["Gwaihir", "Landroval", "Meneldor", "Thorondor", "Sorontar"],
 };
 

@@ -41,6 +41,26 @@ function DeleteConfirmHarness() {
 }
 
 describe("TaskDetailHeader", () => {
+  it("directs governance holds to the docket and disables ordinary completion/retry", () => {
+    render(
+      <TaskDetailHeader
+        {...baseProps}
+        projectId="proj-1"
+        taskId="os-1234"
+        isBlockedTask
+        isGovernanceHeld
+        governanceCaseId="case-1"
+      />
+    );
+    fireEvent.click(screen.getByTestId("sidebar-actions-menu-trigger"));
+    expect(screen.getByRole("menuitem", { name: "Review governance docket" })).toHaveAttribute(
+      "href",
+      "/projects/proj-1/settings?tab=governance&case=case-1"
+    );
+    expect(screen.getByTestId("sidebar-retry-btn")).toBeDisabled();
+    expect(screen.getByTestId("sidebar-force-retry-btn")).toBeDisabled();
+    expect(screen.getByTestId("sidebar-mark-done-btn")).toBeDisabled();
+  });
   it("closes delete confirmation dialog on Escape via useModalA11y", () => {
     render(<DeleteConfirmHarness />);
 

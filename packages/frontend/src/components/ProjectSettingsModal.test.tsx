@@ -62,7 +62,8 @@ vi.mock("../api/client", () => ({
       },
     },
   },
-  isApiError: () => false,
+  isApiError: (err: unknown) =>
+    err instanceof Error && "code" in err && typeof err.code === "string",
   isConnectionError: () => false,
 }));
 
@@ -1832,5 +1833,78 @@ describe("ProjectSettingsModal", () => {
         })
       )
     );
+  });
+
+  describe("governed settings that fail to save", () => {
+    const humanRequired = (reason: string, message = "An approval capability is required") =>
+      Object.assign(new Error(message), {
+        code: "GOVERNANCE_HUMAN_REQUIRED",
+        details: { reason },
+      });
+    const failSaveOnClose = async () => {
+      renderModal(
+        <ProjectSettingsModal project={mockProject} onClose={onClose} onSaved={onSaved} />
+      );
+      const close = await screen.findByRole("button", { name: "Close settings modal" });
+      await waitFor(() => expect(screen.queryByTestId("settings-modal")).toBeInTheDocument());
+      await userEvent.click(close);
+    };
+
+    it("shows Not saved with only the approval form, and warns before leaving", async () => {
+      mockUpdateSettings.mockRejectedValue(humanRequired("missing"));
+      const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+      await failSaveOnClose();
+      await waitFor(() =>
+        expect(screen.getByTestId("settings-save-indicator")).toHaveTextContent("Not saved")
+      );
+      expect(await screen.findByLabelText("Owner approval capability")).toHaveAttribute(
+        "autocomplete",
+        "new-password"
+      );
+      expect(screen.queryByText("An approval capability is required")).not.toBeInTheDocument();
+      expect(confirm).toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+      confirm.mockRestore();
+    });
+
+    it("explains an incorrect capability in the form", async () => {
+      mockUpdateSettings.mockImplementation(async (_id, _data, capability?: string) => {
+        throw capability
+          ? humanRequired("incorrect", "Capability incorrect")
+          : humanRequired("missing");
+      });
+      const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+      await failSaveOnClose();
+      const input = await screen.findByLabelText("Owner approval capability");
+      await userEvent.type(input, "wrong-synthetic-value");
+      const authorize = screen.getByRole("button", { name: "Authorize and save settings" });
+      await waitFor(() => expect(authorize).toBeEnabled());
+      await userEvent.click(authorize);
+      expect(await screen.findByText("Capability incorrect")).toBeInTheDocument();
+      confirm.mockRestore();
+    });
+
+    it("reports unconfigured authority without asking for a capability", async () => {
+      mockUpdateSettings.mockRejectedValue(humanRequired("not_configured", "Not configured"));
+      const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+      await failSaveOnClose();
+      await waitFor(() => expect(onClose).toHaveBeenCalled());
+      expect(await screen.findByText("Not configured")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Owner approval capability")).not.toBeInTheDocument();
+      confirm.mockRestore();
+    });
+
+    it("warns the browser before unloading unsaved changes", async () => {
+      mockUpdateSettings.mockRejectedValue(humanRequired("missing"));
+      const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+      await failSaveOnClose();
+      await waitFor(() =>
+        expect(screen.getByTestId("settings-save-indicator")).toHaveTextContent("Not saved")
+      );
+      const unload = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(unload);
+      expect(unload.defaultPrevented).toBe(true);
+      confirm.mockRestore();
+    });
   });
 });

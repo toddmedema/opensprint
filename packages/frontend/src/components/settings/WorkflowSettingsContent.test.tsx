@@ -1189,4 +1189,50 @@ describe("WorkflowSettingsContent", () => {
       expect(scrollIntoViewMock).not.toHaveBeenCalled();
     });
   });
+
+  describe("governance capability for self-improvement", () => {
+    const pendingStatus = {
+      status: "awaiting_approval",
+      pendingCandidateId: "candidate-1",
+    } as unknown as SelfImprovementStatusSnapshot;
+    const humanRequired = (reason: string) =>
+      Object.assign(new Error("Owner approval required"), {
+        code: "GOVERNANCE_HUMAN_REQUIRED",
+        details: { reason },
+      });
+
+    it("prompts for the owner capability and retries with it", async () => {
+      vi.mocked(api.projects.getSelfImprovementStatus).mockResolvedValue(pendingStatus);
+      vi.mocked(api.projects.approveSelfImprovement)
+        .mockRejectedValueOnce(humanRequired("missing"))
+        .mockResolvedValueOnce({} as never);
+      renderWorkflowContent();
+      fireEvent.click(await screen.findByTestId("approval-promote-btn"));
+      const input = await screen.findByLabelText("Owner approval capability");
+      expect(input).toHaveAttribute("autocomplete", "new-password");
+      fireEvent.change(input, { target: { value: "synthetic-capability" } });
+      fireEvent.click(screen.getByRole("button", { name: "Authorize and retry" }));
+      await waitFor(() =>
+        expect(api.projects.approveSelfImprovement).toHaveBeenLastCalledWith(
+          "proj-1",
+          "candidate-1",
+          "synthetic-capability"
+        )
+      );
+      await waitFor(() =>
+        expect(screen.queryByTestId("self-improvement-capability-prompt")).not.toBeInTheDocument()
+      );
+    });
+
+    it("shows the error without a useless prompt when authority is not configured", async () => {
+      vi.mocked(api.projects.getSelfImprovementStatus).mockResolvedValue(pendingStatus);
+      vi.mocked(api.projects.rejectSelfImprovement).mockRejectedValue(
+        humanRequired("not_configured")
+      );
+      renderWorkflowContent();
+      fireEvent.click(await screen.findByTestId("approval-reject-btn"));
+      expect(await screen.findByTestId("approval-feedback-message")).toBeInTheDocument();
+      expect(screen.queryByTestId("self-improvement-capability-prompt")).not.toBeInTheDocument();
+    });
+  });
 });

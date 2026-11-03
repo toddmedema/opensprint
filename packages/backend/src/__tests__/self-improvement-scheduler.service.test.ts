@@ -1,4 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { runGovernanceCongress } from "../services/congress.service.js";
+const governanceMock = vi.hoisted(() => ({ isGovernanceInactive: vi.fn() }));
+vi.mock("../services/governance.service.js", () => ({ governanceService: governanceMock }));
+vi.mock("../services/congress.service.js", () => ({
+  runGovernanceCongress: vi.fn().mockResolvedValue(undefined),
+}));
 
 const { mockListProjects, mockGetSettings, mockRunIfDue } = vi.hoisted(() => ({
   mockListProjects: vi.fn(),
@@ -49,12 +55,29 @@ describe("self-improvement-scheduler.service", () => {
         selfImprovementLastRunAt: undefined,
       });
 
+      governanceMock.isGovernanceInactive.mockResolvedValue(false);
       const results = await runSelfImprovementTick(now);
 
       expect(results).toHaveLength(1);
       expect(results[0]).toEqual({ projectId: "proj-daily", triggered: true });
       expect(mockRunIfDue).toHaveBeenCalledTimes(1);
       expect(mockRunIfDue).toHaveBeenCalledWith("proj-daily", { trigger: "scheduled" });
+      expect(runGovernanceCongress).toHaveBeenCalledWith("proj-daily");
+    });
+
+    it("skips congress for inactive projects and survives a congress failure", async () => {
+      const now = new Date(Date.UTC(2025, 0, 15, 0, 0, 0, 0));
+      mockListProjects.mockResolvedValue([{ id: "off", name: "Off", repoPath: "/tmp/off" }]);
+      mockGetSettings.mockResolvedValue({ selfImprovementFrequency: "daily" });
+      governanceMock.isGovernanceInactive.mockResolvedValue(true);
+      await runSelfImprovementTick(now);
+      expect(runGovernanceCongress).not.toHaveBeenCalled();
+      expect(mockRunIfDue).toHaveBeenCalledTimes(1);
+
+      governanceMock.isGovernanceInactive.mockResolvedValue(false);
+      vi.mocked(runGovernanceCongress).mockRejectedValueOnce(new Error("congress failed"));
+      await runSelfImprovementTick(now);
+      expect(mockRunIfDue).toHaveBeenCalledTimes(2);
     });
 
     it("does not call runIfDue for daily project at midnight UTC when already run today", async () => {

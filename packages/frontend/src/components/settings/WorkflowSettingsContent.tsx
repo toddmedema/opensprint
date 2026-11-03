@@ -22,6 +22,7 @@ import {
   normalizeWorktreeBaseBranch,
 } from "@opensprint/shared";
 import { api } from "../../api/client";
+import { governanceAuthorityReason } from "../../lib/governance";
 import type {
   SelfImprovementStatusSnapshot,
   SelfImprovementStage,
@@ -104,10 +105,26 @@ interface WorkflowSettingsContentProps {
   persistSettings: (
     notifyOnComplete?: boolean,
     overrides?: WorkflowPersistOverrides
-  ) => Promise<void> | void;
+  ) => Promise<unknown> | void;
   scheduleSaveOnBlur: () => void;
   lastReviewAnglesRef: MutableRefObject<ProjectSettings["reviewAngles"] | undefined>;
   onSettingsChange?: (updater: (current: ProjectSettings) => ProjectSettings) => void;
+}
+
+interface ApiErrorLike extends Error {
+  code?: string;
+  details?: unknown;
+}
+interface CapabilityPrompt {
+  retry: (capability: string) => void;
+  error: string | null;
+}
+/** A capability cannot help when the server has no approval authority configured. */
+function needsOwnerCapability(err: ApiErrorLike): boolean {
+  return (
+    err.code === "GOVERNANCE_HUMAN_REQUIRED" &&
+    governanceAuthorityReason(err.details) !== "not_configured"
+  );
 }
 
 export function WorkflowSettingsContent({
@@ -193,8 +210,34 @@ export function WorkflowSettingsContent({
   } | null>(null);
   const [selectedRollbackVersionId, setSelectedRollbackVersionId] = useState<string>("");
 
+  /** The owner's capability is held only until the prompted action has been retried. */
+  const [capabilityPrompt, setCapabilityPrompt] = useState<CapabilityPrompt | null>(null);
+  const [capabilityInput, setCapabilityInput] = useState("");
+  const capabilityInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (capabilityPrompt) capabilityInputRef.current?.focus();
+  }, [capabilityPrompt]);
+  const promptForCapability = (err: Error, retry: (capability: string) => void): boolean => {
+    if (!needsOwnerCapability(err)) return false;
+    setCapabilityPrompt({
+      retry,
+      error:
+        governanceAuthorityReason((err as ApiErrorLike).details) === "incorrect"
+          ? err.message
+          : null,
+    });
+    return true;
+  };
+  const closeCapabilityPrompt = () => {
+    setCapabilityPrompt(null);
+    setCapabilityInput("");
+  };
+
   const approveMutation = useMutation({
-    mutationFn: () => api.projects.approveSelfImprovement(projectId, siStatus.pendingCandidateId),
+    mutationFn: (capability?: string) =>
+      capability
+        ? api.projects.approveSelfImprovement(projectId, siStatus.pendingCandidateId, capability)
+        : api.projects.approveSelfImprovement(projectId, siStatus.pendingCandidateId),
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.projects.selfImprovementStatus(projectId),
@@ -205,17 +248,22 @@ export function WorkflowSettingsContent({
       void queryClient.invalidateQueries({
         queryKey: queryKeys.projects.settings(projectId),
       });
+      closeCapabilityPrompt();
       setApprovalMessage({ type: "success", text: "Candidate promoted successfully" });
       setTimeout(() => setApprovalMessage(null), 5000);
     },
     onError: (err: Error) => {
+      if (promptForCapability(err, (capability) => approveMutation.mutate(capability))) return;
       setApprovalMessage({ type: "error", text: err.message || "Failed to promote candidate" });
       setTimeout(() => setApprovalMessage(null), 5000);
     },
   });
 
   const rejectMutation = useMutation({
-    mutationFn: () => api.projects.rejectSelfImprovement(projectId, siStatus.pendingCandidateId),
+    mutationFn: (capability?: string) =>
+      capability
+        ? api.projects.rejectSelfImprovement(projectId, siStatus.pendingCandidateId, capability)
+        : api.projects.rejectSelfImprovement(projectId, siStatus.pendingCandidateId),
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.projects.selfImprovementStatus(projectId),
@@ -226,18 +274,28 @@ export function WorkflowSettingsContent({
       void queryClient.invalidateQueries({
         queryKey: queryKeys.projects.settings(projectId),
       });
+      closeCapabilityPrompt();
       setApprovalMessage({ type: "success", text: "Candidate rejected" });
       setTimeout(() => setApprovalMessage(null), 5000);
     },
     onError: (err: Error) => {
+      if (promptForCapability(err, (capability) => rejectMutation.mutate(capability))) return;
       setApprovalMessage({ type: "error", text: err.message || "Failed to reject candidate" });
       setTimeout(() => setApprovalMessage(null), 5000);
     },
   });
 
   const rollbackMutation = useMutation({
-    mutationFn: (behaviorVersionId: string) =>
-      api.projects.rollbackSelfImprovement(projectId, { behaviorVersionId }),
+    mutationFn: ({
+      behaviorVersionId,
+      capability,
+    }: {
+      behaviorVersionId: string;
+      capability?: string;
+    }) =>
+      capability
+        ? api.projects.rollbackSelfImprovement(projectId, { behaviorVersionId }, capability)
+        : api.projects.rollbackSelfImprovement(projectId, { behaviorVersionId }),
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: queryKeys.projects.selfImprovementStatus(projectId),
@@ -248,11 +306,18 @@ export function WorkflowSettingsContent({
       void queryClient.invalidateQueries({
         queryKey: queryKeys.projects.settings(projectId),
       });
+      closeCapabilityPrompt();
       setRollbackMessage({ type: "success", text: "Rolled back successfully" });
       setSelectedRollbackVersionId("");
       setTimeout(() => setRollbackMessage(null), 5000);
     },
-    onError: (err: Error) => {
+    onError: (err: Error, { behaviorVersionId }) => {
+      if (
+        promptForCapability(err, (capability) =>
+          rollbackMutation.mutate({ behaviorVersionId, capability })
+        )
+      )
+        return;
       setRollbackMessage({ type: "error", text: err.message || "Rollback failed" });
       setTimeout(() => setRollbackMessage(null), 5000);
     },
@@ -1095,7 +1160,7 @@ export function WorkflowSettingsContent({
                     className="btn btn-primary text-xs px-3 py-1"
                     data-testid="approval-promote-btn"
                     disabled={approveMutation.isPending || rejectMutation.isPending}
-                    onClick={() => approveMutation.mutate()}
+                    onClick={() => approveMutation.mutate(undefined)}
                   >
                     {approveMutation.isPending ? "Promoting…" : "Promote"}
                   </button>
@@ -1104,7 +1169,7 @@ export function WorkflowSettingsContent({
                     className="btn btn-secondary text-xs px-3 py-1"
                     data-testid="approval-reject-btn"
                     disabled={approveMutation.isPending || rejectMutation.isPending}
-                    onClick={() => rejectMutation.mutate()}
+                    onClick={() => rejectMutation.mutate(undefined)}
                   >
                     {rejectMutation.isPending ? "Rejecting…" : "Reject"}
                   </button>
@@ -1213,7 +1278,7 @@ export function WorkflowSettingsContent({
                       disabled={!selectedRollbackVersionId || rollbackMutation.isPending}
                       onClick={() => {
                         if (selectedRollbackVersionId) {
-                          rollbackMutation.mutate(selectedRollbackVersionId);
+                          rollbackMutation.mutate({ behaviorVersionId: selectedRollbackVersionId });
                         }
                       }}
                     >
@@ -1232,6 +1297,61 @@ export function WorkflowSettingsContent({
                 </div>
               );
             })()}
+
+            {capabilityPrompt && (
+              <form
+                className="mt-3 space-y-3 rounded-lg border border-theme-border bg-theme-surface p-4"
+                data-testid="self-improvement-capability-prompt"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  capabilityPrompt.retry(capabilityInput);
+                }}
+              >
+                <p className="text-sm text-theme-text">
+                  This action changes governed agent behavior and needs the designated owner’s
+                  approval. Nothing has changed yet.
+                </p>
+                {capabilityPrompt.error && (
+                  <p role="alert" className="text-sm text-theme-error-text">
+                    {capabilityPrompt.error}
+                  </p>
+                )}
+                <label className="block text-sm text-theme-text">
+                  Owner approval capability
+                  <input
+                    ref={capabilityInputRef}
+                    type="password"
+                    autoComplete="new-password"
+                    spellCheck={false}
+                    value={capabilityInput}
+                    onChange={(event) => setCapabilityInput(event.target.value)}
+                    className="input mt-1.5"
+                    required
+                  />
+                </label>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="submit"
+                    className="btn-secondary disabled:opacity-50"
+                    disabled={
+                      !capabilityInput ||
+                      approveMutation.isPending ||
+                      rejectMutation.isPending ||
+                      rollbackMutation.isPending
+                    }
+                  >
+                    Authorize and retry
+                  </button>
+                  <button
+                    type="button"
+                    className="text-sm text-theme-muted underline"
+                    onClick={closeCapabilityPrompt}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
 
             {historyRuns.length > 0 && (
               <div className="mt-3" data-testid="self-improvement-recent-runs">

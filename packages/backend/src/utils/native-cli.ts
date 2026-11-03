@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "child_process";
 import { normalizeSpawnEnvPath } from "./path-env.js";
+import { agentProcessEnvironment } from "./agent-process-env.js";
 
 export type NativeCliProvider = "claude-cli" | "codex";
 
@@ -37,7 +38,7 @@ export function buildNativeCliEnv(
   provider: NativeCliProvider,
   effort?: AgentEffort
 ): NodeJS.ProcessEnv {
-  const env = normalizeSpawnEnvPath({ ...process.env });
+  const env = normalizeSpawnEnvPath(agentProcessEnvironment());
   const keys =
     provider === "codex"
       ? ["OPENAI_API_KEY", "CODEX_API_KEY", "OPENAI_BASE_URL"]

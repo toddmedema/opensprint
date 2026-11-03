@@ -19,6 +19,8 @@ import { notificationService } from "./notification.service.js";
 import { AppError } from "../middleware/error-handler.js";
 import { ErrorCodes } from "../middleware/error-codes.js";
 import { runBehaviorVersionStoreWrite } from "./behavior-version-store.service.js";
+import { runGovernanceCongress } from "./congress.service.js";
+import { governanceService } from "./governance.service.js";
 
 const log = createLogger("self-improvement");
 const BASELINE_QUALITY_GATE_TASK_SOURCE = "merge-quality-gate-baseline";
@@ -455,6 +457,13 @@ export class SelfImprovementService {
     projectId: string,
     options?: RunSelfImprovementOptions
   ): Promise<SelfImprovementRunResult> {
+    // Rulings are new evidence even when the repository commit has not changed.
+    try {
+      if (!(await governanceService.isGovernanceInactive(projectId)))
+        await runGovernanceCongress(projectId);
+    } catch (err) {
+      log.warn("Governance congress failed; continuing self-improvement", { projectId, err });
+    }
     const project = await this.projectService.getProject(projectId);
     const settings = await this.projectService.getSettings(projectId);
     const repoPath = project.repoPath;

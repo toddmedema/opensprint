@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "../utils/agent-process-env.js";
 import { execSync } from "child_process";
 import type { DeployEvent } from "@opensprint/shared";
 import { getDefaultDeploymentTarget, getTargetsForDeployEvent } from "@opensprint/shared";
@@ -14,7 +15,11 @@ const activeAutoDeployments = new Set<string>();
 /** Get git commit hash at HEAD in repo (git rev-parse HEAD) */
 function getCommitHash(repoPath: string): string | null {
   try {
-    const out = execSync("git rev-parse HEAD", { cwd: repoPath, encoding: "utf-8" });
+    const out = execSync("git rev-parse HEAD", {
+      env: agentProcessEnvironment(),
+      cwd: repoPath,
+      encoding: "utf-8",
+    });
     return out.trim() || null;
   } catch {
     return null;
@@ -29,9 +34,20 @@ function getCommitHash(repoPath: string): string | null {
 async function doDeploy(
   projectId: string,
   targetName: string | undefined,
-  options?: { waitForCompletion?: boolean }
+  options?: {
+    waitForCompletion?: boolean;
+    expectedCommitHash?: string;
+    idempotencyKey?: string;
+  }
 ): Promise<string | null> {
   if (activeAutoDeployments.has(projectId)) {
+    if (options?.idempotencyKey)
+      throw Object.assign(
+        new Error(
+          "A deployment is already running; the durable auto-deploy will retry after it completes."
+        ),
+        { code: "DEPLOYMENT_BUSY" }
+      );
     log.warn("Skipping auto-deploy: deployment already in progress", { projectId });
     return null;
   }
@@ -46,6 +62,8 @@ async function doDeploy(
     const previousDeployId = latest?.id ?? null;
 
     const commitHash = getCommitHash(project.repoPath);
+    if (options?.expectedCommitHash && commitHash !== options.expectedCommitHash)
+      throw new Error("Code changed after its published deployment approval.");
     const target = targetName ?? getDefaultDeploymentTarget(settings.deployment);
     const mode = settings.deployment.mode ?? "custom";
 
@@ -53,20 +71,42 @@ async function doDeploy(
       commitHash,
       target,
       mode,
+      ...(options?.idempotencyKey ? { idempotencyKey: options.idempotencyKey + ":" + target } : {}),
     });
+    if (options?.idempotencyKey) {
+      if (record.commitHash !== options.expectedCommitHash)
+        throw new Error(
+          "Deferred deployment already belongs to a different reviewed revision; inspect it before retrying."
+        );
+      if (!(await deployStorageService.claimIdempotentRun(projectId, record.id))) {
+        activeAutoDeployments.delete(projectId);
+        return record.id;
+      }
+    }
 
     broadcastToProject(projectId, { type: "deliver.started", deployId: record.id });
 
-    await deployStorageService.updateRecord(projectId, record.id, { status: "running" });
+    if (!options?.idempotencyKey)
+      await deployStorageService.updateRecord(projectId, record.id, { status: "running" });
+    if (
+      options?.expectedCommitHash &&
+      getCommitHash(project.repoPath) !== options.expectedCommitHash
+    )
+      throw new Error("Published code changed before deployment execution.");
 
     const { runDeployAsync } = await import("../routes/deliver.js");
+    const claimedJobOptions: [{ claimedJob: true; expectedCommitHash: string }] | [] =
+      options?.expectedCommitHash && options.idempotencyKey
+        ? [{ claimedJob: true, expectedCommitHash: options.expectedCommitHash }]
+        : [];
     const deployPromise = runDeployAsync(
       projectId,
       record.id,
       project.repoPath,
       settings,
       target,
-      project.name
+      project.name,
+      ...claimedJobOptions
     )
       .catch((err) => {
         log.error("Deploy failed", { deployId: record.id, err });
@@ -83,6 +123,7 @@ async function doDeploy(
   } catch (err) {
     activeAutoDeployments.delete(projectId);
     log.error("Trigger deploy failed for project", { projectId, err });
+    if (options?.idempotencyKey) throw err;
     return null;
   }
 }
@@ -108,14 +149,18 @@ export async function triggerDeploy(
  */
 export async function triggerDeployForEvent(
   projectId: string,
-  event: DeployEvent
+  event: DeployEvent,
+  options?: {
+    expectedCommitHash: string;
+    idempotencyKey: string;
+  }
 ): Promise<string[]> {
   const settings = await projectService.getSettings(projectId);
   const targetNames = getTargetsForDeployEvent(settings.deployment, event);
   const deployIds: string[] = [];
 
   for (const targetName of targetNames) {
-    const id = await doDeploy(projectId, targetName, { waitForCompletion: true });
+    const id = await doDeploy(projectId, targetName, { waitForCompletion: true, ...options });
     if (id) deployIds.push(id);
   }
 

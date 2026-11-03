@@ -91,6 +91,35 @@ function renderNotificationBell(
 }
 
 describe("NotificationBell", () => {
+  it("opens the dedicated docket for a governance hold", async () => {
+    renderNotificationBell([
+      {
+        id: "governance-1",
+        projectId: "proj-1",
+        source: "execute",
+        sourceId: "case-1",
+        questions: [
+          {
+            id: "q1",
+            text: "Repository rule needs a human decision",
+            createdAt: "2026-10-30T00:00:00Z",
+          },
+        ],
+        status: "open",
+        createdAt: "2026-10-30T00:00:00Z",
+        resolvedAt: null,
+        kind: "governance",
+      },
+    ]);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "1 notification" }));
+    expect(screen.getByRole("button", { name: "Clear other notifications" })).toBeInTheDocument();
+    await user.click(screen.getByText("Repository rule needs a human decision"));
+    expect(screen.getByTestId("current-location")).toHaveTextContent(
+      "/projects/proj-1/settings?tab=governance&case=case-1"
+    );
+    expect(mockClearAllByProject).not.toHaveBeenCalled();
+  });
   it("renders nothing when no notifications", () => {
     renderNotificationBell([]);
     expect(

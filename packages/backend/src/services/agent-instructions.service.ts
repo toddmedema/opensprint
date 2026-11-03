@@ -108,7 +108,7 @@ export async function getCombinedInstructions(repoPath: string, role: AgentRole)
 
   const generalPath = path.join(repoPath, "AGENTS.md");
   const rolePath = path.join(repoPath, OPENSPRINT_PATHS.agents, `${role}.md`);
-  const generalContent = await readFileOrEmpty(generalPath);
+  let generalContent = await readFileOrEmpty(generalPath);
 
   let roleContent = "";
   const lookupProjectByRepo =
@@ -123,7 +123,24 @@ export async function getCombinedInstructions(repoPath: string, role: AgentRole)
 
   const project = lookupProjectByRepo ? await lookupProjectByRepo(repoPath) : null;
   if (project) {
-    roleContent = await agentInstructionsService.getRoleInstructions(project.id, role);
+    const { governanceService } = await import("./governance.service.js");
+    const governance = await governanceService.getConfig(project.id);
+    if (governance.mode !== "disabled" && ["coder", "reviewer", "judge"].includes(role)) {
+      const release = await governanceService.getActiveRelease(project.id);
+      if (!release || typeof release.instructions[role] !== "string") {
+        throw new Error(`Approved policy has no complete ${role} instruction snapshot.`);
+      }
+      return release.instructions[role]!;
+    }
+    if (governance.mode === "disabled") {
+      const { readActiveBehaviorInstructionContent } =
+        await import("./behavior-version-store.service.js");
+      const promoted = await readActiveBehaviorInstructionContent(project.id, role);
+      if (promoted) {
+        generalContent = promoted.general;
+        roleContent = promoted.role;
+      } else roleContent = await agentInstructionsService.getRoleInstructions(project.id, role);
+    } else roleContent = await agentInstructionsService.getRoleInstructions(project.id, role);
   } else {
     roleContent = await readFileOrEmpty(rolePath);
   }

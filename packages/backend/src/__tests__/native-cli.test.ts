@@ -51,6 +51,27 @@ describe("native subscription CLIs", () => {
     expect(env.CLAUDE_CODE_USE_FOUNDRY).toBeUndefined();
   });
 
+  it.each(["claude-cli", "codex"] as const)(
+    "keeps governance approval capabilities out of %s environments",
+    (provider) => {
+      const capabilities = [
+        "OPENSPRINT_GOVERNANCE_APPROVAL_SECRET",
+        "OPENSPRINT_GOVERNANCE_OWNER_TOKEN",
+        "OPENSPRINT_GOVERNANCE_REVIEWERS_TOKEN",
+        "opensprint_governance_capability_token",
+      ];
+      for (const key of capabilities) vi.stubEnv(key, "server-only-test-capability");
+      vi.stubEnv("OPENSPRINT_GOVERNANCE_MODE", "enforced");
+      const env = buildNativeCliEnv(provider, "high");
+      for (const key of capabilities) {
+        expect(env[key]).toBeUndefined();
+        expect(process.env[key]).toBe("server-only-test-capability");
+      }
+      expect(env.OPENSPRINT_GOVERNANCE_MODE).toBe("enforced");
+      if (provider === "claude-cli") expect(env.CLAUDE_CODE_EFFORT_LEVEL).toBe("high");
+    }
+  );
+
   it("passes large prompts through stdin and confines coding to the workspace", () => {
     const args = buildCodexArgs("gpt-6.1-sol", true);
     expect(args).toContain('forced_login_method="chatgpt"');

@@ -9,6 +9,8 @@
 import { ProjectService } from "./project.service.js";
 import { selfImprovementService } from "./self-improvement.service.js";
 import { createLogger } from "../utils/logger.js";
+import { runGovernanceCongress } from "./congress.service.js";
+import { governanceService } from "./governance.service.js";
 
 const log = createLogger("self-improvement-scheduler");
 
@@ -52,6 +54,16 @@ export async function runSelfImprovementTick(
 
   for (const project of projects) {
     try {
+      // Governance has an independent decision-event cursor and cadence.
+      try {
+        if (!(await governanceService.isGovernanceInactive(project.id)))
+          await runGovernanceCongress(project.id);
+      } catch (err) {
+        log.warn("Governance congress failed; continuing self-improvement", {
+          projectId: project.id,
+          err,
+        });
+      }
       const settings = await projectService.getSettings(project.id);
       const frequency = settings.selfImprovementFrequency ?? "never";
       if (frequency !== "daily" && frequency !== "weekly") continue;

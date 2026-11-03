@@ -1,3 +1,4 @@
+import { agentProcessEnvironment } from "./agent-process-env.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { getBackendRuntimeInfo, type BackendRuntimeInfo } from "./runtime-info.js";
@@ -24,7 +25,11 @@ export interface BrowserOpenResult {
 async function defaultHasCommand(command: string, runtime: BackendRuntimeInfo): Promise<boolean> {
   const lookupCommand = runtime.platform === "win32" ? "where" : "which";
   try {
-    await execFileAsync(lookupCommand, [command], { timeout: 3000, windowsHide: true });
+    await execFileAsync(lookupCommand, [command], {
+      env: agentProcessEnvironment(),
+      timeout: 3000,
+      windowsHide: true,
+    });
     return true;
   } catch {
     return false;
@@ -32,7 +37,7 @@ async function defaultHasCommand(command: string, runtime: BackendRuntimeInfo): 
 }
 
 async function defaultRunCommand(command: string, args: string[]): Promise<void> {
-  await execFileAsync(command, args, { windowsHide: true });
+  await execFileAsync(command, args, { env: agentProcessEnvironment(), windowsHide: true });
 }
 
 async function buildOpenAttempts(

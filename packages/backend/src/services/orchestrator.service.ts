@@ -1,3 +1,9 @@
+import { governanceService } from "./governance.service.js";
+import { governanceExecutionService } from "./governance-execution.service.js";
+import {
+  resolveTaskReviewBase,
+  getTrustedRemoteReviewRequest,
+} from "./remote-publication-review-context.js";
 import crypto from "crypto";
 import fs from "fs/promises";
 import os from "os";
@@ -607,6 +613,85 @@ export class OrchestratorService {
         "orchestrator:task-stop-event-log"
       );
     }
+  }
+
+  /** Resume approved dockets with fresh hard checks and all reviewers, retaining the original policy. */
+  async resumeGovernanceTask(
+    projectId: string,
+    repoPath: string,
+    task: StoredTask,
+    dispatchSlot: unknown
+  ): Promise<void> {
+    const slot = dispatchSlot as AgentSlot;
+    const pin = await governanceService.getTaskPin(projectId, task.id);
+    if (!pin || (await governanceService.hasTaskHold(projectId, task.id))) {
+      // Dispatch already marked the task running; without a slot it must not stay that way.
+      await this.taskStore.update(projectId, task.id, {
+        status: "blocked",
+        assignee: "",
+        extra: {
+          block_reason: pin
+            ? "Review governance: waiting for a human ruling"
+            : "Governance resume has no retained policy pin",
+        },
+      });
+      await this.pauseForGovernance(projectId, repoPath, task.id);
+      return;
+    }
+    const remoteReview = await getTrustedRemoteReviewRequest(projectId, task);
+    slot.worktreePath = pin.worktreePath;
+    const settings = await this.projectService.getSettings(projectId);
+    if (settings.reviewMode !== "always")
+      throw new Error("Governance resume requires reviewMode: always.");
+    const baseBranch = await resolveTaskReviewBase(
+      projectId,
+      task,
+      await resolveBaseBranch(repoPath, settings.worktreeBaseBranch)
+    );
+    slot.phaseResult.codingDiff = await this.branchManager.captureBranchDiff(
+      repoPath,
+      pin.branchName,
+      baseBranch
+    );
+    slot.phaseResult.codingSummary = remoteReview
+      ? "Review the changed remote publication candidate against its original remote base. All reviewers and hard checks are required."
+      : "Resuming after a recorded human ruling; all hard checks and review remain required.";
+    const revalidationEvidence = (task as Record<string, unknown>).governance_revalidation_evidence;
+    if (revalidationEvidence)
+      slot.phaseResult.codingSummary += `\n\nPrevious findings and human policy revalidation (evidence only; evaluate every remaining code issue against the current pinned release, including defects independently of standards):\n${JSON.stringify(revalidationEvidence)}`;
+    const rulings = await governanceExecutionService.validRulings(
+      projectId,
+      task.id,
+      pin.worktreePath
+    );
+    if (rulings) slot.phaseResult.codingSummary += `\n\n${rulings}`;
+    this.transition(projectId, {
+      to: "enter_review",
+      taskId: task.id,
+      queueDepth: this.getState(projectId).status.queueDepth,
+      assignee: getAgentNameForRole("reviewer", this.getState(projectId).nextReviewerIndex++),
+    });
+    await this.startReviewCoordinatorAndTests(
+      projectId,
+      repoPath,
+      task,
+      pin.branchName,
+      settings,
+      await this.branchManager.getChangedFiles(repoPath, pin.branchName, baseBranch)
+    );
+    await this.executeReviewPhase(projectId, repoPath, task, pin.branchName);
+    // Only now: a failure above must leave the resume durable for the next dispatch.
+    await this.taskStore.update(projectId, task.id, { extra: { governance_resume: null } });
+  }
+
+  /** Waiting governance work retains durable leases and assignment but occupies no agent slot. */
+  async pauseForGovernance(projectId: string, repoPath: string, taskId: string): Promise<void> {
+    const state = this.getState(projectId);
+    this.removeSlot(state, taskId);
+    await this.persistCounters(projectId, repoPath);
+    await broadcastAuthoritativeTaskUpdated(broadcastToProject, projectId, taskId);
+    broadcastToProject(projectId, this.buildExecuteStatusPayload(projectId, state));
+    this.nudge(projectId);
   }
 
   private killProcessIfActive(agent: AgentRunState): void {
@@ -1258,7 +1343,11 @@ export class OrchestratorService {
     const state = this.getState(projectId);
     let slot = state.slots.get(task.id);
     if (!slot) {
-      const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+      const baseBranch = await resolveTaskReviewBase(
+        projectId,
+        task,
+        await resolveBaseBranch(repoPath, settings.worktreeBaseBranch)
+      );
       let changedFiles: string[] = [];
       try {
         changedFiles = await this.branchManager.getChangedFiles(
@@ -1523,7 +1612,11 @@ export class OrchestratorService {
       return true;
     }
 
-    const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+    const baseBranch = await resolveTaskReviewBase(
+      projectId,
+      task,
+      await resolveBaseBranch(repoPath, settings.worktreeBaseBranch)
+    );
     let changedFiles: string[] = [];
     try {
       changedFiles = await this.branchManager.getChangedFiles(
@@ -1718,6 +1811,15 @@ export class OrchestratorService {
       state.status.dispatchPausedReason = counters.dispatchPausedReason;
     }
 
+    // Recover a push/deploy continuation before expiry patrol classifies an old local receipt.
+    try {
+      await this.mergeCoordinator.recoverDeferredPublications(projectId, repoPath);
+    } catch (err) {
+      log.warn(
+        "Deferred publication recovery will retry when its source or database is available",
+        { projectId, err }
+      );
+    }
     // Unified recovery: GUPP + orphan + heartbeat + git locks + slot reconciliation
     try {
       const recoveryResult = await recoveryService.runFullRecovery(
@@ -2314,7 +2416,11 @@ export class OrchestratorService {
         slot.activeAgentConfig ??
         settings.simpleComplexityAgent;
       slot.activeAgentConfig = agentConfig;
-      const baseBranch = await resolveBaseBranch(repoPath, settings.worktreeBaseBranch);
+      const baseBranch = await resolveTaskReviewBase(
+        projectId,
+        task,
+        await resolveBaseBranch(repoPath, settings.worktreeBaseBranch)
+      );
       // Guard: verify the worktree still has a usable checkout before measuring diffs.
       // A missing/corrupt worktree would produce an empty diff and incorrectly trigger the
       // empty-diff circuit breaker. Classify this as workspace_invalid instead.
@@ -2366,6 +2472,7 @@ export class OrchestratorService {
         baseBranch
       );
       slot.phaseResult.codingSummary = result.summary ?? "";
+      slot.phaseResult.governanceAppeals = result.appeals;
       agentIdentityService
         .recordAttempt(repoPath, {
           taskId: task.id,
@@ -2524,6 +2631,10 @@ export class OrchestratorService {
         // Fall back to full suite
       }
 
+      const governancePin = await governanceService.getTaskPin(projectId, task.id);
+      if (governancePin && settings.reviewMode !== "always") {
+        throw new Error("Policy-governed Execute requires reviewMode: always.");
+      }
       const reviewMode = settings.reviewMode ?? DEFAULT_REVIEW_MODE;
       const skipReview =
         reviewMode === "never" || (reviewMode === "on-failure-only" && slot.attempt <= 1);
