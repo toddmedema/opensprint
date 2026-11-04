@@ -884,39 +884,45 @@ describe("ProjectService", () => {
     }
   );
 
-  it("preserves a partly implemented plan's branch configuration between tasks", async () => {
-    const project = await projectService.createProject({
-      name: "Partial plan",
-      repoPath: path.join(tempDir, "partial-plan"),
-      deployment: { mode: "custom" },
-    });
-    vi.mocked(taskStore.listAll).mockResolvedValue([
-      { id: "os-partial", status: "open", issue_type: "epic" },
-      { id: "os-partial.1", status: "closed", issue_type: "task" },
-      { id: "os-partial.2", status: "open", issue_type: "task" },
-    ] as never);
-
-    for (const update of [
-      { deliveryMode: "pull_request" as const },
-      { gitWorkingMode: "branches" as const },
-      { mergeStrategy: "per_epic" as const },
-      { worktreeBaseBranch: "release" },
-    ]) {
-      await expect(projectService.updateSettings(project.id, update)).rejects.toMatchObject({
-        statusCode: 409,
-        code: "INVALID_INPUT",
+  it.each(["main", "master", "trunk"])(
+    "preserves a partly implemented plan's branch configuration between tasks (%s base)",
+    async (baseBranch) => {
+      const project = await projectService.createProject({
+        name: "Partial plan",
+        repoPath: path.join(tempDir, "partial-plan"),
+        deployment: { mode: "custom" },
+        worktreeBaseBranch: baseBranch,
       });
+      const settingsBefore = await projectService.getSettings(project.id);
+      vi.mocked(taskStore.listAll).mockResolvedValue([
+        { id: "os-partial", status: "open", issue_type: "epic" },
+        { id: "os-partial.1", status: "closed", issue_type: "task" },
+        { id: "os-partial.2", status: "open", issue_type: "task" },
+      ] as never);
+
+      for (const update of [
+        { deliveryMode: "pull_request" as const },
+        { gitWorkingMode: "branches" as const },
+        { mergeStrategy: "per_epic" as const },
+        { worktreeBaseBranch: "release" },
+      ]) {
+        await expect(projectService.updateSettings(project.id, update)).rejects.toMatchObject({
+          statusCode: 409,
+          code: "INVALID_INPUT",
+        });
+        await expect(projectService.getSettings(project.id)).resolves.toEqual(settingsBefore);
+      }
+      await expect(projectService.getSettings(project.id)).resolves.toMatchObject({
+        deliveryMode: "direct",
+        gitWorkingMode: "worktree",
+        mergeStrategy: "per_task",
+        worktreeBaseBranch: baseBranch,
+      });
+      await expect(
+        projectService.updateSettings(project.id, { aiAutonomyLevel: "full" })
+      ).resolves.toMatchObject({ aiAutonomyLevel: "full", worktreeBaseBranch: baseBranch });
     }
-    await expect(projectService.getSettings(project.id)).resolves.toMatchObject({
-      deliveryMode: "direct",
-      gitWorkingMode: "worktree",
-      mergeStrategy: "per_task",
-      worktreeBaseBranch: "main",
-    });
-    await expect(
-      projectService.updateSettings(project.id, { aiAutonomyLevel: "full" })
-    ).resolves.toMatchObject({ aiAutonomyLevel: "full" });
-  });
+  );
 
   it("should accept and persist teamMembers in updateSettings", async () => {
     const repoPath = path.join(tempDir, "team-members");
