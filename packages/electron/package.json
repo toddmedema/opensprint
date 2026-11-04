@@ -67,6 +67,7 @@
       "dist/runtime-branding.js",
       "dist/open-in-editor.js",
       "dist/desktop-crash-log.js",
+      "dist/sqlite-runtime-path.js",
       "dist/spa-content-security-policy.js"
     ],
     "extraResources": [

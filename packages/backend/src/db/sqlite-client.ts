@@ -128,33 +128,20 @@ function normalizeSqliteModuleExport(loaded: unknown): typeof import("better-sql
 }
 
 async function loadSqliteModule(): Promise<typeof import("better-sqlite3")> {
-  try {
-    const imported = await import(SQLITE_MODULE_NAME);
-    return normalizeSqliteModuleExport(imported);
-  } catch (primaryErr) {
-    const configuredModulePath = getConfiguredSqliteModulePath();
-    if (!configuredModulePath) {
-      throw primaryErr;
+  const configuredModulePath = getConfiguredSqliteModulePath();
+  if (configuredModulePath) {
+    // The JS wrapper can import successfully while its native binding is incompatible.
+    // Desktop launches provide the runtime built for Electron, so select it before
+    // normal resolution can find a different installation in a parent workspace.
+    if (!(await pathExists(configuredModulePath))) {
+      throw new Error(`Configured SQLite module path does not exist: ${configuredModulePath}`);
     }
-
-    try {
-      if (!(await pathExists(configuredModulePath))) {
-        throw new Error(`Configured SQLite module path does not exist: ${configuredModulePath}`);
-      }
-      const runtimeRequire = createRequire(
-        pathToFileURL(path.join(process.cwd(), "__opensprint_sqlite_loader__.mjs")).href
-      );
-      const loaded = runtimeRequire(configuredModulePath);
-      return normalizeSqliteModuleExport(loaded);
-    } catch (fallbackErr) {
-      log.warn("Could not load SQLite runtime from configured module path", {
-        configuredModulePath,
-        code: getUnknownErrorCode(fallbackErr),
-        message: getUnknownErrorMessage(fallbackErr),
-      });
-      throw primaryErr;
-    }
+    const runtimeRequire = createRequire(
+      pathToFileURL(path.join(process.cwd(), "__opensprint_sqlite_loader__.mjs")).href
+    );
+    return normalizeSqliteModuleExport(runtimeRequire(configuredModulePath));
   }
+  return normalizeSqliteModuleExport(await import(SQLITE_MODULE_NAME));
 }
 
 async function collectDesktopSqliteRuntimeDiagnostics(

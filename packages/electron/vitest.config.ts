@@ -23,6 +23,7 @@ export default defineConfig({
         "desktop-crash-log.ts",
         "open-in-editor.ts",
         "runtime-branding.ts",
+        "sqlite-runtime-path.ts",
         "window-options.ts",
       ],
       exclude: ["**/*.test.*"],

@@ -18,6 +18,7 @@
     "runtime-branding.ts",
     "open-in-editor.ts",
     "desktop-crash-log.ts",
+    "sqlite-runtime-path.ts",
     "spa-content-security-policy.ts"
   ]
 }
