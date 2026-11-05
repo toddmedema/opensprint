@@ -81,9 +81,8 @@ vi.mock("../services/deploy-trigger.service.js", () => ({
 }));
 
 vi.mock("../services/todoist-api-client.service.js", async () => {
-  const { createTodoistApiClientVitestMock } = await import(
-    "./mocks/todoist-api-client.service.vitest-mock.js"
-  );
+  const { createTodoistApiClientVitestMock } =
+    await import("./mocks/todoist-api-client.service.vitest-mock.js");
   return createTodoistApiClientVitestMock();
 });
 
@@ -177,7 +176,11 @@ describe.skipIf(!postgresOk)("GitHub Integration Routes (createApp)", () => {
     });
 
     it("returns 401 when token is invalid", async () => {
-      fetchMock.mockResolvedValueOnce({ ok: false, status: 401, text: async () => "Bad credentials" });
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        text: async () => "Bad credentials",
+      });
 
       const res = await authedSupertest(app)
         .post(ghUrl(projectId, "/connect"))
@@ -188,10 +191,7 @@ describe.skipIf(!postgresOk)("GitHub Integration Routes (createApp)", () => {
     });
 
     it("returns 400 when token is missing", async () => {
-      await authedSupertest(app)
-        .post(ghUrl(projectId, "/connect"))
-        .send({})
-        .expect(400);
+      await authedSupertest(app).post(ghUrl(projectId, "/connect")).send({}).expect(400);
     });
   });
 
@@ -199,9 +199,7 @@ describe.skipIf(!postgresOk)("GitHub Integration Routes (createApp)", () => {
 
   describe("GET /status", () => {
     it("returns disconnected when no connection exists", async () => {
-      const res = await authedSupertest(app)
-        .get(ghUrl(projectId, "/status"))
-        .expect(200);
+      const res = await authedSupertest(app).get(ghUrl(projectId, "/status")).expect(200);
 
       expect(res.body.data.connected).toBe(false);
       expect(res.body.data.provider).toBe("github");
@@ -213,9 +211,7 @@ describe.skipIf(!postgresOk)("GitHub Integration Routes (createApp)", () => {
         provider_resource_name: "octocat/hello-world",
       });
 
-      const res = await authedSupertest(app)
-        .get(ghUrl(projectId, "/status"))
-        .expect(200);
+      const res = await authedSupertest(app).get(ghUrl(projectId, "/status")).expect(200);
 
       expect(res.body.data.connected).toBe(true);
       expect(res.body.data.user.id).toBe("octocat");
@@ -225,9 +221,7 @@ describe.skipIf(!postgresOk)("GitHub Integration Routes (createApp)", () => {
     it("does not expose token in status response", async () => {
       await seedGitHubConnection(projectId);
 
-      const res = await authedSupertest(app)
-        .get(ghUrl(projectId, "/status"))
-        .expect(200);
+      const res = await authedSupertest(app).get(ghUrl(projectId, "/status")).expect(200);
 
       const body = JSON.stringify(res.body);
       expect(body).not.toContain("ghp_test-pat-token");
@@ -239,9 +233,7 @@ describe.skipIf(!postgresOk)("GitHub Integration Routes (createApp)", () => {
 
   describe("GET /repos", () => {
     it("returns 404 when not connected", async () => {
-      const res = await authedSupertest(app)
-        .get(ghUrl(projectId, "/repos"))
-        .expect(404);
+      const res = await authedSupertest(app).get(ghUrl(projectId, "/repos")).expect(404);
 
       expect(res.body.error.code).toBe("NOT_CONNECTED");
     });
@@ -257,9 +249,7 @@ describe.skipIf(!postgresOk)("GitHub Integration Routes (createApp)", () => {
         ],
       });
 
-      const res = await authedSupertest(app)
-        .get(ghUrl(projectId, "/repos"))
-        .expect(200);
+      const res = await authedSupertest(app).get(ghUrl(projectId, "/repos")).expect(200);
 
       expect(res.body.data.repos).toHaveLength(2);
       expect(res.body.data.repos[0].name).toBe("octocat/hello-world");
@@ -304,9 +294,7 @@ describe.skipIf(!postgresOk)("GitHub Integration Routes (createApp)", () => {
 
   describe("POST /sync", () => {
     it("returns 404 when not connected", async () => {
-      const res = await authedSupertest(app)
-        .post(ghUrl(projectId, "/sync"))
-        .expect(404);
+      const res = await authedSupertest(app).post(ghUrl(projectId, "/sync")).expect(404);
 
       expect(res.body.error.code).toBe("NOT_CONNECTED");
     });
@@ -314,9 +302,7 @@ describe.skipIf(!postgresOk)("GitHub Integration Routes (createApp)", () => {
     it("returns 400 when no repo is selected", async () => {
       await seedGitHubConnection(projectId);
 
-      const res = await authedSupertest(app)
-        .post(ghUrl(projectId, "/sync"))
-        .expect(400);
+      const res = await authedSupertest(app).post(ghUrl(projectId, "/sync")).expect(400);
 
       expect(res.body.error.code).toBe("NO_REPO_SELECTED");
     });
@@ -424,9 +410,7 @@ describe.skipIf(!postgresOk)("GitHub Integration Routes (createApp)", () => {
     it("disconnects and deletes stored connection", async () => {
       await seedGitHubConnection(projectId);
 
-      const res = await authedSupertest(app)
-        .delete(ghUrl(projectId, ""))
-        .expect(200);
+      const res = await authedSupertest(app).delete(ghUrl(projectId, "")).expect(200);
 
       expect(res.body.data.disconnected).toBe(true);
 
@@ -435,9 +419,7 @@ describe.skipIf(!postgresOk)("GitHub Integration Routes (createApp)", () => {
     });
 
     it("returns 404 when not connected", async () => {
-      const res = await authedSupertest(app)
-        .delete(ghUrl(projectId, ""))
-        .expect(404);
+      const res = await authedSupertest(app).delete(ghUrl(projectId, "")).expect(404);
 
       expect(res.body.error.code).toBe("NOT_CONNECTED");
     });

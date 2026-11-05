@@ -109,10 +109,7 @@ describe("PlanListView", () => {
   });
 
   it("marks the selected plan row for sidebar/detail context", () => {
-    const plans: Plan[] = [
-      makePlan("plan-a", "planning", 0),
-      makePlan("plan-b", "planning", 0),
-    ];
+    const plans: Plan[] = [makePlan("plan-a", "planning", 0), makePlan("plan-b", "planning", 0)];
     render(
       <PlanListView
         plans={plans}
@@ -273,12 +270,12 @@ describe("PlanListView", () => {
     const planningRow = screen.getByTestId("plan-list-row-planning-feature");
     const buildingRow = screen.getByTestId("plan-list-row-building-feature");
 
-    expect(within(planningRow).getByTestId("plan-epic-task-cap-planning-feature")).toHaveTextContent(
-      "2/15"
-    );
-    expect(within(buildingRow).getByTestId("plan-epic-task-cap-building-feature")).toHaveTextContent(
-      "2/15"
-    );
+    expect(
+      within(planningRow).getByTestId("plan-epic-task-cap-planning-feature")
+    ).toHaveTextContent("2/15");
+    expect(
+      within(buildingRow).getByTestId("plan-epic-task-cap-building-feature")
+    ).toHaveTextContent("2/15");
   });
 
   it("shows Planning indicator instead of Generate tasks when planner is in-flight", () => {
@@ -653,10 +650,7 @@ describe("PlanListView", () => {
     });
 
     it("tree items have treeitem role and aria-selected", () => {
-      const plans: Plan[] = [
-        makePlan("plan-a", "planning", 0),
-        makePlan("plan-b", "planning", 0),
-      ];
+      const plans: Plan[] = [makePlan("plan-a", "planning", 0), makePlan("plan-b", "planning", 0)];
       render(
         <PlanListView
           plans={plans}
@@ -781,7 +775,9 @@ describe("PlanListView", () => {
       );
 
       const row = screen.getByTestId("plan-list-row-building-empty");
-      expect(within(row).getByTestId("plan-epic-task-cap-building-empty")).toHaveTextContent("0/15");
+      expect(within(row).getByTestId("plan-epic-task-cap-building-empty")).toHaveTextContent(
+        "0/15"
+      );
     });
 
     it("shows 8/15 for eight tasks", () => {
@@ -803,7 +799,9 @@ describe("PlanListView", () => {
       );
 
       const row = screen.getByTestId("plan-list-row-building-eight");
-      expect(within(row).getByTestId("plan-epic-task-cap-building-eight")).toHaveTextContent("8/15");
+      expect(within(row).getByTestId("plan-epic-task-cap-building-eight")).toHaveTextContent(
+        "8/15"
+      );
     });
 
     it("shows cap styling at 15 tasks", () => {
@@ -885,9 +883,7 @@ describe("PlanListView", () => {
     });
 
     it("does not show max-depth hint when plan is below max depth", () => {
-      const plans: Plan[] = [
-        makePlan("shallow-plan", "planning", 0, false, { depth: 2 }),
-      ];
+      const plans: Plan[] = [makePlan("shallow-plan", "planning", 0, false, { depth: 2 })];
       render(
         <PlanListView
           plans={plans}

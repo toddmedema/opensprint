@@ -58,14 +58,12 @@ describe("GitHub adapter", () => {
   it("retains the canonical issue repository after a repository rename", async () => {
     vi.stubGlobal(
       "fetch",
-      vi
-        .fn()
-        .mockResolvedValue({
-          ok: true,
-          json: async () => [
-            { ...issue(9001), html_url: "https://github.com/octocat/renamed/issues/9001" },
-          ],
-        })
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => [
+          { ...issue(9001), html_url: "https://github.com/octocat/renamed/issues/9001" },
+        ],
+      })
     );
     const items = await adapter.fetchItems(connection, "token");
     expect(items[0].rawPayload).toMatchObject({
