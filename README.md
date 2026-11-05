@@ -98,6 +98,12 @@ Specialized agents handle planning, implementation, review, and handoff so the p
 
 Optional [review governance](packages/backend/docs/review-governance.md) adds approved policy releases, durable human dockets, and evaluated rule amendments. Its Judge resolves disputed standards under approved policy and escalates new exceptions to a human. Enable it in Project Settings after configuring the designated owner's separate approval capability.
 
+### Import GitHub issues as plans
+
+Open a project's **Settings → Integrations**, connect **GitHub Issues**, and select a repository. Use a fine-grained personal access token with access to that repository and **Issues: Read-only** permission (GitHub includes read access to repository metadata). Click **Sync issues to plans**, then **View plans** to review the imported work.
+
+Each open issue becomes a plan with its title, description, and a link back to GitHub. Repeat syncs import new issues while preserving existing plan edits. Plans stay in Planning until you generate tasks and choose to execute them. Sync does not edit or close the original GitHub issues. Disconnecting removes the stored connection token and keeps imported plans.
+
 ## Architecture at a Glance
 
 Open Sprint is a monorepo with four main packages:
