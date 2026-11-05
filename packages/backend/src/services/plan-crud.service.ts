@@ -263,6 +263,7 @@ export class PlanCrudService {
       complexity: (row.metadata.complexity as PlanMetadata["complexity"]) ?? "medium",
       pullRequestUrl:
         typeof row.metadata.pullRequestUrl === "string" ? row.metadata.pullRequestUrl : undefined,
+      githubIssue: row.metadata.githubIssue as PlanMetadata["githubIssue"],
       mockups: (row.metadata.mockups as PlanMetadata["mockups"]) ?? undefined,
       parentPlanId: parentPlanId || undefined,
       ...(typeof storedMetaDepth === "number" && Number.isFinite(storedMetaDepth)

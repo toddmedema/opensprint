@@ -11,25 +11,14 @@ import type {
   NormalizedIntakeItem,
 } from "../integration-adapter.js";
 import { adapterRegistry } from "../integration-adapter.js";
-const GITHUB_API = "https://api.github.com";
-const MAX_ISSUES_PER_FETCH = 50;
+import { githubRequest, githubRepoPath } from "../github-api.js";
+const PAGE_SIZE = 100;
 
-async function ghFetch<T>(path: string, token: string): Promise<T> {
-  const res = await fetch(`${GITHUB_API}${path}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`GitHub API ${res.status}: ${text}`);
-  }
-  return (await res.json()) as T;
+interface GHRepo {
+  id: number;
+  full_name: string;
+  open_issues_count?: number;
 }
-
-interface GHRepo { id: number; full_name: string; open_issues_count?: number }
 interface GHIssue {
   id: number;
   number: number;
@@ -56,15 +45,21 @@ export class GitHubAdapter implements IntegrationAdapter {
     _connection: IntegrationConnection,
     decryptedToken: string
   ): Promise<IntegrationSourceOption[]> {
-    const repos = await ghFetch<GHRepo[]>(
-      "/user/repos?sort=updated&per_page=100&type=all",
-      decryptedToken
-    );
-    return repos.map((r) => ({
-      id: String(r.id),
-      name: r.full_name,
-      itemCount: r.open_issues_count,
-    }));
+    const sources: IntegrationSourceOption[] = [];
+    for (let page = 1; ; page++) {
+      const repos = await githubRequest<GHRepo[]>(
+        `/user/repos?sort=full_name&per_page=${PAGE_SIZE}&type=all&page=${page}`,
+        decryptedToken
+      );
+      sources.push(
+        ...repos.map((r) => ({
+          id: String(r.id),
+          name: r.full_name,
+          itemCount: r.open_issues_count,
+        }))
+      );
+      if (repos.length < PAGE_SIZE) return sources;
+    }
   }
 
   async fetchItems(
@@ -74,22 +69,37 @@ export class GitHubAdapter implements IntegrationAdapter {
     const repoFullName = connection.provider_resource_name;
     if (!repoFullName) return [];
 
-    const issues = await ghFetch<GHIssue[]>(
-      `/repos/${repoFullName}/issues?state=open&sort=created&direction=asc&per_page=${MAX_ISSUES_PER_FETCH}`,
-      decryptedToken
-    );
-
-    return issues
-      .filter((i) => !i.pull_request)
-      .map((issue) => ({
-        externalId: String(issue.number),
-        title: issue.title,
-        body: issue.body ?? undefined,
-        author: issue.user?.login,
-        labels: issue.labels.map((l) => l.name),
-        createdAt: issue.created_at,
-        sourceRef: issue.html_url,
-      }));
+    const path = githubRepoPath(repoFullName);
+    const items: RawExternalItem[] = [];
+    for (let page = 1; ; page++) {
+      const issues = await githubRequest<GHIssue[]>(
+        `/repos/${path}/issues?state=open&sort=created&direction=asc&per_page=${PAGE_SIZE}&page=${page}`,
+        decryptedToken
+      );
+      items.push(
+        ...issues
+          .filter((i) => !i.pull_request)
+          .map((issue) => ({
+            externalId: String(issue.id),
+            title: issue.title,
+            body: issue.body ?? undefined,
+            author: issue.user?.login,
+            labels: issue.labels.map((l) => l.name),
+            createdAt: issue.created_at,
+            sourceRef: issue.html_url,
+            rawPayload: {
+              id: String(issue.id),
+              number: issue.number,
+              repository:
+                issue.html_url.match(
+                  /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/\d+$/
+                )?.[1] ?? repoFullName,
+              url: issue.html_url,
+            },
+          }))
+      );
+      if (issues.length < PAGE_SIZE) return items;
+    }
   }
 
   normalizeItem(raw: RawExternalItem): NormalizedIntakeItem {

@@ -273,6 +273,10 @@ describe.skipIf(!postgresOk)("GitHub Integration Routes (createApp)", () => {
     it("saves selected repo", async () => {
       await seedGitHubConnection(projectId);
 
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 12345, full_name: "octocat/hello-world", has_issues: true }),
+      });
       const res = await authedSupertest(app)
         .put(ghUrl(projectId, "/repo"))
         .send({ repoId: "12345", repoFullName: "octocat/hello-world" })
@@ -315,6 +319,102 @@ describe.skipIf(!postgresOk)("GitHub Integration Routes (createApp)", () => {
         .expect(400);
 
       expect(res.body.error.code).toBe("NO_REPO_SELECTED");
+    });
+  });
+
+  describe("issue plan sync", () => {
+    const issue = {
+      id: 9001,
+      number: 1,
+      title: "Improve search",
+      body: "Support labels.",
+      user: { login: "octocat" },
+      labels: [],
+      created_at: "2025-01-01T00:00:00Z",
+      html_url: "https://github.com/octocat/hello-world/issues/1",
+    };
+
+    async function seedSelectedRepo() {
+      await seedGitHubConnection(projectId, {
+        provider_resource_id: "12345",
+        provider_resource_name: "octocat/hello-world",
+      });
+    }
+
+    it("creates a planning plan and blocked epic, and preserves edits on repeated sync", async () => {
+      await seedSelectedRepo();
+      fetchMock.mockResolvedValue({ ok: true, json: async () => [issue] });
+      const response = await authedSupertest(app).post(ghUrl(projectId, "/sync")).expect(200);
+      expect(response.body.data).toEqual({ imported: 1, errors: 0 });
+      const plan = await taskStore.planGet(projectId, "github-issue-9001");
+      expect(plan?.content).toContain("# Improve search\n\nSupport labels.");
+      expect(plan?.metadata.githubIssue).toEqual({
+        id: "9001",
+        number: 1,
+        repository: "octocat/hello-world",
+        url: issue.html_url,
+      });
+      const epic = await taskStore.show(projectId, plan!.metadata.epicId as string);
+      expect(epic).toMatchObject({ issue_type: "epic", status: "blocked" });
+      await taskStore.planUpdateContent(projectId, "github-issue-9001", "# Local plan edits");
+      const connection = (await integrationStore.getConnection(projectId, "github"))!;
+      await integrationStore.updateLastSync(connection.id, "2020-01-01T00:00:00Z", null);
+      const repeat = await authedSupertest(app).post(ghUrl(projectId, "/sync")).expect(200);
+      expect(repeat.body.data).toEqual({ imported: 0, errors: 0 });
+      expect((await taskStore.planGet(projectId, "github-issue-9001"))?.content).toBe(
+        "# Local plan edits"
+      );
+      const plans = await authedSupertest(app).get(`${BASE}/${projectId}/plans`).expect(200);
+      expect(plans.body.data.plans[0].metadata.githubIssue).toEqual(plan?.metadata.githubIssue);
+    });
+
+    it("reports upstream failure instead of a successful zero import and keeps the connection active", async () => {
+      await seedSelectedRepo();
+      fetchMock.mockResolvedValue({
+        ok: false,
+        status: 503,
+        text: async () => "upstream sensitive text",
+      });
+      const response = await authedSupertest(app).post(ghUrl(projectId, "/sync")).expect(502);
+      expect(response.body.error.code).toBe("GITHUB_SYNC_FAILED");
+      expect(JSON.stringify(response.body)).not.toContain("sensitive text");
+      expect((await integrationStore.getConnection(projectId, "github"))?.status).toBe("active");
+    });
+
+    it("marks revoked tokens as needing reconnect", async () => {
+      await seedSelectedRepo();
+      fetchMock.mockResolvedValue({ ok: false, status: 401 });
+      await authedSupertest(app).post(ghUrl(projectId, "/sync")).expect(502);
+      expect((await integrationStore.getConnection(projectId, "github"))?.status).toBe(
+        "needs_reconnect"
+      );
+    });
+
+    it("rejects mismatched repository identifiers before saving selection", async () => {
+      await seedGitHubConnection(projectId);
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 999, full_name: "octocat/hello-world" }),
+      });
+      await authedSupertest(app)
+        .put(ghUrl(projectId, "/repo"))
+        .send({ repoId: "12345", repoFullName: "octocat/hello-world" })
+        .expect(400);
+      expect(
+        (await integrationStore.getConnection(projectId, "github"))?.provider_resource_id
+      ).toBeNull();
+    });
+
+    it("keeps the selected repository when refreshing the same user's token", async () => {
+      await seedSelectedRepo();
+      fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ login: "octocat" }) });
+      await authedSupertest(app)
+        .post(ghUrl(projectId, "/connect"))
+        .send({ token: "replacement-token" })
+        .expect(200);
+      expect(
+        (await integrationStore.getConnection(projectId, "github"))?.provider_resource_name
+      ).toBe("octocat/hello-world");
     });
   });
 

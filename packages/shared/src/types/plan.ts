@@ -52,6 +52,8 @@ export interface PlanMetadata {
   /** Published plan branch awaiting human review and merge. */
   pullRequestUrl?: string;
   complexity: PlanComplexity;
+  /** Original GitHub issue; importing never overwrites local plan edits or writes back. */
+  githubIssue?: { id: string; number: number; repository: string; url: string };
   /** UI/UX mockups for this plan */
   mockups?: PlanMockup[];
   /** Parent plan ID for sub-plan hierarchy; undefined for root plans */

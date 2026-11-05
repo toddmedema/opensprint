@@ -5,7 +5,7 @@
  * GET  /status        — returns current integration connection status
  * GET  /repos         — lists repos accessible with the stored PAT
  * PUT  /repo          — selects a GitHub repo for issue sync
- * POST /sync          — manual sync trigger via intake ingestion pipeline
+ * POST /sync          — import open GitHub issues as linked planning plans
  * DELETE /            — disconnect (delete stored connection)
  */
 
@@ -23,19 +23,21 @@ import type {
   IntegrationSyncResponse,
 } from "@opensprint/shared";
 import { createLogger } from "../utils/logger.js";
+import { githubAdapter } from "../services/adapters/github-adapter.js";
+import { githubRequest, GitHubApiError } from "../services/github-api.js";
+import { AppError } from "../middleware/error-handler.js";
 
 const log = createLogger("github-integration");
 
-const GITHUB_API = "https://api.github.com";
 const SYNC_RATE_LIMIT_MS = 10_000;
 
 const connectBodySchema = z.object({
-  token: z.string().min(1, "token is required"),
+  token: z.string().trim().min(1, "token is required"),
 });
 
 const selectRepoBodySchema = z.object({
-  repoId: z.string().min(1, "repoId is required"),
-  repoFullName: z.string().min(1, "repoFullName is required"),
+  repoId: z.string().regex(/^\d+$/, "repoId must be a GitHub repository ID"),
+  repoFullName: z.string().regex(/^[\w.-]+\/[\w.-]+$/, "Select an owner/repository"),
 });
 
 export interface GitHubIntegrationRouterDeps {
@@ -56,48 +58,11 @@ type ProjectParams = { projectId: string };
 
 async function verifyGitHubToken(token: string): Promise<{ login: string } | null> {
   try {
-    const res = await fetch(`${GITHUB_API}/user`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { login?: string };
+    const data = await githubRequest<{ login?: string }>("/user", token);
     return data.login ? { login: data.login } : null;
   } catch {
     return null;
   }
-}
-
-async function listGitHubRepos(
-  token: string
-): Promise<IntegrationSourceOption[]> {
-  const res = await fetch(
-    `${GITHUB_API}/user/repos?sort=updated&per_page=100&type=all`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    }
-  );
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`GitHub API ${res.status}: ${text}`);
-  }
-  const repos = (await res.json()) as Array<{
-    id: number;
-    full_name: string;
-    open_issues_count?: number;
-  }>;
-  return repos.map((r) => ({
-    id: String(r.id),
-    name: r.full_name,
-    itemCount: r.open_issues_count,
-  }));
 }
 
 function tryDecryptToken(
@@ -111,9 +76,7 @@ function tryDecryptToken(
   }
 }
 
-export function createGitHubIntegrationRouter(
-  deps: GitHubIntegrationRouterDeps
-): Router {
+export function createGitHubIntegrationRouter(deps: GitHubIntegrationRouterDeps): Router {
   const router = Router({ mergeParams: true });
   const { integrationStore, tokenEncryption } = deps;
 
@@ -131,14 +94,14 @@ export function createGitHubIntegrationRouter(
         res.status(401).json({
           error: {
             code: "INVALID_TOKEN",
-            message:
-              "The provided GitHub token is invalid or lacks required permissions.",
+            message: "The provided GitHub token is invalid or lacks required permissions.",
           },
         });
         return;
       }
 
       const encryptedToken = tokenEncryption.encryptToken(token);
+      const existing = await integrationStore.getConnection(projectId, "github");
 
       await integrationStore.upsertConnection({
         project_id: projectId,
@@ -147,6 +110,12 @@ export function createGitHubIntegrationRouter(
         access_token_enc: encryptedToken,
         scopes: "repo",
         status: "active",
+        ...(existing?.provider_user_id === user.login
+          ? {
+              provider_resource_id: existing.provider_resource_id,
+              provider_resource_name: existing.provider_resource_name,
+            }
+          : {}),
       });
 
       log.info("GitHub connected", { projectId, user: user.login });
@@ -163,10 +132,7 @@ export function createGitHubIntegrationRouter(
     validateParams(projectIdParamSchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const { projectId } = req.params;
-      const connection = await integrationStore.getConnection(
-        projectId,
-        "github"
-      );
+      const connection = await integrationStore.getConnection(projectId, "github");
 
       if (!connection) {
         const body: { data: IntegrationStatusResponse } = {
@@ -193,9 +159,7 @@ export function createGitHubIntegrationRouter(
       if (connection.provider_resource_id) {
         status.selectedSource = {
           id: connection.provider_resource_id,
-          name:
-            connection.provider_resource_name ??
-            connection.provider_resource_id,
+          name: connection.provider_resource_name ?? connection.provider_resource_id,
         };
       }
 
@@ -217,10 +181,7 @@ export function createGitHubIntegrationRouter(
     validateParams(projectIdParamSchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const { projectId } = req.params;
-      const connection = await integrationStore.getConnection(
-        projectId,
-        "github"
-      );
+      const connection = await integrationStore.getConnection(projectId, "github");
 
       if (!connection) {
         res.status(404).json({
@@ -232,20 +193,17 @@ export function createGitHubIntegrationRouter(
         return;
       }
 
-      if (connection.status === "needs_reconnect") {
+      if (connection.status !== "active") {
         res.status(409).json({
           error: {
             code: "NEEDS_RECONNECT",
-            message:
-              "GitHub connection requires a new token. Please reconnect.",
+            message: "GitHub connection requires a new token. Please reconnect.",
           },
         });
         return;
       }
 
-      const encryptedToken = await integrationStore.getEncryptedTokenById(
-        connection.id
-      );
+      const encryptedToken = await integrationStore.getEncryptedTokenById(connection.id);
       if (!encryptedToken) {
         res.status(500).json({
           error: {
@@ -265,7 +223,10 @@ export function createGitHubIntegrationRouter(
       }
 
       try {
-        const repos = await listGitHubRepos(accessToken);
+        const repos: IntegrationSourceOption[] = await githubAdapter.listSources(
+          connection,
+          accessToken
+        );
         log.info("Listed GitHub repos", {
           projectId,
           count: repos.length,
@@ -273,22 +234,21 @@ export function createGitHubIntegrationRouter(
         res.json({ data: { repos } });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("401")) {
-          await integrationStore.updateConnectionStatus(
-            connection.id,
-            "needs_reconnect",
-            msg
-          );
+        if (err instanceof GitHubApiError && err.needsReconnect) {
+          await integrationStore.updateConnectionStatus(connection.id, "needs_reconnect", msg);
           res.status(401).json({
             error: {
               code: "GITHUB_AUTH_FAILED",
-              message:
-                "GitHub authentication failed. Please reconnect with a valid token.",
+              message: "GitHub authentication failed. Please reconnect with a valid token.",
             },
           });
           return;
         }
-        throw err;
+        throw new AppError(
+          err instanceof GitHubApiError && err.rateLimited ? 429 : 502,
+          "GITHUB_REQUEST_FAILED",
+          msg
+        );
       }
     })
   );
@@ -300,14 +260,9 @@ export function createGitHubIntegrationRouter(
     validateBody(selectRepoBodySchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const { projectId } = req.params;
-      const { repoId, repoFullName } = req.body as z.infer<
-        typeof selectRepoBodySchema
-      >;
+      const { repoId, repoFullName } = req.body as z.infer<typeof selectRepoBodySchema>;
 
-      const connection = await integrationStore.getConnection(
-        projectId,
-        "github"
-      );
+      const connection = await integrationStore.getConnection(projectId, "github");
       if (!connection) {
         res.status(404).json({
           error: {
@@ -318,11 +273,46 @@ export function createGitHubIntegrationRouter(
         return;
       }
 
-      await integrationStore.updateSelectedResource(
-        connection.id,
-        repoId,
-        repoFullName
-      );
+      if (connection.status !== "active") {
+        throw new AppError(
+          409,
+          "NEEDS_RECONNECT",
+          "Reconnect GitHub before selecting a repository."
+        );
+      }
+      const encryptedToken = await integrationStore.getEncryptedTokenById(connection.id);
+      const token = encryptedToken ? tryDecryptToken(tokenEncryption, encryptedToken) : null;
+      if (!token)
+        throw new AppError(409, "NEEDS_RECONNECT", "Reconnect GitHub to restore your token.");
+      let repo: { id: number; full_name: string; has_issues?: boolean };
+      try {
+        repo = await githubRequest(`/repositories/${repoId}`, token);
+      } catch (err) {
+        if (err instanceof GitHubApiError && err.needsReconnect) {
+          await integrationStore.updateConnectionStatus(
+            connection.id,
+            "needs_reconnect",
+            err.message
+          );
+        }
+        throw new AppError(
+          err instanceof GitHubApiError && err.rateLimited ? 429 : 400,
+          "GITHUB_REPO_UNAVAILABLE",
+          "Repository is unavailable. Check access and token permissions."
+        );
+      }
+      if (
+        String(repo.id) !== repoId ||
+        repo.full_name.toLowerCase() !== repoFullName.toLowerCase() ||
+        repo.has_issues === false
+      ) {
+        throw new AppError(
+          400,
+          "INVALID_REPOSITORY",
+          "Select an accessible repository with issues enabled."
+        );
+      }
+      await integrationStore.updateSelectedResource(connection.id, repoId, repo.full_name);
 
       log.info("GitHub repo selected", {
         projectId,
@@ -333,7 +323,7 @@ export function createGitHubIntegrationRouter(
       res.json({
         data: {
           success: true,
-          selectedSource: { id: repoId, name: repoFullName },
+          selectedSource: { id: repoId, name: repo.full_name },
         },
       });
     })
@@ -345,10 +335,7 @@ export function createGitHubIntegrationRouter(
     validateParams(projectIdParamSchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const { projectId } = req.params;
-      const connection = await integrationStore.getConnection(
-        projectId,
-        "github"
-      );
+      const connection = await integrationStore.getConnection(projectId, "github");
 
       if (!connection) {
         res.status(404).json({
@@ -360,12 +347,11 @@ export function createGitHubIntegrationRouter(
         return;
       }
 
-      if (connection.status === "needs_reconnect") {
+      if (connection.status !== "active") {
         res.status(409).json({
           error: {
             code: "NEEDS_RECONNECT",
-            message:
-              "GitHub connection requires a new token. Please reconnect.",
+            message: "GitHub connection requires a new token. Please reconnect.",
           },
         });
         return;
@@ -375,8 +361,7 @@ export function createGitHubIntegrationRouter(
         res.status(400).json({
           error: {
             code: "NO_REPO_SELECTED",
-            message:
-              "No repository selected. Please select a repository before syncing.",
+            message: "No repository selected. Please select a repository before syncing.",
           },
         });
         return;
@@ -406,9 +391,16 @@ export function createGitHubIntegrationRouter(
         return;
       }
 
-      const ingestionResult = await deps.intakeIngestion.ingestFromConnection(
-        connection.id
-      );
+      let ingestionResult;
+      try {
+        ingestionResult = await deps.intakeIngestion.ingestFromConnection(connection.id);
+      } catch (err) {
+        throw new AppError(
+          err instanceof GitHubApiError && err.rateLimited ? 429 : 502,
+          err instanceof GitHubApiError && err.rateLimited ? "RATE_LIMITED" : "GITHUB_SYNC_FAILED",
+          err instanceof Error ? err.message : "GitHub sync failed. Please try again."
+        );
+      }
 
       log.info("GitHub sync completed", {
         projectId,
@@ -432,10 +424,7 @@ export function createGitHubIntegrationRouter(
     validateParams(projectIdParamSchema),
     wrapAsync(async (req: Request<ProjectParams>, res) => {
       const { projectId } = req.params;
-      const connection = await integrationStore.getConnection(
-        projectId,
-        "github"
-      );
+      const connection = await integrationStore.getConnection(projectId, "github");
 
       if (!connection) {
         res.status(404).json({
