@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   REVIEW_AGENT_OPTIONS,
@@ -21,6 +21,13 @@ export function AutomatedQaButton({
   const [instructions, setInstructions] = useState("");
   const [running, setRunning] = useState(false);
   const runningRef = useRef(false);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AutomatedQaResult | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -34,20 +41,21 @@ export function AutomatedQaButton({
     setError(null);
     setResult(null);
     try {
-      setResult(
-        await api.feedback.runAutomatedQa(projectId, {
-          perspectives,
-          ...(instructions.trim() ? { instructions: instructions.trim() } : {}),
-        })
-      );
+      const response = await api.feedback.runAutomatedQa(projectId, {
+        perspectives,
+        ...(instructions.trim() ? { instructions: instructions.trim() } : {}),
+      });
+      if (!mountedRef.current) return;
+      setResult(response);
       onComplete();
     } catch (err) {
+      if (!mountedRef.current) return;
       setError(
         err instanceof Error ? err.message : "Could not run automated QA. Please try again."
       );
     } finally {
       runningRef.current = false;
-      setRunning(false);
+      if (mountedRef.current) setRunning(false);
     }
   }
 

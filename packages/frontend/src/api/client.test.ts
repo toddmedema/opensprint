@@ -1162,6 +1162,33 @@ describe("api client", () => {
   });
 
   describe("feedback", () => {
+    it("allows automated QA to outlast the ordinary request timeout and returns perspective results", async () => {
+      const result = {
+        runId: "qa-1",
+        results: [
+          { perspective: "general", status: "completed", summary: "Tests passed", feedbackIds: [] },
+        ],
+      };
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({ data: result }),
+      } as unknown as Response);
+      expect(
+        await api.feedback.runAutomatedQa("proj-1", {
+          perspectives: ["general"],
+          instructions: "Check mobile flows",
+        })
+      ).toEqual(result);
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining("/projects/proj-1/feedback/automated-qa"),
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ perspectives: ["general"], instructions: "Check mobile flows" }),
+        })
+      );
+      expect(vi.mocked(fetch).mock.lastCall![1]).not.toHaveProperty("signal");
+    });
     it("submit includes priority in body when provided", async () => {
       vi.mocked(fetch).mockResolvedValue({
         ok: true,

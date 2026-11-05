@@ -98,4 +98,21 @@ describe("AutomatedQaButton", () => {
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
+
+  it("does not refresh a different project's feedback after navigating away during QA", async () => {
+    let resolve!: (result: AutomatedQaResult) => void;
+    vi.mocked(api.feedback.runAutomatedQa).mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      })
+    );
+    const onComplete = vi.fn();
+    const { unmount } = render(<AutomatedQaButton projectId="project-1" onComplete={onComplete} />);
+    fireEvent.click(screen.getByRole("button", { name: "Run automated QA" }));
+    fireEvent.click(screen.getByRole("button", { name: "Run QA" }));
+    unmount();
+    resolve({ runId: "run-1", results: [] });
+    await Promise.resolve();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
 });

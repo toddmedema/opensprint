@@ -29,7 +29,6 @@ describe("automated QA", () => {
   let nudge: ReturnType<typeof vi.fn>;
   const settings = parseSettings({
     simpleComplexityAgent: { type: "codex", model: "qa-model", effort: "high" },
-    qaAgent: { type: "codex", model: "qa-model", effort: "high" },
     worktreeBaseBranch: "main",
   });
 

@@ -72,7 +72,12 @@ export class AutomatedQaService {
       const runId = randomUUID();
       const config = getAgentForPlanningRole(settings, "auditor");
       const { stdout } = await runGit(
-        ["rev-parse", "--verify", "--end-of-options", `${settings.worktreeBaseBranch}^{commit}`],
+        [
+          "rev-parse",
+          "--verify",
+          "--end-of-options",
+          `${settings.worktreeBaseBranch ?? "main"}^{commit}`,
+        ],
         { cwd: project.repoPath }
       );
       const revision = stdout.trim();
@@ -174,7 +179,14 @@ Return status success only if the assigned QA checks completed. This report repl
                     : reject(new Error(`QA agent exited with code ${code ?? "unknown"}.`)),
               });
             });
-            const report = qaOutputSchema.parse(JSON.parse(await fs.readFile(resultPath, "utf8")));
+            const parsed = qaOutputSchema.safeParse(
+              JSON.parse(await fs.readFile(resultPath, "utf8"))
+            );
+            if (!parsed.success)
+              throw new Error(
+                "The QA agent returned an invalid report; this perspective could not complete."
+              );
+            const report = parsed.data;
             for (const issue of report.issues) {
               const item = await this.feedbackService.submitFeedback(projectId, {
                 text: `Automated QA · ${label}\n\n${issue.title}\n\n${issue.description}\n\nEvidence:\n${issue.evidence}`,

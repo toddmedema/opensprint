@@ -349,11 +349,14 @@ export const api = {
       rationale: string,
       capability: string
     ) =>
-      request<PolicyRelease>(`/projects/${projectId}/governance/releases/reconcile-source-snapshot`, {
-        method: "POST",
-        headers: { "X-OpenSprint-Governance-Capability": capability },
-        body: JSON.stringify({ expectedActiveReleaseId, rationale }),
-      }),
+      request<PolicyRelease>(
+        `/projects/${projectId}/governance/releases/reconcile-source-snapshot`,
+        {
+          method: "POST",
+          headers: { "X-OpenSprint-Governance-Capability": capability },
+          body: JSON.stringify({ expectedActiveReleaseId, rationale }),
+        }
+      ),
     sourceChanges: (projectId: string, taskId: string) =>
       request<{
         taskId: string;
@@ -1010,6 +1013,7 @@ export const api = {
   feedback: {
     runAutomatedQa: (projectId: string, body: AutomatedQaRequest) =>
       request<AutomatedQaResult>(`/projects/${projectId}/feedback/automated-qa`, {
+        ...NO_REQUEST_TIMEOUT,
         method: "POST",
         body: JSON.stringify(body),
       }),
