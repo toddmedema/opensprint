@@ -63,6 +63,8 @@ Congress mines immutable decisions independently of code changes and proposes ex
 
 ## Loop Kicker vs Watchdog
 
+Evaluate's on-demand automated QA uses the configured QA agent and one isolated checkout of the configured base revision per selected code review perspective. Agents run checks with tool access, write the QA-specific result contract from their prompt, and never implement fixes or publish code. The server submits evidence-backed findings as ordinary Evaluate feedback. Capacity is released and checkouts are cleaned only after the runner reports exit; incomplete checks are reported as failures.
+
 - **Loop kicker** (60s): Restarts the orchestrator loop when idle. Runs inside the orchestrator.
 - **Watchdog** (5 min): Witness-style health patrol — stale heartbeats, orphaned tasks, stale `.git/index.lock`. Runs in a separate `WatchdogService`.
 

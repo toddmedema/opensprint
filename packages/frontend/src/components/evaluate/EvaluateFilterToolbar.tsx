@@ -1,4 +1,4 @@
-import type { KeyboardEvent, RefObject } from "react";
+import type { KeyboardEvent, RefObject, ReactNode } from "react";
 import { SegmentedControl } from "../controls/SegmentedControl";
 import { FilterBar } from "../controls/FilterBar";
 import { ViewToggle } from "../execute/ViewToggle";
@@ -8,7 +8,15 @@ export type EvaluateViewMode = "feedback" | "intake";
 
 function FeedbackIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   );
@@ -16,7 +24,15 @@ function FeedbackIcon({ className }: { className?: string }) {
 
 function InboxIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
       <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
       <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
     </svg>
@@ -24,6 +40,7 @@ function InboxIcon({ className }: { className?: string }) {
 }
 
 interface EvaluateFilterToolbarProps {
+  automatedQaAction?: ReactNode;
   chipConfig: { label: string; filter: EvaluateStatusFilterChip; count: number }[];
   statusFilter: EvaluateStatusFilterChip;
   setStatusFilter: (f: EvaluateStatusFilterChip) => void;
@@ -48,6 +65,7 @@ interface EvaluateFilterToolbarProps {
 }
 
 export function EvaluateFilterToolbar({
+  automatedQaAction,
   chipConfig,
   statusFilter,
   setStatusFilter,
@@ -139,27 +157,47 @@ export function EvaluateFilterToolbar({
 
   const right = (
     <>
-      {isFeedback && (searchExpanded ? (
-        <div
-          className="flex items-center gap-1 animate-fade-in"
-          data-testid="eval-search-expanded"
-        >
-          <input
-            ref={searchInputRef}
-            type="text"
-            value={searchInputValue}
-            onChange={(e) => setSearchInputValue(e.target.value)}
-            onKeyDown={handleSearchKeyDown}
-            placeholder="Search feedback…"
-            className="w-36 sm:w-48 md:w-56 px-3 py-1.5 text-sm bg-theme-surface-muted rounded-md text-theme-text placeholder:text-theme-muted border border-theme-border focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:border-brand-500 transition-all"
-            aria-label="Search feedback"
-          />
+      {isFeedback &&
+        (searchExpanded ? (
+          <div
+            className="flex items-center gap-1 animate-fade-in"
+            data-testid="eval-search-expanded"
+          >
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchInputValue}
+              onChange={(e) => setSearchInputValue(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+              placeholder="Search feedback…"
+              className="w-36 sm:w-48 md:w-56 px-3 py-1.5 text-sm bg-theme-surface-muted rounded-md text-theme-text placeholder:text-theme-muted border border-theme-border focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:border-brand-500 transition-all"
+              aria-label="Search feedback"
+            />
+            <button
+              type="button"
+              onClick={handleSearchClose}
+              className="p-1.5 min-h-[32px] min-w-[32px] rounded-sm text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle transition-colors inline-flex items-center justify-center"
+              aria-label="Close search"
+              data-testid="eval-search-close"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ) : (
           <button
             type="button"
-            onClick={handleSearchClose}
+            onClick={handleSearchExpand}
             className="p-1.5 min-h-[32px] min-w-[32px] rounded-sm text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle transition-colors inline-flex items-center justify-center"
-            aria-label="Close search"
-            data-testid="eval-search-close"
+            aria-label="Expand search"
+            data-testid="eval-search-expand"
           >
             <svg
               className="w-5 h-5"
@@ -167,46 +205,41 @@ export function EvaluateFilterToolbar({
               viewBox="0 0 24 24"
               stroke="currentColor"
               strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
             </svg>
           </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={handleSearchExpand}
-          className="p-1.5 min-h-[32px] min-w-[32px] rounded-sm text-theme-muted hover:text-theme-text hover:bg-theme-border-subtle transition-colors inline-flex items-center justify-center"
-          aria-label="Expand search"
-          data-testid="eval-search-expand"
-        >
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" />
-          </svg>
-        </button>
-      ))}
+        ))}
       <ViewToggle
         compact
         options={[
-          { value: "feedback" as EvaluateViewMode, icon: <FeedbackIcon className="w-3 h-3" />, label: "Feedback view" },
-          { value: "intake" as EvaluateViewMode, icon: <InboxIcon className="w-3 h-3" />, label: "Intake view" },
+          {
+            value: "feedback" as EvaluateViewMode,
+            icon: <FeedbackIcon className="w-3 h-3" />,
+            label: "Feedback view",
+          },
+          {
+            value: "intake" as EvaluateViewMode,
+            icon: <InboxIcon className="w-3 h-3" />,
+            label: "Intake view",
+          },
         ]}
         value={viewMode}
         onChange={onViewModeChange}
       />
+      {automatedQaAction}
     </>
   );
 
   return (
-    <FilterBar variant="phase" left={left} right={right} dataTestId="eval-feedback-filter-toolbar" />
+    <FilterBar
+      variant="phase"
+      left={left}
+      right={right}
+      dataTestId="eval-feedback-filter-toolbar"
+    />
   );
 }

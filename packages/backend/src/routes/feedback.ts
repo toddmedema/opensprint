@@ -7,10 +7,12 @@ import {
   paginationQuerySchema,
   feedbackSubmitBodySchema,
   feedbackRecategorizeBodySchema,
+  automatedQaBodySchema,
 } from "../schemas/request-common.js";
 import type { FeedbackService } from "../services/feedback.service.js";
 import type { OrchestratorService } from "../services/orchestrator.service.js";
 import type { ApiResponse, FeedbackItem } from "@opensprint/shared";
+import { AutomatedQaService } from "../services/automated-qa.service.js";
 
 type ProjectParams = { projectId: string };
 type FeedbackParams = { projectId: string; feedbackId: string };
@@ -32,6 +34,19 @@ export function createFeedbackRouter({
   orchestratorService,
 }: FeedbackRouterDeps): Router {
   const feedbackRouter = Router({ mergeParams: true });
+  const automatedQa = new AutomatedQaService(feedbackService, (projectId) =>
+    orchestratorService.nudge(projectId)
+  );
+
+  feedbackRouter.post(
+    "/automated-qa",
+    validateParams(projectIdParamSchema),
+    validateBody(automatedQaBodySchema),
+    wrapAsync(async (req: Request<ProjectParams>, res) => {
+      const result = await automatedQa.run(req.params.projectId, req.body);
+      res.json({ data: result });
+    })
+  );
 
   // GET /projects/:projectId/feedback — List all feedback items (supports ?limit=&offset= for pagination)
   feedbackRouter.get(

@@ -27,6 +27,8 @@ import type {
   AgentSession,
   OrchestratorStatus,
   FeedbackItem,
+  AutomatedQaRequest,
+  AutomatedQaResult,
   ChatRequest,
   ChatResponse,
   Conversation,
@@ -1006,6 +1008,11 @@ export const api = {
 
   // ─── Feedback ───
   feedback: {
+    runAutomatedQa: (projectId: string, body: AutomatedQaRequest) =>
+      request<AutomatedQaResult>(`/projects/${projectId}/feedback/automated-qa`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
     list: (projectId: string) => request<FeedbackItem[]>(`/projects/${projectId}/feedback`),
     submit: (
       projectId: string,

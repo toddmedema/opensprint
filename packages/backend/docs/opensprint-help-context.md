@@ -24,6 +24,8 @@ Task tracking is handled internally by `TaskStoreService` backed by **SQLite (de
 
 ### Execute Agent Contract
 
+Evaluate's **Run automated QA** button opens a modal with the same perspectives as Code Review (General, security, performance, test coverage, code quality/modularity, and design/UX/accessibility) and optional instructions. Each selected perspective runs a separate tool-capable agent using the QA provider/model/effort, in an isolated checkout of the configured base revision. Agents run relevant checks and report evidence-backed issues; the server files them as ordinary Evaluate feedback and nudges the Analyst. They do not implement fixes or publish code. Project-wide agent concurrency applies. The dialog reports completed and failed perspectives separately, including when required checks could not run. Closing the dialog keeps QA running; navigating away or reloading loses the current dialog's result summary, while submitted findings remain in Evaluate. QA checkouts are cleaned after runner exit.
+
 - Execute agents start in a prepared worktree with the task branch already checked out.
 - They run the smallest relevant non-watch verification for touched workspaces while iterating, using scoped tests first and scoped build/typecheck and lint commands when the change could affect them, and they leave the branch in a state where the project’s configured merge quality gates are expected to pass before reporting success.
 - If they add or change package dependencies, they run the project’s install from the repository root, update lockfiles, and commit manifest and lockfile changes with the code that uses those packages.
