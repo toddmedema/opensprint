@@ -82,16 +82,15 @@ function renderTree(
 
 describe("PlanTreeView", () => {
   it("renders flat plans as sibling tree items (no nested groups)", () => {
-    const plans: Plan[] = [
-      makePlan("alpha", "planning", 0),
-      makePlan("beta", "building", 1, true),
-    ];
+    const plans: Plan[] = [makePlan("alpha", "planning", 0), makePlan("beta", "building", 1, true)];
     renderTree({ plans });
 
     expect(screen.getByTestId("plan-tree-view")).toBeInTheDocument();
     const tree = screen.getByRole("tree", { name: /plan hierarchy/i });
     expect(within(tree).getAllByRole("treeitem")).toHaveLength(2);
     expect(screen.queryByRole("group")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("plan-epic-task-cap-alpha")).not.toBeInTheDocument();
+    expect(screen.getByTestId("plan-epic-task-cap-beta")).toHaveTextContent("1/15");
   });
 
   it("renders a two-level hierarchy with a sub-plans group", () => {
@@ -132,9 +131,7 @@ describe("PlanTreeView", () => {
   });
 
   it("at max depth shows split-unavailable messaging and keeps Generate tasks enabled", () => {
-    const plans: Plan[] = [
-      makePlan("deep-plan", "planning", 0, false, { depth: MAX_PLAN_DEPTH }),
-    ];
+    const plans: Plan[] = [makePlan("deep-plan", "planning", 0, false, { depth: MAX_PLAN_DEPTH })];
     renderTree({ plans });
 
     expect(screen.getByTestId("plan-tree-max-depth-hint")).toHaveTextContent("Max depth");
@@ -171,9 +168,9 @@ describe("PlanTreeView", () => {
     ];
     renderTree({ plans });
     const rootRow = screen.getByTestId("plan-tree-row-root-plan");
-    expect(
-      within(rootRow).getByTestId("plan-tree-subtree-aggregate-root-plan")
-    ).toHaveTextContent("Total tasks: 6 across 1 sub-plans");
+    expect(within(rootRow).getByTestId("plan-tree-subtree-aggregate-root-plan")).toHaveTextContent(
+      "Total tasks: 6 across 1 sub-plans"
+    );
   });
 
   it("uses first # heading as title when present", () => {
@@ -278,7 +275,10 @@ describe("PlanTreeView", () => {
     const rootRow = screen.getByTestId("plan-tree-row-root-plan");
     rootRow.focus();
     await user.keyboard("{ArrowLeft}");
-    expect(screen.getByTestId("plan-tree-toggle-root-plan")).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByTestId("plan-tree-toggle-root-plan")).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
     expect(screen.queryByTestId("plan-tree-row-child-plan")).not.toBeInTheDocument();
   });
 });

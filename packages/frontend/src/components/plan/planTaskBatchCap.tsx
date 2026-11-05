@@ -16,11 +16,16 @@ export interface PlanEpicTaskCapIndicatorProps {
 }
 
 /**
- * Shows `{count}/15` with a horizontal fill bar; warning styling at the cap.
+ * Shows `{count}/15` with a horizontal fill bar once tasks exist; warning styling at the cap.
  * Tooltip explains the batch limit (native `title` for simplicity and a11y baseline).
  */
-export function PlanEpicTaskCapIndicator({ taskCount, testIdSuffix = "" }: PlanEpicTaskCapIndicatorProps) {
+export function PlanEpicTaskCapIndicator({
+  taskCount,
+  testIdSuffix = "",
+}: PlanEpicTaskCapIndicatorProps) {
   const safe = Number.isFinite(taskCount) ? Math.max(0, taskCount) : 0;
+  if (safe === 0) return null;
+
   const displayCount = Math.min(safe, PLAN_TASK_BATCH_MAX);
   const pct = (displayCount / PLAN_TASK_BATCH_MAX) * 100;
   const atCap = safe >= PLAN_TASK_BATCH_MAX;
@@ -62,7 +67,9 @@ export type SubtreeNodeForAggregate = {
   children: SubtreeNodeForAggregate[];
 };
 
-export function computePlanSubtreeTaskAggregate(node: SubtreeNodeForAggregate): PlanSubtreeAggregate {
+export function computePlanSubtreeTaskAggregate(
+  node: SubtreeNodeForAggregate
+): PlanSubtreeAggregate {
   let sumFromDescendants = 0;
   let descCount = 0;
   for (const c of node.children) {

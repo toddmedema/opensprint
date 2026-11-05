@@ -152,6 +152,7 @@ describe("PlanListView", () => {
       />
     );
     expect(screen.getByTestId("plan-list-generate-tasks")).toBeInTheDocument();
+    expect(screen.queryByTestId("plan-epic-task-cap-planning-feature")).not.toBeInTheDocument();
   });
 
   it("shows Generate tasks for planning plan with feedback-only tasks", () => {
@@ -756,7 +757,7 @@ describe("PlanListView", () => {
   });
 
   describe("task count display and cap", () => {
-    it("shows 0/15 when task count is zero", () => {
+    it("hides the count and bar when task count is zero", () => {
       const plan = makePlan("building-empty", "building", 0, true);
       render(
         <PlanListView
@@ -775,9 +776,9 @@ describe("PlanListView", () => {
       );
 
       const row = screen.getByTestId("plan-list-row-building-empty");
-      expect(within(row).getByTestId("plan-epic-task-cap-building-empty")).toHaveTextContent(
-        "0/15"
-      );
+      expect(
+        within(row).queryByTestId("plan-epic-task-cap-building-empty")
+      ).not.toBeInTheDocument();
     });
 
     it("shows 8/15 for eight tasks", () => {

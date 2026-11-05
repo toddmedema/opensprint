@@ -10,16 +10,20 @@ import {
 } from "./planTaskBatchCap";
 
 describe("PlanEpicTaskCapIndicator", () => {
-  it("shows 0/15 at zero tasks", () => {
-    render(<PlanEpicTaskCapIndicator taskCount={0} testIdSuffix="t0" />);
-    const el = screen.getByTestId("plan-epic-task-cap-t0");
-    expect(el).toHaveTextContent("0/15");
-    expect(el).toHaveAttribute("title", PLAN_TASK_BATCH_CAP_TOOLTIP);
+  it("hides the count and bar before tasks are generated", () => {
+    const { rerender } = render(<PlanEpicTaskCapIndicator taskCount={0} testIdSuffix="t0" />);
+    expect(screen.queryByTestId("plan-epic-task-cap-t0")).not.toBeInTheDocument();
+    expect(screen.queryByTitle(PLAN_TASK_BATCH_CAP_TOOLTIP)).not.toBeInTheDocument();
+
+    rerender(<PlanEpicTaskCapIndicator taskCount={3} testIdSuffix="t0" />);
+    expect(screen.getByTestId("plan-epic-task-cap-t0")).toHaveTextContent("3/15");
   });
 
   it("shows 8/15 at eight tasks", () => {
     render(<PlanEpicTaskCapIndicator taskCount={8} testIdSuffix="t8" />);
-    expect(screen.getByTestId("plan-epic-task-cap-t8")).toHaveTextContent("8/15");
+    const el = screen.getByTestId("plan-epic-task-cap-t8");
+    expect(el).toHaveTextContent("8/15");
+    expect(el).toHaveAttribute("title", PLAN_TASK_BATCH_CAP_TOOLTIP);
   });
 
   it("uses warning styling at the cap (15 tasks)", () => {
