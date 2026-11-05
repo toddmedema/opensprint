@@ -63,7 +63,10 @@ describe.each(["sqlite", "postgres"] as const)("GitHub plan import with %s", (di
       current_version_number: 1,
       last_executed_version_number: null,
     });
-    expect(JSON.parse(plans[0].metadata as string).githubIssue).toEqual(issue().rawPayload);
+    expect(JSON.parse(plans[0].metadata as string)).toMatchObject({
+      githubIssue: issue().rawPayload,
+      complexity: "medium",
+    });
     const tasks = await client.query("SELECT * FROM tasks WHERE project_id = $1", [projectId]);
     expect(tasks).toHaveLength(1);
     expect(tasks[0]).toMatchObject({
@@ -71,10 +74,13 @@ describe.each(["sqlite", "postgres"] as const)("GitHub plan import with %s", (di
       title: "Add project search",
       issue_type: "epic",
       status: "blocked",
+      complexity: 3,
     });
-    expect(
-      await client.query("SELECT * FROM plan_versions WHERE project_id = $1", [projectId])
-    ).toHaveLength(1);
+    const versions = await client.query("SELECT * FROM plan_versions WHERE project_id = $1", [
+      projectId,
+    ]);
+    expect(versions).toHaveLength(1);
+    expect(JSON.parse(versions[0].metadata as string).complexity).toBe("medium");
     expect(
       await client.query("SELECT * FROM governance_task_scopes WHERE project_id = $1", [projectId])
     ).toHaveLength(1);

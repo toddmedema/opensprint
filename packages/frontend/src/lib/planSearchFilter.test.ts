@@ -59,6 +59,7 @@ describe("GitHub issue search", () => {
       planId: "github-issue-123",
       epicId: "epic-1",
       shippedAt: null,
+      complexity: "medium",
       githubIssue: {
         id: "123",
         number: 42,

@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type { PlanMetadata } from "@opensprint/shared";
 import type { RawExternalItem } from "./integration-adapter.js";
 import { taskStore, type TaskStoreService } from "./task-store.service.js";
+import { planComplexityToTask } from "./plan-complexity.js";
 
 /** An issue's immutable GitHub id identifies its plan even after a title/repository change. */
 export class GitHubPlanImportService {
@@ -33,6 +34,7 @@ export class GitHubPlanImportService {
       epicId,
       shippedAt: null,
       reviewedAt: null,
+      complexity: "medium",
       githubIssue: issue,
     };
 
@@ -61,9 +63,9 @@ export class GitHubPlanImportService {
         return false;
       }
       await client.execute(
-        `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, labels, created_at, updated_at, extra)
-         VALUES ($1, $2, $3, $4, 'epic', 'blocked', 2, '[]', $5, $5, '{}')`,
-        [epicId, projectId, title, planId, now]
+        `INSERT INTO tasks (id, project_id, title, description, issue_type, status, priority, labels, created_at, updated_at, complexity, extra)
+         VALUES ($1, $2, $3, $4, 'epic', 'blocked', 2, '[]', $5, $5, $6, '{}')`,
+        [epicId, projectId, title, planId, now, planComplexityToTask(metadata.complexity)]
       );
       await client.execute(
         `INSERT INTO governance_task_scopes (project_id, task_id, scope) VALUES ($1, $2, $3)`,
