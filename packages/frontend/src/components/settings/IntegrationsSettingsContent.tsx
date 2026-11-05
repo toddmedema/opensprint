@@ -5,7 +5,10 @@ import { TodoistIntegrationCard } from "./TodoistIntegrationCard";
 import { GitHubIntegrationCard } from "./GitHubIntegrationCard";
 import { IntegrationProviderCards } from "../intake/IntegrationProviderCards";
 
-const INTAKE_PLACEHOLDER_PROVIDERS = ["slack", "webhook"] as const satisfies readonly IntegrationProvider[];
+const INTAKE_PLACEHOLDER_PROVIDERS = [
+  "slack",
+  "webhook",
+] as const satisfies readonly IntegrationProvider[];
 
 export interface IntegrationsSettingsContentProps {
   projectId: string;
@@ -13,7 +16,7 @@ export interface IntegrationsSettingsContentProps {
 
 /**
  * Project settings — Integrations tab: third-party sources and related links.
- * Todoist and placeholder intake providers share one grid; Todoist is fully wired.
+ * GitHub issues become plans; Todoist tasks become Evaluate feedback.
  */
 export function IntegrationsSettingsContent({ projectId }: IntegrationsSettingsContentProps) {
   const [notice, setNotice] = useState<string | null>(null);
@@ -28,8 +31,8 @@ export function IntegrationsSettingsContent({ projectId }: IntegrationsSettingsC
     <div className="space-y-6" data-testid="integrations-settings-content">
       <div className="space-y-2">
         <p className="text-sm text-theme-muted">
-          Connect external apps and webhooks so work shows up in{" "}
-          <span className="text-theme-text">Evaluate → Intake</span>. Post-build deploy commands and
+          Import GitHub issues into <span className="text-theme-text">Plan</span> and Todoist tasks
+          into <span className="text-theme-text">Evaluate</span>. Post-build deploy commands and
           outbound CI webhooks are configured on the{" "}
           <Link
             to={`/projects/${projectId}/settings?tab=deployment`}
@@ -63,7 +66,7 @@ export function IntegrationsSettingsContent({ projectId }: IntegrationsSettingsC
 
       <section className="space-y-3" aria-labelledby="integrations-intake-heading">
         <h2 id="integrations-intake-heading" className="text-sm font-semibold text-theme-text">
-          Intake sources
+          Connected sources
         </h2>
         <div
           className="grid grid-cols-1 sm:grid-cols-2 gap-3"

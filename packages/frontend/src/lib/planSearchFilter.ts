@@ -10,5 +10,7 @@ export function matchesPlanSearchQuery(plan: Plan, query: string): boolean {
   if (!q) return true;
   const title = getEpicTitleFromPlan(plan).toLowerCase();
   const content = (plan.content ?? "").toLowerCase();
-  return title.includes(q) || content.includes(q);
+  const issue = plan.metadata.githubIssue;
+  const source = issue ? `github ${issue.repository} #${issue.number}`.toLowerCase() : "";
+  return title.includes(q) || content.includes(q) || source.includes(q);
 }

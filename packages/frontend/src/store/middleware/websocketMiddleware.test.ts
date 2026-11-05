@@ -257,6 +257,32 @@ describe("websocketMiddleware", () => {
     });
   }
 
+  it("refreshes plans when a GitHub issue sync completes", async () => {
+    const store = createStore();
+    store.dispatch(wsConnect({ projectId: "proj-1" }));
+    await flushPendingWsInstance("/ws/projects/proj-1");
+    wsInstance!.simulateOpen();
+    await vi.waitFor(() => expect(store.getState().websocket.connected).toBe(true));
+    mockInvalidateQueries.mockClear();
+
+    wsInstance!.simulateMessage({
+      type: "integration.sync.completed",
+      provider: "github",
+      projectId: "proj-1",
+      imported: 2,
+      errors: 0,
+    });
+
+    await vi.waitFor(() => {
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: queryKeys.plans.list("proj-1"),
+      });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: queryKeys.integrations.githubStatus("proj-1"),
+      });
+    });
+  });
+
   describe("connection attempt ownership", () => {
     it.each([false, true])(
       "ignores old same-project ticket resolved newest-first=%s",

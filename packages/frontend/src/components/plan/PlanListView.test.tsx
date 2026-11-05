@@ -77,6 +77,37 @@ describe("PlanListView", () => {
     expect(within(listView).getAllByTestId(/^plan-list-row-/)).toHaveLength(4);
   });
 
+  it("shows an imported issue title and source without selecting the row when opening GitHub", async () => {
+    const plan = makePlan("github-issue-123", "planning");
+    plan.content = "# Preserve original issue title\n\nDetails";
+    plan.metadata.githubIssue = {
+      id: "123",
+      number: 42,
+      repository: "octocat/hello-world",
+      url: "https://github.com/octocat/hello-world/issues/42",
+    };
+    const onSelectPlan = vi.fn();
+    render(
+      <PlanListView
+        plans={[plan]}
+        selectedPlanId={null}
+        executingPlanId={null}
+        reExecutingPlanId={null}
+        planTasksPlanIds={[]}
+        executeError={null}
+        onSelectPlan={onSelectPlan}
+        onShip={vi.fn()}
+        onPlanTasks={vi.fn()}
+        onReship={vi.fn()}
+        onClearError={vi.fn()}
+      />
+    );
+    expect(screen.getByText("Preserve original issue title")).toBeInTheDocument();
+    const source = screen.getByRole("link", { name: /GitHub octocat\/hello-world #42/ });
+    await userEvent.setup().click(source);
+    expect(onSelectPlan).not.toHaveBeenCalled();
+  });
+
   it("marks the selected plan row for sidebar/detail context", () => {
     const plans: Plan[] = [
       makePlan("plan-a", "planning", 0),

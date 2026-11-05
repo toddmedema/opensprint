@@ -9,6 +9,8 @@ import {
 import type { Plan, PlanDependencyEdge, PlanStatus } from "@opensprint/shared";
 import { canCreateSubPlan, sortPlansByStatus } from "@opensprint/shared";
 import { formatPlanIdAsTitle } from "../../lib/formatting";
+import { GitHubIssueLink } from "./GitHubIssueLink";
+import { parsePlanContent } from "../../lib/planContentUtils";
 import type { PlanGenState } from "../../lib/planGenerationState";
 import { PLANNING_TOOLTIP, STALE_TOOLTIP } from "../../lib/planGenerationState";
 import { PhaseScrollSectionHeader } from "../PhaseScrollSectionHeader";
@@ -188,6 +190,9 @@ function PlanListRowInner({
 }) {
   const isMarkCompletePending = markCompletePendingPlanId === plan.metadata.planId;
   const planId = plan.metadata.planId;
+  const displayTitle = plan.metadata.githubIssue
+    ? parsePlanContent(plan.content).title || formatPlanIdAsTitle(planId)
+    : formatPlanIdAsTitle(planId);
   const isExecuting = executingPlanId === planId;
   const hasGeneratedTasksForCurrentVersion = plan.hasGeneratedPlanTasksForCurrentVersion === true;
   const isPlanningTasks =
@@ -233,9 +238,10 @@ function PlanListRowInner({
       >
         {leadingControl}
         <div className={phaseQueueRowPrimaryButtonClassName(isSelected)}>
-          <span className={PHASE_QUEUE_ROW_TITLE_CLASSNAME} title={formatPlanIdAsTitle(planId)}>
-            {formatPlanIdAsTitle(planId)}
+          <span className={PHASE_QUEUE_ROW_TITLE_CLASSNAME} title={displayTitle}>
+            {displayTitle}
           </span>
+          <GitHubIssueLink issue={plan.metadata.githubIssue} compact />
           {showMaxDepthHint && (
             <span
               className="shrink-0 text-xs text-theme-muted max-w-[140px] truncate"
@@ -408,8 +414,8 @@ function PlanListRowInner({
           style={{ paddingLeft: `calc(1rem + 24px + ${treeDepth * 12}px)` }}
           data-testid={`plan-list-subtree-aggregate-${planId}`}
         >
-          Total tasks: {subtreeAggregate.totalIncludingSelf} across {subtreeAggregate.descendantPlanCount}{" "}
-          sub-plans
+          Total tasks: {subtreeAggregate.totalIncludingSelf} across{" "}
+          {subtreeAggregate.descendantPlanCount} sub-plans
         </div>
       )}
       {blockingPlanIds.length > 0 && (
@@ -472,15 +478,16 @@ function PlanTreeItem({
   const blockingPlanIds = blockingByPlanId.get(planId) ?? [];
   const depthVal = node.plan.depth;
   const showMaxDepthHint = depthVal != null && !canCreateSubPlan(depthVal);
-  const subtreeAggregate =
-    node.children.length > 0 ? computePlanSubtreeTaskAggregate(node) : null;
+  const subtreeAggregate = node.children.length > 0 ? computePlanSubtreeTaskAggregate(node) : null;
 
   const title = formatPlanIdAsTitle(planId);
   const leadingControl = hasChildren ? (
     <button
       type="button"
       className={TREE_TOGGLE_CLASSNAME}
-      aria-label={collapsed ? `Expand sub-plans under ${title}` : `Collapse sub-plans under ${title}`}
+      aria-label={
+        collapsed ? `Expand sub-plans under ${title}` : `Collapse sub-plans under ${title}`
+      }
       aria-expanded={!collapsed}
       data-testid={`plan-tree-toggle-${planId}`}
       onClick={(e) => {

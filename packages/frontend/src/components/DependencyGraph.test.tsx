@@ -100,6 +100,25 @@ describe("DependencyGraph", () => {
     expect(svg).toBeInTheDocument();
   });
 
+  it("uses the issue title for imported plans", async () => {
+    const plan = {
+      ...mockPlan("github-issue-123"),
+      content: "# Fix login\n\nDetails",
+      metadata: {
+        ...mockPlan("github-issue-123").metadata,
+        githubIssue: {
+          id: "123",
+          number: 42,
+          repository: "octocat/hello-world",
+          url: "https://github.com/octocat/hello-world/issues/42",
+        },
+      },
+    };
+    render(<DependencyGraph graph={{ plans: [plan], edges: [] }} />);
+    await vi.waitFor(() => expect(screen.getByText("Fix login")).toBeInTheDocument());
+    expect(screen.queryByText("github issue…")).not.toBeInTheDocument();
+  });
+
   it("renders all plans on initial load without requiring user interaction", async () => {
     // Uses dimension fallback (100ms) when ResizeObserver mock doesn't fire.
     const graphWithFourPlans: PlanDependencyGraph = {

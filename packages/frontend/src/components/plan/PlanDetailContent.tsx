@@ -8,6 +8,7 @@ import {
   serializePlanBodySections,
 } from "../../lib/planContentUtils";
 import { PrdSectionEditor } from "../prd/PrdSectionEditor";
+import { GitHubIssueLink } from "./GitHubIssueLink";
 import { CollapsibleSection } from "../execute/CollapsibleSection";
 import { usePlanVersions, usePlanVersion } from "../../api/hooks";
 
@@ -261,6 +262,7 @@ export function PlanDetailContent({
 
   const header = (
     <div className="flex flex-col gap-2 p-4">
+      <GitHubIssueLink issue={plan.metadata.githubIssue} />
       {plan.metadata.pullRequestUrl?.startsWith("https://") && (
         <a
           href={plan.metadata.pullRequestUrl}

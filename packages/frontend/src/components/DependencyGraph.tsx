@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Plan, PlanDependencyGraph } from "@opensprint/shared";
 import type * as D3 from "d3";
+import { getEpicTitleFromPlan } from "../lib/planContentUtils";
 
 interface DependencyGraphProps {
   graph: PlanDependencyGraph | null;
@@ -439,7 +440,9 @@ export function DependencyGraph({ graph, onPlanClick, fillHeight }: DependencyGr
       .attr("font-weight", "500")
       .attr("fill", tokens.text)
       .text((d) => {
-        const label = d.plan.metadata.planId.replace(/-/g, " ");
+        const label = d.plan.metadata.githubIssue
+          ? getEpicTitleFromPlan(d.plan)
+          : d.plan.metadata.planId.replace(/-/g, " ");
         return label.length > 14 ? label.slice(0, 12) + "…" : label;
       });
 

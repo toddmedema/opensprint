@@ -23,7 +23,10 @@ function relativeTime(iso: string): string {
 const STATUS_BADGE = {
   active: { label: "Connected", className: "text-green-400 bg-green-500/10" },
   needs_reconnect: { label: "Needs Reconnect", className: "text-orange-400 bg-orange-500/10" },
-  disconnected: { label: "Not Connected", className: "text-theme-text-secondary bg-theme-surface-hover" },
+  disconnected: {
+    label: "Not Connected",
+    className: "text-theme-text-secondary bg-theme-surface-hover",
+  },
   loading: { label: "Loading…", className: "text-theme-text-secondary bg-theme-surface-hover" },
 } as const;
 
@@ -40,7 +43,13 @@ function GitHubIcon() {
       className="w-7 h-7 rounded-md bg-[#24292f] dark:bg-[#f0f6fc] flex items-center justify-center flex-shrink-0"
       aria-hidden="true"
     >
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" className="text-white dark:text-[#24292f]">
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 16 16"
+        fill="currentColor"
+        className="text-white dark:text-[#24292f]"
+      >
         <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
       </svg>
     </div>
@@ -69,11 +78,14 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
   });
 
   const connectMutation = useMutation({
-    mutationFn: (token: string) =>
-      api.integrations.github.connect(projectId, { token }),
+    mutationFn: (token: string) => api.integrations.github.connect(projectId, { token }),
     onSuccess: () => {
       setTokenInput("");
       setShowTokenForm(false);
+      setPickerOpen(false);
+      setSelectedRepoId("");
+      setSyncMessage(null);
+      queryClient.removeQueries({ queryKey: queryKeys.integrations.githubRepos(projectId) });
       void queryClient.invalidateQueries({
         queryKey: queryKeys.integrations.githubStatus(projectId),
       });
@@ -84,6 +96,10 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
     mutationFn: () => api.integrations.github.disconnect(projectId),
     onSuccess: () => {
       setShowDisconnectConfirm(false);
+      setPickerOpen(false);
+      setSelectedRepoId("");
+      setSyncMessage(null);
+      queryClient.removeQueries({ queryKey: queryKeys.integrations.githubRepos(projectId) });
       void queryClient.invalidateQueries({
         queryKey: queryKeys.integrations.githubStatus(projectId),
       });
@@ -91,13 +107,12 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
   });
 
   const shouldShowPicker =
-    pickerOpen ||
-    (!!statusQuery.data?.connected && !statusQuery.data?.selectedSource);
+    pickerOpen || (!!statusQuery.data?.connected && !statusQuery.data?.selectedSource);
 
   const reposQuery = useQuery({
     queryKey: queryKeys.integrations.githubRepos(projectId),
     queryFn: () => api.integrations.github.listRepos(projectId),
-    enabled: shouldShowPicker,
+    enabled: shouldShowPicker && statusQuery.data?.status === "active",
     retry: 1,
     staleTime: 30_000,
   });
@@ -116,19 +131,31 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
       });
       setTimeout(() => setSaveSuccess(false), 3_000);
     },
+    onError: () => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.integrations.githubStatus(projectId),
+      });
+    },
   });
 
   const syncNowMutation = useMutation({
     mutationFn: () => api.integrations.github.syncNow(projectId),
     onSuccess: (data) => {
       setSyncMessage({
-        text: `${data.imported} issue${data.imported === 1 ? "" : "s"} imported`,
-        severity: "success",
+        text:
+          data.errors > 0
+            ? `${data.imported} plan${data.imported === 1 ? "" : "s"} created; ${data.errors} issue${data.errors === 1 ? "" : "s"} could not be imported. Sync again to retry.`
+            : data.imported === 0
+              ? "No new plans. Previously imported issues are already tracked."
+              : `${data.imported} plan${data.imported === 1 ? "" : "s"} created from GitHub issues`,
+        severity: data.errors > 0 ? "warning" : "success",
       });
       void queryClient.invalidateQueries({
         queryKey: queryKeys.integrations.githubStatus(projectId),
       });
-      setTimeout(() => setSyncMessage(null), 5_000);
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.plans.list(projectId),
+      });
     },
     onError: (error) => {
       if (
@@ -145,7 +172,9 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
           severity: "error",
         });
       }
-      setTimeout(() => setSyncMessage(null), 5_000);
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.integrations.githubStatus(projectId),
+      });
     },
   });
 
@@ -156,11 +185,7 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
   }, [queryClient, projectId]);
 
   useEffect(() => {
-    if (
-      pickerOpen &&
-      !selectedRepoId &&
-      statusQuery.data?.selectedSource?.id
-    ) {
+    if (pickerOpen && !selectedRepoId && statusQuery.data?.selectedSource?.id) {
       setSelectedRepoId(statusQuery.data.selectedSource.id);
     }
   }, [pickerOpen, selectedRepoId, statusQuery.data?.selectedSource?.id]);
@@ -175,6 +200,16 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
     setErrorDismissed(false);
   }, [lastError]);
 
+  useEffect(() => {
+    if (
+      isApiError(reposQuery.error) &&
+      (reposQuery.error.code === "GITHUB_AUTH_FAILED" ||
+        reposQuery.error.code === "NEEDS_RECONNECT")
+    ) {
+      refreshStatus();
+    }
+  }, [reposQuery.error, refreshStatus]);
+
   const badge = statusQuery.isLoading
     ? STATUS_BADGE.loading
     : !statusQuery.data?.connected
@@ -185,16 +220,14 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
 
   // Loading
   if (statusQuery.isLoading) {
-    return (
-      <Shell description="Ingest issues from a GitHub repository" badge={badge} />
-    );
+    return <Shell description="Import open GitHub issues as plans" badge={badge} />;
   }
 
   // Error fetching status
   if (statusQuery.isError) {
     return (
       <Shell
-        description="Ingest issues from a GitHub repository"
+        description="Import open GitHub issues as plans"
         badge={STATUS_BADGE.disconnected}
         footer={
           <button type="button" className={secondaryBtn} onClick={refreshStatus}>
@@ -217,7 +250,7 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
   if (!status?.connected) {
     return (
       <Shell
-        description="Ingest issues from a GitHub repository"
+        description="Import open GitHub issues as plans"
         badge={STATUS_BADGE.disconnected}
         footer={
           !showTokenForm ? (
@@ -234,10 +267,7 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
       >
         {showTokenForm && (
           <div className="space-y-2" data-testid="github-token-form">
-            <label
-              htmlFor="github-pat-input"
-              className="block text-xs font-medium text-theme-text"
-            >
+            <label htmlFor="github-pat-input" className="block text-xs font-medium text-theme-text">
               GitHub Personal Access Token
             </label>
             <p className="text-[10px] text-theme-muted">
@@ -250,9 +280,8 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
               >
                 fine-grained PAT
               </a>{" "}
-              with <strong>Issues: Read-only</strong> and{" "}
-              <strong>Metadata: Read-only</strong> permissions. Your token is
-              stored locally and encrypted at rest.
+              with <strong>Issues: Read-only</strong> and <strong>Metadata: Read-only</strong>{" "}
+              permissions. Your token is stored locally and encrypted at rest.
             </p>
             <input
               id="github-pat-input"
@@ -287,8 +316,7 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
             </div>
             {connectMutation.isError && (
               <p className="text-xs text-theme-error-text" data-testid="github-connect-error">
-                {isApiError(connectMutation.error) &&
-                connectMutation.error.code === "INVALID_TOKEN"
+                {isApiError(connectMutation.error) && connectMutation.error.code === "INVALID_TOKEN"
                   ? "Invalid token. Please check the token and permissions."
                   : "Failed to connect. Please try again."}
               </p>
@@ -307,7 +335,7 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
 
   return (
     <Shell
-      description="Ingest issues from a GitHub repository"
+      description="Import open GitHub issues as plans"
       badge={badge}
       footer={
         <>
@@ -316,13 +344,13 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
               type="button"
               className={`${secondaryBtn} inline-flex items-center gap-1.5`}
               onClick={() => syncNowMutation.mutate()}
-              disabled={syncNowMutation.isPending}
+              disabled={syncNowMutation.isPending || needsReconnect || selectRepoMutation.isPending}
               data-testid="github-sync-now-btn"
             >
               {syncNowMutation.isPending && (
                 <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
               )}
-              {syncNowMutation.isPending ? "Syncing…" : "Sync Now"}
+              {syncNowMutation.isPending ? "Syncing…" : "Sync issues to plans"}
             </button>
           )}
           {!showDisconnectConfirm ? (
@@ -341,7 +369,7 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
               data-testid="github-disconnect-confirm"
             >
               <p className="text-xs text-theme-error-text flex-1 min-w-[12rem]">
-                This will remove your stored GitHub token. Continue?
+                This will remove your stored GitHub token. Imported plans will be kept. Continue?
               </p>
               <button
                 type="button"
@@ -365,14 +393,21 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
         </>
       }
     >
-      <p className="text-xs text-theme-muted" data-testid="github-status-line">
+      <p className="text-xs text-theme-text-secondary">
+        Each open issue becomes a plan in Planning. Sync again to import new issues; existing plans
+        and your edits are kept. Nothing starts automatically or changes on GitHub.
+      </p>
+      <p className="text-xs text-theme-muted break-words" data-testid="github-status-line">
         Connected as {userName}
         {selectedSource && <> · Repo: {selectedSource.name}</>}
         {status.lastSyncAt && <> · Last sync: {relativeTime(status.lastSyncAt)}</>}
       </p>
 
       {needsReconnect && (
-        <div className="p-3 rounded-lg bg-theme-warning-bg border border-theme-warning-border" data-testid="github-reconnect-banner">
+        <div
+          className="p-3 rounded-lg bg-theme-warning-bg border border-theme-warning-border"
+          data-testid="github-reconnect-banner"
+        >
           <p className="text-xs text-theme-warning-text">
             Your GitHub token is no longer valid. Please reconnect with a new token.
           </p>
@@ -388,6 +423,7 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
             <div className="mt-2 space-y-2">
               <input
                 type="password"
+                aria-label="New GitHub Personal Access Token"
                 value={tokenInput}
                 onChange={(e) => setTokenInput(e.target.value)}
                 placeholder="github_pat_..."
@@ -408,8 +444,11 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
       )}
 
       {status.lastError && !needsReconnect && !errorDismissed && (
-        <div className="p-3 rounded-lg bg-theme-error-bg border border-theme-error-border" data-testid="github-error-banner">
-          <div className="flex items-start justify-between gap-2">
+        <div
+          className="p-3 rounded-lg bg-theme-error-bg border border-theme-error-border"
+          data-testid="github-error-banner"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <p className="text-xs text-theme-error-text">{status.lastError}</p>
               <p className="text-xs text-theme-error-text mt-1 opacity-75">
@@ -423,7 +462,12 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
               aria-label="Dismiss error"
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                <path d="M3.5 3.5L10.5 10.5M10.5 3.5L3.5 10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                <path
+                  d="M3.5 3.5L10.5 10.5M10.5 3.5L3.5 10.5"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
               </svg>
             </button>
           </div>
@@ -449,7 +493,8 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
         <div data-testid="github-repo-info">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-theme-muted">
-              Repo: <span className="font-medium text-theme-text">{selectedSource.name}</span>
+              Repo:{" "}
+              <span className="font-medium text-theme-text break-all">{selectedSource.name}</span>
             </span>
             <button
               type="button"
@@ -464,7 +509,10 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
             </button>
           </div>
           {saveSuccess && (
-            <p className="text-xs text-green-600 dark:text-green-400 mt-1" data-testid="github-save-success">
+            <p
+              className="text-xs text-green-600 dark:text-green-400 mt-1"
+              data-testid="github-save-success"
+            >
               Repository saved successfully.
             </p>
           )}
@@ -472,7 +520,7 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
       ) : null}
 
       {selectedSource && (
-        <div data-testid="github-sync-section">
+        <div className="space-y-2" data-testid="github-sync-section">
           {syncMessage && (
             <p
               className={`text-xs ${
@@ -482,11 +530,18 @@ export function GitHubIntegrationCard({ projectId }: GitHubIntegrationCardProps)
                     ? "text-theme-warning-text"
                     : "text-theme-error-text"
               }`}
+              role={syncMessage.severity === "error" ? "alert" : "status"}
               data-testid="github-sync-message"
             >
               {syncMessage.text}
             </p>
           )}
+          <a
+            href={`/projects/${encodeURIComponent(projectId)}/plan`}
+            className="text-xs text-blue-600 hover:underline dark:text-blue-400"
+          >
+            View plans
+          </a>
         </div>
       )}
     </Shell>
@@ -509,7 +564,7 @@ function Shell({
       className="rounded-lg border border-theme-border bg-theme-surface p-4 flex flex-col gap-3 h-full"
       data-testid="github-integration-card"
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <GitHubIcon />
           <div className="min-w-0">
@@ -549,7 +604,11 @@ function RepoPicker({
   isLoading: boolean;
   isError: boolean;
   selectedRepoId: string;
-  selectMutation: { isPending: boolean; isError: boolean; mutate: (repo: IntegrationSourceOption) => void };
+  selectMutation: {
+    isPending: boolean;
+    isError: boolean;
+    mutate: (repo: IntegrationSourceOption) => void;
+  };
   existingSource: { id: string; name: string } | null;
   onSelectChange: (id: string) => void;
   onCancel: () => void;
@@ -564,7 +623,10 @@ function RepoPicker({
 
   return (
     <div data-testid="github-repo-picker">
-      <label htmlFor="github-repo-select" className="block text-xs font-medium text-theme-text mb-1">
+      <label
+        htmlFor="github-repo-select"
+        className="block text-xs font-medium text-theme-text mb-1"
+      >
         {existingSource ? "Change repository" : "Select a repository"}
       </label>
 
@@ -576,7 +638,10 @@ function RepoPicker({
       )}
 
       {isError && !hasRepos && (
-        <div className="p-3 rounded-lg bg-theme-error-bg border border-theme-error-border" data-testid="github-repos-error">
+        <div
+          className="p-3 rounded-lg bg-theme-error-bg border border-theme-error-border"
+          data-testid="github-repos-error"
+        >
           <p className="text-xs text-theme-error-text">Failed to load repositories.</p>
           <button
             type="button"
