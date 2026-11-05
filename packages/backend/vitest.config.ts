@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { backendGlobalSetupFile } from "./vitest.shared.js";
 
 const coverageReporters =
   process.env.CI === "true" || process.env.CI === "1"
@@ -7,6 +8,9 @@ const coverageReporters =
 
 export default defineConfig({
   test: {
+    // Unit routes also use PostgreSQL. Provision/verify the isolated test database
+    // before any selected project's workers, including unit-only and coverage runs.
+    globalSetup: [backendGlobalSetupFile],
     // Vitest 3 creates its worker pool from the root config, not project configs. Keep
     // HTTP/database suites sequential here so their existing isolation policy takes effect
     // in both `test` and `test:coverage` (which runs all three projects together).
