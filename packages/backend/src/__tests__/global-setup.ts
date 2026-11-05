@@ -22,7 +22,11 @@ const NATIVE_TEST_URL = "postgresql://opensprint:opensprint@localhost:5432/opens
 const SETUP_HINT =
   "Start Postgres and ensure the test database exists. Run from repo root: npm run setup";
 
-export default async function globalSetup() {
+// Vitest's supported named lifecycle exports keep cleanup under the same root
+// owner; it runs once after all selected projects, including unit-only runs.
+export { default as teardown } from "./global-teardown.js";
+
+export async function setup() {
   if (!process.env[RUN_ID_ENV]) {
     process.env[RUN_ID_ENV] = randomUUID();
   }

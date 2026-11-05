@@ -923,6 +923,9 @@ export const websocketMiddleware: Middleware = (storeApi) => {
         void qc.invalidateQueries({
           queryKey: queryKeys.integrations.status(projectId, syncEv.provider),
         });
+        if (syncEv.provider === "github") {
+          void qc.invalidateQueries({ queryKey: queryKeys.plans.list(projectId) });
+        }
         if (syncEv.provider === "todoist") {
           void qc.invalidateQueries({
             queryKey: queryKeys.integrations.todoistStatus(projectId),

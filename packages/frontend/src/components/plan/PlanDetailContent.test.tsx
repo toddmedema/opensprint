@@ -143,6 +143,29 @@ describe("PlanDetailContent", () => {
     );
   });
 
+  it("links an imported plan to its GitHub issue", () => {
+    render(
+      <PlanDetailContent
+        plan={{
+          ...mockPlan,
+          metadata: {
+            ...mockPlan.metadata,
+            githubIssue: {
+              id: "123",
+              number: 42,
+              repository: "octocat/hello-world",
+              url: "https://github.com/octocat/hello-world/issues/42",
+            },
+          },
+        }}
+        onContentSave={onContentSave}
+      />
+    );
+    const source = screen.getByRole("link", { name: /GitHub octocat\/hello-world #42/ });
+    expect(source).toHaveAttribute("href", "https://github.com/octocat/hello-world/issues/42");
+    expect(source).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
   describe("planTasksHint", () => {
     it("renders too-large warning", () => {
       render(

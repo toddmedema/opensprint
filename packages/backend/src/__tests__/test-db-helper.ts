@@ -18,6 +18,11 @@ import type { DbClient } from "../db/client.js";
 import { createPostgresDbClientFromUrl } from "../db/client.js";
 import { runSchema } from "../db/schema.js";
 import { GOVERNANCE_TABLES_IN_DEPENDENCY_ORDER } from "../db/governance-schema.js";
+import {
+  buildVitestSchemaName as buildSchemaName,
+  sanitizeSchemaPart,
+  vitestSchemaScopePrefix as schemaScopePrefix,
+} from "./test-db-schema-name.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const URL_FILE = path.resolve(__dirname, "../../.vitest-postgres-url");
@@ -96,12 +101,6 @@ function getVitestRunId(): string | null {
 /** Schema names that have already had runSchema applied in this process (per worker). */
 const initializedSchemas = new Set<string>();
 
-/** Keep schema names safe for SQL identifiers and reasonably short. */
-function sanitizeSchemaPart(value: string, maxLen = 32): string {
-  const sanitized = value.replace(/[^a-zA-Z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
-  return (sanitized || "x").slice(0, maxLen);
-}
-
 /**
  * When Vitest runs multiple projects in parallel (e.g. backend-unit + backend-integration),
  * workers in different projects can share the same VITEST_POOL_ID (often "0"). Without a
@@ -113,16 +112,11 @@ function sanitizeSchemaPart(value: string, maxLen = 32): string {
 const VITEST_SCHEMA_SCOPE_ENV = "OPENSPRINT_VITEST_SCHEMA_SCOPE";
 
 function vitestSchemaScopePrefix(): string {
-  const raw = process.env[VITEST_SCHEMA_SCOPE_ENV]?.trim();
-  if (!raw) return "";
-  return `${sanitizeSchemaPart(raw, 12)}_`;
+  return schemaScopePrefix(process.env[VITEST_SCHEMA_SCOPE_ENV]);
 }
 
 export function buildVitestSchemaName(runId: string, workerId: string): string {
-  const runPart = sanitizeSchemaPart(runId, 20);
-  const workerPart = sanitizeSchemaPart(workerId, 20);
-  const scope = vitestSchemaScopePrefix();
-  return `vitest_${scope}${runPart}_${workerPart}`;
+  return buildSchemaName(runId, workerId, process.env[VITEST_SCHEMA_SCOPE_ENV]);
 }
 
 export function createTestProjectId(prefix = "test-project"): string {

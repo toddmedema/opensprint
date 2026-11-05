@@ -86,6 +86,10 @@ Schema is applied on init via `runSchema` in `packages/backend/src/db/schema.ts`
 
 - When the user (or planner agent) updates a plan's markdown: if the **current plan version has no tasks yet**, the backend **updates that version in place**. If the current version **already has one or more tasks**, the backend **creates a new plan version** for the update. The planner does not need to choose; the backend applies this rule on each save.
 
+### GitHub issues as plans
+
+Project Settings → Integrations → GitHub Issues accepts a personal access token and a selected repository. A fine-grained token needs repository access with Issues read permission and the included Metadata read permission. **Sync issues to plans** imports open issues as planning-state plans with a GitHub source link; pull requests are excluded. Repeat syncs preserve local plan edits and skip previously imported issues. The user generates tasks and starts execution through the usual Plan controls. This is a one-way import: Open Sprint does not modify or close GitHub issues. Disconnecting deletes the stored token and retains imported plans.
+
 ### Protected Path Policy
 
 Certain file paths are sensitive surfaces (integration, OAuth, token handling) and must only be modified when the task explicitly scopes integration or OAuth work. Execute agents refuse to modify these paths for non-integration tasks, and reviewers flag violations. Protected patterns: `routes/integrations-*`, `integration-store`, `token-encryption`, `routes/oauth`, `todoist-sync`. Scope keywords that unlock: integration, oauth, todoist, token-encrypt, api-key-stor, third-party-auth, external-service, connect(ion)-service.

@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { queryKeys } from "../../api/queryKeys";
 import { GitHubIntegrationCard } from "./GitHubIntegrationCard";
 
 const mockGetStatus = vi.fn();
@@ -36,7 +37,10 @@ vi.mock("../../api/client", () => {
       },
     },
     isApiError: (err: unknown) =>
-      err != null && typeof err === "object" && "name" in err && (err as { name: string }).name === "ApiError",
+      err != null &&
+      typeof err === "object" &&
+      "name" in err &&
+      (err as { name: string }).name === "ApiError",
     ApiError: ApiErrorImpl,
   };
 });
@@ -55,7 +59,10 @@ function renderCard(ui: ReactElement) {
       mutations: { retry: false },
     },
   });
-  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+  return {
+    ...render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>),
+    queryClient,
+  };
 }
 
 describe("GitHubIntegrationCard", () => {
@@ -127,9 +134,7 @@ describe("GitHubIntegrationCard", () => {
     await user.type(screen.getByTestId("github-pat-input"), "ghp_invalid");
     await user.click(screen.getByTestId("github-save-token-btn"));
 
-    expect(await screen.findByTestId("github-connect-error")).toHaveTextContent(
-      "Invalid token"
-    );
+    expect(await screen.findByTestId("github-connect-error")).toHaveTextContent("Invalid token");
   });
 
   // ---------- Connected state ----------
@@ -192,9 +197,7 @@ describe("GitHubIntegrationCard", () => {
       lastError: null,
     });
     mockListRepos.mockResolvedValue({
-      repos: [
-        { id: "1", name: "octocat/hello-world", itemCount: 5 },
-      ],
+      repos: [{ id: "1", name: "octocat/hello-world", itemCount: 5 }],
     });
 
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
@@ -227,7 +230,8 @@ describe("GitHubIntegrationCard", () => {
     mockSyncNow.mockResolvedValue({ imported: 3, errors: 0 });
 
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    renderCard(<GitHubIntegrationCard projectId="proj-1" />);
+    const { queryClient } = renderCard(<GitHubIntegrationCard projectId="proj-1" />);
+    queryClient.setQueryData(queryKeys.plans.list("proj-1"), { plans: [], edges: [] });
 
     await user.click(await screen.findByTestId("github-sync-now-btn"));
 
@@ -235,7 +239,54 @@ describe("GitHubIntegrationCard", () => {
       expect(mockSyncNow).toHaveBeenCalledWith("proj-1");
     });
 
-    expect(await screen.findByTestId("github-sync-message")).toHaveTextContent("3 issues imported");
+    expect(await screen.findByTestId("github-sync-message")).toHaveTextContent(
+      "3 plans created from GitHub issues"
+    );
+    expect(queryClient.getQueryState(queryKeys.plans.list("proj-1"))?.isInvalidated).toBe(true);
+    expect(screen.getByRole("link", { name: "View plans" })).toHaveAttribute(
+      "href",
+      "/projects/proj-1/plan"
+    );
+  });
+
+  it.each([
+    [{ imported: 0, errors: 0 }, "No new plans. Previously imported issues are already tracked."],
+    [
+      { imported: 1, errors: 2 },
+      "1 plan created; 2 issues could not be imported. Sync again to retry.",
+    ],
+  ])(
+    "reports the sync outcome without hiding skipped or failed issues",
+    async (result, message) => {
+      mockGetStatus.mockResolvedValue({
+        connected: true,
+        provider: "github",
+        status: "active",
+        selectedSource: { id: "1", name: "octocat/hello-world" },
+      });
+      mockSyncNow.mockResolvedValue(result);
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      renderCard(<GitHubIntegrationCard projectId="proj-1" />);
+      await user.click(await screen.findByRole("button", { name: "Sync issues to plans" }));
+      expect(await screen.findByRole("status")).toHaveTextContent(message);
+    }
+  );
+
+  it("shows a failed sync as an actionable error", async () => {
+    mockGetStatus.mockResolvedValue({
+      connected: true,
+      provider: "github",
+      status: "active",
+      selectedSource: { id: "1", name: "octocat/hello-world" },
+    });
+    mockSyncNow.mockRejectedValue(new Error("GitHub could not be reached. Try again."));
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    renderCard(<GitHubIntegrationCard projectId="proj-1" />);
+    await user.click(await screen.findByTestId("github-sync-now-btn"));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "GitHub could not be reached. Try again."
+    );
+    expect(screen.queryByText(/plans created from GitHub/)).not.toBeInTheDocument();
   });
 
   it("shows rate limit message on SYNC_RATE_LIMITED", async () => {
@@ -322,6 +373,35 @@ describe("GitHubIntegrationCard", () => {
 
     expect(await screen.findByTestId("github-reconnect-banner")).toBeInTheDocument();
     expect(screen.getByTestId("github-status-badge")).toHaveTextContent("Needs Reconnect");
+    expect(screen.getByTestId("github-sync-now-btn")).toBeDisabled();
+  });
+
+  it("reloads repository access after replacing a token instead of reusing the previous account's cache", async () => {
+    mockGetStatus.mockResolvedValue({
+      connected: true,
+      provider: "github",
+      status: "needs_reconnect",
+      user: { id: "octocat" },
+      selectedSource: { id: "1", name: "octocat/hello-world" },
+    });
+    mockConnect.mockResolvedValue({ success: true, user: "new-user" });
+    mockListRepos.mockResolvedValue({ repos: [{ id: "2", name: "new-user/new-repo" }] });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const { queryClient } = renderCard(<GitHubIntegrationCard projectId="proj-1" />);
+    queryClient.setQueryData(queryKeys.integrations.githubRepos("proj-1"), {
+      repos: [{ id: "1", name: "octocat/hello-world" }],
+    });
+    await user.click(await screen.findByTestId("github-reconnect-btn"));
+    await user.type(screen.getByPlaceholderText("github_pat_..."), "replacement-token");
+    mockGetStatus.mockResolvedValue({
+      connected: true,
+      provider: "github",
+      status: "active",
+      user: { id: "new-user" },
+    });
+    await user.click(screen.getByRole("button", { name: "Save & Connect" }));
+    expect(await screen.findByRole("option", { name: "new-user/new-repo" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "octocat/hello-world" })).not.toBeInTheDocument();
   });
 
   // ---------- Error banner ----------

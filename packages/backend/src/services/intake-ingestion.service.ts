@@ -3,16 +3,16 @@
  * Provider-agnostic — works with any registered IntegrationAdapter.
  */
 
-import type {
-  IntegrationProvider,
-  ServerEvent,
-} from "@opensprint/shared";
+import type { IntegrationProvider, ServerEvent } from "@opensprint/shared";
 import { adapterRegistry } from "./integration-adapter.js";
 import type { RawExternalItem } from "./integration-adapter.js";
 import { intakeStore } from "./intake-store.service.js";
 import { integrationStore } from "./integration-store.service.js";
 import { tokenEncryption } from "./token-encryption.service.js";
 import { createLogger } from "../utils/logger.js";
+import { githubPlanImport } from "./github-plan-import.service.js";
+import { GitHubApiError } from "./github-api.js";
+import { broadcastToProject } from "../websocket/index.js";
 
 const log = createLogger("intake-ingestion");
 
@@ -56,6 +56,8 @@ export class IntakeIngestionService {
     const encryptedToken = await integrationStore.getEncryptedTokenById(connectionId);
     if (!encryptedToken) {
       log.error("No token for connection", { connectionId });
+      if (connection.provider === "github")
+        throw new Error("GitHub token is missing. Please reconnect.");
       return result;
     }
 
@@ -64,6 +66,8 @@ export class IntakeIngestionService {
       decryptedToken = tokenEncryption.decryptToken(encryptedToken);
     } catch (err) {
       log.error("Token decryption failed", { connectionId, error: String(err) });
+      if (connection.provider === "github")
+        throw new Error("GitHub token could not be read. Please reconnect.");
       return result;
     }
 
@@ -78,6 +82,11 @@ export class IntakeIngestionService {
 
       for (const raw of rawItems) {
         try {
+          if (connection.provider === "github") {
+            if (await githubPlanImport.importIssue(connection.project_id, raw)) result.imported++;
+            else result.skipped++;
+            continue;
+          }
           const normalized = adapter.normalizeItem(raw);
           const { created } = await intakeStore.upsertItem({
             project_id: connection.project_id,
@@ -100,7 +109,11 @@ export class IntakeIngestionService {
         }
       }
 
-      await integrationStore.updateLastSync(connectionId, new Date().toISOString(), null);
+      await integrationStore.updateLastSync(
+        connectionId,
+        new Date().toISOString(),
+        result.errors ? `${result.errors} item(s) could not be imported. Try syncing again.` : null
+      );
 
       this.broadcast(connection.project_id, {
         type: "integration.sync.completed",
@@ -113,6 +126,9 @@ export class IntakeIngestionService {
       const errMsg = err instanceof Error ? err.message : String(err);
       log.error("Ingestion cycle failed", { connectionId, error: errMsg });
       await integrationStore.updateLastSync(connectionId, new Date().toISOString(), errMsg);
+      if (connection.provider === "github" && err instanceof GitHubApiError && err.needsReconnect) {
+        await integrationStore.updateConnectionStatus(connectionId, "needs_reconnect", errMsg);
+      }
 
       this.broadcast(connection.project_id, {
         type: "integration.sync.error",
@@ -120,6 +136,7 @@ export class IntakeIngestionService {
         projectId: connection.project_id,
         error: errMsg,
       });
+      if (connection.provider === "github") throw err;
     }
 
     return result;
@@ -195,4 +212,4 @@ export class IntakeIngestionService {
   }
 }
 
-export const intakeIngestion = new IntakeIngestionService();
+export const intakeIngestion = new IntakeIngestionService({ broadcastToProject });

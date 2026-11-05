@@ -52,3 +52,31 @@ describe("matchesPlanSearchQuery", () => {
     expect(matchesPlanSearchQuery(plan, "authentication")).toBe(true);
   });
 });
+
+describe("GitHub issue search", () => {
+  const plan: Plan = {
+    metadata: {
+      planId: "github-issue-123",
+      epicId: "epic-1",
+      shippedAt: null,
+      complexity: "medium",
+      githubIssue: {
+        id: "123",
+        number: 42,
+        repository: "octocat/hello-world",
+        url: "https://github.com/octocat/hello-world/issues/42",
+      },
+    },
+    content: "# Fix login",
+    status: "planning",
+    taskCount: 0,
+    doneTaskCount: 0,
+    dependencyCount: 0,
+  };
+  it.each(["#42", "OCTOCAT/HELLO-WORLD", "GitHub"])(
+    "finds imported plans by source %s",
+    (query) => {
+      expect(matchesPlanSearchQuery(plan, query)).toBe(true);
+    }
+  );
+});

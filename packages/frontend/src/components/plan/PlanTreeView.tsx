@@ -12,6 +12,7 @@ import type { Plan, PlanDependencyEdge, PlanStatus } from "@opensprint/shared";
 import { buildPlanTree, canCreateSubPlan, sortPlansByStatus } from "@opensprint/shared";
 import { formatPlanIdAsTitle } from "../../lib/formatting";
 import { parsePlanContent } from "../../lib/planContentUtils";
+import { GitHubIssueLink } from "./GitHubIssueLink";
 import type { PlanGenState } from "../../lib/planGenerationState";
 import { PLANNING_TOOLTIP, STALE_TOOLTIP } from "../../lib/planGenerationState";
 import {
@@ -48,8 +49,7 @@ const TREE_TOGGLE_CLASSNAME =
 
 const SPLIT_IMPOSSIBLE_TOOLTIP = `Sub-plan split is not possible at maximum depth. Generate tasks (up to ${PLAN_TASK_BATCH_MAX}) to finish decomposition.`;
 
-const PARENT_SUBPLANS_DELEGATE_COPY =
-  "Sub-plans created — generate tasks on each sub-plan";
+const PARENT_SUBPLANS_DELEGATE_COPY = "Sub-plans created — generate tasks on each sub-plan";
 
 const PLAN_TOO_LARGE_COPY =
   "This plan may be too large for a single batch — consider narrowing scope in the SPEC";
@@ -88,10 +88,7 @@ function isChildPlanEntity(plan: Plan): boolean {
 function subtreeAllLeavesHaveTasks(node: PlanTreeNode): boolean {
   if (node.children.length === 0) {
     const p = node.plan;
-    return (
-      p.hasGeneratedPlanTasksForCurrentVersion === true ||
-      (p.taskCount ?? 0) > 0
-    );
+    return p.hasGeneratedPlanTasksForCurrentVersion === true || (p.taskCount ?? 0) > 0;
   }
   return node.children.every(subtreeAllLeavesHaveTasks);
 }
@@ -184,7 +181,11 @@ function collectVisibleIds(nodes: PlanTreeNode[], collapsedIds: Set<string>, out
   }
 }
 
-function buildParentMap(nodes: PlanTreeNode[], parentId: string | null, map: Map<string, string | null>) {
+function buildParentMap(
+  nodes: PlanTreeNode[],
+  parentId: string | null,
+  map: Map<string, string | null>
+) {
   for (const n of nodes) {
     const id = n.plan.metadata.planId;
     map.set(id, parentId);
@@ -290,15 +291,10 @@ function PlanTreeRowInner({
     !isPlannerStale;
 
   const showProminentChildGenerate =
-    baseReadyForTaskGeneration &&
-    !hasChildPlans &&
-    isChildPlanEntity(plan) &&
-    plan.taskCount === 0;
+    baseReadyForTaskGeneration && !hasChildPlans && isChildPlanEntity(plan) && plan.taskCount === 0;
 
   const showGenerateTasks =
-    baseReadyForTaskGeneration &&
-    !hasChildPlans &&
-    !showProminentChildGenerate;
+    baseReadyForTaskGeneration && !hasChildPlans && !showProminentChildGenerate;
 
   const showParentDelegateHint =
     hasChildPlans &&
@@ -308,12 +304,10 @@ function PlanTreeRowInner({
     !isPlannerInFlight &&
     !isPlannerStale;
 
-  const showAllSubplansHaveTasks =
-    hasChildPlans && subtreeLeavesAllHaveTasks;
+  const showAllSubplansHaveTasks = hasChildPlans && subtreeLeavesAllHaveTasks;
 
   const showTooLargeHint =
-    plan.tooLargeForLeaf === true ||
-    (plan.failedPlanIds?.includes(planId) ?? false);
+    plan.tooLargeForLeaf === true || (plan.failedPlanIds?.includes(planId) ?? false);
   const showExecute =
     plan.status === "planning" &&
     !isPlannerInFlight &&
@@ -348,6 +342,7 @@ function PlanTreeRowInner({
           <span className={PHASE_QUEUE_ROW_TITLE_CLASSNAME} title={planDisplayTitle(plan)}>
             {planDisplayTitle(plan)}
           </span>
+          <GitHubIssueLink issue={plan.metadata.githubIssue} compact />
           <span
             className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${STATUS_BADGE_CLASS[plan.status]}`}
             data-testid={`plan-tree-status-${planId}`}
@@ -552,8 +547,8 @@ function PlanTreeRowInner({
           style={{ paddingLeft: `calc(0.75rem + 24px + ${treeDepth * 14}px)` }}
           data-testid={`plan-tree-subtree-aggregate-${planId}`}
         >
-          Total tasks: {subtreeAggregate.totalIncludingSelf} across {subtreeAggregate.descendantPlanCount}{" "}
-          sub-plans
+          Total tasks: {subtreeAggregate.totalIncludingSelf} across{" "}
+          {subtreeAggregate.descendantPlanCount} sub-plans
         </div>
       )}
       {showParentDelegateHint && (
@@ -662,15 +657,16 @@ function PlanTreeItem({
   const subtreeLeavesAllHaveTasks = subtreeAllLeavesHaveTasks(node);
   const depthVal = node.plan.depth ?? node.plan.metadata.depth ?? treeDepth + 1;
   const showMaxDepthHint = depthVal != null && !canCreateSubPlan(depthVal);
-  const subtreeAggregate =
-    node.children.length > 0 ? computePlanSubtreeTaskAggregate(node) : null;
+  const subtreeAggregate = node.children.length > 0 ? computePlanSubtreeTaskAggregate(node) : null;
 
   const title = planDisplayTitle(node.plan);
   const leadingControl = hasChildren ? (
     <button
       type="button"
       className={TREE_TOGGLE_CLASSNAME}
-      aria-label={collapsed ? `Expand sub-plans under ${title}` : `Collapse sub-plans under ${title}`}
+      aria-label={
+        collapsed ? `Expand sub-plans under ${title}` : `Collapse sub-plans under ${title}`
+      }
       aria-expanded={!collapsed}
       data-testid={`plan-tree-toggle-${planId}`}
       onClick={(e) => {
@@ -822,7 +818,9 @@ export function PlanTreeView({
 
   useEffect(() => {
     if (!focusedPlanId) return;
-    const el = document.querySelector<HTMLElement>(`[data-plan-focus-id="${CSS.escape(focusedPlanId)}"]`);
+    const el = document.querySelector<HTMLElement>(
+      `[data-plan-focus-id="${CSS.escape(focusedPlanId)}"]`
+    );
     el?.focus({ preventScroll: true });
   }, [focusedPlanId, visibleIds, collapsedIds]);
 
@@ -914,14 +912,7 @@ export function PlanTreeView({
         return;
       }
     },
-    [
-      collapsedIds,
-      onSelectPlan,
-      onToggleCollapsed,
-      parentById,
-      plans,
-      visibleIds,
-    ]
+    [collapsedIds, onSelectPlan, onToggleCollapsed, parentById, plans, visibleIds]
   );
 
   if (forest.length === 0) {
@@ -930,7 +921,11 @@ export function PlanTreeView({
 
   return (
     <div data-testid="plan-tree-view" className="w-full">
-      <ul className={PHASE_QUEUE_LIST_SECTION_BODY_CLASSNAME} role="tree" aria-label="Plan hierarchy">
+      <ul
+        className={PHASE_QUEUE_LIST_SECTION_BODY_CLASSNAME}
+        role="tree"
+        aria-label="Plan hierarchy"
+      >
         {forest.map((node) => (
           <PlanTreeItem
             key={node.plan.metadata.planId}

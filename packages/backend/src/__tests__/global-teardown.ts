@@ -1,12 +1,8 @@
-/**
- * Vitest global teardown: drop vitest_* schemas, optionally drop/recreate opensprint_test
- * so the test DB does not grow unbounded, then remove generated test files.
- * Native Postgres is not started by us, so there is no container to stop.
- */
-
+/** Release only this Vitest run's worker schemas and owned configuration files. */
 import fs from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
+import { buildVitestRunSchemaPrefix } from "./test-db-schema-name.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const URL_FILE = path.resolve(__dirname, "../../.vitest-postgres-url");
@@ -15,6 +11,14 @@ const FALLBACK_TEST_URL = "postgresql://opensprint:opensprint@localhost:5432/ope
 
 function quoteIdent(ident: string): string {
   return `"${ident.replace(/"/g, '""')}"`;
+}
+
+async function readRunId(): Promise<string | null> {
+  try {
+    return (await fs.readFile(RUN_ID_FILE, "utf-8")).trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 async function resolveTestDatabaseUrl(): Promise<string> {
@@ -26,79 +30,53 @@ async function resolveTestDatabaseUrl(): Promise<string> {
   }
 }
 
-/** True when test DB is the local native opensprint_test (so we can safely drop/recreate it). */
-function isLocalNativeTestDb(url: string): boolean {
-  try {
-    const u = new URL(url);
-    const host = (u.hostname || "").toLowerCase();
-    const port = u.port || "5432";
-    const db = (u.pathname || "").replace(/^\/+|\/+$/g, "") || "";
-    return (
-      port === "5432" &&
-      (host === "localhost" || host === "127.0.0.1" || host === "") &&
-      db === "opensprint_test"
-    );
-  } catch {
-    return false;
-  }
-}
-
-/** Build URL for the postgres database (same host/port/user) to run DROP/CREATE DATABASE. */
-function toPostgresUrl(testUrl: string): string {
-  const u = new URL(testUrl);
-  u.pathname = "/postgres";
-  return u.toString();
-}
-
 export default async function globalTeardown() {
-  const testUrl = await resolveTestDatabaseUrl();
-
+  const runId = process.env.OPENSPRINT_VITEST_RUN_ID?.trim() || (await readRunId());
   try {
-    const { default: pg } = await import("pg");
-    const pool = new pg.Pool({
-      connectionString: testUrl,
-      connectionTimeoutMillis: 5000,
-    });
-    try {
-      // Drop all vitest_* schemas (current run and any orphans from workers without runId)
-      const rows = await pool.query("SELECT nspname FROM pg_namespace WHERE nspname LIKE $1", [
-        "vitest_%",
-      ]);
-      for (const row of rows.rows) {
-        const schema = row.nspname as string | undefined;
-        if (!schema) continue;
-        await pool.query(`DROP SCHEMA IF EXISTS ${quoteIdent(schema)} CASCADE`);
-      }
-    } finally {
-      await pool.end();
+    const testUrl = await resolveTestDatabaseUrl();
+    const databaseName = decodeURIComponent(new URL(testUrl).pathname).replace(/^\/+|\/+$/g, "");
+    if (databaseName === "opensprint") {
+      throw new Error(
+        'Refusing to clean application database "opensprint". Use an isolated test database.'
+      );
     }
-  } catch {
-    // Best-effort cleanup only.
-  }
+    if (!runId) return;
 
-  // Drop and recreate local native test DB so disk usage does not grow (no accumulation/bloat)
-  if (isLocalNativeTestDb(testUrl)) {
+    const scopes = new Set([
+      undefined,
+      "unit",
+      "int",
+      "env",
+      process.env.OPENSPRINT_VITEST_SCHEMA_SCOPE,
+    ]);
+    const prefixes = [...scopes].map((scope) => buildVitestRunSchemaPrefix(runId, scope));
+    // Vitest worker IDs are numeric; "main" is the helper's non-worker fallback.
+    // Restrict the suffix too so a longer, foreign run ID cannot match our prefix.
+    const ownedSchemaPattern = `^(${prefixes.join("|")})([0-9]{1,20}|main)$`;
+    const ownedSchema = new RegExp(ownedSchemaPattern);
     try {
       const { default: pg } = await import("pg");
-      const adminPool = new pg.Pool({
-        connectionString: toPostgresUrl(testUrl),
-        connectionTimeoutMillis: 5000,
-      });
+      const pool = new pg.Pool({ connectionString: testUrl, connectionTimeoutMillis: 5000 });
       try {
-        await adminPool.query(
-          `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
-          ["opensprint_test"]
-        );
-        await adminPool.query("DROP DATABASE IF EXISTS opensprint_test");
-        await adminPool.query("CREATE DATABASE opensprint_test");
+        const rows = await pool.query("SELECT nspname FROM pg_namespace WHERE nspname ~ $1", [
+          ownedSchemaPattern,
+        ]);
+        for (const row of rows.rows) {
+          const schema = row.nspname as string | undefined;
+          if (!schema || !ownedSchema.test(schema)) continue;
+          await pool.query(`DROP SCHEMA IF EXISTS ${quoteIdent(schema)} CASCADE`);
+        }
       } finally {
-        await adminPool.end();
+        await pool.end();
       }
     } catch {
-      // Best-effort; e.g. permission denied or DB in use
+      // A failed test database must not prevent the runner from shutting down.
+    }
+  } finally {
+    if (runId && (await readRunId()) === runId) {
+      await fs.unlink(URL_FILE).catch(() => {});
+      // A newer run may have published its configuration while cleanup was running.
+      if ((await readRunId()) === runId) await fs.unlink(RUN_ID_FILE).catch(() => {});
     }
   }
-
-  await fs.unlink(URL_FILE).catch(() => {});
-  await fs.unlink(RUN_ID_FILE).catch(() => {});
 }

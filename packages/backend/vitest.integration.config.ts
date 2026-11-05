@@ -2,8 +2,6 @@ import { defineProject } from "vitest/config";
 import {
   backendCommonTestConfig,
   createDrizzleSchemaPgResolvePlugin,
-  backendGlobalSetupFile,
-  backendGlobalTeardownFile,
   backendIntegrationInclude,
   backendResolveConfig,
   backendSsrConfig,
@@ -31,7 +29,5 @@ export default defineProject({
         singleFork: true,
       },
     },
-    globalSetup: [backendGlobalSetupFile],
-    globalTeardown: [backendGlobalTeardownFile],
   },
 });
