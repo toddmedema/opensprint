@@ -18,11 +18,15 @@ export function collaborationEventLabel(
 
 export function CollaborationActivity({
   session,
+  mode,
+  onModeChange,
   actorName,
   onTaskSelect,
   onDiscuss,
 }: {
   session: CollaborationSessionState;
+  mode: "unread" | "history";
+  onModeChange: (mode: "unread" | "history") => void;
   actorName: (id: string) => string;
   onTaskSelect: (taskId: string) => void;
   onDiscuss: (context: CollaborationContext, taskId?: string) => void;
@@ -37,15 +41,39 @@ export function CollaborationActivity({
   const notifications = session.notifications.data ?? [];
   return (
     <section aria-label="Project activity" className="space-y-5">
+      <div className="flex flex-wrap gap-2" aria-label="Activity range">
+        <button
+          type="button"
+          className={mode === "unread" ? "btn-primary" : "btn-secondary"}
+          aria-pressed={mode === "unread"}
+          onClick={() => onModeChange("unread")}
+        >
+          Since last read
+        </button>
+        <button
+          type="button"
+          className={mode === "history" ? "btn-primary" : "btn-secondary"}
+          aria-pressed={mode === "history"}
+          onClick={() => onModeChange("history")}
+        >
+          Full history
+        </button>
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="font-semibold">
-            {seenAt ? "Since you last caught up" : "Project activity"}
+            {mode === "history"
+              ? "Full project history"
+              : seenAt
+                ? "Since you last caught up"
+                : "Project activity"}
           </h3>
           <p className="mt-1 text-xs text-theme-muted">
-            {seenAt
-              ? `Last read ${new Date(seenAt).toLocaleString()}`
-              : "Read updates here and mark them caught up when ready."}
+            {mode === "history"
+              ? "Discussion and control remain available after being marked read."
+              : seenAt
+                ? `Last read ${new Date(seenAt).toLocaleString()}`
+                : "Read updates here and mark them caught up when ready."}
           </p>
         </div>
         <button
@@ -200,7 +228,11 @@ export function CollaborationActivity({
           </button>
         )}
         {session.activity.isSuccess && !events.length && (
-          <p className="text-sm text-theme-muted">You’re caught up on discussion and control.</p>
+          <p className="text-sm text-theme-muted">
+            {mode === "history"
+              ? "No discussion or control events yet."
+              : "You’re caught up on discussion and control."}
+          </p>
         )}
       </div>
     </section>

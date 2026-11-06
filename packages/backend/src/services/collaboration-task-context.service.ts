@@ -13,6 +13,7 @@ import type { StoredTask, TaskStoreService } from "./task-store.service.js";
 import { AppError } from "../middleware/error-handler.js";
 import { CommandRunError, runCommand } from "../utils/command-runner.js";
 import { filterAgentOutput } from "../utils/agent-output-filter.js";
+import { redactSecretsForUserDisplay } from "../utils/secret-redaction.js";
 import { compactExecutionText, parseTaskLastExecutionSummary } from "./task-execution-summary.js";
 
 const TEXT_LIMIT = 256 * 1024;
@@ -20,6 +21,8 @@ const GIT_TIMEOUT_MS = 5_000;
 const PATHS = [
   ".",
   ":(exclude).opensprint",
+  ":(exclude)**/.opensprint",
+  ":(exclude)**/.opensprint/**",
   ":(exclude)**/node_modules",
   ":(exclude)**/node_modules/**",
   ":(exclude).env",
@@ -27,6 +30,114 @@ const PATHS = [
   ":(exclude)**/.env",
   ":(exclude)**/.env.*",
 ];
+
+/** One policy for active and historical patches. Metadata never authorizes filesystem access. */
+function shareableDiffPath(filename: string): boolean {
+  if (
+    !filename ||
+    /[\s"\\]/.test(filename) ||
+    Array.from(filename).some(
+      (character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127
+    ) ||
+    filename.startsWith("/") ||
+    /^[A-Za-z]:/.test(filename)
+  )
+    return false;
+  return !filename
+    .split("/")
+    // Case-insensitive filesystems can resolve .ENV to .env. Compatibility
+    // normalization also closes ambiguous Unicode spellings before policy checks.
+    .map((part) => part.normalize("NFKC").toLowerCase())
+    .some(
+      (part) =>
+        !part ||
+        part === "." ||
+        part === ".." ||
+        part === ".git" ||
+        part === ".opensprint" ||
+        part === "node_modules" ||
+        part === ".env" ||
+        part.startsWith(".env.")
+    );
+}
+
+/**
+ * Accept ordinary, unambiguous Git text-patch sections only. Quoted paths, binary/combined
+ * patches and unknown metadata are omitted rather than guessed. This is path filtering
+ * plus the application's known credential patterns, not arbitrary secret detection.
+ */
+function sharedDiff(raw: string): { text: string; truncated: boolean } {
+  const sections = raw.split(/(?=^diff )/m);
+  const kept: string[] = [];
+  for (const section of sections) {
+    const lines = section.split("\n");
+    const header = /^diff --git a\/([^\s"\\]+) b\/([^\s"\\]+)$/.exec(lines[0] ?? "");
+    if (!header || !shareableDiffPath(header[1]!) || !shareableDiffPath(header[2]!)) continue;
+    const before = header[1]!;
+    const after = header[2]!;
+    let hunks = false;
+    let valid = true;
+    for (const line of lines.slice(1)) {
+      if (!line) continue;
+      if (/^(?:GIT binary patch|Binary files |diff )/.test(line)) {
+        valid = false;
+        break;
+      }
+      if (line.startsWith("@@ ")) {
+        if (!/^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/.test(line)) {
+          valid = false;
+          break;
+        }
+        hunks = true;
+        continue;
+      }
+      if (hunks) {
+        if (!/^[- +]/.test(line) && line !== "\\ No newline at end of file") {
+          valid = false;
+          break;
+        }
+        continue;
+      }
+      if (line.startsWith("--- ")) {
+        if (line !== `--- a/${before}` && line !== "--- /dev/null") {
+          valid = false;
+          break;
+        }
+      } else if (line.startsWith("+++ ")) {
+        if (line !== `+++ b/${after}` && line !== "+++ /dev/null") {
+          valid = false;
+          break;
+        }
+      } else if (/^(?:rename|copy) (?:from|to) /.test(line)) {
+        const rename = /^(?:rename|copy) (from|to) (.+)$/.exec(line)!;
+        if (
+          !shareableDiffPath(rename[2]!) ||
+          rename[2] !== (rename[1] === "from" ? before : after)
+        ) {
+          valid = false;
+          break;
+        }
+      } else if (
+        !/^(?:index [a-f0-9]+\.\.[a-f0-9]+(?: \d{6})?|(?:old|new|deleted file|new file) mode \d{6}|(?:dis)?similarity index \d{1,3}%)$/.test(
+          line
+        )
+      ) {
+        valid = false;
+        break;
+      }
+    }
+    if (valid) kept.push(section);
+  }
+  const text = redactSecretsForUserDisplay(kept.join(""));
+  const bytes = Buffer.from(text, "utf8");
+  return {
+    text:
+      bytes.length > TEXT_LIMIT
+        ? new TextDecoder().decode(bytes.subarray(0, TEXT_LIMIT), { stream: true })
+        : text,
+    truncated: bytes.length > TEXT_LIMIT,
+  };
+}
 
 /** Server-owned attempt snapshot. Caller-provided filesystem paths are never accepted. */
 export interface CollaborationExecutionSnapshot {
@@ -244,17 +355,18 @@ export class CollaborationTaskContextService {
     assertSameAttempt(execution, this.dependencies.readExecution(projectId, taskId));
     const currentRun = this.dependencies.getActiveRun(projectId, taskId);
     if (currentRun?.attemptId !== activeRun?.attemptId) assertSameAttempt(execution, null);
+    const shared = sharedDiff(diff.text);
     return {
       task,
       activeRun,
-      output: output.text,
-      diff: diff.text,
+      output: redactSecretsForUserDisplay(output.text),
+      diff: shared.text,
       outputTruncated: output.truncated,
-      diffTruncated: diff.truncated,
+      diffTruncated: diff.truncated || shared.truncated,
       source: "active",
       sourceAttemptId: execution.attemptId,
       sourceAttempt: execution.attempt,
-      diffRevision: createHash("sha256").update(diff.text).digest("hex"),
+      diffRevision: createHash("sha256").update(shared.text).digest("hex"),
       ...(unavailableReason ? { unavailableReason } : {}),
     };
   }
@@ -298,18 +410,7 @@ export class CollaborationTaskContextService {
     );
     const files = untracked.text.split("\0").filter(Boolean);
     for (const filename of files.slice(0, 32)) {
-      if (
-        filename
-          .split(/[\\/]/)
-          .some(
-            (part) =>
-              part === ".opensprint" ||
-              part === "node_modules" ||
-              part === ".env" ||
-              part.startsWith(".env.")
-          )
-      )
-        continue;
+      if (!shareableDiffPath(filename)) continue;
       const fullPath = path.resolve(worktree, filename);
       const relative = path.relative(worktree, fullPath);
       if (relative.startsWith("..") || path.isAbsolute(relative)) continue;
@@ -353,17 +454,17 @@ export class CollaborationTaskContextService {
     if (this.dependencies.readExecution(projectId, task.id)) {
       throw new AppError(409, "AGENT_ATTEMPT_CHANGED", "A new attempt started. Refresh this task.");
     }
-    const diff = typeof latest?.diff === "string" ? latest.diff : "";
+    const diff = sharedDiff(typeof latest?.diff === "string" ? latest.diff : "");
     return {
       task,
       activeRun: null,
-      output: typeof latest?.output === "string" ? latest.output : "",
-      diff,
+      output: typeof latest?.output === "string" ? redactSecretsForUserDisplay(latest.output) : "",
+      diff: diff.text,
       outputTruncated: Number(latest?.output_length ?? 0) > TEXT_LIMIT,
-      diffTruncated: Number(latest?.diff_length ?? 0) > TEXT_LIMIT,
+      diffTruncated: Number(latest?.diff_length ?? 0) > TEXT_LIMIT || diff.truncated,
       source: latest ? "archived" : "none",
       ...(latest ? { sourceAttempt: Number(latest.attempt) } : {}),
-      diffRevision: createHash("sha256").update(diff).digest("hex"),
+      diffRevision: createHash("sha256").update(diff.text).digest("hex"),
     };
   }
 

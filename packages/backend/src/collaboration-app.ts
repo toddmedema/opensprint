@@ -33,16 +33,18 @@ export function getCollaborationSharingConfig(
     throw new Error("The collaboration port must be a separate port between 1 and 65535.");
   const url = new URL(rawOrigin);
   const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  const originPort = Number(url.port || (url.protocol === "https:" ? 443 : 80));
   if (
     (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) ||
     url.username ||
     url.password ||
     url.search ||
     url.hash ||
-    url.pathname !== "/"
+    url.pathname !== "/" ||
+    (loopback && originPort === Number(environment.PORT ?? 3100))
   )
     throw new Error(
-      "The collaboration origin must be an HTTPS origin (HTTP is allowed on loopback)."
+      "Use a guest HTTPS origin (HTTP is allowed on loopback), separate from the host API origin."
     );
   return {
     port,
@@ -56,6 +58,7 @@ export function getCollaborationSharingConfig(
 /** The same scoped read and guidance contracts back both local and invited experiences. */
 export function createProjectCollaborationRouter(services: AppServices): Router {
   const { projectService } = services;
+  const sharing = getCollaborationSharingConfig();
   const context = new CollaborationTaskContextService({
     projectService,
     taskStore,
@@ -78,9 +81,7 @@ export function createProjectCollaborationRouter(services: AppServices): Router 
     assertTaskExists: (projectId, taskId) => context.assertTaskExists(projectId, taskId),
     getOverview: async (projectId) => ({
       ...(await context.getOverview(projectId)),
-      ...(getCollaborationSharingConfig()?.origin
-        ? { shareOrigin: getCollaborationSharingConfig()!.origin }
-        : {}),
+      ...(sharing ? { shareOrigin: sharing.origin } : {}),
     }),
     getTaskContext: (projectId, taskId) => context.getTaskContext(projectId, taskId),
     getActiveRun: (projectId, taskId) => agentChatService.getActiveRun(projectId, taskId),
@@ -121,11 +122,9 @@ export function createCollaborationSharingApp(
     res.set("Cache-Control", "no-store");
     const origin = req.headers.origin;
     if (origin && origin !== config.origin) {
-      res
-        .status(403)
-        .json({
-          error: { code: "COLLABORATION_FORBIDDEN", message: "This origin is not allowed." },
-        });
+      res.status(403).json({
+        error: { code: "COLLABORATION_FORBIDDEN", message: "This origin is not allowed." },
+      });
       return;
     }
     res.vary("Origin");
@@ -142,7 +141,24 @@ export function createCollaborationSharingApp(
   app.use(`${API_PREFIX}/projects/:projectId/collaboration`, requireDatabase, router);
   // Never fall through to a host bootstrap, settings API, or arbitrary SPA route.
   app.use("/api", (_req, res) => res.status(404).end());
-  app.get("/__opensprint_local_session.js", (_req, res) => res.status(404).end());
+  app.use((req, res, next) => {
+    // Static serving decodes paths and macOS/Windows can match case insensitively.
+    // Deny the reserved bootstrap name using the same canonical interpretation.
+    let normalized: string;
+    try {
+      normalized = path.posix
+        .normalize(decodeURIComponent(req.path).replace(/\\/g, "/"))
+        .toLowerCase();
+    } catch {
+      res.status(400).end();
+      return;
+    }
+    if (normalized.split("/").includes("__opensprint_local_session.js")) {
+      res.status(404).end();
+      return;
+    }
+    next();
+  });
   app.use(express.static(config.frontendDist, { index: false, dotfiles: "deny" }));
   app.get(
     "/collaborate/:projectId",

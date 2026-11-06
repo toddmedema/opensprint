@@ -55,6 +55,7 @@ import { updateNotification, removeNotification } from "../../store/slices/openQ
 import { addNotification } from "../../store/slices/notificationSlice";
 import type { Notification } from "@opensprint/shared";
 import { CollaborationSession } from "../../components/collaboration/CollaborationSession";
+import { useProjectCollaborationDrafts } from "../../components/collaboration/collaborationDrafts";
 import { CollaborationLauncher } from "../../components/collaboration/CollaborationLauncher";
 import { ExecuteFilterToolbar } from "../../components/execute/ExecuteFilterToolbar";
 import { TaskDetailSidebar } from "../../components/execute/TaskDetailSidebar";
@@ -112,7 +113,8 @@ export function ExecutePhase({
     return () => window.clearInterval(id);
   }, [dispatch]);
   const [collaborationOpen, setCollaborationOpen] = useState(false);
-  const [inviteOnOpen, setInviteOnOpen] = useState(false);
+  const [inviteRequest, setInviteRequest] = useState(0);
+  const collaborationDraftOwner = useProjectCollaborationDrafts(projectId);
   const [viewMode, setViewMode] = useState<"kanban" | "timeline">(() => {
     const stored = localStorage.getItem("opensprint.executeView");
     return stored === "kanban" || stored === "timeline" ? stored : "timeline";
@@ -528,11 +530,11 @@ export function ExecutePhase({
               projectId={projectId}
               open={collaborationOpen}
               onOpen={() => {
-                setInviteOnOpen(false);
+                setInviteRequest(0);
                 setCollaborationOpen((value) => !value);
               }}
               onInvite={() => {
-                setInviteOnOpen(true);
+                setInviteRequest((value) => value + 1);
                 setCollaborationOpen(true);
               }}
             />
@@ -846,7 +848,8 @@ export function ExecutePhase({
             onSelectTaskId={(taskId) => (taskId ? handleSelectTask(taskId) : handleClose())}
             onLeave={() => setCollaborationOpen(false)}
             embedded
-            initialInvite={inviteOnOpen}
+            inviteRequest={inviteRequest}
+            draftOwner={collaborationDraftOwner}
           />
         </ResizableSidebar>
       ) : (

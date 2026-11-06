@@ -210,7 +210,23 @@ export function createCollaborationRouter(options: {
     "/notifications",
     wrapAsync(async (req, res) => {
       const { projectId, principal } = await context(req);
-      res.json({ data: await service.notifications(projectId, principal) });
+      res.json({
+        data: await service.notifications(
+          projectId,
+          principal,
+          options.getActiveRun
+            ? async (taskId, runId) => {
+                const active = await options.getActiveRun!(projectId, taskId);
+                return Boolean(
+                  active &&
+                  typeof active === "object" &&
+                  "attemptId" in active &&
+                  active.attemptId === runId
+                );
+              }
+            : undefined
+        ),
+      });
     })
   );
 

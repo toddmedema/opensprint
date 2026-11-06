@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type SetStateAction } from "react";
 import type {
   CollaborationContext,
   CollaborationMessage,
@@ -7,6 +7,11 @@ import type {
 import { useCollaborationSession, isCollaborationAccessError } from "./useCollaborationSession";
 import { CollaborationControl } from "./CollaborationControl";
 import { CollaborationInvites, collaborationRoleLabels } from "./CollaborationInvites";
+import {
+  emptyCollaborationDrafts,
+  type CollaborationDraftOwner,
+  type CollaborationDraftState,
+} from "./collaborationDrafts";
 import { CollaborationActivity } from "./CollaborationActivity";
 
 type Tab = "discussion" | "agent" | "changes" | "activity";
@@ -26,7 +31,8 @@ export interface CollaborationSessionProps {
   onSelectTaskId?: (taskId: string | null) => void;
   onLeave?: () => void;
   embedded?: boolean;
-  initialInvite?: boolean;
+  inviteRequest?: number;
+  draftOwner?: CollaborationDraftOwner;
 }
 
 export function CollaborationSession({
@@ -36,7 +42,8 @@ export function CollaborationSession({
   onSelectTaskId,
   onLeave,
   embedded = false,
-  initialInvite = false,
+  inviteRequest = 0,
+  draftOwner,
 }: CollaborationSessionProps) {
   const id = useId();
   const [localTaskId, setLocalTaskId] = useState<string | null>(
@@ -49,18 +56,40 @@ export function CollaborationSession({
     : selectedTaskId !== undefined
       ? selectedTaskId
       : localTaskId;
-  const session = useCollaborationSession(projectId, token, taskId);
+  const [activityMode, setActivityMode] = useState<"unread" | "history">("unread");
+  const session = useCollaborationSession(projectId, token, taskId, activityMode);
   const [tab, setTab] = useState<Tab>("discussion");
-  const [inviteView, setInviteView] = useState(initialInvite);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [contexts, setContexts] = useState<Record<string, CollaborationContext | undefined>>({});
-  const [decisions, setDecisions] = useState<Record<string, boolean>>({});
-  const [mentions, setMentions] = useState<Record<string, string[]>>({});
-  const [guidanceDrafts, setGuidanceDrafts] = useState<Record<string, Record<string, string>>>({});
+  const [inviteView, setInviteView] = useState(inviteRequest > 0);
+  const [internalDrafts, setInternalDrafts] = useState(emptyCollaborationDrafts);
+  const draftState = draftOwner?.state ?? internalDrafts;
+  const updateDraftState = draftOwner?.update ?? setInternalDrafts;
+  const { drafts, contexts, decisions, mentions, guidanceDrafts } = draftState;
+  const setDraftField = <K extends keyof CollaborationDraftState>(
+    key: K,
+    update: SetStateAction<CollaborationDraftState[K]>
+  ) =>
+    updateDraftState((previous) => ({
+      ...previous,
+      [key]:
+        typeof update === "function"
+          ? (update as (previous: CollaborationDraftState[K]) => CollaborationDraftState[K])(
+              previous[key]
+            )
+          : update,
+    }));
+  const setDrafts = (update: SetStateAction<CollaborationDraftState["drafts"]>) =>
+    setDraftField("drafts", update);
+  const setContexts = (update: SetStateAction<CollaborationDraftState["contexts"]>) =>
+    setDraftField("contexts", update);
+  const setDecisions = (update: SetStateAction<CollaborationDraftState["decisions"]>) =>
+    setDraftField("decisions", update);
+  const setMentions = (update: SetStateAction<CollaborationDraftState["mentions"]>) =>
+    setDraftField("mentions", update);
+  const setGuidanceDrafts = (update: SetStateAction<CollaborationDraftState["guidanceDrafts"]>) =>
+    setDraftField("guidanceDrafts", update);
   const [contextView, setContextView] = useState<"diff" | "output">("diff");
   const [commentFile, setCommentFile] = useState("");
   const [commentLine, setCommentLine] = useState(1);
-  const requestIdentity = useRef<{ payload: string; id: string } | null>(null);
   const discussionRef = useRef<HTMLTextAreaElement>(null);
   const scope = taskId ?? "project";
   const text = drafts[scope] ?? "";
@@ -117,8 +146,8 @@ export function CollaborationSession({
     }
   }, [selectedTaskId]);
   useEffect(() => {
-    setInviteView(initialInvite);
-  }, [initialInvite]);
+    if (inviteRequest > 0) setInviteView(true);
+  }, [inviteRequest]);
   useEffect(() => {
     if (!follow) return;
     const live = session.presence.data?.find((person) => person.clientId === follow.clientId);
@@ -202,7 +231,7 @@ export function CollaborationSession({
           <p className="mt-1 text-xs text-theme-muted" role="status">
             {session.snapshot.isPending
               ? "Connecting…"
-              : session.error
+              : session.connectionError
                 ? "Connection interrupted · retrying"
                 : "Live"}
             {principal
@@ -248,10 +277,12 @@ export function CollaborationSession({
             type="button"
             className="btn-secondary"
             onClick={() => {
+              session.command.reset();
+              session.savePreferences.reset();
               void session.invalidate();
             }}
           >
-            Retry connection
+            {session.connectionError ? "Retry connection" : "Dismiss error"}
           </button>
         </div>
       )}
@@ -259,7 +290,7 @@ export function CollaborationSession({
         <>
           <details className="border-b border-theme-border px-4 py-3">
             <summary className="cursor-pointer text-sm text-theme-muted">
-              {people.length || 1} {people.length === 1 ? "person" : "people"} here
+              {people.length || 1} {people.length <= 1 ? "person" : "people"} here
               {people.length > 0
                 ? ` · ${people.map((person) => (person.actorId === principal?.actorId ? "You" : person.displayName)).join(", ")}`
                 : " · You"}
@@ -505,18 +536,46 @@ export function CollaborationSession({
                               : {}),
                           };
                           const payload = JSON.stringify(input);
-                          if (requestIdentity.current?.payload !== payload)
-                            requestIdentity.current = { payload, id: crypto.randomUUID() };
+                          const identity =
+                            draftState.messageIdentities[scope]?.payload === payload
+                              ? draftState.messageIdentities[scope]!
+                              : { payload, id: crypto.randomUUID() };
+                          setDraftField("messageIdentities", (previous) => ({
+                            ...previous,
+                            [scope]: identity,
+                          }));
                           try {
                             await session.command.mutateAsync({
                               ...input,
-                              commandId: requestIdentity.current.id,
+                              commandId: identity.id,
                             });
-                            setDrafts((previous) => ({ ...previous, [scope]: "" }));
-                            setContexts((previous) => ({ ...previous, [scope]: undefined }));
-                            setMentions((previous) => ({ ...previous, [scope]: [] }));
-                            setDecisions((previous) => ({ ...previous, [scope]: false }));
-                            requestIdentity.current = null;
+                            updateDraftState((previous) =>
+                              previous.messageIdentities[scope]?.id !== identity.id
+                                ? previous
+                                : {
+                                    ...previous,
+                                    drafts:
+                                      previous.drafts[scope] === text
+                                        ? { ...previous.drafts, [scope]: "" }
+                                        : previous.drafts,
+                                    contexts:
+                                      previous.drafts[scope] === text
+                                        ? { ...previous.contexts, [scope]: undefined }
+                                        : previous.contexts,
+                                    mentions:
+                                      previous.drafts[scope] === text
+                                        ? { ...previous.mentions, [scope]: [] }
+                                        : previous.mentions,
+                                    decisions:
+                                      previous.drafts[scope] === text
+                                        ? { ...previous.decisions, [scope]: false }
+                                        : previous.decisions,
+                                    messageIdentities: {
+                                      ...previous.messageIdentities,
+                                      [scope]: undefined,
+                                    },
+                                  }
+                            );
                           } catch {
                             /* Keep the draft and uncertain command identity for retry. */
                           }
@@ -647,6 +706,38 @@ export function CollaborationSession({
                     taskId={taskId}
                     actorName={actorName}
                     drafts={guidanceDrafts[scope] ?? {}}
+                    identities={draftState.guidanceIdentities}
+                    onIdentity={(attemptId, identity) =>
+                      setDraftField("guidanceIdentities", (previous) => ({
+                        ...previous,
+                        [attemptId]: identity,
+                      }))
+                    }
+                    onSubmissionResult={(input, delivered) =>
+                      updateDraftState((previous) =>
+                        previous.guidanceIdentities[input.attemptId]?.id !== input.clientMessageId
+                          ? previous
+                          : {
+                              ...previous,
+                              guidanceIdentities: {
+                                ...previous.guidanceIdentities,
+                                [input.attemptId]: undefined,
+                              },
+                              guidanceDrafts:
+                                delivered &&
+                                previous.guidanceDrafts[scope]?.[input.attemptId]?.trim() ===
+                                  input.content
+                                  ? {
+                                      ...previous.guidanceDrafts,
+                                      [scope]: {
+                                        ...previous.guidanceDrafts[scope],
+                                        [input.attemptId]: "",
+                                      },
+                                    }
+                                  : previous.guidanceDrafts,
+                            }
+                      )
+                    }
                     onDraft={(attemptId, content) =>
                       setGuidanceDrafts((previous) => ({
                         ...previous,
@@ -815,6 +906,8 @@ export function CollaborationSession({
                 >
                   <CollaborationActivity
                     session={session}
+                    mode={activityMode}
+                    onModeChange={setActivityMode}
                     actorName={actorName}
                     onTaskSelect={selectTask}
                     onDiscuss={openDiscussion}

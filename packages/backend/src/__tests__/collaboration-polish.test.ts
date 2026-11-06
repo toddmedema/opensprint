@@ -46,6 +46,7 @@ describe.each(["sqlite", "postgres"] as const)("polished collaboration (%s)", (d
           "collaboration_message_context",
           "collaboration_runs",
           "collaboration_control_requests",
+          "collaboration_control_request_events",
           "collaboration_run_context",
           "collaboration_commands",
           "collaboration_events",
@@ -285,6 +286,98 @@ describe.each(["sqlite", "postgres"] as const)("polished collaboration (%s)", (d
     );
     expect(await service.presence(project)).toEqual([]);
   });
+
+  it("keeps old unread mentions through more than a thousand unrelated events", async () => {
+    const underscored = { ...bob, actorId: "reader_one" };
+    await service.command(project, alice, {
+      type: "append_message",
+      commandId: "mention",
+      content: "Please review this boundary",
+      mentionActorIds: [underscored.actorId],
+    });
+    for (let index = 0; index < 1001; index++)
+      await service.command(project, alice, {
+        type: "append_message",
+        commandId: `unrelated-${index}`,
+        content: "Unrelated project discussion",
+      });
+    // An underscore in actor identity must be literal, never SQL LIKE's wildcard.
+    await service.command(project, alice, {
+      type: "append_message",
+      commandId: "other-reader",
+      content: "For someone else",
+      mentionActorIds: ["readerXone"],
+    });
+    expect(await service.notifications(project, underscored)).toEqual([
+      expect.objectContaining({
+        kind: "mention",
+        cursor: 1,
+        content: "Please review this boundary",
+      }),
+    ]);
+  });
+
+  it.each(["accept", "decline", "cancel", "reclaim"] as const)(
+    "removes a %s-resolved control action while retaining its activity",
+    async (resolution) => {
+      await service.command(project, alice, {
+        type: "claim_control",
+        commandId: "claim",
+        runId: "attempt-one",
+        expectedRevision: 0,
+        taskId: "os-one",
+      });
+      await service.command(
+        project,
+        bob,
+        {
+          type: "request_control",
+          commandId: "request",
+          runId: "attempt-one",
+          expectedRevision: 1,
+          targetActorId: bob.actorId,
+          taskId: "os-one",
+        },
+        () => true
+      );
+      expect(await service.notifications(project, alice)).toEqual([
+        expect.objectContaining({ kind: "control_request", cursor: 2 }),
+      ]);
+      expect(await service.notifications(project, alice, () => false)).toEqual([]);
+      expect(await service.notifications(project, bob)).toEqual([]);
+      if (resolution === "accept" || resolution === "decline")
+        await service.command(
+          project,
+          alice,
+          {
+            type: "respond_control",
+            commandId: "resolve",
+            runId: "attempt-one",
+            expectedRevision: 2,
+            accept: resolution === "accept",
+          },
+          () => true
+        );
+      else if (resolution === "cancel")
+        await service.command(project, bob, {
+          type: "cancel_control_request",
+          commandId: "resolve",
+          runId: "attempt-one",
+          expectedRevision: 2,
+        });
+      else
+        await service.command(project, host, {
+          type: "reclaim_control",
+          commandId: "resolve",
+          runId: "attempt-one",
+          expectedRevision: 2,
+        });
+      expect(await service.notifications(project, alice)).toEqual([]);
+      expect((await service.replay(project)).events).toEqual(
+        expect.arrayContaining([expect.objectContaining({ type: "control_requested" })])
+      );
+    }
+  );
 
   it("requires explicit host reclaim to recover revoked ownership without transferring on disconnect", async () => {
     const invitation = await service.createInvite(project, host, {

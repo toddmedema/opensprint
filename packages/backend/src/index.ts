@@ -55,13 +55,13 @@ setLogSessionId(runtimeSessionId);
 eventLogService.setInstanceId(runtimeSessionId);
 
 const port = parseInt(process.env.PORT || String(DEFAULT_API_PORT), 10);
+const sharingConfig = getCollaborationSharingConfig();
 
 acquirePidFile(port);
 
 const services = createAppServices();
 const app = createApp(services);
 const server = createServer(app);
-const sharingConfig = getCollaborationSharingConfig();
 const sharingServer = sharingConfig
   ? createServer(
       createCollaborationSharingApp(sharingConfig, createProjectCollaborationRouter(services))

@@ -427,7 +427,8 @@ export class CollaborationService {
 
   async notifications(
     projectId: string,
-    principal: CollaborationPrincipal
+    principal: CollaborationPrincipal,
+    isActiveRun?: (taskId: string, runId: string) => boolean | Promise<boolean>
   ): Promise<CollaborationNotification[]> {
     return this.store.runRead(async (tx) => {
       const row = await tx.queryOne(
@@ -435,46 +436,66 @@ export class CollaborationService {
         [projectId, principal.actorId]
       );
       const subscriptions: string[] = row ? JSON.parse(String(row.subscribed_task_ids)) : [];
-      const events = await tx.query(
-        "SELECT event FROM collaboration_events WHERE project_id = $1 AND cursor > $2 ORDER BY cursor DESC LIMIT 1000",
-        [projectId, Number(row?.seen_cursor ?? 0)]
+      const seenCursor = Number(row?.seen_cursor ?? 0);
+      // Actor IDs are validated ASCII identifiers without quotes. Match the complete
+      // quoted token in our normalized JSON array, escaping LIKE metacharacters.
+      // Filtering recipients BEFORE LIMIT preserves old unread mentions even when
+      // thousands of unrelated discussion events have arrived since the last visit.
+      const mention = `%"${principal.actorId.replace(/[!%_]/g, (value) => `!${value}`)}"%`;
+      const parameters = [projectId, seenCursor, principal.actorId, mention, ...subscriptions];
+      const taskCondition = subscriptions.length
+        ? ` OR c.task_id IN (${subscriptions.map((_, index) => `$${index + 5}`).join(",")})`
+        : "";
+      const messages = await tx.query(
+        `${MESSAGE_SELECT} WHERE m.project_id = $1 AND m.cursor > $2 AND m.actor_id <> $3 AND (c.mention_actor_ids LIKE $4 ESCAPE '!'${taskCondition}) ORDER BY m.cursor DESC LIMIT 200`,
+        parameters
       );
-      return events
-        .flatMap((row) => {
-          const event = JSON.parse(String(row.event)) as CollaborationEvent;
-          if (event.actorId === principal.actorId) return [];
-          const payload = event.payload;
-          let kind: CollaborationNotification["kind"] | null = null;
-          let content = "";
-          if ("content" in payload) {
-            if (payload.mentionActorIds?.includes(principal.actorId)) kind = "mention";
-            else if (payload.taskId && subscriptions.includes(payload.taskId))
-              kind = "task_discussion";
-            content = payload.content;
-          } else if (
-            event.type === "control_requested" &&
-            payload.request &&
-            (payload.request.targetActorId === principal.actorId ||
-              payload.controllerId === principal.actorId)
-          ) {
-            kind = "control_request";
-            content = "A control request needs your response.";
-          }
-          return kind
-            ? [
-                {
-                  id: `event-${event.cursor}`,
-                  cursor: event.cursor,
-                  taskId: payload.taskId ?? null,
-                  actorId: event.actorId,
-                  createdAt: event.createdAt,
-                  kind,
-                  content,
-                },
-              ]
-            : [];
-        })
-        .slice(0, 200);
+      const notifications: CollaborationNotification[] = messages.map((row) => {
+        const message = messageFromRow(row);
+        return {
+          id: `event-${message.cursor}`,
+          cursor: message.cursor,
+          taskId: message.taskId ?? null,
+          actorId: message.actorId,
+          createdAt: message.createdAt,
+          kind: message.mentionActorIds?.includes(principal.actorId)
+            ? "mention"
+            : "task_discussion",
+          content: message.content,
+        };
+      });
+      // A pending-request index points to the durable event that created CURRENT
+      // state. Resolved/replaced requests remain in activity but cease being actions.
+      const pending = await tx.query(
+        `SELECT q.*,r.controller_id,c.task_id,e.event_cursor FROM collaboration_control_requests q
+        JOIN collaboration_runs r ON r.project_id=q.project_id AND r.run_id=q.run_id
+        JOIN collaboration_control_request_events e ON e.project_id=q.project_id AND e.run_id=q.run_id
+        LEFT JOIN collaboration_run_context c ON c.project_id=q.project_id AND c.run_id=q.run_id
+        LEFT JOIN collaboration_invites owner ON owner.project_id=q.project_id AND owner.actor_id=r.controller_id
+        LEFT JOIN collaboration_invites target ON target.project_id=q.project_id AND target.actor_id=q.target_actor_id
+        WHERE q.project_id=$1 AND e.event_cursor>$2 AND q.requested_by<>$3
+        AND ((q.requested_by=r.controller_id AND q.target_actor_id=$3) OR (q.requested_by<>r.controller_id AND r.controller_id=$3))
+        AND (owner.id IS NULL OR (owner.revoked_at IS NULL AND owner.expires_at>$4))
+        AND (target.id IS NULL OR (target.revoked_at IS NULL AND target.expires_at>$4))
+        ORDER BY e.event_cursor DESC LIMIT 200`,
+        [projectId, seenCursor, principal.actorId, new Date().toISOString()]
+      );
+      for (const request of pending) {
+        const taskId = request.task_id == null ? null : String(request.task_id);
+        const runId = String(request.run_id);
+        if (isActiveRun && (!taskId || !(await isActiveRun(taskId, runId)))) continue;
+        const cursor = Number(request.event_cursor);
+        notifications.push({
+          id: `event-${cursor}`,
+          cursor,
+          taskId,
+          actorId: String(request.requested_by),
+          createdAt: String(request.created_at),
+          kind: "control_request",
+          content: "A control request needs your response.",
+        });
+      }
+      return notifications.sort((a, b) => b.cursor - a.cursor).slice(0, 200);
     });
   }
 
@@ -798,6 +819,10 @@ export class CollaborationService {
           "DELETE FROM collaboration_control_requests WHERE project_id = $1 AND run_id = $2",
           [projectId, run.runId]
         );
+        await tx.execute(
+          "DELETE FROM collaboration_control_request_events WHERE project_id = $1 AND run_id = $2",
+          [projectId, run.runId]
+        );
         if (run.request)
           await tx.execute(
             "INSERT INTO collaboration_control_requests (project_id,run_id,requested_by,target_actor_id,created_at,task_id) VALUES ($1,$2,$3,$4,$5,$6)",
@@ -809,6 +834,11 @@ export class CollaborationService {
               run.request.createdAt,
               run.taskId ?? null,
             ]
+          );
+        if (run.request)
+          await tx.execute(
+            "INSERT INTO collaboration_control_request_events (project_id,run_id,event_cursor) VALUES ($1,$2,$3)",
+            [projectId, run.runId, cursor]
           );
         result = {
           run,

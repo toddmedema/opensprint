@@ -14,7 +14,8 @@ export function isCollaborationAccessError(error: unknown): boolean {
 export function useCollaborationSession(
   projectId: string,
   token: string | undefined,
-  taskId: string | null
+  taskId: string | null,
+  activityMode: "unread" | "history" = "unread"
 ) {
   const client = useMemo(() => collaborationApi(projectId, token), [projectId, token]);
   const [connectionId] = useState(() => crypto.randomUUID());
@@ -100,9 +101,10 @@ export function useCollaborationSession(
     retry: false,
     gcTime: 0,
   });
+  const activityStart = activityMode === "history" ? 0 : (preferences.data?.seenCursor ?? 0);
   const activity = useInfiniteQuery({
-    queryKey: [...queryKey, "activity", preferences.data?.seenCursor],
-    initialPageParam: preferences.data?.seenCursor ?? 0,
+    queryKey: [...queryKey, "activity", activityMode, activityStart],
+    initialPageParam: activityStart,
     queryFn: ({ pageParam, signal }) => client.replay(pageParam, signal),
     getNextPageParam: (page) => (page.hasMore ? page.nextCursor : undefined),
     enabled: enabled && Boolean(preferences.data),
@@ -195,7 +197,7 @@ export function useCollaborationSession(
     snapshotControl && snapshotControl.revision >= (activeRun?.control?.revision ?? 0)
       ? snapshotControl
       : activeRun?.control;
-  const error =
+  const connectionError =
     snapshot.error ??
     context.error ??
     active.error ??
@@ -205,9 +207,8 @@ export function useCollaborationSession(
     notifications.error ??
     preferences.error ??
     activity.error ??
-    presenceError ??
-    command.error ??
-    savePreferences.error;
+    presenceError;
+  const error = connectionError ?? command.error ?? savePreferences.error;
   return {
     client,
     queryKey,
@@ -225,6 +226,7 @@ export function useCollaborationSession(
     command,
     savePreferences,
     error,
+    connectionError,
     invalidate,
   };
 }

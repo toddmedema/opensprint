@@ -25,6 +25,31 @@ const task: StoredTask = {
   created_at: "2026-11-01T00:00:00Z",
   updated_at: "2026-11-06T10:00:00Z",
 };
+const patch = (filename: string, content = "safe neighbor") =>
+  `diff --git a/${filename} b/${filename}\nindex 1111111..2222222 100644\n--- a/${filename}\n+++ b/${filename}\n@@ -1 +1 @@\n-old\n+${content}\n`;
+const unsafeArchiveDiff = () =>
+  [
+    patch(".env", "root-secret"),
+    patch("packages/api/.env.production", "nested-secret"),
+    patch(".ENV", "DATABASE_URL=postgres://private/upper-root-secret"),
+    patch("packages/api/.ENV.production", "DATABASE_URL=postgres://private/upper-nested-secret"),
+    patch(".OpenSprint/assignment.json", "upper-runtime-secret"),
+    patch("packages/api/Node_Modules/secret/index.js", "upper-dependency-secret"),
+    patch(".GiT/config", "upper-git-secret"),
+    patch(".ｅｎｖ", "DATABASE_URL=postgres://private/unicode-env-secret"),
+    patch(".openſprint/assignment.json", "unicode-runtime-secret"),
+    patch(".opensprint/assignment.json", "runtime-secret"),
+    patch("packages/api/.opensprint/run.json", "nested-runtime-secret"),
+    patch("node_modules/secret/index.js", "dependency-secret"),
+    patch("packages/api/node_modules/secret/index.js", "nested-dependency-secret"),
+    'diff --git "a/src/\\056env" "b/src/\\056env"\n--- "a/src/\\056env"\n+++ "b/src/\\056env"\n@@ -1 +1 @@\n+quoted-secret\n',
+    "diff --git a/src/app.ts b/src/moved.ts\nsimilarity index 100%\nrename from .env\nrename to src/moved.ts\n",
+    "diff --git a/src/binary.bin b/src/binary.bin\nGIT binary patch\nliteral 10\nbinary-secret\n",
+    "diff --cc src/combined.ts\ncombined-secret\n",
+    "diff --git a/src/unknown.ts b/src/unknown.ts\nunknown metadata\nunknown-secret\n",
+    patch("src/safe.ts", "safe-neighbor"),
+    patch("src/key-example.ts", "SERVICE_TOKEN=known-secret"),
+  ].join("");
 
 describe("CollaborationTaskContextService", () => {
   let directory: string;
@@ -176,6 +201,34 @@ describe("CollaborationTaskContextService", () => {
     vi.useRealTimers();
   });
 
+  it("excludes case-equivalent sensitive paths from the live projection", async () => {
+    await fs.writeFile(
+      path.join(directory, ".ENV"),
+      "DATABASE_URL=postgres://private/live-upper-root-secret\n"
+    );
+    await fs.mkdir(path.join(directory, "packages/api"), { recursive: true });
+    await fs.writeFile(
+      path.join(directory, "packages/api/.ENV.production"),
+      "DATABASE_URL=postgres://private/live-upper-nested-secret\n"
+    );
+    await fs.mkdir(path.join(directory, ".OpenSprint"), { recursive: true });
+    await fs.writeFile(
+      path.join(directory, ".OpenSprint/assignment.json"),
+      "live-upper-runtime-secret\n"
+    );
+    await fs.mkdir(path.join(directory, "packages/api/Node_Modules"), { recursive: true });
+    await fs.writeFile(
+      path.join(directory, "packages/api/Node_Modules/index.js"),
+      "live-upper-dependency-secret\n"
+    );
+    await fs.writeFile(path.join(directory, "neighbor.ts"), "export const shared = true;\n");
+    await git(directory, "add", "--force", ".");
+    const context = await service.getTaskContext("project-a", task.id);
+    expect(context.diff).toContain("+export const shared = true;");
+    expect(context.diff).not.toContain("live-upper-");
+    expect(context.diff).not.toContain("DATABASE_URL");
+  });
+
   it("will not inspect a different repository placed at a trusted-looking worktree path", async () => {
     const other = path.join(directory, "other-repo");
     await fs.mkdir(other);
@@ -250,7 +303,7 @@ describe("CollaborationTaskContextService", () => {
     queryOne.mockResolvedValue({
       attempt: 5,
       output: "archived output",
-      diff: "archived diff",
+      diff: patch("src/archive.ts", "archived diff"),
       output_length: 900_000,
       diff_length: 5,
     });
@@ -260,11 +313,48 @@ describe("CollaborationTaskContextService", () => {
       source: "archived",
       sourceAttempt: 5,
       output: "archived output",
-      diff: "archived diff",
       outputTruncated: true,
     });
+    expect(context.diff).toContain("+archived diff");
     expect(queryOne.mock.calls[0]?.[1]).toEqual(["project-a", task.id, 256 * 1024]);
     expect(getActiveRun).not.toHaveBeenCalled();
+  });
+
+  it("applies the same conservative path and known-credential filter to historical patches", async () => {
+    execution = null;
+    queryOne.mockResolvedValue({
+      attempt: 5,
+      output: "SERVICE_TOKEN=archived-credential",
+      diff: unsafeArchiveDiff(),
+      output_length: 33,
+      diff_length: 2000,
+    });
+    const context = await service.getTaskContext("project-a", task.id);
+    expect(context.diff).toContain("safe-neighbor");
+    expect(context.diff).toContain("SERVICE_TOKEN=[REDACTED]");
+    for (const secret of [
+      "root-secret",
+      "nested-secret",
+      "upper-root-secret",
+      "upper-nested-secret",
+      "upper-runtime-secret",
+      "upper-dependency-secret",
+      "upper-git-secret",
+      "unicode-env-secret",
+      "unicode-runtime-secret",
+      "runtime-secret",
+      "nested-runtime-secret",
+      "dependency-secret",
+      "nested-dependency-secret",
+      "quoted-secret",
+      "binary-secret",
+      "combined-secret",
+      "unknown-secret",
+      "known-secret",
+    ])
+      expect(context.diff).not.toContain(secret);
+    expect(context.output).not.toContain("archived-credential");
+    expect(context.output).toContain("[REDACTED]");
   });
 
   it("rejects archived output if a new attempt starts before its read finishes", async () => {
@@ -294,8 +384,8 @@ describe.each(["sqlite", "postgres"] as const)("collaboration archived context (
       ] as const) {
         await client.execute(
           `INSERT INTO agent_sessions(project_id, task_id, attempt, agent_type, agent_model, started_at, status, output_log, git_branch, git_diff)
-           VALUES ($1,$2,$3,'openai','test','2026-11-06T10:00:00Z','success',$4,'task-branch','diff-prefix')`,
-          [scope, task.id, attempt, output]
+           VALUES ($1,$2,$3,'openai','test','2026-11-06T10:00:00Z','success',$4,'task-branch',$5)`,
+          [scope, task.id, attempt, output, unsafeArchiveDiff()]
         );
       }
       const service = new CollaborationTaskContextService({
@@ -318,7 +408,29 @@ describe.each(["sqlite", "postgres"] as const)("collaboration archived context (
       expect(context.output).toHaveLength(256 * 1024);
       expect(context.output.endsWith("newest")).toBe(true);
       expect(context.outputTruncated).toBe(true);
-      expect(context.diff).toBe("diff-prefix");
+      expect(context.diff).toContain("safe-neighbor");
+      expect(context.diff).toContain("SERVICE_TOKEN=[REDACTED]");
+      for (const secret of [
+        "root-secret",
+        "nested-secret",
+        "upper-root-secret",
+        "upper-nested-secret",
+        "upper-runtime-secret",
+        "upper-dependency-secret",
+        "upper-git-secret",
+        "unicode-env-secret",
+        "unicode-runtime-secret",
+        "runtime-secret",
+        "nested-runtime-secret",
+        "dependency-secret",
+        "nested-dependency-secret",
+        "quoted-secret",
+        "binary-secret",
+        "combined-secret",
+        "unknown-secret",
+        "known-secret",
+      ])
+        expect(context.diff).not.toContain(secret);
     } finally {
       await client.execute("DELETE FROM agent_sessions WHERE project_id = $1 OR project_id = $2", [
         projectId,

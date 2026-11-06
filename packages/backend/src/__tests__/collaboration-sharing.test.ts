@@ -1,0 +1,170 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import request from "supertest";
+import type express from "express";
+import { initAppDb, type AppDb } from "../db/app-db.js";
+import { CollaborationService } from "../services/collaboration.service.js";
+import { createCollaborationRouter } from "../routes/collaboration.js";
+import { VITEST_DEFAULT_LOCAL_SESSION_TOKEN } from "../services/local-session-auth.service.js";
+import {
+  createCollaborationSharingApp,
+  getCollaborationSharingConfig,
+} from "../collaboration-app.js";
+
+vi.mock("../middleware/require-database.js", () => ({
+  requireDatabase: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
+
+const origin = "https://collaborate.example.test";
+const endpoint = "/api/v1/projects/sample/collaboration";
+const host = { actorId: "local-user", displayName: "Local user", role: "controller" as const };
+
+describe("collaboration-only serving boundary", () => {
+  let directory: string;
+  let db: AppDb;
+  let app: express.Express;
+  let service: CollaborationService;
+  beforeEach(async () => {
+    directory = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-guest-boundary-"));
+    const frontendDist = path.join(directory, "frontend");
+    await fs.mkdir(frontendDist);
+    await fs.writeFile(
+      path.join(frontendDist, "index.html"),
+      '<main id="root"></main><script src="/assets/app.js"></script>'
+    );
+    // Even a bundled file with the bootstrap name must never be exposed.
+    await fs.writeFile(
+      path.join(frontendDist, "__opensprint_local_session.js"),
+      VITEST_DEFAULT_LOCAL_SESSION_TOKEN
+    );
+    db = await initAppDb(`sqlite://${path.join(directory, "test.sqlite")}`);
+    service = new CollaborationService({
+      runWrite: (fn) => db.runWrite(fn),
+      runRead: (fn) => db.runRead!(fn),
+    });
+    app = createCollaborationSharingApp(
+      { port: 3199, origin, frontendDist },
+      createCollaborationRouter({
+        service,
+        assertProjectExists: async () => {},
+      })
+    );
+  });
+  afterEach(async () => {
+    await db.close();
+    await fs.rm(directory, { recursive: true, force: true });
+  });
+
+  it("serves guest HTML without host credentials or privileged routes", async () => {
+    const html = await request(app).get("/collaborate/sample").expect(200);
+    expect(html.text).toContain('id="root"');
+    expect(html.text).not.toContain(VITEST_DEFAULT_LOCAL_SESSION_TOKEN);
+    expect(html.text).not.toContain("__OPENSPRINT_LOCAL_SESSION__");
+    expect(html.headers["content-security-policy"]).toContain("script-src 'self'");
+    expect(html.headers["referrer-policy"]).toBe("no-referrer");
+    for (const route of [
+      "/",
+      "/__opensprint_local_session.js",
+      "/%5f%5fopensprint_local_session.js",
+      "/__OPENSPRINT_LOCAL_SESSION.JS",
+      "/assets/../__opensprint_local_session.js",
+      "/assets/%2e%2e/%5f%5fopensprint_local_session.js",
+      "/api/v1/env/global-status",
+      "/api/v1/global-settings",
+      "/api/v1/projects/sample/governance",
+    ]) {
+      await request(app)
+        .get(route)
+        .set("Authorization", `Bearer ${VITEST_DEFAULT_LOCAL_SESSION_TOKEN}`)
+        .expect(404);
+    }
+    const index = await request(app).get("/index.html").expect(200);
+    expect(index.text).not.toContain(VITEST_DEFAULT_LOCAL_SESSION_TOKEN);
+  });
+
+  it("accepts configured public-origin writes while enforcing named roles and revocation", async () => {
+    const invitation = await service.createInvite("sample", host, {
+      displayName: "Maya",
+      role: "participant",
+      expiresInHours: 1,
+    });
+    const bearer = `Bearer ${invitation.token}`;
+    await request(app)
+      .options(`${endpoint}/commands`)
+      .set("Origin", origin)
+      .set("Access-Control-Request-Headers", "authorization,content-type")
+      .expect(204);
+    const result = await request(app)
+      .post(`${endpoint}/commands`)
+      .set("Origin", origin)
+      .set("Authorization", bearer)
+      .send({
+        commandId: "public-discussion",
+        type: "append_message",
+        content: "A project-scoped message",
+      })
+      .expect(200);
+    expect(result.headers["access-control-allow-origin"]).toBe(origin);
+    expect(result.body.data.message.actorId).toBe(invitation.invite.actorId);
+    await request(app)
+      .post(`${endpoint}/invites`)
+      .set("Origin", origin)
+      .set("Authorization", bearer)
+      .send({ displayName: "Outsider", role: "controller", expiresInHours: 1 })
+      .expect(403);
+    await request(app)
+      .get(`${endpoint}/snapshot`)
+      .set("Origin", "https://untrusted.example.test")
+      .set("Authorization", bearer)
+      .expect(403);
+    await request(app).get(`${endpoint}/snapshot`).set("Origin", origin).expect(401);
+    await service.revokeInvite("sample", host, invitation.invite.id);
+    await request(app)
+      .get(`${endpoint}/snapshot`)
+      .set("Origin", origin)
+      .set("Authorization", bearer)
+      .expect(401);
+  });
+});
+
+describe("sharing configuration", () => {
+  it("stays disabled by default and requires a separate explicit port and origin", () => {
+    expect(getCollaborationSharingConfig({})).toBeNull();
+    expect(
+      getCollaborationSharingConfig({
+        OPENSPRINT_COLLABORATION_PORT: "3199",
+        OPENSPRINT_COLLABORATION_ORIGIN: origin,
+      })
+    ).toMatchObject({ port: 3199, origin });
+    for (const environment of [
+      { OPENSPRINT_COLLABORATION_PORT: "3199" },
+      { OPENSPRINT_COLLABORATION_ORIGIN: origin },
+      { OPENSPRINT_COLLABORATION_PORT: "3100", OPENSPRINT_COLLABORATION_ORIGIN: origin },
+      { OPENSPRINT_COLLABORATION_PORT: "0", OPENSPRINT_COLLABORATION_ORIGIN: origin },
+      { OPENSPRINT_COLLABORATION_PORT: "65536", OPENSPRINT_COLLABORATION_ORIGIN: origin },
+      {
+        OPENSPRINT_COLLABORATION_PORT: "3199",
+        OPENSPRINT_COLLABORATION_ORIGIN: "http://127.0.0.1:3100",
+      },
+      ...[
+        "http://remote.example.test",
+        `${origin}/nested`,
+        `${origin}?secret=bad`,
+        "https://user:password@example.test",
+        `${origin}#invite=bad`,
+      ].map((value) => ({
+        OPENSPRINT_COLLABORATION_PORT: "3199",
+        OPENSPRINT_COLLABORATION_ORIGIN: value,
+      })),
+    ])
+      expect(() => getCollaborationSharingConfig(environment)).toThrow();
+    expect(
+      getCollaborationSharingConfig({
+        OPENSPRINT_COLLABORATION_PORT: "3199",
+        OPENSPRINT_COLLABORATION_ORIGIN: "http://127.0.0.1:3199",
+      })?.origin
+    ).toBe("http://127.0.0.1:3199");
+  });
+});

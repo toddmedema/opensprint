@@ -48,6 +48,10 @@ CREATE TABLE IF NOT EXISTS collaboration_control_requests (
   target_actor_id TEXT NOT NULL, created_at TEXT NOT NULL, task_id TEXT,
   PRIMARY KEY (project_id, run_id)
 );
+CREATE TABLE IF NOT EXISTS collaboration_control_request_events (
+  project_id TEXT NOT NULL, run_id TEXT NOT NULL, event_cursor INTEGER NOT NULL,
+  PRIMARY KEY (project_id, run_id)
+);
 CREATE TABLE IF NOT EXISTS collaboration_run_context (
   project_id TEXT NOT NULL, run_id TEXT NOT NULL, task_id TEXT NOT NULL,
   PRIMARY KEY (project_id, run_id)

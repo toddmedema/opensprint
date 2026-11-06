@@ -8,7 +8,21 @@ Open **Collaborate** in Execute to work alongside the selected task, or `/collab
 
 The local host uses **Invite** to create a named credential with **Can view**, **Can discuss**, or **Can guide agents** permission and an expiration. The generated link carries the secret in its fragment; the join page removes that fragment immediately and retains the credential in memory. The server stores only its SHA-256 hash. The raw secret is returned once, when the invite is created. The host can list invitations and revoke them. Expiration and revocation are checked on subsequent authenticated requests. Collaboration credentials cannot create or revoke invitations.
 
-An invitation uses the application's current origin. A loopback address is usable on that machine; remote participants need the existing application served through a reachable trusted host. Invitation creation does not configure network hosting or expose the installation.
+An invitation uses the configured guest origin when sharing is enabled, otherwise the application's current origin. A loopback address is usable on that machine. Invitation creation does not configure public hosting or expose the installation.
+
+### Remote sharing
+
+The desktop server supplies a privileged local-session bootstrap. **Do not expose or reverse proxy the desktop server to guests.** For remote participants, enable the separate collaboration-only listener:
+
+```sh
+OPENSPRINT_COLLABORATION_PORT=3190 \
+OPENSPRINT_COLLABORATION_ORIGIN=https://collaborate.example.com \
+npm run start -w packages/backend
+```
+
+Build the application first. Packaged installations use `OPENSPRINT_FRONTEND_DIST`; a repository build uses `packages/frontend/dist`. The new listener binds only to `127.0.0.1` on its separate port. Configure your HTTPS reverse proxy to forward the guest origin exclusively to port **3190**, keeping the installation's regular API/desktop port private. Both environment variables are required. A public origin must use HTTPS; HTTP is accepted only on loopback for local testing. Restart the backend after changing this configuration.
+
+The guest listener serves the built frontend without a host credential, admits the configured public origin, and mounts only project collaboration APIs. Host settings, filesystem, deployment, governance and session-bootstrap routes are unavailable there. The host's Invite form uses this guest origin automatically. Disabling sharing leaves the ordinary local installation unchanged. TLS termination, DNS and access to the reverse proxy remain deployment responsibilities.
 
 For existing deployments, the host may also configure `OPENSPRINT_COLLABORATION_TOKENS` as a JSON array:
 
@@ -37,7 +51,7 @@ Each browser sends an authenticated presence heartbeat with its selected task. P
 
 Per-actor project preferences store task subscriptions and a monotonically advancing seen cursor. Marking activity read records a server timestamp for task catch-up. Activity includes attributed discussion, decisions and control transitions. Task completion timestamps, execution summaries and unresolved questions provide work context. Notifications are derived from durable events for mentions, control requests and subscribed task discussion. Polling or opening the panel does not automatically acknowledge unread activity.
 
-Collaboration endpoints resolve project membership before returning state. Named credentials cannot access the existing local-only settings, filesystem, deployment, integration or publication APIs. The pilot does not add remote network listeners, cross-origin allowances, TLS termination or login management. Serve the existing application through an appropriately configured trusted host when testing browsers on other machines.
+Collaboration endpoints resolve project membership before returning state. Named credentials cannot access the existing local-only settings, filesystem, deployment, integration or publication APIs. The optional guest listener admits only its explicitly configured origin; it does not add TLS termination or login management.
 
 ## Committed state and replay
 

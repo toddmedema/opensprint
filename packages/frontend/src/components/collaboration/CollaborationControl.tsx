@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { CollaborationCommand, CollaborationPresence } from "@opensprint/shared";
 import type { CollaborationSessionState } from "./useCollaborationSession";
@@ -21,31 +21,38 @@ export function CollaborationControl({
   session,
   taskId,
   drafts,
+  identities,
+  onIdentity,
+  onSubmissionResult,
   onDraft,
   actorName,
 }: {
   session: CollaborationSessionState;
   taskId: string | null;
   drafts: Record<string, string>;
+  identities: Record<string, { payload: string; id: string } | undefined>;
+  onIdentity: (attemptId: string, identity: { payload: string; id: string } | undefined) => void;
+  onSubmissionResult: (
+    input: { attemptId: string; clientMessageId: string; content: string },
+    delivered: boolean
+  ) => void;
   onDraft: (attemptId: string, content: string) => void;
   actorName: (actorId: string) => string;
 }) {
   const { activeRun: active, run, principal } = session;
   const [receipt, setReceipt] = useState<{ attemptId: string; text: string } | null>(null);
   const [handoff, setHandoff] = useState("");
-  const guidanceIdentity = useRef<{ payload: string; id: string } | null>(null);
   const steering = useMutation({
     gcTime: 0,
     mutationFn: session.client.guidance,
     onSuccess: (result, input) => {
-      guidanceIdentity.current = null;
+      onSubmissionResult(input, result.delivered);
       setReceipt({
         attemptId: input.attemptId,
         text: result.delivered
           ? "Queued · waiting for the next agent turn. Inclusion is recorded below."
           : (result.error ?? "Guidance was not queued."),
       });
-      if (result.delivered) onDraft(input.attemptId, "");
       void session.invalidate();
     },
   });
@@ -250,13 +257,16 @@ export function CollaborationControl({
                 event.preventDefault();
                 if (!content.trim() || steering.isPending || !taskId) return;
                 const payload = JSON.stringify([taskId, active.attemptId, content.trim()]);
-                if (guidanceIdentity.current?.payload !== payload)
-                  guidanceIdentity.current = { payload, id: crypto.randomUUID() };
+                const identity =
+                  identities[active.attemptId]?.payload === payload
+                    ? identities[active.attemptId]!
+                    : { payload, id: crypto.randomUUID() };
+                onIdentity(active.attemptId, identity);
                 steering.mutate({
                   taskId,
                   attemptId: active.attemptId,
                   content: content.trim(),
-                  clientMessageId: guidanceIdentity.current.id,
+                  clientMessageId: identity.id,
                 });
               }}
             >

@@ -757,4 +757,102 @@ describe("Execute collaboration", () => {
     await waitFor(() => expect(submissions("/presence")).toHaveLength(2));
     expect(submissions("/presence")[1].taskId).toBe("os-other");
   });
+  it("retrieves paged full history after unread events were marked caught up", async () => {
+    const fallback = handler;
+    handler = async (url, init) => {
+      if (url.endsWith("/snapshot"))
+        return response({ ...snapshot(), cursor: 400, messagesHasMore: true });
+      if (url.endsWith("/preferences"))
+        return response({ seenCursor: 400, subscribedTaskIds: [], seenAt: "2026-11-06T10:00:00Z" });
+      if (url.includes("/events?after=400"))
+        return response({ events: [], nextCursor: 400, hasMore: false });
+      if (url.includes("/events?after=0"))
+        return response({
+          events: [
+            {
+              projectId: "project-a",
+              cursor: 1,
+              actorId: "bob",
+              createdAt: "2026-11-05T10:00:00Z",
+              type: "message_appended",
+              payload: {
+                id: "old",
+                actorId: "bob",
+                displayName: "Bob",
+                taskId: "os-task",
+                content: "Older architectural decision",
+                createdAt: "2026-11-05T10:00:00Z",
+                cursor: 1,
+              },
+            },
+          ],
+          nextCursor: 200,
+          hasMore: true,
+        });
+      if (url.includes("/events?after=200"))
+        return response({
+          events: [
+            {
+              projectId: "project-a",
+              cursor: 201,
+              actorId: "bob",
+              createdAt: "2026-11-05T11:00:00Z",
+              type: "message_appended",
+              payload: {
+                id: "next-old",
+                actorId: "bob",
+                displayName: "Bob",
+                taskId: "os-task",
+                content: "Later architectural follow-up",
+                createdAt: "2026-11-05T11:00:00Z",
+                cursor: 201,
+              },
+            },
+          ],
+          nextCursor: 400,
+          hasMore: false,
+        });
+      return fallback(url, init);
+    };
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await user.click(screen.getByRole("tab", { name: /Activity/ }));
+    await screen.findByText("You’re caught up on discussion and control.");
+    await user.click(screen.getByRole("button", { name: "Full history" }));
+    await screen.findByText("Bob said: Older architectural decision");
+    expect(screen.getByRole("button", { name: "Mark caught up" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Load more activity" }));
+    await screen.findByText("Bob said: Later architectural follow-up");
+    expect(submissions("/preferences")).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "Since last read" }));
+    await screen.findByText("You’re caught up on discussion and control.");
+  });
+
+  it("keeps the connection live after a rejected action and dismisses the action error", async () => {
+    const fallback = handler;
+    handler = async (url, init) =>
+      url.endsWith("/commands")
+        ? new Response(
+            JSON.stringify({
+              error: {
+                code: "COLLABORATION_CONFLICT",
+                message: "Control changed; refresh before retrying.",
+              },
+            }),
+            { status: 409 }
+          )
+        : fallback(url, init);
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await user.type(screen.getByLabelText("Discuss with participants"), "Keep this draft");
+    await user.click(screen.getByRole("button", { name: "Send message" }));
+    await screen.findByText("Control changed; refresh before retrying.");
+    expect(screen.getByText(/Live · Alice/)).toBeInTheDocument();
+    expect(screen.queryByText("Connection interrupted · retrying")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Dismiss error" }));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(screen.getByLabelText("Discuss with participants")).toHaveValue("Keep this draft");
+  });
 });
