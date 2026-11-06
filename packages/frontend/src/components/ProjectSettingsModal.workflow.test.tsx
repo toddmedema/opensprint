@@ -1,12 +1,12 @@
-import type { ReactElement } from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { createRef, type ReactElement } from "react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { ThemeProvider } from "../contexts/ThemeContext";
 import { DisplayPreferencesProvider } from "../contexts/DisplayPreferencesContext";
-import { ProjectSettingsModal } from "./ProjectSettingsModal";
+import { ProjectSettingsModal, type ProjectSettingsModalRef } from "./ProjectSettingsModal";
 import type { Project } from "@opensprint/shared";
 
 const mockGetSettings = vi.fn();
@@ -17,6 +17,7 @@ const mockUpdateAgentsInstructions = vi.fn();
 const mockGetKeys = vi.fn();
 const mockModelsList = vi.fn();
 const mockGlobalSettingsGet = vi.fn();
+let restoreConfirm: (() => void) | undefined;
 
 vi.mock("../api/client", () => ({
   isApiError: () => false,
@@ -78,6 +79,10 @@ function renderModal(ui: ReactElement) {
 }
 
 describe("ProjectSettingsModal workflow integration", () => {
+  afterEach(() => {
+    restoreConfirm?.();
+    restoreConfirm = undefined;
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetSettings.mockReset().mockResolvedValue(mockSettings);
@@ -178,6 +183,69 @@ describe("ProjectSettingsModal workflow integration", () => {
     await user.click(screen.getByRole("button", { name: "Workflow" }));
     expect(screen.getByRole("radio", { name: /^Larger/ })).toBeChecked();
   });
+
+  it.each(["custom", "lmstudio"] as const)(
+    "reports a blocked task-size save as not saved and retries after %s configuration is refreshed",
+    async (type) => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      const onSaveStatusChange = vi.fn();
+      const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+      restoreConfirm = () => confirm.mockRestore();
+      const modal = createRef<ProjectSettingsModalRef>();
+      let resolveRefresh!: (value: unknown) => void;
+      const refresh = new Promise((resolve) => {
+        resolveRefresh = resolve;
+      });
+      mockGetSettings
+        .mockResolvedValueOnce({
+          ...mockSettings,
+          taskSize: "balanced",
+          simpleComplexityAgent: { type, model: null, cliCommand: null },
+          gitRuntimeStatus: { refreshing: true, stale: true, lastCheckedAt: null },
+        })
+        .mockReturnValueOnce(refresh);
+      renderModal(
+        <ProjectSettingsModal
+          ref={modal}
+          project={mockProject}
+          onClose={onClose}
+          onSaveStatusChange={onSaveStatusChange}
+        />
+      );
+      await screen.findByTestId("settings-modal-content");
+      await user.click(screen.getByRole("button", { name: "Workflow" }));
+      await user.click(screen.getByRole("radio", { name: /^Larger/ }));
+      await waitFor(() => expect(onSaveStatusChange).toHaveBeenLastCalledWith("not_saved"));
+      expect(mockUpdateSettings).not.toHaveBeenCalled();
+      await user.keyboard("{Escape}");
+      expect(confirm).toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+
+      await waitFor(() => expect(mockGetSettings).toHaveBeenCalledTimes(2), { timeout: 3000 });
+      await act(async () =>
+        resolveRefresh({
+          ...mockSettings,
+          taskSize: "balanced",
+          gitRuntimeStatus: {
+            refreshing: false,
+            stale: false,
+            lastCheckedAt: "2026-11-06T12:00:00Z",
+          },
+        })
+      );
+      expect(screen.getByRole("radio", { name: /^Larger/ })).toBeChecked();
+      await act(async () => modal.current!.persist());
+      expect(mockUpdateSettings).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ taskSize: "larger" })
+      );
+      // Successful saves keep the spinner visible for at least one second.
+      await waitFor(() => expect(onSaveStatusChange).toHaveBeenLastCalledWith("saved"), {
+        timeout: 2000,
+      });
+    }
+  );
 
   it("keeps Agent Config focused on complexity rows and advanced instructions", async () => {
     const user = userEvent.setup();

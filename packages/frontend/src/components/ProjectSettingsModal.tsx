@@ -432,11 +432,20 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
           overrides?.enableHumanTeammates ?? settings?.enableHumanTeammates ?? false;
         const effTeamMembers = overrides?.teamMembers ?? settings?.teamMembers ?? [];
         const effSettings = overrides ? { ...settings } : settings;
-        if (effSimple.type === "custom" && !(effSimple.cliCommand ?? "").trim()) return true;
-        if (effComplex.type === "custom" && !(effComplex.cliCommand ?? "").trim()) return true;
+        if (
+          (effSimple.type === "custom" && !(effSimple.cliCommand ?? "").trim()) ||
+          (effComplex.type === "custom" && !(effComplex.cliCommand ?? "").trim())
+        ) {
+          if (taskSizeEdit) {
+            setSaveFailed(true);
+            setError("Configure a custom CLI command before saving task size.");
+          }
+          return taskSizeEdit === null;
+        }
         if (!hasConfiguredLocalModel(effSimple) || !hasConfiguredLocalModel(effComplex)) {
           setError(LOCAL_PROVIDER_MODEL_REQUIRED_MESSAGE);
-          return true;
+          if (taskSizeEdit) setSaveFailed(true);
+          return taskSizeEdit === null;
         }
         setSaving(true);
         setError(null);
@@ -572,8 +581,10 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
           setNeedsGovernanceCapability(false);
           setGovernanceCapability("");
           setGovernanceCapabilityError(null);
-          setSaveFailed(false);
-          if (pendingTaskSizeRef.current === taskSizeEdit) pendingTaskSizeRef.current = null;
+          if (pendingTaskSizeRef.current === taskSizeEdit) {
+            pendingTaskSizeRef.current = null;
+            setSaveFailed(false);
+          }
           void queryClient.invalidateQueries({ queryKey: queryKeys.projects.settings(project.id) });
           if (notifyOnComplete) onSaved?.();
           saveSucceeded = true;
