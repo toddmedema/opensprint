@@ -1,12 +1,16 @@
 # Collaboration and execution ownership
 
-This implements the first collaboration foundation from the first-principles review in thread `01a15b66-fc06-7882-9cf2-f85c3ed9a119`. The product remains a modular monolith with one trusted backend. Projects, the default shared session, ordinary conversations and individual execution attempts have separate identities and lifetimes. Closing a browser does not own or cancel execution.
+The product remains a modular monolith with one trusted backend. Projects, the default shared session, ordinary conversations and individual execution attempts have separate identities and lifetimes. Closing a browser does not own or cancel execution.
 
 ## Using the shared session
 
-Open `/collaborate/<projectId>` or the **Open shared session** link in Execute. Each browser joins with its own project credential. Leave the credential blank to use the existing local installation session. The credential stays in memory and is cleared when leaving or changing projects; it is never included in URLs or persisted in browser storage.
+Open **Collaborate** in Execute to work alongside the selected task, or `/collaborate/<projectId>` for the standalone view. The task picker uses project task titles. A local installation session joins automatically. Each invited browser joins with its own project credential. Credentials stay in memory and are cleared when leaving or changing projects; they are never persisted in browser storage or query-cache keys.
 
-The host configures `OPENSPRINT_COLLABORATION_TOKENS` as a JSON array:
+The local host uses **Invite** to create a named credential with **Can view**, **Can discuss**, or **Can guide agents** permission and an expiration. The generated link carries the secret in its fragment; the join page removes that fragment immediately and retains the credential in memory. The server stores only its SHA-256 hash. The raw secret is returned once, when the invite is created. The host can list invitations and revoke them. Expiration and revocation are checked on subsequent authenticated requests. Collaboration credentials cannot create or revoke invitations.
+
+An invitation uses the application's current origin. A loopback address is usable on that machine; remote participants need the existing application served through a reachable trusted host. Invitation creation does not configure network hosting or expose the installation.
+
+For existing deployments, the host may also configure `OPENSPRINT_COLLABORATION_TOKENS` as a JSON array:
 
 ```json
 [
@@ -21,7 +25,17 @@ The host configures `OPENSPRINT_COLLABORATION_TOKENS` as a JSON array:
 
 Generate a random token, distribute it privately, and configure only its hash. Restart the backend after changing credentials. Actor IDs and token hashes must be unique. Roles are `viewer` (read), `participant` (read and discuss), and `controller` (also claim/handoff a run and send guidance). Client-supplied names and actor IDs never establish authority. Handoff targets must already have controller permission for that project. Local installation credentials remain privileged host credentials and must not be distributed to participants.
 
-Enter the active task ID to inspect its current attempt and control revision. Claim control before sending guidance; handing over or releasing control revokes the previous owner. Compatibility permits local guidance for an attempt with no collaboration control record. Once explicit control exists, an unclaimed run requires a new claim. Discussion does not automatically enter a model request. The separate guidance form shows the durable dispositions of instructions, including after the active attempt ends.
+The selected task exposes bounded output, diff and guidance history. Read paths validate task membership in the project, and live context is checked against its execution attempt before it is returned. Completed tasks retain their latest archived context. File and diff references are discussion metadata and never authorize arbitrary filesystem reads.
+
+Claim control before sending guidance. The current controller can release the run or offer control to another authorized person. A collaborator can request control from its current controller. The recipient accepts or declines the pending request; its sender can cancel it. Each transition checks the current control revision. The controller remains unchanged until acceptance or explicit release. Presence expiry does not release control. Compatibility permits local guidance for an attempt with no collaboration control record. Once explicit control exists, an unclaimed run requires a new claim.
+
+Discussion does not automatically enter a model request. **Use as agent guidance** prepares an editable instruction with its author and contextual reference; the user explicitly submits it to the selected attempt. The guidance history shows durable dispositions even after that attempt ends. A retry never silently consumes guidance prepared for another attempt.
+
+## Presence and catching up
+
+Each browser sends an authenticated presence heartbeat with its selected task. Presence expires when heartbeats stop; it is separate from durable execution ownership. Following a participant tracks their task selection until the follower stops following or selects another task.
+
+Per-actor project preferences store task subscriptions and a monotonically advancing seen cursor. Marking activity read records a server timestamp for task catch-up. Activity includes attributed discussion, decisions and control transitions. Task completion timestamps, execution summaries and unresolved questions provide work context. Notifications are derived from durable events for mentions, control requests and subscribed task discussion. Polling or opening the panel does not automatically acknowledge unread activity.
 
 Collaboration endpoints resolve project membership before returning state. Named credentials cannot access the existing local-only settings, filesystem, deployment, integration or publication APIs. The pilot does not add remote network listeners, cross-origin allowances, TLS termination or login management. Serve the existing application through an appropriately configured trusted host when testing browsers on other machines.
 
