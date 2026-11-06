@@ -1,9 +1,12 @@
 import type { AgentConfig, ProjectSettings, TaskSize } from "@opensprint/shared";
 import { DEFAULT_AGENT_TIMEOUT_MS, DEFAULT_TASK_SIZE } from "@opensprint/shared";
 
-export type PlanningTaskSettings = Partial<
-  Pick<ProjectSettings, "taskSize" | "simpleComplexityAgent" | "complexComplexityAgent">
->;
+export type PlanningTaskSettings = Pick<Partial<ProjectSettings>, "taskSize"> & {
+  /** Dedicated task-type configuration takes precedence over legacy complexity tiers. */
+  codingAgent?: AgentConfig;
+  simpleComplexityAgent?: AgentConfig;
+  complexComplexityAgent?: AgentConfig;
+};
 
 const SIZE_GUIDANCE: Record<TaskSize, string> = {
   larger:
@@ -28,6 +31,9 @@ function codingAgentContext(config: AgentConfig | undefined): string {
 /** Shared by decomposition, task generation, and their repair turns. Never includes credentials. */
 export function buildPlanningTaskPolicy(settings: PlanningTaskSettings = {}): string {
   const size = settings.taskSize ?? DEFAULT_TASK_SIZE;
+  const codingContext = settings.codingAgent
+    ? `Coding: ${codingAgentContext(settings.codingAgent)}`
+    : `Simple tier: ${codingAgentContext(settings.simpleComplexityAgent)}\nComplex tier: ${codingAgentContext(settings.complexComplexityAgent)}`;
   return `## Project task size: ${size}
 
 ${SIZE_GUIDANCE[size]}
@@ -40,8 +46,7 @@ ${SIZE_GUIDANCE[size]}
 
 ## Coding agents available for execution
 
-Simple tier: ${codingAgentContext(settings.simpleComplexityAgent)}
-Complex tier: ${codingAgentContext(settings.complexComplexityAgent)}
+${codingContext}
 
 Size work for the coding agents above, not your own planning model. Consider their configured model, effort, and session time limit when judging a feasible session. Unknown/default models are not evidence of capability. The user's explicit task size takes precedence over model-based suggestions; do not change it or switch models automatically.`;
 }

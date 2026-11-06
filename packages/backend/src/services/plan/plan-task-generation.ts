@@ -133,7 +133,7 @@ export interface PlanTaskGenerationDeps {
 
 /**
  * Extract raw task objects from agent content without enforcing the count cap.
- * Used by both the validated parser and the onExhausted truncation fallback.
+ * Separates JSON extraction from task-count validation.
  */
 export function extractRawTasks(
   content: unknown

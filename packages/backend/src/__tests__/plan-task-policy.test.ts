@@ -112,6 +112,29 @@ describe("project task-size planning contract", () => {
     expect(request.messages[0]!.content).toContain("Build shared generator");
   });
 
+  it("prefers the dedicated Coding configuration over legacy tiers", async () => {
+    const input = deps();
+    input.settings = {
+      ...parseSettings({}),
+      codingAgent: {
+        type: "codex",
+        model: "dedicated-coding-model",
+        effort: "high",
+        timeoutMs: 300000,
+        cliCommand: null,
+      },
+    };
+    vi.mocked(agentService.invokePlanningAgent).mockResolvedValue({
+      content: JSON.stringify({ tasks: [task] }),
+    });
+    await generateAndCreateTasks(input);
+    const request = vi.mocked(agentService.invokePlanningAgent).mock.calls[0]![0];
+    expect(request.systemPrompt).toContain(
+      'Coding: {"provider":"codex","model":"dedicated-coding-model","effort":"high","timeoutMs":300000}'
+    );
+    expect(request.systemPrompt).not.toContain("Simple tier:");
+  });
+
   it("retains the selected policy through a repair turn", async () => {
     const input = deps();
     input.settings.taskSize = "smaller";
