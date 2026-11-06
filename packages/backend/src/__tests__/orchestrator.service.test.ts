@@ -1360,7 +1360,9 @@ describe("OrchestratorService (slot-based model)", () => {
 
       await orchestrator.ensureRunning(projectId);
       await vi.waitFor(() => {
-        expect(mockWriteJsonAtomic).toHaveBeenCalled();
+        // Launch follows both assignment writes and resets output state. Wait for it before
+        // editing the assignment or supplying terminal output for the completed run.
+        expect(mockInvokeCodingAgent).toHaveBeenCalledTimes(1);
       });
 
       const assignmentPath = path.join(wtPath, ".opensprint", "active", task.id, "assignment.json");
