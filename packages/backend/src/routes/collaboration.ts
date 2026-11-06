@@ -53,6 +53,10 @@ export interface CollaborationGuidanceInput {
   controlRevision: number;
 }
 
+/**
+ * Mount project-scoped collaboration APIs with per-request membership checks.
+ * Every HTTP control transition requires a server-validated task and current attempt.
+ */
 export function createCollaborationRouter(options: {
   assertProjectExists: (projectId: string) => Promise<unknown>;
   service?: CollaborationService;
@@ -70,6 +74,7 @@ export function createCollaborationRouter(options: {
   const router = Router({ mergeParams: true });
   const service = options.service ?? new CollaborationService();
   const access = options.access ?? createCollaborationAccess();
+  /** Resolve host, configured actor, or invitation authority before exposing project state. */
   const context = async (req: Request) => {
     const parsed = projectIdSchema.safeParse(req.params.projectId);
     if (!parsed.success) throw new AppError(400, "INVALID_PROJECT_ID", "Invalid project ID.");
@@ -87,6 +92,7 @@ export function createCollaborationRouter(options: {
     return { projectId, principal };
   };
 
+  /** Accept only task identifiers; path metadata never grants filesystem access. */
   const taskParam = (req: Request) => {
     const parsed = projectIdSchema.safeParse(req.params.taskId);
     if (!parsed.success) throw new AppError(400, "INVALID_TASK_ID", "Invalid task ID.");
@@ -109,12 +115,17 @@ export function createCollaborationRouter(options: {
       if (!options.getTaskContext)
         throw new AppError(503, "COLLABORATION_UNAVAILABLE", "Task context is unavailable.");
       const data = await options.getTaskContext(projectId, taskId);
-      if (data.activeRun)
-        data.activeRun = {
-          ...data.activeRun,
-          control: await service.getRunControl(projectId, data.activeRun.attemptId),
-        };
-      res.json({ data });
+      res.json({
+        data: data.activeRun
+          ? {
+              ...data,
+              activeRun: {
+                ...data.activeRun,
+                control: await service.getRunControl(projectId, data.activeRun.attemptId),
+              },
+            }
+          : data,
+      });
     })
   );
   router.get(
@@ -284,7 +295,19 @@ export function createCollaborationRouter(options: {
           parsed.error.issues
         );
       if (parsed.data.taskId) await options.assertTaskExists?.(projectId, parsed.data.taskId);
-      if ("runId" in parsed.data && parsed.data.taskId && options.getActiveRun) {
+      if ("runId" in parsed.data) {
+        if (!parsed.data.taskId)
+          throw new AppError(
+            400,
+            "INVALID_TASK_ID",
+            "A task ID is required for a control request."
+          );
+        if (!options.getActiveRun)
+          throw new AppError(
+            503,
+            "GUIDANCE_UNAVAILABLE",
+            "Active attempt validation is unavailable."
+          );
         const active = await options.getActiveRun(projectId, parsed.data.taskId);
         if (
           !active ||
@@ -298,16 +321,6 @@ export function createCollaborationRouter(options: {
             "The active attempt changed. Refresh before changing control."
           );
       }
-      if (
-        [
-          "request_control",
-          "respond_control",
-          "cancel_control_request",
-          "reclaim_control",
-        ].includes(parsed.data.type) &&
-        !parsed.data.taskId
-      )
-        throw new AppError(400, "INVALID_TASK_ID", "A task ID is required for a control request.");
       const result = await service.command(projectId, principal, parsed.data, (actorId) =>
         access.canControlActor(projectId, actorId)
       );

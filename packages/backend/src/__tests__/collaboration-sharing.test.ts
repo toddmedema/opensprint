@@ -3,11 +3,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import request from "supertest";
-import type express from "express";
+import express from "express";
 import { initAppDb, type AppDb } from "../db/app-db.js";
 import { CollaborationService } from "../services/collaboration.service.js";
 import { createCollaborationRouter } from "../routes/collaboration.js";
 import { VITEST_DEFAULT_LOCAL_SESSION_TOKEN } from "../services/local-session-auth.service.js";
+import { AppError } from "../middleware/error-handler.js";
 import {
   createCollaborationSharingApp,
   getCollaborationSharingConfig,
@@ -53,6 +54,8 @@ describe("collaboration-only serving boundary", () => {
     );
   });
   afterEach(async () => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
     await db.close();
     await fs.rm(directory, { recursive: true, force: true });
   });
@@ -127,6 +130,84 @@ describe("collaboration-only serving boundary", () => {
       .set("Origin", origin)
       .set("Authorization", bearer)
       .expect(401);
+  });
+
+  it.each(["development", undefined])(
+    "keeps unauthenticated malformed JSON opaque when NODE_ENV is %s",
+    async (environment) => {
+      vi.stubEnv("NODE_ENV", environment);
+      const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+      const body = '{"credential":"private-request-sentinel"';
+      const response = await request(app)
+        .post(`${endpoint}/commands`)
+        .set("Content-Type", "application/json")
+        .send(body)
+        .expect(400);
+
+      expect(response.body).toEqual({
+        error: { code: "INVALID_JSON", message: "Invalid JSON request body." },
+      });
+      expect(response.text).not.toContain("private-request-sentinel");
+      expect(response.text).not.toContain("stack");
+      expect(logged).toHaveBeenCalledWith(expect.stringContaining("Guest request error"));
+    }
+  );
+
+  it.each(["development", undefined])(
+    "logs unexpected failures without returning diagnostics when NODE_ENV is %s",
+    async (environment) => {
+      vi.stubEnv("NODE_ENV", environment);
+      const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+      const router = express.Router();
+      router.get("/unexpected", () => {
+        throw new Error("Cannot read /private/host-path with credential private-error-sentinel");
+      });
+      const failingApp = createCollaborationSharingApp(
+        { port: 3199, origin, frontendDist: path.join(directory, "frontend") },
+        router
+      );
+      const response = await request(failingApp).get(`${endpoint}/unexpected`).expect(500);
+
+      expect(response.body).toEqual({
+        error: { code: "INTERNAL_ERROR", message: "An unexpected error occurred" },
+      });
+      expect(response.text).not.toContain("private-error-sentinel");
+      expect(response.text).not.toContain("/private/host-path");
+      expect(response.text).not.toContain("stack");
+      expect(logged).toHaveBeenCalledWith(expect.stringContaining("private-error-sentinel"));
+    }
+  );
+
+  it("preserves intended application errors and database retry headers", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const router = express.Router();
+    router.get("/expected", () => {
+      throw new AppError(409, "AGENT_ATTEMPT_CHANGED", "Refresh this task.", {
+        taskId: "os-task",
+      });
+    });
+    router.get("/database", () => {
+      throw new AppError(503, "DATABASE_UNAVAILABLE", "Database is unavailable.");
+    });
+    const failingApp = createCollaborationSharingApp(
+      { port: 3199, origin, frontendDist: path.join(directory, "frontend") },
+      router
+    );
+
+    const expected = await request(failingApp).get(`${endpoint}/expected`).expect(409);
+    expect(expected.body).toEqual({
+      error: {
+        code: "AGENT_ATTEMPT_CHANGED",
+        message: "Refresh this task.",
+        details: { taskId: "os-task" },
+      },
+    });
+    const database = await request(failingApp).get(`${endpoint}/database`).expect(503);
+    expect(database.headers["retry-after"]).toBe("5");
+    expect(database.body.error).toEqual({
+      code: "DATABASE_UNAVAILABLE",
+      message: "Database is unavailable.",
+    });
   });
 });
 

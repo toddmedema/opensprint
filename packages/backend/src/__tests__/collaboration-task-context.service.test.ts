@@ -11,6 +11,7 @@ import {
   type CollaborationExecutionSnapshot,
 } from "../services/collaboration-task-context.service.js";
 import { initAppDb } from "../db/app-db.js";
+import * as commandRunner from "../utils/command-runner.js";
 import { createTestPostgresClient, createTestProjectId } from "./test-db-helper.js";
 
 const exec = promisify(execFile);
@@ -110,6 +111,7 @@ describe("CollaborationTaskContextService", () => {
     });
   });
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fs.rm(directory, { recursive: true, force: true });
   });
 
@@ -269,12 +271,94 @@ describe("CollaborationTaskContextService", () => {
     });
   });
 
-  it("keeps the newest bounded output instead of joining the whole log", async () => {
+  it("keeps the newest bounded display output after redaction", async () => {
     execution!.output = ["old".repeat(100_000), "newest output"];
     const context = await service.getTaskContext("project-a", task.id);
     expect(context.output.length).toBe(256 * 1024);
     expect(context.output.endsWith("newest output")).toBe(true);
     expect(context.outputTruncated).toBe(true);
+  });
+
+  it("redacts a credential across provider events before the display boundary removes its prefix", async () => {
+    const secret = "split-event-credential";
+    execution!.output = [
+      "SERVICE_",
+      "TOKEN=",
+      secret,
+      "\n",
+      "x".repeat(256 * 1024 - secret.length - 1),
+    ];
+    const context = await service.getTaskContext("project-a", task.id);
+    expect(context.output).not.toContain(secret);
+    expect(context.output).toContain("[REDACTED]");
+    expect(context.outputTruncated).toBe(true);
+    expect(Buffer.byteLength(context.output, "utf8")).toBeLessThanOrEqual(256 * 1024);
+  });
+
+  it("omits a partial credential prefix already evicted by the managed runner", async () => {
+    execution!.output = [
+      "evicted-prefix-credential\n",
+      "Safe later output\nSERVICE_TOKEN=complete-credential",
+    ];
+    execution!.outputTruncated = true;
+    const context = await service.getTaskContext("project-a", task.id);
+    expect(context.output).toBe("Safe later output\nSERVICE_TOKEN=[REDACTED]");
+    expect(context.outputTruncated).toBe(true);
+  });
+
+  it("keeps a valid UTF-8 tail within the byte budget", async () => {
+    execution!.output = ["🧭".repeat(70_000), "newest"];
+    const context = await service.getTaskContext("project-a", task.id);
+    expect(Buffer.byteLength(context.output, "utf8")).toBeLessThanOrEqual(256 * 1024);
+    expect(context.output).not.toContain("�");
+    expect(context.output.endsWith("newest")).toBe(true);
+  });
+
+  it.each(["file", "parent"])("never follows an agent-writable output %s symlink", async (kind) => {
+    const external = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-private-output-"));
+    try {
+      const privateOutput = "private-host-material-without-a-recognizable-secret-prefix";
+      await fs.writeFile(path.join(external, "agent-output.log"), privateOutput);
+      const active = path.join(directory, ".opensprint", "active", task.id);
+      await fs.mkdir(path.dirname(active), { recursive: true });
+      if (kind === "parent") {
+        await fs.symlink(external, active, "junction");
+      } else {
+        await fs.mkdir(active);
+        await fs.symlink(
+          path.join(external, "agent-output.log"),
+          path.join(active, "agent-output.log")
+        );
+      }
+      execution!.output = [];
+      const context = await service.getTaskContext("project-a", task.id);
+      expect(context.output).toBe("");
+      expect(JSON.stringify(context)).not.toContain(privateOutput);
+      expect(context.unavailableReason).toBeUndefined();
+    } finally {
+      await fs.rm(external, { recursive: true, force: true });
+    }
+  });
+
+  it("shares only managed output even when an ordinary checkout log exists", async () => {
+    const active = path.join(directory, ".opensprint", "active", task.id);
+    await fs.mkdir(active, { recursive: true });
+    await fs.writeFile(path.join(active, "agent-output.log"), "Agent-writable disk output");
+    execution!.output = [];
+    expect((await service.getTaskContext("project-a", task.id)).output).toBe("");
+    execution!.output = ["Managed live output"];
+    expect((await service.getTaskContext("project-a", task.id)).output).toBe("Managed live output");
+  });
+
+  it("does not share recovered output tailed from an agent-writable checkout", async () => {
+    await fs.writeFile(path.join(directory, "app.ts"), "verified source change\n");
+    execution!.output = ["private host file bytes with no recognizable credential pattern"];
+    execution!.outputFromFile = true;
+    const context = await service.getTaskContext("project-a", task.id);
+    expect(context.output).toBe("");
+    expect(context.diff).toContain("+verified source change");
+    expect(context.source).toBe("active");
+    expect(context.unavailableReason).toBeUndefined();
   });
 
   it("shares one read across simultaneous followers without retaining stale results", async () => {
@@ -290,6 +374,103 @@ describe("CollaborationTaskContextService", () => {
     expect(show).toHaveBeenCalledTimes(2);
   });
 
+  it("reuses expensive diffs across staggered viewers while verifying ownership and keeping output fresh", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const commands = vi.spyOn(commandRunner, "runCommand");
+    await fs.mkdir(path.join(directory, "src"));
+    for (let index = 0; index < 24; index++) {
+      await fs.writeFile(
+        path.join(directory, "src", `source-${index}.ts`),
+        `export const n = ${index};\n`
+      );
+    }
+    const first = await service.getTaskContext("project-a", task.id);
+    expect(first.diff).toContain("source-23.ts");
+    const firstReadCommands = commands.mock.calls.length;
+    expect(firstReadCommands).toBeGreaterThan(24);
+    const started = performance.now();
+    for (let viewer = 1; viewer < 5; viewer++) {
+      execution!.output = [`Latest output for viewer ${viewer}`];
+      const current = await service.getTaskContext("project-a", task.id);
+      expect(current.output).toBe(`Latest output for viewer ${viewer}`);
+      expect(current.diff).toBe(first.diff);
+    }
+    // Every later read still proves repository common-dir and task branch with
+    // three Git checks, but does not launch 24 more per-file diff processes.
+    expect(commands.mock.calls.length - firstReadCommands).toBe(4 * 3);
+    console.info(
+      JSON.stringify({
+        contextViewers: 5,
+        untrackedFiles: 24,
+        firstReadGitCommands: firstReadCommands,
+        laterViewersGitCommands: commands.mock.calls.length - firstReadCommands,
+        uncachedEquivalentGitCommands: firstReadCommands * 5,
+        elapsedLaterViewersMs: Math.round(performance.now() - started),
+      })
+    );
+    await fs.writeFile(
+      path.join(directory, "src", "source-23.ts"),
+      "export const changed = true;\n"
+    );
+    clock.mockReturnValue(4_001);
+    const refreshed = await service.getTaskContext("project-a", task.id);
+    expect(refreshed.diff).toContain("+export const changed = true;");
+    expect(commands.mock.calls.length).toBeGreaterThan(firstReadCommands + 4 * 3 + 24);
+  });
+
+  it("does not reuse cached diffs after attempt, base settings or checkout ownership changes", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const commands = vi.spyOn(commandRunner, "runCommand");
+    await fs.writeFile(path.join(directory, "app.ts"), "first change\n");
+    await service.getTaskContext("project-a", task.id);
+    await fs.writeFile(path.join(directory, "app.ts"), "new attempt change\n");
+    execution = { ...execution!, attemptId: "attempt-3", attempt: 3 };
+    getActiveRun.mockReturnValue({
+      taskId: task.id,
+      attemptId: "attempt-3",
+      attempt: 3,
+      supported: true,
+      reason: null,
+    });
+    expect((await service.getTaskContext("project-a", task.id)).diff).toContain(
+      "+new attempt change"
+    );
+    await fs.writeFile(path.join(directory, "app.ts"), "new comparison change\n");
+    projectService.getSettings.mockResolvedValue({
+      worktreeBaseBranch: "opensprint/os-task",
+    } as ProjectSettings);
+    expect((await service.getTaskContext("project-a", task.id)).diff).toContain(
+      "+new comparison change"
+    );
+    await git(directory, "switch", "main");
+    const context = await service.getTaskContext("project-a", task.id);
+    expect(context.diff).toBe("");
+    expect(context.unavailableReason).toBeTruthy();
+    show.mockRejectedValue(new Error("Task was deleted"));
+    await expect(service.getTaskContext("project-a", task.id)).rejects.toThrow("Task was deleted");
+    expect(commands.mock.calls.length).toBeGreaterThan(3);
+  });
+
+  it("retries failed diff reads instead of retaining an error in the cache", async () => {
+    projectService.getSettings.mockRejectedValueOnce(new Error("Settings unavailable"));
+    await fs.writeFile(path.join(directory, "app.ts"), "visible after retry\n");
+    expect((await service.getTaskContext("project-a", task.id)).unavailableReason).toBeTruthy();
+    const context = await service.getTaskContext("project-a", task.id);
+    expect(context.diff).toContain("+visible after retry");
+    expect(context.unavailableReason).toBeUndefined();
+  });
+
+  it("does not share mutable response objects between simultaneous followers", async () => {
+    const [first, second] = await Promise.all([
+      service.getTaskContext("project-a", task.id),
+      service.getTaskContext("project-a", task.id),
+    ]);
+    first.task.title = "Changed by one caller";
+    first.activeRun!.control = { runId: "attempt-2", controllerId: "caller", revision: 1 };
+    expect(second.task.title).toBe(task.title);
+    expect(second.activeRun!.control).toBeUndefined();
+  });
+
   it("bounds large live diffs and marks the prefix as truncated", async () => {
     await fs.writeFile(path.join(directory, "app.ts"), "new-line\n".repeat(50_000));
     const context = await service.getTaskContext("project-a", task.id);
@@ -302,7 +483,7 @@ describe("CollaborationTaskContextService", () => {
     execution = null;
     queryOne.mockResolvedValue({
       attempt: 5,
-      output: "archived output",
+      output: "partial leading line\narchived output",
       diff: patch("src/archive.ts", "archived diff"),
       output_length: 900_000,
       diff_length: 5,
@@ -357,6 +538,53 @@ describe("CollaborationTaskContextService", () => {
     expect(context.output).toContain("[REDACTED]");
   });
 
+  it("discards an archived credential fragment whose prefix was cut by the bounded SQL read", async () => {
+    execution = null;
+    queryOne.mockResolvedValue({
+      attempt: 5,
+      output: "cut-credential-value\nUseful neighbor\nSERVICE_TOKEN=full-value",
+      output_length: 900_000,
+    });
+    const context = await service.getTaskContext("project-a", task.id);
+    expect(context.output).toBe("Useful neighbor\nSERVICE_TOKEN=[REDACTED]");
+    expect(context.outputTruncated).toBe(true);
+    queryOne.mockResolvedValue({
+      attempt: 5,
+      output: "SERVICE_TOKEN=\nnext-line-credential\nSafe later output",
+      output_length: 900_000,
+    });
+    expect((await service.getTaskContext("project-a", task.id)).output).toBe("Safe later output");
+    queryOne.mockResolvedValue({
+      attempt: 5,
+      output: "uncertain-long-line-secret",
+      output_length: 900_000,
+    });
+    expect((await service.getTaskContext("project-a", task.id)).output).toBe("");
+  });
+
+  it.each([
+    ["OKEN=\npartial-env-value\nsafe", "safe"],
+    ["earer\n\n \t\npartial-bearer-value\nsafe", "safe"],
+    ["uthorization:\n\npartial-header-value\nsafe", "safe"],
+    ["OKEN\n=\npartial-env-value\nsafe", "safe"],
+    ["uthorization\n \n:\n partial-header-value\nsafe", "safe"],
+    ["\n\npartial-value\nsafe", "safe"],
+    ["ordinary-cut-value\nsafe neighbor\nfinal", "safe neighbor\nfinal"],
+    ["SERVICE_TOKEN=\ncomplete-env-value\nsafe", "safe"],
+    ["Bearer\ncomplete-bearer-value-which-is-long-enough\nsafe", "safe"],
+    ["OKEN\n=inline-env-value\nsafe", "safe"],
+    ["uthorization\n: inline header value\nsafe", "safe"],
+  ])(
+    "omits possible multiline credential continuations in an archived bounded tail (%s)",
+    async (output, expected) => {
+      execution = null;
+      queryOne.mockResolvedValue({ attempt: 5, output, output_length: 900_000 });
+      const context = await service.getTaskContext("project-a", task.id);
+      expect(context.output).toBe(expected);
+      expect(context.outputTruncated).toBe(true);
+    }
+  );
+
   it("rejects archived output if a new attempt starts before its read finishes", async () => {
     readExecution.mockReturnValueOnce(null).mockReturnValue(execution);
     await expect(service.getTaskContext("project-a", task.id)).rejects.toMatchObject({
@@ -379,7 +607,7 @@ describe.each(["sqlite", "postgres"] as const)("collaboration archived context (
     try {
       for (const [scope, attempt, output] of [
         [projectId, 1, "old"],
-        [projectId, 2, "a".repeat(300_000) + "newest"],
+        [projectId, 2, "a\n".repeat(150_000) + "newest"],
         [projectId + "-other", 3, "foreign"],
       ] as const) {
         await client.execute(
@@ -405,7 +633,8 @@ describe.each(["sqlite", "postgres"] as const)("collaboration archived context (
       });
       const context = await service.getTaskContext(projectId, task.id);
       expect(context.sourceAttempt).toBe(2);
-      expect(context.output).toHaveLength(256 * 1024);
+      expect(Buffer.byteLength(context.output, "utf8")).toBeLessThanOrEqual(256 * 1024);
+      expect(context.output.length).toBeGreaterThan(256 * 1024 - 3);
       expect(context.output.endsWith("newest")).toBe(true);
       expect(context.outputTruncated).toBe(true);
       expect(context.diff).toContain("safe-neighbor");
@@ -431,6 +660,22 @@ describe.each(["sqlite", "postgres"] as const)("collaboration archived context (
         "known-secret",
       ])
         expect(context.diff).not.toContain(secret);
+      const boundarySecret = "complete-secret-at-truncation-boundary";
+      const usefulNeighbor = "safe final output\n";
+      const suffix =
+        "\n" +
+        "x".repeat(256 * 1024 - boundarySecret.length - usefulNeighbor.length - 1) +
+        usefulNeighbor;
+      await client.execute(
+        `INSERT INTO agent_sessions(project_id, task_id, attempt, agent_type, agent_model, started_at, status, output_log, git_branch)
+         VALUES ($1,$2,4,'openai','test','2026-11-06T10:00:00Z','success',$3,'task-branch')`,
+        [projectId, task.id, `SERVICE_TOKEN=${boundarySecret}${suffix}`]
+      );
+      const boundaryContext = await service.getTaskContext(projectId, task.id);
+      expect(boundaryContext.sourceAttempt).toBe(4);
+      expect(boundaryContext.output).not.toContain(boundarySecret);
+      expect(boundaryContext.output.endsWith(usefulNeighbor)).toBe(true);
+      expect(boundaryContext.outputTruncated).toBe(true);
     } finally {
       await client.execute("DELETE FROM agent_sessions WHERE project_id = $1 OR project_id = $2", [
         projectId,

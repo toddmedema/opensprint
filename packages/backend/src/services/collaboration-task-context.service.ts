@@ -7,17 +7,17 @@ import type {
   CollaborationTask,
   CollaborationTaskContext,
 } from "@opensprint/shared";
-import { OPENSPRINT_PATHS } from "@opensprint/shared";
 import type { ProjectService } from "./project.service.js";
 import type { StoredTask, TaskStoreService } from "./task-store.service.js";
 import { AppError } from "../middleware/error-handler.js";
 import { CommandRunError, runCommand } from "../utils/command-runner.js";
-import { filterAgentOutput } from "../utils/agent-output-filter.js";
 import { redactSecretsForUserDisplay } from "../utils/secret-redaction.js";
 import { compactExecutionText, parseTaskLastExecutionSummary } from "./task-execution-summary.js";
 
 const TEXT_LIMIT = 256 * 1024;
 const GIT_TIMEOUT_MS = 5_000;
+const DIFF_CACHE_TTL_MS = 3_000;
+const MAX_CACHED_DIFFS = 32;
 const PATHS = [
   ".",
   ":(exclude).opensprint",
@@ -146,6 +146,10 @@ export interface CollaborationExecutionSnapshot {
   branchName: string;
   worktreePath: string | null;
   output: readonly string[];
+  /** The runner evicted an earlier prefix; its first retained line is not independently safe. */
+  outputTruncated?: boolean;
+  /** Recovered output is tailed from mutable checkout files and is not a trusted sharing source. */
+  outputFromFile?: boolean;
   uncertain: boolean;
 }
 
@@ -156,6 +160,7 @@ interface ContextDependencies {
   getActiveRun: (projectId: string, taskId: string) => CollaborationActiveRun | null;
 }
 
+/** Project only the task catch-up fields shared with authenticated collaborators. */
 function taskSummary(task: StoredTask, questions: string[] = []): CollaborationTask {
   const summary = parseTaskLastExecutionSummary(task.last_execution_summary)?.summary;
   return {
@@ -169,43 +174,51 @@ function taskSummary(task: StoredTask, questions: string[] = []): CollaborationT
   };
 }
 
-function tailChunks(chunks: readonly string[]): { text: string; truncated: boolean } {
-  const kept: string[] = [];
-  let remaining = TEXT_LIMIT;
-  let truncated = false;
-  for (let index = chunks.length - 1; index >= 0; index--) {
-    const chunk = chunks[index]!;
-    if (chunk.length > remaining) {
-      kept.push(chunk.slice(-remaining));
-      truncated = true;
-      break;
-    }
-    kept.push(chunk);
-    remaining -= chunk.length;
-    if (remaining === 0) {
-      truncated = index > 0;
-      break;
-    }
+/**
+ * Omit the first unknown record of a bounded tail, including a possible
+ * whitespace-separated assignment/header value. Known redactors accept newlines
+ * between prefixes, separators and values, so a broken prefix can span lines.
+ */
+function omitPartialOutputRecord(text: string): string {
+  const boundary = text.indexOf("\n");
+  if (boundary < 0) return "";
+  const leading = text.slice(0, boundary);
+  const rest = text.slice(boundary + 1);
+  const leadingWord = leading.trim().toLowerCase();
+  const mayContinue = !leadingWord || /[=:]\s*$/.test(leading) || "bearer".endsWith(leadingWord);
+  if (/^\s*[=:]/.test(rest)) {
+    // The missing name may be followed by whitespace before its separator.
+    // Consume that separator, blank lines and the first nonblank value line.
+    return rest.replace(/^\s*[=:]\s*[^\r\n]*(?:\r?\n|$)/, "");
   }
-  return { text: kept.reverse().join(""), truncated };
+  return mayContinue ? rest.replace(/^\s*[^\r\n]*(?:\r?\n|$)/, "") : rest;
 }
 
-async function readOutputTail(filePath: string) {
-  const file = await fs.open(filePath, "r");
-  try {
-    const stat = await file.stat();
-    const bytes = Math.min(stat.size, TEXT_LIMIT);
-    const buffer = Buffer.alloc(bytes);
-    const result = await file.read(buffer, 0, bytes, Math.max(0, stat.size - bytes));
-    return {
-      text: filterAgentOutput(buffer.subarray(0, result.bytesRead).toString("utf8")),
-      truncated: stat.size > bytes,
-    };
-  } finally {
-    await file.close();
-  }
+/**
+ * Redact the complete available text before limiting its display tail. A bounded
+ * database tail can begin in a credential value, so discard its first partial
+ * line rather than displaying text whose missing prefix cannot be inspected.
+ */
+function sharedOutputTail(
+  text: string,
+  missingPrefix = false
+): { text: string; truncated: boolean } {
+  // Match complete prefixes even when a credential value follows on another
+  // line. Removing that prefix first would defeat whitespace-aware redactors.
+  let redacted = redactSecretsForUserDisplay(text);
+  if (missingPrefix) redacted = omitPartialOutputRecord(redacted);
+  const bytes = Buffer.from(redacted, "utf8");
+  let start = Math.max(0, bytes.length - TEXT_LIMIT);
+  // Start on a complete UTF-8 code point so replacement characters cannot grow
+  // the returned byte count beyond the response budget.
+  while (start < bytes.length && (bytes[start]! & 0xc0) === 0x80) start++;
+  return {
+    text: start > 0 ? bytes.subarray(start).toString("utf8") : redacted,
+    truncated: missingPrefix || bytes.length > TEXT_LIMIT,
+  };
 }
 
+/** Bound Git process output/time without changing the checkout or index. */
 async function git(cwd: string, args: string[], limit = TEXT_LIMIT) {
   try {
     const result = await runCommand(
@@ -233,6 +246,7 @@ async function git(cwd: string, args: string[], limit = TEXT_LIMIT) {
   }
 }
 
+/** Reject results when execution ownership or the checkout changed during asynchronous IO. */
 function assertSameAttempt(
   before: CollaborationExecutionSnapshot,
   after: CollaborationExecutionSnapshot | null
@@ -256,14 +270,20 @@ function assertSameAttempt(
 /** Read-only project projection; it cannot stage files, launch agents, or mutate execution state. */
 export class CollaborationTaskContextService {
   private readonly pendingContexts = new Map<string, Promise<CollaborationTaskContext>>();
+  private readonly cachedDiffs = new Map<
+    string,
+    { expiresAt: number; value: { text: string; truncated: boolean } }
+  >();
 
   constructor(private readonly dependencies: ContextDependencies) {}
 
+  /** Check project and task membership before any task-scoped collaboration action. */
   async assertTaskExists(projectId: string, taskId: string): Promise<void> {
     await this.dependencies.projectService.getProject(projectId);
     await this.dependencies.taskStore.show(projectId, taskId);
   }
 
+  /** Capture the catch-up boundary before reading task summaries and unresolved questions. */
   async getOverview(projectId: string): Promise<CollaborationOverview> {
     const observedAt = new Date().toISOString();
     const project = await this.dependencies.projectService.getProject(projectId);
@@ -278,10 +298,11 @@ export class CollaborationTaskContextService {
     };
   }
 
+  /** Coalesce simultaneous reads and give each caller an independent response object. */
   async getTaskContext(projectId: string, taskId: string): Promise<CollaborationTaskContext> {
     const key = JSON.stringify([projectId, taskId]);
     const pending = this.pendingContexts.get(key);
-    if (pending) return pending;
+    if (pending) return structuredClone(await pending);
     if (this.pendingContexts.size >= 32) {
       throw new AppError(
         429,
@@ -292,12 +313,13 @@ export class CollaborationTaskContextService {
     const read = this.loadTaskContext(projectId, taskId);
     this.pendingContexts.set(key, read);
     try {
-      return await read;
+      return structuredClone(await read);
     } finally {
       if (this.pendingContexts.get(key) === read) this.pendingContexts.delete(key);
     }
   }
 
+  /** Read fresh task/output state and verify the exact checkout before projecting a diff. */
   private async loadTaskContext(
     projectId: string,
     taskId: string
@@ -323,7 +345,11 @@ export class CollaborationTaskContextService {
       assertSameAttempt(execution, null);
     }
 
-    let output = tailChunks(execution.output);
+    // The runner already bounds its retained chunks. Join before redaction so a
+    // credential split across provider events is never cut into an unrecognizable value.
+    const output = execution.outputFromFile
+      ? { text: "", truncated: false }
+      : sharedOutputTail(execution.output.join(""), execution.outputTruncated);
     let diff = { text: "", truncated: false };
     let unavailableReason: string | undefined;
     try {
@@ -342,12 +368,10 @@ export class CollaborationTaskContextService {
         throw new Error("Execution checkout no longer matches this project and attempt.");
       }
       assertSameAttempt(execution, this.dependencies.readExecution(projectId, taskId));
-      if (!output.text) {
-        output = await readOutputTail(
-          path.join(worktree, OPENSPRINT_PATHS.active, taskId, OPENSPRINT_PATHS.agentOutputLog)
-        ).catch(() => output);
-      }
-      diff = await this.currentDiff(projectId, worktree);
+      // A checkout is agent writable. Never fall back to its log path: even a
+      // previously verified directory can be replaced by a symlink before open.
+      // Live output comes from the managed runner; completed output comes from SQL.
+      diff = await this.cachedCurrentDiff(projectId, taskId, repo, worktree, execution);
     } catch {
       unavailableReason = "The current checkout or diff could not be verified. Try again shortly.";
     }
@@ -359,7 +383,7 @@ export class CollaborationTaskContextService {
     return {
       task,
       activeRun,
-      output: redactSecretsForUserDisplay(output.text),
+      output: output.text,
       diff: shared.text,
       outputTruncated: output.truncated,
       diffTruncated: diff.truncated || shared.truncated,
@@ -371,9 +395,46 @@ export class CollaborationTaskContextService {
     };
   }
 
-  private async currentDiff(projectId: string, worktree: string) {
+  /**
+   * Reuse only expensive diff construction after per-request checkout verification.
+   * Task/output/attempt state is never cached. Entries expire promptly, are bounded,
+   * and include project, canonical checkout and configured comparison identities.
+   */
+  private async cachedCurrentDiff(
+    projectId: string,
+    taskId: string,
+    repo: string,
+    worktree: string,
+    execution: CollaborationExecutionSnapshot
+  ): Promise<{ text: string; truncated: boolean }> {
     const settings = await this.dependencies.projectService.getSettings(projectId);
     const preferred = settings.worktreeBaseBranch;
+    const key = JSON.stringify([
+      projectId,
+      taskId,
+      repo,
+      worktree,
+      execution.attemptId,
+      execution.attempt,
+      execution.branchName,
+      preferred,
+    ]);
+    const now = Date.now();
+    for (const [cachedKey, entry] of this.cachedDiffs) {
+      if (entry.expiresAt <= now) this.cachedDiffs.delete(cachedKey);
+    }
+    const cached = this.cachedDiffs.get(key);
+    if (cached) return { ...cached.value };
+    const value = await this.currentDiff(worktree, preferred);
+    if (this.cachedDiffs.size >= MAX_CACHED_DIFFS) {
+      this.cachedDiffs.delete(this.cachedDiffs.keys().next().value!);
+    }
+    this.cachedDiffs.set(key, { expiresAt: Date.now() + DIFF_CACHE_TTL_MS, value: { ...value } });
+    return value;
+  }
+
+  /** Capture committed, staged, working and bounded untracked source changes without staging. */
+  private async currentDiff(worktree: string, preferred: string | undefined) {
     let base: string | null = null;
     for (const candidate of [...new Set([preferred, "main", "master"].filter(Boolean))]) {
       try {
@@ -437,6 +498,7 @@ export class CollaborationTaskContextService {
     return { text: result.text, truncated: untracked.truncated || files.length > 32 };
   }
 
+  /** Read the latest bounded, project-scoped SQL archive and omit an unsafe leading partial line. */
   private async archivedContext(
     projectId: string,
     task: CollaborationTask
@@ -455,12 +517,16 @@ export class CollaborationTaskContextService {
       throw new AppError(409, "AGENT_ATTEMPT_CHANGED", "A new attempt started. Refresh this task.");
     }
     const diff = sharedDiff(typeof latest?.diff === "string" ? latest.diff : "");
+    const output = sharedOutputTail(
+      typeof latest?.output === "string" ? latest.output : "",
+      Number(latest?.output_length ?? 0) > TEXT_LIMIT
+    );
     return {
       task,
       activeRun: null,
-      output: typeof latest?.output === "string" ? redactSecretsForUserDisplay(latest.output) : "",
+      output: output.text,
       diff: diff.text,
-      outputTruncated: Number(latest?.output_length ?? 0) > TEXT_LIMIT,
+      outputTruncated: output.truncated,
       diffTruncated: Number(latest?.diff_length ?? 0) > TEXT_LIMIT || diff.truncated,
       source: latest ? "archived" : "none",
       ...(latest ? { sourceAttempt: Number(latest.attempt) } : {}),
@@ -468,6 +534,7 @@ export class CollaborationTaskContextService {
     };
   }
 
+  /** Read bounded unresolved Execute questions and ignore malformed legacy rows. */
   private async openQuestions(projectId: string): Promise<Map<string, string[]>> {
     const db = await this.dependencies.taskStore.getDb();
     const rows = await db.query(

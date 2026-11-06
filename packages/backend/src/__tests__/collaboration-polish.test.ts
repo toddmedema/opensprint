@@ -448,6 +448,122 @@ describe.each(["sqlite", "postgres"] as const)("polished collaboration (%s)", (d
     ).rejects.toMatchObject({ statusCode: 400 });
   });
 
+  it("requires a verified task and current attempt for every invitation-facing control command", async () => {
+    let activeAttempt: string | null = "attempt-current";
+    const app = express();
+    app.use(express.json());
+    app.use(
+      "/projects/:projectId/collaboration",
+      createCollaborationRouter({
+        service,
+        access: createCollaborationAccess("[]"),
+        assertProjectExists: async () => undefined,
+        assertTaskExists: async (_projectId, taskId) => {
+          if (taskId !== "os-task") throw new AppError(404, "NOT_FOUND", "Unknown task");
+        },
+        getActiveRun: async () => activeAttempt && { attemptId: activeAttempt },
+      })
+    );
+    app.use(errorHandler);
+    const { token } = await service.createInvite(project, host, {
+      displayName: "Controller",
+      role: "controller",
+      expiresInHours: 1,
+    });
+    const endpoint = `/projects/${project}/collaboration/commands`;
+    const controls = [
+      { type: "claim_control" },
+      { type: "handoff_control", targetActorId: null },
+      { type: "request_control", targetActorId: "local-user" },
+      { type: "respond_control", accept: true },
+      { type: "cancel_control_request" },
+      { type: "reclaim_control" },
+    ];
+    for (const [index, control] of controls.entries()) {
+      const input = {
+        ...control,
+        commandId: `missing-task-${index}`,
+        runId: "attempt-current",
+        expectedRevision: 0,
+      };
+      const missingTask = await request(app)
+        .post(endpoint)
+        .auth(token, { type: "bearer" })
+        .send(input);
+      expect(missingTask.status).toBe(400);
+      expect(missingTask.body.error.code).toBe("INVALID_TASK_ID");
+      const stale = await request(app)
+        .post(endpoint)
+        .auth(token, { type: "bearer" })
+        .send({ ...input, commandId: `stale-${index}`, taskId: "os-task", runId: "old-attempt" });
+      expect(stale.status).toBe(409);
+      expect(stale.body.error.code).toBe("AGENT_ATTEMPT_CHANGED");
+    }
+    expect((await service.snapshot(project, host)).runs).toEqual([]);
+    expect((await service.snapshot(project, host)).cursor).toBe(0);
+    const claim = {
+      type: "claim_control",
+      commandId: "valid-claim",
+      runId: "attempt-current",
+      taskId: "os-task",
+      expectedRevision: 0,
+    };
+    expect(
+      (
+        await request(app)
+          .post(endpoint)
+          .auth(token, { type: "bearer" })
+          .send({ ...claim, taskId: "foreign" })
+      ).status
+    ).toBe(404);
+    const valid = await request(app).post(endpoint).auth(token, { type: "bearer" }).send(claim);
+    expect(valid.status).toBe(200);
+    expect(valid.body.data.run).toMatchObject({
+      runId: "attempt-current",
+      taskId: "os-task",
+      revision: 1,
+    });
+    activeAttempt = null;
+    const ended = await request(app)
+      .post(endpoint)
+      .auth(token, { type: "bearer" })
+      .send({
+        ...claim,
+        type: "handoff_control",
+        targetActorId: null,
+        commandId: "ended-release",
+        expectedRevision: 1,
+      });
+    expect(ended.status).toBe(409);
+    expect((await service.getRunControl(project, "attempt-current")).revision).toBe(1);
+  });
+
+  it("fails closed when a control endpoint cannot resolve active attempts", async () => {
+    const app = express();
+    app.use(express.json());
+    app.use(
+      "/projects/:projectId/collaboration",
+      createCollaborationRouter({
+        service,
+        access: createCollaborationAccess("[]"),
+        assertProjectExists: async () => undefined,
+      })
+    );
+    app.use(errorHandler);
+    const response = await request(app)
+      .post(`/projects/${project}/collaboration/commands`)
+      .auth(VITEST_DEFAULT_LOCAL_SESSION_TOKEN, { type: "bearer" })
+      .send({
+        type: "claim_control",
+        commandId: "unverified-claim",
+        runId: "arbitrary",
+        taskId: "os-task",
+        expectedRevision: 0,
+      });
+    expect(response.status).toBe(503);
+    expect((await service.snapshot(project, host)).runs).toEqual([]);
+  });
+
   it("authenticates dynamic credentials on every route and rejects stale task control and host-only access", async () => {
     const app = express();
     app.use(express.json());

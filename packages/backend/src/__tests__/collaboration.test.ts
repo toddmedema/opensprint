@@ -419,7 +419,13 @@ describe("durable project collaboration", () => {
         await request(app)
           .post(`${endpoint}/commands`)
           .auth("alice-secret", { type: "bearer" })
-          .send({ commandId: "claim", type: "claim_control", runId: "one", expectedRevision: 0 })
+          .send({
+            commandId: "claim",
+            type: "claim_control",
+            taskId: "os-one",
+            runId: "run-one",
+            expectedRevision: 0,
+          })
       ).status
     ).toBe(403);
     expect(

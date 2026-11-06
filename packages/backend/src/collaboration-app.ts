@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import express, { type Router } from "express";
+import express, { type ErrorRequestHandler, type Router } from "express";
 import { API_PREFIX, buildSpaContentSecurityPolicyProduction } from "@opensprint/shared";
 import type { AppServices } from "./composition.js";
 import { createCollaborationRouter } from "./routes/collaboration.js";
@@ -12,6 +12,9 @@ import { agentChatService } from "./services/agent-chat.service.js";
 import { AppError, errorHandler } from "./middleware/error-handler.js";
 import { requireDatabase } from "./middleware/require-database.js";
 import { wrapAsync } from "./middleware/wrap-async.js";
+import { createLogger } from "./utils/logger.js";
+
+const log = createLogger("collaboration-guest");
 
 export interface CollaborationSharingConfig {
   port: number;
@@ -72,6 +75,8 @@ export function createProjectCollaborationRouter(services: AppServices): Router 
         branchName: slot.branchName,
         worktreePath: slot.worktreePath,
         output: slot.agent.outputLog,
+        outputTruncated: Boolean(slot.agent.outputLogTruncated),
+        outputFromFile: Boolean(slot.agent.outputLogFromFile),
         uncertain: slot.agent.activeProcess?.ownership === "recovered_unverified",
       };
     },
@@ -109,6 +114,35 @@ export function createProjectCollaborationRouter(services: AppServices): Router 
   });
 }
 
+/**
+ * Keep unexpected guest-facing errors opaque in every deployment mode. Intentional
+ * application errors retain their public contract; diagnostics remain server-side.
+ */
+const guestErrorHandler: ErrorRequestHandler = (error: unknown, req, res, next) => {
+  if (res.headersSent) {
+    next(error);
+    return;
+  }
+  if (error instanceof AppError) {
+    errorHandler(error, req, res, next);
+    return;
+  }
+  log.error("Guest request error", {
+    requestId: req.requestId,
+    message: error instanceof Error ? error.message : "Unknown error",
+    stack: error instanceof Error ? error.stack : undefined,
+  });
+  const invalidJson =
+    error instanceof SyntaxError && "type" in error && error.type === "entity.parse.failed";
+  res.status(invalidJson ? 400 : 500).json({
+    error: {
+      code: invalidJson ? "INVALID_JSON" : "INTERNAL_ERROR",
+      message: invalidJson ? "Invalid JSON request body." : "An unexpected error occurred",
+    },
+  });
+};
+
+/** Serve only scoped collaboration APIs and guest assets, without desktop session bootstrap. */
 export function createCollaborationSharingApp(
   config: CollaborationSharingConfig,
   router: Router
@@ -169,6 +203,6 @@ export function createCollaborationSharingApp(
     })
   );
   app.use((_req, res) => res.status(404).end());
-  app.use(errorHandler);
+  app.use(guestErrorHandler);
   return app;
 }
