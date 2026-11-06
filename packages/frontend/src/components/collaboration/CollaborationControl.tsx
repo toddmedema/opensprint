@@ -206,7 +206,7 @@ export function CollaborationControl({
                       </label>
                       <select
                         id="collaboration-next-controller"
-                        className="min-w-0 flex-1 rounded-lg border border-theme-border bg-theme-bg p-2 text-sm"
+                        className="min-w-0 basis-full rounded-lg border border-theme-border bg-theme-bg p-2 text-sm sm:basis-0 sm:flex-1"
                         value={handoff}
                         onChange={(event) => setHandoff(event.target.value)}
                       >
