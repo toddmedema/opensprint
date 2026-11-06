@@ -807,6 +807,11 @@ export function CollaborationSession({
                               {contextData.unavailableReason}
                             </p>
                           )}
+                          {contextView === "diff" && contextData?.source === "active" && (
+                            <p className="text-xs text-theme-muted">
+                              Live diffs show new files after they’re staged or committed.
+                            </p>
+                          )}
                           <pre
                             className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-theme-surface-muted p-3 text-xs"
                             aria-label={contextView === "diff" ? "Task diff" : "Agent output"}
