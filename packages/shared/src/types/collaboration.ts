@@ -1,12 +1,20 @@
-/** Project collaboration is a scoped pilot; existing APIs retain local session auth. */
+/** Scoped collaboration credentials never authorize local settings, deployment or governance. */
 export type CollaborationRole = "viewer" | "participant" | "controller";
-
 export interface CollaborationPrincipal {
   actorId: string;
   displayName: string;
   role: CollaborationRole;
 }
-
+export interface CollaborationContext {
+  kind: "file" | "diff" | "event";
+  label: string;
+  path?: string;
+  line?: number;
+  eventCursor?: number;
+  attemptId?: string;
+  attempt?: number;
+  diffRevision?: string;
+}
 export interface CollaborationMessage {
   id: string;
   actorId: string;
@@ -14,54 +22,154 @@ export interface CollaborationMessage {
   content: string;
   createdAt: string;
   cursor: number;
+  taskId?: string;
+  context?: CollaborationContext;
+  mentionActorIds?: string[];
+  decision?: boolean;
 }
-
+export interface CollaborationControlRequest {
+  requestedBy: string;
+  targetActorId: string;
+  createdAt: string;
+}
 export interface CollaborationRun {
   runId: string;
   controllerId: string | null;
   revision: number;
+  request?: CollaborationControlRequest | null;
+  taskId?: string;
 }
-
 export interface CollaborationEvent {
   projectId: string;
   cursor: number;
-  type: "message_appended" | "control_claimed" | "control_handed_off";
+  type:
+    | "message_appended"
+    | "control_claimed"
+    | "control_handed_off"
+    | "control_requested"
+    | "control_request_resolved";
   actorId: string;
   createdAt: string;
   payload: CollaborationMessage | CollaborationRun;
 }
-
 export type CollaborationCommand = { commandId: string } & (
-  | { type: "append_message"; content: string }
-  | { type: "claim_control"; runId: string; expectedRevision: number }
+  | {
+      type: "append_message";
+      content: string;
+      taskId?: string;
+      context?: CollaborationContext;
+      mentionActorIds?: string[];
+      decision?: boolean;
+    }
+  | { type: "claim_control"; runId: string; expectedRevision: number; taskId?: string }
+  | { type: "reclaim_control"; runId: string; expectedRevision: number; taskId?: string }
   | {
       type: "handoff_control";
       runId: string;
       expectedRevision: number;
       targetActorId: string | null;
+      taskId?: string;
     }
+  | {
+      type: "request_control";
+      runId: string;
+      expectedRevision: number;
+      targetActorId: string;
+      taskId?: string;
+    }
+  | {
+      type: "respond_control";
+      runId: string;
+      expectedRevision: number;
+      accept: boolean;
+      taskId?: string;
+    }
+  | { type: "cancel_control_request"; runId: string; expectedRevision: number; taskId?: string }
 );
-
 export interface CollaborationCommandResult {
   event: CollaborationEvent;
   message?: CollaborationMessage;
   run?: CollaborationRun;
 }
-
 export interface CollaborationSnapshot {
   projectId: string;
   sessionId: "default";
   cursor: number;
   messages: CollaborationMessage[];
-  /** Older messages remain available through /events replay. */
   messagesHasMore: boolean;
   runs: CollaborationRun[];
   runsHasMore: boolean;
   principal: CollaborationPrincipal;
 }
-
 export interface CollaborationReplay {
   events: CollaborationEvent[];
   nextCursor: number;
   hasMore: boolean;
+}
+export interface CollaborationInvite {
+  id: string;
+  actorId: string;
+  displayName: string;
+  role: CollaborationRole;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+}
+export interface CollaborationCreatedInvite {
+  invite: CollaborationInvite;
+  token: string;
+}
+export interface CollaborationPresence extends CollaborationPrincipal {
+  clientId: string;
+  taskId: string | null;
+  lastSeenAt: string;
+}
+export interface CollaborationPreferences {
+  seenCursor: number;
+  subscribedTaskIds: string[];
+  seenAt?: string | null;
+}
+export interface CollaborationNotification {
+  id: string;
+  cursor: number;
+  taskId: string | null;
+  actorId: string;
+  createdAt: string;
+  kind: "mention" | "control_request" | "task_discussion";
+  content: string;
+}
+export interface CollaborationTask {
+  id: string;
+  title: string;
+  status: string;
+  updatedAt?: string;
+  completedAt?: string | null;
+  summary?: string | null;
+  questions?: string[];
+}
+export interface CollaborationOverview {
+  projectName: string;
+  tasks: CollaborationTask[];
+  observedAt?: string;
+}
+export interface CollaborationActiveRun {
+  taskId: string;
+  attemptId: string;
+  attempt: number;
+  supported: boolean;
+  reason: string | null;
+  control?: CollaborationRun;
+}
+export interface CollaborationTaskContext {
+  task: CollaborationTask;
+  activeRun: CollaborationActiveRun | null;
+  output: string;
+  diff: string;
+  outputTruncated?: boolean;
+  diffTruncated?: boolean;
+  unavailableReason?: string;
+  sourceAttemptId?: string;
+  sourceAttempt?: number;
+  source?: "active" | "archived" | "none";
+  diffRevision?: string;
 }

@@ -152,7 +152,25 @@ describe("durable project collaboration", () => {
       },
       (actorId) => actorId === next.actorId
     );
-    expect(handed.run).toEqual({ runId: "run-1", controllerId: next.actorId, revision: 2 });
+    expect(handed.run).toMatchObject({
+      runId: "run-1",
+      controllerId: owner.actorId,
+      revision: 2,
+      request: { targetActorId: next.actorId },
+    });
+    const accepted = await service.command(
+      "A",
+      next,
+      {
+        type: "respond_control",
+        commandId: "accept",
+        runId: "run-1",
+        expectedRevision: 2,
+        accept: true,
+      },
+      () => true
+    );
+    expect(accepted.run).toEqual({ runId: "run-1", controllerId: next.actorId, revision: 3 });
     await expect(
       service.command("A", owner, {
         commandId: "stale",
@@ -164,6 +182,7 @@ describe("durable project collaboration", () => {
     expect((await service.snapshot("B", alice)).runs).toEqual([]);
     expect((await service.replay("A")).events.map((e) => e.type)).toEqual([
       "control_claimed",
+      "control_requested",
       "control_handed_off",
     ]);
   });
@@ -224,6 +243,18 @@ describe("durable project collaboration", () => {
     release();
     expect(await guidance).toBe("accepted");
     await handoff;
+    await service.command(
+      "A",
+      bob,
+      {
+        type: "respond_control",
+        commandId: "accept",
+        runId: "run-1",
+        expectedRevision: 2,
+        accept: true,
+      },
+      () => true
+    );
     await expect(
       service.withControl("A", alice, "run-1", async () => "forbidden")
     ).rejects.toMatchObject({ statusCode: 403 });
@@ -232,7 +263,7 @@ describe("durable project collaboration", () => {
       type: "handoff_control",
       commandId: "release",
       runId: "run-1",
-      expectedRevision: 2,
+      expectedRevision: 3,
       targetActorId: null,
     });
     await expect(service.assertControl("A", local, "run-1")).rejects.toMatchObject({
@@ -242,9 +273,9 @@ describe("durable project collaboration", () => {
       type: "claim_control",
       commandId: "local-claim",
       runId: "run-1",
-      expectedRevision: 3,
+      expectedRevision: 4,
     });
-    expect(await service.assertControl("A", local, "run-1")).toBe(4);
+    expect(await service.assertControl("A", local, "run-1")).toBe(5);
   });
 
   it("serializes TaskStore, repository writes, and reads on the shared SQLite connection without nesting deadlocks", async () => {
@@ -472,6 +503,18 @@ describe("durable project collaboration", () => {
         runId: "run-one",
         expectedRevision: 1,
         targetActorId: "local-user",
+      },
+      (actorId) => access.canControlActor("A", actorId)
+    );
+    await service.command(
+      "A",
+      { actorId: "local-user", displayName: "Local user", role: "controller" },
+      {
+        type: "respond_control",
+        commandId: "accept-local",
+        runId: "run-one",
+        expectedRevision: 2,
+        accept: true,
       },
       (actorId) => access.canControlActor("A", actorId)
     );
