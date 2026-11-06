@@ -1,6 +1,7 @@
 import type { CollaborationContext, CollaborationEvent } from "@opensprint/shared";
 import type { CollaborationSessionState } from "./useCollaborationSession";
 
+/** Describe committed discussion and control events using the caller's current actor labels. */
 export function collaborationEventLabel(
   event: CollaborationEvent,
   name: (id: string) => string
@@ -16,6 +17,10 @@ export function collaborationEventLabel(
   return `${who} ${event.type === "control_claimed" ? "claimed" : "handed over"} control${event.type === "control_claimed" ? "" : ` to ${name(run.controllerId)}`}`;
 }
 
+/**
+ * Render catch-up information and independently paged history. Marking read acknowledges
+ * only the displayed event cursor and the overview observation time, preserving later updates.
+ */
 export function CollaborationActivity({
   session,
   mode,

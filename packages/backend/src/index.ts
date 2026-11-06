@@ -124,6 +124,7 @@ function stopRuntimeHeartbeat(): void {
 }
 
 // Graceful shutdown
+/** Stop host/guest listeners and database services while honoring the configured agent preservation policy. */
 const shutdown = async (trigger: string) => {
   if (shuttingDown) {
     logShutdown.warn("Shutdown already in progress", { trigger });

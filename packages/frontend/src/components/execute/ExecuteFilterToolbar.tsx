@@ -65,6 +65,7 @@ interface ExecuteFilterToolbarProps {
   mergeStrategy?: "per_task" | "per_epic";
 }
 
+/** Present Execute filters, shared-session entry, search, and view controls in one toolbar. */
 export function ExecuteFilterToolbar({
   chipConfig,
   collaborationControl,

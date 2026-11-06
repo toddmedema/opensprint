@@ -92,6 +92,10 @@ const BASELINE_MERGE_PAUSE_SWEEP_MS = 8000;
 /** Status filters that still apply to the task list but have no chip on the current Execute toolbar. */
 const EXECUTE_FILTERS_WITHOUT_CHIPS: StatusFilter[] = ["planning", "in_line"];
 
+/**
+ * Coordinate Execute task selection, live and archived details, and collaboration.
+ * The collaboration dock follows the selected task while project-owned drafts survive closing it.
+ */
 export function ExecutePhase({
   projectId,
   selectedTaskId: propSelectedTaskId,

@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS collaboration_preferences (
   subscribed_task_ids TEXT NOT NULL DEFAULT '[]', seen_at TEXT, PRIMARY KEY (project_id, actor_id)
 );`;
 
+/** Apply additive collaboration tables and indexes through the portable database client. */
 export async function runCollaborationSchema(client: DbClient): Promise<void> {
   for (const statement of COLLABORATION_SCHEMA_SQL.split(";")
     .map((s) => s.trim())

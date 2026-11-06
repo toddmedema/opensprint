@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { collaborationApi } from "../../api/collaboration";
 
+/** Show deduplicated project presence and entry actions without owning the shared session. */
 export function CollaborationLauncher({
   projectId,
   open,

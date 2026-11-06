@@ -25,6 +25,10 @@ export interface CollaborationGuidanceMessage {
   error?: string;
 }
 
+/**
+ * Bind collaboration requests to one project and its in-memory invitation credential.
+ * Omitting the credential uses the existing local session; it does not create guest authority.
+ */
 export function collaborationApi(projectId: string, token?: string) {
   const prefix = `/projects/${encodeURIComponent(projectId)}/collaboration`;
   const headers = token ? { Authorization: `Bearer ${token}` } : undefined;

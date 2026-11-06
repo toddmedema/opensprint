@@ -35,6 +35,11 @@ export interface CollaborationSessionProps {
   draftOwner?: CollaborationDraftOwner;
 }
 
+/**
+ * Present the same task-centered collaboration flow in the Execute dock and standalone page.
+ * Following changes the inspected task; discussion promotion prepares an editable draft and
+ * never submits agent guidance without an explicit user action.
+ */
 export function CollaborationSession({
   projectId,
   token,
@@ -64,6 +69,7 @@ export function CollaborationSession({
   const draftState = draftOwner?.state ?? internalDrafts;
   const updateDraftState = draftOwner?.update ?? setInternalDrafts;
   const { drafts, contexts, decisions, mentions, guidanceDrafts } = draftState;
+  /** Apply field updates through the project-owned draft store when the dock has an owner. */
   const setDraftField = <K extends keyof CollaborationDraftState>(
     key: K,
     update: SetStateAction<CollaborationDraftState[K]>
@@ -109,6 +115,7 @@ export function CollaborationSession({
       ),
     [session.presence.data]
   );
+  /** Resolve human labels from current presence, retained discussion, or the host identity. */
   const actorName = (actorId: string) =>
     actorId === principal?.actorId
       ? `${principal.displayName} (you)`
@@ -153,12 +160,14 @@ export function CollaborationSession({
     const live = session.presence.data?.find((person) => person.clientId === follow.clientId);
     if (live) setFollowTaskId(live.taskId);
   }, [follow, session.presence.data]);
+  /** A manual selection ends participant following and synchronizes the enclosing task view. */
   const selectTask = (next: string | null) => {
     setFollow(null);
     setFollowTaskId(null);
     setLocalTaskId(next);
     onSelectTaskId?.(next);
   };
+  /** Keep a source reference with the destination task draft before focusing its composer. */
   const openDiscussion = (context: CollaborationContext, nextTask?: string) => {
     const targetTask = nextTask ?? taskId;
     if (nextTask && nextTask !== taskId) selectTask(nextTask);
@@ -167,6 +176,7 @@ export function CollaborationSession({
     setTab("discussion");
     window.requestAnimationFrame(() => discussionRef.current?.focus());
   };
+  /** Capture the displayed source revision so a later comment retains its original provenance. */
   const sourceContext = (
     kind: CollaborationContext["kind"],
     label: string
@@ -177,6 +187,7 @@ export function CollaborationSession({
     ...(contextData?.sourceAttempt ? { attempt: contextData.sourceAttempt } : {}),
     ...(contextData?.diffRevision ? { diffRevision: contextData.diffRevision } : {}),
   });
+  /** Attribute discussion to its author and source while preparing, rather than sending, guidance. */
   const promote = (message: CollaborationMessage) => {
     if (!taskId || !session.activeRun) return;
     const context = message.context;

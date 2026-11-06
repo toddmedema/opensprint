@@ -3,6 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import type { CollaborationCommand, CollaborationPresence } from "@opensprint/shared";
 import type { CollaborationSessionState } from "./useCollaborationSession";
 
+/** Translate durable receipt dispositions without implying that a model obeyed the guidance. */
 export function guidanceStatusLabel(status?: string): string {
   return (
     (
@@ -17,6 +18,10 @@ export function guidanceStatusLabel(status?: string): string {
   );
 }
 
+/**
+ * Offer consent-based control actions and explicit guidance submission for the current attempt.
+ * Drafts and request identities stay with their attempt so retries cannot steer a replacement run.
+ */
 export function CollaborationControl({
   session,
   taskId,
@@ -75,6 +80,7 @@ export function CollaborationControl({
         .map((person) => [person.actorId, person])
     ).values()
   );
+  /** Bind every control mutation to the displayed attempt and its current control revision. */
   const sendControl = (
     command:
       | Omit<

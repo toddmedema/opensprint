@@ -50,15 +50,6 @@ function isFocusInModal(e: KeyboardEvent): boolean {
   return Boolean(dialog);
 }
 
-/**
- * Registers global keyboard shortcuts (web and Electron):
- * - 1/2/3/4/5: switch to Sketch/Plan/Execute/Evaluate/Deliver (when on a project)
- * - Ctrl+Tab / Ctrl+Shift+Tab: next/previous phase tab with wrap (when on a project; works even in editable fields)
- * - ~ (Backquote): go to home
- * - Escape: close modal if one is open; otherwise open settings (project if in a project, else global)
- * - ?: open help (project help if in a project, else global; same navigation as Settings)
- * - F1: open help on web builds
- */
 /** Parse projectId from pathname when under /projects/:projectId/... (GlobalKeyboardShortcuts is outside Routes so useParams is empty). */
 function projectIdFromPathname(pathname: string): string | undefined {
   const m = pathname.match(/^\/projects\/([^/]+)(?:\/|$)/);
@@ -75,6 +66,15 @@ function phaseIndexFromPathname(pathname: string): number {
   return idx >= 0 ? idx : 0;
 }
 
+/**
+ * Registers global keyboard shortcuts (web and Electron):
+ * - 1/2/3/4/5: switch to Sketch/Plan/Execute/Evaluate/Deliver (when on a project)
+ * - Ctrl+Tab / Ctrl+Shift+Tab: next/previous phase tab with wrap (when on a project; works even in editable fields)
+ * - ~ (Backquote): go to home
+ * - Escape: close modal if one is open; otherwise open settings (project if in a project, else global)
+ * - ?: open help (project help if in a project, else global; same navigation as Settings)
+ * - F1: open help on web builds
+ */
 export function GlobalKeyboardShortcuts() {
   const navigate = useNavigate();
   const location = useLocation();

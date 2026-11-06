@@ -18,6 +18,7 @@ export interface CollaborationDraftState {
   messageIdentities: Record<string, { payload: string; id: string } | undefined>;
   guidanceIdentities: Record<string, { payload: string; id: string } | undefined>;
 }
+/** Create fresh draft maps so projects and new connections never share mutable composition state. */
 export function emptyCollaborationDrafts(): CollaborationDraftState {
   return {
     drafts: {},
@@ -33,6 +34,10 @@ export interface CollaborationDraftOwner {
   state: CollaborationDraftState;
   update: Dispatch<SetStateAction<CollaborationDraftState>>;
 }
+/**
+ * Retain drafts and uncertain-retry identities across dock closes, but discard them on a
+ * project change. Updates captured by an earlier project cannot overwrite the current draft.
+ */
 export function useProjectCollaborationDrafts(projectId: string): CollaborationDraftOwner {
   const project = useRef(projectId);
   project.current = projectId;

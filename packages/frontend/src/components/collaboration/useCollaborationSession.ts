@@ -4,6 +4,7 @@ import type { CollaborationCommand, CollaborationSnapshot } from "@opensprint/sh
 import { applyCollaborationReplay, collaborationApi } from "../../api/collaboration";
 import { ApiError } from "../../api/client";
 
+/** Identify terminal membership failures so polling stops after expiration or revocation. */
 export function isCollaborationAccessError(error: unknown): boolean {
   return (
     error instanceof ApiError &&
@@ -11,6 +12,11 @@ export function isCollaborationAccessError(error: unknown): boolean {
   );
 }
 
+/**
+ * Own one connection's server queries, durable event replay, and browser presence.
+ * Query identities exclude credentials, history pagination is independent of unread state,
+ * and cleanup removes connection data without cancelling the agent attempt.
+ */
 export function useCollaborationSession(
   projectId: string,
   token: string | undefined,
@@ -134,6 +140,7 @@ export function useCollaborationSession(
     let inFlight: Promise<void> | null = null;
     let queued = false;
     let lastSentTask: string | null | undefined;
+    /** Serialize heartbeats and queue task changes without reviving a connection after cleanup. */
     const beat = (force = true) => {
       if (!current) return;
       if (inFlight) {

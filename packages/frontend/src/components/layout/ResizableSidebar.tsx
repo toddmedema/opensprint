@@ -136,6 +136,7 @@ function useSwipeToClose(
  * A sidebar with a draggable edge for resize. Width is persisted to localStorage.
  * Shared by Plan, Sketch, Execute, and Deliver phases (plan detail, TOC/Discuss, task detail, delivery history).
  * When responsive=true and viewport < md: renders as fixed overlay with backdrop, close button, and swipe-to-close.
+ * Mobile overlays honor mobileTopOffset so persistent navigation cannot cover their heading or close action.
  */
 export function ResizableSidebar({
   storageKey,

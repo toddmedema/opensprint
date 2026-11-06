@@ -5,6 +5,7 @@ export interface CollaborationPrincipal {
   displayName: string;
   role: CollaborationRole;
 }
+/** Discussion provenance identifies displayed content; paths never authorize filesystem reads. */
 export interface CollaborationContext {
   kind: "file" | "diff" | "event";
   label: string;
@@ -32,6 +33,7 @@ export interface CollaborationControlRequest {
   targetActorId: string;
   createdAt: string;
 }
+/** Versioned ownership for one execution attempt, separate from browser presence. */
 export interface CollaborationRun {
   runId: string;
   controllerId: string | null;
@@ -52,6 +54,10 @@ export interface CollaborationEvent {
   createdAt: string;
   payload: CollaborationMessage | CollaborationRun;
 }
+/**
+ * Idempotent project mutations. HTTP control commands require taskId to validate the live
+ * attempt; the optional field permits trusted internal callers to manage retained state.
+ */
 export type CollaborationCommand = { commandId: string } & (
   | {
       type: "append_message";
@@ -115,6 +121,7 @@ export interface CollaborationInvite {
   expiresAt: string;
   revokedAt: string | null;
 }
+/** The raw bearer token is returned only at creation; persisted invitation metadata omits it. */
 export interface CollaborationCreatedInvite {
   invite: CollaborationInvite;
   token: string;
@@ -162,6 +169,7 @@ export interface CollaborationActiveRun {
   reason: string | null;
   control?: CollaborationRun;
 }
+/** Bounded, read-only task projection tied to a verified live attempt or its latest archive. */
 export interface CollaborationTaskContext {
   task: CollaborationTask;
   activeRun: CollaborationActiveRun | null;

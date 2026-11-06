@@ -82,9 +82,11 @@ export interface CollaborationStore {
   runRead<T>(fn: (client: DbClient) => Promise<T>): Promise<T>;
 }
 
+/** Reject an operation without changing collaboration state. */
 function forbidden(message: string): never {
   throw new AppError(403, "COLLABORATION_FORBIDDEN", message);
 }
+/** Report a stale revision or conflicting command identity with optional recovery context. */
 function conflict(message: string, details?: unknown): never {
   throw new AppError(409, "COLLABORATION_CONFLICT", message, details);
 }
@@ -93,6 +95,7 @@ const RUN_SELECT = `SELECT r.*, q.requested_by, q.target_actor_id, q.created_at 
  LEFT JOIN collaboration_run_context c ON c.project_id = r.project_id AND c.run_id = r.run_id`;
 const MESSAGE_SELECT = `SELECT m.*, c.task_id, c.context_json, c.mention_actor_ids, c.decision FROM collaboration_messages m
  LEFT JOIN collaboration_message_context c ON c.project_id = m.project_id AND c.message_id = m.id`;
+/** Project invitation metadata without returning its persisted token hash. */
 function inviteFromRow(row: DbRow): CollaborationInvite {
   return {
     id: String(row.id),
@@ -104,6 +107,7 @@ function inviteFromRow(row: DbRow): CollaborationInvite {
     revokedAt: row.revoked_at == null ? null : String(row.revoked_at),
   };
 }
+/** Rebuild attempt ownership with its current consent request and optional task binding. */
 function runFromRow(row: DbRow): CollaborationRun {
   return {
     runId: String(row.run_id),
@@ -121,6 +125,7 @@ function runFromRow(row: DbRow): CollaborationRun {
     ...(row.task_id ? { taskId: String(row.task_id) } : {}),
   };
 }
+/** Restore attributed discussion and its optional context from the joined projection. */
 function messageFromRow(row: DbRow): CollaborationMessage {
   return {
     id: String(row.id),
@@ -138,9 +143,11 @@ function messageFromRow(row: DbRow): CollaborationMessage {
   };
 }
 
+/** Persist project discussion, invitations, presence, and attempt control under one transactional cursor. */
 export class CollaborationService {
   constructor(private readonly store: CollaborationStore = taskStore) {}
 
+  /** Resolve a hashed invitation only while its project membership is current. */
   async resolveInvite(projectId: string, token: string): Promise<CollaborationPrincipal | null> {
     if (!/^[A-Za-z0-9_-]{32,128}$/.test(token)) return null;
     const tokenHash = createHash("sha256").update(token).digest("hex");
@@ -159,11 +166,13 @@ export class CollaborationService {
     });
   }
 
+  /** Keep invitation administration exclusive to the trusted installation host. */
   private assertHost(principal: CollaborationPrincipal): void {
     if (principal.actorId !== "local-user")
       forbidden("Only this installation's host can manage invitations.");
   }
 
+  /** Recheck dynamic invitation authority inside the same transaction as a mutation. */
   private async assertCurrentMembership(
     tx: DbClient,
     projectId: string,
@@ -182,6 +191,7 @@ export class CollaborationService {
       forbidden("This invitation is expired or revoked. Join again with current project access.");
   }
 
+  /** Return a bounded host-only invitation list without reusable credential material. */
   async listInvites(
     projectId: string,
     principal: CollaborationPrincipal
@@ -197,6 +207,7 @@ export class CollaborationService {
     );
   }
 
+  /** Create an expiring named credential; persist its hash and return the secret exactly once. */
   async createInvite(
     projectId: string,
     principal: CollaborationPrincipal,
@@ -251,6 +262,7 @@ export class CollaborationService {
     return { invite, token };
   }
 
+  /** Revoke future access and remove presence while retaining durable ownership and history. */
   async revokeInvite(
     projectId: string,
     principal: CollaborationPrincipal,
@@ -274,6 +286,7 @@ export class CollaborationService {
     });
   }
 
+  /** List recent browsers whose invitation membership has not expired or been revoked. */
   async presence(projectId: string): Promise<CollaborationPresence[]> {
     return this.store.runRead(async (tx) =>
       (
@@ -292,6 +305,7 @@ export class CollaborationService {
     );
   }
 
+  /** Refresh only the authenticated actor's browser presence and prune expired entries. */
   async heartbeat(
     projectId: string,
     principal: CollaborationPrincipal,
@@ -318,6 +332,7 @@ export class CollaborationService {
     });
   }
 
+  /** Remove one actor-owned browser without releasing attempt control or stopping execution. */
   async leave(
     projectId: string,
     principal: CollaborationPrincipal,
@@ -333,6 +348,7 @@ export class CollaborationService {
     );
   }
 
+  /** Read actor-specific catch-up and subscription state, defaulting to an unread project. */
   async preferences(
     projectId: string,
     principal: CollaborationPrincipal
@@ -352,6 +368,7 @@ export class CollaborationService {
     });
   }
 
+  /** Advance read acknowledgments monotonically while preserving subscription-only edits. */
   async updatePreferences(
     projectId: string,
     principal: CollaborationPrincipal,
@@ -425,6 +442,7 @@ export class CollaborationService {
     });
   }
 
+  /** Select relevant unread events before limiting results, and suppress obsolete control requests. */
   async notifications(
     projectId: string,
     principal: CollaborationPrincipal,
@@ -499,6 +517,7 @@ export class CollaborationService {
     });
   }
 
+  /** Read attempt ownership and consent state; unknown attempts begin unclaimed at revision zero. */
   async getRunControl(projectId: string, runId: string): Promise<CollaborationRun> {
     return this.store.runRead(async (tx) => {
       const row = await tx.queryOne(`${RUN_SELECT} WHERE r.project_id = $1 AND r.run_id = $2`, [
@@ -509,6 +528,7 @@ export class CollaborationService {
     });
   }
 
+  /** Validate current membership and ownership for guidance, retaining local legacy compatibility. */
   private async checkControl(
     tx: DbClient,
     projectId: string,
@@ -557,6 +577,7 @@ export class CollaborationService {
     });
   }
 
+  /** Read a coherent bounded history projection with the durable replay cursor and current actor. */
   async snapshot(
     projectId: string,
     principal: CollaborationPrincipal
@@ -588,6 +609,7 @@ export class CollaborationService {
     });
   }
 
+  /** Page committed events after a validated cursor; future cursors require a fresh snapshot. */
   async replay(projectId: string, after = 0, limit = 100): Promise<CollaborationReplay> {
     if (
       !Number.isSafeInteger(after) ||
@@ -624,6 +646,7 @@ export class CollaborationService {
     });
   }
 
+  /** Deduplicate an actor-bound command and atomically commit its authorized state transition and event. */
   async command(
     projectId: string,
     principal: CollaborationPrincipal,
@@ -730,6 +753,7 @@ export class CollaborationService {
           : { runId: command.runId, controllerId: null, revision: 0 };
         if (run.revision !== command.expectedRevision)
           conflict("Control revision changed. Refresh before retrying.", { run });
+        /** Check configured or unexpired invitation-based controller authority before a handoff. */
         const mayControl = async (actorId: string) => {
           if (canControlActor(actorId)) return true;
           return Boolean(

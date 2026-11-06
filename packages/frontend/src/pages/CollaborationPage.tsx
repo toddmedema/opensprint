@@ -81,6 +81,7 @@ function CollaborationConnection({ projectId }: { projectId: string }) {
     </main>
   );
 }
+/** Key connections by project so guest credentials and local composition cannot cross projects. */
 export function CollaborationPage() {
   const { projectId = "" } = useParams();
   return <CollaborationConnection key={projectId} projectId={projectId} />;

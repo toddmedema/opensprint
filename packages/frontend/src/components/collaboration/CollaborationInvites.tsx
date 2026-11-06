@@ -11,6 +11,10 @@ export const collaborationRoleLabels: Record<CollaborationRole, string> = {
 const field =
   "w-full rounded-lg border border-theme-border bg-theme-bg px-3 py-2 text-sm text-theme-text";
 
+/**
+ * Let the host create or revoke named project access. Newly returned bearer secrets are
+ * shown only in the current view and placed in link fragments rather than query parameters.
+ */
 export function CollaborationInvites({
   session,
   projectId,

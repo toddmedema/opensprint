@@ -51,6 +51,7 @@ import {
 import { buildSpaContentSecurityPolicyProduction } from "@opensprint/shared";
 import { allowDesktopLocalSessionScriptRequest } from "./desktop-local-session-guard.js";
 
+/** Compose the trusted installation API and desktop bootstrap; guest sharing uses a separate app. */
 export function createApp(services?: AppServices) {
   ensureLocalSessionToken();
   const app = express();
