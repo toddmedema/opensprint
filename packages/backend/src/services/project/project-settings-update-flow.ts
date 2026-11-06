@@ -10,6 +10,7 @@ import {
   omitInheritedAgentTiersForStore,
   parseTeamMembers,
   VALID_MERGE_STRATEGIES,
+  TASK_SIZES,
   VALID_SELF_IMPROVEMENT_FREQUENCIES,
 } from "@opensprint/shared";
 import type { SelfImprovementFrequency } from "@opensprint/shared";
@@ -34,6 +35,7 @@ export type UpdateSettingsFlowDeps = {
   listTasks: (projectId: string) => Promise<StoredTask[]>;
 };
 
+/** Validate a partial settings patch and atomically apply it to the latest stored project state. */
 export async function runUpdateSettingsFlow(
   deps: UpdateSettingsFlowDeps,
   projectId: string,
@@ -117,6 +119,16 @@ export async function runUpdateSettingsFlow(
     }
 
     const current = projectSettingsFromRaw(workingRaw, gs);
+    if (
+      sanitizedUpdates.taskSize !== undefined &&
+      !TASK_SIZES.includes(sanitizedUpdates.taskSize)
+    ) {
+      throw new AppError(
+        400,
+        ErrorCodes.INVALID_INPUT,
+        "Task size must be larger, balanced, or smaller."
+      );
+    }
     const simpleComplexityAgent = current.simpleComplexityAgent;
     const complexComplexityAgent = current.complexComplexityAgent;
 

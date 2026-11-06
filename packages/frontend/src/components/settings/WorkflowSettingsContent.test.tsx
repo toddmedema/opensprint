@@ -65,6 +65,24 @@ function renderWorkflowContent(overrides?: Partial<ProjectSettings>, routeEntrie
 }
 
 describe("WorkflowSettingsContent", () => {
+  it("defaults task size to Balanced for existing projects", () => {
+    renderWorkflowContent();
+    expect(screen.getByRole("radio", { name: /^Balanced/ })).toBeChecked();
+    expect(screen.getAllByRole("radio")).toHaveLength(3);
+  });
+
+  it.each(["Larger", "Smaller"])("persists the project task size when selecting %s", (label) => {
+    const { persistSettings } = renderWorkflowContent();
+    fireEvent.click(screen.getByRole("radio", { name: new RegExp(`^${label}`) }));
+    expect(persistSettings).toHaveBeenCalledWith(undefined, { taskSize: label.toLowerCase() });
+    expect(screen.getByRole("radio", { name: new RegExp(`^${label}`) })).toBeChecked();
+  });
+
+  it("loads the saved task size", () => {
+    renderWorkflowContent({ taskSize: "larger" });
+    expect(screen.getByRole("radio", { name: /^Larger/ })).toBeChecked();
+  });
+
   it("uses and locks a shared plan branch for PR delivery", () => {
     renderWorkflowContent({ deliveryMode: "pull_request", mergeStrategy: "per_task" });
     expect(screen.getByRole("combobox", { name: "Merge strategy" })).toHaveValue("per_epic");

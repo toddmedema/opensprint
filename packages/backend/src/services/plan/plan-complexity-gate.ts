@@ -2,7 +2,7 @@
  * Complexity gate: decide whether a plan node should generate tasks directly
  * or split into sub-plans before task generation.
  */
-import type { AgentConfig, PlanComplexity } from "@opensprint/shared";
+import type { AgentConfig, PlanComplexity, ProjectSettings } from "@opensprint/shared";
 import {
   type SubPlanDecompositionResult,
   parseSubPlanDecompositionResponse,
@@ -21,6 +21,14 @@ import { getCombinedInstructions } from "../agent-instructions.service.js";
 import { invokeStructuredPlanningAgent } from "../structured-agent-output.service.js";
 import { createLogger } from "../../utils/logger.js";
 
+import { buildPlanningTaskPolicy, type PlanningTaskSettings } from "./plan-task-policy.js";
+import {
+  formatPlanTaskHierarchyContextForPrompt,
+  parseTaskGenerationContent,
+  type PlanTaskHierarchyContext,
+} from "./plan-task-generation.js";
+import { buildAutonomyDescription } from "../autonomy-description.js";
+
 const log = createLogger("plan-complexity-gate");
 
 const MIN_SUB_PLANS = 2;
@@ -34,6 +42,8 @@ export interface EvaluatePlanComplexityOptions {
   currentDepth: number;
   agentConfig: AgentConfig;
   planComplexity?: PlanComplexity;
+  settings?: PlanningTaskSettings & Pick<ProjectSettings, "aiAutonomyLevel" | "hilConfig">;
+  hierarchyContext?: PlanTaskHierarchyContext;
   planId?: string;
   ancestorChainSummary?: string;
   siblingPlanSummaries?: string;
@@ -74,10 +84,14 @@ export async function evaluatePlanComplexity(
     `## Current Depth\n\nThis plan is at depth **${currentDepth}** (max ${MAX_SUB_PLAN_DEPTH}).`,
   ];
 
-  if (ancestorChainSummary) {
+  if (options.hierarchyContext) {
+    contextParts.push(formatPlanTaskHierarchyContextForPrompt(options.hierarchyContext));
+  }
+
+  if (!options.hierarchyContext && ancestorChainSummary) {
     contextParts.push(`## Ancestor Chain\n\n${ancestorChainSummary}`);
   }
-  if (siblingPlanSummaries) {
+  if (!options.hierarchyContext && siblingPlanSummaries) {
     contextParts.push(`## Sibling Plans\n\n${siblingPlanSummaries}`);
   }
 
@@ -87,7 +101,10 @@ export async function evaluatePlanComplexity(
 
   const agentId = `plan-complexity-gate-${projectId}-${Date.now()}`;
 
-  const systemPrompt = `${SUB_PLAN_DECOMPOSITION_SYSTEM_PROMPT}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
+  const autonomy = options.settings
+    ? buildAutonomyDescription(options.settings.aiAutonomyLevel, options.settings.hilConfig)
+    : "";
+  const systemPrompt = `${SUB_PLAN_DECOMPOSITION_SYSTEM_PROMPT}\n\n${buildPlanningTaskPolicy(options.settings)}${autonomy ? `\n\n## AI Autonomy Level\n\n${autonomy}` : ""}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
 
   const messages: Array<{ role: "user" | "assistant"; content: string }> = [
     { role: "user", content: userPrompt },
@@ -146,6 +163,13 @@ export async function evaluatePlanComplexity(
                 return `sub-plan-count-out-of-range: Planner returned ${parsed.subPlans.length} sub-plans, range is ${MIN_SUB_PLANS}–${MAX_SUB_PLANS}.`;
               }
               return undefined;
+            }
+            const taskResult = parseTaskGenerationContent(content);
+            if (
+              !taskResult.ok &&
+              /^(duplicate|invalid)-task-title:/.test(taskResult.parseFailureReason)
+            ) {
+              return taskResult.parseFailureReason;
             }
             return "Agent response was not valid sub-plan decomposition JSON.";
           },

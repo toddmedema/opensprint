@@ -6,8 +6,10 @@ import type { Plan, ProjectSettings } from "@opensprint/shared";
 import { getAgentForPlanningRole } from "@opensprint/shared";
 import {
   normalizePlannerTask,
+  getPlannerTaskTitleError,
   findPlannerTaskArray,
   MAX_TASKS_PER_PLAN,
+  type NormalizedPlannerTask,
 } from "./planner-normalize.js";
 import {
   TASK_GENERATION_SYSTEM_PROMPT,
@@ -21,6 +23,8 @@ import { broadcastToProject } from "../../websocket/index.js";
 import { extractJsonFromAgentResponse } from "../../utils/json-extract.js";
 import { createLogger } from "../../utils/logger.js";
 import { invokeStructuredPlanningAgent } from "../structured-agent-output.service.js";
+
+import { buildPlanningTaskPolicy, type PlanningTaskSettings } from "./plan-task-policy.js";
 
 const log = createLogger("plan-task-generation");
 
@@ -74,7 +78,10 @@ export function formatPlanTaskHierarchyContextForPrompt(ctx: PlanTaskHierarchyCo
       const taskLines = s.taskSummary.split("\n").filter((line) => /^\s*-\s*\*\*/.test(line));
       const count = taskLines.length;
       const title = truncateForPlanningSnippet(s.title, HIERARCHY_TITLE_MAX);
-      const scope = truncateForPlanningSnippet(s.taskSummary.replace(/\s+/g, " ").trim(), HIERARCHY_SCOPE_MAX);
+      const scope = truncateForPlanningSnippet(
+        s.taskSummary.replace(/\s+/g, " ").trim(),
+        HIERARCHY_SCOPE_MAX
+      );
       parts.push(
         `### ${title} — **${count}** implementation task${count === 1 ? "" : "s"}\n` +
           `**Scope (generated tasks):** ${scope || "(no task lines)"}\n`
@@ -109,7 +116,9 @@ export interface PlanTaskGenerationDeps {
    * `dependsOn` in the same planner batch. First title wins when duplicates exist.
    */
   crossEpicDependsTitleToId?: Readonly<Record<string, string>>;
-  settings: { aiAutonomyLevel?: string; hilConfig?: unknown };
+  /** Validated task list from the decomposition call; avoids a second model invocation. */
+  preGeneratedTasks?: NormalizedPlannerTask[];
+  settings: { aiAutonomyLevel?: string; hilConfig?: unknown } & PlanningTaskSettings;
   taskStore: {
     createMany(
       projectId: string,
@@ -125,7 +134,7 @@ export interface PlanTaskGenerationDeps {
 
 /**
  * Extract raw task objects from agent content without enforcing the count cap.
- * Used by both the validated parser and the onExhausted truncation fallback.
+ * Separates JSON extraction from task-count validation.
  */
 export function extractRawTasks(
   content: unknown
@@ -168,6 +177,7 @@ export function extractRawTasks(
   return { ok: true, rawTasks };
 }
 
+/** Validate task JSON and return repairable count or title errors before any writes. */
 export function parseTaskGenerationContent(
   content: unknown
 ):
@@ -183,6 +193,10 @@ export function parseTaskGenerationContent(
     };
   }
 
+  const titleError = getPlannerTaskTitleError(
+    result.rawTasks.map((task) => normalizePlannerTask(task, result.rawTasks))
+  );
+  if (titleError) return { ok: false, parseFailureReason: titleError };
   return result;
 }
 
@@ -203,9 +217,7 @@ export async function generateAndCreateTasks(deps: PlanTaskGenerationDeps): Prom
     ancestorChainSummary,
     siblingPlanSummaries,
     extraUserPromptSuffix,
-    crossEpicDependsTitleToId,
     settings,
-    taskStore,
   } = deps;
   const epicId = plan.metadata.epicId;
 
@@ -217,15 +229,23 @@ export async function generateAndCreateTasks(deps: PlanTaskGenerationDeps): Prom
     };
   }
 
-  const hierarchyBlock =
-    hierarchyContext != null ? formatPlanTaskHierarchyContextForPrompt(hierarchyContext).trim() : "";
+  if (deps.preGeneratedTasks !== undefined) {
+    if (deps.preGeneratedTasks.length === 0 || deps.preGeneratedTasks.length > MAX_TASKS_PER_PLAN) {
+      return {
+        count: 0,
+        taskRefs: [],
+        parseFailureReason: "Expected 1–15 tasks; no tasks were discarded.",
+      };
+    }
+    return persistGeneratedTasks(deps, deps.preGeneratedTasks);
+  }
 
-  const promptSections: string[] = [
-    "## Feature Plan",
-    plan.content,
-    "## PRD Context",
-    prdContext,
-  ];
+  const hierarchyBlock =
+    hierarchyContext != null
+      ? formatPlanTaskHierarchyContextForPrompt(hierarchyContext).trim()
+      : "";
+
+  const promptSections: string[] = ["## Feature Plan", plan.content, "## PRD Context", prdContext];
   if (hierarchyContext == null) {
     const ancestor = ancestorChainSummary?.trim();
     if (ancestor) {
@@ -258,7 +278,7 @@ export async function generateAndCreateTasks(deps: PlanTaskGenerationDeps): Prom
       ? `${TASK_GENERATION_SYSTEM_PROMPT}\n\n## AI Autonomy Level\n\n${autonomyDesc}\n\n`
       : TASK_GENERATION_SYSTEM_PROMPT;
   })();
-  const taskGenSystemPrompt = `${taskGenPrompt}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
+  const taskGenSystemPrompt = `${taskGenPrompt}\n\n${buildPlanningTaskPolicy(settings)}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
   const plannerConfig = getAgentForPlanningRole(
     settings as ProjectSettings,
     "planner",
@@ -304,17 +324,6 @@ export async function generateAndCreateTasks(deps: PlanTaskGenerationDeps): Prom
             const parsed = parseTaskGenerationContent(content);
             return parsed.ok ? undefined : parsed.parseFailureReason;
           },
-          onExhausted: ({ repairRawContent, initialRawContent }) => {
-            const content = repairRawContent || initialRawContent;
-            const extracted = extractRawTasks(content);
-            if (!extracted.ok) return null;
-            if (extracted.rawTasks.length <= MAX_TASKS_PER_PLAN) return extracted.rawTasks;
-            log.warn("Task count still exceeds cap after repair; truncating", {
-              max: MAX_TASKS_PER_PLAN,
-              actual: extracted.rawTasks.length,
-            });
-            return extracted.rawTasks.slice(0, MAX_TASKS_PER_PLAN);
-          },
         },
       }),
   });
@@ -334,7 +343,15 @@ export async function generateAndCreateTasks(deps: PlanTaskGenerationDeps): Prom
 
   const rawTasks = response.parsed;
   const tasks = rawTasks.map((t) => normalizePlannerTask(t, rawTasks));
+  return persistGeneratedTasks(deps, tasks);
+}
 
+/** Both generation paths share versioning, dependency resolution, and file scope persistence. */
+async function persistGeneratedTasks(deps: PlanTaskGenerationDeps, tasks: NormalizedPlannerTask[]) {
+  const titleError = getPlannerTaskTitleError(tasks);
+  if (titleError) return { count: 0, taskRefs: [], parseFailureReason: titleError };
+  const { projectId, plan, taskStore, crossEpicDependsTitleToId } = deps;
+  const epicId = plan.metadata.epicId!;
   const sourceVersion = plan.currentVersionNumber ?? 1;
   const inputs = tasks.map((task) => ({
     title: task.title,

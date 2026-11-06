@@ -96,21 +96,14 @@ const planRouteTaskStoreMod = await import("../services/task-store.service.js");
 const planRoutePostgresOk =
   (planRouteTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
 
-/** planTasks evaluates complexity (gate) before task generation; integration tests must satisfy both planner contracts. */
-const PLAN_TASKS_COMPLEXITY_GATE_STUB = JSON.stringify({
-  strategy: "tasks",
-  tasks: [
-    { title: "_gate", description: "complexity gate stub", priority: 1, dependsOn: [] },
-  ],
-});
-
+/** Return the requested task payload from decomposition and from the invalid-output fallback. */
 function stubPlanTasksPlannerChain(taskGenPayload: unknown) {
   const taskGenContent =
     typeof taskGenPayload === "string" ? taskGenPayload : JSON.stringify(taskGenPayload);
   mockPlanningAgentInvoke.mockImplementation((opts: { tracking?: { label?: string } }) => {
     const label = opts.tracking?.label ?? "";
     if (label === "Complexity gate evaluation") {
-      return Promise.resolve({ content: PLAN_TASKS_COMPLEXITY_GATE_STUB });
+      return Promise.resolve({ content: taskGenContent });
     }
     if (label === "Task generation") {
       return Promise.resolve({ content: taskGenContent });
@@ -717,13 +710,18 @@ Updated description for task two.`;
       expect(readyIds).not.toContain(t.id);
     }
 
-    // Complexity gate + task generation
-    expect(mockPlanningAgentInvoke.mock.calls.length).toBeGreaterThanOrEqual(2);
-    const taskGenCall = mockPlanningAgentInvoke.mock.calls.find(
-      (c) => (c[0] as { tracking?: { label?: string } }).tracking?.label === "Task generation"
+    // Valid direct tasks are persisted from decomposition without another generation call.
+    const gateCalls = mockPlanningAgentInvoke.mock.calls.filter(
+      (c) =>
+        (c[0] as { tracking?: { label?: string } }).tracking?.label === "Complexity gate evaluation"
     );
-    expect(taskGenCall).toBeDefined();
-    const invokeArgs = taskGenCall![0] as {
+    expect(gateCalls).toHaveLength(1);
+    expect(
+      mockPlanningAgentInvoke.mock.calls.some(
+        (c) => (c[0] as { tracking?: { label?: string } }).tracking?.label === "Task generation"
+      )
+    ).toBe(false);
+    const invokeArgs = gateCalls[0]![0] as {
       messages: Array<{ role: string; content: string }>;
       tracking: { role?: string };
     };
@@ -792,7 +790,19 @@ Updated description for task two.`;
                 }),
               });
             }
-            return Promise.resolve({ content: PLAN_TASKS_COMPLEXITY_GATE_STUB });
+            return Promise.resolve({
+              content: JSON.stringify({
+                strategy: "tasks",
+                tasks: [
+                  {
+                    title: `Implement ${pid ?? "plan"}`,
+                    description: "Scoped implementation task",
+                    priority: 1,
+                    dependsOn: [],
+                  },
+                ],
+              }),
+            });
           }
           if (label === "Task generation") {
             return Promise.resolve({

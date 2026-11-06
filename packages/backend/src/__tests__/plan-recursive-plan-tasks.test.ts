@@ -26,9 +26,7 @@ vi.mock("../services/plan/plan-repo-guard.js", () => ({
 }));
 
 vi.mock("../services/agent-instructions.service.js", () => ({
-  getCombinedInstructions: vi
-    .fn()
-    .mockResolvedValue("## Planner instructions\n"),
+  getCombinedInstructions: vi.fn().mockResolvedValue("## Planner instructions\n"),
 }));
 
 vi.mock("../websocket/index.js", () => ({
@@ -105,7 +103,9 @@ function createMockTaskStore() {
         .map(([id]) => id)
     ),
     listAll: vi.fn(async (projectId: string) => getIssues(projectId)),
-    show: vi.fn(async () => ({ id: "", title: "", status: "open", issue_type: "epic", type: "epic" }) as never),
+    show: vi.fn(
+      async () => ({ id: "", title: "", status: "open", issue_type: "epic", type: "epic" }) as never
+    ),
     create: vi.fn(async (_projectId: string, title: string, opts?: Record<string, unknown>) => {
       epicCounter++;
       const id = `os-epic-${epicCounter}`;
@@ -121,7 +121,13 @@ function createMockTaskStore() {
     createMany: vi.fn(
       async (
         projectId: string,
-        inputs: Array<Record<string, unknown> & { title: string; parentId?: string; extra?: { sourcePlanVersionNumber?: number } }>
+        inputs: Array<
+          Record<string, unknown> & {
+            title: string;
+            parentId?: string;
+            extra?: { sourcePlanVersionNumber?: number };
+          }
+        >
       ) => {
         const list = getIssues(projectId);
         return inputs.map((input) => {
@@ -164,10 +170,12 @@ function createMockTaskStore() {
       }
     ),
     planUpdateContent: vi.fn(async () => {}),
-    planUpdateMetadata: vi.fn(async (_projectId: string, planId: string, metadata: Record<string, unknown>) => {
-      const row = plans.get(planId);
-      if (row) row.metadata = metadata;
-    }),
+    planUpdateMetadata: vi.fn(
+      async (_projectId: string, planId: string, metadata: Record<string, unknown>) => {
+        const row = plans.get(planId);
+        if (row) row.metadata = metadata;
+      }
+    ),
     planGetByEpicId: vi.fn(async () => null),
     delete: vi.fn(async () => {}),
     closeMany: vi.fn(async () => {}),
@@ -239,24 +247,86 @@ describe("PlanDecomposeGenerateService.planTasks recursive sub-plans", () => {
       {}
     );
 
-    mockInvokePlanningAgent.mockImplementation((opts: { tracking?: { label?: string; planId?: string } }) => {
-      if (opts.tracking?.label === "Task generation") {
-        const pid = opts.tracking?.planId ?? "plan";
-        return Promise.resolve({
-          content: JSON.stringify({
-            tasks: [
-              {
-                title: `Implement ${pid}`,
-                description: "Scoped work",
-                priority: 1,
-                dependsOn: [],
-              },
-            ],
-          }),
-        });
+    mockInvokePlanningAgent.mockImplementation(
+      (opts: { tracking?: { label?: string; planId?: string } }) => {
+        if (opts.tracking?.label === "Task generation") {
+          const pid = opts.tracking?.planId ?? "plan";
+          return Promise.resolve({
+            content: JSON.stringify({
+              tasks: [
+                {
+                  title: `Implement ${pid}`,
+                  description: "Scoped work",
+                  priority: 1,
+                  dependsOn: [],
+                },
+              ],
+            }),
+          });
+        }
+        return Promise.resolve({ content: JSON.stringify({ complexity: "medium" }) });
       }
-      return Promise.resolve({ content: JSON.stringify({ complexity: "medium" }) });
+    );
+  });
+
+  it("persists a complete three-task decomposition without invoking task generation again", async () => {
+    const parent = await crud.createPlan(PROJECT_ID, {
+      title: "Scenario landing pages",
+      content:
+        "# Scenario landing pages\n\n## Overview\nStatic pages and content for all built-in scenarios, with sitemap discovery.",
+      complexity: "medium",
     });
+    const tasks = [
+      {
+        title: "Build generator and templates",
+        description: "Implement static output and its focused tests",
+        priority: 1,
+        dependsOn: [],
+        files: { create: ["scripts/scenarios.js"] },
+      },
+      {
+        title: "Author all scenario content",
+        description: "Write and validate the complete scenario catalog",
+        priority: 1,
+        dependsOn: ["Build generator and templates"],
+      },
+      {
+        title: "Integrate production discovery",
+        description: "Wire builds, sitemap, and navigation; verify the complete journey",
+        priority: 1,
+        dependsOn: ["Author all scenario content"],
+      },
+    ];
+    mockEvaluatePlanComplexity.mockResolvedValue({ strategy: "tasks", tasks });
+    mockInvokePlanningAgent.mockClear();
+
+    const result = await decompose.planTasks(PROJECT_ID, parent.metadata.planId);
+
+    expect(result.totalTasksCreated).toBe(3);
+    expect(result.hasGeneratedPlanTasksForCurrentVersion).toBe(true);
+    expect(await store.planListByParent(PROJECT_ID, parent.metadata.planId)).toEqual([]);
+    expect(store.createMany).toHaveBeenCalledWith(
+      PROJECT_ID,
+      expect.arrayContaining(
+        tasks.map((task) =>
+          expect.objectContaining({ title: task.title, extra: { sourcePlanVersionNumber: 1 } })
+        )
+      )
+    );
+    expect(store.addDependencies).toHaveBeenCalledWith(
+      PROJECT_ID,
+      expect.arrayContaining([expect.objectContaining({ type: "blocks" })])
+    );
+    expect(store.addLabel).toHaveBeenCalledWith(
+      PROJECT_ID,
+      expect.any(String),
+      'files:{"create":["scripts/scenarios.js"]}'
+    );
+    expect(
+      mockInvokePlanningAgent.mock.calls.some(
+        ([opts]) => opts.tracking?.label === "Task generation"
+      )
+    ).toBe(false);
   });
 
   it("splits into sub-plans, recurses, and marks the parent when all children have tasks", async () => {
@@ -311,7 +381,9 @@ describe("PlanDecomposeGenerateService.planTasks recursive sub-plans", () => {
     expect(result.lastTaskGenerationVersionNumber).toBe(1);
     expect(result.totalTasksCreated).toBe(2);
     expect(result.failedPlanIds).toEqual([]);
-    expect(result.successPlanIds).toEqual(expect.arrayContaining(["first-stream", "second-stream"]));
+    expect(result.successPlanIds).toEqual(
+      expect.arrayContaining(["first-stream", "second-stream"])
+    );
     expect(result.successPlanIds).toHaveLength(2);
 
     const childGateCalls = mockEvaluatePlanComplexity.mock.calls.filter(
@@ -435,15 +507,16 @@ describe("PlanDecomposeGenerateService.planTasks recursive sub-plans", () => {
     expect(beta.lastTaskGenerationVersionNumber).toBeUndefined();
     expect(gamma.hasGeneratedPlanTasksForCurrentVersion).toBe(true);
 
-    const failureBroadcasts = vi.mocked(broadcastToProject).mock.calls.filter(
-      (c) =>
-        (c[1] as { type?: string; planTasksGenerationFailed?: boolean })?.type === "plan.updated" &&
-        (c[1] as { planTasksGenerationFailed?: boolean }).planTasksGenerationFailed === true
-    );
+    const failureBroadcasts = vi
+      .mocked(broadcastToProject)
+      .mock.calls.filter(
+        (c) =>
+          (c[1] as { type?: string; planTasksGenerationFailed?: boolean })?.type ===
+            "plan.updated" &&
+          (c[1] as { planTasksGenerationFailed?: boolean }).planTasksGenerationFailed === true
+      );
     expect(
-      failureBroadcasts.some(
-        (c) => (c[1] as { planId?: string }).planId === "beta-stream"
-      )
+      failureBroadcasts.some((c) => (c[1] as { planId?: string }).planId === "beta-stream")
     ).toBe(true);
   });
 
@@ -543,12 +616,13 @@ describe("PlanDecomposeGenerateService.planTasks recursive sub-plans", () => {
 
     expect(mockEvaluatePlanComplexity).not.toHaveBeenCalled();
     const taskCalls = mockInvokePlanningAgent.mock.calls.filter(
-      (c) => (c[0] as { tracking?: { label?: string; planId?: string } }).tracking?.label === "Task generation"
+      (c) =>
+        (c[0] as { tracking?: { label?: string; planId?: string } }).tracking?.label ===
+        "Task generation"
     );
     expect(taskCalls.length).toBeGreaterThanOrEqual(1);
-    const userContent = (
-      taskCalls[0]![0] as { messages?: Array<{ content?: string }> } | undefined
-    )?.messages?.[0]?.content;
+    const userContent = (taskCalls[0]![0] as { messages?: Array<{ content?: string }> } | undefined)
+      ?.messages?.[0]?.content;
     expect(userContent).toContain("Maximum plan depth");
     expect(result.hasGeneratedPlanTasksForCurrentVersion).toBe(true);
     expect(result.totalTasksCreated).toBe(1);

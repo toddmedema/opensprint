@@ -98,20 +98,13 @@ const compatTaskStoreMod = await import("../services/task-store.service.js");
 const compatPostgresOk =
   (compatTaskStoreMod as { _postgresAvailable?: boolean })._postgresAvailable ?? false;
 
-const PLAN_TASKS_COMPLEXITY_GATE_STUB = JSON.stringify({
-  strategy: "tasks",
-  tasks: [
-    { title: "_gate", description: "complexity gate stub", priority: 1, dependsOn: [] },
-  ],
-});
-
 function stubPlanTasksPlannerChain(taskGenPayload: unknown) {
   const taskGenContent =
     typeof taskGenPayload === "string" ? taskGenPayload : JSON.stringify(taskGenPayload);
   mockPlanningAgentInvoke.mockImplementation((opts: { tracking?: { label?: string } }) => {
     const label = opts.tracking?.label ?? "";
     if (label === "Complexity gate evaluation") {
-      return Promise.resolve({ content: PLAN_TASKS_COMPLEXITY_GATE_STUB });
+      return Promise.resolve({ content: taskGenContent });
     }
     if (label === "Task generation") {
       return Promise.resolve({ content: taskGenContent });
@@ -259,7 +252,7 @@ describe.skipIf(!compatPostgresOk)("Plan backward compatibility (flat / single-p
     expect(labels.filter((l) => l === "Complexity gate evaluation").length).toBeGreaterThanOrEqual(
       1
     );
-    expect(labels.filter((l) => l === "Task generation").length).toBe(1);
+    expect(labels.filter((l) => l === "Task generation").length).toBe(0);
     expect(labels.some((l) => l === "Feature decomposition")).toBe(false);
   });
 
@@ -346,20 +339,16 @@ describe.skipIf(!compatPostgresOk)("Plan backward compatibility (flat / single-p
   });
 
   it("dependency graph lists cross-plan edges for two flat plans", async () => {
-    await authedSupertest(app)
-      .post(`${API_PREFIX}/projects/${projectId}/plans`)
-      .send({
-        title: "Consumer Flat",
-        content: "# Consumer\n\n## Dependencies\n\nDepends on provider-flat.",
-        complexity: "low",
-      });
-    await authedSupertest(app)
-      .post(`${API_PREFIX}/projects/${projectId}/plans`)
-      .send({
-        title: "Provider Flat",
-        content: "# Provider\n\nStandalone.",
-        complexity: "low",
-      });
+    await authedSupertest(app).post(`${API_PREFIX}/projects/${projectId}/plans`).send({
+      title: "Consumer Flat",
+      content: "# Consumer\n\n## Dependencies\n\nDepends on provider-flat.",
+      complexity: "low",
+    });
+    await authedSupertest(app).post(`${API_PREFIX}/projects/${projectId}/plans`).send({
+      title: "Provider Flat",
+      content: "# Provider\n\nStandalone.",
+      complexity: "low",
+    });
 
     const listRes = await authedSupertest(app).get(`${API_PREFIX}/projects/${projectId}/plans`);
     expect(listRes.status).toBe(200);

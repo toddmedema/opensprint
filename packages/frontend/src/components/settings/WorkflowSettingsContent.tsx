@@ -9,10 +9,13 @@ import type {
   GitWorkingMode,
   MergeStrategy,
   UnknownScopeStrategy,
+  TaskSize,
 } from "@opensprint/shared";
 import {
   DEFAULT_MAX_TOTAL_CONCURRENT_AGENTS,
   DEFAULT_REVIEW_MODE,
+  DEFAULT_TASK_SIZE,
+  TASK_SIZE_OPTIONS,
   GENERAL_REVIEW_OPTION,
   MAX_TOTAL_CONCURRENT_AGENTS_CAP,
   REVIEW_AGENT_OPTIONS,
@@ -33,6 +36,7 @@ import type {
 import { queryKeys } from "../../api/queryKeys";
 
 type WorkflowPersistOverrides = Partial<{
+  taskSize: TaskSize;
   testCommand: string | null;
   reviewMode: ReviewMode;
   reviewAngles: ReviewAngle[];
@@ -127,6 +131,7 @@ function needsOwnerCapability(err: ApiErrorLike): boolean {
   );
 }
 
+/** Edit project planning, execution, verification, and continuous-improvement preferences. */
 export function WorkflowSettingsContent({
   settings,
   projectId,
@@ -378,6 +383,56 @@ export function WorkflowSettingsContent({
 
   return (
     <div className="space-y-4" data-testid={`workflow-settings-content-${projectId}`}>
+      <section
+        className="space-y-3 p-4 rounded-lg bg-theme-bg-elevated border border-theme-border"
+        aria-labelledby="task-size-heading"
+      >
+        <div>
+          <h3 id="task-size-heading" className="text-sm font-semibold text-theme-text">
+            Task size
+          </h3>
+          <p className="text-xs text-theme-muted">
+            Choose how much work each coding task covers. Applies to future task generation
+            throughout this project.
+          </p>
+        </div>
+        <fieldset className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <legend className="sr-only">Task size</legend>
+          {TASK_SIZE_OPTIONS.map((option) => (
+            <label
+              key={option.value}
+              htmlFor={`task-size-${option.value}`}
+              aria-label={option.label}
+              className={`flex items-start gap-2 rounded-lg border p-3 cursor-pointer ${
+                (draftSettings.taskSize ?? DEFAULT_TASK_SIZE) === option.value
+                  ? "border-brand-500 bg-brand-500/5"
+                  : "border-theme-border"
+              }`}
+            >
+              <input
+                id={`task-size-${option.value}`}
+                type="radio"
+                name="taskSize"
+                value={option.value}
+                checked={(draftSettings.taskSize ?? DEFAULT_TASK_SIZE) === option.value}
+                onChange={() => {
+                  applySettingsUpdate((s) => ({ ...s, taskSize: option.value }));
+                  void persistSettings(undefined, { taskSize: option.value });
+                }}
+                className="mt-1 accent-brand-600"
+              />
+              <span>
+                <span className="block text-sm font-semibold text-theme-text">{option.label}</span>
+                <span className="block text-xs text-theme-muted">{option.description}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+        <p className="text-xs text-theme-muted">
+          Every option allows a single task for a simple change. Larger tasks suit capable coding
+          models; smaller tasks provide more checkpoints. Existing tasks are unchanged.
+        </p>
+      </section>
       <section
         className="space-y-4 p-4 rounded-lg bg-theme-bg-elevated border border-theme-border"
         data-testid="workflow-execution-strategy-card"

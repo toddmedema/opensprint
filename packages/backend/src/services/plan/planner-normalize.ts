@@ -250,6 +250,24 @@ export function normalizePlannerTask(
   return { title, description, priority, dependsOn, complexity, files };
 }
 
+/** Reject blank or duplicate normalized titles before title-based dependency resolution. */
+export function getPlannerTaskTitleError(
+  tasks: ReadonlyArray<Pick<NormalizedPlannerTask, "title">>
+): string | undefined {
+  const titles = new Set<string>();
+  for (const task of tasks) {
+    if (typeof task.title !== "string" || !task.title.trim()) {
+      return "invalid-task-title: Every task must have a nonempty string title.";
+    }
+    const title = task.title.trim();
+    if (titles.has(title)) {
+      return `duplicate-task-title: Multiple tasks use the title ${JSON.stringify(title)}. Return unique task titles and update dependsOn references to those titles.`;
+    }
+    titles.add(title);
+  }
+  return undefined;
+}
+
 /** Normalize plan-level dependsOnPlans: accept both camelCase and snake_case. */
 export function normalizeDependsOnPlans(spec: Record<string, unknown>): string[] {
   const arr = (spec.dependsOnPlans ?? spec.depends_on_plans ?? []) as unknown;
@@ -516,6 +534,7 @@ export function parseSubPlanDecompositionResponse(
     const { valid } = validateTaskBatchSize(rawTasks);
     if (!valid) return null;
     const tasks = rawTasks.map((t) => normalizePlannerTask(t, rawTasks));
+    if (getPlannerTaskTitleError(tasks)) return null;
     return { strategy: "tasks", tasks };
   }
 

@@ -26,6 +26,7 @@ import {
   slugifyPlanTitleToId,
   sortSubPlansTopologically,
   type NormalizedSubPlan,
+  type NormalizedPlannerTask,
 } from "./plan/planner-normalize.js";
 import {
   DECOMPOSE_SYSTEM_PROMPT,
@@ -47,6 +48,7 @@ import {
   type PlanTaskHierarchyContext,
 } from "./plan/plan-task-generation.js";
 import { validatePlanDependencyDAG } from "./plan/plan-dependency-graph.js";
+import { buildPlanningTaskPolicy } from "./plan/plan-task-policy.js";
 import { evaluatePlanComplexity } from "./plan/plan-complexity-gate.js";
 import { ProjectService } from "./project.service.js";
 import type { StoredTask } from "./task-store.types.js";
@@ -294,10 +296,9 @@ export class PlanDecomposeGenerateService {
     return lines.join("\n");
   }
 
+  /** Derive the display title for hierarchy context, falling back to the stable plan ID. */
   private planTitleFromContent(plan: Plan): string {
-    return (
-      plan.content.trim().split("\n")[0]?.replace(/^#\s*/, "").trim() || plan.metadata.planId
-    );
+    return plan.content.trim().split("\n")[0]?.replace(/^#\s*/, "").trim() || plan.metadata.planId;
   }
 
   private planOverviewFromContent(plan: Plan): string {
@@ -512,7 +513,7 @@ export class PlanDecomposeGenerateService {
     projectId: string,
     repoPath: string,
     plan: Plan,
-    opts?: { extraUserPromptSuffix?: string }
+    opts?: { extraUserPromptSuffix?: string; preGeneratedTasks?: NormalizedPlannerTask[] }
   ): Promise<{
     count: number;
     taskRefs: Array<{ id: string; title: string }>;
@@ -555,6 +556,7 @@ export class PlanDecomposeGenerateService {
       ancestorChainSummary: hierarchyContext ? undefined : ancestorChainSummary,
       siblingPlanSummaries: hierarchyContext ? undefined : siblingPlanSummaries,
       extraUserPromptSuffix: opts?.extraUserPromptSuffix,
+      preGeneratedTasks: opts?.preGeneratedTasks,
       crossEpicDependsTitleToId,
       settings,
       taskStore: this.deps.taskStore,
@@ -616,7 +618,7 @@ export class PlanDecomposeGenerateService {
 
     const atMaxDepth = currentDepth >= MAX_PLAN_DEPTH;
     const decision = atMaxDepth
-      ? ({ strategy: "tasks" as const, tasks: [] })
+      ? { strategy: "tasks" as const, tasks: [] }
       : await evaluatePlanComplexity({
           projectId,
           repoPath,
@@ -624,6 +626,8 @@ export class PlanDecomposeGenerateService {
           prdContext,
           currentDepth,
           agentConfig,
+          settings,
+          hierarchyContext: await this.buildTaskGenerationHierarchyContext(projectId, planWithEpic),
           planComplexity: planWithEpic.metadata.complexity,
           planId: planWithEpic.metadata.planId,
           ancestorChainSummary,
@@ -727,6 +731,7 @@ export class PlanDecomposeGenerateService {
     let parseFailureReason: string | undefined;
     try {
       const genResult = await this.generateAndCreateTasks(projectId, repoPath, planWithEpic, {
+        preGeneratedTasks: decision.tasks.length > 0 ? decision.tasks : undefined,
         extraUserPromptSuffix: atMaxDepth
           ? buildMaxDepthTaskGenerationConsolidationInstruction()
           : undefined,
@@ -769,6 +774,7 @@ export class PlanDecomposeGenerateService {
     };
   }
 
+  /** Suggest feature plans from the PRD without persisting them. */
   async suggestPlans(projectId: string): Promise<{ plans: SuggestedPlan[] }> {
     const settings = await this.deps.projectService.getSettings(projectId);
     const prdContext = await this.buildPrdContext(projectId);
@@ -784,7 +790,7 @@ export class PlanDecomposeGenerateService {
       ? `${baseSystemPrompt}\n\n## AI Autonomy Level\n\n${autonomyDesc}\n\n`
       : baseSystemPrompt;
 
-    const suggestSystemPrompt = `${systemPrompt}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
+    const suggestSystemPrompt = `${systemPrompt}\n\n${buildPlanningTaskPolicy(settings)}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
     const response = await runPlannerWithRepoGuard({
       repoPath,
       label: "Feature decomposition (suggest)",
@@ -815,6 +821,7 @@ export class PlanDecomposeGenerateService {
     return { plans: planSpecs };
   }
 
+  /** Persist feature plans from the PRD and review their scope against the repository. */
   async decomposeFromPrd(projectId: string): Promise<{ created: number; plans: Plan[] }> {
     const repoPath = await this.getRepoPath(projectId);
     const settings = await this.deps.projectService.getSettings(projectId);
@@ -831,7 +838,7 @@ export class PlanDecomposeGenerateService {
       ? `${baseSystemPrompt}\n\n## AI Autonomy Level\n\n${autonomyDesc}\n\n`
       : baseSystemPrompt;
 
-    const decomposeSystemPrompt = `${systemPrompt}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
+    const decomposeSystemPrompt = `${systemPrompt}\n\n${buildPlanningTaskPolicy(settings)}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
     const response = await runPlannerWithRepoGuard({
       repoPath,
       label: "Feature decomposition",
@@ -900,6 +907,7 @@ export class PlanDecomposeGenerateService {
     return { created: created.length, plans: created };
   }
 
+  /** Generate and persist one feature plan from a description and optional attachments. */
   async generatePlanFromDescription(
     projectId: string,
     description: string,
@@ -921,7 +929,7 @@ export class PlanDecomposeGenerateService {
 
     const agentId = `plan-generate-${projectId}-${Date.now()}`;
 
-    const generateSystemPrompt = `${systemPromptWithAutonomy}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
+    const generateSystemPrompt = `${systemPromptWithAutonomy}\n\n${buildPlanningTaskPolicy(settings)}\n\n${await getCombinedInstructions(repoPath, "planner")}`;
     const response = await runPlannerWithRepoGuard({
       repoPath,
       label: "Generate plan from description",
