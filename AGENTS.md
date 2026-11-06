@@ -61,6 +61,10 @@ Only the designated human approval capability can resolve governance dockets, mu
 
 Congress mines immutable decisions independently of code changes and proposes exact amendments with supporting and contrary evidence. Evaluate full baseline/candidate content against retained original inputs and independent held-out checks in an externally isolated offline executor. Missing inputs, unavailable isolation, and placeholder metrics are incomplete evaluations. Human approval activates actual immutable content only after compatible enforcement lands. See `packages/backend/docs/review-governance.md` for setup and the cooperative same-OS-account trust boundary.
 
+## Automated QA
+
+Evaluate's on-demand automated QA uses the configured auditor agent and one isolated checkout of the configured base revision per selected code review perspective. Agents run checks with tool access, write the QA-specific result contract from their prompt, and never implement fixes or publish code. The server submits evidence-backed findings as ordinary Evaluate feedback. Capacity is released and checkouts are cleaned only after the runner reports exit; incomplete checks are reported as failures.
+
 ## Loop Kicker vs Watchdog
 
 - **Loop kicker** (60s): Restarts the orchestrator loop when idle. Runs inside the orchestrator.

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { REVIEW_AGENT_OPTIONS } from "@opensprint/shared";
 
 export const projectIdParamSchema = z.object({
   projectId: z.string().min(1),
@@ -58,6 +59,14 @@ export const feedbackSubmitBodySchema = z.object({
   priority: z.number().min(0).max(4).optional(),
   planId: z.string().optional(),
   planVersionNumber: z.number().int().min(1).optional(),
+});
+
+export const automatedQaBodySchema = z.object({
+  perspectives: z
+    .array(z.enum(REVIEW_AGENT_OPTIONS.map((option) => option.value)))
+    .min(1)
+    .max(REVIEW_AGENT_OPTIONS.length),
+  instructions: z.string().trim().max(10000).optional(),
 });
 
 export const feedbackRecategorizeBodySchema = z

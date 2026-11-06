@@ -27,6 +27,8 @@ import type {
   AgentSession,
   OrchestratorStatus,
   FeedbackItem,
+  AutomatedQaRequest,
+  AutomatedQaResult,
   ChatRequest,
   ChatResponse,
   Conversation,
@@ -347,11 +349,14 @@ export const api = {
       rationale: string,
       capability: string
     ) =>
-      request<PolicyRelease>(`/projects/${projectId}/governance/releases/reconcile-source-snapshot`, {
-        method: "POST",
-        headers: { "X-OpenSprint-Governance-Capability": capability },
-        body: JSON.stringify({ expectedActiveReleaseId, rationale }),
-      }),
+      request<PolicyRelease>(
+        `/projects/${projectId}/governance/releases/reconcile-source-snapshot`,
+        {
+          method: "POST",
+          headers: { "X-OpenSprint-Governance-Capability": capability },
+          body: JSON.stringify({ expectedActiveReleaseId, rationale }),
+        }
+      ),
     sourceChanges: (projectId: string, taskId: string) =>
       request<{
         taskId: string;
@@ -1006,6 +1011,12 @@ export const api = {
 
   // ─── Feedback ───
   feedback: {
+    runAutomatedQa: (projectId: string, body: AutomatedQaRequest) =>
+      request<AutomatedQaResult>(`/projects/${projectId}/feedback/automated-qa`, {
+        ...NO_REQUEST_TIMEOUT,
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
     list: (projectId: string) => request<FeedbackItem[]>(`/projects/${projectId}/feedback`),
     submit: (
       projectId: string,

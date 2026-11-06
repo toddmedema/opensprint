@@ -1,3 +1,22 @@
+import type { ReviewAngle } from "./settings.js";
+
+export type AutomatedQaPerspective = "general" | ReviewAngle;
+
+export interface AutomatedQaRequest {
+  perspectives: AutomatedQaPerspective[];
+  instructions?: string;
+}
+
+export interface AutomatedQaResult {
+  runId: string;
+  results: {
+    perspective: AutomatedQaPerspective;
+    status: "completed" | "failed";
+    summary: string;
+    feedbackIds: string[];
+  }[];
+}
+
 /** Feedback categorization */
 export type FeedbackCategory = "bug" | "feature" | "ux" | "scope";
 

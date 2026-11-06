@@ -22,6 +22,10 @@ Task tracking is handled internally by `TaskStoreService` backed by **SQLite (de
 
 **Windows runtime policy:** Open Sprint is supported on Windows only when `npm run setup` and `npm run dev` are run inside WSL2. Project repos must live in the WSL filesystem (for example `/home/<user>/src/app`), not under `/mnt/c/...`. Native Windows execution is unsupported because orchestration and process-management paths assume Linux/Unix shell and process semantics.
 
+### Automated QA
+
+Evaluate's **Run automated QA** button opens a modal with the same perspectives as Code Review (General, security, performance, test coverage, code quality/modularity, and design/UX/accessibility) and optional instructions. Each selected perspective runs a separate tool-capable agent using the existing auditor agent configuration, in an isolated checkout of the configured base revision. Agents run relevant checks and report evidence-backed issues; the server files them as ordinary Evaluate feedback and nudges the Analyst. They do not implement fixes or publish code. Project-wide agent concurrency applies. The dialog reports completed and failed perspectives separately, including when required checks could not run. Closing the dialog keeps QA running; navigating away or reloading loses the current dialog's result summary, while submitted findings remain in Evaluate. QA checkouts are cleaned after runner exit.
+
 ### Execute Agent Contract
 
 - Execute agents start in a prepared worktree with the task branch already checked out.
