@@ -16,6 +16,7 @@ import { ErrorCodes } from "../middleware/error-codes.js";
 import type { ReviewAgentResult } from "@opensprint/shared";
 import { OPEN_QUESTION_BLOCK_REASON } from "@opensprint/shared";
 import { buildOrchestratorTestStatusContent } from "../services/orchestrator-test-status.js";
+import type { AgentRunState } from "../services/agent-lifecycle.js";
 
 vi.mock("drizzle-orm", () => ({
   and: (...args: unknown[]) => args,
@@ -3421,6 +3422,20 @@ describe("OrchestratorService (slot-based model)", () => {
   });
 
   describe("getLiveOutput", () => {
+    it("marks hydrated recovery output as file-sourced so guest context cannot share it", async () => {
+      const taskDir = path.join(repoPath, ".opensprint", "active", "recovered-output");
+      await fs.mkdir(taskDir, { recursive: true });
+      await fs.writeFile(path.join(taskDir, "agent-output.log"), "Local recovered output\n");
+      const agent = { outputLog: [], outputLogBytes: 0 } as unknown as AgentRunState;
+      await (
+        orchestrator as unknown as {
+          hydrateRecoveredOutputLog: (state: AgentRunState, promptPath: string) => Promise<void>;
+        }
+      ).hydrateRecoveredOutputLog(agent, path.join(taskDir, "prompt.md"));
+      expect(agent.outputLog).toEqual(["Local recovered output\n"]);
+      expect(agent.outputLogFromFile).toBe(true);
+    });
+
     it("returns empty for unknown task", async () => {
       mockTaskStoreReady.mockResolvedValue([]);
       await orchestrator.ensureRunning(projectId);
