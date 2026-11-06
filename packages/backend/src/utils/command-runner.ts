@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { normalizeSpawnEnvPath } from "./path-env.js";
 import { agentProcessEnvironment } from "./agent-process-env.js";
+import { projectNodeEnvironment } from "./project-node-runtime.js";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const KILL_GRACE_MS = 5_000;
@@ -115,20 +116,28 @@ export function commandSpecToString(spec: CommandSpec): string {
 
 export function resolveCommandExecutable(
   command: string,
-  env: NodeJS.ProcessEnv = process.env
+  env: NodeJS.ProcessEnv = process.env,
+  cwd?: string
 ): string | null {
-  const normalizedEnv = normalizeSpawnEnvPath(env);
-  return resolvePathCandidate(command, normalizedEnv);
+  const normalizedEnv = normalizeSpawnEnvPath(agentProcessEnvironment(env));
+  return resolvePathCandidate(
+    command,
+    cwd ? projectNodeEnvironment(command, cwd, normalizedEnv) : normalizedEnv
+  );
 }
 
 export async function runCommand(
   spec: CommandSpec,
   options: CommandRunOptions
 ): Promise<CommandRunResult> {
-  const env = agentProcessEnvironment(
-    normalizeSpawnEnvPath({ ...process.env, ...(options.env ?? {}) })
+  const env = projectNodeEnvironment(
+    spec.command,
+    options.cwd,
+    agentProcessEnvironment(normalizeSpawnEnvPath({ ...process.env, ...(options.env ?? {}) }))
   );
-  const executable = resolveCommandExecutable(spec.command, env);
+  // Do not re-normalize PATH after selecting the project's Node: NVM's newest
+  // version may be incompatible with the declared engine.
+  const executable = resolvePathCandidate(spec.command, env);
   const cwd = options.cwd;
 
   if (!executable) {

@@ -1106,7 +1106,7 @@ async function prepareGateCommand(
     };
   }
 
-  const executable = resolveCommandExecutable(spec.command);
+  const executable = resolveCommandExecutable(spec.command, process.env, cwd);
   if (!executable) {
     return {
       failure: buildFailure({
