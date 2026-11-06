@@ -45,7 +45,7 @@ Generate only as many tasks as the scope needs, from 1 to 15. Never exceed 15. T
 Each task must have one coherent, independently verifiable outcome. Include the related implementation, files, and tests together; do not split solely by file, endpoint, component, or test suite. Do not combine unrelated outcomes.
 
 For each task:
-1. Title: Clear, specific action (e.g. "Add user login API endpoint", not "Handle auth")
+1. Title: Unique within this batch. Clear, specific action (e.g. "Add user login API endpoint", not "Handle auth")
 2. Description: Detailed spec including:
    - What to implement (files to create/modify, functions, endpoints, components)
    - **Acceptance criteria:** A numbered list of concrete, verifiable conditions that define "done" for this task (e.g. "1. POST /api/login returns 200 with valid JWT; 2. Returns 401 for invalid credentials; 3. Unit tests cover both paths")
@@ -173,7 +173,7 @@ Use the existing task schema. Generate 1–15 tasks as needed; never pad to a mi
 
 Task rules (same as standard task generation):
 - Each task must have one coherent, independently verifiable outcome, including implementation and tests
-- Title: clear, specific action (e.g. "Add user login API endpoint")
+- Title: unique within this batch; clear, specific action (e.g. "Add user login API endpoint")
 - Description must contain **Acceptance criteria:** as a numbered list of verifiable conditions
 - Priority: 0 (highest/foundational) to 4 (lowest/polish)
 - dependsOn: exact titles from your output, character-for-character

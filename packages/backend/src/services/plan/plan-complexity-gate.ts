@@ -24,6 +24,7 @@ import { createLogger } from "../../utils/logger.js";
 import { buildPlanningTaskPolicy, type PlanningTaskSettings } from "./plan-task-policy.js";
 import {
   formatPlanTaskHierarchyContextForPrompt,
+  parseTaskGenerationContent,
   type PlanTaskHierarchyContext,
 } from "./plan-task-generation.js";
 import { buildAutonomyDescription } from "../autonomy-description.js";
@@ -162,6 +163,13 @@ export async function evaluatePlanComplexity(
                 return `sub-plan-count-out-of-range: Planner returned ${parsed.subPlans.length} sub-plans, range is ${MIN_SUB_PLANS}–${MAX_SUB_PLANS}.`;
               }
               return undefined;
+            }
+            const taskResult = parseTaskGenerationContent(content);
+            if (
+              !taskResult.ok &&
+              /^(duplicate|invalid)-task-title:/.test(taskResult.parseFailureReason)
+            ) {
+              return taskResult.parseFailureReason;
             }
             return "Agent response was not valid sub-plan decomposition JSON.";
           },

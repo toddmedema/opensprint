@@ -6,6 +6,7 @@ import type { Plan, ProjectSettings } from "@opensprint/shared";
 import { getAgentForPlanningRole } from "@opensprint/shared";
 import {
   normalizePlannerTask,
+  getPlannerTaskTitleError,
   findPlannerTaskArray,
   MAX_TASKS_PER_PLAN,
   type NormalizedPlannerTask,
@@ -176,6 +177,7 @@ export function extractRawTasks(
   return { ok: true, rawTasks };
 }
 
+/** Validate task JSON and return repairable count or title errors before any writes. */
 export function parseTaskGenerationContent(
   content: unknown
 ):
@@ -191,6 +193,10 @@ export function parseTaskGenerationContent(
     };
   }
 
+  const titleError = getPlannerTaskTitleError(
+    result.rawTasks.map((task) => normalizePlannerTask(task, result.rawTasks))
+  );
+  if (titleError) return { ok: false, parseFailureReason: titleError };
   return result;
 }
 
@@ -342,6 +348,8 @@ export async function generateAndCreateTasks(deps: PlanTaskGenerationDeps): Prom
 
 /** Both generation paths share versioning, dependency resolution, and file scope persistence. */
 async function persistGeneratedTasks(deps: PlanTaskGenerationDeps, tasks: NormalizedPlannerTask[]) {
+  const titleError = getPlannerTaskTitleError(tasks);
+  if (titleError) return { count: 0, taskRefs: [], parseFailureReason: titleError };
   const { projectId, plan, taskStore, crossEpicDependsTitleToId } = deps;
   const epicId = plan.metadata.epicId!;
   const sourceVersion = plan.currentVersionNumber ?? 1;

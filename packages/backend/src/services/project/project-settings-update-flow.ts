@@ -35,6 +35,7 @@ export type UpdateSettingsFlowDeps = {
   listTasks: (projectId: string) => Promise<StoredTask[]>;
 };
 
+/** Validate a partial settings patch and atomically apply it to the latest stored project state. */
 export async function runUpdateSettingsFlow(
   deps: UpdateSettingsFlowDeps,
   projectId: string,

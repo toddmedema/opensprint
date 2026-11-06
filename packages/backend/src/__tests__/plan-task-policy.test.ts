@@ -6,6 +6,7 @@ import {
 } from "../services/plan/plan-task-generation.js";
 import { evaluatePlanComplexity } from "../services/plan/plan-complexity-gate.js";
 import { agentService } from "../services/agent.service.js";
+import { parseSubPlanDecompositionResponse } from "../services/plan/planner-normalize.js";
 
 vi.mock("../services/agent.service.js", () => ({ agentService: { invokePlanningAgent: vi.fn() } }));
 vi.mock("../services/agent-instructions.service.js", () => ({
@@ -176,6 +177,65 @@ describe("project task-size planning contract", () => {
       "os-scenarios.1",
       `files:${JSON.stringify(task.files)}`
     );
+    expect(agentService.invokePlanningAgent).not.toHaveBeenCalled();
+  });
+  it("rejects duplicate normalized task titles in a decomposition", () => {
+    expect(
+      parseSubPlanDecompositionResponse(
+        JSON.stringify({
+          strategy: "tasks",
+          tasks: [task, { task_title: task.title, depends_on: [0] }],
+        })
+      )
+    ).toBeNull();
+  });
+
+  it("repairs duplicate decomposition titles before returning tasks for reuse", async () => {
+    vi.mocked(agentService.invokePlanningAgent)
+      .mockResolvedValueOnce({
+        content: JSON.stringify({ strategy: "tasks", tasks: [task, task] }),
+      })
+      .mockResolvedValueOnce({ content: JSON.stringify({ strategy: "tasks", tasks: [task] }) });
+    const result = await evaluatePlanComplexity({
+      projectId: "task-policy-project",
+      repoPath: "/tmp/task-policy",
+      planContent: "# Scenario pages",
+      prdContext: "Static pages",
+      currentDepth: 1,
+      agentConfig: { type: "cursor", model: null, cliCommand: null },
+    });
+    expect(result.strategy).toBe("tasks");
+    if (result.strategy === "tasks") expect(result.tasks).toHaveLength(1);
+    expect(agentService.invokePlanningAgent).toHaveBeenCalledTimes(2);
+    const repair = vi.mocked(agentService.invokePlanningAgent).mock.calls[1]![0];
+    expect(repair.messages.some((m) => m.content.includes("unique"))).toBe(true);
+  });
+
+  it("repairs duplicate generated titles and preserves distinct task IDs and dependencies", async () => {
+    const input = deps();
+    const publish = { ...task, title: "Publish scenario pages", dependsOn: [task.title] };
+    vi.mocked(agentService.invokePlanningAgent)
+      .mockResolvedValueOnce({ content: JSON.stringify({ tasks: [task, task] }) })
+      .mockResolvedValueOnce({ content: JSON.stringify({ tasks: [task, publish] }) });
+    const result = await generateAndCreateTasks(input);
+    expect(agentService.invokePlanningAgent).toHaveBeenCalledTimes(2);
+    expect(result.taskRefs).toEqual([
+      { id: "os-scenarios.1", title: task.title },
+      { id: "os-scenarios.2", title: publish.title },
+    ]);
+    expect(input.taskStore.addDependencies).toHaveBeenCalledWith(input.projectId, [
+      { childId: "os-scenarios.2", parentId: "os-scenarios.1", type: "blocks" },
+    ]);
+  });
+
+  it("never persists an ambiguous pre-generated task list", async () => {
+    const input = deps();
+    input.preGeneratedTasks = [task, task];
+    const result = await generateAndCreateTasks(input);
+    expect(result.count).toBe(0);
+    expect(result.parseFailureReason).toContain("duplicate-task-title");
+    expect(input.taskStore.createMany).not.toHaveBeenCalled();
+    expect(input.taskStore.addDependencies).not.toHaveBeenCalled();
     expect(agentService.invokePlanningAgent).not.toHaveBeenCalled();
   });
 });

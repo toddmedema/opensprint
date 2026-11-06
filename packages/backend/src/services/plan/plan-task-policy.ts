@@ -17,6 +17,7 @@ const SIZE_GUIDANCE: Record<TaskSize, string> = {
     "Use narrower, independently verifiable scopes and more checkpoints. Split complicated outcomes into smaller coding sessions where useful. Still batch straightforward repetitive work and keep implementation with its tests. Use sub-plans when the workstreams warrant separate planning.",
 };
 
+/** Describe coding capacity without exposing commands, URLs, or credentials. */
 function codingAgentContext(config: AgentConfig | undefined): string {
   if (!config) return "Not specified; do not assume a particular model capability.";
   return JSON.stringify({

@@ -296,6 +296,7 @@ export class PlanDecomposeGenerateService {
     return lines.join("\n");
   }
 
+  /** Derive the display title for hierarchy context, falling back to the stable plan ID. */
   private planTitleFromContent(plan: Plan): string {
     return plan.content.trim().split("\n")[0]?.replace(/^#\s*/, "").trim() || plan.metadata.planId;
   }
@@ -773,6 +774,7 @@ export class PlanDecomposeGenerateService {
     };
   }
 
+  /** Suggest feature plans from the PRD without persisting them. */
   async suggestPlans(projectId: string): Promise<{ plans: SuggestedPlan[] }> {
     const settings = await this.deps.projectService.getSettings(projectId);
     const prdContext = await this.buildPrdContext(projectId);
@@ -819,6 +821,7 @@ export class PlanDecomposeGenerateService {
     return { plans: planSpecs };
   }
 
+  /** Persist feature plans from the PRD and review their scope against the repository. */
   async decomposeFromPrd(projectId: string): Promise<{ created: number; plans: Plan[] }> {
     const repoPath = await this.getRepoPath(projectId);
     const settings = await this.deps.projectService.getSettings(projectId);
@@ -904,6 +907,7 @@ export class PlanDecomposeGenerateService {
     return { created: created.length, plans: created };
   }
 
+  /** Generate and persist one feature plan from a description and optional attachments. */
   async generatePlanFromDescription(
     projectId: string,
     description: string,
