@@ -3,54 +3,80 @@ import type {
   CollaborationReplay,
   CollaborationCommand,
   CollaborationCommandResult,
+  CollaborationActiveRun,
+  CollaborationCreatedInvite,
+  CollaborationInvite,
+  CollaborationNotification,
+  CollaborationOverview,
+  CollaborationPreferences,
+  CollaborationPresence,
+  CollaborationRole,
+  CollaborationTaskContext,
 } from "@opensprint/shared";
 import { request } from "./client";
 
-export interface SharedActiveRun {
-  taskId: string;
-  attemptId: string;
+export type SharedActiveRun = CollaborationActiveRun;
+export interface CollaborationGuidanceMessage {
+  id: string;
+  actorId?: string;
+  content: string;
+  status?: string;
   attempt: number;
-  supported: boolean;
-  reason: string | null;
-  control?: { runId: string; controllerId: string | null; revision: number };
+  error?: string;
 }
+
 export function collaborationApi(projectId: string, token?: string) {
   const prefix = `/projects/${encodeURIComponent(projectId)}/collaboration`;
   const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+  const read = <T>(path: string, signal?: AbortSignal) =>
+    request<T>(`${prefix}${path}`, { headers, signal });
+  const write = <T>(path: string, body: unknown, method = "POST") =>
+    request<T>(`${prefix}${path}`, { headers, method, body: JSON.stringify(body) });
   return {
-    snapshot: () => request<CollaborationSnapshot>(`${prefix}/snapshot`, { headers }),
-    replay: (after: number) =>
-      request<CollaborationReplay>(`${prefix}/events?after=${after}&limit=200`, { headers }),
+    snapshot: (signal?: AbortSignal) => read<CollaborationSnapshot>("/snapshot", signal),
+    replay: (after: number, signal?: AbortSignal) =>
+      read<CollaborationReplay>(`/events?after=${after}&limit=200`, signal),
     command: (command: CollaborationCommand) =>
-      request<CollaborationCommandResult>(`${prefix}/commands`, {
+      write<CollaborationCommandResult>("/commands", command),
+    activeRun: (taskId: string, signal?: AbortSignal) =>
+      read<CollaborationActiveRun | null>(`/runs/${encodeURIComponent(taskId)}`, signal),
+    overview: (signal?: AbortSignal) => read<CollaborationOverview>("/overview", signal),
+    taskContext: (taskId: string, signal?: AbortSignal) =>
+      read<CollaborationTaskContext>(`/tasks/${encodeURIComponent(taskId)}/context`, signal),
+    presence: (signal?: AbortSignal) => read<CollaborationPresence[]>("/presence", signal),
+    heartbeat: (clientId: string, taskId: string | null) =>
+      write<CollaborationPresence[]>("/presence", { clientId, taskId }),
+    leave: (clientId: string) =>
+      request<void>(`${prefix}/presence/${encodeURIComponent(clientId)}`, {
         headers,
-        method: "POST",
-        body: JSON.stringify(command),
+        method: "DELETE",
+        keepalive: true,
       }),
-    activeRun: (taskId: string) =>
-      request<SharedActiveRun | null>(`${prefix}/runs/${encodeURIComponent(taskId)}`, { headers }),
-    guidanceHistory: (taskId: string) =>
-      request<
-        Array<{
-          id: string;
-          actorId?: string;
-          content: string;
-          status?: string;
-          attempt: number;
-          error?: string;
-        }>
-      >(`${prefix}/guidance/${encodeURIComponent(taskId)}`, { headers }),
+    invites: (signal?: AbortSignal) => read<CollaborationInvite[]>("/invites", signal),
+    createInvite: (input: {
+      displayName: string;
+      role: CollaborationRole;
+      expiresInHours: number;
+    }) => write<CollaborationCreatedInvite>("/invites", input),
+    revokeInvite: (id: string) =>
+      request<void>(`${prefix}/invites/${encodeURIComponent(id)}`, { headers, method: "DELETE" }),
+    preferences: (signal?: AbortSignal) => read<CollaborationPreferences>("/preferences", signal),
+    savePreferences: (
+      input: Pick<CollaborationPreferences, "seenCursor" | "subscribedTaskIds"> & {
+        markSeen?: boolean;
+        markSeenAt?: string;
+      }
+    ) => write<CollaborationPreferences>("/preferences", input, "PUT"),
+    notifications: (signal?: AbortSignal) =>
+      read<CollaborationNotification[]>("/notifications", signal),
+    guidanceHistory: (taskId: string, signal?: AbortSignal) =>
+      read<CollaborationGuidanceMessage[]>(`/guidance/${encodeURIComponent(taskId)}`, signal),
     guidance: (input: {
       taskId: string;
       attemptId: string;
       clientMessageId: string;
       content: string;
-    }) =>
-      request<{ delivered: boolean; status?: string; error?: string }>(`${prefix}/guidance`, {
-        headers,
-        method: "POST",
-        body: JSON.stringify(input),
-      }),
+    }) => write<{ delivered: boolean; status?: string; error?: string }>("/guidance", input),
   };
 }
 

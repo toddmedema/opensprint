@@ -32,7 +32,7 @@ import { createIntakeRouter } from "./routes/intake.js";
 import { createGovernanceRouter } from "./routes/governance.js";
 import { createGovernanceReplayRouter } from "./routes/governance-replay.js";
 import { createCommandsRouter } from "./routes/commands.js";
-import { createCollaborationRouter } from "./routes/collaboration.js";
+import { createProjectCollaborationRouter } from "./collaboration-app.js";
 import { createSpecPublicationRouter } from "./routes/spec-publication.js";
 import { integrationStore } from "./services/integration-store.service.js";
 import { tokenEncryption } from "./services/token-encryption.service.js";
@@ -50,10 +50,6 @@ import {
 } from "./services/local-session-auth.service.js";
 import { buildSpaContentSecurityPolicyProduction } from "@opensprint/shared";
 import { allowDesktopLocalSessionScriptRequest } from "./desktop-local-session-guard.js";
-import { agentChatService } from "./services/agent-chat.service.js";
-import { AppError } from "./middleware/error-handler.js";
-import { CollaborationTaskContextService } from "./services/collaboration-task-context.service.js";
-import { taskStore } from "./services/task-store.service.js";
 
 export function createApp(services?: AppServices) {
   ensureLocalSessionToken();
@@ -79,57 +75,10 @@ export function createApp(services?: AppServices) {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  const collaborationContext = new CollaborationTaskContextService({
-    projectService,
-    taskStore,
-    getActiveRun: (projectId, taskId) => agentChatService.getActiveRun(projectId, taskId),
-    readExecution: (projectId, taskId) => {
-      const slot = orchestratorService.getState(projectId).slots.get(taskId);
-      if (!slot) return null;
-      return {
-        // Guidance/control belongs to a concrete invocation; coding and review
-        // can share a slot while using different runner/channel identities.
-        attemptId: slot.agent.attemptId ?? slot.attemptId,
-        attempt: slot.attempt,
-        branchName: slot.branchName,
-        worktreePath: slot.worktreePath,
-        output: slot.agent.outputLog,
-        uncertain: slot.agent.activeProcess?.ownership === "recovered_unverified",
-      };
-    },
-  });
-
-  // The scoped pilot resolves its own authenticated actor. Its credentials grant
-  // no access to the existing local execution, settings or publication APIs.
   app.use(
     `${API_PREFIX}/projects/:projectId/collaboration`,
     requireDatabase,
-    createCollaborationRouter({
-      assertProjectExists: (projectId) => projectService.getProject(projectId),
-      assertTaskExists: (projectId, taskId) =>
-        collaborationContext.assertTaskExists(projectId, taskId),
-      getOverview: (projectId) => collaborationContext.getOverview(projectId),
-      getTaskContext: (projectId, taskId) => collaborationContext.getTaskContext(projectId, taskId),
-      getActiveRun: (projectId, taskId) => agentChatService.getActiveRun(projectId, taskId),
-      getGuidanceHistory: (projectId, taskId) =>
-        agentChatService.getHistory(projectId, taskId).slice(-200),
-      handleGuidance: async (input) => {
-        const active = agentChatService.getActiveRun(input.projectId, input.taskId);
-        if (!active || active.attemptId !== input.attemptId)
-          throw new AppError(
-            409,
-            "AGENT_ATTEMPT_CHANGED",
-            "The active attempt changed. Refresh before sending guidance."
-          );
-        return agentChatService.sendMessage(
-          input.projectId,
-          input.taskId,
-          input.content,
-          active.attempt,
-          { clientMessageId: input.clientMessageId, actorId: input.actorId }
-        );
-      },
-    })
+    createProjectCollaborationRouter(svc)
   );
 
   // Other API routes require the local installation's Bearer token.

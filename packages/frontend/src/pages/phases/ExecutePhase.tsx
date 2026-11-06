@@ -54,6 +54,8 @@ import { useOpenQuestionNotifications } from "../../hooks/useOpenQuestionNotific
 import { updateNotification, removeNotification } from "../../store/slices/openQuestionsSlice";
 import { addNotification } from "../../store/slices/notificationSlice";
 import type { Notification } from "@opensprint/shared";
+import { CollaborationSession } from "../../components/collaboration/CollaborationSession";
+import { CollaborationLauncher } from "../../components/collaboration/CollaborationLauncher";
 import { ExecuteFilterToolbar } from "../../components/execute/ExecuteFilterToolbar";
 import { TaskDetailSidebar } from "../../components/execute/TaskDetailSidebar";
 import { TimelineList } from "../../components/execute/TimelineList";
@@ -109,6 +111,8 @@ export function ExecutePhase({
     }, BASELINE_MERGE_PAUSE_SWEEP_MS);
     return () => window.clearInterval(id);
   }, [dispatch]);
+  const [collaborationOpen, setCollaborationOpen] = useState(false);
+  const [inviteOnOpen, setInviteOnOpen] = useState(false);
   const [viewMode, setViewMode] = useState<"kanban" | "timeline">(() => {
     const stored = localStorage.getItem("opensprint.executeView");
     return stored === "kanban" || stored === "timeline" ? stored : "timeline";
@@ -519,6 +523,20 @@ export function ExecutePhase({
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
       <div className="flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden">
         <ExecuteFilterToolbar
+          collaborationControl={
+            <CollaborationLauncher
+              projectId={projectId}
+              open={collaborationOpen}
+              onOpen={() => {
+                setInviteOnOpen(false);
+                setCollaborationOpen((value) => !value);
+              }}
+              onInvite={() => {
+                setInviteOnOpen(true);
+                setCollaborationOpen(true);
+              }}
+            />
+          }
           chipConfig={chipConfig}
           statusFilter={statusFilter}
           setStatusFilter={setStatusFilter}
@@ -542,14 +560,6 @@ export function ExecutePhase({
           className={EXECUTE_MAIN_SCROLL_CLASSNAME}
           data-testid="execute-main-scroll"
         >
-          <a
-            href={`/collaborate/${encodeURIComponent(projectId)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mb-4 inline-block text-sm text-theme-link underline"
-          >
-            Open shared session
-          </a>
           {baselineStatus === "failing" && (
             <div
               className="mb-4 rounded-lg border border-theme-warning-border bg-theme-warning-bg px-4 py-3 text-theme-warning-text"
@@ -820,96 +830,119 @@ export function ExecutePhase({
         </div>
       </div>
 
-      {effectiveSelectedTask && (
+      {collaborationOpen ? (
         <ResizableSidebar
-          storageKey="execute"
-          defaultWidth={420}
-          resizeHandleLabel="Resize task detail sidebar"
-          responsive={true}
-          overlayOnMobile={false}
-          onClose={handleClose}
+          storageKey="execute-collaboration"
+          defaultWidth={520}
+          minWidth={320}
+          resizeHandleLabel="Resize collaboration sidebar"
+          responsive
+          onClose={() => setCollaborationOpen(false)}
         >
-          <TaskDetailSidebar
+          <CollaborationSession
+            key={projectId}
             projectId={projectId}
-            selectedTask={effectiveSelectedTask}
-            taskDetail={{
-              selectedTaskData: selectedTaskData ?? null,
-              taskDetailLoading,
-              taskDetailError,
-            }}
-            openQuestionNotification={
-              taskNotification && typeof taskNotification === "object"
-                ? taskNotification
-                : undefined
-            }
-            agentOutput={selectedAgentOutput}
-            agentOutputLastReceivedAt={agentOutputLastReceivedAt}
-            completionState={completionState}
-            diagnostics={diagnosticsQuery.data ?? null}
-            diagnosticsLoading={diagnosticsQuery.isFetching}
-            archivedSessions={archivedSessions}
-            archivedLoading={archivedLoading}
-            markDoneLoading={markDoneLoading}
-            unblockLoading={unblockLoading}
-            deleteLoading={deleteTaskMutation.isPending}
-            forceRetryLoading={forceRetryMutation.isPending}
-            taskIdToStartedAt={taskIdToStartedAt}
-            planByEpicId={planByEpicId}
-            taskById={taskById}
-            activeTasks={activeTasks}
-            wsConnected={wsConnected}
-            isDoneTask={isDoneTask}
-            isBlockedTask={isBlockedTask}
-            isInProgressTask={isInProgressTask}
-            sections={{
-              descriptionSectionExpanded,
-              setDescriptionSectionExpanded,
-              artifactsSectionExpanded,
-              setArtifactsSectionExpanded,
-              diagnosticsSectionExpanded,
-              setDiagnosticsSectionExpanded,
-              sourceFeedbackExpanded,
-              setSourceFeedbackExpanded,
-            }}
-            teamMembers={projectSettingsQuery.data?.teamMembers ?? []}
-            enableHumanTeammates={projectSettingsQuery.data?.enableHumanTeammates ?? false}
-            isBranchesMode={projectSettingsQuery.data?.gitWorkingMode === "branches"}
-            chatMessages={chatMessages}
-            chatSending={chatSending}
-            onChatSend={handleChatSend}
-            chatDraftStorageKey={chatDraftStorageKey}
-            chatSupported={chatSupportInfo.supported}
-            chatUnsupportedReason={chatSupportInfo.reason}
-            callbacks={{
-              onClose: handleClose,
-              onMarkDone: handleMarkDone,
-              onUnblock: handleUnblock,
-              onDeleteTask: handleDeleteTask,
-              onForceRetry: handleForceRetry,
-              onSelectTask: handleSelectTask,
-              onNavigateToPlan,
-              onOpenQuestionResolved: (
-                resolved?: Notification,
-                notificationIdToRemove?: string
-              ) => {
-                if (resolved) dispatch(updateNotification(resolved));
-                if (notificationIdToRemove) {
-                  dispatch(
-                    removeNotification({ projectId, notificationId: notificationIdToRemove })
-                  );
-                }
-                refetchNotifications();
-                // Refresh task data so UI shows task as unblocked; backend already unblocks and nudges orchestrator
-                if (resolved?.source === "execute" && resolved?.sourceId) {
-                  void queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(projectId) });
-                  void queryClient.invalidateQueries({
-                    queryKey: queryKeys.tasks.detail(projectId, resolved.sourceId),
-                  });
-                }
-              },
-            }}
+            selectedTaskId={effectiveSelectedTask}
+            onSelectTaskId={(taskId) => (taskId ? handleSelectTask(taskId) : handleClose())}
+            onLeave={() => setCollaborationOpen(false)}
+            embedded
+            initialInvite={inviteOnOpen}
           />
         </ResizableSidebar>
+      ) : (
+        effectiveSelectedTask && (
+          <ResizableSidebar
+            storageKey="execute"
+            defaultWidth={420}
+            resizeHandleLabel="Resize task detail sidebar"
+            responsive={true}
+            overlayOnMobile={false}
+            onClose={handleClose}
+          >
+            <TaskDetailSidebar
+              projectId={projectId}
+              selectedTask={effectiveSelectedTask}
+              taskDetail={{
+                selectedTaskData: selectedTaskData ?? null,
+                taskDetailLoading,
+                taskDetailError,
+              }}
+              openQuestionNotification={
+                taskNotification && typeof taskNotification === "object"
+                  ? taskNotification
+                  : undefined
+              }
+              agentOutput={selectedAgentOutput}
+              agentOutputLastReceivedAt={agentOutputLastReceivedAt}
+              completionState={completionState}
+              diagnostics={diagnosticsQuery.data ?? null}
+              diagnosticsLoading={diagnosticsQuery.isFetching}
+              archivedSessions={archivedSessions}
+              archivedLoading={archivedLoading}
+              markDoneLoading={markDoneLoading}
+              unblockLoading={unblockLoading}
+              deleteLoading={deleteTaskMutation.isPending}
+              forceRetryLoading={forceRetryMutation.isPending}
+              taskIdToStartedAt={taskIdToStartedAt}
+              planByEpicId={planByEpicId}
+              taskById={taskById}
+              activeTasks={activeTasks}
+              wsConnected={wsConnected}
+              isDoneTask={isDoneTask}
+              isBlockedTask={isBlockedTask}
+              isInProgressTask={isInProgressTask}
+              sections={{
+                descriptionSectionExpanded,
+                setDescriptionSectionExpanded,
+                artifactsSectionExpanded,
+                setArtifactsSectionExpanded,
+                diagnosticsSectionExpanded,
+                setDiagnosticsSectionExpanded,
+                sourceFeedbackExpanded,
+                setSourceFeedbackExpanded,
+              }}
+              teamMembers={projectSettingsQuery.data?.teamMembers ?? []}
+              enableHumanTeammates={projectSettingsQuery.data?.enableHumanTeammates ?? false}
+              isBranchesMode={projectSettingsQuery.data?.gitWorkingMode === "branches"}
+              chatMessages={chatMessages}
+              chatSending={chatSending}
+              onChatSend={handleChatSend}
+              chatDraftStorageKey={chatDraftStorageKey}
+              chatSupported={chatSupportInfo.supported}
+              chatUnsupportedReason={chatSupportInfo.reason}
+              callbacks={{
+                onClose: handleClose,
+                onMarkDone: handleMarkDone,
+                onUnblock: handleUnblock,
+                onDeleteTask: handleDeleteTask,
+                onForceRetry: handleForceRetry,
+                onSelectTask: handleSelectTask,
+                onNavigateToPlan,
+                onOpenQuestionResolved: (
+                  resolved?: Notification,
+                  notificationIdToRemove?: string
+                ) => {
+                  if (resolved) dispatch(updateNotification(resolved));
+                  if (notificationIdToRemove) {
+                    dispatch(
+                      removeNotification({ projectId, notificationId: notificationIdToRemove })
+                    );
+                  }
+                  refetchNotifications();
+                  // Refresh task data so UI shows task as unblocked; backend already unblocks and nudges orchestrator
+                  if (resolved?.source === "execute" && resolved?.sourceId) {
+                    void queryClient.invalidateQueries({
+                      queryKey: queryKeys.tasks.list(projectId),
+                    });
+                    void queryClient.invalidateQueries({
+                      queryKey: queryKeys.tasks.detail(projectId, resolved.sourceId),
+                    });
+                  }
+                },
+              }}
+            />
+          </ResizableSidebar>
+        )
       )}
     </div>
   );

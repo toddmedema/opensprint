@@ -149,6 +149,8 @@ export interface CollaborationTask {
 }
 export interface CollaborationOverview {
   projectName: string;
+  /** Configured guest-only origin; local installation credentials are never served there. */
+  shareOrigin?: string;
   tasks: CollaborationTask[];
   observedAt?: string;
 }
