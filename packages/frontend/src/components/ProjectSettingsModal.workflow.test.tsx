@@ -19,6 +19,8 @@ const mockModelsList = vi.fn();
 const mockGlobalSettingsGet = vi.fn();
 
 vi.mock("../api/client", () => ({
+  isApiError: () => false,
+  isConnectionError: () => false,
   api: {
     projects: {
       getSettings: (...args: unknown[]) => mockGetSettings(...args),
@@ -78,7 +80,9 @@ function renderModal(ui: ReactElement) {
 describe("ProjectSettingsModal workflow integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetSettings.mockResolvedValue(mockSettings);
+    mockGetSettings.mockReset().mockResolvedValue(mockSettings);
+    mockUpdate.mockReset().mockResolvedValue(mockProject);
+    mockUpdateSettings.mockReset().mockResolvedValue(mockSettings);
     mockGetAgentsInstructions.mockResolvedValue({ content: "# Agent Instructions" });
     mockUpdateAgentsInstructions.mockResolvedValue({ saved: true });
     mockGetKeys.mockResolvedValue({
@@ -126,6 +130,52 @@ describe("ProjectSettingsModal workflow integration", () => {
         expect.objectContaining({ taskSize: "larger" })
       )
     );
+    expect(screen.getByRole("radio", { name: /^Larger/ })).toBeChecked();
+  });
+
+  it.each([false, true])(
+    "preserves a remote task-size change on unrelated saves (prior local edit: %s)",
+    async (editLocally) => {
+      const user = userEvent.setup();
+      let serverTaskSize = "balanced";
+      mockGetSettings.mockResolvedValue({ ...mockSettings, taskSize: serverTaskSize });
+      mockUpdateSettings.mockImplementation(async (_id, patch) => {
+        if (patch.taskSize !== undefined) serverTaskSize = patch.taskSize;
+        return { ...mockSettings, ...patch, taskSize: serverTaskSize };
+      });
+      renderModal(<ProjectSettingsModal project={mockProject} onClose={vi.fn()} />);
+      await screen.findByTestId("settings-modal-content");
+      await user.click(screen.getByRole("button", { name: "Workflow" }));
+      if (editLocally) {
+        await user.click(screen.getByRole("radio", { name: /^Larger/ }));
+        await waitFor(() => expect(serverTaskSize).toBe("larger"));
+      }
+      mockUpdateSettings.mockClear();
+      serverTaskSize = "smaller";
+      await user.selectOptions(screen.getByTestId("merge-strategy-select"), "per_epic");
+      await waitFor(() => expect(mockUpdateSettings).toHaveBeenCalled());
+      const patch = mockUpdateSettings.mock.calls.at(-1)![1];
+      expect(patch.mergeStrategy).toBe("per_epic");
+      expect(patch).not.toHaveProperty("taskSize");
+      expect(serverTaskSize).toBe("smaller");
+    }
+  );
+
+  it("retains a failed task-size edit for retry across tabs", async () => {
+    const user = userEvent.setup();
+    mockGetSettings.mockResolvedValue({ ...mockSettings, taskSize: "balanced" });
+    renderModal(<ProjectSettingsModal project={mockProject} onClose={vi.fn()} />);
+    await screen.findByTestId("settings-modal-content");
+    await user.click(screen.getByRole("button", { name: "Workflow" }));
+    mockUpdateSettings.mockClear();
+    mockUpdateSettings.mockRejectedValueOnce(new Error("Task size save failed"));
+    await user.click(screen.getByRole("radio", { name: /^Larger/ }));
+    await screen.findByText("Task size save failed");
+    expect(screen.getByRole("radio", { name: /^Larger/ })).toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Agent Config" }));
+    await waitFor(() => expect(mockUpdateSettings).toHaveBeenCalledTimes(2));
+    expect(mockUpdateSettings.mock.calls[1]![1]).toMatchObject({ taskSize: "larger" });
+    await user.click(screen.getByRole("button", { name: "Workflow" }));
     expect(screen.getByRole("radio", { name: /^Larger/ })).toBeChecked();
   });
 

@@ -131,6 +131,7 @@ function needsOwnerCapability(err: ApiErrorLike): boolean {
   );
 }
 
+/** Edit project planning, execution, verification, and continuous-improvement preferences. */
 export function WorkflowSettingsContent({
   settings,
   projectId,

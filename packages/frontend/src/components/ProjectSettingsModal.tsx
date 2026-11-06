@@ -169,6 +169,11 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
 
     const [saving, setSaving] = useState(false);
     const saveGenerationRef = useRef(0);
+    /** Keep explicit task-size intent until its save succeeds; omit untouched cached values. */
+    const pendingTaskSizeRef = useRef<{
+      projectId: string;
+      value: NonNullable<ProjectSettings["taskSize"]>;
+    } | null>(null);
     const saveCompleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     /** Tracks latest intended reviewAngles so tab switch / close persist uses it before state flushes (fixes single-angle not saving). */
@@ -249,6 +254,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
       }
     }, []);
 
+    /** Refresh server state without discarding an unacknowledged task-size edit. */
     const loadSettings = useCallback(
       async (options?: { preserveSpinner?: boolean }) => {
         const preserveSpinner = options?.preserveSpinner !== false;
@@ -260,7 +266,12 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
         try {
           const data = await api.projects.getSettings(project.id);
           if (loadRequestRef.current !== requestId) return;
-          setSettings(data);
+          const taskSizeEdit = pendingTaskSizeRef.current;
+          setSettings(
+            taskSizeEdit?.projectId === project.id
+              ? { ...data, taskSize: taskSizeEdit.value }
+              : data
+          );
           lastReviewAnglesRef.current = data.reviewAngles;
           clearPollTimeout();
           if (data.gitRuntimeStatus?.refreshing) {
@@ -281,6 +292,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
     );
 
     useEffect(() => {
+      pendingTaskSizeRef.current = null;
       void loadSettings({ preserveSpinner: true });
       return () => {
         loadRequestRef.current += 1;
@@ -385,8 +397,14 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
       selfImprovementIncludeGeneralReview?: boolean;
     }>;
 
+    /** Save pending task-size intent only until the matching edit is acknowledged. */
     const persistSettings = useCallback(
       async (notifyOnComplete?: boolean, overrides?: PersistOverrides): Promise<boolean> => {
+        if (overrides?.taskSize !== undefined) {
+          pendingTaskSizeRef.current = { projectId: project.id, value: overrides.taskSize };
+        }
+        const taskSizeEdit =
+          pendingTaskSizeRef.current?.projectId === project.id ? pendingTaskSizeRef.current : null;
         if (loading || !settings) return true;
         const effName = overrides?.name ?? name;
         const effRepoPath = overrides?.repoPath ?? repoPath;
@@ -484,7 +502,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                     effDeployment.autoResolveFeedbackOnTaskCompletion ?? false,
                 },
                 aiAutonomyLevel: effAiAutonomy,
-                taskSize: overrides?.taskSize ?? effSettings?.taskSize ?? "balanced",
+                ...(taskSizeEdit ? { taskSize: taskSizeEdit.value } : {}),
                 testCommand: overrides?.testCommand ?? effSettings?.testCommand ?? undefined,
                 reviewMode: overrides?.reviewMode ?? effSettings?.reviewMode ?? DEFAULT_REVIEW_MODE,
                 // Send [] when empty so backend receives it (undefined is omitted from JSON and would keep old value)
@@ -555,6 +573,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
           setGovernanceCapability("");
           setGovernanceCapabilityError(null);
           setSaveFailed(false);
+          if (pendingTaskSizeRef.current === taskSizeEdit) pendingTaskSizeRef.current = null;
           void queryClient.invalidateQueries({ queryKey: queryKeys.projects.settings(project.id) });
           if (notifyOnComplete) onSaved?.();
           saveSucceeded = true;
