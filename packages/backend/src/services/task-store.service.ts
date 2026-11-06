@@ -1276,6 +1276,30 @@ export class TaskStoreService {
       await client.execute(toPgParams("DELETE FROM open_questions WHERE project_id = ?"), [
         projectId,
       ]);
+      // Collaboration tables deliberately have no project foreign keys. Serialize
+      // with their cursor-owning writers and remove credentials/state atomically.
+      await client.runInTransaction(async (tx) => {
+        await tx.execute(
+          "UPDATE collaboration_projects SET cursor = cursor WHERE project_id = $1",
+          [projectId]
+        );
+        for (const table of [
+          "collaboration_control_request_events",
+          "collaboration_control_requests",
+          "collaboration_run_context",
+          "collaboration_message_context",
+          "collaboration_commands",
+          "collaboration_events",
+          "collaboration_messages",
+          "collaboration_runs",
+          "collaboration_invites",
+          "collaboration_presence",
+          "collaboration_preferences",
+          "collaboration_projects",
+        ]) {
+          await tx.execute(`DELETE FROM ${table} WHERE project_id = $1`, [projectId]);
+        }
+      });
     });
   }
 
