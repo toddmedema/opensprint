@@ -148,6 +148,7 @@ export function createCollaborationSharingApp(
     try {
       normalized = path.posix
         .normalize(decodeURIComponent(req.path).replace(/\\/g, "/"))
+        .normalize("NFKC")
         .toLowerCase();
     } catch {
       res.status(400).end();

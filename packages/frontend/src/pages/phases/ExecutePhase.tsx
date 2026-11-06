@@ -41,6 +41,7 @@ import {
 import { usePhaseLoadingState } from "../../hooks/usePhaseLoadingState";
 import { PhaseLoadingSpinner } from "../../components/PhaseLoadingSpinner";
 import { queryKeys } from "../../api/queryKeys";
+import { NAVBAR_HEIGHT } from "../../lib/constants";
 import { ResizableSidebar } from "../../components/layout/ResizableSidebar";
 import { BuildEpicCard } from "../../components/kanban";
 import { useTaskFilter } from "../../hooks/useTaskFilter";
@@ -838,6 +839,7 @@ export function ExecutePhase({
           defaultWidth={520}
           minWidth={320}
           resizeHandleLabel="Resize collaboration sidebar"
+          mobileTopOffset={NAVBAR_HEIGHT}
           responsive
           onClose={() => setCollaborationOpen(false)}
         >

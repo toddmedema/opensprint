@@ -68,6 +68,7 @@ describe("collaboration-only serving boundary", () => {
       "/",
       "/__opensprint_local_session.js",
       "/%5f%5fopensprint_local_session.js",
+      "/__open%C5%BFprint_local_session.js",
       "/__OPENSPRINT_LOCAL_SESSION.JS",
       "/assets/../__opensprint_local_session.js",
       "/assets/%2e%2e/%5f%5fopensprint_local_session.js",

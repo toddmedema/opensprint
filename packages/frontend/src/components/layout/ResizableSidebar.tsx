@@ -39,6 +39,8 @@ export interface ResizableSidebarProps {
   responsive?: boolean;
   /** When true (default), on mobile uses fixed overlay with backdrop. When false, always inline flex (no overlay). Use false for Execute so main content stays scrollable. */
   overlayOnMobile?: boolean;
+  /** Optional top inset for mobile overlays beneath persistent app chrome. Defaults to full height. */
+  mobileTopOffset?: number;
   /** Called when user closes overlay (button, backdrop, swipe). Required when responsive=true for overlay close affordance. */
   onClose?: () => void;
   /** Accessible label for the resize handle (default "Resize sidebar") */
@@ -147,6 +149,7 @@ export function ResizableSidebar({
   visible = true,
   responsive = false,
   overlayOnMobile = true,
+  mobileTopOffset = 0,
   onClose,
   resizeHandleLabel = "Resize sidebar",
   noBorder = false,
@@ -253,7 +256,9 @@ export function ResizableSidebar({
       <div
         ref={mobileOverlayDialogRef}
         className="fixed inset-0 z-[var(--sidebar-overlay-z)]"
-        style={{ "--sidebar-overlay-z": SIDEBAR_OVERLAY_Z } as React.CSSProperties}
+        style={
+          { "--sidebar-overlay-z": SIDEBAR_OVERLAY_Z, top: mobileTopOffset } as React.CSSProperties
+        }
         aria-modal="true"
         role="dialog"
         aria-label="Sidebar panel"

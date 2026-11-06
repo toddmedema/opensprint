@@ -4,6 +4,8 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient } from "@tanstack/react-query";
 import { ExecutePhase } from "../pages/phases/ExecutePhase";
+import { NAVBAR_HEIGHT } from "../lib/constants";
+import { mockViewport } from "../test/test-utils";
 import { renderWithProviders } from "../test/test-utils";
 import { initialExecuteState, toTasksByIdAndOrder } from "../store/slices/executeSlice";
 
@@ -147,6 +149,28 @@ afterEach(() => {
 });
 
 describe("Execute collaboration dock", () => {
+  it("places the mobile dock below the Navbar and keeps its close action available", async () => {
+    const restoreViewport = mockViewport(390, 844);
+    try {
+      const user = userEvent.setup();
+      renderExecute();
+      await user.click(
+        within(screen.getByTestId("execute-filter-toolbar")).getByRole("button", {
+          name: "Collaborate",
+        })
+      );
+      const panel = await screen.findByRole("dialog", { name: "Sidebar panel" });
+      expect(panel).toHaveStyle({ top: `${NAVBAR_HEIGHT}px`, "--sidebar-overlay-z": "40" });
+      await within(panel).findByRole("heading", { name: "Collaborate" });
+      await user.click(within(panel).getByRole("button", { name: "Close sidebar" }));
+      await waitFor(() =>
+        expect(screen.queryByRole("dialog", { name: "Sidebar panel" })).not.toBeInTheDocument()
+      );
+    } finally {
+      restoreViewport();
+    }
+  });
+
   it("retains discussion, source, mentions, decision and guidance drafts across closing and reopening", async () => {
     const user = userEvent.setup();
     renderExecute();

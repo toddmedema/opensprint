@@ -242,6 +242,32 @@ describe("ResizableSidebar", () => {
       expect(closeBtn.parentElement).toBeInTheDocument();
     });
 
+    it("supports a top inset beneath app chrome while preserving the default overlay layer", () => {
+      const { rerender } = render(
+        <ResizableSidebar
+          storageKey={STORAGE_KEY}
+          responsive
+          mobileTopOffset={48}
+          onClose={() => {}}
+        >
+          <span>Inset content</span>
+        </ResizableSidebar>
+      );
+      expect(screen.getByRole("dialog", { name: "Sidebar panel" })).toHaveStyle({
+        top: "48px",
+        "--sidebar-overlay-z": "40",
+      });
+      rerender(
+        <ResizableSidebar storageKey={STORAGE_KEY} responsive onClose={() => {}}>
+          <span>Full-height content</span>
+        </ResizableSidebar>
+      );
+      expect(screen.getByRole("dialog", { name: "Sidebar panel" })).toHaveStyle({
+        top: "0px",
+        "--sidebar-overlay-z": "40",
+      });
+    });
+
     it("calls onClose when backdrop is clicked", async () => {
       const user = userEvent.setup();
       const onClose = vi.fn();
