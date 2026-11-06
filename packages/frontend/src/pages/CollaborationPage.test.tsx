@@ -821,12 +821,93 @@ describe("Execute collaboration", () => {
     await screen.findByText("You’re caught up on discussion and control.");
     await user.click(screen.getByRole("button", { name: "Full history" }));
     await screen.findByText("Bob said: Older architectural decision");
-    expect(screen.getByRole("button", { name: "Mark caught up" })).toBeDisabled();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Mark caught up" })).toBeEnabled()
+    );
     await user.click(screen.getByRole("button", { name: "Load more activity" }));
     await screen.findByText("Bob said: Later architectural follow-up");
     expect(submissions("/preferences")).toHaveLength(0);
     await user.click(screen.getByRole("button", { name: "Since last read" }));
     await screen.findByText("You’re caught up on discussion and control.");
+  });
+
+  it("acknowledges a displayed activity page while later pages and mentions remain unread", async () => {
+    const fallback = handler;
+    let seenCursor = 0;
+    const event = (cursor: number, content: string) => ({
+      projectId: "project-a",
+      cursor,
+      actorId: "bob",
+      createdAt: "2026-11-06T09:30:00Z",
+      type: "message_appended",
+      payload: {
+        id: `message-${cursor}`,
+        actorId: "bob",
+        displayName: "Bob",
+        taskId: "os-task",
+        content,
+        createdAt: "2026-11-06T09:30:00Z",
+        cursor,
+      },
+    });
+    const notifications = [
+      { cursor: 1, content: "Mention on the displayed page" },
+      { cursor: 201, content: "Unread mention on a later page" },
+    ].map((notification) => ({
+      ...notification,
+      id: `mention-${notification.cursor}`,
+      taskId: "os-task",
+      actorId: "bob",
+      kind: "mention",
+      createdAt: "2026-11-06T09:30:00Z",
+    }));
+    handler = async (url, init) => {
+      if (url.endsWith("/snapshot")) return response({ ...snapshot(), cursor: 400 });
+      if (url.endsWith("/preferences")) {
+        if (init?.method === "PUT") seenCursor = JSON.parse(String(init.body)).seenCursor;
+        return response({ seenCursor, subscribedTaskIds: [], seenAt: null });
+      }
+      if (url.endsWith("/notifications"))
+        return response(notifications.filter((notification) => notification.cursor > seenCursor));
+      if (url.includes("/events?after=0"))
+        return response({
+          events: [event(1, "Discussion on the displayed page")],
+          nextCursor: 200,
+          hasMore: true,
+        });
+      if (url.includes("/events?after=200"))
+        return response({
+          events: [event(201, "Discussion on a later page")],
+          nextCursor: 400,
+          hasMore: false,
+        });
+      if (url.includes("/events?after=400"))
+        return response({ events: [], nextCursor: 400, hasMore: false });
+      return fallback(url, init);
+    };
+    const user = userEvent.setup();
+    setup();
+    await join(user);
+    await user.click(screen.getByRole("tab", { name: /Activity/ }));
+    await screen.findByText("Bob said: Discussion on the displayed page");
+    await screen.findByText("Mention on the displayed page");
+    expect(screen.getByRole("button", { name: "Load more activity" })).toBeInTheDocument();
+    expect(screen.queryByText("Bob said: Discussion on a later page")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Mark caught up" })).toBeEnabled()
+    );
+    await user.click(screen.getByRole("button", { name: "Mark caught up" }));
+    await waitFor(() => expect(submissions("/preferences")).toHaveLength(1));
+    expect(submissions("/preferences")[0]).toMatchObject({
+      seenCursor: 200,
+      markSeen: true,
+      markSeenAt: "2026-11-06T10:00:00Z",
+    });
+    await waitFor(() =>
+      expect(screen.queryByText("Mention on the displayed page")).not.toBeInTheDocument()
+    );
+    expect(screen.getByText("Unread mention on a later page")).toBeInTheDocument();
+    expect(seenCursor).toBe(200);
   });
 
   it("keeps the connection live after a rejected action and dismisses the action error", async () => {

@@ -17,7 +17,7 @@ import {
   hasClientConnected,
   broadcastToProject,
 } from "./websocket/index.js";
-import { DEFAULT_API_PORT } from "@opensprint/shared";
+import { getApiPort } from "./utils/api-port.js";
 import { taskStore } from "./services/task-store.service.js";
 import { wireTaskStoreEvents } from "./task-store-events.js";
 import { orchestratorService } from "./services/orchestrator.service.js";
@@ -54,7 +54,7 @@ const runtimeSessionId = crypto.randomUUID();
 setLogSessionId(runtimeSessionId);
 eventLogService.setInstanceId(runtimeSessionId);
 
-const port = parseInt(process.env.PORT || String(DEFAULT_API_PORT), 10);
+const port = getApiPort();
 const sharingConfig = getCollaborationSharingConfig();
 
 acquirePidFile(port);

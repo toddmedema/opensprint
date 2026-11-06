@@ -233,15 +233,6 @@ async function git(cwd: string, args: string[], limit = TEXT_LIMIT) {
     ) {
       return { text: error.stdout, truncated: true };
     }
-    // `git diff --no-index` returns 1 for an ordinary difference.
-    if (
-      args.includes("--no-index") &&
-      error instanceof CommandRunError &&
-      error.exitCode === 1 &&
-      !error.timedOut
-    ) {
-      return { text: error.stdout, truncated: false };
-    }
     throw error;
   }
 }
@@ -433,7 +424,11 @@ export class CollaborationTaskContextService {
     return value;
   }
 
-  /** Capture committed, staged, working and bounded untracked source changes without staging. */
+  /**
+   * Capture committed, staged and tracked working changes without staging.
+   * New files appear only after staging or committing: reopening untracked
+   * checkout paths for `--no-index` cannot safely confine mutable parent links.
+   */
   private async currentDiff(worktree: string, preferred: string | undefined) {
     let base: string | null = null;
     for (const candidate of [...new Set([preferred, "main", "master"].filter(Boolean))]) {
@@ -461,41 +456,7 @@ export class CollaborationTaskContextService {
       "--",
       ...PATHS,
     ]);
-    if (result.truncated) return result;
-
-    // New source files matter too. Do not use captureUncommittedDiff: that stages and resets files.
-    const untracked = await git(
-      worktree,
-      ["ls-files", "--others", "--exclude-standard", "-z", "--", ...PATHS],
-      16_384
-    );
-    const files = untracked.text.split("\0").filter(Boolean);
-    for (const filename of files.slice(0, 32)) {
-      if (!shareableDiffPath(filename)) continue;
-      const fullPath = path.resolve(worktree, filename);
-      const relative = path.relative(worktree, fullPath);
-      if (relative.startsWith("..") || path.isAbsolute(relative)) continue;
-      const stat = await fs.lstat(fullPath);
-      if (!stat.isFile() || stat.isSymbolicLink()) continue;
-      const remaining = TEXT_LIMIT - Buffer.byteLength(result.text, "utf8");
-      if (remaining <= 0) return { text: result.text, truncated: true };
-      const next = await git(
-        worktree,
-        [
-          "diff",
-          "--no-index",
-          "--no-ext-diff",
-          "--no-textconv",
-          "--",
-          process.platform === "win32" ? "NUL" : "/dev/null",
-          filename,
-        ],
-        remaining
-      );
-      result.text += next.text;
-      if (next.truncated) return { text: result.text, truncated: true };
-    }
-    return { text: result.text, truncated: untracked.truncated || files.length > 32 };
+    return result;
   }
 
   /** Read the latest bounded, project-scoped SQL archive and omit an unsafe leading partial line. */

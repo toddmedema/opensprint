@@ -158,7 +158,7 @@ describe("CollaborationTaskContextService", () => {
     expect(query.mock.calls[0]?.[1]).toEqual(["project-a"]);
   });
 
-  it("shows committed, staged and untracked source changes without changing the index", async () => {
+  it("shows committed, staged and tracked working source changes without changing the index", async () => {
     await fs.writeFile(path.join(directory, "app.ts"), "export const enabled = true;\n");
     await git(directory, "add", "app.ts");
     await git(directory, "commit", "-m", "implement filter state");
@@ -168,6 +168,9 @@ describe("CollaborationTaskContextService", () => {
     );
     await git(directory, "add", "app.ts");
     await fs.writeFile(path.join(directory, "new-file.ts"), "export const page = 1;\n");
+    await git(directory, "add", "new-file.ts");
+    await fs.writeFile(path.join(directory, "untracked.ts"), "untracked content stays private\n");
+    await fs.appendFile(path.join(directory, "app.ts"), "export const working = true;\n");
     await fs.writeFile(path.join(directory, ".env"), "PRIVATE_SECRET=should-not-appear\n");
     await fs.mkdir(path.join(directory, ".opensprint"));
     await fs.writeFile(path.join(directory, ".opensprint", "secret.json"), "private-runtime-data");
@@ -183,12 +186,88 @@ describe("CollaborationTaskContextService", () => {
     expect(context.diff).toContain("+export const enabled = true;");
     expect(context.diff).toContain("+export const shared = true;");
     expect(context.diff).toContain("new-file.ts");
+    expect(context.diff).toContain("+export const working = true;");
+    expect(context.diff).not.toContain("untracked content stays private");
+    expect(context.diff).not.toContain("untracked.ts");
     expect(context.diff).not.toContain("PRIVATE_SECRET");
     expect(context.diff).not.toContain("private-runtime-data");
     expect(context.diffRevision).toMatch(/^[a-f0-9]{64}$/);
     expect(context.unavailableReason).toBeUndefined();
     expect(await git(directory, "diff", "--cached")).toBe(before);
-    expect((await git(directory, "status", "--porcelain")).trim()).toContain("?? new-file.ts");
+    expect((await git(directory, "status", "--porcelain")).trim()).toContain("?? untracked.ts");
+  });
+
+  it("omits new untracked source until it is explicitly staged", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const filename = path.join(directory, "new-source.ts");
+    await fs.writeFile(filename, "export const newlyAdded = true;\n");
+    const initial = await service.getTaskContext("project-a", task.id);
+    expect(initial.diff).not.toContain("newlyAdded");
+    expect((await git(directory, "status", "--porcelain")).trim()).toContain("?? new-source.ts");
+    await git(directory, "add", "new-source.ts");
+    const before = await git(directory, "diff", "--cached");
+    clock.mockReturnValue(4_001);
+    const staged = await service.getTaskContext("project-a", task.id);
+    expect(staged.diff).toContain("+export const newlyAdded = true;");
+    expect(await git(directory, "diff", "--cached")).toBe(before);
+  });
+
+  it("cannot expose an untracked file through a parent link swapped during context IO", async () => {
+    const external = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-private-untracked-"));
+    try {
+      const privateContent = "host file content that has no recognizable credential pattern";
+      await fs.writeFile(path.join(external, "new-source.ts"), privateContent);
+      const source = path.join(directory, "src");
+      await fs.mkdir(source);
+      await fs.writeFile(path.join(source, "new-source.ts"), "ordinary untracked source\n");
+      const run = commandRunner.runCommand;
+      vi.spyOn(commandRunner, "runCommand").mockImplementation(async (command, options) => {
+        if (command.args?.includes("diff")) {
+          await fs.rm(source, { recursive: true, force: true });
+          await fs.symlink(external, source, "junction");
+        }
+        return run(command, options);
+      });
+      const context = await service.getTaskContext("project-a", task.id);
+      expect(context.diff).not.toContain(privateContent);
+      expect(context.diff).not.toContain("new-source.ts");
+      expect(context.unavailableReason).toBeUndefined();
+      expect(await fs.readFile(path.join(source, "new-source.ts"), "utf8")).toBe(privateContent);
+    } finally {
+      await fs.rm(external, { recursive: true, force: true });
+    }
+  });
+
+  it("never opens untracked content after an attacker can replace its inspected parent", async () => {
+    const external = await fs.mkdtemp(path.join(os.tmpdir(), "opensprint-private-untracked-race-"));
+    try {
+      const privateContent = "private host bytes behind a replaced source directory";
+      await fs.writeFile(path.join(external, "new-source.ts"), privateContent);
+      const source = path.join(directory, "src");
+      const filename = path.join(source, "new-source.ts");
+      await fs.mkdir(source);
+      await fs.writeFile(filename, "ordinary untracked source\n");
+      const inspect = fs.lstat;
+      const inspections = vi
+        .spyOn(fs, "lstat")
+        .mockImplementation(async (candidate, ...options) => {
+          const stat = await inspect(candidate, ...options);
+          if (String(candidate) === filename) {
+            await fs.rm(source, { recursive: true, force: true });
+            await fs.symlink(external, source, "junction");
+          }
+          return stat;
+        });
+      const context = await service.getTaskContext("project-a", task.id);
+      expect(context.diff).not.toContain(privateContent);
+      expect(context.diff).not.toContain("ordinary untracked source");
+      expect(inspections.mock.calls.some(([candidate]) => String(candidate) === filename)).toBe(
+        false
+      );
+      expect(context.unavailableReason).toBeUndefined();
+    } finally {
+      await fs.rm(external, { recursive: true, force: true });
+    }
   });
 
   it("captures the catch-up observation boundary before loading tasks", async () => {
@@ -384,10 +463,11 @@ describe("CollaborationTaskContextService", () => {
         `export const n = ${index};\n`
       );
     }
+    await git(directory, "add", "src");
     const first = await service.getTaskContext("project-a", task.id);
     expect(first.diff).toContain("source-23.ts");
     const firstReadCommands = commands.mock.calls.length;
-    expect(firstReadCommands).toBeGreaterThan(24);
+    expect(firstReadCommands).toBe(6);
     const started = performance.now();
     for (let viewer = 1; viewer < 5; viewer++) {
       execution!.output = [`Latest output for viewer ${viewer}`];
@@ -396,12 +476,12 @@ describe("CollaborationTaskContextService", () => {
       expect(current.diff).toBe(first.diff);
     }
     // Every later read still proves repository common-dir and task branch with
-    // three Git checks, but does not launch 24 more per-file diff processes.
+    // three Git checks, while reusing the bounded aggregate patch.
     expect(commands.mock.calls.length - firstReadCommands).toBe(4 * 3);
     console.info(
       JSON.stringify({
         contextViewers: 5,
-        untrackedFiles: 24,
+        stagedSourceFiles: 24,
         firstReadGitCommands: firstReadCommands,
         laterViewersGitCommands: commands.mock.calls.length - firstReadCommands,
         uncachedEquivalentGitCommands: firstReadCommands * 5,
@@ -415,7 +495,7 @@ describe("CollaborationTaskContextService", () => {
     clock.mockReturnValue(4_001);
     const refreshed = await service.getTaskContext("project-a", task.id);
     expect(refreshed.diff).toContain("+export const changed = true;");
-    expect(commands.mock.calls.length).toBeGreaterThan(firstReadCommands + 4 * 3 + 24);
+    expect(commands.mock.calls.length).toBe(firstReadCommands + 4 * 3 + firstReadCommands);
   });
 
   it("does not reuse cached diffs after attempt, base settings or checkout ownership changes", async () => {

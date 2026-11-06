@@ -535,6 +535,7 @@ describe.each(["sqlite", "postgres"] as const)("polished collaboration (%s)", (d
         expectedRevision: 1,
       });
     expect(ended.status).toBe(409);
+    expect(ended.body.error.code).toBe("AGENT_ATTEMPT_CHANGED");
     expect((await service.getRunControl(project, "attempt-current")).revision).toBe(1);
   });
 

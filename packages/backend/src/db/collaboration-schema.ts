@@ -67,6 +67,8 @@ CREATE TABLE IF NOT EXISTS collaboration_presence (
   display_name TEXT NOT NULL, role TEXT NOT NULL, task_id TEXT, last_seen_at TEXT NOT NULL,
   PRIMARY KEY (project_id, actor_id, client_id)
 );
+CREATE INDEX IF NOT EXISTS idx_collaboration_invites_actor ON collaboration_invites(project_id, actor_id);
+CREATE INDEX IF NOT EXISTS idx_collaboration_presence_last_seen ON collaboration_presence(last_seen_at);
 CREATE TABLE IF NOT EXISTS collaboration_preferences (
   project_id TEXT NOT NULL, actor_id TEXT NOT NULL, seen_cursor INTEGER NOT NULL DEFAULT 0,
   subscribed_task_ids TEXT NOT NULL DEFAULT '[]', seen_at TEXT, PRIMARY KEY (project_id, actor_id)

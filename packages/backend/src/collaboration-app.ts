@@ -13,6 +13,7 @@ import { AppError, errorHandler } from "./middleware/error-handler.js";
 import { requireDatabase } from "./middleware/require-database.js";
 import { wrapAsync } from "./middleware/wrap-async.js";
 import { createLogger } from "./utils/logger.js";
+import { getApiPort } from "./utils/api-port.js";
 
 const log = createLogger("collaboration-guest");
 
@@ -32,7 +33,8 @@ export function getCollaborationSharingConfig(
   if (!rawPort || !/^\d+$/.test(rawPort) || !rawOrigin)
     throw new Error("Set both OPENSPRINT_COLLABORATION_PORT and OPENSPRINT_COLLABORATION_ORIGIN.");
   const port = Number(rawPort);
-  if (port < 1 || port > 65535 || port === Number(environment.PORT ?? 3100))
+  const hostPort = getApiPort(environment);
+  if (port < 1 || port > 65535 || port === hostPort)
     throw new Error("The collaboration port must be a separate port between 1 and 65535.");
   const url = new URL(rawOrigin);
   const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
@@ -44,7 +46,7 @@ export function getCollaborationSharingConfig(
     url.search ||
     url.hash ||
     url.pathname !== "/" ||
-    (loopback && originPort === Number(environment.PORT ?? 3100))
+    (loopback && originPort === hostPort)
   )
     throw new Error(
       "Use a guest HTTPS origin (HTTP is allowed on loopback), separate from the host API origin."
@@ -114,6 +116,37 @@ export function createProjectCollaborationRouter(services: AppServices): Router 
   });
 }
 
+const guestParserErrors = new Map([
+  [
+    "entity.parse.failed",
+    { status: 400, code: "INVALID_JSON", message: "Invalid JSON request body." },
+  ],
+  [
+    "entity.too.large",
+    { status: 413, code: "REQUEST_TOO_LARGE", message: "The request body is too large." },
+  ],
+  [
+    "charset.unsupported",
+    { status: 415, code: "UNSUPPORTED_CHARSET", message: "Unsupported request charset." },
+  ],
+  [
+    "encoding.unsupported",
+    {
+      status: 415,
+      code: "UNSUPPORTED_CONTENT_ENCODING",
+      message: "Unsupported request content encoding.",
+    },
+  ],
+  [
+    "request.aborted",
+    { status: 400, code: "INVALID_REQUEST_BODY", message: "Invalid request body." },
+  ],
+  [
+    "request.size.invalid",
+    { status: 400, code: "INVALID_REQUEST_BODY", message: "Invalid request body." },
+  ],
+]);
+
 /**
  * Keep unexpected guest-facing errors opaque in every deployment mode. Intentional
  * application errors retain their public contract; diagnostics remain server-side.
@@ -127,17 +160,25 @@ const guestErrorHandler: ErrorRequestHandler = (error: unknown, req, res, next) 
     errorHandler(error, req, res, next);
     return;
   }
+  const parserError =
+    error instanceof Error && "type" in error && typeof error.type === "string"
+      ? guestParserErrors.get(error.type)
+      : undefined;
+  if (parserError) {
+    res.status(parserError.status).json({
+      error: { code: parserError.code, message: parserError.message },
+    });
+    return;
+  }
   log.error("Guest request error", {
     requestId: req.requestId,
     message: error instanceof Error ? error.message : "Unknown error",
     stack: error instanceof Error ? error.stack : undefined,
   });
-  const invalidJson =
-    error instanceof SyntaxError && "type" in error && error.type === "entity.parse.failed";
-  res.status(invalidJson ? 400 : 500).json({
+  res.status(500).json({
     error: {
-      code: invalidJson ? "INVALID_JSON" : "INTERNAL_ERROR",
-      message: invalidJson ? "Invalid JSON request body." : "An unexpected error occurred",
+      code: "INTERNAL_ERROR",
+      message: "An unexpected error occurred",
     },
   });
 };

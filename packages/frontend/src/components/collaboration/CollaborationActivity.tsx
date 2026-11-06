@@ -87,7 +87,6 @@ export function CollaborationActivity({
           disabled={
             !session.preferences.data ||
             session.savePreferences.isPending ||
-            session.activity.hasNextPage ||
             session.activity.isPending ||
             session.activity.isFetching ||
             Boolean(session.activity.error) ||

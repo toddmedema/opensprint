@@ -9,6 +9,7 @@ import { CollaborationService } from "../services/collaboration.service.js";
 import { createCollaborationRouter } from "../routes/collaboration.js";
 import { VITEST_DEFAULT_LOCAL_SESSION_TOKEN } from "../services/local-session-auth.service.js";
 import { AppError } from "../middleware/error-handler.js";
+import { getApiPort } from "../utils/api-port.js";
 import {
   createCollaborationSharingApp,
   getCollaborationSharingConfig,
@@ -149,9 +150,52 @@ describe("collaboration-only serving boundary", () => {
       });
       expect(response.text).not.toContain("private-request-sentinel");
       expect(response.text).not.toContain("stack");
-      expect(logged).toHaveBeenCalledWith(expect.stringContaining("Guest request error"));
+      expect(logged).not.toHaveBeenCalled();
     }
   );
+
+  it.each([
+    {
+      label: "oversized JSON",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential: "private-request-sentinel".repeat(4096) }),
+      status: 413,
+      code: "REQUEST_TOO_LARGE",
+      message: "The request body is too large.",
+    },
+    {
+      label: "unsupported charset",
+      headers: { "Content-Type": "application/json; charset=private-request-sentinel" },
+      body: '{"credential":"private-request-sentinel"}',
+      status: 415,
+      code: "UNSUPPORTED_CHARSET",
+      message: "Unsupported request charset.",
+    },
+    {
+      label: "unsupported content encoding",
+      headers: {
+        "Content-Type": "application/json",
+        "Content-Encoding": "private-request-sentinel",
+      },
+      body: '{"credential":"private-request-sentinel"}',
+      status: 415,
+      code: "UNSUPPORTED_CONTENT_ENCODING",
+      message: "Unsupported request content encoding.",
+    },
+  ])("retains a safe client status for $label without logging the payload", async (input) => {
+    vi.stubEnv("NODE_ENV", "development");
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const response = await request(app)
+      .post(`${endpoint}/commands`)
+      .set(input.headers)
+      .send(input.body)
+      .expect(input.status);
+
+    expect(response.body).toEqual({ error: { code: input.code, message: input.message } });
+    expect(response.text).not.toContain("private-request-sentinel");
+    expect(response.text).not.toContain("stack");
+    expect(logged).not.toHaveBeenCalled();
+  });
 
   it.each(["development", undefined])(
     "logs unexpected failures without returning diagnostics when NODE_ENV is %s",
@@ -212,6 +256,50 @@ describe("collaboration-only serving boundary", () => {
 });
 
 describe("sharing configuration", () => {
+  it.each([undefined, ""])(
+    "matches the host listener's default collision checks when PORT is %s",
+    (port) => {
+      expect(getApiPort({ PORT: port })).toBe(3100);
+      for (const configuration of [
+        { OPENSPRINT_COLLABORATION_PORT: "3100", OPENSPRINT_COLLABORATION_ORIGIN: origin },
+        {
+          OPENSPRINT_COLLABORATION_PORT: "3199",
+          OPENSPRINT_COLLABORATION_ORIGIN: "http://127.0.0.1:3100",
+        },
+      ])
+        expect(() => getCollaborationSharingConfig({ PORT: port, ...configuration })).toThrow();
+      expect(
+        getCollaborationSharingConfig({
+          PORT: port,
+          OPENSPRINT_COLLABORATION_PORT: "3199",
+          OPENSPRINT_COLLABORATION_ORIGIN: "http://127.0.0.1:3199",
+        })
+      ).toMatchObject({ port: 3199, origin: "http://127.0.0.1:3199" });
+    }
+  );
+
+  it.each(["4100", "4100suffix"])(
+    "uses the configured host port consistently for PORT=%s",
+    (port) => {
+      expect(getApiPort({ PORT: port })).toBe(4100);
+      for (const configuration of [
+        { OPENSPRINT_COLLABORATION_PORT: "4100", OPENSPRINT_COLLABORATION_ORIGIN: origin },
+        {
+          OPENSPRINT_COLLABORATION_PORT: "3199",
+          OPENSPRINT_COLLABORATION_ORIGIN: "http://127.0.0.1:4100",
+        },
+      ])
+        expect(() => getCollaborationSharingConfig({ PORT: port, ...configuration })).toThrow();
+      expect(
+        getCollaborationSharingConfig({
+          PORT: port,
+          OPENSPRINT_COLLABORATION_PORT: "3100",
+          OPENSPRINT_COLLABORATION_ORIGIN: "http://127.0.0.1:3100",
+        })
+      ).toMatchObject({ port: 3100, origin: "http://127.0.0.1:3100" });
+    }
+  );
+
   it("stays disabled by default and requires a separate explicit port and origin", () => {
     expect(getCollaborationSharingConfig({})).toBeNull();
     expect(
