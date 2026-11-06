@@ -6,6 +6,8 @@ Open Sprint is a web application that guides users through the full software dev
 
 **Tech stack:** Node.js + TypeScript (backend), React + TypeScript (frontend).
 
+Project planning uses the project-wide `taskSize` setting (`larger`, `balanced`, or `smaller`; default `balanced`) for cohesive outcomes sized to the configured coding agents. Include implementation and tests together, batch repetitive work, and allow a single task for simple changes. Preserve every acceptance criterion; count limits must never discard scope. The setting applies to future generation, including recursive sub-plans, and does not rewrite existing tasks.
+
 ## Repository development skills
 
 These skills guide contributions to this repository:

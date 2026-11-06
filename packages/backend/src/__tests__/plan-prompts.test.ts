@@ -12,22 +12,22 @@ import {
 describe("TASK_GENERATION_SYSTEM_PROMPT", () => {
   it("states the 15-task cap explicitly", () => {
     expect(TASK_GENERATION_SYSTEM_PROMPT).toContain(
-      "Generate between 8 and 15 implementation tasks. Never exceed 15."
+      "Generate only as many tasks as the scope needs, from 1 to 15. Never exceed 15."
     );
   });
 
   it("instructs consolidation when more than 15 tasks seem needed", () => {
     expect(TASK_GENERATION_SYSTEM_PROMPT).toContain(
-      "consolidate related concerns into fewer, broader tasks rather than exceeding the cap"
+      "Consolidate related concerns while preserving all requirements and acceptance criteria"
     );
   });
 
-  it("requires single-scope tasks with one primary outcome", () => {
+  it("requires cohesive outcomes with implementation and tests", () => {
     expect(TASK_GENERATION_SYSTEM_PROMPT).toContain(
-      "Each task must have exactly one primary outcome"
+      "Each task must have one coherent, independently verifiable outcome"
     );
     expect(TASK_GENERATION_SYSTEM_PROMPT).toContain(
-      "one file concern, one API endpoint, one component"
+      "Include the related implementation, files, and tests together"
     );
   });
 
@@ -104,7 +104,7 @@ describe("SUB_PLAN_DECOMPOSITION_SYSTEM_PROMPT", () => {
 
   it("enforces the 15-task threshold for strategy selection", () => {
     expect(SUB_PLAN_DECOMPOSITION_SYSTEM_PROMPT).toContain("15 or fewer");
-    expect(SUB_PLAN_DECOMPOSITION_SYSTEM_PROMPT).toContain("more than 15");
+    expect(SUB_PLAN_DECOMPOSITION_SYSTEM_PROMPT).toContain("substantial independent workstreams");
   });
 
   it("specifies max depth constraint", () => {
@@ -169,7 +169,9 @@ describe("SUB_PLAN_DECOMPOSITION_REPAIR_PROMPT", () => {
   });
 
   it("enforces task and sub-plan count limits", () => {
-    expect(SUB_PLAN_DECOMPOSITION_REPAIR_PROMPT).toContain("never exceed 15");
+    expect(SUB_PLAN_DECOMPOSITION_REPAIR_PROMPT).toContain(
+      "1–15 tasks as needed; no padding; preserve all scope"
+    );
     expect(SUB_PLAN_DECOMPOSITION_REPAIR_PROMPT).toContain("2–8 sub-plans");
   });
 });

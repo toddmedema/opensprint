@@ -5,6 +5,7 @@ import {
   DEFAULT_DEPLOYMENT_CONFIG,
   DEFAULT_HIL_CONFIG,
   DEFAULT_REVIEW_MODE,
+  DEFAULT_TASK_SIZE,
   hilConfigFromAiAutonomyLevel,
   MAX_TOTAL_CONCURRENT_AGENTS_CAP,
   MIN_VALIDATION_TIMEOUT_MS,
@@ -96,6 +97,7 @@ export function isPreferredRepoPathEntry(
 /** Build default ProjectSettings for a repo (no user input). Used when adopting or repairing. */
 export function buildDefaultSettings(): ProjectSettings {
   return {
+    taskSize: DEFAULT_TASK_SIZE,
     simpleComplexityAgent: { ...DEFAULT_AGENT_CONFIG },
     complexComplexityAgent: { ...DEFAULT_AGENT_CONFIG },
     deployment: { ...DEFAULT_DEPLOYMENT_CONFIG },
@@ -127,6 +129,7 @@ export function buildDefaultSettings(): ProjectSettings {
 export function toCanonicalSettings(s: ProjectSettings): ProjectSettings {
   const aiAutonomyLevel = s.aiAutonomyLevel ?? DEFAULT_AI_AUTONOMY_LEVEL;
   return {
+    taskSize: s.taskSize ?? DEFAULT_TASK_SIZE,
     simpleComplexityAgent: s.simpleComplexityAgent,
     complexComplexityAgent: s.complexComplexityAgent,
     deployment: s.deployment,

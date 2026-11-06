@@ -113,6 +113,22 @@ describe("ProjectSettingsModal workflow integration", () => {
     expect(screen.queryByText("Task Complexity")).not.toBeInTheDocument();
   });
 
+  it("saves project task size through the settings API", async () => {
+    const user = userEvent.setup();
+    mockUpdateSettings.mockImplementation(async (_id, patch) => ({ ...mockSettings, ...patch }));
+    renderModal(<ProjectSettingsModal project={mockProject} onClose={vi.fn()} />);
+    await screen.findByTestId("settings-modal-content");
+    await user.click(screen.getByRole("button", { name: "Workflow" }));
+    await user.click(screen.getByRole("radio", { name: /^Larger/ }));
+    await waitFor(() =>
+      expect(mockUpdateSettings).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ taskSize: "larger" })
+      )
+    );
+    expect(screen.getByRole("radio", { name: /^Larger/ })).toBeChecked();
+  });
+
   it("keeps Agent Config focused on complexity rows and advanced instructions", async () => {
     const user = userEvent.setup();
     renderModal(<ProjectSettingsModal project={mockProject} onClose={vi.fn()} />);

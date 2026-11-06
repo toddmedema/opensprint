@@ -38,11 +38,11 @@ Template structure: ${PLAN_TEMPLATE_STRUCTURE}
 
 **Scale, speed, and cost:** Check the PRD for constraints around scale (users, data volume, growth), speed (latency, throughput), and cost (budget, infrastructure). When present, ensure each relevant plan's Technical Approach reflects them. When absent, add a brief note in the Assumptions section of plans likely affected by scale/speed/cost (e.g., data-heavy, latency-sensitive, or infrastructure features).`;
 
-export const TASK_GENERATION_SYSTEM_PROMPT = `You are an AI planning assistant for Open Sprint. Given a feature plan specification (and optional PRD context), break it down into granular, atomic implementation tasks that an AI coding agent can complete in a single session.
+export const TASK_GENERATION_SYSTEM_PROMPT = `You are an AI planning assistant for Open Sprint. Given a feature plan specification (and optional PRD context), break it down into cohesive implementation tasks that the configured coding agents can each complete in a single session. Follow the project task-size policy supplied with this prompt.
 
-Generate between 8 and 15 implementation tasks. Never exceed 15. If the plan seems to need more, consolidate related concerns into fewer, broader tasks rather than exceeding the cap.
+Generate only as many tasks as the scope needs, from 1 to 15. Never exceed 15. There is no minimum beyond one task. Consolidate related concerns while preserving all requirements and acceptance criteria.
 
-Each task must have exactly one primary outcome — one file concern, one API endpoint, one component, one schema migration, one test suite, etc. Do not combine unrelated outcomes in a single task.
+Each task must have one coherent, independently verifiable outcome. Include the related implementation, files, and tests together; do not split solely by file, endpoint, component, or test suite. Do not combine unrelated outcomes.
 
 For each task:
 1. Title: Clear, specific action (e.g. "Add user login API endpoint", not "Handle auth")
@@ -55,7 +55,7 @@ For each task:
 5. files: Required object with { modify?: string[], create?: string[], test?: string[] } describing the task's expected file scope
 
 Guidelines:
-- Tasks must be atomic: one coding session, one primary outcome
+- Tasks must be cohesive: one coding session, one independently verifiable outcome, including tests
 - Order matters: infrastructure/data-model tasks first, then API, then UI, then integration
 - Each task description must contain explicit acceptance criteria (numbered list)
 - Be specific about file paths and technology choices based on the plan
@@ -98,7 +98,7 @@ Rules:
 export function buildTaskCountRepairPrompt(count: number): string {
   return (
     `Your response contained ${count} tasks which exceeds the maximum of 15. ` +
-    `Merge related tasks or drop lowest-priority items to produce at most 15 tasks. ` +
+    `Merge related tasks while preserving every requirement and acceptance criterion to produce at most 15 tasks. Never drop scope or truncate the task list. ` +
     `Return the same JSON schema.`
   );
 }
@@ -138,10 +138,10 @@ export const SUB_PLAN_DECOMPOSITION_SYSTEM_PROMPT = `You are an AI planning assi
 
 ## Decision criteria
 
-Estimate the number of atomic, single-scope implementation tasks the plan would require. Each task has one primary outcome (one file concern, one endpoint, one component, one migration, one test suite, etc.).
+Estimate the number of cohesive implementation tasks needed under the project task-size policy and the configured coding agents. Each task covers one independently verifiable outcome, including related implementation and tests. Repeated pages or content records sharing one pattern are not automatically separate tasks or sub-plans.
 
 - If the plan can be covered by **15 or fewer** tasks → output strategy \`"tasks"\`.
-- If it would need **more than 15** tasks → output strategy \`"sub_plans"\` to split work into ${MIN_SUB_PLANS}–${MAX_SUB_PLANS} focused sub-plans.
+- Only when the full scope cannot reasonably fit in **15** cohesive tasks and contains substantial independent workstreams → output strategy \`"sub_plans"\` to split work into ${MIN_SUB_PLANS}–${MAX_SUB_PLANS} focused sub-plans.
 
 ## Depth constraint
 
@@ -153,7 +153,7 @@ Respond with **only** valid JSON (you may wrap in a \`\`\`json code block). No p
 
 ### Strategy: tasks
 
-Use the existing task schema. Generate 8–15 tasks. Never exceed 15.
+Use the existing task schema. Generate 1–15 tasks as needed; never pad to a minimum or exceed 15.
 
 \`\`\`
 {
@@ -172,7 +172,7 @@ Use the existing task schema. Generate 8–15 tasks. Never exceed 15.
 \`\`\`
 
 Task rules (same as standard task generation):
-- Each task must have exactly one primary outcome
+- Each task must have one coherent, independently verifiable outcome, including implementation and tests
 - Title: clear, specific action (e.g. "Add user login API endpoint")
 - Description must contain **Acceptance criteria:** as a numbered list of verifiable conditions
 - Priority: 0 (highest/foundational) to 4 (lowest/polish)
@@ -205,7 +205,7 @@ Sub-plan rules:
 - Order sub-plans so foundational/infrastructure work comes first
 - Each sub-plan should be independently executable once its dependencies are met
 - Do not overlap scope between sub-plans — every part of the parent plan must appear in exactly one sub-plan
-- Keep sub-plans roughly balanced in size (each should need ~5–15 tasks when eventually decomposed)
+- Keep sub-plans focused without imposing a minimum task count. Preserve the project task-size policy in all children. Do not split repeated pages or content into separate workstreams merely to fill the tree.
 
 ## Guidelines
 
@@ -253,7 +253,7 @@ Rules:
 - No trailing commas or comments
 - Use double-quoted JSON keys and strings only
 - strategy must be exactly "tasks" or "sub_plans"
-- tasks strategy: 8–15 tasks, never exceed 15
+- tasks strategy: 1–15 tasks as needed; no padding; preserve all scope
 - sub_plans strategy: ${MIN_SUB_PLANS}–${MAX_SUB_PLANS} sub-plans`;
 
 export function buildSubPlanCountRepairPrompt(count: number): string {

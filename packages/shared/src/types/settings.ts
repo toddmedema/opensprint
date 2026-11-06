@@ -468,6 +468,36 @@ export function getSelfImprovementIncludeGeneralReview(settings: ProjectSettings
 /** Strategy when file scope is unknown for parallel scheduling */
 export type UnknownScopeStrategy = "conservative" | "optimistic";
 
+/** Preferred implementation scope per coding session, independent of autonomy. */
+export type TaskSize = "larger" | "balanced" | "smaller";
+
+export const TASK_SIZES = ["larger", "balanced", "smaller"] as const;
+export const DEFAULT_TASK_SIZE: TaskSize = "balanced";
+export const TASK_SIZE_OPTIONS: ReadonlyArray<{
+  value: TaskSize;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "larger",
+    label: "Larger",
+    description:
+      "Fewer tasks covering complete outcomes. Batch repetitive work and strongly prefer a flat plan.",
+  },
+  {
+    value: "balanced",
+    label: "Balanced",
+    description:
+      "Split work at meaningful implementation boundaries, with tests included in each task.",
+  },
+  {
+    value: "smaller",
+    label: "Smaller",
+    description:
+      "Narrower tasks and more checkpoints for coding agents that benefit from smaller scopes.",
+  },
+];
+
 /** Git working mode: worktree (parallel worktrees) or branches (single branch in main repo) */
 export type GitWorkingMode = "worktree" | "branches";
 
@@ -899,6 +929,8 @@ export function parseTodoistOAuthCredentials(raw: unknown): TodoistOAuthCredenti
 
 /** Full project settings stored in global database (~/.opensprint/settings.json) keyed by project_id */
 export interface ProjectSettings {
+  /** Project-wide task granularity for future planning; existing tasks are unchanged. */
+  taskSize?: TaskSize;
   simpleComplexityAgent: AgentConfig;
   complexComplexityAgent: AgentConfig;
   /**
@@ -1363,6 +1395,9 @@ export function parseSettings(raw: unknown): ProjectSettings {
       ? (r.unknownScopeStrategy as UnknownScopeStrategy)
       : "optimistic";
   const base = {
+    taskSize: TASK_SIZES.includes(r?.taskSize as TaskSize)
+      ? (r.taskSize as TaskSize)
+      : DEFAULT_TASK_SIZE,
     deployment: migrateDeploymentConfig(r?.deployment),
     aiAutonomyLevel,
     hilConfig,

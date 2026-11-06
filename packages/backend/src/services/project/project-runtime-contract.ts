@@ -8,6 +8,8 @@ const OPENSPRINT_RUNTIME_CONTRACT_SECTION = [
   "",
   "Open Sprint manages task state internally. Do not use external task CLIs.",
   "",
+  "- Project planning uses the project-wide `taskSize` setting (`larger`, `balanced`, or `smaller`; default `balanced`) for cohesive outcomes sized to the configured coding agents. Include implementation and tests together, batch repetitive work, and allow a single task for simple changes. Preserve every acceptance criterion; count limits must never discard scope. The setting applies to future generation, including recursive sub-plans, and does not rewrite existing tasks.",
+  "",
   "- Native Claude Code (`claude-cli`) and Codex (`codex`) agents use local subscription sign-in, not API-key settings. Their task prompts are passed on stdin. An optional per-tier effort uses the selected model’s supported levels; omitted effort preserves CLI defaults. Explicit effort is verified before launch and passed through the native CLI configuration, including task-file runs. Sandbox restrictions remain active; if a required action is blocked, report it rather than claiming success. The orchestrator commits remaining worktree changes before merge.",
   "- Pull request delivery uses a shared plan branch; the orchestrator publishes the PR and retains the branch for human merge. Execute agents must leave publication to the orchestrator. PR delivery requires no active or retained review governance; governed projects use direct delivery.",
   "- Execute agents start in a prepared worktree with the task branch already checked out.",

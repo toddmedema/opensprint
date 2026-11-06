@@ -357,6 +357,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
     const mergeStrategy = settings?.mergeStrategy ?? "per_task";
     const deliveryMode = settings?.deliveryMode ?? "direct";
     type PersistOverrides = Partial<{
+      taskSize: ProjectSettings["taskSize"];
       name: string;
       repoPath: string;
       /** `null` persists “inherit global” for this tier. */
@@ -483,6 +484,7 @@ export const ProjectSettingsModal = forwardRef<ProjectSettingsModalRef, ProjectS
                     effDeployment.autoResolveFeedbackOnTaskCompletion ?? false,
                 },
                 aiAutonomyLevel: effAiAutonomy,
+                taskSize: overrides?.taskSize ?? effSettings?.taskSize ?? "balanced",
                 testCommand: overrides?.testCommand ?? effSettings?.testCommand ?? undefined,
                 reviewMode: overrides?.reviewMode ?? effSettings?.reviewMode ?? DEFAULT_REVIEW_MODE,
                 // Send [] when empty so backend receives it (undefined is omitted from JSON and would keep old value)

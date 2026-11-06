@@ -133,6 +133,28 @@ describe("atomic raw project settings transformations", () => {
     expect((await disk()).A.revision).toBe(5);
   });
 
+  it.each(["larger", "balanced", "smaller"] as const)(
+    "persists and reloads %s task size across unrelated saves",
+    async (taskSize) => {
+      await setSettingsInStore("A", inherited as unknown as ProjectSettings);
+      await runUpdateSettingsFlow(deps, "A", { taskSize });
+      await runUpdateSettingsFlow(deps, "A", { autoExecutePlans: true });
+      expect((await getRawSettingsRecord("A")).taskSize).toBe(taskSize);
+      expect((await loadProjectSettingsFromStore("A", directory)).taskSize).toBe(taskSize);
+    }
+  );
+
+  it("rejects an invalid task size without changing stored settings", async () => {
+    await setSettingsInStore("A", {
+      ...inherited,
+      taskSize: "larger",
+    } as unknown as ProjectSettings);
+    await expect(
+      runUpdateSettingsFlow(deps, "A", { taskSize: "tiny" } as never)
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect((await getRawSettingsRecord("A")).taskSize).toBe("larger");
+  });
+
   it("does not let delayed default detection overwrite a concurrently initialized project", async () => {
     const pending = barrier();
     vi.mocked(detectTestFramework).mockImplementationOnce(async () => {
