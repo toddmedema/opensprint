@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   REVIEW_AGENT_OPTIONS,
   getAgentForPlanningRole,
+  normalizeAgentTimeoutMs,
   type AutomatedQaRequest,
   type AutomatedQaResult,
 } from "@opensprint/shared";
@@ -160,7 +161,11 @@ Return status success only if the assigned QA checks completed. This report repl
               })
             );
             await new Promise<void>((resolve, reject) => {
-              agentService.invokeCodingAgent(promptPath, config, {
+              const timeoutMs = normalizeAgentTimeoutMs(config.timeoutMs);
+              let timedOut = false;
+              let exited = false;
+              let timer: ReturnType<typeof setTimeout> | undefined;
+              const handle = agentService.invokeCodingAgent(promptPath, config, {
                 cwd: worktree!,
                 projectId,
                 agentRole: "automated QA",
@@ -173,11 +178,20 @@ Return status success only if the assigned QA checks completed. This report repl
                 },
                 onOutput: () => {},
                 // Wait for observed process completion before disposing of its checkout.
-                onExit: (code) =>
-                  code === 0
-                    ? resolve()
-                    : reject(new Error(`QA agent exited with code ${code ?? "unknown"}.`)),
+                onExit: (code) => {
+                  exited = true;
+                  clearTimeout(timer);
+                  if (timedOut) reject(new Error("QA agent timed out."));
+                  else if (code === 0) resolve();
+                  else reject(new Error(`QA agent exited with code ${code ?? "unknown"}.`));
+                },
               });
+              if (!exited && timeoutMs !== null) {
+                timer = setTimeout(() => {
+                  timedOut = true;
+                  handle.kill();
+                }, timeoutMs);
+              }
             });
             const parsed = qaOutputSchema.safeParse(
               JSON.parse(await fs.readFile(resultPath, "utf8"))

@@ -71,6 +71,8 @@ describe("automated QA", () => {
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
+    delete settings.simpleComplexityAgent.timeoutMs;
     await fs.rm(repo, { recursive: true, force: true });
   });
 
@@ -222,6 +224,43 @@ describe("automated QA", () => {
       ).results[0].status
     ).toBe("completed");
   });
+
+  it.each([300000, undefined, null])(
+    "honors timeout %s and retains the checkout and capacity until observed exit",
+    async (timeoutMs) => {
+      settings.simpleComplexityAgent.timeoutMs = timeoutMs;
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+      const kill = vi.fn();
+      let options: InvokeCodingAgentOptions | undefined;
+      vi.mocked(agentService.invokeCodingAgent).mockImplementation((_prompt, _config, opts) => {
+        options = opts;
+        return { kill, pid: null };
+      });
+      const pending = service.run("project-1", { perspectives: ["general"] });
+      await vi.waitFor(() => expect(options).toBeDefined());
+      const deadline = timeoutMs === undefined ? 900000 : (timeoutMs ?? 3600000);
+      await vi.advanceTimersByTimeAsync(deadline - 100);
+      expect(kill).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(kill).toHaveBeenCalledTimes(timeoutMs === null ? 0 : 1);
+      expect(mocks.release).not.toHaveBeenCalled();
+      expect(await fs.stat(options!.cwd)).toBeDefined();
+      // A result written before timeout cannot turn a timed-out run into success.
+      await fs.writeFile(
+        path.join(options!.cwd, ".opensprint", "active", options!.tracking!.id, "result.json"),
+        JSON.stringify({ status: "success", summary: "Checks passed", issues: [] })
+      );
+      options!.onExit(0);
+      const result = await pending;
+      expect(result.results[0]).toMatchObject(
+        timeoutMs === null
+          ? { status: "completed", summary: "Checks passed" }
+          : { status: "failed", summary: "QA agent timed out." }
+      );
+      expect(mocks.release).toHaveBeenCalledOnce();
+      await expect(fs.stat(options!.cwd)).rejects.toMatchObject({ code: "ENOENT" });
+    }
+  );
 
   it("cleans up and releases capacity after a synchronous launch failure", async () => {
     vi.mocked(agentService.invokeCodingAgent).mockImplementation(() => {

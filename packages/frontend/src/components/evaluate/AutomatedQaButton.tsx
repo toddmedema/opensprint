@@ -50,6 +50,7 @@ export function AutomatedQaButton({
       onComplete();
     } catch (err) {
       if (!mountedRef.current) return;
+      onComplete();
       setError(
         err instanceof Error ? err.message : "Could not run automated QA. Please try again."
       );

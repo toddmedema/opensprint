@@ -84,13 +84,15 @@ describe("AutomatedQaButton", () => {
     vi.mocked(api.feedback.runAutomatedQa).mockRejectedValueOnce(
       new Error("QA is already running")
     );
-    render(<AutomatedQaButton projectId="project-1" onComplete={vi.fn()} />);
+    const onComplete = vi.fn();
+    render(<AutomatedQaButton projectId="project-1" onComplete={onComplete} />);
     fireEvent.click(screen.getByRole("button", { name: "Run automated QA" }));
     fireEvent.change(screen.getByLabelText("Additional instructions (optional)"), {
       target: { value: "Check mobile layout" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Run QA" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("QA is already running");
+    expect(onComplete).toHaveBeenCalledOnce();
     expect(screen.getByLabelText("Additional instructions (optional)")).toHaveValue(
       "Check mobile layout"
     );
@@ -99,11 +101,13 @@ describe("AutomatedQaButton", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("does not refresh a different project's feedback after navigating away during QA", async () => {
+  it.each(["success", "failure"])("does not refresh after unmount on %s", async (outcome) => {
+    let reject!: (error: Error) => void;
     let resolve!: (result: AutomatedQaResult) => void;
     vi.mocked(api.feedback.runAutomatedQa).mockReturnValue(
-      new Promise((done) => {
+      new Promise((done, fail) => {
         resolve = done;
+        reject = fail;
       })
     );
     const onComplete = vi.fn();
@@ -111,7 +115,8 @@ describe("AutomatedQaButton", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run automated QA" }));
     fireEvent.click(screen.getByRole("button", { name: "Run QA" }));
     unmount();
-    resolve({ runId: "run-1", results: [] });
+    if (outcome === "success") resolve({ runId: "run-1", results: [] });
+    else reject(new Error("Request failed"));
     await Promise.resolve();
     expect(onComplete).not.toHaveBeenCalled();
   });
